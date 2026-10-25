@@ -90,8 +90,8 @@ Effort is passed through as Claude Code's `--effort`, Codex's
   idle.
 - `list_agents()` returns the team: id, name, role, harness, activity,
   directory, and branch.
-- `create_agent(name, harness?, model?, effort?, message?)`, orchestrator only. It
-  creates branch `hypercube/<name>` from `HEAD` in a worktree at
+- `create_agent(name, harness?, model?, effort?, message?)`, orchestrator
+  only. It creates branch `hypercube/<name>` from `HEAD` in a worktree at
   `<checkout>/.hypercube/<name>`, records the agent as busy, and launches its
   harness in a new pane with the nudge as its first prompt. A `message` is
   queued for the new agent before launch, so the nudge delivers it.
