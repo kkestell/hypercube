@@ -179,6 +179,11 @@ Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 - `mcp`: the stdio MCP server and tools.
 - `hook`: hook event handling and the runtime facts.
 
+## Smoke testing
+
+For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, and OpenCode
+`openrouter/~deepseek/deepseek-flash-latest`.
+
 ## Validation
 
 Before pushing, all of this must pass:
