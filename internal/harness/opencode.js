@@ -15,44 +15,49 @@ async function hook(event, sessionID) {
 
 const context = (response) => response.hookSpecificOutput?.additionalContext ?? ""
 
-export const Hypercube = async ({ client }) => {
-  const started = new Set()
-  const parents = new Map()
+export default {
+  id: "hypercube",
+  async setup(ctx) {
+    const started = new Set()
+    const parents = new Map()
 
-  // Subagent sessions have a parent. Only the top-level session is the agent.
-  async function isAgentSession(id) {
-    if (!parents.has(id)) {
-      const { data } = await client.session.get({ path: { id } })
-      parents.set(id, data?.parentID)
+    // Subagent sessions have a parent. Only the top-level session is the agent.
+    async function isAgentSession(sessionID) {
+      if (!parents.has(sessionID)) {
+        parents.set(sessionID, (await ctx.session.get({ sessionID })).parentID)
+      }
+      return !parents.get(sessionID)
     }
-    return !parents.get(id)
-  }
 
-  return {
-    "chat.message": async (input, output) => {
-      if (!(await isAgentSession(input.sessionID))) return
+    await ctx.session.hook("prompt", async (event) => {
+      if (!(await isAgentSession(event.sessionID))) return
       let text = ""
-      if (!started.has(input.sessionID)) {
-        started.add(input.sessionID)
-        text += context(await hook("SessionStart", input.sessionID))
+      if (!started.has(event.sessionID)) {
+        started.add(event.sessionID)
+        text += context(await hook("SessionStart", event.sessionID))
       }
-      text += context(await hook("UserPromptSubmit", input.sessionID))
-      const part = output.parts.find((p) => p.type === "text")
-      if (text && part) part.text += "\n\n" + text
-    },
-    "tool.execute.after": async (input, output) => {
-      if (!(await isAgentSession(input.sessionID))) return
-      const text = context(await hook("PostToolUse", input.sessionID))
-      if (text) output.output += "\n\n" + text
-    },
-    event: async ({ event }) => {
-      if (event.type !== "session.idle") return
-      const id = event.properties.sessionID
-      if (!(await isAgentSession(id))) return
-      const response = await hook("Stop", id)
-      if (response.reason) {
-        await client.session.promptAsync({ path: { id }, body: { parts: [{ type: "text", text: response.reason }] } })
+      text += context(await hook("UserPromptSubmit", event.sessionID))
+      if (text) event.prompt.text += "\n\n" + text
+    })
+
+    await ctx.tool.hook("execute.after", async (event) => {
+      if (event.status !== "completed" || !(await isAgentSession(event.sessionID))) return
+      const text = context(await hook("PostToolUse", event.sessionID))
+      if (text) event.result = { ...event.result, content: [...event.result.content, { type: "text", text }] }
+    })
+
+    // A turn ends when its execution succeeds, fails, or is interrupted.
+    const idle = new Set(["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])
+    const controller = new AbortController()
+    void (async () => {
+      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        if (!idle.has(event.type)) continue
+        const { sessionID } = event.data
+        if (!(await isAgentSession(sessionID))) continue
+        const response = await hook("Stop", sessionID)
+        if (response.reason) await ctx.session.prompt({ sessionID, text: response.reason })
       }
-    },
-  }
+    })()
+    return () => controller.abort()
+  },
 }

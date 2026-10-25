@@ -76,21 +76,20 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		return argv, env, nil
 
 	case "opencode":
-		plugin := filepath.Join(store.Dir(), "opencode-plugin.js")
-		if err := os.MkdirAll(store.Dir(), 0o755); err != nil {
+		plugin := filepath.Join(store.Dir(), "opencode-plugin")
+		if err := os.MkdirAll(plugin, 0o755); err != nil {
 			return nil, nil, err
 		}
-		if err := os.WriteFile(plugin, []byte(strings.ReplaceAll(opencodePlugin, "HYPERCUBE_EXE", strconv.Quote(exe))), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(plugin, "index.js"), []byte(strings.ReplaceAll(opencodePlugin, "HYPERCUBE_EXE", strconv.Quote(exe))), 0o644); err != nil {
 			return nil, nil, err
 		}
 		env["OPENCODE_CONFIG_CONTENT"] = jsonString(map[string]any{
-			"model":      a.Model,
-			"agent":      map[string]any{"build": map[string]any{"variant": a.Effort}},
-			"permission": "allow",
-			"mcp":        map[string]any{"hypercube": map[string]any{"type": "local", "command": []string{exe, "mcp"}, "environment": env}},
-			"plugin":     []string{"file://" + plugin},
+			"model":   a.Model,
+			"agents":  map[string]any{"build": map[string]any{"model": a.Model + "#" + a.Effort}},
+			"mcp":     map[string]any{"servers": map[string]any{"hypercube": map[string]any{"type": "local", "command": []string{exe, "mcp"}, "environment": env}}},
+			"plugins": []string{plugin},
 		})
-		argv := []string{"opencode"}
+		argv := []string{"opencode", "--standalone", "--auto"}
 		if a.SessionID != "" {
 			argv = append(argv, "--session", a.SessionID)
 		}

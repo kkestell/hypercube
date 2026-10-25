@@ -146,17 +146,18 @@ and the resume session ID when one is saved.
   when resuming and the prompt. Codex keys folder trust on the main checkout,
   which covers the worktrees. Codex gives MCP servers a filtered environment,
   so the server config forwards `TMUX` through `env_vars` for `send-keys`.
-- **OpenCode:** `opencode [--session <id>] [--prompt <p>]` with
-  `OPENCODE_CONFIG_CONTENT` set to a generated config: the model, the effort as
-  the `build` agent's variant, `permission: "allow"`, the MCP server, and the
-  Hypercube plugin. The plugin is written to
-  `~/.local/state/hypercube/opencode-plugin.js` with the `hypercube` path
-  embedded. It calls `hypercube hook` for top-level sessions only:
-  - `chat.message`: SessionStart on the first message of each session, then
-    UserPromptSubmit. The returned context is appended to the message text.
-  - `tool.execute.after`: PostToolUse, appended to the tool output.
-  - `session.idle`: Stop. A block reason is sent back with
-    `client.session.promptAsync`, which starts a new turn.
+- **OpenCode:** `opencode --standalone --auto [--session <id>] [--prompt <p>]`
+  with `OPENCODE_CONFIG_CONTENT` set to a generated config: the model, the
+  `build` agent's model with the effort as its variant, the MCP server, and the
+  Hypercube plugin. `--standalone` gives each agent a private server that reads
+  that config, and `--auto` bypasses permission prompts. The plugin is written
+  to `~/.local/state/hypercube/opencode-plugin/index.js` with the `hypercube`
+  path embedded. It calls `hypercube hook` for top-level sessions only:
+  - `session.hook("prompt")`: SessionStart on the first prompt of each session,
+    then UserPromptSubmit. The returned context is appended to the prompt text.
+  - `tool.hook("execute.after")`: PostToolUse, appended to the tool result.
+  - `session.execution.succeeded`, `failed`, and `interrupted` events: Stop. A
+    block reason is sent back with `session.prompt`, which starts a new turn.
 
 `hypercube hook` writes the Claude Code response format for every harness.
 Codex reads the same format, and the OpenCode plugin reads
