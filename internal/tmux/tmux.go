@@ -17,6 +17,7 @@ func run(args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// HasSession reports whether the named session exists.
 func HasSession(name string) bool {
 	return exec.Command("tmux", "has-session", "-t", "="+name).Run() == nil
 }
