@@ -80,8 +80,8 @@ func start() error {
 		return err
 	}
 
-	// The orchestrator is first so that it gets window 0. Workers start a turn
-	// to pick up messages queued while they were down.
+	// The orchestrator is first so that it gets the left pane. Workers start a
+	// turn to pick up messages queued while they were down.
 	targets := map[string]string{}
 	for _, a := range agents {
 		prompt := mcp.Nudge

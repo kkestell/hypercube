@@ -44,7 +44,7 @@ var tools = []tool{
 	{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
 	{"create_agent", "Orchestrator only. Create a worker with its own branch and worktree from HEAD and launch it. Harness, model, and effort default to the configured worker defaults.",
 		schema([]string{"name"}, "name", "harness", "model", "effort")},
-	{"remove_agent", "Orchestrator only. Remove a worker's worktree, branch, and window. Git refuses dirty worktrees and unmerged branches.", schema([]string{"id"}, "id")},
+	{"remove_agent", "Orchestrator only. Remove a worker's worktree, branch, and pane. Git refuses dirty worktrees and unmerged branches.", schema([]string{"id"}, "id")},
 }
 
 // Serve answers MCP requests on stdin until it closes.
@@ -251,7 +251,7 @@ func removeAgent(self, path, id string) (string, error) {
 	if err := workspace.RemoveWorktree(orch.Dir, a.Dir, a.Branch); err != nil {
 		return "", err
 	}
-	tmux.KillWindow(a.Target)
+	tmux.KillPane(store.Workspace(path), a.Target)
 	err = store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
 	return fmt.Sprintf("Removed %s (%s).", a.Name, a.ID), err
 }

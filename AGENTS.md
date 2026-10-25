@@ -1,7 +1,7 @@
 # Hypercube
 
 Hypercube runs a team of local coding agents in tmux. Each agent is a native
-harness TUI (Claude Code, Codex, or OpenCode) in its own tmux window. Agents
+harness TUI (Claude Code, Codex, or OpenCode) in its own tmux pane. Agents
 message each other through an MCP tool and receive messages through harness
 hooks. One orchestrator works in the original checkout and manages workers in
 Git worktrees.
@@ -38,9 +38,10 @@ and change over generalized infrastructure or speculative requirements.
 ## Layout
 
 - One tmux session per workspace, named from the checkout path.
-- One tmux window per agent, named after the agent. Window 0 is the
-  orchestrator.
-- Each window's environment carries `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`.
+- The session has one window with a pane per agent. The orchestrator's
+  pane fills the left 40% and the workers' panes are stacked on the right.
+  Each pane's border shows the agent's name.
+- Each pane's environment carries `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`.
   The harness inherits them, and so do the `hypercube hook` processes it
   starts. The MCP server configuration also sets them explicitly. That
   environment is the agent's identity.
@@ -92,11 +93,11 @@ Effort is passed through as Claude Code's `--effort`, Codex's
 - `create_agent(name, harness?, model?, effort?)`, orchestrator only. It
   creates branch `hypercube/<name>` from `HEAD` in a worktree at
   `<checkout>/.hypercube/<name>`, records the agent as busy, and launches its
-  harness in a new window with the nudge as its first prompt. `/.hypercube/` is
+  harness in a new pane with the nudge as its first prompt. `/.hypercube/` is
   listed in the checkout's `.git/info/exclude`. Worktrees inside the checkout
   inherit the folder trust the harnesses already grant the checkout.
 - `remove_agent(id)`, orchestrator only. It runs `git worktree remove` and
-  `git branch -d`, closes the window, and deletes the agent and its queued
+  `git branch -d`, closes the pane, and deletes the agent and its queued
   messages. Git refuses dirty or unmerged work, and that refusal is returned
   to the orchestrator.
 
@@ -120,7 +121,7 @@ shown to the model as `Message from <name> (<id>):` followed by the text.
 
 `send_message` to an idle agent runs `tmux send-keys -t <target>` with the fixed
 text `Check your Hypercube messages.` followed by Enter. The target is the
-agent's tmux window ID. A nudge sent while the user has unsent text in the pane
+agent's tmux pane ID. A nudge sent while the user has unsent text in the pane
 is appended to that text and submits both. The resulting
 UserPromptSubmit hook delivers the queue. A duplicate nudge finds an empty
 queue and is harmless.
@@ -168,7 +169,7 @@ Codex reads the same format, and the OpenCode plugin reads
 Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 
 - `store`: the locked state file, agents, and the message queue.
-- `tmux`: sessions, windows, environment, and `send-keys`.
+- `tmux`: sessions, panes, layout, environment, and `send-keys`.
 - `workspace`: checkout discovery and worker branches and worktrees.
 - `harness`: configuration, launch commands, and hook configuration for each
   harness, and the OpenCode plugin.

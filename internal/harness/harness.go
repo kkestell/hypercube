@@ -111,12 +111,12 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// Launch starts the agent's harness in a new window of the workspace's tmux
-// session and returns the window ID.
+// Launch starts the agent's harness in a new pane of the workspace's tmux
+// session and returns the pane ID.
 func Launch(a store.Agent, statePath, prompt string) (string, error) {
 	argv, env, err := Command(a, statePath, prompt)
 	if err != nil {
 		return "", err
 	}
-	return tmux.NewWindow(store.Workspace(statePath), a.Name, a.Dir, env, argv)
+	return tmux.NewPane(store.Workspace(statePath), a.Name, a.Dir, env, argv)
 }

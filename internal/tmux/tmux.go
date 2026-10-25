@@ -21,25 +21,43 @@ func HasSession(name string) bool {
 	return exec.Command("tmux", "has-session", "-t", "="+name).Run() == nil
 }
 
-// NewWindow starts argv in a new window and returns the window ID. If the
-// session does not exist, it creates the session with this as its first
-// window.
-func NewWindow(session, name, dir string, env map[string]string, argv []string) (string, error) {
+// NewPane starts argv in a new pane of the session's window, labels the pane
+// with name, and returns the pane ID. If the session does not exist, it
+// creates the session with this as its first pane. The first pane fills the
+// left 40% of the window and the rest are stacked on the right.
+func NewPane(session, name, dir string, env map[string]string, argv []string) (string, error) {
+	window := "=" + session + ":"
 	var args []string
 	if HasSession(session) {
-		args = []string{"new-window", "-d", "-t", "=" + session + ":"}
+		panes, err := run("list-panes", "-t", window, "-F", "#{pane_id}")
+		if err != nil {
+			return "", err
+		}
+		ids := strings.Split(panes, "\n")
+		args = []string{"split-window", "-d", "-v", "-t", ids[len(ids)-1]}
 	} else {
-		args = []string{"new-session", "-d", "-s", session}
+		args = []string{"new-session", "-d", "-s", session, "-n", "hypercube"}
 	}
-	args = append(args, "-n", name, "-c", dir, "-P", "-F", "#{window_id}")
+	args = append(args, "-c", dir, "-P", "-F", "#{pane_id}")
 	for k, v := range env {
 		args = append(args, "-e", k+"="+v)
 	}
-	return run(append(args, argv...)...)
+	pane, err := run(append(args, argv...)...)
+	if err != nil {
+		return "", err
+	}
+	_, err = run("set-option", "-p", "-t", pane, "@hypercube_agent", name, ";",
+		"set-option", "-w", "-t", window, "pane-border-status", "top", ";",
+		"set-option", "-w", "-t", window, "pane-border-format", " #{@hypercube_agent} ", ";",
+		"set-option", "-w", "-t", window, "main-pane-width", "40%", ";",
+		"select-layout", "-t", window, "main-vertical")
+	return pane, err
 }
 
-func KillWindow(target string) error {
-	_, err := run("kill-window", "-t", target)
+// KillPane closes the pane and lays out the remaining panes again.
+func KillPane(session, target string) error {
+	_, err := run("kill-pane", "-t", target, ";",
+		"select-layout", "-t", "="+session+":", "main-vertical")
 	return err
 }
 

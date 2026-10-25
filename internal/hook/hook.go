@@ -105,7 +105,7 @@ Hypercube MCP tools:
 - send_message(to, text) sends a message to an agent by ID or name. Messages arrive in your context as "Message from <name> (<id>):".
 - list_agents() returns the team with each agent's activity.
 - create_agent(name, harness?, model?, effort?) creates a worker with its own branch and worktree from the orchestrator's HEAD. Orchestrator only.
-- remove_agent(id) removes a worker's worktree, branch, and window. Git refuses dirty worktrees and unmerged branches. Orchestrator only.
+- remove_agent(id) removes a worker's worktree, branch, and pane. Git refuses dirty worktrees and unmerged branches. Orchestrator only.
 `)
 	if a.Role == store.Orchestrator {
 		b.WriteString(`
