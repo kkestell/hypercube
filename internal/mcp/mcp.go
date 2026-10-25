@@ -42,8 +42,8 @@ func schema(required []string, props ...string) map[string]any {
 var tools = []tool{
 	{"send_message", "Send a message to another agent by ID or name.", schema([]string{"to", "text"}, "to", "text")},
 	{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
-	{"create_agent", "Orchestrator only. Create a worker with its own branch and worktree from HEAD and launch it. Harness, model, and effort default to the configured worker defaults.",
-		schema([]string{"name"}, "name", "harness", "model", "effort")},
+	{"create_agent", "Orchestrator only. Create a worker with its own branch and worktree from HEAD and launch it. Harness, model, and effort default to the configured worker defaults. An optional message is queued for the worker before it starts.",
+		schema([]string{"name"}, "name", "harness", "model", "effort", "message")},
 	{"remove_agent", "Orchestrator only. Remove a worker's worktree, branch, and pane. Git refuses dirty worktrees and unmerged branches.", schema([]string{"id"}, "id")},
 }
 
@@ -207,6 +207,9 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		root = orch.Dir
 		a.Dir = workspace.WorktreeDir(root, name)
 		s.Agents = append(s.Agents, a)
+		if args["message"] != "" {
+			s.Messages = append(s.Messages, store.Message{ID: store.NewID(), From: self, To: a.ID, Text: args["message"]})
+		}
 		return nil
 	})
 	if err != nil {

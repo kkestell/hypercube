@@ -90,12 +90,14 @@ Effort is passed through as Claude Code's `--effort`, Codex's
   idle.
 - `list_agents()` returns the team: id, name, role, harness, activity,
   directory, and branch.
-- `create_agent(name, harness?, model?, effort?)`, orchestrator only. It
+- `create_agent(name, harness?, model?, effort?, message?)`, orchestrator only. It
   creates branch `hypercube/<name>` from `HEAD` in a worktree at
   `<checkout>/.hypercube/<name>`, records the agent as busy, and launches its
-  harness in a new pane with the nudge as its first prompt. `/.hypercube/` is
-  listed in the checkout's `.git/info/exclude`. Worktrees inside the checkout
-  inherit the folder trust the harnesses already grant the checkout.
+  harness in a new pane with the nudge as its first prompt. A `message` is
+  queued for the new agent before launch, so the nudge delivers it.
+  `/.hypercube/` is listed in the checkout's `.git/info/exclude`. Worktrees
+  inside the checkout inherit the folder trust the harnesses already grant the
+  checkout.
 - `remove_agent(id)`, orchestrator only. It runs `git worktree remove` and
   `git branch -d`, closes the pane, and deletes the agent and its queued
   messages. Git refuses dirty or unmerged work, and that refusal is returned
