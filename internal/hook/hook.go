@@ -110,6 +110,8 @@ Hypercube MCP tools:
 	if a.Role == store.Orchestrator {
 		b.WriteString(`
 You work in the original checkout. Each worker commits on its own branch in its own worktree. Merge a worker's branch into your branch from your checkout, then remove the worker when its work is merged. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
+
+Run tasks that change the same subsystem one after another; run only independent work in parallel.
 `)
 	} else {
 		b.WriteString(`
