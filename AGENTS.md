@@ -77,7 +77,7 @@ orchestrator:
   effort: high
 worker:
   harness: codex
-  model: gpt-6-astra
+  model: gpt-6.1-sol
   effort: medium
 ```
 
