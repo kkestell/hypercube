@@ -35,14 +35,18 @@ and change over generalized infrastructure or speculative requirements.
   and launches the orchestrator and workers, resuming their saved harness
   sessions. The orchestrator starts idle. Each worker starts with the nudge as
   its first prompt, so it picks up messages queued while it was down.
-- `hypercube stop` in a workspace kills the workspace's tmux session, which
-  ends its agents. The state file, worktrees, and queued messages stay, so the
-  next `hypercube` resumes the team.
-- `hypercube down` does what `stop` does, then removes each worker's worktree
+- `hypercube stop [dir]` kills the tmux session of the workspace containing
+  `dir`, by default the working directory, which ends its agents. The state file, worktrees, and queued messages stay, so the
+  next `hypercube` resumes the team. `hypercube stop --all` lists every
+  workspace with a state file and a running session, asks for confirmation,
+  and stops them all.
+- `hypercube down [dir]` does what `stop` does, then removes each worker's worktree
   and branch and deletes the state file. If any worktree has uncommitted
   changes or any branch is not merged into the checkout's HEAD, it refuses and
   changes nothing. It leaves the directories of workers without worktrees
-  alone.
+  alone. `hypercube down --all` lists every workspace with a state file, asks
+  for confirmation, and takes each down. A workspace that refuses is reported
+  and the rest still go down.
 - `hypercube status` lists every workspace with a state file, most recently
   active first: its directory, whether its tmux session is running, its number
   of agents, when it was created, and when it was last active. Creation is the

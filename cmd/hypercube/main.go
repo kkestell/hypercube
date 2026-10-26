@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,10 +25,8 @@ func main() {
 	switch {
 	case len(os.Args) == 1:
 		err = start()
-	case len(os.Args) == 2 && os.Args[1] == "stop":
-		err = stop()
-	case len(os.Args) == 2 && os.Args[1] == "down":
-		err = down()
+	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "down"):
+		err = stopOrDown(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
 		err = status()
 	case len(os.Args) == 2 && os.Args[1] == "statusline":
@@ -39,7 +38,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "hook":
 		err = hook.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [stop | down | status | mcp | hook <event> | statusline | limits]")
+		err = fmt.Errorf("usage: hypercube [stop [dir | --all] | down [dir | --all] | status | mcp | hook <event> | statusline | limits]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -47,12 +46,14 @@ func main() {
 	}
 }
 
-// current returns the root and name of the workspace containing the working
-// directory. The root is the top of the checkout, or the working directory
-// itself outside Git.
-func current() (root, name string, err error) {
-	root, err = os.Getwd()
+// workspaceAt returns the root and name of the workspace containing dir. The
+// root is the top of the checkout, or dir itself outside Git.
+func workspaceAt(dir string) (root, name string, err error) {
+	wd, err := os.Getwd()
 	if err != nil {
+		return "", "", err
+	}
+	if root, err = workspace.Resolve(wd, dir); err != nil {
 		return "", "", err
 	}
 	if workspace.IsRepo(root) {
@@ -63,14 +64,96 @@ func current() (root, name string, err error) {
 	return root, workspace.Name(root), nil
 }
 
-// stop kills the workspace's session, which ends its agents.
-func stop() error {
-	_, name, err := current()
+// known is a workspace with a state file. Its root is the orchestrator's
+// directory.
+type known struct {
+	root, name, path string
+	state            store.State
+}
+
+// workspaces returns every workspace with a state file.
+func workspaces() ([]known, error) {
+	paths, err := filepath.Glob(filepath.Join(store.Dir(), "*.json"))
+	if err != nil {
+		return nil, err
+	}
+	var list []known
+	for _, path := range paths {
+		s, err := store.Load(path)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
+		k := known{name: store.Workspace(path), path: path, state: s}
+		for _, a := range s.Agents {
+			if a.Role == store.Orchestrator {
+				k.root = a.Dir
+			}
+		}
+		list = append(list, k)
+	}
+	return list, nil
+}
+
+// stopOrDown runs stop or down on the workspace containing the given
+// directory, by default the working directory. With --all, it runs on every
+// workspace it applies to, after the user confirms.
+func stopOrDown(cmd string, args []string) error {
+	run := stop
+	if cmd == "down" {
+		run = down
+	}
+	if len(args) == 0 || args[0] != "--all" {
+		dir := "."
+		if len(args) == 1 {
+			dir = args[0]
+		}
+		root, name, err := workspaceAt(dir)
+		if err != nil {
+			return err
+		}
+		return run(root, name)
+	}
+
+	list, err := workspaces()
 	if err != nil {
 		return err
 	}
+	var targets []known
+	for _, k := range list {
+		// Only running sessions can be stopped.
+		if cmd == "down" || tmux.HasSession(k.name) {
+			targets = append(targets, k)
+		}
+	}
+	verb := map[string]string{"stop": "stop", "down": "take down"}[cmd]
+	if len(targets) == 0 {
+		fmt.Printf("No workspaces to %s.\n", verb)
+		return nil
+	}
+	for _, k := range targets {
+		fmt.Println(workspace.Short(k.root))
+	}
+	fmt.Printf("%s all of these? [y/N] ", strings.ToUpper(verb[:1])+verb[1:])
+	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+	if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
+		return fmt.Errorf("%s cancelled", cmd)
+	}
+	var failed []string
+	for _, k := range targets {
+		if err := run(k.root, k.name); err != nil {
+			failed = append(failed, fmt.Sprintf("%s: %v", workspace.Short(k.root), err))
+		}
+	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%s failed for:\n%s", cmd, strings.Join(failed, "\n"))
+	}
+	return nil
+}
+
+// stop kills the workspace's session, which ends its agents.
+func stop(root, name string) error {
 	if !tmux.HasSession(name) {
-		return fmt.Errorf("no session for this workspace")
+		return fmt.Errorf("no session for %s", workspace.Short(root))
 	}
 	return tmux.KillSession(name)
 }
@@ -86,31 +169,24 @@ func status() error {
 		agents            int
 		created, modified time.Time
 	}
-	paths, err := filepath.Glob(filepath.Join(store.Dir(), "*.json"))
+	list, err := workspaces()
 	if err != nil {
 		return err
 	}
 	var rows []row
-	for _, path := range paths {
-		s, err := store.Load(path)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		info, err := os.Stat(path)
+	for _, k := range list {
+		info, err := os.Stat(k.path)
 		if err != nil {
 			return err
 		}
-		name := store.Workspace(path)
-		r := row{dir: name, session: "stopped", agents: len(s.Agents), created: info.ModTime(), modified: info.ModTime()}
-		if lock, err := os.Stat(strings.TrimSuffix(path, ".json") + ".lock"); err == nil {
+		r := row{dir: k.name, session: "stopped", agents: len(k.state.Agents), created: info.ModTime(), modified: info.ModTime()}
+		if lock, err := os.Stat(strings.TrimSuffix(k.path, ".json") + ".lock"); err == nil {
 			r.created = lock.ModTime()
 		}
-		for _, a := range s.Agents {
-			if a.Role == store.Orchestrator {
-				r.dir = workspace.Short(a.Dir)
-			}
+		if k.root != "" {
+			r.dir = workspace.Short(k.root)
 		}
-		if tmux.HasSession(name) {
+		if tmux.HasSession(k.name) {
 			r.session = "running"
 		}
 		rows = append(rows, r)
@@ -144,11 +220,7 @@ func ago(t time.Time) string {
 // worker branches. It refuses, changing nothing, if a worker has uncommitted
 // changes in its worktree or an unmerged branch. Workers without worktrees
 // have their directories left alone.
-func down() error {
-	root, name, err := current()
-	if err != nil {
-		return err
-	}
+func down(root, name string) error {
 	path := store.Path(name)
 	s, err := store.Load(path)
 	if err != nil {
@@ -191,7 +263,7 @@ func down() error {
 // start attaches to the workspace's session, creating it and launching the
 // team if it is not running.
 func start() error {
-	root, name, err := current()
+	root, name, err := workspaceAt(".")
 	if err != nil {
 		return err
 	}
