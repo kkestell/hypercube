@@ -84,6 +84,12 @@ worker:
 Effort is passed through as Claude Code's `--effort`, Codex's
 `model_reasoning_effort`, and OpenCode's model variant.
 
+OpenCode models use its full `provider/model` ID. For example, the OpenRouter
+model `meta/muse-spark-1.3-contributor` is
+`openrouter/meta/muse-spark-1.3-contributor` in Hypercube. The OpenCode plugin
+rejects a different model on the first prompt before delivering queued messages;
+OpenCode otherwise silently falls back to a recent model for unavailable IDs.
+
 ## MCP tools
 
 - `send_message(to, text)` queues a message and wakes the recipient if it is

@@ -18,6 +18,7 @@ const context = (response) => response.hookSpecificOutput?.additionalContext ?? 
 export default {
   id: "hypercube",
   async setup(ctx) {
+    const requestedModel = JSON.parse(process.env.OPENCODE_CONFIG_CONTENT).model
     const started = new Set()
     const parents = new Map()
 
@@ -33,6 +34,12 @@ export default {
       if (!(await isAgentSession(event.sessionID))) return
       let text = ""
       if (!started.has(event.sessionID)) {
+        // The TUI silently falls back to a recent model for unavailable IDs.
+        const { model } = await ctx.session.get({ sessionID: event.sessionID })
+        const selectedModel = model ? `${model.providerID}/${model.id}` : "no model"
+        if (selectedModel !== requestedModel) {
+          throw new Error(`OpenCode selected ${selectedModel} instead of requested ${requestedModel}. Use a full provider/model ID from opencode models (for example, openrouter/owner/model).`)
+        }
         started.add(event.sessionID)
         text += context(await hook("SessionStart", event.sessionID))
       }
@@ -53,6 +60,7 @@ export default {
       for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
         if (!idle.has(event.type)) continue
         const { sessionID } = event.data
+        if (!started.has(sessionID)) continue
         if (!(await isAgentSession(sessionID))) continue
         const response = await hook("Stop", sessionID)
         if (response.reason) await ctx.session.prompt({ sessionID, text: response.reason })
