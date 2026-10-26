@@ -4,7 +4,11 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
+	"text/tabwriter"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hook"
@@ -24,6 +28,8 @@ func main() {
 		err = stop()
 	case len(os.Args) == 2 && os.Args[1] == "down":
 		err = down()
+	case len(os.Args) == 2 && os.Args[1] == "status":
+		err = status()
 	case len(os.Args) == 2 && os.Args[1] == "statusline":
 		err = limits.Statusline(os.Stdin, os.Stdout)
 	case len(os.Args) == 2 && os.Args[1] == "limits":
@@ -33,7 +39,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "hook":
 		err = hook.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [stop | down | mcp | hook <event> | statusline | limits]")
+		err = fmt.Errorf("usage: hypercube [stop | down | status | mcp | hook <event> | statusline | limits]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -67,6 +73,71 @@ func stop() error {
 		return fmt.Errorf("no session for this workspace")
 	}
 	return tmux.KillSession(name)
+}
+
+// status prints every workspace with a state file: its directory, whether its
+// session is running, its number of agents, when it was created, and when it
+// was last active. The lock file is created with the state and never written,
+// so its modification time is the creation time. Every hook writes the state,
+// so the state file's modification time is the last activity.
+func status() error {
+	type row struct {
+		dir, session      string
+		agents            int
+		created, modified time.Time
+	}
+	paths, err := filepath.Glob(filepath.Join(store.Dir(), "*.json"))
+	if err != nil {
+		return err
+	}
+	var rows []row
+	for _, path := range paths {
+		s, err := store.Load(path)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		name := store.Workspace(path)
+		r := row{dir: name, session: "stopped", agents: len(s.Agents), created: info.ModTime(), modified: info.ModTime()}
+		if lock, err := os.Stat(strings.TrimSuffix(path, ".json") + ".lock"); err == nil {
+			r.created = lock.ModTime()
+		}
+		for _, a := range s.Agents {
+			if a.Role == store.Orchestrator {
+				r.dir = workspace.Short(a.Dir)
+			}
+		}
+		if tmux.HasSession(name) {
+			r.session = "running"
+		}
+		rows = append(rows, r)
+	}
+	sort.Slice(rows, func(i, j int) bool { return rows[i].modified.After(rows[j].modified) })
+
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "WORKSPACE\tSESSION\tAGENTS\tCREATED\tACTIVE")
+	for _, r := range rows {
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", r.dir, r.session, r.agents, ago(r.created), ago(r.modified))
+	}
+	return w.Flush()
+}
+
+// ago describes how long before now t was.
+func ago(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 // down stops the workspace and deletes its state, worker worktrees, and

@@ -42,6 +42,12 @@ and change over generalized infrastructure or speculative requirements.
   or a branch not merged into the checkout's HEAD, it refuses and changes
   nothing. In a `no_git` workspace it deletes only the state file and leaves
   workers' directories alone.
+- `hypercube status` lists every workspace with a state file, most recently
+  active first: its directory, whether its tmux session is running, its number
+  of agents, when it was created, and when it was last active. Creation is the
+  lock file's modification time, since the lock is created with the state and
+  never written. Last activity is the state file's modification time, since
+  every hook writes the state.
 - `hypercube mcp` is the stdio MCP server. Harnesses launch it; users do not.
 - `hypercube statusline` is the status line command of Claude Code panes.
   Claude Code passes rate limits only to status line commands. It saves the
@@ -248,6 +254,11 @@ Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, OpenCode
 `openrouter/~deepseek/deepseek-flash-latest`, and Ox
 `openrouter:~deepseek/deepseek-flash-latest`.
+
+When a task is done, stop and destroy every demo or test session it started:
+kill its tmux session or server, and delete its state file, lock file,
+repositories, and temporary directories. `hypercube status` must not list any
+of them afterward.
 
 ## Validation
 
