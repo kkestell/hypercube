@@ -1,7 +1,7 @@
 # Hypercube
 
 Hypercube runs a team of local coding agents in tmux. Each agent is a native
-harness TUI (Claude Code, Codex, or OpenCode) in its own tmux pane. Agents
+harness TUI (Claude Code, Codex, OpenCode, or Ox) in its own tmux pane. Agents
 message each other through an MCP tool and receive messages through harness
 hooks. One orchestrator works in the original checkout and manages workers in
 Git worktrees.
@@ -72,7 +72,7 @@ orchestrator passes its own.
 
 ```yaml
 orchestrator:
-  harness: claude      # claude, codex, or opencode
+  harness: claude      # claude, codex, opencode, or ox
   model: opus
   effort: high
 worker:
@@ -82,7 +82,11 @@ worker:
 ```
 
 Effort is passed through as Claude Code's `--effort`, Codex's
-`model_reasoning_effort`, and OpenCode's model variant.
+`model_reasoning_effort`, OpenCode's model variant, and Ox's `effort`.
+
+Ox models use its qualified `provider:model` ID, such as
+`openrouter:deepseek/deepseek-v4.1-flash`. Ox rejects a model or effort its
+catalog does not list, and the pane shows the error.
 
 OpenCode models use its full `provider/model` ID. For example, the OpenRouter
 model `meta/muse-spark-1.3-contributor` is
@@ -164,9 +168,14 @@ and the resume session ID when one is saved.
   - `tool.hook("execute.after")`: PostToolUse, appended to the tool result.
   - `session.execution.succeeded`, `failed`, and `interrupted` events: Stop. A
     block reason is sent back with `session.prompt`, which starts a new turn.
+- **Ox:** `ox [--resume <id>] [-- <prompt>]` with `OX_SETTINGS` set to launch
+  settings: the model, the effort, `auto` mode, the MCP server, and the hooks
+  in Claude Code's format. Ox applies them over the user's settings files
+  without saving them, and runs SessionStart before the first turn of each
+  session in its server process.
 
 `hypercube hook` writes the Claude Code response format for every harness.
-Codex reads the same format, and the OpenCode plugin reads
+Codex and Ox read the same format, and the OpenCode plugin reads
 `hookSpecificOutput.additionalContext` and `reason`.
 
 ## To verify
@@ -187,8 +196,9 @@ Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 
 ## Smoke testing
 
-For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, and OpenCode
-`openrouter/~deepseek/deepseek-flash-latest`.
+For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, OpenCode
+`openrouter/~deepseek/deepseek-flash-latest`, and Ox
+`openrouter:~deepseek/deepseek-flash-latest`.
 
 ## Validation
 

@@ -1,9 +1,11 @@
 package harness
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/store"
@@ -88,5 +90,38 @@ try {
 				t.Fatalf("OpenCode model selection: %v\n%s", err, out)
 			}
 		})
+	}
+}
+
+func TestOxCommand(t *testing.T) {
+	argv, env, err := Command(store.Agent{ID: "a1", Harness: "ox", Model: "openrouter:x/y", Effort: "high", SessionID: "s1"}, "/tmp/w.json", "Check your Hypercube messages.")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(argv, " "); got != "ox --resume s1 -- Check your Hypercube messages." {
+		t.Errorf("argv = %q", got)
+	}
+	var settings struct {
+		Model, Effort, Mode string
+		MCPServers          map[string]struct {
+			Args []string
+			Env  map[string]string
+		} `json:"mcpServers"`
+		Hooks map[string][]struct {
+			Hooks []struct{ Type, Command string }
+		}
+	}
+	if err := json.Unmarshal([]byte(env["OX_SETTINGS"]), &settings); err != nil {
+		t.Fatal(err)
+	}
+	server := settings.MCPServers["hypercube"]
+	if settings.Model != "openrouter:x/y" || settings.Effort != "high" || settings.Mode != "auto" ||
+		strings.Join(server.Args, " ") != "mcp" || server.Env["HYPERCUBE_AGENT_ID"] != "a1" || server.Env["OX_SETTINGS"] != "" {
+		t.Errorf("OX_SETTINGS = %s", env["OX_SETTINGS"])
+	}
+	for _, event := range events {
+		if hooks := settings.Hooks[event]; len(hooks) != 1 || !strings.HasSuffix(hooks[0].Hooks[0].Command, "' hook "+event) {
+			t.Errorf("%s hooks = %+v", event, hooks)
+		}
 	}
 }

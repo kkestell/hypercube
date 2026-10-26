@@ -50,8 +50,8 @@ func LoadConfig() (Config, error) {
 
 func (s Spec) check() error {
 	switch {
-	case s.Harness != "claude" && s.Harness != "codex" && s.Harness != "opencode":
-		return fmt.Errorf("harness must be claude, codex, or opencode, not %q", s.Harness)
+	case s.Harness != "claude" && s.Harness != "codex" && s.Harness != "opencode" && s.Harness != "ox":
+		return fmt.Errorf("harness must be claude, codex, opencode, or ox, not %q", s.Harness)
 	case s.Model == "":
 		return fmt.Errorf("missing model")
 	case s.Effort == "":

@@ -30,13 +30,14 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 	env := map[string]string{"HYPERCUBE_AGENT_ID": a.ID, "HYPERCUBE_STATE": statePath}
 	mcp := map[string]any{"command": exe, "args": []string{"mcp"}, "env": env}
 	hook := func(event string) string { return shellQuote(exe) + " hook " + event }
+	// Claude Code's hooks setting, which Ox also reads.
+	hooks := map[string]any{}
+	for _, e := range events {
+		hooks[e] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook(e)}}}}
+	}
 
 	switch a.Harness {
 	case "claude":
-		hooks := map[string]any{}
-		for _, e := range events {
-			hooks[e] = []any{map[string]any{"hooks": []any{map[string]any{"type": "command", "command": hook(e)}}}}
-		}
 		argv := []string{"claude",
 			"--mcp-config", jsonString(map[string]any{"mcpServers": map[string]any{"hypercube": mcp}}),
 			"--settings", jsonString(map[string]any{"hooks": hooks}),
@@ -95,6 +96,21 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		}
 		if prompt != "" {
 			argv = append(argv, "--prompt", prompt)
+		}
+		return argv, env, nil
+
+	case "ox":
+		env["OX_SETTINGS"] = jsonString(map[string]any{
+			"model": a.Model, "effort": a.Effort, "mode": "auto",
+			"mcpServers": map[string]any{"hypercube": mcp},
+			"hooks":      hooks,
+		})
+		argv := []string{"ox"}
+		if a.SessionID != "" {
+			argv = append(argv, "--resume", a.SessionID)
+		}
+		if prompt != "" {
+			argv = append(argv, "--", prompt)
 		}
 		return argv, env, nil
 	}
