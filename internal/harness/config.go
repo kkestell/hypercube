@@ -1,23 +1,25 @@
 package harness
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"gopkg.in/yaml.v3"
 )
 
 // Spec picks a harness, model, and effort for an agent.
 type Spec struct {
-	Harness string `yaml:"harness"`
-	Model   string `yaml:"model"`
-	Effort  string `yaml:"effort"`
+	Harness string `json:"harness"`
+	Model   string `json:"model"`
+	Effort  string `json:"effort"`
 }
 
 type Config struct {
-	Orchestrator Spec `yaml:"orchestrator"`
-	Worker       Spec `yaml:"worker"`
+	Orchestrator Spec `json:"orchestrator"`
+	Worker       Spec `json:"worker"`
+	// Models describes the models the orchestrator can give workers. It is
+	// free text, shown to the orchestrator as written.
+	Models string `json:"models"`
 }
 
 func configPath() string {
@@ -26,10 +28,10 @@ func configPath() string {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "hypercube", "config.yaml")
+	return filepath.Join(base, "hypercube", "config.json")
 }
 
-// LoadConfig reads config.yaml and checks that every value is set.
+// LoadConfig reads config.json and checks that every value is set.
 func LoadConfig() (Config, error) {
 	var c Config
 	path := configPath()
@@ -37,7 +39,7 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	if err := yaml.Unmarshal(data, &c); err != nil {
+	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	for role, s := range map[string]Spec{"orchestrator": c.Orchestrator, "worker": c.Worker} {

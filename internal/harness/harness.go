@@ -40,7 +40,8 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 	case "claude":
 		argv := []string{"claude",
 			"--mcp-config", jsonString(map[string]any{"mcpServers": map[string]any{"hypercube": mcp}}),
-			"--settings", jsonString(map[string]any{"hooks": hooks}),
+			"--settings", jsonString(map[string]any{"hooks": hooks,
+				"statusLine": map[string]any{"type": "command", "command": shellQuote(exe) + " statusline"}}),
 			"--model", a.Model, "--effort", a.Effort, "--dangerously-skip-permissions"}
 		if a.SessionID != "" {
 			argv = append(argv, "--resume", a.SessionID)
@@ -52,9 +53,12 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 
 	case "codex":
 		// Codex keys folder trust on the main checkout, which covers worktrees.
-		root, err := workspace.MainRoot(a.Dir)
-		if err != nil {
-			return nil, nil, err
+		// A directory outside Git is trusted as it is.
+		root := a.Dir
+		if workspace.IsRepo(a.Dir) {
+			if root, err = workspace.MainRoot(a.Dir); err != nil {
+				return nil, nil, err
+			}
 		}
 		argv := []string{"codex"}
 		if a.SessionID != "" {
@@ -122,6 +126,15 @@ func jsonString(v any) string {
 	return string(b)
 }
 
+// StatusRight is the tmux status bar format that shows usage limits.
+func StatusRight() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	return "#(" + shellQuote(exe) + " limits) ", nil
+}
+
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
@@ -133,5 +146,6 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return tmux.NewPane(store.Workspace(statePath), a.Name, a.Dir, env, argv)
+	label := fmt.Sprintf("%s · %s %s %s · %s", a.Name, a.Harness, a.Model, a.Effort, workspace.Short(a.Dir))
+	return tmux.NewPane(store.Workspace(statePath), label, a.Dir, env, argv)
 }

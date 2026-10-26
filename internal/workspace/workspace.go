@@ -1,5 +1,5 @@
-// Package workspace finds the checkout and manages worker branches and
-// worktrees.
+// Package workspace finds the checkout, manages worker branches and
+// worktrees, and resolves worker directories.
 package workspace
 
 import (
@@ -24,6 +24,36 @@ func git(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// IsRepo reports whether dir is inside a Git work tree.
+func IsRepo(dir string) bool {
+	out, err := git(dir, "rev-parse", "--is-inside-work-tree")
+	return err == nil && out == "true"
+}
+
+// Resolve returns dir as an absolute path. A leading ~/ is the home
+// directory, and a relative path is relative to base. dir must be an
+// existing directory.
+func Resolve(base, dir string) (string, error) {
+	if rest, ok := strings.CutPrefix(dir, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, rest)
+	} else if !filepath.IsAbs(dir) {
+		dir = filepath.Join(base, dir)
+	}
+	dir = filepath.Clean(dir)
+	info, err := os.Stat(dir)
+	if err != nil {
+		return "", err
+	}
+	if !info.IsDir() {
+		return "", fmt.Errorf("%s is not a directory", dir)
+	}
+	return dir, nil
+}
+
 // Root returns the top level of the checkout containing dir.
 func Root(dir string) (string, error) {
 	return git(dir, "rev-parse", "--show-toplevel")
@@ -38,6 +68,21 @@ func MainRoot(dir string) (string, error) {
 // Branch returns the branch checked out in dir.
 func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")
+}
+
+// Short returns path with the home directory written as ~.
+func Short(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if path == home {
+		return "~"
+	}
+	if rest, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~/" + rest
+	}
+	return path
 }
 
 var unsafe = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
@@ -89,11 +134,34 @@ func AddWorktree(root, dir, branch string) error {
 	return err
 }
 
-// RemoveWorktree removes the worktree and deletes its branch. Git refuses
-// dirty worktrees and unmerged branches.
-func RemoveWorktree(root, dir, branch string) error {
+// Removable returns an error if the worktree has uncommitted changes or its
+// branch is not merged into HEAD.
+func Removable(root, dir, branch string) error {
 	if _, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD"); err != nil {
 		return fmt.Errorf("branch %s is not merged into HEAD", branch)
+	}
+	dirty, err := Dirty(dir)
+	if err != nil {
+		return err
+	}
+	if dirty {
+		return fmt.Errorf("worktree %s has uncommitted changes", dir)
+	}
+	return nil
+}
+
+// Dirty reports whether the checkout in dir has uncommitted changes or
+// untracked files.
+func Dirty(dir string) (bool, error) {
+	status, err := git(dir, "status", "--porcelain")
+	return status != "", err
+}
+
+// RemoveWorktree removes the worktree and deletes its branch if Removable
+// allows it.
+func RemoveWorktree(root, dir, branch string) error {
+	if err := Removable(root, dir, branch); err != nil {
+		return err
 	}
 	if _, err := git(root, "worktree", "remove", dir); err != nil {
 		return err

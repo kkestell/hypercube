@@ -2,9 +2,11 @@ package harness
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -123,5 +125,17 @@ func TestOxCommand(t *testing.T) {
 		if hooks := settings.Hooks[event]; len(hooks) != 1 || !strings.HasSuffix(hooks[0].Hooks[0].Command, "' hook "+event) {
 			t.Errorf("%s hooks = %+v", event, hooks)
 		}
+	}
+}
+
+func TestCodexTrustOutsideGit(t *testing.T) {
+	dir := t.TempDir()
+	argv, _, err := Command(store.Agent{ID: "a1", Harness: "codex", Model: "m", Effort: "high", Dir: dir}, "/tmp/w.json", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("projects={%q={trust_level=\"trusted\"}}", dir)
+	if !slices.Contains(argv, want) {
+		t.Errorf("argv lacks %s: %q", want, argv)
 	}
 }

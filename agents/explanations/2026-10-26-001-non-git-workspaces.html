@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Workspaces outside Git</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11/styles/github.min.css" media="(prefers-color-scheme: light)" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11/styles/github-dark.min.css" media="(prefers-color-scheme: dark)" />
+    <script src="https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+
+    <style type="text/tailwindcss">
+      body { @apply bg-white text-zinc-800 antialiased dark:bg-zinc-950 dark:text-zinc-200; }
+      h1 { @apply text-3xl font-semibold tracking-tight text-zinc-950 dark:text-white; }
+      h2 { @apply mt-14 mb-4 text-xl font-semibold text-zinc-950 dark:text-white; }
+      h3 { @apply mt-8 mb-3 font-semibold text-zinc-950 dark:text-white; }
+      p, ul, ol { @apply my-4 leading-7; }
+      ul { @apply list-disc pl-6; }
+      ol { @apply list-decimal pl-6; }
+      a { @apply text-blue-600 underline underline-offset-2 dark:text-blue-400; }
+      :not(pre) > code { @apply rounded bg-zinc-100 px-1.5 py-0.5 text-[0.9em] dark:bg-zinc-800; }
+      pre:not(.mermaid) { @apply my-4 overflow-x-auto rounded-lg border border-zinc-200 text-sm dark:border-zinc-800; }
+      pre code.hljs { padding: 1rem; line-height: 1.5rem; }
+      pre.mermaid { @apply my-8 flex justify-center bg-transparent; }
+      figure { @apply my-8; }
+      figcaption { @apply mt-2 text-center text-sm text-zinc-500; }
+      .file { @apply mt-6 -mb-2 font-mono text-xs text-zinc-500; }
+      table { @apply my-6 w-full border-collapse text-sm; }
+      th, td { @apply border border-zinc-200 px-3 py-2 text-left align-top dark:border-zinc-800; }
+      th { @apply bg-zinc-50 font-semibold dark:bg-zinc-900; }
+    </style>
+  </head>
+
+  <body>
+    <main class="mx-auto max-w-3xl px-6 py-16">
+      <header>
+        <p class="text-sm text-zinc-500">hypercube · agents/plans/2026-10-26-001-non-git-workspaces.md (planned, not implemented)</p>
+        <h1>Workspaces outside Git</h1>
+        <p class="text-lg text-zinc-600 dark:text-zinc-400">The plan lets <code>hypercube</code> start in a directory that is not a Git checkout, such as <code>~/work/strib</code>. In that kind of workspace, each worker runs directly in an existing directory that the orchestrator names, and Hypercube creates no branches or worktrees. Workspaces in Git checkouts keep their current behavior.</p>
+      </header>
+
+      <h2>Workspaces today</h2>
+      <p>A workspace is the set of agents, the state file, and the tmux session that belong to one directory. Today that directory must be a Git checkout. <code>current()</code> finds it with <code>git rev-parse --show-toplevel</code> and returns an error anywhere else.</p>
+      <p>The orchestrator runs in the checkout itself. <code>create_agent</code> gives each worker a new branch, <code>hypercube/&lt;name&gt;</code>, created from the orchestrator's <code>HEAD</code>. That branch is checked out in a worktree at <code>&lt;checkout&gt;/.hypercube/&lt;name&gt;</code>. The orchestrator merges a worker's branch into its own branch. <code>remove_agent</code> and <code>hypercube down</code> remove the worktree and the branch, and only after checking that the branch is merged into <code>HEAD</code> and the worktree has no uncommitted changes.</p>
+      <pre class="mermaid">
+flowchart LR
+  O["orchestrator<br/>~/projects/app<br/>branch main"]
+  W1["w1<br/>.hypercube/w1<br/>branch hypercube/w1"]
+  W2["w2<br/>.hypercube/w2<br/>branch hypercube/w2"]
+  O -- "git worktree add" --> W1
+  O -- "git worktree add" --> W2
+  W1 -. "merge" .-> O
+  W2 -. "merge" .-> O
+      </pre>
+
+      <h2>Workspaces outside Git</h2>
+      <p>With the change, running <code>hypercube</code> in a directory that is not a Git checkout makes that directory the workspace root. The orchestrator runs there and has no branch. <code>create_agent</code> takes a <code>dir</code> argument, and the new worker runs in that directory as it is. The directory is usually its own Git checkout, but it does not have to be one, and it does not have to be inside the workspace root.</p>
+      <pre class="mermaid">
+flowchart LR
+  O["orchestrator<br/>~/work/strib<br/>no branch"]
+  L["litellm<br/>~/work/strib/litellm"]
+  R["recommender<br/>~/work/strib/article-recommender"]
+  F["foo<br/>~/src/foo"]
+  O -- "create_agent dir=litellm" --> L
+  O -- "create_agent dir=article-recommender" --> R
+  O -- "create_agent dir=~/src/foo" --> F
+      </pre>
+      <p>Nothing is merged into the orchestrator's directory. Each worker commits, or does not, in its own directory, following the orchestrator's instructions. Removing a worker closes its pane and removes it from the state file. The directory and its contents are left as they are.</p>
+
+      <h2>The <code>no_git</code> field</h2>
+      <p>Several code paths need to know which kind of workspace they are in. The plan adds one field to <code>State</code>, written to the state file as <code>no_git</code>. <code>start()</code> sets it once, when it creates the orchestrator for a new workspace.</p>
+      <p class="file">cmd/hypercube/main.go, current()</p>
+      <pre data-mark="1-4"><code class="language-go">	root, err = workspace.Root(cwd)
+	if err != nil {
+		return "", "", err
+	}
+	return root, workspace.Name(root), nil</code></pre>
+      <p class="file">cmd/hypercube/main.go, current(), planned</p>
+      <pre data-mark="1-6"><code class="language-go">	root = cwd
+	if workspace.IsRepo(cwd) {
+		if root, err = workspace.Root(cwd); err != nil {
+			return "", "", err
+		}
+	}
+	return root, workspace.Name(root), nil</code></pre>
+      <p class="file">cmd/hypercube/main.go, start(), planned</p>
+      <pre data-mark="2"><code class="language-go">		if len(s.Agents) == 0 {
+			s.NoGit = !repo
+			o := cfg.Orchestrator
+			s.Agents = append(s.Agents, store.Agent{
+				ID: store.NewID(), Name: "orchestrator", Role: store.Orchestrator,
+				Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root,
+			})
+		}</code></pre>
+      <p><code>repo</code> is the result of <code>workspace.IsRepo(root)</code>, a new helper that runs <code>git rev-parse --is-inside-work-tree</code>. <code>start()</code> reads the orchestrator's branch only when <code>repo</code> is true.</p>
+      <p>The field uses <code>omitempty</code>. Existing state files do not contain it, so they load with <code>NoGit</code> false and stay in Git mode. An empty orchestrator branch cannot mark the mode, because <code>git branch --show-current</code> also prints nothing on a detached <code>HEAD</code> in a Git checkout.</p>
+
+      <h2>Behavior by mode</h2>
+      <p>Every mode-specific path reads <code>NoGit</code>, except Codex trust, which checks each agent's own directory.</p>
+      <table>
+        <thead><tr><th></th><th>Git checkout (unchanged)</th><th>Not a Git checkout (<code>no_git</code>)</th></tr></thead>
+        <tbody>
+          <tr><td><code>create_agent</code></td><td>Creates <code>hypercube/&lt;name&gt;</code> and a worktree at <code>.hypercube/&lt;name&gt;</code>.</td><td>Requires <code>dir</code>. Runs the worker in that directory with an empty <code>Branch</code>.</td></tr>
+          <tr><td><code>remove_agent</code></td><td>Checks the branch and worktree, then runs <code>git worktree remove</code> and <code>git branch -d</code>.</td><td>Closes the pane and removes the agent and its queued messages. No Git commands run.</td></tr>
+          <tr><td><code>hypercube down</code></td><td>Checks every worker first, then removes worktrees and branches.</td><td>Kills the session and deletes the state file.</td></tr>
+          <tr><td><code>tools/list</code></td><td>The current <code>tools</code> list.</td><td>A copy in which <code>create_agent</code> requires <code>dir</code>, and both lifecycle tools have descriptions for this mode.</td></tr>
+          <tr><td>SessionStart facts</td><td>The current text about branches, worktrees, and merging.</td><td>Text about directory workers, with no branch wording.</td></tr>
+          <tr><td>Codex trust</td><td colspan="2">Trusts the main checkout of the agent's directory if that directory is in Git. Otherwise trusts the directory itself.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Creating a worker with <code>dir</code></h2>
+      <p><code>workspace.Resolve(base, dir)</code> turns the <code>dir</code> argument into an absolute path. <code>base</code> is the orchestrator's directory.</p>
+      <ul>
+        <li>A path that starts with <code>~/</code> is joined to the home directory.</li>
+        <li>A relative path is joined to <code>base</code>.</li>
+        <li>An absolute path is used as given.</li>
+      </ul>
+      <p>The result must be an existing directory, or <code>create_agent</code> returns an error and the state file is not changed. The path is not limited to the home directory, and it is not compared with other agents' directories. Two workers given the same directory work in the same checkout, and the orchestrator's SessionStart text states this.</p>
+      <p class="file">internal/mcp/mcp.go, createAgent()</p>
+      <pre data-mark="3,10"><code class="language-go">		orch, _ := s.Agent(self)
+		root = orch.Dir
+		a.Dir = workspace.WorktreeDir(root, name)
+		s.Agents = append(s.Agents, a)
+		// ...
+		return nil
+	})
+	// ...
+	if err = workspace.AddWorktree(root, a.Dir, a.Branch); err == nil {
+		a.Target, err = harness.Launch(a, path, Nudge)
+	}</code></pre>
+      <p class="file">internal/mcp/mcp.go, createAgent(), planned (sketch)</p>
+      <pre data-mark="3-13,19-21"><code class="language-go">		orch, _ := s.Agent(self)
+		root, noGit = orch.Dir, s.NoGit
+		if s.NoGit {
+			if args["dir"] == "" {
+				return errors.New("dir is required in a workspace that is not a Git checkout")
+			}
+			dir, err := workspace.Resolve(orch.Dir, args["dir"])
+			if err != nil {
+				return err
+			}
+			a.Dir, a.Branch = dir, ""
+		} else {
+			a.Dir = workspace.WorktreeDir(root, name)
+		}
+		s.Agents = append(s.Agents, a)
+		// ...
+		return nil
+	})
+	if !noGit {
+		err = workspace.AddWorktree(root, a.Dir, a.Branch)
+	}
+	if err == nil {
+		a.Target, err = harness.Launch(a, path, Nudge)
+	}</code></pre>
+      <p>If the launch fails, the existing rollback still removes the agent from the state file. In a Git workspace, <code>createAgent</code> ignores a <code>dir</code> argument, the same as any other argument the tool does not define.</p>
+
+      <h2>Removing workers</h2>
+      <p><code>removeAgent</code> calls <code>workspace.RemoveWorktree</code> only when <code>NoGit</code> is false. The rest of the function closes the pane and deletes the agent from the state file, as it does today.</p>
+      <p><code>down()</code> builds its list of workers to check and remove in one loop. The plan adds <code>NoGit</code> to that loop's skip condition, so in a <code>no_git</code> workspace the list is empty and <code>down()</code> goes straight to killing the session and deleting the state file.</p>
+      <p class="file">cmd/hypercube/main.go, down(), planned</p>
+      <pre data-mark="2"><code class="language-go">	for _, a := range s.Agents {
+		if a.Role != store.Worker || s.NoGit {
+			continue
+		}
+		workers = append(workers, a)
+		if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
+		}
+	}</code></pre>
+
+      <h2>Codex trust</h2>
+      <p>The Codex launch command passes a <code>projects</code> override that marks a directory as trusted. Today that directory comes from <code>workspace.MainRoot(a.Dir)</code>, which returns an error outside Git. The plan uses the agent's directory as given and calls <code>MainRoot</code> only when that directory is in a Git checkout. The check is per agent because, in a <code>no_git</code> workspace, the orchestrator's directory is outside Git while a worker's directory is usually inside one.</p>
+      <p class="file">internal/harness/harness.go, Command(), planned</p>
+      <pre data-mark="3-8"><code class="language-go">	case "codex":
+		// Codex keys folder trust on the main checkout, which covers worktrees. A
+		// directory outside Git is trusted as it is.
+		root := a.Dir
+		if workspace.IsRepo(a.Dir) {
+			if root, err = workspace.MainRoot(a.Dir); err != nil {
+				return nil, nil, err
+			}
+		}</code></pre>
+      <p>Claude Code needs no launch change. Each directory a worker runs in must already be trusted in Claude Code, or that worker's pane shows the trust dialog, as the orchestrator's pane does today for a new checkout.</p>
+
+      <h2>SessionStart facts</h2>
+      <p><code>facts</code> in <code>internal/hook/hook.go</code> builds the text each agent receives at SessionStart. When <code>NoGit</code> is set, it writes a second version of that text.</p>
+      <ul>
+        <li>The working directory line and the team lines leave out the branch.</li>
+        <li>The tool lines describe <code>create_agent(name, dir, ...)</code> and a <code>remove_agent</code> that leaves the directory in place.</li>
+        <li>The orchestrator is told that its directory is not a Git checkout, that it should tell each worker how to handle branches and commits, and that workers given the same directory share one checkout.</li>
+        <li>A worker is told that Hypercube created no branch or worktree for it and that it should handle branches and commits as the orchestrator tells it.</li>
+      </ul>
+      <p>The text in Git workspaces is not changed.</p>
+
+      <h2>Tests</h2>
+      <ul>
+        <li><code>internal/workspace/workspace_test.go</code> (new) covers <code>IsRepo</code> inside and outside a repository, and covers <code>Resolve</code> for relative, <code>~/</code>, and absolute paths, a missing path, and a regular file.</li>
+        <li><code>internal/hook/hook_test.go</code> adds <code>TestNoGitFacts</code> for the orchestrator's and a worker's SessionStart text. The existing tests continue to cover Git mode.</li>
+        <li><code>internal/mcp/mcp_test.go</code> (new) covers <code>toolsFor</code> in both modes, <code>createAgent</code> failing without <code>dir</code> or with a missing directory, and <code>removeAgent</code> leaving the worker's directory in place. The tmux calls in these tests run against an empty temporary tmux socket directory.</li>
+        <li><code>internal/harness/harness_test.go</code> checks the Codex trust override for a directory outside Git.</li>
+      </ul>
+    </main>
+
+    <script>
+      const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+
+      // highlight.js ships no HCL grammar, so register one for Terraform and Terragrunt.
+      hljs.registerLanguage("hcl", (hljs) => {
+        const interpolation = { className: "subst", begin: /\$\{|%\{/, end: /\}/, keywords: { keyword: "for in if else endfor endif", literal: "true false null" } };
+        const string = { className: "string", begin: /"/, end: /"/, contains: [hljs.BACKSLASH_ESCAPE, interpolation] };
+        const heredoc = { className: "string", begin: /<<-?\s*[A-Za-z_]\w*\s*$/, end: /^\s*[A-Za-z_]\w*\s*$/, contains: [interpolation] };
+        const call = { className: "built_in", begin: /\b[A-Za-z_][\w-]*(?=\()/ };
+        interpolation.contains = [string, call, hljs.NUMBER_MODE];
+        return {
+          name: "HCL",
+          aliases: ["terraform", "tf", "terragrunt"],
+          keywords: { keyword: "for in if", literal: "true false null" },
+          contains: [
+            hljs.HASH_COMMENT_MODE,
+            hljs.C_LINE_COMMENT_MODE,
+            hljs.C_BLOCK_COMMENT_MODE,
+            heredoc,
+            string,
+            { className: "keyword", begin: /^\s*[A-Za-z_][\w-]*(?=(\s+("[^"]*"|[A-Za-z_][\w-]*))*\s*\{)/ },
+            { className: "attr", begin: /\b[A-Za-z_][\w-]*(?=\s*=(?!=))/ },
+            call,
+            hljs.NUMBER_MODE,
+          ],
+        };
+      });
+
+      hljs.highlightAll();
+
+      // Band each marked line, assuming the 1rem padding and 1.5rem line height above.
+      const markColor = dark ? "rgb(251 191 36 / 0.15)" : "rgb(253 230 138 / 0.6)";
+      for (const pre of document.querySelectorAll("pre[data-mark]")) {
+        const bands = pre.dataset.mark.split(",").map((range) => {
+          const [first, last = first] = range.split("-").map(Number);
+          return `linear-gradient(transparent calc(1rem + ${first - 1} * 1.5rem), ${markColor} 0 calc(1rem + ${last} * 1.5rem), transparent 0)`;
+        });
+        pre.querySelector("code").style.backgroundImage = bands.join(", ");
+      }
+    </script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      // deterministicIds: without it, diagrams rendered in the same millisecond share an id and one renders blank.
+      mermaid.initialize({ startOnLoad: true, deterministicIds: true, theme: dark ? "dark" : "neutral", fontFamily: getComputedStyle(document.body).fontFamily });
+    </script>
+  </body>
+</html>

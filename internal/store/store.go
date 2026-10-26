@@ -44,6 +44,10 @@ type Message struct {
 type State struct {
 	Agents   []Agent   `json:"agents"`
 	Messages []Message `json:"messages"`
+	// NoGit is set for a workspace whose directory is not a Git checkout.
+	// Its workers work directly in existing directories, without branches
+	// or worktrees.
+	NoGit bool `json:"no_git,omitempty"`
 }
 
 // Dir is the directory that holds state files and worktrees.
@@ -85,6 +89,16 @@ func Load(path string) (State, error) {
 		return s, err
 	}
 	return s, json.Unmarshal(data, &s)
+}
+
+// Delete removes the state file and its lock.
+func Delete(path string) error {
+	for _, p := range []string{path, strings.TrimSuffix(path, ".json") + ".lock"} {
+		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // Update applies fn to the state under an exclusive lock and writes the
