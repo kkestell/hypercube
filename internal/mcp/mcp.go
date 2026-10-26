@@ -43,15 +43,17 @@ func schema(required []string, props ...string) map[string]any {
 var tools = []tool{
 	{"send_message", "Send a message to another agent by ID or name.", schema([]string{"to", "text"}, "to", "text")},
 	{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
-	{"create_agent", "Orchestrator only. Create a worker with its own branch and worktree from HEAD and launch it. " + createDefaults,
-		schema([]string{"name"}, "name", "harness", "model", "effort", "message")},
-	{"remove_agent", "Orchestrator only. Remove a worker's worktree, branch, and pane. Git refuses dirty worktrees and unmerged branches.", schema([]string{"id"}, "id")},
+	{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + " " + createDefaults,
+		schema([]string{"name"}, "name", "dir", "harness", "model", "effort", "message")},
+	{"remove_agent", "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"id"}, "id")},
 }
+
+const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it, and Hypercube creates no branch or worktree."
 
 const createDefaults = "Harness, model, and effort default to the configured worker defaults. OpenCode requires its full provider/model ID, for example openrouter/meta/muse-spark-1.3-contributor. An optional message is queued for the worker before it starts."
 
 // toolsFor returns the tools for the workspace's mode. Outside Git, workers
-// work in directories the orchestrator names, so create_agent requires dir.
+// cannot have worktrees, so create_agent requires dir.
 func toolsFor(s store.State) []tool {
 	if !s.NoGit {
 		return tools
@@ -60,7 +62,7 @@ func toolsFor(s store.State) []tool {
 	for i, t := range list {
 		switch t.Name {
 		case "create_agent":
-			list[i] = tool{t.Name, "Orchestrator only. Create a worker that works directly in dir, an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, and launch it. Hypercube creates no branch or worktree. " + createDefaults,
+			list[i] = tool{t.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + " " + createDefaults,
 				schema([]string{"name", "dir"}, "name", "dir", "harness", "model", "effort", "message")}
 		case "remove_agent":
 			list[i].Description = "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is."
@@ -216,7 +218,6 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	}
 
 	var root string
-	var noGit bool
 	a := store.Agent{
 		ID: store.NewID(), Name: name, Role: store.Worker,
 		Harness: spec.Harness, Model: spec.Model, Effort: spec.Effort,
@@ -230,17 +231,17 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 			return fmt.Errorf("an agent named %s already exists", name)
 		}
 		orch, _ := s.Agent(self)
-		root, noGit = orch.Dir, s.NoGit
-		if noGit {
-			if args["dir"] == "" {
-				return errors.New("dir is required in a workspace that is not a Git checkout")
-			}
+		root = orch.Dir
+		switch {
+		case args["dir"] != "":
 			dir, err := workspace.Resolve(root, args["dir"])
 			if err != nil {
 				return err
 			}
 			a.Dir = dir
-		} else {
+		case s.NoGit:
+			return errors.New("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees")
+		default:
 			a.Dir, a.Branch = workspace.WorktreeDir(root, name), workspace.WorkerBranch(name)
 		}
 		s.Agents = append(s.Agents, a)
@@ -252,7 +253,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if !noGit {
+	if a.Branch != "" {
 		err = workspace.AddWorktree(root, a.Dir, a.Branch)
 	}
 	if err == nil {
@@ -293,7 +294,7 @@ func removeAgent(self, path, id string) (string, error) {
 	if a.Role != store.Worker {
 		return "", errors.New("only workers can be removed")
 	}
-	if !s.NoGit {
+	if a.Branch != "" {
 		orch, _ := s.Agent(self)
 		if err := workspace.RemoveWorktree(orch.Dir, a.Dir, a.Branch); err != nil {
 			return "", err

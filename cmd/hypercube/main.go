@@ -142,8 +142,8 @@ func ago(t time.Time) string {
 
 // down stops the workspace and deletes its state, worker worktrees, and
 // worker branches. It refuses, changing nothing, if a worker has uncommitted
-// changes or an unmerged branch. A workspace outside Git has no worktrees, so
-// down leaves its workers' directories alone.
+// changes in its worktree or an unmerged branch. Workers without worktrees
+// have their directories left alone.
 func down() error {
 	root, name, err := current()
 	if err != nil {
@@ -157,7 +157,7 @@ func down() error {
 	var workers []store.Agent
 	var problems []string
 	for _, a := range s.Agents {
-		if a.Role != store.Worker || s.NoGit {
+		if a.Role != store.Worker || a.Branch == "" {
 			continue
 		}
 		workers = append(workers, a)

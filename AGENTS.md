@@ -3,9 +3,10 @@
 Hypercube runs a team of local coding agents in tmux. Each agent is a native
 harness TUI (Claude Code, Codex, OpenCode, or Ox) in its own tmux pane. Agents
 message each other through an MCP tool and receive messages through harness
-hooks. One orchestrator works in the original checkout and manages workers in
-Git worktrees. In a directory that is not a Git checkout, workers work directly
-in existing directories.
+hooks. One orchestrator works in the original checkout and manages workers.
+A worker either has its own Git worktree or works directly in an existing
+directory. In a directory that is not a Git checkout, only the second is
+possible.
 
 Kyle is the only user. Favor small implementations that are easy to understand
 and change over generalized infrastructure or speculative requirements.
@@ -38,10 +39,10 @@ and change over generalized infrastructure or speculative requirements.
   ends its agents. The state file, worktrees, and queued messages stay, so the
   next `hypercube` resumes the team.
 - `hypercube down` does what `stop` does, then removes each worker's worktree
-  and branch and deletes the state file. If any worker has uncommitted changes
-  or a branch not merged into the checkout's HEAD, it refuses and changes
-  nothing. In a `no_git` workspace it deletes only the state file and leaves
-  workers' directories alone.
+  and branch and deletes the state file. If any worktree has uncommitted
+  changes or any branch is not merged into the checkout's HEAD, it refuses and
+  changes nothing. It leaves the directories of workers without worktrees
+  alone.
 - `hypercube status` lists every workspace with a state file, most recently
   active first: its directory, whether its tmux session is running, its number
   of agents, when it was created, and when it was last active. Creation is the
@@ -93,8 +94,11 @@ file's path.
 - `messages`: id, sender, recipient, and text. A message is removed when it is
   delivered.
 - `no_git`: set when the first `hypercube` creates the orchestrator in a
-  directory that is not a Git checkout. Its workers work directly in existing
-  directories, with an empty branch. A state file without it stays in Git mode.
+  directory that is not a Git checkout. Its workers cannot have worktrees. A
+  state file without it stays in Git mode.
+
+A worker has a worktree exactly when its branch is set. A worker working
+directly in a directory has an empty branch.
 
 Every change holds an exclusive `flock` on `<workspace>.lock` while it reads
 the file, applies the change, and writes it back through a temporary file and
@@ -136,29 +140,28 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
   idle.
 - `list_agents()` returns the team: id, name, role, harness, activity,
   directory, and branch.
-- `create_agent(name, harness?, model?, effort?, message?)`, orchestrator
-  only. It creates branch `hypercube/<name>` from `HEAD` in a worktree at
-  `<checkout>/.hypercube/<name>`, records the agent as busy, and launches its
-  harness in a new pane with the nudge as its first prompt. A `message` is
-  queued for the new agent before launch, so the nudge delivers it.
-  `/.hypercube/` is listed in the checkout's `.git/info/exclude`. Worktrees
-  inside the checkout inherit the folder trust the harnesses already grant the
-  checkout.
-- `remove_agent(id)`, orchestrator only. It runs `git worktree remove` and
-  `git branch -d`, closes the pane, and deletes the agent and its queued
-  messages. Git refuses dirty or unmerged work, and that refusal is returned
-  to the orchestrator.
+- `create_agent(name, dir?, harness?, model?, effort?, message?)`,
+  orchestrator only. It records the agent as busy and launches its harness in
+  a new pane with the nudge as its first prompt. A `message` is queued for the
+  new agent before launch, so the nudge delivers it.
+  - Without `dir`, it creates branch `hypercube/<name>` from `HEAD` in a
+    worktree at `<checkout>/.hypercube/<name>`. `/.hypercube/` is listed in
+    the checkout's `.git/info/exclude`. Worktrees inside the checkout inherit
+    the folder trust the harnesses already grant the checkout. In a `no_git`
+    workspace, omitting `dir` is an error.
+  - With `dir`, an existing directory given as an absolute path, a path
+    starting with `~/`, or a path relative to the orchestrator's directory,
+    the worker works directly in it, and Hypercube creates no branch or
+    worktree. Two workers may share a directory, and `.` is the orchestrator's
+    own checkout.
+- `remove_agent(id)`, orchestrator only. For a worker with a worktree it runs
+  `git worktree remove` and `git branch -d`. Git refuses dirty or unmerged
+  work, and that refusal is returned to the orchestrator. It then closes the
+  pane and deletes the agent and its queued messages. A worker's directory
+  without a worktree is left as it is.
 
-In a `no_git` workspace, `tools/list` returns these tools with different
-`create_agent` and `remove_agent` descriptions:
-
-- `create_agent(name, dir, harness?, model?, effort?, message?)` requires
-  `dir`, an existing directory given as an absolute path, a path starting with
-  `~/`, or a path relative to the orchestrator's directory. The worker works
-  directly in it, and Hypercube creates no branch or worktree. Two workers may
-  share a directory. In a Git workspace, `dir` is ignored.
-- `remove_agent(id)` only closes the pane and deletes the agent and its queued
-  messages. The directory is left as it is.
+In a `no_git` workspace, `tools/list` returns `create_agent` with `dir`
+required, and both tools' descriptions leave out worktrees.
 
 ## Message delivery
 
@@ -166,10 +169,14 @@ Every message goes into the queue first. Hooks deliver the message text; the
 tmux nudge only prompts an idle agent to run a turn.
 
 - **SessionStart:** returns the runtime facts as additional context: the agent's ID, role, working directory, and
-  team, the MCP tools, and how worktrees and Git integration work. In a
-  `no_git` workspace they describe directory workers instead, and the
-  orchestrator is told to instruct each worker how to handle branches and
-  commits. The orchestrator also gets the configured `models` text.
+  team, the MCP tools, and how worktrees and Git integration work. In a Git
+  workspace the orchestrator is told to give a worker a worktree when it will
+  change files unless the user says otherwise, and to run a worker that will
+  not change files in its own checkout with `dir` `.`. In a `no_git`
+  workspace the facts describe only directory workers. The orchestrator is
+  told to instruct each directory worker how to handle branches and commits,
+  and such a worker is told to follow those instructions. The orchestrator
+  also gets the configured `models` text.
 - **UserPromptSubmit:** records the harness session ID, marks the agent busy,
   and returns queued messages as additional context. Claude Code saves no
   conversation until the first prompt, so an ID from SessionStart may not

@@ -107,55 +107,54 @@ func format(s *store.State, messages []store.Message) string {
 // facts describes the agent's place in the team. The orchestrator also gets
 // the configured models text.
 func facts(s *store.State, a *store.Agent, models string) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
+	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
+	for _, t := range s.Agents {
+		fmt.Fprintf(&b, "- %s (%s): %s, %s, %s%s\n", t.Name, t.ID, t.Role, t.Harness, t.Dir, onBranch(t.Branch))
+	}
+	b.WriteString(messageTools)
 	if s.NoGit {
-		return dirFacts(s, a, models)
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
-	fmt.Fprintf(&b, "Your working directory is %s, on branch %s.\n\nTeam:\n", a.Dir, a.Branch)
-	for _, t := range s.Agents {
-		fmt.Fprintf(&b, "- %s (%s): %s, %s, %s on %s\n", t.Name, t.ID, t.Role, t.Harness, t.Dir, t.Branch)
-	}
-	b.WriteString(messageTools + `- create_agent(name, harness?, model?, effort?, message?) creates a worker with its own branch and worktree from the orchestrator's HEAD. The optional message is delivered on the worker's first turn. Orchestrator only.
-- remove_agent(id) removes a worker's worktree, branch, and pane. Git refuses dirty worktrees and unmerged branches. Orchestrator only.
-`)
-	if a.Role == store.Orchestrator {
-		b.WriteString(`
-You work in the original checkout. Each worker commits on its own branch in its own worktree. Merge a worker's branch into your branch from your checkout, then remove the worker when its work is merged. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
-`)
-		writeTeamwork(&b, models)
-	} else {
-		b.WriteString(`
-Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send a message to the orchestrator. A message you send is the only way other agents see your work's status.
-`)
-	}
-	return b.String()
-}
-
-// dirFacts is facts for a workspace outside Git, whose workers work directly
-// in existing directories.
-func dirFacts(s *store.State, a *store.Agent, models string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
-	fmt.Fprintf(&b, "Your working directory is %s.\n\nTeam:\n", a.Dir)
-	for _, t := range s.Agents {
-		fmt.Fprintf(&b, "- %s (%s): %s, %s, %s\n", t.Name, t.ID, t.Role, t.Harness, t.Dir)
-	}
-	b.WriteString(messageTools + `- create_agent(name, dir, harness?, model?, effort?, message?) creates a worker that works directly in dir, an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's working directory. Hypercube creates no branch or worktree. The optional message is delivered on the worker's first turn. Orchestrator only.
+		b.WriteString(`- create_agent(name, dir, harness?, model?, effort?, message?) creates a worker that works directly in dir, ` + dirArg + ` Hypercube creates no branch or worktree. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. Its directory is left as it is. Orchestrator only.
 `)
-	if a.Role == store.Orchestrator {
+	} else {
+		b.WriteString(`- create_agent(name, dir?, harness?, model?, effort?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. The optional message is delivered on the worker's first turn. Orchestrator only.
+- remove_agent(id) closes a worker's pane and removes it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is. Orchestrator only.
+`)
+	}
+	switch {
+	case a.Role == store.Orchestrator && s.NoGit:
 		b.WriteString(`
 Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout, and Hypercube creates no branches or worktrees. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
 		writeTeamwork(&b, models)
-	} else {
+	case a.Role == store.Orchestrator:
 		b.WriteString(`
-You work directly in your working directory. Hypercube created no branch or worktree for you. Handle branches and commits as the orchestrator tells you. When you finish, or need something, send a message to the orchestrator. A message you send is the only way other agents see your work's status.
+You work in the original checkout. Unless the user says otherwise, give a worker its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then remove the worker when its work is merged. A worker that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and remove it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the worker how to handle branches and commits there. Workers given the same directory share one checkout. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
+		writeTeamwork(&b, models)
+	case a.Branch != "":
+		b.WriteString(`
+Commit your work on your branch. The orchestrator merges it from its checkout.` + reportBack)
+	default:
+		b.WriteString(`
+You work directly in your working directory. Hypercube created no branch or worktree for you. Handle branches and commits as the orchestrator tells you.` + reportBack)
 	}
 	return b.String()
 }
+
+func onBranch(branch string) string {
+	if branch == "" {
+		return ""
+	}
+	return " on branch " + branch
+}
+
+const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's working directory,"
+
+const reportBack = ` When you finish, or need something, send a message to the orchestrator. A message you send is the only way other agents see your work's status.
+`
 
 const messageTools = `
 Hypercube MCP tools:

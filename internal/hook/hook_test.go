@@ -144,3 +144,37 @@ func TestNoGitFacts(t *testing.T) {
 		t.Errorf("worker context contains \"on branch\":\n%s", got)
 	}
 }
+
+func TestGitFacts(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
+	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
+  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
+  "worker": {"harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"}
+}`), 0o644)
+	store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{
+			{ID: "a", Name: "orchestrator", Role: store.Orchestrator, Dir: "/r", Branch: "main"},
+			{ID: "b", Name: "w1", Role: store.Worker, Dir: "/r/.hypercube/w1", Branch: "hypercube/w1"},
+			{ID: "c", Name: "w2", Role: store.Worker, Harness: "codex", Dir: "/r"},
+		}
+		return nil
+	})
+
+	for id, want := range map[string][]string{
+		"a": {"create_agent(name, dir?,", "Merge its branch into your branch", `pass dir "."`, "- w2 (c): worker, codex, /r\n"},
+		"b": {"Your working directory is /r/.hypercube/w1 on branch hypercube/w1.", "Commit your work on your branch."},
+		"c": {"Your working directory is /r.\n", "Handle branches and commits as the orchestrator tells you."},
+	} {
+		t.Setenv("HYPERCUBE_AGENT_ID", id)
+		got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
+		for _, w := range want {
+			if !strings.Contains(got, w) {
+				t.Errorf("context of %s lacks %q:\n%s", id, w, got)
+			}
+		}
+	}
+}
