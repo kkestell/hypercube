@@ -192,7 +192,7 @@ For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, and OpenCode
 
 ## Validation
 
-Before pushing, all of this must pass:
+Before pushing a change to Go code or `go.mod`, all of this must pass:
 
 ```sh
 go build ./... && go vet ./... && staticcheck ./... && test -z "$(gofmt -l .)" && go test ./...
