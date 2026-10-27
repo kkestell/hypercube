@@ -44,21 +44,21 @@
       "name": "gpt-small",
       "description": "GPT Terra at medium effort for small, well-defined tasks: lookups, simple edits, and quick checks. Cheapest and fastest.",
       "harness": "pi",
-      "model": "openai/gpt-6.1-terra",
+      "model": "openai-codex/gpt-6.1-terra",
       "effort": "medium"
     },
     {
       "name": "gpt-medium",
       "description": "GPT Sol at high effort for ordinary implementation, investigation, and review.",
       "harness": "pi",
-      "model": "openai/gpt-6.1-sol",
+      "model": "openai-codex/gpt-6.1-sol",
       "effort": "high"
     },
     {
       "name": "gpt-large",
       "description": "GPT Sol at extra high effort for hard implementation, debugging, and design work. Slower and costlier.",
       "harness": "pi",
-      "model": "openai/gpt-6.1-sol",
+      "model": "openai-codex/gpt-6.1-sol",
       "effort": "xhigh"
     },
     {
