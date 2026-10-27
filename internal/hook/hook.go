@@ -76,12 +76,14 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		default:
 			return fmt.Errorf("unknown hook event %q", event)
 		}
-		return nil
+		// Writing the response inside the update keeps taken messages queued
+		// if the harness cannot read them.
+		if resp == nil {
+			return nil
+		}
+		return json.NewEncoder(stdout).Encode(resp)
 	})
-	if err != nil || resp == nil {
-		return err
-	}
-	return json.NewEncoder(stdout).Encode(resp)
+	return err
 }
 
 func context(event, text string) *response {
@@ -115,7 +117,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	}
 	b.WriteString(messageTools)
 	if s.NoGit {
-		b.WriteString(`- create_agent(name, profile, dir, message?) creates a worker that works directly in dir, ` + dirArg + ` Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
+		b.WriteString(`- create_agent(name, profile, dir, message?) creates a worker that works directly in dir, ` + dirArg + ` Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. Its directory is left as it is. Orchestrator only.
 `)
 	} else {
@@ -126,7 +128,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	switch {
 	case a.Role == store.Orchestrator && s.NoGit:
 		b.WriteString(`
-Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout, and Hypercube creates no branches or worktrees. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
+Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
 		writeTeamwork(&b, profiles)
 	case a.Role == store.Orchestrator:
@@ -139,7 +141,7 @@ You work in the original checkout. Unless the user says otherwise, give a worker
 Commit your work on your branch. The orchestrator merges it from its checkout.` + reportBack)
 	default:
 		b.WriteString(`
-You work directly in your working directory. Hypercube created no branch or worktree for you. Handle branches and commits as the orchestrator tells you.` + reportBack)
+You work directly in your working directory. Handle branches and commits as the orchestrator tells you.` + reportBack)
 	}
 	return b.String()
 }

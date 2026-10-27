@@ -55,10 +55,8 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		// Codex keys folder trust on the main checkout, which covers worktrees.
 		// A directory outside Git is trusted as it is.
 		root := a.Dir
-		if workspace.IsRepo(a.Dir) {
-			if root, err = workspace.MainRoot(a.Dir); err != nil {
-				return nil, nil, err
-			}
+		if main, err := workspace.MainRoot(a.Dir); err == nil {
+			root = main
 		}
 		argv := []string{"codex"}
 		if a.SessionID != "" {

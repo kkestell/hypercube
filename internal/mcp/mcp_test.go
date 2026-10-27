@@ -2,9 +2,12 @@ package mcp
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -88,5 +91,54 @@ func TestRemoveDirWorker(t *testing.T) {
 		if _, err := os.Stat(file); err != nil {
 			t.Errorf("noGit %v: removeAgent touched the worker's directory: %v", noGit, err)
 		}
+	}
+}
+
+// In a workspace outside Git, neither tool's description mentions worktrees.
+func TestNoGitDescriptionsLeaveOutWorktrees(t *testing.T) {
+	for _, tl := range toolsFor(store.State{NoGit: true}, nil) {
+		if strings.Contains(tl.Description, "worktree") {
+			t.Errorf("%s: %q", tl.Name, tl.Description)
+		}
+	}
+}
+
+// send_message nudges an idle recipient and queues silently for a busy one.
+func TestSendMessageNudgesIdleOnly(t *testing.T) {
+	tmp, _ := os.MkdirTemp("/tmp", "hc")
+	defer os.RemoveAll(tmp)
+	t.Setenv("TMUX_TMPDIR", tmp)
+	t.Setenv("TMUX", "")
+	out := func(args ...string) string {
+		b, err := exec.Command("tmux", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("tmux %v: %v\n%s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	idle := out("new-session", "-d", "-P", "-F", "#{pane_id}", "-s", "t", "cat")
+	busy := out("split-window", "-d", "-P", "-F", "#{pane_id}", "-t", idle, "cat")
+	defer exec.Command("tmux", "kill-server").Run()
+	path := team(t, false, t.TempDir(), "")
+	store.Update(path, func(s *store.State) error {
+		s.Agents = append(s.Agents,
+			store.Agent{ID: "i", Name: "idle", Role: store.Worker, Activity: store.Idle, Target: idle},
+			store.Agent{ID: "u", Name: "busy", Role: store.Worker, Activity: store.Busy, Target: busy})
+		return nil
+	})
+	for _, to := range []string{"idle", "busy"} {
+		if _, err := sendMessage("a", path, to, "hi"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(500 * time.Millisecond)
+	if got := out("capture-pane", "-p", "-t", idle); !strings.Contains(got, Nudge) {
+		t.Errorf("idle pane = %q", got)
+	}
+	if got := out("capture-pane", "-p", "-t", busy); strings.Contains(got, Nudge) {
+		t.Errorf("busy pane = %q", got)
+	}
+	if s, _ := store.Load(path); len(s.Messages) != 2 {
+		t.Errorf("messages = %+v", s.Messages)
 	}
 }

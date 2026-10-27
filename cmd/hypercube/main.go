@@ -56,10 +56,8 @@ func workspaceAt(dir string) (root, name string, err error) {
 	if root, err = workspace.Resolve(wd, dir); err != nil {
 		return "", "", err
 	}
-	if workspace.IsRepo(root) {
-		if root, err = workspace.Root(root); err != nil {
-			return "", "", err
-		}
+	if top, err := workspace.Root(root); err == nil {
+		root = top
 	}
 	return root, workspace.Name(root), nil
 }
@@ -274,13 +272,8 @@ func start() error {
 	if err != nil {
 		return err
 	}
-	repo := workspace.IsRepo(root)
-	var branch string
-	if repo {
-		if branch, err = workspace.Branch(root); err != nil {
-			return err
-		}
-	}
+	branch, err := workspace.Branch(root)
+	repo := err == nil
 
 	path := store.Path(name)
 	var agents []store.Agent

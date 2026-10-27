@@ -35,7 +35,6 @@ type Agent struct {
 }
 
 type Message struct {
-	ID   string `json:"id"`
 	From string `json:"from"`
 	To   string `json:"to"`
 	Text string `json:"text"`
@@ -91,8 +90,14 @@ func Load(path string) (State, error) {
 	return s, json.Unmarshal(data, &s)
 }
 
-// Delete removes the state file and its lock.
+// Delete removes the state file and its lock. It waits for any update in
+// progress.
 func Delete(path string) error {
+	lock, err := lockFile(path)
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
 	for _, p := range []string{path, strings.TrimSuffix(path, ".json") + ".lock"} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -101,20 +106,31 @@ func Delete(path string) error {
 	return nil
 }
 
+// lockFile opens the state file's lock and holds it exclusively until the
+// file is closed.
+func lockFile(path string) (*os.File, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, err
+	}
+	lock, err := os.OpenFile(strings.TrimSuffix(path, ".json")+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	return lock, nil
+}
+
 // Update applies fn to the state under an exclusive lock and writes the
 // result. If fn returns an error, nothing is written.
 func Update(path string, fn func(*State) error) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	lock, err := os.OpenFile(strings.TrimSuffix(path, ".json")+".lock", os.O_CREATE|os.O_RDWR, 0o644)
+	lock, err := lockFile(path)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return err
-	}
 	s, err := Load(path)
 	if err != nil {
 		return err

@@ -3,6 +3,7 @@ package hook
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,7 +37,7 @@ func TestDelivery(t *testing.T) {
 	})
 	queue := func(text string) {
 		store.Update(path, func(s *store.State) error {
-			s.Messages = append(s.Messages, store.Message{ID: store.NewID(), From: "a", To: "b", Text: text})
+			s.Messages = append(s.Messages, store.Message{From: "a", To: "b", Text: text})
 			return nil
 		})
 	}
@@ -125,7 +126,7 @@ func TestNoGitFacts(t *testing.T) {
 			t.Errorf("orchestrator context lacks %q:\n%s", want, got)
 		}
 	}
-	for _, unwanted := range []string{"on branch", "Merge a worker's branch"} {
+	for _, unwanted := range []string{"on branch", "Merge its branch"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("orchestrator context contains %q:\n%s", unwanted, got)
 		}
@@ -174,5 +175,47 @@ func TestGitFacts(t *testing.T) {
 				t.Errorf("context of %s lacks %q:\n%s", id, w, got)
 			}
 		}
+	}
+}
+
+func TestPostToolUseDelivers(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "b")
+	store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}, {ID: "b", Name: "w1", Role: store.Worker, Activity: store.Busy}}
+		s.Messages = []store.Message{{From: "a", To: "b", Text: "mid-turn"}, {From: "a", To: "a", Text: "other"}}
+		return nil
+	})
+	r := run(t, "PostToolUse")
+	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from orchestrator (a):\nmid-turn" {
+		t.Errorf("PostToolUse context = %q", got)
+	}
+	if s, _ := store.Load(path); len(s.Messages) != 1 || s.Messages[0].To != "a" {
+		t.Errorf("messages left: %+v", s.Messages)
+	}
+	if r := run(t, "PostToolUse"); r.HookSpecificOutput != nil {
+		t.Errorf("empty queue produced %+v", r)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }
+
+func TestFailedResponseKeepsMessages(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "b")
+	store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}, {ID: "b", Name: "w1", Role: store.Worker}}
+		s.Messages = []store.Message{{From: "a", To: "b", Text: "hello"}}
+		return nil
+	})
+	if err := Run("PostToolUse", strings.NewReader(`{}`), failingWriter{}); err == nil {
+		t.Fatal("Run succeeded with a failing writer")
+	}
+	if s, _ := store.Load(path); len(s.Messages) != 1 {
+		t.Errorf("messages = %+v", s.Messages)
 	}
 }

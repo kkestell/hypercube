@@ -39,7 +39,7 @@ func schema(required []string, props ...string) map[string]any {
 	return map[string]any{"type": "object", "properties": p, "required": required}
 }
 
-const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it, and Hypercube creates no branch or worktree."
+const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it"
 
 const profileArg = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts."
 
@@ -47,11 +47,11 @@ const profileArg = "The profile sets the worker's harness, model, and effort. An
 // profiles. Outside Git, workers cannot have worktrees, so create_agent
 // requires dir.
 func toolsFor(s store.State, profiles []harness.Profile) []tool {
-	create := tool{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + " " + profileArg,
+	create := tool{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg,
 		schema([]string{"name", "profile"}, "name", "profile", "dir", "message")}
 	remove := tool{"remove_agent", "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"id"}, "id")}
 	if s.NoGit {
-		create = tool{create.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + " " + profileArg,
+		create = tool{create.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg,
 			schema([]string{"name", "profile", "dir"}, "name", "profile", "dir", "message")}
 		remove.Description = "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is."
 	}
@@ -167,7 +167,7 @@ func sendMessage(self, path, to, text string) (string, error) {
 			return errors.New("cannot send a message to yourself")
 		}
 		recipient = *a
-		s.Messages = append(s.Messages, store.Message{ID: store.NewID(), From: self, To: a.ID, Text: text})
+		s.Messages = append(s.Messages, store.Message{From: self, To: a.ID, Text: text})
 		if a.Activity == store.Idle {
 			target = a.Target
 		}
@@ -186,15 +186,12 @@ func sendMessage(self, path, to, text string) (string, error) {
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-func requireOrchestrator(s *store.State, self string) error {
+func orchestrator(s *store.State, self string) (*store.Agent, error) {
 	a, err := s.Agent(self)
-	if err != nil {
-		return err
+	if err == nil && a.Role != store.Orchestrator {
+		err = errors.New("only the orchestrator can do this")
 	}
-	if a.Role != store.Orchestrator {
-		return errors.New("only the orchestrator can do this")
-	}
-	return nil
+	return a, err
 }
 
 func createAgent(self, path string, args map[string]string) (string, error) {
@@ -210,22 +207,21 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	spec := profile.Spec
 
 	var root string
 	a := store.Agent{
 		ID: store.NewID(), Name: name, Role: store.Worker,
-		Harness: spec.Harness, Model: spec.Model, Effort: spec.Effort,
+		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort,
 		Activity: store.Busy,
 	}
 	err = store.Update(path, func(s *store.State) error {
-		if err := requireOrchestrator(s, self); err != nil {
+		orch, err := orchestrator(s, self)
+		if err != nil {
 			return err
 		}
 		if _, err := s.Agent(name); err == nil {
 			return fmt.Errorf("an agent named %s already exists", name)
 		}
-		orch, _ := s.Agent(self)
 		root = orch.Dir
 		switch {
 		case args["dir"] != "":
@@ -241,7 +237,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		}
 		s.Agents = append(s.Agents, a)
 		if args["message"] != "" {
-			s.Messages = append(s.Messages, store.Message{ID: store.NewID(), From: self, To: a.ID, Text: args["message"]})
+			s.Messages = append(s.Messages, store.Message{From: self, To: a.ID, Text: args["message"]})
 		}
 		return nil
 	})
@@ -252,7 +248,9 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		err = workspace.AddWorktree(root, a.Dir, a.Branch)
 	}
 	if err == nil {
-		a.Target, err = harness.Launch(a, path, Nudge)
+		if a.Target, err = harness.Launch(a, path, Nudge); err != nil && a.Branch != "" {
+			workspace.RemoveWorktree(root, a.Dir, a.Branch)
+		}
 	}
 	if err != nil {
 		store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
@@ -279,7 +277,8 @@ func removeAgent(self, path, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := requireOrchestrator(&s, self); err != nil {
+	orch, err := orchestrator(&s, self)
+	if err != nil {
 		return "", err
 	}
 	a, err := s.Agent(id)
@@ -290,7 +289,6 @@ func removeAgent(self, path, id string) (string, error) {
 		return "", errors.New("only workers can be removed")
 	}
 	if a.Branch != "" {
-		orch, _ := s.Agent(self)
 		if err := workspace.RemoveWorktree(orch.Dir, a.Dir, a.Branch); err != nil {
 			return "", err
 		}

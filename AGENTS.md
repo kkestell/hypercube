@@ -42,9 +42,9 @@ and change over generalized infrastructure or speculative requirements.
   and stops them all.
 - `hypercube down [dir]` does what `stop` does, then removes each worker's worktree
   and branch and deletes the state file. If any worktree has uncommitted
-  changes or any branch is not merged into the checkout's HEAD, it refuses and
-  changes nothing. It leaves the directories of workers without worktrees
-  alone. `hypercube down --all` lists every workspace with a state file, asks
+  changes, or any branch or worktree's checked-out commit is not merged into
+  the checkout's HEAD, it refuses and changes nothing. It leaves the
+  directories of workers without worktrees alone. `hypercube down --all` lists every workspace with a state file, asks
   for confirmation, and takes each down. A workspace that refuses is reported
   and the rest still go down.
 - `hypercube status` lists every workspace with a state file, most recently
@@ -95,7 +95,7 @@ file's path.
 - `agents`: id, name, role (`orchestrator` or `worker`), harness, model,
   effort, working directory, branch, harness session ID, tmux target, and
   activity (`busy` or `idle`).
-- `messages`: id, sender, recipient, and text. A message is removed when it is
+- `messages`: sender, recipient, and text. A message is removed when it is
   delivered.
 - `no_git`: set when the first `hypercube` creates the orchestrator in a
   directory that is not a Git checkout. Its workers cannot have worktrees. A
@@ -151,7 +151,8 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
   is one of the configured profile names, listed as an enum in the tool's
   schema, and sets the worker's harness, model, and effort. It records the agent as busy and launches its harness in
   a new pane with the nudge as its first prompt. A `message` is queued for the
-  new agent before launch, so the nudge delivers it.
+  new agent before launch, so the nudge delivers it. If the launch fails, the
+  agent and its new worktree and branch are removed.
   - Without `dir`, it creates branch `hypercube/<name>` from `HEAD` in a
     worktree at `<checkout>/.hypercube/<name>`. `/.hypercube/` is listed in
     the checkout's `.git/info/exclude`. Worktrees inside the checkout inherit
@@ -162,9 +163,11 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
     the worker works directly in it, and Hypercube creates no branch or
     worktree. Two workers may share a directory, and `.` is the orchestrator's
     own checkout.
-- `remove_agent(id)`, orchestrator only. For a worker with a worktree it runs
-  `git worktree remove` and `git branch -d`. Git refuses dirty or unmerged
-  work, and that refusal is returned to the orchestrator. It then closes the
+- `remove_agent(id)`, orchestrator only. For a worker with a worktree it
+  refuses, with the reason returned to the orchestrator, if the worktree has
+  uncommitted changes or its branch or checked-out commit is not merged into
+  the orchestrator's HEAD. Otherwise it runs `git worktree remove` and
+  `git branch -D`. It then closes the
   pane and deletes the agent and its queued messages. A worker's directory
   without a worktree is left as it is.
 

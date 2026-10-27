@@ -24,12 +24,6 @@ func git(dir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// IsRepo reports whether dir is inside a Git work tree.
-func IsRepo(dir string) bool {
-	out, err := git(dir, "rev-parse", "--is-inside-work-tree")
-	return err == nil && out == "true"
-}
-
 // Resolve returns dir as an absolute path. A leading ~/ is the home
 // directory, and a relative path is relative to base. dir must be an
 // existing directory.
@@ -117,6 +111,10 @@ func AddWorktree(root, dir, branch string) error {
 	}
 	data, _ := os.ReadFile(exclude)
 	if !slices.Contains(strings.Split(string(data), "\n"), "/.hypercube/") {
+		rule := "/.hypercube/\n"
+		if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
+			rule = "\n" + rule
+		}
 		if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
 			return err
 		}
@@ -124,7 +122,7 @@ func AddWorktree(root, dir, branch string) error {
 		if err != nil {
 			return err
 		}
-		_, err = f.WriteString("/.hypercube/\n")
+		_, err = f.WriteString(rule)
 		f.Close()
 		if err != nil {
 			return err
@@ -134,11 +132,18 @@ func AddWorktree(root, dir, branch string) error {
 	return err
 }
 
-// Removable returns an error if the worktree has uncommitted changes or its
-// branch is not merged into HEAD.
+// Removable returns an error if the worktree has uncommitted changes, or its
+// branch or checked-out commit is not merged into HEAD.
 func Removable(root, dir, branch string) error {
 	if _, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD"); err != nil {
 		return fmt.Errorf("branch %s is not merged into HEAD", branch)
+	}
+	head, err := git(dir, "rev-parse", "HEAD")
+	if err != nil {
+		return err
+	}
+	if _, err := git(root, "merge-base", "--is-ancestor", head, "HEAD"); err != nil {
+		return fmt.Errorf("worktree %s has commits not merged into HEAD", dir)
 	}
 	dirty, err := Dirty(dir)
 	if err != nil {
@@ -158,7 +163,8 @@ func Dirty(dir string) (bool, error) {
 }
 
 // RemoveWorktree removes the worktree and deletes its branch if Removable
-// allows it.
+// allows it. Removable has checked the branch against HEAD, so the deletion
+// ignores the branch's upstream.
 func RemoveWorktree(root, dir, branch string) error {
 	if err := Removable(root, dir, branch); err != nil {
 		return err
@@ -166,6 +172,6 @@ func RemoveWorktree(root, dir, branch string) error {
 	if _, err := git(root, "worktree", "remove", dir); err != nil {
 		return err
 	}
-	_, err := git(root, "branch", "-d", branch)
+	_, err := git(root, "branch", "-D", branch)
 	return err
 }
