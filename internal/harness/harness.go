@@ -20,6 +20,9 @@ var events = []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"}
 //go:embed opencode.js
 var opencodePlugin string
 
+//go:embed pi.js
+var piExtension string
+
 // Command returns the argv and environment that launch an agent's harness.
 // A non-empty prompt starts the first turn.
 func Command(a store.Agent, statePath, prompt string) ([]string, map[string]string, error) {
@@ -101,6 +104,20 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		}
 		return argv, env, nil
 
+	case "pi":
+		extension, err := writePiExtension(exe)
+		if err != nil {
+			return nil, nil, err
+		}
+		argv := []string{"pi", "--extension", extension, "--model", a.Model, "--thinking", a.Effort, "--approve"}
+		if a.SessionID != "" {
+			argv = append(argv, "--session-id", a.SessionID)
+		}
+		if prompt != "" {
+			argv = append(argv, prompt)
+		}
+		return argv, env, nil
+
 	case "ox":
 		env["OX_SETTINGS"] = jsonString(map[string]any{
 			"model": a.Model, "effort": a.Effort, "mode": "auto",
@@ -117,6 +134,18 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		return argv, env, nil
 	}
 	return nil, nil, fmt.Errorf("unknown harness %q", a.Harness)
+}
+
+func writePiExtension(exe string) (string, error) {
+	dir := filepath.Join(store.Dir(), "pi-extension")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "index.js")
+	if err := os.WriteFile(path, []byte(strings.ReplaceAll(piExtension, "HYPERCUBE_EXE", strconv.Quote(exe))), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func jsonString(v any) string {

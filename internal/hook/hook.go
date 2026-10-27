@@ -1,6 +1,5 @@
 // Package hook handles harness hook events. Claude Code and Codex share the
-// response format, which Ox also reads, and the OpenCode plugin reads the same
-// format.
+// response format, which Ox, the OpenCode plugin, and the Pi extension also read.
 package hook
 
 import (

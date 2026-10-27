@@ -1,7 +1,7 @@
 # Hypercube
 
 Hypercube runs a team of local coding agents in tmux. Each agent is a native
-harness TUI (Claude Code, Codex, OpenCode, or Ox) in its own tmux pane. Agents
+harness TUI (Claude Code, Codex, OpenCode, Ox, or Pi) in its own tmux pane. Agents
 message each other through an MCP tool and receive messages through harness
 hooks. One orchestrator works in the original checkout and manages workers.
 A worker either has its own Git worktree or works directly in an existing
@@ -114,13 +114,14 @@ the file, applies the change, and writes it back through a temporary file and
 `orchestrator` sets the orchestrator's harness, model, and effort. `profiles`
 lists the combinations the orchestrator can give workers, each with a unique
 name, a description of when to use it, a harness, a model, and an effort.
-`harness` is `claude`, `codex`, `opencode`, or `ox`. At least one profile is
+`harness` is `claude`, `codex`, `opencode`, `ox`, or `pi`. At least one profile is
 required, and a missing value is an error. `create_agent` takes a profile name
 and launches the worker with exactly that profile's harness, model, and effort.
 `examples/config.json` is a complete example.
 
 Effort is passed through as Claude Code's `--effort`, Codex's
-`model_reasoning_effort`, OpenCode's model variant, and Ox's `effort`.
+`model_reasoning_effort`, OpenCode's model variant, Ox's `effort`, and Pi's
+`--thinking`.
 
 Ox models use its qualified `provider:model` ID, such as
 `openrouter:deepseek/deepseek-v4.1-flash`. Ox rejects a model or effort its
@@ -131,6 +132,11 @@ model `meta/muse-spark-1.3-contributor` is
 `openrouter/meta/muse-spark-1.3-contributor` in Hypercube. The OpenCode plugin
 rejects a different model on the first prompt before delivering queued messages;
 OpenCode otherwise silently falls back to a recent model for unavailable IDs.
+
+Pi models use the full `provider/id`, such as `openai/gpt-6.1-sol` or
+`openrouter/deepseek/deepseek-v4.1-flash-1017`. Pi can fuzzy-match a partial ID
+to another model and passes an unknown ID to the provider, which rejects it
+in the pane.
 
 ## MCP tools
 
@@ -245,9 +251,23 @@ and the resume session ID when one is saved.
   in Claude Code's format. Ox applies them over the user's settings files
   without saving them, and runs SessionStart before the first turn of each
   session in its server process.
+- **Pi:** `pi --extension <path> --model <m> --thinking <e> --approve
+  [--session-id <id>] [prompt]`. `--approve` trusts project-local resources
+  for this launch. Pi asks no tool permissions. The extension is written to
+  `~/.local/state/hypercube/pi-extension/index.js` with the `hypercube` path
+  embedded. It registers the Hypercube MCP server for the session with direct
+  tool exposure and forwards `HYPERCUBE_AGENT_ID`, `HYPERCUBE_STATE`, and
+  `TMUX`. It maps Pi events onto `hypercube hook` calls:
+  - `before_agent_start`: SessionStart on the first run of each session, then
+    UserPromptSubmit on every run. The combined context becomes a visible
+    custom message sent to the model as user text.
+  - `tool_result`: PostToolUse, appended to the tool result. Nested tool calls
+    with `parentToolCallId` are skipped because they never enter the transcript.
+  - `agent_settled`: Stop, after retries, compaction, and queued work finish.
+    A block reason is sent back with `pi.sendUserMessage`, starting a new run.
 
 `hypercube hook` writes the Claude Code response format for every harness.
-Codex and Ox read the same format, and the OpenCode plugin reads
+Codex and Ox read the same format, and the OpenCode plugin and Pi extension read
 `hookSpecificOutput.additionalContext` and `reason`.
 
 ## To verify
@@ -263,7 +283,7 @@ Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 - `workspace`: checkout discovery, worker branches and worktrees, and worker
   directories.
 - `harness`: configuration, launch commands, and hook configuration for each
-  harness, and the OpenCode plugin.
+  harness, the OpenCode plugin, and the Pi extension.
 - `mcp`: the stdio MCP server and tools.
 - `hook`: hook event handling and the runtime facts.
 - `limits`: Claude Code's and Codex's usage limits for the status bar.
@@ -271,8 +291,9 @@ Go. The sole executable is `cmd/hypercube`. Packages under `internal/`:
 ## Smoke testing
 
 For harness smoke tests, use Codex `gpt-6-luna`, Claude `haiku`, OpenCode
-`openrouter/~deepseek/deepseek-flash-latest`, and Ox
-`openrouter:~deepseek/deepseek-flash-latest`.
+`openrouter/~deepseek/deepseek-flash-latest`, Ox
+`openrouter:~deepseek/deepseek-flash-latest`, and Pi
+`openrouter/~deepseek/deepseek-flash-latest`.
 
 When a task is done, stop and destroy every demo or test session it started:
 kill its tmux session or server, and delete its state file, lock file,
