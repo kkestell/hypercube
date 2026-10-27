@@ -26,6 +26,8 @@ const MAX_SOCKET_PATH: usize = 103;
 /// The longest request or reply line.
 const MAX_LINE: u64 = 1 << 20;
 
+const HUNG_UP: &str = "the host closed the connection without a reply";
+
 /// How long a client waits for the host's reply.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -136,7 +138,7 @@ pub fn is_unreachable(error: &(dyn Error + 'static)) -> bool {
 /// An `Err` means the host could not be reached; a refusal is a reply with
 /// `ok` unset.
 pub fn request(socket: &Path, request: &Request) -> Result<Reply> {
-    let mut stream = UnixStream::connect(socket).map_err(|source| -> Box<dyn Error> {
+    let stream = UnixStream::connect(socket).map_err(|source| -> Box<dyn Error> {
         match source.kind() {
             ErrorKind::NotFound | ErrorKind::ConnectionRefused => Box::new(Unreachable {
                 socket: socket.to_path_buf(),
@@ -145,10 +147,33 @@ pub fn request(socket: &Path, request: &Request) -> Result<Reply> {
             _ => format!("connect {}: {source}", socket.display()).into(),
         }
     })?;
-    stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
-    stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
-    write_line(&mut stream, request)?;
-    read_line(&mut stream)?.ok_or_else(|| "the host closed the connection without a reply".into())
+    let exchange = || -> Result<Option<Reply>> {
+        stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
+        stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
+        write_line(&stream, request)?;
+        read_line(&stream)
+    };
+    match exchange() {
+        Ok(Some(reply)) => Ok(reply),
+        Ok(None) => Err(HUNG_UP.into()),
+        // A host that closes the connection early surfaces as one of these,
+        // depending on when the client notices. macOS reports a socket whose
+        // peer has closed as EINVAL on setsockopt.
+        Err(e)
+            if e.downcast_ref::<std::io::Error>().is_some_and(|e| {
+                matches!(
+                    e.kind(),
+                    ErrorKind::BrokenPipe
+                        | ErrorKind::NotConnected
+                        | ErrorKind::ConnectionReset
+                        | ErrorKind::InvalidInput
+                )
+            }) =>
+        {
+            Err(HUNG_UP.into())
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Read the request line from a connection the host accepted. The stream must
@@ -318,11 +343,23 @@ mod tests {
         let socket = dir.path().join("w.sock");
         let err = request(&socket, &Request::Stop).unwrap_err();
         assert!(is_unreachable(&*err));
-        // The file stays behind when its listener goes away.
-        drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
-        let err = request(&socket, &Request::Stop).unwrap_err();
-        assert!(is_unreachable(&*err), "{err}");
         assert!(!is_unreachable(&*Box::<dyn Error>::from("other")));
+
+        // The file stays behind when its listener goes away. A child that
+        // another test spawns at the moment the listener is created inherits
+        // its descriptor and keeps it open for a while, so retry until the
+        // connection is refused.
+        drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
+        let mut last = String::new();
+        for _ in 0..200 {
+            let err = request(&socket, &Request::Stop).unwrap_err();
+            if is_unreachable(&*err) {
+                return;
+            }
+            last = err.to_string();
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("the connection was never refused: {last}");
     }
 
     #[test]
@@ -330,9 +367,19 @@ mod tests {
         let dir = TempDir::new();
         let socket = dir.path().join("w.sock");
         let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
-        std::thread::spawn(move || drop(listener.accept()));
-        let err = request(&socket, &Request::Stop).unwrap_err().to_string();
-        assert!(err.contains("without a reply"), "{err}");
+        // Hang up after the request arrives, then before it is read.
+        let host = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            read_request(&mut stream).unwrap();
+            drop(stream);
+            drop(listener.accept().unwrap());
+        });
+        for _ in 0..2 {
+            let err = request(&socket, &Request::Stop).unwrap_err();
+            assert!(!is_unreachable(&*err));
+            assert_eq!(err.to_string(), HUNG_UP);
+        }
+        host.join().unwrap();
     }
 
     #[test]
