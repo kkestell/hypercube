@@ -9,8 +9,10 @@
 //! harness hook events.
 
 pub mod config;
+pub mod control;
 pub mod harness;
 pub mod hook;
+pub mod mcp;
 pub mod mux;
 pub mod recording;
 pub mod store;
