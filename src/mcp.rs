@@ -299,7 +299,12 @@ impl Server {
                 agent: agent.id.clone(),
             };
             if let Err(e) = self.ask_host(close) {
-                message.push_str(&format!("; closing the pane failed: {e}"));
+                // A pane may be running, so the agent stays for remove_agent.
+                return Err(format!(
+                    "{message}; closing the pane failed: {e}; the agent {} ({}) was kept so remove_agent can clean it up",
+                    agent.name, agent.id
+                )
+                .into());
             }
             if !agent.branch.is_empty()
                 && let Err(e) =
@@ -765,24 +770,44 @@ mod tests {
         testing::serve_lossy(&control::socket_path(&team.state).unwrap(), move |r| {
             if let Request::Launch { .. } = r {
                 fs::write(&state, "{").unwrap();
+                return None;
             }
-            None
+            Some(Reply::ok())
         });
         let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
         assert!(err.contains("without a reply"), "{err}");
-        assert!(err.contains("; closing the pane failed: "), "{err}");
         assert!(err.contains("; removing the agent failed: "), "{err}");
     }
 
     #[test]
-    fn create_agent_rolls_back_when_no_host_is_running() {
+    fn create_agent_keeps_the_agent_when_the_pane_cannot_be_confirmed_closed() {
+        let repo = repo();
+        let team = team(false, repo.path(), None);
+        let seen = testing::serve_lossy(&control::socket_path(&team.state).unwrap(), |_| None);
+        let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
+        let id = team.state().agent("w1").unwrap().id.clone();
+        assert!(err.contains("without a reply"), "{err}");
+        assert!(err.contains("; closing the pane failed: "), "{err}");
+        assert!(
+            err.ends_with(&format!(
+                "the agent w1 ({id}) was kept so remove_agent can clean it up"
+            )),
+            "{err}"
+        );
+        assert!(repo.path().join(".hypercube").join("w1").is_dir());
+        assert!(has_branch(repo.path(), "hypercube/w1"));
+        assert_eq!(seen.lock().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn create_agent_keeps_the_agent_when_no_host_is_running() {
         let repo = repo();
         let team = team(false, repo.path(), None);
         let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
         assert!(err.contains("is hypercube running"), "{err}");
-        assert_eq!(team.state().agents.len(), 1);
-        assert!(!repo.path().join(".hypercube").join("w1").exists());
-        assert!(!has_branch(repo.path(), "hypercube/w1"));
+        assert!(err.contains("was kept so remove_agent"), "{err}");
+        assert_eq!(team.state().agents.len(), 2);
+        assert!(repo.path().join(".hypercube").join("w1").is_dir());
     }
 
     #[test]
@@ -790,7 +815,10 @@ mod tests {
         let repo = repo();
         let other = TempDir::new();
         let team = team(false, repo.path(), None);
-        team.host(|_| Reply::error("no"));
+        team.host(|r| match r {
+            Request::Launch { .. } => Reply::error("no"),
+            _ => Reply::ok(),
+        });
         let dir = other.path().to_str().unwrap();
         team.error(
             "create_agent",
