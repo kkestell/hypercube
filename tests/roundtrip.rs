@@ -7,7 +7,7 @@ mod fuzz;
 #[path = "support/screen.rs"]
 mod screen;
 use hypercube::{
-    mux::{self, Mux, Winsize},
+    mux::{self, Mux, NoChrome, Rect, Winsize},
     recording::{Reader, Record, Size},
 };
 use libghostty_vt::Terminal;
@@ -87,24 +87,27 @@ fn escaped(bytes: &[u8]) -> String {
 }
 fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
     let replies = host_replies();
-    let mut m = Mux::new(winsize(initial), &["test"]).unwrap();
+    let mut m = Mux::new(winsize(initial), Box::new(NoChrome));
     m.use_host_replies(&replies).unwrap();
+    let id = m.add_pane("test").unwrap();
+    m.set_layout(&[(id, Rect::full(winsize(initial)))]).unwrap();
     let mut twin = term(initial, &replies);
     let mut host = term(initial, &replies);
     host.vt_write(b"\x1b[?1049h\x1b[2J");
     for (i, r) in records.iter().enumerate() {
         match r {
             Input::Output(data) => {
-                m.panes[0].feed(data);
+                m.pane_mut(id).unwrap().feed(data);
                 twin.vt_write(data);
             }
             Input::Size(s) => {
                 host.resize(s.cols, s.rows, 0, 0).unwrap();
                 twin.resize(s.cols, s.rows, 0, 0).unwrap();
-                m.resize(winsize(*s)).unwrap();
+                m.resize(winsize(*s));
+                m.set_layout(&[(id, Rect::full(winsize(*s)))]).unwrap();
             }
         }
-        if m.panes[0].held() {
+        if m.pane(id).unwrap().held() {
             continue;
         }
         if let Some(diff) = frame(&mut m, &twin, &mut host) {
@@ -119,7 +122,7 @@ fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
             ));
         }
     }
-    m.panes[0].set_held(false);
+    m.pane(id).unwrap().set_held(false);
     frame(&mut m, &twin, &mut host).map(|diff| format!("{label}: after the final frame\n{diff}"))
 }
 /// Merge output between resizes, then randomly split it.
