@@ -130,8 +130,9 @@ fn shell_quote(s: &str) -> String {
 }
 
 /// Write the Pi extension, with the executable path embedded, to the state
-/// directory and return its path. A current copy is left alone, so a harness
-/// starting meanwhile never reads a half-written file.
+/// directory and return its path. The file is renamed into place, so a harness
+/// starting meanwhile never reads a half-written copy, and a current copy is
+/// left alone.
 fn write_pi_extension(exe: &str, state_path: &Path) -> Result<PathBuf> {
     let dir = state_path
         .parent()
@@ -141,7 +142,9 @@ fn write_pi_extension(exe: &str, state_path: &Path) -> Result<PathBuf> {
     let path = dir.join("index.js");
     let source = PI_EXTENSION.replace("HYPERCUBE_EXE", &Value::from(exe).to_string());
     if std::fs::read_to_string(&path).ok().as_deref() != Some(&source) {
-        std::fs::write(&path, source).map_err(|e| format!("write {}: {e}", path.display()))?;
+        let temp = dir.join(format!("index.js.{}.tmp", std::process::id()));
+        std::fs::write(&temp, source).map_err(|e| format!("write {}: {e}", temp.display()))?;
+        std::fs::rename(&temp, &path).map_err(|e| format!("rename {}: {e}", temp.display()))?;
     }
     Ok(path)
 }
@@ -296,6 +299,9 @@ mod tests {
         let l = launch(&state, &agent("pi", "s1"), NUDGE);
         assert_eq!(l.argv, [&base[..], &["--session-id", "s1", NUDGE]].concat());
 
+        let l = launch(&state, &agent("pi", "s1"), "");
+        assert_eq!(l.argv, [&base[..], &["--session-id", "s1"]].concat());
+
         let source = std::fs::read_to_string(&extension).unwrap();
         assert!(!source.contains("HYPERCUBE_EXE"), "unreplaced placeholder");
         assert!(
@@ -317,6 +323,11 @@ mod tests {
             std::fs::metadata(&extension).unwrap().modified().unwrap(),
             first
         );
+        let names: Vec<_> = std::fs::read_dir(extension.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["index.js"], "a temporary file remains");
 
         command(Path::new("/other/hypercube"), &a, &state, "").unwrap();
         let source = std::fs::read_to_string(&extension).unwrap();

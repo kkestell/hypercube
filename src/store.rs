@@ -5,6 +5,7 @@
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Deserializer, Serialize};
@@ -109,21 +110,34 @@ fn lock_path(path: &Path) -> PathBuf {
 }
 
 /// Open the state file's lock and hold it exclusively until the file is
-/// dropped.
+/// dropped. `delete` unlinks the lock file, so a lock obtained on a file that
+/// is no longer at the path is released and the current file locked instead.
 fn lock(path: &Path) -> Result<File> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     }
     let lock_path = lock_path(path);
-    let lock = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(&lock_path)
-        .map_err(|e| format!("open {}: {e}", lock_path.display()))?;
-    lock.lock()
-        .map_err(|e| format!("lock {}: {e}", lock_path.display()))?;
-    Ok(lock)
+    loop {
+        let lock = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&lock_path)
+            .map_err(|e| format!("open {}: {e}", lock_path.display()))?;
+        lock.lock()
+            .map_err(|e| format!("lock {}: {e}", lock_path.display()))?;
+        let held = lock
+            .metadata()
+            .map_err(|e| format!("stat {}: {e}", lock_path.display()))?;
+        match fs::metadata(&lock_path) {
+            Ok(current) if (current.dev(), current.ino()) == (held.dev(), held.ino()) => {
+                return Ok(lock);
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => {}
+            Err(e) => return Err(format!("stat {}: {e}", lock_path.display()).into()),
+        }
+    }
 }
 
 /// Remove the state file and its lock. Waits for any update in progress.
@@ -414,6 +428,46 @@ mod tests {
         deleter.join().unwrap();
         assert!(!path.exists());
         assert!(!lock_path(&path).exists());
+    }
+
+    #[test]
+    fn a_lock_waiting_during_delete_moves_to_the_replacement() {
+        let dir = TempDir::new();
+        let path = dir.path().join("w.json");
+        let first = lock(&path).unwrap();
+
+        let (locked_tx, locked_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let waiter = {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                update(&path, |_| {
+                    locked_tx.send(()).unwrap();
+                    release_rx.recv().unwrap();
+                    Ok(())
+                })
+                .unwrap();
+            })
+        };
+        // The waiter blocks on the lock file that delete unlinks.
+        std::thread::sleep(Duration::from_millis(100));
+        fs::remove_file(lock_path(&path)).unwrap();
+        drop(first);
+        locked_rx.recv().unwrap();
+
+        let replacement = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(lock_path(&path))
+            .unwrap();
+        assert!(
+            matches!(replacement.try_lock(), Err(fs::TryLockError::WouldBlock)),
+            "an update holds a lock file that is no longer at the path"
+        );
+        release_tx.send(()).unwrap();
+        waiter.join().unwrap();
+        replacement.lock().unwrap();
     }
 
     #[test]
