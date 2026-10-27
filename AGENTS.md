@@ -117,16 +117,7 @@ name, a description of when to use it, a harness, a model, and an effort.
 `harness` is `claude`, `codex`, `opencode`, or `ox`. At least one profile is
 required, and a missing value is an error. `create_agent` takes a profile name
 and launches the worker with exactly that profile's harness, model, and effort.
-
-```json
-{
-  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [
-    {"name": "sol", "description": "Coding.", "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"},
-    {"name": "flash", "description": "Light tasks; very fast.", "harness": "opencode", "model": "openrouter/deepseek/deepseek-v4.1-flash", "effort": "high"}
-  ]
-}
-```
+`examples/config.json` is a complete example.
 
 Effort is passed through as Claude Code's `--effort`, Codex's
 `model_reasoning_effort`, OpenCode's model variant, and Ox's `effort`.
