@@ -14,12 +14,17 @@ type Spec struct {
 	Effort  string `json:"effort"`
 }
 
+// Profile is a named spec the orchestrator can give a worker. The
+// description tells the orchestrator when to use it.
+type Profile struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Spec
+}
+
 type Config struct {
-	Orchestrator Spec `json:"orchestrator"`
-	Worker       Spec `json:"worker"`
-	// Models describes the models the orchestrator can give workers. It is
-	// free text, shown to the orchestrator as written.
-	Models string `json:"models"`
+	Orchestrator Spec      `json:"orchestrator"`
+	Profiles     []Profile `json:"profiles"`
 }
 
 func configPath() string {
@@ -42,12 +47,38 @@ func LoadConfig() (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	for role, s := range map[string]Spec{"orchestrator": c.Orchestrator, "worker": c.Worker} {
-		if err := s.check(); err != nil {
-			return c, fmt.Errorf("%s: %s: %w", path, role, err)
+	if err := c.Orchestrator.check(); err != nil {
+		return c, fmt.Errorf("%s: orchestrator: %w", path, err)
+	}
+	if len(c.Profiles) == 0 {
+		return c, fmt.Errorf("%s: missing profiles", path)
+	}
+	seen := map[string]bool{}
+	for i, p := range c.Profiles {
+		switch {
+		case p.Name == "":
+			return c, fmt.Errorf("%s: profile %d: missing name", path, i+1)
+		case seen[p.Name]:
+			return c, fmt.Errorf("%s: duplicate profile %q", path, p.Name)
+		case p.Description == "":
+			return c, fmt.Errorf("%s: profile %q: missing description", path, p.Name)
 		}
+		if err := p.check(); err != nil {
+			return c, fmt.Errorf("%s: profile %q: %w", path, p.Name, err)
+		}
+		seen[p.Name] = true
 	}
 	return c, nil
+}
+
+// Profile returns the profile with the given name.
+func (c Config) Profile(name string) (Profile, error) {
+	for _, p := range c.Profiles {
+		if p.Name == name {
+			return p, nil
+		}
+	}
+	return Profile{}, fmt.Errorf("no profile named %q", name)
 }
 
 func (s Spec) check() error {

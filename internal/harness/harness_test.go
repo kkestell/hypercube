@@ -139,3 +139,29 @@ func TestCodexTrustOutsideGit(t *testing.T) {
 		t.Errorf("argv lacks %s: %q", want, argv)
 	}
 }
+
+func TestLoadConfigProfiles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
+	const orch = `"orchestrator": {"harness": "claude", "model": "opus", "effort": "high"}`
+	const sol = `{"name": "sol", "description": "coding.", "harness": "codex", "model": "gpt-6.1-sol", "effort": "high"}`
+	for profiles, ok := range map[string]bool{
+		`[` + sol + `]`:             true,
+		`[]`:                        false,
+		`[` + sol + `,` + sol + `]`: false,
+		`[{"name": "sol", "harness": "codex", "model": "gpt-6.1-sol", "effort": "high"}]`:                         false,
+		`[{"name": "sol", "description": "coding.", "harness": "gpt", "model": "gpt-6.1-sol", "effort": "high"}]`: false,
+	} {
+		os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{`+orch+`, "profiles": `+profiles+`}`), 0o644)
+		c, err := LoadConfig()
+		if (err == nil) != ok {
+			t.Errorf("profiles %s: err = %v", profiles, err)
+		}
+		if ok {
+			if p, err := c.Profile("sol"); err != nil || p.Model != "gpt-6.1-sol" {
+				t.Errorf("Profile(sol) = %+v, %v", p, err)
+			}
+		}
+	}
+}

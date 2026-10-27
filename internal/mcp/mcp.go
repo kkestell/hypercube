@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"slices"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -40,35 +39,35 @@ func schema(required []string, props ...string) map[string]any {
 	return map[string]any{"type": "object", "properties": p, "required": required}
 }
 
-var tools = []tool{
-	{"send_message", "Send a message to another agent by ID or name.", schema([]string{"to", "text"}, "to", "text")},
-	{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
-	{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + " " + createDefaults,
-		schema([]string{"name"}, "name", "dir", "harness", "model", "effort", "message")},
-	{"remove_agent", "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"id"}, "id")},
-}
-
 const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it, and Hypercube creates no branch or worktree."
 
-const createDefaults = "Harness, model, and effort default to the configured worker defaults. OpenCode requires its full provider/model ID, for example openrouter/meta/muse-spark-1.3-contributor. An optional message is queued for the worker before it starts."
+const profileArg = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts."
 
-// toolsFor returns the tools for the workspace's mode. Outside Git, workers
-// cannot have worktrees, so create_agent requires dir.
-func toolsFor(s store.State) []tool {
-	if !s.NoGit {
-		return tools
+// toolsFor returns the tools for the workspace's mode and the configured
+// profiles. Outside Git, workers cannot have worktrees, so create_agent
+// requires dir.
+func toolsFor(s store.State, profiles []harness.Profile) []tool {
+	create := tool{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + " " + profileArg,
+		schema([]string{"name", "profile"}, "name", "profile", "dir", "message")}
+	remove := tool{"remove_agent", "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"id"}, "id")}
+	if s.NoGit {
+		create = tool{create.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + " " + profileArg,
+			schema([]string{"name", "profile", "dir"}, "name", "profile", "dir", "message")}
+		remove.Description = "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is."
 	}
-	list := slices.Clone(tools)
-	for i, t := range list {
-		switch t.Name {
-		case "create_agent":
-			list[i] = tool{t.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + " " + createDefaults,
-				schema([]string{"name", "dir"}, "name", "dir", "harness", "model", "effort", "message")}
-		case "remove_agent":
-			list[i].Description = "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is."
+	if len(profiles) > 0 {
+		var names []string
+		for _, p := range profiles {
+			names = append(names, p.Name)
 		}
+		create.InputSchema["properties"].(map[string]any)["profile"] = map[string]any{"type": "string", "enum": names}
 	}
-	return list
+	return []tool{
+		{"send_message", "Send a message to another agent by ID or name.", schema([]string{"to", "text"}, "to", "text")},
+		{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
+		create,
+		remove,
+	}
 }
 
 // Serve answers MCP requests on stdin until it closes.
@@ -98,10 +97,11 @@ func Serve(stdin io.Reader, stdout io.Writer) error {
 				"serverInfo":      map[string]any{"name": "hypercube", "version": "0.1.0"},
 			}
 		case "tools/list":
-			// An unreadable state fails every tool call, so it needs no
-			// separate error here.
+			// An unreadable state or configuration fails the tool calls that
+			// need it, so it needs no separate error here.
 			s, _ := store.Load(path)
-			result = map[string]any{"tools": toolsFor(s)}
+			cfg, _ := harness.LoadConfig()
+			result = map[string]any{"tools": toolsFor(s, cfg.Profiles)}
 		case "tools/call":
 			var p struct {
 				Name      string            `json:"name"`
@@ -206,16 +206,11 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	spec := cfg.Worker
-	if args["harness"] != "" {
-		spec.Harness = args["harness"]
+	profile, err := cfg.Profile(args["profile"])
+	if err != nil {
+		return "", err
 	}
-	if args["model"] != "" {
-		spec.Model = args["model"]
-	}
-	if args["effort"] != "" {
-		spec.Effort = args["effort"]
-	}
+	spec := profile.Spec
 
 	var root string
 	a := store.Agent{

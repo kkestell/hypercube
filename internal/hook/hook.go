@@ -48,15 +48,15 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		}
 		switch event {
 		case "SessionStart":
-			var models string
+			var profiles []harness.Profile
 			if a.Role == store.Orchestrator {
 				cfg, err := harness.LoadConfig()
 				if err != nil {
 					return err
 				}
-				models = cfg.Models
+				profiles = cfg.Profiles
 			}
-			resp = context(event, facts(s, a, models))
+			resp = context(event, facts(s, a, profiles))
 		case "UserPromptSubmit":
 			// Claude Code saves no conversation until the first prompt, so a
 			// session ID recorded earlier may not be resumable.
@@ -105,8 +105,8 @@ func format(s *store.State, messages []store.Message) string {
 }
 
 // facts describes the agent's place in the team. The orchestrator also gets
-// the configured models text.
-func facts(s *store.State, a *store.Agent, models string) string {
+// the configured worker profiles.
+func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
@@ -115,11 +115,11 @@ func facts(s *store.State, a *store.Agent, models string) string {
 	}
 	b.WriteString(messageTools)
 	if s.NoGit {
-		b.WriteString(`- create_agent(name, dir, harness?, model?, effort?, message?) creates a worker that works directly in dir, ` + dirArg + ` Hypercube creates no branch or worktree. The optional message is delivered on the worker's first turn. Orchestrator only.
+		b.WriteString(`- create_agent(name, profile, dir, message?) creates a worker that works directly in dir, ` + dirArg + ` Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. Its directory is left as it is. Orchestrator only.
 `)
 	} else {
-		b.WriteString(`- create_agent(name, dir?, harness?, model?, effort?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. The optional message is delivered on the worker's first turn. Orchestrator only.
+		b.WriteString(`- create_agent(name, profile, dir?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is. Orchestrator only.
 `)
 	}
@@ -128,12 +128,12 @@ func facts(s *store.State, a *store.Agent, models string) string {
 		b.WriteString(`
 Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout, and Hypercube creates no branches or worktrees. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
-		writeTeamwork(&b, models)
+		writeTeamwork(&b, profiles)
 	case a.Role == store.Orchestrator:
 		b.WriteString(`
 You work in the original checkout. Unless the user says otherwise, give a worker its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then remove the worker when its work is merged. A worker that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and remove it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the worker how to handle branches and commits there. Workers given the same directory share one checkout. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
-		writeTeamwork(&b, models)
+		writeTeamwork(&b, profiles)
 	case a.Branch != "":
 		b.WriteString(`
 Commit your work on your branch. The orchestrator merges it from its checkout.` + reportBack)
@@ -163,13 +163,14 @@ Hypercube MCP tools:
 `
 
 // writeTeamwork writes the orchestrator's guidance on parallel work and the
-// configured models text.
-func writeTeamwork(b *strings.Builder, models string) {
+// configured worker profiles.
+func writeTeamwork(b *strings.Builder, profiles []harness.Profile) {
 	b.WriteString(`
 Run tasks that change the same subsystem one after another; run only independent work in parallel.
+
+Worker profiles. Pass the name of the one that fits the task to create_agent as profile:
 `)
-	if models != "" {
-		b.WriteString("\nModels for workers. Pass the harness, model, and effort of the one that fits the task to create_agent:\n")
-		b.WriteString(strings.TrimRight(models, "\n") + "\n")
+	for _, p := range profiles {
+		fmt.Fprintf(b, "- %s (%s, %s, %s): %s\n", p.Name, p.Harness, p.Model, p.Effort, p.Description)
 	}
 }

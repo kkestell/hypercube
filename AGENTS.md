@@ -111,17 +111,20 @@ the file, applies the change, and writes it back through a temporary file and
 ## Configuration
 
 `~/.config/hypercube/config.json` (`XDG_CONFIG_HOME` overrides the parent).
-The orchestrator and the worker defaults each need a harness, model, and effort.
-`harness` is `claude`, `codex`, `opencode`, or `ox`. A missing value is an error. `create_agent` uses the worker defaults unless the
-orchestrator passes its own. The optional `models` text describes the models the
-orchestrator can give workers and when to use each. It is free text, added as
-written to the orchestrator's SessionStart context.
+`orchestrator` sets the orchestrator's harness, model, and effort. `profiles`
+lists the combinations the orchestrator can give workers, each with a unique
+name, a description of when to use it, a harness, a model, and an effort.
+`harness` is `claude`, `codex`, `opencode`, or `ox`. At least one profile is
+required, and a missing value is an error. `create_agent` takes a profile name
+and launches the worker with exactly that profile's harness, model, and effort.
 
 ```json
 {
   "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "worker": {"harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"},
-  "models": "- harness codex, model gpt-6.1-sol, effort medium: coding.\n- harness opencode, model openrouter/deepseek/deepseek-v4.1-flash, effort high: light tasks; very fast.\n"
+  "profiles": [
+    {"name": "sol", "description": "Coding.", "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"},
+    {"name": "flash", "description": "Light tasks; very fast.", "harness": "opencode", "model": "openrouter/deepseek/deepseek-v4.1-flash", "effort": "high"}
+  ]
 }
 ```
 
@@ -144,8 +147,9 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
   idle.
 - `list_agents()` returns the team: id, name, role, harness, activity,
   directory, and branch.
-- `create_agent(name, dir?, harness?, model?, effort?, message?)`,
-  orchestrator only. It records the agent as busy and launches its harness in
+- `create_agent(name, profile, dir?, message?)`, orchestrator only. `profile`
+  is one of the configured profile names, listed as an enum in the tool's
+  schema, and sets the worker's harness, model, and effort. It records the agent as busy and launches its harness in
   a new pane with the nudge as its first prompt. A `message` is queued for the
   new agent before launch, so the nudge delivers it.
   - Without `dir`, it creates branch `hypercube/<name>` from `HEAD` in a
@@ -180,7 +184,8 @@ tmux nudge only prompts an idle agent to run a turn.
   workspace the facts describe only directory workers. The orchestrator is
   told to instruct each directory worker how to handle branches and commits,
   and such a worker is told to follow those instructions. The orchestrator
-  also gets the configured `models` text.
+  also gets the configured profiles: each one's name, harness, model, effort,
+  and description.
 - **UserPromptSubmit:** records the harness session ID, marks the agent busy,
   and returns queued messages as additional context. Claude Code saves no
   conversation until the first prompt, so an ID from SessionStart may not

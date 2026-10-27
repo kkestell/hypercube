@@ -6,26 +6,29 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
 func TestToolsFor(t *testing.T) {
-	if got := toolsFor(store.State{}); &got[0] != &tools[0] {
-		t.Error("toolsFor changed the tools of a Git workspace")
-	}
-	required := func(list []tool) []string {
+	create := func(list []tool) tool {
 		for _, tl := range list {
 			if tl.Name == "create_agent" {
-				return tl.InputSchema["required"].([]string)
+				return tl
 			}
 		}
-		return nil
+		return tool{}
 	}
-	if req := required(toolsFor(store.State{NoGit: true})); !slices.Equal(req, []string{"name", "dir"}) {
+	profiles := []harness.Profile{{Name: "sol"}, {Name: "haiku"}}
+	git := create(toolsFor(store.State{}, profiles)).InputSchema
+	if req := git["required"].([]string); !slices.Equal(req, []string{"name", "profile"}) {
+		t.Errorf("in Git, create_agent requires %q", req)
+	}
+	if enum := git["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]string), []string{"sol", "haiku"}) {
+		t.Errorf("profile enum = %v", enum)
+	}
+	if req := create(toolsFor(store.State{NoGit: true}, profiles)).InputSchema["required"].([]string); !slices.Equal(req, []string{"name", "profile", "dir"}) {
 		t.Errorf("outside Git, create_agent requires %q", req)
-	}
-	if req := required(tools); !slices.Equal(req, []string{"name"}) {
-		t.Errorf("toolsFor changed the shared tools: create_agent requires %q", req)
 	}
 }
 
@@ -39,7 +42,7 @@ func team(t *testing.T, noGit bool, orchDir, workerDir string) string {
 	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
 	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
   "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "worker": {"harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"}
+  "profiles": [{"name": "sol", "description": "coding.", "harness": "codex", "model": "gpt-6.1-sol", "effort": "medium"}]
 }`), 0o644)
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {
@@ -55,7 +58,7 @@ func team(t *testing.T, noGit bool, orchDir, workerDir string) string {
 
 func TestCreateAgentNoGit(t *testing.T) {
 	path := team(t, true, t.TempDir(), "")
-	for _, args := range []map[string]string{{"name": "w1"}, {"name": "w1", "dir": "missing"}} {
+	for _, args := range []map[string]string{{"name": "w1", "profile": "sol"}, {"name": "w1", "profile": "sol", "dir": "missing"}, {"name": "w1", "dir": "."}, {"name": "w1", "profile": "nope", "dir": "."}} {
 		if _, err := createAgent("a", path, args); err == nil {
 			t.Errorf("createAgent(%v) succeeded", args)
 		}
