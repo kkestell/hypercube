@@ -282,8 +282,11 @@ impl Server {
         if !agent.branch.is_empty()
             && let Err(e) = workspace::add_worktree(&root, Path::new(&agent.dir), &agent.branch)
         {
-            self.forget(&agent.id);
-            return Err(e);
+            let mut message = e.to_string();
+            if let Err(e) = self.forget(&agent.id) {
+                message.push_str(&format!("; removing the agent failed: {e}"));
+            }
+            return Err(message.into());
         }
         let launch = Request::Launch {
             agent: agent.id.clone(),
@@ -291,13 +294,22 @@ impl Server {
         };
         if let Err(e) = self.ask_host(launch) {
             let mut message = e.to_string();
+            // The host may have launched the agent before the failure.
+            let close = Request::Close {
+                agent: agent.id.clone(),
+            };
+            if let Err(e) = self.ask_host(close) {
+                message.push_str(&format!("; closing the pane failed: {e}"));
+            }
             if !agent.branch.is_empty()
                 && let Err(e) =
                     workspace::remove_worktree(&root, Path::new(&agent.dir), &agent.branch)
             {
                 message.push_str(&format!("; removing the worktree failed: {e}"));
             }
-            self.forget(&agent.id);
+            if let Err(e) = self.forget(&agent.id) {
+                message.push_str(&format!("; removing the agent failed: {e}"));
+            }
             return Err(message.into());
         }
         Ok(if agent.branch.is_empty() {
@@ -310,12 +322,12 @@ impl Server {
         })
     }
 
-    /// Delete an agent and its queued messages after a failed creation.
-    fn forget(&self, id: &str) {
-        let _ = store::update(&self.state, |s| {
+    /// Delete an agent and its queued messages.
+    fn forget(&self, id: &str) -> Result<()> {
+        store::update(&self.state, |s| {
             s.remove(id);
             Ok(())
-        });
+        })
     }
 
     fn remove_agent(&self, id: &str) -> Result<String> {
@@ -325,18 +337,15 @@ impl Server {
         if agent.role != store::WORKER {
             return Err("only workers can be removed".into());
         }
-        let dir = Path::new(&agent.dir);
+        // The worktree goes first, so a refusal from Git leaves the pane open.
         if !agent.branch.is_empty() {
-            workspace::removable(&root, dir, &agent.branch)?;
+            workspace::remove_worktree(&root, Path::new(&agent.dir), &agent.branch)?;
         }
         self.ask_host(Request::Close {
             agent: agent.id.clone(),
         })
         .map_err(|e| format!("closing the pane of {}: {e}", agent.name))?;
-        if !agent.branch.is_empty() {
-            workspace::remove_worktree(&root, dir, &agent.branch)?;
-        }
-        self.forget(&agent.id);
+        self.forget(&agent.id)?;
         Ok(format!("Removed {} ({}).", agent.name, agent.id))
     }
 }
@@ -701,7 +710,10 @@ mod tests {
     fn create_agent_rolls_back_when_the_host_refuses_the_launch() {
         let repo = repo();
         let team = team(false, repo.path(), None);
-        let seen = team.host(|_| Reply::error("no room for another pane"));
+        let seen = team.host(|r| match r {
+            Request::Launch { .. } => Reply::error("no room for another pane"),
+            _ => Reply::ok(),
+        });
         let err = team.error(
             "create_agent",
             &[("name", "w1"), ("profile", "sol"), ("message", "do it")],
@@ -713,7 +725,53 @@ mod tests {
         assert!(state.messages.is_empty());
         assert!(!repo.path().join(".hypercube").join("w1").exists());
         assert!(!has_branch(repo.path(), "hypercube/w1"));
-        assert_eq!(seen.lock().unwrap().len(), 1);
+        let seen = seen.lock().unwrap();
+        let [
+            Request::Launch { agent, .. },
+            Request::Close { agent: closed },
+        ] = &seen[..]
+        else {
+            panic!("{seen:?}");
+        };
+        assert_eq!(agent, closed);
+    }
+
+    #[test]
+    fn create_agent_closes_the_pane_of_a_launch_whose_reply_was_lost() {
+        let repo = repo();
+        let team = team(false, repo.path(), None);
+        let seen = testing::serve_lossy(&control::socket_path(&team.state).unwrap(), |r| match r {
+            Request::Launch { .. } => None,
+            _ => Some(Reply::ok()),
+        });
+        let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
+        assert!(err.contains("without a reply"), "{err}");
+        assert!(!err.contains("closing the pane failed"), "{err}");
+        let seen = seen.lock().unwrap();
+        assert!(matches!(
+            &seen[..],
+            [Request::Launch { .. }, Request::Close { .. }]
+        ));
+        assert_eq!(team.state().agents.len(), 1);
+        assert!(!repo.path().join(".hypercube").join("w1").exists());
+        assert!(!has_branch(repo.path(), "hypercube/w1"));
+    }
+
+    #[test]
+    fn create_agent_reports_what_the_rollback_could_not_undo() {
+        let repo = repo();
+        let team = team(false, repo.path(), None);
+        let state = team.state.clone();
+        testing::serve_lossy(&control::socket_path(&team.state).unwrap(), move |r| {
+            if let Request::Launch { .. } = r {
+                fs::write(&state, "{").unwrap();
+            }
+            None
+        });
+        let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
+        assert!(err.contains("without a reply"), "{err}");
+        assert!(err.contains("; closing the pane failed: "), "{err}");
+        assert!(err.contains("; removing the agent failed: "), "{err}");
     }
 
     #[test]
@@ -926,6 +984,46 @@ mod tests {
         let err = team.error("remove_agent", &[("id", "w1")]);
         assert_eq!(err, "closing the pane of w1: no such pane");
         assert_eq!(team.state().agents.len(), 2);
+    }
+
+    #[test]
+    fn remove_agent_reports_a_state_it_could_not_update() {
+        let team = team(false, Path::new("/o"), Some(Path::new("/w")));
+        let state = team.state.clone();
+        team.host(move |_| {
+            fs::write(&state, "{").unwrap();
+            Reply::ok()
+        });
+        let err = team.error("remove_agent", &[("id", "w1")]);
+        assert!(err.contains("parse"), "{err}");
+    }
+
+    #[test]
+    fn remove_agent_keeps_the_pane_when_git_refuses_the_worktree() {
+        let repo = repo();
+        let team = team(false, repo.path(), None);
+        let seen = team.host(|_| Reply::ok());
+        team.call("create_agent", &[("name", "w1"), ("profile", "sol")])
+            .unwrap();
+        let worktree = repo.path().join(".hypercube").join("w1");
+        git(
+            repo.path(),
+            &["worktree", "lock", worktree.to_str().unwrap()],
+        );
+
+        let err = team.error("remove_agent", &[("id", "w1")]);
+        assert!(err.contains("locked"), "{err}");
+        assert_eq!(team.state().agents.len(), 2);
+        assert!(worktree.is_dir());
+        assert_eq!(seen.lock().unwrap().len(), 1, "only the launch");
+
+        git(
+            repo.path(),
+            &["worktree", "unlock", worktree.to_str().unwrap()],
+        );
+        team.call("remove_agent", &[("id", "w1")]).unwrap();
+        assert_eq!(team.state().agents.len(), 1);
+        assert!(!worktree.exists());
     }
 
     #[test]

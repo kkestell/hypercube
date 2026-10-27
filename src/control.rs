@@ -167,6 +167,15 @@ pub mod testing {
         socket: &Path,
         reply: impl Fn(&Request) -> Reply + Send + 'static,
     ) -> Arc<Mutex<Vec<Request>>> {
+        serve_lossy(socket, move |r| Some(reply(r)))
+    }
+
+    /// Like `serve`, but a request answered with `None` is dropped without a
+    /// reply.
+    pub fn serve_lossy(
+        socket: &Path,
+        reply: impl Fn(&Request) -> Option<Reply> + Send + 'static,
+    ) -> Arc<Mutex<Vec<Request>>> {
         let listener = UnixListener::bind(socket).unwrap();
         let seen = Arc::new(Mutex::new(Vec::new()));
         let log = Arc::clone(&seen);
@@ -176,7 +185,9 @@ pub mod testing {
                 let request = read_request(&mut stream).unwrap();
                 let answer = reply(&request);
                 log.lock().unwrap().push(request);
-                write_reply(&mut stream, &answer).unwrap();
+                if let Some(answer) = answer {
+                    write_reply(&mut stream, &answer).unwrap();
+                }
             }
         });
         seen
