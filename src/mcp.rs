@@ -184,6 +184,17 @@ impl Server {
         control::request(&self.socket()?, &request)?.into_result()
     }
 
+    /// Ask the host to close an agent's pane. With no host there are no
+    /// panes, so that counts as closed.
+    fn close_pane(&self, agent: &str) -> Result<()> {
+        match self.ask_host(Request::Close {
+            agent: agent.into(),
+        }) {
+            Err(e) if control::is_unreachable(&*e) => Ok(()),
+            result => result,
+        }
+    }
+
     fn list_agents(&self) -> Result<String> {
         #[derive(Serialize)]
         struct Entry<'a> {
@@ -295,10 +306,7 @@ impl Server {
         if let Err(e) = self.ask_host(launch) {
             let mut message = e.to_string();
             // The host may have launched the agent before the failure.
-            let close = Request::Close {
-                agent: agent.id.clone(),
-            };
-            if let Err(e) = self.ask_host(close) {
+            if let Err(e) = self.close_pane(&agent.id) {
                 // A pane may be running, so the agent stays for remove_agent.
                 return Err(format!(
                     "{message}; closing the pane failed: {e}; the agent {} ({}) was kept so remove_agent can clean it up",
@@ -346,10 +354,8 @@ impl Server {
         if !agent.branch.is_empty() {
             workspace::remove_worktree(&root, Path::new(&agent.dir), &agent.branch)?;
         }
-        self.ask_host(Request::Close {
-            agent: agent.id.clone(),
-        })
-        .map_err(|e| format!("closing the pane of {}: {e}", agent.name))?;
+        self.close_pane(&agent.id)
+            .map_err(|e| format!("closing the pane of {}: {e}", agent.name))?;
         self.forget(&agent.id)?;
         Ok(format!("Removed {} ({}).", agent.name, agent.id))
     }
@@ -800,14 +806,34 @@ mod tests {
     }
 
     #[test]
-    fn create_agent_keeps_the_agent_when_no_host_is_running() {
+    fn create_agent_rolls_back_when_no_host_is_running() {
         let repo = repo();
         let team = team(false, repo.path(), None);
         let err = team.error("create_agent", &[("name", "w1"), ("profile", "sol")]);
         assert!(err.contains("is hypercube running"), "{err}");
-        assert!(err.contains("was kept so remove_agent"), "{err}");
-        assert_eq!(team.state().agents.len(), 2);
-        assert!(repo.path().join(".hypercube").join("w1").is_dir());
+        assert!(!err.contains("kept"), "{err}");
+        assert_eq!(team.state().agents.len(), 1);
+        assert!(!repo.path().join(".hypercube").join("w1").exists());
+        assert!(!has_branch(repo.path(), "hypercube/w1"));
+    }
+
+    #[test]
+    fn remove_agent_works_when_no_host_is_running() {
+        let repo = repo();
+        let other = TempDir::new();
+        let team = team(false, repo.path(), Some(other.path()));
+        let seen = team.host(|_| Reply::ok());
+        team.call("create_agent", &[("name", "w2"), ("profile", "sol")])
+            .unwrap();
+        assert_eq!(seen.lock().unwrap().len(), 1);
+        // The host goes away.
+        fs::remove_file(control::socket_path(&team.state).unwrap()).unwrap();
+
+        team.call("remove_agent", &[("id", "w1")]).unwrap();
+        team.call("remove_agent", &[("id", "w2")]).unwrap();
+        assert_eq!(team.state().agents.len(), 1);
+        assert!(!repo.path().join(".hypercube").join("w2").exists());
+        assert!(!has_branch(repo.path(), "hypercube/w2"));
     }
 
     #[test]

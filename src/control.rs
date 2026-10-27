@@ -3,7 +3,8 @@
 //! carries one JSON request line and gets one JSON reply line.
 
 use std::error::Error;
-use std::io::{BufRead, BufReader, Read, Write};
+use std::fmt;
+use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
@@ -105,15 +106,44 @@ fn fnv1a(bytes: &[u8]) -> u32 {
     })
 }
 
+/// The error of a request that found no host: the socket is missing or
+/// nothing listens on it. No host means no panes.
+#[derive(Debug)]
+pub struct Unreachable {
+    socket: PathBuf,
+    source: std::io::Error,
+}
+
+impl fmt::Display for Unreachable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "connect {}: {}; is hypercube running for this workspace?",
+            self.socket.display(),
+            self.source
+        )
+    }
+}
+
+impl Error for Unreachable {}
+
+/// Whether `error` came from a request that found no host.
+pub fn is_unreachable(error: &(dyn Error + 'static)) -> bool {
+    error.is::<Unreachable>()
+}
+
 /// Send `request` to the host listening on `socket` and wait for its reply.
 /// An `Err` means the host could not be reached; a refusal is a reply with
 /// `ok` unset.
 pub fn request(socket: &Path, request: &Request) -> Result<Reply> {
-    let mut stream = UnixStream::connect(socket).map_err(|e| {
-        format!(
-            "connect {}: {e}; is hypercube running for this workspace?",
-            socket.display()
-        )
+    let mut stream = UnixStream::connect(socket).map_err(|source| -> Box<dyn Error> {
+        match source.kind() {
+            ErrorKind::NotFound | ErrorKind::ConnectionRefused => Box::new(Unreachable {
+                socket: socket.to_path_buf(),
+                source,
+            }),
+            _ => format!("connect {}: {source}", socket.display()).into(),
+        }
     })?;
     stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
     stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
@@ -280,6 +310,19 @@ mod tests {
             err.contains("missing.sock") && err.contains("running"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn a_socket_nobody_listens_on_is_unreachable() {
+        let dir = TempDir::new();
+        let socket = dir.path().join("w.sock");
+        let err = request(&socket, &Request::Stop).unwrap_err();
+        assert!(is_unreachable(&*err));
+        // The file stays behind when its listener goes away.
+        drop(std::os::unix::net::UnixListener::bind(&socket).unwrap());
+        let err = request(&socket, &Request::Stop).unwrap_err();
+        assert!(is_unreachable(&*err), "{err}");
+        assert!(!is_unreachable(&*Box::<dyn Error>::from("other")));
     }
 
     #[test]
