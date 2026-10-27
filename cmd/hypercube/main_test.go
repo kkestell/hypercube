@@ -10,9 +10,9 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// down refuses, changing nothing, while a worker's branch is unmerged or its
+// deleteWorkspace refuses, changing nothing, while a worker's branch is unmerged or its
 // worktree is dirty, and otherwise removes worktrees, branches, and the state.
-func TestDown(t *testing.T) {
+func TestDelete(t *testing.T) {
 	tmp, _ := os.MkdirTemp("/tmp", "hc")
 	defer os.RemoveAll(tmp)
 	t.Setenv("TMUX_TMPDIR", tmp)
@@ -46,23 +46,23 @@ func TestDown(t *testing.T) {
 	})
 
 	git(dir, "commit", "-q", "--allow-empty", "-m", "work")
-	if err := down(root, name); err == nil {
-		t.Fatal("down took down an unmerged branch")
+	if err := deleteWorkspace(root, name); err == nil {
+		t.Fatal("delete deleted an unmerged branch")
 	}
 	git(root, "merge", "-q", branch)
 	os.WriteFile(filepath.Join(dir, "scratch"), nil, 0o644)
-	if err := down(root, name); err == nil {
-		t.Fatal("down took down a dirty worktree")
+	if err := deleteWorkspace(root, name); err == nil {
+		t.Fatal("delete deleted a dirty worktree")
 	}
 	if s, _ := store.Load(path); len(s.Agents) != 3 {
-		t.Errorf("refused down changed the state: %+v", s.Agents)
+		t.Errorf("refused delete changed the state: %+v", s.Agents)
 	}
 	if _, err := os.Stat(dir); err != nil {
-		t.Errorf("refused down removed the worktree: %v", err)
+		t.Errorf("refused delete removed the worktree: %v", err)
 	}
 
 	os.Remove(filepath.Join(dir, "scratch"))
-	if err := down(root, name); err != nil {
+	if err := deleteWorkspace(root, name); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range []string{path, filepath.Join(store.Dir(), name+".lock"), dir} {
@@ -71,6 +71,6 @@ func TestDown(t *testing.T) {
 		}
 	}
 	if _, err := os.Stat(other); err != nil {
-		t.Errorf("down touched a worker's own directory: %v", err)
+		t.Errorf("delete touched a worker's own directory: %v", err)
 	}
 }

@@ -40,13 +40,13 @@ and change over generalized infrastructure or speculative requirements.
   next `hypercube` resumes the team. `hypercube stop --all` lists every
   workspace with a state file and a running session, asks for confirmation,
   and stops them all.
-- `hypercube down [dir]` does what `stop` does, then removes each worker's worktree
+- `hypercube delete [dir]` does what `stop` does, then removes each worker's worktree
   and branch and deletes the state file. If any worktree has uncommitted
   changes, or any branch or worktree's checked-out commit is not merged into
   the checkout's HEAD, it refuses and changes nothing. It leaves the
-  directories of workers without worktrees alone. `hypercube down --all` lists every workspace with a state file, asks
-  for confirmation, and takes each down. A workspace that refuses is reported
-  and the rest still go down.
+  directories of workers without worktrees alone. `hypercube delete --all` lists every workspace with a state file, asks
+  for confirmation, and deletes each. A workspace that refuses is reported
+  and the rest are still deleted.
 - `hypercube status` lists every workspace with a state file, most recently
   active first: its directory, whether its tmux session is running, its number
   of agents, when it was created, and when it was last active. Creation is the

@@ -25,8 +25,8 @@ func main() {
 	switch {
 	case len(os.Args) == 1:
 		err = start()
-	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "down"):
-		err = stopOrDown(os.Args[1], os.Args[2:])
+	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
+		err = stopOrDelete(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
 		err = status()
 	case len(os.Args) == 2 && os.Args[1] == "statusline":
@@ -38,7 +38,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "hook":
 		err = hook.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [stop [dir | --all] | down [dir | --all] | status | mcp | hook <event> | statusline | limits]")
+		err = fmt.Errorf("usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | statusline | limits]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -92,13 +92,13 @@ func workspaces() ([]known, error) {
 	return list, nil
 }
 
-// stopOrDown runs stop or down on the workspace containing the given
+// stopOrDelete runs stop or delete on the workspace containing the given
 // directory, by default the working directory. With --all, it runs on every
 // workspace it applies to, after the user confirms.
-func stopOrDown(cmd string, args []string) error {
+func stopOrDelete(cmd string, args []string) error {
 	run := stop
-	if cmd == "down" {
-		run = down
+	if cmd == "delete" {
+		run = deleteWorkspace
 	}
 	if len(args) == 0 || args[0] != "--all" {
 		dir := "."
@@ -119,19 +119,18 @@ func stopOrDown(cmd string, args []string) error {
 	var targets []known
 	for _, k := range list {
 		// Only running sessions can be stopped.
-		if cmd == "down" || tmux.HasSession(k.name) {
+		if cmd == "delete" || tmux.HasSession(k.name) {
 			targets = append(targets, k)
 		}
 	}
-	verb := map[string]string{"stop": "stop", "down": "take down"}[cmd]
 	if len(targets) == 0 {
-		fmt.Printf("No workspaces to %s.\n", verb)
+		fmt.Printf("No workspaces to %s.\n", cmd)
 		return nil
 	}
 	for _, k := range targets {
 		fmt.Println(workspace.Short(k.root))
 	}
-	fmt.Printf("%s all of these? [y/N] ", strings.ToUpper(verb[:1])+verb[1:])
+	fmt.Printf("%s all of these? [y/N] ", strings.ToUpper(cmd[:1])+cmd[1:])
 	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 	if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
 		return fmt.Errorf("%s cancelled", cmd)
@@ -214,11 +213,11 @@ func ago(t time.Time) string {
 	}
 }
 
-// down stops the workspace and deletes its state, worker worktrees, and
+// deleteWorkspace stops the workspace and deletes its state, worker worktrees, and
 // worker branches. It refuses, changing nothing, if a worker has uncommitted
 // changes in its worktree or an unmerged branch. Workers without worktrees
 // have their directories left alone.
-func down(root, name string) error {
+func deleteWorkspace(root, name string) error {
 	path := store.Path(name)
 	s, err := store.Load(path)
 	if err != nil {
@@ -236,7 +235,7 @@ func down(root, name string) error {
 		}
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("not taking down the workspace:\n  %s", strings.Join(problems, "\n  "))
+		return fmt.Errorf("not deleting the workspace:\n  %s", strings.Join(problems, "\n  "))
 	}
 
 	if tmux.HasSession(name) {
@@ -245,7 +244,7 @@ func down(root, name string) error {
 		}
 	}
 	// A worker can change its worktree before the session ends. Keep such a
-	// worker in the state so that down can be run again after it is fixed.
+	// worker in the state so that delete can be run again after it is fixed.
 	for _, a := range workers {
 		if err := workspace.RemoveWorktree(root, a.Dir, a.Branch); err != nil {
 			return fmt.Errorf("%s: %w", a.Name, err)
