@@ -121,7 +121,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 - remove_agent(id) closes a worker's pane and removes it from the team. Its directory is left as it is. Orchestrator only.
 `)
 	} else {
-		b.WriteString(`- create_agent(name, profile, dir?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
+		b.WriteString(`- create_agent(name, profile, dir?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD, with submodules checked out and copies of the gitignored paths the checkout's .worktreeinclude lists. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is. Orchestrator only.
 `)
 	}

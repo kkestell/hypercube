@@ -149,6 +149,13 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
     the checkout's `.git/info/exclude`. Worktrees inside the checkout inherit
     the folder trust the harnesses already grant the checkout. In a `no_git`
     workspace, omitting `dir` is an error.
+  - A new worktree gets what the checkout has but Git leaves out. If the
+    checkout has a `.worktreeinclude` file, the paths that match its
+    patterns, in `.gitignore` syntax, and that Git ignores are copied from
+    the checkout with `cp -c`, so they are APFS clones. Claude Code and
+    Conductor read the same file. If the worktree has a `.gitmodules`,
+    `git submodule update --init --recursive` runs in it. If either step
+    fails, the worktree and branch are removed and `create_agent` fails.
   - With `dir`, an existing directory given as an absolute path, a path
     starting with `~/`, or a path relative to the orchestrator's directory,
     the worker works directly in it, and Hypercube creates no branch or
@@ -157,8 +164,10 @@ OpenCode otherwise silently falls back to a recent model for unavailable IDs.
 - `remove_agent(id)`, orchestrator only. For a worker with a worktree it
   refuses, with the reason returned to the orchestrator, if the worktree has
   uncommitted changes or its branch or checked-out commit is not merged into
-  the orchestrator's HEAD. Otherwise it runs `git worktree remove` and
-  `git branch -D`. It then closes the
+  the orchestrator's HEAD. Otherwise it runs `git worktree remove --force`,
+  which Git requires for a worktree with submodules, and `git branch -D`. A
+  worktree or branch that is already gone is skipped, so a worker whose
+  worktree was removed by hand can still be removed. It then closes the
   pane and deletes the agent and its queued messages. A worker's directory
   without a worktree is left as it is.
 

@@ -128,15 +128,87 @@ func AddWorktree(root, dir, branch string) error {
 			return err
 		}
 	}
-	_, err = git(root, "worktree", "add", "-b", branch, dir, "HEAD")
-	return err
+	if _, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
+		return err
+	}
+	if err := setUp(root, dir); err != nil {
+		git(root, "worktree", "remove", "--force", dir)
+		git(root, "branch", "-D", branch)
+		return err
+	}
+	return nil
+}
+
+// setUp gives a new worktree what the checkout has but Git does not check
+// out: the gitignored paths that .worktreeinclude selects, and submodules.
+func setUp(root, dir string) error {
+	if err := copyIncluded(root, dir); err != nil {
+		return err
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err != nil {
+		return nil
+	}
+	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("git submodule update: %s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// copyIncluded copies the paths in root that match a pattern in root's
+// .worktreeinclude, in .gitignore syntax, and that Git ignores. The copies
+// are APFS clones, so even large directories copy quickly.
+func copyIncluded(root, dir string) error {
+	if _, err := os.Stat(filepath.Join(root, ".worktreeinclude")); err != nil {
+		return nil
+	}
+	matched, err := git(root, "ls-files", "--others", "--ignored", "--exclude-from=.worktreeinclude", "--directory")
+	if err != nil || matched == "" {
+		return err
+	}
+	cmd := exec.Command("git", "check-ignore", "--stdin")
+	cmd.Dir = root
+	cmd.Stdin = strings.NewReader(matched)
+	out, err := cmd.Output()
+	// check-ignore exits 1 when it matches nothing.
+	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("git check-ignore: %w", err)
+	}
+	// With --directory, Git lists a directory and also the files in it.
+	var copied []string
+	for _, p := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if slices.ContainsFunc(copied, func(d string) bool { return strings.HasPrefix(p, d) }) {
+			continue
+		}
+		if strings.HasSuffix(p, "/") {
+			copied = append(copied, p)
+		}
+		target := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return err
+		}
+		if out, err := exec.Command("cp", "-c", "-R", filepath.Join(root, p), target).CombinedOutput(); err != nil {
+			return fmt.Errorf("copying %s: %s", p, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
 }
 
 // Removable returns an error if the worktree has uncommitted changes, or its
-// branch or checked-out commit is not merged into HEAD.
+// branch or checked-out commit is not merged into HEAD. A worktree or branch
+// that no longer exists passes.
 func Removable(root, dir, branch string) error {
-	if _, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD"); err != nil {
-		return fmt.Errorf("branch %s is not merged into HEAD", branch)
+	if exists(root, branch) {
+		if _, err := git(root, "merge-base", "--is-ancestor", branch, "HEAD"); err != nil {
+			return fmt.Errorf("branch %s is not merged into HEAD", branch)
+		}
+	}
+	if !isWorktree(dir) {
+		return nil
 	}
 	head, err := git(dir, "rev-parse", "HEAD")
 	if err != nil {
@@ -164,14 +236,43 @@ func Dirty(dir string) (bool, error) {
 
 // RemoveWorktree removes the worktree and deletes its branch if Removable
 // allows it. Removable has checked the branch against HEAD, so the deletion
-// ignores the branch's upstream.
+// ignores the branch's upstream, and has checked the worktree, so --force
+// only lets Git remove a worktree with submodules. A worktree or branch that
+// is already gone is skipped.
 func RemoveWorktree(root, dir, branch string) error {
 	if err := Removable(root, dir, branch); err != nil {
 		return err
 	}
-	if _, err := git(root, "worktree", "remove", dir); err != nil {
+	if isWorktree(dir) {
+		if _, err := git(root, "worktree", "remove", "--force", dir); err != nil {
+			return err
+		}
+	}
+	// Forget a worktree whose directory was deleted, so its branch can go.
+	if _, err := git(root, "worktree", "prune"); err != nil {
 		return err
+	}
+	if !exists(root, branch) {
+		return nil
 	}
 	_, err := git(root, "branch", "-D", branch)
 	return err
+}
+
+// exists reports whether the branch exists.
+func exists(root, branch string) bool {
+	_, err := git(root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch)
+	return err == nil
+}
+
+// isWorktree reports whether dir is the top level of a checkout. A deleted
+// worktree is not, and neither is a plain directory left in its place.
+func isWorktree(dir string) bool {
+	top, err := Root(dir)
+	if err != nil {
+		return false
+	}
+	top, _ = filepath.EvalSymlinks(top)
+	dir, _ = filepath.EvalSymlinks(dir)
+	return top == dir
 }
