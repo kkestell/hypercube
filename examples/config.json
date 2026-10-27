@@ -2,63 +2,63 @@
   "orchestrator": {
     "harness": "claude",
     "model": "opus",
-    "effort": "medium"
+    "effort": "high"
   },
   "profiles": [
     {
       "name": "deepseek",
       "description": "DeepSeek V4.1 Flash 1017 at max effort for ordinary implementation, investigation, and review. Cheap and fast.",
-      "harness": "opencode",
+      "harness": "pi",
       "model": "openrouter/deepseek/deepseek-v4.1-flash-1017",
       "effort": "max"
     },
     {
       "name": "mimo-flash",
       "description": "MiMo-V2.6-Flash with thinking for small, well-defined tasks: lookups, simple edits, and quick checks. The cheapest profile.",
-      "harness": "opencode",
+      "harness": "pi",
       "model": "openrouter/xiaomi/mimo-v2.6-flash",
-      "effort": "thinking"
+      "effort": "high"
     },
     {
       "name": "mimo-pro",
       "description": "MiMo-V2.6-Pro with thinking for ordinary implementation, investigation, and review when cost matters more than speed. Very cheap but slow.",
-      "harness": "opencode",
+      "harness": "pi",
       "model": "openrouter/xiaomi/mimo-v2.6-pro",
-      "effort": "thinking"
+      "effort": "high"
     },
     {
       "name": "glm-flash",
       "description": "GLM-5.3-Flash at max effort for ordinary implementation, investigation, and review. Cheap and fast.",
-      "harness": "opencode",
+      "harness": "pi",
       "model": "openrouter/z-ai/glm-5.3-flash",
       "effort": "max"
     },
     {
       "name": "minimax-flash",
       "description": "MiniMax-M3.1-Flash at max effort for small and ordinary tasks. Cheap and the fastest of these profiles.",
-      "harness": "opencode",
+      "harness": "pi",
       "model": "openrouter/minimax/minimax-m3.1-flash",
       "effort": "max"
     },
     {
       "name": "gpt-small",
       "description": "GPT Terra at medium effort for small, well-defined tasks: lookups, simple edits, and quick checks. Cheapest and fastest.",
-      "harness": "codex",
-      "model": "gpt-6.1-terra",
+      "harness": "pi",
+      "model": "openai/gpt-6.1-terra",
       "effort": "medium"
     },
     {
       "name": "gpt-medium",
       "description": "GPT Sol at high effort for ordinary implementation, investigation, and review.",
-      "harness": "codex",
-      "model": "gpt-6.1-sol",
+      "harness": "pi",
+      "model": "openai/gpt-6.1-sol",
       "effort": "high"
     },
     {
       "name": "gpt-large",
       "description": "GPT Sol at extra high effort for hard implementation, debugging, and design work. Slower and costlier.",
-      "harness": "codex",
-      "model": "gpt-6.1-sol",
+      "harness": "pi",
+      "model": "openai/gpt-6.1-sol",
       "effort": "xhigh"
     },
     {
