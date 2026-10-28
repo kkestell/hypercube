@@ -136,6 +136,8 @@ pub enum Notice {
 pub struct PaneView<'a> {
     pub id: PaneId,
     pub label: &'a str,
+    /// Text for the right end of the label row.
+    pub detail: &'a str,
     pub rect: Rect,
     pub focused: bool,
     /// The program's exit status once it has been reaped.
@@ -327,6 +329,8 @@ pub struct Pane {
     child: Option<Child>,
     status: Option<u8>,
     pub label: String,
+    /// Text for the right end of the label row.
+    pub detail: String,
     rect: Rect,
     pub terminal: Terminal<'static, 'static>,
     frame: Rc<RefCell<Frame>>,
@@ -361,6 +365,7 @@ impl Pane {
             child: None,
             status: None,
             label: label.to_owned(),
+            detail: String::new(),
             rect: Rect::default(),
             terminal,
             frame,
@@ -1549,6 +1554,7 @@ impl Mux {
                 .map(|p| PaneView {
                     id: p.id,
                     label: &p.label,
+                    detail: &p.detail,
                     rect: p.rect,
                     focused: Some(p.id) == focus,
                     status: p.status,

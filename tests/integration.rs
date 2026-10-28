@@ -688,13 +688,13 @@ fn first_start_lays_out_one_pane() {
         "{facts}"
     );
 
-    fx.wait_screen("orchestrator · claude haiku low");
+    fx.wait_screen(" orchestrator");
     let screen = fx.screen();
     let lines: Vec<&str> = screen.lines().collect();
-    assert!(
-        lines[0].contains("orchestrator · claude haiku low"),
-        "{screen}"
-    );
+    assert!(lines[0].starts_with(" orchestrator"), "{screen}");
+    // The directory is at the right end of the row.
+    let dir = fx.state().agent("orchestrator").unwrap().dir.clone();
+    assert!(lines[0].trim_end().ends_with(&dir), "{screen}");
     assert!(!screen.contains('┃'), "{screen}");
 }
 
@@ -777,15 +777,14 @@ fn create_agent_adds_panes_and_worktrees() {
     fx.wait_size("w1", [71, 19]);
     fx.wait_size("orchestrator", [48, 39]);
 
-    fx.wait_screen("w2 · pi stub/pi medium");
+    fx.wait_screen("⎇ w2");
     let screen = fx.screen();
     let lines: Vec<&str> = screen.lines().collect();
-    assert!(
-        lines[0].contains("orchestrator · claude haiku low"),
-        "{screen}"
-    );
-    assert!(lines[0].contains("w1 · claude haiku low"), "{screen}");
-    assert!(lines[20].contains("w2 · pi stub/pi medium"), "{screen}");
+    assert!(lines[0].starts_with(" orchestrator"), "{screen}");
+    assert!(lines[0].contains(" w1 "), "{screen}");
+    assert!(lines[0].trim_end().ends_with("⎇ w1"), "{screen}");
+    assert!(lines[20].contains(" w2 "), "{screen}");
+    assert!(lines[20].trim_end().ends_with("⎇ w2"), "{screen}");
 }
 
 #[test]
@@ -837,7 +836,7 @@ fn remove_agent_closes_the_pane() {
     let w1 = fx.create("w1", "fast", "");
     let pid = fx.pid("w1");
     assert!(alive(pid));
-    fx.wait_screen("w1 · claude haiku low");
+    fx.wait_screen("⎇ w1");
     fx.wait_size("orchestrator", [48, 39]);
 
     let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": w1}));
@@ -845,7 +844,7 @@ fn remove_agent_closes_the_pane() {
     assert_eq!(text, format!("Removed w1 ({w1})."));
 
     fx.wait_gone(&[pid]);
-    fx.wait_no_screen("w1 · claude haiku low");
+    fx.wait_no_screen("⎇ w1");
     // The orchestrator has the terminal to itself again.
     fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 1]);
     assert_eq!(fx.state().agents.len(), 1);
@@ -1077,7 +1076,7 @@ fn unsupported_harness_does_not_stop_startup() {
 
     fx.start();
     // The worker has a pane that shows why it did not start.
-    fx.wait_screen("old · codex x high");
+    fx.wait_screen("old · failed");
     fx.wait_screen("old failed to launch");
     assert!(host::running(&fx.state_path()).unwrap().is_some());
     assert_eq!(fx.status().unwrap()[1], "running");
@@ -1087,7 +1086,7 @@ fn unsupported_harness_does_not_stop_startup() {
     let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": "old00001"}));
     assert!(!is_error, "{text}");
     assert_eq!(text, "Removed old (old00001).");
-    fx.wait_no_screen("old · codex x high");
+    fx.wait_no_screen("old · failed");
     fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 1]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap().is_some());
@@ -1098,7 +1097,7 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
     let mut fx = Fixture::new();
     fx.start();
     fx.create("w1", "fast", "");
-    fx.wait_screen("w1 · claude haiku low");
+    fx.wait_screen("⎇ w1");
     let session = fx.state().agent("w1").unwrap().session_id.clone();
     let prompts = fx.agent_events("w1", "prompt").len();
 
@@ -1123,7 +1122,7 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
     fx.wait_idle("w1");
     fx.wait_size("orchestrator", [48, 39]);
     let screen = fx.screen();
-    assert!(screen.contains("w1 · claude haiku low"), "{screen}");
+    assert!(screen.contains("⎇ w1"), "{screen}");
     assert!(!screen.contains("exited"), "{screen}");
     assert_eq!(fx.state().agent("w1").unwrap().session_id, session);
 
@@ -1273,7 +1272,7 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     fx.type_text("\x1c");
     fx.wait_size("orchestrator", whole);
     fx.wait_screen("zoomed");
-    fx.wait_no_screen("w1 ·");
+    fx.wait_no_screen("⎇ w1");
     fx.type_text("hi\r");
     fx.wait_event("orchestrator", "prompt", 1);
     fx.wait_idle("orchestrator");
@@ -1281,18 +1280,18 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     // The same key restores the layout.
     fx.type_text("\x1c");
     fx.wait_size("orchestrator", [48, 39]);
-    fx.wait_screen("w1 · claude haiku low");
+    fx.wait_screen("⎇ w1");
     fx.wait_no_screen("zoomed");
 
     // A change of focus restores it too, at once.
     fx.type_text("\x1d\x1c");
     fx.wait_size("w1", whole);
     fx.wait_screen("zoomed");
-    fx.wait_no_screen("orchestrator ·");
+    fx.wait_no_screen(" orchestrator");
     let start = Instant::now();
     fx.type_text("\x1d");
     fx.wait_size("w1", w1_size.clone().try_into().unwrap());
-    fx.wait_screen("orchestrator ·");
+    fx.wait_screen(" orchestrator");
     fx.wait_no_screen("zoomed");
     assert!(start.elapsed() < Duration::from_secs(5));
 

@@ -10,8 +10,7 @@ including `HOME` and any credential environment variables, with the launch's
 
 A non-empty `prompt` starts the first turn. Workers launch with
 `Check your Hypercube messages.`; the orchestrator opens ready for user
-input. `harness::label` is the pane label: name, harness, model, effort, and
-directory with the home directory written as `~`.
+input.
 
 Each `Launch` carries two identity environment variables, which the harness's
 child processes inherit:

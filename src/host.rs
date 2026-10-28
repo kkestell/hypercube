@@ -39,10 +39,10 @@ const MAX_QUICK_EXITS: u32 = 3;
 /// How long `stop` waits for the host to end.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// The blue of the rules.
+/// The blue of the separator.
 const RULE: &str = "\x1b[0;38;2;0;135;255m";
-/// Black on light blue, for labels.
-const LABEL: &str = "\x1b[0;30;48;2;135;215;255m";
+/// Black on white, for labels.
+const LABEL: &str = "\x1b[0;38;2;0;0;0;48;2;255;255;255m";
 
 /// The host lock of the workspace whose state file is `state_path`. The host
 /// holds it for its whole life, and writes the terminal it runs in into it.
@@ -136,7 +136,7 @@ fn terminal_name() -> String {
 }
 
 /// Where each pane goes. The first pane, the orchestrator's, takes the left
-/// 40% of the columns, or all of them when it is alone; a one-column rule
+/// 40% of the columns, or all of them when it is alone; a one-column separator
 /// follows; the other panes split the remaining columns with equal heights.
 /// Each pane has a label row above it.
 /// `None` if a pane would get no row or column.
@@ -179,8 +179,8 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
     )
 }
 
-/// The labels above the panes, the rule between the first pane and the
-/// others.
+/// The labels above the panes and the separator between the first pane and
+/// the others.
 pub struct TeamChrome {
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
@@ -199,14 +199,7 @@ impl Chrome for TeamChrome {
         {
             s.push_str(RULE);
             for row in 0..size.ws_row {
-                let c = if row == 0 {
-                    '┳'
-                } else if others.iter().any(|p| p.rect.row == row + 1) {
-                    '┣'
-                } else {
-                    '┃'
-                };
-                s.push_str(&format!("\x1b[{};{}H{c}", row + 1, first.rect.cols + 1));
+                s.push_str(&format!("\x1b[{};{}H┃", row + 1, first.rect.cols + 1));
             }
         }
         s.push_str("\x1b[0m");
@@ -214,38 +207,86 @@ impl Chrome for TeamChrome {
     }
 }
 
-/// A pane's label row: a rule with the label near its left end, bold when the
-/// pane has the focus, "zoomed" while it fills the pane area, the exit status
-/// once its program has exited, and how many rows its view is scrolled up.
+/// A pane's label row: black on white across the pane's width, with the name
+/// at the left, bold when the pane has the focus, followed by "zoomed" while
+/// it fills the pane area, the exit status once its program has exited, and
+/// how many rows its view is scrolled up. The detail goes at the right end
+/// unless the row is too narrow for it.
 fn draw_label(s: &mut String, p: &PaneView, zoomed: bool) {
-    let lead = p.rect.cols.min(2);
-    let mut text = format!(" {}", p.label);
+    let width = usize::from(p.rect.cols);
+    let mut left = format!(" {}", p.label);
     if zoomed {
-        text.push_str(" · zoomed");
+        left.push_str(" · zoomed");
     }
     if let Some(status) = p.status {
-        text.push_str(&format!(" · exited {status}"));
+        left.push_str(&format!(" · exited {status}"));
     }
     if p.scrolled > 0 {
-        text.push_str(&format!(" · ↑{}", p.scrolled));
+        left.push_str(&format!(" · ↑{}", p.scrolled));
     }
-    text.push(' ');
-    let text = fit(&text, p.rect.cols - lead);
+    let left = fit(&left, p.rect.cols);
+    let left_width = text_width(&left);
+    let right = format!("{} ", p.detail);
+    let right_width = text_width(&right);
+    // The gap between the two keeps at least one blank column.
+    let right = (!p.detail.is_empty() && left_width + 1 + right_width <= width).then_some(right);
     let bold = if p.focused { "\x1b[1m" } else { "" };
-    // The label goes over the rule, which shows wherever the label is shorter
-    // than measured.
+    let (row, col) = (p.rect.row, p.rect.col + 1);
     s.push_str(&format!(
-        "\x1b[{row};{col}H{RULE}{}\x1b[{row};{}H{LABEL}{bold}{text}",
-        "━".repeat(usize::from(p.rect.cols)),
-        p.rect.col + lead + 1,
-        row = p.rect.row,
-        col = p.rect.col + 1,
+        "\x1b[{row};{col}H{LABEL}{bold}{}\x1b[{row};{col}H{left}",
+        " ".repeat(width),
     ));
+    if let Some(right) = right {
+        s.push_str(&format!(
+            "\x1b[{row};{}H{right}",
+            usize::from(col) + width - right_width
+        ));
+    }
+}
+
+/// The columns `text` takes, counting each grapheme cluster as the wider of
+/// how the host terminal may draw it.
+fn text_width(text: &str) -> usize {
+    let chars: Vec<char> = text.chars().collect();
+    let mut rest = chars.as_slice();
+    let mut used = 0;
+    while !rest.is_empty() {
+        let (len, width) = cluster_width(rest);
+        used += width;
+        rest = &rest[len..];
+    }
+    used
+}
+
+/// The length in chars and the width in columns of the grapheme cluster at the
+/// start of `rest`. The host clusters graphemes or not depending on the
+/// focused pane, so the cluster counts as the wider of the two.
+fn cluster_width(rest: &[char]) -> (usize, usize) {
+    let (len, clustered) = unicode::grapheme_width(rest);
+    let len = len.max(1);
+    let separate: usize = rest[..len]
+        .iter()
+        .map(|&c| usize::from(unicode::codepoint_width(c)))
+        .sum();
+    (len, usize::from(clustered).max(separate))
+}
+
+/// The right end of an agent's label: "⎇ " and the branch of a worker with a
+/// worktree, without the `hypercube/` prefix, or else the directory.
+fn detail(agent: &Agent) -> String {
+    if agent.role == store::WORKER && !agent.branch.is_empty() {
+        let branch = agent
+            .branch
+            .strip_prefix("hypercube/")
+            .unwrap_or(&agent.branch);
+        format!("⎇ {branch}")
+    } else {
+        workspace::short(Path::new(&agent.dir))
+    }
 }
 
 /// The longest start of `text` made of whole grapheme clusters that fits in
-/// `width` columns. The host clusters graphemes or not depending on the
-/// focused pane, so each cluster counts as the wider of the two.
+/// `width` columns.
 fn fit(text: &str, width: u16) -> String {
     let width = usize::from(width);
     let chars: Vec<char> = text.chars().collect();
@@ -253,17 +294,11 @@ fn fit(text: &str, width: u16) -> String {
     let mut used = 0;
     let mut end = 0;
     while !rest.is_empty() {
-        let (len, clustered) = unicode::grapheme_width(rest);
-        let len = len.max(1);
-        let separate: usize = rest[..len]
-            .iter()
-            .map(|&c| usize::from(unicode::codepoint_width(c)))
-            .sum();
-        let next = used + usize::from(clustered).max(separate);
-        if next > width {
+        let (len, columns) = cluster_width(rest);
+        if used + columns > width {
             break;
         }
-        used = next;
+        used += columns;
         end += len;
         rest = &rest[len..];
     }
@@ -550,11 +585,21 @@ impl Host {
         Ok(())
     }
 
+    /// Add a pane labeled for `agent`: its name at the left, and at the right
+    /// its branch if it has a worktree, or its directory.
+    fn add_labeled_pane(&mut self, agent: &Agent) -> Result<PaneId> {
+        let pane = self.mux.add_pane(&agent.name)?;
+        if let Some(p) = self.mux.pane_mut(pane) {
+            p.detail = detail(agent);
+        }
+        Ok(pane)
+    }
+
     /// Give a worker whose harness failed to start a pane without a program,
     /// showing the error and exit status 127, so it keeps its place until
     /// `remove_agent` closes it.
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
-        let pane = self.mux.add_pane(&harness::label(agent))?;
+        let pane = self.add_labeled_pane(agent)?;
         self.show_failure(pane, agent, error);
         self.panes.push(Slot::new(&agent.id, pane));
         self.lay_out()
@@ -565,7 +610,7 @@ impl Host {
     fn show_failure(&mut self, pane: PaneId, agent: &Agent, error: &str) {
         let error = error.replace(['\r', '\n'], " ");
         if let Some(p) = self.mux.pane_mut(pane) {
-            p.label = format!("{} · failed: {error}", harness::label(agent));
+            p.label = format!("{} · failed: {error}", agent.name);
             p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
         }
         self.mux.mark_exited(pane, 127);
@@ -717,7 +762,7 @@ impl Host {
             return Err(format!("{} already has a pane", agent.name).into());
         }
         let launch = harness::command(&self.exe, agent, &self.state_path, prompt)?;
-        let pane = self.mux.add_pane(&harness::label(agent))?;
+        let pane = self.add_labeled_pane(agent)?;
         let mut ids = self.pane_ids();
         ids.push(pane);
         let size = self.mux.size();
@@ -778,7 +823,7 @@ impl Host {
             agent.activity = start_activity(agent).into();
             Ok(agent.clone())
         })?;
-        self.mux.restart(pane, &harness::label(&agent))?;
+        self.mux.restart(pane, &agent.name)?;
         let ws = self.mux.pane(pane).map(Pane::ws).unwrap_or_default();
         let started = harness::command(&self.exe, &agent, &self.state_path, start_prompt(&agent))
             .and_then(|launch| spawn(&launch, ws));
@@ -1004,6 +1049,7 @@ mod tests {
         PaneView {
             id: PaneId(id),
             label,
+            detail: "",
             rect,
             focused,
             status,
@@ -1011,51 +1057,81 @@ mod tests {
         }
     }
 
-    const LIGHT_BLUE: StyleColor = StyleColor::Rgb(RgbColor {
-        r: 135,
-        g: 215,
+    const WHITE: StyleColor = StyleColor::Rgb(RgbColor {
+        r: 255,
+        g: 255,
         b: 255,
     });
 
+    const BLACK: StyleColor = StyleColor::Rgb(RgbColor { r: 0, g: 0, b: 0 });
+
+    fn fg(screen: &Screen, x: u16, y: u16) -> StyleColor {
+        screen.cell(x, y).style().unwrap().fg_color
+    }
+
     #[test]
-    fn chrome_draws_labels_and_rules() {
-        let layout = rects(layout(size(30, 7), &ids(3)));
+    fn chrome_draws_labels_and_separator() {
+        let layout = rects(layout(size(40, 7), &ids(3)));
         let panes = [
-            view(1, "orch", layout[0], true, None),
+            PaneView {
+                detail: "~/src/r",
+                ..view(1, "orch", layout[0], true, None)
+            },
             PaneView {
                 scrolled: 42,
+                detail: "⎇ w1",
                 ..view(2, "w1", layout[1], false, None)
             },
-            view(3, "w2", layout[2], false, Some(3)),
+            PaneView {
+                detail: "⎇ w2",
+                ..view(3, "w2", layout[2], false, Some(3))
+            },
         ];
-        let screen = Screen::draw(&panes, 30, 7);
+        let screen = Screen::draw(&panes, 40, 7);
         let rows: Vec<String> = (0..7).map(|y| screen.row(y)).collect();
         assert_eq!(
             rows,
             [
-                "━━ orch ━━━━┳━━ w1 · ↑42 ━━━━━",
-                "            ┃                 ",
-                "            ┃                 ",
-                "            ┣━━ w2 · exited 3 ",
-                "            ┃                 ",
-                "            ┃                 ",
-                "            ┃                 ",
+                " orch   ~/src/r ┃ w1 · ↑42         ⎇ w1 ",
+                "                ┃                       ",
+                "                ┃                       ",
+                "                ┃ w2 · exited 3    ⎇ w2 ",
+                "                ┃                       ",
+                "                ┃                       ",
+                "                ┃                       ",
             ]
         );
-        // The focused pane's label is bold, and labels are on light blue.
-        assert!(screen.bold(3, 0));
-        assert!(!screen.bold(15, 0));
-        assert_eq!(screen.bg(3, 0), LIGHT_BLUE);
-        assert_eq!(screen.bg(0, 0), StyleColor::None);
-        assert_eq!(screen.bg(29, 3), LIGHT_BLUE);
+        // Labels are black on white across the pane's width, bold when focused.
+        assert!(screen.bold(1, 0));
+        assert!(!screen.bold(18, 0));
+        assert!(!screen.bold(39, 0));
+        for (x, y) in [(0, 0), (8, 0), (15, 0), (17, 0), (39, 0), (17, 3), (39, 3)] {
+            assert_eq!(screen.bg(x, y), WHITE, "background at {x},{y}");
+            assert_eq!(fg(&screen, x, y), BLACK, "foreground at {x},{y}");
+        }
+        // The separator is blue, and has no background.
+        assert_eq!(
+            fg(&screen, 16, 0),
+            StyleColor::Rgb(RgbColor {
+                r: 0,
+                g: 135,
+                b: 255
+            })
+        );
+        assert_eq!(screen.bg(16, 0), StyleColor::None);
+        assert_eq!(screen.bg(16, 4), StyleColor::None);
+        assert_eq!(screen.bg(5, 1), StyleColor::None);
     }
 
     #[test]
-    fn chrome_marks_the_zoomed_pane_and_draws_no_rule() {
+    fn chrome_marks_the_zoomed_pane_and_draws_no_separator() {
         let layout = rects(zoom_layout(size(30, 6), &ids(2), PaneId(2)));
         let panes = [
             view(1, "orch", layout[0], false, None),
-            view(2, "w1", layout[1], true, Some(3)),
+            PaneView {
+                detail: "⎇ w1",
+                ..view(2, "w1", layout[1], true, Some(3))
+            },
         ];
         let mut chrome = TeamChrome {
             zoomed: Rc::new(Cell::new(Some(PaneId(2)))),
@@ -1065,16 +1141,27 @@ mod tests {
         let mut terminal = Terminal::new(30, 6).unwrap();
         terminal.vt_write(&out);
         let screen = Screen(terminal);
-        assert_eq!(screen.row(0), "━━ w1 · zoomed · exited 3 ━━━━");
+        assert_eq!(screen.row(0), " w1 · zoomed · exited 3  ⎇ w1 ");
         assert_eq!(screen.row(1), " ".repeat(30));
         assert_eq!(screen.row(5), " ".repeat(30));
     }
 
     #[test]
-    fn chrome_truncates_labels_and_skips_hidden_panes() {
-        let panes = [view(1, "orchestrator", rect(0, 1, 8, 2), false, None)];
-        let screen = Screen::draw(&panes, 8, 3);
-        assert_eq!(screen.row(0), "━━ orche");
+    fn chrome_drops_the_detail_before_clipping_the_name() {
+        let pane = |label, cols| {
+            [PaneView {
+                detail: "~/src/r",
+                ..view(1, label, rect(0, 1, cols, 2), false, None)
+            }]
+        };
+        // The detail needs a blank column between it and the name.
+        let screen = Screen::draw(&pane("orch", 14), 14, 3);
+        assert_eq!(screen.row(0), " orch ~/src/r ");
+        let screen = Screen::draw(&pane("orch", 13), 13, 3);
+        assert_eq!(screen.row(0), " orch        ");
+        let screen = Screen::draw(&pane("orchestrator", 8), 8, 3);
+        assert_eq!(screen.row(0), " orchest");
+        assert_eq!(screen.bg(7, 0), WHITE);
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),
@@ -1097,9 +1184,28 @@ mod tests {
         terminal.vt_write(&out);
         let screen = Screen(terminal);
         // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
-        assert_eq!(screen.row(0), "━━ 界 界 界 ");
+        assert_eq!(screen.row(0), " 界 界 界 界 ");
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
+    }
+
+    #[test]
+    fn labels_show_the_branch_of_a_worktree_and_otherwise_the_directory() {
+        let mut a = Agent {
+            role: store::WORKER.into(),
+            branch: "hypercube/parser".into(),
+            dir: "/r/.hypercube/parser".into(),
+            ..Agent::default()
+        };
+        assert_eq!(detail(&a), "⎇ parser");
+        a.branch = "feature/x".into();
+        assert_eq!(detail(&a), "⎇ feature/x");
+        a.branch.clear();
+        assert_eq!(detail(&a), "/r/.hypercube/parser");
+        a.role = store::ORCHESTRATOR.into();
+        a.branch = "main".into();
+        a.dir = "/r".into();
+        assert_eq!(detail(&a), "/r");
     }
 
     #[test]

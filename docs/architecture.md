@@ -99,7 +99,7 @@ agent and ending the session hang up the programs without relaunching them.
 ### Layout and chrome
 
 `host::layout` places the orchestrator's pane in the left 40% of the columns,
-or all of them when it is alone, then a one-column rule, then the workers
+or all of them when it is alone, then a one-column separator, then the workers
 stacked with equal heights. Each pane has a label row above it, and the panes
 use every row of the terminal. A layout in which some pane would get no row or
 column fails; a launch requested on the control socket then fails with "no room
@@ -114,11 +114,18 @@ when the zoom key is pressed. It restores the normal layout when the key is
 pressed again, when the focus changes, and when a pane is added or removed. The
 host resizing keeps the zoom.
 
-`TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
-in black on `#87d7ff`, bold for the focused pane. The label is the agent's
-name, harness, model, effort, and directory, followed by "zoomed" while
-the pane fills the pane area, "exited N" once the pane's program has exited
-and is not relaunched, and "↑N" while its view is scrolled N rows up.
+`TeamChrome` draws each label row across its pane's full width in black on
+white (`#ffffff`). The left end has one space and the agent's name, bold for the
+focused pane, followed by "zoomed" while the pane fills the pane area, "exited
+N" once the pane's program has exited and is not relaunched, "failed:" and the
+error for an agent whose harness did not start, and "↑N" while its view is
+scrolled N rows up. The right end has, followed by one space, "⎇ " and the
+branch without its `hypercube/` prefix for a worker with a worktree, or the
+directory with the home directory written as `~` for the orchestrator and for
+workers in existing directories. A row too narrow for the right text drops it,
+keeping a blank column after the left text, and then clips the left text at a
+grapheme cluster. Between the first pane and the workers a plain `┃` in
+`#0087ff` runs the height of the terminal.
 
 The keys and the mouse (see Input):
 

@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::store::Agent;
-use crate::workspace;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -101,19 +100,6 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
         env,
         cwd: PathBuf::from(&agent.dir),
     })
-}
-
-/// The text of an agent's pane label: name, harness, model, effort, and
-/// directory.
-pub fn label(agent: &Agent) -> String {
-    format!(
-        "{} · {} {} {} · {}",
-        agent.name,
-        agent.harness,
-        agent.model,
-        agent.effort,
-        workspace::short(Path::new(&agent.dir))
-    )
 }
 
 fn strings<const N: usize>(items: [&str; N]) -> Vec<String> {
@@ -353,15 +339,6 @@ mod tests {
                 )
             );
         }
-    }
-
-    #[test]
-    fn labels() {
-        let mut a = agent("claude", "");
-        a.name = "w1".into();
-        a.model = "opus".into();
-        a.dir = "/r/w1".into();
-        assert_eq!(label(&a), "w1 · claude opus high · /r/w1");
     }
 
     #[test]
