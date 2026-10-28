@@ -1,6 +1,6 @@
 //! The session host: the `hypercube` process in the user's terminal. It holds
 //! the workspace's host lock, runs every agent in a pane, draws the panes with
-//! their labels and the status bar, and answers requests on the control
+//! their labels, and answers requests on the control
 //! socket until the session ends.
 
 use std::cell::Cell;
@@ -41,7 +41,7 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The blue of the rules.
 const RULE: &str = "\x1b[0;38;2;0;135;255m";
-/// Black on light blue, for labels and the status bar.
+/// Black on light blue, for labels.
 const LABEL: &str = "\x1b[0;30;48;2;135;215;255m";
 
 /// The host lock of the workspace whose state file is `state_path`. The host
@@ -138,11 +138,11 @@ fn terminal_name() -> String {
 /// Where each pane goes. The first pane, the orchestrator's, takes the left
 /// 40% of the columns, or all of them when it is alone; a one-column rule
 /// follows; the other panes split the remaining columns with equal heights.
-/// Each pane has a label row above it, and the bottom row is the status bar.
+/// Each pane has a label row above it.
 /// `None` if a pane would get no row or column.
 pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
     let cols = u32::from(size.ws_col);
-    let rows = u32::from(size.ws_row.saturating_sub(1));
+    let rows = u32::from(size.ws_row);
     let Some((&first, rest)) = panes.split_first() else {
         return Some(Vec::new());
     };
@@ -180,10 +180,8 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
 }
 
 /// The labels above the panes, the rule between the first pane and the
-/// others, and the status bar.
+/// others.
 pub struct TeamChrome {
-    /// The status bar's text.
-    pub status: String,
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
 }
@@ -200,7 +198,7 @@ impl Chrome for TeamChrome {
             && !others.is_empty()
         {
             s.push_str(RULE);
-            for row in 0..size.ws_row.saturating_sub(1) {
+            for row in 0..size.ws_row {
                 let c = if row == 0 {
                     '┳'
                 } else if others.iter().any(|p| p.rect.row == row + 1) {
@@ -210,12 +208,6 @@ impl Chrome for TeamChrome {
                 };
                 s.push_str(&format!("\x1b[{};{}H{c}", row + 1, first.rect.cols + 1));
             }
-        }
-        if size.ws_row > 0 {
-            let blank = " ".repeat(usize::from(size.ws_col));
-            let left = fit(&format!(" {}", self.status), size.ws_col);
-            let row = size.ws_row;
-            s.push_str(&format!("\x1b[{row};1H{LABEL}{blank}\x1b[{row};1H{left}"));
         }
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
@@ -463,7 +455,6 @@ pub fn run(root: &Path) -> Result<()> {
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let zoomed = Rc::new(Cell::new(None));
     let chrome = TeamChrome {
-        status: workspace::short(root),
         zoomed: Rc::clone(&zoomed),
     };
     let mut mux = Mux::new(Winsize::default(), Box::new(chrome));
@@ -905,20 +896,20 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_pane_fills_the_terminal_above_the_status_bar() {
-        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 22)]);
+    fn a_lone_pane_fills_the_terminal_below_its_label() {
+        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 23)]);
         assert_eq!(layout(size(80, 24), &[]), Some(Vec::new()));
     }
 
     #[test]
     fn workers_stack_right_of_the_orchestrator() {
         assert_eq!(
-            rects(layout(size(100, 25), &ids(2))),
+            rects(layout(size(100, 24), &ids(2))),
             [rect(0, 1, 40, 23), rect(41, 1, 59, 23)]
         );
         // 24 rows over three workers: 8 each, a label row and seven content rows.
         assert_eq!(
-            rects(layout(size(100, 25), &ids(4))),
+            rects(layout(size(100, 24), &ids(4))),
             [
                 rect(0, 1, 40, 23),
                 rect(41, 1, 59, 7),
@@ -927,7 +918,7 @@ mod tests {
             ]
         );
         // Uneven heights differ by at most a row and fill the column.
-        let layout = rects(layout(size(81, 31), &ids(5)));
+        let layout = rects(layout(size(81, 30), &ids(5)));
         assert_eq!(layout[0], rect(0, 1, 32, 29));
         let heights: Vec<u16> = layout[1..].iter().map(|r| r.rows + 1).collect();
         assert_eq!(heights, [7, 8, 7, 8]);
@@ -937,10 +928,10 @@ mod tests {
     #[test]
     fn a_layout_without_room_for_every_pane_fails() {
         // Each pane needs a label row and a content row.
-        assert!(layout(size(80, 2), &ids(1)).is_none());
-        assert!(layout(size(80, 3), &ids(1)).is_some());
-        assert!(layout(size(80, 6), &ids(4)).is_none());
-        assert!(layout(size(80, 7), &ids(4)).is_some());
+        assert!(layout(size(80, 1), &ids(1)).is_none());
+        assert!(layout(size(80, 2), &ids(1)).is_some());
+        assert!(layout(size(80, 5), &ids(4)).is_none());
+        assert!(layout(size(80, 6), &ids(4)).is_some());
         // And a column on each side of the rule.
         assert!(layout(size(2, 24), &ids(2)).is_none());
         assert!(layout(size(3, 24), &ids(2)).is_some());
@@ -951,7 +942,7 @@ mod tests {
     fn a_zoomed_pane_takes_the_pane_area_and_the_others_are_hidden() {
         let panes = ids(3);
         for zoomed in &panes {
-            let layout = zoom_layout(size(100, 25), &panes, *zoomed).unwrap();
+            let layout = zoom_layout(size(100, 24), &panes, *zoomed).unwrap();
             let ids: Vec<PaneId> = layout.iter().map(|&(id, _)| id).collect();
             assert_eq!(ids, panes);
             for (id, r) in layout {
@@ -963,7 +954,7 @@ mod tests {
                 assert_eq!(r, expected);
             }
         }
-        assert!(zoom_layout(size(80, 2), &ids(2), PaneId(2)).is_none());
+        assert!(zoom_layout(size(80, 1), &ids(2), PaneId(2)).is_none());
         assert_eq!(zoom_layout(size(80, 24), &[], PaneId(1)), Some(Vec::new()));
     }
 
@@ -972,7 +963,6 @@ mod tests {
     impl Screen {
         fn draw(panes: &[PaneView], cols: u16, rows: u16) -> Screen {
             let mut chrome = TeamChrome {
-                status: "~/src/team".into(),
                 zoomed: Rc::default(),
             };
             let mut out = Vec::new();
@@ -1028,8 +1018,8 @@ mod tests {
     });
 
     #[test]
-    fn chrome_draws_labels_rules_and_the_status_bar() {
-        let layout = rects(layout(size(30, 8), &ids(3)));
+    fn chrome_draws_labels_and_rules() {
+        let layout = rects(layout(size(30, 7), &ids(3)));
         let panes = [
             view(1, "orch", layout[0], true, None),
             PaneView {
@@ -1038,8 +1028,8 @@ mod tests {
             },
             view(3, "w2", layout[2], false, Some(3)),
         ];
-        let screen = Screen::draw(&panes, 30, 8);
-        let rows: Vec<String> = (0..8).map(|y| screen.row(y)).collect();
+        let screen = Screen::draw(&panes, 30, 7);
+        let rows: Vec<String> = (0..7).map(|y| screen.row(y)).collect();
         assert_eq!(
             rows,
             [
@@ -1050,16 +1040,14 @@ mod tests {
                 "            ┃                 ",
                 "            ┃                 ",
                 "            ┃                 ",
-                " ~/src/team                   ",
             ]
         );
-        // The focused pane's label is bold, and labels and the status bar
-        // are on light blue.
+        // The focused pane's label is bold, and labels are on light blue.
         assert!(screen.bold(3, 0));
         assert!(!screen.bold(15, 0));
         assert_eq!(screen.bg(3, 0), LIGHT_BLUE);
         assert_eq!(screen.bg(0, 0), StyleColor::None);
-        assert_eq!(screen.bg(29, 7), LIGHT_BLUE);
+        assert_eq!(screen.bg(29, 3), LIGHT_BLUE);
     }
 
     #[test]
@@ -1070,7 +1058,6 @@ mod tests {
             view(2, "w1", layout[1], true, Some(3)),
         ];
         let mut chrome = TeamChrome {
-            status: "~/src/team".into(),
             zoomed: Rc::new(Cell::new(Some(PaneId(2)))),
         };
         let mut out = Vec::new();
@@ -1080,15 +1067,14 @@ mod tests {
         let screen = Screen(terminal);
         assert_eq!(screen.row(0), "━━ w1 · zoomed · exited 3 ━━━━");
         assert_eq!(screen.row(1), " ".repeat(30));
-        assert_eq!(screen.row(5), " ~/src/team".to_owned() + &" ".repeat(19));
+        assert_eq!(screen.row(5), " ".repeat(30));
     }
 
     #[test]
     fn chrome_truncates_labels_and_skips_hidden_panes() {
         let panes = [view(1, "orchestrator", rect(0, 1, 8, 2), false, None)];
-        let screen = Screen::draw(&panes, 8, 4);
+        let screen = Screen::draw(&panes, 8, 3);
         assert_eq!(screen.row(0), "━━ orche");
-        assert_eq!(screen.row(3), " ~/src/t");
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),
@@ -1096,25 +1082,22 @@ mod tests {
         ];
         let screen = Screen::draw(&hidden, 8, 2);
         assert_eq!(screen.row(0), "        ");
-        assert_eq!(screen.row(1), " ~/src/t");
+        assert_eq!(screen.row(1), "        ");
     }
 
     #[test]
     fn chrome_measures_wide_and_combining_characters_in_columns() {
         let panes = [view(1, "界界界界界", rect(0, 1, 9, 2), false, None)];
         let mut chrome = TeamChrome {
-            status: "e\u{301}界界界界界".into(),
             zoomed: Rc::default(),
         };
         let mut out = Vec::new();
-        chrome.draw(&mut out, &panes, size(9, 4));
-        let mut terminal = Terminal::new(9, 4).unwrap();
+        chrome.draw(&mut out, &panes, size(9, 3));
+        let mut terminal = Terminal::new(9, 3).unwrap();
         terminal.vt_write(&out);
         let screen = Screen(terminal);
         // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
         assert_eq!(screen.row(0), "━━ 界 界 界 ");
-        assert_eq!(screen.row(3), " e界 界 界  ");
-        assert_eq!(screen.bg(8, 3), LIGHT_BLUE);
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
     }
