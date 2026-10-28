@@ -17,7 +17,7 @@ and change over generalized infrastructure or speculative requirements.
   messages between them.
 - Hypercube supplies identities, worktrees or worker directories, messages, and
   lifecycle tools. Agents decide how to divide work, collaborate, integrate, and
-  assess completion.
+  assess completion. There is no task registry, workflow, or reporting protocol.
 - Configure harnesses only through per-launch flags, environment, and
   configuration overrides. The user's global and project settings, credentials,
   and `HOME` stay untouched.
@@ -36,6 +36,9 @@ and change over generalized infrastructure or speculative requirements.
 - `docs/installation.md`: prerequisites, building, and installing.
 - `docs/harness-support.md`: how each harness is launched and hooked.
 - `agents/plans/2026-10-27-002-rust-port.md`: the implementation plan.
+
+The new code and docs stand alone. They never mention `v1/`, the Go version,
+tmux, granite, or any other predecessor. `v1/` is reference material only.
 
 ## Layout
 
