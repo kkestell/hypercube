@@ -12,9 +12,6 @@
   writes only the state file.
 - `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
   `delete` take `--all` to act on every workspace.
-- `hypercube statusline` is Claude Code's status line command. It runs for each
-  status update, saves the usage limits Claude Code reports, and prints a
-  line for Claude Code's own status line.
 
 A workspace is named from its checkout path (`workspace::name`): the
 directory's name and the start of a hash of the path. Outside Git, the
@@ -28,8 +25,7 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
 - `<hash>.sock`: the control socket, named from a hash of the workspace name
   so its path stays within the 104 bytes macOS allows.
 
-The state directory also holds `claude-limits.json`, which belongs to no
-workspace (see Usage limits), and `pi-extension/index.js`.
+The state directory also holds `pi-extension/index.js`.
 
 ## The host
 
@@ -110,8 +106,7 @@ zoom.
 in black on `#87d7ff`, bold for the focused pane, followed by "zoomed" while
 the pane fills the pane area, "exited N" once the pane's program has exited
 and is not relaunched, and "↑N" while its view is scrolled N rows up. The
-status bar is black on `#87d7ff`, with the checkout path on the left and
-Claude Code's usage limits on the right.
+status bar is black on `#87d7ff`, with the checkout path on the left.
 
 The keys and the mouse (see Input):
 
@@ -127,29 +122,6 @@ The keys and the mouse (see Input):
 - A drag selects text and copies it to the clipboard on release.
 
 The status bar clips its text to whole grapheme clusters, measured in columns.
-The limits are drawn only when they fit in the columns the path leaves, with a
-column between them; otherwise the bar shows the path alone.
-
-### Usage limits
-
-Claude Code gives its rate limits only to its status line command, which
-`harness::command` sets to `hypercube statusline`. Each run reads Claude
-Code's status JSON on stdin and, when it carries `rate_limits`, saves the
-`five_hour` and `seven_day` windows (`used_percentage`, `resets_at` in Unix
-seconds) in `claude-limits.json` in the state directory. Missing and null
-fields are tolerated; limits without a usable window are not saved. The write goes
-through a temporary file renamed into place. The limits belong to the account,
-so every workspace shares the file. The command prints the line Claude Code
-shows: `ctx <used>%` (0 while Claude Code reports none), then ` · <branch>` for the branch checked out in
-`workspace.current_dir`, with `*` after it when the checkout has uncommitted
-changes.
-
-The host reads the file when it starts and every 15 seconds after, on the
-event loop's deadline. `limits::render` turns it into status bar text, such as
-`claude 5h 22% ↻2h5m  7d 9% ↻3d4h`: each window that has not reset, with its
-use and the time until it resets. When the text differs from what the status
-bar shows, the host calls `Mux::invalidate_chrome`. A missing or unreadable
-file leaves the right side empty.
 
 ## Control socket
 

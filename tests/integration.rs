@@ -313,11 +313,6 @@ impl Fixture {
         child.wait_with_output().unwrap()
     }
 
-    /// The file `hypercube statusline` saves Claude Code's limits in.
-    fn limits_path(&self) -> PathBuf {
-        self.dir.join("state/hypercube/claude-limits.json")
-    }
-
     /// The row of `hypercube status` for the repository: workspace, session,
     /// and number of agents.
     fn status(&self) -> Option<Vec<String>> {
@@ -1282,81 +1277,6 @@ fn ctrl_backslash_zooms_the_focused_pane() {
         .map(|e| e["data"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(typed, "hi\r");
-}
-
-/// Claude Code's status line input with the given limits.
-fn status_input(dir: &Path, five_hour: (u32, i64), seven_day: (u32, i64)) -> String {
-    json!({
-        "rate_limits": {
-            "five_hour": {"used_percentage": five_hour.0, "resets_at": five_hour.1},
-            "seven_day": {"used_percentage": seven_day.0, "resets_at": seven_day.1},
-        },
-        "context_window": {"used_percentage": 37.6},
-        "workspace": {"current_dir": dir},
-    })
-    .to_string()
-}
-
-#[test]
-fn the_status_line_saves_limits_and_the_status_bar_shows_them() {
-    let mut fx = Fixture::new();
-    let now = i64::try_from(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_secs(),
-    )
-    .unwrap();
-    // Limits saved before the session starts are on the status bar at once.
-    fs::create_dir_all(fx.limits_path().parent().unwrap()).unwrap();
-    let input = status_input(
-        &fx.repo,
-        (22, now + 2 * 3600 + 600),
-        (9, now + 3 * 86400 + 3600),
-    );
-    fs::write(
-        fx.limits_path(),
-        json!({"five_hour": {"used_percentage": 22, "resets_at": now + 2 * 3600 + 600}})
-            .to_string(),
-    )
-    .unwrap();
-    fx.start();
-    fx.wait_screen("claude 5h 22% ↻2h");
-    let screen = fx.screen();
-    let last = screen.lines().last().unwrap();
-    assert!(last.contains(fx.repo.to_str().unwrap()), "{screen}");
-    assert!(!last.contains("7d"), "{screen}");
-
-    // Claude Code runs the status line command from `--settings`.
-    let launch = fx.agent_events("orchestrator", "launch").remove(0);
-    let settings: Value =
-        serde_json::from_str(flag_value(args_of(&launch), "--settings").unwrap()).unwrap();
-    assert_eq!(settings["statusLine"]["type"], "command");
-    fx.command("orchestrator", &format!("statusline {input}"));
-    let runs = fx.wait_event("orchestrator", "statusline", 1);
-    assert_eq!(runs[0]["status"], 0, "{runs:?}");
-    assert_eq!(runs[0]["output"], "ctx 38% · main");
-    assert_eq!(runs[0]["command"], settings["statusLine"]["command"]);
-
-    // A dirty checkout is starred.
-    fs::write(fx.repo.join("scratch.txt"), "x").unwrap();
-    fx.command("orchestrator", &format!("statusline {input}"));
-    let runs = fx.wait_event("orchestrator", "statusline", 2);
-    assert_eq!(runs[1]["output"], "ctx 38% · main*");
-
-    // The host reads the saved file again within 15 seconds.
-    fx.wait_screen("7d 9% ↻3d");
-    let screen = fx.screen();
-    assert!(
-        screen.lines().last().unwrap().contains("claude 5h 22% ↻2h"),
-        "{screen}"
-    );
-
-    // The limits file is not a workspace.
-    let out = fx.run(&["status"]);
-    let text = String::from_utf8_lossy(&out.stdout);
-    assert_eq!(text.lines().count(), 2, "{text}");
-    fx.stop();
 }
 
 #[test]
