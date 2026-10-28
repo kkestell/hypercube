@@ -698,6 +698,8 @@ pub struct Mux {
     pasting: Option<PaneId>,
     /// Whether the zoom key was pressed since the caller last took it.
     zoom: bool,
+    /// Whether the focus moved since the caller last took it.
+    focus_moved: bool,
 }
 
 impl Mux {
@@ -725,6 +727,7 @@ impl Mux {
             held_since: 0,
             pasting: None,
             zoom: false,
+            focus_moved: false,
         };
         m.reset_host_modes();
         m
@@ -1028,6 +1031,7 @@ impl Mux {
             old.send(b"\x1b[O");
         }
         self.shared.focus.set(Some(id));
+        self.focus_moved = true;
         let next = &self.panes[self.index(id).unwrap()];
         if next.mode(Mode::FOCUS_EVENT) {
             next.send(b"\x1b[I");
@@ -1126,6 +1130,11 @@ impl Mux {
         let mut input = std::mem::take(&mut self.held_input);
         input.extend_from_slice(data);
         self.route(&input, false);
+    }
+
+    /// Whether the focus moved to another pane since the last call.
+    pub fn take_focus_moved(&mut self) -> bool {
+        std::mem::take(&mut self.focus_moved)
     }
 
     /// Whether the zoom key was pressed since the last call.

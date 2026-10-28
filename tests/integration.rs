@@ -1142,6 +1142,32 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
 }
 
 #[test]
+fn a_nudge_pending_when_an_agent_exits_does_not_reach_its_replacement() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    let (text, is_error) = fx.call(
+        "orchestrator",
+        "send_message",
+        json!({"to": "w1", "text": "hello"}),
+    );
+    assert!(!is_error, "{text}");
+    // The host's Enter for the nudge is due 200 ms after it typed the text.
+    fx.command("w1", "exit 1");
+    let launch = fx.wait_event("w1", "ready", 2);
+    let since = launch[1]["ms"].as_i64().unwrap();
+    std::thread::sleep(Duration::from_millis(600));
+
+    // Nothing typed reached the new program, and it ran one turn: its own
+    // nudge prompt.
+    let late = |e: &&Value| e["ms"].as_i64().unwrap() >= since;
+    let events = fx.agent_events("w1", "input");
+    assert_eq!(events.iter().filter(late).count(), 0, "{events:?}");
+    let prompts = fx.agent_events("w1", "prompt");
+    assert_eq!(prompts.iter().filter(late).count(), 1, "{prompts:?}");
+}
+
+#[test]
 fn an_agent_that_keeps_exiting_is_left_exited() {
     let mut fx = Fixture::new();
     fx.start();
@@ -1221,15 +1247,17 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     fx.wait_screen("w1 · claude haiku low");
     fx.wait_no_screen("zoomed");
 
-    // A change of focus restores it too.
+    // A change of focus restores it too, at once.
     fx.type_text("\x1d\x1c");
     fx.wait_size("w1", whole);
     fx.wait_screen("zoomed");
     fx.wait_no_screen("orchestrator ·");
+    let start = Instant::now();
     fx.type_text("\x1d");
     fx.wait_size("w1", w1_size.clone().try_into().unwrap());
     fx.wait_screen("orchestrator ·");
     fx.wait_no_screen("zoomed");
+    assert!(start.elapsed() < Duration::from_secs(5));
 
     // As does adding or removing a pane.
     fx.type_text("\x1c");

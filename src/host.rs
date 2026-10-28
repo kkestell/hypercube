@@ -442,6 +442,12 @@ impl Enters {
         self.0.iter().map(|&(at, _)| at).min()
     }
 
+    /// Drop the pane's pending Enter, so a program that replaces the one
+    /// nudged doesn't get it.
+    fn cancel(&mut self, pane: PaneId) {
+        self.0.retain(|&(_, p)| p != pane);
+    }
+
     /// Remove and return the panes whose Enter is due at `now`.
     fn take_due(&mut self, now: i64) -> Vec<PaneId> {
         let (due, later): (Vec<_>, Vec<_>) = self.0.iter().partition(|&&(at, _)| at <= now);
@@ -635,6 +641,7 @@ impl Host {
                         }
                     }
                     Event::Zoom => self.toggle_zoom()?,
+                    Event::Focus => {}
                     Event::Resized => self.lay_out()?,
                     Event::InputClosed => return Ok(()),
                     Event::Deadline => {}
@@ -806,6 +813,7 @@ impl Host {
     /// exited. If the harness fails to start, the pane shows why, and the
     /// host doesn't try again.
     fn relaunch(&mut self, pane: PaneId) -> Result<()> {
+        self.enters.cancel(pane);
         let Some(slot) = self.panes.iter_mut().find(|s| s.pane == pane) else {
             return Ok(());
         };
@@ -863,6 +871,7 @@ impl Host {
             return Ok(());
         };
         let slot = self.panes.remove(i);
+        self.enters.cancel(slot.pane);
         self.mux.remove_pane(slot.pane);
         self.zoomed.set(None);
         self.lay_out()
@@ -1263,6 +1272,19 @@ mod tests {
         // Once its Enter is pressed, a pane takes a new nudge.
         assert!(enters.schedule(PaneId(1), 1250));
         assert_eq!(enters.take_due(2000), [PaneId(2), PaneId(1)]);
+        assert_eq!(enters.next(), None);
+    }
+
+    #[test]
+    fn a_cancelled_enter_is_not_pressed_and_the_pane_takes_a_new_nudge() {
+        let mut enters = Enters::default();
+        assert!(enters.schedule(PaneId(1), 1000));
+        assert!(enters.schedule(PaneId(2), 1000));
+        enters.cancel(PaneId(1));
+        assert!(enters.schedule(PaneId(1), 1100));
+        enters.cancel(PaneId(2));
+        assert_eq!(enters.take_due(5000), [PaneId(1)]);
+        enters.cancel(PaneId(3));
         assert_eq!(enters.next(), None);
     }
 

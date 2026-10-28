@@ -542,6 +542,8 @@ fn input_goes_to_the_focused_pane_and_ctrl_bracket_moves_focus() {
     h.wait_screen("left got 97");
     h.send("\x1db");
     h.wait_screen("right got 98");
+    // The loop reports the move to the caller.
+    assert!(h.events.contains(&Event::Focus));
     h.send("\x1dc");
     h.wait_screen("left got 99");
     // Kitty-encoded Ctrl-]: a press switches; repeats and releases are

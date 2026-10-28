@@ -26,6 +26,8 @@ pub enum Event {
     PaneExited(PaneId, u8),
     /// The zoom key was pressed.
     Zoom,
+    /// The focus moved to another pane.
+    Focus,
     /// The host terminal changed size. The caller lays the panes out again.
     Resized,
     /// The host terminal's input ended.
@@ -120,7 +122,7 @@ impl Runtime {
 
     /// Run the loop until something needs the caller: one of `extra`
     /// becomes readable, a pane's program exits, the zoom key is pressed,
-    /// the host resizes or its input ends, or `deadline` (in `now_ms` time)
+    /// the focus moves, the host resizes or its input ends, or `deadline` (in `now_ms` time)
     /// passes. Between those, pane output is drawn at most once per frame,
     /// and host input goes to the focused pane.
     pub fn wait(
@@ -160,6 +162,9 @@ impl Runtime {
             }
             if mux.take_zoom() {
                 events.push(Event::Zoom);
+            }
+            if mux.take_focus_moved() {
+                events.push(Event::Focus);
             }
             let now = now_ms();
             if deadline.is_some_and(|d| now >= d) {
