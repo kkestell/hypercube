@@ -158,6 +158,27 @@ impl Decoder {
     }
 }
 
+/// Output in pieces of at most `MAX_PAYLOAD` bytes, each ending just before
+/// an Esc where there is one, so every piece holds whole escape sequences:
+/// the mux writes Esc only to start one, never inside one or in cell text.
+pub fn split_output(data: &[u8]) -> impl Iterator<Item = &[u8]> {
+    let mut rest = data;
+    std::iter::from_fn(move || {
+        if rest.is_empty() {
+            return None;
+        }
+        let mut end = rest.len().min(MAX_PAYLOAD);
+        if end < rest.len()
+            && let Some(esc) = rest[1..=end].iter().rposition(|&b| b == 0x1b)
+        {
+            end = esc + 1;
+        }
+        let (piece, tail) = rest.split_at(end);
+        rest = tail;
+        Some(piece)
+    })
+}
+
 /// The host's end of an attach stream: a non-blocking socket with a queue of
 /// outbound bytes. Nothing on it blocks.
 pub struct Link {
@@ -183,14 +204,14 @@ impl Link {
         self.stream.as_raw_fd()
     }
 
-    /// Queue a message. Output over `MAX_PAYLOAD` goes as several messages.
+    /// Queue a message. Output over `MAX_PAYLOAD` goes as several messages;
+    /// see `split_output`.
     pub fn send(&mut self, message: Message) {
         if self.queue.is_empty() {
             self.last_progress = now_ms();
         }
         let messages = match message {
-            Message::Output(data) if data.len() > MAX_PAYLOAD => data
-                .chunks(MAX_PAYLOAD)
+            Message::Output(data) if data.len() > MAX_PAYLOAD => split_output(&data)
                 .map(|c| Message::Output(c.to_vec()))
                 .collect(),
             message => vec![message],
@@ -316,6 +337,45 @@ mod tests {
     }
 
     #[test]
+    fn large_frames_split_between_escape_sequences() {
+        use crate::mux::{Mux, NoChrome, Rect, Winsize};
+        // A truecolor frame of a large terminal, with a color change at
+        // every cell.
+        let ws = Winsize {
+            ws_col: 500,
+            ws_row: 150,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let mut mux = Mux::new(ws, Box::new(NoChrome));
+        mux.connect_host(&[], ws).unwrap();
+        let id = mux.add_pane("p").unwrap();
+        mux.set_layout(&[(id, Rect::full(ws))]).unwrap();
+        let mut text = String::new();
+        for i in 0..500 * 149 {
+            text.push_str(&format!("\x1b[38;2;{};{};200mx", i % 251, i % 241));
+        }
+        mux.pane_mut(id).unwrap().feed(text.as_bytes());
+        mux.render().unwrap();
+        let frame = mux.take_output();
+        assert!(frame.len() > MAX_PAYLOAD);
+
+        let pieces: Vec<&[u8]> = split_output(&frame).collect();
+        assert!(pieces.len() >= 2);
+        assert_eq!(pieces.concat(), frame);
+        for (i, piece) in pieces.iter().enumerate() {
+            assert!(piece.len() <= MAX_PAYLOAD);
+            if i > 0 {
+                assert_eq!(piece[0], 0x1b, "piece {i}");
+            }
+        }
+        // Without an Esc, pieces are as long as they may be.
+        let plain = vec![b'x'; MAX_PAYLOAD + 1];
+        let lens: Vec<usize> = split_output(&plain).map(<[u8]>::len).collect();
+        assert_eq!(lens, [MAX_PAYLOAD, 1]);
+    }
+
+    #[test]
     fn a_link_queues_what_the_socket_does_not_take() {
         let (host, client) = UnixStream::pair().unwrap();
         let mut link = Link::new(host).unwrap();
@@ -362,7 +422,14 @@ mod tests {
             }
         };
         assert_eq!(read, [Message::Input(b"hi".to_vec())]);
+        // A child that another test forks at the moment may hold the
+        // client's end until it execs, so the end of the stream can come
+        // late.
         drop(client);
-        assert!(link.read().is_err());
+        let end = now_ms() + 2000;
+        while link.read().is_ok() {
+            assert!(now_ms() < end, "the stream never ended");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
     }
 }

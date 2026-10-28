@@ -7,12 +7,13 @@ use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read, Write};
-use std::os::fd::{AsRawFd, RawFd};
+use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::control::{self, NUDGE, Reply, Request};
@@ -348,6 +349,19 @@ fn catch_signals() -> Result<RawFd> {
     Ok(fds[0])
 }
 
+/// A pipe, read end first, close-on-exec, with a non-blocking read end.
+fn pipe() -> Result<(OwnedFd, OwnedFd)> {
+    let mut fds = [0; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(format!("pipe: {}", std::io::Error::last_os_error()).into());
+    }
+    for fd in fds {
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+    unsafe { libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK) };
+    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+}
+
 /// The control socket's listener. Dropping it removes the socket file.
 struct Socket {
     listener: UnixListener,
@@ -385,6 +399,9 @@ struct Client {
     since: i64,
 }
 
+/// The name of a workspace another was asked to stop, and how it went.
+type StopResult = (String, std::result::Result<(), String>);
+
 struct Host {
     exe: PathBuf,
     root: PathBuf,
@@ -404,6 +421,11 @@ struct Host {
     overlay: Rc<RefCell<Option<Overlay>>>,
     /// When the overlay's list was last read.
     overlay_read: i64,
+    /// Stops of other workspaces, which run on threads so the host keeps
+    /// serving: a pipe that becomes readable when one finishes, and their
+    /// results.
+    stopped: (OwnedFd, OwnedFd),
+    stop_results: (mpsc::Sender<StopResult>, mpsc::Receiver<StopResult>),
 }
 
 /// An agent's pane and how its program has been running.
@@ -472,6 +494,8 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         zoomed,
         overlay,
         overlay_read: 0,
+        stopped: pipe()?,
+        stop_results: mpsc::channel(),
     };
     let result = host.serve();
     if let Err(e) = &result {
@@ -591,7 +615,8 @@ impl Host {
     fn serve(&mut self) -> Result<()> {
         loop {
             let listener = self.socket.listener.as_raw_fd();
-            let mut fds = vec![listener, self.signals];
+            let stopped = self.stopped.0.as_raw_fd();
+            let mut fds = vec![listener, self.signals, stopped];
             fds.extend(self.clients.iter().map(|c| c.stream.as_raw_fd()));
             let mut deadline = self
                 .clients
@@ -606,6 +631,7 @@ impl Host {
                 match event {
                     Event::Ready(fd) if fd == listener => self.accept(),
                     Event::Ready(fd) if fd == self.signals => return Ok(()),
+                    Event::Ready(fd) if fd == stopped => self.finish_stops(),
                     Event::Ready(fd) => {
                         if self.read_client(fd)? {
                             return Ok(());
@@ -677,6 +703,7 @@ impl Host {
             // the log.
             Err(e) => {
                 eprintln!("hypercube: reading the workspaces: {e}");
+                self.mux.set_captured(false);
                 return Ok(());
             }
         };
@@ -692,6 +719,31 @@ impl Host {
         }
         self.mux.set_captured(false);
         self.lay_out()
+    }
+
+    /// Stop another workspace on a thread, which wakes the loop when it is
+    /// done; see `finish_stops`.
+    fn start_stop(&mut self, path: PathBuf) {
+        let results = self.stop_results.0.clone();
+        let wake = self.stopped.1.as_raw_fd();
+        std::thread::spawn(move || {
+            let name = store::workspace(&path);
+            let result = stop(&path).map_err(|e| e.to_string());
+            let _ = results.send((name, result));
+            mux::write_all(wake, b"s");
+        });
+    }
+
+    /// Show the results of the stops that finished.
+    fn finish_stops(&mut self) {
+        let mut buf = [0u8; 64];
+        while mux::read(self.stopped.0.as_raw_fd(), &mut buf) > 0 {}
+        while let Ok((name, result)) = self.stop_results.1.try_recv() {
+            self.read_overlay();
+            if let (Err(e), Some(overlay)) = (result, &mut *self.overlay.borrow_mut()) {
+                overlay.error = format!("{name}: {e}");
+            }
+        }
     }
 
     /// Read the overlay's list again.
@@ -719,13 +771,7 @@ impl Host {
             // or says it couldn't.
             Action::Switch(dir) => self.runtime.send(Message::Switch(dir)),
             Action::Stop(path) if path == self.state_path => return Ok(true),
-            Action::Stop(path) => {
-                let result = stop(&path);
-                self.read_overlay();
-                if let (Err(e), Some(overlay)) = (result, &mut *self.overlay.borrow_mut()) {
-                    overlay.error = e.to_string();
-                }
-            }
+            Action::Stop(path) => self.start_stop(path),
             Action::Detach => {
                 self.runtime.detach(&mut self.mux, "");
                 self.close_overlay()?;

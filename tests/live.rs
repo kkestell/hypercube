@@ -179,6 +179,8 @@ struct Host {
     proxy: Option<JoinHandle<String>>,
     /// The client's SIGWINCH pipe, written after a resize.
     winch: (OwnedFd, OwnedFd),
+    /// The client's hangup pipe, never written.
+    hangup: (OwnedFd, OwnedFd),
     events: Vec<Event>,
     /// The caller's descriptors that `step` passes to `wait`.
     extra: Vec<RawFd>,
@@ -208,6 +210,7 @@ impl Host {
             runtime: Runtime::new(),
             proxy: None,
             winch: pipe(),
+            hangup: pipe(),
             events: Vec::new(),
             extra: Vec::new(),
         };
@@ -220,6 +223,7 @@ impl Host {
             input: slave,
             output: slave,
             winch: self.winch.0.as_raw_fd(),
+            hangup: self.hangup.0.as_raw_fd(),
             replies: host_replies(),
             exe: std::path::PathBuf::new(),
         }

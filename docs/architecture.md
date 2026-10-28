@@ -116,8 +116,9 @@ messages and its new sizes as `Resize`, and writes each `Output` payload whole
 to the terminal before it reads the next message, so a terminal that stops
 taking output stops the client from reading the socket. On `Detached(reason)`,
 the end of the terminal's input, or the end of the stream, it restores the
-terminal, prints the reason if there is one, and exits with status 0. SIGHUP
-ends it, and the host drops its attachment.
+terminal, prints the reason if there is one, and exits with status 0.
+SIGHUP, SIGINT, and SIGTERM end it the same way, including while it queries
+the terminal or waits for a host, and the host drops its attachment.
 
 On `Switch(dir)`, the client attaches to the host of the workspace whose
 checkout is `dir`, starting it if needed. On success it drops the old
@@ -148,7 +149,8 @@ kind byte, a 4-byte big-endian length, and the payload, up to 1 MiB:
 - client to host: `Input(bytes)`, `Resize(size)`, `SwitchFailed(text)`
 - host to client: `Output(bytes)`, `Switch(dir)`, `Detached(reason)`
 
-Output over 1 MiB goes as several messages.
+A frame over 1 MiB goes as several `Output` messages, each split just
+before an Esc, so every message holds whole escape sequences.
 
 ### Relaunching
 
@@ -238,8 +240,10 @@ The mux captures input while the overlay is open (see Input). The keys:
   it is stopped. On the host's own workspace, it closes the overlay. The host
   sends the client `Switch(dir)` and keeps the overlay open until the client
   leaves or reports that the switch failed.
-- x stops the selected running workspace. Stopping the host's own workspace
-  ends the session, and the client exits with "stopped".
+- x stops the selected running workspace. Another workspace is stopped on a
+  thread, so the host keeps serving while it waits, and the list shows the
+  result when it is done. Stopping the host's own workspace ends the session,
+  and the client exits with "stopped".
 - d detaches the client.
 - Esc or Ctrl-^ closes the overlay.
 
@@ -471,7 +475,10 @@ a paste, these are routed elsewhere:
 `Mux::set_captured(true)` captures input: each key or escape sequence is
 reported as `Event::Key(bytes)` instead of routed, the overlay key is still
 `Event::Overlay`, and pastes, mouse reports, and the focus and zoom keys are
-dropped. The host then has every mirrored mode at its default and no Kitty
+dropped. The overlay key itself turns capturing on, or off while captured,
+so the keys after it in the same read go to the overlay or the panes in the
+order they were typed; the caller sets capturing to match when it handles
+the event. The host then has every mirrored mode at its default and no Kitty
 flags, so keys arrive in legacy form, and no cursor is drawn.
 
 A key or escape sequence cut off by the end of a read, up to 256 bytes, waits
@@ -497,8 +504,9 @@ draws it.
 
 The link is non-blocking and keeps a queue of outbound bytes, polled for
 `POLLOUT` while it is not empty. A frame is rendered only when the queue is
-empty and 16 ms have passed since the last, and goes as one `Output` message
-of whole escape sequences inside a balanced mode 2026 block. Changes pile up
+empty and 16 ms have passed since the last. A frame is a balanced mode 2026
+block of whole escape sequences, sent as one `Output` message, or split
+before an Esc into several when it is over 1 MiB. Changes pile up
 in the Ghostty terminals meanwhile, so a slow client gets fewer frames, and
 the host never blocks on it. A link whose queue makes no progress for
 `LINK_STALL_MS` (ten seconds) is disconnected.
@@ -520,8 +528,9 @@ the host never blocks on it. A link whose queue makes no progress for
 - `Event::Deadline`: the deadline passed.
 
 `mux::host_reset` returns the terminal's mirrored modes to their defaults,
-with no Kitty keyboard flags, the default cursor, and default attributes, on
-the alternate screen; the client writes it after a switch. `mux::host_restore`
+with no Kitty keyboard flags, the default cursor, default attributes, and
+synchronized output ended, in case a frame was cut off, on the alternate
+screen; the client writes it after a switch. `mux::host_restore`
 is `host_reset` and the main screen, which the client writes before it
 restores the terminal's settings and exits.
 

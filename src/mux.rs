@@ -906,7 +906,10 @@ impl Mux {
     }
 
     /// Report host input as `Notice::Key`, one key or escape sequence each,
-    /// instead of routing it to the panes, or stop. While captured, pastes
+    /// instead of routing it to the panes, or stop. The overlay key turns
+    /// capturing on or off itself, so input after it in the same read goes
+    /// where the caller will want it, and the caller sets it to match when it
+    /// handles `Notice::Overlay`. While captured, pastes
     /// and mouse reports are dropped, the host has every mirrored mode at
     /// its default, so keys arrive in legacy form, and no cursor is shown.
     pub fn set_captured(&mut self, captured: bool) {
@@ -1380,7 +1383,11 @@ impl Mux {
                                 self.notices.push(Notice::Zoom(id));
                             }
                         }
-                        Route::Overlay => self.notices.push(Notice::Overlay),
+                        // The overlay takes the input that follows.
+                        Route::Overlay => {
+                            self.notices.push(Notice::Overlay);
+                            self.set_captured(true);
+                        }
                         Route::Mouse(event) => self.mouse(event),
                         Route::Scroll(key) => self.scroll_focused(key),
                         _ => {}
@@ -1413,7 +1420,10 @@ impl Mux {
             return;
         }
         match special_route(token) {
-            Some(Route::Overlay) => self.notices.push(Notice::Overlay),
+            Some(Route::Overlay) => {
+                self.notices.push(Notice::Overlay);
+                self.set_captured(false);
+            }
             Some(_) => {}
             None => self.notices.push(Notice::Key(token.to_vec())),
         }
@@ -1732,8 +1742,8 @@ fn press_and_release(
 
 /// What turns the host terminal back from anything the mux mirrored onto
 /// it, leaving it on the alternate screen: every mirrored mode at its
-/// default, no Kitty keyboard flags, the default cursor, and default SGR
-/// attributes. `clusters` is whether the host clusters graphemes by default,
+/// default, no Kitty keyboard flags, the default cursor, default SGR
+/// attributes, and synchronized output ended, in case a frame was cut off. `clusters` is whether the host clusters graphemes by default,
 /// if known.
 pub fn host_reset(clusters: Option<bool>) -> Vec<u8> {
     let mut out = Vec::new();
@@ -1746,7 +1756,9 @@ pub fn host_reset(clusters: Option<bool>) -> Vec<u8> {
         };
         let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
     }
-    out.extend_from_slice(b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h");
+    out.extend_from_slice(
+        b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?2026l",
+    );
     out
 }
 
@@ -3005,9 +3017,8 @@ mod tests {
         let mut p = Piped::new();
         p.mux.set_captured(true);
         p.mux.take_notices();
-        p.mux.input(
-            b"j\x1b[A\x1b[<0;1;1M\x1b[200~paste\x1b[201~\r\x1e\x1b[54;5u\x1b[54;6u\x1b[54;5:3u",
-        );
+        p.mux
+            .input(b"j\x1b[A\x1b[<0;1;1M\x1b[200~paste\x1b[201~\r\x1e\x1b[54;6u\x1b[54;5:3u");
         let key = |k: &[u8]| Notice::Key(k.to_vec());
         assert_eq!(
             p.mux.take_notices(),
@@ -3015,7 +3026,6 @@ mod tests {
                 key(b"j"),
                 key(b"\x1b[A"),
                 key(b"\r"),
-                Notice::Overlay,
                 Notice::Overlay,
                 Notice::Overlay
             ]
@@ -3026,9 +3036,31 @@ mod tests {
         assert!(!has(&out, b"\x1b[?25h"));
 
         p.mux.set_captured(false);
-        p.mux.input(b"\x1e");
-        assert_eq!(p.mux.take_notices(), [Notice::Overlay]);
         p.mux.input(b"a");
         assert_eq!(p.got(0), b"a");
+    }
+
+    #[test]
+    fn input_after_the_overlay_key_is_captured_in_order() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        p.mux.input(b"a\x1ed\r\x1eb\x1b[54;5uq");
+        p.mux.input(b"x\x1e");
+        p.mux.input(b"c");
+        let key = |k: &[u8]| Notice::Key(k.to_vec());
+        assert_eq!(
+            p.mux.take_notices(),
+            [
+                Notice::Overlay,
+                key(b"d"),
+                key(b"\r"),
+                Notice::Overlay,
+                Notice::Overlay,
+                key(b"q"),
+                key(b"x"),
+                Notice::Overlay
+            ]
+        );
+        assert_eq!(p.got(0), b"abc");
     }
 }

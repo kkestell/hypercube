@@ -193,8 +193,8 @@ fn delete_workspace(root: &Path, path: &Path) -> Result<()> {
     store::delete(path)?;
     for file in [
         control::socket_path(path)?,
-        host::lock_path(path),
         host::log_path(path),
+        host::lock_path(path),
     ] {
         match fs::remove_file(&file) {
             Err(e) if e.kind() != ErrorKind::NotFound => {

@@ -12,6 +12,7 @@ use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::link::{Decoder, Message, Size, encode};
@@ -35,6 +36,8 @@ pub struct Tty {
     pub output: RawFd,
     /// Readable after each SIGWINCH; see `winch`.
     pub winch: RawFd,
+    /// Readable once SIGHUP, SIGINT, or SIGTERM arrives; see `catch_hangup`.
+    pub hangup: RawFd,
     /// The terminal's replies to `mux::host_queries`.
     pub replies: Vec<u8>,
     pub exe: PathBuf,
@@ -61,6 +64,9 @@ impl Tty {
         let end = Instant::now() + SPAWN_TIMEOUT;
         let mut spawned = None;
         loop {
+            if hung_up() {
+                return Err("the terminal hung up".into());
+            }
             match control::attach(&socket, self.size(), &self.replies) {
                 Ok(stream) => return Ok(stream),
                 Err(e) if control::is_unreachable(&*e) => {}
@@ -90,11 +96,13 @@ pub fn run(root: &Path) -> Result<()> {
         return Err("hypercube must run in a terminal".into());
     }
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
+    let hangup = catch_hangup()?;
     let raw = Raw::take(0, 1)?;
     let tty = Tty {
         input: 0,
         output: 1,
         winch: winch::install()?,
+        hangup,
         replies: raw.replies.clone(),
         exe,
     };
@@ -109,8 +117,9 @@ pub fn run(root: &Path) -> Result<()> {
 
 /// Pass the terminal's input and size to the host at the other end of
 /// `stream`, and its output to the terminal, until the host detaches the
-/// client, the terminal's input ends, or the host goes away. A switch moves
-/// to another workspace's host. Returns the reason to show the user.
+/// client, the terminal's input ends or hangs up, or the host goes away. A
+/// switch moves to another workspace's host. Returns the reason to show the
+/// user.
 pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
     let mut decoder = Decoder::default();
     let mut size = tty.size();
@@ -120,9 +129,13 @@ pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
             pollfd(tty.input),
             pollfd(tty.winch),
             pollfd(stream.as_raw_fd()),
+            pollfd(tty.hangup),
         ];
         if !poll(&mut fds, -1)? {
             continue;
+        }
+        if fds[3].revents != 0 {
+            return Ok(String::new());
         }
         if fds[1].revents != 0 {
             winch::take(tty.winch);
@@ -174,6 +187,51 @@ pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
             }
         }
     }
+}
+
+static HANGUP: AtomicBool = AtomicBool::new(false);
+static HANGUP_PIPE: AtomicI32 = AtomicI32::new(-1);
+
+extern "C" fn on_hangup(_: libc::c_int) {
+    HANGUP.store(true, Ordering::Relaxed);
+    let fd = HANGUP_PIPE.load(Ordering::Relaxed);
+    if fd < 0 {
+        return;
+    }
+    unsafe {
+        let saved = *libc::__error();
+        let byte = 1u8;
+        libc::write(fd, (&raw const byte).cast(), 1);
+        *libc::__error() = saved;
+    }
+}
+
+/// Catch SIGHUP, SIGINT, and SIGTERM, so that the client gives the terminal back
+/// before it exits, and return a pipe that becomes readable when one arrives.
+fn catch_hangup() -> Result<RawFd> {
+    let mut fds = [0; 2];
+    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
+        return Err(format!("pipe: {}", std::io::Error::last_os_error()).into());
+    }
+    for fd in fds {
+        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
+    }
+    unsafe { libc::fcntl(fds[1], libc::F_SETFL, libc::O_NONBLOCK) };
+    HANGUP_PIPE.store(fds[1], Ordering::Relaxed);
+    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGTERM] {
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = on_hangup as extern "C" fn(libc::c_int) as libc::sighandler_t;
+            libc::sigemptyset(&mut action.sa_mask);
+            libc::sigaction(signal, &action, std::ptr::null_mut());
+        }
+    }
+    Ok(fds[0])
+}
+
+/// Whether SIGHUP, SIGINT, or SIGTERM has arrived.
+fn hung_up() -> bool {
+    HANGUP.load(Ordering::Relaxed)
 }
 
 fn gone() -> String {
@@ -276,7 +334,7 @@ fn query(input: RawFd, output: RawFd) -> Result<Vec<u8>> {
     let deadline = now_ms() + HOST_REPLY_TIMEOUT_MS;
     while len < buf.len() && !mux::host_replies_done(&buf[..len]) {
         let left = deadline - now_ms();
-        if left <= 0 {
+        if left <= 0 || hung_up() {
             break;
         }
         // Not ready means interrupted or timed out; the deadline tells

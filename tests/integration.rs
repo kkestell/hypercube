@@ -1586,13 +1586,28 @@ fn the_overlay_switches_between_workspaces() {
     assert!(pids.iter().all(|&p| alive(p)));
     assert!(host::running(&other_state).unwrap());
 
-    // x stops the other workspace, and the overlay shows it stopped.
+    // x stops the other workspace. While its teardown is held, this host
+    // keeps serving.
+    fx.repo = other.clone();
+    fx.command("orchestrator", "hold-hup");
+    fx.wait_event("orchestrator", "hold-hup", 1);
+    fx.repo = first.clone();
     fx.select_workspace(&other);
     fx.type_text("x");
+    fx.repo = other.clone();
+    fx.wait_event("orchestrator", "hup", 1);
+    fx.repo = first.clone();
+    fx.type_text("\x1b");
+    fx.wait_no_screen("Workspaces");
+    fx.type_text("hi\r");
+    fx.wait_event("orchestrator", "prompt", 1);
+    assert!(host::running(&other_state).unwrap());
     fx.wait("the other workspace to stop", |_| {
         (!host::running(&other_state).unwrap()).then_some(())
     });
-    fx.wait_no_screen("running  1 agent");
+    fx.type_text("\x1e");
+    fx.wait_screen("Workspaces");
+    fx.wait_screen("stopped  1 agent");
     // Esc closes the overlay, and x on this workspace ends the client.
     fx.type_text("\x1b");
     fx.wait_no_screen("Workspaces");
@@ -1634,4 +1649,53 @@ fn a_host_of_another_protocol_is_refused() {
     // The terminal was given back.
     assert!(text.contains("\x1b[?1049l"), "{text}");
     session.end();
+}
+
+/// Whether the terminal of the client's pty is in canonical mode.
+fn canonical(session: &Session) -> bool {
+    let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+    assert_eq!(
+        unsafe { libc::tcgetattr(session.master.as_raw_fd(), termios.as_mut_ptr()) },
+        0
+    );
+    unsafe { termios.assume_init() }.c_lflag & libc::ICANON != 0
+}
+
+#[test]
+fn signals_give_the_terminal_back_and_leave_the_host_running() {
+    let mut fx = Fixture::new();
+    fx.start();
+    let host = fx.host_pid();
+    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGTERM] {
+        if fx.session.is_none() {
+            fx.attach();
+        }
+        assert!(!canonical(fx.session()));
+        let pid = fx.session().child.id() as i32;
+        unsafe { libc::kill(pid, signal) };
+        let code = fx.wait("the client to exit", |fx| fx.session().exited());
+        assert_eq!(code, 0, "signal {signal}");
+        let session = fx.session.take().unwrap();
+        assert!(canonical(&session), "signal {signal}");
+        assert!(session.text().ends_with("\x1b[?1049l"), "signal {signal}");
+        session.end();
+        assert!(alive(host));
+        assert!(host::running(&fx.state_path()).unwrap());
+    }
+}
+
+#[test]
+fn keys_typed_with_the_overlay_key_go_to_the_overlay() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.wait_idle("orchestrator");
+    // Ctrl-^ and d arrive in one read, and detach.
+    fx.type_text("\x1ed\r");
+    let code = fx.wait("the client to detach", |fx| fx.session().exited());
+    assert_eq!(code, 0);
+    fx.session.take().unwrap().end();
+    std::thread::sleep(Duration::from_millis(300));
+    assert!(fx.agent_events("orchestrator", "input").is_empty());
+    assert!(fx.agent_events("orchestrator", "prompt").is_empty());
+    assert!(host::running(&fx.state_path()).unwrap());
 }
