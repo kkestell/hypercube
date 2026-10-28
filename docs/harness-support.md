@@ -31,8 +31,7 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
 - `--mcp-config` registers the `hypercube` stdio server: `exe mcp`, with
   `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE` in its environment.
 - `--settings` carries a `hooks` entry for each event running
-  `'<exe>' hook <event>`, and a `statusLine` command, `'<exe>' statusline`, that
-  saves Claude Code's usage limits for the host's status bar.
+  `'<exe>' hook <event>`.
 - `--resume` is present when the agent has a saved session ID.
 
 The checkout must be trusted in Claude Code. A directory worker's directory

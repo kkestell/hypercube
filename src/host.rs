@@ -3,7 +3,6 @@
 //! their labels and the status bar, and answers requests on the control
 //! socket until the session ends.
 
-use std::cell::RefCell;
 use std::error::Error;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read, Write};
@@ -11,7 +10,6 @@ use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 
@@ -21,7 +19,7 @@ use crate::mux::{self, Chrome, Key, Mux, Pane, PaneId, PaneView, Rect, Winsize, 
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
-use crate::{config, limits, workspace};
+use crate::{config, workspace};
 use libghostty_vt::unicode;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -32,8 +30,6 @@ const NUDGE_ENTER_MS: i64 = 200;
 const REQUEST_TIMEOUT_MS: i64 = 5000;
 /// The longest request the host reads.
 const MAX_REQUEST: usize = 1 << 20;
-/// How often the host reads the saved limits.
-const LIMITS_INTERVAL_MS: i64 = 15_000;
 /// How long `stop` waits for the host to end.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -167,11 +163,8 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
 /// The labels above the panes, the rule between the first pane and the
 /// others, and the status bar.
 pub struct TeamChrome {
-    /// The status bar's text on the left.
+    /// The status bar's text.
     pub status: String,
-    /// The status bar's text on the right, which the host changes as the
-    /// limits do.
-    pub limits: Rc<RefCell<String>>,
 }
 
 impl Chrome for TeamChrome {
@@ -202,17 +195,6 @@ impl Chrome for TeamChrome {
             let left = fit(&format!(" {}", self.status), size.ws_col);
             let row = size.ws_row;
             s.push_str(&format!("\x1b[{row};1H{LABEL}{blank}\x1b[{row};1H{left}"));
-            // The limits are left out when they would crowd the path.
-            let limits = self.limits.borrow();
-            if !limits.is_empty() {
-                let right = format!("{limits} ");
-                let (_, used) = clip(&right, usize::MAX);
-                let room = usize::from(size.ws_col).saturating_sub(clip(&left, usize::MAX).1 + 1);
-                if used <= room {
-                    let col = usize::from(size.ws_col) - used + 1;
-                    s.push_str(&format!("\x1b[{row};{col}H{right}"));
-                }
-            }
         }
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
@@ -246,16 +228,10 @@ fn draw_label(s: &mut String, p: &PaneView) {
 }
 
 /// The longest start of `text` made of whole grapheme clusters that fits in
-/// `width` columns.
+/// `width` columns. The host clusters graphemes or not depending on the
+/// focused pane, so each cluster counts as the wider of the two.
 fn fit(text: &str, width: u16) -> String {
-    clip(text, usize::from(width)).0
-}
-
-/// The longest start of `text` made of whole grapheme clusters that fits in
-/// `width` columns, and the columns it takes. The host clusters graphemes or
-/// not depending on the focused pane, so each cluster counts as the wider of
-/// the two.
-fn clip(text: &str, width: usize) -> (String, usize) {
+    let width = usize::from(width);
     let chars: Vec<char> = text.chars().collect();
     let mut rest = chars.as_slice();
     let mut used = 0;
@@ -275,7 +251,7 @@ fn clip(text: &str, width: usize) -> (String, usize) {
         end += len;
         rest = &rest[len..];
     }
-    (chars[..end].iter().collect(), used)
+    chars[..end].iter().collect()
 }
 
 static SIGNAL_PIPE: AtomicI32 = AtomicI32::new(-1);
@@ -370,10 +346,6 @@ struct Host {
     panes: Vec<(String, PaneId)>,
     clients: Vec<Client>,
     enters: Enters,
-    /// The status bar's limits text, shared with the chrome.
-    limits: Rc<RefCell<String>>,
-    /// When to read the saved limits next, in `now_ms` time.
-    limits_due: i64,
 }
 
 /// Nudged panes and when to press Enter in each. A pane has at most one
@@ -436,10 +408,8 @@ pub fn run(root: &Path) -> Result<()> {
     let socket = Socket::listen(&state_path)?;
     let signals = catch_signals()?;
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
-    let limits = Rc::new(RefCell::new(String::new()));
     let chrome = TeamChrome {
         status: workspace::short(root),
-        limits: Rc::clone(&limits),
     };
     let mut mux = Mux::new(Winsize::default(), Box::new(chrome));
     let runtime = Runtime::new(&mut mux, 0, 1)?;
@@ -453,10 +423,7 @@ pub fn run(root: &Path) -> Result<()> {
         panes: Vec::new(),
         clients: Vec::new(),
         enters: Enters::default(),
-        limits,
-        limits_due: 0,
     };
-    host.refresh_limits();
     host.start(&agents).and_then(|()| host.serve())
 }
 
@@ -545,7 +512,6 @@ impl Host {
                 .iter()
                 .map(|c| c.since + REQUEST_TIMEOUT_MS)
                 .chain(self.enters.next())
-                .chain(Some(self.limits_due))
                 .min();
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
@@ -570,25 +536,8 @@ impl Host {
             for pane in self.enters.take_due(now) {
                 self.mux.send_key(pane, Key::Enter)?;
             }
-            if now >= self.limits_due {
-                self.refresh_limits();
-            }
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
         }
-    }
-
-    /// Read the saved limits, redraw the status bar if its text changed, and
-    /// schedule the next read. The text counts down to each reset, so it
-    /// changes between writes of the file.
-    fn refresh_limits(&mut self) {
-        let text = limits::load(&limits::path())
-            .map(|l| limits::render(&l, limits::now()))
-            .unwrap_or_default();
-        if *self.limits.borrow() != text {
-            *self.limits.borrow_mut() = text;
-            self.mux.invalidate_chrome();
-        }
-        self.limits_due = now_ms() + LIMITS_INTERVAL_MS;
     }
 
     /// Hang up every pane's program, give them `HANGUP_GRACE_MS` to exit
@@ -844,7 +793,6 @@ mod tests {
         fn draw(panes: &[PaneView], cols: u16, rows: u16) -> Screen {
             let mut chrome = TeamChrome {
                 status: "~/src/team".into(),
-                limits: Rc::default(),
             };
             let mut out = Vec::new();
             chrome.draw(&mut out, panes, size(cols, rows));
@@ -954,7 +902,6 @@ mod tests {
         let panes = [view(1, "界界界界界", rect(0, 1, 9, 2), false, None)];
         let mut chrome = TeamChrome {
             status: "e\u{301}界界界界界".into(),
-            limits: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &panes, size(9, 4));
@@ -967,50 +914,6 @@ mod tests {
         assert_eq!(screen.bg(8, 3), LIGHT_BLUE);
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
-    }
-
-    fn status_bar(status: &str, limits: &str, cols: u16) -> String {
-        let mut chrome = TeamChrome {
-            status: status.into(),
-            limits: Rc::new(RefCell::new(limits.into())),
-        };
-        let mut out = Vec::new();
-        chrome.draw(&mut out, &[], size(cols, 2));
-        let mut terminal = Terminal::new(cols, 2).unwrap();
-        terminal.vt_write(&out);
-        let screen = Screen(terminal);
-        assert_eq!(screen.bg(0, 1), LIGHT_BLUE);
-        assert_eq!(screen.bg(cols - 1, 1), LIGHT_BLUE);
-        screen.row(1)
-    }
-
-    #[test]
-    fn the_status_bar_shows_limits_on_the_right() {
-        let limits = "claude 5h 22% ↻2h5m";
-        assert_eq!(
-            status_bar("~/src/team", limits, 40),
-            " ~/src/team         claude 5h 22% ↻2h5m "
-        );
-        assert_eq!(
-            status_bar("~/src/team", "", 40),
-            format!(" ~/src/team{:29}", "")
-        );
-        // The limits are left out when they would touch the path.
-        assert_eq!(
-            status_bar("~/src/team", limits, 31),
-            format!(" ~/src/team{:20}", "")
-        );
-        assert_eq!(
-            status_bar("~/src/team", limits, 32),
-            " ~/src/team claude 5h 22% ↻2h5m "
-        );
-        assert_eq!(status_bar("~/src/team", limits, 6), " ~/src");
-    }
-
-    #[test]
-    fn the_status_bar_measures_wide_limits_in_columns() {
-        assert_eq!(status_bar("a", "界界", 12), " a     界 界  ");
-        assert_eq!(status_bar("a", "界界", 8), " a 界 界  ");
     }
 
     #[test]

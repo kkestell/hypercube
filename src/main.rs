@@ -9,11 +9,12 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
 use hypercube::store::{Agent, State};
-use hypercube::{control, hook, host, limits, mcp, store, workspace};
+use hypercube::{control, hook, host, mcp, store, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const USAGE: &str = "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | statusline]";
+const USAGE: &str =
+    "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -27,11 +28,6 @@ fn main() -> ExitCode {
         ["delete", "--all"] => delete_all(),
         ["delete", dir] => delete(dir),
         ["status"] => status(),
-        ["statusline"] => limits::statusline(
-            std::io::stdin().lock(),
-            std::io::stdout().lock(),
-            &limits::path(),
-        ),
         ["mcp"] => mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()),
         ["hook", event] => hook::run(event, std::io::stdin().lock(), std::io::stdout().lock()),
         _ => {
@@ -121,7 +117,7 @@ fn workspaces() -> Result<Vec<Known>> {
     let mut list = Vec::new();
     for entry in entries {
         let path = entry.path();
-        if path.extension().is_none_or(|e| e != "json") || entry.file_name() == limits::FILE {
+        if path.extension().is_none_or(|e| e != "json") {
             continue;
         }
         let state = store::load(&path)?;
