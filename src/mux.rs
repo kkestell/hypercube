@@ -51,6 +51,16 @@ pub const MIRRORED_MODES: [(u16, bool); 10] = [
 /// Rows one wheel step scrolls.
 const WHEEL_ROWS: isize = 3;
 
+/// How long host input cut off by the end of a read waits for the rest.
+pub const INPUT_HOLD_MS: i64 = 25;
+
+/// The most host input held for the next read, in bytes.
+const INPUT_HOLD_MAX: usize = 256;
+
+/// The start and end of a bracketed paste.
+const PASTE_START: &[u8] = b"\x1b[200~";
+const PASTE_END: &[u8] = b"\x1b[201~";
+
 /// The longest notification passed through to the host, in bytes.
 const NOTIFICATION_MAX: usize = 4096;
 
@@ -664,6 +674,11 @@ pub struct Mux {
     press: Option<Press>,
     /// The pane with a selection.
     selection: Option<PaneId>,
+    /// Host input cut off by the end of a read, and when it was held.
+    held_input: Vec<u8>,
+    held_since: i64,
+    /// Whether host input is inside a bracketed paste.
+    pasting: bool,
 }
 
 impl Mux {
@@ -687,6 +702,9 @@ impl Mux {
             grapheme_default: false,
             press: None,
             selection: None,
+            held_input: Vec::new(),
+            held_since: 0,
+            pasting: false,
         };
         m.reset_host_modes();
         m
@@ -1069,15 +1087,55 @@ impl Mux {
     /// focused pane up a page; while its view is scrolled, PageUp,
     /// PageDown, Up, and Down scroll it, Esc and q return it to the bottom,
     /// and any other key returns it to the bottom and goes to the program.
-    /// Everything else goes to the focused pane. Input is parsed only
-    /// within this read; partial escape sequences are forwarded without
-    /// waiting for another read.
+    /// A bracketed paste and everything else go to the focused pane as they
+    /// are. A key or escape sequence cut off by the end of a read waits for
+    /// the next read, or for `input_deadline`.
     pub fn input(&mut self, data: &[u8]) {
+        let mut input = std::mem::take(&mut self.held_input);
+        input.extend_from_slice(data);
+        self.route(&input, false);
+    }
+
+    /// When held input is taken as it is: a lone Esc as the Esc key, and a
+    /// cut-off sequence as typed.
+    pub fn input_deadline(&self) -> Option<i64> {
+        (!self.held_input.is_empty()).then_some(self.held_since + INPUT_HOLD_MS)
+    }
+
+    /// Route held input as it is; see `input_deadline`.
+    pub fn flush_input(&mut self) {
+        let input = std::mem::take(&mut self.held_input);
+        self.route(&input, true);
+    }
+
+    fn route(&mut self, data: &[u8], flush: bool) {
         let mut i = 0;
         let mut start = 0;
         while i < data.len() {
-            let end = token_end(data, i);
-            match self.classify(&data[i..end]) {
+            if self.pasting {
+                let rest = &data[i..];
+                if let Some(n) = find(rest, PASTE_END) {
+                    self.pasting = false;
+                    i += n + PASTE_END.len();
+                    continue;
+                }
+                // Hold what could be the start of the paste's end.
+                let keep = (1..PASTE_END.len())
+                    .rev()
+                    .find(|&k| !flush && rest.ends_with(&PASTE_END[..k]))
+                    .unwrap_or(0);
+                self.send(&data[start..data.len() - keep]);
+                self.hold(&data[data.len() - keep..]);
+                return;
+            }
+            let flush = flush || data.len() - i > INPUT_HOLD_MAX;
+            let Some(end) = token_end(data, i, flush) else {
+                self.send(&data[start..i]);
+                self.hold(&data[i..]);
+                return;
+            };
+            let token = &data[i..end];
+            match self.classify(token) {
                 Route::Pass => {}
                 Route::Bottom => {
                     self.send(&data[start..i]);
@@ -1097,9 +1155,17 @@ impl Mux {
                     }
                 }
             }
+            self.pasting = token == PASTE_START;
             i = end;
         }
         self.send(&data[start..]);
+    }
+
+    fn hold(&mut self, input: &[u8]) {
+        if !input.is_empty() {
+            self.held_input = input.to_vec();
+            self.held_since = now_ms();
+        }
     }
 
     /// What to do with one key or escape sequence of host input.
@@ -1169,7 +1235,7 @@ impl Mux {
             && let Some(press) = self.press.take()
         {
             let id = match &press {
-                Press::Report(id) | Press::Select(id, _) => *id,
+                Press::Report(id) | Press::Select(id, ..) => *id,
             };
             let Some(p) = self.panes.iter_mut().find(|p| p.id == id) else {
                 return;
@@ -1186,13 +1252,16 @@ impl Mux {
                 Press::Report(_) => {
                     let _ = p.report_mouse(&event, col, row);
                 }
-                Press::Select(_, anchor) if event.action == mouse::Action::Motion => {
-                    if p.select(anchor, col, row).is_ok() {
+                Press::Select(_, anchor, start) => {
+                    // A press released where it began, without moving, is
+                    // a click.
+                    if (self.selection == Some(id) || *start != (col, row))
+                        && p.select(anchor, col, row).is_ok()
+                    {
                         self.selection = Some(id);
                     }
-                }
-                Press::Select(..) => {
-                    if self.selection == Some(id)
+                    if event.action == mouse::Action::Release
+                        && self.selection == Some(id)
                         && let Ok(Some(text)) = p.selected_text()
                     {
                         let mut out = self.shared.out.borrow_mut();
@@ -1236,7 +1305,7 @@ impl Mux {
                 p.terminal
                     .track_grid_ref(point)
                     .ok()
-                    .map(|anchor| Press::Select(id, anchor))
+                    .map(|anchor| Press::Select(id, anchor, (col, row)))
             } else {
                 None
             };
@@ -1587,8 +1656,9 @@ impl MouseEvent {
 enum Press {
     /// Reported to the pane's program.
     Report(PaneId),
-    /// Selecting text in the pane from where the button was pressed.
-    Select(PaneId, TrackedGridRef),
+    /// Selecting text in the pane from where the button was pressed, at
+    /// this column and row of the pane.
+    Select(PaneId, TrackedGridRef, (u16, u16)),
 }
 
 /// Finds the desktop notifications in a program's output, OSC 9 and OSC
@@ -1673,18 +1743,23 @@ fn parse_int<T: std::str::FromStr>(s: &[u8]) -> Option<T> {
 }
 
 /// Where the key or escape sequence at `i` ends: a CSI or SS3 sequence, Alt
-/// and a byte, a lone Esc, or a character. A CSI sequence cut off by the
-/// end of the read runs to its end.
-fn token_end(data: &[u8], i: usize) -> usize {
+/// and a byte, Esc, or a character. Returns `None` if the end of `data` cuts
+/// it off, unless `flush`, when it runs to the end of `data`.
+fn token_end(data: &[u8], i: usize, flush: bool) -> Option<usize> {
     let len = data.len();
-    match (data[i], data.get(i + 1)) {
+    let end = match (data[i], data.get(i + 1)) {
         (0x1b, Some(b'[')) => data[i + 2..]
             .iter()
             .position(|b| (0x40..=0x7e).contains(b))
-            .map_or(len, |fin| i + 2 + fin + 1),
-        (0x1b, Some(b'O')) => len.min(i + 3),
-        (0x1b, Some(_)) => i + 2,
-        (b, _) => len.min(i + utf8_sequence_length(b)),
+            .map(|fin| i + 2 + fin + 1),
+        (0x1b, Some(b'O')) => Some(i + 3),
+        (0x1b, Some(_)) => Some(i + 2),
+        (0x1b, None) => None,
+        (b, _) => Some(i + utf8_sequence_length(b)),
+    };
+    match end {
+        Some(end) if end <= len => Some(end),
+        _ => flush.then_some(len),
     }
 }
 
@@ -2080,19 +2155,207 @@ mod tests {
 
     #[test]
     fn tokens_end_after_whole_keys_and_sequences() {
-        let ends = |data: &[u8]| {
+        let ends = |data: &[u8], flush| {
             let mut i = 0;
             let mut ends = Vec::new();
-            while i < data.len() {
-                i = token_end(data, i);
-                ends.push(i);
+            while let Some(end) = token_end(data, i, flush) {
+                ends.push(end);
+                i = end;
+                if i == data.len() {
+                    break;
+                }
             }
             ends
         };
-        assert_eq!(
-            ends(b"a\x1b[5;2~\x1bOA\xc3\xa9\x1bx\x1b"),
-            [1, 7, 10, 12, 14, 15]
-        );
-        assert_eq!(ends(b"\x1b[5;2"), [5]);
+        let data = b"a\x1b[5;2~\x1bOA\xc3\xa9\x1bx\x1b";
+        assert_eq!(ends(data, false), [1, 7, 10, 12, 14]);
+        assert_eq!(ends(data, true), [1, 7, 10, 12, 14, 15]);
+        for cut in [b"\x1b[5;2".as_slice(), b"\x1bO", b"\xc3"] {
+            assert_eq!(ends(cut, false), Vec::<usize>::new());
+            assert_eq!(ends(cut, true), [cut.len()]);
+        }
+    }
+
+    /// A mux with two panes side by side, each 40 columns and 10 rows,
+    /// whose input goes to a pipe in place of a pty.
+    struct Piped {
+        mux: Mux,
+        ids: [PaneId; 2],
+        pipes: Vec<(OwnedFd, OwnedFd)>,
+    }
+
+    impl Piped {
+        fn new() -> Piped {
+            let ws = Winsize {
+                ws_col: 81,
+                ws_row: 10,
+                ws_xpixel: 0,
+                ws_ypixel: 0,
+            };
+            let mut mux = Mux::new(ws, Box::new(NoChrome));
+            let ids = [
+                mux.add_pane("left").unwrap(),
+                mux.add_pane("right").unwrap(),
+            ];
+            let rect = |col| Rect {
+                col,
+                row: 0,
+                cols: 40,
+                rows: 10,
+            };
+            mux.set_layout(&[(ids[0], rect(0)), (ids[1], rect(41))])
+                .unwrap();
+            let mut pipes = Vec::new();
+            for id in ids {
+                let mut fds = [0; 2];
+                assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+                unsafe { libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK) };
+                let (r, w) = unsafe {
+                    use std::os::fd::FromRawFd as _;
+                    (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1]))
+                };
+                mux.pane(id).unwrap().state.pty.set(Some(w.as_raw_fd()));
+                pipes.push((r, w));
+            }
+            Piped { mux, ids, pipes }
+        }
+
+        /// What pane `i`'s program got since the last call.
+        fn got(&self, i: usize) -> Vec<u8> {
+            let mut got = Vec::new();
+            let mut buf = [0; 4096];
+            loop {
+                let n = read(self.pipes[i].0.as_raw_fd(), &mut buf);
+                if n <= 0 {
+                    return got;
+                }
+                got.extend_from_slice(&buf[..n as usize]);
+            }
+        }
+
+        /// Feed `data` as two reads split at `at`.
+        fn input(&mut self, data: &[u8], at: usize) {
+            let (a, b) = data.split_at(at);
+            self.mux.input(a);
+            self.mux.input(b);
+        }
+    }
+
+    #[test]
+    fn a_mouse_report_split_across_reads_is_routed_whole() {
+        let click = b"\x1b[<0;50;5M\x1b[<0;50;5m";
+        for at in 0..=click.len() {
+            let mut p = Piped::new();
+            assert_eq!(p.mux.focus(), Some(p.ids[0]));
+            p.input(click, at);
+            assert_eq!(p.mux.focus(), Some(p.ids[1]), "split at {at}");
+            assert_eq!((p.got(0), p.got(1)), (vec![], vec![]), "split at {at}");
+            assert_eq!(p.mux.input_deadline(), None);
+        }
+    }
+
+    #[test]
+    fn shift_page_up_split_across_reads_scrolls() {
+        let key = b"\x1b[5;2~";
+        for at in 0..=key.len() {
+            let mut p = Piped::new();
+            let id = p.ids[0];
+            for i in 0..30 {
+                p.mux
+                    .pane_mut(id)
+                    .unwrap()
+                    .feed(format!("line {i}\r\n").as_bytes());
+            }
+            p.input(key, at);
+            assert_eq!(p.mux.pane(id).unwrap().scrolled(), 10, "split at {at}");
+            assert_eq!(p.got(0), b"", "split at {at}");
+        }
+    }
+
+    #[test]
+    fn held_input_is_taken_as_it_is_at_the_deadline() {
+        let mut p = Piped::new();
+        for held in [b"\x1b".as_slice(), b"\x1b[", b"\xc3"] {
+            p.mux.input(held);
+            assert_eq!(p.got(0), b"");
+            assert!(p.mux.input_deadline().is_some());
+            p.mux.flush_input();
+            assert_eq!(p.got(0), held);
+            assert_eq!(p.mux.input_deadline(), None);
+        }
+    }
+
+    #[test]
+    fn a_bracketed_paste_goes_to_the_focused_pane_as_it_is() {
+        let paste = b"\x1b[200~a\x1b[<0;50;5M\x1d\x1b[5;2~\x1b[201~";
+        for at in 0..=paste.len() {
+            let mut p = Piped::new();
+            p.input(paste, at);
+            assert_eq!(p.mux.focus(), Some(p.ids[0]), "split at {at}");
+            assert_eq!(p.got(0), paste, "split at {at}");
+            // After the paste, Ctrl-] moves the focus again.
+            p.mux.input(b"\x1d");
+            assert_eq!(p.mux.focus(), Some(p.ids[1]), "split at {at}");
+        }
+    }
+
+    #[test]
+    fn keys_split_across_reads_are_read_whole() {
+        // While scrolled, Up split after its Esc scrolls a row rather than
+        // returning to the bottom.
+        for at in 0..=3 {
+            let mut p = Piped::new();
+            let id = p.ids[0];
+            for i in 0..30 {
+                p.mux
+                    .pane_mut(id)
+                    .unwrap()
+                    .feed(format!("line {i}\r\n").as_bytes());
+            }
+            p.mux.input(b"\x1b[5;2~");
+            p.input(b"\x1b[A", at);
+            assert_eq!(p.mux.pane(id).unwrap().scrolled(), 11, "split at {at}");
+            assert_eq!(p.got(0), b"", "split at {at}");
+        }
+        // A Kitty Ctrl-] press and a character pass whole.
+        let input = "\x1b[93;5u\x1b[93;5:3ué".as_bytes();
+        for at in 0..=input.len() {
+            let mut p = Piped::new();
+            p.input(input, at);
+            assert_eq!(p.mux.focus(), Some(p.ids[1]), "split at {at}");
+            assert_eq!(p.got(1), "é".as_bytes(), "split at {at}");
+            assert_eq!(p.got(0), b"", "split at {at}");
+        }
+    }
+
+    #[test]
+    fn held_input_is_bounded() {
+        let mut p = Piped::new();
+        let long = [b"\x1b[".as_slice(), &[b'0'; INPUT_HOLD_MAX]].concat();
+        p.mux.input(&long);
+        assert_eq!(p.got(0), long);
+        assert_eq!(p.mux.input_deadline(), None);
+    }
+
+    #[test]
+    fn a_selection_ends_where_the_button_is_released() {
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        p.mux.pane_mut(id).unwrap().feed(b"abcdefgh");
+        let copied = |p: &mut Piped| {
+            let out = p.mux.take_output();
+            let start = find(&out, b"\x1b]52;c;")?;
+            let end = start + out[start..].iter().position(|&b| b == 0x07)?;
+            Some(out[start + 7..end].to_vec())
+        };
+        // Press at a, motion to c, release at e.
+        p.mux.input(b"\x1b[<0;1;1M\x1b[<32;3;1M\x1b[<0;5;1m");
+        assert_eq!(copied(&mut p), Some(base64(b"abcde").into_bytes()));
+        // Press at b and release at f without motion reports.
+        p.mux.input(b"\x1b[<0;2;1M\x1b[<0;6;1m");
+        assert_eq!(copied(&mut p), Some(base64(b"bcdef").into_bytes()));
+        // A click copies nothing.
+        p.mux.input(b"\x1b[<0;3;1M\x1b[<0;3;1m");
+        assert_eq!(copied(&mut p), None);
     }
 }

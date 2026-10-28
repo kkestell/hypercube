@@ -275,7 +275,9 @@ again. Resizing a pane's terminal ends its hold. A hold that lasts
 
 ### Input
 
-Host input goes to the focused pane, except:
+Host input goes to the focused pane. A bracketed paste, from `ESC [ 200 ~`
+through `ESC [ 201 ~`, goes there as it is. Outside a paste, these are
+routed elsewhere:
 
 - Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
   next live pane; Kitty repeats and releases of it are consumed.
@@ -291,10 +293,16 @@ Host input goes to the focused pane, except:
   encoder for its tracking mode and format. In any other pane, the wheel
   scrolls three rows, or on the alternate screen with alternate scroll mode
   (1007) sends Up or Down three times, and a left-button drag selects text
-  linearly through Ghostty's selection. On release, the selection's text,
+  linearly through Ghostty's selection, from where the button was pressed to
+  where it was released. A press released where it began is a click. On release, the selection's text,
   with soft wraps joined and trailing spaces trimmed, goes to the host's
   clipboard as OSC 52. The selection stays highlighted until the next press
   or until input is typed into its pane.
+
+A key or escape sequence cut off by the end of a read, up to 256 bytes,
+waits for the next read. After `INPUT_HOLD_MS` (25 ms) without the rest, what was held is taken
+as it is: a lone Esc is the Esc key, and anything else goes to the focused
+pane as typed. The runtime wakes for that deadline.
 
 ### Runtime
 

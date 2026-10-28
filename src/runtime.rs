@@ -165,6 +165,9 @@ impl Runtime {
             }
 
             mux.expire_holds(now)?;
+            if mux.input_deadline().is_some_and(|d| now >= d) {
+                mux.flush_input();
+            }
             if mux.needs_render() && now - self.last_render >= FRAME_MS {
                 mux.render()?;
                 self.last_render = now;
@@ -177,6 +180,9 @@ impl Runtime {
             }
             if let Some(hold) = mux.hold_deadline() {
                 wake = earliest(wake, hold);
+            }
+            if let Some(input) = mux.input_deadline() {
+                wake = earliest(wake, input);
             }
             if mux.reaping() {
                 wake = earliest(wake, now + REAP_MS);
