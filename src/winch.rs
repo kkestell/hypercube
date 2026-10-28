@@ -3,7 +3,10 @@
 //! polling would miss a signal that lands between the check and the poll.
 
 use std::os::fd::RawFd;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
+
+static READ_END: Mutex<Option<RawFd>> = Mutex::new(None);
 
 static WRITE_END: AtomicI32 = AtomicI32::new(-1);
 
@@ -20,9 +23,13 @@ extern "C" fn on_sigwinch(_: libc::c_int) {
     }
 }
 
-/// Install the SIGWINCH handler and return the pipe's read end, which
-/// becomes readable after each SIGWINCH.
+/// Install the SIGWINCH handler once per process and return the pipe's read
+/// end, which becomes readable after each SIGWINCH.
 pub fn install() -> std::io::Result<RawFd> {
+    let mut read_end = READ_END.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(fd) = *read_end {
+        return Ok(fd);
+    }
     let mut fds = [0; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
         return Err(std::io::Error::last_os_error());
@@ -45,6 +52,7 @@ pub fn install() -> std::io::Result<RawFd> {
         action.sa_flags = 0;
         libc::sigaction(libc::SIGWINCH, &action, std::ptr::null_mut());
     }
+    *read_end = Some(fds[0]);
     Ok(fds[0])
 }
 

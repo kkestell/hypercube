@@ -44,10 +44,14 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 
 - `src/main.rs`: the `hypercube` executable and its commands.
 - `src/lib.rs`: the terminal layer.
-  - `src/mux.rs`: per-pane Ghostty terminals, host input routing, mode
-    mirroring, and the renderer.
+  - `src/mux.rs`: panes and their Ghostty terminals, caller layouts and
+    chrome, host input routing, mode mirroring, and the renderer.
+  - `src/pty.rs`: programs started in ptys.
+  - `src/runtime.rs`: the host terminal and the step-driven event loop.
   - `src/winch.rs`: SIGWINCH delivered through a pipe.
   - `src/recording.rs`: the recording format the round-trip tests replay.
+- `src/bin/hypercube-test-child.rs`: the scripted program the live tests run
+  in panes.
 - `tests/roundtrip.rs`: feeds program output to the mux, renders frames into a
   stand-in host terminal, and compares the screens cell by cell. Inputs are the
   fixtures in `tests/support/fixtures.rs`, seeded streams from
@@ -57,6 +61,9 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
   resolve and pass while the difference remains.
 - `tests/holds.rs`: what a pane draws while its program holds rendering
   (mode 2026), and that a timed-out hold ends.
+- `tests/live.rs`: the runtime with real ptys. Each test hosts its panes on
+  a pty whose other side feeds a Ghostty terminal standing in for the user's
+  terminal, and runs the test child in the panes.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.
 - `.toolchain/zig-aarch64-macos-0.17.0`: Zig 0.17, which builds libghostty-vt.
