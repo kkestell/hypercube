@@ -2,9 +2,13 @@
 
 ## Processes
 
-- `hypercube`, run in a checkout, is the host. It runs in the user's terminal
-  for the whole session and owns every agent's pty and pane and the control
-  socket.
+- `hypercube`, run in a checkout, is the client. It runs in the user's
+  terminal and attaches it to the workspace's host, starting the host if none
+  is running.
+- `hypercube host <dir>` is the host of the workspace whose checkout is
+  `<dir>`. It runs in the background, in its own session, from when a client
+  starts it until the session ends, and owns every agent's pty and pane and
+  the control socket. The client starts it; it is not listed in the usage.
 - `hypercube mcp` is each agent's MCP server, started by its harness. It
   changes the state file and worktrees itself, reads the profiles from
   `config.json`, and asks the host to launch and close panes.
@@ -30,7 +34,8 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
 
 - `<name>.json`: the state file.
 - `<name>.lock`: the state file's lock.
-- `<name>.host.lock`: the host lock.
+- `<name>.host.lock`: the host lock, holding the host's process ID.
+- `<name>.log`: the output of the workspace's hosts, appended.
 - `<hash>.sock`: the control socket, named from a hash of the workspace name
   so its path stays within the 104 bytes macOS allows.
 
@@ -38,43 +43,112 @@ The state directory also holds `pi-extension/index.js`.
 
 ## The host
 
-`host::run` hosts a workspace:
+`host::serve_workspace` hosts a workspace:
 
 1. It takes an exclusive, non-blocking `flock` on the host lock and writes its
-   terminal's name into the file. A workspace is running while that lock is
-   held, and the kernel releases it however the host ends. If another host
-   holds it, `hypercube` reports the terminal that host runs in and exits. It
-   also exits unless its input and output are terminals.
+   process ID into the file. A workspace is running while that lock is held,
+   and the kernel releases it however the host ends. If another host holds
+   it, the new host exits with an error.
 2. It readies the state: on the first run it creates the orchestrator, with
    `no_git` set outside Git; it sets the orchestrator's branch, marks it idle,
    and marks the workers busy.
 3. It removes a socket file left by an earlier host and listens on the
-   control socket.
-4. It takes over the terminal with a `Runtime` and launches each agent in its
-   own pane, the orchestrator first. Saved sessions resume, and workers start
-   with the prompt `Check your Hypercube messages.`, so they pick up messages queued while they
-   were down. If the orchestrator fails to launch, the session ends with
-   the error. A worker that fails to launch gets a pane without a program,
-   with "failed:" and the error in its label and the error in the pane,
-   marked exited with status 127 so the focus skips it, and keeps it until
-   `remove_agent` closes it. Agents that don't fit in the terminal still
-   launch; their panes are hidden until it grows.
+   control socket. It ignores SIGHUP and ends on SIGINT and SIGTERM.
+4. On the first attach, which supplies the terminal's size and its replies to
+   the color queries, it launches each agent in its own pane, the
+   orchestrator first. Saved sessions resume, and workers start with the
+   prompt `Check your Hypercube messages.`, so they pick up messages queued
+   while they were down. If the orchestrator fails to launch, the session
+   ends with the error. A worker that fails to launch gets a pane without a
+   program, with "failed:" and the error in its label and the error in the
+   pane, marked exited with status 127 so the focus skips it, and keeps it
+   until `remove_agent` closes it. Agents that don't fit in the terminal
+   still launch; their panes are hidden until it grows.
 5. It serves until the session ends.
 
-The loop is single-threaded: `Runtime::wait` polls the panes, the host
-terminal, the listener, the accepted connections, and a pipe that SIGHUP,
-SIGINT, and SIGTERM write to. Connections are non-blocking; a request is
-carried out once its line has arrived, and a connection that sends no
-complete request within five seconds is dropped, so no client can stall the
-panes.
+The loop is single-threaded: `Runtime::wait` polls the panes, the attached
+client's link, the listener, the accepted connections, and a pipe that SIGINT
+and SIGTERM write to. Connections are non-blocking; a request is carried out
+once its line has arrived, and a connection that sends no complete request
+within five seconds is dropped, so no client can stall the panes.
 
-The session ends on a `stop` request, a signal, the end of the terminal's
-input, when every pane's program has exited and none is relaunched, or when
-the host panics. The host then removes every pane, which sends SIGHUP to each
-program's process group, gives the programs up to `HANGUP_GRACE_MS` (two
-seconds) before SIGKILL, restores the terminal, removes the socket, and
+One client is attached at a time. An attach sends the current client
+`Detached("attached in another terminal")` and lets it go. When the attached
+client goes away, the host drops its attachment and the team keeps running:
+the panes keep their terminals, scrollback, sizes, and holds, and the host
+keeps relaunching agents. The host keeps the color replies of the most recent
+attach, so a harness relaunched while no client is attached still gets
+answers.
+
+The session ends on a `stop` request, the overlay's stop key for the host's
+own workspace, a signal, or when the host panics. The host then sends the
+client `Detached("stopped")`, or the error that ended it, removes every pane,
+which sends SIGHUP to each program's process group, gives the programs up to
+`HANGUP_GRACE_MS` (two seconds) before SIGKILL, removes the socket, and
 releases the host lock. The next `hypercube` resumes the agents from their
 saved sessions and the queued messages.
+
+## The client
+
+`client::run` attaches the user's terminal to a workspace. It requires a
+terminal on its input and output. It puts the terminal in raw mode on the
+alternate screen, asks it once for its default colors, its 16 palette colors,
+and its grapheme clustering mode, and watches SIGWINCH through `winch`. It is
+the only process that changes the terminal's settings or writes to it; hosts
+send it rendered bytes.
+
+To reach a workspace's host, the client sends `attach` on its control socket.
+If no host is running, it runs `hypercube host <dir>` with `setsid`, its input
+from `/dev/null`, and its output appended to `<name>.log`, and retries every
+50 ms for up to five seconds. A new host inherits the client's environment.
+If the host exits first, or the time runs out, the error includes the last
+lines of the log.
+
+```mermaid
+flowchart LR
+    T["your terminal"] --- C["hypercube"]
+    C ===|attached| A["foo host<br/>(foo team)"]
+    C -.-|switch| B["bar host<br/>(bar team)"]
+```
+
+`client::proxy` then passes the terminal's input to the host as `Input`
+messages and its new sizes as `Resize`, and writes each `Output` payload whole
+to the terminal before it reads the next message, so a terminal that stops
+taking output stops the client from reading the socket. On `Detached(reason)`,
+the end of the terminal's input, or the end of the stream, it restores the
+terminal, prints the reason if there is one, and exits with status 0. SIGHUP
+ends it, and the host drops its attachment.
+
+On `Switch(dir)`, the client attaches to the host of the workspace whose
+checkout is `dir`, starting it if needed. On success it drops the old
+connection, resets the terminal's mirrored modes, and continues with the new
+host, whose first frame draws everything. Neither host stops. On failure it
+sends the old host `SwitchFailed(error)`.
+
+```mermaid
+sequenceDiagram
+    participant C as hypercube
+    participant A as foo host
+    participant B as bar host
+    A->>C: switch to bar
+    C->>B: attach
+    C-xA: disconnect
+    B->>C: screen
+```
+
+### Attach stream
+
+`attach {protocol, size, replies}` carries `link::PROTOCOL`, the terminal's
+size in columns, rows, and pixels, and its replies to the queries. A host of
+another protocol refuses with an error telling the user to stop the workspace
+and start it again; hosts are never stopped automatically. After the host
+replies `{"ok":true}`, the connection carries `link::Message` values, each a
+kind byte, a 4-byte big-endian length, and the payload, up to 1 MiB:
+
+- client to host: `Input(bytes)`, `Resize(size)`, `SwitchFailed(text)`
+- host to client: `Output(bytes)`, `Switch(dir)`, `Detached(reason)`
+
+Output over 1 MiB goes as several messages.
 
 ### Relaunching
 
@@ -95,8 +169,7 @@ closes it. An exit after a longer run resets the count. A relaunch whose
 harness fails to start shows the failure as a worker's failed launch does, and
 is not retried.
 
-The host handles every exit `Runtime::wait` reports before it checks whether
-every pane's program has exited for good, which ends the session. Closing an
+The host keeps running when every agent has been left exited. Closing an
 agent and ending the session hang up the programs without relaunching them.
 
 ### Layout and chrome
@@ -142,9 +215,35 @@ The keys and the mouse (see Input):
   bottom, and any other key returns it to the bottom and goes to its
   program.
 - A drag selects text and copies it to the clipboard on release.
+- Ctrl-^ opens the workspace overlay.
 
 Labels are clipped to whole grapheme clusters, measured in
 columns.
+
+### Workspace overlay
+
+Ctrl-^, as legacy byte `0x1e` or as Kitty key 54 with Ctrl or Ctrl-Shift,
+opens the overlay. While it is open, the host lays every pane out hidden, so
+the panes keep their sizes, and `TeamChrome` draws the overlay across the
+whole screen: a title row, a row for each workspace with a state file, most
+recently active first, and the keys in the last row. Each workspace row shows
+its directory, running or stopped, its number of agents and of busy agents,
+and its last activity; the host's own workspace is marked `*`. The list is
+read again every second while the overlay is open.
+
+The mux captures input while the overlay is open (see Input). The keys:
+
+- Up and Down, or k and j, move the selection, stopping at the ends.
+- Enter switches the client to the selected workspace, starting its host if
+  it is stopped. On the host's own workspace, it closes the overlay. The host
+  sends the client `Switch(dir)` and keeps the overlay open until the client
+  leaves or reports that the switch failed.
+- x stops the selected running workspace. Stopping the host's own workspace
+  ends the session, and the client exits with "stopped".
+- d detaches the client.
+- Esc or Ctrl-^ closes the overlay.
+
+A failed switch or stop shows its error in the last row until the next key.
 
 ## Control socket
 
@@ -157,6 +256,8 @@ Each connection carries one JSON request line and gets one JSON reply line,
 - `close {agent}`: hang up the agent's program, remove its pane, and lay the
   panes out again. An agent without a pane is already closed.
 - `stop`: reply, then end the session.
+- `attach {protocol, size, replies}`: attach the client's terminal; the
+  connection then carries the attach stream (see The client).
 
 The MCP server and `hypercube stop` find the socket from the state file's
 path. A request that finds no socket, or nothing listening on it, means no
@@ -192,8 +293,8 @@ worktrees: each worker works in the directory `create_agent` gives it.
 `hypercube delete` refuses if a worker's worktree is dirty or its branch is
 not merged. Otherwise it stops the host and takes the host lock itself, so
 no host starts while it works. It removes each worker's worktree and branch,
-deletes the state, its lock, and the socket, and removes the host lock file
-last. A host that takes the host lock checks that the file it locked is still
+deletes the state, its lock, the socket, and the log, and removes the host
+lock file last. A host that takes the host lock checks that the file it locked is still
 the one at the path, and otherwise locks the current one.
 
 `hypercube stop --all` lists the directory of every workspace whose host lock
@@ -236,8 +337,9 @@ update, so messages it takes stay queued if they cannot be written.
 
 ## Terminal layer
 
-The terminal layer (`mux`, `pty`, `runtime`, and `winch`) runs programs in
-ptys, keeps a Ghostty terminal for each, and draws them into the host terminal.
+The terminal layer (`mux`, `pty`, `runtime`, `link`, `client`, and `winch`)
+runs programs in ptys, keeps a Ghostty terminal for each, and draws them for
+the user's terminal, which the mux calls the host terminal.
 It knows nothing about agents: the caller decides where panes go, what the
 chrome looks like, and what to do when something happens.
 
@@ -296,6 +398,14 @@ asks for a redraw after a change only the caller knows about.
 
 ### Rendering
 
+`Mux::connect_host(replies, size)` connects a host terminal: every pane's
+terminal takes its color replies, and the next frame clears the screen, draws
+every row and the chrome, and sets every mirrored mode, the mouse modes, the
+Kitty keyboard flags, and the title, whatever an earlier connection set.
+`Mux::disconnect_host()` lets it go, clearing any selection and dropping the
+input in progress from it. While no host terminal is connected, `render`
+draws nothing and output from outside frames is discarded.
+
 Each pane captures the rows that changed since its last frame from a Ghostty
 render state. A frame draws those rows at the pane's offset, then the focused
 pane's cursor, inside synchronized output (mode 2026). A layout change, host
@@ -312,12 +422,16 @@ title, and mode changes follow the focus. The host always reports mouse buttons
 and drags in SGR form (modes 1002 and 1006), and motion without a button (mode
 1003) while the focused pane asks for it.
 
-Bells pass through to the host. So do desktop notifications, OSC 9 and OSC
-777: `Pane::feed` scans the program's output for them before Ghostty sees
-it, keeping the scan's state between reads so a sequence split across reads
-is found, and writes each one to the host terminated by BEL. Notifications
-over 4096 bytes and sequences cut off by another control character are
-dropped.
+Bells pass through to the host: a frame rings the bell once for any number
+of bells since the last frame. The focused pane's title goes to the host in
+the frame after it changes. Desktop notifications, OSC 9 and OSC 777, pass
+through too: `Pane::feed` scans the program's output for them before Ghostty
+sees it, keeping the scan's state between reads so a sequence split across
+reads is found, and writes each one to the host terminated by BEL.
+Notifications over 4096 bytes and sequences cut off by another control
+character are dropped. Notifications and clipboard copies, the output from
+outside frames, wait for the next frame only while it stays under
+`MAX_SIDE_OUTPUT` (256 KiB); past that they are dropped whole.
 
 A program that holds drawing with mode 2026 shows the last frame it
 completed, captured when the hold began, including when the screen is drawn
@@ -334,6 +448,8 @@ a paste, these are routed elsewhere:
   next live pane; Kitty repeats and releases of it are consumed.
 - Ctrl-\, in the same two forms, is reported to the caller as
   `Event::Zoom(id)` for the focused pane, once per press, and goes to no pane.
+- Ctrl-^, as `0x1e` or Kitty key 54 with Ctrl or Ctrl-Shift, is reported as
+  `Event::Overlay` and goes to no pane.
 - Shift-PageUp, in legacy or Kitty form, scrolls the focused pane up a page.
 - While the focused pane is scrolled, PageUp and PageDown scroll it a page,
   Up and Down a row, and Esc and q return it to the bottom. Any other key
@@ -352,6 +468,12 @@ a paste, these are routed elsewhere:
   OSC 52. The selection stays highlighted until the next press or until input is
   typed into its pane.
 
+`Mux::set_captured(true)` captures input: each key or escape sequence is
+reported as `Event::Key(bytes)` instead of routed, the overlay key is still
+`Event::Overlay`, and pastes, mouse reports, and the focus and zoom keys are
+dropped. The host then has every mirrored mode at its default and no Kitty
+flags, so keys arrive in legacy form, and no cursor is drawn.
+
 A key or escape sequence cut off by the end of a read, up to 256 bytes, waits
 for the next read. After `INPUT_HOLD_MS` (25 ms) without the rest, what was held
 is taken as it is: a lone Esc is the Esc key, and anything else goes to the
@@ -360,18 +482,28 @@ off by a read waits for the next read without a deadline.
 
 ### Runtime
 
-`Runtime::new(mux, input, output)` takes over the host terminal on the given
-descriptors: raw mode, the alternate screen, and a round trip of queries for
-the host's default colors, its 16 palette colors, and its grapheme clustering
-mode, so pane programs that query colors get the host's answers.
+`Runtime::new()` starts with no client. `Runtime::connect(mux, link, replies,
+size)` draws for the client at the other end of a `Link` from then on,
+connecting the mux's host terminal. `Runtime::disconnect(mux)` drops the link,
+and `Runtime::detach(mux, reason)` sends `Detached(reason)` and lets the link
+go once it has written what it had queued.
 
 The caller drives the loop with `Runtime::wait(mux, extra_fds, deadline)`,
-which polls the host input, every pane's master, SIGWINCH, and the caller's
-descriptors. It feeds pane output to the terminals, routes host input, writes
-queued pane input, renders at most one frame every 16 ms, ends timed-out
-holds, and reaps exited programs without blocking. Before it reports an exit,
-it reads what the program left in its pty and draws it. It returns when
-something needs the caller:
+which polls the link, every pane's master, and the caller's descriptors. It
+feeds pane output to the terminals, routes the client's input, writes queued
+pane input, ends timed-out holds, and reaps exited programs without blocking.
+Before it reports an exit, it reads what the program left in its pty and
+draws it.
+
+The link is non-blocking and keeps a queue of outbound bytes, polled for
+`POLLOUT` while it is not empty. A frame is rendered only when the queue is
+empty and 16 ms have passed since the last, and goes as one `Output` message
+of whole escape sequences inside a balanced mode 2026 block. Changes pile up
+in the Ghostty terminals meanwhile, so a slow client gets fewer frames, and
+the host never blocks on it. A link whose queue makes no progress for
+`LINK_STALL_MS` (ten seconds) is disconnected.
+
+`wait` returns when something needs the caller:
 
 - `Event::Ready(fd)`: one of the caller's descriptors is readable.
 - `Event::PaneExited(id, status)`: a pane's program exited; the status is its
@@ -379,14 +511,19 @@ something needs the caller:
 - `Event::Zoom(id)` and `Event::Focus(id)`: the zoom key was pressed with
   that pane focused, or the focus moved to that pane. They come in the order
   they happened.
-- `Event::Resized`: the host terminal changed size.
-- `Event::InputClosed`: the host terminal's input ended.
+- `Event::Overlay` and `Event::Key(bytes)`: the overlay key, and a key of
+  captured input.
+- `Event::Resized`: the client's terminal changed size.
+- `Event::Message(message)`: the client sent `SwitchFailed`.
+- `Event::Disconnected`: the link ended, failed, or stalled, and the runtime
+  disconnected it.
 - `Event::Deadline`: the deadline passed.
 
-`Runtime::restore()` returns the host terminal to its original settings:
-every mirrored mode at its default, no Kitty keyboard flags, the default
-cursor, the main screen, and the original terminal attributes. Dropping the
-runtime, including when `Runtime::new` fails partway, does the same.
+`mux::host_reset` returns the terminal's mirrored modes to their defaults,
+with no Kitty keyboard flags, the default cursor, and default attributes, on
+the alternate screen; the client writes it after a switch. `mux::host_restore`
+is `host_reset` and the main screen, which the client writes before it
+restores the terminal's settings and exits.
 
 Everything runs on one thread. The terminals and their callbacks share state
 through `Rc` and `RefCell`.

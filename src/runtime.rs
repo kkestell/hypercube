@@ -1,23 +1,24 @@
-//! The event loop around a `Mux`. The runtime owns the host terminal: it
-//! puts it in raw mode on the alternate screen, asks it for its colors,
-//! reads its input, and draws frames into it. The caller drives the loop
-//! one step at a time with `Runtime::wait`, which handles pane output, host
-//! input, frame pacing, and holds, and returns what the caller must act on.
+//! The event loop around a `Mux`. The runtime reads the panes' ptys and
+//! draws frames for the connected client, over a `Link` to it. The caller
+//! drives the loop one step at a time with `Runtime::wait`, which handles
+//! pane output, the client's input, frame pacing, and holds, and returns
+//! what the caller must act on.
 
 use std::error::Error;
 use std::os::fd::RawFd;
 
-use crate::mux::{self, Mux, Notice, Pane, PaneId, Winsize, now_ms, read, write_all};
-use crate::winch;
+use crate::link::{Link, Message, Size};
+use crate::mux::{Mux, Notice, Pane, PaneId, now_ms, read};
 
 /// The shortest time between frames.
 const FRAME_MS: i64 = 16;
-/// How long to wait for the host's replies to its queries.
-const HOST_REPLY_TIMEOUT_MS: i64 = 1000;
 /// How often to check for the exit of a program whose pty has closed.
 const REAP_MS: i64 = 20;
+/// How long a link may keep a queue without writing any of it before it is
+/// disconnected.
+const LINK_STALL_MS: i64 = 10_000;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
     /// One of the caller's descriptors is readable or hung up.
     Ready(RawFd),
@@ -29,103 +30,107 @@ pub enum Event {
     /// The focus moved to this pane. `Zoom` and `Focus` come in the order
     /// they happened.
     Focus(PaneId),
-    /// The host terminal changed size. The caller lays the panes out again.
+    /// The overlay key was pressed.
+    Overlay,
+    /// A key arrived while input is captured; see `Mux::set_captured`.
+    Key(Vec<u8>),
+    /// The client sent a message the runtime doesn't handle itself.
+    Message(Message),
+    /// The client's terminal changed size. The caller lays the panes out
+    /// again.
     Resized,
-    /// The host terminal's input ended.
-    InputClosed,
+    /// The link ended, failed, or stalled, and the runtime disconnected it.
+    Disconnected,
     /// The deadline passed.
     Deadline,
 }
 
 pub struct Runtime {
-    input: RawFd,
-    output: RawFd,
-    /// The host terminal's settings before raw mode, until restored.
-    termios: Option<libc::termios>,
-    /// Whether the host clusters graphemes by default, once it has said.
-    clusters: Option<bool>,
-    winch: RawFd,
-    input_open: bool,
+    link: Option<Link>,
+    /// Links let go of, until they have written what they had queued.
+    closing: Vec<Link>,
     last_render: i64,
+    stall_ms: i64,
     buf: Vec<u8>,
 }
 
+impl Default for Runtime {
+    fn default() -> Runtime {
+        Runtime::new()
+    }
+}
+
 impl Runtime {
-    /// Take over the host terminal whose input and output are `input` and
-    /// `output`, and size `mux` to it.
-    pub fn new(mux: &mut Mux, input: RawFd, output: RawFd) -> Result<Runtime, Box<dyn Error>> {
-        let winch = winch::install()?;
-        let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
-        if unsafe { libc::tcgetattr(input, termios.as_mut_ptr()) } != 0 {
-            return Err(format!("host terminal: {}", std::io::Error::last_os_error()).into());
-        }
-        let termios = unsafe { termios.assume_init() };
-        let mut raw = termios;
-        unsafe { libc::cfmakeraw(&mut raw) };
-        if unsafe { libc::tcsetattr(input, libc::TCSAFLUSH, &raw) } != 0 {
-            return Err(format!("host terminal: {}", std::io::Error::last_os_error()).into());
-        }
-        // From here on, dropping the runtime restores the host terminal.
-        let mut runtime = Runtime {
-            input,
-            output,
-            termios: Some(termios),
-            clusters: None,
-            winch,
-            input_open: true,
+    /// A runtime with no client connected.
+    pub fn new() -> Runtime {
+        Runtime {
+            link: None,
+            closing: Vec::new(),
             last_render: 0,
+            stall_ms: LINK_STALL_MS,
             buf: vec![0; 65536],
-        };
-        write_all(output, b"\x1b[?1049h\x1b[2J");
-        runtime.query_host(mux)?;
-        mux.resize(runtime.host_size());
-        Ok(runtime)
+        }
     }
 
-    /// Ask the host for its colors and grapheme clustering mode; see
-    /// `mux::use_host_replies_for`.
-    fn query_host(&mut self, mux: &mut Mux) -> Result<(), Box<dyn Error>> {
-        write_all(self.output, &mux::host_queries());
-        let mut buf = [0u8; 4096];
-        let mut len = 0;
-        let deadline = now_ms() + HOST_REPLY_TIMEOUT_MS;
-        while len < buf.len() && !mux::host_replies_done(&buf[..len]) {
-            let left = deadline - now_ms();
-            if left <= 0 {
-                break;
-            }
-            // Not ready means interrupted or timed out; the deadline tells
-            // which.
-            if !poll(&mut [pollfd(self.input)], left)? {
-                continue;
-            }
-            let n = read(self.input, &mut buf[len..]);
-            if n <= 0 {
-                break;
-            }
-            len += n as usize;
-        }
-        mux.use_host_replies(&buf[..len])?;
-        self.clusters = Some(mux::host_clusters(&buf[..len]));
+    /// Change how long a link may stall; see `LINK_STALL_MS`.
+    pub fn set_stall_ms(&mut self, ms: i64) {
+        self.stall_ms = ms;
+    }
+
+    /// Draw for the client at the other end of `link`, whose terminal is
+    /// `size` and answered `mux::host_queries` with `replies`.
+    pub fn connect(
+        &mut self,
+        mux: &mut Mux,
+        link: Link,
+        replies: &[u8],
+        size: Size,
+    ) -> Result<(), Box<dyn Error>> {
+        self.disconnect(mux);
+        mux.connect_host(replies, size.into())?;
+        self.link = Some(link);
+        self.last_render = 0;
         Ok(())
     }
 
-    pub fn host_size(&self) -> Winsize {
-        let mut ws = Winsize {
-            ws_row: 0,
-            ws_col: 0,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-        unsafe { libc::ioctl(self.output, libc::TIOCGWINSZ, &mut ws) };
-        ws
+    /// Drop the link at once.
+    pub fn disconnect(&mut self, mux: &mut Mux) {
+        self.link = None;
+        mux.disconnect_host();
+    }
+
+    /// Tell the client it is detached, for `reason`, and let it go once it
+    /// has what was queued for it.
+    pub fn detach(&mut self, mux: &mut Mux, reason: &str) {
+        if let Some(mut link) = self.link.take() {
+            link.send(Message::Detached(reason.into()));
+            self.closing.push(link);
+        }
+        mux.disconnect_host();
+    }
+
+    /// Queue a message for the client.
+    pub fn send(&mut self, message: Message) {
+        if let Some(link) = &mut self.link {
+            link.send(message);
+        }
+    }
+
+    pub fn connected(&self) -> bool {
+        self.link.is_some()
+    }
+
+    /// Whether a detached client still has queued messages to take.
+    pub fn closing(&self) -> bool {
+        !self.closing.is_empty()
     }
 
     /// Run the loop until something needs the caller: one of `extra`
-    /// becomes readable, a pane's program exits, the zoom key is pressed,
-    /// the focus moves, the host resizes or its input ends, or `deadline` (in `now_ms` time)
-    /// passes. Between those, pane output is drawn at most once per frame,
-    /// and host input goes to the focused pane.
+    /// becomes readable, a pane's program exits, a key the caller handles is
+    /// pressed, the focus moves, the client resizes, sends a message, or
+    /// goes away, or `deadline` (in `now_ms` time) passes. Between those,
+    /// pane output is drawn at most once per frame, and only when the link
+    /// has written the last one, and client input goes to the focused pane.
     pub fn wait(
         &mut self,
         mux: &mut Mux,
@@ -137,7 +142,7 @@ impl Runtime {
             let exited = mux.reap();
             if !exited.is_empty() {
                 // Draw everything an exited program wrote before reporting
-                // the exit, in case the caller ends the session.
+                // the exit.
                 for &(id, status) in &exited {
                     for _ in 0..16 {
                         let Some(fd) = mux.pane(id).and_then(Pane::pty) else {
@@ -149,27 +154,34 @@ impl Runtime {
                     }
                     events.push(Event::PaneExited(id, status));
                 }
-                mux.render()?;
-                self.last_render = now_ms();
-                write_all(self.output, &mux.take_output());
-            }
-            let size = self.host_size();
-            let old = mux.size();
-            if (size.ws_col, size.ws_row, size.ws_xpixel, size.ws_ypixel)
-                != (old.ws_col, old.ws_row, old.ws_xpixel, old.ws_ypixel)
-            {
-                mux.resize(size);
-                events.push(Event::Resized);
+                if self.link.as_ref().is_some_and(|l| !l.pending()) {
+                    self.render(mux)?;
+                }
             }
             events.extend(mux.take_notices().into_iter().map(|n| match n {
                 Notice::Focus(id) => Event::Focus(id),
                 Notice::Zoom(id) => Event::Zoom(id),
+                Notice::Overlay => Event::Overlay,
+                Notice::Key(key) => Event::Key(key),
             }));
             let now = now_ms();
+            if let Some(link) = &self.link
+                && link.pending()
+                && now - link.last_progress() >= self.stall_ms
+            {
+                self.disconnect(mux);
+                events.push(Event::Disconnected);
+            }
+            self.closing
+                .retain(|l| l.pending() && now - l.last_progress() < self.stall_ms);
             if deadline.is_some_and(|d| now >= d) {
                 events.push(Event::Deadline);
             }
             if !events.is_empty() {
+                if self.flush().is_err() {
+                    self.disconnect(mux);
+                    events.push(Event::Disconnected);
+                }
                 return Ok(events);
             }
 
@@ -177,15 +189,36 @@ impl Runtime {
             if mux.input_deadline().is_some_and(|d| now >= d) {
                 mux.flush_input();
             }
-            if mux.needs_render() && now - self.last_render >= FRAME_MS {
-                mux.render()?;
-                self.last_render = now;
+            let idle = self.link.as_ref().is_some_and(|l| !l.pending());
+            if idle {
+                if mux.needs_render() && now - self.last_render >= FRAME_MS {
+                    self.render(mux)?;
+                } else {
+                    // Output from outside frames goes as it comes.
+                    let out = mux.take_output();
+                    if !out.is_empty() {
+                        self.send(Message::Output(out));
+                    }
+                }
             }
-            write_all(self.output, &mux.take_output());
+            if self.flush().is_err() {
+                self.disconnect(mux);
+                events.push(Event::Disconnected);
+                continue;
+            }
 
             let mut wake = deadline;
-            if mux.needs_render() {
-                wake = earliest(wake, self.last_render + FRAME_MS);
+            match &self.link {
+                Some(link) if link.pending() => {
+                    wake = earliest(wake, link.last_progress() + self.stall_ms);
+                }
+                Some(_) if mux.needs_render() => {
+                    wake = earliest(wake, self.last_render + FRAME_MS);
+                }
+                _ => {}
+            }
+            for link in &self.closing {
+                wake = earliest(wake, link.last_progress() + self.stall_ms);
             }
             if let Some(hold) = mux.hold_deadline() {
                 wake = earliest(wake, hold);
@@ -197,9 +230,18 @@ impl Runtime {
                 wake = earliest(wake, now + REAP_MS);
             }
 
-            let mut fds = vec![pollfd(self.winch)];
-            if self.input_open {
-                fds.push(pollfd(self.input));
+            let mut fds = Vec::new();
+            if let Some(link) = &self.link {
+                let mut f = pollfd(link.fd());
+                if link.pending() {
+                    f.events |= libc::POLLOUT;
+                }
+                fds.push(f);
+            }
+            for link in &self.closing {
+                let mut f = pollfd(link.fd());
+                f.events = libc::POLLOUT;
+                fds.push(f);
             }
             let panes: Vec<(PaneId, RawFd)> = mux
                 .panes()
@@ -220,17 +262,14 @@ impl Runtime {
             }
 
             let mut fds = fds.iter().map(|f| (f.fd, f.revents));
-            if fds.next().is_some_and(|(_, revents)| revents != 0) {
-                winch::take(self.winch);
-            }
-            if self.input_open && fds.next().is_some_and(|(_, revents)| revents != 0) {
-                let n = read(self.input, &mut self.buf);
-                if n > 0 {
-                    mux.input(&self.buf[..n as usize]);
-                } else {
-                    self.input_open = false;
-                    events.push(Event::InputClosed);
+            if self.link.is_some() {
+                let revents = fds.next().map_or(0, |(_, revents)| revents);
+                if revents & !libc::POLLOUT != 0 {
+                    self.read_link(mux, &mut events);
                 }
+            }
+            for _ in 0..self.closing.len() {
+                fds.next();
             }
             for &(id, fd) in &panes {
                 let revents = fds.next().map_or(0, |(_, revents)| revents);
@@ -247,6 +286,53 @@ impl Runtime {
                 fds.filter(|&(_, revents)| revents != 0)
                     .map(|(fd, _)| Event::Ready(fd)),
             );
+        }
+    }
+
+    /// Draw a frame and queue it for the client.
+    fn render(&mut self, mux: &mut Mux) -> Result<(), Box<dyn Error>> {
+        mux.render()?;
+        self.last_render = now_ms();
+        let out = mux.take_output();
+        if !out.is_empty() {
+            self.send(Message::Output(out));
+        }
+        Ok(())
+    }
+
+    /// Write what the links have queued. An error ends the current link;
+    /// a closing link that fails is dropped.
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.closing
+            .retain_mut(|l| l.flush().is_ok() && l.pending());
+        match &mut self.link {
+            Some(link) => link.flush().map(|_| ()),
+            None => Ok(()),
+        }
+    }
+
+    /// Take the messages the client sent: input for the panes, resizes, and
+    /// the rest for the caller. The end of the stream or an error
+    /// disconnects it.
+    fn read_link(&mut self, mux: &mut Mux, events: &mut Vec<Event>) {
+        let Some(link) = &mut self.link else { return };
+        let messages = match link.read() {
+            Ok(messages) => messages,
+            Err(_) => {
+                self.disconnect(mux);
+                events.push(Event::Disconnected);
+                return;
+            }
+        };
+        for message in messages {
+            match message {
+                Message::Input(data) => mux.input(&data),
+                Message::Resize(size) => {
+                    mux.resize(size.into());
+                    events.push(Event::Resized);
+                }
+                message => events.push(Event::Message(message)),
+            }
         }
     }
 
@@ -269,28 +355,13 @@ impl Runtime {
         }
         false
     }
-
-    /// Return the host terminal to how the runtime found it, undoing the
-    /// modes the mux mirrored onto it. Dropping the runtime does this too.
-    pub fn restore(&mut self) {
-        if let Some(termios) = self.termios.take() {
-            write_all(self.output, &mux::host_restore(self.clusters));
-            unsafe { libc::tcsetattr(self.input, libc::TCSAFLUSH, &termios) };
-        }
-    }
-}
-
-impl Drop for Runtime {
-    fn drop(&mut self) {
-        self.restore();
-    }
 }
 
 fn earliest(a: Option<i64>, b: i64) -> Option<i64> {
     Some(a.map_or(b, |a| a.min(b)))
 }
 
-fn pollfd(fd: RawFd) -> libc::pollfd {
+pub fn pollfd(fd: RawFd) -> libc::pollfd {
     libc::pollfd {
         fd,
         events: libc::POLLIN,
@@ -300,7 +371,7 @@ fn pollfd(fd: RawFd) -> libc::pollfd {
 
 /// Poll `fds` for up to `timeout` milliseconds, or without a limit if it is
 /// negative. Returns whether any is ready; an interrupted poll returns false.
-fn poll(fds: &mut [libc::pollfd], timeout: i64) -> Result<bool, Box<dyn Error>> {
+pub fn poll(fds: &mut [libc::pollfd], timeout: i64) -> Result<bool, Box<dyn Error>> {
     let timeout = timeout.min(i64::from(libc::c_int::MAX)) as libc::c_int;
     let ready = unsafe { libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, timeout) };
     if ready < 0 {

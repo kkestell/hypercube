@@ -88,7 +88,7 @@ fn escaped(bytes: &[u8]) -> String {
 fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
     let replies = host_replies();
     let mut m = Mux::new(winsize(initial), Box::new(NoChrome));
-    m.use_host_replies(&replies).unwrap();
+    m.connect_host(&replies, winsize(initial)).unwrap();
     let id = m.add_pane("test").unwrap();
     m.set_layout(&[(id, Rect::full(winsize(initial)))]).unwrap();
     let mut twin = term(initial, &replies);

@@ -64,6 +64,9 @@ const PASTE_END: &[u8] = b"\x1b[201~";
 /// The longest notification passed through to the host, in bytes.
 const NOTIFICATION_MAX: usize = 4096;
 
+/// The most output from outside frames held for the next frame, in bytes.
+const MAX_SIDE_OUTPUT: usize = 256 * 1024;
+
 /// How long a pane may hold drawing (mode 2026) without completing a frame.
 pub const HOLD_TIMEOUT_MS: i64 = 1000;
 
@@ -124,12 +127,16 @@ impl Rect {
 
 /// Something the caller may act on, from host input or the focus moving; see
 /// `Mux::take_notices`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Notice {
     /// The focus moved to this pane.
     Focus(PaneId),
     /// The zoom key was pressed while this pane had the focus.
     Zoom(PaneId),
+    /// The overlay key was pressed.
+    Overlay,
+    /// A key or escape sequence arrived while input is captured.
+    Key(Vec<u8>),
 }
 
 /// What the chrome sees of a pane.
@@ -166,6 +173,63 @@ impl Chrome for NoChrome {
 struct Shared {
     out: RefCell<Vec<u8>>,
     focus: Cell<Option<PaneId>>,
+    /// Whether a host terminal is connected. Side output is discarded
+    /// while none is.
+    connected: Cell<bool>,
+    /// Whether a pane rang the bell since the last frame.
+    bell: Cell<bool>,
+    /// Whether the focused pane's title changed since the last frame.
+    title_changed: Cell<bool>,
+}
+
+impl Shared {
+    /// Append output from outside a frame, a notification or a clipboard
+    /// copy, whole, unless no host terminal is connected or the output would
+    /// pass `MAX_SIDE_OUTPUT`.
+    fn side_output(&self, data: &[u8]) {
+        let mut out = self.out.borrow_mut();
+        if self.connected.get() && out.len() + data.len() <= MAX_SIDE_OUTPUT {
+            out.extend_from_slice(data);
+        }
+    }
+}
+
+/// What the mux knows of the connected host terminal, and the host input in
+/// progress from it. Each connection starts afresh.
+struct HostTerminal {
+    /// Each mirrored mode as the host has it, `None` until set.
+    modes: [Option<bool>; MIRRORED_MODES.len()],
+    kitty_flags: Option<u8>,
+    /// Whether the host reports mouse motion without a button held, once
+    /// mouse reporting is on.
+    any_motion: Option<bool>,
+    /// Whether terminals cluster graphemes by default, from the host.
+    grapheme_default: bool,
+    /// The mouse button held since it was pressed in a pane.
+    press: Option<Press>,
+    /// The pane with a selection.
+    selection: Option<PaneId>,
+    /// Host input cut off by the end of a read, and when it was held.
+    held_input: Vec<u8>,
+    held_since: i64,
+    /// The pane a bracketed paste in progress goes to.
+    pasting: Option<PaneId>,
+}
+
+impl HostTerminal {
+    fn new(grapheme_default: bool) -> HostTerminal {
+        HostTerminal {
+            modes: [None; MIRRORED_MODES.len()],
+            kitty_flags: None,
+            any_motion: None,
+            grapheme_default,
+            press: None,
+            selection: None,
+            held_input: Vec::new(),
+            held_since: 0,
+            pasting: None,
+        }
+    }
 }
 
 /// Per-pane state shared with its terminal's effect callbacks.
@@ -386,11 +450,11 @@ impl Pane {
         let s = state.clone();
         terminal.on_pty_write(move |_, data| s.send(data))?;
         let sh = shared.clone();
-        terminal.on_bell(move |_| sh.out.borrow_mut().push(0x07))?;
+        terminal.on_bell(move |_| sh.bell.set(sh.connected.get()))?;
         let sh = shared.clone();
-        terminal.on_title_changed(move |t| {
+        terminal.on_title_changed(move |_| {
             if sh.focus.get() == Some(id) {
-                write_title(&mut sh.out.borrow_mut(), t);
+                sh.title_changed.set(true);
             }
         })?;
         terminal.on_device_attributes(|_| Some(DEVICE_ATTRIBUTES))?;
@@ -464,8 +528,11 @@ impl Pane {
     /// Feed the program's output to the terminal, passing its desktop
     /// notifications through to the host.
     pub fn feed(&mut self, data: &[u8]) {
-        self.notifications
-            .scan(data, &mut self.shared.out.borrow_mut());
+        let mut notifications = Vec::new();
+        self.notifications.scan(data, &mut notifications);
+        if !notifications.is_empty() {
+            self.shared.side_output(&notifications);
+        }
         // A leading zero-width character can attach to the previous cell
         // without dirtying its row, so the render state wouldn't see it.
         // Capture the cursor's row from the terminal.
@@ -730,56 +797,40 @@ pub struct Mux {
     clear: bool,
     /// Process groups of removed panes, until they are empty or killed.
     orphans: Vec<Orphan>,
+    /// The replies of the most recently connected host terminal to
+    /// `host_queries`, which every pane's terminal takes.
     host_replies: Vec<u8>,
-    host_modes: [bool; MIRRORED_MODES.len()],
-    host_kitty_flags: u8,
-    /// Whether the host reports mouse motion without a button held, once
-    /// mouse reporting is on.
-    host_any_motion: Option<bool>,
-    /// Whether terminals cluster graphemes by default, from the host.
-    grapheme_default: bool,
-    /// The mouse button held since it was pressed in a pane.
-    press: Option<Press>,
-    /// The pane with a selection.
-    selection: Option<PaneId>,
-    /// Host input cut off by the end of a read, and when it was held.
-    held_input: Vec<u8>,
-    held_since: i64,
-    /// The pane a bracketed paste in progress goes to.
-    pasting: Option<PaneId>,
+    host: HostTerminal,
+    /// Whether host input is reported as `Notice::Key` instead of routed.
+    captured: bool,
     /// What host input and focus changes have told the caller since it
     /// last took them, in order.
     notices: Vec<Notice>,
 }
 
 impl Mux {
+    /// A mux of size `ws` with no host terminal connected.
     pub fn new(ws: Winsize, chrome: Box<dyn Chrome>) -> Mux {
-        let mut m = Mux {
+        Mux {
             ws,
             panes: Vec::new(),
             next_id: 1,
             shared: Rc::new(Shared {
                 out: RefCell::new(Vec::new()),
                 focus: Cell::new(None),
+                connected: Cell::new(false),
+                bell: Cell::new(false),
+                title_changed: Cell::new(false),
             }),
             chrome,
             chrome_dirty: true,
             clear: false,
             orphans: Vec::new(),
             host_replies: Vec::new(),
-            host_modes: [false; MIRRORED_MODES.len()],
-            host_kitty_flags: 0,
-            host_any_motion: None,
-            grapheme_default: false,
-            press: None,
-            selection: None,
-            held_input: Vec::new(),
-            held_since: 0,
-            pasting: None,
+            host: HostTerminal::new(false),
+            captured: false,
             notices: Vec::new(),
-        };
-        m.reset_host_modes();
-        m
+        }
     }
 
     /// The host terminal's size.
@@ -821,31 +872,64 @@ impl Mux {
         std::mem::take(&mut *self.shared.out.borrow_mut())
     }
 
-    /// Take the host's replies to `host_queries` for every pane's terminal,
-    /// including panes added later.
-    pub fn use_host_replies(&mut self, replies: &[u8]) -> Result<()> {
+    /// Connect a host terminal of size `ws` whose replies to `host_queries`
+    /// are `replies`. Every pane's terminal, and every pane added later,
+    /// takes the replies. The next frame clears the screen, draws everything,
+    /// and sets every mirrored mode, the mouse modes, the Kitty keyboard
+    /// flags, and the title.
+    pub fn connect_host(&mut self, replies: &[u8], ws: Winsize) -> Result<()> {
         for p in &mut self.panes {
             use_host_replies_for(&mut p.terminal, replies)?;
         }
         self.host_replies = replies.to_vec();
-        self.grapheme_default = host_clusters(replies);
-        self.reset_host_modes();
+        self.host = HostTerminal::new(host_clusters(replies));
+        self.shared.out.borrow_mut().clear();
+        self.shared.connected.set(true);
+        self.shared.title_changed.set(true);
+        self.resize(ws);
         Ok(())
+    }
+
+    /// Let the host terminal go: its selection is cleared, and its input in
+    /// progress dropped. The panes keep running, and render draws nothing
+    /// until a host terminal connects again.
+    pub fn disconnect_host(&mut self) {
+        self.clear_selection();
+        self.host = HostTerminal::new(false);
+        self.shared.out.borrow_mut().clear();
+        self.shared.connected.set(false);
+        self.shared.bell.set(false);
+    }
+
+    pub fn connected(&self) -> bool {
+        self.shared.connected.get()
+    }
+
+    /// Report host input as `Notice::Key`, one key or escape sequence each,
+    /// instead of routing it to the panes, or stop. While captured, pastes
+    /// and mouse reports are dropped, the host has every mirrored mode at
+    /// its default, so keys arrive in legacy form, and no cursor is shown.
+    pub fn set_captured(&mut self, captured: bool) {
+        if self.captured == captured {
+            return;
+        }
+        self.captured = captured;
+        if let Some(Press::Report(_) | Press::Select(..)) = self.host.press {
+            self.host.press = Some(Press::Ignore);
+        }
+        self.host.held_input.clear();
+        if self.host.pasting.is_some() {
+            self.host.pasting = Some(NO_PANE);
+        }
+        self.chrome_dirty = true;
     }
 
     fn mode_default(&self, value: u16, default: bool) -> bool {
         if value == 2027 {
-            self.grapheme_default
+            self.host.grapheme_default
         } else {
             default
         }
-    }
-
-    fn reset_host_modes(&mut self) {
-        for (i, &(value, default)) in MIRRORED_MODES.iter().enumerate() {
-            self.host_modes[i] = self.mode_default(value, default);
-        }
-        self.host_any_motion = None;
     }
 
     /// Add a pane without a program. It is drawn once `set_layout` places
@@ -931,8 +1015,8 @@ impl Mux {
 
     /// Drop the rest of a mouse press that a pane captured.
     fn ignore_press_of(&mut self, id: PaneId) {
-        if matches!(&self.press, Some(Press::Report(i) | Press::Select(i, ..)) if *i == id) {
-            self.press = Some(Press::Ignore);
+        if matches!(&self.host.press, Some(Press::Report(i) | Press::Select(i, ..)) if *i == id) {
+            self.host.press = Some(Press::Ignore);
         }
     }
 
@@ -940,15 +1024,15 @@ impl Mux {
     /// selection, a mouse press in progress, input held for it, and the rest
     /// of a paste, through its end marker.
     fn drop_input_for(&mut self, id: PaneId) {
-        if self.selection == Some(id) {
-            self.selection = None;
+        if self.host.selection == Some(id) {
+            self.host.selection = None;
         }
         self.ignore_press_of(id);
-        if self.pasting == Some(id) {
+        if self.host.pasting == Some(id) {
             // The held start of the end marker is part of the paste.
-            self.pasting = Some(NO_PANE);
+            self.host.pasting = Some(NO_PANE);
         } else if self.focus() == Some(id) {
-            self.held_input.clear();
+            self.host.held_input.clear();
         }
     }
 
@@ -1095,7 +1179,11 @@ impl Mux {
     }
 
     pub fn needs_render(&self) -> bool {
-        self.chrome_dirty || self.clear || self.panes.iter().any(Pane::needs_render)
+        self.chrome_dirty
+            || self.clear
+            || self.shared.bell.get()
+            || self.shared.title_changed.get()
+            || self.panes.iter().any(Pane::needs_render)
     }
 
     /// Focus a pane whose program hasn't exited, sending focus events to
@@ -1116,7 +1204,7 @@ impl Mux {
             next.send(b"\x1b[I");
         }
         self.chrome_dirty = true;
-        write_title(&mut self.shared.out.borrow_mut(), &next.terminal);
+        self.shared.title_changed.set(true);
     }
 
     /// Focus the next live pane after the focused one, in pane order.
@@ -1143,7 +1231,7 @@ impl Mux {
         if data.is_empty() {
             return;
         }
-        if self.selection.is_some() && self.selection == self.focus() {
+        if self.host.selection.is_some() && self.host.selection == self.focus() {
             self.clear_selection();
         }
         if let Some(p) = self.focused() {
@@ -1206,7 +1294,7 @@ impl Mux {
     /// are. A key or escape sequence cut off by the end of a read waits for
     /// the next read, or for `input_deadline`.
     pub fn input(&mut self, data: &[u8]) {
-        let mut input = std::mem::take(&mut self.held_input);
+        let mut input = std::mem::take(&mut self.host.held_input);
         input.extend_from_slice(data);
         self.route(&input, false);
     }
@@ -1219,13 +1307,13 @@ impl Mux {
     /// When held input is taken as it is: a lone Esc as the Esc key, and a
     /// cut-off sequence as typed.
     pub fn input_deadline(&self) -> Option<i64> {
-        (!self.held_input.is_empty() && self.pasting.is_none())
-            .then_some(self.held_since + INPUT_HOLD_MS)
+        (!self.host.held_input.is_empty() && self.host.pasting.is_none())
+            .then_some(self.host.held_since + INPUT_HOLD_MS)
     }
 
     /// Route held input as it is; see `input_deadline`.
     pub fn flush_input(&mut self) {
-        let input = std::mem::take(&mut self.held_input);
+        let input = std::mem::take(&mut self.host.held_input);
         self.route(&input, true);
     }
 
@@ -1233,7 +1321,7 @@ impl Mux {
         let mut i = 0;
         let mut start = 0;
         while i < data.len() {
-            if let Some(id) = self.pasting {
+            if let Some(id) = self.host.pasting {
                 // The paste goes to its pane through its end. An end cut off
                 // by the end of the read is held, without a deadline.
                 let rest = &data[i..];
@@ -1255,7 +1343,7 @@ impl Mux {
                     self.hold(&data[end..]);
                     return;
                 }
-                self.pasting = None;
+                self.host.pasting = None;
                 i = end;
                 start = end;
                 continue;
@@ -1267,6 +1355,12 @@ impl Mux {
                 return;
             };
             let token = &data[i..end];
+            if self.captured {
+                self.capture(token);
+                i = end;
+                start = end;
+                continue;
+            }
             match self.classify(token) {
                 Route::Pass => {}
                 Route::Bottom => {
@@ -1286,6 +1380,7 @@ impl Mux {
                                 self.notices.push(Notice::Zoom(id));
                             }
                         }
+                        Route::Overlay => self.notices.push(Notice::Overlay),
                         Route::Mouse(event) => self.mouse(event),
                         Route::Scroll(key) => self.scroll_focused(key),
                         _ => {}
@@ -1295,7 +1390,7 @@ impl Mux {
             if token == PASTE_START {
                 self.send(&data[start..end]);
                 start = end;
-                self.pasting = self.focus();
+                self.host.pasting = self.focus();
             }
             i = end;
         }
@@ -1304,32 +1399,30 @@ impl Mux {
 
     fn hold(&mut self, input: &[u8]) {
         if !input.is_empty() {
-            self.held_input = input.to_vec();
-            self.held_since = now_ms();
+            self.host.held_input = input.to_vec();
+            self.host.held_since = now_ms();
+        }
+    }
+
+    /// Report a key of captured input, or the overlay key. A paste is
+    /// dropped through its end, and so are mouse reports and the other keys
+    /// the mux takes.
+    fn capture(&mut self, token: &[u8]) {
+        if token == PASTE_START {
+            self.host.pasting = Some(NO_PANE);
+            return;
+        }
+        match special_route(token) {
+            Some(Route::Overlay) => self.notices.push(Notice::Overlay),
+            Some(_) => {}
+            None => self.notices.push(Notice::Key(token.to_vec())),
         }
     }
 
     /// What to do with one key or escape sequence of host input.
     fn classify(&self, token: &[u8]) -> Route {
-        if token == [CTRL_RIGHT_BRACKET] {
-            return Route::FocusNext;
-        }
-        if token == [CTRL_BACKSLASH] {
-            return Route::Zoom;
-        }
-        if let Some((&last, params)) = token.strip_prefix(b"\x1b[").and_then(|t| t.split_last()) {
-            if last == b'u'
-                && let Some((route, press)) = ctrl_key(params)
-            {
-                return if press { route } else { Route::Drop };
-            }
-            // The host reports the mouse only in SGR form.
-            if last == b'M' || last == b'm' {
-                return match params.strip_prefix(b"<") {
-                    Some(sgr) => MouseEvent::parse(sgr, last).map_or(Route::Drop, Route::Mouse),
-                    None => Route::Pass,
-                };
-            }
+        if let Some(route) = special_route(token) {
+            return route;
         }
         let key = scroll_key(token);
         if self.focused().is_some_and(|p| p.scrolled() > 0) {
@@ -1376,13 +1469,13 @@ impl Mux {
         );
         if !wheel
             && event.action != mouse::Action::Press
-            && let Some(press) = self.press.take()
+            && let Some(press) = self.host.press.take()
         {
             let id = match &press {
                 Press::Report(id) | Press::Select(id, ..) => *id,
                 Press::Ignore => {
                     if event.action != mouse::Action::Release {
-                        self.press = Some(Press::Ignore);
+                        self.host.press = Some(Press::Ignore);
                     }
                     return;
                 }
@@ -1406,24 +1499,22 @@ impl Mux {
                 Press::Select(_, anchor, start) => {
                     // A press released where it began, without moving, is
                     // a click.
-                    if (self.selection == Some(id) || *start != (col, row))
+                    if (self.host.selection == Some(id) || *start != (col, row))
                         && p.select(anchor, col, row).is_ok()
                     {
-                        self.selection = Some(id);
+                        self.host.selection = Some(id);
                     }
                     if event.action == mouse::Action::Release
-                        && self.selection == Some(id)
+                        && self.host.selection == Some(id)
                         && let Ok(Some(text)) = p.selected_text()
                     {
-                        let mut out = self.shared.out.borrow_mut();
-                        out.extend_from_slice(b"\x1b]52;c;");
-                        out.extend_from_slice(base64(&text).as_bytes());
-                        out.push(0x07);
+                        let copy = format!("\x1b]52;c;{}\x07", base64(&text));
+                        self.shared.side_output(copy.as_bytes());
                     }
                 }
             }
             if event.action != mouse::Action::Release {
-                self.press = Some(press);
+                self.host.press = Some(press);
             }
             return;
         }
@@ -1446,7 +1537,7 @@ impl Mux {
             self.clear_selection();
             self.set_focus(id);
             let p = &self.panes[index];
-            self.press = if reports {
+            self.host.press = if reports {
                 Some(Press::Report(id))
             } else if event.button == Some(Button::Left) {
                 let point = Point::Viewport(PointCoordinate {
@@ -1485,22 +1576,27 @@ impl Mux {
     }
 
     fn clear_selection(&mut self) {
-        if let Some(id) = self.selection.take()
+        if let Some(id) = self.host.selection.take()
             && let Some(p) = self.pane_mut(id)
         {
             let _ = p.clear_selection();
         }
     }
 
+    /// The focused pane, unless input is captured.
+    fn input_pane(&self) -> Option<&Pane> {
+        if self.captured { None } else { self.focused() }
+    }
+
     fn sync_modes(&mut self, out: &mut Vec<u8>) {
         for (i, &(value, default)) in MIRRORED_MODES.iter().enumerate() {
-            let set = match self.focused() {
+            let set = match self.input_pane() {
                 Some(p) => p.mode(dec(value)),
                 None => self.mode_default(value, default),
             };
-            if set != self.host_modes[i] {
+            if Some(set) != self.host.modes[i] {
                 let _ = write!(out, "\x1b[?{}{}", value, if set { 'h' } else { 'l' });
-                self.host_modes[i] = set;
+                self.host.modes[i] = Some(set);
             }
         }
 
@@ -1508,29 +1604,44 @@ impl Mux {
         // and motion without a button while the focused pane asks for it.
         // Resetting any tracking mode turns tracking off, so the mode to use
         // is set last.
-        let any_motion = self.focused().is_some_and(|p| p.mode(Mode::ANY_MOUSE));
-        if self.host_any_motion != Some(any_motion) {
+        let any_motion = self.input_pane().is_some_and(|p| p.mode(Mode::ANY_MOUSE));
+        if self.host.any_motion != Some(any_motion) {
             out.extend_from_slice(b"\x1b[?1006h\x1b[?1003l\x1b[?1002h");
             if any_motion {
                 out.extend_from_slice(b"\x1b[?1003h");
             }
-            self.host_any_motion = Some(any_motion);
+            self.host.any_motion = Some(any_motion);
         }
 
-        let flags = self.focused().map_or(0, |p| {
+        let flags = self.input_pane().map_or(0, |p| {
             p.terminal.kitty_keyboard_flags().map_or(0, |f| f.bits())
         });
-        if flags != self.host_kitty_flags {
+        if Some(flags) != self.host.kitty_flags {
             let _ = write!(out, "\x1b[={flags};1u");
-            self.host_kitty_flags = flags;
+            self.host.kitty_flags = Some(flags);
         }
     }
 
     /// Draw the chrome and the rows that changed since the last frame, the
-    /// cursor, and the input modes into the output.
+    /// cursor, the input modes, the focused pane's title if it changed, and
+    /// a bell if a pane rang one into the output. Draws nothing while no
+    /// host terminal is connected.
     pub fn render(&mut self) -> Result<()> {
+        if !self.connected() {
+            return Ok(());
+        }
         let shared = self.shared.clone();
         let mut out = shared.out.borrow_mut();
+        if shared.bell.take() {
+            out.push(0x07);
+        }
+        if shared.title_changed.take() {
+            out.extend_from_slice(b"\x1b]0;");
+            if let Some(p) = self.focused() {
+                out.extend_from_slice(p.terminal.title().unwrap_or(b""));
+            }
+            out.push(0x07);
+        }
         out.extend_from_slice(b"\x1b[?2026h\x1b[?25l");
         // Grapheme clustering must be synchronized before drawing rows.
         self.sync_modes(&mut out);
@@ -1568,7 +1679,7 @@ impl Mux {
             p.render(&mut out)?;
         }
 
-        let Some(p) = self.focused() else {
+        let Some(p) = self.input_pane() else {
             out.extend_from_slice(b"\x1b[?2026l");
             return Ok(());
         };
@@ -1620,10 +1731,11 @@ fn press_and_release(
 }
 
 /// What turns the host terminal back from anything the mux mirrored onto
-/// it: every mirrored mode at its default, no Kitty keyboard flags, the
-/// default cursor, and the main screen. `clusters` is whether the host
-/// clusters graphemes by default, if known.
-pub fn host_restore(clusters: Option<bool>) -> Vec<u8> {
+/// it, leaving it on the alternate screen: every mirrored mode at its
+/// default, no Kitty keyboard flags, the default cursor, and default SGR
+/// attributes. `clusters` is whether the host clusters graphemes by default,
+/// if known.
+pub fn host_reset(clusters: Option<bool>) -> Vec<u8> {
     let mut out = Vec::new();
     for &(value, default) in &MIRRORED_MODES {
         let default = if value == 2027 {
@@ -1634,9 +1746,14 @@ pub fn host_restore(clusters: Option<bool>) -> Vec<u8> {
         };
         let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
     }
-    out.extend_from_slice(
-        b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l",
-    );
+    out.extend_from_slice(b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h");
+    out
+}
+
+/// `host_reset`, then back to the main screen.
+pub fn host_restore(clusters: Option<bool>) -> Vec<u8> {
+    let mut out = host_reset(clusters);
+    out.extend_from_slice(b"\x1b[?1049l");
     out
 }
 
@@ -1650,10 +1767,27 @@ fn exit_status(status: std::process::ExitStatus) -> u8 {
     }
 }
 
-fn write_title(out: &mut Vec<u8>, terminal: &Terminal) {
-    out.extend_from_slice(b"\x1b]0;");
-    out.extend_from_slice(terminal.title().unwrap_or(b""));
-    out.push(0x07);
+/// The route of a key the mux takes whatever pane has the focus: the focus,
+/// zoom, and overlay keys, in legacy or Kitty form, and mouse reports.
+fn special_route(token: &[u8]) -> Option<Route> {
+    match token {
+        [CTRL_RIGHT_BRACKET] => return Some(Route::FocusNext),
+        [CTRL_BACKSLASH] => return Some(Route::Zoom),
+        [CTRL_CARET] => return Some(Route::Overlay),
+        _ => {}
+    }
+    let (&last, params) = token.strip_prefix(b"\x1b[")?.split_last()?;
+    if last == b'u'
+        && let Some((route, press)) = ctrl_key(params)
+    {
+        return Some(if press { route } else { Route::Drop });
+    }
+    // The host reports the mouse only in SGR form.
+    if last == b'M' || last == b'm' {
+        let sgr = params.strip_prefix(b"<")?;
+        return Some(MouseEvent::parse(sgr, last).map_or(Route::Drop, Route::Mouse));
+    }
+    None
 }
 
 /// How host input is routed; see `Mux::input`.
@@ -1664,6 +1798,7 @@ enum Route {
     Drop,
     FocusNext,
     Zoom,
+    Overlay,
     Mouse(MouseEvent),
     Scroll(ScrollKey),
     /// To the focused pane, after returning its view to the bottom.
@@ -1680,9 +1815,10 @@ enum ScrollKey {
     Exit,
 }
 
-/// The legacy bytes of Ctrl-] and Ctrl-\.
+/// The legacy bytes of Ctrl-], Ctrl-\, and Ctrl-^.
 const CTRL_RIGHT_BRACKET: u8 = 0x1d;
 const CTRL_BACKSLASH: u8 = 0x1c;
+const CTRL_CARET: u8 = 0x1e;
 /// The Kitty modifiers value of Shift alone.
 const SHIFT: u16 = 2;
 /// The Kitty event type of a key release.
@@ -1708,13 +1844,15 @@ fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
     Some((key, mods, event))
 }
 
-/// The route of Ctrl-] or Ctrl-\ in Kitty's form, and whether the event is
-/// a press, not a repeat or release.
+/// The route of Ctrl-], Ctrl-\, or Ctrl-^ in Kitty's form, and whether the
+/// event is a press, not a repeat or release. Ctrl-^ is Ctrl or Ctrl-Shift
+/// with the 6 key.
 fn ctrl_key(params: &[u8]) -> Option<(Route, bool)> {
     let (code, mods, event) = csi_key(params)?;
     let route = match (code, mods) {
         (93, 5) => Route::FocusNext,
         (92, 5) => Route::Zoom,
+        (54, 5 | 6) => Route::Overlay,
         _ => return None,
     };
     Some((route, event == 1))
@@ -2354,6 +2492,7 @@ mod tests {
                 ws_ypixel: 0,
             };
             let mut mux = Mux::new(ws, Box::new(NoChrome));
+            mux.connect_host(&[], ws).unwrap();
             let ids = [
                 mux.add_pane("left").unwrap(),
                 mux.add_pane("right").unwrap(),
@@ -2748,5 +2887,148 @@ mod tests {
         p.mux.input(b"cd\x1b[201~e");
         assert_eq!(p.got(0), b"\x1b[200~abcd\x1b[201~");
         assert_eq!(p.got(1), b"e");
+    }
+
+    fn frame(mux: &mut Mux) -> Vec<u8> {
+        mux.render().unwrap();
+        mux.take_output()
+    }
+
+    fn has(out: &[u8], needle: &[u8]) -> bool {
+        find(out, needle).is_some()
+    }
+
+    #[test]
+    fn connecting_draws_everything_and_sets_every_mode() {
+        let mut p = Piped::new();
+        let ws = p.mux.size();
+        frame(&mut p.mux);
+        for _ in 0..2 {
+            p.mux.disconnect_host();
+            p.mux.connect_host(b"\x1b[?2027;1$y", ws).unwrap();
+            let out = frame(&mut p.mux);
+            assert!(has(&out, b"\x1b[2J"));
+            for (value, _) in MIRRORED_MODES {
+                assert!(has(&out, format!("\x1b[?{value}").as_bytes()), "{value}");
+            }
+            assert!(has(&out, b"\x1b[?1006h\x1b[?1003l\x1b[?1002h"));
+            assert!(has(&out, b"\x1b[=0;1u"));
+            assert!(has(&out, b"\x1b]0;\x07"));
+            assert!(!p.mux.needs_render());
+        }
+    }
+
+    #[test]
+    fn nothing_is_drawn_or_passed_through_while_disconnected() {
+        let mut p = Piped::new();
+        let (ws, id) = (p.mux.size(), p.ids[0]);
+        frame(&mut p.mux);
+        p.mux.disconnect_host();
+        assert!(!p.mux.connected());
+        p.mux
+            .pane_mut(id)
+            .unwrap()
+            .feed(b"\x07\x1b]0;title\x07\x1b]9;note\x07text");
+        assert!(frame(&mut p.mux).is_empty());
+        // Connecting draws the title and the text, and nothing that came
+        // while disconnected.
+        p.mux.connect_host(&[], ws).unwrap();
+        let out = frame(&mut p.mux);
+        assert!(has(&out, b"\x1b]0;title\x07") && has(&out, b"text"));
+        assert!(!has(&out, b"note"));
+        assert_eq!(out.iter().filter(|&&b| b == 0x07).count(), 1);
+    }
+
+    #[test]
+    fn bells_and_titles_between_frames_are_drawn_once() {
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        frame(&mut p.mux);
+        p.mux
+            .pane_mut(id)
+            .unwrap()
+            .feed(b"\x07\x07\x1b]0;one\x07\x07\x1b]0;two\x07");
+        let out = frame(&mut p.mux);
+        // One bell, and the end of one title.
+        assert_eq!(out.iter().filter(|&&b| b == 0x07).count(), 2);
+        assert!(has(&out, b"\x1b]0;two\x07") && !has(&out, b"one"));
+        assert!(!has(&frame(&mut p.mux), b"\x07"));
+    }
+
+    #[test]
+    fn notifications_past_the_side_output_limit_are_dropped_whole() {
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        frame(&mut p.mux);
+        let note = format!("\x1b]9;{}\x07", "n".repeat(4000));
+        for _ in 0..100 {
+            p.mux.pane_mut(id).unwrap().feed(note.as_bytes());
+        }
+        let out = p.mux.take_output();
+        assert_eq!(out.len(), MAX_SIDE_OUTPUT / note.len() * note.len());
+    }
+
+    #[test]
+    fn disconnecting_clears_the_selection_and_ends_the_press() {
+        let mut p = Piped::new();
+        let (ws, id) = (p.mux.size(), p.ids[0]);
+        p.mux.pane_mut(id).unwrap().feed(b"abcdefgh");
+        p.mux.input(b"\x1b[<0;1;1M\x1b[<32;3;1M");
+        assert_eq!(p.mux.host.selection, Some(id));
+        p.mux.disconnect_host();
+        assert_eq!(p.mux.pane(id).unwrap().selected_text().unwrap(), None);
+        p.mux.connect_host(&[], ws).unwrap();
+        // The release of the old drag selects and copies nothing.
+        p.mux.input(b"\x1b[<0;5;1m");
+        assert!(!has(&p.mux.take_output(), b"\x1b]52;"));
+        assert_eq!(p.mux.pane(id).unwrap().selected_text().unwrap(), None);
+    }
+
+    #[test]
+    fn a_held_pane_draws_its_snapshot_after_connecting_again() {
+        let mut p = Piped::new();
+        let (ws, id) = (p.mux.size(), p.ids[0]);
+        p.mux
+            .pane_mut(id)
+            .unwrap()
+            .feed(b"before\x1b[?2026h\x1b[Hafter!");
+        assert!(p.mux.pane(id).unwrap().held());
+        frame(&mut p.mux);
+        p.mux.disconnect_host();
+        p.mux.connect_host(&[], ws).unwrap();
+        let out = frame(&mut p.mux);
+        assert!(has(&out, b"before") && !has(&out, b"after"));
+    }
+
+    #[test]
+    fn captured_input_is_reported_as_keys() {
+        let mut p = Piped::new();
+        p.mux.set_captured(true);
+        p.mux.take_notices();
+        p.mux.input(
+            b"j\x1b[A\x1b[<0;1;1M\x1b[200~paste\x1b[201~\r\x1e\x1b[54;5u\x1b[54;6u\x1b[54;5:3u",
+        );
+        let key = |k: &[u8]| Notice::Key(k.to_vec());
+        assert_eq!(
+            p.mux.take_notices(),
+            [
+                key(b"j"),
+                key(b"\x1b[A"),
+                key(b"\r"),
+                Notice::Overlay,
+                Notice::Overlay,
+                Notice::Overlay
+            ]
+        );
+        assert_eq!(p.got(0), b"");
+        // A captured frame mirrors the defaults and shows no cursor.
+        let out = frame(&mut p.mux);
+        assert!(!has(&out, b"\x1b[?25h"));
+
+        p.mux.set_captured(false);
+        p.mux.input(b"\x1e");
+        assert_eq!(p.mux.take_notices(), [Notice::Overlay]);
+        p.mux.input(b"a");
+        assert_eq!(p.got(0), b"a");
     }
 }

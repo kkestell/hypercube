@@ -1,11 +1,15 @@
-//! Real-pty tests of the runtime. Each test hosts its panes on a pty whose
-//! other side feeds a Ghostty terminal standing in for the user's terminal.
-//! The programs in the panes are src/bin/hypercube-test-child.rs.
+//! Real-pty tests of the runtime. Each test runs `client::proxy` in a thread
+//! on a pty whose other side feeds a Ghostty terminal standing in for the
+//! user's terminal, linked to the runtime by a socket pair. The programs in
+//! the panes are src/bin/hypercube-test-child.rs.
 use std::io::Write as _;
-use std::os::fd::{AsRawFd as _, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd, RawFd};
+use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+use hypercube::client::{self, Tty};
+use hypercube::link::{self, Link, Message};
 use hypercube::mux::{
     self, Chrome, Key, Mux, PaneId, PaneView, Rect, Winsize, host_replies_done, now_ms, read,
     write_all,
@@ -133,25 +137,16 @@ struct Received {
     reads: Vec<(usize, i64)>,
 }
 
-/// Read the host side of the pty until it closes, answering the runtime's
-/// startup queries the way a terminal would.
+/// Read the host side of the pty until it closes.
 fn read_host(fd: RawFd, received: Arc<Mutex<Received>>) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut buf = [0u8; 65536];
-        let mut seen = Vec::new();
         loop {
             let n = read(fd, &mut buf);
             if n <= 0 {
                 return;
             }
             let data = &buf[..n as usize];
-            if seen.len() < 4096 {
-                seen.extend_from_slice(data);
-                if contains(&seen, b"\x1b[c") {
-                    write_all(fd, &host_replies());
-                    seen.resize(4096, 0);
-                }
-            }
             let mut r = received.lock().unwrap();
             r.data.extend_from_slice(data);
             r.total += data.len();
@@ -159,6 +154,14 @@ fn read_host(fd: RawFd, received: Arc<Mutex<Received>>) -> JoinHandle<()> {
             r.reads.push((total, now_ms()));
         }
     })
+}
+
+/// A non-blocking pipe, read end first, as `winch` makes.
+fn pipe() -> (OwnedFd, OwnedFd) {
+    let mut fds = [0; 2];
+    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
+    unsafe { libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK) };
+    unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
 }
 
 struct Host {
@@ -171,6 +174,11 @@ struct Host {
     output: Vec<u8>,
     mux: Mux,
     runtime: Runtime,
+    /// The client running `client::proxy` on the pty, until it returns its
+    /// reason.
+    proxy: Option<JoinHandle<String>>,
+    /// The client's SIGWINCH pipe, written after a resize.
+    winch: (OwnedFd, OwnedFd),
     events: Vec<Event>,
     /// The caller's descriptors that `step` passes to `wait`.
     extra: Vec<RawFd>,
@@ -178,24 +186,70 @@ struct Host {
 impl Host {
     fn new(cols: u16, rows: u16) -> Self {
         let (master, slave) = pty::openpty(winsize(cols, rows)).unwrap();
+        let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
+        unsafe {
+            libc::tcgetattr(slave.as_raw_fd(), termios.as_mut_ptr());
+            let mut termios = termios.assume_init();
+            libc::cfmakeraw(&mut termios);
+            libc::tcsetattr(slave.as_raw_fd(), libc::TCSANOW, &termios);
+        }
         let received = Arc::new(Mutex::new(Received::default()));
         let reader = read_host(master.as_raw_fd(), received.clone());
         let mut terminal = Terminal::new(cols, rows).unwrap();
         mux::use_host_replies_for(&mut terminal, &host_replies()).unwrap();
-        let mut mux = Mux::new(winsize(cols, rows), Box::new(Labels));
-        let runtime = Runtime::new(&mut mux, slave.as_raw_fd(), slave.as_raw_fd()).unwrap();
-        Self {
+        let mut h = Self {
             master,
             slave: Some(slave),
             reader: Some(reader),
             received,
             terminal,
             output: Vec::new(),
-            mux,
-            runtime,
+            mux: Mux::new(winsize(cols, rows), Box::new(Labels)),
+            runtime: Runtime::new(),
+            proxy: None,
+            winch: pipe(),
             events: Vec::new(),
             extra: Vec::new(),
+        };
+        h.attach();
+        h
+    }
+    fn tty(&self) -> Tty {
+        let slave = self.slave.as_ref().unwrap().as_raw_fd();
+        Tty {
+            input: slave,
+            output: slave,
+            winch: self.winch.0.as_raw_fd(),
+            replies: host_replies(),
+            exe: std::path::PathBuf::new(),
         }
+    }
+    /// Link a new client on the pty to the runtime, as attaching does.
+    fn attach(&mut self) {
+        let (host, client) = UnixStream::pair().unwrap();
+        let size = winsize(self.terminal.cols().unwrap(), self.terminal.rows().unwrap());
+        self.runtime
+            .connect(
+                &mut self.mux,
+                Link::new(host).unwrap(),
+                &host_replies(),
+                size.into(),
+            )
+            .unwrap();
+        self.layout();
+        let tty = self.tty();
+        self.proxy = Some(std::thread::spawn(move || {
+            client::proxy(&tty, client).unwrap()
+        }));
+    }
+    /// Detach the client, run the loop until it has the message, and return
+    /// the reason it got.
+    fn detach(&mut self, reason: &str) -> String {
+        self.runtime.detach(&mut self.mux, reason);
+        while self.runtime.closing() {
+            self.step(20);
+        }
+        self.proxy.take().unwrap().join().unwrap()
     }
     /// Start the test child with `args` in a new pane.
     fn spawn(&mut self, label: &str, args: &[&str]) -> PaneId {
@@ -305,10 +359,11 @@ impl Host {
             unsafe { libc::ioctl(self.master.as_raw_fd(), libc::TIOCSWINSZ, &ws) },
             0
         );
+        write_all(self.winch.1.as_raw_fd(), b"w");
     }
     fn exited(&self, id: PaneId) -> Option<u8> {
-        self.events.iter().find_map(|e| match *e {
-            Event::PaneExited(i, status) if i == id => Some(status),
+        self.events.iter().find_map(|e| match e {
+            Event::PaneExited(i, status) if *i == id => Some(*status),
             _ => None,
         })
     }
@@ -343,8 +398,16 @@ impl Host {
         }
         false
     }
+    /// Detach, and restore the terminal as the client does when it exits.
     fn restore(&mut self) {
-        self.runtime.restore();
+        self.detach("");
+        self.restore_terminal();
+    }
+    fn restore_terminal(&mut self) {
+        write_all(
+            self.slave.as_ref().unwrap().as_raw_fd(),
+            &mux::host_restore(Some(true)),
+        );
         // Let the reader catch up.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.pump();
@@ -352,9 +415,13 @@ impl Host {
 }
 impl Drop for Host {
     fn drop(&mut self) {
-        self.runtime.restore();
         for p in self.mux.panes() {
             p.signal(libc::SIGKILL);
+        }
+        // Dropping the link ends the client.
+        self.runtime.disconnect(&mut self.mux);
+        if let Some(proxy) = self.proxy.take() {
+            let _ = proxy.join();
         }
         // Closing the runtime's side ends the reader.
         self.slave.take();
@@ -1118,6 +1185,97 @@ fn input_a_program_does_not_read_does_not_block_the_loop() {
     let events = h.runtime.wait(&mut h.mux, &[], Some(start + 100)).unwrap();
     assert_eq!(events, [Event::Deadline]);
     assert!(now_ms() - start < 1000);
+}
+
+#[test]
+fn attaching_again_shows_the_same_screen_and_modes() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "modes", "0"]);
+    h.spawn("right", &["lines", "30"]);
+    h.wait_screen("left ready");
+    h.wait_screen("ready");
+    h.until(|h| h.kitty() == 1 && h.mode(2004));
+    h.step(100);
+    let (screen, kitty, cursor) = (h.screen(), h.kitty(), h.cursor_style());
+    let modes: Vec<bool> = [1, 66, 1002, 1004, 1006, 2004].map(|n| h.mode(n)).to_vec();
+    let title = h.terminal.title().unwrap().to_vec();
+
+    assert_eq!(h.detach(""), "");
+    h.restore_terminal();
+    // A new client starts from a clear screen.
+    write_all(h.slave.as_ref().unwrap().as_raw_fd(), b"\x1b[2J");
+    h.until(|h| !h.screen().contains("ready"));
+    assert_eq!(h.kitty(), 0);
+    h.attach();
+    h.until(|h| h.screen() == screen);
+    h.until(|h| h.kitty() == kitty);
+    assert_eq!(h.cursor_style(), cursor);
+    assert_eq!(
+        [1, 66, 1002, 1004, 1006, 2004].map(|n| h.mode(n)).to_vec(),
+        modes
+    );
+    assert_eq!(h.terminal.title().unwrap(), title);
+    h.send("a");
+    h.wait_screen("left got 97");
+}
+
+#[test]
+fn a_client_that_stops_reading_does_not_stop_the_panes() {
+    let input = TempPath::new("unread");
+    let mut h = Host::new(40, 10);
+    h.runtime.set_stall_ms(60_000);
+    // A client that reads nothing, with more queued than the socket holds.
+    let (host, client) = UnixStream::pair().unwrap();
+    h.runtime
+        .connect(
+            &mut h.mux,
+            Link::new(host).unwrap(),
+            &host_replies(),
+            winsize(40, 10).into(),
+        )
+        .unwrap();
+    h.proxy.take().unwrap().join().unwrap();
+    h.runtime.send(Message::Output(vec![b' '; 1 << 20]));
+    let id = h.spawn("child", &["input", "child", "plain", "0", input.path()]);
+    let exits = h.spawn("exit", &["exit", "7", "exit output"]);
+    assert_eq!(h.wait_exit(exits), 7);
+    // Input still reaches the panes.
+    (&client)
+        .write_all(&link::encode(&Message::Input(b"xyz".to_vec())).unwrap())
+        .unwrap();
+    h.until(|_| input.read() == b"xyz");
+    h.mux.send_text(id, "w").unwrap();
+    h.until(|_| input.read() == b"xyzw");
+
+    // Once it reads, it gets the latest screen.
+    let tty = h.tty();
+    h.proxy = Some(std::thread::spawn(move || {
+        client::proxy(&tty, client).unwrap()
+    }));
+    h.wait_screen("child got 119");
+    h.wait_screen("exit (exited 7)");
+}
+
+#[test]
+fn a_stalled_link_is_disconnected() {
+    let mut h = Host::new(40, 10);
+    h.runtime.set_stall_ms(200);
+    let (host, client) = UnixStream::pair().unwrap();
+    h.runtime
+        .connect(
+            &mut h.mux,
+            Link::new(host).unwrap(),
+            &host_replies(),
+            winsize(40, 10).into(),
+        )
+        .unwrap();
+    h.proxy.take().unwrap().join().unwrap();
+    h.runtime.send(Message::Output(vec![b' '; 1 << 20]));
+    let start = now_ms();
+    h.until(|h| h.events.contains(&Event::Disconnected));
+    assert!(now_ms() - start >= 200);
+    assert!(!h.runtime.connected() && !h.mux.connected());
+    drop(client);
 }
 
 #[test]

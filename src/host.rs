@@ -1,9 +1,9 @@
-//! The session host: the `hypercube` process in the user's terminal. It holds
-//! the workspace's host lock, runs every agent in a pane, draws the panes with
-//! their labels, and answers requests on the control
+//! The session host: `hypercube host`, in the background. It holds the
+//! workspace's host lock, runs every agent in a pane, draws the panes with
+//! their labels for the attached client, and answers requests on the control
 //! socket until the session ends.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read, Write};
@@ -17,7 +17,9 @@ use std::time::{Duration, Instant};
 
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
+use crate::link::{self, Link, Message};
 use crate::mux::{self, Chrome, Mux, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
+use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
@@ -36,6 +38,8 @@ const QUICK_EXIT_MS: i64 = 10_000;
 const MAX_QUICK_EXITS: u32 = 3;
 /// How long `stop` waits for the host to end.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
+/// How often the overlay's list is read again while it is open.
+const OVERLAY_REFRESH_MS: i64 = 1000;
 
 /// The blue of the separator.
 const RULE: &str = "\x1b[0;38;2;0;135;255m";
@@ -43,28 +47,27 @@ const RULE: &str = "\x1b[0;38;2;0;135;255m";
 const LABEL: &str = "\x1b[0;38;2;0;0;0;48;2;135;215;255m";
 
 /// The host lock of the workspace whose state file is `state_path`. The host
-/// holds it for its whole life, and writes the terminal it runs in into it.
+/// holds it for its whole life, and writes its process ID into it.
 pub fn lock_path(state_path: &Path) -> PathBuf {
     state_path.with_extension("host.lock")
 }
 
-/// The terminal of the workspace's host, empty if not yet known, or `None` if
-/// no host is running.
-pub fn running(state_path: &Path) -> Result<Option<String>> {
+/// The log of the workspace's hosts: their output, appended.
+pub fn log_path(state_path: &Path) -> PathBuf {
+    state_path.with_extension("log")
+}
+
+/// Whether a host is running for the workspace.
+pub fn running(state_path: &Path) -> Result<bool> {
     let path = lock_path(state_path);
-    let mut file = match File::open(&path) {
+    let file = match File::open(&path) {
         Ok(file) => file,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(false),
         Err(e) => return Err(format!("open {}: {e}", path.display()).into()),
     };
     match file.try_lock_shared() {
-        Ok(()) => Ok(None),
-        Err(TryLockError::WouldBlock) => {
-            let mut terminal = String::new();
-            file.read_to_string(&mut terminal)
-                .map_err(|e| format!("read {}: {e}", path.display()))?;
-            Ok(Some(terminal.trim().to_string()))
-        }
+        Ok(()) => Ok(false),
+        Err(TryLockError::WouldBlock) => Ok(true),
         Err(TryLockError::Error(e)) => Err(format!("lock {}: {e}", path.display()).into()),
     }
 }
@@ -73,7 +76,7 @@ pub fn running(state_path: &Path) -> Result<Option<String>> {
 pub fn stop(state_path: &Path) -> Result<()> {
     control::request(&control::socket_path(state_path)?, &Request::Stop)?.into_result()?;
     let start = Instant::now();
-    while running(state_path)?.is_some() {
+    while running(state_path)? {
         if start.elapsed() > STOP_TIMEOUT {
             return Err("the host did not end the session".into());
         }
@@ -122,17 +125,6 @@ fn at_path(file: &File, path: &Path) -> Result<bool> {
     }
 }
 
-/// The name of the terminal on standard input, or the process if it has none.
-fn terminal_name() -> String {
-    let name = unsafe { libc::ttyname(0) };
-    if name.is_null() {
-        return format!("process {}", std::process::id());
-    }
-    unsafe { std::ffi::CStr::from_ptr(name) }
-        .to_string_lossy()
-        .into_owned()
-}
-
 /// Where each pane goes. The first pane, the orchestrator's, takes the left
 /// 40% of the columns, or all of them when it is alone; a one-column separator
 /// follows; the other panes split the remaining columns with equal heights.
@@ -178,14 +170,19 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
 }
 
 /// The labels above the panes and the separator between the first pane and
-/// the others.
+/// the others, or the workspace overlay while it is open.
 pub struct TeamChrome {
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
+    pub overlay: Rc<RefCell<Option<Overlay>>>,
 }
 
 impl Chrome for TeamChrome {
     fn draw(&mut self, out: &mut Vec<u8>, panes: &[PaneView<'_>], size: Winsize) {
+        if let Some(overlay) = &*self.overlay.borrow() {
+            overlay.draw(out, size);
+            return;
+        }
         let mut s = String::new();
         // Panes are hidden while the terminal is too small for them.
         let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.rows > 0).collect();
@@ -244,7 +241,7 @@ fn draw_label(s: &mut String, p: &PaneView, zoomed: bool) {
 
 /// The columns `text` takes, counting each grapheme cluster as the wider of
 /// how the host terminal may draw it.
-fn text_width(text: &str) -> usize {
+pub(crate) fn text_width(text: &str) -> usize {
     let chars: Vec<char> = text.chars().collect();
     let mut rest = chars.as_slice();
     let mut used = 0;
@@ -285,7 +282,7 @@ fn detail(agent: &Agent) -> String {
 
 /// The longest start of `text` made of whole grapheme clusters that fits in
 /// `width` columns.
-fn fit(text: &str, width: u16) -> String {
+pub(crate) fn fit(text: &str, width: u16) -> String {
     let width = usize::from(width);
     let chars: Vec<char> = text.chars().collect();
     let mut rest = chars.as_slice();
@@ -305,7 +302,10 @@ fn fit(text: &str, width: u16) -> String {
 
 static SIGNAL_PIPE: AtomicI32 = AtomicI32::new(-1);
 
-extern "C" fn on_signal(_: libc::c_int) {
+extern "C" fn on_signal(signal: libc::c_int) {
+    if signal == libc::SIGHUP {
+        return;
+    }
     let fd = SIGNAL_PIPE.load(Ordering::Relaxed);
     if fd < 0 {
         return;
@@ -318,8 +318,9 @@ extern "C" fn on_signal(_: libc::c_int) {
     }
 }
 
-/// Catch SIGHUP, SIGINT, and SIGTERM, and return a pipe that becomes readable
-/// when one arrives. Programs started later run with the default handlers.
+/// Catch SIGINT and SIGTERM, and return a pipe that becomes readable when one
+/// arrives. SIGHUP is caught and ignored. Programs started later run with the
+/// default handlers.
 fn catch_signals() -> Result<RawFd> {
     let mut fds = [0; 2];
     if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
@@ -386,16 +387,23 @@ struct Client {
 
 struct Host {
     exe: PathBuf,
+    root: PathBuf,
     state_path: PathBuf,
     mux: Mux,
     runtime: Runtime,
     socket: Socket,
     signals: RawFd,
+    /// The agents to launch on the first attach, until then.
+    unstarted: Option<Vec<Agent>>,
     /// Each agent's pane, in launch order.
     panes: Vec<Slot>,
     clients: Vec<Client>,
     /// The pane that fills the pane area, shared with the chrome.
     zoomed: Rc<Cell<Option<PaneId>>>,
+    /// The workspace overlay while it is open, shared with the chrome.
+    overlay: Rc<RefCell<Option<Overlay>>>,
+    /// When the overlay's list was last read.
+    overlay_read: i64,
 }
 
 /// An agent's pane and how its program has been running.
@@ -421,53 +429,55 @@ impl Slot {
 
 impl Drop for Host {
     fn drop(&mut self) {
-        self.end();
+        self.end("stopped");
     }
 }
 
-/// Host the workspace whose checkout is `root` in this terminal until the
-/// session ends: when it is stopped, when every agent has exited, or when the
-/// terminal closes.
-pub fn run(root: &Path) -> Result<()> {
+/// Host the workspace whose checkout is `root` until the session ends: when
+/// it is stopped or deleted, or gets SIGINT or SIGTERM. The agents launch
+/// when a client first attaches.
+pub fn serve_workspace(root: &Path) -> Result<()> {
     let state_path = store::path(&workspace::name(root));
     let Some(mut lock) = try_lock(&lock_path(&state_path))? else {
-        let terminal = running(&state_path)?
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| "another terminal".into());
         return Err(format!(
-            "hypercube is already running for {} in {terminal}",
+            "hypercube is already running for {}",
             workspace::short(root)
         )
         .into());
     };
-    if unsafe { libc::isatty(0) == 0 || libc::isatty(1) == 0 } {
-        return Err("hypercube must run in a terminal".into());
-    }
     lock.set_len(0)?;
-    lock.write_all(terminal_name().as_bytes())?;
+    lock.write_all(std::process::id().to_string().as_bytes())?;
 
     let agents = prepare(root, &state_path)?;
     let socket = Socket::listen(&state_path)?;
     let signals = catch_signals()?;
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let zoomed = Rc::new(Cell::new(None));
+    let overlay = Rc::new(RefCell::new(None));
     let chrome = TeamChrome {
         zoomed: Rc::clone(&zoomed),
+        overlay: Rc::clone(&overlay),
     };
-    let mut mux = Mux::new(Winsize::default(), Box::new(chrome));
-    let runtime = Runtime::new(&mut mux, 0, 1)?;
     let mut host = Host {
         exe,
+        root: root.to_path_buf(),
         state_path,
-        mux,
-        runtime,
+        mux: Mux::new(Winsize::default(), Box::new(chrome)),
+        runtime: Runtime::new(),
         socket,
         signals,
+        unstarted: Some(agents),
         panes: Vec::new(),
         clients: Vec::new(),
         zoomed,
+        overlay,
+        overlay_read: 0,
     };
-    host.start(&agents).and_then(|()| host.serve())
+    let result = host.serve();
+    if let Err(e) = &result {
+        host.end(&e.to_string());
+    }
+    result
 }
 
 /// Ready the state for a session: create the orchestrator on the first run,
@@ -577,32 +587,31 @@ impl Host {
         self.mux.mark_exited(pane, 127);
     }
 
-    /// Run the session until it is stopped, every pane's program has exited
-    /// for good, or the terminal closes.
+    /// Run the session until it is stopped or gets a signal.
     fn serve(&mut self) -> Result<()> {
         loop {
             let listener = self.socket.listener.as_raw_fd();
             let mut fds = vec![listener, self.signals];
             fds.extend(self.clients.iter().map(|c| c.stream.as_raw_fd()));
-            let deadline = self
+            let mut deadline = self
                 .clients
                 .iter()
                 .map(|c| c.since + REQUEST_TIMEOUT_MS)
                 .min();
-            let mut exited = false;
+            if self.overlay.borrow().is_some() {
+                let refresh = self.overlay_read + OVERLAY_REFRESH_MS;
+                deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
+            }
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
                     Event::Ready(fd) if fd == listener => self.accept(),
                     Event::Ready(fd) if fd == self.signals => return Ok(()),
                     Event::Ready(fd) => {
-                        if self.read_client(fd) {
+                        if self.read_client(fd)? {
                             return Ok(());
                         }
                     }
-                    Event::PaneExited(pane, _) => {
-                        self.relaunch(pane)?;
-                        exited = true;
-                    }
+                    Event::PaneExited(pane, _) => self.relaunch(pane)?,
                     Event::Zoom(pane) => self.toggle_zoom(pane)?,
                     Event::Focus(pane) => {
                         // A change of focus ends the zoom.
@@ -611,36 +620,120 @@ impl Host {
                         }
                     }
                     Event::Resized => self.lay_out()?,
-                    Event::InputClosed => return Ok(()),
+                    Event::Overlay => self.toggle_overlay()?,
+                    Event::Key(key) => {
+                        if self.overlay_key(&key)? {
+                            return Ok(());
+                        }
+                    }
+                    Event::Message(Message::SwitchFailed(error)) => {
+                        if let Some(overlay) = &mut *self.overlay.borrow_mut() {
+                            overlay.error = error;
+                        }
+                        self.mux.invalidate_chrome();
+                    }
+                    Event::Message(_) => {}
+                    Event::Disconnected => self.close_overlay()?,
                     Event::Deadline => {}
                 }
             }
-            // Every exit in the batch has had its relaunch by now.
-            if exited && self.mux.panes().iter().all(|p| p.status().is_some()) {
-                return Ok(());
+            if self.overlay.borrow().is_some() && now_ms() - self.overlay_read >= OVERLAY_REFRESH_MS
+            {
+                self.read_overlay();
             }
             let now = now_ms();
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
         }
     }
 
-    /// Hang up every pane's program, give them `HANGUP_GRACE_MS` to exit
-    /// before they are killed, and restore the host terminal. Dropping the
+    /// Tell the client the session ended for `reason`, hang up every pane's
+    /// program, give them `HANGUP_GRACE_MS` to exit before they are killed,
+    /// and give the client time to take what was queued for it. Dropping the
     /// host does this, including when a panic unwinds it.
-    fn end(&mut self) {
+    fn end(&mut self, reason: &str) {
+        self.runtime.detach(&mut self.mux, reason);
         let ids: Vec<PaneId> = self.mux.panes().iter().map(Pane::id).collect();
         for id in ids {
             self.mux.remove_pane(id);
         }
         self.panes.clear();
         let end = now_ms() + mux::HANGUP_GRACE_MS + 1000;
-        while self.mux.reaping() && now_ms() < end {
+        while (self.mux.reaping() || self.runtime.closing()) && now_ms() < end {
             let deadline = Some(now_ms() + 20);
             if self.runtime.wait(&mut self.mux, &[], deadline).is_err() {
                 break;
             }
         }
-        self.runtime.restore();
+    }
+
+    /// Open the overlay, or close it.
+    fn toggle_overlay(&mut self) -> Result<()> {
+        if self.overlay.borrow().is_some() {
+            return self.close_overlay();
+        }
+        let overlay = match Overlay::load(&self.state_path) {
+            Ok(overlay) => overlay,
+            // The overlay can't show without its list; the error goes to
+            // the log.
+            Err(e) => {
+                eprintln!("hypercube: reading the workspaces: {e}");
+                return Ok(());
+            }
+        };
+        *self.overlay.borrow_mut() = Some(overlay);
+        self.overlay_read = now_ms();
+        self.mux.set_captured(true);
+        self.lay_out()
+    }
+
+    fn close_overlay(&mut self) -> Result<()> {
+        if self.overlay.borrow_mut().take().is_none() {
+            return Ok(());
+        }
+        self.mux.set_captured(false);
+        self.lay_out()
+    }
+
+    /// Read the overlay's list again.
+    fn read_overlay(&mut self) {
+        if let Some(overlay) = &mut *self.overlay.borrow_mut()
+            && let Err(e) = overlay.reload()
+        {
+            overlay.error = e.to_string();
+        }
+        self.overlay_read = now_ms();
+        self.mux.invalidate_chrome();
+    }
+
+    /// Carry out a key pressed in the overlay. Returns whether it stopped
+    /// this host's own workspace.
+    fn overlay_key(&mut self, key: &[u8]) -> Result<bool> {
+        let action = match &mut *self.overlay.borrow_mut() {
+            Some(overlay) => overlay.key(key),
+            None => return Ok(false),
+        };
+        match action {
+            Action::None => return Ok(false),
+            Action::Move => {}
+            // The overlay stays until the client leaves for the other host
+            // or says it couldn't.
+            Action::Switch(dir) => self.runtime.send(Message::Switch(dir)),
+            Action::Stop(path) if path == self.state_path => return Ok(true),
+            Action::Stop(path) => {
+                let result = stop(&path);
+                self.read_overlay();
+                if let (Err(e), Some(overlay)) = (result, &mut *self.overlay.borrow_mut()) {
+                    overlay.error = e.to_string();
+                }
+            }
+            Action::Detach => {
+                self.runtime.detach(&mut self.mux, "");
+                self.close_overlay()?;
+            }
+            Action::Close => self.close_overlay()?,
+        }
+        self.mux.invalidate_chrome();
+        Ok(false)
     }
 
     fn accept(&mut self) {
@@ -657,9 +750,9 @@ impl Host {
 
     /// Read what a connection has sent, and once its request has arrived,
     /// carry it out and reply. Returns whether the request was to stop.
-    fn read_client(&mut self, fd: RawFd) -> bool {
+    fn read_client(&mut self, fd: RawFd) -> Result<bool> {
         let Some(i) = self.clients.iter().position(|c| c.stream.as_raw_fd() == fd) else {
-            return false;
+            return Ok(false);
         };
         let client = &mut self.clients[i];
         let mut buf = [0u8; 4096];
@@ -676,25 +769,64 @@ impl Host {
             }
         };
         if !ended && !client.request.contains(&b'\n') {
-            return false;
+            return Ok(false);
         }
         let client = self.clients.remove(i);
         let (reply, stop) = match control::read_request(client.request.as_slice()) {
             Ok(Request::Stop) => (Reply::ok(), true),
+            Ok(Request::Attach {
+                protocol,
+                size,
+                replies,
+            }) => {
+                if protocol != link::PROTOCOL {
+                    let error = format!(
+                        "the host of {} runs another version of hypercube; \
+                         stop it with `hypercube stop` and start it again",
+                        workspace::short(&self.root)
+                    );
+                    (Reply::error(error), false)
+                } else {
+                    // The reply fits in the socket's buffer.
+                    if control::write_reply(&client.stream, &Reply::ok()).is_ok() {
+                        self.attach(client.stream, replies.as_bytes(), size)?;
+                    }
+                    return Ok(false);
+                }
+            }
             Ok(request) => (self.handle(request), false),
             Err(e) => (Reply::error(e), false),
         };
         // The reply fits in the socket's buffer; a client that went away
         // doesn't get one.
         let _ = control::write_reply(&client.stream, &reply);
-        stop
+        Ok(stop)
+    }
+
+    /// Draw for the client on `stream` from now on, detaching any other.
+    /// The first attach launches the agents.
+    fn attach(&mut self, stream: UnixStream, replies: &[u8], size: link::Size) -> Result<()> {
+        let Ok(link) = Link::new(stream) else {
+            return Ok(());
+        };
+        if self.runtime.connected() {
+            self.runtime
+                .detach(&mut self.mux, "attached in another terminal");
+        }
+        *self.overlay.borrow_mut() = None;
+        self.mux.set_captured(false);
+        self.runtime.connect(&mut self.mux, link, replies, size)?;
+        match self.unstarted.take() {
+            Some(agents) => self.start(&agents),
+            None => self.lay_out(),
+        }
     }
 
     fn handle(&mut self, request: Request) -> Reply {
         let result = match request {
             Request::Launch { agent, prompt } => self.launch(&agent, &prompt, false),
             Request::Close { agent } => self.close(&agent),
-            Request::Stop => Ok(()),
+            Request::Stop | Request::Attach { .. } => Ok(()),
         };
         result.map_or_else(Reply::error, |()| Reply::ok())
     }
@@ -746,8 +878,7 @@ impl Host {
         }
         self.panes.push(Slot::new(&agent.id, pane));
         self.zoomed.set(None);
-        self.mux.set_layout(&layout)?;
-        Ok(())
+        self.place(&layout)
     }
 
     /// Start the harness of an agent whose program exited again in its pane,
@@ -831,9 +962,17 @@ impl Host {
             Some(zoomed) => zoom_layout(size, &ids, zoomed),
             None => layout(size, &ids),
         };
-        Ok(self
-            .mux
-            .set_layout(&layout.unwrap_or_else(|| hidden(&ids)))?)
+        self.place(&layout.unwrap_or_else(|| hidden(&ids)))
+    }
+
+    /// Size and place the panes, then hide them while the overlay covers
+    /// the screen.
+    fn place(&mut self, layout: &[(PaneId, Rect)]) -> Result<()> {
+        self.mux.set_layout(layout)?;
+        if self.overlay.borrow().is_some() {
+            self.mux.set_layout(&hidden(&self.pane_ids()))?;
+        }
+        Ok(())
     }
 }
 
@@ -944,6 +1083,7 @@ mod tests {
         fn draw(panes: &[PaneView], cols: u16, rows: u16) -> Screen {
             let mut chrome = TeamChrome {
                 zoomed: Rc::default(),
+                overlay: Rc::default(),
             };
             let mut out = Vec::new();
             chrome.draw(&mut out, panes, size(cols, rows));
@@ -1070,6 +1210,7 @@ mod tests {
         ];
         let mut chrome = TeamChrome {
             zoomed: Rc::new(Cell::new(Some(PaneId(2)))),
+            overlay: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &panes, size(30, 6));
@@ -1112,6 +1253,7 @@ mod tests {
         let panes = [view(1, "界界界界界", rect(0, 1, 9, 2), false, None)];
         let mut chrome = TeamChrome {
             zoomed: Rc::default(),
+            overlay: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &panes, size(9, 3));
@@ -1144,15 +1286,14 @@ mod tests {
     }
 
     #[test]
-    fn the_host_lock_tells_whether_a_host_runs_and_where() {
+    fn the_host_lock_tells_whether_a_host_runs() {
         let dir = TempDir::new();
         let state = dir.path().join("w.json");
         assert_eq!(lock_path(&state), dir.path().join("w.host.lock"));
-        assert_eq!(running(&state).unwrap(), None);
+        assert!(!running(&state).unwrap());
 
-        let mut lock = try_lock(&lock_path(&state)).unwrap().unwrap();
-        lock.write_all(b"/dev/ttys009").unwrap();
-        assert_eq!(running(&state).unwrap().as_deref(), Some("/dev/ttys009"));
+        let lock = try_lock(&lock_path(&state)).unwrap().unwrap();
+        assert!(running(&state).unwrap());
         assert!(try_lock(&lock_path(&state)).unwrap().is_none());
 
         // A child that another test forks at the moment shares the lock, or
@@ -1169,7 +1310,7 @@ mod tests {
             panic!("the host lock stayed held");
         }
         eventually(|| try_lock(&lock_path(&state)).unwrap().is_some());
-        eventually(|| running(&state).unwrap().is_none());
+        eventually(|| !running(&state).unwrap());
     }
 
     #[test]

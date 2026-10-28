@@ -7,6 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -175,6 +176,68 @@ pub fn update<T>(path: &Path, f: impl FnOnce(&mut State) -> Result<T>) -> Result
     fs::write(&tmp, data).map_err(|e| format!("write {}: {e}", tmp.display()))?;
     fs::rename(&tmp, path).map_err(|e| format!("rename {}: {e}", tmp.display()))?;
     Ok(value)
+}
+
+/// A workspace with a state file.
+pub struct Workspace {
+    pub path: PathBuf,
+    pub state: State,
+}
+
+impl Workspace {
+    /// The workspace's checkout: the orchestrator's directory.
+    pub fn root(&self) -> Option<&Path> {
+        let o = self.state.agents.iter().find(|a| a.role == ORCHESTRATOR)?;
+        Some(Path::new(&o.dir))
+    }
+
+    /// The text that names the workspace: its directory, or its state's name
+    /// when the state has no orchestrator.
+    pub fn name(&self) -> String {
+        self.root()
+            .map_or_else(|| workspace(&self.path), crate::workspace::short)
+    }
+
+    /// When the workspace was last active. Every hook writes the state, so
+    /// the state file's modification time is the last activity.
+    pub fn active(&self) -> Result<SystemTime> {
+        fs::metadata(&self.path)
+            .and_then(|m| m.modified())
+            .map_err(|e| format!("stat {}: {e}", self.path.display()).into())
+    }
+}
+
+/// Every workspace with a state file.
+pub fn workspaces() -> Result<Vec<Workspace>> {
+    let entries = match fs::read_dir(dir()) {
+        Ok(entries) => entries.collect::<std::io::Result<Vec<_>>>()?,
+        Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(format!("read {}: {e}", dir().display()).into()),
+    };
+    let mut list = Vec::new();
+    for entry in entries {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let state = load(&path)?;
+        list.push(Workspace { path, state });
+    }
+    Ok(list)
+}
+
+/// How long before now `time` was.
+pub fn ago(time: SystemTime) -> String {
+    let d = SystemTime::now()
+        .duration_since(time)
+        .unwrap_or(Duration::ZERO)
+        .as_secs();
+    match d {
+        0..60 => "just now".to_string(),
+        60..3600 => format!("{}m ago", d / 60),
+        3600..86400 => format!("{}h ago", d / 3600),
+        _ => format!("{}d ago", d / 86400),
+    }
 }
 
 impl State {

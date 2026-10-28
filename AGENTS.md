@@ -23,15 +23,20 @@ and change over generalized infrastructure or speculative requirements.
   and `HOME` stay untouched.
 - macOS only. Agents and Hypercube are trusted local processes running with the
   user's credentials.
-- The `hypercube` process in the user's terminal hosts the session: the panes,
-  their ptys and terminals, and a control socket. Every other Hypercube process
-  is short-lived or owned by a harness, and they share one state file per
+- Each workspace's session runs in a background `hypercube host` process: the
+  panes, their ptys and terminals, and a control socket. `hypercube` in the
+  user's terminal is the client: it attaches the terminal to a host, starting
+  one if needed, and is the only process that writes to the terminal. A host
+  outlives its client and ends only on `hypercube stop`, `hypercube delete`,
+  the overlay's stop key, or a signal. Every other Hypercube process is
+  short-lived or owned by a harness, and they share one state file per
   workspace.
 
 ## Documentation
 
-- `docs/architecture.md`: processes, the host, the control socket, the state
-  file, the terminal layer, and message delivery.
+- `docs/architecture.md`: processes, the host, the client and the attach
+  stream, the control socket, the state file, the terminal layer, and message
+  delivery.
 - `docs/configuration.md`: `config.json`, orchestrator and worker profiles.
 - `docs/installation.md`: prerequisites, building, and installing.
 - `docs/harness-support.md`: how each harness is launched and hooked.
@@ -50,7 +55,12 @@ Code and docs stand alone and do not refer to predecessor implementations.
     chrome, host input and mouse routing, scrolling, selection and copying,
     notification passthrough, mode mirroring, and the renderer.
   - `src/pty.rs`: programs started in ptys.
-  - `src/runtime.rs`: the host terminal and the step-driven event loop.
+  - `src/runtime.rs`: the step-driven event loop, which draws for the
+    attached client over a link.
+  - `src/link.rs`: the attach stream's messages, their encoding, and the
+    host's non-blocking end of the stream.
+  - `src/client.rs`: the client, which owns the user's terminal, starts and
+    attaches to hosts, and proxies the terminal to them.
   - `src/winch.rs`: SIGWINCH delivered through a pipe.
   - `src/recording.rs`: the recording format the round-trip tests replay.
 - `src/store.rs`: the workspace state file: agents, queued messages, and
@@ -68,8 +78,10 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/control.rs`: the control socket's request and reply protocol, its
   client, and the socket's path.
 - `src/mcp.rs`: the agents' stdio MCP server and its tools.
-- `src/host.rs`: the session host: the host lock, the control socket, the
-  panes, layout and chrome, launches, closes, and teardown.
+- `src/host.rs`: the session host, `hypercube host`: the host lock, the
+  control socket, attaches, the panes, layout and chrome, the overlay's
+  actions, launches, closes, and teardown.
+- `src/overlay.rs`: the workspace overlay's list, keys, and drawing.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in
   panes.
@@ -87,13 +99,16 @@ Code and docs stand alone and do not refer to predecessor implementations.
   diagnostics for the round-trip tests.
 - `tests/holds.rs`: what a pane draws while its program holds rendering
   (mode 2026), and that a timed-out hold ends.
-- `tests/live.rs`: the runtime with real ptys. Each test hosts its panes on a
-  pty whose other side feeds a Ghostty terminal standing in for the user's
-  terminal, and runs the test child in the panes.
+- `tests/live.rs`: the runtime with real ptys. Each test runs
+  `client::proxy` on a pty whose other side feeds a Ghostty terminal standing
+  in for the user's terminal, linked to the runtime by a socket pair, and runs
+  the test child in the panes.
 - `tests/integration.rs`: `hypercube` in a pty with isolated state and
   configuration, a temporary repository, and the harness stand-ins first on
   `PATH`: panes, worktrees, waking idle agents, agent relaunches, zoom,
-  session restart, `stop`, `delete`, their `--all` variants, and `status`.
+  detaching and attaching again, the workspace overlay, session restart,
+  `stop`, `delete`, their `--all` variants, and `status`. The client starts
+  each host in the background, and the fixture stops every host it started.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.
 - `.toolchain/zig-aarch64-macos-0.17.0`: Zig 0.17, which builds libghostty-vt.
@@ -132,6 +147,7 @@ For harness smoke tests, use Claude Code `haiku` and Pi
 `openrouter/~deepseek/deepseek-flash-latest`. Use disposable local
 repositories and isolated `XDG_STATE_HOME` and `XDG_CONFIG_HOME`.
 
-When a task is done, stop and destroy every demo or test session it started,
-and delete its state file, lock files, socket, repositories, and temporary
-directories. `hypercube status` must not list any of them afterward.
+When a task is done, stop every host it started with `hypercube stop`, and
+delete its state file, lock files, socket, log file, repositories, and
+temporary directories. `hypercube status` must not list any of them
+afterward.

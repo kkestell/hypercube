@@ -6,10 +6,9 @@ use std::fs;
 use std::io::{BufRead, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{Duration, SystemTime};
 
-use hypercube::store::{Agent, State};
-use hypercube::{control, hook, host, mcp, statusline, store, wait, workspace};
+use hypercube::store::{Agent, Workspace};
+use hypercube::{client, control, hook, host, mcp, statusline, store, wait, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -20,6 +19,7 @@ fn main() -> ExitCode {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let result = match args.as_slice() {
         [] => start(),
+        ["host", dir] => host::serve_workspace(Path::new(dir)),
         ["stop"] => stop("."),
         ["stop", "--all"] => stop_all(),
         ["stop", dir] => stop(dir),
@@ -64,10 +64,11 @@ fn workspace_at(dir: &str) -> Result<(PathBuf, PathBuf)> {
     Ok((root, path))
 }
 
-/// Host the workspace containing the working directory in this terminal.
+/// Attach this terminal to the workspace containing the working directory,
+/// starting its host if none is running.
 fn start() -> Result<()> {
     let (root, _) = workspace_at(".")?;
-    host::run(&root)
+    client::run(&root)
 }
 
 /// End the session of the workspace containing `dir`.
@@ -78,68 +79,24 @@ fn stop(dir: &str) -> Result<()> {
 
 /// End the session of the workspace whose checkout is `root`.
 fn stop_workspace(root: &Path, path: &Path) -> Result<()> {
-    if host::running(path)?.is_none() {
+    if !host::running(path)? {
         return Err(format!("hypercube is not running for {}", workspace::short(root)).into());
     }
     host::stop(path)
 }
 
-/// A workspace with a state file.
-struct Known {
-    path: PathBuf,
-    state: State,
-}
-
-impl Known {
-    /// The workspace's checkout: the orchestrator's directory.
-    fn root(&self) -> Option<&Path> {
-        let o = self
-            .state
-            .agents
-            .iter()
-            .find(|a| a.role == store::ORCHESTRATOR)?;
-        Some(Path::new(&o.dir))
-    }
-
-    /// The text that names the workspace: its directory, or its state's name
-    /// when the state has no orchestrator.
-    fn name(&self) -> String {
-        self.root()
-            .map_or_else(|| store::workspace(&self.path), workspace::short)
-    }
-
-    /// Run `run` on the workspace.
-    fn apply(&self, mut run: impl FnMut(&Path, &Path) -> Result<()>) -> Result<()> {
-        let root = self.root().ok_or("the state has no orchestrator")?;
-        run(root, &self.path)
-    }
-}
-
-/// Every workspace with a state file.
-fn workspaces() -> Result<Vec<Known>> {
-    let entries = match fs::read_dir(store::dir()) {
-        Ok(entries) => entries.collect::<std::io::Result<Vec<_>>>()?,
-        Err(e) if e.kind() == ErrorKind::NotFound => Vec::new(),
-        Err(e) => return Err(format!("read {}: {e}", store::dir().display()).into()),
-    };
-    let mut list = Vec::new();
-    for entry in entries {
-        let path = entry.path();
-        if path.extension().is_none_or(|e| e != "json") {
-            continue;
-        }
-        let state = store::load(&path)?;
-        list.push(Known { path, state });
-    }
-    Ok(list)
+/// Run `run` on the workspace.
+fn apply(w: &Workspace, mut run: impl FnMut(&Path, &Path) -> Result<()>) -> Result<()> {
+    let root = w.root().ok_or("the state has no orchestrator")?;
+    run(root, &w.path)
 }
 
 /// End the session of every running workspace, after the user confirms.
 fn stop_all() -> Result<()> {
     let mut running = Vec::new();
-    for k in workspaces()? {
-        if host::running(&k.path)?.is_some() {
-            running.push(k);
+    for w in store::workspaces()? {
+        if host::running(&w.path)? {
+            running.push(w);
         }
     }
     all(
@@ -155,7 +112,7 @@ fn stop_all() -> Result<()> {
 fn delete_all() -> Result<()> {
     all(
         "delete",
-        workspaces()?,
+        store::workspaces()?,
         std::io::stdin().lock(),
         std::io::stdout().lock(),
         delete_workspace,
@@ -166,7 +123,7 @@ fn delete_all() -> Result<()> {
 /// workspace that fails is reported at the end, and the rest still run.
 fn all(
     command: &str,
-    targets: Vec<Known>,
+    targets: Vec<Workspace>,
     mut input: impl BufRead,
     mut out: impl Write,
     mut run: impl FnMut(&Path, &Path) -> Result<()>,
@@ -175,8 +132,8 @@ fn all(
         writeln!(out, "No workspaces to {command}.")?;
         return Ok(());
     }
-    for k in &targets {
-        writeln!(out, "{}", k.name())?;
+    for w in &targets {
+        writeln!(out, "{}", w.name())?;
     }
     let capitalized = command[..1].to_uppercase() + &command[1..];
     write!(out, "{capitalized} all of these? [y/N] ")?;
@@ -188,7 +145,7 @@ fn all(
     }
     let failed: Vec<String> = targets
         .iter()
-        .filter_map(|k| Some(format!("{}: {}", k.name(), k.apply(&mut run).err()?)))
+        .filter_map(|w| Some(format!("{}: {}", w.name(), apply(w, &mut run).err()?)))
         .collect();
     if !failed.is_empty() {
         return Err(format!("{command} failed for:\n{}", failed.join("\n")).into());
@@ -209,7 +166,7 @@ fn delete(dir: &str) -> Result<()> {
 fn delete_workspace(root: &Path, path: &Path) -> Result<()> {
     // Refuse before stopping the session.
     removable_workers(root, path)?;
-    if host::running(path)?.is_some() {
+    if host::running(path)? {
         host::stop(path)?;
     }
     // Holding the host lock keeps a host from starting until the workspace is
@@ -234,7 +191,11 @@ fn delete_workspace(root: &Path, path: &Path) -> Result<()> {
         })?;
     }
     store::delete(path)?;
-    for file in [control::socket_path(path)?, host::lock_path(path)] {
+    for file in [
+        control::socket_path(path)?,
+        host::lock_path(path),
+        host::log_path(path),
+    ] {
         match fs::remove_file(&file) {
             Err(e) if e.kind() != ErrorKind::NotFound => {
                 return Err(format!("remove {}: {e}", file.display()).into());
@@ -270,28 +231,24 @@ fn removable_workers(root: &Path, path: &Path) -> Result<Vec<Agent>> {
 /// running, its number of agents, when it was created, and when it was last
 /// active, most recently active first. The state's lock file is created with
 /// the state and never written, so its modification time is the creation
-/// time. Every hook writes the state, so the state file's modification time is
-/// the last activity.
+/// time.
 fn status() -> Result<()> {
     let mut rows = Vec::new();
-    for k in workspaces()? {
-        let path = &k.path;
-        let active = fs::metadata(path)
-            .and_then(|m| m.modified())
-            .map_err(|e| format!("stat {}: {e}", path.display()))?;
-        let created = fs::metadata(path.with_extension("lock"))
+    for w in store::workspaces()? {
+        let active = w.active()?;
+        let created = fs::metadata(w.path.with_extension("lock"))
             .and_then(|m| m.modified())
             .unwrap_or(active);
-        let session = match host::running(path)? {
-            Some(_) => "running",
-            None => "stopped",
+        let session = match host::running(&w.path)? {
+            true => "running",
+            false => "stopped",
         };
         let row = [
-            k.name(),
+            w.name(),
             session.to_string(),
-            k.state.agents.len().to_string(),
-            ago(created),
-            ago(active),
+            w.state.agents.len().to_string(),
+            store::ago(created),
+            store::ago(active),
         ];
         rows.push((active, row));
     }
@@ -320,31 +277,18 @@ fn status() -> Result<()> {
     Ok(())
 }
 
-/// How long before now `time` was.
-fn ago(time: SystemTime) -> String {
-    let d = SystemTime::now()
-        .duration_since(time)
-        .unwrap_or(Duration::ZERO)
-        .as_secs();
-    match d {
-        0..60 => "just now".to_string(),
-        60..3600 => format!("{}m ago", d / 60),
-        3600..86400 => format!("{}h ago", d / 3600),
-        _ => format!("{}d ago", d / 86400),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hypercube::store::State;
 
-    fn known(name: &str, dir: Option<&str>) -> Known {
+    fn known(name: &str, dir: Option<&str>) -> Workspace {
         let agents = dir.map(|dir| Agent {
             role: store::ORCHESTRATOR.into(),
             dir: dir.into(),
             ..Agent::default()
         });
-        Known {
+        Workspace {
             path: PathBuf::from(format!("/state/{name}.json")),
             state: State {
                 agents: agents.into_iter().collect(),
@@ -357,7 +301,7 @@ mod tests {
     /// ran on, and its result.
     fn run_all(
         command: &str,
-        targets: Vec<Known>,
+        targets: Vec<Workspace>,
         answer: &str,
         fail: &[&str],
     ) -> (String, Vec<String>, Result<()>) {

@@ -1,6 +1,7 @@
 //! The control socket. The host listens on a Unix socket next to the state
 //! file, and the MCP server and the CLI send it requests. Each connection
-//! carries one JSON request line and gets one JSON reply line.
+//! carries one JSON request line and gets one JSON reply line. After an
+//! accepted `attach`, the connection carries the attach stream (see `link`).
 
 use std::error::Error;
 use std::fmt;
@@ -12,6 +13,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
+use crate::link::Size;
 use crate::store;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -44,6 +46,13 @@ pub enum Request {
     Close { agent: String },
     /// End the session.
     Stop,
+    /// Attach the client's terminal: `size`, whose replies to
+    /// `mux::host_queries` are `replies`, speaking attach stream `protocol`.
+    Attach {
+        protocol: u32,
+        size: Size,
+        replies: String,
+    },
 }
 
 /// The host's answer to a request.
@@ -137,15 +146,7 @@ pub fn is_unreachable(error: &(dyn Error + 'static)) -> bool {
 /// An `Err` means the host could not be reached; a refusal is a reply with
 /// `ok` unset.
 pub fn request(socket: &Path, request: &Request) -> Result<Reply> {
-    let stream = UnixStream::connect(socket).map_err(|source| -> Box<dyn Error> {
-        match source.kind() {
-            ErrorKind::NotFound | ErrorKind::ConnectionRefused => Box::new(Unreachable {
-                socket: socket.to_path_buf(),
-                source,
-            }),
-            _ => format!("connect {}: {source}", socket.display()).into(),
-        }
-    })?;
+    let stream = connect(socket)?;
     let exchange = || -> Result<Option<Reply>> {
         stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
         stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
@@ -173,6 +174,54 @@ pub fn request(socket: &Path, request: &Request) -> Result<Reply> {
         }
         Err(e) => Err(e),
     }
+}
+
+fn connect(socket: &Path) -> Result<UnixStream> {
+    UnixStream::connect(socket).map_err(|source| -> Box<dyn Error> {
+        match source.kind() {
+            ErrorKind::NotFound | ErrorKind::ConnectionRefused => Box::new(Unreachable {
+                socket: socket.to_path_buf(),
+                source,
+            }),
+            _ => format!("connect {}: {source}", socket.display()).into(),
+        }
+    })
+}
+
+/// Attach a terminal of `size`, whose replies to `mux::host_queries` are
+/// `replies`, to the host listening on `socket`. Returns the connection,
+/// which carries the attach stream from here on. An `Err` that
+/// `is_unreachable` means no host listens.
+pub fn attach(socket: &Path, size: Size, replies: &[u8]) -> Result<UnixStream> {
+    let stream = connect(socket)?;
+    stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
+    stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
+    let request = Request::Attach {
+        protocol: crate::link::PROTOCOL,
+        size,
+        replies: String::from_utf8_lossy(replies).into_owned(),
+    };
+    write_line(&stream, &request)?;
+    // The attach stream follows the reply, so the reply is read a byte at a
+    // time to leave the stream unread.
+    let mut line = Vec::new();
+    let mut byte = [0u8];
+    while line.last() != Some(&b'\n') {
+        match (&stream).read(&mut byte) {
+            Ok(0) => return Err(HUNG_UP.into()),
+            Ok(_) if line.len() as u64 >= MAX_LINE => {
+                return Err("the host's reply is too long".into());
+            }
+            Ok(_) => line.push(byte[0]),
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    let reply: Reply = read_line(line.as_slice())?.ok_or(HUNG_UP)?;
+    reply.into_result()?;
+    stream.set_read_timeout(None)?;
+    stream.set_write_timeout(None)?;
+    Ok(stream)
 }
 
 /// Read the request line from a connection the host accepted. The stream must
@@ -272,6 +321,20 @@ mod tests {
             r#"{"request":"close","agent":"a1"}"#
         );
         assert_eq!(wire(&Request::Stop), r#"{"request":"stop"}"#);
+        let attach = Request::Attach {
+            protocol: 1,
+            size: Size {
+                cols: 80,
+                rows: 24,
+                xpixel: 640,
+                ypixel: 384,
+            },
+            replies: "\x1b[?62c".into(),
+        };
+        assert_eq!(
+            wire(&attach),
+            r#"{"request":"attach","protocol":1,"size":{"cols":80,"rows":24,"xpixel":640,"ypixel":384},"replies":"\u001b[?62c"}"#
+        );
         assert_eq!(
             serde_json::to_string(&Reply::ok()).unwrap(),
             r#"{"ok":true}"#

@@ -55,7 +55,9 @@ and installs the executable as `~/.local/bin/hypercube` with mode `755`.
 directory belongs on `PATH` for running `hypercube` by name.
 
 Each agent runs the `hypercube` executable that started its session, as its MCP
-server and hook command.
+server and hook command. A running host keeps the executable it started with
+until it is stopped, so after `make install`, `hypercube stop --all` and
+starting again puts every workspace on the new one.
 
 ## Configuration
 

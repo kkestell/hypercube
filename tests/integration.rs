@@ -2,8 +2,9 @@
 //! whose other side feeds a Ghostty terminal standing in for the user's
 //! terminal, with isolated state and configuration, a temporary repository,
 //! and `claude` and `pi` stand-ins (src/bin/hypercube-test-harness.rs) first on
-//! `PATH`. The stand-ins record what they see in an event log and take tool
-//! calls on a fifo.
+//! `PATH`. The client there starts the workspace's host in the background.
+//! The stand-ins record what they see in an event log and take tool calls on
+//! a fifo.
 use std::fs;
 use std::io::Write as _;
 use std::os::fd::{AsRawFd as _, OwnedFd};
@@ -13,7 +14,7 @@ use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 
 use hypercube::mux::{Winsize, write_all};
 use hypercube::pty::Pty;
@@ -47,7 +48,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
     haystack.windows(needle.len()).any(|w| w == needle)
 }
 
-/// What the stand-in user's terminal answers to the runtime's startup queries.
+/// What the stand-in user's terminal answers to the client's startup queries.
 fn host_replies() -> Vec<u8> {
     let mut s = "\x1b]10;rgb:d0d0/d1d1/d2d2\x1b\\\x1b]11;rgb:1010/1111/1212\x1b\\".to_owned();
     for i in 0..16 {
@@ -63,7 +64,7 @@ fn host_replies() -> Vec<u8> {
 }
 
 /// Read the user's side of the pty into `output` until `stop` is set or the
-/// pty closes, answering the runtime's startup queries.
+/// pty closes, answering the client's startup queries.
 fn read_terminal(
     fd: OwnedFd,
     output: Arc<Mutex<Vec<u8>>>,
@@ -102,7 +103,7 @@ fn read_terminal(
     })
 }
 
-/// The `hypercube` process in the user's terminal.
+/// The `hypercube` client in the user's terminal.
 struct Session {
     child: Child,
     master: OwnedFd,
@@ -149,7 +150,12 @@ impl Session {
         text.trim_end_matches('\n').to_owned()
     }
 
-    /// The host's exit code, once it has exited.
+    /// Everything the client wrote to the terminal, as text.
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.output.lock().unwrap()).into_owned()
+    }
+
+    /// The client's exit code, once it has exited.
     fn exited(&mut self) -> Option<i32> {
         self.child
             .try_wait()
@@ -157,7 +163,7 @@ impl Session {
             .map(|s| s.code().unwrap_or(-1))
     }
 
-    /// End the host, gently first, and release the pty.
+    /// End the client, gently first, and release the pty.
     fn end(mut self) {
         if self.child.try_wait().ok().flatten().is_none() {
             unsafe { libc::kill(self.child.id() as i32, libc::SIGTERM) };
@@ -197,7 +203,7 @@ impl Drop for Guard {
 
 /// An isolated environment for one test: a repository, state, configuration,
 /// and the harness stand-ins, in a temporary directory removed on drop along
-/// with every process the test started.
+/// with every process the test started, hosts included.
 struct Fixture {
     dir: PathBuf,
     repo: PathBuf,
@@ -329,6 +335,22 @@ impl Fixture {
     fn start(&mut self) {
         assert!(self.session.is_none());
         let launches = self.agent_events("orchestrator", "launch").len();
+        self.session = Some(self.client());
+        self.wait("the orchestrator to start", |fx| {
+            (fx.agent_events("orchestrator", "ready").len() > launches).then_some(())
+        });
+    }
+
+    /// Run `hypercube` in a terminal of its own, attaching to the running
+    /// host, and wait until it shows the orchestrator's pane.
+    fn attach(&mut self) {
+        assert!(self.session.is_none());
+        self.session = Some(self.client());
+        self.wait_screen(" orchestrator");
+    }
+
+    /// `hypercube` in a new terminal.
+    fn client(&self) -> Session {
         let ws = Winsize {
             ws_col: COLS,
             ws_row: ROWS,
@@ -344,7 +366,7 @@ impl Fixture {
             output.clone(),
             stop.clone(),
         );
-        self.session = Some(Session {
+        Session {
             child: pty.child,
             master: pty.master,
             output,
@@ -352,10 +374,37 @@ impl Fixture {
             reader: Some(reader),
             terminal: Terminal::new(COLS, ROWS).unwrap(),
             fed: 0,
-        });
-        self.wait("the orchestrator to start", |fx| {
-            (fx.agent_events("orchestrator", "ready").len() > launches).then_some(())
-        });
+        }
+    }
+
+    /// Make `fx.repo` a new repository named `name`, and return the old one.
+    fn new_repo(&mut self, name: &str) -> PathBuf {
+        let old = std::mem::replace(&mut self.repo, self.dir.join(name));
+        fs::create_dir(&self.repo).unwrap();
+        self.git(&self.repo, &["init", "-q", "-b", "main"]);
+        self.git(&self.repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+        old
+    }
+
+    /// Open the workspace overlay and select the row naming `dir`.
+    fn select_workspace(&mut self, dir: &Path) {
+        self.type_text("\x1e");
+        self.wait_screen("Workspaces");
+        let dir = dir.to_str().unwrap().to_string();
+        self.wait_screen(&dir);
+        let screen = self.screen();
+        let lines: Vec<&str> = screen.lines().collect();
+        let row = |text: &str| lines.iter().position(|l| l.contains(text)).unwrap();
+        let current = lines.iter().position(|l| l.starts_with(" * ")).unwrap();
+        let target = row(&dir);
+        let key = if target > current { "j" } else { "k" };
+        self.type_text(&key.repeat(target.abs_diff(current)));
+    }
+
+    /// The process ID the workspace's host wrote into its lock.
+    fn host_pid(&self) -> i32 {
+        let lock = host::lock_path(&self.state_path());
+        fs::read_to_string(lock).unwrap().trim().parse().unwrap()
     }
 
     fn session(&mut self) -> &mut Session {
@@ -379,10 +428,16 @@ impl Fixture {
         self.wait_host_exit();
     }
 
-    /// Wait for the host to exit successfully and release its terminal.
+    /// Wait for the host to end and the client to exit successfully, and
+    /// release the client's terminal.
     fn wait_host_exit(&mut self) {
-        let code = self.wait("the host to exit", |fx| fx.session().exited());
+        let code = self.wait("the client to exit", |fx| fx.session().exited());
         assert_eq!(code, 0);
+        let text = self.session().text();
+        assert!(text.contains("hypercube: stopped"), "{text}");
+        self.wait("the host to exit", |fx| {
+            (!host::running(&fx.state_path()).unwrap()).then_some(())
+        });
         self.session.take().unwrap().end();
     }
 
@@ -582,6 +637,26 @@ impl Drop for Fixture {
     fn drop(&mut self) {
         if let Some(session) = self.session.take() {
             session.end();
+        }
+        // Every host the test started, gently first.
+        let hosts: Vec<i32> = fs::read_dir(self.dir.join("state/hypercube"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.to_string_lossy().ends_with(".host.lock"))
+            .filter(|p| host::running(&p.with_extension("").with_extension("json")).unwrap())
+            .filter_map(|p| fs::read_to_string(p).ok()?.trim().parse().ok())
+            .collect();
+        for &pid in &hosts {
+            unsafe { libc::kill(pid, libc::SIGTERM) };
+        }
+        let end = Instant::now() + Duration::from_secs(10);
+        while hosts.iter().any(|&p| alive(p)) && Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for &pid in &hosts {
+            unsafe { libc::kill(pid, libc::SIGKILL) };
         }
         // Stand-ins that outlived the host.
         for pid in self.pids() {
@@ -875,7 +950,7 @@ fn remove_agent_closes_the_pane() {
     assert_eq!(fx.state().agents.len(), 1);
     assert!(!fx.worktree("w1").exists());
     assert_eq!(fx.git(&fx.repo, &["branch", "--list", "hypercube/w1"]), "");
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
     // The closed agent is not relaunched.
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(
@@ -903,25 +978,11 @@ fn status_shows_running_and_stop_ends_every_stand_in() {
         fx.status().unwrap()[..3],
         [repo.clone(), "running".into(), "3".into()]
     );
-    let terminal = host::running(&fx.state_path()).unwrap().unwrap();
-    assert!(terminal.starts_with("/dev/"), "{terminal}");
+    assert!(alive(fx.host_pid()));
 
-    // A second hypercube reports where the first runs.
-    let out = Command::new(HYPERCUBE)
-        .current_dir(&fx.repo)
-        .env_clear()
-        .envs(fx.env())
-        .stdin(Stdio::null())
-        .output()
-        .unwrap();
-    assert!(!out.status.success());
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("hypercube is already running for"),
-        "{stderr}"
-    );
-
+    // The host ends the client, which says why.
     fx.stop();
+    assert!(fx.session.is_none());
     fx.wait_gone(&pids);
     // The agents that stop hung up are not relaunched.
     assert_eq!(fx.pids(), pids);
@@ -929,7 +990,7 @@ fn status_shows_running_and_stop_ends_every_stand_in() {
         fx.status().unwrap()[..3],
         [repo, "stopped".into(), "3".into()]
     );
-    assert!(host::running(&fx.state_path()).unwrap().is_none());
+    assert!(!host::running(&fx.state_path()).unwrap());
     assert!(!control::socket_path(&fx.state_path()).unwrap().exists());
     // The agents stay for the next start.
     assert_eq!(fx.state().agents.len(), 3);
@@ -1014,7 +1075,7 @@ fn delete_refuses_a_dirty_worktree_then_succeeds() {
     assert!(stderr.contains("not deleting the workspace"), "{stderr}");
     assert!(stderr.contains("w1"), "{stderr}");
     // Nothing changed, and the session still runs.
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
     assert!(worktree.join("scratch.txt").exists());
     assert_eq!(fx.state().agents.len(), 2);
     assert!(pids.iter().all(|&p| alive(p)));
@@ -1103,7 +1164,7 @@ fn unsupported_harness_does_not_stop_startup() {
     // The worker has a pane that shows why it did not start.
     fx.wait_screen("old · failed");
     fx.wait_screen("old failed to launch");
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
     assert_eq!(fx.status().unwrap()[1], "running");
 
     let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
@@ -1114,7 +1175,7 @@ fn unsupported_harness_does_not_stop_startup() {
     fx.wait_no_screen("old · failed");
     fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 1]);
     assert_eq!(fx.state().agents.len(), 1);
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
 }
 
 #[test]
@@ -1206,7 +1267,7 @@ fn an_agent_that_keeps_exiting_is_left_exited() {
     assert_eq!(fx.agent_events("w1", "launch").len(), 3);
 
     // The session goes on with the other agents.
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
     let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
     assert!(!is_error && text.contains("\"w1\""), "{text}");
     fx.stop();
@@ -1229,42 +1290,22 @@ fn a_relaunched_pane_keeps_the_focus() {
 }
 
 #[test]
-fn every_exit_in_a_batch_is_handled_before_the_session_can_end() {
+fn the_host_runs_on_when_every_agent_is_left_exited() {
     let mut fx = Fixture::new();
     fx.start();
-    fx.create("w1", "fast", "");
     for n in 2..=3 {
         fx.command("orchestrator", "exit 1");
         fx.wait_event("orchestrator", "ready", n);
     }
-    // The orchestrator's third quick exit and the worker's first happen at
-    // once. The worker is relaunched, so the session goes on.
-    let at = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_millis()
-        + 400;
-    fx.command("orchestrator", &format!("exit-at {at} 1"));
-    fx.command("w1", &format!("exit-at {at} 1"));
-    fx.wait_event("w1", "ready", 2);
+    let pid = fx.pid("orchestrator");
+    fx.command("orchestrator", "exit 1");
+    fx.wait_gone(&[pid]);
+    fx.wait_screen("orchestrator · exited 1");
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(fx.agent_events("orchestrator", "launch").len(), 3);
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
+    assert_eq!(fx.session().exited(), None);
     fx.stop();
-}
-
-#[test]
-fn the_session_ends_when_every_agent_is_left_exited() {
-    let mut fx = Fixture::new();
-    fx.start();
-    for n in 2..=3 {
-        fx.command("orchestrator", "exit 1");
-        fx.wait_event("orchestrator", "ready", n);
-    }
-    fx.command("orchestrator", "exit 1");
-    fx.wait_host_exit();
-    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 3);
-    assert!(host::running(&fx.state_path()).unwrap().is_none());
 }
 
 #[test]
@@ -1282,7 +1323,7 @@ fn a_relaunch_that_fails_shows_why_and_is_not_retried() {
     fx.wait_screen("w1 failed to launch");
     std::thread::sleep(Duration::from_millis(500));
     assert_eq!(fx.agent_events("w1", "launch").len(), 1);
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
     fx.stop();
 }
 
@@ -1377,7 +1418,7 @@ fn stop_all_stops_running_workspaces_after_confirmation() {
         format!("{}\nStop all of these? [y/N] ", fx.repo.display())
     );
     assert!(String::from_utf8_lossy(&out.stderr).contains("stop cancelled"));
-    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    assert!(host::running(&fx.state_path()).unwrap());
 
     let out = fx.run_with_input(&["stop", "--all"], "y\n");
     assert!(out.status.success(), "{out:?}");
@@ -1421,7 +1462,7 @@ fn delete_all_reports_refusals_and_deletes_the_rest() {
     let out = fx.run_with_input(&["delete", "--all"], "no\n");
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("delete cancelled"));
-    assert!(host::running(&second_state).unwrap().is_some());
+    assert!(host::running(&second_state).unwrap());
 
     // The first workspace refuses, and the second is deleted, ending its
     // session.
@@ -1460,4 +1501,137 @@ fn delete_all_reports_refusals_and_deletes_the_rest() {
         fx.run_with_input(&["delete", "--all"], "y\n").stdout,
         b"No workspaces to delete.\n"
     );
+}
+
+#[test]
+fn closing_the_terminal_leaves_the_team_running() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    let pids = fx.pids();
+    let host = fx.host_pid();
+    // Closing the client's terminal ends the client, and only it.
+    fx.session.take().unwrap().end();
+    std::thread::sleep(Duration::from_millis(500));
+    assert!(alive(host));
+    assert!(pids.iter().all(|&p| alive(p)));
+    assert_eq!(fx.status().unwrap()[1], "running");
+
+    // Running hypercube again shows the same team, without relaunching it.
+    fx.attach();
+    fx.wait_screen("⎇ w1");
+    assert_eq!(fx.pids(), pids);
+    assert_eq!(fx.host_pid(), host);
+    fx.type_text("hi\r");
+    let prompts = fx.wait_event("orchestrator", "prompt", 1);
+    assert_eq!(prompts[0]["text"], "hi");
+    fx.stop();
+    fx.wait_gone(&pids);
+}
+
+#[test]
+fn a_second_terminal_takes_the_attachment() {
+    let mut fx = Fixture::new();
+    fx.start();
+    let mut first = fx.session.take().unwrap();
+    fx.attach();
+    let code = fx.wait("the first client to exit", |_| first.exited());
+    assert_eq!(code, 0);
+    assert!(first.text().contains("attached in another terminal"));
+    first.end();
+    // The second has the input.
+    fx.type_text("hi\r");
+    fx.wait_event("orchestrator", "prompt", 1);
+    fx.stop();
+}
+
+#[test]
+fn the_overlay_switches_between_workspaces() {
+    let mut fx = Fixture::new();
+    // The other workspace has run before, and is stopped.
+    fx.start();
+    fx.stop();
+    let other = fx.repo.clone();
+    let other_state = fx.state_path();
+    fx.new_repo("first");
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_screen("⎇ w1");
+    let first = fx.repo.clone();
+    let pids = vec![fx.pid("orchestrator"), fx.pid("w1")];
+
+    // The overlay lists both, and Enter on the stopped one starts it.
+    fx.select_workspace(&other);
+    let screen = fx.screen();
+    assert!(
+        screen.contains("running") && screen.contains("stopped"),
+        "{screen}"
+    );
+    fx.type_text("\r");
+    fx.repo = other.clone();
+    fx.wait_event("orchestrator", "ready", 2);
+    fx.wait_no_screen("Workspaces");
+    fx.wait_screen(other.to_str().unwrap());
+    fx.wait_no_screen("⎇ w1");
+    assert!(host::running(&other_state).unwrap());
+
+    // Switching back shows the first team as it was.
+    fx.select_workspace(&first);
+    fx.type_text("\r");
+    fx.repo = first.clone();
+    fx.wait_screen("⎇ w1");
+    fx.wait_no_screen("Workspaces");
+    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 1);
+    assert_eq!(fx.agent_events("w1", "launch").len(), 1);
+    assert!(pids.iter().all(|&p| alive(p)));
+    assert!(host::running(&other_state).unwrap());
+
+    // x stops the other workspace, and the overlay shows it stopped.
+    fx.select_workspace(&other);
+    fx.type_text("x");
+    fx.wait("the other workspace to stop", |_| {
+        (!host::running(&other_state).unwrap()).then_some(())
+    });
+    fx.wait_no_screen("running  1 agent");
+    // Esc closes the overlay, and x on this workspace ends the client.
+    fx.type_text("\x1b");
+    fx.wait_no_screen("Workspaces");
+    fx.select_workspace(&first);
+    fx.type_text("x");
+    fx.wait_host_exit();
+    fx.wait_gone(&pids);
+}
+
+#[test]
+fn a_host_of_another_protocol_is_refused() {
+    let fx = Fixture::new();
+    let state = fx.state_path();
+    let _lock = host::try_lock(&host::lock_path(&state)).unwrap().unwrap();
+    let listener =
+        std::os::unix::net::UnixListener::bind(control::socket_path(&state).unwrap()).unwrap();
+    let error = "the host of the repo runs another version of hypercube; \
+                 stop it with `hypercube stop` and start it again";
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let request = control::read_request(&stream).unwrap();
+        assert!(matches!(
+            request,
+            control::Request::Attach { protocol: 1, .. }
+        ));
+        control::write_reply(&stream, &control::Reply::error(error)).unwrap();
+    });
+    let mut session = fx.client();
+    let code = loop {
+        if let Some(code) = session.exited() {
+            break code;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    server.join().unwrap();
+    assert_eq!(code, 1);
+    let text = session.text();
+    assert!(text.contains("stop it with `hypercube stop`"), "{text}");
+    // The terminal was given back.
+    assert!(text.contains("\x1b[?1049l"), "{text}");
+    session.end();
 }
