@@ -20,6 +20,7 @@ use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
 use crate::{config, workspace};
+use libghostty_vt::unicode;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -190,9 +191,12 @@ impl Chrome for TeamChrome {
             }
         }
         if size.ws_row > 0 {
-            let width = usize::from(size.ws_col);
-            let text = fit(&format!(" {}", self.status), width);
-            s.push_str(&format!("\x1b[{};1H{LABEL}{text:<width$}", size.ws_row));
+            let blank = " ".repeat(usize::from(size.ws_col));
+            let text = fit(&format!(" {}", self.status), size.ws_col);
+            s.push_str(&format!(
+                "\x1b[{row};1H{LABEL}{blank}\x1b[{row};1H{text}",
+                row = size.ws_row
+            ));
         }
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
@@ -202,27 +206,47 @@ impl Chrome for TeamChrome {
 /// A pane's label row: a rule with the label near its left end, bold when the
 /// pane has the focus, and the exit status once its program has exited.
 fn draw_label(s: &mut String, p: &PaneView) {
-    let width = usize::from(p.rect.cols);
-    let lead = width.min(2);
+    let lead = p.rect.cols.min(2);
     let text = match p.status {
         Some(status) => format!(" {} · exited {status} ", p.label),
         None => format!(" {} ", p.label),
     };
-    let text = fit(&text, width - lead);
-    let rest = width - lead - text.chars().count();
+    let text = fit(&text, p.rect.cols - lead);
     let bold = if p.focused { "\x1b[1m" } else { "" };
+    // The label goes over the rule, which shows wherever the label is shorter
+    // than measured.
     s.push_str(&format!(
-        "\x1b[{};{}H{RULE}{}{LABEL}{bold}{text}{RULE}{}",
-        p.rect.row,
-        p.rect.col + 1,
-        "━".repeat(lead),
-        "━".repeat(rest),
+        "\x1b[{row};{col}H{RULE}{}\x1b[{row};{}H{LABEL}{bold}{text}",
+        "━".repeat(usize::from(p.rect.cols)),
+        p.rect.col + lead + 1,
+        row = p.rect.row,
+        col = p.rect.col + 1,
     ));
 }
 
-/// The first `width` characters of `text`.
-fn fit(text: &str, width: usize) -> String {
-    text.chars().take(width).collect()
+/// The longest start of `text` made of whole grapheme clusters that fits in
+/// `width` columns. The host clusters graphemes or not depending on the
+/// focused pane, so each cluster counts as the wider of the two.
+fn fit(text: &str, width: u16) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut rest = chars.as_slice();
+    let mut used = 0;
+    let mut end = 0;
+    while !rest.is_empty() {
+        let (len, clustered) = unicode::grapheme_width(rest);
+        let len = len.max(1);
+        let separate: usize = rest[..len]
+            .iter()
+            .map(|&c| usize::from(unicode::codepoint_width(c)))
+            .sum();
+        used += usize::from(clustered).max(separate);
+        if used > usize::from(width) {
+            break;
+        }
+        end += len;
+        rest = &rest[len..];
+    }
+    chars[..end].iter().collect()
 }
 
 static SIGNAL_PIPE: AtomicI32 = AtomicI32::new(-1);
@@ -348,6 +372,12 @@ impl Enters {
     }
 }
 
+impl Drop for Host {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+
 /// Host the workspace whose checkout is `root` in this terminal until the
 /// session ends: when it is stopped, when every agent has exited, or when the
 /// terminal closes.
@@ -389,9 +419,7 @@ pub fn run(root: &Path) -> Result<()> {
         clients: Vec::new(),
         enters: Enters::default(),
     };
-    let result = host.start(&agents).and_then(|()| host.serve());
-    host.end();
-    result
+    host.start(&agents).and_then(|()| host.serve())
 }
 
 /// Ready the state for a session: create the orchestrator on the first run,
@@ -442,9 +470,35 @@ impl Host {
             } else {
                 NUDGE
             };
-            self.launch(&a.id, prompt)
-                .map_err(|e| format!("launching {}: {e}", a.name))?;
+            if let Err(e) = self.launch(&a.id, prompt) {
+                if a.role == store::ORCHESTRATOR {
+                    return Err(format!("launching {}: {e}", a.name).into());
+                }
+                self.add_failed(a, &e.to_string())
+                    .map_err(|e| format!("launching {}: {e}", a.name))?;
+            }
         }
+        Ok(())
+    }
+
+    /// Give a worker whose harness failed to start a pane without a program,
+    /// showing the error, so it keeps its place until `remove_agent` closes
+    /// it.
+    fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
+        let error = error.replace(['\r', '\n'], " ");
+        let label = format!("{} · failed: {error}", harness::label(agent));
+        let pane = self.mux.add_pane(&label)?;
+        let mut ids = self.pane_ids();
+        ids.push(pane);
+        let Some(layout) = layout(self.mux.size(), &ids) else {
+            self.mux.remove_pane(pane);
+            return Err(error.into());
+        };
+        if let Some(p) = self.mux.pane_mut(pane) {
+            p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
+        }
+        self.panes.push((agent.id.clone(), pane));
+        self.mux.set_layout(&layout)?;
         Ok(())
     }
 
@@ -471,7 +525,8 @@ impl Host {
                         }
                     }
                     Event::PaneExited(..) => {
-                        if self.mux.panes().iter().all(|p| p.status().is_some()) {
+                        let ended = |p: &Pane| p.status().is_some() || p.pid().is_none();
+                        if self.mux.panes().iter().all(ended) {
                             return Ok(());
                         }
                     }
@@ -489,7 +544,8 @@ impl Host {
     }
 
     /// Hang up every pane's program, give them `HANGUP_GRACE_MS` to exit
-    /// before they are killed, and restore the host terminal.
+    /// before they are killed, and restore the host terminal. Dropping the
+    /// host does this, including when a panic unwinds it.
     fn end(&mut self) {
         let ids: Vec<PaneId> = self.mux.panes().iter().map(Pane::id).collect();
         for id in ids {
@@ -629,8 +685,12 @@ impl Host {
         let pane = self
             .pane_of(id)
             .ok_or_else(|| format!("agent {id} has no pane"))?;
-        if let Some(status) = self.mux.pane(pane).and_then(Pane::status) {
+        let p = self.mux.pane(pane).ok_or("no pane")?;
+        if let Some(status) = p.status() {
             return Err(format!("agent {id} exited with status {status}").into());
+        }
+        if p.pid().is_none() {
+            return Err(format!("agent {id} failed to launch").into());
         }
         if self.enters.schedule(pane, now_ms()) {
             self.mux.send_text(pane, NUDGE)?;
@@ -828,6 +888,25 @@ mod tests {
         let screen = Screen::draw(&hidden, 8, 2);
         assert_eq!(screen.row(0), "        ");
         assert_eq!(screen.row(1), " ~/src/t");
+    }
+
+    #[test]
+    fn chrome_measures_wide_and_combining_characters_in_columns() {
+        let panes = [view(1, "界界界界界", rect(0, 1, 9, 2), false, None)];
+        let mut chrome = TeamChrome {
+            status: "e\u{301}界界界界界".into(),
+        };
+        let mut out = Vec::new();
+        chrome.draw(&mut out, &panes, size(9, 4));
+        let mut terminal = Terminal::new(9, 4).unwrap();
+        terminal.vt_write(&out);
+        let screen = Screen(terminal);
+        // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
+        assert_eq!(screen.row(0), "━━ 界 界 界 ");
+        assert_eq!(screen.row(3), " e界 界 界  ");
+        assert_eq!(screen.bg(8, 3), LIGHT_BLUE);
+        assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
+        assert_eq!(fit("界", 1), "");
     }
 
     #[test]

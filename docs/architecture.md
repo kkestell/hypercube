@@ -40,7 +40,10 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
 4. It takes over the terminal with a `Runtime` and launches each agent in its
    own pane, the orchestrator first. Saved sessions resume, and workers start
    with the nudge as their prompt, so they pick up messages queued while they
-   were down. A failed launch ends the session with its error.
+   were down. If the orchestrator fails to launch, the session ends with
+   the error. A worker that fails to launch gets a pane without a program,
+   with "failed:" and the error in its label and the error in the pane, and
+   keeps it until `remove_agent` closes it.
 5. It serves until the session ends.
 
 The loop is single-threaded: `Runtime::wait` polls the panes, the host
@@ -51,7 +54,8 @@ complete request within five seconds is dropped, so no client can stall the
 panes.
 
 The session ends on a `stop` request, a signal, the end of the terminal's
-input, or when every pane's program has exited. The host then removes every
+input, when every pane's program has exited, or when the host panics. The
+host then removes every
 pane, which sends SIGHUP to each program's process group, gives the programs
 up to `HANGUP_GRACE_MS` (two seconds) before SIGKILL, restores the terminal,
 removes the socket, and releases the host lock. The next `hypercube` resumes
