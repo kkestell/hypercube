@@ -3,12 +3,18 @@
 `harness::command(exe, agent, state_path, prompt)` builds a `Launch`: the
 `argv`, the `env` the host adds to its own, and the `cwd` (the agent's
 directory). `exe` is the `hypercube` executable, which each harness runs as its
-MCP server and hook command. A non-empty `prompt` starts the first turn; the
-host passes the nudge for workers. `harness::label` is the pane label: name,
-harness, model, effort, and directory with the home directory written as `~`.
+MCP server and hook command. The harness inherits the host's environment,
+including `HOME` and any credential environment variables, with the launch's
+`env` entries added. The pty sets `TERM=xterm-256color` and
+`COLORTERM=truecolor`.
 
-Every launch sets two environment variables, which the harness's child
-processes inherit:
+A non-empty `prompt` starts the first turn. Workers launch with
+`Check your Hypercube messages.`; the orchestrator opens ready for user
+input. `harness::label` is the pane label: name, harness, model, effort, and
+directory with the home directory written as `~`.
+
+Each `Launch` carries two identity environment variables, which the harness's
+child processes inherit:
 
 - `HYPERCUBE_AGENT_ID`: the agent's ID.
 - `HYPERCUBE_STATE`: the path of the workspace's state file.
@@ -20,6 +26,19 @@ Hook events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
 response on stdout. `hookSpecificOutput.additionalContext` carries text for the
 model, and `decision: "block"` with `reason` keeps an agent running with a
 queued message.
+
+- `SessionStart` supplies the agent's identity, working directory, team, and
+  tools. The orchestrator also gets the configured worker profiles and team
+  guidance.
+- `UserPromptSubmit` delivers queued messages, saves a non-empty harness
+  `session_id`, and marks the agent busy.
+- `PostToolUse` delivers queued messages during a turn.
+- `Stop` delivers queued messages as a block reason, or marks the agent idle
+  when its queue is empty.
+
+Saved session IDs are passed to the harness on subsequent launches. The
+session ID is recorded at the first prompt, when the harness has a
+conversation to resume.
 
 ## Claude Code
 
@@ -34,8 +53,9 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
   `'<exe>' hook <event>`.
 - `--resume` is present when the agent has a saved session ID.
 
-The checkout must be trusted in Claude Code. A directory worker's directory
-must be trusted too, or its pane shows the trust dialog.
+Claude Code handles folder trust in its pane. Worktree workers live under
+`<checkout>/.hypercube/<name>`, within the checkout's trusted folder. A worker
+in another directory uses that directory's trust decision.
 
 ## Pi
 
@@ -52,10 +72,14 @@ The extension registers the `hypercube` MCP server for the session with direct
 tool exposure and `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE` in its environment.
 It maps Pi events onto `exe hook` calls:
 
-- `before_agent_start`: SessionStart on the first run of each session, then
-  UserPromptSubmit on every run. The combined context becomes a visible custom
-  message sent to the model as user text.
+- `before_agent_start`: SessionStart the first time each session ID is seen
+  by the loaded extension, then UserPromptSubmit on every prompt. The combined
+  context becomes a visible custom message sent to the model as user text.
 - `tool_result`: PostToolUse, appended to the tool result. Nested tool calls
   with `parentToolCallId` are skipped, since they never enter the transcript.
 - `agent_settled`: Stop, after retries, compaction, and queued work finish. A
   block reason is sent back with `pi.sendUserMessage`, which starts a new run.
+
+Each Pi hook call sends `{ "session_id": "<current session ID>" }` on stdin.
+The extension's per-session SessionStart tracking lasts for the loaded
+extension; a new process or extension reload starts fresh tracking.
