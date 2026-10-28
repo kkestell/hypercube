@@ -202,7 +202,9 @@ workers' lines, the accent mixed 40% toward white for the workers' names and
 details, and for the header, the bar, and the title rows of the overlay and
 the list of keys, the accent mixed 85% toward white on the accent mixed 78%
 toward black. The accent is one of the eight in `colors::ACCENTS`, numbered
-by the state's `accent` field, 0 (blue) unless set. Ctrl-b a moves the
+by the state's `accent` field. A new workspace takes the accent that the
+other running workspaces use least, the first of those in `ACCENTS`. Ctrl-b a
+moves the
 workspace to the next one, wrapping around, writes it to the state, and
 redraws. It draws:
 
@@ -227,9 +229,12 @@ redraws. It draws:
 
 `bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification
-time of its host lock), as `0 foo  1 *bar  2 glarpy`: each the name of its
-checkout's directory, with the host's own workspace marked `*` and bold. It
-shows as many as fit, whole. The host reads the list on each attach and every
+time of its host lock), as adjoining tabs, ` 0 foo  1 bar  2 glarpy `: each
+the name of its checkout's directory after its number, with the host's own
+workspace bold. A tab is drawn in its workspace's accent: the
+bar's text on the accent mixed 65% toward black, with the number the accent
+mixed 60% toward white. It shows as many as fit, whole. A click on a tab
+switches to that workspace, as Ctrl-b and its number do. The host reads the list on each attach and every
 second while a client is attached. Ctrl-b and a digit switch the client to the
 workspace with that number, as the overlay's Enter does; on the host's own
 workspace they close the overlay if it is open. A failed switch shows its
@@ -249,7 +254,8 @@ prompt, and a path that is no directory shows its error in the bar.
 
 The keys and the mouse (see Input):
 
-- A click focuses the pane under the pointer.
+- A click focuses the pane under the pointer, and a click on a workspace's
+  tab in the bar switches to it.
 - The wheel scrolls the pane under the pointer, unless its program reports
   the mouse.
 - Shift-PageUp, Ctrl-b [, and Ctrl-b PageUp scroll the focused pane up a
@@ -524,7 +530,9 @@ a paste, these are routed elsewhere:
   Up and Down a row, and Esc and q return it to the bottom. Any other key
   returns it to the bottom and goes to the program. Kitty key releases are
   consumed.
-- Mouse reports go to the pane under the pointer. A button press focuses it, and
+- Mouse reports go to the pane under the pointer, and a left-button press
+  outside every pane is `Event::Click`, which the host checks against the
+  bar's tabs. A button press in a pane focuses it, and
   that button's motion and release go to the same pane, clamped to its edges. A
   pane whose program tracks the mouse, and whose view is not scrolled, gets
   every report in its coordinates, encoded by Ghostty's mouse encoder for its

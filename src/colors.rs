@@ -53,6 +53,12 @@ pub struct Palette {
     /// The header, the bar, and the title rows of the overlay and the list
     /// of keys: the accent lightened nearly to white on the accent darkened.
     pub bar: Colors,
+    /// The workspace's entry in the bar: the bar's text on the accent
+    /// darkened a little less than the bar.
+    pub tab: Colors,
+    /// The workspace's number on its tab: the accent lightened less than
+    /// the tab's text.
+    pub number: Rgb,
 }
 
 impl Palette {
@@ -66,8 +72,20 @@ impl Palette {
                 fg: mix(accent, WHITE, 0.85),
                 bg: mix(accent, BLACK, 0.78),
             },
+            tab: Colors {
+                fg: mix(accent, WHITE, 0.85),
+                bg: mix(accent, BLACK, 0.65),
+            },
+            number: mix(accent, WHITE, 0.6),
         }
     }
+}
+
+/// The accent fewest of the `taken` use, the first of those in `ACCENTS`.
+pub fn least_used(taken: &[usize]) -> usize {
+    (0..ACCENTS.len())
+        .min_by_key(|&n| taken.iter().filter(|&&t| t % ACCENTS.len() == n).count())
+        .unwrap_or(0)
 }
 
 impl Default for Palette {
@@ -94,6 +112,15 @@ mod tests {
         assert_eq!(p.text, (144, 198, 234));
         assert_eq!(p.bar.fg, (227, 241, 250));
         assert_eq!(p.bar.bg, (15, 35, 48));
+        assert_eq!(p.tab.bg, (25, 56, 77));
         assert_eq!(Palette::of(ACCENTS.len() + 1), Palette::of(1));
+    }
+
+    #[test]
+    fn a_new_workspace_takes_the_least_used_accent() {
+        assert_eq!(least_used(&[]), 0);
+        assert_eq!(least_used(&[0, 1, 3]), 2);
+        let all: Vec<usize> = (0..ACCENTS.len()).collect();
+        assert_eq!(least_used(&[all.clone(), vec![0, 1]].concat()), 2);
     }
 }

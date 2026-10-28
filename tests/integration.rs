@@ -774,7 +774,7 @@ fn first_start_lays_out_one_pane() {
     // The bar lists the workspace, the only one running.
     assert_eq!(
         lines[usize::from(ROWS) - 1].trim_end(),
-        " 0 *repo",
+        " 0 repo",
         "{screen}"
     );
 }
@@ -1594,18 +1594,18 @@ fn the_overlay_switches_between_workspaces() {
 
     // The bar numbers the running workspaces in the order their hosts
     // started, and Ctrl-b and a number switches to one.
-    fx.wait_screen(" 0 *first  1 repo");
+    fx.wait_screen(" 0 first  1 repo");
     fx.type_text("\x021");
-    fx.wait_screen(" 0 first  1 *repo");
     fx.wait_no_screen("⎇ w1");
     fx.type_text("\x020");
-    fx.wait_screen(" 0 *first  1 repo");
+    fx.wait_screen(" 0 first  1 repo");
     fx.wait_screen("⎇ w1");
     // Ctrl-b ( and ) step along the bar, wrapping around.
     fx.type_text("\x02(");
-    fx.wait_screen(" 0 first  1 *repo");
+    fx.wait_screen(" 0 first  1 repo");
+    fx.wait_no_screen("⎇ w1");
     fx.type_text("\x02)");
-    fx.wait_screen(" 0 *first  1 repo");
+    fx.wait_screen(" 0 first  1 repo");
     fx.wait_screen("⎇ w1");
 
     // x stops the other workspace. While its teardown is held, this host
@@ -1643,13 +1643,13 @@ fn the_overlay_switches_between_workspaces() {
 fn ctrl_b_c_switches_to_a_new_workspace_at_a_typed_path() {
     let mut fx = Fixture::new();
     fx.start();
-    fx.wait_screen(" 0 *repo");
+    fx.wait_screen(" 0 repo");
 
     // The bar prompts for a path, and Esc closes the prompt.
     fx.type_text("\x02c");
     fx.wait_screen(" workspace path:");
     fx.type_text("x\x1b");
-    fx.wait_screen(" 0 *repo");
+    fx.wait_screen(" 0 repo");
 
     // A path that isn't a directory shows an error in the bar.
     fx.type_text("\x02c/nonexistent-hypercube\r");
@@ -1661,7 +1661,7 @@ fn ctrl_b_c_switches_to_a_new_workspace_at_a_typed_path() {
     fs::create_dir(fx.repo.join("sub")).unwrap();
     fx.type_text("\x02c../second/sub\x7fb\r");
     fx.wait_event("orchestrator", "ready", 1);
-    fx.wait_screen(" 0 repo  1 *second");
+    fx.wait_screen(" 0 repo  1 second");
     let second = fx.repo.clone();
     fx.wait_screen(second.to_str().unwrap());
     assert!(host::running(&fx.state_path()).unwrap());

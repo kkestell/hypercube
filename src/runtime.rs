@@ -47,6 +47,9 @@ pub enum Event {
     Accent,
     /// Ctrl-b ? was pressed.
     Help,
+    /// The left button was pressed outside every pane, at this column and
+    /// row.
+    Click(u16, u16),
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -182,6 +185,7 @@ impl Runtime {
                 Notice::Detach => Event::Detach,
                 Notice::Accent => Event::Accent,
                 Notice::Help => Event::Help,
+                Notice::Click(col, row) => Event::Click(col, row),
             }));
             let now = now_ms();
             if let Some(link) = &self.link

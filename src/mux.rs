@@ -151,6 +151,9 @@ pub enum Notice {
     Accent,
     /// Ctrl-b ? was pressed, which opens or closes the list of keys.
     Help,
+    /// The left button was pressed outside every pane, at this column and
+    /// row.
+    Click(u16, u16),
 }
 
 /// What the chrome sees of a pane.
@@ -1515,7 +1518,8 @@ impl Mux {
     /// Down, and a left-button drag selects text, copied to the host's
     /// clipboard when the button is released. A button press focuses the
     /// pane under the pointer, and the button's motion and release go to
-    /// that pane, clamped to it.
+    /// that pane, clamped to it. A left-button press outside every pane is a
+    /// click on the chrome.
     fn mouse(&mut self, event: MouseEvent) {
         let wheel = matches!(
             event.button,
@@ -1578,6 +1582,9 @@ impl Mux {
             .iter()
             .position(|p| p.rect.contains(event.col, event.row))
         else {
+            if event.action == mouse::Action::Press && event.button == Some(Button::Left) {
+                self.notices.push(Notice::Click(event.col, event.row));
+            }
             return;
         };
         let p = &self.panes[index];
@@ -2975,6 +2982,17 @@ mod tests {
         assert_eq!((pane.status(), pane.label.as_str()), (None, "again"));
         pane.scroll(-100);
         assert_eq!(pane.scrolled(), 0);
+    }
+
+    #[test]
+    fn a_left_press_outside_every_pane_is_a_click() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        // Column 41 is between the panes.
+        p.mux
+            .input(b"\x1b[<0;41;3M\x1b[<0;41;3m\x1b[<2;41;3M\x1b[<2;41;3m");
+        assert_eq!(p.mux.take_notices(), [Notice::Click(40, 2)]);
+        assert_eq!((p.got(0), p.got(1)), (b"".to_vec(), b"".to_vec()));
     }
 
     #[test]

@@ -673,9 +673,18 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
     let dir = root
         .to_str()
         .ok_or_else(|| format!("{} is not valid UTF-8", root.display()))?;
+    // A new workspace takes the accent the other running workspaces use
+    // least.
+    let taken: Vec<usize> = bar::running()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| e.path != state_path)
+        .map(|e| e.accent)
+        .collect();
     store::update(state_path, |s| {
         if s.agents.is_empty() {
             s.no_git = branch.is_err();
+            s.accent = colors::least_used(&taken) as u64;
             let o = &config.orchestrator;
             s.agents.push(Agent {
                 id: store::new_id()?,
@@ -824,6 +833,7 @@ impl Host {
                     Event::Step(n) => self.step(n)?,
                     Event::NewWorkspace => self.open_prompt()?,
                     Event::Help => self.toggle_help()?,
+                    Event::Click(col, row) => self.click(col, row)?,
                     Event::Detach => self.detach()?,
                     Event::Accent => self.next_accent(),
                     Event::Message(Message::SwitchFailed(error)) => {
@@ -996,6 +1006,18 @@ impl Host {
     fn detach(&mut self) -> Result<()> {
         self.runtime.detach(&mut self.mux, "");
         self.close_screens()
+    }
+
+    /// Switch the client to the workspace whose tab in the bar was clicked.
+    fn click(&mut self, col: u16, row: u16) -> Result<()> {
+        let size = self.mux.size();
+        let n = (row + 1 == size.ws_row)
+            .then(|| self.bar.borrow().tab_at(col, size.ws_col))
+            .flatten();
+        match n {
+            Some(n) => self.switch_to(n),
+            None => Ok(()),
+        }
     }
 
     /// Give the workspace the next accent color in `ACCENTS`, and keep it in

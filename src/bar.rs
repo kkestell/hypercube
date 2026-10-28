@@ -30,6 +30,8 @@ pub struct Entry {
     pub root: Option<PathBuf>,
     /// The checkout's directory name, or the state's name without one.
     pub name: String,
+    /// The workspace's accent color, numbered in `colors::ACCENTS`.
+    pub accent: usize,
 }
 
 /// What a key typed at the prompt asks the host to do.
@@ -113,9 +115,39 @@ impl Bar {
         }
     }
 
+    /// The width of each tab, ` 0 name `.
+    fn widths(&self) -> impl Iterator<Item = usize> {
+        (self.entries.iter().enumerate()).map(|(i, e)| text_width(&format!(" {i} {} ", e.name)))
+    }
+
+    /// How many tabs fit, whole, in `cols`.
+    fn fit(&self, cols: u16) -> usize {
+        let mut used = 0;
+        self.widths()
+            .take_while(|w| {
+                used += w;
+                used <= usize::from(cols)
+            })
+            .count()
+    }
+
+    /// The number of the workspace whose tab is at column `col` of a bar
+    /// `cols` wide, while the bar lists the workspaces.
+    pub fn tab_at(&self, col: u16, cols: u16) -> Option<usize> {
+        if self.prompt.is_some() || !self.error.is_empty() {
+            return None;
+        }
+        let mut end = 0;
+        self.widths().take(self.fit(cols)).position(|w| {
+            end += w;
+            usize::from(col) < end
+        })
+    }
+
     /// Draw the bar across the last row in the bar colors: the prompt while
-    /// it is open, or each workspace that fits after its number, with the
-    /// host's own marked `*` and bold.
+    /// it is open, or each workspace that fits after its number, on its own
+    /// accent's tab colors with the number dimmer, with the host's own
+    /// bold.
     pub fn draw(&self, s: &mut String, size: Winsize, palette: Palette) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
@@ -145,22 +177,29 @@ impl Bar {
             s.push_str(&fit(&format!(" {}", self.error), cols));
             return;
         }
-        let mut used = 0;
-        for (i, e) in self.entries.iter().enumerate() {
+        for (i, e) in self.entries.iter().take(self.fit(cols)).enumerate() {
             let current = e.path == self.current;
-            let gap = if i == 0 { " " } else { "  " };
-            let mark = if current { "*" } else { "" };
-            let text = format!("{i} {mark}{}", e.name);
-            used += text_width(gap) + text_width(&text);
-            if used > usize::from(cols) {
-                break;
-            }
-            if current {
-                s.push_str(&format!("{gap}\x1b[1m{text}\x1b[22m"));
+            // The host's own palette has its accent before the list does.
+            let tab = if current {
+                palette
             } else {
-                s.push_str(&format!("{gap}{text}"));
-            }
+                Palette::of(e.accent)
+            };
+            let bold = if current { "\x1b[1m" } else { "" };
+            let (number, text) = (tab.number, tab.tab.fg);
+            s.push_str(&format!(
+                "{}{bold} \x1b[38;2;{};{};{}m{i}\x1b[38;2;{};{};{}m {} ",
+                tab.tab.sgr(),
+                number.0,
+                number.1,
+                number.2,
+                text.0,
+                text.1,
+                text.2,
+                e.name,
+            ));
         }
+        s.push_str(&palette.bar.sgr());
     }
 }
 
@@ -191,18 +230,28 @@ pub fn running() -> Result<Vec<Entry>> {
         let Ok(started) = file.metadata().and_then(|m| m.modified()) else {
             continue;
         };
-        let root = store::load(&path).ok().and_then(|state| {
+        let state = store::load(&path).ok();
+        let root = state.as_ref().and_then(|state| {
             let o = state
                 .agents
                 .iter()
                 .find(|a| a.role == store::ORCHESTRATOR)?;
             Some(PathBuf::from(&o.dir))
         });
+        let accent = state.map_or(0, |state| state.accent as usize);
         let name = root
             .as_ref()
             .and_then(|r| r.file_name())
             .map_or_else(|| workspace.to_string(), |n| n.to_string_lossy().into());
-        listed.push((started, Entry { path, root, name }));
+        listed.push((
+            started,
+            Entry {
+                path,
+                root,
+                name,
+                accent,
+            },
+        ));
     }
     listed.sort_by(|(a, x), (b, y)| a.cmp(b).then_with(|| x.path.cmp(&y.path)));
     Ok(listed.into_iter().map(|(_, entry)| entry).collect())
@@ -211,7 +260,9 @@ pub fn running() -> Result<Vec<Entry>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::colors::Rgb;
     use libghostty_vt::Terminal;
+    use libghostty_vt::style::StyleColor;
     use libghostty_vt::terminal::{Point, PointCoordinate};
 
     fn entry(name: &str) -> Entry {
@@ -219,6 +270,7 @@ mod tests {
             path: PathBuf::from(format!("/state/{name}.json")),
             root: Some(PathBuf::from(format!("/src/{name}"))),
             name: name.into(),
+            accent: name.len(),
         }
     }
 
@@ -265,20 +317,66 @@ mod tests {
         t.grid_ref(point).unwrap().style().unwrap().bold
     }
 
+    fn bg(t: &Terminal, x: u16) -> Rgb {
+        let point = Point::Active(PointCoordinate { x, y: 1 });
+        match t.grid_ref(point).unwrap().style().unwrap().bg_color {
+            StyleColor::Rgb(c) => (c.r, c.g, c.b),
+            other => panic!("background {other:?}"),
+        }
+    }
+
     #[test]
     fn the_bar_numbers_the_workspaces_and_marks_the_current_one() {
         let t = screen(&bar(&["foo", "bar", "glarpy"], "bar"), 30);
-        assert_eq!(row(&t), " 0 foo  1 *bar  2 glarpy      ");
-        assert!(!bold(&t, 1) && !bold(&t, 7));
-        assert!((8..14).all(|x| bold(&t, x)));
-        assert!(!bold(&t, 14) && !bold(&t, 18));
+        assert_eq!(row(&t), " 0 foo  1 bar  2 glarpy       ");
+        assert!(!bold(&t, 1) && !bold(&t, 6));
+        assert!((7..14).all(|x| bold(&t, x)));
+        assert!(!bold(&t, 14) && !bold(&t, 15));
+    }
+
+    #[test]
+    fn each_workspace_shows_on_its_own_accent() {
+        let t = screen(&bar(&["foo", "glarpy"], "glarpy"), 24);
+        let (bar, current) = (Palette::default().bar.bg, Palette::default().tab.bg);
+        let point = |x| Point::Active(PointCoordinate { x, y: 1 });
+        let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
+            StyleColor::Rgb(c) => (c.r, c.g, c.b),
+            other => panic!("foreground {other:?}"),
+        };
+        assert_eq!(
+            [fg(1), fg(3)],
+            [Palette::of(3).number, Palette::of(3).tab.fg]
+        );
+        assert_eq!(
+            [fg(8), fg(10)],
+            [Palette::default().number, Palette::default().tab.fg]
+        );
+        assert!((0..7).all(|x| bg(&t, x) == Palette::of(3).tab.bg));
+        assert!((7..17).all(|x| bg(&t, x) == current));
+        assert!((17..24).all(|x| bg(&t, x) == bar));
+    }
+
+    #[test]
+    fn a_click_finds_the_tab_under_it() {
+        let mut b = bar(&["foo", "bar", "glarpy"], "foo");
+        let at = |b: &Bar, cols: &[u16]| cols.iter().map(|&c| b.tab_at(c, 23)).collect::<Vec<_>>();
+        assert_eq!(
+            at(&b, &[0, 6, 7, 13, 14, 22]),
+            [Some(0), Some(0), Some(1), Some(1), None, None]
+        );
+        assert_eq!(b.tab_at(23, 24), Some(2));
+        b.prompt = Some(String::new());
+        assert_eq!(at(&b, &[0]), [None]);
+        b.prompt = None;
+        b.fail("no".into());
+        assert_eq!(at(&b, &[0]), [None]);
     }
 
     #[test]
     fn only_the_workspaces_that_fit_are_shown() {
         let b = bar(&["foo", "bar", "glarpy"], "foo");
-        assert_eq!(row(&screen(&b, 24)), " 0 *foo  1 bar  2 glarpy");
-        assert_eq!(row(&screen(&b, 23)), " 0 *foo  1 bar         ");
+        assert_eq!(row(&screen(&b, 24)), " 0 foo  1 bar  2 glarpy ");
+        assert_eq!(row(&screen(&b, 23)), " 0 foo  1 bar          ");
         assert_eq!(row(&screen(&b, 6)), "      ");
     }
 
@@ -297,7 +395,7 @@ mod tests {
         assert_eq!(row(&screen(&b, 20)), " workspace path: éy ");
         assert_eq!(b.key(b"\r"), Typed::Enter("~/éy".into()));
         assert_eq!(b.prompt, None);
-        assert_eq!(row(&screen(&b, 20)), " 0 *foo             ");
+        assert_eq!(row(&screen(&b, 20)), " 0 foo              ");
 
         b.prompt = Some("x".into());
         assert_eq!(b.key(b"\x1b"), Typed::Cancel);
@@ -312,7 +410,7 @@ mod tests {
         assert!(!b.update(b.entries.clone()));
         b.error_at -= ERROR_MS;
         assert!(b.update(b.entries.clone()));
-        assert_eq!(row(&screen(&b, 20)), " 0 *foo             ");
+        assert_eq!(row(&screen(&b, 20)), " 0 foo              ");
         assert!(b.update(vec![entry("foo"), entry("bar")]));
     }
 }
