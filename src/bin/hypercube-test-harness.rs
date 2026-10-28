@@ -134,18 +134,19 @@ impl Stub {
             input[key] = value.clone();
         }
         let input = input.to_string();
-        let mut command = match self.hooks.get(event) {
-            Some(command) => {
-                let mut c = Command::new("sh");
-                c.args(["-c", command]);
-                c
-            }
+        let mut command = if self.harness == "pi" {
             // Pi's extension runs `hypercube hook` from the executable it embeds.
-            None => {
-                let mut c = Command::new(hypercube());
-                c.args(["hook", event]);
-                c
-            }
+            let mut c = Command::new(hypercube());
+            c.args(["hook", event]);
+            c
+        } else {
+            let command = self
+                .hooks
+                .get(event)
+                .unwrap_or_else(|| panic!("--settings has no {event} hook"));
+            let mut c = Command::new("sh");
+            c.args(["-c", command]);
+            c
         };
         let mut child = command
             .stdin(Stdio::piped())

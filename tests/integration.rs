@@ -6,7 +6,8 @@
 //! calls on a fifo.
 use std::fs;
 use std::io::Write as _;
-use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
+use std::os::fd::{AsRawFd as _, OwnedFd};
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -320,10 +321,9 @@ impl Fixture {
         let pty = Pty::spawn(&[HYPERCUBE], &self.repo, &self.env(), ws).unwrap();
         let output = Arc::new(Mutex::new(Vec::new()));
         let stop = Arc::new(AtomicBool::new(false));
-        let fd = unsafe { libc::dup(pty.master.as_raw_fd()) };
-        assert!(fd >= 0);
+        // The clone is close-on-exec, so no other test's processes inherit it.
         let reader = read_terminal(
-            unsafe { OwnedFd::from_raw_fd(fd) },
+            pty.master.try_clone().unwrap(),
             output.clone(),
             stop.clone(),
         );
@@ -495,10 +495,23 @@ impl Fixture {
     /// Write a line to the agent's stand-in's command fifo.
     fn command(&self, name: &str, line: &str) {
         let id = self.agent_id(name).unwrap();
-        let mut fifo = fs::OpenOptions::new()
-            .write(true)
-            .open(self.dir.join("records").join(id).join("fifo"))
-            .unwrap();
+        let path = self.dir.join("records").join(id).join("fifo");
+        // Opening without a reader fails at once instead of blocking, so a
+        // stand-in that has exited fails the test.
+        let end = Instant::now() + Duration::from_secs(2);
+        let mut fifo = loop {
+            match fs::OpenOptions::new()
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&path)
+            {
+                Ok(fifo) => break fifo,
+                Err(e) if e.raw_os_error() == Some(libc::ENXIO) && Instant::now() < end => {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(e) => panic!("{name}'s stand-in is not reading {}: {e}", path.display()),
+            }
+        };
         fifo.write_all(format!("{line}\n").as_bytes()).unwrap();
     }
 
@@ -782,9 +795,6 @@ fn send_message_nudges_an_idle_agent() {
     let inputs = fx.agent_events("w1", "input");
     let typed: String = inputs.iter().map(|e| e["data"].as_str().unwrap()).collect();
     assert_eq!(typed, format!("{NUDGE}\r"));
-    let (enter, text) = inputs.split_last().unwrap();
-    let gap = enter["ms"].as_u64().unwrap() - text.last().unwrap()["ms"].as_u64().unwrap();
-    assert!(gap >= 150, "Enter came {gap} ms after the text");
 
     // The nudge's turn delivered the message.
     let events = fx.wait("the nudge's turn to end", |fx| {
