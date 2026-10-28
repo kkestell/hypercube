@@ -195,11 +195,12 @@ socket then fails with "no room for another pane", and
 a terminal resized below that hides the panes until it grows.
 
 `host::zoom_layout` gives one pane the whole area, keeping its label row,
-and hides the others. A hidden pane has an empty rectangle: it is not drawn, takes no mouse input (a press it had captured ends
-there), and keeps its size, so its program sees no resize. The host zooms the
-focused pane on Ctrl-b z. It restores the normal layout when
-the key is pressed again, when the focus changes, and when a pane is added or
-removed. The host resizing keeps the zoom.
+and hides the others. A hidden pane has an empty rectangle: it is not drawn,
+takes no mouse input (a press it had captured ends there), and keeps its
+size, so its program sees no resize. The host zooms the focused pane on
+Ctrl-b z. It restores the normal layout when the key is pressed again, when
+the focus changes, and when a pane is added or removed. The host resizing
+keeps the zoom.
 
 `TeamChrome` draws in the workspace's palette, which `colors::Palette`
 shades from one accent color: the accent itself for the divider and the
@@ -242,11 +243,13 @@ bold. A red `●` follows the name while an agent of the
 workspace waits for a tool approval, until the approval is answered (see
 [harness support](harness-support.md)). It shows as many as fit, whole. A click
 on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
-the leading space or separators do nothing. The host reads the list and the
-current agents' attention flags on each attach and every second while a client
-is attached, redrawing when either changes. Ctrl-b and a digit switch the
-client to the workspace with that number, as the overlay's Enter does; on the host's own
-workspace they close the overlay if it is open. A failed switch shows its
+the leading space or separators do nothing. The host reads the list, the
+current agents' attention flags, and the orchestrator's branch on each attach
+and every second while a client is attached, redrawing when any changes.
+It reads the checkout's `HEAD` file rather than spawning Git; a detached
+HEAD drops the branch detail in favor of the directory. Ctrl-b and a digit
+switch the client to the workspace with that number, as the overlay's Enter
+does; on the host's own workspace they close the overlay if it is open. A failed switch shows its
 error in the bar for five seconds, or in the overlay while it is open.
 
 Ctrl-b c closes the overlay if it is open and turns the bar into a prompt,

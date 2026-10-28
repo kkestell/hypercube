@@ -951,6 +951,23 @@ fn a_woken_agent_keeps_the_prompt_being_typed() {
 }
 
 #[test]
+fn the_orchestrator_title_tracks_checkout_branch_changes() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_screen("⎇ main");
+    fx.git(&fx.repo, &["checkout", "-b", "feature/title"]);
+    fx.wait_screen("⎇ feature/title");
+    fx.wait_no_screen("⎇ main");
+    fx.wait_screen("⎇ w1");
+    fx.git(&fx.repo, &["checkout", "--detach"]);
+    fx.wait_no_screen("⎇ feature/title");
+    fx.wait_screen("⎇ w1");
+    fx.git(&fx.repo, &["checkout", "main"]);
+    fx.wait_screen("⎇ main");
+}
+
+#[test]
 fn title_attention_refreshes_even_when_the_workspace_dot_does_not_change() {
     let mut fx = Fixture::new();
     fx.start();

@@ -440,6 +440,26 @@ fn detail(agent: &Agent) -> String {
     }
 }
 
+/// Read the checkout's branch without spawning Git. Linked worktrees point
+/// to their Git directory through a `gitdir:` file. Detached HEADs have no
+/// branch, so their title falls back to the directory.
+fn current_branch(root: &Path) -> Option<String> {
+    let git = root.join(".git");
+    let git = if git.is_file() {
+        let contents = fs::read_to_string(&git).ok()?;
+        root.join(contents.trim().strip_prefix("gitdir: ")?)
+    } else {
+        git
+    };
+    let head = fs::read_to_string(git.join("HEAD")).ok()?;
+    Some(
+        head.trim()
+            .strip_prefix("ref: refs/heads/")
+            .unwrap_or_default()
+            .to_string(),
+    )
+}
+
 /// The longest start of `text` made of whole grapheme clusters that fits in
 /// `width` columns.
 pub(crate) fn fit(text: &str, width: u16) -> String {
@@ -973,7 +993,8 @@ impl Host {
         self.mux.invalidate_chrome();
     }
 
-    /// Read the bar's list and pane attention flags, redrawing on either change.
+    /// Refresh the bar, attention flags, and orchestrator branch title,
+    /// redrawing when any changes.
     fn read_bar(&mut self) {
         let mut bar = self.bar.borrow_mut();
         let mut changed = match bar::running() {
@@ -997,6 +1018,18 @@ impl Host {
                 .collect();
             changed |= *self.attention.borrow() != attention;
             *self.attention.borrow_mut() = attention;
+        }
+        if let Some(slot) = self.panes.first()
+            && let Some(branch) = current_branch(&self.root)
+            && let Some(pane) = self.mux.pane_mut(slot.pane)
+        {
+            let detail = if branch.is_empty() {
+                workspace::short(&self.root)
+            } else {
+                format!("⎇ {branch}")
+            };
+            changed |= pane.detail != detail;
+            pane.detail = detail;
         }
         if changed {
             self.mux.invalidate_chrome();
@@ -1805,6 +1838,29 @@ mod tests {
         assert_eq!(detail(&a), "⎇ hypercube/main");
         a.branch.clear();
         assert_eq!(detail(&a), "/r");
+    }
+
+    #[test]
+    fn current_branch_reads_normal_and_linked_worktree_heads() {
+        let dir = TempDir::new();
+        let root = dir.path();
+        let git = root.join(".git");
+        fs::create_dir(&git).unwrap();
+        fs::write(git.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        assert_eq!(current_branch(root).as_deref(), Some("main"));
+        fs::write(git.join("HEAD"), "ref: refs/heads/feature/title\n").unwrap();
+        assert_eq!(current_branch(root).as_deref(), Some("feature/title"));
+        fs::write(git.join("HEAD"), "0123456789abcdef\n").unwrap();
+        assert_eq!(current_branch(root).as_deref(), Some(""));
+
+        let linked = root.join("linked");
+        fs::create_dir(&linked).unwrap();
+        for path in [git.display().to_string(), "../.git".into()] {
+            fs::write(linked.join(".git"), format!("gitdir: {path}\n")).unwrap();
+            fs::write(git.join("HEAD"), "ref: refs/heads/linked\n").unwrap();
+            assert_eq!(current_branch(&linked).as_deref(), Some("linked"));
+        }
+        assert_eq!(current_branch(&root.join("missing")), None);
     }
 
     #[test]
