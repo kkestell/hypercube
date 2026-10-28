@@ -195,13 +195,16 @@ impl Host {
     }
     /// Start the test child with `args` in a new pane.
     fn spawn(&mut self, label: &str, args: &[&str]) -> PaneId {
-        let id = self.mux.add_pane(label).unwrap();
-        self.layout();
         let mut argv = vec![CHILD];
         argv.extend_from_slice(args);
+        self.spawn_argv(label, &argv)
+    }
+    fn spawn_argv(&mut self, label: &str, argv: &[&str]) -> PaneId {
+        let id = self.mux.add_pane(label).unwrap();
+        self.layout();
         let env: &[(&str, &str)] = &[];
         let ws = self.mux.pane(id).unwrap().ws();
-        let pty = Pty::spawn(&argv, &std::env::temp_dir(), env, ws).unwrap();
+        let pty = Pty::spawn(argv, &std::env::temp_dir(), env, ws).unwrap();
         self.mux.attach(id, pty);
         id
     }
@@ -764,6 +767,27 @@ fn removed_pane_that_ignores_sighup_is_killed() {
     h.until(|_| unsafe { libc::kill(pid, 0) } != 0);
     assert!(now_ms() - removed >= mux::HANGUP_GRACE_MS);
     assert!(!h.mux.reaping());
+}
+
+#[test]
+fn removed_panes_process_group_is_killed_after_its_leader_exits() {
+    let mut h = Host::new(40, 10);
+    // The shell exits on SIGHUP; the sleep it started ignores it.
+    let script = "trap '' HUP; sleep 30 & trap - HUP; echo sleeper $!; wait";
+    let id = h.spawn_argv("shell", &["/bin/sh", "-c", script]);
+    h.wait_screen("sleeper ");
+    let line = h
+        .screen()
+        .lines()
+        .find(|l| l.starts_with("sleeper "))
+        .unwrap()
+        .to_owned();
+    let sleeper: libc::pid_t = line["sleeper ".len()..].trim().parse().unwrap();
+    let removed = now_ms();
+    h.remove(id);
+    h.until(|_| unsafe { libc::kill(sleeper, 0) } != 0);
+    assert!(now_ms() - removed >= mux::HANGUP_GRACE_MS);
+    h.until(|h| !h.mux.reaping());
 }
 
 #[test]

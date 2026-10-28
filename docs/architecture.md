@@ -27,8 +27,8 @@ child process.
   closes the master. The pane stays, and shows its exit status once reaped.
 - `Mux::remove_pane(id)` hangs up the program if it is still running, removes
   the pane, moves the focus to the next live pane, and redraws the screen. A
-  removed pane's program is still reaped, and gets SIGKILL on its process
-  group if it outlives `HANGUP_GRACE_MS` (two seconds).
+  removed pane's program is reaped after `HANGUP_GRACE_MS` (two seconds),
+  when whatever remains of its process group gets SIGKILL.
 - `Mux::send_text(id, text)` types text, and `Mux::send_key(id, key)` presses
   and releases a key. Ghostty's key encoder encodes each key from the pane's
   modes and Kitty keyboard flags, so a program that asks for every key as an

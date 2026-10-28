@@ -510,6 +510,16 @@ impl Pane {
     }
 }
 
+/// A removed pane's process group: SIGHUP was sent, and whatever is left
+/// after `HANGUP_GRACE_MS` gets SIGKILL.
+struct Orphan {
+    pgid: libc::pid_t,
+    /// The group's leader, the pane's program, unless it was reaped before
+    /// the pane was removed.
+    child: Option<Child>,
+    since: i64,
+}
+
 pub struct Mux {
     ws: Winsize,
     panes: Vec<Pane>,
@@ -519,9 +529,8 @@ pub struct Mux {
     chrome_dirty: bool,
     /// Whether the next frame clears the host screen and draws everything.
     clear: bool,
-    /// Programs of removed panes that haven't been reaped, with when they
-    /// were hung up.
-    orphans: Vec<(Child, i64)>,
+    /// Process groups of removed panes, until they are empty or killed.
+    orphans: Vec<Orphan>,
     host_replies: Vec<u8>,
     host_modes: [bool; MIRRORED_MODES.len()],
     host_kitty_flags: u8,
@@ -659,8 +668,16 @@ impl Mux {
         let mut pane = self.panes.remove(index);
         pane.signal(libc::SIGHUP);
         pane.close_master();
-        if let (Some(child), None) = (pane.child.take(), pane.status) {
-            self.orphans.push((child, now_ms()));
+        if let Some(child) = pane.child.take() {
+            // The program may have been reaped while others in its group,
+            // which it started, still run.
+            let pgid = child.id() as libc::pid_t;
+            unsafe { libc::killpg(pgid, libc::SIGHUP) };
+            self.orphans.push(Orphan {
+                pgid,
+                child: pane.status.is_none().then_some(child),
+                since: now_ms(),
+            });
         }
         if self.focus() == Some(id) {
             self.shared.focus.set(None);
@@ -673,11 +690,16 @@ impl Mux {
     /// of removed panes' programs. Never blocks.
     pub fn reap(&mut self) -> Vec<(PaneId, u8)> {
         let now = now_ms();
-        self.orphans.retain_mut(|(child, since)| {
-            if now - *since >= HANGUP_GRACE_MS {
-                unsafe { libc::killpg(child.id() as libc::pid_t, libc::SIGKILL) };
+        self.orphans.retain_mut(|o| {
+            if now - o.since < HANGUP_GRACE_MS {
+                // An unreaped leader keeps its group ID from being reused,
+                // so it is reaped only after the group is killed.
+                return o.child.is_some() || unsafe { libc::killpg(o.pgid, 0) } == 0;
             }
-            matches!(child.try_wait(), Ok(None))
+            unsafe { libc::killpg(o.pgid, libc::SIGKILL) };
+            o.child
+                .as_mut()
+                .is_some_and(|c| matches!(c.try_wait(), Ok(None)))
         });
         let mut exited = Vec::new();
         for p in &mut self.panes {
