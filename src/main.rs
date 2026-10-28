@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
+use hypercube::store::Agent;
 use hypercube::{control, hook, host, mcp, store, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -73,23 +74,8 @@ fn stop(dir: &str) -> Result<()> {
 /// worktrees have their directories left alone.
 fn delete(dir: &str) -> Result<()> {
     let (root, path) = workspace_at(dir)?;
-    let state = store::load(&path)?;
-    let workers: Vec<_> = state
-        .agents
-        .iter()
-        .filter(|a| a.role == store::WORKER && !a.branch.is_empty())
-        .collect();
-    let problems: Vec<String> = workers
-        .iter()
-        .filter_map(|a| {
-            let err = workspace::removable(&root, Path::new(&a.dir), &a.branch).err()?;
-            Some(format!("{}: {err}", a.name))
-        })
-        .collect();
-    if !problems.is_empty() {
-        return Err(format!("not deleting the workspace:\n  {}", problems.join("\n  ")).into());
-    }
-
+    // Refuse before stopping the session.
+    removable_workers(&root, &path)?;
     if host::running(&path)?.is_some() {
         host::stop(&path)?;
     }
@@ -102,8 +88,10 @@ fn delete(dir: &str) -> Result<()> {
         )
         .into());
     };
-    // A worker can change its worktree before the session ends. Such a worker
-    // stays in the state, so delete can run again after it is fixed.
+    // Workers may have come or changed while the session ran.
+    let workers = removable_workers(&root, &path)?;
+    // Each worker leaves the state once its worktree is gone, so after a
+    // failed removal delete can run again.
     for a in workers {
         workspace::remove_worktree(&root, Path::new(&a.dir), &a.branch)
             .map_err(|e| format!("{}: {e}", a.name))?;
@@ -122,6 +110,27 @@ fn delete(dir: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The workspace's workers with worktrees, or an error naming each one whose
+/// worktree is dirty or whose branch is not merged.
+fn removable_workers(root: &Path, path: &Path) -> Result<Vec<Agent>> {
+    let workers: Vec<Agent> = store::load(path)?
+        .agents
+        .into_iter()
+        .filter(|a| a.role == store::WORKER && !a.branch.is_empty())
+        .collect();
+    let problems: Vec<String> = workers
+        .iter()
+        .filter_map(|a| {
+            let err = workspace::removable(root, Path::new(&a.dir), &a.branch).err()?;
+            Some(format!("{}: {err}", a.name))
+        })
+        .collect();
+    if !problems.is_empty() {
+        return Err(format!("not deleting the workspace:\n  {}", problems.join("\n  ")).into());
+    }
+    Ok(workers)
 }
 
 /// Print every workspace with a state file: its directory, whether it is
