@@ -1699,3 +1699,74 @@ fn keys_typed_with_the_overlay_key_go_to_the_overlay() {
     assert!(fx.agent_events("orchestrator", "prompt").is_empty());
     assert!(host::running(&fx.state_path()).unwrap());
 }
+
+/// Wait up to five seconds for the client to exit, and return its code.
+fn exit_code(session: &mut Session) -> i32 {
+    let end = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(code) = session.exited() {
+            return code;
+        }
+        assert!(Instant::now() < end, "the client did not exit");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[test]
+fn a_signal_ends_an_attach_the_host_does_not_answer() {
+    let fx = Fixture::new();
+    let state = fx.state_path();
+    let _lock = host::try_lock(&host::lock_path(&state)).unwrap().unwrap();
+    let listener =
+        std::os::unix::net::UnixListener::bind(control::socket_path(&state).unwrap()).unwrap();
+    let (got, release) = (
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(AtomicBool::new(false)),
+    );
+    let (g, r) = (got.clone(), release.clone());
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        control::read_request(&stream).unwrap();
+        g.store(true, Ordering::Relaxed);
+        // The reply never comes.
+        while !r.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    });
+    let mut session = fx.client();
+    while !got.load(Ordering::Relaxed) {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(!canonical(&session));
+    unsafe { libc::kill(session.child.id() as i32, libc::SIGHUP) };
+    assert_eq!(exit_code(&mut session), 1);
+    assert!(canonical(&session));
+    release.store(true, Ordering::Relaxed);
+    server.join().unwrap();
+    session.end();
+}
+
+#[test]
+fn a_signal_ends_a_client_whose_terminal_takes_no_output() {
+    let mut fx = Fixture::new();
+    fx.start();
+    let host = fx.host_pid();
+    let session = fx.session();
+    // The terminal stops reading, and a large repaint fills it.
+    session.stop.store(true, Ordering::Relaxed);
+    session.reader.take().unwrap().join().unwrap();
+    let ws = Winsize {
+        ws_col: 500,
+        ws_row: 151,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    unsafe { libc::ioctl(session.master.as_raw_fd(), libc::TIOCSWINSZ, &ws) };
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(session.exited(), None);
+    unsafe { libc::kill(session.child.id() as i32, libc::SIGHUP) };
+    assert_eq!(exit_code(session), 0);
+    assert!(canonical(session));
+    fx.session.take().unwrap().end();
+    assert!(alive(host));
+}

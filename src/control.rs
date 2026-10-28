@@ -31,6 +31,8 @@ const MAX_LINE: u64 = 1 << 20;
 
 const HUNG_UP: &str = "the host closed the connection without a reply";
 
+const CANCELLED: &str = "attaching was cancelled";
+
 /// How long a client waits for the host's reply.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -191,8 +193,14 @@ fn connect(socket: &Path) -> Result<UnixStream> {
 /// Attach a terminal of `size`, whose replies to `mux::host_queries` are
 /// `replies`, to the host listening on `socket`. Returns the connection,
 /// which carries the attach stream from here on. An `Err` that
-/// `is_unreachable` means no host listens.
-pub fn attach(socket: &Path, size: Size, replies: &[u8]) -> Result<UnixStream> {
+/// `is_unreachable` means no host listens. A signal that interrupts the
+/// exchange ends it once `cancelled` says so.
+pub fn attach(
+    socket: &Path,
+    size: Size,
+    replies: &[u8],
+    cancelled: fn() -> bool,
+) -> Result<UnixStream> {
     let stream = connect(socket)?;
     stream.set_read_timeout(Some(REPLY_TIMEOUT))?;
     stream.set_write_timeout(Some(REPLY_TIMEOUT))?;
@@ -201,12 +209,27 @@ pub fn attach(socket: &Path, size: Size, replies: &[u8]) -> Result<UnixStream> {
         size,
         replies: String::from_utf8_lossy(replies).into_owned(),
     };
-    write_line(&stream, &request)?;
+    let mut line = serde_json::to_vec(&request)?;
+    line.push(b'\n');
+    let mut rest = line.as_slice();
+    while !rest.is_empty() {
+        if cancelled() {
+            return Err(CANCELLED.into());
+        }
+        match (&stream).write(rest) {
+            Ok(n) => rest = &rest[n..],
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
     // The attach stream follows the reply, so the reply is read a byte at a
     // time to leave the stream unread.
     let mut line = Vec::new();
     let mut byte = [0u8];
     while line.last() != Some(&b'\n') {
+        if cancelled() {
+            return Err(CANCELLED.into());
+        }
         match (&stream).read(&mut byte) {
             Ok(0) => return Err(HUNG_UP.into()),
             Ok(_) if line.len() as u64 >= MAX_LINE => {

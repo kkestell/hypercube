@@ -118,7 +118,10 @@ taking output stops the client from reading the socket. On `Detached(reason)`,
 the end of the terminal's input, or the end of the stream, it restores the
 terminal, prints the reason if there is one, and exits with status 0.
 SIGHUP, SIGINT, and SIGTERM end it the same way, including while it queries
-the terminal or waits for a host, and the host drops its attachment.
+the terminal, waits for a host's reply, or is blocked writing to a terminal
+or host that takes nothing, and the host drops its attachment. After a
+signal, the client restores the terminal without waiting for its output to
+drain.
 
 On `Switch(dir)`, the client attaches to the host of the workspace whose
 checkout is `dir`, starting it if needed. On success it drops the old

@@ -6,7 +6,7 @@
 
 use std::error::Error;
 use std::fs::{self, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{ErrorKind, Read};
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::time::{Duration, Instant};
 
 use crate::link::{Decoder, Message, Size, encode};
-use crate::mux::{self, Winsize, now_ms, read, write_all};
+use crate::mux::{self, Winsize, now_ms, read};
 use crate::runtime::{poll, pollfd};
 use crate::{control, host, store, winch, workspace};
 
@@ -67,7 +67,7 @@ impl Tty {
             if hung_up() {
                 return Err("the terminal hung up".into());
             }
-            match control::attach(&socket, self.size(), &self.replies) {
+            match control::attach(&socket, self.size(), &self.replies, hung_up) {
                 Ok(stream) => return Ok(stream),
                 Err(e) if control::is_unreachable(&*e) => {}
                 Err(e) => return Err(e),
@@ -168,7 +168,12 @@ pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
         decoder.push(&buf[..n]);
         while let Some(message) = decoder.take()? {
             match message {
-                Message::Output(data) => write_all(tty.output, &data),
+                Message::Output(data) => {
+                    let written = write_fd(tty.output, &data);
+                    if written.is_err() {
+                        return Ok(String::new());
+                    }
+                }
                 Message::Detached(reason) => return Ok(reason),
                 Message::Switch(dir) => match tty.connect(&dir) {
                     Ok(next) => {
@@ -176,7 +181,9 @@ pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
                         stream = next;
                         decoder = Decoder::default();
                         let clusters = mux::host_clusters(&tty.replies);
-                        write_all(tty.output, &mux::host_reset(Some(clusters)));
+                        if write_fd(tty.output, &mux::host_reset(Some(clusters))).is_err() {
+                            return Ok(String::new());
+                        }
                         break;
                     }
                     Err(e) => {
@@ -239,8 +246,29 @@ fn gone() -> String {
 }
 
 fn send(stream: &UnixStream, message: &Message) -> std::io::Result<()> {
-    let mut stream = stream;
-    stream.write_all(&encode(message)?)
+    write_fd(stream.as_raw_fd(), &encode(message)?)
+}
+
+/// Write all of `data` to a blocking descriptor, the terminal or the host's
+/// socket, unless the client is told to end: a signal that interrupts a
+/// blocked write ends it, and no write starts after one.
+fn write_fd(fd: RawFd, data: &[u8]) -> std::io::Result<()> {
+    let mut rest = data;
+    while !rest.is_empty() {
+        if hung_up() {
+            return Err(ErrorKind::Interrupted.into());
+        }
+        let n = unsafe { libc::write(fd, rest.as_ptr().cast(), rest.len()) };
+        if n < 0 {
+            let err = std::io::Error::last_os_error();
+            if err.kind() == ErrorKind::Interrupted {
+                continue;
+            }
+            return Err(err);
+        }
+        rest = &rest[n as usize..];
+    }
+    Ok(())
 }
 
 /// Run `hypercube host <root>` in its own session, with no input and its
@@ -311,24 +339,40 @@ impl Raw {
             termios,
             replies: Vec::new(),
         };
-        write_all(output, b"\x1b[?1049h\x1b[2J");
+        write_fd(output, b"\x1b[?1049h\x1b[2J")?;
         raw.replies = query(input, output)?;
         Ok(raw)
     }
 }
 
 impl Drop for Raw {
+    /// Undo the modes the client set and restore the settings. After a
+    /// signal, the terminal may not be taking output, so the modes go in one
+    /// write that doesn't wait, and the settings without waiting for output
+    /// to drain.
     fn drop(&mut self) {
         let clusters = mux::host_clusters(&self.replies);
-        write_all(self.output, &mux::host_restore(Some(clusters)));
-        unsafe { libc::tcsetattr(self.input, libc::TCSAFLUSH, &self.termios) };
+        let restore = mux::host_restore(Some(clusters));
+        if write_fd(self.output, &restore).is_err() || hung_up() {
+            unsafe {
+                let flags = libc::fcntl(self.output, libc::F_GETFL);
+                libc::fcntl(self.output, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                libc::write(self.output, restore.as_ptr().cast(), restore.len());
+                libc::fcntl(self.output, libc::F_SETFL, flags);
+                libc::tcsetattr(self.input, libc::TCSANOW, &self.termios);
+            }
+            return;
+        }
+        if unsafe { libc::tcsetattr(self.input, libc::TCSAFLUSH, &self.termios) } != 0 {
+            unsafe { libc::tcsetattr(self.input, libc::TCSANOW, &self.termios) };
+        }
     }
 }
 
 /// Ask the terminal for its colors and grapheme clustering mode, and return
 /// its replies; see `mux::use_host_replies_for`.
 fn query(input: RawFd, output: RawFd) -> Result<Vec<u8>> {
-    write_all(output, &mux::host_queries());
+    write_fd(output, &mux::host_queries())?;
     let mut buf = vec![0u8; 4096];
     let mut len = 0;
     let deadline = now_ms() + HOST_REPLY_TIMEOUT_MS;
