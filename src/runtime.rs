@@ -7,7 +7,7 @@
 use std::error::Error;
 use std::os::fd::RawFd;
 
-use crate::mux::{self, Mux, PaneId, Winsize, now_ms, read, write_all};
+use crate::mux::{self, Mux, Pane, PaneId, Winsize, now_ms, read, write_all};
 use crate::winch;
 
 /// The shortest time between frames.
@@ -37,6 +37,8 @@ pub struct Runtime {
     output: RawFd,
     /// The host terminal's settings before raw mode, until restored.
     termios: Option<libc::termios>,
+    /// Whether the host clusters graphemes by default, once it has said.
+    clusters: Option<bool>,
     winch: RawFd,
     input_open: bool,
     last_render: i64,
@@ -47,21 +49,24 @@ impl Runtime {
     /// Take over the host terminal whose input and output are `input` and
     /// `output`, and size `mux` to it.
     pub fn new(mux: &mut Mux, input: RawFd, output: RawFd) -> Result<Runtime, Box<dyn Error>> {
+        let winch = winch::install()?;
         let mut termios = std::mem::MaybeUninit::<libc::termios>::uninit();
         if unsafe { libc::tcgetattr(input, termios.as_mut_ptr()) } != 0 {
             return Err(format!("host terminal: {}", std::io::Error::last_os_error()).into());
         }
         let termios = unsafe { termios.assume_init() };
         let mut raw = termios;
-        unsafe {
-            libc::cfmakeraw(&mut raw);
-            libc::tcsetattr(input, libc::TCSAFLUSH, &raw);
+        unsafe { libc::cfmakeraw(&mut raw) };
+        if unsafe { libc::tcsetattr(input, libc::TCSAFLUSH, &raw) } != 0 {
+            return Err(format!("host terminal: {}", std::io::Error::last_os_error()).into());
         }
+        // From here on, dropping the runtime restores the host terminal.
         let mut runtime = Runtime {
             input,
             output,
             termios: Some(termios),
-            winch: winch::install()?,
+            clusters: None,
+            winch,
             input_open: true,
             last_render: 0,
             buf: vec![0; 65536],
@@ -81,8 +86,13 @@ impl Runtime {
         let deadline = now_ms() + HOST_REPLY_TIMEOUT_MS;
         while len < buf.len() && !mux::host_replies_done(&buf[..len]) {
             let left = deadline - now_ms();
-            if left <= 0 || !poll(&mut [pollfd(self.input)], left)? {
+            if left <= 0 {
                 break;
+            }
+            // Not ready means interrupted or timed out; the deadline tells
+            // which.
+            if !poll(&mut [pollfd(self.input)], left)? {
+                continue;
             }
             let n = read(self.input, &mut buf[len..]);
             if n <= 0 {
@@ -91,6 +101,7 @@ impl Runtime {
             len += n as usize;
         }
         mux.use_host_replies(&buf[..len])?;
+        self.clusters = Some(mux::host_clusters(&buf[..len]));
         Ok(())
     }
 
@@ -118,8 +129,24 @@ impl Runtime {
     ) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut events = Vec::new();
         loop {
-            for (id, status) in mux.reap() {
-                events.push(Event::PaneExited(id, status));
+            let exited = mux.reap();
+            if !exited.is_empty() {
+                // Draw everything an exited program wrote before reporting
+                // the exit, in case the caller ends the session.
+                for &(id, status) in &exited {
+                    for _ in 0..16 {
+                        let Some(fd) = mux.pane(id).and_then(Pane::pty) else {
+                            break;
+                        };
+                        if !self.read_pane(mux, id, fd) {
+                            break;
+                        }
+                    }
+                    events.push(Event::PaneExited(id, status));
+                }
+                mux.render()?;
+                self.last_render = now_ms();
+                write_all(self.output, &mux.take_output());
             }
             let size = self.host_size();
             let old = mux.size();
@@ -164,18 +191,24 @@ impl Runtime {
                 .iter()
                 .filter_map(|p| Some((p.id(), p.pty()?)))
                 .collect();
-            fds.extend(panes.iter().map(|&(_, fd)| pollfd(fd)));
+            for &(id, fd) in &panes {
+                let mut f = pollfd(fd);
+                if mux.pane(id).is_some_and(Pane::input_pending) {
+                    f.events |= libc::POLLOUT;
+                }
+                fds.push(f);
+            }
             fds.extend(extra.iter().map(|&fd| pollfd(fd)));
             let timeout = wake.map_or(-1, |w| (w - now).max(0));
             if !poll(&mut fds, timeout)? {
                 continue;
             }
 
-            let mut fds = fds.iter().map(|f| (f.fd, f.revents != 0));
-            if fds.next().is_some_and(|(_, ready)| ready) {
+            let mut fds = fds.iter().map(|f| (f.fd, f.revents));
+            if fds.next().is_some_and(|(_, revents)| revents != 0) {
                 winch::take(self.winch);
             }
-            if self.input_open && fds.next().is_some_and(|(_, ready)| ready) {
+            if self.input_open && fds.next().is_some_and(|(_, revents)| revents != 0) {
                 let n = read(self.input, &mut self.buf);
                 if n > 0 {
                     mux.input(&self.buf[..n as usize]);
@@ -185,41 +218,56 @@ impl Runtime {
                 }
             }
             for &(id, fd) in &panes {
-                if !fds.next().is_some_and(|(_, ready)| ready) {
-                    continue;
+                let revents = fds.next().map_or(0, |(_, revents)| revents);
+                if revents & libc::POLLOUT != 0
+                    && let Some(p) = mux.pane(id)
+                {
+                    p.write_input();
                 }
-                let n = read(fd, &mut self.buf);
-                let Some(p) = mux.pane_mut(id) else { continue };
-                if n > 0 {
-                    p.feed(&self.buf[..n as usize]);
-                } else {
-                    p.close_master();
+                if revents & !libc::POLLOUT != 0 {
+                    self.read_pane(mux, id, fd);
                 }
             }
             events.extend(
-                fds.filter(|&(_, ready)| ready)
+                fds.filter(|&(_, revents)| revents != 0)
                     .map(|(fd, _)| Event::Ready(fd)),
             );
         }
     }
 
-    /// Return the host terminal to how the runtime found it.
-    pub fn restore(&mut self, mux: &mut Mux) {
-        mux.write_restore();
-        write_all(self.output, &mux.take_output());
+    /// Read once from a pane's non-blocking master, feeding the pane, or
+    /// closing the master at the end of the program's output. Returns
+    /// whether there was output.
+    fn read_pane(&mut self, mux: &mut Mux, id: PaneId, fd: RawFd) -> bool {
+        let n = read(fd, &mut self.buf);
+        let would_block =
+            n < 0 && std::io::Error::last_os_error().raw_os_error() == Some(libc::EAGAIN);
+        let Some(p) = mux.pane_mut(id) else {
+            return false;
+        };
+        if n > 0 {
+            p.feed(&self.buf[..n as usize]);
+            return true;
+        }
+        if !would_block {
+            p.close_master();
+        }
+        false
+    }
+
+    /// Return the host terminal to how the runtime found it, undoing the
+    /// modes the mux mirrored onto it. Dropping the runtime does this too.
+    pub fn restore(&mut self) {
         if let Some(termios) = self.termios.take() {
+            write_all(self.output, &mux::host_restore(self.clusters));
             unsafe { libc::tcsetattr(self.input, libc::TCSAFLUSH, &termios) };
         }
     }
 }
 
 impl Drop for Runtime {
-    /// Leave the alternate screen and raw mode if `restore` wasn't called.
     fn drop(&mut self) {
-        if let Some(termios) = self.termios.take() {
-            write_all(self.output, b"\x1b[0m\x1b[?25h\x1b[?1049l");
-            unsafe { libc::tcsetattr(self.input, libc::TCSAFLUSH, &termios) };
-        }
+        self.restore();
     }
 }
 

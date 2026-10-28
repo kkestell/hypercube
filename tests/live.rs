@@ -323,8 +323,21 @@ impl Host {
             .cursor_visual_style()
             .unwrap()
     }
+    /// Whether the host screen shows `text` once the reader has caught up
+    /// with what the runtime already sent, without running the loop.
+    fn sent(&mut self, text: &str) -> bool {
+        let deadline = now_ms() + 1000;
+        while now_ms() < deadline {
+            self.pump();
+            if self.screen().contains(text) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        false
+    }
     fn restore(&mut self) {
-        self.runtime.restore(&mut self.mux);
+        self.runtime.restore();
         // Let the reader catch up.
         std::thread::sleep(std::time::Duration::from_millis(100));
         self.pump();
@@ -332,7 +345,7 @@ impl Host {
 }
 impl Drop for Host {
     fn drop(&mut self) {
-        self.runtime.restore(&mut self.mux);
+        self.runtime.restore();
         for p in self.mux.panes() {
             p.signal(libc::SIGKILL);
         }
@@ -398,7 +411,8 @@ fn short_lived_output_is_drawn() {
     for _ in 0..10 {
         let id = h.spawn("child", &["exit", "0", "goodbye from the child"]);
         assert_eq!(h.wait_exit(id), 0);
-        h.wait_screen("goodbye from the child");
+        // The runtime had sent the output when it reported the exit.
+        assert!(h.sent("goodbye from the child"), "{}", h.screen());
         h.remove(id);
         h.until(|h| !h.screen().contains("goodbye"));
     }
@@ -693,7 +707,7 @@ fn removing_a_pane_redraws_its_area_and_moves_focus() {
 }
 
 #[test]
-fn send_key_encodes_enter_for_the_panes_keyboard_mode() {
+fn send_text_and_send_key_encode_for_the_panes_keyboard_mode() {
     let legacy = TempPath::new("legacy-keys");
     let kitty = TempPath::new("kitty-keys");
     let mut h = Host::new(81, 12);
@@ -712,12 +726,15 @@ fn send_key_encodes_enter_for_the_panes_keyboard_mode() {
             == 11
     });
     for id in [a, b] {
-        h.mux.send_text(id, "hi");
+        h.mux.send_text(id, "hI").unwrap();
         h.mux.send_key(id, Key::Enter).unwrap();
     }
-    h.until(|h| h.screen().matches("got 13").count() == 1 && h.screen().contains("got 117"));
-    h.until(|_| legacy.read() == b"hi\r" && kitty.read().ends_with(b"u"));
-    assert_eq!(kitty.read(), b"hi\x1b[13u\x1b[13;1:3u");
+    h.until(|_| legacy.read() == b"hI\r" && kitty.read().ends_with(b"\x1b[13;1:3u"));
+    // Report-all-keys mode gets every key as an escape code.
+    assert_eq!(
+        String::from_utf8(kitty.read()).unwrap(),
+        "\x1b[104u\x1b[104;1:3u\x1b[105;2u\x1b[105;2:3u\x1b[13u\x1b[13;1:3u"
+    );
 }
 
 #[test]
@@ -733,6 +750,33 @@ fn close_pane_hangs_up_its_program() {
     assert_eq!(h.wait_exit(trap), 3);
     h.wait_screen("plain (exited 129)");
     h.wait_screen("trap (exited 3)");
+}
+
+#[test]
+fn removed_pane_that_ignores_sighup_is_killed() {
+    let mut h = Host::new(40, 10);
+    let id = h.spawn("child", &["ignore-hup"]);
+    h.wait_screen("ignoring");
+    let pid = h.mux.pane(id).unwrap().pid().unwrap() as libc::pid_t;
+    let removed = now_ms();
+    h.remove(id);
+    // Reaping clears the zombie, so the pid disappears.
+    h.until(|_| unsafe { libc::kill(pid, 0) } != 0);
+    assert!(now_ms() - removed >= mux::HANGUP_GRACE_MS);
+    assert!(!h.mux.reaping());
+}
+
+#[test]
+fn input_a_program_does_not_read_does_not_block_the_loop() {
+    let mut h = Host::new(40, 10);
+    let id = h.spawn("child", &["ignore-hup"]);
+    h.wait_screen("ignoring");
+    h.mux.pane(id).unwrap().send(&vec![b'x'; 1 << 20]);
+    assert!(h.mux.pane(id).unwrap().input_pending());
+    let start = now_ms();
+    let events = h.runtime.wait(&mut h.mux, &[], Some(start + 100)).unwrap();
+    assert_eq!(events, [Event::Deadline]);
+    assert!(now_ms() - start < 1000);
 }
 
 #[test]

@@ -55,6 +55,10 @@ pub const MIRRORED_MODES: [(u16, bool); 19] = [
 /// How long a pane may hold drawing (mode 2026) without completing a frame.
 pub const HOLD_TIMEOUT_MS: i64 = 1000;
 
+/// How long a removed pane's program has to exit after SIGHUP before its
+/// process group gets SIGKILL.
+pub const HANGUP_GRACE_MS: i64 = 2000;
+
 /// Reports a VT220 with ANSI color.
 const DEVICE_ATTRIBUTES: DeviceAttributes = DeviceAttributes {
     primary: PrimaryDeviceAttributes::new(
@@ -138,6 +142,8 @@ struct Shared {
 /// Per-pane state shared with its terminal's effect callbacks.
 struct PaneState {
     pty: Cell<Option<RawFd>>,
+    /// Input the program hasn't taken yet.
+    input: RefCell<Vec<u8>>,
     ws: Cell<Winsize>,
     held: Cell<bool>,
     held_since: Cell<i64>,
@@ -145,8 +151,27 @@ struct PaneState {
 
 impl PaneState {
     fn send(&self, data: &[u8]) {
-        if let Some(pty) = self.pty.get() {
-            write_all(pty, data);
+        if self.pty.get().is_some() {
+            self.input.borrow_mut().extend_from_slice(data);
+            self.write_input();
+        }
+    }
+
+    /// Write as much queued input as the non-blocking master takes.
+    fn write_input(&self) {
+        let Some(pty) = self.pty.get() else { return };
+        let mut input = self.input.borrow_mut();
+        while !input.is_empty() {
+            let n = unsafe { libc::write(pty, input.as_ptr().cast(), input.len()) };
+            if n > 0 {
+                input.drain(..n as usize);
+                continue;
+            }
+            match std::io::Error::last_os_error().raw_os_error() {
+                Some(libc::EINTR) => continue,
+                Some(libc::EAGAIN) => return,
+                _ => return input.clear(),
+            }
         }
     }
 }
@@ -159,9 +184,10 @@ struct Frame {
     render_state: RenderState<'static>,
     rows: RowIterator<'static>,
     cells: CellIterator<'static>,
-    /// The rows that changed since the last draw, by viewport row.
-    pending: Vec<Option<RowBuf>>,
-    /// Whether `pending` holds a capture that hasn't been drawn.
+    /// Every row as of the last capture, by viewport row, and whether it
+    /// changed since it was last drawn.
+    rows_seen: Vec<(RowBuf, bool)>,
+    /// Whether a capture or repaint hasn't been drawn.
     captured: bool,
     /// The cursor as of the last capture.
     cursor: Cursor,
@@ -175,7 +201,7 @@ impl Frame {
             render_state: RenderState::new()?,
             rows: RowIterator::new()?,
             cells: CellIterator::new()?,
-            pending: Vec::new(),
+            rows_seen: Vec::new(),
             captured: false,
             cursor: Cursor {
                 viewport: None,
@@ -194,15 +220,15 @@ impl Frame {
         self.cursor = snapshot.cursor()?;
         let dirty = snapshot.dirty()?;
         let height = usize::from(snapshot.rows()?);
-        if self.pending.len() != height {
-            self.pending = (0..height).map(|_| None).collect();
+        if self.rows_seen.len() != height {
+            self.rows_seen = (0..height).map(|_| (RowBuf::default(), false)).collect();
         }
         let stale = std::mem::take(&mut self.stale_rows);
         if dirty != Dirty::Clean || !stale.is_empty() {
             let mut rows = self.rows.update(&snapshot)?;
             let mut y: u16 = 0;
             while let Some(r) = rows.next() {
-                let Some(slot) = self.pending.get_mut(usize::from(y)) else {
+                let Some(slot) = self.rows_seen.get_mut(usize::from(y)) else {
                     break;
                 };
                 if stale.contains(&y) {
@@ -214,7 +240,7 @@ impl Frame {
                         let style = grid.style()?;
                         row.push(raw, style, |buf| grid.graphemes(buf))?;
                     }
-                    *slot = Some(row);
+                    *slot = (row, true);
                 } else if dirty == Dirty::Full || r.dirty()? {
                     let mut row = RowBuf::default();
                     let mut cells = self.cells.update(r)?;
@@ -230,7 +256,7 @@ impl Frame {
                             Ok(len)
                         })?;
                     }
-                    *slot = Some(row);
+                    *slot = (row, true);
                 }
                 y += 1;
             }
@@ -240,17 +266,22 @@ impl Frame {
         Ok(())
     }
 
-    /// Draw the captured rows into `out` at `rect`.
+    /// Draw the changed rows into `out` within `rect`.
     fn draw(&mut self, out: &mut Vec<u8>, rect: Rect) {
-        for (y, slot) in self.pending.iter_mut().enumerate() {
-            if let Some(r) = slot.take()
-                && rect.cols > 0
-                && y < usize::from(rect.rows)
-            {
-                r.write(out, y as u16, rect.row, rect.col);
+        for (y, (row, changed)) in self.rows_seen.iter_mut().enumerate() {
+            if std::mem::take(changed) && y < usize::from(rect.rows) {
+                row.write(out, y as u16, rect);
             }
         }
         self.captured = false;
+    }
+
+    /// Draw every row of the last capture again in the next draw.
+    fn redraw(&mut self) {
+        for (_, changed) in &mut self.rows_seen {
+            *changed = true;
+        }
+        self.captured = true;
     }
 }
 
@@ -272,6 +303,7 @@ impl Pane {
     fn new(shared: &Rc<Shared>, id: PaneId, label: &str) -> Result<Pane> {
         let state = Rc::new(PaneState {
             pty: Cell::new(None),
+            input: RefCell::new(Vec::new()),
             ws: Cell::new(Winsize {
                 ws_col: 1,
                 ws_row: 1,
@@ -398,9 +430,19 @@ impl Pane {
         Ok(())
     }
 
-    /// Write `data` to the program's input.
+    /// Queue `data` for the program's input and write what the pty takes.
     pub fn send(&self, data: &[u8]) {
         self.state.send(data);
+    }
+
+    /// Whether input is queued for a pty that wasn't ready for it.
+    pub fn input_pending(&self) -> bool {
+        !self.state.input.borrow().is_empty()
+    }
+
+    /// Write queued input once the pty is ready for more.
+    pub fn write_input(&self) {
+        self.state.write_input();
     }
 
     /// Send `signal` to the program's process group, unless it has been
@@ -416,6 +458,7 @@ impl Pane {
     pub(crate) fn close_master(&mut self) {
         self.master = None;
         self.state.pty.set(None);
+        self.state.input.borrow_mut().clear();
         self.set_held(false);
     }
 
@@ -445,6 +488,8 @@ impl Pane {
         let cursor = self.terminal.default_cursor_color()?;
         self.terminal.set_default_cursor_color(cursor)?;
         self.dirty = true;
+        // A held pane draws the frame its program completed last.
+        self.frame.borrow_mut().redraw();
         Ok(())
     }
 
@@ -474,8 +519,9 @@ pub struct Mux {
     chrome_dirty: bool,
     /// Whether the next frame clears the host screen and draws everything.
     clear: bool,
-    /// Children of removed panes that haven't been reaped.
-    orphans: Vec<Child>,
+    /// Programs of removed panes that haven't been reaped, with when they
+    /// were hung up.
+    orphans: Vec<(Child, i64)>,
     host_replies: Vec<u8>,
     host_modes: [bool; MIRRORED_MODES.len()],
     host_kitty_flags: u8,
@@ -606,14 +652,15 @@ impl Mux {
     }
 
     /// Remove a pane, hanging up its program if it is still running, and
-    /// move the focus off it. The rest of the screen is drawn again.
+    /// move the focus off it. The rest of the screen is drawn again. A
+    /// program still running `HANGUP_GRACE_MS` later is killed.
     pub fn remove_pane(&mut self, id: PaneId) {
         let Some(index) = self.index(id) else { return };
         let mut pane = self.panes.remove(index);
         pane.signal(libc::SIGHUP);
         pane.close_master();
         if let (Some(child), None) = (pane.child.take(), pane.status) {
-            self.orphans.push(child);
+            self.orphans.push((child, now_ms()));
         }
         if self.focus() == Some(id) {
             self.shared.focus.set(None);
@@ -625,8 +672,13 @@ impl Mux {
     /// Collect the exit status of every pane program that has exited, and
     /// of removed panes' programs. Never blocks.
     pub fn reap(&mut self) -> Vec<(PaneId, u8)> {
-        self.orphans
-            .retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+        let now = now_ms();
+        self.orphans.retain_mut(|(child, since)| {
+            if now - *since >= HANGUP_GRACE_MS {
+                unsafe { libc::killpg(child.id() as libc::pid_t, libc::SIGKILL) };
+            }
+            matches!(child.try_wait(), Ok(None))
+        });
         let mut exited = Vec::new();
         for p in &mut self.panes {
             if !p.live() {
@@ -649,7 +701,8 @@ impl Mux {
         exited
     }
 
-    /// Whether a program has hung up or been closed without being reaped.
+    /// Whether a program has hung up or been closed without being reaped,
+    /// including removed panes' programs.
     pub fn reaping(&self) -> bool {
         !self.orphans.is_empty()
             || self
@@ -683,7 +736,14 @@ impl Mux {
                     / u32::from(host.ws_row.max(1))) as u16,
             };
             p.rect = rect;
-            p.state.ws.set(ws);
+            let old = p.state.ws.replace(ws);
+            // Resizing a terminal ends its hold, so a pane that only moves
+            // keeps its size and its hold.
+            if (old.ws_col, old.ws_row, old.ws_xpixel, old.ws_ypixel)
+                == (ws.ws_col, ws.ws_row, ws.ws_xpixel, ws.ws_ypixel)
+            {
+                continue;
+            }
             p.terminal.resize(
                 cols,
                 rows,
@@ -782,11 +842,35 @@ impl Mux {
         }
     }
 
-    /// Write text to a pane's program as if it were typed.
-    pub fn send_text(&self, id: PaneId, text: &str) {
-        if let Some(p) = self.pane(id) {
-            p.send(text.as_bytes());
+    /// Type text into a pane: each character is a key press and release,
+    /// encoded the way the pane's program asked for keys. Control characters
+    /// are written as they are.
+    pub fn send_text(&self, id: PaneId, text: &str) -> Result<()> {
+        let Some(p) = self.pane(id) else {
+            return Ok(());
+        };
+        let mut data = Vec::new();
+        let mut encoder = key_encoder(p)?;
+        let mut event = key::Event::new()?;
+        for c in text.chars() {
+            if c.is_control() {
+                data.extend_from_slice(c.encode_utf8(&mut [0; 4]).as_bytes());
+                continue;
+            }
+            let mut lower = c.to_lowercase();
+            let (unshifted, mods) = match (lower.next(), lower.next()) {
+                (Some(l), None) if l != c => (l, key::Mods::SHIFT),
+                _ => (c, key::Mods::empty()),
+            };
+            event
+                .set_key(Key::Unidentified)
+                .set_utf8(Some(c.to_string()))
+                .set_unshifted_codepoint(unshifted)
+                .set_mods(mods);
+            press_and_release(&mut encoder, &mut event, &mut data)?;
         }
+        p.send(&data);
+        Ok(())
     }
 
     /// Press and release a key in a pane, encoded the way the pane's
@@ -795,15 +879,11 @@ impl Mux {
         let Some(p) = self.pane(id) else {
             return Ok(());
         };
-        let mut encoder = key::Encoder::new()?;
-        encoder.set_options_from_terminal(&p.terminal);
+        let mut encoder = key_encoder(p)?;
         let mut event = key::Event::new()?;
         event.set_key(key);
         let mut data = Vec::new();
-        for action in [Action::Press, Action::Release] {
-            event.set_action(action);
-            encoder.encode_to_vec(&event, &mut data)?;
-        }
+        press_and_release(&mut encoder, &mut event, &mut data)?;
         p.send(&data);
         Ok(())
     }
@@ -984,21 +1064,46 @@ impl Mux {
         out.extend_from_slice(b"\x1b[?2026l");
         Ok(())
     }
+}
 
-    /// Write what turns the host terminal back to how the mux found it.
-    pub fn write_restore(&mut self) {
-        let mut out = self.shared.out.borrow_mut();
-        for (i, &(value, default)) in MIRRORED_MODES.iter().enumerate() {
-            let default = self.mode_default(value, default);
-            if self.host_modes[i] != default {
-                let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
-            }
-        }
-        if self.host_kitty_flags != 0 {
-            out.extend_from_slice(b"\x1b[=0;1u");
-        }
-        out.extend_from_slice(b"\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l");
+fn key_encoder(p: &Pane) -> Result<key::Encoder<'static>> {
+    let mut encoder = key::Encoder::new()?;
+    encoder.set_options_from_terminal(&p.terminal);
+    Ok(encoder)
+}
+
+fn press_and_release(
+    encoder: &mut key::Encoder,
+    event: &mut key::Event,
+    data: &mut Vec<u8>,
+) -> Result<()> {
+    for action in [Action::Press, Action::Release] {
+        event.set_action(action);
+        // encode_to_vec only grows an empty Vec enough for the sequence.
+        let mut sequence = Vec::new();
+        encoder.encode_to_vec(event, &mut sequence)?;
+        data.extend_from_slice(&sequence);
     }
+    Ok(())
+}
+
+/// What turns the host terminal back from anything the mux mirrored onto
+/// it: every mirrored mode at its default, no Kitty keyboard flags, the
+/// default cursor, and the main screen. `clusters` is whether the host
+/// clusters graphemes by default, if known.
+pub fn host_restore(clusters: Option<bool>) -> Vec<u8> {
+    let mut out = Vec::new();
+    for &(value, default) in &MIRRORED_MODES {
+        let default = if value == 2027 {
+            let Some(clusters) = clusters else { continue };
+            clusters
+        } else {
+            default
+        };
+        let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
+    }
+    out.extend_from_slice(b"\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l");
+    out
 }
 
 /// An exit status as a shell reports it: the code, or 128 plus the signal.
@@ -1121,7 +1226,10 @@ impl RowBuf {
         Ok(())
     }
 
-    fn write(&self, out: &mut Vec<u8>, y: u16, row: u16, col: u16) {
+    /// Write the row as row `y` of `rect`, leaving out cells that don't fit,
+    /// as when a held pane is drawn at a new size.
+    fn write(&self, out: &mut Vec<u8>, y: u16, rect: Rect) {
+        let (row, col) = (rect.row, rect.col);
         let _ = write!(out, "\x1b[{};{}H", y + row + 1, col + 1);
 
         let mut prev: Option<Style> = None;
@@ -1129,6 +1237,10 @@ impl RowBuf {
             let wide = raw.wide().unwrap_or(CellWide::Narrow);
             if wide == CellWide::SpacerTail {
                 continue;
+            }
+            let width = if wide == CellWide::Wide { 2 } else { 1 };
+            if x + width > usize::from(rect.cols) {
+                break;
             }
 
             let s = cell_style(raw, style);
@@ -1282,7 +1394,7 @@ pub fn host_replies_done(replies: &[u8]) -> bool {
 }
 
 /// Whether the host's replies say it clusters graphemes.
-fn host_clusters(replies: &[u8]) -> bool {
+pub fn host_clusters(replies: &[u8]) -> bool {
     const REPLY: &[u8] = b"\x1b[?2027;";
     find(replies, REPLY)
         .and_then(|i| replies.get(i + REPLY.len()))

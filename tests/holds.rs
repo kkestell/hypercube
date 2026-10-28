@@ -57,3 +57,18 @@ fn timed_out_hold_ends_so_the_next_one_holds() {
     assert!(m.pane(id).unwrap().held());
     assert!(!frame(&mut m).contains("partial"));
 }
+
+#[test]
+fn held_pane_draws_its_completed_frame_after_a_repaint() {
+    let ws = winsize(20, 4, 8);
+    let (mut m, id) = one_pane(ws);
+    m.pane_mut(id).unwrap().feed(b"complete");
+    frame(&mut m);
+    m.pane_mut(id).unwrap().feed(b"\x1b[?2026h\x1b[Hpartial");
+    assert!(m.pane(id).unwrap().held());
+    m.set_layout(&[(id, Rect::full(ws))]).unwrap();
+    let out = frame(&mut m);
+    assert!(out.contains("\x1b[2J"), "{out:?}");
+    assert!(out.contains("complete"), "{out:?}");
+    assert!(!out.contains("partial"), "{out:?}");
+}

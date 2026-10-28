@@ -2,7 +2,7 @@
 
 use std::ffi::OsStr;
 use std::io;
-use std::os::fd::{FromRawFd as _, OwnedFd};
+use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd};
 use std::os::unix::process::CommandExt as _;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
@@ -29,7 +29,8 @@ pub struct Pty {
 impl Pty {
     /// Start `argv` in `cwd` with `env` added to the environment, on a pty of
     /// `size`. `TERM` is `xterm-256color` and `COLORTERM` is `truecolor`. The
-    /// master is close-on-exec, so later children don't inherit it.
+    /// master is non-blocking and close-on-exec, so later children don't
+    /// inherit it.
     pub fn spawn(
         argv: &[impl AsRef<OsStr>],
         cwd: &Path,
@@ -63,6 +64,15 @@ impl Pty {
             let program = Path::new(program).display();
             io::Error::new(e.kind(), format!("{program}: {e}"))
         });
+        // The runtime reads and writes the master without blocking.
+        unsafe {
+            let fd = master.as_raw_fd();
+            libc::fcntl(
+                fd,
+                libc::F_SETFL,
+                libc::fcntl(fd, libc::F_GETFL) | libc::O_NONBLOCK,
+            );
+        }
         // The command holds the slave; the parent keeps only the master, so
         // reading it ends once the program's side closes.
         drop(command);

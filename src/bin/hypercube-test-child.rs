@@ -155,6 +155,15 @@ fn run(args: &[String]) -> u8 {
             }
             3
         }
+        Some("ignore-hup") => {
+            // Ignore SIGHUP and never read input.
+            raw_mode();
+            unsafe { libc::signal(libc::SIGHUP, libc::SIG_IGN) };
+            write("ignoring");
+            loop {
+                sleep(1000);
+            }
+        }
         Some("fds") => {
             raw_mode();
             for fd in &args[2..] {
