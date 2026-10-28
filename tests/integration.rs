@@ -1739,8 +1739,9 @@ fn a_signal_ends_an_attach_the_host_does_not_answer() {
     }
     assert!(!canonical(&session));
     unsafe { libc::kill(session.child.id() as i32, libc::SIGHUP) };
-    assert_eq!(exit_code(&mut session), 1);
+    assert_eq!(exit_code(&mut session), 0);
     assert!(canonical(&session));
+    assert!(!session.text().contains("cancelled"), "{}", session.text());
     release.store(true, Ordering::Relaxed);
     server.join().unwrap();
     session.end();

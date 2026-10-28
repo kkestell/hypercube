@@ -97,18 +97,23 @@ pub fn run(root: &Path) -> Result<()> {
     }
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let hangup = catch_hangup()?;
-    let raw = Raw::take(0, 1)?;
-    let tty = Tty {
-        input: 0,
-        output: 1,
-        winch: winch::install()?,
-        hangup,
-        replies: raw.replies.clone(),
-        exe,
-    };
-    let stream = tty.connect(root)?;
-    let reason = proxy(&tty, stream)?;
-    drop(raw);
+    let reason = Raw::take(0, 1).and_then(|raw| {
+        let tty = Tty {
+            input: 0,
+            output: 1,
+            winch: winch::install()?,
+            hangup,
+            replies: raw.replies.clone(),
+            exe,
+        };
+        tty.connect(root).and_then(|stream| proxy(&tty, stream))
+    });
+    // A signal ends the client quietly: the terminal may not take the
+    // message, and writing it could block.
+    if hung_up() {
+        return Ok(());
+    }
+    let reason = reason?;
     if !reason.is_empty() {
         eprintln!("hypercube: {reason}");
     }

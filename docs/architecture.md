@@ -121,7 +121,7 @@ SIGHUP, SIGINT, and SIGTERM end it the same way, including while it queries
 the terminal, waits for a host's reply, or is blocked writing to a terminal
 or host that takes nothing, and the host drops its attachment. After a
 signal, the client restores the terminal without waiting for its output to
-drain.
+drain, prints nothing, and exits with status 0.
 
 On `Switch(dir)`, the client attaches to the host of the workspace whose
 checkout is `dir`, starting it if needed. On success it drops the old
