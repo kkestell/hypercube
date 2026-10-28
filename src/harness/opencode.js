@@ -81,15 +81,25 @@ export default {
       event.result = { ...event.result, content: [...before, { type: "text", text }] }
     })
 
+    // The event stream fails when its consumer falls behind, so the loop
+    // asks only for the ends of turns, doesn't wait for the turn a blocked
+    // stop starts, and subscribes again a second after the stream ends. A
+    // loop that ended would leave the agent busy and never woken.
     const controller = new AbortController()
+    async function stopped(sessionID) {
+      const response = await hook("Stop", sessionID)
+      if (response.reason) ctx.session.prompt({ sessionID, text: response.reason }).catch(() => {})
+      else wait(sessionID)
+    }
     void (async () => {
-      for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
-        if (!ends.has(event.type)) continue
-        const { sessionID } = event.data
-        if (!started.has(sessionID)) continue
-        const response = await hook("Stop", sessionID)
-        if (response.reason) await ctx.session.prompt({ sessionID, text: response.reason })
-        else wait(sessionID)
+      while (!controller.signal.aborted) {
+        try {
+          for await (const event of ctx.event.subscribe({ types: [...ends], signal: controller.signal })) {
+            if (!ends.has(event.type) || !started.has(event.data.sessionID)) continue
+            await stopped(event.data.sessionID).catch(() => {})
+          }
+        } catch {}
+        await new Promise((resolve) => setTimeout(resolve, 1000))
       }
     })()
     return () => {

@@ -5,14 +5,13 @@
 
 use std::cell::{Cell, RefCell};
 use std::error::Error;
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, File, TryLockError};
 use std::io::{ErrorKind, Read, Write};
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
-use std::os::unix::fs::MetadataExt;
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::AtomicI32;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -22,12 +21,12 @@ use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
 use crate::help;
 use crate::link::{self, Link, Message};
-use crate::mux::{self, Chrome, Mux, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
+use crate::mux::{self, Chrome, Mux, Notice, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
 use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
-use crate::{config, workspace};
+use crate::{config, signals, workspace};
 use libghostty_vt::unicode;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -87,43 +86,8 @@ pub fn stop(state_path: &Path) -> Result<()> {
 }
 
 /// Take the host lock without waiting, or `None` if another host holds it.
-/// `delete` unlinks the lock file while holding the lock, so a lock obtained
-/// on a file that is no longer at the path is released and the current file
-/// locked instead.
 pub fn try_lock(path: &Path) -> Result<Option<File>> {
-    if let Some(dir) = path.parent() {
-        fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-    }
-    loop {
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(path)
-            .map_err(|e| format!("open {}: {e}", path.display()))?;
-        match file.try_lock() {
-            Ok(()) => {}
-            Err(TryLockError::WouldBlock) => return Ok(None),
-            Err(TryLockError::Error(e)) => {
-                return Err(format!("lock {}: {e}", path.display()).into());
-            }
-        }
-        if at_path(&file, path)? {
-            return Ok(Some(file));
-        }
-    }
-}
-
-/// Whether `file` is the file at `path`.
-fn at_path(file: &File, path: &Path) -> Result<bool> {
-    let held = file
-        .metadata()
-        .map_err(|e| format!("stat {}: {e}", path.display()))?;
-    match fs::metadata(path) {
-        Ok(current) => Ok((current.dev(), current.ino()) == (held.dev(), held.ino())),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
-        Err(e) => Err(format!("stat {}: {e}", path.display()).into()),
-    }
+    store::lock_file(path, false)
 }
 
 /// The area the panes share: below the header and above the bar.
@@ -186,18 +150,14 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
 /// every other pane is hidden at its current size.
 /// `None` if the pane would get no row or column.
 pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Vec<(PaneId, Rect)>> {
-    let area = pane_area(size);
-    let rect = Rect {
-        row: area.row + 1,
-        rows: area.rows.saturating_sub(1),
-        ..area
-    };
-    (rect.cols > 0 && rect.rows > 0).then(|| {
+    // The zoomed pane goes where it would go alone.
+    let rect = layout(size, &[zoomed])?[0].1;
+    Some(
         panes
             .iter()
             .map(|&id| (id, if id == zoomed { rect } else { Rect::default() }))
-            .collect()
-    })
+            .collect(),
+    )
 }
 
 /// The header, the divider between the panes, the labels
@@ -483,18 +443,8 @@ pub(crate) fn fit(text: &str, width: u16) -> String {
 static SIGNAL_PIPE: AtomicI32 = AtomicI32::new(-1);
 
 extern "C" fn on_signal(signal: libc::c_int) {
-    if signal == libc::SIGHUP {
-        return;
-    }
-    let fd = SIGNAL_PIPE.load(Ordering::Relaxed);
-    if fd < 0 {
-        return;
-    }
-    unsafe {
-        let saved = *libc::__error();
-        let byte = 1u8;
-        libc::write(fd, (&raw const byte).cast(), 1);
-        *libc::__error() = saved;
+    if signal != libc::SIGHUP {
+        signals::wake(&SIGNAL_PIPE);
     }
 }
 
@@ -502,43 +452,17 @@ extern "C" fn on_signal(signal: libc::c_int) {
 /// arrives. SIGHUP is caught and ignored. Programs started later run with the
 /// default handlers.
 fn catch_signals() -> Result<RawFd> {
-    let mut fds = [0; 2];
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
-        return Err(format!("pipe: {}", std::io::Error::last_os_error()).into());
-    }
-    for fd in fds {
-        unsafe {
-            libc::fcntl(
-                fd,
-                libc::F_SETFL,
-                libc::fcntl(fd, libc::F_GETFL) | libc::O_NONBLOCK,
-            );
-            libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC);
-        }
-    }
-    SIGNAL_PIPE.store(fds[1], Ordering::Relaxed);
-    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGTERM] {
-        unsafe {
-            let mut action: libc::sigaction = std::mem::zeroed();
-            action.sa_sigaction = on_signal as extern "C" fn(libc::c_int) as libc::sighandler_t;
-            libc::sigemptyset(&mut action.sa_mask);
-            libc::sigaction(signal, &action, std::ptr::null_mut());
-        }
-    }
-    Ok(fds[0])
+    signals::catch(
+        &[libc::SIGHUP, libc::SIGINT, libc::SIGTERM],
+        on_signal,
+        &SIGNAL_PIPE,
+    )
+    .map_err(|e| format!("pipe: {e}").into())
 }
 
-/// A pipe, read end first, close-on-exec, with a non-blocking read end.
-fn pipe() -> Result<(OwnedFd, OwnedFd)> {
-    let mut fds = [0; 2];
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
-        return Err(format!("pipe: {}", std::io::Error::last_os_error()).into());
-    }
-    for fd in fds {
-        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
-    }
-    unsafe { libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK) };
-    Ok(unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) })
+/// The reply to a request that succeeded or failed.
+fn reply(result: Result<()>) -> Reply {
+    result.map_or_else(Reply::error, |()| Reply::ok())
 }
 
 /// The control socket's listener. Dropping it removes the socket file.
@@ -699,7 +623,7 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         bar_read: 0,
         attention,
         palette,
-        stopped: pipe()?,
+        stopped: signals::pipe().map_err(|e| format!("pipe: {e}"))?,
         stop_results: mpsc::channel(),
     };
     let result = host.serve();
@@ -715,9 +639,7 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
 fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
     let config = config::load()?;
     let branch = workspace::branch(root);
-    let dir = root
-        .to_str()
-        .ok_or_else(|| format!("{} is not valid UTF-8", root.display()))?;
+    let dir = workspace::utf8(root)?;
     // A new workspace takes the accent the other running workspaces use
     // least.
     let taken: Vec<usize> = bar::running()
@@ -727,8 +649,10 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
         .map(|e| e.accent)
         .collect();
     store::update(state_path, |s| {
+        // A directory can become a checkout, so this is checked on every
+        // start.
+        s.no_git = branch.is_err();
         if s.agents.is_empty() {
-            s.no_git = branch.is_err();
             s.accent = colors::least_used(&taken) as u64;
             let o = &config.orchestrator;
             s.agents.push(Agent {
@@ -809,20 +733,30 @@ impl Host {
     /// `remove_agent` closes it.
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
         let pane = self.add_labeled_pane(agent)?;
-        self.show_failure(pane, agent, error);
+        self.show_failure(pane, agent, error)?;
         self.panes.push(Slot::new(&agent.id, pane));
         self.lay_out()
     }
 
     /// Show in a pane without a program that its agent's harness failed to
     /// start, as exited with status 127.
-    fn show_failure(&mut self, pane: PaneId, agent: &Agent, error: &str) {
+    fn show_failure(&mut self, pane: PaneId, agent: &Agent, error: &str) -> Result<()> {
         let error = error.replace(['\r', '\n'], " ");
         if let Some(p) = self.mux.pane_mut(pane) {
             p.label = format!("{} · failed: {error}", agent.name);
             p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
         }
         self.mux.mark_exited(pane, 127);
+        self.give_up(&agent.id)
+    }
+
+    /// Record that the host has given up on running agent `id`, so the team
+    /// can see that it will not answer until the session starts again.
+    fn give_up(&self, id: &str) -> Result<()> {
+        store::update(&self.state_path, |s| {
+            s.agent_mut(id)?.activity = store::EXITED.into();
+            Ok(())
+        })
     }
 
     /// Run the session until it is stopped or gets a signal.
@@ -856,9 +790,9 @@ impl Host {
                         }
                     }
                     Event::PaneExited(pane, _) => self.relaunch(pane)?,
-                    Event::Melted(pane) => self.finish_close(pane)?,
-                    Event::Zoom(pane) => self.toggle_zoom(pane)?,
-                    Event::Focus(pane) => {
+                    Event::Notice(Notice::Melted(pane)) => self.finish_close(pane)?,
+                    Event::Notice(Notice::Zoom(pane)) => self.toggle_zoom(pane)?,
+                    Event::Notice(Notice::Focus(pane)) => {
                         // A change of focus ends the zoom, unless the zoomed
                         // pane is melting and keeps its place until it goes.
                         if self.zoomed.get().is_some_and(|z| {
@@ -868,23 +802,23 @@ impl Host {
                         }
                     }
                     Event::Resized => self.lay_out()?,
-                    Event::Overlay => self.toggle_overlay()?,
-                    Event::Key(_) if self.help.get() => self.toggle_help()?,
-                    Event::Key(key) if self.bar.borrow().prompt.is_some() => {
+                    Event::Notice(Notice::Overlay) => self.toggle_overlay()?,
+                    Event::Notice(Notice::Key(_)) if self.help.get() => self.toggle_help()?,
+                    Event::Notice(Notice::Key(key)) if self.bar.borrow().prompt.is_some() => {
                         self.prompt_key(&key);
                     }
-                    Event::Key(key) => {
+                    Event::Notice(Notice::Key(key)) => {
                         if self.overlay_key(&key)? {
                             return Ok(());
                         }
                     }
-                    Event::Workspace(n) => self.switch_to(usize::from(n))?,
-                    Event::Step(n) => self.step(n)?,
-                    Event::NewWorkspace => self.open_prompt()?,
-                    Event::Help => self.toggle_help()?,
-                    Event::Click(col, row) => self.click(col, row)?,
-                    Event::Detach => self.detach()?,
-                    Event::Accent => self.next_accent(),
+                    Event::Notice(Notice::Workspace(n)) => self.switch_to(usize::from(n))?,
+                    Event::Notice(Notice::Step(n)) => self.step(n)?,
+                    Event::Notice(Notice::NewWorkspace) => self.open_prompt()?,
+                    Event::Notice(Notice::Help) => self.toggle_help()?,
+                    Event::Notice(Notice::Click(col, row)) => self.click(col, row)?,
+                    Event::Notice(Notice::Detach) => self.detach()?,
+                    Event::Notice(Notice::Accent) => self.next_accent(),
                     Event::Message(Message::SwitchFailed(error)) => {
                         match &mut *self.overlay.borrow_mut() {
                             Some(overlay) => overlay.error = error,
@@ -1234,7 +1168,10 @@ impl Host {
                     return Ok(false);
                 }
             }
-            Ok(request) => (self.handle(request), false),
+            Ok(Request::Launch { agent, prompt }) => {
+                (reply(self.launch(&agent, &prompt, false)), false)
+            }
+            Ok(Request::Close { agent }) => (reply(self.close(&agent)), false),
             Err(e) => (Reply::error(e), false),
         };
         // The reply fits in the socket's buffer; a client that went away
@@ -1263,15 +1200,6 @@ impl Host {
             Some(agents) => self.start(&agents),
             None => self.lay_out(),
         }
-    }
-
-    fn handle(&mut self, request: Request) -> Reply {
-        let result = match request {
-            Request::Launch { agent, prompt } => self.launch(&agent, &prompt, false),
-            Request::Close { agent } => self.close(&agent),
-            Request::Stop | Request::Attach { .. } => Ok(()),
-        };
-        result.map_or_else(Reply::error, |()| Reply::ok())
     }
 
     fn pane_of(&self, agent: &str) -> Option<PaneId> {
@@ -1343,8 +1271,9 @@ impl Host {
             0
         };
         if slot.quick_exits >= MAX_QUICK_EXITS {
+            let id = slot.agent.clone();
             self.mux.release_focus(pane);
-            return Ok(());
+            return self.give_up(&id);
         }
         slot.started = now;
         let id = slot.agent.clone();
@@ -1361,7 +1290,7 @@ impl Host {
             .and_then(|launch| spawn(&launch, ws));
         match started {
             Ok(pty) => self.mux.attach(pane, pty),
-            Err(e) => self.show_failure(pane, &agent, &e.to_string()),
+            Err(e) => self.show_failure(pane, &agent, &e.to_string())?,
         }
         Ok(())
     }
@@ -1908,23 +1837,6 @@ mod tests {
         }
         eventually(|| try_lock(&lock_path(&state)).unwrap().is_some());
         eventually(|| !running(&state).unwrap());
-    }
-
-    #[test]
-    fn a_lock_on_an_unlinked_file_is_not_the_host_lock() {
-        let dir = TempDir::new();
-        let path = dir.path().join("w.host.lock");
-        let lock = try_lock(&path).unwrap().unwrap();
-        assert!(at_path(&lock, &path).unwrap());
-        // A host that opened the file before delete unlinked it would lock
-        // the old file.
-        let old = File::open(&path).unwrap();
-        fs::remove_file(&path).unwrap();
-        assert!(!at_path(&old, &path).unwrap());
-        let new = try_lock(&path).unwrap().unwrap();
-        assert!(!at_path(&old, &path).unwrap());
-        assert!(at_path(&new, &path).unwrap());
-        drop(lock);
     }
 
     #[test]

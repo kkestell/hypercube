@@ -22,11 +22,13 @@
 - `hypercube stop`, `status`, `delete`, `start`, and `running` are
   short-lived commands. `stop` and `delete` act on the workspace of the
   working directory, of a directory argument, or, with `--all`, of every
-  workspace. `start <dir>` starts the host of the workspace containing
-  `<dir>` in the background unless one is running, and returns once it
-  listens; its agents launch when a terminal first attaches. `running` prints
-  the directory of every running workspace, one per line, in the bar's
-  order.
+  workspace. The argument may be a checkout that was moved or deleted;
+  `delete` then removes only the workspace's files, since its worktrees and
+  branches went with the checkout. `start <dir>` starts the host of the
+  workspace containing `<dir>` in the background unless one is running, and
+  returns once it listens; its agents launch when a terminal first attaches.
+  `running` prints the directory of every running workspace, one per line,
+  in the bar's order.
 
 Each agent's harness runs with `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`, the
 agent's ID and its workspace's state file, which the MCP server and the hooks
@@ -55,8 +57,8 @@ The state directory also holds `opencode-plugin/index.js`.
    process ID into the file. A workspace is running while that lock is held,
    and the kernel releases it however the host ends. If another host holds
    it, the new host exits with an error.
-2. It readies the state: on the first run it creates the orchestrator, with
-   `no_git` set outside Git; it sets the orchestrator's branch, marks it idle,
+2. It readies the state: on the first run it creates the orchestrator; it
+   sets `no_git` outside Git, sets the orchestrator's branch, marks it idle,
    and marks the workers busy.
 3. It removes a socket file left by an earlier host and listens on the
    control socket. It ignores SIGHUP and ends on SIGINT and SIGTERM.
@@ -99,9 +101,9 @@ saved sessions and the queued messages.
 `client::run` attaches the user's terminal to a workspace. It requires a
 terminal on its input and output. It puts the terminal in raw mode on the
 alternate screen, asks it once for its default colors, its 16 palette colors,
-and its grapheme clustering mode, and watches SIGWINCH through `winch`. It is
-the only process that changes the terminal's settings or writes to it; hosts
-send it rendered bytes.
+and its grapheme clustering mode, and watches SIGWINCH through `signals`.
+It is the only process that changes the terminal's settings or writes to it;
+hosts send it rendered bytes.
 
 To reach a workspace's host, the client sends `attach` on its control socket.
 If no host is running, it runs `hypercube host <dir>` with `setsid`, its input
@@ -179,6 +181,11 @@ leaves the pane showing "exited N" and gives up its focus, until `remove_agent`
 closes it. An exit after a longer run resets the count. A relaunch whose
 harness fails to start shows the failure as a worker's failed launch does, and
 is not retried.
+
+When the host gives up on an agent this way, or a worker fails to launch at
+startup, it marks the agent `exited` in the state, so `list_agents` shows it
+and `send_message` to it says the agent is not running. Its messages stay
+queued; the next session's start marks it idle or busy again.
 
 The host keeps running when every agent has been left exited. Closing an
 agent and ending the session hang up the programs without relaunching them.
@@ -423,9 +430,9 @@ update, so messages it takes stay queued if they cannot be written.
 
 ## Terminal layer
 
-The terminal layer (`mux`, `pty`, `runtime`, `link`, `client`, and `winch`)
-runs programs in ptys, keeps a Ghostty terminal for each, and draws them for
-the user's terminal, which the mux calls the host terminal.
+The terminal layer (`mux`, `pty`, `runtime`, `link`, `client`, and
+`signals`) runs programs in ptys, keeps a Ghostty terminal for each, and draws
+them for the user's terminal, which the mux calls the host terminal.
 It knows nothing about agents: the caller decides where panes go, what the
 chrome looks like, and what to do when something happens.
 

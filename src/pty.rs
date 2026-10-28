@@ -16,6 +16,18 @@ use crate::mux::Winsize;
 /// pty before it is marked close-on-exec.
 static LOCK: Mutex<()> = Mutex::new(());
 
+/// Put standard input in raw mode, if it is a terminal. Used by the scripted
+/// test programs that read keystrokes from their pane's pty.
+pub fn raw_mode() {
+    unsafe {
+        let mut t = std::mem::zeroed();
+        if libc::tcgetattr(libc::STDIN_FILENO, &mut t) == 0 {
+            libc::cfmakeraw(&mut t);
+            libc::tcsetattr(libc::STDIN_FILENO, libc::TCSANOW, &t);
+        }
+    }
+}
+
 fn lock() -> MutexGuard<'static, ()> {
     LOCK.lock().unwrap_or_else(|e| e.into_inner())
 }

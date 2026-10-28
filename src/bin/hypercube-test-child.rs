@@ -1,4 +1,5 @@
 //! The scripted program the live tests (tests/live.rs) run in panes.
+use hypercube::pty::raw_mode;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -8,15 +9,6 @@ fn write(data: impl AsRef<[u8]>) {
 fn sleep(ms: i32) {
     unsafe {
         libc::poll(std::ptr::null_mut(), 0, ms);
-    }
-}
-fn raw_mode() {
-    unsafe {
-        let mut t = std::mem::zeroed();
-        if libc::tcgetattr(0, &mut t) == 0 {
-            libc::cfmakeraw(&mut t);
-            libc::tcsetattr(0, libc::TCSANOW, &t);
-        }
     }
 }
 fn read_byte(timeout: i32) -> Option<u8> {

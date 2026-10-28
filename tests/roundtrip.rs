@@ -6,11 +6,14 @@ mod fixtures;
 mod fuzz;
 #[path = "support/screen.rs"]
 mod screen;
+#[path = "support/terminal.rs"]
+mod terminal;
 use hypercube::{
-    mux::{self, Mux, NoChrome, Rect, Winsize},
+    mux::{self, Mux, NoChrome, Rect},
     recording::{Reader, Record, Size},
 };
 use libghostty_vt::Terminal;
+use terminal::{host_replies, winsize};
 
 #[derive(Clone, Debug)]
 pub enum Input {
@@ -23,27 +26,6 @@ impl From<Record<'_>> for Input {
             Record::Output(b) => Self::Output(b.to_vec()),
             Record::Size(s) => Self::Size(s),
         }
-    }
-}
-fn host_replies() -> Vec<u8> {
-    let mut r = String::from("\x1b]10;rgb:d0d0/d1d1/d2d2\x1b\\\x1b]11;rgb:1010/1111/1212\x1b\\");
-    for i in 0..16 {
-        r.push_str(&format!(
-            "\x1b]4;{i};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
-            i * 16 + 1,
-            255 - i * 15,
-            i * 7 + 3
-        ));
-    }
-    r.push_str("\x1b[?2027;1$y\x1b[?62;22c");
-    r.into_bytes()
-}
-fn winsize(s: Size) -> Winsize {
-    Winsize {
-        ws_col: s.cols,
-        ws_row: s.rows,
-        ws_xpixel: s.cols * 8,
-        ws_ypixel: s.rows * 16,
     }
 }
 fn term(s: Size, replies: &[u8]) -> Terminal<'static, 'static> {
@@ -87,10 +69,11 @@ fn escaped(bytes: &[u8]) -> String {
 }
 fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
     let replies = host_replies();
-    let mut m = Mux::new(winsize(initial), Box::new(NoChrome));
-    m.connect_host(&replies, winsize(initial)).unwrap();
+    let size = winsize(initial.cols, initial.rows);
+    let mut m = Mux::new(size, Box::new(NoChrome));
+    m.connect_host(&replies, size).unwrap();
     let id = m.add_pane("test").unwrap();
-    m.set_layout(&[(id, Rect::full(winsize(initial)))]).unwrap();
+    m.set_layout(&[(id, Rect::full(size))]).unwrap();
     let mut twin = term(initial, &replies);
     let mut host = term(initial, &replies);
     host.vt_write(b"\x1b[?1049h\x1b[2J");
@@ -103,8 +86,9 @@ fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
             Input::Size(s) => {
                 host.resize(s.cols, s.rows, 0, 0).unwrap();
                 twin.resize(s.cols, s.rows, 0, 0).unwrap();
-                m.resize(winsize(*s));
-                m.set_layout(&[(id, Rect::full(winsize(*s)))]).unwrap();
+                let size = winsize(s.cols, s.rows);
+                m.resize(size);
+                m.set_layout(&[(id, Rect::full(size))]).unwrap();
             }
         }
         if m.pane(id).unwrap().held() {
@@ -162,8 +146,11 @@ fn round_trip_splits(name: &str, initial: Size, records: &[Input], splits: u64) 
     }
     None
 }
-fn fixture(index: usize) {
-    let f = &fixtures::ALL[index];
+fn fixture(name: &str) {
+    let f = fixtures::ALL
+        .iter()
+        .find(|f| f.name == name)
+        .unwrap_or_else(|| panic!("no fixture named {name:?}"));
     let records: Vec<_> = f.records.iter().copied().map(Input::from).collect();
     let result = round_trip_splits(
         f.name,
@@ -231,229 +218,85 @@ fn recording(name: &str) {
 
 mod fixtures_tests {
     use super::fixture;
-    #[test]
-    fn plain_text() {
-        fixture(0);
+
+    macro_rules! fixture_tests {
+        ($($test:ident => $name:literal),+ $(,)?) => {
+            const NAMES: &[&str] = &[$($name),+];
+            $(
+                #[test]
+                fn $test() {
+                    fixture($name);
+                }
+            )+
+        };
     }
-    #[test]
-    fn ed_with_palette_bg() {
-        fixture(1);
+
+    fixture_tests! {
+        plain_text => "plain text",
+        ed_with_palette_bg => "ED with palette bg",
+        ed_below_and_above_with_bg => "ED below and above with bg",
+        el_with_rgb_bg => "EL with rgb bg",
+        ech_with_bg => "ECH with bg",
+        erase_with_fg_underline_and_inverse => "erase with fg, underline, and inverse",
+        decstbm_with_su_and_sd => "DECSTBM with SU and SD",
+        decstbm_with_il_and_dl => "DECSTBM with IL and DL",
+        linefeed_at_bottom_margin => "linefeed at bottom margin",
+        scrolling_past_the_screen => "scrolling past the screen",
+        ich_and_dch => "ICH and DCH",
+        insert_mode => "insert mode",
+        alt_screen_1049 => "alt screen 1049",
+        alt_screen_47_and_1047 => "alt screen 47 and 1047",
+        cursor_save_across_alt_screen => "cursor save across alt screen",
+        wide_characters => "wide characters",
+        wide_character_at_the_right_margin => "wide character at the right margin",
+        wide_character_without_wraparound => "wide character without wraparound",
+        wide_character_overwritten => "wide character overwritten",
+        combining_marks => "combining marks",
+        combining_marks_without_grapheme_clustering => "combining marks without grapheme clustering",
+        combining_mark_at_the_right_margin => "combining mark at the right margin",
+        combining_mark_at_the_right_margin_without_grapheme_clustering => "combining mark at the right margin without grapheme clustering",
+        combining_mark_after_moving_back_to_an_earlier_row => "combining mark after moving back to an earlier row",
+        emoji_with_variation_selector => "emoji with variation selector",
+        emoji_with_variation_selector_without_grapheme_clustering => "emoji with variation selector without grapheme clustering",
+        zwj_sequence_with_grapheme_clustering => "ZWJ sequence with grapheme clustering",
+        zwj_sequence_without_grapheme_clustering => "ZWJ sequence without grapheme clustering",
+        cluster_ending_in_zwj_next_to_a_pictograph => "cluster ending in ZWJ next to a pictograph",
+        lone_regional_indicator_next_to_a_flag => "lone regional indicator next to a flag",
+        row_printed_in_both_grapheme_clustering_modes => "row printed in both grapheme clustering modes",
+        soft_wrapped_lines => "soft-wrapped lines",
+        pending_wrap_cursor => "pending wrap cursor",
+        reflow_on_resize => "reflow on resize",
+        resize_to_the_same_size => "resize to the same size",
+        resize_on_the_alt_screen => "resize on the alt screen",
+        ansi_colors => "ANSI colors",
+        colors_256_and_rgb => "256 and RGB colors",
+        attributes => "attributes",
+        underline_styles_and_colors => "underline styles and colors",
+        styled_blank_cells => "styled blank cells",
+        cursor_shapes => "cursor shapes",
+        cursor_visibility => "cursor visibility",
+        cursor_movement => "cursor movement",
+        origin_mode => "origin mode",
+        tabs => "tabs",
+        repeat_and_decaln => "repeat and DECALN",
+        mirrored_input_modes => "mirrored input modes",
+        other_input_modes => "other input modes",
+        kitty_keyboard_flags => "kitty keyboard flags",
+        reverse_video => "reverse video",
+        synchronized_output => "synchronized output",
+        reset => "reset",
+        title_bell_and_hyperlink => "title, bell, and hyperlink",
+        osc_4_palette_change => "OSC 4 palette change",
+        osc_10_and_11_default_colors => "OSC 10 and 11 default colors",
     }
+
     #[test]
-    fn ed_below_and_above_with_bg() {
-        fixture(2);
-    }
-    #[test]
-    fn el_with_rgb_bg() {
-        fixture(3);
-    }
-    #[test]
-    fn ech_with_bg() {
-        fixture(4);
-    }
-    #[test]
-    fn erase_with_fg_underline_and_inverse() {
-        fixture(5);
-    }
-    #[test]
-    fn decstbm_with_su_and_sd() {
-        fixture(6);
-    }
-    #[test]
-    fn decstbm_with_il_and_dl() {
-        fixture(7);
-    }
-    #[test]
-    fn linefeed_at_bottom_margin() {
-        fixture(8);
-    }
-    #[test]
-    fn scrolling_past_the_screen() {
-        fixture(9);
-    }
-    #[test]
-    fn ich_and_dch() {
-        fixture(10);
-    }
-    #[test]
-    fn insert_mode() {
-        fixture(11);
-    }
-    #[test]
-    fn alt_screen_1049() {
-        fixture(12);
-    }
-    #[test]
-    fn alt_screen_47_and_1047() {
-        fixture(13);
-    }
-    #[test]
-    fn cursor_save_across_alt_screen() {
-        fixture(14);
-    }
-    #[test]
-    fn wide_characters() {
-        fixture(15);
-    }
-    #[test]
-    fn wide_character_at_the_right_margin() {
-        fixture(16);
-    }
-    #[test]
-    fn wide_character_without_wraparound() {
-        fixture(17);
-    }
-    #[test]
-    fn wide_character_overwritten() {
-        fixture(18);
-    }
-    #[test]
-    fn combining_marks() {
-        fixture(19);
-    }
-    #[test]
-    fn combining_marks_without_grapheme_clustering() {
-        fixture(20);
-    }
-    #[test]
-    fn combining_mark_at_the_right_margin() {
-        fixture(21);
-    }
-    #[test]
-    fn combining_mark_at_the_right_margin_without_grapheme_clustering() {
-        fixture(22);
-    }
-    #[test]
-    fn combining_mark_after_moving_back_to_an_earlier_row() {
-        fixture(23);
-    }
-    #[test]
-    fn emoji_with_variation_selector() {
-        fixture(24);
-    }
-    #[test]
-    fn emoji_with_variation_selector_without_grapheme_clustering() {
-        fixture(25);
-    }
-    #[test]
-    fn zwj_sequence_with_grapheme_clustering() {
-        fixture(26);
-    }
-    #[test]
-    fn zwj_sequence_without_grapheme_clustering() {
-        fixture(27);
-    }
-    #[test]
-    fn cluster_ending_in_zwj_next_to_a_pictograph() {
-        fixture(28);
-    }
-    #[test]
-    fn lone_regional_indicator_next_to_a_flag() {
-        fixture(29);
-    }
-    #[test]
-    fn row_printed_in_both_grapheme_clustering_modes() {
-        fixture(30);
-    }
-    #[test]
-    fn soft_wrapped_lines() {
-        fixture(31);
-    }
-    #[test]
-    fn pending_wrap_cursor() {
-        fixture(32);
-    }
-    #[test]
-    fn reflow_on_resize() {
-        fixture(33);
-    }
-    #[test]
-    fn resize_to_the_same_size() {
-        fixture(34);
-    }
-    #[test]
-    fn resize_on_the_alt_screen() {
-        fixture(35);
-    }
-    #[test]
-    fn ansi_colors() {
-        fixture(36);
-    }
-    #[test]
-    fn colors_256_and_rgb() {
-        fixture(37);
-    }
-    #[test]
-    fn attributes() {
-        fixture(38);
-    }
-    #[test]
-    fn underline_styles_and_colors() {
-        fixture(39);
-    }
-    #[test]
-    fn styled_blank_cells() {
-        fixture(40);
-    }
-    #[test]
-    fn cursor_shapes() {
-        fixture(41);
-    }
-    #[test]
-    fn cursor_visibility() {
-        fixture(42);
-    }
-    #[test]
-    fn cursor_movement() {
-        fixture(43);
-    }
-    #[test]
-    fn origin_mode() {
-        fixture(44);
-    }
-    #[test]
-    fn tabs() {
-        fixture(45);
-    }
-    #[test]
-    fn repeat_and_decaln() {
-        fixture(46);
-    }
-    #[test]
-    fn mirrored_input_modes() {
-        fixture(47);
-    }
-    #[test]
-    fn other_input_modes() {
-        fixture(48);
-    }
-    #[test]
-    fn kitty_keyboard_flags() {
-        fixture(49);
-    }
-    #[test]
-    fn reverse_video() {
-        fixture(50);
-    }
-    #[test]
-    fn synchronized_output() {
-        fixture(51);
-    }
-    #[test]
-    fn reset() {
-        fixture(52);
-    }
-    #[test]
-    fn title_bell_and_hyperlink() {
-        fixture(53);
-    }
-    #[test]
-    fn osc_4_palette_change() {
-        fixture(54);
-    }
-    #[test]
-    fn osc_10_and_11_default_colors() {
-        fixture(55);
+    fn every_fixture_has_a_test() {
+        let mut fixtures: Vec<_> = super::fixtures::ALL.iter().map(|f| f.name).collect();
+        let mut tests = NAMES.to_vec();
+        fixtures.sort_unstable();
+        tests.sort_unstable();
+        assert_eq!(tests, fixtures);
     }
 }
 

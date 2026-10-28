@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use crate::link::{Decoder, Message, Size, encode};
 use crate::mux::{self, Winsize, now_ms, read};
 use crate::runtime::{poll, pollfd};
-use crate::{control, host, store, winch, workspace};
+use crate::{control, host, signals, store, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -34,7 +34,7 @@ const LOG_LINES: usize = 10;
 pub struct Tty {
     pub input: RawFd,
     pub output: RawFd,
-    /// Readable after each SIGWINCH; see `winch`.
+    /// Readable after each SIGWINCH; see `signals::winch`.
     pub winch: RawFd,
     /// Readable once SIGHUP, SIGINT, or SIGTERM arrives; see `catch_hangup`.
     pub hangup: RawFd,
@@ -58,33 +58,17 @@ impl Tty {
     /// Attach to the host of the workspace whose checkout is `root`,
     /// starting one if none is running.
     pub fn connect(&self, root: &Path) -> Result<UnixStream> {
-        let state_path = store::path(&workspace::name(root));
-        let socket = control::socket_path(&state_path)?;
-        let log = host::log_path(&state_path);
-        let end = Instant::now() + SPAWN_TIMEOUT;
-        let mut spawned = None;
-        loop {
+        let socket = control::socket_path(&store::path(&workspace::name(root)))?;
+        reach_host(&self.exe, root, || {
             if hung_up() {
                 return Err("the terminal hung up".into());
             }
             match control::attach(&socket, self.size(), &self.replies, hung_up) {
-                Ok(stream) => return Ok(stream),
-                Err(e) if control::is_unreachable(&*e) => {}
-                Err(e) => return Err(e),
+                Ok(stream) => Ok(Some(stream)),
+                Err(e) if control::is_unreachable(&*e) => Ok(None),
+                Err(e) => Err(e),
             }
-            if spawned.is_none() && !host::running(&state_path)? {
-                spawned = Some(spawn_host(&self.exe, root, &log)?);
-            }
-            if let Some(child) = &mut spawned
-                && child.try_wait()?.is_some()
-            {
-                return Err(host_failed("the host exited", &log));
-            }
-            if Instant::now() > end {
-                return Err(host_failed("the host did not start listening", &log));
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        })
     }
 }
 
@@ -101,7 +85,7 @@ pub fn run(root: &Path) -> Result<()> {
         let tty = Tty {
             input: 0,
             output: 1,
-            winch: winch::install()?,
+            winch: signals::winch()?,
             hangup,
             replies: raw.replies.clone(),
             exe,
@@ -143,7 +127,7 @@ pub fn proxy(tty: &Tty, mut stream: UnixStream) -> Result<String> {
             return Ok(String::new());
         }
         if fds[1].revents != 0 {
-            winch::take(tty.winch);
+            signals::take(tty.winch);
             let now = tty.size();
             if now != size {
                 size = now;
@@ -206,39 +190,18 @@ static HANGUP_PIPE: AtomicI32 = AtomicI32::new(-1);
 
 extern "C" fn on_hangup(_: libc::c_int) {
     HANGUP.store(true, Ordering::Relaxed);
-    let fd = HANGUP_PIPE.load(Ordering::Relaxed);
-    if fd < 0 {
-        return;
-    }
-    unsafe {
-        let saved = *libc::__error();
-        let byte = 1u8;
-        libc::write(fd, (&raw const byte).cast(), 1);
-        *libc::__error() = saved;
-    }
+    signals::wake(&HANGUP_PIPE);
 }
 
 /// Catch SIGHUP, SIGINT, and SIGTERM, so that the client gives the terminal back
 /// before it exits, and return a pipe that becomes readable when one arrives.
 fn catch_hangup() -> Result<RawFd> {
-    let mut fds = [0; 2];
-    if unsafe { libc::pipe(fds.as_mut_ptr()) } != 0 {
-        return Err(format!("pipe: {}", std::io::Error::last_os_error()).into());
-    }
-    for fd in fds {
-        unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) };
-    }
-    unsafe { libc::fcntl(fds[1], libc::F_SETFL, libc::O_NONBLOCK) };
-    HANGUP_PIPE.store(fds[1], Ordering::Relaxed);
-    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGTERM] {
-        unsafe {
-            let mut action: libc::sigaction = std::mem::zeroed();
-            action.sa_sigaction = on_hangup as extern "C" fn(libc::c_int) as libc::sighandler_t;
-            libc::sigemptyset(&mut action.sa_mask);
-            libc::sigaction(signal, &action, std::ptr::null_mut());
-        }
-    }
-    Ok(fds[0])
+    signals::catch(
+        &[libc::SIGHUP, libc::SIGINT, libc::SIGTERM],
+        on_hangup,
+        &HANGUP_PIPE,
+    )
+    .map_err(|e| format!("pipe: {e}").into())
 }
 
 /// Whether SIGHUP, SIGINT, or SIGTERM has arrived.
@@ -286,11 +249,34 @@ pub fn start(root: &Path) -> Result<()> {
     }
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let socket = control::socket_path(&state_path)?;
+    reach_host(&exe, root, || {
+        Ok(UnixStream::connect(&socket).ok().map(drop))
+    })
+}
+
+/// Call `probe` every 50 ms until it reaches the host of the workspace whose
+/// checkout is `root`, starting the host if none is running. Fails if the
+/// host it started exits first, or the time runs out, with the last lines
+/// of the host's log.
+fn reach_host<T>(
+    exe: &Path,
+    root: &Path,
+    mut probe: impl FnMut() -> Result<Option<T>>,
+) -> Result<T> {
+    let state_path = store::path(&workspace::name(root));
     let log = host::log_path(&state_path);
-    let mut child = spawn_host(&exe, root, &log)?;
     let end = Instant::now() + SPAWN_TIMEOUT;
-    while UnixStream::connect(&socket).is_err() {
-        if child.try_wait()?.is_some() {
+    let mut spawned = None;
+    loop {
+        if let Some(reached) = probe()? {
+            return Ok(reached);
+        }
+        if spawned.is_none() && !host::running(&state_path)? {
+            spawned = Some(spawn_host(exe, root, &log)?);
+        }
+        if let Some(child) = &mut spawned
+            && child.try_wait()?.is_some()
+        {
             return Err(host_failed("the host exited", &log));
         }
         if Instant::now() > end {
@@ -298,7 +284,6 @@ pub fn start(root: &Path) -> Result<()> {
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    Ok(())
 }
 
 /// Run `hypercube host <root>` in its own session, with no input and its

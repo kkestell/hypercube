@@ -63,7 +63,7 @@ Code and docs stand alone and do not refer to predecessor implementations.
     host's non-blocking end of the stream.
   - `src/client.rs`: the client, which owns the user's terminal, starts and
     attaches to hosts, and proxies the terminal to them.
-  - `src/winch.rs`: SIGWINCH delivered through a pipe.
+  - `src/signals.rs`: signals, such as SIGWINCH, delivered through pipes.
   - `src/recording.rs`: the recording format the round-trip tests replay.
 - `src/store.rs`: the workspace state file: agents, queued messages, and
   locked, atomic updates.

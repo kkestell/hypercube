@@ -3,7 +3,7 @@
 //! the file concurrently.
 
 use std::error::Error;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -17,6 +17,9 @@ pub const ORCHESTRATOR: &str = "orchestrator";
 pub const WORKER: &str = "worker";
 pub const BUSY: &str = "busy";
 pub const IDLE: &str = "idle";
+/// The activity of an agent the host has given up running until the session
+/// starts again.
+pub const EXITED: &str = "exited";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -125,33 +128,55 @@ fn lock_path(path: &Path) -> PathBuf {
 }
 
 /// Open the state file's lock and hold it exclusively until the file is
-/// dropped. `delete` unlinks the lock file, so a lock obtained on a file that
-/// is no longer at the path is released and the current file locked instead.
+/// dropped.
 fn lock(path: &Path) -> Result<File> {
+    let lock_path = lock_path(path);
+    lock_file(&lock_path, true)?.ok_or_else(|| format!("lock {}", lock_path.display()).into())
+}
+
+/// Lock the file at `path` exclusively, creating it, until the file is
+/// dropped. Waits for another holder if `wait`, or else returns `None`.
+/// `delete` unlinks lock files while holding them, so a lock obtained on a
+/// file that is no longer at the path is released and the current file
+/// locked instead.
+pub fn lock_file(path: &Path, wait: bool) -> Result<Option<File>> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     }
-    let lock_path = lock_path(path);
     loop {
-        let lock = OpenOptions::new()
+        let file = OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
-            .open(&lock_path)
-            .map_err(|e| format!("open {}: {e}", lock_path.display()))?;
-        lock.lock()
-            .map_err(|e| format!("lock {}: {e}", lock_path.display()))?;
-        let held = lock
-            .metadata()
-            .map_err(|e| format!("stat {}: {e}", lock_path.display()))?;
-        match fs::metadata(&lock_path) {
-            Ok(current) if (current.dev(), current.ino()) == (held.dev(), held.ino()) => {
-                return Ok(lock);
+            .open(path)
+            .map_err(|e| format!("open {}: {e}", path.display()))?;
+        let locked = if wait {
+            file.lock().map_err(TryLockError::Error)
+        } else {
+            file.try_lock()
+        };
+        match locked {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Error(e)) => {
+                return Err(format!("lock {}: {e}", path.display()).into());
             }
-            Ok(_) => {}
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("stat {}: {e}", lock_path.display()).into()),
         }
+        if at_path(&file, path)? {
+            return Ok(Some(file));
+        }
+    }
+}
+
+/// Whether `file` is the file at `path`.
+fn at_path(file: &File, path: &Path) -> Result<bool> {
+    let held = file
+        .metadata()
+        .map_err(|e| format!("stat {}: {e}", path.display()))?;
+    match fs::metadata(path) {
+        Ok(current) => Ok((current.dev(), current.ino()) == (held.dev(), held.ino())),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("stat {}: {e}", path.display()).into()),
     }
 }
 
@@ -191,10 +216,9 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    /// The workspace's checkout: the orchestrator's directory.
+    /// The workspace's checkout; see `State::root`.
     pub fn root(&self) -> Option<&Path> {
-        let o = self.state.agents.iter().find(|a| a.role == ORCHESTRATOR)?;
-        Some(Path::new(&o.dir))
+        self.state.root()
     }
 
     /// The text that names the workspace: its directory, or its state's name
@@ -247,6 +271,12 @@ pub fn ago(time: SystemTime) -> String {
 }
 
 impl State {
+    /// The workspace's checkout: the orchestrator's directory.
+    pub fn root(&self) -> Option<&Path> {
+        let o = self.agents.iter().find(|a| a.role == ORCHESTRATOR)?;
+        Some(Path::new(&o.dir))
+    }
+
     /// The agent with the given ID or name.
     pub fn agent(&self, id_or_name: &str) -> Result<&Agent> {
         self.agents
@@ -569,5 +599,22 @@ mod tests {
         assert_eq!(a.len(), 8);
         assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_lock_on_an_unlinked_file_is_not_the_lock() {
+        let dir = TempDir::new();
+        let path = dir.path().join("w.host.lock");
+        let lock = lock_file(&path, false).unwrap().unwrap();
+        assert!(at_path(&lock, &path).unwrap());
+        // A host that opened the file before delete unlinked it would lock
+        // the old file.
+        let old = File::open(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert!(!at_path(&old, &path).unwrap());
+        let new = lock_file(&path, false).unwrap().unwrap();
+        assert!(!at_path(&old, &path).unwrap());
+        assert!(at_path(&new, &path).unwrap());
+        drop(lock);
     }
 }

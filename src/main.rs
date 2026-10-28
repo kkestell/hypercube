@@ -71,8 +71,21 @@ fn start() -> Result<()> {
 
 /// End the session of the workspace containing `dir`.
 fn stop(dir: &str) -> Result<()> {
-    let (root, path) = workspace_at(dir)?;
+    let (root, path) = existing_workspace_at(dir)?;
     stop_workspace(&root, &path)
+}
+
+/// `workspace_at`, or for a checkout that was moved or deleted, the
+/// workspace whose checkout was at `dir`, if it has a state file.
+fn existing_workspace_at(dir: &str) -> Result<(PathBuf, PathBuf)> {
+    workspace_at(dir).or_else(|e| {
+        let root = workspace::spelled(&std::env::current_dir()?, dir)?;
+        let path = store::path(&workspace::name(&root));
+        if root.exists() || !path.exists() {
+            return Err(e);
+        }
+        Ok((root, path))
+    })
 }
 
 /// End the session of the workspace whose checkout is `root`.
@@ -156,7 +169,7 @@ fn all(
 /// uncommitted changes in its worktree or an unmerged branch. Workers without
 /// worktrees have their directories left alone.
 fn delete(dir: &str) -> Result<()> {
-    let (root, path) = workspace_at(dir)?;
+    let (root, path) = existing_workspace_at(dir)?;
     delete_workspace(&root, &path)
 }
 
@@ -181,8 +194,12 @@ fn delete_workspace(root: &Path, path: &Path) -> Result<()> {
     // Each worker leaves the state once its worktree is gone, so after a
     // failed removal delete can run again.
     for a in workers {
-        workspace::remove_worktree(root, Path::new(&a.dir), &a.branch)
-            .map_err(|e| format!("{}: {e}", a.name))?;
+        // Worktrees and branches live in the checkout, so a checkout that
+        // was moved or deleted took them with it.
+        if root.exists() {
+            workspace::remove_worktree(root, Path::new(&a.dir), &a.branch)
+                .map_err(|e| format!("{}: {e}", a.name))?;
+        }
         store::update(path, |s| {
             s.remove(&a.id);
             Ok(())

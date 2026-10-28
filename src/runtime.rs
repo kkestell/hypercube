@@ -25,33 +25,9 @@ pub enum Event {
     /// A pane's program exited with this status: its code, or 128 plus the
     /// signal that ended it.
     PaneExited(PaneId, u8),
-    /// Ctrl-b z was pressed while this pane had the focus.
-    Zoom(PaneId),
-    /// The focus moved to this pane. `Zoom` and `Focus` come in the order
-    /// they happened.
-    Focus(PaneId),
-    /// Ctrl-b s was pressed.
-    Overlay,
-    /// A key arrived while input is captured; see `Mux::set_captured`.
-    Key(Vec<u8>),
-    /// The prefix key was followed by this digit.
-    Workspace(u8),
-    /// Ctrl-b ( or ) was pressed: switch this many workspaces along the
-    /// bar.
-    Step(i8),
-    /// Ctrl-b c was pressed; input is captured.
-    NewWorkspace,
-    /// Ctrl-b d was pressed.
-    Detach,
-    /// Ctrl-b a was pressed.
-    Accent,
-    /// Ctrl-b ? was pressed.
-    Help,
-    /// The left button was pressed outside every pane, at this column and
-    /// row.
-    Click(u16, u16),
-    /// A melting pane finished melting and was removed.
-    Melted(PaneId),
+    /// The mux noticed something the caller acts on; see
+    /// `Mux::take_notices`. Notices come in the order they happened.
+    Notice(Notice),
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -177,20 +153,12 @@ impl Runtime {
                     self.render(mux)?;
                 }
             }
-            events.extend(mux.take_notices().into_iter().map(|n| match n {
-                Notice::Focus(id) => Event::Focus(id),
-                Notice::Zoom(id) => Event::Zoom(id),
-                Notice::Overlay => Event::Overlay,
-                Notice::Key(key) => Event::Key(key),
-                Notice::Workspace(n) => Event::Workspace(n),
-                Notice::Step(n) => Event::Step(n),
-                Notice::NewWorkspace => Event::NewWorkspace,
-                Notice::Detach => Event::Detach,
-                Notice::Accent => Event::Accent,
-                Notice::Help => Event::Help,
-                Notice::Click(col, row) => Event::Click(col, row),
-                Notice::Melted(id) => Event::Melted(id),
-            }));
+            // Held input is routed before notices are taken, so a captured
+            // key it holds, such as a lone Esc, is reported now.
+            if mux.input_deadline().is_some_and(|d| now_ms() >= d) {
+                mux.flush_input();
+            }
+            events.extend(mux.take_notices().into_iter().map(Event::Notice));
             let now = now_ms();
             if let Some(link) = &self.link
                 && link.pending()
@@ -213,9 +181,6 @@ impl Runtime {
             }
 
             mux.expire_holds(now)?;
-            if mux.input_deadline().is_some_and(|d| now >= d) {
-                mux.flush_input();
-            }
             let idle = self.link.as_ref().is_some_and(|l| !l.pending());
             if idle {
                 if mux.needs_render() && now - self.last_render >= FRAME_MS {

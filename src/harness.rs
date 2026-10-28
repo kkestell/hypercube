@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use crate::store::{Agent, ORCHESTRATOR};
+use crate::workspace::utf8;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -147,11 +148,6 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
 
 fn strings<const N: usize>(items: [&str; N]) -> Vec<String> {
     items.map(String::from).to_vec()
-}
-
-fn utf8(path: &Path) -> Result<&str> {
-    path.to_str()
-        .ok_or_else(|| format!("{} is not valid UTF-8", path.display()).into())
 }
 
 fn shell_quote(s: &str) -> String {

@@ -9,7 +9,6 @@
 //!
 //! - `<tag> <tool> <json arguments>` calls an MCP tool and records the result.
 //! - `exit <status>` makes the stub exit with that status.
-//! - `exit-at <ms> <status>` makes it exit then, in Unix milliseconds.
 //! - `hold-hup` makes the stub, once hung up, wait for the file `release` in
 //!   its directory before it exits.
 use std::collections::BTreeMap;
@@ -20,6 +19,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, SystemTime};
 
+use hypercube::pty::raw_mode;
 use serde_json::{Value, json};
 
 static WINCH: AtomicBool = AtomicBool::new(false);
@@ -249,14 +249,6 @@ impl Stub {
             self.record("exit", json!({"status": status}));
             std::process::exit(status.parse().unwrap_or(1));
         }
-        if let Some(args) = line.strip_prefix("exit-at ") {
-            let (at, status) = args.split_once(' ').unwrap_or((args, "1"));
-            while millis() < at.parse().unwrap_or(0) {
-                std::thread::sleep(Duration::from_millis(1));
-            }
-            self.record("exit", json!({"status": status}));
-            std::process::exit(status.parse().unwrap_or(1));
-        }
         if line == "hold-hup" {
             self.hold_hup = true;
             self.record("hold-hup", json!({}));
@@ -304,16 +296,6 @@ impl Stub {
             }
         }
         std::process::exit(129)
-    }
-}
-
-fn raw_mode() {
-    unsafe {
-        let mut t = std::mem::zeroed();
-        if libc::tcgetattr(0, &mut t) == 0 {
-            libc::cfmakeraw(&mut t);
-            libc::tcsetattr(0, libc::TCSANOW, &t);
-        }
     }
 }
 

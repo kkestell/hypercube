@@ -358,12 +358,12 @@ impl Frame {
             let mut rows = self.rows.update(&snapshot)?;
             let mut y: u16 = 0;
             while let Some(r) = rows.next() {
-                let Some(slot) = self.rows_seen.get_mut(usize::from(y)) else {
+                let Some((row, changed)) = self.rows_seen.get_mut(usize::from(y)) else {
                     break;
                 };
                 let selected = r.selection()?.map(|s| (s.start_x, s.end_x));
                 if stale.contains(&y) {
-                    let mut row = RowBuf::new(selected);
+                    row.clear(selected);
                     for x in 0..snapshot.cols()? {
                         let grid = terminal
                             .grid_ref(Point::Active(PointCoordinate { x, y: u32::from(y) }))?;
@@ -371,9 +371,9 @@ impl Frame {
                         let style = grid.style()?;
                         row.push(raw, style, |buf| grid.graphemes(buf))?;
                     }
-                    *slot = (row, true);
+                    *changed = true;
                 } else if dirty == Dirty::Full || r.dirty()? {
-                    let mut row = RowBuf::new(selected);
+                    row.clear(selected);
                     let mut cells = self.cells.update(r)?;
                     while let Some(c) = cells.next() {
                         let raw = c.raw_cell()?;
@@ -387,7 +387,7 @@ impl Frame {
                             Ok(len)
                         })?;
                     }
-                    *slot = (row, true);
+                    *changed = true;
                 }
                 y += 1;
             }
@@ -564,11 +564,12 @@ impl Pane {
         let s = state.clone();
         terminal.on_size(move |_| {
             let ws = s.ws.get();
+            let (cell_width, cell_height) = cell_pixels(&ws);
             Some(SizeReportSize {
                 rows: ws.ws_row,
                 columns: ws.ws_col,
-                cell_width: u32::from(ws.ws_xpixel.checked_div(ws.ws_col).unwrap_or(0)),
-                cell_height: u32::from(ws.ws_ypixel.checked_div(ws.ws_row).unwrap_or(0)),
+                cell_width,
+                cell_height,
             })
         })?;
         let s = state.clone();
@@ -594,12 +595,8 @@ impl Pane {
     fn restart(&mut self, label: &str, host_replies: &[u8]) -> Result<Option<Orphan>> {
         let mut terminal = Self::new_terminal(&self.shared, self.id, &self.state, &self.frame)?;
         let ws = self.ws();
-        terminal.resize(
-            ws.ws_col,
-            ws.ws_row,
-            u32::from(ws.ws_xpixel.checked_div(ws.ws_col).unwrap_or(0)),
-            u32::from(ws.ws_ypixel.checked_div(ws.ws_row).unwrap_or(0)),
-        )?;
+        let (cell_width, cell_height) = cell_pixels(&ws);
+        terminal.resize(ws.ws_col, ws.ws_row, cell_width, cell_height)?;
         use_host_replies_for(&mut terminal, host_replies)?;
         let orphan = self.hang_up();
         self.terminal = terminal;
@@ -1350,12 +1347,8 @@ impl Mux {
             {
                 continue;
             }
-            p.terminal.resize(
-                cols,
-                rows,
-                u32::from(ws.ws_xpixel.checked_div(cols).unwrap_or(0)),
-                u32::from(ws.ws_ypixel.checked_div(rows).unwrap_or(0)),
-            )?;
+            let (cell_width, cell_height) = cell_pixels(&ws);
+            p.terminal.resize(cols, rows, cell_width, cell_height)?;
             if let Some(pty) = p.pty() {
                 unsafe { libc::ioctl(pty, libc::TIOCSWINSZ, &ws) };
             }
@@ -1431,7 +1424,10 @@ impl Mux {
             || self.clear
             || self.shared.bell.get()
             || self.shared.title_changed.get()
-            || self.panes.iter().any(|p| p.melting() || p.needs_render())
+            || self
+                .panes
+                .iter()
+                .any(|p| p.rect.cols > 0 && p.rect.rows > 0 && (p.melting() || p.needs_render()))
     }
 
     /// Focus a pane whose program hasn't exited, sending focus events to
@@ -1962,6 +1958,9 @@ impl Mux {
         }
         let now = now_ms();
         for p in &mut self.panes {
+            if p.rect.cols == 0 || p.rect.rows == 0 {
+                continue;
+            }
             if p.melting() {
                 p.draw_melt(&mut out, now);
             } else {
@@ -2059,6 +2058,14 @@ fn exit_status(status: std::process::ExitStatus) -> u8 {
     }
 }
 
+/// The width and height of a cell of `ws` in pixels, or 0 if unknown.
+fn cell_pixels(ws: &Winsize) -> (u32, u32) {
+    (
+        u32::from(ws.ws_xpixel.checked_div(ws.ws_col).unwrap_or(0)),
+        u32::from(ws.ws_ypixel.checked_div(ws.ws_row).unwrap_or(0)),
+    )
+}
+
 /// The route of a key the mux takes whatever pane has the focus: the prefix
 /// key, in legacy or Kitty form, and mouse reports.
 fn special_route(token: &[u8]) -> Option<Route> {
@@ -2116,11 +2123,14 @@ const MODIFIER_KEYS: std::ops::RangeInclusive<u32> = 57441..=57452;
 const SHIFT: u16 = 2;
 /// The Kitty event type of a key release.
 const RELEASE: u8 = 3;
+/// The bits of Caps Lock and Num Lock in a Kitty modifiers value less one.
+const LOCKS: u16 = 64 | 128;
 
 /// A key's code, Kitty modifiers value, and Kitty event type from the
 /// parameters of a CSI sequence in Kitty's key;modifiers:event;... form,
 /// which legacy sequences such as `CSI 5 ; 2 ~` also take. Alternate key
-/// fields are ignored, and missing fields take their defaults.
+/// fields and the lock modifiers are ignored, and missing fields take their
+/// defaults.
 fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
     let mut fields = params.split(|&b| b == b';');
     let key = fields.next()?.split(|&b| b == b':').next()?;
@@ -2129,7 +2139,8 @@ fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
         return Some((key, 1, 1));
     };
     let mut modifiers = modifiers.split(|&b| b == b':');
-    let mods = parse_int(modifiers.next()?)?;
+    let mods = parse_int::<u16>(modifiers.next()?)?;
+    let mods = (mods.saturating_sub(1) & !LOCKS) + 1;
     let event = match modifiers.next() {
         Some(e) => parse_int(e)?,
         None => 1,
@@ -2504,11 +2515,10 @@ struct RowBuf {
 }
 
 impl RowBuf {
-    fn new(selected: Option<(u16, u16)>) -> RowBuf {
-        RowBuf {
-            selected,
-            ..RowBuf::default()
-        }
+    fn clear(&mut self, selected: Option<(u16, u16)>) {
+        self.cells.clear();
+        self.text.clear();
+        self.selected = selected;
     }
 
     /// Add a cell whose text `graphemes` writes into a buffer, returning
@@ -3148,6 +3158,19 @@ mod tests {
     }
 
     #[test]
+    fn the_lock_modifiers_leave_the_prefix_key_working() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        // Ctrl-b and 1 with Caps Lock, then Ctrl-b with Num Lock and 2.
+        p.mux.input(b"\x1b[98;69u\x1b[49;65u\x1b[98;133u\x1b[50u");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::Workspace(1), Notice::Workspace(2)]
+        );
+        assert_eq!(p.got(0), b"");
+    }
+
+    #[test]
     fn restarting_a_pane_drops_the_old_programs_output_state_and_input() {
         // An unfinished OSC doesn't swallow the new program's output.
         let mut p = Piped::new();
@@ -3301,6 +3324,108 @@ mod tests {
         // A click where the right pane was lands in the left one.
         p.mux.input(b"\x1b[<0;50;5M\x1b[<0;50;5m");
         assert_eq!(p.mux.focus(), Some(left));
+    }
+
+    #[test]
+    fn a_hidden_panes_output_waits_until_it_is_shown() {
+        for (cols, rows) in [(0, 0), (0, 10), (40, 0)] {
+            let mut p = Piped::new();
+            let [left, right] = p.ids;
+            let rect = p.mux.pane(right).unwrap().rect();
+            p.mux.pane_mut(right).unwrap().feed(b"before\r\nunchanged");
+            frame(&mut p.mux);
+            p.mux
+                .set_layout(&[(right, Rect { cols, rows, ..rect })])
+                .unwrap();
+            frame(&mut p.mux);
+            assert!(!p.mux.needs_render());
+
+            p.mux.pane_mut(right).unwrap().feed(b"\x1b[H\x1b[2Klatest");
+            assert!(!p.mux.needs_render());
+            // Another pane's frame must not capture the hidden terminal.
+            p.mux.pane_mut(left).unwrap().feed(b"visible");
+            let out = frame(&mut p.mux);
+            assert!(!has(&out, b"latest"));
+            assert!(p.mux.pane(right).unwrap().dirty);
+            assert!(!p.mux.needs_render());
+
+            // Showing the same-sized pane repaints unchanged rows too.
+            p.mux.set_layout(&[(right, rect)]).unwrap();
+            assert!(p.mux.needs_render());
+            let out = frame(&mut p.mux);
+            assert!(has(&out, b"latest") && has(&out, b"unchanged"));
+            assert!(!p.mux.needs_render());
+        }
+    }
+
+    #[test]
+    fn a_hidden_held_pane_keeps_its_completed_frame_when_shown() {
+        for start_hidden in [false, true] {
+            let mut p = Piped::new();
+            let [left, right] = p.ids;
+            let rect = p.mux.pane(right).unwrap().rect();
+            p.mux.pane_mut(right).unwrap().feed(b"old");
+            frame(&mut p.mux);
+            if start_hidden {
+                p.mux.set_layout(&[(right, Rect::default())]).unwrap();
+                frame(&mut p.mux);
+            }
+            p.mux
+                .pane_mut(right)
+                .unwrap()
+                .feed(b"\x1b[Hcomplete\x1b[?2026h\x1b[Hpartial!");
+            if !start_hidden {
+                p.mux.set_layout(&[(right, Rect::default())]).unwrap();
+            }
+            frame(&mut p.mux);
+            assert!(p.mux.pane(right).unwrap().held());
+            assert!(!p.mux.needs_render());
+            p.mux.pane_mut(left).unwrap().feed(b"visible");
+            frame(&mut p.mux);
+
+            p.mux.set_layout(&[(right, rect)]).unwrap();
+            assert!(p.mux.pane(right).unwrap().held());
+            let out = frame(&mut p.mux);
+            assert!(has(&out, b"complete") && !has(&out, b"partial!"));
+            assert!(!p.mux.needs_render());
+            p.mux.pane_mut(right).unwrap().feed(b"\x1b[?2026l");
+            assert!(has(&frame(&mut p.mux), b"partial!"));
+        }
+    }
+
+    #[test]
+    fn captures_reuse_each_rows_cell_and_text_storage() {
+        let mut terminal = Terminal::new(40, 2).unwrap();
+        let mut frame = Frame::new().unwrap();
+        terminal.vt_write(b"first\r\nsecond");
+        frame.capture(&terminal).unwrap();
+        let storage = |frame: &Frame| {
+            frame
+                .rows_seen
+                .iter()
+                .map(|(row, _)| {
+                    (
+                        row.cells.as_ptr(),
+                        row.cells.capacity(),
+                        row.text.as_ptr(),
+                        row.text.capacity(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let original = storage(&frame);
+        // Exercise both the render-state and stale-row capture paths.
+        terminal.vt_write(b"\x1b[Hshort");
+        frame.capture(&terminal).unwrap();
+        assert_eq!(storage(&frame), original);
+        terminal.vt_write(b"\x1b[HX");
+        frame.stale_rows.push(0);
+        frame.capture(&terminal).unwrap();
+        assert_eq!(storage(&frame), original);
+        assert_eq!(
+            frame.rows_seen[0].0.text.iter().collect::<String>(),
+            "Xhort"
+        );
     }
 
     #[test]

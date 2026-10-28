@@ -2,8 +2,8 @@
 //! and the renderer that draws them for the host terminal, and runs without
 //! ptys for the round-trip tests; `pty` starts programs in ptys; `runtime`
 //! is the event loop that connects them to a client over a `link`; `client`
-//! owns the user's terminal and proxies it to a host; `winch` delivers
-//! SIGWINCH to the client; `recording` is the format the round-trip tests
+//! owns the user's terminal and proxies it to a host; `signals` delivers
+//! signals through pipes; `recording` is the format the round-trip tests
 //! replay.
 //!
 //! The rest of the crate holds the agents' side: `store` is the workspace
@@ -31,10 +31,10 @@ pub mod overlay;
 pub mod pty;
 pub mod recording;
 pub mod runtime;
+pub mod signals;
 pub mod statusline;
 pub mod store;
 pub mod wait;
-pub mod winch;
 pub mod workspace;
 
 #[cfg(test)]

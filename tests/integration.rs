@@ -5,6 +5,9 @@
 //! `PATH`. The client there starts the workspace's host in the background.
 //! The stand-ins record what they see in an event log and take tool calls on
 //! a fifo.
+#[path = "support/terminal.rs"]
+mod terminal;
+
 use std::fs;
 use std::io::Write as _;
 use std::os::fd::{AsRawFd as _, OwnedFd};
@@ -20,10 +23,9 @@ use hypercube::mux::{Winsize, write_all};
 use hypercube::pty::Pty;
 use hypercube::store::{self, Agent, State};
 use hypercube::{control, host, workspace};
-use libghostty_vt::render::{CellIterator, RowIterator};
-use libghostty_vt::screen::CellWide;
-use libghostty_vt::{RenderState, Terminal};
+use libghostty_vt::Terminal;
 use serde_json::{Value, json};
+use terminal::{contains, host_replies, winsize};
 
 const HYPERCUBE: &str = env!("CARGO_BIN_EXE_hypercube");
 const HARNESS: &str = env!("CARGO_BIN_EXE_hypercube-test-harness");
@@ -43,25 +45,6 @@ const CONFIG: &str = r#"{
      "model": "stub/opencode", "effort": "medium"}
   ]
 }"#;
-
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|w| w == needle)
-}
-
-/// What the stand-in user's terminal answers to the client's startup queries.
-fn host_replies() -> Vec<u8> {
-    let mut s = "\x1b]10;rgb:d0d0/d1d1/d2d2\x1b\\\x1b]11;rgb:1010/1111/1212\x1b\\".to_owned();
-    for i in 0..16 {
-        s.push_str(&format!(
-            "\x1b]4;{i};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
-            i * 16 + 1,
-            255 - i * 15,
-            i * 7 + 3
-        ));
-    }
-    s.push_str("\x1b[?2027;1$y\x1b[?62;22c");
-    s.into_bytes()
-}
 
 /// Read the user's side of the pty into `output` until `stop` is set or the
 /// pty closes, answering the client's startup queries.
@@ -122,32 +105,7 @@ impl Session {
         };
         self.fed += data.len();
         self.terminal.vt_write(&data);
-        let mut state = RenderState::new().unwrap();
-        let snapshot = state.update(&self.terminal).unwrap();
-        let mut rows = RowIterator::new().unwrap();
-        let mut rows = rows.update(&snapshot).unwrap();
-        let mut cells = CellIterator::new().unwrap();
-        let mut text = String::new();
-        while let Some(row) = rows.next() {
-            let mut line = String::new();
-            let mut iter = cells.update(row).unwrap();
-            while let Some(cell) = iter.next() {
-                let raw = cell.raw_cell().unwrap();
-                if raw.wide().unwrap() == CellWide::SpacerTail {
-                    continue;
-                }
-                if raw.has_text().unwrap() {
-                    let mut grapheme = String::new();
-                    cell.graphemes_utf8(&mut grapheme).unwrap();
-                    line.push_str(&grapheme);
-                } else {
-                    line.push(' ');
-                }
-            }
-            text.push_str(line.trim_end_matches(' '));
-            text.push('\n');
-        }
-        text.trim_end_matches('\n').to_owned()
+        terminal::screen(&self.terminal)
     }
 
     /// Everything the client wrote to the terminal, as text.
@@ -161,6 +119,32 @@ impl Session {
             .try_wait()
             .unwrap()
             .map(|s| s.code().unwrap_or(-1))
+    }
+
+    /// Close the user's terminal without signalling the client, and wait for
+    /// it to exit on its own.
+    fn close_terminal(mut self) -> i32 {
+        assert!(
+            self.child.try_wait().unwrap().is_none(),
+            "client exited before its terminal closed"
+        );
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(reader) = self.reader.take() {
+            reader.join().unwrap();
+        }
+        drop(self.master);
+        let deadline = Instant::now() + TIMEOUT;
+        loop {
+            if let Some(status) = self.child.try_wait().unwrap() {
+                return status.code().unwrap_or(-1);
+            }
+            if Instant::now() >= deadline {
+                let _ = self.child.kill();
+                let _ = self.child.wait();
+                panic!("client did not exit after its terminal closed");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     /// End the client, gently first, and release the pty.
@@ -352,12 +336,7 @@ impl Fixture {
 
     /// `hypercube` in a new terminal.
     fn client(&self) -> Session {
-        let ws = Winsize {
-            ws_col: COLS,
-            ws_row: ROWS,
-            ws_xpixel: COLS * 8,
-            ws_ypixel: ROWS * 16,
-        };
+        let ws = winsize(COLS, ROWS);
         let pty = Pty::spawn(&[HYPERCUBE], &self.repo, &self.env(), ws).unwrap();
         let output = Arc::new(Mutex::new(Vec::new()));
         let stop = Arc::new(AtomicBool::new(false));
@@ -1111,6 +1090,22 @@ fn status_shows_running_and_stop_ends_every_stand_in() {
 }
 
 #[test]
+fn a_directory_that_became_a_checkout_has_git_on_restart() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.stop();
+    // As if the workspace had first started before `git init`.
+    store::update(&fx.state_path(), |s| {
+        s.no_git = true;
+        Ok(())
+    })
+    .unwrap();
+    fx.start();
+    assert!(!fx.state().no_git);
+    fx.stop();
+}
+
+#[test]
 fn restart_resumes_saved_sessions() {
     let mut fx = Fixture::new();
     fx.start();
@@ -1168,6 +1163,24 @@ fn restart_resumes_saved_sessions() {
         assert_eq!(&state.agent(name).unwrap().session_id, session, "{name}");
     }
     assert_eq!(state.agents.len(), 3);
+}
+
+#[test]
+fn a_moved_checkout_can_be_stopped_and_deleted_by_its_old_path() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    let old = fx.repo.clone();
+    let moved = fx.dir.join("moved");
+    fs::rename(&old, &moved).unwrap();
+    fx.repo = moved;
+    let old = old.to_str().unwrap();
+    let out = fx.run(&["stop", old]);
+    assert!(out.status.success(), "{out:?}");
+    fx.wait_host_exit();
+    let out = fx.run(&["delete", old]);
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(fx.state_files(), Vec::<String>::new());
 }
 
 #[test]
@@ -1370,16 +1383,23 @@ fn an_agent_that_keeps_exiting_is_left_exited() {
         fx.wait_event("w1", "ready", n);
     }
     // The third quick exit in a row is not relaunched.
-    let pid = fx.pid("w1");
     fx.command("w1", "exit 1");
-    fx.wait_gone(&[pid]);
-    std::thread::sleep(Duration::from_millis(500));
+    // The team sees that it has exited.
+    fx.wait("w1 to be marked exited", |fx| {
+        (fx.state().agent("w1").unwrap().activity == store::EXITED).then_some(())
+    });
     assert_eq!(fx.agent_events("w1", "launch").len(), 3);
+    let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
+    assert!(!is_error && text.contains("\"exited\""), "{text}");
+    let (text, is_error) = fx.call(
+        "orchestrator",
+        "send_message",
+        json!({"to": "w1", "text": "hi"}),
+    );
+    assert!(!is_error && text.contains("w1 is not running"), "{text}");
 
     // The session goes on with the other agents.
     assert!(host::running(&fx.state_path()).unwrap());
-    let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
-    assert!(!is_error && text.contains("\"w1\""), "{text}");
     fx.stop();
 }
 
@@ -1620,8 +1640,7 @@ fn closing_the_terminal_leaves_the_team_running() {
     let pids = fx.pids();
     let host = fx.host_pid();
     // Closing the client's terminal ends the client, and only it.
-    fx.session.take().unwrap().end();
-    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fx.session.take().unwrap().close_terminal(), 0);
     assert!(alive(host));
     assert!(pids.iter().all(|&p| alive(p)));
     assert_eq!(fx.status().unwrap()[1], "running");

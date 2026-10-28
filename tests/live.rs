@@ -2,8 +2,11 @@
 //! on a pty whose other side feeds a Ghostty terminal standing in for the
 //! user's terminal, linked to the runtime by a socket pair. The programs in
 //! the panes are src/bin/hypercube-test-child.rs.
+#[path = "support/terminal.rs"]
+mod terminal;
+
 use std::io::Write as _;
-use std::os::fd::{AsRawFd as _, FromRawFd as _, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd as _, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -11,52 +14,27 @@ use std::thread::JoinHandle;
 use hypercube::client::{self, Tty};
 use hypercube::link::{self, Link, Message};
 use hypercube::mux::{
-    self, Chrome, Key, Mux, PaneId, PaneView, Rect, Winsize, host_replies_done, now_ms, read,
-    write_all,
+    self, Chrome, Key, Mux, Notice, PaneId, PaneView, Rect, Winsize, host_replies_done, now_ms,
+    read, write_all,
 };
 use hypercube::pty::{self, Pty};
 use hypercube::runtime::{Event, Runtime};
+use hypercube::signals;
 use libghostty_vt::RenderState;
 use libghostty_vt::Terminal;
 use libghostty_vt::mouse;
-use libghostty_vt::render::{CellIterator, CursorVisualStyle, RowIterator};
-use libghostty_vt::screen::CellWide;
+use libghostty_vt::render::CursorVisualStyle;
 use libghostty_vt::terminal::{Mode, ModeKind, Point, PointCoordinate};
+use terminal::{contains, host_replies, winsize};
 
 const CHILD: &str = env!("CARGO_BIN_EXE_hypercube-test-child");
 
-fn contains(haystack: &[u8], needle: &[u8]) -> bool {
-    haystack.windows(needle.len()).any(|w| w == needle)
-}
 fn position(haystack: &[u8], needle: &[u8]) -> usize {
     haystack
         .windows(needle.len())
         .position(|w| w == needle)
         .unwrap()
 }
-/// What the stand-in host terminal answers to the runtime's queries.
-fn host_replies() -> Vec<u8> {
-    let mut s = "\x1b]10;rgb:d0d0/d1d1/d2d2\x1b\\\x1b]11;rgb:1010/1111/1212\x1b\\".to_owned();
-    for i in 0..16 {
-        s.push_str(&format!(
-            "\x1b]4;{i};rgb:{:02x}/{:02x}/{:02x}\x1b\\",
-            i * 16 + 1,
-            255 - i * 15,
-            i * 7 + 3
-        ));
-    }
-    s.push_str("\x1b[?2027;1$y\x1b[?62;22c");
-    s.into_bytes()
-}
-fn winsize(cols: u16, rows: u16) -> Winsize {
-    Winsize {
-        ws_col: cols,
-        ws_row: rows,
-        ws_xpixel: cols * 8,
-        ws_ypixel: rows * 16,
-    }
-}
-
 /// Each pane has a label row above it. The first pane takes the left half,
 /// and the others split the right half with equal heights.
 fn layout(size: Winsize, ids: &[PaneId]) -> Vec<(PaneId, Rect)> {
@@ -156,14 +134,6 @@ fn read_host(fd: RawFd, received: Arc<Mutex<Received>>) -> JoinHandle<()> {
     })
 }
 
-/// A non-blocking pipe, read end first, as `winch` makes.
-fn pipe() -> (OwnedFd, OwnedFd) {
-    let mut fds = [0; 2];
-    assert_eq!(unsafe { libc::pipe(fds.as_mut_ptr()) }, 0);
-    unsafe { libc::fcntl(fds[0], libc::F_SETFL, libc::O_NONBLOCK) };
-    unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
-}
-
 struct Host {
     master: OwnedFd,
     slave: Option<OwnedFd>,
@@ -209,8 +179,8 @@ impl Host {
             mux: Mux::new(winsize(cols, rows), Box::new(Labels)),
             runtime: Runtime::new(),
             proxy: None,
-            winch: pipe(),
-            hangup: pipe(),
+            winch: signals::pipe().unwrap(),
+            hangup: signals::pipe().unwrap(),
             events: Vec::new(),
             extra: Vec::new(),
         };
@@ -313,32 +283,7 @@ impl Host {
         }
     }
     fn screen(&self) -> String {
-        let mut state = RenderState::new().unwrap();
-        let snapshot = state.update(&self.terminal).unwrap();
-        let mut rows = RowIterator::new().unwrap();
-        let mut rows = rows.update(&snapshot).unwrap();
-        let mut cells = CellIterator::new().unwrap();
-        let mut text = String::new();
-        while let Some(row) = rows.next() {
-            let mut line = String::new();
-            let mut iter = cells.update(row).unwrap();
-            while let Some(cell) = iter.next() {
-                let raw = cell.raw_cell().unwrap();
-                if raw.wide().unwrap() == CellWide::SpacerTail {
-                    continue;
-                }
-                if raw.has_text().unwrap() {
-                    let mut grapheme = String::new();
-                    cell.graphemes_utf8(&mut grapheme).unwrap();
-                    line.push_str(&grapheme);
-                } else {
-                    line.push(' ');
-                }
-            }
-            text.push_str(line.trim_end_matches(' '));
-            text.push('\n');
-        }
-        text.trim_end_matches('\n').to_owned()
+        terminal::screen(&self.terminal)
     }
     fn line(&self, row: usize) -> String {
         self.screen().lines().nth(row).unwrap_or("").to_owned()
@@ -408,13 +353,22 @@ impl Host {
         self.restore_terminal();
     }
     fn restore_terminal(&mut self) {
-        write_all(
-            self.slave.as_ref().unwrap().as_raw_fd(),
-            &mux::host_restore(Some(true)),
-        );
-        // Let the reader catch up.
-        std::thread::sleep(std::time::Duration::from_millis(100));
         self.pump();
+        let start = self.output.len();
+        let restore = mux::host_restore(Some(true));
+        write_all(self.slave.as_ref().unwrap().as_raw_fd(), &restore);
+        let deadline = now_ms() + 5000;
+        loop {
+            self.pump();
+            if contains(&self.output[start..], &restore) {
+                break;
+            }
+            assert!(
+                now_ms() < deadline,
+                "timed out waiting for terminal restore"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
     }
 }
 impl Drop for Host {
@@ -614,7 +568,11 @@ fn input_goes_to_the_focused_pane_and_ctrl_b_o_moves_focus() {
     h.send("\x02ob");
     h.wait_screen("right got 98");
     // The loop reports the move to the caller.
-    assert!(h.events.iter().any(|e| matches!(e, Event::Focus(_))));
+    assert!(
+        h.events
+            .iter()
+            .any(|e| matches!(e, Event::Notice(Notice::Focus(_))))
+    );
     h.send("\x02oc");
     h.wait_screen("left got 99");
     // Kitty-encoded Ctrl-b: a press is the prefix; repeats and releases are
@@ -686,7 +644,7 @@ fn ctrl_b_z_is_reported_and_goes_to_no_pane() {
     let zooms = |h: &Host| {
         h.events
             .iter()
-            .filter(|e| matches!(e, Event::Zoom(_)))
+            .filter(|e| matches!(e, Event::Notice(Notice::Zoom(_))))
             .count()
     };
     h.send("\x02za");
@@ -1312,6 +1270,17 @@ fn deadline_wakes_wait() {
     let events = h.runtime.wait(&mut h.mux, &[], Some(start + 150)).unwrap();
     assert_eq!(events, [Event::Deadline]);
     assert!((150..1000).contains(&(now_ms() - start)));
+}
+
+#[test]
+fn a_captured_lone_esc_is_reported_when_its_hold_ends() {
+    let mut h = Host::new(40, 10);
+    h.mux.set_captured(true);
+    h.mux.input(b"\x1b");
+    let start = now_ms();
+    let events = h.runtime.wait(&mut h.mux, &[], Some(start + 1000)).unwrap();
+    assert_eq!(events, [Event::Notice(Notice::Key(b"\x1b".to_vec()))]);
+    assert!(now_ms() - start < 500);
 }
 
 #[test]

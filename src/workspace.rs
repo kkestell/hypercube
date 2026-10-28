@@ -11,7 +11,8 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 const EXCLUDE_RULE: &str = "/.hypercube/";
 
-fn utf8(path: &Path) -> Result<&str> {
+/// The text of `path`, which must be valid UTF-8.
+pub fn utf8(path: &Path) -> Result<&str> {
     path.to_str()
         .ok_or_else(|| format!("{} is not valid UTF-8", path.display()).into())
 }
@@ -62,13 +63,31 @@ fn clean(path: &Path) -> PathBuf {
     out
 }
 
-/// `dir` as an absolute path. A leading `~/` is the home directory, and a
+/// `dir` as a canonical path. A leading `~/` is the home directory, and a
 /// relative path is relative to `base`. `dir` must be an existing directory.
 pub fn resolve(base: &Path, dir: &str) -> Result<PathBuf> {
     resolve_in(home().as_deref(), base, dir)
 }
 
 fn resolve_in(home: Option<&Path>, base: &Path, dir: &str) -> Result<PathBuf> {
+    let path = spelled_in(home, base, dir)?;
+    let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if !meta.is_dir() {
+        return Err(format!("{} is not a directory", path.display()).into());
+    }
+    // Outside Git the directory names the workspace, so every spelling of it
+    // must give one path.
+    path.canonicalize()
+        .map_err(|e| format!("{}: {e}", path.display()).into())
+}
+
+/// `dir` as an absolute path, as `resolve` makes it but without following
+/// symbolic links, for a directory that may no longer exist.
+pub fn spelled(base: &Path, dir: &str) -> Result<PathBuf> {
+    spelled_in(home().as_deref(), base, dir)
+}
+
+fn spelled_in(home: Option<&Path>, base: &Path, dir: &str) -> Result<PathBuf> {
     let path = if let Some(rest) = dir.strip_prefix("~/") {
         home.ok_or("HOME is not set")?.join(rest)
     } else if Path::new(dir).is_absolute() {
@@ -76,12 +95,7 @@ fn resolve_in(home: Option<&Path>, base: &Path, dir: &str) -> Result<PathBuf> {
     } else {
         base.join(dir)
     };
-    let path = clean(&path);
-    let meta = std::fs::metadata(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    if !meta.is_dir() {
-        return Err(format!("{} is not a directory", path.display()).into());
-    }
-    Ok(path)
+    Ok(clean(&path))
 }
 
 /// The root of the workspace containing `dir`, which `resolve` makes
@@ -239,7 +253,15 @@ pub fn add_worktree(root: &Path, dir: &Path, branch: &str) -> Result<()> {
         writeln!(file, "{separator}{EXCLUDE_RULE}")
             .map_err(|e| format!("write {}: {e}", exclude.display()))?;
     }
-    git(root, &["worktree", "add", "-b", branch, utf8(dir)?, "HEAD"])?;
+    // Git makes the branch before it checks it out, and leaves it when the
+    // checkout fails.
+    let existed = exists(root, branch);
+    if let Err(e) = git(root, &["worktree", "add", "-b", branch, utf8(dir)?, "HEAD"]) {
+        if !existed {
+            let _ = git(root, &["branch", "-D", branch]);
+        }
+        return Err(e);
+    }
     if let Err(e) = set_up(root, dir) {
         let _ = git(root, &["worktree", "remove", "--force", utf8(dir)?]);
         let _ = git(root, &["branch", "-D", branch]);
@@ -283,13 +305,15 @@ fn copy_included(root: &Path, dir: &Path) -> Result<()> {
             "--ignored",
             "--exclude-from=.worktreeinclude",
             "--directory",
+            // Unquoted paths, each ended by a NUL.
+            "-z",
         ],
     )?;
     if matched.is_empty() {
         return Ok(());
     }
     let mut child = Command::new("git")
-        .args(["check-ignore", "--stdin"])
+        .args(["check-ignore", "--stdin", "-z"])
         .current_dir(root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -313,7 +337,7 @@ fn copy_included(root: &Path, dir: &Path) -> Result<()> {
     // With --directory, Git lists a directory and also the files in it.
     let mut copied: Vec<&str> = Vec::new();
     let listing = String::from_utf8_lossy(&out.stdout);
-    for p in listing.trim().lines() {
+    for p in listing.split('\0').filter(|p| !p.is_empty()) {
         if copied.iter().any(|d| p.starts_with(d)) {
             continue;
         }
@@ -494,9 +518,11 @@ mod tests {
         fs::create_dir(base.join("rel")).unwrap();
         fs::create_dir(home.join("src")).unwrap();
         fs::write(base.join("file"), "").unwrap();
+        std::os::unix::fs::symlink(base.join("rel"), base.join("link")).unwrap();
 
         let cases = [
             ("rel", base.join("rel")),
+            ("link", base.join("rel")),
             ("./rel", base.join("rel")),
             (".", base.to_path_buf()),
             ("~/src", home.join("src")),
@@ -669,10 +695,15 @@ mod tests {
             ],
         );
         let files = [
-            (".gitignore", ".toolchain/\n.env\ncache/\nbuild/\n"),
-            (".worktreeinclude", ".toolchain/\n.env\ncache/keep\nsrc/\n"),
+            (".gitignore", ".toolchain/\n.env\ncache/\nbuild/\ncafé\n"),
+            (
+                ".worktreeinclude",
+                ".toolchain/\n.env\ncache/keep\nsrc/\ncafé\n",
+            ),
             (".toolchain/bin/zig", "zig"),
             (".env", "env"),
+            // Git quotes this name unless asked not to.
+            ("café", "café"),
             ("cache/keep", "keep"),
             ("cache/drop", "drop"),
             ("build/out", "out"),
@@ -686,7 +717,13 @@ mod tests {
 
         let (dir, branch) = (worktree_dir(&root, "w1"), worker_branch("w1"));
         add_worktree(&root, &dir, &branch).unwrap();
-        for name in [".toolchain/bin/zig", ".env", "cache/keep", "vendor/sub/lib"] {
+        for name in [
+            ".toolchain/bin/zig",
+            ".env",
+            "café",
+            "cache/keep",
+            "vendor/sub/lib",
+        ] {
             let data = fs::read_to_string(dir.join(name))
                 .unwrap_or_else(|e| panic!("{name} missing from the worktree: {e}"));
             if let Some((_, want)) = files.iter().find(|(n, _)| *n == name) {
@@ -735,6 +772,16 @@ mod tests {
         assert!(err.contains("git submodule update"), "{err}");
         assert!(!dir.exists(), "worktree directory remains");
         assert!(!branch_exists(&root, &branch), "branch remains");
+    }
+
+    #[test]
+    fn failed_checkout_removes_the_new_branch() {
+        let (_tmp, root) = repo();
+        let (dir, branch) = (worktree_dir(&root, "w1"), worker_branch("w1"));
+        write(&dir.join("left"), "");
+        add_worktree(&root, &dir, &branch).unwrap_err();
+        assert!(!branch_exists(&root, &branch), "branch remains");
+        assert!(dir.join("left").exists());
     }
 
     #[test]

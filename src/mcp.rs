@@ -55,34 +55,33 @@ fn tool(name: &str, description: String, input_schema: Value) -> Value {
 /// The tools for a workspace's mode and the configured profiles. Outside
 /// Git, workers cannot have worktrees, so `create_agent` requires `dir`.
 pub fn tools(no_git: bool, profiles: &[Profile]) -> Vec<Value> {
-    let create_properties = ["name", "profile", "dir", "message"];
-    let (mut create, remove) = if no_git {
+    let (create_text, required, remove_text) = if no_git {
         (
-            tool(
-                "create_agent",
-                format!("Orchestrator only. Create a worker and launch it. Given dir, {DIR_ARG}. {PROFILE_ARG}"),
-                schema(&["name", "profile", "dir"], &create_properties),
-            ),
-            tool(
-                "remove_agent",
-                "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is.".into(),
-                schema(&["id"], &["id"]),
-            ),
+            format!("Given dir, {DIR_ARG}."),
+            &["name", "profile", "dir"][..],
+            "Its directory is left as it is.",
         )
     } else {
         (
-            tool(
-                "create_agent",
-                format!("Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, {DIR_ARG}, and Hypercube creates no branch or worktree. {PROFILE_ARG}"),
-                schema(&["name", "profile"], &create_properties),
+            format!(
+                "Without dir, the worker gets its own branch and worktree from HEAD. With dir, {DIR_ARG}, and Hypercube creates no branch or worktree."
             ),
-            tool(
-                "remove_agent",
-                "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.".into(),
-                schema(&["id"], &["id"]),
-            ),
+            &["name", "profile"][..],
+            "A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.",
         )
     };
+    let mut create = tool(
+        "create_agent",
+        format!("Orchestrator only. Create a worker and launch it. {create_text} {PROFILE_ARG}"),
+        schema(required, &["name", "profile", "dir", "message"]),
+    );
+    let remove = tool(
+        "remove_agent",
+        format!(
+            "Orchestrator only. Close a worker's pane and remove it from the team. {remove_text}"
+        ),
+        schema(&["id"], &["id"]),
+    );
     if !profiles.is_empty() {
         let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
         create["inputSchema"]["properties"]["profile"] = json!({"type": "string", "enum": names});
@@ -238,10 +237,14 @@ impl Server {
             });
             Ok(recipient)
         })?;
-        Ok(format!(
-            "Message queued for {} ({}).",
-            recipient.name, recipient.id
-        ))
+        let mut reply = format!("Message queued for {} ({}).", recipient.name, recipient.id);
+        if recipient.activity == store::EXITED {
+            reply.push_str(&format!(
+                " {} is not running: it exited and was not restarted, so it gets the message only when the session starts again.",
+                recipient.name
+            ));
+        }
+        Ok(reply)
     }
 
     fn create_agent(&self, name: &str, profile: &str, dir: &str, message: &str) -> Result<String> {
@@ -266,11 +269,11 @@ impl Server {
                 return Err(format!("an agent named {name} already exists").into());
             }
             if !dir.is_empty() {
-                agent.dir = path_str(&workspace::resolve(&root, dir)?)?;
+                agent.dir = workspace::utf8(&workspace::resolve(&root, dir)?)?.into();
             } else if s.no_git {
                 return Err("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees".into());
             } else {
-                agent.dir = path_str(&workspace::worktree_dir(&root, name))?;
+                agent.dir = workspace::utf8(&workspace::worktree_dir(&root, name))?.into();
                 agent.branch = workspace::worker_branch(name);
             }
             s.agents.push(agent.clone());
@@ -370,12 +373,6 @@ fn orchestrator<'a>(state: &'a State, id: &str) -> Result<&'a Agent> {
         return Err("only the orchestrator can do this".into());
     }
     Ok(agent)
-}
-
-fn path_str(path: &Path) -> Result<String> {
-    path.to_str()
-        .map(str::to_string)
-        .ok_or_else(|| format!("{} is not valid UTF-8", path.display()).into())
 }
 
 #[cfg(test)]

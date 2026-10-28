@@ -7,7 +7,7 @@
 use std::error::Error;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use crate::colors::{self, ATTENTION, Palette};
@@ -256,13 +256,7 @@ pub fn running() -> Result<Vec<Entry>> {
             continue;
         };
         let state = store::load(&path).ok();
-        let root = state.as_ref().and_then(|state| {
-            let o = state
-                .agents
-                .iter()
-                .find(|a| a.role == store::ORCHESTRATOR)?;
-            Some(PathBuf::from(&o.dir))
-        });
+        let root = state.as_ref().and_then(|s| s.root()).map(Path::to_path_buf);
         let attention = state
             .as_ref()
             .is_some_and(|state| state.agents.iter().any(|a| a.attention));
