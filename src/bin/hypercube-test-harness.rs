@@ -109,6 +109,8 @@ struct Stub {
     session: String,
     /// The hook command of each event: the `--settings` entry for Claude Code.
     hooks: BTreeMap<String, String>,
+    /// The `--settings` status line command, for Claude Code.
+    status_line: Option<String>,
     mcp: Mcp,
     hold_hup: bool,
     typed: Vec<u8>,
@@ -170,6 +172,34 @@ impl Stub {
         output
     }
 
+    /// Run the status line command the way Claude Code does, with `input` on
+    /// its stdin, and record what it wrote.
+    fn status_line(&mut self, input: &str) {
+        let command = self
+            .status_line
+            .clone()
+            .expect("--settings has a statusLine");
+        let mut child = Command::new("sh")
+            .args(["-c", &command])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("run the status line command");
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        let out = child.wait_with_output().unwrap();
+        let output = String::from_utf8_lossy(&out.stdout).into_owned();
+        self.record(
+            "statusline",
+            json!({"command": command, "output": output, "status": out.status.code()}),
+        );
+    }
+
     /// Submit a prompt and run the turn it starts.
     fn prompt(&mut self, text: &str) {
         self.record("prompt", json!({"text": text}));
@@ -187,6 +217,10 @@ impl Stub {
         if line == "hold-hup" {
             self.hold_hup = true;
             self.record("hold-hup", json!({}));
+            return;
+        }
+        if let Some(input) = line.strip_prefix("statusline ") {
+            self.status_line(input);
             return;
         }
         let mut parts = line.splitn(3, ' ');
@@ -320,6 +354,7 @@ fn main() {
     // extension, which the stub does not run: it starts the server that
     // the extension embeds and calls the same hook commands.
     let mut hooks = BTreeMap::new();
+    let mut status_line = None;
     let (program, mcp_args, mcp_env) = match flag_value(args, "--mcp-config") {
         Some(config) => {
             let config: Value = serde_json::from_str(&config).expect("--mcp-config");
@@ -330,6 +365,7 @@ fn main() {
                 let command = entry[0]["hooks"][0]["command"].as_str().unwrap();
                 hooks.insert(event.clone(), command.to_string());
             }
+            status_line = settings["statusLine"]["command"].as_str().map(String::from);
             let strings = |v: &Value| -> Vec<String> {
                 v.as_array()
                     .into_iter()
@@ -361,6 +397,7 @@ fn main() {
         events,
         session,
         hooks,
+        status_line,
         mcp: Mcp::start(&program, &mcp_args, &mcp_env),
         hold_hup: false,
         typed: Vec::new(),

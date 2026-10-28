@@ -55,6 +55,8 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 - `src/config.rs`: loading and validating `config.json`.
 - `src/workspace.rs`: the Git checkout, worker branches and worktrees, and
   worker directories.
+- `src/limits.rs`: `hypercube statusline`, the saved Claude Code limits, and
+  their status bar text.
 - `src/harness.rs`: the launch command of each harness and the pane labels.
 - `src/harness/pi.js`: the Pi extension, embedded in the binary and written for
   each Pi launch.

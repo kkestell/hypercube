@@ -9,13 +9,15 @@
 //! state file, `config` the user's profiles, `workspace` the Git checkout and
 //! worktrees, `harness` the launch command of each harness, `hook` the
 //! harness hook events, `control` the host's control socket protocol, `host`
-//! the session in the user's terminal, and `mcp` the agents' MCP server.
+//! the session in the user's terminal, `limits` Claude Code's usage limits for
+//! the status bar, and `mcp` the agents' MCP server.
 
 pub mod config;
 pub mod control;
 pub mod harness;
 pub mod hook;
 pub mod host;
+pub mod limits;
 pub mod mcp;
 pub mod mux;
 pub mod pty;

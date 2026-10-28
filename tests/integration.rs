@@ -295,6 +295,29 @@ impl Fixture {
         self.cli(args).output().unwrap()
     }
 
+    /// Run `hypercube` with `input` on its standard input.
+    fn run_with_input(&self, args: &[&str], input: &str) -> Output {
+        let mut child = self
+            .cli(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(input.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    }
+
+    /// The file `hypercube statusline` saves Claude Code's limits in.
+    fn limits_path(&self) -> PathBuf {
+        self.dir.join("state/hypercube/claude-limits.json")
+    }
+
     /// The row of `hypercube status` for the repository: workspace, session,
     /// and number of agents.
     fn status(&self) -> Option<Vec<String>> {
@@ -1064,4 +1087,194 @@ fn unsupported_harness_does_not_stop_startup() {
     fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 2]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap().is_some());
+}
+
+/// Claude Code's status line input with the given limits.
+fn status_input(dir: &Path, five_hour: (u32, i64), seven_day: (u32, i64)) -> String {
+    json!({
+        "rate_limits": {
+            "five_hour": {"used_percentage": five_hour.0, "resets_at": five_hour.1},
+            "seven_day": {"used_percentage": seven_day.0, "resets_at": seven_day.1},
+        },
+        "context_window": {"used_percentage": 37.6},
+        "workspace": {"current_dir": dir},
+    })
+    .to_string()
+}
+
+#[test]
+fn the_status_line_saves_limits_and_the_status_bar_shows_them() {
+    let mut fx = Fixture::new();
+    let now = i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    // Limits saved before the session starts are on the status bar at once.
+    fs::create_dir_all(fx.limits_path().parent().unwrap()).unwrap();
+    let input = status_input(
+        &fx.repo,
+        (22, now + 2 * 3600 + 600),
+        (9, now + 3 * 86400 + 3600),
+    );
+    fs::write(
+        fx.limits_path(),
+        json!({"five_hour": {"used_percentage": 22, "resets_at": now + 2 * 3600 + 600}})
+            .to_string(),
+    )
+    .unwrap();
+    fx.start();
+    fx.wait_screen("claude 5h 22% ↻2h");
+    let screen = fx.screen();
+    let last = screen.lines().last().unwrap();
+    assert!(last.contains(fx.repo.to_str().unwrap()), "{screen}");
+    assert!(!last.contains("7d"), "{screen}");
+
+    // Claude Code runs the status line command from `--settings`.
+    let launch = fx.agent_events("orchestrator", "launch").remove(0);
+    let settings: Value =
+        serde_json::from_str(flag_value(args_of(&launch), "--settings").unwrap()).unwrap();
+    assert_eq!(settings["statusLine"]["type"], "command");
+    fx.command("orchestrator", &format!("statusline {input}"));
+    let runs = fx.wait_event("orchestrator", "statusline", 1);
+    assert_eq!(runs[0]["status"], 0, "{runs:?}");
+    assert_eq!(runs[0]["output"], "ctx 38% · main");
+    assert_eq!(runs[0]["command"], settings["statusLine"]["command"]);
+
+    // A dirty checkout is starred.
+    fs::write(fx.repo.join("scratch.txt"), "x").unwrap();
+    fx.command("orchestrator", &format!("statusline {input}"));
+    let runs = fx.wait_event("orchestrator", "statusline", 2);
+    assert_eq!(runs[1]["output"], "ctx 38% · main*");
+
+    // The host reads the saved file again within 15 seconds.
+    fx.wait_screen("7d 9% ↻3d");
+    let screen = fx.screen();
+    assert!(
+        screen.lines().last().unwrap().contains("claude 5h 22% ↻2h"),
+        "{screen}"
+    );
+
+    // The limits file is not a workspace.
+    let out = fx.run(&["status"]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(text.lines().count(), 2, "{text}");
+    fx.stop();
+}
+
+#[test]
+fn stop_all_stops_running_workspaces_after_confirmation() {
+    let mut fx = Fixture::new();
+    let out = fx.run_with_input(&["stop", "--all"], "y\n");
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout),
+        "No workspaces to stop.\n"
+    );
+
+    // The first workspace is stopped, and the second runs.
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.stop();
+    let first = fx.repo.clone();
+    fx.repo = fx.dir.join("other");
+    fs::create_dir(&fx.repo).unwrap();
+    fx.git(&fx.repo, &["init", "-q", "-b", "main"]);
+    fx.git(&fx.repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    fx.start();
+    let pids = fx.pids();
+
+    let out = fx.run_with_input(&["stop", "--all"], "n\n");
+    assert!(!out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(
+        stdout,
+        format!("{}\nStop all of these? [y/N] ", fx.repo.display())
+    );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("stop cancelled"));
+    assert!(host::running(&fx.state_path()).unwrap().is_some());
+
+    let out = fx.run_with_input(&["stop", "--all"], "y\n");
+    assert!(out.status.success(), "{out:?}");
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert_eq!(
+        stdout,
+        format!("{}\nStop all of these? [y/N] ", fx.repo.display())
+    );
+    fx.wait_host_exit();
+    fx.wait_gone(&pids);
+    assert!(fx.status().is_some());
+    assert_eq!(
+        fx.run_with_input(&["stop", "--all"], "y\n").stdout,
+        b"No workspaces to stop.\n"
+    );
+    // The stopped workspace keeps its state.
+    let name = workspace::name(&first);
+    let state = store::load(&fx.dir.join(format!("state/hypercube/{name}.json"))).unwrap();
+    assert_eq!(state.agents.len(), 2);
+}
+
+#[test]
+fn delete_all_reports_refusals_and_deletes_the_rest() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.stop();
+    let first = fx.repo.clone();
+    let dirty = fx.worktree("w1").join("scratch.txt");
+    fs::write(&dirty, "work in progress").unwrap();
+
+    fx.repo = fx.dir.join("other");
+    fs::create_dir(&fx.repo).unwrap();
+    fx.git(&fx.repo, &["init", "-q", "-b", "main"]);
+    fx.git(&fx.repo, &["commit", "-q", "--allow-empty", "-m", "init"]);
+    fx.start();
+    fx.create("w2", "deepseek", "");
+    let pids = fx.pids();
+    let second_state = fx.state_path();
+
+    let out = fx.run_with_input(&["delete", "--all"], "no\n");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("delete cancelled"));
+    assert!(host::running(&second_state).unwrap().is_some());
+
+    // The first workspace refuses, and the second is deleted, ending its
+    // session.
+    let out = fx.run_with_input(&["delete", "--all"], "y\n");
+    assert!(!out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(stdout.contains(first.to_str().unwrap()), "{stdout}");
+    assert!(stdout.ends_with("Delete all of these? [y/N] "), "{stdout}");
+    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert!(
+        stderr.contains(&format!(
+            "delete failed for:\n{}: not deleting the workspace",
+            first.display()
+        )),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("other"), "{stderr}");
+    fx.wait_host_exit();
+    fx.wait_gone(&pids);
+    assert!(!second_state.exists());
+    assert!(!fx.dir.join("other/.hypercube/w2").exists());
+    assert!(dirty.exists());
+    let name = workspace::name(&first);
+    assert!(
+        fx.state_files().iter().all(|f| f.starts_with(&name)),
+        "{:?}",
+        fx.state_files()
+    );
+
+    fs::remove_file(&dirty).unwrap();
+    let out = fx.run_with_input(&["delete", "--all"], "yes\n");
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(fx.state_files(), Vec::<String>::new());
+    assert!(!first.join(".hypercube/w1").exists());
+    assert_eq!(
+        fx.run_with_input(&["delete", "--all"], "y\n").stdout,
+        b"No workspaces to delete.\n"
+    );
 }

@@ -52,7 +52,13 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
                     )
                 })
                 .collect();
-            let settings = json!({"hooks": hooks});
+            let settings = json!({
+                "hooks": hooks,
+                "statusLine": {
+                    "type": "command",
+                    "command": format!("{} statusline", shell_quote(exe_str)),
+                },
+            });
             let mut argv = strings(["claude", "--mcp-config"]);
             argv.extend([
                 mcp.to_string(),
@@ -231,12 +237,15 @@ mod tests {
         };
         assert_eq!(
             settings,
-            json!({"hooks": {
-                "SessionStart": hook("SessionStart"),
-                "UserPromptSubmit": hook("UserPromptSubmit"),
-                "PostToolUse": hook("PostToolUse"),
-                "Stop": hook("Stop"),
-            }})
+            json!({
+                "hooks": {
+                    "SessionStart": hook("SessionStart"),
+                    "UserPromptSubmit": hook("UserPromptSubmit"),
+                    "PostToolUse": hook("PostToolUse"),
+                    "Stop": hook("Stop"),
+                },
+                "statusLine": {"type": "command", "command": format!("'{EXE}' statusline")},
+            })
         );
     }
 
@@ -254,7 +263,7 @@ mod tests {
     }
 
     #[test]
-    fn hook_commands_quote_the_executable() {
+    fn hook_and_status_line_commands_quote_the_executable() {
         let state = Path::new("/tmp/w.json");
         let l = command(
             Path::new("/it's/hypercube"),
@@ -267,6 +276,10 @@ mod tests {
         assert_eq!(
             settings["hooks"]["Stop"][0]["hooks"][0]["command"],
             r"'/it'\''s/hypercube' hook Stop"
+        );
+        assert_eq!(
+            settings["statusLine"]["command"],
+            r"'/it'\''s/hypercube' statusline"
         );
     }
 

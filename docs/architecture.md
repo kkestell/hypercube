@@ -10,7 +10,11 @@
   close, and nudge panes.
 - `hypercube hook <event>` runs for each harness hook event and reads and
   writes only the state file.
-- `hypercube stop`, `status`, and `delete` are short-lived commands.
+- `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
+  `delete` take `--all` to act on every workspace.
+- `hypercube statusline` is Claude Code's status line command. It runs for each
+  status update, saves the usage limits Claude Code reports, and prints a
+  line for Claude Code's own status line.
 
 A workspace is named from its checkout path (`workspace::name`): the
 directory's name and the start of a hash of the path. Outside Git, the
@@ -23,6 +27,9 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
 - `<name>.host.lock`: the host lock.
 - `<hash>.sock`: the control socket, named from a hash of the workspace name
   so its path stays within the 104 bytes macOS allows.
+
+The state directory also holds `claude-limits.json`, which belongs to no
+workspace (see Usage limits), and `pi-extension/index.js`.
 
 ## The host
 
@@ -76,8 +83,33 @@ it grows.
 `TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
 in black on `#87d7ff`, bold for the focused pane, followed by "exited N" once
 the pane's program has exited. An exited pane keeps its place until
-`remove_agent` closes it. The status bar is black on `#87d7ff` with the
-checkout path. Ctrl-] moves the focus to the next live pane.
+`remove_agent` closes it. The status bar is black on `#87d7ff`, with the
+checkout path on the left and Claude Code's usage limits on the right.
+Ctrl-] moves the focus to the next live pane.
+
+The status bar clips its text to whole grapheme clusters, measured in columns.
+The limits are drawn only when they fit in the columns the path leaves, with a
+column between them; otherwise the bar shows the path alone.
+
+### Usage limits
+
+Claude Code gives its rate limits only to its status line command, which
+`harness::command` sets to `hypercube statusline`. Each run reads Claude
+Code's status JSON on stdin and, when it carries `rate_limits`, saves the
+`five_hour` and `seven_day` windows (`used_percentage`, `resets_at` in Unix
+seconds) in `claude-limits.json` in the state directory. The write goes
+through a temporary file renamed into place. The limits belong to the account,
+so every workspace shares the file. The command prints the line Claude Code
+shows: `ctx <used>%`, then ` · <branch>` for the branch checked out in
+`workspace.current_dir`, with `*` after it when the checkout has uncommitted
+changes.
+
+The host reads the file when it starts and every 15 seconds after, on the
+event loop's deadline. `limits::render` turns it into status bar text, such as
+`claude 5h 22% ↻2h5m  7d 9% ↻3d4h`: each window that has not reset, with its
+use and the time until it resets. When the text differs from what the status
+bar shows, the host calls `Mux::invalidate_chrome`. A missing or unreadable
+file leaves the right side empty.
 
 ## Control socket
 
@@ -113,7 +145,7 @@ modification time is the workspace's creation time. Every hook writes the
 state, so the state file's modification time is its last activity.
 `hypercube status` lists every workspace with a state file by last activity,
 with its directory, whether its host lock is held, its number of agents, and
-both times.
+both times. A workspace's directory is its orchestrator's.
 
 `hypercube delete` refuses if a worker's worktree is dirty or its branch is
 not merged. Otherwise it stops the host and takes the host lock itself, so
@@ -121,6 +153,16 @@ no host starts while it works. It removes each worker's worktree and branch,
 deletes the state, its lock, and the socket, and removes the host lock file
 last. A host that takes the host lock checks that the file it locked is still
 the one at the path, and otherwise locks the current one.
+
+`hypercube stop --all` lists the directory of every workspace whose host lock
+is held, and `hypercube delete --all` lists every workspace with a state file.
+Each command asks `Stop all of these? [y/N]` or `Delete all of these? [y/N]`
+and continues only on `y` or `yes`; any other answer ends it with
+"stop cancelled" or "delete cancelled". It then runs the single-workspace
+command on each workspace in turn, with the same refusals. A workspace that
+fails does not stop the rest: afterwards the command exits with an error that
+lists each failure as `<directory>: <reason>`. With nothing to act on, it
+prints `No workspaces to stop.` or `No workspaces to delete.`.
 
 ## Message delivery
 
