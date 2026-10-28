@@ -52,6 +52,9 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
   - `src/recording.rs`: the recording format the round-trip tests replay.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run
   in panes.
+- `src/bin/hypercube-test-harness.rs`: the `claude` and `pi` stand-in the
+  integration tests run in panes. It runs the harness hooks, serves the MCP
+  tools on command, and records what it sees.
 - `tests/roundtrip.rs`: feeds program output to the mux, renders frames into a
   stand-in host terminal, and compares the screens cell by cell. Inputs are the
   fixtures in `tests/support/fixtures.rs`, seeded streams from
@@ -64,6 +67,9 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 - `tests/live.rs`: the runtime with real ptys. Each test hosts its panes on
   a pty whose other side feeds a Ghostty terminal standing in for the user's
   terminal, and runs the test child in the panes.
+- `tests/integration.rs`: `hypercube` in a pty with isolated state and
+  configuration, a temporary repository, and the harness stand-ins first on
+  `PATH`: panes, worktrees, nudges, `stop`, `status`, restart, and `delete`.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.
 - `.toolchain/zig-aarch64-macos-0.17.0`: Zig 0.17, which builds libghostty-vt.
