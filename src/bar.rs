@@ -68,14 +68,14 @@ impl Bar {
     /// Draw the bar across the last row in the footer's colors, with each
     /// workspace that fits after its number, and the host's own marked `*`
     /// and bold.
-    pub fn draw(&self, s: &mut String, size: Winsize) {
+    pub fn draw(&self, s: &mut String, size: Winsize, footer: theme::Colors) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
             return;
         }
         s.push_str(&format!(
             "\x1b[{row};1H{}{}\x1b[{row};1H",
-            theme::FOOTER.sgr(),
+            footer.sgr(),
             " ".repeat(usize::from(cols))
         ));
         if !self.error.is_empty() {
@@ -172,7 +172,7 @@ mod tests {
             ws_row: 2,
             ..Winsize::default()
         };
-        bar.draw(&mut s, size);
+        bar.draw(&mut s, size, theme::SIMPLE.footer);
         let mut t = Terminal::new(cols, 2).unwrap();
         t.vt_write(s.as_bytes());
         t

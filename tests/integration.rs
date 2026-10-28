@@ -747,10 +747,10 @@ fn first_start_lays_out_one_pane() {
         fx.state_path().to_str().unwrap()
     );
     assert_eq!(launch["env"]["TERM"], "xterm-256color");
-    // The pane takes the terminal but the header, the bar, and the gaps.
+    // The pane takes the whole terminal but the header and the bar.
     assert_eq!(
         fx.size("orchestrator"),
-        [u64::from(COLS) - 3, u64::from(ROWS) - 4]
+        [u64::from(COLS), u64::from(ROWS) - 2]
     );
 
     let events = fx.agent_events("orchestrator", "hook");
@@ -822,8 +822,8 @@ fn create_agent_adds_panes_and_worktrees() {
     assert_eq!(flag_value(argv, "--model"), Some("haiku"));
     assert_eq!(launch["cwd"], worktree.to_str().unwrap());
     assert_eq!(launch["env"]["HYPERCUBE_AGENT_ID"], w1.as_str());
-    assert_eq!(launch["size"], json!([69, 35]));
-    fx.wait_size("orchestrator", [46, 36]);
+    assert_eq!(launch["size"], json!([71, 37]));
+    fx.wait_size("orchestrator", [48, 38]);
 
     // The message queued at creation arrived with the first prompt.
     fx.wait_idle("w1");
@@ -854,17 +854,17 @@ fn create_agent_adds_panes_and_worktrees() {
     assert_eq!(flag_value(argv, "--thinking"), Some("medium"));
     assert!(argv.iter().any(|a| a == "--approve"));
     assert_eq!(argv.last().unwrap(), NUDGE);
-    assert_eq!(launch["size"], json!([69, 17]));
-    fx.wait_size("w1", [69, 16]);
-    fx.wait_size("orchestrator", [46, 36]);
+    assert_eq!(launch["size"], json!([71, 18]));
+    fx.wait_size("w1", [71, 18]);
+    fx.wait_size("orchestrator", [48, 38]);
 
     fx.wait_screen("⎇ w2");
     let screen = fx.screen();
     let lines: Vec<&str> = screen.lines().collect();
-    // Each worker's label row is below the header and its gap, and the
-    // second's is below the first's pane, its shadow, and a gap.
-    assert!(lines[2].contains(" w1 "), "{screen}");
-    assert!(lines[2].contains("⎇ w1"), "{screen}");
+    // Each worker's label row is below the header, and the second's is
+    // below the first's pane.
+    assert!(lines[1].contains(" w1 "), "{screen}");
+    assert!(lines[1].contains("⎇ w1"), "{screen}");
     assert!(lines[20].contains(" w2 "), "{screen}");
     assert!(lines[20].contains("⎇ w2"), "{screen}");
 }
@@ -944,7 +944,7 @@ fn remove_agent_closes_the_pane() {
     let pid = fx.pid("w1");
     assert!(alive(pid));
     fx.wait_screen("⎇ w1");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
 
     let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": w1}));
     assert!(!is_error, "{text}");
@@ -953,7 +953,7 @@ fn remove_agent_closes_the_pane() {
     fx.wait_gone(&[pid]);
     fx.wait_no_screen("⎇ w1");
     // The orchestrator has the terminal to itself again.
-    fx.wait_size("orchestrator", [u64::from(COLS) - 3, u64::from(ROWS) - 4]);
+    fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 2]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(!fx.worktree("w1").exists());
     assert_eq!(fx.git(&fx.repo, &["branch", "--list", "hypercube/w1"]), "");
@@ -1180,7 +1180,7 @@ fn unsupported_harness_does_not_stop_startup() {
     assert!(!is_error, "{text}");
     assert_eq!(text, "Removed old (old00001).");
     fx.wait_no_screen("old · failed");
-    fx.wait_size("orchestrator", [u64::from(COLS) - 3, u64::from(ROWS) - 4]);
+    fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 2]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap());
 }
@@ -1213,7 +1213,7 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
     let prompt = fx.wait_event("w1", "prompt", prompts + 1);
     assert_eq!(prompt[prompts]["text"], NUDGE);
     fx.wait_idle("w1");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
     let screen = fx.screen();
     assert!(screen.contains("⎇ w1"), "{screen}");
     assert!(!screen.contains("exited"), "{screen}");
@@ -1339,9 +1339,9 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     let mut fx = Fixture::new();
     fx.start();
     fx.create("w1", "fast", "");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
     let (w1_size, w1_resizes) = (fx.size("w1"), fx.agent_events("w1", "size").len());
-    let whole = [u64::from(COLS) - 3, u64::from(ROWS) - 4];
+    let whole = [u64::from(COLS), u64::from(ROWS) - 2];
 
     // The orchestrator fills the pane area, and w1 is hidden at its size.
     fx.type_text("\x1c");
@@ -1354,7 +1354,7 @@ fn ctrl_backslash_zooms_the_focused_pane() {
 
     // The same key restores the layout.
     fx.type_text("\x1c");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
     fx.wait_screen("⎇ w1");
     fx.wait_no_screen("zoomed");
 
@@ -1374,13 +1374,13 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     fx.wait_size("orchestrator", whole);
     let w2 = fx.create("w2", "fast", "");
     fx.wait_no_screen("zoomed");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
     fx.type_text("\x1c");
     fx.wait_size("orchestrator", whole);
     let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": w2}));
     assert!(!is_error, "{text}");
     fx.wait_no_screen("zoomed");
-    fx.wait_size("orchestrator", [46, 36]);
+    fx.wait_size("orchestrator", [48, 38]);
 
     // w1 was resized only to be zoomed and restored, and the stand-ins
     // never received the key.

@@ -9,7 +9,8 @@ blank. A thin gray border drawn outside the canvas shows where it ends.
 import argparse
 
 RESET = "\x1b[0m"
-RULE = "\x1b[0;38;2;0;135;255m"
+DIVIDER = "\x1b[0;38;2;70;160;220m"
+TITLE_TEXT = "\x1b[0;38;2;135;215;255m"
 LABEL = "\x1b[0;38;2;0;0;0;48;2;135;215;255m"
 BAR = LABEL
 HEADER = LABEL
@@ -60,6 +61,17 @@ def draw_label(c, row, col, width, name, detail, focused):
         c.put(row, col + width - len(right), right, sgr)
 
 
+def draw_rule_label(c, row, col, width, name, detail, focused):
+    """A title drawn on a horizontal line: ━ name ━━━━━━ detail ━"""
+    c.put(row, col, "━" * width, DIVIDER)
+    sgr = TITLE_TEXT + (BOLD if focused else "")
+    left = f" {name} "[: max(width - 1, 0)]
+    c.put(row, col + 1, left, sgr)
+    right = f" {detail} "
+    if detail and 1 + len(left) + 1 + len(right) + 1 <= width:
+        c.put(row, col + width - 1 - len(right), right, sgr)
+
+
 def draw(args):
     cols, rows = args.cols, args.rows
     c = Canvas(cols, rows)
@@ -69,11 +81,15 @@ def draw(args):
     panes: list[tuple[str | None, str]] = [(None, "")]
     for i in range(1, args.workers + 1):
         panes.append((f"worker-{i}", f"⎇ feature-{i}"))
-    # One cell of gap around the outside and between panes.
-    g = args.gap
+    fancy = args.theme == "fancy"
+    # Fancy: a gap around the outside and between panes, on a backdrop, and a
+    # shadow. Simple: no gaps, and a divider between orchestrator and workers.
+    g = args.gap if fancy else 0
+    shadow = fancy and g > 0
     # Each pane's shadow takes one more column, to the right of the pane, so
     # the gaps to its right are a column wider and the gap itself stays.
-    gx = g + 1
+    gx = g + shadow
+    between = gx + (not fancy)
     inner_cols, inner_rows = cols - g - gx, area - 2 * g
     n = len(panes) - 1
     left = inner_cols if n == 0 else inner_cols * 2 // 5
@@ -81,18 +97,26 @@ def draw(args):
     free = inner_rows - g * (n - 1)
     for i in range(n):
         top, bottom = free * i // n + g * i, free * (i + 1) // n + g * i
-        rects.append((g + left + gx, y0 + g + top, inner_cols - left - gx, bottom - top))
+        rects.append((g + left + between, y0 + g + top, inner_cols - left - between, bottom - top))
 
     c.put(0, 0, " " * cols, HEADER)
     c.put(0, 0, f" {args.path}"[:cols], HEADER)
-    for row in range(y0, y0 + area):
-        c.put(row, 0, " " * cols, BACKDROP)
+    if fancy:
+        for row in range(y0, y0 + area):
+            c.put(row, 0, " " * cols, BACKDROP)
+    elif n:
+        for row in range(y0, y0 + area):
+            c.put(row, left, "┃", DIVIDER)
     for i, ((name, detail), (col, top, width, height)) in enumerate(zip(panes, rects)):
         for row in range(top if name is None else top + 1, top + height):
             c.put(row, col, " " * width, HARNESS)
-        if name is not None:
+        if name is not None and fancy:
             draw_label(c, top, col, width, name, detail, i == args.focus)
-        if g:
+        elif name is not None:
+            draw_rule_label(c, top, col, width, name, detail, i == args.focus)
+            # The divider branches into the title's line.
+            c.put(top, left, "┣", DIVIDER)
+        if shadow:
             # Shadow hugging the bottom and right edges, offset from the
             # pane's corners to look raised. A cell is about twice as tall as
             # wide, so half a cell tall (upper half blocks below) is as thick
@@ -126,7 +150,8 @@ def main():
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--focus", type=int, default=0, help="focused pane index; 0 is the orchestrator")
     p.add_argument("--path", default="~/projects/hypercube", help="workspace path for the header")
-    p.add_argument("--gap", type=int, default=1, help="gap around and between panes")
+    p.add_argument("--theme", choices=["fancy", "simple"], default="simple")
+    p.add_argument("--gap", type=int, default=1, help="fancy theme's gap around and between panes")
     p.add_argument("--no-border", action="store_true", help="omit the gray canvas border")
     print(draw(p.parse_args()))
 
