@@ -41,8 +41,8 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The blue of the separator.
 const RULE: &str = "\x1b[0;38;2;0;135;255m";
-/// Black on white, for labels.
-const LABEL: &str = "\x1b[0;38;2;0;0;0;48;2;255;255;255m";
+/// Black on light blue, for labels.
+const LABEL: &str = "\x1b[0;38;2;0;0;0;48;2;135;215;255m";
 
 /// The host lock of the workspace whose state file is `state_path`. The host
 /// holds it for its whole life, and writes the terminal it runs in into it.
@@ -207,7 +207,7 @@ impl Chrome for TeamChrome {
     }
 }
 
-/// A pane's label row: black on white across the pane's width, with the name
+/// A pane's label row: black on light blue across the pane's width, with the name
 /// at the left, bold when the pane has the focus, followed by "zoomed" while
 /// it fills the pane area, the exit status once its program has exited, and
 /// how many rows its view is scrolled up. The detail goes at the right end
@@ -1057,9 +1057,9 @@ mod tests {
         }
     }
 
-    const WHITE: StyleColor = StyleColor::Rgb(RgbColor {
-        r: 255,
-        g: 255,
+    const LIGHT_BLUE: StyleColor = StyleColor::Rgb(RgbColor {
+        r: 135,
+        g: 215,
         b: 255,
     });
 
@@ -1101,12 +1101,12 @@ mod tests {
                 "                ┃                       ",
             ]
         );
-        // Labels are black on white across the pane's width, bold when focused.
+        // Labels are black on light blue across the pane's width, bold when focused.
         assert!(screen.bold(1, 0));
         assert!(!screen.bold(18, 0));
         assert!(!screen.bold(39, 0));
         for (x, y) in [(0, 0), (8, 0), (15, 0), (17, 0), (39, 0), (17, 3), (39, 3)] {
-            assert_eq!(screen.bg(x, y), WHITE, "background at {x},{y}");
+            assert_eq!(screen.bg(x, y), LIGHT_BLUE, "background at {x},{y}");
             assert_eq!(fg(&screen, x, y), BLACK, "foreground at {x},{y}");
         }
         // The separator is blue, and has no background.
@@ -1161,7 +1161,7 @@ mod tests {
         assert_eq!(screen.row(0), " orch        ");
         let screen = Screen::draw(&pane("orchestrator", 8), 8, 3);
         assert_eq!(screen.row(0), " orchest");
-        assert_eq!(screen.bg(7, 0), WHITE);
+        assert_eq!(screen.bg(7, 0), LIGHT_BLUE);
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),

@@ -115,7 +115,7 @@ pressed again, when the focus changes, and when a pane is added or removed. The
 host resizing keeps the zoom.
 
 `TeamChrome` draws each label row across its pane's full width in black on
-white (`#ffffff`). The left end has one space and the agent's name, bold for the
+light blue (`#87d7ff`). The left end has one space and the agent's name, bold for the
 focused pane, followed by "zoomed" while the pane fills the pane area, "exited
 N" once the pane's program has exited and is not relaunched, "failed:" and the
 error for an agent whose harness did not start, and "↑N" while its view is
