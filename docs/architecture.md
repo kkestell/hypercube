@@ -276,7 +276,7 @@ again. Resizing a pane's terminal ends its hold. A hold that lasts
 ### Input
 
 Host input goes to the focused pane. A bracketed paste, from `ESC [ 200 ~`
-through `ESC [ 201 ~`, goes there as it is. Outside a paste, these are
+through `ESC [ 201 ~`, goes as it is to the pane focused when it began. Outside a paste, these are
 routed elsewhere:
 
 - Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
@@ -302,7 +302,8 @@ routed elsewhere:
 A key or escape sequence cut off by the end of a read, up to 256 bytes,
 waits for the next read. After `INPUT_HOLD_MS` (25 ms) without the rest, what was held is taken
 as it is: a lone Esc is the Esc key, and anything else goes to the focused
-pane as typed. The runtime wakes for that deadline.
+pane as typed. The runtime wakes for that deadline. A paste's end cut off by
+a read waits for the next read without a deadline.
 
 ### Runtime
 

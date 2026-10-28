@@ -677,8 +677,8 @@ pub struct Mux {
     /// Host input cut off by the end of a read, and when it was held.
     held_input: Vec<u8>,
     held_since: i64,
-    /// Whether host input is inside a bracketed paste.
-    pasting: bool,
+    /// The pane a bracketed paste in progress goes to.
+    pasting: Option<PaneId>,
 }
 
 impl Mux {
@@ -704,7 +704,7 @@ impl Mux {
             selection: None,
             held_input: Vec::new(),
             held_since: 0,
-            pasting: false,
+            pasting: None,
         };
         m.reset_host_modes();
         m
@@ -1099,7 +1099,8 @@ impl Mux {
     /// When held input is taken as it is: a lone Esc as the Esc key, and a
     /// cut-off sequence as typed.
     pub fn input_deadline(&self) -> Option<i64> {
-        (!self.held_input.is_empty()).then_some(self.held_since + INPUT_HOLD_MS)
+        (!self.held_input.is_empty() && self.pasting.is_none())
+            .then_some(self.held_since + INPUT_HOLD_MS)
     }
 
     /// Route held input as it is; see `input_deadline`.
@@ -1112,21 +1113,32 @@ impl Mux {
         let mut i = 0;
         let mut start = 0;
         while i < data.len() {
-            if self.pasting {
+            if let Some(id) = self.pasting {
+                // The paste goes to its pane through its end. An end cut off
+                // by the end of the read is held, without a deadline.
                 let rest = &data[i..];
-                if let Some(n) = find(rest, PASTE_END) {
-                    self.pasting = false;
-                    i += n + PASTE_END.len();
-                    continue;
+                let found = find(rest, PASTE_END);
+                let end = match found {
+                    Some(n) => i + n + PASTE_END.len(),
+                    None => {
+                        let keep = (1..PASTE_END.len())
+                            .rev()
+                            .find(|&k| rest.ends_with(&PASTE_END[..k]))
+                            .unwrap_or(0);
+                        data.len() - keep
+                    }
+                };
+                if let Some(p) = self.pane(id) {
+                    p.send(&data[i..end]);
                 }
-                // Hold what could be the start of the paste's end.
-                let keep = (1..PASTE_END.len())
-                    .rev()
-                    .find(|&k| !flush && rest.ends_with(&PASTE_END[..k]))
-                    .unwrap_or(0);
-                self.send(&data[start..data.len() - keep]);
-                self.hold(&data[data.len() - keep..]);
-                return;
+                if found.is_none() {
+                    self.hold(&data[end..]);
+                    return;
+                }
+                self.pasting = None;
+                i = end;
+                start = end;
+                continue;
             }
             let flush = flush || data.len() - i > INPUT_HOLD_MAX;
             let Some(end) = token_end(data, i, flush) else {
@@ -1155,7 +1167,11 @@ impl Mux {
                     }
                 }
             }
-            self.pasting = token == PASTE_START;
+            if token == PASTE_START {
+                self.send(&data[start..end]);
+                start = end;
+                self.pasting = self.focus();
+            }
             i = end;
         }
         self.send(&data[start..]);
@@ -2357,5 +2373,26 @@ mod tests {
         // A click copies nothing.
         p.mux.input(b"\x1b[<0;3;1M\x1b[<0;3;1m");
         assert_eq!(copied(&mut p), None);
+    }
+
+    #[test]
+    fn a_paste_end_cut_off_by_a_read_waits_for_its_rest() {
+        let mut p = Piped::new();
+        p.mux.input(b"\x1b[200~hello\x1b[20");
+        assert_eq!(p.mux.input_deadline(), None);
+        p.mux.flush_input();
+        p.mux.input(b"1~\x1d");
+        assert_eq!(p.got(0), b"\x1b[200~hello\x1b[201~");
+        assert_eq!(p.mux.focus(), Some(p.ids[1]));
+    }
+
+    #[test]
+    fn a_paste_goes_to_the_pane_it_started_in() {
+        let mut p = Piped::new();
+        p.mux.input(b"\x1b[200~ab");
+        p.mux.set_focus(p.ids[1]);
+        p.mux.input(b"cd\x1b[201~e");
+        assert_eq!(p.got(0), b"\x1b[200~abcd\x1b[201~");
+        assert_eq!(p.got(1), b"e");
     }
 }
