@@ -1,8 +1,8 @@
 //! `hypercube wait`, which wakes an idle agent when messages arrive for it.
 //! Claude Code runs it as a background hook that wakes the session when it
-//! exits with status 2, and the Pi extension runs it and starts a turn the same
-//! way. Either way the harness, not the pane's input, starts the turn, so a
-//! prompt the user is typing stays in the harness's editor.
+//! exits with status 2, and the OpenCode plugin runs it and starts a turn the
+//! same way. Either way the harness, not the pane's input, starts the turn, so
+//! a prompt the user is typing stays in the harness's editor.
 
 use std::error::Error;
 use std::io::{Read, Write};

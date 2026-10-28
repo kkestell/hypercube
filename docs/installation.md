@@ -11,7 +11,8 @@ Hypercube is a Rust crate built with Cargo. It runs on macOS.
   SHA-256. The Ghostty submodule comes from GitHub, and Cargo fetches
   `libghostty-rs` from GitHub.
 - The harnesses selected in `config.json` on `PATH`: `claude` for Claude
-  Code, `pi` for Pi. Each harness uses its own configured credentials. See
+  Code, `opencode` for OpenCode 2.x. Each harness uses its own configured
+  credentials. See
   [Harness support](harness-support.md) for launch details.
 
 ## Build
@@ -56,8 +57,13 @@ directory belongs on `PATH` for running `hypercube` by name.
 
 Each agent runs the `hypercube` executable that started its session, as its MCP
 server and hook command. A running host keeps the executable it started with
-until it is stopped, so after `make install`, `hypercube stop --all` and
-starting again puts every workspace on the new one.
+until it is stopped. `make reinstall` puts every running workspace on a new
+build: it builds the release executable, stops every running workspace, installs
+the executable, and starts the stopped workspaces again in the background, in
+the bar's order, with the installed executable. Each workspace's agents launch
+when a terminal attaches to it, so run `hypercube` again afterwards. Run it
+outside Hypercube: it refuses inside an agent's pane, whose workspace it would
+stop. `BINDIR=<dir>` selects the destination as for `make install`.
 
 ## Configuration
 

@@ -1,5 +1,5 @@
-//! Harness hook events. Claude Code's response format is the one the Pi
-//! extension reads too: `hookSpecificOutput.additionalContext` carries text for
+//! Harness hook events. Claude Code's response format is the one the OpenCode
+//! plugin reads too: `hookSpecificOutput.additionalContext` carries text for
 //! the model, and `decision` with `reason` blocks a stop.
 
 use std::error::Error;
@@ -97,6 +97,10 @@ pub fn handle(
             "PostToolUse" => {
                 let messages = state.take(id);
                 context(event, format(state, &messages))
+            }
+            "PermissionRequest" => {
+                state.agent_mut(id)?.attention = true;
+                None
             }
             "Stop" => {
                 let messages = state.take(id);
@@ -269,7 +273,7 @@ mod tests {
 
     const CONFIG: &str = r#"{
   "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "pi", "model": "openai/gpt-6.1-sol", "effort": "medium"}]
+  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "openai/gpt-6.1-sol", "effort": "medium"}]
 }"#;
 
     struct Fixture {
@@ -393,6 +397,25 @@ mod tests {
     }
 
     #[test]
+    fn permission_request_sets_the_attention_flag() {
+        let f = Fixture::new(pair(), Vec::new(), false);
+        f.queue("a", "b", "hi");
+        let mut out = Vec::new();
+        f.try_run(
+            "b",
+            "PermissionRequest",
+            r#"{"session_id":"s1","tool_name":"Bash"}"#,
+            &mut out,
+        )
+        .unwrap();
+        // No output leaves the decision to the user, and messages stay queued.
+        assert!(out.is_empty());
+        let s = f.load();
+        assert!(s.agents[1].attention && !s.agents[0].attention);
+        assert_eq!(s.messages.len(), 1);
+    }
+
+    #[test]
     fn stop_blocks_with_queued_messages_then_goes_idle() {
         let mut agents = pair();
         agents[1].activity = store::BUSY.into();
@@ -510,7 +533,7 @@ mod tests {
         );
         let r = f.run("a", "SessionStart");
         assert!(
-            context_of(&r).contains("\n- sol (pi, openai/gpt-6.1-sol, medium): coding.\n"),
+            context_of(&r).contains("\n- sol (opencode, openai/gpt-6.1-sol, medium): coding.\n"),
             "{}",
             context_of(&r)
         );
@@ -588,7 +611,7 @@ mod tests {
             Agent {
                 dir: "/r/.hypercube/w1".into(),
                 branch: "hypercube/w1".into(),
-                harness: "pi".into(),
+                harness: "opencode".into(),
                 ..agent("b", "w1", store::WORKER)
             },
             Agent {
@@ -605,7 +628,7 @@ mod tests {
                     "You are orchestrator (a), the orchestrator in a Hypercube team of coding agents.\n",
                     "Your working directory is /r on branch main.\n\nTeam:\n",
                     "- orchestrator (a): orchestrator, claude, /r on branch main\n",
-                    "- w1 (b): worker, pi, /r/.hypercube/w1 on branch hypercube/w1\n",
+                    "- w1 (b): worker, opencode, /r/.hypercube/w1 on branch hypercube/w1\n",
                     "- w2 (c): worker, claude, /r\n",
                     "create_agent(name, profile, dir?,",
                     "Merge its branch into your branch",
@@ -653,7 +676,7 @@ mod tests {
                 Agent {
                     dir: "/r/.hypercube/w1".into(),
                     branch: "hypercube/w1".into(),
-                    harness: "pi".into(),
+                    harness: "opencode".into(),
                     ..agent("b", "w1", store::WORKER)
                 },
             ],
@@ -664,7 +687,7 @@ Your working directory is /r/.hypercube/w1 on branch hypercube/w1.
 
 Team:
 - orchestrator (a): orchestrator, claude, /r on branch main
-- w1 (b): worker, pi, /r/.hypercube/w1 on branch hypercube/w1
+- w1 (b): worker, opencode, /r/.hypercube/w1 on branch hypercube/w1
 
 Hypercube MCP tools:
 - send_message(to, text) sends a message to an agent by ID or name. Messages arrive in your context as "Message from <name> (<id>):".

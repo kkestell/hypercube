@@ -1,0 +1,44 @@
+#!/bin/sh
+# Stop every running Hypercube workspace, install the release build to
+# $BINDIR, and start the stopped workspaces again in the background with the
+# installed binary. Each workspace's agents launch when a terminal attaches
+# to it. Run by `make reinstall` after the release build.
+set -u
+
+BINDIR=${BINDIR:-$HOME/.local/bin}
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+BUILT=$ROOT/target/release/hypercube
+
+# Stopping the workspace this runs in would end this script with it.
+if [ -n "${HYPERCUBE_AGENT_ID:-}" ]; then
+	echo "reinstall: run this outside Hypercube; it stops every workspace" >&2
+	exit 1
+fi
+
+running=$("$BUILT" running) || exit 1
+failed=0
+stopped=
+set -f
+IFS='
+'
+for dir in $running; do
+	if "$BUILT" stop "$dir"; then
+		echo "stopped $dir"
+		stopped="$stopped$dir
+"
+	else
+		failed=1
+	fi
+done
+
+mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$BINDIR/hypercube" || exit 1
+echo "installed $BINDIR/hypercube"
+
+for dir in $stopped; do
+	if "$BINDIR/hypercube" start "$dir"; then
+		echo "started $dir"
+	else
+		failed=1
+	fi
+done
+exit $failed

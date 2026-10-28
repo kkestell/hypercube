@@ -7,7 +7,7 @@ GHOSTTY := vendor/ghostty/build.zig
 DOWNLOAD := .toolchain/download
 BINDIR := $(HOME)/.local/bin
 
-.PHONY: build test check install dev dev-stop dev-clean
+.PHONY: build test check install reinstall dev dev-stop dev-clean
 
 build: $(ZIG) $(GHOSTTY)
 	cargo build
@@ -25,6 +25,10 @@ install: $(ZIG) $(GHOSTTY)
 	cargo build --release --bin hypercube
 	mkdir -p $(BINDIR)
 	install -m 755 target/release/hypercube $(BINDIR)/hypercube
+
+reinstall: $(ZIG) $(GHOSTTY)
+	cargo build --release --bin hypercube
+	BINDIR=$(BINDIR) scripts/reinstall
 
 dev: $(ZIG) $(GHOSTTY)
 	scripts/dev up

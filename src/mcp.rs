@@ -437,7 +437,7 @@ mod tests {
             &config,
             r#"{
   "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "pi", "model": "gpt-6.1-sol", "effort": "medium"}]
+  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
 }"#,
         )
         .unwrap();
@@ -651,7 +651,7 @@ mod tests {
                 worker.model.as_str(),
                 worker.effort.as_str()
             ),
-            ("pi", "gpt-6.1-sol", "medium")
+            ("opencode", "gpt-6.1-sol", "medium")
         );
         assert_eq!(
             state.messages,

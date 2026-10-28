@@ -55,11 +55,11 @@ up)
       "effort": "low"
     },
     {
-      "name": "pi",
-      "description": "Pi with DeepSeek Flash, for smoke tests.",
-      "harness": "pi",
+      "name": "opencode",
+      "description": "OpenCode with DeepSeek Flash, for smoke tests.",
+      "harness": "opencode",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
-      "effort": "medium"
+      "effort": "high"
     }
   ]
 }
@@ -71,6 +71,9 @@ JSON
 #!/bin/sh
 export PATH='$PATH'
 export XDG_STATE_HOME='$DEV/state' XDG_CONFIG_HOME='$DEV/config'
+# Claude Code saves no transcripts with the marker its own shells carry, so
+# dev agents started from inside Claude Code could not resume.
+unset CLAUDE_CODE_CHILD_SESSION
 cd '$REPO'
 '$BIN' || { echo "hypercube exited with \$?; press Enter to close"; read -r _; }
 RUN
@@ -83,6 +86,11 @@ stop)
 	;;
 clean)
 	stop
+	# OpenCode's sessions of the dev agents, with their subagents' sessions.
+	for session in $(cat "$DEV"/state/hypercube/*.json 2>/dev/null |
+		grep -o '"session_id": *"ses_[^"]*"' | sed 's/.*"\(ses_[^"]*\)"$/\1/'); do
+		opencode session delete "$session" >/dev/null 2>&1 || true
+	done
 	[ -n "$DEV" ] && rm -rf "$DEV"
 	# Claude Code's transcripts of the dev agents; the trust entry for the
 	# scratch repository stays in ~/.claude.json.

@@ -1,11 +1,12 @@
 # Hypercube
 
 Hypercube runs a team of local coding agents in one terminal. Each agent is a
-native harness TUI, Claude Code or Pi, running in its own pty and pane. Hypercube
-draws the panes itself through Ghostty's libghostty-vt. Agents message each other
-through an MCP tool and receive messages through harness hooks. One
-orchestrator works in the original checkout and manages workers. A worker either
-has its own Git worktree or works directly in an existing directory.
+native harness TUI, Claude Code or OpenCode, running in its own pty and pane.
+Hypercube draws the panes itself through Ghostty's libghostty-vt. Agents
+message each other through an MCP tool and receive messages through harness
+hooks. One orchestrator works in the original checkout and manages workers. A
+worker either has its own Git worktree or works directly in an existing
+directory.
 
 Kyle is the only user. Favor small implementations that are easy to understand
 and change over generalized infrastructure or speculative requirements.
@@ -69,8 +70,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/workspace.rs`: the Git checkout, worker branches and worktrees, and
   worker directories.
 - `src/harness.rs`: the launch command of each harness and the pane labels.
-- `src/harness/pi.js`: the Pi extension, embedded in the binary and written for
-  each Pi launch.
+- `src/harness/opencode.js`: the OpenCode plugin, embedded in the binary and
+  written for each OpenCode launch.
 - `src/hook.rs`: the harness hook events and the messages they deliver.
 - `src/wait.rs`: `hypercube wait`, which wakes an idle agent when messages
   arrive for it.
@@ -92,7 +93,7 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in
   panes.
-- `src/bin/hypercube-test-harness.rs`: the `claude` and `pi` stand-in the
+- `src/bin/hypercube-test-harness.rs`: the `claude` and `opencode` stand-in the
   integration tests run in panes. It runs the harness hooks and waiters,
   serves the MCP tools on command, and records what it sees.
 - `tests/roundtrip.rs`: feeds program output to the mux, renders frames into a
@@ -135,7 +136,9 @@ that Zig executable and Ghostty source and builds libghostty-vt in
 
 `make test` runs `cargo test`. `make install` builds the release `hypercube`
 binary and installs it to `~/.local/bin/hypercube`; `BINDIR=<dir>` selects
-another destination.
+another destination. `make reinstall` (`scripts/reinstall`) also stops every
+running workspace before installing and starts them again afterwards, on the
+new binary.
 
 ## Development sessions
 
@@ -151,17 +154,17 @@ make dev-clean  # stop it and delete everything it left
 and `XDG_CONFIG_HOME` under `~/projects/hypercube-dev` (override with
 `HYPERCUBE_DEV_DIR`), on a scratch repository there, and opens it with
 `open -na Ghostty` so Kyle can watch and answer dialogs. The first `make dev`
-writes a `config.json` there with Claude Code `haiku` and Pi
+writes a `config.json` there with Claude Code `haiku` and OpenCode
 `openrouter/~deepseek/deepseek-flash-latest` profiles, and Kyle can edit it.
 The installed hypercube's `status` and `stop --all` do not see this session.
 Claude Code asks once to trust the scratch repository. `make dev-clean` removes
-the dev agents' Claude Code transcripts but not that trust entry in
-`~/.claude.json`.
+the dev agents' Claude Code transcripts and OpenCode sessions, but not that
+trust entry in `~/.claude.json`.
 
 When Kyle says the change is good and to commit it, run `make dev-clean`
 before or with the commit, so no dev session outlives the work. When a change
-is done and Kyle is happy with it, run `make install` and tell Kyle to run
-`hypercube stop --all` and start `hypercube` again. Stopping ends
+is done and Kyle is happy with it, tell Kyle to run `make reinstall` outside
+Hypercube and then start `hypercube` again. It stops every workspace, ending
 every agent, so do not run it yourself, and a running host keeps the
 executable it started with until then.
 
@@ -178,7 +181,7 @@ cargo build && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
 
 ## Smoke testing
 
-For harness smoke tests, use Claude Code `haiku` and Pi
+For harness smoke tests, use Claude Code `haiku` and OpenCode
 `openrouter/~deepseek/deepseek-flash-latest`. Use the dev session above, or
 disposable local repositories and isolated `XDG_STATE_HOME` and
 `XDG_CONFIG_HOME`.

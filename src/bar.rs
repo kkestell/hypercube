@@ -1,7 +1,8 @@
 //! The workspace bar: the bottom row of the screen, which numbers every
 //! running workspace in the order its host started. Ctrl-b and a workspace's
 //! number switch the terminal to it. Ctrl-b c turns the bar into a prompt
-//! for the path of a workspace to switch to, starting it if need be.
+//! for the path of a workspace to switch to, starting it if need be. A red dot
+//! marks a workspace with an agent waiting for a tool approval.
 
 use std::error::Error;
 use std::fs;
@@ -9,7 +10,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::colors::Palette;
+use crate::colors::{ATTENTION, Palette};
 use crate::host::{self, fit, text_width};
 use crate::mux::{Winsize, now_ms};
 use crate::store;
@@ -32,6 +33,15 @@ pub struct Entry {
     pub name: String,
     /// The workspace's accent color, numbered in `colors::ACCENTS`.
     pub accent: usize,
+    /// Whether an agent there waits for a tool approval.
+    pub attention: bool,
+}
+
+impl Entry {
+    /// The dot after the name while an agent waits for an approval.
+    fn dot(&self) -> &'static str {
+        if self.attention { " ●" } else { "" }
+    }
 }
 
 /// What a key typed at the prompt asks the host to do.
@@ -115,9 +125,10 @@ impl Bar {
         }
     }
 
-    /// The width of each tab, ` 0 name `.
+    /// The width of each tab, ` 0 name ` or ` 0 name ● `.
     fn widths(&self) -> impl Iterator<Item = usize> {
-        (self.entries.iter().enumerate()).map(|(i, e)| text_width(&format!(" {i} {} ", e.name)))
+        (self.entries.iter().enumerate())
+            .map(|(i, e)| text_width(&format!(" {i} {}{} ", e.name, e.dot())))
     }
 
     /// How many tabs fit, whole, in `cols`.
@@ -147,7 +158,8 @@ impl Bar {
     /// Draw the bar across the last row in the bar colors: the prompt while
     /// it is open, or each workspace that fits after its number, on its own
     /// accent's tab colors with the number dimmer, with the host's own
-    /// bold.
+    /// bold, and a red dot after the name of each with an agent waiting for
+    /// an approval.
     pub fn draw(&self, s: &mut String, size: Winsize, palette: Palette) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
@@ -187,8 +199,14 @@ impl Bar {
             };
             let bold = if current { "\x1b[1m" } else { "" };
             let (number, text) = (tab.number, tab.tab.fg);
+            let dot = if e.attention {
+                let (r, g, b) = ATTENTION;
+                format!(" \x1b[38;2;{r};{g};{b}m●")
+            } else {
+                String::new()
+            };
             s.push_str(&format!(
-                "{}{bold} \x1b[38;2;{};{};{}m{i}\x1b[38;2;{};{};{}m {} ",
+                "{}{bold} \x1b[38;2;{};{};{}m{i}\x1b[38;2;{};{};{}m {}{dot} ",
                 tab.tab.sgr(),
                 number.0,
                 number.1,
@@ -238,6 +256,9 @@ pub fn running() -> Result<Vec<Entry>> {
                 .find(|a| a.role == store::ORCHESTRATOR)?;
             Some(PathBuf::from(&o.dir))
         });
+        let attention = state
+            .as_ref()
+            .is_some_and(|state| state.agents.iter().any(|a| a.attention));
         let accent = state.map_or(0, |state| state.accent as usize);
         let name = root
             .as_ref()
@@ -250,6 +271,7 @@ pub fn running() -> Result<Vec<Entry>> {
                 root,
                 name,
                 accent,
+                attention,
             },
         ));
     }
@@ -271,6 +293,7 @@ mod tests {
             root: Some(PathBuf::from(format!("/src/{name}"))),
             name: name.into(),
             accent: name.len(),
+            attention: false,
         }
     }
 
@@ -354,6 +377,28 @@ mod tests {
         assert!((0..7).all(|x| bg(&t, x) == Palette::of(3).tab.bg));
         assert!((7..17).all(|x| bg(&t, x) == current));
         assert!((17..24).all(|x| bg(&t, x) == bar));
+    }
+
+    #[test]
+    fn a_red_dot_marks_a_workspace_waiting_for_an_approval() {
+        let mut b = bar(&["foo", "bar"], "bar");
+        b.entries[0].attention = true;
+        b.entries[1].attention = true;
+        let t = screen(&b, 20);
+        assert_eq!(row(&t), " 0 foo ●  1 bar ●   ");
+        let point = |x| Point::Active(PointCoordinate { x, y: 1 });
+        let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
+            StyleColor::Rgb(c) => (c.r, c.g, c.b),
+            other => panic!("foreground {other:?}"),
+        };
+        assert_eq!([fg(7), fg(16)], [ATTENTION, ATTENTION]);
+        assert_eq!(fg(5), Palette::of(3).tab.fg);
+        assert!((0..9).all(|x| bg(&t, x) == Palette::of(3).tab.bg));
+        assert!(bold(&t, 16));
+        // The dot widens the tab.
+        assert_eq!(b.tab_at(8, 20), Some(0));
+        assert_eq!(b.tab_at(9, 20), Some(1));
+        assert_eq!(row(&screen(&b, 17)), " 0 foo ●         ");
     }
 
     #[test]

@@ -10,7 +10,7 @@ use serde::Deserialize;
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// The harnesses an agent can run.
-pub const HARNESSES: [&str; 2] = ["claude", "pi"];
+pub const HARNESSES: [&str; 2] = ["claude", "opencode"];
 
 /// A harness, model, and effort for an agent.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
@@ -101,7 +101,9 @@ impl Config {
 impl Spec {
     fn check(&self) -> Result<()> {
         if !HARNESSES.contains(&self.harness.as_str()) {
-            return Err(format!("harness must be claude or pi, not {:?}", self.harness).into());
+            return Err(
+                format!("harness must be claude or opencode, not {:?}", self.harness).into(),
+            );
         }
         if self.model.is_empty() {
             return Err("missing model".into());
@@ -120,7 +122,7 @@ mod tests {
 
     const ORCHESTRATOR: &str =
         r#""orchestrator": {"harness": "claude", "model": "opus", "effort": "high"}"#;
-    const SOL: &str = r#"{"name": "sol", "description": "coding.", "harness": "pi", "model": "openai/gpt-6.1-sol", "effort": "high"}"#;
+    const SOL: &str = r#"{"name": "sol", "description": "coding.", "harness": "opencode", "model": "openai/gpt-6.1-sol", "effort": "high"}"#;
 
     fn load_json(json: &str) -> Result<Config> {
         let dir = TempDir::new();
@@ -146,7 +148,7 @@ mod tests {
         assert_eq!(config.orchestrator.harness, "claude");
         assert_eq!(config.profiles.len(), 2);
         let sol = config.profile("sol").unwrap();
-        assert_eq!(sol.spec.harness, "pi");
+        assert_eq!(sol.spec.harness, "opencode");
         assert_eq!(sol.spec.model, "openai/gpt-6.1-sol");
         assert_eq!(sol.description, "coding.");
         assert_eq!(config.profile("fast").unwrap().spec.model, "haiku");
@@ -157,12 +159,12 @@ mod tests {
     }
 
     #[test]
-    fn a_pi_orchestrator_loads() {
+    fn an_opencode_orchestrator_loads() {
         let config = load_json(&format!(
-            r#"{{"orchestrator": {{"harness": "pi", "model": "m", "effort": "high"}}, "profiles": [{SOL}]}}"#
+            r#"{{"orchestrator": {{"harness": "opencode", "model": "m", "effort": "high"}}, "profiles": [{SOL}]}}"#
         ))
         .unwrap();
-        assert_eq!(config.orchestrator.harness, "pi");
+        assert_eq!(config.orchestrator.harness, "opencode");
     }
 
     #[test]
@@ -206,7 +208,7 @@ mod tests {
     #[test]
     fn rejects_a_profile_without_a_name() {
         let err = error_of(&with_profiles(
-            r#"[{"description": "d", "harness": "pi", "model": "m", "effort": "high"}]"#,
+            r#"[{"description": "d", "harness": "opencode", "model": "m", "effort": "high"}]"#,
         ));
         assert!(err.ends_with(": profile 1: missing name"), "{err}");
     }
@@ -214,7 +216,7 @@ mod tests {
     #[test]
     fn rejects_a_profile_without_a_description() {
         let err = error_of(&with_profiles(
-            r#"[{"name": "sol", "harness": "pi", "model": "m", "effort": "high"}]"#,
+            r#"[{"name": "sol", "harness": "opencode", "model": "m", "effort": "high"}]"#,
         ));
         assert!(
             err.ends_with(r#": profile "sol": missing description"#),
@@ -224,14 +226,14 @@ mod tests {
 
     #[test]
     fn rejects_unsupported_harnesses() {
-        for harness in ["codex", "opencode", "ox", "gpt", ""] {
+        for harness in ["codex", "pi", "ox", "gpt", ""] {
             let profile = format!(
                 r#"[{{"name": "sol", "description": "d", "harness": "{harness}", "model": "m", "effort": "high"}}]"#
             );
             let err = error_of(&with_profiles(&profile));
             assert!(
                 err.ends_with(&format!(
-                    r#": profile "sol": harness must be claude or pi, not "{harness}""#
+                    r#": profile "sol": harness must be claude or opencode, not "{harness}""#
                 )),
                 "{err}"
             );
@@ -242,7 +244,7 @@ mod tests {
             let err = error_of(&orchestrator);
             assert!(
                 err.ends_with(&format!(
-                    r#": orchestrator: harness must be claude or pi, not "{harness}""#
+                    r#": orchestrator: harness must be claude or opencode, not "{harness}""#
                 )),
                 "{err}"
             );
@@ -252,8 +254,8 @@ mod tests {
     #[test]
     fn rejects_a_missing_model_or_effort() {
         for (field, json) in [
-            ("model", r#"{"harness": "pi", "effort": "high"}"#),
-            ("effort", r#"{"harness": "pi", "model": "m"}"#),
+            ("model", r#"{"harness": "opencode", "effort": "high"}"#),
+            ("effort", r#"{"harness": "opencode", "model": "m"}"#),
         ] {
             let err = error_of(&format!(
                 r#"{{"orchestrator": {json}, "profiles": [{SOL}]}}"#
@@ -264,11 +266,11 @@ mod tests {
             );
         }
         let err = error_of(&with_profiles(
-            r#"[{"name": "sol", "description": "d", "harness": "pi", "effort": "high"}]"#,
+            r#"[{"name": "sol", "description": "d", "harness": "opencode", "effort": "high"}]"#,
         ));
         assert!(err.ends_with(r#": profile "sol": missing model"#), "{err}");
         let err = error_of(&with_profiles(
-            r#"[{"name": "sol", "description": "d", "harness": "pi", "model": "m"}]"#,
+            r#"[{"name": "sol", "description": "d", "harness": "opencode", "model": "m"}]"#,
         ));
         assert!(err.ends_with(r#": profile "sol": missing effort"#), "{err}");
     }
@@ -277,7 +279,7 @@ mod tests {
     fn rejects_a_missing_orchestrator() {
         let err = error_of(&format!(r#"{{"profiles": [{SOL}]}}"#));
         assert!(
-            err.contains("orchestrator: harness must be claude or pi"),
+            err.contains("orchestrator: harness must be claude or opencode"),
             "{err}"
         );
     }

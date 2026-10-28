@@ -23,9 +23,9 @@ effort and every profile field shown below are required.
     {
       "name": "deepseek",
       "description": "Bulk edits and mechanical refactors.",
-      "harness": "pi",
+      "harness": "opencode",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
-      "effort": "medium"
+      "effort": "high"
     }
   ]
 }
@@ -58,7 +58,7 @@ Loading errors name the file; validation errors also identify the
 orchestrator or profile involved. Loading fails when:
 
 - the file is unreadable, is not valid JSON, or has values of the wrong type;
-- `harness` is not `claude` or `pi`, for the orchestrator or any profile;
+- `harness` is not `claude` or `opencode`, for the orchestrator or any profile;
 - `model` or `effort` is empty;
 - `profiles` is empty;
 - a profile has no `name` or no `description`;
@@ -69,11 +69,16 @@ zero length. Unknown fields are ignored.
 
 ## Harness settings
 
-`harness` is `claude` or `pi`.
+`harness` is `claude` or `opencode`.
 
-`model` is passed to the harness's `--model`. `effort` is passed to Claude
-Code's `--effort` or Pi's `--thinking`. Hypercube validates both as non-empty
-strings; the harness interprets the supplied values.
+Claude Code takes `model` as its `--model` and `effort` as its `--effort`.
+OpenCode takes `model` as the model and `effort` as the model's variant.
+Hypercube validates both as non-empty strings; the harness interprets the
+supplied values.
 
-Claude Code model names include `opus` and `haiku`. Pi accepts `provider/id`,
-such as `openrouter/~deepseek/deepseek-flash-latest`.
+Claude Code model names include `opus` and `haiku`. OpenCode takes the full
+`provider/model` ID that `opencode models` lists, such as
+`openrouter/~deepseek/deepseek-flash-latest`. OpenCode rejects a variant the
+model does not list, and the pane shows the error. Since OpenCode otherwise
+falls back to a recent model for an unavailable ID, the Hypercube plugin
+refuses the first prompt of a session on another model.

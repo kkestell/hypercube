@@ -1,4 +1,4 @@
-//! The stand-in for `claude` and `pi` that the integration tests
+//! The stand-in for `claude` and `opencode` that the integration tests
 //! (tests/integration.rs) put first on `PATH`. It behaves like a harness
 //! in a pane: it runs the hypercube hooks, serves the hypercube MCP server,
 //! treats a typed line as a prompt, and runs `hypercube wait` the way each
@@ -114,8 +114,8 @@ struct Stub {
     session: String,
     /// The hook command of each event: the `--settings` entry for Claude Code.
     hooks: BTreeMap<String, String>,
-    /// Claude Code's background hook command that runs `hypercube wait`. Pi's
-    /// extension runs `hypercube wait` itself.
+    /// Claude Code's background hook command that runs `hypercube wait`.
+    /// OpenCode's plugin runs `hypercube wait` itself.
     waiter: Option<String>,
     /// Each waiter's exit status and the messages it wrote.
     wakes: Sender<(Option<i32>, String)>,
@@ -144,8 +144,9 @@ impl Stub {
             input[key] = value.clone();
         }
         let input = input.to_string();
-        let mut command = if self.harness == "pi" {
-            // Pi's extension runs `hypercube hook` from the executable it embeds.
+        let mut command = if self.harness == "opencode" {
+            // OpenCode's plugin runs `hypercube hook` from the executable it
+            // embeds.
             let mut c = Command::new(hypercube());
             c.args(["hook", event]);
             c
@@ -200,7 +201,7 @@ impl Stub {
     }
 
     /// Start `hypercube wait` in the background, as Claude Code's hook or as
-    /// Pi's extension does. Its exit status and output arrive on `wakes`.
+    /// OpenCode's plugin does. Its exit status and output arrive on `wakes`.
     fn start_waiter(&mut self) {
         let mut command = match &self.waiter {
             Some(command) => {
@@ -230,14 +231,14 @@ impl Stub {
     }
 
     /// A waiter exited. Status 2 wakes the agent with the messages it wrote:
-    /// Claude Code continues the session with them, and Pi's extension starts
-    /// a turn, which runs the UserPromptSubmit hook.
+    /// Claude Code continues the session with them, and OpenCode's plugin
+    /// starts a turn, which runs the UserPromptSubmit hook.
     fn waiter_exited(&mut self, status: Option<i32>, text: String) {
         if status != Some(2) {
             return;
         }
         self.record("wake", json!({"text": text}));
-        if self.harness == "pi" {
+        if self.harness == "opencode" {
             self.hook("UserPromptSubmit", json!({}));
         }
         self.end_turn();
@@ -332,18 +333,17 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
     args.get(i + 1).cloned()
 }
 
-/// The prompt: the argument that is neither a flag nor a flag's value.
+/// Claude Code's prompt: the argument that is neither a flag nor a flag's
+/// value. OpenCode's is the value of `--prompt`.
 fn prompt_arg(args: &[String]) -> Option<String> {
-    const WITH_VALUE: [&str; 9] = [
+    const WITH_VALUE: [&str; 7] = [
         "--mcp-config",
         "--settings",
         "--model",
         "--effort",
         "--permission-mode",
         "--resume",
-        "--extension",
-        "--thinking",
-        "--session-id",
+        "--session",
     ];
     let mut i = 0;
     let mut prompt = None;
@@ -386,12 +386,13 @@ fn main() {
         .open(dir.join("events.jsonl"))
         .unwrap();
     let session = flag_value(args, "--resume")
-        .or_else(|| flag_value(args, "--session-id"))
+        .or_else(|| flag_value(args, "--session"))
         .unwrap_or_else(|| format!("session-{}-{}", std::process::id(), millis()));
 
-    // Claude Code's hooks and MCP server come from its flags, Pi's from the
-    // extension, which the stub does not run: it starts the server that
-    // the extension embeds and calls the same hook commands.
+    // Claude Code's hooks and MCP server come from its flags. OpenCode's MCP
+    // server comes from its configuration and its hooks from the plugin,
+    // which the stub does not run: it calls the hook commands the plugin
+    // embeds.
     let mut hooks = BTreeMap::new();
     let mut waiter = None;
     let (program, mcp_args, mcp_env) = match flag_value(args, "--mcp-config") {
@@ -429,11 +430,25 @@ fn main() {
                 env,
             )
         }
-        None => (
-            hypercube().to_string_lossy().into_owned(),
-            vec!["mcp".to_string()],
-            BTreeMap::new(),
-        ),
+        None => {
+            let config: Value = serde_json::from_str(
+                &std::env::var("OPENCODE_CONFIG_CONTENT").expect("OPENCODE_CONFIG_CONTENT"),
+            )
+            .expect("OPENCODE_CONFIG_CONTENT");
+            let server = &config["mcp"]["servers"]["hypercube"];
+            let mut command = server["command"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|s| s.as_str().unwrap().to_string());
+            let env = server["environment"]
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(k, v)| (k.clone(), v.as_str().unwrap().to_string()))
+                .collect();
+            (command.next().unwrap(), command.collect(), env)
+        }
     };
     let (wakes, woken): (_, Receiver<_>) = mpsc::channel();
     let mut stub = Stub {
@@ -471,7 +486,7 @@ fn main() {
     stub.start_waiter();
     let fifo = open_fifo(&dir.join("fifo"));
     stub.record("ready", json!({}));
-    if let Some(prompt) = prompt_arg(args) {
+    if let Some(prompt) = flag_value(args, "--prompt").or_else(|| prompt_arg(args)) {
         stub.prompt(&prompt);
     }
 

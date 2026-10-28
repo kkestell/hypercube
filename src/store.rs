@@ -36,6 +36,9 @@ pub struct Agent {
     /// when it sees a newer number.
     #[serde(skip_serializing_if = "is_zero")]
     pub waiter: u64,
+    /// Set while the agent waits for the user to answer a tool approval.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub attention: bool,
 }
 
 fn is_zero(n: &u64) -> bool {

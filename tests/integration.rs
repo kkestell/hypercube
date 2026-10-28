@@ -1,7 +1,7 @@
 //! Integration tests of the whole product. Each test runs `hypercube` in a pty
 //! whose other side feeds a Ghostty terminal standing in for the user's
 //! terminal, with isolated state and configuration, a temporary repository,
-//! and `claude` and `pi` stand-ins (src/bin/hypercube-test-harness.rs) first on
+//! and `claude` and `opencode` stand-ins (src/bin/hypercube-test-harness.rs) first on
 //! `PATH`. The client there starts the workspace's host in the background.
 //! The stand-ins record what they see in an event log and take tool calls on
 //! a fifo.
@@ -39,8 +39,8 @@ const CONFIG: &str = r#"{
   "profiles": [
     {"name": "fast", "description": "Claude Code", "harness": "claude",
      "model": "haiku", "effort": "low"},
-    {"name": "deepseek", "description": "Pi", "harness": "pi",
-     "model": "stub/pi", "effort": "medium"}
+    {"name": "deepseek", "description": "OpenCode", "harness": "opencode",
+     "model": "stub/opencode", "effort": "medium"}
   ]
 }"#;
 
@@ -229,7 +229,7 @@ impl Fixture {
         for sub in ["bin", "home", "records", "repo", "config/hypercube"] {
             fs::create_dir_all(fx.dir.join(sub)).unwrap();
         }
-        for name in ["claude", "pi"] {
+        for name in ["claude", "opencode"] {
             std::os::unix::fs::symlink(HARNESS, fx.dir.join("bin").join(name)).unwrap();
         }
         fs::write(fx.dir.join("config/hypercube/config.json"), CONFIG).unwrap();
@@ -621,7 +621,7 @@ impl Fixture {
         });
     }
 
-    /// The state directory's files other than the Pi extension.
+    /// The state directory's files other than the OpenCode plugin.
     fn state_files(&self) -> Vec<String> {
         let Ok(entries) = fs::read_dir(self.dir.join("state/hypercube")) else {
             return Vec::new();
@@ -629,7 +629,7 @@ impl Fixture {
         entries
             .flatten()
             .map(|e| e.file_name().to_string_lossy().into_owned())
-            .filter(|n| n != "pi-extension")
+            .filter(|n| n != "opencode-plugin")
             .collect()
     }
 }
@@ -760,7 +760,7 @@ fn first_start_lays_out_one_pane() {
         "{facts}"
     );
     assert!(
-        facts.contains("deepseek (pi, stub/pi, medium): Pi"),
+        facts.contains("deepseek (opencode, stub/opencode, medium): OpenCode"),
         "{facts}"
     );
 
@@ -835,7 +835,8 @@ fn create_agent_adds_panes_and_worktrees() {
     );
     assert!(fx.state().messages.is_empty());
 
-    // A Pi worker joins as the third pane, and the panes share the right side.
+    // An OpenCode worker joins as the third pane, and the panes share the
+    // right side.
     let (text, is_error) = fx.call(
         "orchestrator",
         "create_agent",
@@ -845,15 +846,28 @@ fn create_agent_adds_panes_and_worktrees() {
     fx.wait_event("w2", "ready", 1);
     let launch = fx.agent_events("w2", "launch").remove(0);
     let argv = args_of(&launch);
-    assert_eq!(launch["harness"], "pi");
-    let extension = fx.dir.join("state/hypercube/pi-extension/index.js");
-    assert_eq!(argv[0], "--extension");
-    assert_eq!(argv[1], extension.to_str().unwrap());
-    assert!(extension.exists());
-    assert_eq!(flag_value(argv, "--model"), Some("stub/pi"));
-    assert_eq!(flag_value(argv, "--thinking"), Some("medium"));
-    assert!(argv.iter().any(|a| a == "--approve"));
-    assert_eq!(argv.last().unwrap(), NUDGE);
+    assert_eq!(launch["harness"], "opencode");
+    let w2 = fx.agent_id("w2").unwrap();
+    let session = format!("ses_hypercube_{w2}");
+    assert_eq!(
+        argv,
+        [
+            "--standalone",
+            "--auto",
+            "--session",
+            session.as_str(),
+            "--prompt",
+            NUDGE
+        ]
+    );
+    assert_eq!(launch["env"]["HYPERCUBE_SESSION_ID"], session.as_str());
+    let config: Value =
+        serde_json::from_str(launch["env"]["OPENCODE_CONFIG_CONTENT"].as_str().unwrap()).unwrap();
+    let plugin = fx.dir.join("state/hypercube/opencode-plugin");
+    assert_eq!(config["plugins"], json!([plugin.to_str().unwrap()]));
+    assert!(plugin.join("index.js").exists());
+    assert_eq!(config["model"], "stub/opencode");
+    assert_eq!(config["agents"]["build"]["model"], "stub/opencode#medium");
     assert_eq!(launch["size"], json!([71, 18]));
     fx.wait_size("w1", [71, 18]);
     fx.wait_size("orchestrator", [48, 38]);
@@ -896,7 +910,7 @@ fn send_message_wakes_an_idle_agent_without_typing() {
         fx.wait_idle(name);
         assert!(fx.agent_events(name, "input").is_empty());
         assert_eq!(fx.agent_events(name, "prompt").len(), 1);
-        // Claude Code continues its session; Pi's extension starts a turn.
+        // Claude Code continues its session; OpenCode's plugin starts a turn.
         let submits = hook_contexts(&fx.agent_events(name, "hook"), "UserPromptSubmit").len();
         assert_eq!(submits, if name == "w2" { 2 } else { 1 });
     }
@@ -968,6 +982,35 @@ fn remove_agent_closes_the_pane() {
         1
     );
     assert_eq!(fx.pids().len(), 2);
+}
+
+#[test]
+fn start_runs_a_host_in_the_background_until_a_terminal_attaches() {
+    let mut fx = Fixture::new();
+    let repo = fx.repo.to_str().unwrap().to_string();
+    let running = |fx: &Fixture| String::from_utf8(fx.run(&["running"]).stdout).unwrap();
+    assert_eq!(running(&fx), "");
+    fx.start();
+    assert_eq!(running(&fx), format!("{repo}\n"));
+    fx.stop();
+    assert_eq!(running(&fx), "");
+
+    // `start` returns once the host listens, and the agents wait for a
+    // terminal to attach.
+    let out = fx.run(&["start", &repo]);
+    assert!(out.status.success(), "{out:?}");
+    assert!(host::running(&fx.state_path()).unwrap());
+    assert_eq!(running(&fx), format!("{repo}\n"));
+    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 1);
+    // A running host is left alone.
+    let host = fx.host_pid();
+    let out = fx.run(&["start", &repo]);
+    assert!(out.status.success(), "{out:?}");
+    assert_eq!(fx.host_pid(), host);
+
+    fx.start();
+    assert_eq!(fx.host_pid(), host);
+    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 2);
 }
 
 #[test]
@@ -1052,10 +1095,10 @@ fn restart_resumes_saved_sessions() {
     assert_eq!(args_of(&launch).last().unwrap(), NUDGE);
     let launch = resumed(&fx, "w2");
     assert_eq!(
-        flag_value(args_of(&launch), "--session-id"),
+        flag_value(args_of(&launch), "--session"),
         Some(sessions[2].as_str())
     );
-    assert_eq!(args_of(&launch).last().unwrap(), NUDGE);
+    assert_eq!(flag_value(args_of(&launch), "--prompt"), Some(NUDGE));
 
     // The workers' turns on restart end idle, with their sessions unchanged.
     fx.wait_idle("w1");

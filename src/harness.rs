@@ -1,4 +1,4 @@
-//! The launch command of each harness, Claude Code and Pi.
+//! The launch command of each harness, Claude Code and OpenCode.
 
 use std::collections::BTreeMap;
 use std::error::Error;
@@ -10,8 +10,15 @@ use crate::store::{Agent, ORCHESTRATOR};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-/// The hook events every harness reports.
-pub const EVENTS: [&str; 4] = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"];
+/// The hook events Claude Code runs `hypercube hook` for. The OpenCode plugin
+/// calls all but PermissionRequest.
+const EVENTS: [&str; 5] = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PostToolUse",
+    "Stop",
+    "PermissionRequest",
+];
 
 /// The events after which Claude Code starts `hypercube wait` in the
 /// background: the start of a session and the end of each turn. The waiter's
@@ -21,7 +28,7 @@ const WAIT_EVENTS: [&str; 2] = ["SessionStart", "Stop"];
 /// How long Claude Code lets a waiter run: 20 days.
 const WAIT_TIMEOUT_SECONDS: u64 = 20 * 24 * 60 * 60;
 
-const PI_EXTENSION: &str = include_str!("harness/pi.js");
+const OPENCODE_PLUGIN: &str = include_str!("harness/opencode.js");
 
 /// What to run for an agent: the harness's argv, the environment the host adds
 /// to its own, and the directory to run it in.
@@ -34,11 +41,11 @@ pub struct Launch {
 
 /// The command that launches an agent's harness. `exe` is the hypercube
 /// executable that the harness runs as its MCP server and hook command. A
-/// non-empty `prompt` starts the first turn. A Pi launch writes its extension
-/// next to the state file.
+/// non-empty `prompt` starts the first turn. An OpenCode launch writes its
+/// plugin next to the state file.
 pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Result<Launch> {
     let exe_str = utf8(exe)?;
-    let env = BTreeMap::from([
+    let mut env = BTreeMap::from([
         ("HYPERCUBE_AGENT_ID".to_string(), agent.id.clone()),
         ("HYPERCUBE_STATE".to_string(), utf8(state_path)?.to_string()),
     ]);
@@ -91,25 +98,38 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
             }
             argv
         }
-        "pi" => {
-            let extension = write_pi_extension(exe_str, state_path)?;
-            let mut argv = strings(["pi", "--extension"]);
-            argv.extend([
-                utf8(&extension)?.to_string(),
-                "--model".into(),
-                agent.model.clone(),
-                "--thinking".into(),
-                agent.effort.clone(),
-                "--approve".into(),
-            ]);
-            if !agent.session_id.is_empty() {
-                argv.extend(["--session-id".into(), agent.session_id.clone()]);
+        "opencode" => {
+            let plugin = write_plugin(exe_str, state_path)?;
+            // OpenCode creates a session with a missing ID on its first
+            // prompt, so the plugin knows the session from the start.
+            let session = if agent.session_id.is_empty() {
+                format!("ses_hypercube_{}", agent.id)
+            } else {
+                agent.session_id.clone()
+            };
+            let config = json!({
+                "model": agent.model,
+                "agents": {"build": {"model": format!("{}#{}", agent.model, agent.effort)}},
+                "mcp": {"servers": {"hypercube": {
+                    "type": "local",
+                    "command": [exe_str, "mcp"],
+                    "environment": env,
+                    "codemode": false,
+                }}},
+                "plugins": [utf8(&plugin)?],
+            });
+            env.insert("OPENCODE_CONFIG_CONTENT".into(), config.to_string());
+            env.insert("HYPERCUBE_SESSION_ID".into(), session.clone());
+            let mut argv = strings(["opencode", "--standalone", "--auto", "--session"]);
+            argv.push(session);
+            if !prompt.is_empty() {
+                argv.push("--prompt".into());
             }
             argv
         }
         other => {
             return Err(format!(
-                "agent {:?} has harness {other:?}, which is not supported; use claude or pi",
+                "agent {:?} has harness {other:?}, which is not supported; use claude or opencode",
                 agent.name
             )
             .into());
@@ -138,24 +158,24 @@ fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))
 }
 
-/// Write the Pi extension, with the executable path embedded, to the state
-/// directory and return its path. The file is renamed into place, so a harness
+/// Write the OpenCode plugin, with the executable path embedded, to the state
+/// directory and return its directory. The file is renamed into place, so a harness
 /// starting meanwhile never reads a half-written copy, and a current copy is
 /// left alone.
-fn write_pi_extension(exe: &str, state_path: &Path) -> Result<PathBuf> {
+fn write_plugin(exe: &str, state_path: &Path) -> Result<PathBuf> {
     let dir = state_path
         .parent()
         .unwrap_or(Path::new(""))
-        .join("pi-extension");
+        .join("opencode-plugin");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     let path = dir.join("index.js");
-    let source = PI_EXTENSION.replace("HYPERCUBE_EXE", &Value::from(exe).to_string());
+    let source = OPENCODE_PLUGIN.replace("HYPERCUBE_EXE", &Value::from(exe).to_string());
     if std::fs::read_to_string(&path).ok().as_deref() != Some(&source) {
         let temp = dir.join(format!("index.js.{}.tmp", std::process::id()));
         std::fs::write(&temp, source).map_err(|e| format!("write {}: {e}", temp.display()))?;
         std::fs::rename(&temp, &path).map_err(|e| format!("rename {}: {e}", temp.display()))?;
     }
-    Ok(path)
+    Ok(dir)
 }
 
 #[cfg(test)]
@@ -247,6 +267,7 @@ mod tests {
                     "UserPromptSubmit": [{"hooks": [hook("UserPromptSubmit")]}],
                     "PostToolUse": [{"hooks": [hook("PostToolUse")]}],
                     "Stop": [{"hooks": [hook("Stop"), wait]}],
+                    "PermissionRequest": [{"hooks": [hook("PermissionRequest")]}],
                 },
                 "statusLine": {"type": "command", "command": format!("'{EXE}' statusline")},
             })
@@ -298,38 +319,46 @@ mod tests {
     }
 
     #[test]
-    fn pi_argv_environment_and_extension() {
+    fn opencode_argv_environment_and_plugin() {
         let dir = TempDir::new();
         let state = dir.path().join("w.json");
-        let extension = dir.path().join("pi-extension/index.js");
-        let base = [
-            "pi",
-            "--extension",
-            extension.to_str().unwrap(),
-            "--model",
-            "m",
-            "--thinking",
-            "high",
-            "--approve",
-        ];
+        let plugin = dir.path().join("opencode-plugin");
+        let base = ["opencode", "--standalone", "--auto", "--session"];
 
-        let l = launch(&state, &agent("pi", ""), "");
-        assert_eq!(l.argv, base);
+        let l = launch(&state, &agent("opencode", ""), "");
+        assert_eq!(l.argv, [&base[..], &["ses_hypercube_a1"]].concat());
         assert_eq!(l.env["HYPERCUBE_AGENT_ID"], "a1");
         assert_eq!(l.env["HYPERCUBE_STATE"], state.to_str().unwrap());
-        assert_eq!(l.env.len(), 2);
+        assert_eq!(l.env["HYPERCUBE_SESSION_ID"], "ses_hypercube_a1");
+        assert_eq!(l.env.len(), 4);
         assert_eq!(l.cwd, Path::new("/r/.hypercube/w1"));
+        let config: Value = serde_json::from_str(&l.env["OPENCODE_CONFIG_CONTENT"]).unwrap();
+        assert_eq!(
+            config,
+            json!({
+                "model": "m",
+                "agents": {"build": {"model": "m#high"}},
+                "mcp": {"servers": {"hypercube": {
+                    "type": "local",
+                    "command": [EXE, "mcp"],
+                    "environment": {"HYPERCUBE_AGENT_ID": "a1", "HYPERCUBE_STATE": state.to_str().unwrap()},
+                    "codemode": false,
+                }}},
+                "plugins": [plugin.to_str().unwrap()],
+            })
+        );
 
-        let l = launch(&state, &agent("pi", ""), NUDGE);
-        assert_eq!(l.argv, [&base[..], &[NUDGE]].concat());
+        let l = launch(&state, &agent("opencode", ""), NUDGE);
+        assert_eq!(
+            l.argv,
+            [&base[..], &["ses_hypercube_a1", "--prompt", NUDGE]].concat()
+        );
 
-        let l = launch(&state, &agent("pi", "s1"), NUDGE);
-        assert_eq!(l.argv, [&base[..], &["--session-id", "s1", NUDGE]].concat());
+        let l = launch(&state, &agent("opencode", "s1"), "");
+        assert_eq!(l.argv, [&base[..], &["s1"]].concat());
+        assert_eq!(l.env["HYPERCUBE_SESSION_ID"], "s1");
 
-        let l = launch(&state, &agent("pi", "s1"), "");
-        assert_eq!(l.argv, [&base[..], &["--session-id", "s1"]].concat());
-
-        let source = std::fs::read_to_string(&extension).unwrap();
+        let source = std::fs::read_to_string(plugin.join("index.js")).unwrap();
         assert!(!source.contains("HYPERCUBE_EXE"), "unreplaced placeholder");
         assert!(
             source.contains(&format!("const exe = {:?}\n", EXE)),
@@ -338,26 +367,26 @@ mod tests {
     }
 
     #[test]
-    fn pi_extension_is_written_once_and_updated_when_the_executable_changes() {
+    fn opencode_plugin_is_written_once_and_updated_when_the_executable_changes() {
         let dir = TempDir::new();
         let state = dir.path().join("w.json");
-        let a = agent("pi", "");
-        let extension = dir.path().join("pi-extension/index.js");
+        let a = agent("opencode", "");
+        let plugin = dir.path().join("opencode-plugin/index.js");
         launch(&state, &a, "");
-        let first = std::fs::metadata(&extension).unwrap().modified().unwrap();
+        let first = std::fs::metadata(&plugin).unwrap().modified().unwrap();
         launch(&state, &a, "");
         assert_eq!(
-            std::fs::metadata(&extension).unwrap().modified().unwrap(),
+            std::fs::metadata(&plugin).unwrap().modified().unwrap(),
             first
         );
-        let names: Vec<_> = std::fs::read_dir(extension.parent().unwrap())
+        let names: Vec<_> = std::fs::read_dir(plugin.parent().unwrap())
             .unwrap()
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(names, ["index.js"], "a temporary file remains");
 
         command(Path::new("/other/hypercube"), &a, &state, "").unwrap();
-        let source = std::fs::read_to_string(&extension).unwrap();
+        let source = std::fs::read_to_string(&plugin).unwrap();
         assert!(
             source.contains("const exe = \"/other/hypercube\"\n"),
             "{source}"
@@ -367,14 +396,14 @@ mod tests {
     #[test]
     fn unsupported_harnesses_fail_to_launch() {
         let state = Path::new("/tmp/w.json");
-        for harness in ["codex", "opencode", "ox", "gpt", ""] {
+        for harness in ["codex", "pi", "ox", "gpt", ""] {
             let err = command(Path::new(EXE), &agent(harness, ""), state, "")
                 .unwrap_err()
                 .to_string();
             assert_eq!(
                 err,
                 format!(
-                    "agent \"w1\" has harness \"{harness}\", which is not supported; use claude or pi"
+                    "agent \"w1\" has harness \"{harness}\", which is not supported; use claude or opencode"
                 )
             );
         }
@@ -386,11 +415,12 @@ mod tests {
         assert_eq!(shell_quote("it's"), r"'it'\''s'");
     }
 
-    /// Runs the extension under Node against a fake hypercube executable.
+    /// Runs the plugin under Node against a fake hypercube executable and a
+    /// stand-in for OpenCode's plugin context.
     #[test]
-    fn pi_extension_maps_events_to_hooks() {
+    fn opencode_plugin_maps_events_to_hooks() {
         if Command::new("node").arg("--version").output().is_err() {
-            eprintln!("skipped: node is required to exercise the Pi extension");
+            eprintln!("skipped: node is required to exercise the OpenCode plugin");
             return;
         }
         let dir = TempDir::new();
@@ -422,55 +452,62 @@ fi
         .unwrap();
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
         let state = dir.path().join("state.json");
-        command(&fake, &agent("pi", ""), &state, "").unwrap();
-        let extension = dir.path().join("pi-extension/index.js");
+        let mut a = agent("opencode", "s1");
+        a.model = "p/m".into();
+        let l = command(&fake, &a, &state, "").unwrap();
 
         let out = Command::new("node")
-            .args(["--input-type=module", "--eval", PI_EXTENSION_TEST])
-            .env("HYPERCUBE_AGENT_ID", "a1")
-            .env("HYPERCUBE_STATE", &state)
+            .args(["--input-type=module", "--eval", OPENCODE_PLUGIN_TEST])
+            .envs(&l.env)
             .env("HYPERCUBE_TEST_LOG", dir.path().join("hooks.log"))
-            .env("HYPERCUBE_TEST_EXTENSION", &extension)
-            .env("HYPERCUBE_TEST_EXE", &fake)
+            .env(
+                "HYPERCUBE_TEST_PLUGIN",
+                dir.path().join("opencode-plugin/index.js"),
+            )
             .output()
             .unwrap();
         assert!(
             out.status.success(),
-            "Pi extension:\n{}{}",
+            "OpenCode plugin:\n{}{}",
             String::from_utf8_lossy(&out.stdout),
             String::from_utf8_lossy(&out.stderr)
         );
     }
 
-    const PI_EXTENSION_TEST: &str = r##"
+    const OPENCODE_PLUGIN_TEST: &str = r##"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { pathToFileURL } from "node:url"
-const { default: extension } = await import(pathToFileURL(process.env.HYPERCUBE_TEST_EXTENSION))
-const handlers = new Map()
-const sent = []
-const custom = []
-const servers = []
-extension({
-  on: (event, handler) => { handlers.set(event, handler) },
-  registerMcpServer: (...args) => { servers.push(args) },
-  sendUserMessage: (text) => { sent.push(text) },
-  sendMessage: (...args) => { custom.push(args) },
-})
-assert.deepEqual(servers, [["hypercube", {
-  command: process.env.HYPERCUBE_TEST_EXE,
-  args: ["mcp"],
-  env: {
-    HYPERCUBE_AGENT_ID: "a1",
-    HYPERCUBE_STATE: process.env.HYPERCUBE_STATE,
+const { default: plugin } = await import(pathToFileURL(process.env.HYPERCUBE_TEST_PLUGIN))
+
+// A stand-in for OpenCode's plugin context. s1 is the launched session, s2
+// is on another model, and child is a subagent's session.
+const model = { providerID: "p", id: "m" }
+const sessions = { s1: { model }, s2: { model: { providerID: "p", id: "other" } }, child: { model, parentID: "s1" } }
+const hooks = new Map()
+const prompts = []
+const events = []
+let push
+const ctx = {
+  session: {
+    get: async ({ sessionID }) => {
+      if (!sessions[sessionID]) throw new Error(`no session ${sessionID}`)
+      return sessions[sessionID]
+    },
+    hook: async (name, callback) => { hooks.set(`session.${name}`, callback) },
+    prompt: async (input) => { prompts.push(input) },
   },
-  exposure: "direct",
-}]])
-const ctx = { sessionManager: { getSessionId: () => "s1" } }
-const call = (name, event = {}, context = ctx) => handlers.get(name)(event, context)
-const waits = () => {
-  try { return readFileSync(`${process.env.HYPERCUBE_TEST_LOG}.waits`, "utf8").trim().split("\n").map(Number) } catch { return [] }
+  tool: { hook: async (name, callback) => { hooks.set(`tool.${name}`, callback) } },
+  event: {
+    subscribe: async function* ({ signal }) {
+      while (!signal.aborted) {
+        if (events.length) yield events.shift()
+        else await new Promise((resolve) => { push = resolve; signal.addEventListener("abort", resolve) })
+      }
+    },
+  },
 }
+const emit = (type, sessionID) => { events.push({ type, data: { sessionID } }); push?.() }
 const until = async (what, f) => {
   for (let i = 0; i < 500; i++) {
     if (f()) return
@@ -478,57 +515,72 @@ const until = async (what, f) => {
   }
   assert.fail(`timed out waiting for ${what}`)
 }
+const lines = (path) => {
+  try { return readFileSync(path, "utf8").trim().split("\n") } catch { return [] }
+}
+const calls = () => lines(process.env.HYPERCUBE_TEST_LOG).map((line) => {
+  const space = line.indexOf(" ")
+  return [line.slice(0, space), JSON.parse(line.slice(space + 1)).session_id]
+})
+const waits = () => lines(`${process.env.HYPERCUBE_TEST_LOG}.waits`).map(Number)
 const alive = (pid) => {
   try { process.kill(pid, 0); return true } catch { return false }
 }
 
-// The session's waiter writes messages, which start a turn.
-await call("session_start")
-await until("the waiter's messages", () => custom.length === 1)
-assert.deepEqual(custom, [[
-  { customType: "hypercube", content: "Message from o (o1):\nhi", display: true },
-  { triggerTurn: true, deliverAs: "followUp" },
-]])
+// The launched session exists, so its waiter starts, and its messages start
+// a turn there.
+const cleanup = await plugin.setup(ctx)
+await until("the waiter's messages", () => prompts.length === 1)
+assert.deepEqual(prompts, [{ sessionID: "s1", text: "Message from o (o1):\nhi" }])
 
-const calls = () => readFileSync(process.env.HYPERCUBE_TEST_LOG, "utf8").trim().split("\n").map((line) => {
-  const space = line.indexOf(" ")
-  return [line.slice(0, space), JSON.parse(line.slice(space + 1))]
+// The first prompt of a session runs SessionStart, and every prompt runs
+// UserPromptSubmit. Their context is added to the prompt.
+const prompt = async (sessionID, text) => {
+  const event = { sessionID, prompt: { text } }
+  await hooks.get("session.prompt")(event)
+  return event.prompt.text
+}
+assert.equal(await prompt("s1", "hello"), "hello\n\nSessionStart context\n\nUserPromptSubmit context")
+assert.equal(await prompt("s1", "again"), "again\n\nUserPromptSubmit context")
+assert.deepEqual(calls(), [["SessionStart", "s1"], ["UserPromptSubmit", "s1"], ["UserPromptSubmit", "s1"]])
+
+// A session on another model is refused before any hook runs.
+await assert.rejects(prompt("s2", "x"), /OpenCode selected p\/other instead of requested p\/m/)
+
+// A subagent's prompts and tools never consume queued messages.
+assert.equal(await prompt("child", "sub"), "sub")
+const tool = async (event) => {
+  await hooks.get("tool.execute.after")(event)
+  return event.result
+}
+const result = { output: 1, content: "original" }
+assert.equal(await tool({ status: "completed", sessionID: "child", result }), result)
+assert.equal(await tool({ status: "error", sessionID: "s1", error: {} }), undefined)
+assert.equal(calls().length, 3)
+
+// A completed tool's result gets PostToolUse context.
+assert.deepEqual(await tool({ status: "completed", sessionID: "s1", result }), {
+  output: 1,
+  content: [{ type: "text", text: "original" }, { type: "text", text: "PostToolUse context" }],
 })
-assert.deepEqual(await call("before_agent_start"), {
-  message: { customType: "hypercube", content: "SessionStart context\n\nUserPromptSubmit context", display: true },
-})
-assert.deepEqual(calls(), [["SessionStart", { session_id: "s1" }], ["UserPromptSubmit", { session_id: "s1" }]])
-assert.deepEqual(await call("before_agent_start"), {
-  message: { customType: "hypercube", content: "UserPromptSubmit context", display: true },
-})
-assert.deepEqual(calls().map(([event]) => event), ["SessionStart", "UserPromptSubmit", "UserPromptSubmit"])
-const content = [{ type: "text", text: "original" }]
-assert.equal(await call("tool_result", { content, parentToolCallId: "parent" }), undefined)
-assert.equal(calls().length, 3, "nested tools must not consume queued messages")
-assert.deepEqual(await call("tool_result", { content }), {
-  content: [...content, { type: "text", text: "PostToolUse context" }],
-})
-assert.deepEqual(content, [{ type: "text", text: "original" }])
-await call("agent_settled")
-assert.deepEqual(sent, ["queued"])
+assert.equal(result.content, "original")
+
+// The end of a turn runs Stop. A block reason starts a turn with it;
+// otherwise a waiter starts. Sessions without a prompt here are ignored.
+emit("session.execution.succeeded", "child")
+emit("session.execution.succeeded", "s1")
+await until("the blocked stop's turn", () => prompts.length === 2)
+assert.deepEqual(prompts[1], { sessionID: "s1", text: "queued" })
 assert.equal(waits().length, 1, "a blocked stop continues the turn, so no waiter starts")
-await call("agent_settled")
-assert.deepEqual(sent, ["queued"], "empty Stop output must not start another run")
+emit("session.execution.interrupted", "s1")
 await until("a waiter after the stop", () => waits().length === 2)
+assert.equal(prompts.length, 2)
+assert.deepEqual(calls().slice(3), [["PostToolUse", "s1"], ["Stop", "s1"], ["Stop", "s1"]])
 
-// Shutting the session down ends its waiter.
+// Cleanup ends the waiter.
 const waiter = waits()[1]
 assert(alive(waiter))
-await call("session_shutdown")
+cleanup()
 await until("the waiter to end", () => !alive(waiter))
-assert.equal(custom.length, 1)
-assert.deepEqual(calls(), ["SessionStart", "UserPromptSubmit", "UserPromptSubmit", "PostToolUse", "Stop", "Stop"].map((event) => [event, { session_id: "s1" }]))
-
-// Switching sessions runs SessionStart again, while returning to one does not.
-await call("before_agent_start", {}, { sessionManager: { getSessionId: () => "s2" } })
-assert.deepEqual(calls().slice(-2), [["SessionStart", { session_id: "s2" }], ["UserPromptSubmit", { session_id: "s2" }]])
-await call("before_agent_start")
-assert.deepEqual(calls().at(-1), ["UserPromptSubmit", { session_id: "s1" }])
-assert.equal(calls().length, 9)
 "##;
 }

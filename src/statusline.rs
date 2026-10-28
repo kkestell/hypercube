@@ -1,11 +1,16 @@
 //! `hypercube statusline`: the status line Claude Code shows under each agent's
 //! prompt. It shows the model, the effort, and the context window in use, and
-//! for the orchestrator the 5-hour and 7-day usage limits.
+//! for the orchestrator the 5-hour and 7-day usage limits. It also clears the
+//! agent's attention flag, since Claude Code runs the status line when a tool
+//! approval is answered, either way, and not while it waits for an answer.
 
 use std::error::Error;
 use std::io::{Read, Write};
+use std::path::Path;
 
 use serde_json::Value;
+
+use crate::store;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -13,14 +18,38 @@ const ORANGE: &str = "38;2;218;96;0";
 const WHITE: &str = "38;2;255;255;255";
 const LIGHT_ORANGE: &str = "38;2;255;151;69";
 
+/// Clear the attention flag of the agent named by `HYPERCUBE_AGENT_ID` and
+/// `HYPERCUBE_STATE`, then show the status line.
+pub fn run(limits: bool, input: impl Read, out: impl Write) -> Result<()> {
+    let id = std::env::var("HYPERCUBE_AGENT_ID").unwrap_or_default();
+    let state = std::env::var("HYPERCUBE_STATE").unwrap_or_default();
+    if !id.is_empty() && !state.is_empty() {
+        // The status line shows even if the state cannot be changed.
+        let _ = clear_attention(&id, Path::new(&state));
+    }
+    show(limits, input, out)
+}
+
 /// Read Claude Code's status JSON from `input` and write the status line.
 /// `limits` adds the usage limits.
-pub fn run(limits: bool, mut input: impl Read, mut out: impl Write) -> Result<()> {
+fn show(limits: bool, mut input: impl Read, mut out: impl Write) -> Result<()> {
     let mut text = String::new();
     input.read_to_string(&mut text)?;
     let status: Value = serde_json::from_str(&text).unwrap_or(Value::Null);
     out.write_all(line(&status, limits).as_bytes())?;
     Ok(())
+}
+
+/// Clear agent `id`'s attention flag. The state is only written when the
+/// flag is set, since the status line runs often.
+fn clear_attention(id: &str, state_path: &Path) -> Result<()> {
+    if !store::load(state_path)?.agent(id)?.attention {
+        return Ok(());
+    }
+    store::update(state_path, |state| {
+        state.agent_mut(id)?.attention = false;
+        Ok(())
+    })
 }
 
 /// The status line for Claude Code's status JSON. Missing or null fields
@@ -150,8 +179,41 @@ mod tests {
             "✳︎  ::  0/0 (0%) | 5h ·········· | 7d ··········"
         );
         let mut out = Vec::new();
-        run(true, "not json".as_bytes(), &mut out).unwrap();
+        show(true, "not json".as_bytes(), &mut out).unwrap();
         assert!(String::from_utf8(out).unwrap().contains("0/0 (0%)"));
+    }
+
+    #[test]
+    fn the_status_line_clears_the_attention_flag() {
+        let dir = crate::testutil::TempDir::new();
+        let state = dir.path().join("w.json");
+        let agent = |id: &str, attention| store::Agent {
+            id: id.into(),
+            name: id.into(),
+            attention,
+            ..store::Agent::default()
+        };
+        store::update(&state, |s| {
+            s.agents = vec![agent("a", true), agent("b", true)];
+            Ok(())
+        })
+        .unwrap();
+        clear_attention("a", &state).unwrap();
+        let attention: Vec<_> = store::load(&state)
+            .unwrap()
+            .agents
+            .iter()
+            .map(|a| a.attention)
+            .collect();
+        assert_eq!(attention, [false, true]);
+        // A clear agent's state is left unwritten.
+        let written = std::fs::metadata(&state).unwrap().modified().unwrap();
+        clear_attention("a", &state).unwrap();
+        assert_eq!(
+            std::fs::metadata(&state).unwrap().modified().unwrap(),
+            written
+        );
+        assert!(clear_attention("nobody", &state).is_err());
     }
 
     #[test]

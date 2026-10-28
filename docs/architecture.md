@@ -8,7 +8,8 @@
 - `hypercube host <dir>` is the host of the workspace whose checkout is
   `<dir>`. It runs in the background, in its own session, from when a client
   starts it until the session ends, and owns every agent's pty and pane and
-  the control socket. The client starts it; it is not listed in the usage.
+  the control socket. The client or `hypercube start` starts it; it is not
+  listed in the usage.
 - `hypercube mcp` is each agent's MCP server, started by its harness. It
   changes the state file and worktrees itself, reads the profiles from
   `config.json`, and asks the host to launch and close panes.
@@ -18,9 +19,14 @@
   the agent when messages arrive while it is idle.
 - `hypercube statusline` prints Claude Code's status line from the status
   JSON on its input.
-- `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
-  `delete` act on the workspace of the working directory, of a directory
-  argument, or, with `--all`, of every workspace.
+- `hypercube stop`, `status`, `delete`, `start`, and `running` are
+  short-lived commands. `stop` and `delete` act on the workspace of the
+  working directory, of a directory argument, or, with `--all`, of every
+  workspace. `start <dir>` starts the host of the workspace containing
+  `<dir>` in the background unless one is running, and returns once it
+  listens; its agents launch when a terminal first attaches. `running` prints
+  the directory of every running workspace, one per line, in the bar's
+  order.
 
 Each agent's harness runs with `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`, the
 agent's ID and its workspace's state file, which the MCP server and the hooks
@@ -39,7 +45,7 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
 - `<hash>.sock`: the control socket, named from a hash of the workspace name
   so its path stays within the 104 bytes macOS allows.
 
-The state directory also holds `pi-extension/index.js`.
+The state directory also holds `opencode-plugin/index.js`.
 
 ## The host
 
@@ -233,7 +239,9 @@ time of its host lock), as adjoining tabs, ` 0 foo  1 bar  2 glarpy `: each
 the name of its checkout's directory after its number, with the host's own
 workspace bold. A tab is drawn in its workspace's accent: the
 bar's text on the accent mixed 65% toward black, with the number the accent
-mixed 60% toward white. It shows as many as fit, whole. A click on a tab
+mixed 60% toward white. A red `●` follows the name while an agent of the
+workspace waits for a tool approval, until the approval is answered (see
+[harness support](harness-support.md)). It shows as many as fit, whole. A click on a tab
 switches to that workspace, as Ctrl-b and its number do. The host reads the list on each attach and every
 second while a client is attached. Ctrl-b and a digit switch the client to the
 workspace with that number, as the overlay's Enter does; on the host's own
@@ -342,8 +350,8 @@ another. `launch` and `close` end any zoom.
 ## State file
 
 The state file holds the agents (ID, name, role, harness, model, effort,
-directory, branch, session ID, activity, and the number of the newest
-waiter), the queued messages (sender,
+directory, branch, session ID, activity, the number of the newest waiter,
+and whether it waits for a tool approval), the queued messages (sender,
 recipient, text), `no_git`, and the accent color's number, `accent`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
@@ -398,7 +406,7 @@ the agent's waiter number and keeps the new number as its own. It reads the
 state every 250 ms. When the agent is idle with messages queued, it takes
 them, marks the agent busy, writes them to stderr, and exits with status 2.
 The harness then starts a turn with the messages: Claude Code through its
-`asyncRewake` hook, Pi through its extension (see
+`asyncRewake` hook, OpenCode through its plugin (see
 [harness support](harness-support.md)). The harness starts the turn itself,
 so text the user is typing in the agent's pane stays in the harness's editor.
 A waiter exits with status 0 once the agent is gone, the agent's waiter

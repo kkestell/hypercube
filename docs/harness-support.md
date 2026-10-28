@@ -21,7 +21,8 @@ child processes inherit:
 They are the agent's identity for `hypercube mcp`, `hypercube hook`, and
 `hypercube wait`.
 
-Hook events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
+Hook events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`,
+and, for Claude Code only, `PermissionRequest`.
 `hypercube hook <event>` reads the harness's hook JSON on stdin and writes the
 response on stdout. `hookSpecificOutput.additionalContext` carries text for the
 model, and `decision: "block"` with `reason` keeps an agent running with a
@@ -35,6 +36,8 @@ queued message.
 - `PostToolUse` delivers queued messages during a turn.
 - `Stop` delivers queued messages as a block reason, or marks the agent idle
   when its queue is empty.
+- `PermissionRequest` sets the agent's attention flag, which puts a red dot
+  on its workspace's tab in the bar, and writes nothing, so the user decides.
 
 Each harness runs `hypercube wait` in the background when a session starts
 and after each turn's stop. When the agent is idle with messages queued, the
@@ -64,42 +67,62 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
   and when it exits with status 2, wakes the session with its stderr as a
   system reminder, even when the session is idle. The prompt being typed stays
   in the editor.
-- `--permission-mode auto` starts the session in auto mode.
+- `--permission-mode auto` starts the session in auto mode. A tool call auto
+  mode does not allow opens an approval dialog, after the `PermissionRequest`
+  hook.
+- No hook runs when the user answers the dialog with a denial. Claude Code
+  runs the status line when the dialog is answered either way, and not while
+  it is open, so `'<exe>' statusline` clears the attention flag.
 - `--resume` is present when the agent has a saved session ID.
 
 Claude Code handles folder trust in its pane. Worktree workers live under
 `<checkout>/.hypercube/<name>`, within the checkout's trusted folder. A worker
 in another directory uses that directory's trust decision.
 
-## Pi
+## OpenCode
 
 ```
-pi --extension <path> --model <model> --thinking <effort> --approve
-  [--session-id <session>] [prompt]
+opencode --standalone --auto --session <session> [--prompt <prompt>]
 ```
 
-`--approve` trusts project-local resources for the launch. The extension is
-written to `pi-extension/index.js` in the state directory, with the `exe` path
-embedded, each time a Pi agent launches; an up-to-date copy is left untouched.
+OpenCode 2.x is required. `--standalone` gives each agent a private server
+that reads the launch's configuration, and `--auto` makes the TUI approve
+every permission request itself, so an OpenCode agent never waits for an
+approval. The launch adds two variables to the identity
+ones:
 
-The extension registers the `hypercube` MCP server for the session with direct
-tool exposure and `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE` in its environment.
-It maps Pi events onto `exe hook` calls:
+- `OPENCODE_CONFIG_CONTENT`: the configuration. It sets the model, the `build`
+  agent's model with the effort as its variant (`<model>#<effort>`), the
+  `hypercube` local MCP server, `exe mcp` with `HYPERCUBE_AGENT_ID` and
+  `HYPERCUBE_STATE` in its environment and Code Mode off so its tools are
+  called directly, and the Hypercube plugin.
+- `HYPERCUBE_SESSION_ID`: the session the launch opens.
 
-- `before_agent_start`: SessionStart the first time each session ID is seen
-  by the loaded extension, then UserPromptSubmit on every prompt. The combined
-  context becomes a visible custom message sent to the model as user text.
-- `tool_result`: PostToolUse, appended to the tool result. Nested tool calls
-  with `parentToolCallId` are skipped, since they never enter the transcript.
-- `agent_settled`: Stop, after retries, compaction, and queued work finish. A
-  block reason is sent back with `pi.sendUserMessage`, which starts a new run.
-  Otherwise the extension starts a waiter.
-- `session_start`: starts a waiter. `session_shutdown` kills the current one.
+The session is the agent's saved session ID or, before one is saved,
+`ses_hypercube_<agent ID>`. OpenCode creates a session with a missing ID on
+its first prompt, so the plugin knows the agent's session before it exists.
 
-When a waiter exits with status 2, the extension sends its stderr with
-`pi.sendMessage` as a visible `hypercube` custom message with `triggerTurn`,
-which starts a run while the agent is idle and leaves the editor alone.
+The plugin is written to `opencode-plugin/index.js` in the state directory,
+with the `exe` path embedded, each time an OpenCode agent launches; an
+up-to-date copy is left untouched. It calls `exe hook` for top-level sessions
+only, since subagent sessions have a parent:
 
-Each Pi hook call sends `{ "session_id": "<current session ID>" }` on stdin.
-The extension's per-session SessionStart tracking lasts for the loaded
-extension; a new process or extension reload starts fresh tracking.
+- `session.hook("prompt")`: SessionStart the first time the loaded plugin
+  sees a session, then UserPromptSubmit on every prompt. The combined context
+  is appended to the prompt text. Before SessionStart, the plugin refuses the
+  prompt if the session's model is not the requested one, since OpenCode
+  falls back to a recent model for an unavailable ID.
+- `tool.hook("execute.after")`: PostToolUse for a completed tool, appended to
+  its result.
+- The `session.execution.succeeded`, `failed`, and `interrupted` events:
+  Stop. A block reason is sent back with `session.prompt`, which starts a new
+  turn. Otherwise the plugin starts a waiter.
+
+The plugin also starts a waiter when it loads if the launch's session exists.
+A new session gets its first waiter at the end of its first turn. When a
+waiter exits with status 2, the plugin sends its stderr with `session.prompt`.
+The server queues the prompt and starts a turn, and text being typed in the
+TUI's editor stays there. The prompt runs the `prompt` hook like any other.
+The plugin's cleanup kills the current waiter.
+
+Each hook call sends `{ "session_id": "<session ID>" }` on stdin.

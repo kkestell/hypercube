@@ -1,4 +1,4 @@
-//! Hypercube runs a team of local coding agents, each a Claude Code or Pi
+//! Hypercube runs a team of local coding agents, each a Claude Code or OpenCode
 //! session in its own pane.
 
 use std::error::Error;
@@ -8,11 +8,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use hypercube::store::{Agent, Workspace};
-use hypercube::{client, control, hook, host, mcp, statusline, store, wait, workspace};
+use hypercube::{bar, client, control, hook, host, mcp, statusline, store, wait, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const USAGE: &str = "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | wait | statusline [--limits]]";
+const USAGE: &str = "usage: hypercube [start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | hook <event> | wait | statusline [--limits]]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -20,6 +20,7 @@ fn main() -> ExitCode {
     let result = match args.as_slice() {
         [] => start(),
         ["host", dir] => host::serve_workspace(Path::new(dir)),
+        ["start", dir] => workspace_at(dir).and_then(|(root, _)| client::start(&root)),
         ["stop"] => stop("."),
         ["stop", "--all"] => stop_all(),
         ["stop", dir] => stop(dir),
@@ -27,6 +28,7 @@ fn main() -> ExitCode {
         ["delete", "--all"] => delete_all(),
         ["delete", dir] => delete(dir),
         ["status"] => status(),
+        ["running"] => running(),
         ["mcp"] => mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()),
         ["hook", event] => hook::run(event, std::io::stdin().lock(), std::io::stdout().lock()),
         // Status 2 tells the harness that the waiter wrote messages.
@@ -221,6 +223,17 @@ fn removable_workers(root: &Path, path: &Path) -> Result<Vec<Agent>> {
         return Err(format!("not deleting the workspace:\n  {}", problems.join("\n  ")).into());
     }
     Ok(workers)
+}
+
+/// Print the directory of every running workspace, one per line, in the order
+/// the bar lists them.
+fn running() -> Result<()> {
+    for entry in bar::running()? {
+        if let Some(root) = entry.root {
+            println!("{}", root.display());
+        }
+    }
+    Ok(())
 }
 
 /// Print every workspace with a state file: its directory, whether it is

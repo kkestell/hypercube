@@ -30,6 +30,10 @@ impl Colors {
 const BLACK: Rgb = (0, 0, 0);
 const WHITE: Rgb = (255, 255, 255);
 
+/// The dot on the tab of a workspace with an agent waiting for a tool
+/// approval.
+pub const ATTENTION: Rgb = (255, 70, 70);
+
 /// The accents, in the order Ctrl-b a cycles through them: blue, teal,
 /// green, amber, orange, red, pink, and purple.
 pub const ACCENTS: [Rgb; 8] = [

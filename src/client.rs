@@ -276,6 +276,31 @@ fn write_fd(fd: RawFd, data: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Start the host of the workspace whose checkout is `root` in the
+/// background, unless one is running, and return once it listens. Its agents
+/// launch when a terminal first attaches.
+pub fn start(root: &Path) -> Result<()> {
+    let state_path = store::path(&workspace::name(root));
+    if host::running(&state_path)? {
+        return Ok(());
+    }
+    let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
+    let socket = control::socket_path(&state_path)?;
+    let log = host::log_path(&state_path);
+    let mut child = spawn_host(&exe, root, &log)?;
+    let end = Instant::now() + SPAWN_TIMEOUT;
+    while UnixStream::connect(&socket).is_err() {
+        if child.try_wait()?.is_some() {
+            return Err(host_failed("the host exited", &log));
+        }
+        if Instant::now() > end {
+            return Err(host_failed("the host did not start listening", &log));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    Ok(())
+}
+
 /// Run `hypercube host <root>` in its own session, with no input and its
 /// output appended to `log`.
 fn spawn_host(exe: &Path, root: &Path, log: &Path) -> Result<std::process::Child> {
