@@ -229,7 +229,7 @@ fn on_branch(branch: &str) -> String {
 
 const DIR_ARG: &str = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's working directory,";
 
-const REPORT_BACK: &str = " When you finish, or need something, send a message to the orchestrator. A message you send is the only way other agents see your work's status.\n";
+const REPORT_BACK: &str = " When you finish, or need something, send the orchestrator a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.\n";
 
 const MESSAGE_TOOLS: &str = r#"
 Hypercube MCP tools:
@@ -237,12 +237,18 @@ Hypercube MCP tools:
 - list_agents() returns the team with each agent's activity.
 "#;
 
-/// The orchestrator's guidance on parallel work and the configured worker
+/// The orchestrator's teamwork guidance and the configured worker
 /// profiles.
 fn write_teamwork(b: &mut String, profiles: &[Profile]) {
     b.push_str(
         r#"
-Run tasks that change the same subsystem one after another; run only independent work in parallel.
+Teamwork:
+- Do small or tightly coupled tasks yourself. Create workers when the work splits into long, self-contained parts. A team uses several times the tokens of a single agent.
+- Run independent work in parallel and coupled work in sequence. Give each file that several tasks touch to one worker.
+- A worker's first message states the objective, the expected result, the files and sources to start from, and the boundaries: what to leave alone and when to stop and report.
+- Choose the cheapest profile that fits the task. When a worker's result fails its checks, give the task to a stronger profile.
+- Before you merge a change, run the build and tests. A non-trivial change also needs a review by a worker that did not write it. A trivial change needs none.
+- Ask workers for conclusions, not transcripts, to keep your context for coordination.
 
 Worker profiles. Pass the name of the one that fits the task to create_agent as profile:
 "#,
@@ -603,14 +609,15 @@ mod tests {
                     "create_agent(name, profile, dir?,",
                     "Merge its branch into your branch",
                     r#"pass dir ".""#,
-                    "Run tasks that change the same subsystem one after another",
+                    "- Run independent work in parallel and coupled work in sequence.",
+                    "A non-trivial change also needs a review by a worker that did not write it.",
                 ],
             ),
             (
                 "b",
                 vec![
                     "Your working directory is /r/.hypercube/w1 on branch hypercube/w1.",
-                    "Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send a message to the orchestrator.",
+                    "Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send the orchestrator a short summary:",
                 ],
             ),
             (
@@ -664,7 +671,7 @@ Hypercube MCP tools:
 - create_agent(name, profile, dir?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD, with submodules checked out and copies of the gitignored paths the checkout's .worktreeinclude lists. With dir, an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's working directory, the worker works directly in it, and Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
 - remove_agent(id) closes a worker's pane and removes it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is. Orchestrator only.
 
-Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send a message to the orchestrator. A message you send is the only way other agents see your work's status.
+Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send the orchestrator a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
 "#;
         assert_eq!(facts(&state, &state.agents[1], &[]), want);
     }
