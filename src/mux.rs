@@ -144,7 +144,7 @@ pub struct PaneView<'a> {
     pub scrolled: usize,
 }
 
-/// Draws everything around the panes: borders, labels, a status bar.
+/// Draws everything around the panes: borders and labels.
 pub trait Chrome {
     /// Write the escape sequences that draw all of the chrome into `out`,
     /// leaving the SGR attributes reset. The mux calls this inside a frame

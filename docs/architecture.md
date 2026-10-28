@@ -100,9 +100,9 @@ agent and ending the session hang up the programs without relaunching them.
 
 `host::layout` places the orchestrator's pane in the left 40% of the columns,
 or all of them when it is alone, then a one-column rule, then the workers
-stacked with equal heights. Each pane has a label row above it, and the bottom
-row is the status bar. A layout in which some pane would get no row or column
-fails; a launch requested on the control socket then fails with "no room
+stacked with equal heights. Each pane has a label row above it, and the panes
+use every row of the terminal. A layout in which some pane would get no row or
+column fails; a launch requested on the control socket then fails with "no room
 for another pane", and a terminal resized below that hides the panes until
 it grows.
 
@@ -118,8 +118,7 @@ host resizing keeps the zoom.
 in black on `#87d7ff`, bold for the focused pane. The label is the agent's
 name, harness, model, effort, and directory, followed by "zoomed" while
 the pane fills the pane area, "exited N" once the pane's program has exited
-and is not relaunched, and "↑N" while its view is scrolled N rows up. The
-status bar is black on `#87d7ff`, with the checkout path on the left.
+and is not relaunched, and "↑N" while its view is scrolled N rows up.
 
 The keys and the mouse (see Input):
 
@@ -134,7 +133,7 @@ The keys and the mouse (see Input):
   program.
 - A drag selects text and copies it to the clipboard on release.
 
-Labels and the status bar are clipped to whole grapheme clusters, measured in
+Labels are clipped to whole grapheme clusters, measured in
 columns.
 
 ## Control socket
@@ -274,8 +273,7 @@ mux calls `Chrome::draw` inside a frame with a `PaneView` of each pane (ID,
 label, rectangle, focus, exit status, and how many rows its view is scrolled
 up) and the host size, whenever the panes, the focus, an exit status, a
 scrolled view, or the host size changed. `Mux::invalidate_chrome`
-asks for a redraw after a change only the caller knows about, such as status
-bar text.
+asks for a redraw after a change only the caller knows about.
 
 ### Rendering
 
