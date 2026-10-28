@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::{store, workspace};
 
@@ -61,25 +62,38 @@ fn save(path: &Path, limits: &Limits) -> Result<()> {
     Ok(())
 }
 
-/// What Claude Code sends a status line command.
+/// What Claude Code sends a status line command. Every field may be missing
+/// or null, as `context_window.used_percentage` is early in a session, and a
+/// field of another shape counts as missing.
 #[derive(Default, Deserialize)]
 #[serde(default)]
 struct Input {
-    rate_limits: Option<Limits>,
-    context_window: ContextWindow,
-    workspace: Workspace,
+    rate_limits: Option<Value>,
+    context_window: Option<Value>,
+    workspace: Option<Value>,
 }
 
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct ContextWindow {
-    used_percentage: f64,
-}
+impl Input {
+    /// The rate limits, if Claude Code sent a usable window.
+    fn limits(&self) -> Option<Limits> {
+        let limits: Limits = serde_json::from_value(self.rate_limits.clone()?).ok()?;
+        (limits != Limits::default()).then_some(limits)
+    }
 
-#[derive(Default, Deserialize)]
-#[serde(default)]
-struct Workspace {
-    current_dir: String,
+    /// The share of the context window used, 0 if unknown.
+    fn context_used(&self) -> f64 {
+        let used = self
+            .context_window
+            .as_ref()
+            .and_then(|c| c.get("used_percentage"));
+        used.and_then(Value::as_f64).unwrap_or(0.0)
+    }
+
+    /// The directory of the agent's checkout, empty if unknown.
+    fn current_dir(&self) -> &str {
+        let dir = self.workspace.as_ref().and_then(|w| w.get("current_dir"));
+        dir.and_then(Value::as_str).unwrap_or("")
+    }
 }
 
 /// The status line command of Claude Code panes. It saves the rate limits in
@@ -90,11 +104,11 @@ pub fn statusline(mut stdin: impl Read, mut stdout: impl Write, limits_path: &Pa
     stdin.read_to_end(&mut data)?;
     let input: Input =
         serde_json::from_slice(&data).map_err(|e| format!("parse status line input: {e}"))?;
-    if let Some(limits) = &input.rate_limits {
-        save(limits_path, limits)?;
+    if let Some(limits) = input.limits() {
+        save(limits_path, &limits)?;
     }
-    let mut line = format!("ctx {:.0}%", input.context_window.used_percentage);
-    let dir = Path::new(&input.workspace.current_dir);
+    let mut line = format!("ctx {:.0}%", input.context_used());
+    let dir = Path::new(input.current_dir());
     if let Ok(mut branch) = workspace::branch(dir)
         && !branch.is_empty()
     {
@@ -262,6 +276,31 @@ mod tests {
         assert_eq!(load(&path).unwrap().five_hour, window(40.0, 900));
 
         assert!(run("not json", &path).is_err());
+    }
+
+    #[test]
+    fn statusline_tolerates_null_and_missing_fields() {
+        let dir = TempDir::new();
+        let path = dir.path().join(FILE);
+        // Claude Code sends nulls early in a session.
+        for input in [
+            r#"{"context_window":{"used_percentage":null},"rate_limits":null,"workspace":{"current_dir":null}}"#,
+            r#"{"context_window":null,"workspace":null}"#,
+            r#"{"context_window":{"used_percentage":"high"},"rate_limits":{"five_hour":null},"workspace":[]}"#,
+            "{}",
+        ] {
+            assert_eq!(run(input, &path).unwrap(), "ctx 0%", "{input}");
+        }
+        // Limits without a usable window are not saved, and a window may be
+        // null.
+        assert!(!path.exists());
+        let limits =
+            r#"{"rate_limits":{"five_hour":null,"seven_day":{"used_percentage":2,"resets_at":8}}}"#;
+        assert_eq!(run(limits, &path).unwrap(), "ctx 0%");
+        assert_eq!(load(&path).unwrap().seven_day, window(2.0, 8));
+        let broken = r#"{"rate_limits":{"seven_day":{"used_percentage":null,"resets_at":null}}}"#;
+        assert_eq!(run(broken, &path).unwrap(), "ctx 0%");
+        assert_eq!(load(&path).unwrap().seven_day, window(2.0, 8));
     }
 
     #[test]

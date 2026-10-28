@@ -97,10 +97,11 @@ Claude Code gives its rate limits only to its status line command, which
 `harness::command` sets to `hypercube statusline`. Each run reads Claude
 Code's status JSON on stdin and, when it carries `rate_limits`, saves the
 `five_hour` and `seven_day` windows (`used_percentage`, `resets_at` in Unix
-seconds) in `claude-limits.json` in the state directory. The write goes
+seconds) in `claude-limits.json` in the state directory. Missing and null
+fields are tolerated; limits without a usable window are not saved. The write goes
 through a temporary file renamed into place. The limits belong to the account,
 so every workspace shares the file. The command prints the line Claude Code
-shows: `ctx <used>%`, then ` · <branch>` for the branch checked out in
+shows: `ctx <used>%` (0 while Claude Code reports none), then ` · <branch>` for the branch checked out in
 `workspace.current_dir`, with `*` after it when the checkout has uncommitted
 changes.
 
