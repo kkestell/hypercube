@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use crate::bar::{self, Bar, Entry};
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
 use crate::link::{self, Link, Message};
@@ -41,6 +42,8 @@ const MAX_QUICK_EXITS: u32 = 3;
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// How often the overlay's list is read again while it is open.
 const OVERLAY_REFRESH_MS: i64 = 1000;
+/// How often the bar's list is read again while a client is attached.
+const BAR_REFRESH_MS: i64 = 1000;
 
 /// The blue of the separator.
 const RULE: &str = "\x1b[0;38;2;0;135;255m";
@@ -126,14 +129,14 @@ fn at_path(file: &File, path: &Path) -> Result<bool> {
     }
 }
 
-/// Where each pane goes. The first pane, the orchestrator's, takes the left
-/// 40% of the columns, or all of them when it is alone; a one-column separator
-/// follows; the other panes split the remaining columns with equal heights.
-/// Each pane has a label row above it.
+/// Where each pane goes, above the bar in the last row. The first pane, the
+/// orchestrator's, takes the left 40% of the columns, or all of them when it
+/// is alone; a one-column separator follows; the other panes split the
+/// remaining columns with equal heights. Each pane has a label row above it.
 /// `None` if a pane would get no row or column.
 pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
     let cols = u32::from(size.ws_col);
-    let rows = u32::from(size.ws_row);
+    let rows = u32::from(size.ws_row).saturating_sub(1);
     let Some((&first, rest)) = panes.split_first() else {
         return Some(Vec::new());
     };
@@ -170,12 +173,13 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
     )
 }
 
-/// The labels above the panes and the separator between the first pane and
-/// the others, or the workspace overlay while it is open.
+/// The labels above the panes, the separator between the first pane and the
+/// others, and the bar, or the workspace overlay while it is open.
 pub struct TeamChrome {
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
     pub overlay: Rc<RefCell<Option<Overlay>>>,
+    pub bar: Rc<RefCell<Bar>>,
 }
 
 impl Chrome for TeamChrome {
@@ -194,10 +198,11 @@ impl Chrome for TeamChrome {
             && !others.is_empty()
         {
             s.push_str(RULE);
-            for row in 0..size.ws_row {
+            for row in 0..size.ws_row.saturating_sub(1) {
                 s.push_str(&format!("\x1b[{};{}H┃", row + 1, first.rect.cols + 1));
             }
         }
+        self.bar.borrow().draw(&mut s, size);
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
     }
@@ -421,6 +426,10 @@ struct Host {
     overlay: Rc<RefCell<Option<Overlay>>>,
     /// When the overlay's list was last read.
     overlay_read: i64,
+    /// The bar, shared with the chrome.
+    bar: Rc<RefCell<Bar>>,
+    /// When the bar's list was last read.
+    bar_read: i64,
     /// Stops of other workspaces, which run on threads so the host keeps
     /// serving: a pipe that becomes readable when one finishes, and their
     /// results.
@@ -476,9 +485,11 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let zoomed = Rc::new(Cell::new(None));
     let overlay = Rc::new(RefCell::new(None));
+    let bar = Rc::new(RefCell::new(Bar::new(state_path.clone())));
     let chrome = TeamChrome {
         zoomed: Rc::clone(&zoomed),
         overlay: Rc::clone(&overlay),
+        bar: Rc::clone(&bar),
     };
     let mut host = Host {
         exe,
@@ -494,6 +505,8 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         zoomed,
         overlay,
         overlay_read: 0,
+        bar,
+        bar_read: 0,
         stopped: pipe()?,
         stop_results: mpsc::channel(),
     };
@@ -627,6 +640,10 @@ impl Host {
                 let refresh = self.overlay_read + OVERLAY_REFRESH_MS;
                 deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
             }
+            if self.runtime.connected() {
+                let refresh = self.bar_read + BAR_REFRESH_MS;
+                deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
+            }
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
                     Event::Ready(fd) if fd == listener => self.accept(),
@@ -652,9 +669,11 @@ impl Host {
                             return Ok(());
                         }
                     }
+                    Event::Workspace(n) => self.switch_to(usize::from(n))?,
                     Event::Message(Message::SwitchFailed(error)) => {
-                        if let Some(overlay) = &mut *self.overlay.borrow_mut() {
-                            overlay.error = error;
+                        match &mut *self.overlay.borrow_mut() {
+                            Some(overlay) => overlay.error = error,
+                            None => self.bar.borrow_mut().fail(error),
                         }
                         self.mux.invalidate_chrome();
                     }
@@ -666,6 +685,9 @@ impl Host {
             if self.overlay.borrow().is_some() && now_ms() - self.overlay_read >= OVERLAY_REFRESH_MS
             {
                 self.read_overlay();
+            }
+            if self.runtime.connected() && now_ms() - self.bar_read >= BAR_REFRESH_MS {
+                self.read_bar();
             }
             let now = now_ms();
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
@@ -755,6 +777,41 @@ impl Host {
         }
         self.overlay_read = now_ms();
         self.mux.invalidate_chrome();
+    }
+
+    /// Read the bar's list again, and redraw it if it changed.
+    fn read_bar(&mut self) {
+        let mut bar = self.bar.borrow_mut();
+        let changed = match bar::running() {
+            Ok(entries) => bar.update(entries),
+            Err(e) => {
+                bar.fail(e.to_string());
+                true
+            }
+        };
+        if changed {
+            self.mux.invalidate_chrome();
+        }
+        self.bar_read = now_ms();
+    }
+
+    /// Switch the client to the workspace numbered `n` in the bar. On the
+    /// host's own workspace, close the overlay if it is open.
+    fn switch_to(&mut self, n: usize) -> Result<()> {
+        let entry = self.bar.borrow().entries.get(n).cloned();
+        match entry {
+            None => {}
+            Some(e) if e.path == self.state_path => self.close_overlay()?,
+            Some(Entry {
+                root: Some(root), ..
+            }) => self.runtime.send(Message::Switch(root)),
+            Some(e) => {
+                let error = format!("{}: the state has no orchestrator", e.name);
+                self.bar.borrow_mut().fail(error);
+                self.mux.invalidate_chrome();
+            }
+        }
+        Ok(())
     }
 
     /// Carry out a key pressed in the overlay. Returns whether it stopped
@@ -862,6 +919,7 @@ impl Host {
         *self.overlay.borrow_mut() = None;
         self.mux.set_captured(false);
         self.runtime.connect(&mut self.mux, link, replies, size)?;
+        self.read_bar();
         match self.unstarted.take() {
             Some(agents) => self.start(&agents),
             None => self.lay_out(),
@@ -1061,20 +1119,21 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_pane_fills_the_terminal_below_its_label() {
-        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 23)]);
+    fn a_lone_pane_fills_the_terminal_between_its_label_and_the_bar() {
+        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 22)]);
         assert_eq!(layout(size(80, 24), &[]), Some(Vec::new()));
     }
 
     #[test]
     fn workers_stack_right_of_the_orchestrator() {
         assert_eq!(
-            rects(layout(size(100, 24), &ids(2))),
+            rects(layout(size(100, 25), &ids(2))),
             [rect(0, 1, 40, 23), rect(41, 1, 59, 23)]
         );
-        // 24 rows over three workers: 8 each, a label row and seven content rows.
+        // 24 rows above the bar over three workers: 8 each, a label row and
+        // seven content rows.
         assert_eq!(
-            rects(layout(size(100, 24), &ids(4))),
+            rects(layout(size(100, 25), &ids(4))),
             [
                 rect(0, 1, 40, 23),
                 rect(41, 1, 59, 7),
@@ -1083,7 +1142,7 @@ mod tests {
             ]
         );
         // Uneven heights differ by at most a row and fill the column.
-        let layout = rects(layout(size(81, 30), &ids(5)));
+        let layout = rects(layout(size(81, 31), &ids(5)));
         assert_eq!(layout[0], rect(0, 1, 32, 29));
         let heights: Vec<u16> = layout[1..].iter().map(|r| r.rows + 1).collect();
         assert_eq!(heights, [7, 8, 7, 8]);
@@ -1092,11 +1151,11 @@ mod tests {
 
     #[test]
     fn a_layout_without_room_for_every_pane_fails() {
-        // Each pane needs a label row and a content row.
-        assert!(layout(size(80, 1), &ids(1)).is_none());
-        assert!(layout(size(80, 2), &ids(1)).is_some());
-        assert!(layout(size(80, 5), &ids(4)).is_none());
-        assert!(layout(size(80, 6), &ids(4)).is_some());
+        // Each pane needs a label row and a content row, above the bar.
+        assert!(layout(size(80, 2), &ids(1)).is_none());
+        assert!(layout(size(80, 3), &ids(1)).is_some());
+        assert!(layout(size(80, 6), &ids(4)).is_none());
+        assert!(layout(size(80, 7), &ids(4)).is_some());
         // And a column on each side of the rule.
         assert!(layout(size(2, 24), &ids(2)).is_none());
         assert!(layout(size(3, 24), &ids(2)).is_some());
@@ -1107,7 +1166,7 @@ mod tests {
     fn a_zoomed_pane_takes_the_pane_area_and_the_others_are_hidden() {
         let panes = ids(3);
         for zoomed in &panes {
-            let layout = zoom_layout(size(100, 24), &panes, *zoomed).unwrap();
+            let layout = zoom_layout(size(100, 25), &panes, *zoomed).unwrap();
             let ids: Vec<PaneId> = layout.iter().map(|&(id, _)| id).collect();
             assert_eq!(ids, panes);
             for (id, r) in layout {
@@ -1119,7 +1178,7 @@ mod tests {
                 assert_eq!(r, expected);
             }
         }
-        assert!(zoom_layout(size(80, 1), &ids(2), PaneId(2)).is_none());
+        assert!(zoom_layout(size(80, 2), &ids(2), PaneId(2)).is_none());
         assert_eq!(zoom_layout(size(80, 24), &[], PaneId(1)), Some(Vec::new()));
     }
 
@@ -1130,6 +1189,7 @@ mod tests {
             let mut chrome = TeamChrome {
                 zoomed: Rc::default(),
                 overlay: Rc::default(),
+                bar: Rc::default(),
             };
             let mut out = Vec::new();
             chrome.draw(&mut out, panes, size(cols, rows));
@@ -1192,7 +1252,7 @@ mod tests {
 
     #[test]
     fn chrome_draws_labels_and_separator() {
-        let layout = rects(layout(size(40, 7), &ids(3)));
+        let layout = rects(layout(size(40, 8), &ids(3)));
         let panes = [
             PaneView {
                 detail: "~/src/r",
@@ -1208,8 +1268,8 @@ mod tests {
                 ..view(3, "w2", layout[2], false, Some(3))
             },
         ];
-        let screen = Screen::draw(&panes, 40, 7);
-        let rows: Vec<String> = (0..7).map(|y| screen.row(y)).collect();
+        let screen = Screen::draw(&panes, 40, 8);
+        let rows: Vec<String> = (0..8).map(|y| screen.row(y)).collect();
         assert_eq!(
             rows,
             [
@@ -1220,8 +1280,11 @@ mod tests {
                 "                ┃                       ",
                 "                ┃                       ",
                 "                ┃                       ",
+                "                                        ",
             ]
         );
+        // The bar in the last row is black on light blue too.
+        assert_eq!(screen.bg(16, 7), LIGHT_BLUE);
         // Labels are black on light blue across the pane's width, bold when focused.
         assert!(screen.bold(1, 0));
         assert!(!screen.bold(18, 0));
@@ -1246,7 +1309,7 @@ mod tests {
 
     #[test]
     fn chrome_marks_the_zoomed_pane_and_draws_no_separator() {
-        let layout = rects(zoom_layout(size(30, 6), &ids(2), PaneId(2)));
+        let layout = rects(zoom_layout(size(30, 7), &ids(2), PaneId(2)));
         let panes = [
             view(1, "orch", layout[0], false, None),
             PaneView {
@@ -1257,10 +1320,11 @@ mod tests {
         let mut chrome = TeamChrome {
             zoomed: Rc::new(Cell::new(Some(PaneId(2)))),
             overlay: Rc::default(),
+            bar: Rc::default(),
         };
         let mut out = Vec::new();
-        chrome.draw(&mut out, &panes, size(30, 6));
-        let mut terminal = Terminal::new(30, 6).unwrap();
+        chrome.draw(&mut out, &panes, size(30, 7));
+        let mut terminal = Terminal::new(30, 7).unwrap();
         terminal.vt_write(&out);
         let screen = Screen(terminal);
         assert_eq!(screen.row(0), " w1 · zoomed · exited 3  ⎇ w1 ");
@@ -1300,6 +1364,7 @@ mod tests {
         let mut chrome = TeamChrome {
             zoomed: Rc::default(),
             overlay: Rc::default(),
+            bar: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &panes, size(9, 3));

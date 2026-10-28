@@ -34,6 +34,8 @@ pub enum Event {
     Overlay,
     /// A key arrived while input is captured; see `Mux::set_captured`.
     Key(Vec<u8>),
+    /// The prefix key was followed by this digit.
+    Workspace(u8),
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -163,6 +165,7 @@ impl Runtime {
                 Notice::Zoom(id) => Event::Zoom(id),
                 Notice::Overlay => Event::Overlay,
                 Notice::Key(key) => Event::Key(key),
+                Notice::Workspace(n) => Event::Workspace(n),
             }));
             let now = now_ms();
             if let Some(link) = &self.link

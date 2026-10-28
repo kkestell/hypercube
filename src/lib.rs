@@ -11,9 +11,10 @@
 //! worktrees, `harness` the launch command of each harness, `hook` the
 //! harness hook events, `wait` the waiter that wakes an idle agent when
 //! messages arrive, `control` the host's control socket protocol, `host` the
-//! background session of a workspace, `overlay` its workspace list, and
-//! `mcp` the agents' MCP server.
+//! background session of a workspace, `bar` its bar of running workspaces,
+//! `overlay` its workspace list, and `mcp` the agents' MCP server.
 
+pub mod bar;
 pub mod client;
 pub mod config;
 pub mod control;

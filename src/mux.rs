@@ -137,6 +137,8 @@ pub enum Notice {
     Overlay,
     /// A key or escape sequence arrived while input is captured.
     Key(Vec<u8>),
+    /// The prefix key, Ctrl-b, was followed by this digit.
+    Workspace(u8),
 }
 
 /// What the chrome sees of a pane.
@@ -214,6 +216,8 @@ struct HostTerminal {
     held_since: i64,
     /// The pane a bracketed paste in progress goes to.
     pasting: Option<PaneId>,
+    /// Whether the prefix key was pressed and the next key goes with it.
+    prefixed: bool,
 }
 
 impl HostTerminal {
@@ -228,6 +232,7 @@ impl HostTerminal {
             held_input: Vec::new(),
             held_since: 0,
             pasting: None,
+            prefixed: false,
         }
     }
 }
@@ -1358,6 +1363,20 @@ impl Mux {
                 return;
             };
             let token = &data[i..end];
+            if self.host.prefixed
+                && let Some(key) = prefixed_key(token)
+            {
+                self.send(&data[start..i]);
+                self.host.prefixed = false;
+                match key {
+                    Prefixed::Workspace(n) => self.notices.push(Notice::Workspace(n)),
+                    Prefixed::Prefix if !self.captured => self.send(token),
+                    _ => {}
+                }
+                i = end;
+                start = end;
+                continue;
+            }
             if self.captured {
                 self.capture(token);
                 i = end;
@@ -1388,6 +1407,7 @@ impl Mux {
                             self.notices.push(Notice::Overlay);
                             self.set_captured(true);
                         }
+                        Route::Prefix => self.host.prefixed = true,
                         Route::Mouse(event) => self.mouse(event),
                         Route::Scroll(key) => self.scroll_focused(key),
                         _ => {}
@@ -1424,6 +1444,7 @@ impl Mux {
                 self.notices.push(Notice::Overlay);
                 self.set_captured(false);
             }
+            Some(Route::Prefix) => self.host.prefixed = true,
             Some(_) => {}
             None => self.notices.push(Notice::Key(token.to_vec())),
         }
@@ -1780,12 +1801,14 @@ fn exit_status(status: std::process::ExitStatus) -> u8 {
 }
 
 /// The route of a key the mux takes whatever pane has the focus: the focus,
-/// zoom, and overlay keys, in legacy or Kitty form, and mouse reports.
+/// zoom, overlay, and prefix keys, in legacy or Kitty form, and mouse
+/// reports.
 fn special_route(token: &[u8]) -> Option<Route> {
     match token {
         [CTRL_RIGHT_BRACKET] => return Some(Route::FocusNext),
         [CTRL_BACKSLASH] => return Some(Route::Zoom),
         [CTRL_CARET] => return Some(Route::Overlay),
+        [CTRL_B] => return Some(Route::Prefix),
         _ => {}
     }
     let (&last, params) = token.strip_prefix(b"\x1b[")?.split_last()?;
@@ -1811,6 +1834,8 @@ enum Route {
     FocusNext,
     Zoom,
     Overlay,
+    /// The next key goes with the prefix; see `prefixed_key`.
+    Prefix,
     Mouse(MouseEvent),
     Scroll(ScrollKey),
     /// To the focused pane, after returning its view to the bottom.
@@ -1827,10 +1852,13 @@ enum ScrollKey {
     Exit,
 }
 
-/// The legacy bytes of Ctrl-], Ctrl-\, and Ctrl-^.
+/// The legacy bytes of Ctrl-], Ctrl-\, Ctrl-^, and Ctrl-b.
 const CTRL_RIGHT_BRACKET: u8 = 0x1d;
 const CTRL_BACKSLASH: u8 = 0x1c;
 const CTRL_CARET: u8 = 0x1e;
+const CTRL_B: u8 = 0x02;
+/// The Kitty key codes of the modifier keys, from left Shift to right Meta.
+const MODIFIER_KEYS: std::ops::RangeInclusive<u32> = 57441..=57452;
 /// The Kitty modifiers value of Shift alone.
 const SHIFT: u16 = 2;
 /// The Kitty event type of a key release.
@@ -1856,18 +1884,62 @@ fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
     Some((key, mods, event))
 }
 
-/// The route of Ctrl-], Ctrl-\, or Ctrl-^ in Kitty's form, and whether the
-/// event is a press, not a repeat or release. Ctrl-^ is Ctrl or Ctrl-Shift
-/// with the 6 key.
+/// The route of Ctrl-], Ctrl-\, Ctrl-^, or Ctrl-b in Kitty's form, and
+/// whether the event is a press, not a repeat or release. Ctrl-^ is Ctrl or
+/// Ctrl-Shift with the 6 key.
 fn ctrl_key(params: &[u8]) -> Option<(Route, bool)> {
     let (code, mods, event) = csi_key(params)?;
     let route = match (code, mods) {
         (93, 5) => Route::FocusNext,
         (92, 5) => Route::Zoom,
         (54, 5 | 6) => Route::Overlay,
+        (98, 5) => Route::Prefix,
         _ => return None,
     };
     Some((route, event == 1))
+}
+
+/// What the key pressed after the prefix key does.
+enum Prefixed {
+    /// Switch to the workspace numbered by this digit.
+    Workspace(u8),
+    /// Send the prefix key itself to the focused pane.
+    Prefix,
+    /// Nothing.
+    Other,
+}
+
+/// What a token does after the prefix key, in legacy or Kitty form, or
+/// `None` if it is no key press and is routed as usual: a mouse or focus
+/// report, a paste, a key's release or repeat, or a modifier key.
+fn prefixed_key(token: &[u8]) -> Option<Prefixed> {
+    match token {
+        [digit @ b'0'..=b'9'] => return Some(Prefixed::Workspace(digit - b'0')),
+        [CTRL_B] => return Some(Prefixed::Prefix),
+        PASTE_START | b"\x1b[I" | b"\x1b[O" => return None,
+        _ => {}
+    }
+    let Some((&last, params)) = token
+        .strip_prefix(b"\x1b[")
+        .and_then(|rest| rest.split_last())
+    else {
+        return Some(Prefixed::Other);
+    };
+    if params.starts_with(b"<") {
+        return None;
+    }
+    if last != b'u' {
+        return Some(Prefixed::Other);
+    }
+    let (code, mods, event) = csi_key(params)?;
+    if event != 1 || MODIFIER_KEYS.contains(&code) {
+        return None;
+    }
+    Some(match (code, mods) {
+        (48..=57, 1) => Prefixed::Workspace((code - 48) as u8),
+        (98, 5) => Prefixed::Prefix,
+        _ => Prefixed::Other,
+    })
 }
 
 /// The scrolling key a token is, with its Kitty modifiers value and event
@@ -3038,6 +3110,32 @@ mod tests {
         p.mux.set_captured(false);
         p.mux.input(b"a");
         assert_eq!(p.got(0), b"a");
+    }
+
+    #[test]
+    fn the_prefix_key_and_a_digit_choose_a_workspace() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        // The prefix's release, a modifier key, and a mouse report don't
+        // end the prefix.
+        p.mux
+            .input(b"a\x022b\x1b[98;5u\x1b[98;5:3u\x1b[57442;5u\x1b[<35;1;1M\x1b[55u");
+        // The prefix twice sends it; any other key goes nowhere.
+        p.mux.input(b"\x02\x02\x02x\x1b[98;5u\x1b[98;5uc");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::Workspace(2), Notice::Workspace(7)]
+        );
+        assert_eq!(p.got(0), b"ab\x1b[57442;5u\x02\x1b[98;5uc");
+
+        // It works while input is captured, and sends nothing.
+        p.mux.set_captured(true);
+        p.mux.input(b"\x021\x02\x02j");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::Workspace(1), Notice::Key(b"j".to_vec())]
+        );
+        assert_eq!(p.got(0), b"");
     }
 
     #[test]

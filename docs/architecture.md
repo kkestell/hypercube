@@ -182,7 +182,7 @@ agent and ending the session hang up the programs without relaunching them.
 `host::layout` places the orchestrator's pane in the left 40% of the columns,
 or all of them when it is alone, then a one-column separator, then the workers
 stacked with equal heights. Each pane has a label row above it, and the panes
-use every row of the terminal. A layout in which some pane would get no row or
+use every row of the terminal but the last, which holds the bar. A layout in which some pane would get no row or
 column fails; a launch requested on the control socket then fails with "no room
 for another pane", and a terminal resized below that hides the panes until
 it grows.
@@ -206,7 +206,17 @@ directory with the home directory written as `~` for the orchestrator and for
 workers in existing directories. A row too narrow for the right text drops it,
 keeping a blank column after the left text, and then clips the left text at a
 grapheme cluster. Between the first pane and the workers a plain `┃` in
-`#0087ff` runs the height of the terminal.
+`#0087ff` runs the height of the pane area.
+
+`bar::Bar` draws the last row in the labels' colors. It lists every running
+workspace, numbered from 0 in the order its host started (the modification
+time of its host lock), as `0 foo  1 *bar  2 glarpy`: each the name of its
+checkout's directory, with the host's own workspace marked `*` and bold. It
+shows as many as fit, whole. The host reads the list on each attach and every
+second while a client is attached. Ctrl-b and a digit switch the client to the
+workspace with that number, as the overlay's Enter does; on the host's own
+workspace they close the overlay if it is open. A failed switch shows its
+error in the bar for five seconds, or in the overlay while it is open.
 
 The keys and the mouse (see Input):
 
@@ -221,6 +231,12 @@ The keys and the mouse (see Input):
   program.
 - A drag selects text and copies it to the clipboard on release.
 - Ctrl-^ opens the workspace overlay.
+- Ctrl-b is a prefix, in legacy or Kitty form. The next key press goes with
+  it: a digit switches to the workspace with that number in the bar, Ctrl-b
+  sends Ctrl-b to the focused pane, and any other key is dropped. Mouse and
+  focus reports, pastes, key releases and repeats, and modifier keys go on as
+  usual and leave the prefix waiting. The prefix works while the overlay is
+  open too.
 
 Labels are clipped to whole grapheme clusters, measured in
 columns.
