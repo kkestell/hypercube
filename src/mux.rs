@@ -10,14 +10,17 @@ use std::process::Child;
 use std::rc::Rc;
 
 use libghostty_vt::error::{Error, Result};
+use libghostty_vt::fmt::Format;
 use libghostty_vt::key::{self, Action};
+use libghostty_vt::mouse::{self, Button, EncoderSize, Position};
 use libghostty_vt::render::{CellIterator, Cursor, CursorVisualStyle, Dirty, RowIterator};
-use libghostty_vt::screen::{Cell as RawCell, CellContentTag, CellWide};
+use libghostty_vt::screen::{Cell as RawCell, CellContentTag, CellWide, Screen, TrackedGridRef};
+use libghostty_vt::selection::{FormatOptions, Selection};
 use libghostty_vt::style::{Palette, RgbColor, Style, StyleColor, Underline};
 use libghostty_vt::terminal::{
     ConformanceLevel, DeviceAttributeFeature, DeviceAttributes, DeviceType, Mode, ModeKind, Point,
-    PointCoordinate, PrimaryDeviceAttributes, SecondaryDeviceAttributes, SizeReportSize,
-    TertiaryDeviceAttributes,
+    PointCoordinate, PrimaryDeviceAttributes, ScrollViewport, SecondaryDeviceAttributes,
+    SizeReportSize, TertiaryDeviceAttributes,
 };
 use libghostty_vt::{RenderState, Terminal};
 
@@ -30,27 +33,26 @@ pub use libghostty_vt::key::Key;
 /// host must encode input, and the ones that change how it draws what
 /// the mux sends. Each comes with Ghostty's default, which the host is
 /// assumed to share; grapheme clustering's default comes from the host.
-pub const MIRRORED_MODES: [(u16, bool); 19] = [
+/// Mouse modes are not mirrored: the host always reports the mouse (see
+/// `Mux::input`).
+pub const MIRRORED_MODES: [(u16, bool); 10] = [
     (1, false),    // DECCKM: application cursor keys
     (5, false),    // DECSCNM: reverse video
-    (9, false),    // X10 mouse reporting
     (66, false),   // DECNKM: application keypad
     (67, false),   // DECBKM: backspace sends BS
-    (1000, false), // normal mouse tracking
-    (1002, false), // button-event mouse tracking
-    (1003, false), // any-event mouse tracking
     (1004, false), // focus in/out events
-    (1005, false), // UTF-8 mouse format
-    (1006, false), // SGR mouse format
-    (1007, true),  // alternate scroll
-    (1015, false), // urxvt mouse format
-    (1016, false), // SGR pixel mouse format
     (1035, true),  // ignore keypad with Num Lock
     (1036, true),  // Alt sends ESC
     (1039, false), // Alt sends ESC (alternate)
     (2004, false), // bracketed paste
     (2027, false), // grapheme clustering
 ];
+
+/// Rows one wheel step scrolls.
+const WHEEL_ROWS: isize = 3;
+
+/// The longest notification passed through to the host, in bytes.
+const NOTIFICATION_MAX: usize = 4096;
 
 /// How long a pane may hold drawing (mode 2026) without completing a frame.
 pub const HOLD_TIMEOUT_MS: i64 = 1000;
@@ -115,6 +117,8 @@ pub struct PaneView<'a> {
     pub focused: bool,
     /// The program's exit status once it has been reaped.
     pub status: Option<u8>,
+    /// How many rows the pane's view is above the bottom of its scrollback.
+    pub scrolled: usize,
 }
 
 /// Draws everything around the panes: borders, labels, a status bar.
@@ -223,7 +227,12 @@ impl Frame {
         if self.rows_seen.len() != height {
             self.rows_seen = (0..height).map(|_| (RowBuf::default(), false)).collect();
         }
-        let stale = std::mem::take(&mut self.stale_rows);
+        let mut stale = std::mem::take(&mut self.stale_rows);
+        // Stale rows are rows of the active area, which a scrolled view
+        // doesn't show.
+        if !terminal.viewport_active()? {
+            stale.clear();
+        }
         if dirty != Dirty::Clean || !stale.is_empty() {
             let mut rows = self.rows.update(&snapshot)?;
             let mut y: u16 = 0;
@@ -231,8 +240,9 @@ impl Frame {
                 let Some(slot) = self.rows_seen.get_mut(usize::from(y)) else {
                     break;
                 };
+                let selected = r.selection()?.map(|s| (s.start_x, s.end_x));
                 if stale.contains(&y) {
-                    let mut row = RowBuf::default();
+                    let mut row = RowBuf::new(selected);
                     for x in 0..snapshot.cols()? {
                         let grid = terminal
                             .grid_ref(Point::Active(PointCoordinate { x, y: u32::from(y) }))?;
@@ -242,7 +252,7 @@ impl Frame {
                     }
                     *slot = (row, true);
                 } else if dirty == Dirty::Full || r.dirty()? {
-                    let mut row = RowBuf::default();
+                    let mut row = RowBuf::new(selected);
                     let mut cells = self.cells.update(r)?;
                     while let Some(c) = cells.next() {
                         let raw = c.raw_cell()?;
@@ -288,6 +298,7 @@ impl Frame {
 /// Per-program state.
 pub struct Pane {
     id: PaneId,
+    shared: Rc<Shared>,
     state: Rc<PaneState>,
     master: Option<OwnedFd>,
     child: Option<Child>,
@@ -297,6 +308,9 @@ pub struct Pane {
     pub terminal: Terminal<'static, 'static>,
     frame: Rc<RefCell<Frame>>,
     dirty: bool,
+    notifications: Notifications,
+    /// How far the view was scrolled when the chrome was last drawn.
+    scrolled_drawn: usize,
 }
 
 impl Pane {
@@ -353,6 +367,7 @@ impl Pane {
 
         Ok(Pane {
             id,
+            shared: shared.clone(),
             state,
             master: None,
             child: None,
@@ -362,6 +377,8 @@ impl Pane {
             terminal,
             frame,
             dirty: true,
+            notifications: Notifications::default(),
+            scrolled_drawn: 0,
         })
     }
 
@@ -383,7 +400,11 @@ impl Pane {
         self.child.as_ref().map(Child::id)
     }
 
+    /// Feed the program's output to the terminal, passing its desktop
+    /// notifications through to the host.
     pub fn feed(&mut self, data: &[u8]) {
+        self.notifications
+            .scan(data, &mut self.shared.out.borrow_mut());
         // A leading zero-width character can attach to the previous cell
         // without dirtying its row, so the render state wouldn't see it.
         // Capture the cursor's row from the terminal.
@@ -462,6 +483,106 @@ impl Pane {
         self.set_held(false);
     }
 
+    /// How many rows the view is above the bottom of the scrollback. New
+    /// output leaves a scrolled view where it is.
+    pub fn scrolled(&self) -> usize {
+        self.terminal
+            .scrollbar()
+            .map_or(0, |s| s.total.saturating_sub(s.offset + s.len) as usize)
+    }
+
+    /// Move the view `rows` rows through the scrollback, up when negative.
+    /// Scrolling ends a hold, so the view shows what the terminal holds.
+    pub fn scroll(&mut self, rows: isize) {
+        self.scroll_viewport(ScrollViewport::Delta(rows));
+    }
+
+    /// Return the view to the bottom of the scrollback.
+    pub fn scroll_to_bottom(&mut self) {
+        self.scroll_viewport(ScrollViewport::Bottom);
+    }
+
+    fn scroll_viewport(&mut self, scroll: ScrollViewport) {
+        self.terminal.scroll_viewport(scroll);
+        if self.held() {
+            let _ = self.end_hold();
+        }
+        let _ = self.repaint();
+    }
+
+    /// Whether the program reports the mouse in the pane. A scrolled view
+    /// keeps the mouse for scrolling and selecting.
+    fn reports_mouse(&self) -> bool {
+        self.terminal.is_mouse_tracking().unwrap_or(false) && self.scrolled() == 0
+    }
+
+    /// Report a mouse event at `col` and `row` of the pane to the program,
+    /// encoded for its mouse modes.
+    fn report_mouse(&self, event: &MouseEvent, col: u16, row: u16) -> Result<()> {
+        let ws = self.ws();
+        let cell_width = u32::from(ws.ws_xpixel / ws.ws_col.max(1)).max(1);
+        let cell_height = u32::from(ws.ws_ypixel / ws.ws_row.max(1)).max(1);
+        let mut encoder = mouse::Encoder::new()?;
+        encoder
+            .set_options_from_terminal(&self.terminal)
+            .set_size(EncoderSize {
+                screen_width: cell_width * u32::from(ws.ws_col),
+                screen_height: cell_height * u32::from(ws.ws_row),
+                cell_width,
+                cell_height,
+                padding_top: 0,
+                padding_bottom: 0,
+                padding_right: 0,
+                padding_left: 0,
+            })
+            .set_any_button_pressed(
+                event.action == mouse::Action::Motion && event.button.is_some(),
+            );
+        let mut e = mouse::Event::new()?;
+        e.set_action(event.action)
+            .set_button(event.button)
+            .set_mods(event.mods)
+            .set_position(Position {
+                x: (f32::from(col) + 0.5) * cell_width as f32,
+                y: (f32::from(row) + 0.5) * cell_height as f32,
+            });
+        let mut buf = [0; 64];
+        let n = encoder.encode(&e, &mut buf)?;
+        self.send(&buf[..n]);
+        Ok(())
+    }
+
+    /// Select from `anchor` to `col` and `row` of the view.
+    fn select(&mut self, anchor: &TrackedGridRef, col: u16, row: u16) -> Result<()> {
+        let point = Point::Viewport(PointCoordinate {
+            x: col,
+            y: u32::from(row),
+        });
+        let Some(start) = anchor.snapshot(&self.terminal)? else {
+            return Ok(());
+        };
+        let end = self.terminal.grid_ref(point)?;
+        self.terminal
+            .set_selection(Some(&Selection::new(start, end, false)))?;
+        self.repaint()
+    }
+
+    fn clear_selection(&mut self) -> Result<()> {
+        self.terminal.set_selection(None)?;
+        self.repaint()
+    }
+
+    /// The selected text, with soft-wrapped lines joined and trailing
+    /// spaces trimmed.
+    fn selected_text(&self) -> Result<Option<Vec<u8>>> {
+        let options = FormatOptions::new()
+            .with_emit_format(Format::Plain)
+            .with_unwrap(true)
+            .with_trim(true);
+        let text = self.terminal.format_selection_alloc(None, options)?;
+        Ok(text.map(|t| t.to_vec()))
+    }
+
     /// Whether the program hasn't been reaped.
     fn live(&self) -> bool {
         self.status.is_none()
@@ -534,8 +655,15 @@ pub struct Mux {
     host_replies: Vec<u8>,
     host_modes: [bool; MIRRORED_MODES.len()],
     host_kitty_flags: u8,
+    /// Whether the host reports mouse motion without a button held, once
+    /// mouse reporting is on.
+    host_any_motion: Option<bool>,
     /// Whether terminals cluster graphemes by default, from the host.
     grapheme_default: bool,
+    /// The mouse button held since it was pressed in a pane.
+    press: Option<Press>,
+    /// The pane with a selection.
+    selection: Option<PaneId>,
 }
 
 impl Mux {
@@ -555,7 +683,10 @@ impl Mux {
             host_replies: Vec::new(),
             host_modes: [false; MIRRORED_MODES.len()],
             host_kitty_flags: 0,
+            host_any_motion: None,
             grapheme_default: false,
+            press: None,
+            selection: None,
         };
         m.reset_host_modes();
         m
@@ -624,6 +755,7 @@ impl Mux {
         for (i, &(value, default)) in MIRRORED_MODES.iter().enumerate() {
             self.host_modes[i] = self.mode_default(value, default);
         }
+        self.host_any_motion = None;
     }
 
     /// Add a pane without a program. It is drawn once `set_layout` places
@@ -873,7 +1005,14 @@ impl Mux {
         }
     }
 
-    fn send(&self, data: &[u8]) {
+    /// Send host input to the focused pane. Typing clears its selection.
+    fn send(&mut self, data: &[u8]) {
+        if data.is_empty() {
+            return;
+        }
+        if self.selection.is_some() && self.selection == self.focus() {
+            self.clear_selection();
+        }
         if let Some(p) = self.focused() {
             p.send(data);
         }
@@ -925,98 +1064,212 @@ impl Mux {
         Ok(())
     }
 
-    /// Input is parsed only within this read; partial escape sequences are
-    /// forwarded without waiting for another read.
+    /// Route host input. Ctrl-] moves the focus. Mouse reports go to the
+    /// pane under the pointer (see `mouse`). Shift-PageUp scrolls the
+    /// focused pane up a page; while its view is scrolled, PageUp,
+    /// PageDown, Up, and Down scroll it, Esc and q return it to the bottom,
+    /// and any other key returns it to the bottom and goes to the program.
+    /// Everything else goes to the focused pane. Input is parsed only
+    /// within this read; partial escape sequences are forwarded without
+    /// waiting for another read.
     pub fn input(&mut self, data: &[u8]) {
         let mut i = 0;
         let mut start = 0;
         while i < data.len() {
-            let mut end = i + 1;
-            let mut swallow = false;
-            let mut toggle = false;
-            if data[i] == 0x1d {
-                swallow = true;
-                toggle = true;
-            } else if data[i..].starts_with(b"\x1b[") {
-                let mut fin = i + 2;
-                while fin < data.len() && !(0x40..=0x7e).contains(&data[fin]) {
-                    fin += 1;
-                }
-                if fin < data.len() {
-                    end = fin + 1;
-                    let params = &data[i + 2..fin];
-                    let last = data[fin];
-                    if last == b'u' {
-                        if let Some(press) = focus_key(params) {
-                            swallow = true;
-                            toggle = press;
-                        }
-                    } else if (params.starts_with(b"<") && (last == b'M' || last == b'm'))
-                        || (last == b'M'
-                            && (params.is_empty()
-                                || params.iter().filter(|&&b| b == b';').count() == 2))
-                    {
-                        // All mouse protocols end in M/m. Only SGR cell
-                        // coordinates can be translated into a pane.
-                        self.send(&data[start..i]);
-                        start = end;
-                        if let Some(sgr) = params.strip_prefix(b"<") {
-                            self.mouse(sgr, last);
-                        }
-                        if params.is_empty() && last == b'M' {
-                            // X10/1005 encodes three characters after CSI M.
-                            let utf8 = self.focused().is_some_and(|p| p.mode(Mode::UTF8_MOUSE));
-                            for _ in 0..3 {
-                                if end == data.len() {
-                                    break;
-                                }
-                                let len = if utf8 {
-                                    utf8_sequence_length(data[end])
-                                } else {
-                                    1
-                                };
-                                end = data.len().min(end + len);
-                            }
-                            start = end;
-                        }
-                        i = end;
-                        continue;
+            let end = token_end(data, i);
+            match self.classify(&data[i..end]) {
+                Route::Pass => {}
+                Route::Bottom => {
+                    self.send(&data[start..i]);
+                    start = i;
+                    if let Some(p) = self.focus().and_then(|id| self.pane_mut(id)) {
+                        p.scroll_to_bottom();
                     }
                 }
-            }
-            if swallow {
-                self.send(&data[start..i]);
-                if toggle {
-                    self.focus_next();
+                route => {
+                    self.send(&data[start..i]);
+                    start = end;
+                    match route {
+                        Route::FocusNext => self.focus_next(),
+                        Route::Mouse(event) => self.mouse(event),
+                        Route::Scroll(key) => self.scroll_focused(key),
+                        _ => {}
+                    }
                 }
-                start = end;
             }
             i = end;
         }
         self.send(&data[start..]);
     }
 
-    fn mouse(&self, params: &[u8], last: u8) {
-        let mut fields = params.split(|&b| b == b';');
-        let mut field = || fields.next().and_then(parse_int::<u16>);
-        let (Some(button), Some(x), Some(y)) = (field(), field(), field()) else {
+    /// What to do with one key or escape sequence of host input.
+    fn classify(&self, token: &[u8]) -> Route {
+        if token == [0x1d] {
+            return Route::FocusNext;
+        }
+        if let Some((&last, params)) = token.strip_prefix(b"\x1b[").and_then(|t| t.split_last()) {
+            if last == b'u'
+                && let Some(press) = focus_key(params)
+            {
+                return if press { Route::FocusNext } else { Route::Drop };
+            }
+            // The host reports the mouse only in SGR form.
+            if last == b'M' || last == b'm' {
+                return match params.strip_prefix(b"<") {
+                    Some(sgr) => MouseEvent::parse(sgr, last).map_or(Route::Drop, Route::Mouse),
+                    None => Route::Pass,
+                };
+            }
+        }
+        let key = scroll_key(token);
+        if self.focused().is_some_and(|p| p.scrolled() > 0) {
+            return match key {
+                Some((_, _, RELEASE)) => Route::Drop,
+                Some((key, _, _)) => Route::Scroll(key),
+                None if released(token) => Route::Drop,
+                None => Route::Bottom,
+            };
+        }
+        match key {
+            Some((ScrollKey::PageUp, SHIFT, RELEASE)) => Route::Drop,
+            Some((ScrollKey::PageUp, SHIFT, _)) => Route::Scroll(ScrollKey::PageUp),
+            _ => Route::Pass,
+        }
+    }
+
+    fn scroll_focused(&mut self, key: ScrollKey) {
+        let Some(p) = self.focus().and_then(|id| self.pane_mut(id)) else {
             return;
         };
-        if fields.next().is_some() {
-            return;
+        let page = p.rect.rows.max(1) as isize;
+        match key {
+            ScrollKey::LineUp => p.scroll(-1),
+            ScrollKey::LineDown => p.scroll(1),
+            ScrollKey::PageUp => p.scroll(-page),
+            ScrollKey::PageDown => p.scroll(page),
+            ScrollKey::Exit => p.scroll_to_bottom(),
         }
-        let Some(p) = self.focused() else { return };
-        if p.mode(Mode::SGR_PIXELS_MOUSE) || x == 0 || y == 0 || !p.rect.contains(x - 1, y - 1) {
-            return;
-        }
-        let report = format!(
-            "\x1b[<{};{};{}{}",
-            button,
-            x - p.rect.col,
-            y - p.rect.row,
-            last as char
+    }
+
+    /// Handle a mouse event from the host. A pane whose program reports
+    /// the mouse gets the event, translated to its coordinates and encoded
+    /// for its mouse modes. In any other pane, the wheel scrolls the view,
+    /// or on the alternate screen with alternate scroll mode sends Up and
+    /// Down, and a left-button drag selects text, copied to the host's
+    /// clipboard when the button is released. A button press focuses the
+    /// pane under the pointer, and the button's motion and release go to
+    /// that pane, clamped to it.
+    fn mouse(&mut self, event: MouseEvent) {
+        let wheel = matches!(
+            event.button,
+            Some(Button::Four | Button::Five | Button::Six | Button::Seven)
         );
-        p.send(report.as_bytes());
+        if !wheel
+            && event.action != mouse::Action::Press
+            && let Some(press) = self.press.take()
+        {
+            let id = match &press {
+                Press::Report(id) | Press::Select(id, _) => *id,
+            };
+            let Some(p) = self.panes.iter_mut().find(|p| p.id == id) else {
+                return;
+            };
+            let col = event
+                .col
+                .clamp(p.rect.col, p.rect.col + p.rect.cols.max(1) - 1)
+                - p.rect.col;
+            let row = event
+                .row
+                .clamp(p.rect.row, p.rect.row + p.rect.rows.max(1) - 1)
+                - p.rect.row;
+            match &press {
+                Press::Report(_) => {
+                    let _ = p.report_mouse(&event, col, row);
+                }
+                Press::Select(_, anchor) if event.action == mouse::Action::Motion => {
+                    if p.select(anchor, col, row).is_ok() {
+                        self.selection = Some(id);
+                    }
+                }
+                Press::Select(..) => {
+                    if self.selection == Some(id)
+                        && let Ok(Some(text)) = p.selected_text()
+                    {
+                        let mut out = self.shared.out.borrow_mut();
+                        out.extend_from_slice(b"\x1b]52;c;");
+                        out.extend_from_slice(base64(&text).as_bytes());
+                        out.push(0x07);
+                    }
+                }
+            }
+            if event.action != mouse::Action::Release {
+                self.press = Some(press);
+            }
+            return;
+        }
+
+        let Some(index) = self
+            .panes
+            .iter()
+            .position(|p| p.rect.contains(event.col, event.row))
+        else {
+            return;
+        };
+        let p = &self.panes[index];
+        let (id, reports) = (p.id, p.reports_mouse());
+        let (col, row) = (event.col - p.rect.col, event.row - p.rect.row);
+        if wheel && !reports {
+            self.wheel(index, event.button);
+            return;
+        }
+        if event.action == mouse::Action::Press && !wheel {
+            self.clear_selection();
+            self.set_focus(id);
+            let p = &self.panes[index];
+            self.press = if reports {
+                Some(Press::Report(id))
+            } else if event.button == Some(Button::Left) {
+                let point = Point::Viewport(PointCoordinate {
+                    x: col,
+                    y: u32::from(row),
+                });
+                p.terminal
+                    .track_grid_ref(point)
+                    .ok()
+                    .map(|anchor| Press::Select(id, anchor))
+            } else {
+                None
+            };
+        }
+        if reports {
+            let _ = self.panes[index].report_mouse(&event, col, row);
+        }
+    }
+
+    /// Scroll a pane that doesn't report the mouse.
+    fn wheel(&mut self, index: usize, button: Option<Button>) {
+        let up = match button {
+            Some(Button::Four) => true,
+            Some(Button::Five) => false,
+            _ => return,
+        };
+        let p = &mut self.panes[index];
+        if p.terminal.active_screen().ok() != Some(Screen::Alternate) {
+            p.scroll(if up { -WHEEL_ROWS } else { WHEEL_ROWS });
+        } else if p.mode(Mode::ALT_SCROLL) {
+            let (id, key) = (p.id, if up { Key::ArrowUp } else { Key::ArrowDown });
+            for _ in 0..WHEEL_ROWS {
+                let _ = self.send_key(id, key);
+            }
+        }
+    }
+
+    fn clear_selection(&mut self) {
+        if let Some(id) = self.selection.take()
+            && let Some(p) = self.pane_mut(id)
+        {
+            let _ = p.clear_selection();
+        }
     }
 
     fn sync_modes(&mut self, out: &mut Vec<u8>) {
@@ -1029,6 +1282,17 @@ impl Mux {
                 let _ = write!(out, "\x1b[?{}{}", value, if set { 'h' } else { 'l' });
                 self.host_modes[i] = set;
             }
+        }
+
+        // The host reports button presses, releases, and drags in SGR form,
+        // and motion without a button while the focused pane asks for it.
+        let any_motion = self.focused().is_some_and(|p| p.mode(Mode::ANY_MOUSE));
+        if self.host_any_motion != Some(any_motion) {
+            if self.host_any_motion.is_none() {
+                out.extend_from_slice(b"\x1b[?1002h\x1b[?1006h");
+            }
+            let _ = write!(out, "\x1b[?1003{}", if any_motion { 'h' } else { 'l' });
+            self.host_any_motion = Some(any_motion);
         }
 
         let flags = self.focused().map_or(0, |p| {
@@ -1053,6 +1317,13 @@ impl Mux {
             out.extend_from_slice(b"\x1b[0m\x1b[2J");
             self.clear = false;
         }
+        for p in &mut self.panes {
+            let scrolled = p.scrolled();
+            if scrolled != p.scrolled_drawn {
+                p.scrolled_drawn = scrolled;
+                self.chrome_dirty = true;
+            }
+        }
         if self.chrome_dirty {
             let focus = self.focus();
             let views: Vec<PaneView> = self
@@ -1064,6 +1335,7 @@ impl Mux {
                     rect: p.rect,
                     focused: Some(p.id) == focus,
                     status: p.status,
+                    scrolled: p.scrolled_drawn,
                 })
                 .collect();
             self.chrome.draw(&mut out, &views, self.ws);
@@ -1139,7 +1411,9 @@ pub fn host_restore(clusters: Option<bool>) -> Vec<u8> {
         };
         let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
     }
-    out.extend_from_slice(b"\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l");
+    out.extend_from_slice(
+        b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?1049l",
+    );
     out
 }
 
@@ -1159,30 +1433,257 @@ fn write_title(out: &mut Vec<u8>, terminal: &Terminal) {
     out.push(0x07);
 }
 
-/// Kitty's key;modifiers:event;... form, including alternate key fields.
-fn focus_key(params: &[u8]) -> Option<bool> {
+/// How host input is routed; see `Mux::input`.
+enum Route {
+    /// To the focused pane.
+    Pass,
+    /// Nowhere.
+    Drop,
+    FocusNext,
+    Mouse(MouseEvent),
+    Scroll(ScrollKey),
+    /// To the focused pane, after returning its view to the bottom.
+    Bottom,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScrollKey {
+    LineUp,
+    LineDown,
+    PageUp,
+    PageDown,
+    /// Return to the bottom.
+    Exit,
+}
+
+/// The Kitty modifiers value of Shift alone.
+const SHIFT: u16 = 2;
+/// The Kitty event type of a key release.
+const RELEASE: u8 = 3;
+
+/// A key's code, Kitty modifiers value, and Kitty event type from the
+/// parameters of a CSI sequence in Kitty's key;modifiers:event;... form,
+/// which legacy sequences such as `CSI 5 ; 2 ~` also take. Alternate key
+/// fields are ignored, and missing fields take their defaults.
+fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
     let mut fields = params.split(|&b| b == b';');
     let key = fields.next()?.split(|&b| b == b':').next()?;
-    if parse_int::<u32>(key)? != 93 {
-        return None;
-    }
-    let mut modifiers = fields.next()?.split(|&b| b == b':');
-    if parse_int::<u16>(modifiers.next()?)? != 5 {
-        return None;
-    }
+    let key = if key.is_empty() { 1 } else { parse_int(key)? };
+    let Some(modifiers) = fields.next() else {
+        return Some((key, 1, 1));
+    };
+    let mut modifiers = modifiers.split(|&b| b == b':');
+    let mods = parse_int(modifiers.next()?)?;
     let event = match modifiers.next() {
-        Some(e) => parse_int::<u8>(e)?,
+        Some(e) => parse_int(e)?,
         None => 1,
     };
-    match event {
-        1 => Some(true),
-        2 | 3 => Some(false),
+    Some((key, mods, event))
+}
+
+/// Whether Ctrl-] in Kitty's form is a press, or a repeat or release.
+fn focus_key(params: &[u8]) -> Option<bool> {
+    match csi_key(params)? {
+        (93, 5, 1) => Some(true),
+        (93, 5, 2 | 3) => Some(false),
         _ => None,
     }
 }
 
+/// The scrolling key a token is, with its Kitty modifiers value and event
+/// type, in legacy or Kitty form.
+fn scroll_key(token: &[u8]) -> Option<(ScrollKey, u16, u8)> {
+    match token {
+        b"\x1b" | b"q" => return Some((ScrollKey::Exit, 1, 1)),
+        b"\x1bOA" => return Some((ScrollKey::LineUp, 1, 1)),
+        b"\x1bOB" => return Some((ScrollKey::LineDown, 1, 1)),
+        _ => {}
+    }
+    let (&last, params) = token.strip_prefix(b"\x1b[")?.split_last()?;
+    let (code, mods, event) = csi_key(params)?;
+    let key = match (last, code) {
+        (b'A', 1) => ScrollKey::LineUp,
+        (b'B', 1) => ScrollKey::LineDown,
+        (b'~', 5) => ScrollKey::PageUp,
+        (b'~', 6) => ScrollKey::PageDown,
+        (b'u', 27 | 113) if mods == 1 => ScrollKey::Exit,
+        _ => return None,
+    };
+    Some((key, mods, event))
+}
+
+/// Whether a token is a Kitty key release.
+fn released(token: &[u8]) -> bool {
+    token
+        .strip_prefix(b"\x1b[")
+        .and_then(|t| csi_key(&t[..t.len().saturating_sub(1)]))
+        .is_some_and(|(_, _, event)| event == RELEASE)
+}
+
+/// A mouse event the host reported, at a cell of the host terminal.
+struct MouseEvent {
+    action: mouse::Action,
+    button: Option<Button>,
+    mods: key::Mods,
+    col: u16,
+    row: u16,
+}
+
+impl MouseEvent {
+    /// Parse the parameters of an SGR mouse report after its `<`, ending
+    /// in `last`, M for a press or motion and m for a release.
+    fn parse(params: &[u8], last: u8) -> Option<MouseEvent> {
+        let mut fields = params.split(|&b| b == b';');
+        let mut field = || fields.next().and_then(parse_int::<u16>);
+        let (code, x, y) = (field()?, field()?, field()?);
+        if fields.next().is_some() || x == 0 || y == 0 {
+            return None;
+        }
+        let button = match code & 0b1100_0011 {
+            0 => Some(Button::Left),
+            1 => Some(Button::Middle),
+            2 => Some(Button::Right),
+            3 => None,
+            64 => Some(Button::Four),
+            65 => Some(Button::Five),
+            66 => Some(Button::Six),
+            67 => Some(Button::Seven),
+            128 => Some(Button::Eight),
+            129 => Some(Button::Nine),
+            130 => Some(Button::Ten),
+            131 => Some(Button::Eleven),
+            _ => return None,
+        };
+        let action = if last == b'm' {
+            mouse::Action::Release
+        } else if code & 32 != 0 {
+            mouse::Action::Motion
+        } else {
+            mouse::Action::Press
+        };
+        let mut mods = key::Mods::empty();
+        for (bit, m) in [
+            (4, key::Mods::SHIFT),
+            (8, key::Mods::ALT),
+            (16, key::Mods::CTRL),
+        ] {
+            if code & bit != 0 {
+                mods |= m;
+            }
+        }
+        Some(MouseEvent {
+            action,
+            button,
+            mods,
+            col: x - 1,
+            row: y - 1,
+        })
+    }
+}
+
+/// A mouse button held since it was pressed in a pane.
+enum Press {
+    /// Reported to the pane's program.
+    Report(PaneId),
+    /// Selecting text in the pane from where the button was pressed.
+    Select(PaneId, TrackedGridRef),
+}
+
+/// Finds the desktop notifications in a program's output, OSC 9 and OSC
+/// 777, including those split across reads.
+#[derive(Default)]
+struct Notifications {
+    state: OscState,
+    body: Vec<u8>,
+}
+
+#[derive(Clone, Copy, Default)]
+enum OscState {
+    #[default]
+    Ground,
+    Esc,
+    /// In an OSC sequence's body.
+    Body,
+    /// After an Esc in the body, which ends it if a backslash follows.
+    BodyEsc,
+}
+
+impl Notifications {
+    /// Scan output, writing each complete notification into `out`.
+    fn scan(&mut self, data: &[u8], out: &mut Vec<u8>) {
+        for &b in data {
+            self.state = match (self.state, b) {
+                (OscState::Body, 0x07) | (OscState::BodyEsc, b'\\') => {
+                    self.finish(out);
+                    OscState::Ground
+                }
+                (OscState::Body, 0x1b) => OscState::BodyEsc,
+                // Other control characters end the sequence unfinished.
+                (OscState::Body, 0x00..=0x1f) => OscState::Ground,
+                (OscState::Body, _) => {
+                    if self.body.len() <= NOTIFICATION_MAX {
+                        self.body.push(b);
+                    }
+                    OscState::Body
+                }
+                (OscState::Esc | OscState::BodyEsc, b']') => {
+                    self.body.clear();
+                    OscState::Body
+                }
+                (_, 0x1b) => OscState::Esc,
+                _ => OscState::Ground,
+            };
+        }
+    }
+
+    fn finish(&mut self, out: &mut Vec<u8>) {
+        if self.body.len() <= NOTIFICATION_MAX
+            && (self.body.starts_with(b"9;") || self.body.starts_with(b"777;"))
+        {
+            out.extend_from_slice(b"\x1b]");
+            out.extend_from_slice(&self.body);
+            out.push(0x07);
+        }
+    }
+}
+
+fn base64(data: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, &b)| n | u32::from(b) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                s.push(ALPHABET[(n >> (18 - 6 * i)) as usize & 63] as char);
+            } else {
+                s.push('=');
+            }
+        }
+    }
+    s
+}
+
 fn parse_int<T: std::str::FromStr>(s: &[u8]) -> Option<T> {
     std::str::from_utf8(s).ok()?.parse().ok()
+}
+
+/// Where the key or escape sequence at `i` ends: a CSI or SS3 sequence, Alt
+/// and a byte, a lone Esc, or a character. A CSI sequence cut off by the
+/// end of the read runs to its end.
+fn token_end(data: &[u8], i: usize) -> usize {
+    let len = data.len();
+    match (data[i], data.get(i + 1)) {
+        (0x1b, Some(b'[')) => data[i + 2..]
+            .iter()
+            .position(|b| (0x40..=0x7e).contains(b))
+            .map_or(len, |fin| i + 2 + fin + 1),
+        (0x1b, Some(b'O')) => len.min(i + 3),
+        (0x1b, Some(_)) => i + 2,
+        (b, _) => len.min(i + utf8_sequence_length(b)),
+    }
 }
 
 fn utf8_sequence_length(first: u8) -> usize {
@@ -1237,9 +1738,18 @@ pub fn write_all(fd: RawFd, data: &[u8]) {
 struct RowBuf {
     cells: Vec<(RawCell, Style, usize, usize)>,
     text: Vec<char>,
+    /// The first and last selected columns, drawn in reverse video.
+    selected: Option<(u16, u16)>,
 }
 
 impl RowBuf {
+    fn new(selected: Option<(u16, u16)>) -> RowBuf {
+        RowBuf {
+            selected,
+            ..RowBuf::default()
+        }
+    }
+
     /// Add a cell whose text `graphemes` writes into a buffer, returning
     /// its length.
     fn push(
@@ -1280,7 +1790,13 @@ impl RowBuf {
                 break;
             }
 
-            let s = cell_style(raw, style);
+            let mut s = cell_style(raw, style);
+            if self
+                .selected
+                .is_some_and(|(first, last)| (usize::from(first)..=usize::from(last)).contains(&x))
+            {
+                s.inverse = !s.inverse;
+            }
             if prev != Some(s) {
                 write_sgr(out, s);
                 prev = Some(s);
@@ -1489,4 +2005,92 @@ pub fn use_host_replies_for(t: &mut Terminal, replies: &[u8]) -> Result<()> {
 
 fn parse_rgb(s: &[u8]) -> Option<RgbColor> {
     RgbColor::parse(std::str::from_utf8(s).ok()?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn notifications(reads: &[&[u8]]) -> Vec<u8> {
+        let mut scan = Notifications::default();
+        let mut out = Vec::new();
+        for read in reads {
+            scan.scan(read, &mut out);
+        }
+        out
+    }
+
+    #[test]
+    fn notifications_are_found_across_any_split() {
+        let output = b"a\x1b]0;title\x07b\x1b]9;done\x1b\\c\x1b]777;notify;T;B\x07d";
+        let expected = b"\x1b]9;done\x07\x1b]777;notify;T;B\x07";
+        for split in 0..=output.len() {
+            let (first, second) = output.split_at(split);
+            assert_eq!(
+                notifications(&[first, second]),
+                expected,
+                "split at {split}"
+            );
+        }
+    }
+
+    #[test]
+    fn unfinished_and_oversized_notifications_are_dropped() {
+        assert_eq!(notifications(&[b"\x1b]9;a\nb\x07"]), b"");
+        assert_eq!(notifications(&[b"\x1b]9;a\x1b[mb\x07"]), b"");
+        let long = [b"\x1b]9;".as_slice(), &[b'x'; NOTIFICATION_MAX], b"\x07"].concat();
+        assert_eq!(notifications(&[&long]), b"");
+        // An OSC sequence started over another's Esc is scanned on its own.
+        assert_eq!(notifications(&[b"\x1b]2;x\x1b]9;y\x07"]), b"\x1b]9;y\x07");
+    }
+
+    #[test]
+    fn base64_pads_to_whole_quanta() {
+        for (data, encoded) in [
+            ("", ""),
+            ("f", "Zg=="),
+            ("fo", "Zm8="),
+            ("foo", "Zm9v"),
+            ("ine 22\nline", "aW5lIDIyCmxpbmU="),
+        ] {
+            assert_eq!(base64(data.as_bytes()), encoded);
+        }
+    }
+
+    #[test]
+    fn scroll_keys_are_read_in_legacy_and_kitty_forms() {
+        use ScrollKey::*;
+        let key = scroll_key;
+        let (up, page_up, page_down, exit) = (LineUp, PageUp, PageDown, Exit);
+        assert_eq!(key(b"\x1b[A"), Some((up, 1, 1)));
+        assert_eq!(key(b"\x1bOA"), Some((up, 1, 1)));
+        assert_eq!(key(b"\x1b[5;2~"), Some((page_up, 2, 1)));
+        assert_eq!(key(b"\x1b[5;2:3~"), Some((page_up, 2, 3)));
+        assert_eq!(key(b"\x1b[6~"), Some((page_down, 1, 1)));
+        assert_eq!(key(b"\x1b"), Some((exit, 1, 1)));
+        assert_eq!(key(b"\x1b[27u"), Some((exit, 1, 1)));
+        assert_eq!(key(b"\x1b[113;1:1u"), Some((exit, 1, 1)));
+        assert_eq!(key(b"\x1b[113;2u"), None);
+        assert_eq!(key(b"\x1b[3~"), None);
+        assert!(released(b"\x1b[97;1:3u"));
+        assert!(!released(b"\x1b[97u"));
+    }
+
+    #[test]
+    fn tokens_end_after_whole_keys_and_sequences() {
+        let ends = |data: &[u8]| {
+            let mut i = 0;
+            let mut ends = Vec::new();
+            while i < data.len() {
+                i = token_end(data, i);
+                ends.push(i);
+            }
+            ends
+        };
+        assert_eq!(
+            ends(b"a\x1b[5;2~\x1bOA\xc3\xa9\x1bx\x1b"),
+            [1, 7, 10, 12, 14, 15]
+        );
+        assert_eq!(ends(b"\x1b[5;2"), [5]);
+    }
 }

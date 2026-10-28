@@ -54,7 +54,7 @@ fn term(s: Size, replies: &[u8]) -> Terminal<'static, 'static> {
 fn frame(m: &mut Mux, twin: &Terminal, host: &mut Terminal) -> Option<String> {
     m.render().unwrap();
     host.vt_write(&m.take_output());
-    let want = screen::take(twin).unwrap();
+    let want = screen::take(twin).unwrap().with_host_mouse_modes();
     let got = screen::take(host).unwrap();
     let diff = want.diff(&got, 12);
     if diff.is_empty() {

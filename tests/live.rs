@@ -16,7 +16,7 @@ use libghostty_vt::RenderState;
 use libghostty_vt::Terminal;
 use libghostty_vt::render::{CellIterator, CursorVisualStyle, RowIterator};
 use libghostty_vt::screen::CellWide;
-use libghostty_vt::terminal::{Mode, ModeKind};
+use libghostty_vt::terminal::{Mode, ModeKind, Point, PointCoordinate};
 
 const CHILD: &str = env!("CARGO_BIN_EXE_hypercube-test-child");
 
@@ -104,6 +104,9 @@ impl Chrome for Labels {
             let mut label = format!("{}{}", if p.focused { "* " } else { "" }, p.label);
             if let Some(status) = p.status {
                 label.push_str(&format!(" (exited {status})"));
+            }
+            if p.scrolled > 0 {
+                label.push_str(&format!(" (scrolled {})", p.scrolled));
             }
             let label: String = label
                 .chars()
@@ -482,16 +485,18 @@ fn input_modes_are_mirrored_and_restored() {
     let id = h.spawn("child", &["modes"]);
     h.wait_screen("ready");
     h.until(|h| h.kitty() == 1);
-    for n in [1, 66, 1000, 1004, 1006, 2004] {
+    for n in [1, 66, 1004, 2004] {
         assert!(h.mode(n), "mode {n}");
     }
+    // The host reports the mouse in SGR form whatever the pane asks for.
+    assert!(h.mode(1002) && h.mode(1006) && !h.mode(1000));
     assert_eq!(h.cursor_style(), CursorVisualStyle::Bar);
     h.send("a");
     h.wait_screen("got 97");
     h.send("q");
     assert_eq!(h.wait_exit(id), 0);
     h.restore();
-    for n in [1, 66, 1000, 1004, 1006, 2004, 1049] {
+    for n in [1, 66, 1000, 1002, 1003, 1004, 1006, 2004, 1049] {
         assert!(!h.mode(n), "mode {n}");
     }
     assert!(h.mode(25));
@@ -568,9 +573,10 @@ fn modes_cursor_title_and_focus_reports_follow_focus() {
     h.send("\x1d");
     h.wait_screen("left got 79"); // ESC [ O: focus out
     h.until(|h| !h.mode(2004) && h.kitty() == 0);
-    for n in [1, 66, 1000, 1004, 1006, 2004] {
+    for n in [1, 66, 1004, 2004] {
         assert!(!h.mode(n));
     }
+    assert!(h.mode(1002) && h.mode(1006));
     assert_eq!(h.cursor_style(), CursorVisualStyle::Block);
     assert_eq!(h.terminal.title().unwrap(), b"right");
     h.send("\x1d");
@@ -611,18 +617,175 @@ fn focus_skips_a_pane_marked_exited() {
 }
 
 #[test]
-fn sgr_mouse_is_translated_into_the_focused_pane() {
+fn mouse_reports_go_to_the_pane_under_the_pointer() {
     let path = TempPath::new("mouse");
     let mut h = Host::new(81, 20);
     h.spawn("left", &["input", "left", "plain", "0"]);
-    h.spawn("right", &["input", "right", "plain", "0", path.path()]);
+    h.spawn("right", &["input", "right", "modes", "0", path.path()]);
     h.wait_screen("left ready");
     h.wait_screen("right ready");
-    // The right pane starts at column 42, row 2. Reports outside it and in
-    // other mouse formats are dropped.
-    h.send(b"\x1d\x1b[<0;43;3M\x1b[<0;43;3m\x1b[<0;1;3M\x1b[<0;43;1M\x1b[<0;41;3M\x1b[M !!\x1b[M \xc2!\x1b[32;43;3M!");
+    h.send("\x1d");
+    h.wait_screen("* left");
+    // The right pane starts at column 42, row 2, and asks for focus events
+    // and normal tracking in SGR form. A click there focuses it and is
+    // reported in its coordinates; motion is not reported, a report on a
+    // label row is dropped, and the release of a drag that left the pane is
+    // clamped to it.
+    h.send(b"\x1b[<0;43;3M\x1b[<0;43;3m\x1b[<32;44;3M\x1b[<0;43;1M");
+    h.wait_screen("* right");
+    h.send(b"\x1b[<0;44;4M\x1b[<32;10;5M\x1b[<0;10;5m!");
     h.wait_screen("right got 33");
-    assert_eq!(path.read(), b"\x1b[<0;2;2M\x1b[<0;2;2m!");
+    assert_eq!(
+        path.read(),
+        b"\x1b[I\x1b[<0;2;2M\x1b[<0;2;2m\x1b[<0;3;3M\x1b[<0;1;4m!"
+    );
+    assert!(!h.screen().contains("left got"));
+}
+
+#[test]
+fn a_click_focuses_a_pane_that_does_not_track_the_mouse() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "plain", "0"]);
+    h.spawn("right", &["input", "right", "plain", "0"]);
+    h.wait_screen("left ready");
+    h.wait_screen("right ready");
+    h.send("\x1b[<0;50;5M\x1b[<0;50;5ma");
+    h.wait_screen("right got 97");
+    h.send("\x1b[<2;5;5M\x1b[<2;5;5mb");
+    h.wait_screen("left got 98");
+    // The program doesn't track the mouse, so it got no reports.
+    assert!(!h.screen().contains("got 27"));
+}
+
+/// The first row of the pane in a single-pane host.
+fn top_row(h: &Host) -> String {
+    h.line(1)
+}
+
+#[test]
+fn the_wheel_scrolls_a_pane_and_typing_returns_it_to_the_bottom() {
+    let mut h = Host::new(40, 10);
+    let id = h.spawn("lines", &["lines", "30"]);
+    h.wait_screen("ready");
+    assert_eq!(top_row(&h), "line 22");
+    h.send("\x1b[<64;5;5M");
+    h.wait_screen("lines (scrolled 3)");
+    assert_eq!(top_row(&h), "line 19");
+    // New output leaves the view where it is.
+    h.mux.send_text(id, "x").unwrap();
+    h.wait_screen("lines (scrolled 4)");
+    assert_eq!(top_row(&h), "line 19");
+    h.send("\x1b[<65;5;5M");
+    h.wait_screen("lines (scrolled 1)");
+    assert_eq!(top_row(&h), "line 22");
+    // Typing returns to the bottom and reaches the program.
+    h.send("y");
+    h.wait_screen("got 121");
+    h.until(|h| !h.screen().contains("scrolled"));
+    assert_eq!(top_row(&h), "line 24");
+}
+
+#[test]
+fn scroll_mode_keys_scroll_and_esc_returns_to_the_bottom() {
+    let mut h = Host::new(40, 10);
+    h.spawn("lines", &["lines", "30"]);
+    h.wait_screen("ready");
+    // Shift-PageUp scrolls a page of nine rows.
+    h.send("\x1b[5;2~");
+    h.wait_screen("lines (scrolled 9)");
+    assert_eq!(top_row(&h), "line 13");
+    h.send("\x1b[A");
+    h.wait_screen("lines (scrolled 10)");
+    h.send("\x1b[6~");
+    h.wait_screen("lines (scrolled 1)");
+    h.send("\x1b[5~");
+    h.wait_screen("lines (scrolled 10)");
+    h.send("\x1b");
+    h.until(|h| !h.screen().contains("scrolled"));
+    // Scrolling took none of the keys, and q leaves scroll mode too.
+    h.send("\x1b[5;2~");
+    h.wait_screen("lines (scrolled 9)");
+    h.send("q");
+    h.until(|h| !h.screen().contains("scrolled"));
+    h.send("z");
+    h.wait_screen("got 122");
+    assert!(!h.screen().contains("got 27"), "{}", h.screen());
+    assert!(!h.screen().contains("got 113"), "{}", h.screen());
+}
+
+fn copied(text: &str) -> Vec<u8> {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = b"\x1b]52;c;".to_vec();
+    for chunk in text.as_bytes().chunks(3) {
+        let mut n = 0u32;
+        for (i, &b) in chunk.iter().enumerate() {
+            n |= u32::from(b) << (16 - 8 * i);
+        }
+        for i in 0..4 {
+            out.push(if i <= chunk.len() {
+                ALPHABET[(n >> (18 - 6 * i)) as usize & 63]
+            } else {
+                b'='
+            });
+        }
+    }
+    out.push(0x07);
+    out
+}
+
+#[test]
+fn a_drag_selects_text_and_copies_it_on_release() {
+    let mut h = Host::new(40, 10);
+    h.spawn("lines", &["lines", "30"]);
+    h.wait_screen("ready");
+    // From the "i" of "line 22" to the "e" of "line 23", rows 2 and 3.
+    h.send("\x1b[<0;2;2M\x1b[<32;4;3M");
+    h.until(|h| {
+        let style = |x, y| {
+            h.terminal
+                .grid_ref(Point::Active(PointCoordinate { x, y }))
+                .unwrap()
+                .style()
+                .unwrap()
+                .inverse
+        };
+        style(1, 1) && style(3, 2) && !style(0, 1) && !style(4, 2)
+    });
+    h.send("\x1b[<0;4;3m");
+    let expected = copied("ine 22\nline");
+    h.until(|h| contains(&h.output, &expected));
+    // A click clears the selection without copying.
+    h.send("\x1b[<0;9;6M\x1b[<0;9;6m");
+    h.until(|h| {
+        !h.terminal
+            .grid_ref(Point::Active(PointCoordinate { x: 1, y: 1 }))
+            .unwrap()
+            .style()
+            .unwrap()
+            .inverse
+    });
+    // A scrolled view selects what it shows.
+    h.send("\x1b[<64;5;5M");
+    h.wait_screen("lines (scrolled 3)");
+    h.send("\x1b[<0;1;2M\x1b[<32;7;2M\x1b[<0;7;2m");
+    let expected = copied("line 19");
+    h.until(|h| contains(&h.output, &expected));
+    assert_eq!(
+        h.output.windows(7).filter(|w| w == b"\x1b]52;c;").count(),
+        2
+    );
+}
+
+#[test]
+fn notifications_pass_through_to_the_host() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "plain", "0"]);
+    h.spawn("notify", &["notify"]);
+    h.wait_screen("notified");
+    h.until(|h| {
+        contains(&h.output, b"\x1b]9;first\x07")
+            && contains(&h.output, b"\x1b]777;notify;Title;Body\x07")
+    });
 }
 
 #[test]

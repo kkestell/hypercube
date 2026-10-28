@@ -82,10 +82,22 @@ it grows.
 
 `TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
 in black on `#87d7ff`, bold for the focused pane, followed by "exited N" once
-the pane's program has exited. An exited pane keeps its place until
-`remove_agent` closes it. The status bar is black on `#87d7ff`, with the
-checkout path on the left and Claude Code's usage limits on the right.
-Ctrl-] moves the focus to the next live pane.
+the pane's program has exited and "↑N" while its view is scrolled N rows up.
+An exited pane keeps its place until `remove_agent` closes it. The status bar
+is black on `#87d7ff`, with the checkout path on the left and Claude Code's
+usage limits on the right.
+
+The keys and the mouse (see Input):
+
+- Ctrl-] moves the focus to the next live pane.
+- A click focuses the pane under the pointer.
+- The wheel scrolls the pane under the pointer, unless its program reports
+  the mouse.
+- Shift-PageUp scrolls the focused pane up a page. While it is scrolled,
+  PageUp, PageDown, Up, and Down scroll it, Esc and q return it to the
+  bottom, and any other key returns it to the bottom and goes to its
+  program.
+- A drag selects text and copies it to the clipboard on release.
 
 The status bar clips its text to whole grapheme clusters, measured in columns.
 The limits are drawn only when they fit in the columns the path leaves, with a
@@ -225,8 +237,9 @@ that stops reading its input never blocks the loop.
 
 The caller draws everything around the panes through the `Chrome` trait. The
 mux calls `Chrome::draw` inside a frame with a `PaneView` of each pane (ID,
-label, rectangle, focus, exit status) and the host size, whenever the panes,
-the focus, an exit status, or the host size changed. `Mux::invalidate_chrome`
+label, rectangle, focus, exit status, and how many rows its view is scrolled
+up) and the host size, whenever the panes, the focus, an exit status, a
+scrolled view, or the host size changed. `Mux::invalidate_chrome`
 asks for a redraw after a change only the caller knows about, such as status
 bar text.
 
@@ -237,10 +250,23 @@ render state. A frame draws those rows at the pane's offset, then the focused
 pane's cursor, inside synchronized output (mode 2026). A layout change, host
 resize, or removed pane clears the screen and draws every row and the chrome.
 
+A pane draws its terminal's viewport. Scrolling moves the viewport through
+Ghostty's scrollback, and new output leaves a scrolled viewport where it is.
+Scrolling a pane ends its hold. Selected cells are drawn in reverse video.
+
 The focused pane's input modes are mirrored onto the host: cursor and keypad
-modes, mouse tracking and formats, focus events, bracketed paste, grapheme
-clustering, and the Kitty keyboard flags. Focus events, the window title, and
-mode changes follow the focus.
+modes, focus events, bracketed paste, grapheme clustering, and the Kitty
+keyboard flags. Focus events, the window title, and mode changes follow the
+focus. The host always reports mouse buttons and drags in SGR form (modes
+1002 and 1006), and motion without a button (mode 1003) while the focused
+pane asks for it.
+
+Bells pass through to the host. So do desktop notifications, OSC 9 and OSC
+777: `Pane::feed` scans the program's output for them before Ghostty sees
+it, keeping the scan's state between reads so a sequence split across reads
+is found, and writes each one to the host terminated by BEL. Notifications
+over 4096 bytes and sequences cut off by another control character are
+dropped.
 
 A program that holds drawing with mode 2026 shows the last frame it
 completed, captured when the hold began, including when the screen is drawn
@@ -249,10 +275,26 @@ again. Resizing a pane's terminal ends its hold. A hold that lasts
 
 ### Input
 
-Host input goes to the focused pane. Ctrl-], in its legacy byte or as a Kitty
-key press, moves the focus to the next live pane; Kitty repeats and releases
-of it are consumed. SGR mouse reports inside the focused pane are translated
-to its coordinates; other mouse reports are dropped.
+Host input goes to the focused pane, except:
+
+- Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
+  next live pane; Kitty repeats and releases of it are consumed.
+- Shift-PageUp, in legacy or Kitty form, scrolls the focused pane up a page.
+- While the focused pane is scrolled, PageUp and PageDown scroll it a page,
+  Up and Down a row, and Esc and q return it to the bottom. Any other key
+  returns it to the bottom and goes to the program. Kitty key releases are
+  consumed.
+- Mouse reports go to the pane under the pointer. A button press focuses
+  it, and that button's motion and release go to the same pane, clamped to
+  its edges. A pane whose program tracks the mouse, and whose view is not
+  scrolled, gets every report in its coordinates, encoded by Ghostty's mouse
+  encoder for its tracking mode and format. In any other pane, the wheel
+  scrolls three rows, or on the alternate screen with alternate scroll mode
+  (1007) sends Up or Down three times, and a left-button drag selects text
+  linearly through Ghostty's selection. On release, the selection's text,
+  with soft wraps joined and trailing spaces trimmed, goes to the host's
+  clipboard as OSC 52. The selection stays highlighted until the next press
+  or until input is typed into its pane.
 
 ### Runtime
 

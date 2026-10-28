@@ -98,6 +98,26 @@ fn run(args: &[String]) -> u8 {
             read_byte(10_000);
             0
         }
+        Some("lines") => {
+            raw_mode();
+            for i in 0..args[2].parse::<u32>().unwrap() {
+                write(format!("line {i}\r\n"));
+            }
+            write("ready");
+            while let Some(b) = read_byte(10_000) {
+                write(format!("\r\ngot {b}"));
+            }
+            0
+        }
+        Some("notify") => {
+            raw_mode();
+            // The second notification is split across two writes.
+            write(b"\x1b]9;first\x07\x1b]77");
+            sleep(100);
+            write(b"7;notify;Title;Body\x1b\\notified");
+            read_byte(10_000);
+            0
+        }
         Some("size") => {
             raw_mode();
             handle(libc::SIGWINCH, on_winch);
