@@ -192,11 +192,19 @@ a terminal resized below that hides the panes until it grows.
 it is the orchestrator's, and hides the others. A hidden pane has an empty
 rectangle: it is not drawn, takes no mouse input (a press it had captured ends
 there), and keeps its size, so its program sees no resize. The host zooms the
-focused pane when the zoom key is pressed. It restores the normal layout when
+focused pane on Ctrl-b z. It restores the normal layout when
 the key is pressed again, when the focus changes, and when a pane is added or
 removed. The host resizing keeps the zoom.
 
-`TeamChrome` draws, in the colors of `src/colors.rs`:
+`TeamChrome` draws in the workspace's palette, which `colors::Palette`
+shades from one accent color: the accent itself for the divider and the
+workers' lines, the accent mixed 40% toward white for the workers' names and
+details, and for the header, the bar, and the title rows of the overlay and
+the list of keys, the accent mixed 85% toward white on the accent mixed 78%
+toward black. The accent is one of the eight in `colors::ACCENTS`, numbered
+by the state's `accent` field, 0 (blue) unless set. Ctrl-b a moves the
+workspace to the next one, wrapping around, writes it to the state, and
+redraws. It draws:
 
 - The header across the first row: one space and the orchestrator's directory,
   with the home directory written as `~`. The right end has what a label's left
@@ -241,33 +249,47 @@ prompt, and a path that is no directory shows its error in the bar.
 
 The keys and the mouse (see Input):
 
-- Ctrl-] moves the focus to the next live pane.
-- Ctrl-\ zooms the focused pane, or restores the layout.
 - A click focuses the pane under the pointer.
 - The wheel scrolls the pane under the pointer, unless its program reports
   the mouse.
-- Shift-PageUp scrolls the focused pane up a page. While it is scrolled,
+- Shift-PageUp, Ctrl-b [, and Ctrl-b PageUp scroll the focused pane up a
+  page. While it is scrolled,
   PageUp, PageDown, Up, and Down scroll it, Esc and q return it to the
   bottom, and any other key returns it to the bottom and goes to its
   program.
 - A drag selects text and copies it to the clipboard on release.
-- Ctrl-^ opens the workspace overlay.
-- Ctrl-b is a prefix, in legacy or Kitty form. The next key press goes with
-  it: a digit switches to the workspace with that number in the bar, c
-  prompts for the path of a workspace to switch to, Ctrl-b sends Ctrl-b to
-  the focused pane, and any other key is dropped. Mouse and
-  focus reports, pastes, key releases and repeats, and modifier keys go on as
-  usual and leave the prefix waiting. The prefix works while the overlay is
-  open too.
+- Ctrl-b is a prefix, in legacy or Kitty form, with tmux's keys. The next
+  key press goes with it:
+  - o moves the focus to the next live pane.
+  - z zooms the focused pane, or restores the layout.
+  - [ and PageUp scroll the focused pane up a page.
+  - s opens the workspace overlay, or closes it.
+  - a digit switches to the workspace with that number in the bar.
+  - ( and ) switch to the previous and next workspace in the bar, wrapping
+    around.
+  - c prompts for the path of a workspace to switch to.
+  - d detaches the client.
+  - a gives the workspace the next accent color.
+  - ? lists the keys over the whole screen, as the overlay is drawn, until
+    the next key.
+  - Ctrl-b sends Ctrl-b to the focused pane.
+  - Any other key is dropped.
+
+  Mouse and focus reports, pastes, key releases and repeats, and modifier
+  keys go on as usual and leave the prefix waiting. A Kitty key with Shift is
+  taken as its shifted key, or without one reported, as the character Shift
+  gives it on a US keyboard. The prefix works while the overlay, the list of
+  keys, or the prompt is open too, where o, z, [, PageUp, and Ctrl-b do
+  nothing. The overlay, the list of keys, and the prompt each close the
+  others.
 
 Labels are clipped to whole grapheme clusters, measured in
 columns.
 
 ### Workspace overlay
 
-Ctrl-^, as legacy byte `0x1e` or as Kitty key 54 with Ctrl or Ctrl-Shift,
-opens the overlay. While it is open, the host lays every pane out hidden, so
-the panes keep their sizes, and `TeamChrome` draws the overlay across the
+Ctrl-b s opens the overlay. While it is open, the host lays every pane out
+hidden, so the panes keep their sizes, and `TeamChrome` draws the overlay across the
 whole screen: a title row, a row for each workspace with a state file, most
 recently active first, and the keys in the last row. Each workspace row shows
 its directory, running or stopped, its number of agents and of busy agents,
@@ -286,7 +308,7 @@ The mux captures input while the overlay is open (see Input). The keys:
   result when it is done. Stopping the host's own workspace ends the session,
   and the client exits with "stopped".
 - d detaches the client.
-- Esc or Ctrl-^ closes the overlay.
+- Esc or Ctrl-b s closes the overlay.
 
 A failed switch or stop shows its error in the last row until the next key.
 
@@ -316,7 +338,7 @@ another. `launch` and `close` end any zoom.
 The state file holds the agents (ID, name, role, harness, model, effort,
 directory, branch, session ID, activity, and the number of the newest
 waiter), the queued messages (sender,
-recipient, text), and `no_git`.
+recipient, text), `no_git`, and the accent color's number, `accent`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
 servers, and the host change it concurrently and readers always see a whole
@@ -489,12 +511,14 @@ Host input goes to the focused pane. A bracketed paste, from `ESC [ 200 ~`
 through `ESC [ 201 ~`, goes as it is to the pane focused when it began. Outside
 a paste, these are routed elsewhere:
 
-- Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
-  next live pane; Kitty repeats and releases of it are consumed.
-- Ctrl-\, in the same two forms, is reported to the caller as
-  `Event::Zoom(id)` for the focused pane, once per press, and goes to no pane.
-- Ctrl-^, as `0x1e` or Kitty key 54 with Ctrl or Ctrl-Shift, is reported as
-  `Event::Overlay` and goes to no pane.
+- Ctrl-b, in its legacy byte or as a Kitty key press, and the key after it
+  go to no pane; Kitty repeats and releases of Ctrl-b are consumed. Ctrl-b o
+  moves the focus to the next live pane, Ctrl-b [ and PageUp scroll it, and
+  the others are reported to the caller: z as `Event::Zoom(id)` for the
+  focused pane, once per press, s as `Event::Overlay`, a digit as
+  `Event::Workspace(n)`, ( and ) as `Event::Step(-1)` and `Event::Step(1)`,
+  c as `Event::NewWorkspace`, d as `Event::Detach`, a as `Event::Accent`,
+  and ? as `Event::Help`.
 - Shift-PageUp, in legacy or Kitty form, scrolls the focused pane up a page.
 - While the focused pane is scrolled, PageUp and PageDown scroll it a page,
   Up and Down a row, and Esc and q return it to the bottom. Any other key
@@ -514,11 +538,11 @@ a paste, these are routed elsewhere:
   typed into its pane.
 
 `Mux::set_captured(true)` captures input: each key or escape sequence is
-reported as `Event::Key(bytes)` instead of routed, the overlay key is still
-`Event::Overlay`, and pastes, mouse reports, and the focus and zoom keys are
-dropped. The overlay key itself turns capturing on, or off while captured,
-so the keys after it in the same read go to the overlay or the panes in the
-order they were typed; the caller sets capturing to match when it handles
+reported as `Event::Key(bytes)` instead of routed, the prefix keys are still
+reported, and pastes and mouse reports are dropped. Ctrl-b s and ? turn
+capturing on, or off while captured, and Ctrl-b c turns it on, so the keys
+after them in the same read go to the host or the panes in the order they
+were typed; the caller sets capturing to match when it handles
 the event. The host then has every mirrored mode at its default and no Kitty
 flags, so keys arrive in legacy form, and no cursor is drawn.
 
@@ -557,11 +581,13 @@ the host never blocks on it. A link whose queue makes no progress for
 - `Event::Ready(fd)`: one of the caller's descriptors is readable.
 - `Event::PaneExited(id, status)`: a pane's program exited; the status is its
   exit code, or 128 plus the signal that ended it.
-- `Event::Zoom(id)` and `Event::Focus(id)`: the zoom key was pressed with
-  that pane focused, or the focus moved to that pane. They come in the order
-  they happened.
-- `Event::Overlay` and `Event::Key(bytes)`: the overlay key, and a key of
-  captured input.
+- `Event::Zoom(id)` and `Event::Focus(id)`: Ctrl-b z was pressed with that
+  pane focused, or the focus moved to that pane. They come in the order they
+  happened.
+- `Event::Overlay`, `Event::Workspace(n)`, `Event::Step(n)`,
+  `Event::NewWorkspace`, `Event::Detach`, `Event::Accent`, and
+  `Event::Help`: Ctrl-b and s, a digit, ( or ), c, d, a, or ?.
+- `Event::Key(bytes)`: a key of captured input.
 - `Event::Resized`: the client's terminal changed size.
 - `Event::Message(message)`: the client sent `SwitchFailed`.
 - `Event::Disconnected`: the link ended, failed, or stalled, and the runtime

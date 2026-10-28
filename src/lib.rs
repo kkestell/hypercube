@@ -21,6 +21,7 @@ pub mod colors;
 pub mod config;
 pub mod control;
 pub mod harness;
+pub mod help;
 pub mod hook;
 pub mod host;
 pub mod link;

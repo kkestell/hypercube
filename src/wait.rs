@@ -127,7 +127,7 @@ mod tests {
             *s = State {
                 agents: vec![agent("o1", "orchestrator"), agent("w1", "w1")],
                 messages,
-                no_git: false,
+                ..State::default()
             };
             Ok(())
         })

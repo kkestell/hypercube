@@ -603,7 +603,7 @@ fn queries_are_answered() {
 }
 
 #[test]
-fn input_goes_to_the_focused_pane_and_ctrl_bracket_moves_focus() {
+fn input_goes_to_the_focused_pane_and_ctrl_b_o_moves_focus() {
     let mut h = Host::new(81, 12);
     h.spawn("left", &["input", "left", "plain", "0"]);
     h.spawn("right", &["input", "right", "plain", "0"]);
@@ -611,23 +611,23 @@ fn input_goes_to_the_focused_pane_and_ctrl_bracket_moves_focus() {
     h.wait_screen("right ready");
     h.send("a");
     h.wait_screen("left got 97");
-    h.send("\x1db");
+    h.send("\x02ob");
     h.wait_screen("right got 98");
     // The loop reports the move to the caller.
     assert!(h.events.iter().any(|e| matches!(e, Event::Focus(_))));
-    h.send("\x1dc");
+    h.send("\x02oc");
     h.wait_screen("left got 99");
-    // Kitty-encoded Ctrl-]: a press switches; repeats and releases are
+    // Kitty-encoded Ctrl-b: a press is the prefix; repeats and releases are
     // consumed; other keys pass through unchanged.
-    h.send("\x1b[93;5u\x1b[93;5:2;93u\x1b[93;5:3u\x1b[97;1ud");
+    h.send("\x1b[98;5u\x1b[98;5:2;98u\x1b[98;5:3u\x1b[111u\x1b[97;1ud");
     h.wait_screen("right got 100");
-    h.send("\x1b[93:93;5:1;93ue");
+    h.send("\x1b[98:98;5:1;98uoe");
     h.wait_screen("left got 101");
     for text in [
         "right got 97",
         "left got 98",
         "right got 99",
-        "got 29",
+        "got 111",
         "left got 27",
     ] {
         assert!(!h.screen().contains(text), "{text}");
@@ -644,7 +644,7 @@ fn modes_cursor_title_and_focus_reports_follow_focus() {
     h.wait_screen("right ready");
     h.until(|h| h.mode(2004) && h.kitty() == 1);
     assert_eq!(h.terminal.title().unwrap(), b"left");
-    h.send("\x1d");
+    h.send("\x02o");
     h.wait_screen("left got 79"); // ESC [ O: focus out
     h.until(|h| !h.mode(2004) && h.kitty() == 0);
     for n in [1, 66, 1004, 2004] {
@@ -653,7 +653,7 @@ fn modes_cursor_title_and_focus_reports_follow_focus() {
     assert!(h.mode(1002) && h.mode(1006));
     assert_eq!(h.cursor_style(), CursorVisualStyle::Block);
     assert_eq!(h.terminal.title().unwrap(), b"right");
-    h.send("\x1d");
+    h.send("\x02o");
     h.wait_screen("left got 73"); // ESC [ I: focus in
     h.until(|h| h.mode(2004) && h.kitty() == 1);
     assert_eq!(h.cursor_style(), CursorVisualStyle::Bar);
@@ -673,13 +673,13 @@ fn exited_pane_keeps_its_place_and_keeps_the_focus_until_it_is_released() {
     h.wait_screen("* left");
     h.mux.release_focus(left);
     h.wait_screen("* right");
-    h.send("a\x1db");
+    h.send("a\x02ob");
     h.wait_screen("right got 98");
     assert!(h.screen().contains("right got 97"));
 }
 
 #[test]
-fn the_zoom_key_is_reported_and_goes_to_no_pane() {
+fn ctrl_b_z_is_reported_and_goes_to_no_pane() {
     let mut h = Host::new(81, 12);
     h.spawn("left", &["input", "left", "plain", "0"]);
     h.wait_screen("left ready");
@@ -689,14 +689,14 @@ fn the_zoom_key_is_reported_and_goes_to_no_pane() {
             .filter(|e| matches!(e, Event::Zoom(_)))
             .count()
     };
-    h.send("\x1ca");
+    h.send("\x02za");
     h.wait_screen("left got 97");
     assert_eq!(zooms(&h), 1);
-    // Kitty's press is reported; its repeat and release are consumed.
-    h.send("\x1b[92;5u\x1b[92;5:2u\x1b[92;5:3ub");
+    // In Kitty's form, the prefix's repeat and release are consumed.
+    h.send("\x1b[98;5u\x1b[98;5:2u\x1b[98;5:3u\x1b[122ub");
     h.wait_screen("left got 98");
     assert_eq!(zooms(&h), 2);
-    assert!(!h.screen().contains("got 28"));
+    assert!(!h.screen().contains("got 122"));
 }
 
 #[test]
@@ -774,9 +774,9 @@ fn focus_skips_a_pane_marked_exited() {
     h.mux.mark_exited(failed, 127);
     h.spawn("right", &["input", "right", "plain", "0"]);
     h.wait_screen("failed (exited 127)");
-    h.send("\x1db");
+    h.send("\x02ob");
     h.wait_screen("right got 98");
-    h.send("\x1da");
+    h.send("\x02oa");
     h.wait_screen("left got 97");
     assert_eq!(h.mux.pane(failed).unwrap().status(), Some(127));
 }
@@ -789,7 +789,7 @@ fn mouse_reports_go_to_the_pane_under_the_pointer() {
     h.spawn("right", &["input", "right", "modes", "0", path.path()]);
     h.wait_screen("left ready");
     h.wait_screen("right ready");
-    h.send("\x1d");
+    h.send("\x02o");
     h.wait_screen("* left");
     // The right pane starts at column 42, row 2, and asks for focus events
     // and normal tracking in SGR form. A click there focuses it and is
@@ -845,9 +845,9 @@ fn the_host_reports_clicks_whatever_the_focused_pane_tracks() {
     h.wait_screen("any ready");
     h.until(|h| host_click(h) == b"\x1b[<0;1;1M");
     // Focus moves to the pane with any-event tracking, and back.
-    h.send("\x1d");
+    h.send("\x02o");
     h.until(|h| h.mode(1003) && host_click(h) == b"\x1b[<0;1;1M");
-    h.send("\x1d");
+    h.send("\x02o");
     h.until(|h| !h.mode(1003) && host_click(h) == b"\x1b[<0;1;1M");
 }
 
@@ -1008,7 +1008,7 @@ fn other_panes_draw_during_a_hold() {
     while now_ms() < deadline {
         h.step(20);
     }
-    h.send("\x1da");
+    h.send("\x02oa");
     h.wait_screen("right got 97");
     assert!(!h.screen().contains("stuck"));
     h.wait_screen("stuck");
@@ -1026,7 +1026,7 @@ fn wide_characters_are_drawn_at_each_panes_offset() {
         "界L ready                               │界R ready"
     );
     h.until(|h| h.terminal.cursor_y().unwrap() == 1 && h.terminal.cursor_x().unwrap() == 9);
-    h.send("\x1d");
+    h.send("\x02o");
     h.until(|h| h.terminal.cursor_x().unwrap() == 50);
 }
 
@@ -1069,7 +1069,7 @@ fn five_panes_stack_on_the_right() {
             lines[row]
         );
     }
-    h.send("\x1d\x1d\x1d\x1d");
+    h.send("\x02o\x02o\x02o\x02o");
     h.until(|h| h.screen().contains("* five"));
 }
 
@@ -1081,7 +1081,7 @@ fn removing_a_pane_redraws_its_area_and_moves_focus() {
     let right = h.spawn("right", &["input", "right", "plain", "0"]);
     h.wait_screen("middle ready");
     h.wait_screen("right ready");
-    h.send("\x1d");
+    h.send("\x02o");
     h.wait_screen("* middle");
     h.remove(middle);
     // Focus moves to the next pane, and the last pane takes the whole right

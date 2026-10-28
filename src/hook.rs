@@ -288,6 +288,7 @@ mod tests {
                     agents,
                     messages,
                     no_git,
+                    ..State::default()
                 };
                 Ok(())
             })

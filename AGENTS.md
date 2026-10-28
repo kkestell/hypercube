@@ -83,10 +83,12 @@ Code and docs stand alone and do not refer to predecessor implementations.
   actions, launches, closes, and teardown.
 - `src/bar.rs`: the bar of running workspaces in the last row, its prompt
   for a new workspace's path, and its drawing.
-- `src/colors.rs`: the colors of the header, bar, titles, and divider.
+- `src/colors.rs`: the accent colors, and the palette of the header, bar,
+  titles, and divider each shades from one.
 - `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
   borders without running Hypercube.
 - `src/overlay.rs`: the workspace overlay's list, keys, and drawing.
+- `src/help.rs`: the list of keys Ctrl-b ? shows.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in
   panes.

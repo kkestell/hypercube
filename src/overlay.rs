@@ -5,17 +5,16 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
+use crate::colors::Palette;
 use crate::host::{self, fit};
 use crate::mux::Winsize;
 use crate::store;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-/// Black on light blue, for the title row.
-const TITLE: &str = "\x1b[0;38;2;0;0;0;48;2;135;215;255m";
 const SELECTED: &str = "\x1b[0;7m";
 const ERROR: &str = "\x1b[0;31m";
-const HELP: &str = "\x1b[0;2m";
+pub(crate) const HELP: &str = "\x1b[0;2m";
 
 /// A workspace as the overlay lists it.
 #[derive(Clone, Debug, PartialEq)]
@@ -149,7 +148,7 @@ impl Overlay {
 
     /// Draw the overlay over the whole screen: a title row, a row for each
     /// workspace, and the error or the keys in the last row.
-    pub fn draw(&self, out: &mut Vec<u8>, size: Winsize) {
+    pub fn draw(&self, out: &mut Vec<u8>, size: Winsize, palette: Palette) {
         let (cols, rows) = (size.ws_col, usize::from(size.ws_row));
         if rows == 0 {
             return;
@@ -162,7 +161,7 @@ impl Overlay {
                 row + 1
             ));
         };
-        line(&mut s, 0, TITLE, &pad(" Workspaces", cols));
+        line(&mut s, 0, &palette.bar.sgr(), &pad(" Workspaces", cols));
         let width = self.rows.iter().map(|r| host::text_width(&r.name)).max();
         let width = width.unwrap_or(0);
         let list = rows.saturating_sub(2);
@@ -204,7 +203,7 @@ impl Overlay {
 
 /// `text` with spaces after it to fill `cols` columns, for a row with a
 /// background.
-fn pad(text: &str, cols: u16) -> String {
+pub(crate) fn pad(text: &str, cols: u16) -> String {
     let fitted = fit(text, cols);
     let used = host::text_width(&fitted);
     format!(
@@ -252,6 +251,7 @@ mod tests {
                 ws_xpixel: 0,
                 ws_ypixel: 0,
             },
+            Palette::default(),
         );
         let mut t = Terminal::new(cols, rows).unwrap();
         // Something underneath that the overlay must cover.

@@ -389,7 +389,7 @@ impl Fixture {
 
     /// Open the workspace overlay and select the row naming `dir`.
     fn select_workspace(&mut self, dir: &Path) {
-        self.type_text("\x1e");
+        self.type_text("\x02s");
         self.wait_screen("Workspaces");
         let dir = dir.to_str().unwrap().to_string();
         self.wait_screen(&dir);
@@ -1285,7 +1285,7 @@ fn a_relaunched_pane_keeps_the_focus() {
     let mut fx = Fixture::new();
     fx.start();
     fx.create("w1", "fast", "");
-    fx.type_text("\x1d");
+    fx.type_text("\x02o");
     fx.command("w1", "exit 1");
     fx.wait_event("w1", "ready", 2);
     let prompts = fx.wait_event("w1", "prompt", 2).len();
@@ -1335,7 +1335,7 @@ fn a_relaunch_that_fails_shows_why_and_is_not_retried() {
 }
 
 #[test]
-fn ctrl_backslash_zooms_the_focused_pane() {
+fn ctrl_b_z_zooms_the_focused_pane() {
     let mut fx = Fixture::new();
     fx.start();
     fx.create("w1", "fast", "");
@@ -1344,7 +1344,7 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     let whole = [u64::from(COLS), u64::from(ROWS) - 2];
 
     // The orchestrator fills the pane area, and w1 is hidden at its size.
-    fx.type_text("\x1c");
+    fx.type_text("\x02z");
     fx.wait_size("orchestrator", whole);
     fx.wait_screen("zoomed");
     fx.wait_no_screen("⎇ w1");
@@ -1353,29 +1353,29 @@ fn ctrl_backslash_zooms_the_focused_pane() {
     fx.wait_idle("orchestrator");
 
     // The same key restores the layout.
-    fx.type_text("\x1c");
+    fx.type_text("\x02z");
     fx.wait_size("orchestrator", [48, 38]);
     fx.wait_screen("⎇ w1");
     fx.wait_no_screen("zoomed");
 
     // A change of focus restores it too, at once.
-    fx.type_text("\x1d\x1c");
+    fx.type_text("\x02o\x02z");
     // w1 has a label row the orchestrator doesn't.
     fx.wait_size("w1", [whole[0], whole[1] - 1]);
     fx.wait_screen("zoomed");
     let start = Instant::now();
-    fx.type_text("\x1d");
+    fx.type_text("\x02o");
     fx.wait_size("w1", w1_size.clone().try_into().unwrap());
     fx.wait_no_screen("zoomed");
     assert!(start.elapsed() < Duration::from_secs(5));
 
     // As does adding or removing a pane.
-    fx.type_text("\x1c");
+    fx.type_text("\x02z");
     fx.wait_size("orchestrator", whole);
     let w2 = fx.create("w2", "fast", "");
     fx.wait_no_screen("zoomed");
     fx.wait_size("orchestrator", [48, 38]);
-    fx.type_text("\x1c");
+    fx.type_text("\x02z");
     fx.wait_size("orchestrator", whole);
     let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": w2}));
     assert!(!is_error, "{text}");
@@ -1601,6 +1601,12 @@ fn the_overlay_switches_between_workspaces() {
     fx.type_text("\x020");
     fx.wait_screen(" 0 *first  1 repo");
     fx.wait_screen("⎇ w1");
+    // Ctrl-b ( and ) step along the bar, wrapping around.
+    fx.type_text("\x02(");
+    fx.wait_screen(" 0 first  1 *repo");
+    fx.type_text("\x02)");
+    fx.wait_screen(" 0 *first  1 repo");
+    fx.wait_screen("⎇ w1");
 
     // x stops the other workspace. While its teardown is held, this host
     // keeps serving.
@@ -1621,7 +1627,7 @@ fn the_overlay_switches_between_workspaces() {
     fx.wait("the other workspace to stop", |_| {
         (!host::running(&other_state).unwrap()).then_some(())
     });
-    fx.type_text("\x1e");
+    fx.type_text("\x02s");
     fx.wait_screen("Workspaces");
     fx.wait_screen("stopped  1 agent");
     // Esc closes the overlay, and x on this workspace ends the client.
@@ -1735,14 +1741,33 @@ fn keys_typed_with_the_overlay_key_go_to_the_overlay() {
     let mut fx = Fixture::new();
     fx.start();
     fx.wait_idle("orchestrator");
-    // Ctrl-^ and d arrive in one read, and detach.
-    fx.type_text("\x1ed\r");
+    // Ctrl-b ? opens the list of keys, and any key closes it.
+    fx.type_text("\x02?");
+    fx.wait_screen("Ctrl-b o");
+    fx.type_text("x");
+    fx.wait_no_screen("Ctrl-b o");
+    // Ctrl-b a gives the workspace the next color, and keeps it.
+    fx.type_text("\x02a\x02a");
+    fx.wait("the second color", |fx| {
+        (fx.state().accent == 2).then_some(())
+    });
+    // Ctrl-b s and d arrive in one read, and detach.
+    fx.type_text("\x02sd\r");
     let code = fx.wait("the client to detach", |fx| fx.session().exited());
     assert_eq!(code, 0);
     fx.session.take().unwrap().end();
     std::thread::sleep(Duration::from_millis(300));
     assert!(fx.agent_events("orchestrator", "input").is_empty());
     assert!(fx.agent_events("orchestrator", "prompt").is_empty());
+    assert!(host::running(&fx.state_path()).unwrap());
+
+    // Ctrl-b d detaches too.
+    fx.attach();
+    fx.type_text("\x02d");
+    let code = fx.wait("the client to detach", |fx| fx.session().exited());
+    assert_eq!(code, 0);
+    fx.session.take().unwrap().end();
+    assert!(fx.agent_events("orchestrator", "input").is_empty());
     assert!(host::running(&fx.state_path()).unwrap());
 }
 

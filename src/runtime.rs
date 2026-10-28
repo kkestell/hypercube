@@ -25,19 +25,28 @@ pub enum Event {
     /// A pane's program exited with this status: its code, or 128 plus the
     /// signal that ended it.
     PaneExited(PaneId, u8),
-    /// The zoom key was pressed while this pane had the focus.
+    /// Ctrl-b z was pressed while this pane had the focus.
     Zoom(PaneId),
     /// The focus moved to this pane. `Zoom` and `Focus` come in the order
     /// they happened.
     Focus(PaneId),
-    /// The overlay key was pressed.
+    /// Ctrl-b s was pressed.
     Overlay,
     /// A key arrived while input is captured; see `Mux::set_captured`.
     Key(Vec<u8>),
     /// The prefix key was followed by this digit.
     Workspace(u8),
-    /// The prefix key was followed by c; input is captured.
+    /// Ctrl-b ( or ) was pressed: switch this many workspaces along the
+    /// bar.
+    Step(i8),
+    /// Ctrl-b c was pressed; input is captured.
     NewWorkspace,
+    /// Ctrl-b d was pressed.
+    Detach,
+    /// Ctrl-b a was pressed.
+    Accent,
+    /// Ctrl-b ? was pressed.
+    Help,
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -168,7 +177,11 @@ impl Runtime {
                 Notice::Overlay => Event::Overlay,
                 Notice::Key(key) => Event::Key(key),
                 Notice::Workspace(n) => Event::Workspace(n),
+                Notice::Step(n) => Event::Step(n),
                 Notice::NewWorkspace => Event::NewWorkspace,
+                Notice::Detach => Event::Detach,
+                Notice::Accent => Event::Accent,
+                Notice::Help => Event::Help,
             }));
             let now = now_ms();
             if let Some(link) = &self.link

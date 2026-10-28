@@ -17,9 +17,10 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::bar::{self, Bar, Entry, Typed};
-use crate::colors::{self, BAR, BLUE, LIGHT_BLUE};
+use crate::colors::{self, ACCENTS, Palette};
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
+use crate::help;
 use crate::link::{self, Link, Message};
 use crate::mux::{self, Chrome, Mux, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
 use crate::overlay::{Action, Overlay};
@@ -203,13 +204,22 @@ pub struct TeamChrome {
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
     pub overlay: Rc<RefCell<Option<Overlay>>>,
+    /// Whether the list of keys is open.
+    pub help: Rc<Cell<bool>>,
     pub bar: Rc<RefCell<Bar>>,
+    /// The workspace's colors.
+    pub palette: Rc<Cell<Palette>>,
 }
 
 impl Chrome for TeamChrome {
     fn draw(&mut self, out: &mut Vec<u8>, panes: &[PaneView<'_>], size: Winsize) {
+        let palette = self.palette.get();
         if let Some(overlay) = &*self.overlay.borrow() {
-            overlay.draw(out, size);
+            overlay.draw(out, size, palette);
+            return;
+        }
+        if self.help.get() {
+            help::draw(out, size, palette);
             return;
         }
         let mut s = String::new();
@@ -228,7 +238,7 @@ impl Chrome for TeamChrome {
             let pos = (1, 1, size.ws_col);
             draw_row(
                 &mut s,
-                &RowStyle::bar(BAR),
+                &RowStyle::bar(palette.bar),
                 pos,
                 false,
                 &format!(" {}", p.detail),
@@ -237,7 +247,7 @@ impl Chrome for TeamChrome {
         }
         if let [first, _, ..] = shown.as_slice() {
             let col = u32::from(first.rect.col + first.rect.cols);
-            s.push_str(&colors::fg(BLUE));
+            s.push_str(&colors::fg(palette.line));
             for row in 1..u32::from(size.ws_row).saturating_sub(1) {
                 s.push_str(&format!("{}┃", at(row, col)));
             }
@@ -245,19 +255,19 @@ impl Chrome for TeamChrome {
         for p in &shown {
             let labeled = Some(p.id) != orchestrator;
             if labeled {
-                draw_label(&mut s, p, self.zoomed.get() == Some(p.id));
+                draw_label(&mut s, p, self.zoomed.get() == Some(p.id), palette);
                 // The divider, left of the pane, branches into the title's
                 // line, unless the pane is zoomed and the divider is not drawn.
                 if let Some(col) = p.rect.col.checked_sub(1) {
                     s.push_str(&format!(
                         "{}{}┣",
-                        colors::fg(BLUE),
+                        colors::fg(palette.line),
                         at(u32::from(p.rect.row) - 1, u32::from(col))
                     ));
                 }
             }
         }
-        self.bar.borrow().draw(&mut s, size);
+        self.bar.borrow().draw(&mut s, size, palette);
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
     }
@@ -290,16 +300,16 @@ fn notes(p: &PaneView, zoomed: bool) -> Vec<String> {
 /// goes at the right end unless the row is too narrow for it. The row is a
 /// heavy line with a space on each side of its text, and a line's width to
 /// spare at each end.
-fn draw_label(s: &mut String, p: &PaneView, zoomed: bool) {
+fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, palette: Palette) {
     let mut left = format!(" {}", p.label);
     for note in notes(p, zoomed) {
         left.push_str(&format!(" · {note}"));
     }
     left.push(' ');
     let style = RowStyle {
-        fill_sgr: colors::fg(BLUE),
+        fill_sgr: colors::fg(palette.line),
         fill: "━",
-        text_sgr: colors::fg(LIGHT_BLUE),
+        text_sgr: colors::fg(palette.text),
         inset: 1,
     };
     let right = format!(" {} ", p.detail);
@@ -551,10 +561,14 @@ struct Host {
     overlay: Rc<RefCell<Option<Overlay>>>,
     /// When the overlay's list was last read.
     overlay_read: i64,
+    /// Whether the list of keys is open, shared with the chrome.
+    help: Rc<Cell<bool>>,
     /// The bar, shared with the chrome.
     bar: Rc<RefCell<Bar>>,
     /// When the bar's list was last read.
     bar_read: i64,
+    /// The workspace's colors, shared with the chrome.
+    palette: Rc<Cell<Palette>>,
     /// Stops of other workspaces, which run on threads so the host keeps
     /// serving: a pipe that becomes readable when one finishes, and their
     /// results.
@@ -610,11 +624,17 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let zoomed = Rc::new(Cell::new(None));
     let overlay = Rc::new(RefCell::new(None));
+    let help = Rc::new(Cell::new(false));
     let bar = Rc::new(RefCell::new(Bar::new(state_path.clone())));
+    let palette = Rc::new(Cell::new(Palette::of(
+        store::load(&state_path)?.accent as usize,
+    )));
     let chrome = TeamChrome {
         zoomed: Rc::clone(&zoomed),
         overlay: Rc::clone(&overlay),
+        help: Rc::clone(&help),
         bar: Rc::clone(&bar),
+        palette: Rc::clone(&palette),
     };
     let mut host = Host {
         exe,
@@ -630,8 +650,10 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         zoomed,
         overlay,
         overlay_read: 0,
+        help,
         bar,
         bar_read: 0,
+        palette,
         stopped: pipe()?,
         stop_results: mpsc::channel(),
     };
@@ -789,6 +811,7 @@ impl Host {
                     }
                     Event::Resized => self.lay_out()?,
                     Event::Overlay => self.toggle_overlay()?,
+                    Event::Key(_) if self.help.get() => self.toggle_help()?,
                     Event::Key(key) if self.bar.borrow().prompt.is_some() => {
                         self.prompt_key(&key);
                     }
@@ -798,7 +821,11 @@ impl Host {
                         }
                     }
                     Event::Workspace(n) => self.switch_to(usize::from(n))?,
+                    Event::Step(n) => self.step(n)?,
                     Event::NewWorkspace => self.open_prompt()?,
+                    Event::Help => self.toggle_help()?,
+                    Event::Detach => self.detach()?,
+                    Event::Accent => self.next_accent(),
                     Event::Message(Message::SwitchFailed(error)) => {
                         match &mut *self.overlay.borrow_mut() {
                             Some(overlay) => overlay.error = error,
@@ -807,10 +834,7 @@ impl Host {
                         self.mux.invalidate_chrome();
                     }
                     Event::Message(_) => {}
-                    Event::Disconnected => {
-                        self.bar.borrow_mut().prompt = None;
-                        self.close_overlay()?;
-                    }
+                    Event::Disconnected => self.close_screens()?,
                     Event::Deadline => {}
                 }
             }
@@ -852,6 +876,7 @@ impl Host {
             return self.close_overlay();
         }
         self.bar.borrow_mut().prompt = None;
+        self.help.set(false);
         self.mux.invalidate_chrome();
         let overlay = match Overlay::load(&self.state_path) {
             Ok(overlay) => overlay,
@@ -948,15 +973,64 @@ impl Host {
         Ok(())
     }
 
+    /// Open the list of keys in place of the overlay or the prompt, or
+    /// close it.
+    fn toggle_help(&mut self) -> Result<()> {
+        let open = !self.help.get();
+        self.close_screens()?;
+        self.help.set(open);
+        self.mux.set_captured(open);
+        self.lay_out()
+    }
+
+    /// Close the overlay, the list of keys, and the prompt.
+    fn close_screens(&mut self) -> Result<()> {
+        let covered = self.overlay.borrow_mut().take().is_some() | self.help.replace(false);
+        self.bar.borrow_mut().prompt = None;
+        self.mux.set_captured(false);
+        self.mux.invalidate_chrome();
+        if covered { self.lay_out() } else { Ok(()) }
+    }
+
+    /// Detach the client.
+    fn detach(&mut self) -> Result<()> {
+        self.runtime.detach(&mut self.mux, "");
+        self.close_screens()
+    }
+
+    /// Give the workspace the next accent color in `ACCENTS`, and keep it in
+    /// the state.
+    fn next_accent(&mut self) {
+        let next = store::update(&self.state_path, |s| {
+            s.accent = (s.accent + 1) % ACCENTS.len() as u64;
+            Ok(s.accent as usize)
+        });
+        match next {
+            Ok(n) => self.palette.set(Palette::of(n)),
+            Err(e) => self.bar.borrow_mut().fail(e.to_string()),
+        }
+        self.mux.invalidate_chrome();
+    }
+
+    /// Switch the client `n` workspaces along the bar, wrapping around.
+    fn step(&mut self, n: i8) -> Result<()> {
+        let bar = self.bar.borrow();
+        let count = bar.entries.len() as isize;
+        let current = bar.entries.iter().position(|e| e.path == self.state_path);
+        drop(bar);
+        match current {
+            Some(i) => self.switch_to((i as isize + isize::from(n)).rem_euclid(count) as usize),
+            None => Ok(()),
+        }
+    }
+
     /// Prompt in the bar for the path of a workspace to switch to, in place
-    /// of the overlay if it is open. The mux captured the input that
+    /// of the overlay or the list of keys. The mux captured the input that
     /// follows.
     fn open_prompt(&mut self) -> Result<()> {
+        self.close_screens()?;
         self.bar.borrow_mut().prompt = Some(String::new());
-        self.mux.invalidate_chrome();
-        if self.overlay.borrow_mut().take().is_some() {
-            self.lay_out()?;
-        }
+        self.mux.set_captured(true);
         Ok(())
     }
 
@@ -996,10 +1070,7 @@ impl Host {
             Action::Switch(dir) => self.runtime.send(Message::Switch(dir)),
             Action::Stop(path) if path == self.state_path => return Ok(true),
             Action::Stop(path) => self.start_stop(path),
-            Action::Detach => {
-                self.runtime.detach(&mut self.mux, "");
-                self.close_overlay()?;
-            }
+            Action::Detach => self.detach()?,
             Action::Close => self.close_overlay()?,
         }
         self.mux.invalidate_chrome();
@@ -1085,6 +1156,7 @@ impl Host {
         }
         *self.overlay.borrow_mut() = None;
         self.bar.borrow_mut().prompt = None;
+        self.help.set(false);
         self.mux.set_captured(false);
         self.runtime.connect(&mut self.mux, link, replies, size)?;
         self.read_bar();
@@ -1237,11 +1309,11 @@ impl Host {
         self.place(&layout.unwrap_or_else(|| hidden(&ids)))
     }
 
-    /// Size and place the panes, then hide them while the overlay covers
-    /// the screen.
+    /// Size and place the panes, then hide them while the overlay or the
+    /// list of keys covers the screen.
     fn place(&mut self, layout: &[(PaneId, Rect)]) -> Result<()> {
         self.mux.set_layout(layout)?;
-        if self.overlay.borrow().is_some() {
+        if self.overlay.borrow().is_some() || self.help.get() {
             self.mux.set_layout(&hidden(&self.pane_ids()))?;
         }
         Ok(())
@@ -1396,13 +1468,9 @@ mod tests {
         }
     }
 
-    const LIGHT_BLUE: StyleColor = StyleColor::Rgb(RgbColor {
-        r: 135,
-        g: 215,
-        b: 255,
-    });
-
-    const BLACK: StyleColor = StyleColor::Rgb(RgbColor { r: 0, g: 0, b: 0 });
+    fn rgb((r, g, b): colors::Rgb) -> StyleColor {
+        StyleColor::Rgb(RgbColor { r, g, b })
+    }
 
     fn fg(screen: &Screen, x: u16, y: u16) -> StyleColor {
         screen.cell(x, y).style().unwrap().fg_color
@@ -1412,6 +1480,8 @@ mod tests {
         TeamChrome {
             zoomed: Rc::default(),
             overlay: Rc::default(),
+            help: Rc::default(),
+            palette: Rc::default(),
             bar: Rc::default(),
         }
     }
@@ -1476,17 +1546,22 @@ mod tests {
                 sp(40),
             ]
         );
-        // The header is black on light blue. The lines and the divider are
-        // blue with no background, and the text is lighter and bold when its
-        // pane has the focus.
-        let blue = StyleColor::Rgb(RgbColor {
-            r: 70,
-            g: 160,
-            b: 220,
-        });
+        // The header is in the bar colors. The lines and the divider are
+        // the accent with no background, and the text is lighter and bold
+        // when its pane has the focus.
+        let palette = Palette::default();
+        let blue = rgb(palette.line);
         for (x, y) in [(0, 0), (39, 0)] {
-            assert_eq!(screen.bg(x, y), LIGHT_BLUE, "background at {x},{y}");
-            assert_eq!(fg(&screen, x, y), BLACK, "foreground at {x},{y}");
+            assert_eq!(
+                screen.bg(x, y),
+                rgb(palette.bar.bg),
+                "background at {x},{y}"
+            );
+            assert_eq!(
+                fg(&screen, x, y),
+                rgb(palette.bar.fg),
+                "foreground at {x},{y}"
+            );
         }
         for (x, y) in [
             (16, 1),
@@ -1501,7 +1576,11 @@ mod tests {
             assert_eq!(screen.bg(x, y), StyleColor::None, "background at {x},{y}");
         }
         for (x, y) in [(19, 1), (36, 1), (19, 5)] {
-            assert_eq!(fg(&screen, x, y), LIGHT_BLUE, "foreground at {x},{y}");
+            assert_eq!(
+                fg(&screen, x, y),
+                rgb(palette.text),
+                "foreground at {x},{y}"
+            );
         }
         assert!(!screen.bold(19, 1));
         assert!(screen.bold(19, 5));

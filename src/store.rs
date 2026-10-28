@@ -61,6 +61,9 @@ pub struct State {
     /// work directly in existing directories, without branches or worktrees.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub no_git: bool,
+    /// The workspace's accent color, numbered in `colors::ACCENTS`.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub accent: u64,
 }
 
 /// A `null` list, which an empty list may have been written as, loads empty.
@@ -425,14 +428,16 @@ mod tests {
                 text: "hi".into(),
             }],
             no_git: true,
+            accent: 3,
         };
         let value = serde_json::to_value(&state).unwrap();
         assert_eq!(value["agents"][0]["id"], "a");
         assert!(value["agents"][0].get("session_id").is_none());
         assert_eq!(value["messages"][0]["from"], "a");
         assert_eq!(value["no_git"], true);
+        assert_eq!(value["accent"], 3);
         let value = serde_json::to_value(State::default()).unwrap();
-        assert!(value.get("no_git").is_none());
+        assert!(value.get("no_git").is_none() && value.get("accent").is_none());
     }
 
     #[test]
@@ -440,7 +445,7 @@ mod tests {
         let mut s = State {
             agents: vec![agent("a", "one"), agent("b", "two")],
             messages: vec![message("a", "1"), message("b", "2"), message("a", "3")],
-            no_git: false,
+            ..State::default()
         };
         let taken = s.take("a");
         assert_eq!(taken.len(), 2);
