@@ -18,9 +18,9 @@ and change over generalized infrastructure or speculative requirements.
 - Hypercube supplies identities, worktrees or worker directories, messages, and
   lifecycle tools. Agents decide how to divide work, collaborate, integrate, and
   assess completion.
-- Hypercube configures harnesses through per-launch flags, environment, and
-  configuration overrides. The user's global and project harness settings and
-  credentials stay as they are, and each harness runs with the user's `HOME`.
+- Configure harnesses only through per-launch flags, environment, and
+  configuration overrides. The user's global and project settings, credentials,
+  and `HOME` stay untouched.
 - macOS only. Agents and Hypercube are trusted local processes running with the
   user's credentials.
 - The `hypercube` process in the user's terminal hosts the session: the panes,
