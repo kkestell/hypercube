@@ -856,10 +856,14 @@ impl Host {
                         }
                     }
                     Event::PaneExited(pane, _) => self.relaunch(pane)?,
+                    Event::Melted(pane) => self.finish_close(pane)?,
                     Event::Zoom(pane) => self.toggle_zoom(pane)?,
                     Event::Focus(pane) => {
-                        // A change of focus ends the zoom.
-                        if self.zoomed.get().is_some_and(|z| z != pane) {
+                        // A change of focus ends the zoom, unless the zoomed
+                        // pane is melting and keeps its place until it goes.
+                        if self.zoomed.get().is_some_and(|z| {
+                            z != pane && !self.mux.pane(z).is_some_and(Pane::melting)
+                        }) {
                             self.unzoom()?;
                         }
                     }
@@ -1326,6 +1330,9 @@ impl Host {
     /// exited. If the harness fails to start, the pane shows why, and the
     /// host doesn't try again.
     fn relaunch(&mut self, pane: PaneId) -> Result<()> {
+        if self.mux.pane(pane).is_none_or(Pane::melting) {
+            return Ok(());
+        }
         let Some(slot) = self.panes.iter_mut().find(|s| s.pane == pane) else {
             return Ok(());
         };
@@ -1380,14 +1387,26 @@ impl Host {
         self.lay_out()
     }
 
-    /// Hang up an agent's program, remove its pane, and lay the panes out
-    /// again. An agent without a pane is already closed.
+    /// Melt an agent's program away, remove its pane once the melt ends, and
+    /// lay the panes out again. An agent without a pane is already closed,
+    /// and a second close of a melting agent does nothing.
     fn close(&mut self, id: &str) -> Result<()> {
         let Some(i) = self.panes.iter().position(|s| s.agent == id) else {
             return Ok(());
         };
-        let slot = self.panes.remove(i);
-        self.mux.remove_pane(slot.pane);
+        let pane = self.panes[i].pane;
+        self.mux.melt_pane(pane);
+        // A pane hidden by a zoom or a screen is removed at once.
+        if self.mux.pane(pane).is_none() {
+            self.finish_close(pane)?;
+        }
+        Ok(())
+    }
+
+    /// Drop a closed pane's agent slot, end any zoom, and lay the panes out
+    /// again.
+    fn finish_close(&mut self, pane: PaneId) -> Result<()> {
+        self.panes.retain(|s| s.pane != pane);
         self.zoomed.set(None);
         self.lay_out()
     }

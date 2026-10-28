@@ -199,8 +199,8 @@ and hides the others. A hidden pane has an empty rectangle: it is not drawn,
 takes no mouse input (a press it had captured ends there), and keeps its
 size, so its program sees no resize. The host zooms the focused pane on
 Ctrl-b z. It restores the normal layout when the key is pressed again, when
-the focus changes, and when a pane is added or removed. The host resizing
-keeps the zoom.
+the focus changes, when a pane is added, and once a closed pane has melted
+away. The host resizing keeps the zoom.
 
 `TeamChrome` draws in the workspace's palette, which `colors::Palette`
 shades from one accent color: the accent itself for the divider and the
@@ -338,8 +338,9 @@ Each connection carries one JSON request line and gets one JSON reply line,
 - `launch {agent, prompt}`: load the agent from the state, build its command
   with `harness::command`, start it in a new pane, and lay the panes out
   again. A non-empty prompt starts its first turn.
-- `close {agent}`: hang up the agent's program, remove its pane, and lay the
-  panes out again. An agent without a pane is already closed.
+- `close {agent}`: hang up the agent's program, melt its pane away over about
+  a second, remove it, and lay the panes out again. A pane hidden by a zoom or
+  a screen is removed at once. An agent without a pane is already closed.
 - `stop`: reply, then end the session.
 - `attach {protocol, size, replies}`: attach the client's terminal; the
   connection then carries the attach stream (see The client).
@@ -459,6 +460,12 @@ child process.
   pane keeps its place, size, and focus.
 - `Mux::release_focus(id)` moves the focus off a pane to the next live pane.
   A pane whose program exits keeps the focus until the caller releases it.
+- `Mux::melt_pane(id)` hangs up the program if it is still running and starts
+  the pane's last drawn screen melting off its bottom edge, column by column,
+  over `MELT_DELAY_MS` plus `MELT_FALL_MS` (900 ms). The focus and the input
+  aimed at the program leave at once, and the pane keeps its place and label
+  row until `Mux::end_melts` removes it. A pane with no place on the screen is
+  removed at once.
 - `Mux::remove_pane(id)` hangs up the program if it is still running, removes
   the pane, moves the focus to the next live pane, and redraws the screen. A
   removed pane's program is reaped after `HANGUP_GRACE_MS` (two seconds),

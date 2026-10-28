@@ -74,6 +74,16 @@ pub const HOLD_TIMEOUT_MS: i64 = 1000;
 /// process group gets SIGKILL.
 pub const HANGUP_GRACE_MS: i64 = 2000;
 
+/// How long a melting pane's columns may wait before they start to fall.
+const MELT_DELAY_MS: i64 = 300;
+
+/// How long a melting column takes to fall the pane's height once it starts.
+const MELT_FALL_MS: i64 = 600;
+
+/// The most steps of a melt column's delay, one step being
+/// `MELT_DELAY_MS / MELT_STEPS`.
+const MELT_STEPS: i64 = 15;
+
 /// Reports a VT220 with ANSI color.
 const DEVICE_ATTRIBUTES: DeviceAttributes = DeviceAttributes {
     primary: PrimaryDeviceAttributes::new(
@@ -154,6 +164,8 @@ pub enum Notice {
     /// The left button was pressed outside every pane, at this column and
     /// row.
     Click(u16, u16),
+    /// This pane has finished melting and was removed.
+    Melted(PaneId),
 }
 
 /// What the chrome sees of a pane.
@@ -404,6 +416,74 @@ impl Frame {
     }
 }
 
+/// A pane's last drawn screen falling off the bottom edge of its place, like
+/// DOOM's screen wipe. The pane keeps its place and its label row until the
+/// melt ends; see `Mux::melt_pane`.
+struct Melt {
+    /// When the melt began, in `now_ms` time.
+    start: i64,
+    /// How long each column waits before it starts to fall, in milliseconds.
+    delays: Vec<i64>,
+    /// The pane's last drawn rows, by viewport row.
+    rows: Vec<RowBuf>,
+}
+
+impl Melt {
+    /// How far column `x` has fallen `elapsed` ms after the melt began, in
+    /// rows of a pane `rows` high.
+    fn fall(&self, x: u16, elapsed: i64, rows: i64) -> i64 {
+        let delay = self.delays.get(usize::from(x)).copied().unwrap_or(0);
+        melt_fall(elapsed - delay, rows)
+    }
+
+    /// When the melt ends.
+    fn end(&self) -> i64 {
+        self.start + MELT_DELAY_MS + MELT_FALL_MS
+    }
+}
+
+/// How far a column falls `elapsed` ms after its delay ran out, in rows of a
+/// pane `rows` high: none until its delay, then faster and faster until it
+/// has fallen the whole height.
+fn melt_fall(elapsed: i64, rows: i64) -> i64 {
+    if elapsed <= 0 {
+        return 0;
+    }
+    if elapsed >= MELT_FALL_MS {
+        return rows;
+    }
+    rows * elapsed * elapsed / (MELT_FALL_MS * MELT_FALL_MS)
+}
+
+/// The delay in milliseconds each of `cols` columns waits before it starts to
+/// fall: a random 0 to 15 steps for the first, and each next one a step down,
+/// a step up, or the same, so neighbouring columns form a ragged curtain
+/// rather than noise. The delays come from a small xorshift64 seeded with
+/// `seed`.
+fn melt_delays(cols: u16, seed: u64) -> Vec<i64> {
+    let step = MELT_DELAY_MS / MELT_STEPS;
+    let mut state = seed | 1;
+    let mut random = move || {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        state
+    };
+    let mut steps = (random() % (MELT_STEPS as u64 + 1)) as i64;
+    (0..cols)
+        .map(|_| {
+            let delay = steps * step;
+            steps = (steps + (random() % 3) as i64 - 1).clamp(0, MELT_STEPS);
+            delay
+        })
+        .collect()
+}
+
+/// The seed of a melt's delays: the time it began and the pane's identity.
+fn melt_seed(now: i64, id: PaneId) -> u64 {
+    (now as u64).wrapping_mul(0x9e37_79b9_7f4a_7c15) ^ u64::from(id.0)
+}
+
 /// Per-program state.
 pub struct Pane {
     id: PaneId,
@@ -418,6 +498,8 @@ pub struct Pane {
     rect: Rect,
     pub terminal: Terminal<'static, 'static>,
     frame: Rc<RefCell<Frame>>,
+    /// How the pane's last drawn screen is falling as it goes.
+    melt: Option<Melt>,
     dirty: bool,
     notifications: Notifications,
     /// How far the view was scrolled when the chrome was last drawn.
@@ -453,6 +535,7 @@ impl Pane {
             rect: Rect::default(),
             terminal,
             frame,
+            melt: None,
             dirty: true,
             notifications: Notifications::default(),
             scrolled_drawn: 0,
@@ -538,6 +621,11 @@ impl Pane {
     /// The program's exit status once it has been reaped.
     pub fn status(&self) -> Option<u8> {
         self.status
+    }
+
+    /// Whether the pane is melting away before it is removed.
+    pub fn melting(&self) -> bool {
+        self.melt.is_some()
     }
 
     /// The program's process ID, which is also its process group ID.
@@ -748,9 +836,9 @@ impl Pane {
         Ok(text.map(|t| t.to_vec()))
     }
 
-    /// Whether the program hasn't been reaped.
+    /// Whether the program hasn't been reaped and the pane isn't melting.
     fn live(&self) -> bool {
-        self.status.is_none()
+        self.status.is_none() && self.melt.is_none()
     }
 
     fn mode(&self, mode: Mode) -> bool {
@@ -789,6 +877,72 @@ impl Pane {
         }
         frame.draw(out, self.rect);
         Ok(())
+    }
+
+    /// Draw a melting pane: every column of its last drawn screen falls on
+    /// its own, leaving blanks above it, clipped to the pane's place. A wide
+    /// character is drawn only with the column after it, and its second cell
+    /// is skipped while the first covers it.
+    fn draw_melt(&self, out: &mut Vec<u8>, now: i64) {
+        let Some(melt) = &self.melt else { return };
+        let rect = self.rect;
+        let elapsed = now - melt.start;
+        let rows = i64::from(rect.rows);
+        for y in 0..rect.rows {
+            let mut prev: Option<Style> = None;
+            for x in 0..rect.cols {
+                let col = rect.col + x;
+                let _ = write!(out, "\x1b[{};{}H", rect.row + y + 1, col + 1);
+                let fall = melt.fall(x, elapsed, rows);
+                let Some(row) = (i64::from(y) >= fall)
+                    .then(|| melt.rows.get((i64::from(y) - fall) as usize))
+                    .flatten()
+                else {
+                    write_blank(out, &mut prev);
+                    continue;
+                };
+                let Some(&(raw, style, start, len)) = row.cells.get(usize::from(x)) else {
+                    write_blank(out, &mut prev);
+                    continue;
+                };
+                match raw.wide().unwrap_or(CellWide::Narrow) {
+                    CellWide::Wide => {
+                        let right = x + 1;
+                        let covered = right < rect.cols
+                            && melt.fall(right, elapsed, rows) == fall
+                            && usize::from(right) < row.cells.len();
+                        if covered {
+                            let style = cell_style(raw, style);
+                            write_cell(
+                                out,
+                                col,
+                                raw,
+                                style,
+                                &row.text[start..start + len],
+                                &mut prev,
+                            );
+                        } else {
+                            write_blank(out, &mut prev);
+                        }
+                    }
+                    // The wide character before it covers this cell.
+                    CellWide::SpacerTail if x > 0 && melt.fall(x - 1, elapsed, rows) == fall => {}
+                    CellWide::SpacerTail => write_blank(out, &mut prev),
+                    _ => {
+                        let style = cell_style(raw, style);
+                        write_cell(
+                            out,
+                            col,
+                            raw,
+                            style,
+                            &row.text[start..start + len],
+                            &mut prev,
+                        );
+                    }
+                }
+            }
+        }
+        out.extend_from_slice(b"\x1b[0m");
     }
 
     fn cursor(&self) -> Cursor {
@@ -1027,7 +1181,7 @@ impl Mux {
         let Some(index) = self.index(id) else {
             return Ok(());
         };
-        if self.panes[index].live() {
+        if self.panes[index].live() || self.panes[index].melting() {
             return Ok(());
         }
         let orphan = self.panes[index].restart(label, &self.host_replies)?;
@@ -1072,6 +1226,49 @@ impl Mux {
             self.focus_from(index);
         }
         self.repaint();
+    }
+
+    /// Start a pane melting away: hang up its program if it is still running,
+    /// drop the host input aimed at it, and move the focus off it like
+    /// `remove_pane` does. The pane keeps its place and title row while its
+    /// last drawn screen falls off its bottom edge, and `end_melts` removes
+    /// it when the melt ends. A pane with no place on the screen is removed
+    /// at once, and one already melting is left alone.
+    pub fn melt_pane(&mut self, id: PaneId) {
+        let Some(index) = self.index(id) else { return };
+        if self.panes[index].melting() {
+            return;
+        }
+        if self.panes[index].rect.cols == 0 || self.panes[index].rect.rows == 0 {
+            self.remove_pane(id);
+            return;
+        }
+        let now = now_ms();
+        let pane = &mut self.panes[index];
+        let rows = {
+            let mut frame = pane.frame.borrow_mut();
+            // A held pane's capture is its last completed frame.
+            if !pane.held() {
+                let _ = frame.capture(&pane.terminal);
+            }
+            std::mem::take(&mut frame.rows_seen)
+                .into_iter()
+                .map(|(row, _)| row)
+                .collect()
+        };
+        let delays = melt_delays(pane.rect.cols, melt_seed(now, id));
+        pane.melt = Some(Melt {
+            start: now,
+            delays,
+            rows,
+        });
+        self.orphans.extend(pane.hang_up());
+        self.drop_input_for(id);
+        if self.focus() == Some(id) {
+            self.shared.focus.set(None);
+            self.focus_from(index);
+        }
+        self.chrome_dirty = true;
     }
 
     /// Collect the exit status of every pane program that has exited, and
@@ -1202,12 +1399,39 @@ impl Mux {
             .min()
     }
 
+    /// When the earliest melt ends.
+    pub fn melt_deadline(&self) -> Option<i64> {
+        self.panes
+            .iter()
+            .filter_map(|p| p.melt.as_ref())
+            .map(Melt::end)
+            .min()
+    }
+
+    /// Remove every pane whose melt has ended, drawing the screen again, and
+    /// report each as a `Notice::Melted`.
+    pub fn end_melts(&mut self, now: i64) {
+        let mut melted = Vec::new();
+        self.panes.retain(|p| {
+            let ended = p.melt.as_ref().is_some_and(|m| now >= m.end());
+            if ended {
+                melted.push(p.id);
+            }
+            !ended
+        });
+        if melted.is_empty() {
+            return;
+        }
+        self.repaint();
+        self.notices.extend(melted.into_iter().map(Notice::Melted));
+    }
+
     pub fn needs_render(&self) -> bool {
         self.chrome_dirty
             || self.clear
             || self.shared.bell.get()
             || self.shared.title_changed.get()
-            || self.panes.iter().any(Pane::needs_render)
+            || self.panes.iter().any(|p| p.melting() || p.needs_render())
     }
 
     /// Focus a pane whose program hasn't exited, sending focus events to
@@ -1580,7 +1804,7 @@ impl Mux {
         let Some(index) = self
             .panes
             .iter()
-            .position(|p| p.rect.contains(event.col, event.row))
+            .position(|p| !p.melting() && p.rect.contains(event.col, event.row))
         else {
             if event.action == mouse::Action::Press && event.button == Some(Button::Left) {
                 self.notices.push(Notice::Click(event.col, event.row));
@@ -1736,8 +1960,13 @@ impl Mux {
             self.chrome.draw(&mut out, &views, self.ws);
             self.chrome_dirty = false;
         }
+        let now = now_ms();
         for p in &mut self.panes {
-            p.render(&mut out)?;
+            if p.melting() {
+                p.draw_melt(&mut out, now);
+            } else {
+                p.render(&mut out)?;
+            }
         }
 
         let Some(p) = self.input_pane() else {
@@ -2329,28 +2558,59 @@ impl RowBuf {
             {
                 s.inverse = !s.inverse;
             }
-            if prev != Some(s) {
-                write_sgr(out, s);
-                prev = Some(s);
-            }
-
-            if raw.has_text().unwrap_or(false) && len > 0 {
-                let mut buf = [0; 4];
-                for &c in &self.text[start..start + len] {
-                    out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
-                }
-            } else {
-                out.push(b' ');
-            }
-
-            // Re-sync the column after a wide character in case the host
-            // terminal disagrees about its width.
-            if wide == CellWide::Wide {
-                let _ = write!(out, "\x1b[{}G", x + usize::from(col) + 3);
-            }
+            write_cell(
+                out,
+                col + x as u16,
+                raw,
+                s,
+                &self.text[start..start + len],
+                &mut prev,
+            );
         }
         out.extend_from_slice(b"\x1b[0m");
     }
+}
+
+/// Write one cell's text at the cursor with `style`, and a space if it has
+/// none. `col` is its 0-based column on the host terminal, for re-syncing
+/// after a wide character. `prev` is the style written last, so an SGR
+/// sequence is written only when the style changes.
+fn write_cell(
+    out: &mut Vec<u8>,
+    col: u16,
+    raw: RawCell,
+    style: Style,
+    text: &[char],
+    prev: &mut Option<Style>,
+) {
+    if *prev != Some(style) {
+        write_sgr(out, style);
+        *prev = Some(style);
+    }
+    if raw.has_text().unwrap_or(false) && !text.is_empty() {
+        let mut buf = [0; 4];
+        for &c in text {
+            out.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
+        }
+    } else {
+        out.push(b' ');
+    }
+    // Re-sync the column after a wide character in case the host terminal
+    // disagrees about its width.
+    if raw.wide().unwrap_or(CellWide::Narrow) == CellWide::Wide {
+        let _ = write!(out, "\x1b[{}G", u32::from(col) + 3);
+    }
+}
+
+/// Write a blank in the default style at the cursor, after the style written
+/// last, `prev`.
+fn write_blank(out: &mut Vec<u8>, prev: &mut Option<Style>) {
+    let style = Style::default();
+    if *prev != Some(style) {
+        write_sgr(out, style);
+        *prev = Some(style);
+    }
+    out.push(b' ');
 }
 
 /// The style a cell is drawn with. Cells cleared with a background color
@@ -3041,6 +3301,95 @@ mod tests {
         // A click where the right pane was lands in the left one.
         p.mux.input(b"\x1b[<0;50;5M\x1b[<0;50;5m");
         assert_eq!(p.mux.focus(), Some(left));
+    }
+
+    #[test]
+    fn a_melt_column_falls_after_its_delay_and_stops_at_the_pane_height() {
+        let melt = Melt {
+            start: 0,
+            delays: vec![100],
+            rows: Vec::new(),
+        };
+        // Before its delay, and at its start, the column hasn't moved.
+        assert_eq!(melt.fall(0, 50, 10), 0);
+        assert_eq!(melt.fall(0, 100, 10), 0);
+        // Mid-fall, 400 ms into a 600 ms fall of 10 rows.
+        assert_eq!(melt.fall(0, 500, 10), 4);
+        // The whole height at the end of the fall, and no further.
+        assert_eq!(melt.fall(0, 700, 10), 10);
+        assert_eq!(melt.fall(0, 5000, 10), 10);
+        // A column past the delays has no delay.
+        assert_eq!(melt.fall(1, MELT_DELAY_MS + MELT_FALL_MS, 10), 10);
+    }
+
+    #[test]
+    fn melt_delays_stay_in_range_and_neighbours_differ_by_at_most_a_step() {
+        let step = MELT_DELAY_MS / MELT_STEPS;
+        for seed in 1..=100 {
+            let delays = melt_delays(40, seed);
+            assert_eq!(delays.len(), 40);
+            for &delay in &delays {
+                assert!((0..=MELT_DELAY_MS).contains(&delay), "{delays:?}");
+                assert_eq!(delay % step, 0, "{delays:?}");
+            }
+            for pair in delays.windows(2) {
+                assert!((pair[0] - pair[1]).abs() <= step, "{delays:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn melting_a_pane_moves_the_focus_off_it_and_makes_it_not_live() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        assert_eq!(p.mux.focus(), Some(left));
+        p.mux.take_notices();
+        p.mux.melt_pane(left);
+        assert!(p.mux.pane(left).unwrap().melting());
+        assert!(!p.mux.pane(left).unwrap().live());
+        assert_eq!(p.mux.pane(left).unwrap().pty(), None);
+        assert_eq!(p.mux.focus(), Some(right));
+        assert_eq!(p.mux.take_notices(), [Notice::Focus(right)]);
+        assert!(p.mux.needs_render());
+        // A second melt of the same pane leaves it alone.
+        p.mux.melt_pane(left);
+        assert!(p.mux.pane(left).unwrap().melting());
+        assert_eq!(p.mux.take_notices(), []);
+    }
+
+    #[test]
+    fn end_melts_removes_a_pane_when_its_melt_ends() {
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        p.mux.melt_pane(id);
+        let end = p.mux.melt_deadline().unwrap();
+        p.mux.take_notices();
+        p.mux.end_melts(end - 1);
+        assert!(p.mux.pane(id).is_some());
+        assert_eq!(p.mux.take_notices(), []);
+        p.mux.end_melts(end);
+        assert!(p.mux.pane(id).is_none());
+        assert_eq!(p.mux.take_notices(), [Notice::Melted(id)]);
+        assert_eq!(p.mux.melt_deadline(), None);
+    }
+
+    #[test]
+    fn a_hidden_pane_given_to_melt_pane_is_removed_at_once() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        let full = Rect {
+            col: 0,
+            row: 0,
+            cols: 81,
+            rows: 10,
+        };
+        p.mux
+            .set_layout(&[(left, full), (right, Rect::default())])
+            .unwrap();
+        p.mux.take_notices();
+        p.mux.melt_pane(right);
+        assert!(p.mux.pane(right).is_none());
+        assert_eq!(p.mux.take_notices(), []);
     }
 
     #[test]

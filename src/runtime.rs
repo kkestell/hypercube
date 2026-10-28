@@ -50,6 +50,8 @@ pub enum Event {
     /// The left button was pressed outside every pane, at this column and
     /// row.
     Click(u16, u16),
+    /// A melting pane finished melting and was removed.
+    Melted(PaneId),
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -155,6 +157,7 @@ impl Runtime {
     ) -> Result<Vec<Event>, Box<dyn Error>> {
         let mut events = Vec::new();
         loop {
+            mux.end_melts(now_ms());
             let exited = mux.reap();
             if !exited.is_empty() {
                 // Draw everything an exited program wrote before reporting
@@ -186,6 +189,7 @@ impl Runtime {
                 Notice::Accent => Event::Accent,
                 Notice::Help => Event::Help,
                 Notice::Click(col, row) => Event::Click(col, row),
+                Notice::Melted(id) => Event::Melted(id),
             }));
             let now = now_ms();
             if let Some(link) = &self.link
@@ -245,6 +249,9 @@ impl Runtime {
             }
             if let Some(hold) = mux.hold_deadline() {
                 wake = earliest(wake, hold);
+            }
+            if let Some(melt) = mux.melt_deadline() {
+                wake = earliest(wake, melt);
             }
             if let Some(input) = mux.input_deadline() {
                 wake = earliest(wake, input);

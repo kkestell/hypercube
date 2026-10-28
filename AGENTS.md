@@ -54,7 +54,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/lib.rs`: the library's module declarations. The terminal layer is:
   - `src/mux.rs`: panes and their Ghostty terminals, caller layouts and
     chrome, host input and mouse routing, scrolling, selection and copying,
-    notification passthrough, mode mirroring, and the renderer.
+    notification passthrough, mode mirroring, the melt of closed panes, and
+    the renderer.
   - `src/pty.rs`: programs started in ptys.
   - `src/runtime.rs`: the step-driven event loop, which draws for the
     attached client over a link.
