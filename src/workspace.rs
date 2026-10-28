@@ -2,7 +2,7 @@
 
 use std::error::Error;
 use std::ffi::OsStr;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -363,7 +363,8 @@ pub fn dirty(dir: &Path) -> Result<bool> {
     Ok(!git(dir, &["status", "--porcelain"])?.is_empty())
 }
 
-/// Remove the worktree and delete its branch if `removable` allows it.
+/// Remove the worktree and delete its branch if `removable` allows it, then
+/// the checkout's `.hypercube/` directory if no worktree is left in it.
 /// `removable` has checked the branch against HEAD, so the deletion ignores
 /// the branch's upstream, and has checked the worktree, so `--force` only lets
 /// Git remove a worktree with submodules. A worktree or branch that is
@@ -375,11 +376,24 @@ pub fn remove_worktree(root: &Path, dir: &Path, branch: &str) -> Result<()> {
     }
     // Forget a worktree whose directory was deleted, so its branch can go.
     git(root, &["worktree", "prune"])?;
+    remove_empty_worktrees_dir(root)?;
     if !exists(root, branch) {
         return Ok(());
     }
     git(root, &["branch", "-D", branch])?;
     Ok(())
+}
+
+/// Remove the checkout's `.hypercube/` directory, which Git leaves behind when
+/// it removes the last worktree in it. A directory that still holds a worktree
+/// stays.
+fn remove_empty_worktrees_dir(root: &Path) -> Result<()> {
+    let dir = root.join(".hypercube");
+    match std::fs::remove_dir(&dir) {
+        Ok(()) => Ok(()),
+        Err(e) if matches!(e.kind(), ErrorKind::DirectoryNotEmpty | ErrorKind::NotFound) => Ok(()),
+        Err(e) => Err(format!("remove {}: {e}", dir.display()).into()),
+    }
 }
 
 fn exists(root: &Path, branch: &str) -> bool {
@@ -738,6 +752,21 @@ mod tests {
             remove_worktree(&root, &dir, &branch).is_err(),
             "removed an unmerged branch without a worktree"
         );
+    }
+
+    #[test]
+    fn removing_the_last_worktree_removes_the_hypercube_directory() {
+        let (_tmp, root) = repo();
+        let hypercube = root.join(".hypercube");
+        let (w1, w2) = (worktree_dir(&root, "w1"), worktree_dir(&root, "w2"));
+        add_worktree(&root, &w1, &worker_branch("w1")).unwrap();
+        add_worktree(&root, &w2, &worker_branch("w2")).unwrap();
+        remove_worktree(&root, &w1, &worker_branch("w1")).unwrap();
+        assert!(hypercube.join("w2").exists(), "w2 was removed");
+        remove_worktree(&root, &w2, &worker_branch("w2")).unwrap();
+        assert!(!hypercube.exists(), "empty .hypercube remains");
+        add_worktree(&root, &w1, &worker_branch("w1")).unwrap();
+        assert!(w1.join(".git").exists(), "worktree was not recreated");
     }
 
     #[test]
