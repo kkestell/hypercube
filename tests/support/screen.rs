@@ -12,6 +12,18 @@ pub const COMPARED_MODES: [u16; 19] = [
     1, 5, 9, 66, 67, 1000, 1002, 1003, 1004, 1005, 1006, 1007, 1015, 1016, 1035, 1036, 1039, 2004,
     2027,
 ];
+/// The mouse modes the host has whatever the program's: SGR button-event
+/// reporting. Any-event reporting (1003) follows the program.
+const HOST_MOUSE_MODES: [(u16, bool); 8] = [
+    (9, false),
+    (1000, false),
+    (1002, true),
+    (1005, false),
+    (1006, true),
+    (1007, true),
+    (1015, false),
+    (1016, false),
+];
 #[derive(Debug, PartialEq, Eq)]
 pub enum Width {
     Narrow,
@@ -118,6 +130,15 @@ pub fn take(t: &Terminal) -> Result<Snapshot> {
     })
 }
 impl Snapshot {
+    /// The program's snapshot with the mouse modes the host has instead of
+    /// the program's.
+    pub fn with_host_mouse_modes(mut self) -> Self {
+        for (mode, host) in HOST_MOUSE_MODES {
+            let i = COMPARED_MODES.iter().position(|&m| m == mode).unwrap();
+            self.modes[i] = host;
+        }
+        self
+    }
     pub fn dump(&self) -> String {
         let mut out = String::new();
         for row in self.cells.chunks(self.cols as usize) {

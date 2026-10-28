@@ -47,7 +47,8 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 - `src/main.rs`: the `hypercube` executable and its commands.
 - `src/lib.rs`: the library's modules. The terminal layer is:
   - `src/mux.rs`: panes and their Ghostty terminals, caller layouts and
-    chrome, host input routing, mode mirroring, and the renderer.
+    chrome, host input and mouse routing, scrolling, selection and copying,
+    notification passthrough, mode mirroring, and the renderer.
   - `src/pty.rs`: programs started in ptys.
   - `src/runtime.rs`: the host terminal and the step-driven event loop.
   - `src/winch.rs`: SIGWINCH delivered through a pipe.

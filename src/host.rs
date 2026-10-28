@@ -220,13 +220,18 @@ impl Chrome for TeamChrome {
 }
 
 /// A pane's label row: a rule with the label near its left end, bold when the
-/// pane has the focus, and the exit status once its program has exited.
+/// pane has the focus, the exit status once its program has exited, and how
+/// many rows its view is scrolled up.
 fn draw_label(s: &mut String, p: &PaneView) {
     let lead = p.rect.cols.min(2);
-    let text = match p.status {
-        Some(status) => format!(" {} · exited {status} ", p.label),
-        None => format!(" {} ", p.label),
-    };
+    let mut text = format!(" {}", p.label);
+    if let Some(status) = p.status {
+        text.push_str(&format!(" · exited {status}"));
+    }
+    if p.scrolled > 0 {
+        text.push_str(&format!(" · ↑{}", p.scrolled));
+    }
+    text.push(' ');
     let text = fit(&text, p.rect.cols - lead);
     let bold = if p.focused { "\x1b[1m" } else { "" };
     // The label goes over the rule, which shows wherever the label is shorter
@@ -883,6 +888,7 @@ mod tests {
             rect,
             focused,
             status,
+            scrolled: 0,
         }
     }
 
@@ -897,7 +903,10 @@ mod tests {
         let layout = rects(layout(size(30, 8), &ids(3)));
         let panes = [
             view(1, "orch", layout[0], true, None),
-            view(2, "w1", layout[1], false, None),
+            PaneView {
+                scrolled: 42,
+                ..view(2, "w1", layout[1], false, None)
+            },
             view(3, "w2", layout[2], false, Some(3)),
         ];
         let screen = Screen::draw(&panes, 30, 8);
@@ -905,7 +914,7 @@ mod tests {
         assert_eq!(
             rows,
             [
-                "━━ orch ━━━━┳━━ w1 ━━━━━━━━━━━",
+                "━━ orch ━━━━┳━━ w1 · ↑42 ━━━━━",
                 "            ┃                 ",
                 "            ┃                 ",
                 "            ┣━━ w2 · exited 3 ",
