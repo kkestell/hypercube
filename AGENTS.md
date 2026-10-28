@@ -151,8 +151,10 @@ Claude Code asks once to trust the scratch repository. `make dev-clean` removes
 the dev agents' Claude Code transcripts but not that trust entry in
 `~/.claude.json`.
 
-When a change is done and Kyle is happy with it, run `make install` and tell
-Kyle to run `hypercube stop --all` and start `hypercube` again. Stopping ends
+When Kyle says the change is good and to commit it, run `make dev-clean`
+before or with the commit, so no dev session outlives the work. When a change
+is done and Kyle is happy with it, run `make install` and tell Kyle to run
+`hypercube stop --all` and start `hypercube` again. Stopping ends
 every agent, so do not run it yourself, and a running host keeps the
 executable it started with until then.
 
