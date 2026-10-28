@@ -1,11 +1,12 @@
 ZIG_VERSION := 0.17.0
-ZIG_TARGET := aarch64-macos
-ZIG_NAME := zig-$(ZIG_TARGET)-$(ZIG_VERSION)
+ZIG_NAME := zig-aarch64-macos-$(ZIG_VERSION)
+ZIG_URL := https://ziglang.org/download/$(ZIG_VERSION)/$(ZIG_NAME).tar.xz
 ZIG_SHA256 := b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a
 ZIG := .toolchain/$(ZIG_NAME)/zig
 GHOSTTY := vendor/ghostty/build.zig
+DOWNLOAD := .toolchain/download
 
-.PHONY: build test install toolchain
+.PHONY: build test check install
 
 build: $(ZIG) $(GHOSTTY)
 	cargo build
@@ -13,20 +14,24 @@ build: $(ZIG) $(GHOSTTY)
 test: $(ZIG) $(GHOSTTY)
 	cargo test
 
+check: $(ZIG) $(GHOSTTY)
+	cargo build
+	cargo clippy --all-targets -- -D warnings
+	cargo fmt --check
+	cargo test
+
 install: $(ZIG) $(GHOSTTY)
 	cargo install --path .
 
-toolchain: $(ZIG)
-
 $(ZIG):
-	rm -rf .toolchain/download
-	mkdir -p .toolchain/download
-	curl -fL -o .toolchain/download/$(ZIG_NAME).tar.xz https://ziglang.org/download/$(ZIG_VERSION)/$(ZIG_NAME).tar.xz
-	echo "$(ZIG_SHA256)  .toolchain/download/$(ZIG_NAME).tar.xz" | shasum -a 256 -c
-	tar -xJf .toolchain/download/$(ZIG_NAME).tar.xz -C .toolchain/download
+	rm -rf $(DOWNLOAD)
+	mkdir -p $(DOWNLOAD)
+	curl -fL -o $(DOWNLOAD)/zig.tar.xz $(ZIG_URL)
+	echo "$(ZIG_SHA256)  $(DOWNLOAD)/zig.tar.xz" | shasum -a 256 -c
+	tar -xJf $(DOWNLOAD)/zig.tar.xz -C $(DOWNLOAD)
 	rm -rf .toolchain/$(ZIG_NAME)
-	mv .toolchain/download/$(ZIG_NAME) .toolchain/$(ZIG_NAME)
-	rm -rf .toolchain/download
+	mv $(DOWNLOAD)/$(ZIG_NAME) .toolchain/$(ZIG_NAME)
+	rm -rf $(DOWNLOAD)
 
 $(GHOSTTY):
 	git submodule update --init vendor/ghostty

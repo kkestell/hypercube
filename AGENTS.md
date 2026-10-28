@@ -116,6 +116,8 @@ pass:
 cargo build && cargo clippy --all-targets -- -D warnings && cargo fmt --check && cargo test
 ```
 
+`make check` runs the same four commands.
+
 ## Smoke testing
 
 For harness smoke tests, use Claude Code `haiku` and Pi
