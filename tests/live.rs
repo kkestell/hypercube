@@ -14,6 +14,7 @@ use hypercube::pty::{self, Pty};
 use hypercube::runtime::{Event, Runtime};
 use libghostty_vt::RenderState;
 use libghostty_vt::Terminal;
+use libghostty_vt::mouse;
 use libghostty_vt::render::{CellIterator, CursorVisualStyle, RowIterator};
 use libghostty_vt::screen::CellWide;
 use libghostty_vt::terminal::{Mode, ModeKind, Point, PointCoordinate};
@@ -640,6 +641,50 @@ fn mouse_reports_go_to_the_pane_under_the_pointer() {
         b"\x1b[I\x1b[<0;2;2M\x1b[<0;2;2m\x1b[<0;3;3M\x1b[<0;1;4m!"
     );
     assert!(!h.screen().contains("left got"));
+}
+
+/// What the host terminal reports for a left-button press at its first
+/// cell, as its mouse modes encode it.
+fn host_click(h: &Host) -> Vec<u8> {
+    let mut encoder = mouse::Encoder::new().unwrap();
+    encoder
+        .set_options_from_terminal(&h.terminal)
+        .set_size(mouse::EncoderSize {
+            screen_width: 81 * 8,
+            screen_height: 12 * 16,
+            cell_width: 8,
+            cell_height: 16,
+            padding_top: 0,
+            padding_bottom: 0,
+            padding_right: 0,
+            padding_left: 0,
+        });
+    let mut event = mouse::Event::new().unwrap();
+    event
+        .set_action(mouse::Action::Press)
+        .set_button(Some(mouse::Button::Left))
+        .set_position(mouse::Position { x: 4.0, y: 8.0 });
+    let mut buf = [0; 64];
+    let n = encoder.encode(&event, &mut buf).unwrap();
+    buf[..n].to_vec()
+}
+
+#[test]
+fn the_host_reports_clicks_whatever_the_focused_pane_tracks() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "plain", "0"]);
+    h.spawn_argv(
+        "any",
+        &["/bin/sh", "-c", "printf '\\033[?1003hany ready'; sleep 30"],
+    );
+    h.wait_screen("left ready");
+    h.wait_screen("any ready");
+    h.until(|h| host_click(h) == b"\x1b[<0;1;1M");
+    // Focus moves to the pane with any-event tracking, and back.
+    h.send("\x1d");
+    h.until(|h| h.mode(1003) && host_click(h) == b"\x1b[<0;1;1M");
+    h.send("\x1d");
+    h.until(|h| !h.mode(1003) && host_click(h) == b"\x1b[<0;1;1M");
 }
 
 #[test]

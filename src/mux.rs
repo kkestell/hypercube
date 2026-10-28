@@ -1286,12 +1286,14 @@ impl Mux {
 
         // The host reports button presses, releases, and drags in SGR form,
         // and motion without a button while the focused pane asks for it.
+        // Resetting any tracking mode turns tracking off, so the mode to use
+        // is set last.
         let any_motion = self.focused().is_some_and(|p| p.mode(Mode::ANY_MOUSE));
         if self.host_any_motion != Some(any_motion) {
-            if self.host_any_motion.is_none() {
-                out.extend_from_slice(b"\x1b[?1002h\x1b[?1006h");
+            out.extend_from_slice(b"\x1b[?1006h\x1b[?1003l\x1b[?1002h");
+            if any_motion {
+                out.extend_from_slice(b"\x1b[?1003h");
             }
-            let _ = write!(out, "\x1b[?1003{}", if any_motion { 'h' } else { 'l' });
             self.host_any_motion = Some(any_motion);
         }
 
