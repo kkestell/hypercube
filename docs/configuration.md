@@ -1,8 +1,9 @@
 # Configuration
 
-`config.json` lives at `~/.config/hypercube/config.json`. `XDG_CONFIG_HOME`
-overrides the parent directory. `config::load` reads and validates it; every
-value must be set.
+`config.json` lives at `~/.config/hypercube/config.json`. A non-empty
+`XDG_CONFIG_HOME` selects `$XDG_CONFIG_HOME/hypercube/config.json` instead.
+`config::load` reads and validates it. The orchestrator's harness, model, and
+effort and every profile field shown below are required.
 
 ```json
 {
@@ -33,7 +34,9 @@ value must be set.
 ## Orchestrator
 
 `orchestrator` sets the harness, model, and effort of the orchestrator agent.
-The first `hypercube` run in a workspace creates the orchestrator from it.
+When a workspace has no saved agents, `hypercube` creates the orchestrator
+from these settings. Existing agents retain the harness, model, and effort
+saved in the workspace state file when a session restarts.
 
 ## Profiles
 
@@ -44,32 +47,33 @@ The first `hypercube` run in a workspace creates the orchestrator from it.
   with the harness, model, and effort, in its SessionStart facts.
 - `harness`, `model`, `effort`: the worker's settings, used exactly as given.
 
-At least one profile is required.
+At least one profile is required. Worker creation reads the current file and
+saves the chosen profile's settings on the new agent. The MCP tool list and
+the orchestrator's SessionStart facts also read profiles from the current
+file.
 
 ## Validation
 
-Loading fails, naming the file and the offending entry, when:
+Loading errors name the file; validation errors also identify the
+orchestrator or profile involved. Loading fails when:
 
-- the file is missing or is not valid JSON;
+- the file is unreadable, is not valid JSON, or has values of the wrong type;
 - `harness` is not `claude` or `pi`, for the orchestrator or any profile;
 - `model` or `effort` is empty;
 - `profiles` is empty;
 - a profile has no `name` or no `description`;
 - two profiles share a `name`.
 
-Unknown fields are ignored.
+Names are compared exactly, including case. Required strings are checked for
+zero length. Unknown fields are ignored.
 
 ## Harness settings
 
 `harness` is `claude` or `pi`.
 
-`effort` is passed through as Claude Code's `--effort` and Pi's `--thinking`.
+`model` is passed to the harness's `--model`. `effort` is passed to Claude
+Code's `--effort` or Pi's `--thinking`. Hypercube validates both as non-empty
+strings; the harness interprets the supplied values.
 
-Claude Code models are the names `--model` accepts, such as `opus` or `haiku`.
-Pi models use the full `provider/id`, such as `openai/gpt-6.1-sol` or
-`openrouter/deepseek/deepseek-v4.1-flash-1017`. Pi can fuzzy-match a partial ID
-to another model and passes an unknown ID to the provider, which rejects it in
-the pane.
-
-An agent saved in a state file with any other harness fails to launch, and the
-host reports the error.
+Claude Code model names include `opus` and `haiku`. Pi accepts `provider/id`,
+such as `openrouter/~deepseek/deepseek-flash-latest`.

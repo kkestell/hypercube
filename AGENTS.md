@@ -4,8 +4,10 @@ Hypercube runs a team of local coding agents in one terminal. Each agent is a
 native harness TUI, Claude Code or Pi, running in its own pty and pane. Hypercube
 draws the panes itself through Ghostty's libghostty-vt. Agents message each other
 through an MCP tool and receive messages through harness hooks. One
-orchestrator works in the original checkout and manages workers. A worker either
-has its own Git worktree or works directly in an existing directory.
+orchestrator runs in the workspace directory and manages workers. In a Git
+checkout, workers can have their own branches and worktrees. Workers can also
+run directly in existing directories; outside Git, each worker uses an
+existing directory.
 
 Kyle is the only user. Favor small implementations that are easy to understand
 and change over generalized infrastructure or speculative requirements.
@@ -46,7 +48,7 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 ## Layout
 
 - `src/main.rs`: the `hypercube` executable and its commands.
-- `src/lib.rs`: the library's modules. The terminal layer is:
+- `src/lib.rs`: the library's module declarations. The terminal layer is:
   - `src/mux.rs`: panes and their Ghostty terminals, caller layouts and
     chrome, host input and mouse routing, scrolling, selection and copying,
     notification passthrough, mode mirroring, and the renderer.
@@ -79,8 +81,8 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
   fixtures in `tests/support/fixtures.rs`, seeded streams from
   `tests/support/fuzz.rs` (`HYPERCUBE_FUZZ_ITERATIONS` and
   `HYPERCUBE_FUZZ_SEED`, 300 from seed 1 by default), and every `.rec` file in
-  `tests/recordings`. Fixtures marked `known` cover differences the mux does not
-  resolve and pass while the difference remains.
+  `tests/recordings`. Fixtures marked `known` track expected screen
+  differences and pass while the difference remains.
 - `tests/support/screen.rs`: independent render-state snapshots and cell-level
   diagnostics for the round-trip tests.
 - `tests/holds.rs`: what a pane draws while its program holds rendering
@@ -90,7 +92,8 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
   terminal, and runs the test child in the panes.
 - `tests/integration.rs`: `hypercube` in a pty with isolated state and
   configuration, a temporary repository, and the harness stand-ins first on
-  `PATH`: panes, worktrees, nudges, `stop`, `status`, restart, and `delete`.
+  `PATH`: panes, worktrees, nudges, agent relaunches, zoom, session restart,
+  `stop`, `delete`, their `--all` variants, and `status`.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.
 - `.toolchain/zig-aarch64-macos-0.17.0`: Zig 0.17, which builds libghostty-vt.
@@ -102,10 +105,15 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 make
 ```
 
-`make` downloads the Zig toolchain into `.toolchain` and checks its SHA-256 if
-it is missing, runs `git submodule update --init` for `vendor/ghostty` if it is
-missing, and runs `cargo build`. Once both are in place, `cargo` works
-directly.
+`make` downloads the Zig toolchain into `.toolchain` and checks its SHA-256
+when the Zig executable is missing, initializes `vendor/ghostty` when its
+`build.zig` is missing, and runs `cargo build`. `.cargo/config.toml` selects
+that Zig executable and Ghostty source and builds libghostty-vt in
+`ReleaseSafe` mode. Once both are in place, `cargo` works directly.
+
+`make test` runs `cargo test`. `make install` builds the release `hypercube`
+binary and installs it to `~/.local/bin/hypercube`; `BINDIR=<dir>` selects
+another destination.
 
 ## Validation
 
