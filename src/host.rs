@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use crate::bar::{self, Bar, Entry};
+use crate::bar::{self, Bar, Entry, Typed};
 use crate::colors::{self, BAR, BLUE, LIGHT_BLUE};
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
@@ -789,12 +789,16 @@ impl Host {
                     }
                     Event::Resized => self.lay_out()?,
                     Event::Overlay => self.toggle_overlay()?,
+                    Event::Key(key) if self.bar.borrow().prompt.is_some() => {
+                        self.prompt_key(&key);
+                    }
                     Event::Key(key) => {
                         if self.overlay_key(&key)? {
                             return Ok(());
                         }
                     }
                     Event::Workspace(n) => self.switch_to(usize::from(n))?,
+                    Event::NewWorkspace => self.open_prompt()?,
                     Event::Message(Message::SwitchFailed(error)) => {
                         match &mut *self.overlay.borrow_mut() {
                             Some(overlay) => overlay.error = error,
@@ -803,7 +807,10 @@ impl Host {
                         self.mux.invalidate_chrome();
                     }
                     Event::Message(_) => {}
-                    Event::Disconnected => self.close_overlay()?,
+                    Event::Disconnected => {
+                        self.bar.borrow_mut().prompt = None;
+                        self.close_overlay()?;
+                    }
                     Event::Deadline => {}
                 }
             }
@@ -844,6 +851,8 @@ impl Host {
         if self.overlay.borrow().is_some() {
             return self.close_overlay();
         }
+        self.bar.borrow_mut().prompt = None;
+        self.mux.invalidate_chrome();
         let overlay = match Overlay::load(&self.state_path) {
             Ok(overlay) => overlay,
             // The overlay can't show without its list; the error goes to
@@ -937,6 +946,39 @@ impl Host {
             }
         }
         Ok(())
+    }
+
+    /// Prompt in the bar for the path of a workspace to switch to, in place
+    /// of the overlay if it is open. The mux captured the input that
+    /// follows.
+    fn open_prompt(&mut self) -> Result<()> {
+        self.bar.borrow_mut().prompt = Some(String::new());
+        self.mux.invalidate_chrome();
+        if self.overlay.borrow_mut().take().is_some() {
+            self.lay_out()?;
+        }
+        Ok(())
+    }
+
+    /// Carry out a key typed at the bar's prompt. Enter switches the client
+    /// to the workspace containing the path, relative to this workspace's
+    /// root, and the client starts its host if none is running.
+    fn prompt_key(&mut self, key: &[u8]) {
+        let typed = self.bar.borrow_mut().key(key);
+        match typed {
+            Typed::None => return,
+            Typed::Changed => {}
+            Typed::Cancel => self.mux.set_captured(false),
+            Typed::Enter(path) => {
+                self.mux.set_captured(false);
+                match workspace::locate(&self.root, path.trim()) {
+                    Ok(root) if root == self.root => {}
+                    Ok(root) => self.runtime.send(Message::Switch(root)),
+                    Err(e) => self.bar.borrow_mut().fail(e.to_string()),
+                }
+            }
+        }
+        self.mux.invalidate_chrome();
     }
 
     /// Carry out a key pressed in the overlay. Returns whether it stopped
@@ -1042,6 +1084,7 @@ impl Host {
                 .detach(&mut self.mux, "attached in another terminal");
         }
         *self.overlay.borrow_mut() = None;
+        self.bar.borrow_mut().prompt = None;
         self.mux.set_captured(false);
         self.runtime.connect(&mut self.mux, link, replies, size)?;
         self.read_bar();

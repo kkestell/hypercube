@@ -81,8 +81,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/host.rs`: the session host, `hypercube host`: the host lock, the
   control socket, attaches, the panes, layout and chrome, the overlay's
   actions, launches, closes, and teardown.
-- `src/bar.rs`: the bar of running workspaces in the last row, and its
-  drawing.
+- `src/bar.rs`: the bar of running workspaces in the last row, its prompt
+  for a new workspace's path, and its drawing.
 - `src/colors.rs`: the colors of the header, bar, titles, and divider.
 - `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
   borders without running Hypercube.

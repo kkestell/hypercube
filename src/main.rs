@@ -55,11 +55,7 @@ fn main() -> ExitCode {
 /// The root of the workspace containing `dir` and its state file. The root is
 /// the top of the checkout, or the directory itself outside Git.
 fn workspace_at(dir: &str) -> Result<(PathBuf, PathBuf)> {
-    let wd = std::env::current_dir()?;
-    let mut root = workspace::resolve(&wd, dir)?;
-    if let Ok(top) = workspace::root(&root) {
-        root = top;
-    }
+    let root = workspace::locate(&std::env::current_dir()?, dir)?;
     let path = store::path(&workspace::name(&root));
     Ok((root, path))
 }

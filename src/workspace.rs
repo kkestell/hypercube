@@ -84,6 +84,13 @@ fn resolve_in(home: Option<&Path>, base: &Path, dir: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
+/// The root of the workspace containing `dir`, which `resolve` makes
+/// absolute: the top of the checkout, or the directory itself outside Git.
+pub fn locate(base: &Path, dir: &str) -> Result<PathBuf> {
+    let dir = resolve(base, dir)?;
+    Ok(root(&dir).unwrap_or(dir))
+}
+
 /// The top level of the checkout containing `dir`.
 pub fn root(dir: &Path) -> Result<PathBuf> {
     Ok(git(dir, &["rev-parse", "--show-toplevel"])?.into())

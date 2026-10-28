@@ -139,6 +139,9 @@ pub enum Notice {
     Key(Vec<u8>),
     /// The prefix key, Ctrl-b, was followed by this digit.
     Workspace(u8),
+    /// The prefix key was followed by c, which asks for a new workspace.
+    /// The input that follows is captured.
+    NewWorkspace,
 }
 
 /// What the chrome sees of a pane.
@@ -1370,6 +1373,11 @@ impl Mux {
                 self.host.prefixed = false;
                 match key {
                     Prefixed::Workspace(n) => self.notices.push(Notice::Workspace(n)),
+                    // The prompt for its path takes the input that follows.
+                    Prefixed::NewWorkspace => {
+                        self.notices.push(Notice::NewWorkspace);
+                        self.set_captured(true);
+                    }
                     Prefixed::Prefix if !self.captured => self.send(token),
                     _ => {}
                 }
@@ -1903,6 +1911,8 @@ fn ctrl_key(params: &[u8]) -> Option<(Route, bool)> {
 enum Prefixed {
     /// Switch to the workspace numbered by this digit.
     Workspace(u8),
+    /// Ask for the path of a new workspace.
+    NewWorkspace,
     /// Send the prefix key itself to the focused pane.
     Prefix,
     /// Nothing.
@@ -1915,6 +1925,7 @@ enum Prefixed {
 fn prefixed_key(token: &[u8]) -> Option<Prefixed> {
     match token {
         [digit @ b'0'..=b'9'] => return Some(Prefixed::Workspace(digit - b'0')),
+        b"c" => return Some(Prefixed::NewWorkspace),
         [CTRL_B] => return Some(Prefixed::Prefix),
         PASTE_START | b"\x1b[I" | b"\x1b[O" => return None,
         _ => {}
@@ -1937,6 +1948,7 @@ fn prefixed_key(token: &[u8]) -> Option<Prefixed> {
     }
     Some(match (code, mods) {
         (48..=57, 1) => Prefixed::Workspace((code - 48) as u8),
+        (99, 1) => Prefixed::NewWorkspace,
         (98, 5) => Prefixed::Prefix,
         _ => Prefixed::Other,
     })
@@ -3134,6 +3146,31 @@ mod tests {
         assert_eq!(
             p.mux.take_notices(),
             [Notice::Workspace(1), Notice::Key(b"j".to_vec())]
+        );
+        assert_eq!(p.got(0), b"");
+    }
+
+    #[test]
+    fn the_prefix_key_and_c_capture_the_input_that_follows() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        p.mux.input(b"a\x02c~/x");
+        assert_eq!(
+            p.mux.take_notices(),
+            [
+                Notice::NewWorkspace,
+                Notice::Key(b"~".to_vec()),
+                Notice::Key(b"/".to_vec()),
+                Notice::Key(b"x".to_vec())
+            ]
+        );
+        assert_eq!(p.got(0), b"a");
+
+        p.mux.set_captured(false);
+        p.mux.input(b"\x1b[98;5u\x1b[99uy");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::NewWorkspace, Notice::Key(b"y".to_vec())]
         );
         assert_eq!(p.got(0), b"");
     }

@@ -1634,6 +1634,36 @@ fn the_overlay_switches_between_workspaces() {
 }
 
 #[test]
+fn ctrl_b_c_switches_to_a_new_workspace_at_a_typed_path() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.wait_screen(" 0 *repo");
+
+    // The bar prompts for a path, and Esc closes the prompt.
+    fx.type_text("\x02c");
+    fx.wait_screen(" workspace path:");
+    fx.type_text("x\x1b");
+    fx.wait_screen(" 0 *repo");
+
+    // A path that isn't a directory shows an error in the bar.
+    fx.type_text("\x02c/nonexistent-hypercube\r");
+    fx.wait_screen(" /nonexistent-hypercube: No such file or directory");
+
+    // A path relative to this workspace, inside another checkout, starts
+    // that checkout's workspace and switches to it.
+    let first = fx.new_repo("second");
+    fs::create_dir(fx.repo.join("sub")).unwrap();
+    fx.type_text("\x02c../second/sub\x7fb\r");
+    fx.wait_event("orchestrator", "ready", 1);
+    fx.wait_screen(" 0 repo  1 *second");
+    let second = fx.repo.clone();
+    fx.wait_screen(second.to_str().unwrap());
+    assert!(host::running(&fx.state_path()).unwrap());
+    fx.repo = first;
+    assert!(host::running(&fx.state_path()).unwrap());
+}
+
+#[test]
 fn a_host_of_another_protocol_is_refused() {
     let fx = Fixture::new();
     let state = fx.state_path();

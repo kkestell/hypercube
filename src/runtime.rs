@@ -36,6 +36,8 @@ pub enum Event {
     Key(Vec<u8>),
     /// The prefix key was followed by this digit.
     Workspace(u8),
+    /// The prefix key was followed by c; input is captured.
+    NewWorkspace,
     /// The client sent a message the runtime doesn't handle itself.
     Message(Message),
     /// The client's terminal changed size. The caller lays the panes out
@@ -166,6 +168,7 @@ impl Runtime {
                 Notice::Overlay => Event::Overlay,
                 Notice::Key(key) => Event::Key(key),
                 Notice::Workspace(n) => Event::Workspace(n),
+                Notice::NewWorkspace => Event::NewWorkspace,
             }));
             let now = now_ms();
             if let Some(link) = &self.link

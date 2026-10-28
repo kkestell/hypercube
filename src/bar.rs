@@ -1,6 +1,7 @@
 //! The workspace bar: the bottom row of the screen, which numbers every
 //! running workspace in the order its host started. Ctrl-b and a workspace's
-//! number switch the terminal to it.
+//! number switch the terminal to it. Ctrl-b c turns the bar into a prompt
+//! for the path of a workspace to switch to, starting it if need be.
 
 use std::error::Error;
 use std::fs;
@@ -17,6 +18,8 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// How long an error shows in place of the workspaces.
 const ERROR_MS: i64 = 5000;
+/// What the prompt for a new workspace's path shows before the path.
+const PROMPT: &str = " workspace path: ";
 
 /// A running workspace as the bar lists it.
 #[derive(Clone, Debug, PartialEq)]
@@ -29,11 +32,25 @@ pub struct Entry {
     pub name: String,
 }
 
+/// What a key typed at the prompt asks the host to do.
+#[derive(Debug, PartialEq)]
+pub enum Typed {
+    None,
+    /// The path changed.
+    Changed,
+    /// Esc closed the prompt.
+    Cancel,
+    /// Enter closed the prompt on this path.
+    Enter(String),
+}
+
 #[derive(Default)]
 pub struct Bar {
     pub entries: Vec<Entry>,
     /// The state file of the host's own workspace.
     pub current: PathBuf,
+    /// The path typed so far while the bar prompts for a new workspace.
+    pub prompt: Option<String>,
     error: String,
     /// When the error was shown, in `now_ms` time.
     error_at: i64,
@@ -65,9 +82,40 @@ impl Bar {
         changed || expired
     }
 
-    /// Draw the bar across the last row in the bar colors, with each
-    /// workspace that fits after its number, and the host's own marked `*`
-    /// and bold.
+    /// Take a key typed at the prompt: text goes at the end of the path,
+    /// Backspace erases its last character, and Enter and Esc close the
+    /// prompt.
+    pub fn key(&mut self, key: &[u8]) -> Typed {
+        let Some(path) = &mut self.prompt else {
+            return Typed::None;
+        };
+        match key {
+            b"\r" | b"\n" => {
+                let path = std::mem::take(path);
+                self.prompt = None;
+                Typed::Enter(path)
+            }
+            b"\x1b" => {
+                self.prompt = None;
+                Typed::Cancel
+            }
+            [0x7f] | [0x08] => {
+                path.pop();
+                Typed::Changed
+            }
+            _ => match std::str::from_utf8(key) {
+                Ok(text) if !text.chars().any(char::is_control) => {
+                    path.push_str(text);
+                    Typed::Changed
+                }
+                _ => Typed::None,
+            },
+        }
+    }
+
+    /// Draw the bar across the last row in the bar colors: the prompt while
+    /// it is open, or each workspace that fits after its number, with the
+    /// host's own marked `*` and bold.
     pub fn draw(&self, s: &mut String, size: Winsize) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
@@ -78,6 +126,21 @@ impl Bar {
             colors::BAR.sgr(),
             " ".repeat(usize::from(cols))
         ));
+        if let Some(path) = &self.prompt {
+            // The end of a path too long to show whole, and a cursor after it.
+            let mut path = path.as_str();
+            let width = |path: &str| text_width(PROMPT) + text_width(path) + 1;
+            while !path.is_empty() && width(path) > usize::from(cols) {
+                let mut chars = path.chars();
+                chars.next();
+                path = chars.as_str();
+            }
+            s.push_str(&fit(&format!("{PROMPT}{path}"), cols));
+            if width(path) <= usize::from(cols) {
+                s.push_str("\x1b[7m \x1b[27m");
+            }
+            return;
+        }
         if !self.error.is_empty() {
             s.push_str(&fit(&format!(" {}", self.error), cols));
             return;
@@ -192,6 +255,11 @@ mod tests {
             .collect()
     }
 
+    fn is_cursor(t: &Terminal, x: u16) -> bool {
+        let point = Point::Active(PointCoordinate { x, y: 1 });
+        t.grid_ref(point).unwrap().style().unwrap().inverse
+    }
+
     fn bold(t: &Terminal, x: u16) -> bool {
         let point = Point::Active(PointCoordinate { x, y: 1 });
         t.grid_ref(point).unwrap().style().unwrap().bold
@@ -212,6 +280,28 @@ mod tests {
         assert_eq!(row(&screen(&b, 24)), " 0 *foo  1 bar  2 glarpy");
         assert_eq!(row(&screen(&b, 23)), " 0 *foo  1 bar         ");
         assert_eq!(row(&screen(&b, 6)), "      ");
+    }
+
+    #[test]
+    fn the_prompt_takes_a_path_and_shows_its_end() {
+        let mut b = bar(&["foo"], "foo");
+        assert_eq!(b.key(b"x"), Typed::None);
+        b.prompt = Some(String::new());
+        for key in [b"~".as_slice(), b"/", "é".as_bytes(), b"x", b"\x7f", b"y"] {
+            assert_eq!(b.key(key), Typed::Changed);
+        }
+        assert_eq!(b.key(b"\x1b[A"), Typed::None);
+        let t = screen(&b, 24);
+        assert_eq!(row(&t), " workspace path: ~/éy   ");
+        assert!(is_cursor(&t, 21) && !is_cursor(&t, 20) && !is_cursor(&t, 22));
+        assert_eq!(row(&screen(&b, 20)), " workspace path: éy ");
+        assert_eq!(b.key(b"\r"), Typed::Enter("~/éy".into()));
+        assert_eq!(b.prompt, None);
+        assert_eq!(row(&screen(&b, 20)), " 0 *foo             ");
+
+        b.prompt = Some("x".into());
+        assert_eq!(b.key(b"\x1b"), Typed::Cancel);
+        assert_eq!(b.prompt, None);
     }
 
     #[test]

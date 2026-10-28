@@ -227,6 +227,18 @@ workspace with that number, as the overlay's Enter does; on the host's own
 workspace they close the overlay if it is open. A failed switch shows its
 error in the bar for five seconds, or in the overlay while it is open.
 
+Ctrl-b c closes the overlay if it is open and turns the bar into a prompt,
+`workspace path: ` and the path typed so far with a reverse-video cursor
+after it, showing the end of a path too long to fit. Input is captured while
+it is open: text goes at the end of the path, Backspace erases its last
+character, Esc closes the prompt, and Enter closes it and switches the
+client to the workspace containing the path, as `hypercube` run there would
+attach: `~/` is the home directory, a relative path is relative to this
+workspace's root, and the workspace is the top of the checkout containing
+it, or the directory itself outside Git. The client starts that workspace's
+host if none is running. On the host's own workspace Enter just closes the
+prompt, and a path that is no directory shows its error in the bar.
+
 The keys and the mouse (see Input):
 
 - Ctrl-] moves the focus to the next live pane.
@@ -241,8 +253,9 @@ The keys and the mouse (see Input):
 - A drag selects text and copies it to the clipboard on release.
 - Ctrl-^ opens the workspace overlay.
 - Ctrl-b is a prefix, in legacy or Kitty form. The next key press goes with
-  it: a digit switches to the workspace with that number in the bar, Ctrl-b
-  sends Ctrl-b to the focused pane, and any other key is dropped. Mouse and
+  it: a digit switches to the workspace with that number in the bar, c
+  prompts for the path of a workspace to switch to, Ctrl-b sends Ctrl-b to
+  the focused pane, and any other key is dropped. Mouse and
   focus reports, pastes, key releases and repeats, and modifier keys go on as
   usual and leave the prefix waiting. The prefix works while the overlay is
   open too.
