@@ -660,6 +660,21 @@ impl Mux {
         }
     }
 
+    /// Show a pane whose program never started as exited with `status`: the
+    /// focus skips it, and the chrome sees its status.
+    pub fn mark_exited(&mut self, id: PaneId, status: u8) {
+        let Some(index) = self.index(id) else { return };
+        let p = &mut self.panes[index];
+        if p.child.is_some() || !p.live() {
+            return;
+        }
+        p.status = Some(status);
+        self.chrome_dirty = true;
+        if self.focus() == Some(id) {
+            self.focus_from(index + 1);
+        }
+    }
+
     /// Remove a pane, hanging up its program if it is still running, and
     /// move the focus off it. The rest of the screen is drawn again. A
     /// program still running `HANGUP_GRACE_MS` later is killed.

@@ -470,36 +470,29 @@ impl Host {
             } else {
                 NUDGE
             };
-            if let Err(e) = self.launch(&a.id, prompt) {
+            if let Err(e) = self.launch(&a.id, prompt, true) {
                 if a.role == store::ORCHESTRATOR {
                     return Err(format!("launching {}: {e}", a.name).into());
                 }
-                self.add_failed(a, &e.to_string())
-                    .map_err(|e| format!("launching {}: {e}", a.name))?;
+                self.add_failed(a, &e.to_string())?;
             }
         }
         Ok(())
     }
 
     /// Give a worker whose harness failed to start a pane without a program,
-    /// showing the error, so it keeps its place until `remove_agent` closes
-    /// it.
+    /// showing the error and exit status 127, so it keeps its place until
+    /// `remove_agent` closes it.
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
         let error = error.replace(['\r', '\n'], " ");
         let label = format!("{} · failed: {error}", harness::label(agent));
         let pane = self.mux.add_pane(&label)?;
-        let mut ids = self.pane_ids();
-        ids.push(pane);
-        let Some(layout) = layout(self.mux.size(), &ids) else {
-            self.mux.remove_pane(pane);
-            return Err(error.into());
-        };
         if let Some(p) = self.mux.pane_mut(pane) {
             p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
         }
+        self.mux.mark_exited(pane, 127);
         self.panes.push((agent.id.clone(), pane));
-        self.mux.set_layout(&layout)?;
-        Ok(())
+        self.lay_out()
     }
 
     /// Run the session until it is stopped, every pane's program has exited,
@@ -525,8 +518,7 @@ impl Host {
                         }
                     }
                     Event::PaneExited(..) => {
-                        let ended = |p: &Pane| p.status().is_some() || p.pid().is_none();
-                        if self.mux.panes().iter().all(ended) {
+                        if self.mux.panes().iter().all(|p| p.status().is_some()) {
                             return Ok(());
                         }
                     }
@@ -611,7 +603,7 @@ impl Host {
 
     fn handle(&mut self, request: Request) -> Reply {
         let result = match request {
-            Request::Launch { agent, prompt } => self.launch(&agent, &prompt),
+            Request::Launch { agent, prompt } => self.launch(&agent, &prompt, false),
             Request::Close { agent } => self.close(&agent),
             Request::Nudge { agent } => self.nudge(&agent),
             Request::Stop => Ok(()),
@@ -628,9 +620,10 @@ impl Host {
     }
 
     /// Start an agent's harness in a new pane and lay the panes out again. A
-    /// non-empty `prompt` starts its first turn. Fails, adding no pane, if
-    /// there is no room for one.
-    fn launch(&mut self, id: &str, prompt: &str) -> Result<()> {
+    /// non-empty `prompt` starts its first turn. If there is no room for the
+    /// pane, a launch at startup hides the panes until the terminal grows,
+    /// and any other launch fails, adding no pane.
+    fn launch(&mut self, id: &str, prompt: &str, startup: bool) -> Result<()> {
         let state = store::load(&self.state_path)?;
         let agent = state.agent(id)?;
         if self.pane_of(&agent.id).is_some() {
@@ -641,7 +634,8 @@ impl Host {
         let mut ids = self.pane_ids();
         ids.push(pane);
         let size = self.mux.size();
-        let Some(layout) = layout(size, &ids) else {
+        let layout = layout(size, &ids).or_else(|| startup.then(|| hidden(&ids)));
+        let Some(layout) = layout else {
             self.mux.remove_pane(pane);
             return Err(format!(
                 "no room for another pane in a {}x{} terminal",
@@ -651,8 +645,8 @@ impl Host {
         };
         let rect = layout[layout.len() - 1].1;
         let ws = Winsize {
-            ws_col: rect.cols,
-            ws_row: rect.rows,
+            ws_col: rect.cols.max(1),
+            ws_row: rect.rows.max(1),
             ..Winsize::default()
         };
         let env: Vec<_> = launch.env.iter().collect();
@@ -686,11 +680,11 @@ impl Host {
             .pane_of(id)
             .ok_or_else(|| format!("agent {id} has no pane"))?;
         let p = self.mux.pane(pane).ok_or("no pane")?;
-        if let Some(status) = p.status() {
-            return Err(format!("agent {id} exited with status {status}").into());
-        }
         if p.pid().is_none() {
             return Err(format!("agent {id} failed to launch").into());
+        }
+        if let Some(status) = p.status() {
+            return Err(format!("agent {id} exited with status {status}").into());
         }
         if self.enters.schedule(pane, now_ms()) {
             self.mux.send_text(pane, NUDGE)?;
@@ -702,10 +696,14 @@ impl Host {
     /// for them, the panes are hidden until it grows.
     fn lay_out(&mut self) -> Result<()> {
         let ids = self.pane_ids();
-        let layout = layout(self.mux.size(), &ids)
-            .unwrap_or_else(|| ids.iter().map(|&id| (id, Rect::default())).collect());
+        let layout = layout(self.mux.size(), &ids).unwrap_or_else(|| hidden(&ids));
         Ok(self.mux.set_layout(&layout)?)
     }
+}
+
+/// A layout that hides every pane.
+fn hidden(ids: &[PaneId]) -> Vec<(PaneId, Rect)> {
+    ids.iter().map(|&id| (id, Rect::default())).collect()
 }
 
 #[cfg(test)]

@@ -42,8 +42,10 @@ in the state directory, `$XDG_STATE_HOME/hypercube` or
    with the nudge as their prompt, so they pick up messages queued while they
    were down. If the orchestrator fails to launch, the session ends with
    the error. A worker that fails to launch gets a pane without a program,
-   with "failed:" and the error in its label and the error in the pane, and
-   keeps it until `remove_agent` closes it.
+   with "failed:" and the error in its label and the error in the pane,
+   marked exited with status 127 so the focus skips it, and keeps it until
+   `remove_agent` closes it. Agents that don't fit in the terminal still
+   launch; their panes are hidden until it grows.
 5. It serves until the session ends.
 
 The loop is single-threaded: `Runtime::wait` polls the panes, the host
@@ -67,8 +69,9 @@ the agents from their saved sessions and the queued messages.
 or all of them when it is alone, then a one-column rule, then the workers
 stacked with equal heights. Each pane has a label row above it, and the bottom
 row is the status bar. A layout in which some pane would get no row or column
-fails; a launch then fails with "no room for another pane", and a terminal
-resized below that hides the panes until it grows.
+fails; a launch requested on the control socket then fails with "no room
+for another pane", and a terminal resized below that hides the panes until
+it grows.
 
 `TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
 in black on `#87d7ff`, bold for the focused pane, followed by "exited N" once
@@ -160,6 +163,8 @@ child process.
   resizes.
 - `Mux::close_pane(id)` sends SIGHUP to the program's process group and
   closes the master. The pane stays, and shows its exit status once reaped.
+- `Mux::mark_exited(id, status)` shows a pane whose program never started
+  as exited with `status`, so the focus skips it.
 - `Mux::remove_pane(id)` hangs up the program if it is still running, removes
   the pane, moves the focus to the next live pane, and redraws the screen. A
   removed pane's program is reaped after `HANGUP_GRACE_MS` (two seconds),

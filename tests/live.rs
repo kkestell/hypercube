@@ -595,6 +595,22 @@ fn exited_pane_keeps_its_place_and_loses_focus() {
 }
 
 #[test]
+fn focus_skips_a_pane_marked_exited() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "plain", "0"]);
+    let failed = h.mux.add_pane("failed").unwrap();
+    h.layout();
+    h.mux.mark_exited(failed, 127);
+    h.spawn("right", &["input", "right", "plain", "0"]);
+    h.wait_screen("failed (exited 127)");
+    h.send("\x1db");
+    h.wait_screen("right got 98");
+    h.send("\x1da");
+    h.wait_screen("left got 97");
+    assert_eq!(h.mux.pane(failed).unwrap().status(), Some(127));
+}
+
+#[test]
 fn sgr_mouse_is_translated_into_the_focused_pane() {
     let path = TempPath::new("mouse");
     let mut h = Host::new(81, 20);
