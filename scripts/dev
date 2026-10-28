@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Run this checkout's hypercube in an isolated dev session in a new Ghostty
+# window. The session has its own state, configuration, and scratch repository
+# under $DEV, so it never touches the installed hypercube's workspaces.
+#
+#   scripts/dev [up]   build, restart the dev session on the new binary, and
+#                      open it in a Ghostty window
+#   scripts/dev stop   stop the dev session; its state stays, so `up` resumes it
+#   scripts/dev clean  stop it and delete everything it left
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
+BIN=$ROOT/target/debug/hypercube
+REPO=$DEV/repo
+CONFIG=$DEV/config/hypercube/config.json
+
+# Run hypercube against the dev state and configuration.
+dev() {
+	XDG_STATE_HOME=$DEV/state XDG_CONFIG_HOME=$DEV/config "$BIN" "$@"
+}
+
+stop() {
+	[ -x "$BIN" ] && [ -d "$REPO" ] || return 0
+	dev stop "$REPO" 2>/dev/null || true
+}
+
+case "${1:-up}" in
+up)
+	cd "$ROOT"
+	cargo build --bin hypercube
+	stop
+
+	mkdir -p "$DEV/state" "$(dirname "$CONFIG")"
+	if [ ! -d "$REPO/.git" ]; then
+		mkdir -p "$REPO"
+		git -C "$REPO" init -q -b main
+		echo "# hypercube dev" >"$REPO/README.md"
+		git -C "$REPO" add README.md
+		git -C "$REPO" -c user.name=hypercube-dev -c user.email=dev@localhost \
+			commit -q -m "Initial commit"
+	fi
+	if [ ! -f "$CONFIG" ]; then
+		cat >"$CONFIG" <<'JSON'
+{
+  "orchestrator": { "harness": "claude", "model": "haiku", "effort": "low" },
+  "profiles": [
+    {
+      "name": "claude",
+      "description": "Claude Code haiku, for smoke tests.",
+      "harness": "claude",
+      "model": "haiku",
+      "effort": "low"
+    },
+    {
+      "name": "pi",
+      "description": "Pi with DeepSeek Flash, for smoke tests.",
+      "harness": "pi",
+      "model": "openrouter/~deepseek/deepseek-flash-latest",
+      "effort": "medium"
+    }
+  ]
+}
+JSON
+	fi
+
+	# Ghostty starts the command without this shell's environment.
+	cat >"$DEV/run" <<RUN
+#!/bin/sh
+export PATH='$PATH'
+export XDG_STATE_HOME='$DEV/state' XDG_CONFIG_HOME='$DEV/config'
+cd '$REPO'
+'$BIN' || { echo "hypercube exited with \$?; press Enter to close"; read -r _; }
+RUN
+	chmod +x "$DEV/run"
+	open -na Ghostty --args --quit-after-last-window-closed=true -e "$DEV/run"
+	echo "Dev session: $REPO (config $CONFIG)"
+	;;
+stop)
+	stop
+	;;
+clean)
+	stop
+	[ -n "$DEV" ] && rm -rf "$DEV"
+	# Claude Code's transcripts of the dev agents; the trust entry for the
+	# scratch repository stays in ~/.claude.json.
+	rm -rf "$HOME"/.claude/projects/"$(printf %s "$DEV" | sed 's/[^A-Za-z0-9]/-/g')"*
+	;;
+*)
+	echo "usage: scripts/dev [up | stop | clean]" >&2
+	exit 2
+	;;
+esac

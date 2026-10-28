@@ -130,6 +130,32 @@ that Zig executable and Ghostty source and builds libghostty-vt in
 binary and installs it to `~/.local/bin/hypercube`; `BINDIR=<dir>` selects
 another destination.
 
+## Development sessions
+
+Iterate on Hypercube in an isolated dev session, never in the installed one:
+
+```sh
+make dev        # build, restart the dev session on the new binary, open it in Ghostty
+make dev-stop   # stop it; its state stays, so make dev resumes the team
+make dev-clean  # stop it and delete everything it left
+```
+
+`scripts/dev` runs the debug binary from this checkout with `XDG_STATE_HOME`
+and `XDG_CONFIG_HOME` under `~/projects/hypercube-dev` (override with
+`HYPERCUBE_DEV_DIR`), on a scratch repository there, and opens it with
+`open -na Ghostty` so Kyle can watch and answer dialogs. The first `make dev`
+writes a `config.json` there with Claude Code `haiku` and Pi
+`openrouter/~deepseek/deepseek-flash-latest` profiles, and Kyle can edit it.
+The installed hypercube's `status` and `stop --all` do not see this session.
+Claude Code asks once to trust the scratch repository. `make dev-clean` removes
+the dev agents' Claude Code transcripts but not that trust entry in
+`~/.claude.json`.
+
+When a change is done and Kyle is happy with it, run `make install` and tell
+Kyle to run `hypercube stop --all` and start `hypercube` again. Stopping ends
+every agent, so do not run it yourself, and a running host keeps the
+executable it started with until then.
+
 ## Validation
 
 Before pushing anything other than a Markdown-only change, all of this must
@@ -144,10 +170,11 @@ cargo build && cargo clippy --all-targets -- -D warnings && cargo fmt --check &&
 ## Smoke testing
 
 For harness smoke tests, use Claude Code `haiku` and Pi
-`openrouter/~deepseek/deepseek-flash-latest`. Use disposable local
-repositories and isolated `XDG_STATE_HOME` and `XDG_CONFIG_HOME`.
+`openrouter/~deepseek/deepseek-flash-latest`. Use the dev session above, or
+disposable local repositories and isolated `XDG_STATE_HOME` and
+`XDG_CONFIG_HOME`.
 
 When a task is done, stop every host it started with `hypercube stop`, and
 delete its state file, lock files, socket, log file, repositories, and
 temporary directories. `hypercube status` must not list any of them
-afterward.
+afterward. `make dev-clean` does this for the dev session.
