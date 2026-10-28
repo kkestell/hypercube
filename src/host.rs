@@ -919,17 +919,21 @@ mod tests {
         assert_eq!(running(&state).unwrap().as_deref(), Some("/dev/ttys009"));
         assert!(try_lock(&lock_path(&state)).unwrap().is_none());
 
-        // A child that another test spawns at the moment shares the lock
-        // until it execs, so wait for the release.
+        // A child that another test forks at the moment shares the lock, or
+        // the shared lock `running` takes, until it execs, so retry until the
+        // lock is free.
         drop(lock);
-        for _ in 0..200 {
-            if running(&state).unwrap().is_none() {
-                break;
+        fn eventually(mut f: impl FnMut() -> bool) {
+            for _ in 0..200 {
+                if f() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(10));
             }
-            std::thread::sleep(Duration::from_millis(10));
+            panic!("the host lock stayed held");
         }
-        assert_eq!(running(&state).unwrap(), None);
-        assert!(try_lock(&lock_path(&state)).unwrap().is_some());
+        eventually(|| try_lock(&lock_path(&state)).unwrap().is_some());
+        eventually(|| running(&state).unwrap().is_none());
     }
 
     #[test]
