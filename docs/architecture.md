@@ -7,9 +7,11 @@
   socket.
 - `hypercube mcp` is each agent's MCP server, started by its harness. It
   changes the state file and worktrees itself, reads the profiles from
-  `config.json`, and asks the host to launch, close, and nudge panes.
+  `config.json`, and asks the host to launch and close panes.
 - `hypercube hook <event>` runs for each harness hook event. It changes the
   state file, and reads `config.json` for the orchestrator's profiles.
+- `hypercube wait` runs in the background of each agent's harness and wakes
+  the agent when messages arrive while it is idle.
 - `hypercube statusline` prints Claude Code's status line from the status
   JSON on its input.
 - `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
@@ -50,7 +52,7 @@ The state directory also holds `pi-extension/index.js`.
    control socket.
 4. It takes over the terminal with a `Runtime` and launches each agent in its
    own pane, the orchestrator first. Saved sessions resume, and workers start
-   with the nudge as their prompt, so they pick up messages queued while they
+   with the prompt `Check your Hypercube messages.`, so they pick up messages queued while they
    were down. If the orchestrator fails to launch, the session ends with
    the error. A worker that fails to launch gets a pane without a program,
    with "failed:" and the error in its label and the error in the pane,
@@ -78,14 +80,13 @@ saved sessions and the queued messages.
 
 When an agent's program exits, the host starts its harness again in the same
 pane, resuming the saved session as at startup: `harness::command` with the
-agent's session ID and the nudge as a worker's prompt. The host first marks the
+agent's session ID and a worker's prompt. The host first marks the
 agent idle (orchestrator) or busy (worker) in the state, so the new harness's
 hooks change it afterwards. The pane keeps its place, its size, and its focus.
 It gets a new terminal, so nothing the old program left half written carries
 over, the old program's process group is hung up, and the host input aimed at
 the old program is dropped: a selection, a mouse press in progress, held input,
-and the rest of a paste. A nudge's Enter still pending for the pane is
-cancelled.
+and the rest of a paste.
 
 A program that exits within `QUICK_EXIT_MS` (ten seconds) of starting has
 exited quickly. After `MAX_QUICK_EXITS` (three) quick exits in a row the host
@@ -155,10 +156,6 @@ Each connection carries one JSON request line and gets one JSON reply line,
   again. A non-empty prompt starts its first turn.
 - `close {agent}`: hang up the agent's program, remove its pane, and lay the
   panes out again. An agent without a pane is already closed.
-- `nudge {agent}`: type `Check your Hypercube messages.` into the agent's
-  pane and press Enter 200 ms later, encoded for the pane's keyboard modes.
-  A nudge whose Enter is still pending covers the next one for the same
-  pane. Fails if the agent has no pane or its program has exited.
 - `stop`: reply, then end the session.
 
 The MCP server and `hypercube stop` find the socket from the state file's
@@ -171,7 +168,8 @@ another. `launch` and `close` end any zoom.
 ## State file
 
 The state file holds the agents (ID, name, role, harness, model, effort,
-directory, branch, session ID, activity), the queued messages (sender,
+directory, branch, session ID, activity, and the number of the newest
+waiter), the queued messages (sender,
 recipient, text), and `no_git`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
@@ -210,8 +208,8 @@ prints `No workspaces to stop.` or `No workspaces to delete.`.
 
 ## Message delivery
 
-`send_message` queues a message in the state file. If the recipient is idle,
-the MCP server asks the host to nudge it, which starts a turn. Hooks deliver:
+`send_message` queues a message in the state file. Hooks deliver messages to
+a busy agent:
 
 - SessionStart gives the agent its identity, team, and tools.
 - UserPromptSubmit records the session ID, marks the agent busy, and delivers
@@ -220,9 +218,21 @@ the MCP server asks the host to nudge it, which starts a turn. Hooks deliver:
 - Stop blocks the stop while messages are queued, delivering them, and
   otherwise marks the agent idle.
 
+An idle agent is woken by its waiter, `hypercube wait`, which the harness
+starts when a session starts and after each turn's stop. A waiter increments
+the agent's waiter number and keeps the new number as its own. It reads the
+state every 250 ms. When the agent is idle with messages queued, it takes
+them, marks the agent busy, writes them to stderr, and exits with status 2.
+The harness then starts a turn with the messages: Claude Code through its
+`asyncRewake` hook, Pi through its extension (see
+[harness support](harness-support.md)). The harness starts the turn itself,
+so text the user is typing in the agent's pane stays in the harness's editor.
+A waiter exits with status 0 once the agent is gone, the agent's waiter
+number has moved past its own, or the process that started it has exited.
+
 Each message reaches the model as `Message from <name> (<id>):` and its text.
-The hook writes its response inside the state update, so messages it takes
-stay queued if the harness cannot read the response.
+A hook writes its response, and a waiter its messages, inside the state
+update, so messages it takes stay queued if they cannot be written.
 
 ## Terminal layer
 

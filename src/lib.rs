@@ -8,8 +8,9 @@
 //! The rest of the crate holds the agents' side: `store` is the workspace
 //! state file, `config` the user's profiles, `workspace` the Git checkout and
 //! worktrees, `harness` the launch command of each harness, `hook` the
-//! harness hook events, `control` the host's control socket protocol, `host`
-//! the session in the user's terminal, and `mcp` the agents' MCP server.
+//! harness hook events, `wait` the waiter that wakes an idle agent when
+//! messages arrive, `control` the host's control socket protocol, `host` the
+//! session in the user's terminal, and `mcp` the agents' MCP server.
 
 pub mod config;
 pub mod control;
@@ -23,6 +24,7 @@ pub mod recording;
 pub mod runtime;
 pub mod statusline;
 pub mod store;
+pub mod wait;
 pub mod winch;
 pub mod workspace;
 

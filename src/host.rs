@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
-use crate::mux::{self, Chrome, Key, Mux, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
+use crate::mux::{self, Chrome, Mux, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
@@ -26,8 +26,6 @@ use libghostty_vt::unicode;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-/// How long after typing the nudge the host presses Enter.
-const NUDGE_ENTER_MS: i64 = 200;
 /// How long a control connection has to send its request.
 const REQUEST_TIMEOUT_MS: i64 = 5000;
 /// The longest request the host reads.
@@ -396,7 +394,6 @@ struct Host {
     /// Each agent's pane, in launch order.
     panes: Vec<Slot>,
     clients: Vec<Client>,
-    enters: Enters,
     /// The pane that fills the pane area, shared with the chrome.
     zoomed: Rc<Cell<Option<PaneId>>>,
 }
@@ -419,41 +416,6 @@ impl Slot {
             started: now_ms(),
             quick_exits: 0,
         }
-    }
-}
-
-/// Nudged panes and when to press Enter in each. A pane has at most one
-/// nudge pending.
-#[derive(Default)]
-struct Enters(Vec<(i64, PaneId)>);
-
-impl Enters {
-    /// Press Enter in `pane` `NUDGE_ENTER_MS` after `now`. Returns false,
-    /// scheduling nothing, if the pane already has a nudge pending.
-    fn schedule(&mut self, pane: PaneId, now: i64) -> bool {
-        if self.0.iter().any(|&(_, p)| p == pane) {
-            return false;
-        }
-        self.0.push((now + NUDGE_ENTER_MS, pane));
-        true
-    }
-
-    /// When the next Enter is due.
-    fn next(&self) -> Option<i64> {
-        self.0.iter().map(|&(at, _)| at).min()
-    }
-
-    /// Drop the pane's pending Enter, so a program that replaces the one
-    /// nudged doesn't get it.
-    fn cancel(&mut self, pane: PaneId) {
-        self.0.retain(|&(_, p)| p != pane);
-    }
-
-    /// Remove and return the panes whose Enter is due at `now`.
-    fn take_due(&mut self, now: i64) -> Vec<PaneId> {
-        let (due, later): (Vec<_>, Vec<_>) = self.0.iter().partition(|&&(at, _)| at <= now);
-        self.0 = later;
-        due.into_iter().map(|(_, pane)| pane).collect()
     }
 }
 
@@ -503,7 +465,6 @@ pub fn run(root: &Path) -> Result<()> {
         signals,
         panes: Vec::new(),
         clients: Vec::new(),
-        enters: Enters::default(),
         zoomed,
     };
     host.start(&agents).and_then(|()| host.serve())
@@ -627,7 +588,6 @@ impl Host {
                 .clients
                 .iter()
                 .map(|c| c.since + REQUEST_TIMEOUT_MS)
-                .chain(self.enters.next())
                 .min();
             let mut exited = false;
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
@@ -660,9 +620,6 @@ impl Host {
                 return Ok(());
             }
             let now = now_ms();
-            for pane in self.enters.take_due(now) {
-                self.mux.send_key(pane, Key::Enter)?;
-            }
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
         }
     }
@@ -737,7 +694,6 @@ impl Host {
         let result = match request {
             Request::Launch { agent, prompt } => self.launch(&agent, &prompt, false),
             Request::Close { agent } => self.close(&agent),
-            Request::Nudge { agent } => self.nudge(&agent),
             Request::Stop => Ok(()),
         };
         result.map_or_else(Reply::error, |()| Reply::ok())
@@ -800,7 +756,6 @@ impl Host {
     /// exited. If the harness fails to start, the pane shows why, and the
     /// host doesn't try again.
     fn relaunch(&mut self, pane: PaneId) -> Result<()> {
-        self.enters.cancel(pane);
         let Some(slot) = self.panes.iter_mut().find(|s| s.pane == pane) else {
             return Ok(());
         };
@@ -862,29 +817,9 @@ impl Host {
             return Ok(());
         };
         let slot = self.panes.remove(i);
-        self.enters.cancel(slot.pane);
         self.mux.remove_pane(slot.pane);
         self.zoomed.set(None);
         self.lay_out()
-    }
-
-    /// Type the nudge into an agent's pane, and press Enter `NUDGE_ENTER_MS`
-    /// later. A nudge still pending covers this one.
-    fn nudge(&mut self, id: &str) -> Result<()> {
-        let pane = self
-            .pane_of(id)
-            .ok_or_else(|| format!("agent {id} has no pane"))?;
-        let p = self.mux.pane(pane).ok_or("no pane")?;
-        if p.pid().is_none() {
-            return Err(format!("agent {id} failed to launch").into());
-        }
-        if let Some(status) = p.status() {
-            return Err(format!("agent {id} exited with status {status}").into());
-        }
-        if self.enters.schedule(pane, now_ms()) {
-            self.mux.send_text(pane, NUDGE)?;
-        }
-        Ok(())
     }
 
     /// Lay the panes out for the terminal's size. In a terminal too small
@@ -1252,36 +1187,6 @@ mod tests {
         assert!(!at_path(&old, &path).unwrap());
         assert!(at_path(&new, &path).unwrap());
         drop(lock);
-    }
-
-    #[test]
-    fn a_pending_nudge_covers_the_next_one_for_its_pane() {
-        let mut enters = Enters::default();
-        assert_eq!(enters.next(), None);
-        assert!(enters.schedule(PaneId(1), 1000));
-        assert!(!enters.schedule(PaneId(1), 1100));
-        assert!(enters.schedule(PaneId(2), 1100));
-        assert_eq!(enters.next(), Some(1000 + NUDGE_ENTER_MS));
-        assert_eq!(enters.take_due(1000 + NUDGE_ENTER_MS - 1), []);
-        assert_eq!(enters.take_due(1000 + NUDGE_ENTER_MS), [PaneId(1)]);
-        assert_eq!(enters.next(), Some(1100 + NUDGE_ENTER_MS));
-        // Once its Enter is pressed, a pane takes a new nudge.
-        assert!(enters.schedule(PaneId(1), 1250));
-        assert_eq!(enters.take_due(2000), [PaneId(2), PaneId(1)]);
-        assert_eq!(enters.next(), None);
-    }
-
-    #[test]
-    fn a_cancelled_enter_is_not_pressed_and_the_pane_takes_a_new_nudge() {
-        let mut enters = Enters::default();
-        assert!(enters.schedule(PaneId(1), 1000));
-        assert!(enters.schedule(PaneId(2), 1000));
-        enters.cancel(PaneId(1));
-        assert!(enters.schedule(PaneId(1), 1100));
-        enters.cancel(PaneId(2));
-        assert_eq!(enters.take_due(5000), [PaneId(1)]);
-        enters.cancel(PaneId(3));
-        assert_eq!(enters.next(), None);
     }
 
     #[test]

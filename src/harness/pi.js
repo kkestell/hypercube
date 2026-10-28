@@ -17,6 +17,20 @@ async function hook(event, sessionID) {
 
 const context = (response) => response.hookSpecificOutput?.additionalContext ?? ""
 
+// `hypercube wait` exits with status 2 after writing the messages of an idle
+// agent to stderr. Starting a waiter replaces the one before it.
+let waiter
+function wait(pi) {
+  const proc = execFile(exe, ["wait"], (err, _stdout, stderr) => {
+    if (waiter === proc) waiter = undefined
+    if (err?.code !== 2) return
+    const content = stderr.trim()
+    pi.sendMessage({ customType: "hypercube", content, display: true }, { triggerTurn: true, deliverAs: "followUp" })
+  })
+  proc.stdin.end()
+  waiter = proc
+}
+
 export default function (pi) {
   pi.registerMcpServer("hypercube", {
     command: exe,
@@ -27,6 +41,9 @@ export default function (pi) {
     },
     exposure: "direct",
   })
+
+  pi.on("session_start", () => wait(pi))
+  pi.on("session_shutdown", () => waiter?.kill())
 
   const started = new Set()
   pi.on("before_agent_start", async (_event, ctx) => {
@@ -51,5 +68,6 @@ export default function (pi) {
   pi.on("agent_settled", async (_event, ctx) => {
     const response = await hook("Stop", ctx.sessionManager.getSessionId())
     if (response.reason) pi.sendUserMessage(response.reason)
+    else wait(pi)
   })
 }

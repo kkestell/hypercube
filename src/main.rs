@@ -9,11 +9,11 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
 use hypercube::store::{Agent, State};
-use hypercube::{control, hook, host, mcp, statusline, store, workspace};
+use hypercube::{control, hook, host, mcp, statusline, store, wait, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const USAGE: &str = "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | statusline [--limits]]";
+const USAGE: &str = "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | wait | statusline [--limits]]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -29,6 +29,11 @@ fn main() -> ExitCode {
         ["status"] => status(),
         ["mcp"] => mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()),
         ["hook", event] => hook::run(event, std::io::stdin().lock(), std::io::stdout().lock()),
+        // Status 2 tells the harness that the waiter wrote messages.
+        ["wait"] => match wait::run(std::io::stdin().lock(), std::io::stderr().lock()) {
+            Ok(true) => return ExitCode::from(2),
+            result => result.map(|_| ()),
+        },
         ["statusline"] => statusline::run(false, std::io::stdin().lock(), std::io::stdout().lock()),
         ["statusline", "--limits"] => {
             statusline::run(true, std::io::stdin().lock(), std::io::stdout().lock())

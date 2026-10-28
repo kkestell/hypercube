@@ -31,6 +31,14 @@ pub struct Agent {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub session_id: String,
     pub activity: String,
+    /// The number of the agent's newest `hypercube wait`. An older one ends
+    /// when it sees a newer number.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub waiter: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

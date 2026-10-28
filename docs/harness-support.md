@@ -18,7 +18,8 @@ child processes inherit:
 - `HYPERCUBE_AGENT_ID`: the agent's ID.
 - `HYPERCUBE_STATE`: the path of the workspace's state file.
 
-They are the agent's identity for `hypercube mcp` and `hypercube hook`.
+They are the agent's identity for `hypercube mcp`, `hypercube hook`, and
+`hypercube wait`.
 
 Hook events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, and `Stop`.
 `hypercube hook <event>` reads the harness's hook JSON on stdin and writes the
@@ -35,6 +36,11 @@ queued message.
 - `Stop` delivers queued messages as a block reason, or marks the agent idle
   when its queue is empty.
 
+Each harness runs `hypercube wait` in the background when a session starts
+and after each turn's stop. When the agent is idle with messages queued, the
+waiter writes them to stderr and exits with status 2, and the harness starts a
+turn with them.
+
 Saved session IDs are passed to the harness on subsequent launches. The
 session ID is recorded at the first prompt, when the harness has a
 conversation to resume.
@@ -43,7 +49,7 @@ conversation to resume.
 
 ```
 claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
-  --dangerously-skip-permissions [--resume <session>] [prompt]
+  --permission-mode auto [--resume <session>] [prompt]
 ```
 
 - `--mcp-config` registers the `hypercube` stdio server: `exe mcp`, with
@@ -53,6 +59,12 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
   with `--limits` for the orchestrator. The status line shows the model, the
   effort while thinking is on, and the context window's tokens in use, size,
   and percentage; `--limits` adds bars for the 5-hour and 7-day usage limits.
+- The `SessionStart` and `Stop` entries also run `'<exe>' wait` with
+  `asyncRewake` and a 20-day `timeout`. Claude Code runs it in the background,
+  and when it exits with status 2, wakes the session with its stderr as a
+  system reminder, even when the session is idle. The prompt being typed stays
+  in the editor.
+- `--permission-mode auto` starts the session in auto mode.
 - `--resume` is present when the agent has a saved session ID.
 
 Claude Code handles folder trust in its pane. Worktree workers live under
@@ -81,6 +93,12 @@ It maps Pi events onto `exe hook` calls:
   with `parentToolCallId` are skipped, since they never enter the transcript.
 - `agent_settled`: Stop, after retries, compaction, and queued work finish. A
   block reason is sent back with `pi.sendUserMessage`, which starts a new run.
+  Otherwise the extension starts a waiter.
+- `session_start`: starts a waiter. `session_shutdown` kills the current one.
+
+When a waiter exits with status 2, the extension sends its stderr with
+`pi.sendMessage` as a visible `hypercube` custom message with `triggerTurn`,
+which starts a run while the agent is idle and leaves the editor alone.
 
 Each Pi hook call sends `{ "session_id": "<current session ID>" }` on stdin.
 The extension's per-session SessionStart tracking lasts for the loaded

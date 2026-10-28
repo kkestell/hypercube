@@ -16,7 +16,8 @@ use crate::store;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-/// Typed into an idle agent's pane to make it run a turn.
+/// The prompt a worker's harness starts with, so that its first turn picks up
+/// its messages.
 pub const NUDGE: &str = "Check your Hypercube messages.";
 
 /// The longest socket path macOS accepts: `sun_path` is 104 bytes with the
@@ -41,8 +42,6 @@ pub enum Request {
     /// Hang up the agent's process, close its pane, and lay the panes out
     /// again.
     Close { agent: String },
-    /// Type the nudge into the agent's pane and press Enter.
-    Nudge { agent: String },
     /// End the session.
     Stop,
 }
@@ -272,10 +271,6 @@ mod tests {
             wire(&Request::Close { agent: "a1".into() }),
             r#"{"request":"close","agent":"a1"}"#
         );
-        assert_eq!(
-            wire(&Request::Nudge { agent: "a1".into() }),
-            r#"{"request":"nudge","agent":"a1"}"#
-        );
         assert_eq!(wire(&Request::Stop), r#"{"request":"stop"}"#);
         assert_eq!(
             serde_json::to_string(&Reply::ok()).unwrap(),
@@ -292,18 +287,17 @@ mod tests {
         let dir = TempDir::new();
         let socket = socket_path(&dir.path().join("w.json")).unwrap();
         let seen = testing::serve(&socket, |r| match r {
-            Request::Nudge { .. } => Reply::error("pane is gone"),
+            Request::Close { .. } => Reply::error("pane is gone"),
             _ => Reply::ok(),
         });
         let requests = [
             launch(),
             Request::Close { agent: "a1".into() },
-            Request::Nudge { agent: "a1".into() },
             Request::Stop,
         ];
         for r in &requests {
             let reply = request(&socket, r).unwrap();
-            assert_eq!(reply.ok, !matches!(r, Request::Nudge { .. }), "{r:?}");
+            assert_eq!(reply.ok, !matches!(r, Request::Close { .. }), "{r:?}");
         }
         assert_eq!(*seen.lock().unwrap(), requests);
     }

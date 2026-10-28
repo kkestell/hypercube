@@ -661,7 +661,7 @@ fn first_start_lays_out_one_pane() {
     assert_eq!(argv[0], "--mcp-config");
     assert_eq!(flag_value(argv, "--model"), Some("haiku"));
     assert_eq!(flag_value(argv, "--effort"), Some("low"));
-    assert!(argv.iter().any(|a| a == "--dangerously-skip-permissions"));
+    assert_eq!(flag_value(argv, "--permission-mode"), Some("auto"));
     assert!(!argv.iter().any(|a| a == "--resume"));
     assert_eq!(launch["harness"], "claude");
     assert_eq!(launch["cwd"], fx.repo.to_str().unwrap());
@@ -788,45 +788,70 @@ fn create_agent_adds_panes_and_worktrees() {
 }
 
 #[test]
-fn send_message_nudges_an_idle_agent() {
+fn send_message_wakes_an_idle_agent_without_typing() {
     let mut fx = Fixture::new();
     fx.start();
     let oid = fx.agent_id("orchestrator").unwrap();
     let w1 = fx.create("w1", "fast", "");
-    assert_eq!(fx.agent_events("w1", "prompt").len(), 1);
+    let w2 = fx.create("w2", "deepseek", "");
 
-    let (text, is_error) = fx.call(
-        "orchestrator",
-        "send_message",
-        json!({"to": "w1", "text": "hello worker"}),
-    );
-    assert!(!is_error, "{text}");
-    assert_eq!(text, format!("Message queued for w1 ({w1})."));
+    for (name, id) in [("w1", w1), ("w2", w2)] {
+        let text = format!("hello {name}");
+        let (reply, is_error) = fx.call(
+            "orchestrator",
+            "send_message",
+            json!({"to": name, "text": text}),
+        );
+        assert!(!is_error, "{reply}");
+        assert_eq!(reply, format!("Message queued for {name} ({id})."));
 
-    // The host typed the nudge and pressed Enter 200 ms later.
-    let prompts = fx.wait_event("w1", "prompt", 2);
-    assert_eq!(prompts[1]["text"], NUDGE);
-    let inputs = fx.agent_events("w1", "input");
-    let typed: String = inputs.iter().map(|e| e["data"].as_str().unwrap()).collect();
-    assert_eq!(typed, format!("{NUDGE}\r"));
-
-    // The nudge's turn delivered the message.
-    let events = fx.wait("the nudge's turn to end", |fx| {
-        let events = fx.agent_events("w1", "hook");
-        let stops = events.iter().filter(|e| e["name"] == "Stop").count();
-        (stops >= 2).then_some(events)
-    });
-    let delivered = format!("Message from orchestrator ({oid}):\nhello worker");
-    assert!(
-        hook_contexts(&events, "UserPromptSubmit")[1].contains(&delivered),
-        "{events:?}"
-    );
-    fx.wait_idle("w1");
+        // The agent's waiter took the message and woke its harness.
+        let wakes = fx.wait_event(name, "wake", 1);
+        assert_eq!(
+            wakes[0]["text"],
+            format!("Message from orchestrator ({oid}):\n{text}\n")
+        );
+        fx.wait_idle(name);
+        assert!(fx.agent_events(name, "input").is_empty());
+        assert_eq!(fx.agent_events(name, "prompt").len(), 1);
+        // Claude Code continues its session; Pi's extension starts a turn.
+        let submits = hook_contexts(&fx.agent_events(name, "hook"), "UserPromptSubmit").len();
+        assert_eq!(submits, if name == "w2" { 2 } else { 1 });
+    }
     assert!(fx.state().messages.is_empty());
 
     // An agent cannot message itself.
     let (text, is_error) = fx.call("w1", "send_message", json!({"to": "w1", "text": "x"}));
     assert!(is_error, "{text}");
+}
+
+#[test]
+fn a_woken_agent_keeps_the_prompt_being_typed() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_idle("orchestrator");
+
+    // The orchestrator's pane has the focus.
+    fx.type_text("half a prom");
+    fx.wait("the typing to arrive", |fx| {
+        let inputs = fx.agent_events("orchestrator", "input");
+        let typed: String = inputs.iter().map(|e| e["data"].as_str().unwrap()).collect();
+        (typed == "half a prom").then_some(())
+    });
+    let (text, is_error) = fx.call(
+        "w1",
+        "send_message",
+        json!({"to": "orchestrator", "text": "done"}),
+    );
+    assert!(!is_error, "{text}");
+    fx.wait_event("orchestrator", "wake", 1);
+    fx.wait_idle("orchestrator");
+    assert!(fx.agent_events("orchestrator", "prompt").is_empty());
+
+    fx.type_text("pt\r");
+    let prompts = fx.wait_event("orchestrator", "prompt", 1);
+    assert_eq!(prompts[0]["text"], "half a prompt");
 }
 
 #[test]
@@ -1137,29 +1162,31 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
 }
 
 #[test]
-fn a_nudge_pending_when_an_agent_exits_does_not_reach_its_replacement() {
+fn an_exited_agents_waiter_ends_and_its_replacement_is_woken() {
     let mut fx = Fixture::new();
     fx.start();
     fx.create("w1", "fast", "");
+    let old: Vec<i32> = fx
+        .agent_events("w1", "waiter")
+        .iter()
+        .map(|e| e["pid"].as_i64().unwrap() as i32)
+        .collect();
+    fx.command("w1", "exit 1");
+    fx.wait_event("w1", "ready", 2);
+    fx.wait_idle("w1");
+    fx.wait_gone(&old);
+
     let (text, is_error) = fx.call(
         "orchestrator",
         "send_message",
         json!({"to": "w1", "text": "hello"}),
     );
     assert!(!is_error, "{text}");
-    // The host's Enter for the nudge is due 200 ms after it typed the text.
-    fx.command("w1", "exit 1");
-    let launch = fx.wait_event("w1", "ready", 2);
-    let since = launch[1]["ms"].as_i64().unwrap();
-    std::thread::sleep(Duration::from_millis(600));
-
-    // Nothing typed reached the new program, and it ran one turn: its own
-    // nudge prompt.
-    let late = |e: &&Value| e["ms"].as_i64().unwrap() >= since;
-    let events = fx.agent_events("w1", "input");
-    assert_eq!(events.iter().filter(late).count(), 0, "{events:?}");
-    let prompts = fx.agent_events("w1", "prompt");
-    assert_eq!(prompts.iter().filter(late).count(), 1, "{prompts:?}");
+    let wakes = fx.wait_event("w1", "wake", 1);
+    assert!(wakes[0]["text"].as_str().unwrap().ends_with("hello\n"));
+    fx.wait_idle("w1");
+    assert_eq!(fx.agent_events("w1", "wake").len(), 1);
+    assert!(fx.state().messages.is_empty());
 }
 
 #[test]

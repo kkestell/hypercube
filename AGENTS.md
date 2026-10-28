@@ -63,18 +63,20 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 - `src/harness/pi.js`: the Pi extension, embedded in the binary and written for
   each Pi launch.
 - `src/hook.rs`: the harness hook events and the messages they deliver.
+- `src/wait.rs`: `hypercube wait`, which wakes an idle agent when messages
+  arrive for it.
 - `src/statusline.rs`: `hypercube statusline`, Claude Code's status line.
 - `src/control.rs`: the control socket's request and reply protocol, its
   client, and the socket's path.
 - `src/mcp.rs`: the agents' stdio MCP server and its tools.
 - `src/host.rs`: the session host: the host lock, the control socket, the
-  panes, layout and chrome, launches, closes, nudges, and teardown.
+  panes, layout and chrome, launches, closes, and teardown.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in
   panes.
 - `src/bin/hypercube-test-harness.rs`: the `claude` and `pi` stand-in the
-  integration tests run in panes. It runs the harness hooks, serves the MCP
-  tools on command, and records what it sees.
+  integration tests run in panes. It runs the harness hooks and waiters,
+  serves the MCP tools on command, and records what it sees.
 - `tests/roundtrip.rs`: feeds program output to the mux, renders frames into a
   stand-in host terminal, and compares the screens cell by cell. Inputs are the
   fixtures in `tests/support/fixtures.rs`, seeded streams from
@@ -91,8 +93,8 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
   terminal, and runs the test child in the panes.
 - `tests/integration.rs`: `hypercube` in a pty with isolated state and
   configuration, a temporary repository, and the harness stand-ins first on
-  `PATH`: panes, worktrees, nudges, agent relaunches, zoom, session restart,
-  `stop`, `delete`, their `--all` variants, and `status`.
+  `PATH`: panes, worktrees, waking idle agents, agent relaunches, zoom,
+  session restart, `stop`, `delete`, their `--all` variants, and `status`.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.
 - `.toolchain/zig-aarch64-macos-0.17.0`: Zig 0.17, which builds libghostty-vt.

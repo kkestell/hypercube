@@ -13,6 +13,14 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 /// The hook events every harness reports.
 pub const EVENTS: [&str; 4] = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop"];
 
+/// The events after which Claude Code starts `hypercube wait` in the
+/// background: the start of a session and the end of each turn. The waiter's
+/// exit status 2 wakes the session with the messages it wrote.
+const WAIT_EVENTS: [&str; 2] = ["SessionStart", "Stop"];
+
+/// How long Claude Code lets a waiter run: 20 days.
+const WAIT_TIMEOUT_SECONDS: u64 = 20 * 24 * 60 * 60;
+
 const PI_EXTENSION: &str = include_str!("harness/pi.js");
 
 /// What to run for an agent: the harness's argv, the environment the host adds
@@ -45,10 +53,16 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
                 .iter()
                 .map(|e| {
                     let command = format!("{} hook {e}", shell_quote(exe_str));
-                    (
-                        *e,
-                        json!([{"hooks": [{"type": "command", "command": command}]}]),
-                    )
+                    let mut hooks = vec![json!({"type": "command", "command": command})];
+                    if WAIT_EVENTS.contains(e) {
+                        hooks.push(json!({
+                            "type": "command",
+                            "command": format!("{} wait", shell_quote(exe_str)),
+                            "asyncRewake": true,
+                            "timeout": WAIT_TIMEOUT_SECONDS,
+                        }));
+                    }
+                    (*e, json!([{"hooks": hooks}]))
                 })
                 .collect();
             // The orchestrator's status line also shows the usage limits.
@@ -69,7 +83,8 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
                 agent.model.clone(),
                 "--effort".into(),
                 agent.effort.clone(),
-                "--dangerously-skip-permissions".into(),
+                "--permission-mode".into(),
+                "auto".into(),
             ]);
             if !agent.session_id.is_empty() {
                 argv.extend(["--resume".into(), agent.session_id.clone()]);
@@ -180,7 +195,7 @@ mod tests {
     fn claude_argv_and_environment() {
         let state = Path::new("/tmp/w.json");
         let mut l = launch(state, &agent("claude", ""), "");
-        assert_eq!(l.argv.len(), 10);
+        assert_eq!(l.argv.len(), 11);
         let (mcp, settings) = (
             json_arg(&l.argv, "--mcp-config"),
             json_arg(&l.argv, "--settings"),
@@ -199,7 +214,8 @@ mod tests {
                 "m",
                 "--effort",
                 "high",
-                "--dangerously-skip-permissions",
+                "--permission-mode",
+                "auto",
             ]
         );
         assert_eq!(
@@ -219,18 +235,18 @@ mod tests {
                 "env": {"HYPERCUBE_AGENT_ID": "a1", "HYPERCUBE_STATE": "/tmp/w.json"},
             }}})
         );
-        let hook = |event: &str| {
-            json!([{"hooks": [{"type": "command",
-                "command": format!("'{EXE}' hook {event}")}]}])
-        };
+        let hook =
+            |event: &str| json!({"type": "command", "command": format!("'{EXE}' hook {event}")});
+        let wait = json!({"type": "command", "command": format!("'{EXE}' wait"),
+            "asyncRewake": true, "timeout": 1_728_000});
         assert_eq!(
             settings,
             json!({
                 "hooks": {
-                    "SessionStart": hook("SessionStart"),
-                    "UserPromptSubmit": hook("UserPromptSubmit"),
-                    "PostToolUse": hook("PostToolUse"),
-                    "Stop": hook("Stop"),
+                    "SessionStart": [{"hooks": [hook("SessionStart"), wait]}],
+                    "UserPromptSubmit": [{"hooks": [hook("UserPromptSubmit")]}],
+                    "PostToolUse": [{"hooks": [hook("PostToolUse")]}],
+                    "Stop": [{"hooks": [hook("Stop"), wait]}],
                 },
                 "statusLine": {"type": "command", "command": format!("'{EXE}' statusline")},
             })
@@ -254,11 +270,14 @@ mod tests {
         let argv = |session_id: &str, prompt: &str| {
             launch(state, &agent("claude", session_id), prompt).argv
         };
-        let skip = "--dangerously-skip-permissions";
-        assert_eq!(argv("s1", NUDGE)[9..], [skip, "--resume", "s1", NUDGE]);
-        assert_eq!(argv("s1", "")[9..], [skip, "--resume", "s1"]);
-        assert_eq!(argv("", NUDGE)[9..], [skip, NUDGE]);
-        assert_eq!(argv("", "")[9..], [skip]);
+        let (mode, auto) = ("--permission-mode", "auto");
+        assert_eq!(
+            argv("s1", NUDGE)[9..],
+            [mode, auto, "--resume", "s1", NUDGE]
+        );
+        assert_eq!(argv("s1", "")[9..], [mode, auto, "--resume", "s1"]);
+        assert_eq!(argv("", NUDGE)[9..], [mode, auto, NUDGE]);
+        assert_eq!(argv("", "")[9..], [mode, auto]);
     }
 
     #[test]
@@ -379,6 +398,15 @@ mod tests {
         std::fs::write(
             &fake,
             r#"#!/bin/sh
+# The first waiter writes a message; later ones wait until they are killed.
+if [ "$1" = wait ]; then
+  echo $$ >> "$HYPERCUBE_TEST_LOG.waits"
+  if [ "$(wc -l < "$HYPERCUBE_TEST_LOG.waits")" -eq 1 ]; then
+    printf 'Message from o (o1):\nhi\n' >&2
+    exit 2
+  fi
+  exec sleep 30
+fi
 input=$(cat)
 printf '%s %s\n' "$2" "$input" >> "$HYPERCUBE_TEST_LOG"
 if [ "$2" = Stop ]; then
@@ -421,11 +449,13 @@ import { pathToFileURL } from "node:url"
 const { default: extension } = await import(pathToFileURL(process.env.HYPERCUBE_TEST_EXTENSION))
 const handlers = new Map()
 const sent = []
+const custom = []
 const servers = []
 extension({
   on: (event, handler) => { handlers.set(event, handler) },
   registerMcpServer: (...args) => { servers.push(args) },
   sendUserMessage: (text) => { sent.push(text) },
+  sendMessage: (...args) => { custom.push(args) },
 })
 assert.deepEqual(servers, [["hypercube", {
   command: process.env.HYPERCUBE_TEST_EXE,
@@ -438,6 +468,28 @@ assert.deepEqual(servers, [["hypercube", {
 }]])
 const ctx = { sessionManager: { getSessionId: () => "s1" } }
 const call = (name, event = {}, context = ctx) => handlers.get(name)(event, context)
+const waits = () => {
+  try { return readFileSync(`${process.env.HYPERCUBE_TEST_LOG}.waits`, "utf8").trim().split("\n").map(Number) } catch { return [] }
+}
+const until = async (what, f) => {
+  for (let i = 0; i < 500; i++) {
+    if (f()) return
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  assert.fail(`timed out waiting for ${what}`)
+}
+const alive = (pid) => {
+  try { process.kill(pid, 0); return true } catch { return false }
+}
+
+// The session's waiter writes messages, which start a turn.
+await call("session_start")
+await until("the waiter's messages", () => custom.length === 1)
+assert.deepEqual(custom, [[
+  { customType: "hypercube", content: "Message from o (o1):\nhi", display: true },
+  { triggerTurn: true, deliverAs: "followUp" },
+]])
+
 const calls = () => readFileSync(process.env.HYPERCUBE_TEST_LOG, "utf8").trim().split("\n").map((line) => {
   const space = line.indexOf(" ")
   return [line.slice(0, space), JSON.parse(line.slice(space + 1))]
@@ -459,8 +511,17 @@ assert.deepEqual(await call("tool_result", { content }), {
 assert.deepEqual(content, [{ type: "text", text: "original" }])
 await call("agent_settled")
 assert.deepEqual(sent, ["queued"])
+assert.equal(waits().length, 1, "a blocked stop continues the turn, so no waiter starts")
 await call("agent_settled")
 assert.deepEqual(sent, ["queued"], "empty Stop output must not start another run")
+await until("a waiter after the stop", () => waits().length === 2)
+
+// Shutting the session down ends its waiter.
+const waiter = waits()[1]
+assert(alive(waiter))
+await call("session_shutdown")
+await until("the waiter to end", () => !alive(waiter))
+assert.equal(custom.length, 1)
 assert.deepEqual(calls(), ["SessionStart", "UserPromptSubmit", "UserPromptSubmit", "PostToolUse", "Stop", "Stop"].map((event) => [event, { session_id: "s1" }]))
 
 // Switching sessions runs SessionStart again, while returning to one does not.

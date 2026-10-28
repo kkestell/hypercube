@@ -1,6 +1,6 @@
 //! The stdio MCP server that gives agents the Hypercube tools. It speaks
 //! line-delimited JSON-RPC. Tools change the state file and the worktrees
-//! themselves and ask the host, through `control`, to launch, close, and nudge
+//! themselves and ask the host, through `control`, to launch and close
 //! panes.
 
 use std::error::Error;
@@ -223,27 +223,21 @@ impl Server {
         Ok(serde_json::to_string_pretty(&team)?)
     }
 
+    /// Queue a message. The recipient's waiter wakes it if it is idle.
     fn send_message(&self, to: &str, text: &str) -> Result<String> {
-        let (recipient, idle) = store::update(&self.state, |s| {
+        let recipient = store::update(&self.state, |s| {
             let a = s.agent(to)?;
             if a.id == self.agent {
                 return Err("cannot send a message to yourself".into());
             }
             let recipient = a.clone();
-            let idle = a.activity == store::IDLE;
             s.messages.push(Message {
                 from: self.agent.clone(),
                 to: recipient.id.clone(),
                 text: text.into(),
             });
-            Ok((recipient, idle))
+            Ok(recipient)
         })?;
-        if idle {
-            self.ask_host(Request::Nudge {
-                agent: recipient.id.clone(),
-            })
-            .map_err(|e| format!("message queued, but waking {} failed: {e}", recipient.name))?;
-        }
         Ok(format!(
             "Message queued for {} ({}).",
             recipient.name, recipient.id
@@ -874,7 +868,7 @@ mod tests {
     }
 
     #[test]
-    fn send_message_nudges_an_idle_recipient_only() {
+    fn send_message_only_queues() {
         let team = team(false, Path::new("/o"), Some(Path::new("/w")));
         store::update(&team.state, |s| {
             s.agent_mut("w1")?.activity = store::IDLE.into();
@@ -899,10 +893,7 @@ mod tests {
                 .unwrap(),
             "Message queued for busy (c)."
         );
-        assert_eq!(
-            *seen.lock().unwrap(),
-            [Request::Nudge { agent: "b".into() }]
-        );
+        assert!(seen.lock().unwrap().is_empty());
         let messages = team.state().messages;
         let queued: Vec<_> = messages
             .iter()
@@ -927,20 +918,6 @@ mod tests {
                 .contains("no agent")
         );
         assert!(team.state().messages.is_empty());
-    }
-
-    #[test]
-    fn send_message_reports_a_failed_nudge_and_keeps_the_message() {
-        let team = team(false, Path::new("/o"), Some(Path::new("/w")));
-        store::update(&team.state, |s| {
-            s.agent_mut("w1")?.activity = store::IDLE.into();
-            Ok(())
-        })
-        .unwrap();
-        team.host(|_| Reply::error("no pane"));
-        let err = team.error("send_message", &[("to", "w1"), ("text", "hi")]);
-        assert_eq!(err, "message queued, but waking w1 failed: no pane");
-        assert_eq!(team.state().messages.len(), 1);
     }
 
     #[test]

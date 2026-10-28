@@ -1,7 +1,9 @@
 //! The stand-in for `claude` and `pi` that the integration tests
 //! (tests/integration.rs) put first on `PATH`. It behaves like a harness
 //! in a pane: it runs the hypercube hooks, serves the hypercube MCP server,
-//! and treats a typed line as a prompt. Everything it observes is appended to
+//! treats a typed line as a prompt, and runs `hypercube wait` the way each
+//! harness does, starting a turn when a waiter exits with status 2. Everything
+//! it observes is appended to
 //! `$HYPERCUBE_TEST_DIR/<agent id>/events.jsonl`, and the test drives it with
 //! lines written to `$HYPERCUBE_TEST_DIR/<agent id>/fifo`:
 //!
@@ -15,6 +17,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, SystemTime};
 
 use serde_json::{Value, json};
@@ -111,6 +114,11 @@ struct Stub {
     session: String,
     /// The hook command of each event: the `--settings` entry for Claude Code.
     hooks: BTreeMap<String, String>,
+    /// Claude Code's background hook command that runs `hypercube wait`. Pi's
+    /// extension runs `hypercube wait` itself.
+    waiter: Option<String>,
+    /// Each waiter's exit status and the messages it wrote.
+    wakes: Sender<(Option<i32>, String)>,
     mcp: Mcp,
     hold_hup: bool,
     typed: Vec<u8>,
@@ -176,13 +184,63 @@ impl Stub {
     fn prompt(&mut self, text: &str) {
         self.record("prompt", json!({"text": text}));
         self.hook("UserPromptSubmit", json!({"prompt": text}));
-        // A blocked stop continues the turn.
+        self.end_turn();
+    }
+
+    /// Stop, continuing the turn while the stop is blocked, then start a
+    /// waiter.
+    fn end_turn(&mut self) {
         for _ in 0..5 {
             let output = self.hook("Stop", json!({"stop_hook_active": false}));
             if !output.contains("\"decision\":\"block\"") {
                 break;
             }
         }
+        self.start_waiter();
+    }
+
+    /// Start `hypercube wait` in the background, as Claude Code's hook or as
+    /// Pi's extension does. Its exit status and output arrive on `wakes`.
+    fn start_waiter(&mut self) {
+        let mut command = match &self.waiter {
+            Some(command) => {
+                let mut c = Command::new("sh");
+                c.args(["-c", command]);
+                c
+            }
+            None => {
+                let mut c = Command::new(hypercube());
+                c.arg("wait");
+                c
+            }
+        };
+        let child = command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .expect("start the waiter");
+        self.record("waiter", json!({"pid": child.id()}));
+        let wakes = self.wakes.clone();
+        std::thread::spawn(move || {
+            let out = child.wait_with_output().unwrap();
+            let text = String::from_utf8_lossy(&out.stderr).into_owned();
+            let _ = wakes.send((out.status.code(), text));
+        });
+    }
+
+    /// A waiter exited. Status 2 wakes the agent with the messages it wrote:
+    /// Claude Code continues the session with them, and Pi's extension starts
+    /// a turn, which runs the UserPromptSubmit hook.
+    fn waiter_exited(&mut self, status: Option<i32>, text: String) {
+        if status != Some(2) {
+            return;
+        }
+        self.record("wake", json!({"text": text}));
+        if self.harness == "pi" {
+            self.hook("UserPromptSubmit", json!({}));
+        }
+        self.end_turn();
     }
 
     fn command(&mut self, line: &str) {
@@ -276,11 +334,12 @@ fn flag_value(args: &[String], flag: &str) -> Option<String> {
 
 /// The prompt: the argument that is neither a flag nor a flag's value.
 fn prompt_arg(args: &[String]) -> Option<String> {
-    const WITH_VALUE: [&str; 8] = [
+    const WITH_VALUE: [&str; 9] = [
         "--mcp-config",
         "--settings",
         "--model",
         "--effort",
+        "--permission-mode",
         "--resume",
         "--extension",
         "--thinking",
@@ -334,6 +393,7 @@ fn main() {
     // extension, which the stub does not run: it starts the server that
     // the extension embeds and calls the same hook commands.
     let mut hooks = BTreeMap::new();
+    let mut waiter = None;
     let (program, mcp_args, mcp_env) = match flag_value(args, "--mcp-config") {
         Some(config) => {
             let config: Value = serde_json::from_str(&config).expect("--mcp-config");
@@ -341,8 +401,14 @@ fn main() {
             let settings: Value =
                 serde_json::from_str(&flag_value(args, "--settings").expect("--settings")).unwrap();
             for (event, entry) in settings["hooks"].as_object().unwrap() {
-                let command = entry[0]["hooks"][0]["command"].as_str().unwrap();
-                hooks.insert(event.clone(), command.to_string());
+                for hook in entry[0]["hooks"].as_array().unwrap() {
+                    let command = hook["command"].as_str().unwrap().to_string();
+                    if hook["asyncRewake"] == true {
+                        waiter = Some(command);
+                    } else {
+                        hooks.insert(event.clone(), command);
+                    }
+                }
             }
             let strings = |v: &Value| -> Vec<String> {
                 v.as_array()
@@ -369,12 +435,15 @@ fn main() {
             BTreeMap::new(),
         ),
     };
+    let (wakes, woken): (_, Receiver<_>) = mpsc::channel();
     let mut stub = Stub {
         harness,
         dir: dir.clone(),
         events,
         session,
         hooks,
+        waiter,
+        wakes,
         mcp: Mcp::start(&program, &mcp_args, &mcp_env),
         hold_hup: false,
         typed: Vec::new(),
@@ -399,6 +468,7 @@ fn main() {
     );
 
     stub.hook("SessionStart", json!({}));
+    stub.start_waiter();
     let fifo = open_fifo(&dir.join("fifo"));
     stub.record("ready", json!({}));
     if let Some(prompt) = prompt_arg(args) {
@@ -409,6 +479,9 @@ fn main() {
     loop {
         if HUP.load(Ordering::Relaxed) {
             stub.hung_up();
+        }
+        while let Ok((status, text)) = woken.try_recv() {
+            stub.waiter_exited(status, text);
         }
         if WINCH.swap(false, Ordering::Relaxed) {
             stub.record("size", json!({"size": size()}));
