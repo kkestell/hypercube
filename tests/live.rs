@@ -543,7 +543,7 @@ fn input_goes_to_the_focused_pane_and_ctrl_bracket_moves_focus() {
     h.send("\x1db");
     h.wait_screen("right got 98");
     // The loop reports the move to the caller.
-    assert!(h.events.contains(&Event::Focus));
+    assert!(h.events.iter().any(|e| matches!(e, Event::Focus(_))));
     h.send("\x1dc");
     h.wait_screen("left got 99");
     // Kitty-encoded Ctrl-]: a press switches; repeats and releases are
@@ -590,13 +590,17 @@ fn modes_cursor_title_and_focus_reports_follow_focus() {
 }
 
 #[test]
-fn exited_pane_keeps_its_place_and_loses_focus() {
+fn exited_pane_keeps_its_place_and_keeps_the_focus_until_it_is_released() {
     let mut h = Host::new(81, 12);
     let left = h.spawn("left", &["exit", "7", "left final"]);
     h.spawn("right", &["input", "right", "plain", "0"]);
     assert_eq!(h.wait_exit(left), 7);
     h.wait_screen("left (exited 7)");
     h.wait_screen("left final");
+    // The caller may start another program in the pane, so it is still
+    // focused until the caller says it is not.
+    h.wait_screen("* left");
+    h.mux.release_focus(left);
     h.wait_screen("* right");
     h.send("a\x1db");
     h.wait_screen("right got 98");
@@ -608,7 +612,12 @@ fn the_zoom_key_is_reported_and_goes_to_no_pane() {
     let mut h = Host::new(81, 12);
     h.spawn("left", &["input", "left", "plain", "0"]);
     h.wait_screen("left ready");
-    let zooms = |h: &Host| h.events.iter().filter(|e| **e == Event::Zoom).count();
+    let zooms = |h: &Host| {
+        h.events
+            .iter()
+            .filter(|e| matches!(e, Event::Zoom(_)))
+            .count()
+    };
     h.send("\x1ca");
     h.wait_screen("left got 97");
     assert_eq!(zooms(&h), 1);
@@ -658,10 +667,10 @@ fn a_restarted_pane_runs_a_new_program_in_the_same_place() {
     let place = h.mux.pane(left).unwrap().rect();
 
     // A pane whose program is running is left as it is.
-    h.mux.restart(right, "ignored");
+    h.mux.restart(right, "ignored").unwrap();
     assert_eq!(h.mux.pane(right).unwrap().label, "right");
 
-    h.mux.restart(left, "left again");
+    h.mux.restart(left, "left again").unwrap();
     let ws = h.mux.pane(left).unwrap().ws();
     let env: &[(&str, &str)] = &[];
     let pty = Pty::spawn(
@@ -680,8 +689,8 @@ fn a_restarted_pane_runs_a_new_program_in_the_same_place() {
     assert_eq!(h.mux.pane(left).unwrap().rect(), place);
     assert_eq!(h.mux.pane(left).unwrap().status(), None);
 
-    // The new program takes input once it has the focus.
-    h.send("\x1da");
+    // The pane kept the focus through the restart.
+    h.send("a");
     h.wait_screen("left got 97");
 }
 

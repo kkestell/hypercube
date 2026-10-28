@@ -93,6 +93,9 @@ fn dec(value: u16) -> Mode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PaneId(pub u32);
 
+/// The pane of no input: the mux numbers its panes from 1.
+const NO_PANE: PaneId = PaneId(0);
+
 /// A region of the host terminal in cells. `col` and `row` count from 0.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Rect {
@@ -117,6 +120,16 @@ impl Rect {
         (self.col..self.col + self.cols).contains(&col)
             && (self.row..self.row + self.rows).contains(&row)
     }
+}
+
+/// Something the caller may act on, from host input or the focus moving; see
+/// `Mux::take_notices`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Notice {
+    /// The focus moved to this pane.
+    Focus(PaneId),
+    /// The zoom key was pressed while this pane had the focus.
+    Zoom(PaneId),
 }
 
 /// What the chrome sees of a pane.
@@ -338,8 +351,33 @@ impl Pane {
             held_since: Cell::new(0),
         });
         let frame = Rc::new(RefCell::new(Frame::new()?));
-        let mut terminal = Terminal::new(1, 1)?;
+        let terminal = Self::new_terminal(shared, id, &state, &frame)?;
 
+        Ok(Pane {
+            id,
+            shared: shared.clone(),
+            state,
+            master: None,
+            child: None,
+            status: None,
+            label: label.to_owned(),
+            rect: Rect::default(),
+            terminal,
+            frame,
+            dirty: true,
+            notifications: Notifications::default(),
+            scrolled_drawn: 0,
+        })
+    }
+
+    /// A terminal of one cell whose effects go to the pane's shared state.
+    fn new_terminal(
+        shared: &Rc<Shared>,
+        id: PaneId,
+        state: &Rc<PaneState>,
+        frame: &Rc<RefCell<Frame>>,
+    ) -> Result<Terminal<'static, 'static>> {
+        let mut terminal = Terminal::new(1, 1)?;
         let s = state.clone();
         terminal.on_pty_write(move |_, data| s.send(data))?;
         let sh = shared.clone();
@@ -374,22 +412,30 @@ impl Pane {
                 s.held_since.set(now_ms());
             }
         })?;
+        Ok(terminal)
+    }
 
-        Ok(Pane {
-            id,
-            shared: shared.clone(),
-            state,
-            master: None,
-            child: None,
-            status: None,
-            label: label.to_owned(),
-            rect: Rect::default(),
-            terminal,
-            frame,
-            dirty: true,
-            notifications: Notifications::default(),
-            scrolled_drawn: 0,
-        })
+    /// Replace the exited program's state: a new terminal of the same size,
+    /// with nothing the old program left half written, a clean notification
+    /// scanner, the label, and no exit status. Returns the old program's
+    /// process group, hung up. The caller attaches the new program.
+    fn restart(&mut self, label: &str, host_replies: &[u8]) -> Result<Option<Orphan>> {
+        let mut terminal = Self::new_terminal(&self.shared, self.id, &self.state, &self.frame)?;
+        let ws = self.ws();
+        terminal.resize(
+            ws.ws_col,
+            ws.ws_row,
+            u32::from(ws.ws_xpixel.checked_div(ws.ws_col).unwrap_or(0)),
+            u32::from(ws.ws_ypixel.checked_div(ws.ws_row).unwrap_or(0)),
+        )?;
+        use_host_replies_for(&mut terminal, host_replies)?;
+        let orphan = self.hang_up();
+        self.terminal = terminal;
+        self.notifications = Notifications::default();
+        self.status = None;
+        self.label = label.to_owned();
+        let _ = self.repaint();
+        Ok(orphan)
     }
 
     pub fn id(&self) -> PaneId {
@@ -696,10 +742,9 @@ pub struct Mux {
     held_since: i64,
     /// The pane a bracketed paste in progress goes to.
     pasting: Option<PaneId>,
-    /// Whether the zoom key was pressed since the caller last took it.
-    zoom: bool,
-    /// Whether the focus moved since the caller last took it.
-    focus_moved: bool,
+    /// What host input and focus changes have told the caller since it
+    /// last took them, in order.
+    notices: Vec<Notice>,
 }
 
 impl Mux {
@@ -726,8 +771,7 @@ impl Mux {
             held_input: Vec::new(),
             held_since: 0,
             pasting: None,
-            zoom: false,
-            focus_moved: false,
+            notices: Vec::new(),
         };
         m.reset_host_modes();
         m
@@ -843,32 +887,64 @@ impl Mux {
         }
         p.status = Some(status);
         self.chrome_dirty = true;
-        if self.focus() == Some(id) {
+        self.release_focus(id);
+    }
+
+    /// Move the focus off a pane that is not to run a program again, to the
+    /// next live pane. A pane whose program exits keeps the focus until the
+    /// caller decides whether to start another, so a relaunched pane is
+    /// still focused.
+    pub fn release_focus(&mut self, id: PaneId) {
+        if self.focus() == Some(id)
+            && let Some(index) = self.index(id)
+        {
             self.focus_from(index + 1);
         }
     }
 
-    /// Ready a pane whose program has exited for a new one: its terminal is
-    /// reset, it is live again, and `label` replaces its label. The old
-    /// program's process group is hung up like a removed pane's. A pane
+    /// Ready a pane whose program has exited for a new one: it gets a new
+    /// terminal of the same size, so nothing the old program left half
+    /// written carries over, it is live again, and `label` replaces its
+    /// label. The old program's process group is hung up like a removed
+    /// pane's, and the host input aimed at it is dropped: a selection, a
+    /// mouse press in progress, held input, and the rest of a paste. A pane
     /// whose program is running is left as it is. The caller attaches the
     /// new program, or shows why there is none with `mark_exited`.
-    pub fn restart(&mut self, id: PaneId, label: &str) {
-        let Some(index) = self.index(id) else { return };
-        let p = &mut self.panes[index];
-        if p.live() {
-            return;
+    pub fn restart(&mut self, id: PaneId, label: &str) -> Result<()> {
+        let Some(index) = self.index(id) else {
+            return Ok(());
+        };
+        if self.panes[index].live() {
+            return Ok(());
         }
-        self.orphans.extend(p.hang_up());
-        p.status = None;
-        p.label = label.to_owned();
-        p.terminal.reset();
-        p.notifications = Notifications::default();
-        let _ = p.repaint();
+        let orphan = self.panes[index].restart(label, &self.host_replies)?;
+        self.orphans.extend(orphan);
+        self.drop_input_for(id);
+        self.chrome_dirty = true;
+        Ok(())
+    }
+
+    /// Drop the rest of a mouse press that a pane captured.
+    fn ignore_press_of(&mut self, id: PaneId) {
+        if matches!(&self.press, Some(Press::Report(i) | Press::Select(i, ..)) if *i == id) {
+            self.press = Some(Press::Ignore);
+        }
+    }
+
+    /// Drop the host input aimed at a pane's program that has gone: its
+    /// selection, a mouse press in progress, input held for it, and the rest
+    /// of a paste, through its end marker.
+    fn drop_input_for(&mut self, id: PaneId) {
         if self.selection == Some(id) {
             self.selection = None;
         }
-        self.chrome_dirty = true;
+        self.ignore_press_of(id);
+        if self.pasting == Some(id) {
+            // The held start of the end marker is part of the paste.
+            self.pasting = Some(NO_PANE);
+        } else if self.focus() == Some(id) {
+            self.held_input.clear();
+        }
     }
 
     /// Remove a pane, hanging up its program if it is still running, and
@@ -886,7 +962,8 @@ impl Mux {
     }
 
     /// Collect the exit status of every pane program that has exited, and
-    /// of removed panes' programs. Never blocks.
+    /// of removed panes' programs. Never blocks. A pane whose program exited
+    /// keeps the focus until `release_focus`.
     pub fn reap(&mut self) -> Vec<(PaneId, u8)> {
         let now = now_ms();
         self.orphans.retain_mut(|o| {
@@ -913,11 +990,6 @@ impl Mux {
         }
         if !exited.is_empty() {
             self.chrome_dirty = true;
-            if let Some(index) = self.focus().and_then(|id| self.index(id))
-                && !self.panes[index].live()
-            {
-                self.focus_from(index + 1);
-            }
         }
         exited
     }
@@ -947,6 +1019,8 @@ impl Mux {
             let Some(p) = self.pane_mut(id) else { continue };
             p.rect = rect;
             if rect.cols == 0 || rect.rows == 0 {
+                // A pane with no place can't take the rest of a mouse press.
+                self.ignore_press_of(id);
                 continue;
             }
             let (cols, rows) = (rect.cols, rect.rows);
@@ -1031,7 +1105,7 @@ impl Mux {
             old.send(b"\x1b[O");
         }
         self.shared.focus.set(Some(id));
-        self.focus_moved = true;
+        self.notices.push(Notice::Focus(id));
         let next = &self.panes[self.index(id).unwrap()];
         if next.mode(Mode::FOCUS_EVENT) {
             next.send(b"\x1b[I");
@@ -1132,14 +1206,9 @@ impl Mux {
         self.route(&input, false);
     }
 
-    /// Whether the focus moved to another pane since the last call.
-    pub fn take_focus_moved(&mut self) -> bool {
-        std::mem::take(&mut self.focus_moved)
-    }
-
-    /// Whether the zoom key was pressed since the last call.
-    pub fn take_zoom(&mut self) -> bool {
-        std::mem::take(&mut self.zoom)
+    /// The focus changes and zoom key presses since the last call, in order.
+    pub fn take_notices(&mut self) -> Vec<Notice> {
+        std::mem::take(&mut self.notices)
     }
 
     /// When held input is taken as it is: a lone Esc as the Esc key, and a
@@ -1207,7 +1276,11 @@ impl Mux {
                     start = end;
                     match route {
                         Route::FocusNext => self.focus_next(),
-                        Route::Zoom => self.zoom = true,
+                        Route::Zoom => {
+                            if let Some(id) = self.focus() {
+                                self.notices.push(Notice::Zoom(id));
+                            }
+                        }
                         Route::Mouse(event) => self.mouse(event),
                         Route::Scroll(key) => self.scroll_focused(key),
                         _ => {}
@@ -1302,6 +1375,12 @@ impl Mux {
         {
             let id = match &press {
                 Press::Report(id) | Press::Select(id, ..) => *id,
+                Press::Ignore => {
+                    if event.action != mouse::Action::Release {
+                        self.press = Some(Press::Ignore);
+                    }
+                    return;
+                }
             };
             let Some(p) = self.panes.iter_mut().find(|p| p.id == id) else {
                 return;
@@ -1318,6 +1397,7 @@ impl Mux {
                 Press::Report(_) => {
                     let _ = p.report_mouse(&event, col, row);
                 }
+                Press::Ignore => {}
                 Press::Select(_, anchor, start) => {
                     // A press released where it began, without moving, is
                     // a click.
@@ -1732,6 +1812,8 @@ enum Press {
     /// Selecting text in the pane from where the button was pressed, at
     /// this column and row of the pane.
     Select(PaneId, TrackedGridRef, (u16, u16)),
+    /// The pane's program was replaced; the rest of the press is dropped.
+    Ignore,
 }
 
 /// Finds the desktop notifications in a program's output, OSC 9 and OSC
@@ -2293,6 +2375,13 @@ mod tests {
             Piped { mux, ids, pipes }
         }
 
+        /// Give pane `i` a new program, reading what the old one would have.
+        fn reattach(&self, i: usize) {
+            let id = self.ids[i];
+            let fd = self.pipes[i].1.as_raw_fd();
+            self.mux.pane(id).unwrap().state.pty.set(Some(fd));
+        }
+
         /// What pane `i`'s program got since the last call.
         fn got(&self, i: usize) -> Vec<u8> {
             let mut got = Vec::new();
@@ -2401,21 +2490,46 @@ mod tests {
         }
     }
 
+    fn zooms(mux: &mut Mux) -> usize {
+        let notices = mux.take_notices();
+        notices
+            .iter()
+            .filter(|n| matches!(n, Notice::Zoom(_)))
+            .count()
+    }
+
+    #[test]
+    fn zoom_and_focus_notices_keep_the_order_of_the_input() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        p.mux.take_notices();
+        p.mux.input(b"\x1c\x1d");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::Zoom(left), Notice::Focus(right)]
+        );
+        p.mux.input(b"\x1d\x1b[92;5u");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::Focus(left), Notice::Zoom(left)]
+        );
+    }
+
     #[test]
     fn ctrl_backslash_asks_for_zoom_and_goes_to_no_pane() {
         let mut p = Piped::new();
-        assert!(!p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 0);
         // Legacy, and Kitty's press; repeats and releases are consumed.
         p.mux.input(b"\x1c");
-        assert!(p.mux.take_zoom());
-        assert!(!p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 1);
+        assert_eq!(zooms(&mut p.mux), 0);
         p.mux.input(b"\x1b[92;5u");
-        assert!(p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 1);
         p.mux.input(b"\x1b[92;5:2u\x1b[92;5:3u");
-        assert!(!p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 0);
         // Other modifiers pass through, and scrolling doesn't change the key.
         p.mux.input(b"\x1b[92;1u");
-        assert!(!p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 0);
         assert_eq!(p.got(0), b"\x1b[92;1u");
         let id = p.ids[0];
         for i in 0..30 {
@@ -2425,9 +2539,84 @@ mod tests {
                 .feed(format!("{i}\r\n").as_bytes());
         }
         p.mux.input(b"\x1b[5;2~\x1c");
-        assert!(p.mux.take_zoom());
+        assert_eq!(zooms(&mut p.mux), 1);
         assert_eq!(p.mux.pane(id).unwrap().scrolled(), 10);
         assert_eq!(p.got(0), b"");
+        // Every press counts, so a second one in the same read toggles back.
+        p.mux.input(b"\x1c\x1b[92;5u\x1c");
+        assert_eq!(zooms(&mut p.mux), 3);
+    }
+
+    #[test]
+    fn restarting_a_pane_drops_the_old_programs_output_state_and_input() {
+        // An unfinished OSC doesn't swallow the new program's output.
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        p.mux.pane_mut(id).unwrap().feed(b"\x1b]2;OLD");
+        p.mux.mark_exited(id, 1);
+        p.mux.restart(id, "new").unwrap();
+        p.mux.pane_mut(id).unwrap().feed(b"NEW\x07 VISIBLE");
+        assert_eq!(p.mux.pane(id).unwrap().terminal.cursor_x().unwrap(), 11);
+        // A notification cut off by the exit isn't finished by new output.
+        p.mux.pane_mut(id).unwrap().feed(b"\x1b]9;half");
+        p.mux.mark_exited(id, 1);
+        p.mux.restart(id, "new").unwrap();
+        p.mux.take_output();
+        p.mux.pane_mut(id).unwrap().feed(b"rest\x07");
+        assert!(find(&p.mux.output(), b"\x1b]9;").is_none());
+
+        // The rest of a paste that began before the exit is dropped through
+        // its end marker, wherever the reads end, and then keys route again.
+        let rest = b"tail\x1c\x1b[201~\x1c";
+        for at in 0..=rest.len() {
+            let mut p = Piped::new();
+            let id = p.ids[0];
+            p.mux.input(b"\x1b[200~head");
+            assert_eq!(p.got(0), b"\x1b[200~head");
+            p.mux.mark_exited(id, 1);
+            p.mux.restart(id, "new").unwrap();
+            p.reattach(0);
+            p.mux.set_focus(id);
+            p.input(rest, at);
+            assert_eq!(p.got(0), b"", "split at {at}");
+            // The key inside the paste is part of it; the one after isn't.
+            assert_eq!(zooms(&mut p.mux), 1, "split at {at}");
+            p.mux.input(b"x");
+            assert_eq!(p.got(0), b"x", "split at {at}");
+        }
+
+        // A mouse press captured by the old program ends without reaching
+        // the new one, even once the new one tracks the mouse.
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        p.mux.pane_mut(id).unwrap().feed(b"\x1b[?1000h\x1b[?1006h");
+        p.mux.input(b"\x1b[<0;5;5M");
+        assert!(!p.got(0).is_empty());
+        p.mux.mark_exited(id, 1);
+        p.mux.restart(id, "new").unwrap();
+        p.reattach(0);
+        p.mux.pane_mut(id).unwrap().feed(b"\x1b[?1000h\x1b[?1006h");
+        p.mux.input(b"\x1b[<32;6;5M\x1b[<0;6;5m");
+        assert_eq!(p.got(0), b"");
+        // The next press is the new program's.
+        p.mux.input(b"\x1b[<0;5;5M");
+        assert!(!p.got(0).is_empty());
+
+        // Input held for the focused pane when its program exited isn't
+        // sent to the new one.
+        let mut p = Piped::new();
+        let [first, second] = p.ids;
+        p.mux.mark_exited(second, 1);
+        p.mux.input(b"\x1b[");
+        assert!(p.mux.input_deadline().is_some());
+        p.mux.mark_exited(first, 1);
+        p.mux.restart(first, "new").unwrap();
+        p.reattach(0);
+        assert_eq!(p.mux.input_deadline(), None);
+        p.mux.flush_input();
+        assert_eq!(p.got(0), b"");
+        p.mux.input(b"x");
+        assert_eq!(p.got(0), b"x");
     }
 
     #[test]
@@ -2443,16 +2632,39 @@ mod tests {
         p.mux.pane_mut(id).unwrap().scroll(-5);
         assert_eq!(p.mux.pane(id).unwrap().scrolled(), 5);
         // A pane with a running program is left alone.
-        p.mux.restart(id, "again");
+        p.mux.restart(id, "again").unwrap();
         assert_eq!(p.mux.pane(id).unwrap().scrolled(), 5);
 
         p.mux.mark_exited(id, 1);
         assert_eq!(p.mux.pane(id).unwrap().status(), Some(1));
-        p.mux.restart(id, "again");
+        p.mux.restart(id, "again").unwrap();
         let pane = p.mux.pane_mut(id).unwrap();
         assert_eq!((pane.status(), pane.label.as_str()), (None, "again"));
         pane.scroll(-100);
         assert_eq!(pane.scrolled(), 0);
+    }
+
+    #[test]
+    fn a_press_captured_by_a_pane_that_gets_hidden_goes_nowhere() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        p.mux.pane_mut(right).unwrap().feed(b"abcdef");
+        // Press in the right pane, then it is hidden before the release.
+        p.mux.input(b"\x1b[<0;43;1M");
+        p.mux.take_output();
+        let full = Rect {
+            col: 0,
+            row: 0,
+            cols: 81,
+            rows: 10,
+        };
+        p.mux
+            .set_layout(&[(left, full), (right, Rect::default())])
+            .unwrap();
+        p.mux.take_output();
+        p.mux.input(b"\x1b[<32;45;1M\x1b[<0;45;1m");
+        assert!(find(&p.mux.output(), b"\x1b]52;").is_none());
+        assert_eq!(p.got(1), b"");
     }
 
     #[test]

@@ -593,6 +593,7 @@ impl Host {
                 .map(|c| c.since + REQUEST_TIMEOUT_MS)
                 .chain(self.enters.next())
                 .min();
+            let mut exited = false;
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
                     Event::Ready(fd) if fd == listener => self.accept(),
@@ -604,24 +605,23 @@ impl Host {
                     }
                     Event::PaneExited(pane, _) => {
                         self.relaunch(pane)?;
-                        if self.mux.panes().iter().all(|p| p.status().is_some()) {
-                            return Ok(());
+                        exited = true;
+                    }
+                    Event::Zoom(pane) => self.toggle_zoom(pane)?,
+                    Event::Focus(pane) => {
+                        // A change of focus ends the zoom.
+                        if self.zoomed.get().is_some_and(|z| z != pane) {
+                            self.unzoom()?;
                         }
                     }
-                    Event::Zoom => self.toggle_zoom()?,
-                    Event::Focus => {}
                     Event::Resized => self.lay_out()?,
                     Event::InputClosed => return Ok(()),
                     Event::Deadline => {}
                 }
             }
-            // A change of focus ends the zoom.
-            if self
-                .zoomed
-                .get()
-                .is_some_and(|z| self.mux.focus() != Some(z))
-            {
-                self.unzoom()?;
+            // Every exit in the batch has had its relaunch by now.
+            if exited && self.mux.panes().iter().all(|p| p.status().is_some()) {
+                return Ok(());
             }
             let now = now_ms();
             for pane in self.enters.take_due(now) {
@@ -775,35 +775,39 @@ impl Host {
             0
         };
         if slot.quick_exits >= MAX_QUICK_EXITS {
+            self.mux.release_focus(pane);
             return Ok(());
         }
         slot.started = now;
         let id = slot.agent.clone();
-        let state = store::load(&self.state_path)?;
-        let agent = state.agent(&id)?;
-        self.mux.restart(pane, &harness::label(agent));
+        // The activity is set before the harness starts, so its hooks, which
+        // change it, run after.
+        let agent = store::update(&self.state_path, |s| {
+            let agent = s.agent_mut(&id)?;
+            agent.activity = start_activity(agent).into();
+            Ok(agent.clone())
+        })?;
+        self.mux.restart(pane, &harness::label(&agent))?;
         let ws = self.mux.pane(pane).map(Pane::ws).unwrap_or_default();
-        let started = harness::command(&self.exe, agent, &self.state_path, start_prompt(agent))
+        let started = harness::command(&self.exe, &agent, &self.state_path, start_prompt(&agent))
             .and_then(|launch| spawn(&launch, ws));
         match started {
-            Ok(pty) => {
-                self.mux.attach(pane, pty);
-                store::update(&self.state_path, |s| {
-                    s.agent_mut(&id)?.activity = start_activity(agent).into();
-                    Ok(())
-                })?;
-            }
-            Err(e) => self.show_failure(pane, agent, &e.to_string()),
+            Ok(pty) => self.mux.attach(pane, pty),
+            Err(e) => self.show_failure(pane, &agent, &e.to_string()),
         }
         Ok(())
     }
 
-    /// Zoom the focused pane, or end the zoom.
-    fn toggle_zoom(&mut self) -> Result<()> {
+    /// Zoom a pane, or end the zoom.
+    fn toggle_zoom(&mut self, pane: PaneId) -> Result<()> {
         if self.zoomed.get().is_some() {
             return self.unzoom();
         }
-        self.zoomed.set(self.mux.focus());
+        // The pane may have closed or exited since the key was pressed.
+        if self.mux.pane(pane).is_none_or(|p| p.status().is_some()) {
+            return Ok(());
+        }
+        self.zoomed.set(Some(pane));
         self.lay_out()
     }
 

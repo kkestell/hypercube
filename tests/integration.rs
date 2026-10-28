@@ -13,7 +13,7 @@ use std::process::{Child, Command, Output, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use hypercube::mux::{Winsize, write_all};
 use hypercube::pty::Pty;
@@ -1118,6 +1118,9 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
     assert_eq!(args_of(again).last().unwrap(), NUDGE);
     assert_eq!(again["size"], launches[0]["size"]);
     assert_ne!(again["pid"], launches[0]["pid"]);
+    // The host marked the worker busy before its harness started, so the
+    // hooks of the new process come after.
+    assert_eq!(again["activity"], "busy");
     let prompt = fx.wait_event("w1", "prompt", prompts + 1);
     assert_eq!(prompt[prompts]["text"], NUDGE);
     fx.wait_idle("w1");
@@ -1132,6 +1135,7 @@ fn an_exited_agent_is_relaunched_in_its_pane() {
     fx.wait_event("orchestrator", "ready", 2);
     let launch = fx.agent_events("orchestrator", "launch").remove(1);
     assert_ne!(args_of(&launch).last().unwrap(), NUDGE);
+    assert_eq!(launch["activity"], "idle");
     fx.wait_idle("orchestrator");
     assert_eq!(fx.agent_events("w1", "launch").len(), 2);
 }
@@ -1182,6 +1186,47 @@ fn an_agent_that_keeps_exiting_is_left_exited() {
     assert!(host::running(&fx.state_path()).unwrap().is_some());
     let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
     assert!(!is_error && text.contains("\"w1\""), "{text}");
+    fx.stop();
+}
+
+#[test]
+fn a_relaunched_pane_keeps_the_focus() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.type_text("\x1d");
+    fx.command("w1", "exit 1");
+    fx.wait_event("w1", "ready", 2);
+    let prompts = fx.wait_event("w1", "prompt", 2).len();
+    fx.wait_idle("w1");
+    fx.type_text("zz\r");
+    let prompts = fx.wait_event("w1", "prompt", prompts + 1);
+    assert_eq!(prompts.last().unwrap()["text"], "zz");
+    assert_eq!(fx.agent_events("orchestrator", "prompt").len(), 0);
+}
+
+#[test]
+fn every_exit_in_a_batch_is_handled_before_the_session_can_end() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    for n in 2..=3 {
+        fx.command("orchestrator", "exit 1");
+        fx.wait_event("orchestrator", "ready", n);
+    }
+    // The orchestrator's third quick exit and the worker's first happen at
+    // once. The worker is relaunched, so the session goes on.
+    let at = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        + 400;
+    fx.command("orchestrator", &format!("exit-at {at} 1"));
+    fx.command("w1", &format!("exit-at {at} 1"));
+    fx.wait_event("w1", "ready", 2);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 3);
+    assert!(host::running(&fx.state_path()).unwrap().is_some());
     fx.stop();
 }
 

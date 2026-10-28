@@ -7,6 +7,7 @@
 //!
 //! - `<tag> <tool> <json arguments>` calls an MCP tool and records the result.
 //! - `exit <status>` makes the stub exit with that status.
+//! - `exit-at <ms> <status>` makes it exit then, in Unix milliseconds.
 //! - `hold-hup` makes the stub, once hung up, wait for the file `release` in
 //!   its directory before it exits.
 use std::collections::BTreeMap;
@@ -186,6 +187,14 @@ impl Stub {
 
     fn command(&mut self, line: &str) {
         if let Some(status) = line.strip_prefix("exit ") {
+            self.record("exit", json!({"status": status}));
+            std::process::exit(status.parse().unwrap_or(1));
+        }
+        if let Some(args) = line.strip_prefix("exit-at ") {
+            let (at, status) = args.split_once(' ').unwrap_or((args, "1"));
+            while millis() < at.parse().unwrap_or(0) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
             self.record("exit", json!({"status": status}));
             std::process::exit(status.parse().unwrap_or(1));
         }
@@ -372,10 +381,21 @@ fn main() {
     };
     let env: BTreeMap<String, String> = std::env::vars().collect();
     let cwd = std::env::current_dir().unwrap();
+    // The agent's activity at the moment the host started this stand-in.
+    let activity = (|| {
+        let state = std::fs::read_to_string(env.get("HYPERCUBE_STATE")?).ok()?;
+        let state: Value = serde_json::from_str(&state).ok()?;
+        let id = env.get("HYPERCUBE_AGENT_ID")?;
+        let agent = state["agents"]
+            .as_array()?
+            .iter()
+            .find(|a| a["id"] == *id)?;
+        agent["activity"].as_str().map(String::from)
+    })();
     stub.record(
         "launch",
         json!({"pid": std::process::id(), "harness": stub.harness, "argv": args, "env": env,
-            "cwd": cwd, "size": size(), "session": stub.session}),
+            "cwd": cwd, "size": size(), "session": stub.session, "activity": activity}),
     );
 
     stub.hook("SessionStart", json!({}));

@@ -51,24 +51,6 @@ The state directory also holds `pi-extension/index.js`.
    launch; their panes are hidden until it grows.
 5. It serves until the session ends.
 
-### Relaunching
-
-When an agent's program exits, the host starts its harness again in the same
-pane, resuming the saved session as at startup: `harness::command` with the
-agent's session ID, the nudge as a worker's prompt, and the agent marked idle
-(orchestrator) or busy (worker). The pane keeps its place and its size. Its
-terminal is reset, and the old program's process group is hung up. The focus
-stays where it is.
-
-A program that exits within `QUICK_EXIT_MS` (ten seconds) of starting has
-exited quickly. After `MAX_QUICK_EXITS` (three) quick exits in a row the host
-leaves the pane showing "exited N" until `remove_agent` closes it. An exit
-after a longer run resets the count. A relaunch whose harness fails to start
-shows the failure as a worker's failed launch does, and is not retried.
-
-Closing an agent and ending the session hang up the programs without
-relaunching them.
-
 The loop is single-threaded: `Runtime::wait` polls the panes, the host
 terminal, the listener, the accepted connections, and a pipe that SIGHUP,
 SIGINT, and SIGTERM write to. Connections are non-blocking; a request is
@@ -84,6 +66,30 @@ seconds) before SIGKILL, restores the terminal, removes the socket, and
 releases the host lock. The next `hypercube` resumes
 the agents from their saved sessions and the queued messages.
 
+### Relaunching
+
+When an agent's program exits, the host starts its harness again in the same
+pane, resuming the saved session as at startup: `harness::command` with the
+agent's session ID and the nudge as a worker's prompt. The host first marks the
+agent idle (orchestrator) or busy (worker) in the state, so the new harness's
+hooks change it afterwards. The pane keeps its place, its size, and its focus.
+It gets a new terminal, so nothing the old program left half written carries
+over, the old program's process group is hung up, and the host input aimed at
+the old program is dropped: a selection, a mouse press in progress, held input,
+and the rest of a paste. A nudge's Enter still pending for the pane is
+cancelled.
+
+A program that exits within `QUICK_EXIT_MS` (ten seconds) of starting has
+exited quickly. After `MAX_QUICK_EXITS` (three) quick exits in a row the host
+leaves the pane showing "exited N" and gives up its focus, until `remove_agent`
+closes it. An exit after a longer run resets the count. A relaunch whose
+harness fails to start shows the failure as a worker's failed launch does, and
+is not retried.
+
+The host handles every exit `Runtime::wait` reports before it checks whether
+every pane's program has exited for good, which ends the session. Closing an
+agent and ending the session hang up the programs without relaunching them.
+
 ### Layout and chrome
 
 `host::layout` places the orchestrator's pane in the left 40% of the columns,
@@ -96,8 +102,8 @@ it grows.
 
 `host::zoom_layout` gives one pane the rectangle a lone pane has, so it fills
 the pane area, and hides the others. A hidden pane has an empty rectangle: it
-is not drawn, takes no mouse input, and keeps its size, so its program sees no
-resize. The host zooms the focused pane when the zoom key is pressed. It
+is not drawn, takes no mouse input (a press it had captured ends there), and
+keeps its size, so its program sees no resize. The host zooms the focused pane when the zoom key is pressed. It
 restores the normal layout when the key is pressed again, when the focus
 changes, and when a pane is added or removed. The host resizing keeps the
 zoom.
@@ -221,10 +227,14 @@ child process.
 - `Mux::mark_exited(id, status)` shows a pane whose program never started
   as exited with `status`, so the focus skips it.
 - `Mux::restart(id, label)` readies a pane whose program has exited for a
-  new one: it resets the pane's terminal, replaces its label, makes it live
-  again, and hangs up whatever remains of the old program's process group.
-  The caller then attaches the new program with `Mux::attach`, or shows why
-  there is none with `Mux::mark_exited`. The pane keeps its place and size.
+  new one: a new terminal of the same size, a replaced label, and the old
+  program's process group hung up. It drops the host input aimed at the old
+  program: the selection, a mouse press in progress, held input, and the rest
+  of a paste through its end marker. The caller then attaches the new program
+  with `Mux::attach`, or shows why there is none with `Mux::mark_exited`. The
+  pane keeps its place, size, and focus.
+- `Mux::release_focus(id)` moves the focus off a pane to the next live pane.
+  A pane whose program exits keeps the focus until the caller releases it.
 - `Mux::remove_pane(id)` hangs up the program if it is still running, removes
   the pane, moves the focus to the next live pane, and redraws the screen. A
   removed pane's program is reaped after `HANGUP_GRACE_MS` (two seconds),
@@ -286,8 +296,8 @@ routed elsewhere:
 
 - Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
   next live pane; Kitty repeats and releases of it are consumed.
-- Ctrl-\, in the same two forms, is reported to the caller as `Event::Zoom`
-  and goes to no pane.
+- Ctrl-\, in the same two forms, is reported to the caller as
+  `Event::Zoom(id)` for the focused pane, once per press, and goes to no pane.
 - Shift-PageUp, in legacy or Kitty form, scrolls the focused pane up a page.
 - While the focused pane is scrolled, PageUp and PageDown scroll it a page,
   Up and Down a row, and Esc and q return it to the bottom. Any other key
@@ -330,7 +340,9 @@ something needs the caller:
 - `Event::Ready(fd)`: one of the caller's descriptors is readable.
 - `Event::PaneExited(id, status)`: a pane's program exited; the status is its
   exit code, or 128 plus the signal that ended it.
-- `Event::Zoom`: the zoom key was pressed.
+- `Event::Zoom(id)` and `Event::Focus(id)`: the zoom key was pressed with
+  that pane focused, or the focus moved to that pane. They come in the order
+  they happened.
 - `Event::Resized`: the host terminal changed size.
 - `Event::InputClosed`: the host terminal's input ended.
 - `Event::Deadline`: the deadline passed.

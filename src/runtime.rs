@@ -7,7 +7,7 @@
 use std::error::Error;
 use std::os::fd::RawFd;
 
-use crate::mux::{self, Mux, Pane, PaneId, Winsize, now_ms, read, write_all};
+use crate::mux::{self, Mux, Notice, Pane, PaneId, Winsize, now_ms, read, write_all};
 use crate::winch;
 
 /// The shortest time between frames.
@@ -24,10 +24,11 @@ pub enum Event {
     /// A pane's program exited with this status: its code, or 128 plus the
     /// signal that ended it.
     PaneExited(PaneId, u8),
-    /// The zoom key was pressed.
-    Zoom,
-    /// The focus moved to another pane.
-    Focus,
+    /// The zoom key was pressed while this pane had the focus.
+    Zoom(PaneId),
+    /// The focus moved to this pane. `Zoom` and `Focus` come in the order
+    /// they happened.
+    Focus(PaneId),
     /// The host terminal changed size. The caller lays the panes out again.
     Resized,
     /// The host terminal's input ended.
@@ -160,12 +161,10 @@ impl Runtime {
                 mux.resize(size);
                 events.push(Event::Resized);
             }
-            if mux.take_zoom() {
-                events.push(Event::Zoom);
-            }
-            if mux.take_focus_moved() {
-                events.push(Event::Focus);
-            }
+            events.extend(mux.take_notices().into_iter().map(|n| match n {
+                Notice::Focus(id) => Event::Focus(id),
+                Notice::Zoom(id) => Event::Zoom(id),
+            }));
             let now = now_ms();
             if deadline.is_some_and(|d| now >= d) {
                 events.push(Event::Deadline);
