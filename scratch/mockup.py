@@ -14,9 +14,7 @@ TITLE_TEXT = "\x1b[0;38;2;135;215;255m"
 LABEL = "\x1b[0;38;2;0;0;0;48;2;135;215;255m"
 BAR = LABEL
 HEADER = LABEL
-BACKDROP = "\x1b[0;48;2;98;100;108m"
 HARNESS = "\x1b[0;48;2;40;46;64m"
-SHADOW = "\x1b[0;38;2;74;76;84;48;2;98;100;108m"
 BOLD = "\x1b[1m"
 FRAME = "\x1b[0;38;2;100;100;100m"
 
@@ -52,16 +50,6 @@ class Canvas:
 
 
 def draw_label(c, row, col, width, name, detail, focused):
-    left = f" {name}"[:width]
-    right = f"{detail} "
-    sgr = LABEL + (BOLD if focused else "")
-    c.put(row, col, " " * width, sgr)
-    c.put(row, col, left, sgr)
-    if detail and len(left) + 1 + len(right) <= width:
-        c.put(row, col + width - len(right), right, sgr)
-
-
-def draw_rule_label(c, row, col, width, name, detail, focused):
     """A title drawn on a horizontal line: ━ name ━━━━━━ detail ━"""
     c.put(row, col, "━" * width, DIVIDER)
     sgr = TITLE_TEXT + (BOLD if focused else "")
@@ -81,53 +69,26 @@ def draw(args):
     panes: list[tuple[str | None, str]] = [(None, "")]
     for i in range(1, args.workers + 1):
         panes.append((f"worker-{i}", f"⎇ feature-{i}"))
-    fancy = args.theme == "fancy"
-    # Fancy: a gap around the outside and between panes, on a backdrop, and a
-    # shadow. Simple: no gaps, and a divider between orchestrator and workers.
-    g = args.gap if fancy else 0
-    shadow = fancy and g > 0
-    # Each pane's shadow takes one more column, to the right of the pane, so
-    # the gaps to its right are a column wider and the gap itself stays.
-    gx = g + shadow
-    between = gx + (not fancy)
-    inner_cols, inner_rows = cols - g - gx, area - 2 * g
+    # No gaps, and a divider between the orchestrator and the workers.
     n = len(panes) - 1
-    left = inner_cols if n == 0 else inner_cols * 2 // 5
-    rects = [(g, y0 + g, left, inner_rows)]
-    free = inner_rows - g * (n - 1)
+    left = cols if n == 0 else cols * 2 // 5
+    rects = [(0, y0, left, area)]
     for i in range(n):
-        top, bottom = free * i // n + g * i, free * (i + 1) // n + g * i
-        rects.append((g + left + between, y0 + g + top, inner_cols - left - between, bottom - top))
+        top, bottom = area * i // n, area * (i + 1) // n
+        rects.append((left + 1, y0 + top, cols - left - 1, bottom - top))
 
     c.put(0, 0, " " * cols, HEADER)
     c.put(0, 0, f" {args.path}"[:cols], HEADER)
-    if fancy:
-        for row in range(y0, y0 + area):
-            c.put(row, 0, " " * cols, BACKDROP)
-    elif n:
+    if n:
         for row in range(y0, y0 + area):
             c.put(row, left, "┃", DIVIDER)
     for i, ((name, detail), (col, top, width, height)) in enumerate(zip(panes, rects)):
         for row in range(top if name is None else top + 1, top + height):
             c.put(row, col, " " * width, HARNESS)
-        if name is not None and fancy:
+        if name is not None:
             draw_label(c, top, col, width, name, detail, i == args.focus)
-        elif name is not None:
-            draw_rule_label(c, top, col, width, name, detail, i == args.focus)
             # The divider branches into the title's line.
             c.put(top, left, "┣", DIVIDER)
-        if shadow:
-            # Shadow hugging the bottom and right edges, offset from the
-            # pane's corners to look raised. A cell is about twice as tall as
-            # wide, so half a cell tall (upper half blocks below) is as thick
-            # as a whole cell wide (full blocks to the right), and the right
-            # shadow starts half a row down (a lower half block) to be offset
-            # as far as the bottom one, which starts a column in.
-            bottom, right = top + height, col + width
-            c.put(bottom, col + 1, "▀" * width, SHADOW)
-            c.put(top, right, "▄", SHADOW)
-            for row in range(top + 1, bottom):
-                c.put(row, right, "█", SHADOW)
 
     bar = [("hypercube", True), ("api-server", False), ("docs", False)]
     c.put(rows - 1, 0, " " * cols, BAR)
@@ -150,8 +111,6 @@ def main():
     p.add_argument("--workers", type=int, default=2)
     p.add_argument("--focus", type=int, default=0, help="focused pane index; 0 is the orchestrator")
     p.add_argument("--path", default="~/projects/hypercube", help="workspace path for the header")
-    p.add_argument("--theme", choices=["fancy", "simple"], default="simple")
-    p.add_argument("--gap", type=int, default=1, help="fancy theme's gap around and between panes")
     p.add_argument("--no-border", action="store_true", help="omit the gray canvas border")
     print(draw(p.parse_args()))
 

@@ -12,11 +12,12 @@
 //! harness hook events, `wait` the waiter that wakes an idle agent when
 //! messages arrive, `control` the host's control socket protocol, `host` the
 //! background session of a workspace, `bar` its bar of running workspaces,
-//! `overlay` its workspace list, `theme` the colors and spacing of its
+//! `overlay` its workspace list, `colors` the colors of its
 //! chrome, and `mcp` the agents' MCP server.
 
 pub mod bar;
 pub mod client;
+pub mod colors;
 pub mod config;
 pub mod control;
 pub mod harness;
@@ -31,7 +32,6 @@ pub mod recording;
 pub mod runtime;
 pub mod statusline;
 pub mod store;
-pub mod theme;
 pub mod wait;
 pub mod winch;
 pub mod workspace;

@@ -8,10 +8,10 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+use crate::colors;
 use crate::host::{self, fit, text_width};
 use crate::mux::{Winsize, now_ms};
 use crate::store;
-use crate::theme;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -65,17 +65,17 @@ impl Bar {
         changed || expired
     }
 
-    /// Draw the bar across the last row in the footer's colors, with each
+    /// Draw the bar across the last row in the bar colors, with each
     /// workspace that fits after its number, and the host's own marked `*`
     /// and bold.
-    pub fn draw(&self, s: &mut String, size: Winsize, footer: theme::Colors) {
+    pub fn draw(&self, s: &mut String, size: Winsize) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
             return;
         }
         s.push_str(&format!(
             "\x1b[{row};1H{}{}\x1b[{row};1H",
-            footer.sgr(),
+            colors::BAR.sgr(),
             " ".repeat(usize::from(cols))
         ));
         if !self.error.is_empty() {
@@ -172,7 +172,7 @@ mod tests {
             ws_row: 2,
             ..Winsize::default()
         };
-        bar.draw(&mut s, size, theme::SIMPLE.footer);
+        bar.draw(&mut s, size);
         let mut t = Terminal::new(cols, 2).unwrap();
         t.vt_write(s.as_bytes());
         t

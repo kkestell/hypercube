@@ -17,6 +17,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use crate::bar::{self, Bar, Entry};
+use crate::colors::{self, BAR, BLUE, LIGHT_BLUE};
 use crate::control::{self, NUDGE, Reply, Request};
 use crate::harness;
 use crate::link::{self, Link, Message};
@@ -25,7 +26,6 @@ use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
-use crate::theme::{self, Theme, Title};
 use crate::{config, workspace};
 use libghostty_vt::unicode;
 
@@ -125,27 +125,26 @@ fn at_path(file: &File, path: &Path) -> Result<bool> {
     }
 }
 
-/// The area the panes share: below the header and above the bar, inside the
-/// theme's gap all around, and its side gap at the right.
-fn pane_area(theme: &Theme, size: Winsize) -> Rect {
-    let (cols, rows) = (u32::from(size.ws_col), u32::from(size.ws_row));
-    let gap = theme.gap;
+/// The area the panes share: below the header and above the bar.
+fn pane_area(size: Winsize) -> Rect {
     Rect {
-        col: gap as u16,
-        row: 1 + gap as u16,
-        cols: cols.saturating_sub(gap + theme.side_gap()) as u16,
-        rows: rows.saturating_sub(2 + 2 * gap) as u16,
+        col: 0,
+        row: 1,
+        cols: size.ws_col,
+        rows: size.ws_row.saturating_sub(2),
     }
 }
+
+/// The column between the orchestrator and the workers, for the divider.
+const DIVIDER: u32 = 1;
 
 /// Where each pane goes, below the header and above the bar in the last row.
 /// The first pane, the orchestrator's, takes the left 40% of the area, or all of
 /// it when it is alone, and has no label. The other panes split the remaining
-/// columns, after the theme's gap between them and the orchestrator, with equal
-/// heights, and the gaps between them. Each has a label row above it. `None` if
-/// a pane would get no row or column.
-pub fn layout(theme: &Theme, size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
-    let area = pane_area(theme, size);
+/// columns, after the divider's, with equal heights. Each has a label row above
+/// it. `None` if a pane would get no row or column.
+pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
+    let area = pane_area(size);
     let (cols, rows) = (u32::from(area.cols), u32::from(area.rows));
     let Some((&first, rest)) = panes.split_first() else {
         return Some(Vec::new());
@@ -159,16 +158,13 @@ pub fn layout(theme: &Theme, size: Winsize, panes: &[PaneId]) -> Option<Vec<(Pan
             ..area
         },
     )];
-    // The rows the gaps between the workers leave are shared out.
-    let gap = theme.gap;
-    let free = rows.saturating_sub(gap * n.saturating_sub(1));
     for (i, &id) in (0..).zip(rest) {
-        let top = free * i / n + gap * i;
-        let bottom = free * (i + 1) / n + gap * i;
+        let top = rows * i / n;
+        let bottom = rows * (i + 1) / n;
         let rect = Rect {
-            col: area.col + (left + theme.column_gap()) as u16,
+            col: area.col + (left + DIVIDER) as u16,
             row: area.row + top as u16 + 1,
-            cols: cols.saturating_sub(left + theme.column_gap()) as u16,
+            cols: cols.saturating_sub(left + DIVIDER) as u16,
             rows: bottom.saturating_sub(top + 1) as u16,
         };
         layout.push((id, rect));
@@ -182,13 +178,8 @@ pub fn layout(theme: &Theme, size: Winsize, panes: &[PaneId]) -> Option<Vec<(Pan
 /// Where each pane goes while `zoomed` fills the pane area, with its label row
 /// unless it is the first pane: every other pane is hidden at its current size.
 /// `None` if the pane would get no row or column.
-pub fn zoom_layout(
-    theme: &Theme,
-    size: Winsize,
-    panes: &[PaneId],
-    zoomed: PaneId,
-) -> Option<Vec<(PaneId, Rect)>> {
-    let area = pane_area(theme, size);
+pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Vec<(PaneId, Rect)>> {
+    let area = pane_area(size);
     let rect = if panes.first() == Some(&zoomed) {
         area
     } else {
@@ -206,10 +197,9 @@ pub fn zoom_layout(
     })
 }
 
-/// The header, the backdrop, divider and shadows around the panes, the labels
+/// The header, the divider between the panes, the labels
 /// above the workers, and the bar, or the workspace overlay while it is open.
 pub struct TeamChrome {
-    pub theme: &'static Theme,
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
     pub overlay: Rc<RefCell<Option<Overlay>>>,
@@ -222,13 +212,9 @@ impl Chrome for TeamChrome {
             overlay.draw(out, size);
             return;
         }
-        let theme = self.theme;
         let mut s = String::new();
         // Panes are hidden while the terminal is too small for them.
         let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.rows > 0).collect();
-        if let Some(backdrop) = theme.backdrop {
-            draw_backdrop(&mut s, backdrop, &shown, size);
-        }
         // The first pane is the orchestrator's: the header names its
         // workspace, and it has no label.
         let orchestrator = panes.first().map(|p| p.id);
@@ -242,16 +228,16 @@ impl Chrome for TeamChrome {
             let pos = (1, 1, size.ws_col);
             draw_row(
                 &mut s,
-                &RowStyle::bar(theme.header),
+                &RowStyle::bar(BAR),
                 pos,
                 false,
                 &format!(" {}", p.detail),
                 &right,
             );
         }
-        if let (Some(divider), [first, _, ..]) = (theme.divider, shown.as_slice()) {
+        if let [first, _, ..] = shown.as_slice() {
             let col = u32::from(first.rect.col + first.rect.cols);
-            s.push_str(&theme::fg(divider));
+            s.push_str(&colors::fg(BLUE));
             for row in 1..u32::from(size.ws_row).saturating_sub(1) {
                 s.push_str(&format!("{}┃", at(row, col)));
             }
@@ -259,32 +245,19 @@ impl Chrome for TeamChrome {
         for p in &shown {
             let labeled = Some(p.id) != orchestrator;
             if labeled {
-                draw_label(&mut s, p, self.zoomed.get() == Some(p.id), theme.title);
+                draw_label(&mut s, p, self.zoomed.get() == Some(p.id));
                 // The divider, left of the pane, branches into the title's
                 // line, unless the pane is zoomed and the divider is not drawn.
-                if let (Some(divider), Title::Rule { .. }, Some(col)) =
-                    (theme.divider, theme.title, p.rect.col.checked_sub(1))
-                {
+                if let Some(col) = p.rect.col.checked_sub(1) {
                     s.push_str(&format!(
                         "{}{}┣",
-                        theme::fg(divider),
+                        colors::fg(BLUE),
                         at(u32::from(p.rect.row) - 1, u32::from(col))
                     ));
                 }
             }
-            if let (Some(shadow), Some(backdrop)) = (theme.shadow, theme.backdrop) {
-                draw_shadow(
-                    &mut s,
-                    theme::Colors {
-                        fg: shadow,
-                        bg: backdrop,
-                    },
-                    p,
-                    labeled,
-                );
-            }
         }
-        self.bar.borrow().draw(&mut s, size, theme.footer);
+        self.bar.borrow().draw(&mut s, size);
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
     }
@@ -293,58 +266,6 @@ impl Chrome for TeamChrome {
 /// Move the cursor to `row` and `col`, both from 0.
 fn at(row: u32, col: u32) -> String {
     format!("\x1b[{};{}H", row + 1, col + 1)
-}
-
-/// Fill everything between the header and the bar that no pane covers with
-/// the backdrop color. The panes draw their own cells.
-fn draw_backdrop(s: &mut String, backdrop: theme::Rgb, shown: &[&PaneView], size: Winsize) {
-    let cols = u32::from(size.ws_col);
-    let style = theme::bg(backdrop);
-    let paint = |s: &mut String, row: u32, from: u32, to: u32| {
-        if to > from {
-            s.push_str(&format!(
-                "{}{style}{}",
-                at(row, from),
-                " ".repeat((to - from) as usize)
-            ));
-        }
-    };
-    for row in 1..u32::from(size.ws_row).saturating_sub(1) {
-        let mut covered: Vec<(u32, u32)> = shown
-            .iter()
-            .map(|p| p.rect)
-            .filter(|r| (u32::from(r.row)..u32::from(r.row + r.rows)).contains(&row))
-            .map(|r| (u32::from(r.col), u32::from(r.col + r.cols)))
-            .collect();
-        covered.sort();
-        let mut x = 0;
-        for (from, to) in covered {
-            paint(s, row, x, from);
-            x = x.max(to);
-        }
-        paint(s, row, x, cols);
-    }
-}
-
-/// The shadow under and to the right of a pane and its label row, in the gaps
-/// beside it, `shadow` on the backdrop. A cell is about twice as tall as wide,
-/// so half a cell tall, the upper half blocks below, is as thick as a whole
-/// cell wide, the full blocks to the right. The shadow starts a column in from
-/// the left and half a row down from the top, to look raised.
-fn draw_shadow(s: &mut String, colors: theme::Colors, p: &PaneView, labeled: bool) {
-    let r = p.rect;
-    let top = u32::from(r.row) - u32::from(labeled);
-    let (bottom, right) = (u32::from(r.row + r.rows), u32::from(r.col + r.cols));
-    s.push_str(&colors.sgr());
-    s.push_str(&format!(
-        "{}{}",
-        at(bottom, u32::from(r.col) + 1),
-        "▀".repeat(usize::from(r.cols))
-    ));
-    s.push_str(&format!("{}▄", at(top, right)));
-    for row in top + 1..bottom {
-        s.push_str(&format!("{}█", at(row, right)));
-    }
 }
 
 /// What to note about a pane after its name: "zoomed" while it fills the pane
@@ -366,26 +287,22 @@ fn notes(p: &PaneView, zoomed: bool) -> Vec<String> {
 
 /// A worker's label row above its pane, across the pane's width, with the name
 /// at the left, bold when the pane has the focus, and its notes. The detail
-/// goes at the right end unless the row is too narrow for it. A rule title has a
-/// space on each side of its text, and a line's width to spare at each end.
-fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, title: Title) {
+/// goes at the right end unless the row is too narrow for it. The row is a
+/// heavy line with a space on each side of its text, and a line's width to
+/// spare at each end.
+fn draw_label(s: &mut String, p: &PaneView, zoomed: bool) {
     let mut left = format!(" {}", p.label);
     for note in notes(p, zoomed) {
         left.push_str(&format!(" · {note}"));
     }
-    let (style, right) = match title {
-        Title::Bar(colors) => (RowStyle::bar(colors), format!("{} ", p.detail)),
-        Title::Rule { line, text } => {
-            left.push(' ');
-            let style = RowStyle {
-                fill_sgr: theme::fg(line),
-                fill: "━",
-                text_sgr: theme::fg(text),
-                inset: 1,
-            };
-            (style, format!(" {} ", p.detail))
-        }
+    left.push(' ');
+    let style = RowStyle {
+        fill_sgr: colors::fg(BLUE),
+        fill: "━",
+        text_sgr: colors::fg(LIGHT_BLUE),
+        inset: 1,
     };
+    let right = format!(" {} ", p.detail);
     let right = if p.detail.is_empty() {
         String::new()
     } else {
@@ -411,7 +328,7 @@ struct RowStyle {
 
 impl RowStyle {
     /// A solid bar in `colors`.
-    fn bar(colors: theme::Colors) -> RowStyle {
+    fn bar(colors: colors::Colors) -> RowStyle {
         RowStyle {
             fill_sgr: colors.sgr(),
             fill: " ",
@@ -616,7 +533,6 @@ struct Client {
 type StopResult = (String, std::result::Result<(), String>);
 
 struct Host {
-    theme: &'static Theme,
     exe: PathBuf,
     root: PathBuf,
     state_path: PathBuf,
@@ -695,15 +611,12 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     let zoomed = Rc::new(Cell::new(None));
     let overlay = Rc::new(RefCell::new(None));
     let bar = Rc::new(RefCell::new(Bar::new(state_path.clone())));
-    let theme = theme::active();
     let chrome = TeamChrome {
-        theme,
         zoomed: Rc::clone(&zoomed),
         overlay: Rc::clone(&overlay),
         bar: Rc::clone(&bar),
     };
     let mut host = Host {
-        theme,
         exe,
         root: root.to_path_buf(),
         state_path,
@@ -1170,7 +1083,7 @@ impl Host {
         let mut ids = self.pane_ids();
         ids.push(pane);
         let size = self.mux.size();
-        let layout = layout(self.theme, size, &ids).or_else(|| startup.then(|| hidden(&ids)));
+        let layout = layout(size, &ids).or_else(|| startup.then(|| hidden(&ids)));
         let Some(layout) = layout else {
             self.mux.remove_pane(pane);
             return Err(format!(
@@ -1275,8 +1188,8 @@ impl Host {
         let ids = self.pane_ids();
         let size = self.mux.size();
         let layout = match self.zoomed.get() {
-            Some(zoomed) => zoom_layout(self.theme, size, &ids, zoomed),
-            None => layout(self.theme, size, &ids),
+            Some(zoomed) => zoom_layout(size, &ids, zoomed),
+            None => layout(size, &ids),
         };
         self.place(&layout.unwrap_or_else(|| hidden(&ids)))
     }
@@ -1332,80 +1245,70 @@ mod tests {
 
     #[test]
     fn a_lone_pane_fills_the_area_between_the_header_and_the_bar() {
-        // A gap of a cell on the left and above, and a shadow column and a
-        // gap on the right and a shadow row below.
-        assert_eq!(
-            rects(layout(&theme::FANCY, size(80, 24), &ids(1))),
-            [rect(1, 2, 77, 20)]
-        );
-        assert_eq!(layout(&theme::FANCY, size(80, 24), &[]), Some(Vec::new()));
+        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 22)]);
+        assert_eq!(layout(size(80, 24), &[]), Some(Vec::new()));
     }
 
     #[test]
     fn workers_stack_right_of_the_orchestrator() {
-        // The orchestrator takes 40% of the 97 columns of the area, then a
-        // shadow column and a gap. A worker's label row is above its rect.
+        // The orchestrator takes 40% of the columns, then the divider's. A
+        // worker's label row is above its rect.
         assert_eq!(
-            rects(layout(&theme::FANCY, size(100, 25), &ids(2))),
-            [rect(1, 2, 38, 21), rect(41, 3, 57, 20)]
+            rects(layout(size(100, 25), &ids(2))),
+            [rect(0, 1, 40, 23), rect(41, 2, 59, 22)]
         );
-        // 21 rows over three workers, less two gaps: blocks of 6, 6 and 7
-        // rows, each a label row and the rest content.
+        // 23 rows over three workers: blocks of 7, 8 and 8 rows, each a label
+        // row and the rest content.
         assert_eq!(
-            rects(layout(&theme::FANCY, size(100, 25), &ids(4))),
+            rects(layout(size(100, 25), &ids(4))),
             [
-                rect(1, 2, 38, 21),
-                rect(41, 3, 57, 5),
-                rect(41, 10, 57, 5),
-                rect(41, 17, 57, 6),
+                rect(0, 1, 40, 23),
+                rect(41, 2, 59, 6),
+                rect(41, 9, 59, 7),
+                rect(41, 17, 59, 7),
             ]
         );
         // Uneven heights differ by at most a row and fill the column.
-        let layout = rects(layout(&theme::FANCY, size(81, 32), &ids(5)));
-        assert_eq!(layout[0], rect(1, 2, 31, 28));
+        let layout = rects(layout(size(81, 32), &ids(5)));
+        assert_eq!(layout[0], rect(0, 1, 32, 30));
         let heights: Vec<u16> = layout[1..].iter().map(|r| r.rows + 1).collect();
-        assert_eq!(heights, [6, 6, 6, 7]);
-        assert_eq!(layout[4].row + layout[4].rows, 30);
+        assert_eq!(heights, [7, 8, 7, 8]);
+        assert_eq!(layout[4].row + layout[4].rows, 31);
     }
 
     #[test]
     fn a_layout_without_room_for_every_pane_fails() {
-        // The orchestrator needs a content row between the gaps, below the
-        // header and above the bar.
-        assert!(layout(&theme::FANCY, size(80, 4), &ids(1)).is_none());
-        assert!(layout(&theme::FANCY, size(80, 5), &ids(1)).is_some());
-        // Each worker needs a label row and a content row, and the gaps
-        // between them.
-        assert!(layout(&theme::FANCY, size(80, 11), &ids(4)).is_none());
-        assert!(layout(&theme::FANCY, size(80, 12), &ids(4)).is_some());
-        // And a column on each side of the shadow and the gap.
-        assert!(layout(&theme::FANCY, size(6, 24), &ids(2)).is_none());
-        assert!(layout(&theme::FANCY, size(7, 24), &ids(2)).is_some());
-        assert!(layout(&theme::FANCY, size(0, 24), &ids(1)).is_none());
+        // The orchestrator needs a content row between the header and the bar.
+        assert!(layout(size(80, 2), &ids(1)).is_none());
+        assert!(layout(size(80, 3), &ids(1)).is_some());
+        // Each worker needs a label row and a content row.
+        assert!(layout(size(80, 7), &ids(4)).is_none());
+        assert!(layout(size(80, 8), &ids(4)).is_some());
+        // A column for the divider, and one for each pane.
+        assert!(layout(size(2, 24), &ids(2)).is_none());
+        assert!(layout(size(3, 24), &ids(2)).is_some());
+        assert!(layout(size(0, 24), &ids(1)).is_none());
     }
 
     #[test]
     fn a_zoomed_pane_takes_the_pane_area_and_the_others_are_hidden() {
         let panes = ids(3);
         for zoomed in &panes {
-            let layout = zoom_layout(&theme::FANCY, size(100, 25), &panes, *zoomed).unwrap();
+            let layout = zoom_layout(size(100, 25), &panes, *zoomed).unwrap();
             let ids: Vec<PaneId> = layout.iter().map(|&(id, _)| id).collect();
             assert_eq!(ids, panes);
             for (id, r) in layout {
                 // The orchestrator has no label row.
                 let expected = match (id == *zoomed, id == PaneId(1)) {
                     (false, _) => Rect::default(),
-                    (true, true) => rect(1, 2, 97, 21),
-                    (true, false) => rect(1, 3, 97, 20),
+                    (true, true) => rect(0, 1, 100, 23),
+                    (true, false) => rect(0, 2, 100, 22),
                 };
                 assert_eq!(r, expected);
             }
         }
-        assert!(zoom_layout(&theme::FANCY, size(80, 2), &ids(2), PaneId(2)).is_none());
-        assert_eq!(
-            zoom_layout(&theme::FANCY, size(80, 24), &[], PaneId(1)),
-            Some(Vec::new())
-        );
+        assert!(zoom_layout(size(80, 2), &ids(2), PaneId(2)).is_none());
+        assert_eq!(zoom_layout(size(80, 24), &[], PaneId(1)), Some(Vec::new()));
     }
 
     struct Screen(Terminal<'static, 'static>);
@@ -1462,26 +1365,8 @@ mod tests {
         screen.cell(x, y).style().unwrap().fg_color
     }
 
-    const BACKDROP: StyleColor = StyleColor::Rgb(RgbColor {
-        r: 98,
-        g: 100,
-        b: 108,
-    });
-
-    const SHADOW: StyleColor = StyleColor::Rgb(RgbColor {
-        r: 74,
-        g: 76,
-        b: 84,
-    });
-
-    /// Chrome in the fancy theme.
     fn chrome() -> TeamChrome {
-        chrome_in(&theme::FANCY)
-    }
-
-    fn chrome_in(theme: &'static Theme) -> TeamChrome {
         TeamChrome {
-            theme,
             zoomed: Rc::default(),
             overlay: Rc::default(),
             bar: Rc::default(),
@@ -1511,8 +1396,8 @@ mod tests {
     }
 
     #[test]
-    fn chrome_draws_the_header_labels_backdrop_and_shadows() {
-        let layout = rects(layout(&theme::FANCY, size(40, 14), &ids(3)));
+    fn chrome_draws_the_header_rule_titles_and_a_divider_that_branches_into_them() {
+        let layout = rects(layout(size(40, 10), &ids(3)));
         let panes = [
             PaneView {
                 detail: "~/src/r",
@@ -1528,103 +1413,7 @@ mod tests {
                 ..view(3, "w2", layout[2], true, Some(3))
             },
         ];
-        let screen = draw_with(&mut chrome(), &panes, 40, 14);
-        let rows: Vec<String> = (0..14).map(|y| screen.row(y)).collect();
-        let sp = |n| " ".repeat(n);
-        let side = format!("{}█{}█ ", sp(15), sp(22));
-        assert_eq!(
-            rows,
-            [
-                format!(" ~/src/r{}", sp(32)),
-                sp(40),
-                format!("{}▄  w1 · ↑42       ⎇ w1 ▄ ", sp(15)),
-                side.clone(),
-                side.clone(),
-                side.clone(),
-                format!("{}█  {} ", sp(15), "▀".repeat(21)),
-                format!("{}█  w2 · exited 3  ⎇ w2 ▄ ", sp(15)),
-                side.clone(),
-                side.clone(),
-                side.clone(),
-                side,
-                format!("  {}  {} ", "▀".repeat(14), "▀".repeat(21)),
-                sp(40),
-            ]
-        );
-        // The header and the labels are black on light blue across their
-        // width, and a label is bold when its pane has the focus. The bar in
-        // the last row is too.
-        for (x, y) in [(0, 0), (39, 0), (17, 2), (37, 2), (17, 7), (37, 7), (0, 13)] {
-            assert_eq!(screen.bg(x, y), LIGHT_BLUE, "background at {x},{y}");
-            assert_eq!(fg(&screen, x, y), BLACK, "foreground at {x},{y}");
-        }
-        assert!(!screen.bold(18, 2));
-        assert!(screen.bold(18, 7));
-        // The gaps are the backdrop, and the panes' own cells are not painted
-        // over. The shadows are drawn on the backdrop.
-        for (x, y) in [(0, 5), (16, 5), (39, 5), (0, 12), (39, 1), (16, 12)] {
-            assert_eq!(screen.bg(x, y), BACKDROP, "background at {x},{y}");
-        }
-        for (x, y) in [(5, 5), (20, 4), (37, 10), (1, 2)] {
-            assert_eq!(screen.bg(x, y), StyleColor::None, "background at {x},{y}");
-        }
-        for (x, y) in [(15, 5), (20, 6), (38, 2), (30, 12)] {
-            assert_eq!(fg(&screen, x, y), SHADOW, "foreground at {x},{y}");
-            assert_eq!(screen.bg(x, y), BACKDROP, "background at {x},{y}");
-        }
-    }
-
-    #[test]
-    fn the_simple_theme_has_no_gaps() {
-        let simple = &theme::SIMPLE;
-        assert_eq!(
-            rects(layout(simple, size(80, 24), &ids(1))),
-            [rect(0, 1, 80, 22)]
-        );
-        // The orchestrator takes 40% of the columns, then the divider's.
-        assert_eq!(
-            rects(layout(simple, size(100, 25), &ids(2))),
-            [rect(0, 1, 40, 23), rect(41, 2, 59, 22)]
-        );
-        // 23 rows over three workers: blocks of 7, 8 and 8, with no gaps
-        // between them.
-        assert_eq!(
-            rects(layout(simple, size(100, 25), &ids(4))),
-            [
-                rect(0, 1, 40, 23),
-                rect(41, 2, 59, 6),
-                rect(41, 9, 59, 7),
-                rect(41, 17, 59, 7),
-            ]
-        );
-        assert!(layout(simple, size(80, 2), &ids(1)).is_none());
-        assert!(layout(simple, size(80, 3), &ids(1)).is_some());
-        // A column for the divider, and one for each pane.
-        assert!(layout(simple, size(2, 24), &ids(2)).is_none());
-        assert!(layout(simple, size(3, 24), &ids(2)).is_some());
-        let zoomed = rects(zoom_layout(simple, size(100, 25), &ids(2), PaneId(2)));
-        assert_eq!(zoomed, [Rect::default(), rect(0, 2, 100, 22)]);
-    }
-
-    #[test]
-    fn the_simple_theme_draws_rule_titles_and_a_divider_that_branches_into_them() {
-        let layout = rects(layout(&theme::SIMPLE, size(40, 10), &ids(3)));
-        let panes = [
-            PaneView {
-                detail: "~/src/r",
-                ..view(1, "orch", layout[0], false, None)
-            },
-            PaneView {
-                scrolled: 42,
-                detail: "⎇ w1",
-                ..view(2, "w1", layout[1], false, None)
-            },
-            PaneView {
-                detail: "⎇ w2",
-                ..view(3, "w2", layout[2], true, Some(3))
-            },
-        ];
-        let screen = draw_with(&mut chrome_in(&theme::SIMPLE), &panes, 40, 10);
+        let screen = draw_with(&mut chrome(), &panes, 40, 10);
         let rows: Vec<String> = (0..10).map(|y| screen.row(y)).collect();
         let (sp, bar) = (|n| " ".repeat(n), |n| "━".repeat(n));
         let side = format!("{}┃{}", sp(16), sp(23));
@@ -1681,12 +1470,12 @@ mod tests {
 
     #[test]
     fn a_zoomed_worker_has_no_divider_to_branch_from() {
-        let layout = rects(zoom_layout(&theme::SIMPLE, size(30, 6), &ids(2), PaneId(2)));
+        let layout = rects(zoom_layout(size(30, 6), &ids(2), PaneId(2)));
         let panes = [
             view(1, "orch", layout[0], false, None),
             view(2, "w1", layout[1], true, None),
         ];
-        let mut chrome = chrome_in(&theme::SIMPLE);
+        let mut chrome = chrome();
         chrome.zoomed.set(Some(PaneId(2)));
         let screen = draw_with(&mut chrome, &panes, 30, 6);
         assert_eq!(screen.row(1), format!("━ w1 · zoomed {}", "━".repeat(16)));
@@ -1695,7 +1484,7 @@ mod tests {
 
     #[test]
     fn the_header_notes_the_orchestrator_where_a_label_would() {
-        let layout = rects(zoom_layout(&theme::FANCY, size(40, 8), &ids(2), PaneId(1)));
+        let layout = rects(zoom_layout(size(40, 8), &ids(2), PaneId(1)));
         let panes = [
             PaneView {
                 scrolled: 5,
@@ -1714,8 +1503,8 @@ mod tests {
     }
 
     #[test]
-    fn chrome_marks_the_zoomed_pane_and_draws_only_its_shadow() {
-        let layout = rects(zoom_layout(&theme::FANCY, size(33, 8), &ids(2), PaneId(2)));
+    fn chrome_marks_the_zoomed_pane() {
+        let layout = rects(zoom_layout(size(33, 8), &ids(2), PaneId(2)));
         let panes = [
             view(1, "orch", layout[0], false, None),
             PaneView {
@@ -1727,19 +1516,18 @@ mod tests {
         chrome.zoomed.set(Some(PaneId(2)));
         let screen = draw_with(&mut chrome, &panes, 33, 8);
         assert_eq!(screen.row(0), " ".repeat(33));
-        assert_eq!(screen.row(2), "  w1 · zoomed · exited 3  ⎇ w1 ▄ ");
-        assert_eq!(screen.row(3), format!("{}█ ", " ".repeat(31)));
-        assert_eq!(screen.row(6), format!("  {} ", "▀".repeat(30)));
+        assert_eq!(screen.row(1), "━ w1 · zoomed · exited 3 ━ ⎇ w1 ━");
+        assert_eq!(screen.row(2), " ".repeat(33));
     }
 
     #[test]
     fn chrome_drops_the_detail_before_clipping_the_name() {
         let row =
-            |label, cols: u16| worker_row(label, "~/src/r", rect(1, 2, cols, 2), cols + 3, 6, 1);
+            |label, cols: u16| worker_row(label, "~/src/r", rect(1, 2, cols, 2), cols + 1, 6, 1);
         // The detail needs a blank column between it and the name.
-        assert_eq!(row("orch", 14), "  orch ~/src/r ▄ ");
-        assert_eq!(row("orch", 13), "  orch        ▄ ");
-        assert_eq!(row("orchestrator", 8), "  orchest▄ ");
+        assert_eq!(row("orch", 18), "┣━ orch ━ ~/src/r ━");
+        assert_eq!(row("orch", 17), "┣━ orch ━━━━━━━━━━");
+        assert_eq!(row("orchestrator", 8), "┣━ orche━");
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),
@@ -1754,7 +1542,7 @@ mod tests {
     fn chrome_measures_wide_and_combining_characters_in_columns() {
         let row = worker_row("界界界界界", "", rect(1, 2, 9, 2), 12, 6, 1);
         // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
-        assert_eq!(row, "  界 界 界 界 ▄ ");
+        assert_eq!(row, "┣━ 界 界 界 ━  ");
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
     }

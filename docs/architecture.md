@@ -180,14 +180,9 @@ agent and ending the session hang up the programs without relaunching them.
 ### Layout and chrome
 
 The first row is the header and the last is the bar. The panes go between
-them, in the layout of the theme in use (`theme::active`, see
-`docs/themes.md`): the simple theme by default, or the fancy one when
-`HYPERCUBE_THEME` is `fancy` in the host's environment. A theme has a gap, in
-cells, around the panes and between them, and a shadow takes one more column to
-the right of each pane. `host::layout` places the orchestrator's pane in the
-left 40% of the area inside the gaps, or all of it when it is alone, then the
-columns between the orchestrator and the workers (the gap and the shadow's
-column, and the divider's), then the workers stacked with equal heights. The
+them. `host::layout` places the orchestrator's pane in the
+left 40% of the area, or all of it when it is alone, then a column for the
+divider, then the workers stacked with equal heights. The
 orchestrator's pane has no label row; each worker has a label row above its
 pane. A layout in which some pane would get no row or column fails; a launch
 requested on the control socket then fails with "no room for another pane", and
@@ -201,7 +196,7 @@ focused pane when the zoom key is pressed. It restores the normal layout when
 the key is pressed again, when the focus changes, and when a pane is added or
 removed. The host resizing keeps the zoom.
 
-`TeamChrome` draws, in the theme's colors:
+`TeamChrome` draws, in the colors of `src/colors.rs`:
 
 - The header across the first row: one space and the orchestrator's directory,
   with the home directory written as `~`. The right end has what a label's left
@@ -216,21 +211,13 @@ removed. The host resizing keeps the zoom.
   written as `~` for workers in existing directories. A row too narrow for the
   right text drops it, keeping a blank column after the left text, and then
   clips the left text at a grapheme cluster. The header is clipped the same
-  way. In the simple theme the row is a heavy line (`━`) with a space on each
-  side of the text and a column of line at each end; in the fancy theme it is a
-  solid bar.
-- The simple theme's divider: a heavy `┃` between the orchestrator and the
+  way. The row is a heavy line (`━`) with a space on each side of the text and
+  a column of line at each end.
+- The divider: a heavy `┃` between the orchestrator and the
   workers, down every row between the header and the bar, with a `┣` on each
   worker's label row, where the divider branches into its line.
-- The fancy theme's backdrop in every cell between the header and the bar that
-  no pane covers. The panes draw their own cells.
-- The fancy theme's shadows, in the gaps below and to the right of each pane,
-  starting a column in from its left and half a row down from its top, to look
-  raised. A cell is about twice as tall as wide, so a shadow is upper half
-  blocks (`▀`) below and full blocks (`█`) to the right, a lower half block
-  (`▄`) at the top, and an upper half block at the corner.
 
-`bar::Bar` draws the last row in the footer's colors. It lists every running
+`bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification
 time of its host lock), as `0 foo  1 *bar  2 glarpy`: each the name of its
 checkout's directory, with the host's own workspace marked `*` and bold. It
