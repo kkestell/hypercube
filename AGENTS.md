@@ -40,8 +40,7 @@ and change over generalized infrastructure or speculative requirements.
 - `docs/teamwork.md`: published practices for running teams of coding agents.
 - `agents/plans/2026-10-27-002-rust-port.md`: the implementation plan.
 
-The new code and docs stand alone. They never mention `v1/`, the Go version,
-tmux, granite, or any other predecessor. `v1/` is reference material only.
+Code and docs stand alone and do not refer to predecessor implementations.
 
 ## Layout
 
