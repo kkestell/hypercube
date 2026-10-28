@@ -6,6 +6,7 @@
 //! lines written to `$HYPERCUBE_TEST_DIR/<agent id>/fifo`:
 //!
 //! - `<tag> <tool> <json arguments>` calls an MCP tool and records the result.
+//! - `exit <status>` makes the stub exit with that status.
 //! - `hold-hup` makes the stub, once hung up, wait for the file `release` in
 //!   its directory before it exits.
 use std::collections::BTreeMap;
@@ -214,6 +215,10 @@ impl Stub {
     }
 
     fn command(&mut self, line: &str) {
+        if let Some(status) = line.strip_prefix("exit ") {
+            self.record("exit", json!({"status": status}));
+            std::process::exit(status.parse().unwrap_or(1));
+        }
         if line == "hold-hup" {
             self.hold_hup = true;
             self.record("hold-hup", json!({}));

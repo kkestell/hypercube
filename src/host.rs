@@ -3,7 +3,7 @@
 //! their labels and the status bar, and answers requests on the control
 //! socket until the session ends.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::error::Error;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read, Write};
@@ -34,6 +34,10 @@ const REQUEST_TIMEOUT_MS: i64 = 5000;
 const MAX_REQUEST: usize = 1 << 20;
 /// How often the host reads the saved limits.
 const LIMITS_INTERVAL_MS: i64 = 15_000;
+/// A program that exits within this long of starting has exited quickly.
+const QUICK_EXIT_MS: i64 = 10_000;
+/// The host stops relaunching an agent after this many quick exits in a row.
+const MAX_QUICK_EXITS: u32 = 3;
 /// How long `stop` waits for the host to end.
 const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -164,6 +168,19 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
         .then_some(layout)
 }
 
+/// Where each pane goes while `zoomed` fills the pane area: where a lone pane
+/// would go, with every other pane hidden at its current size. `None` if the
+/// pane would get no row or column.
+pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Vec<(PaneId, Rect)>> {
+    let rect = layout(size, &[zoomed])?.pop()?.1;
+    Some(
+        panes
+            .iter()
+            .map(|&id| (id, if id == zoomed { rect } else { Rect::default() }))
+            .collect(),
+    )
+}
+
 /// The labels above the panes, the rule between the first pane and the
 /// others, and the status bar.
 pub struct TeamChrome {
@@ -172,6 +189,8 @@ pub struct TeamChrome {
     /// The status bar's text on the right, which the host changes as the
     /// limits do.
     pub limits: Rc<RefCell<String>>,
+    /// The pane that fills the pane area, which the host changes as it zooms.
+    pub zoomed: Rc<Cell<Option<PaneId>>>,
 }
 
 impl Chrome for TeamChrome {
@@ -180,7 +199,7 @@ impl Chrome for TeamChrome {
         // Panes are hidden while the terminal is too small for them.
         let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.rows > 0).collect();
         for p in &shown {
-            draw_label(&mut s, p);
+            draw_label(&mut s, p, self.zoomed.get() == Some(p.id));
         }
         if let [first, others @ ..] = shown.as_slice()
             && !others.is_empty()
@@ -220,11 +239,14 @@ impl Chrome for TeamChrome {
 }
 
 /// A pane's label row: a rule with the label near its left end, bold when the
-/// pane has the focus, the exit status once its program has exited, and how
-/// many rows its view is scrolled up.
-fn draw_label(s: &mut String, p: &PaneView) {
+/// pane has the focus, "zoomed" while it fills the pane area, the exit status
+/// once its program has exited, and how many rows its view is scrolled up.
+fn draw_label(s: &mut String, p: &PaneView, zoomed: bool) {
     let lead = p.rect.cols.min(2);
     let mut text = format!(" {}", p.label);
+    if zoomed {
+        text.push_str(" · zoomed");
+    }
     if let Some(status) = p.status {
         text.push_str(&format!(" · exited {status}"));
     }
@@ -366,14 +388,37 @@ struct Host {
     runtime: Runtime,
     socket: Socket,
     signals: RawFd,
-    /// Each agent's ID and pane, in launch order.
-    panes: Vec<(String, PaneId)>,
+    /// Each agent's pane, in launch order.
+    panes: Vec<Slot>,
     clients: Vec<Client>,
     enters: Enters,
     /// The status bar's limits text, shared with the chrome.
     limits: Rc<RefCell<String>>,
+    /// The pane that fills the pane area, shared with the chrome.
+    zoomed: Rc<Cell<Option<PaneId>>>,
     /// When to read the saved limits next, in `now_ms` time.
     limits_due: i64,
+}
+
+/// An agent's pane and how its program has been running.
+struct Slot {
+    agent: String,
+    pane: PaneId,
+    /// When the program started, in `now_ms` time.
+    started: i64,
+    /// How many times in a row the program has exited quickly.
+    quick_exits: u32,
+}
+
+impl Slot {
+    fn new(agent: &str, pane: PaneId) -> Slot {
+        Slot {
+            agent: agent.to_string(),
+            pane,
+            started: now_ms(),
+            quick_exits: 0,
+        }
+    }
 }
 
 /// Nudged panes and when to press Enter in each. A pane has at most one
@@ -437,9 +482,11 @@ pub fn run(root: &Path) -> Result<()> {
     let signals = catch_signals()?;
     let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
     let limits = Rc::new(RefCell::new(String::new()));
+    let zoomed = Rc::new(Cell::new(None));
     let chrome = TeamChrome {
         status: workspace::short(root),
         limits: Rc::clone(&limits),
+        zoomed: Rc::clone(&zoomed),
     };
     let mut mux = Mux::new(Winsize::default(), Box::new(chrome));
     let runtime = Runtime::new(&mut mux, 0, 1)?;
@@ -454,6 +501,7 @@ pub fn run(root: &Path) -> Result<()> {
         clients: Vec::new(),
         enters: Enters::default(),
         limits,
+        zoomed,
         limits_due: 0,
     };
     host.refresh_limits();
@@ -487,10 +535,8 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
         for a in &mut s.agents {
             if a.role == store::ORCHESTRATOR {
                 a.branch = branch.as_ref().cloned().unwrap_or_default();
-                a.activity = store::IDLE.into();
-            } else {
-                a.activity = store::BUSY.into();
             }
+            a.activity = start_activity(a).into();
         }
         let mut agents = s.agents.clone();
         agents.sort_by_key(|a| a.role != store::ORCHESTRATOR);
@@ -498,17 +544,37 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
     })
 }
 
+/// The prompt an agent's harness starts with when the host launches it.
+/// Workers start a turn to pick up messages queued while they were down.
+fn start_prompt(agent: &Agent) -> &'static str {
+    if agent.role == store::ORCHESTRATOR {
+        ""
+    } else {
+        NUDGE
+    }
+}
+
+/// What an agent is doing once the host has launched its harness.
+fn start_activity(agent: &Agent) -> &'static str {
+    if agent.role == store::ORCHESTRATOR {
+        store::IDLE
+    } else {
+        store::BUSY
+    }
+}
+
+/// Run a harness in a new pty of size `ws`.
+fn spawn(launch: &harness::Launch, ws: Winsize) -> Result<Pty> {
+    let env: Vec<_> = launch.env.iter().collect();
+    Ok(Pty::spawn(&launch.argv, &launch.cwd, &env, ws)?)
+}
+
 impl Host {
     /// Launch every agent, resuming saved sessions. Workers start a turn to
     /// pick up messages queued while they were down.
     fn start(&mut self, agents: &[Agent]) -> Result<()> {
         for a in agents {
-            let prompt = if a.role == store::ORCHESTRATOR {
-                ""
-            } else {
-                NUDGE
-            };
-            if let Err(e) = self.launch(&a.id, prompt, true) {
+            if let Err(e) = self.launch(&a.id, start_prompt(a), true) {
                 if a.role == store::ORCHESTRATOR {
                     return Err(format!("launching {}: {e}", a.name).into());
                 }
@@ -522,19 +588,25 @@ impl Host {
     /// showing the error and exit status 127, so it keeps its place until
     /// `remove_agent` closes it.
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
-        let error = error.replace(['\r', '\n'], " ");
-        let label = format!("{} · failed: {error}", harness::label(agent));
-        let pane = self.mux.add_pane(&label)?;
-        if let Some(p) = self.mux.pane_mut(pane) {
-            p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
-        }
-        self.mux.mark_exited(pane, 127);
-        self.panes.push((agent.id.clone(), pane));
+        let pane = self.mux.add_pane(&harness::label(agent))?;
+        self.show_failure(pane, agent, error);
+        self.panes.push(Slot::new(&agent.id, pane));
         self.lay_out()
     }
 
-    /// Run the session until it is stopped, every pane's program has exited,
-    /// or the terminal closes.
+    /// Show in a pane without a program that its agent's harness failed to
+    /// start, as exited with status 127.
+    fn show_failure(&mut self, pane: PaneId, agent: &Agent, error: &str) {
+        let error = error.replace(['\r', '\n'], " ");
+        if let Some(p) = self.mux.pane_mut(pane) {
+            p.label = format!("{} · failed: {error}", harness::label(agent));
+            p.feed(format!("{} failed to launch: {error}\r\n", agent.name).as_bytes());
+        }
+        self.mux.mark_exited(pane, 127);
+    }
+
+    /// Run the session until it is stopped, every pane's program has exited
+    /// for good, or the terminal closes.
     fn serve(&mut self) -> Result<()> {
         loop {
             let listener = self.socket.listener.as_raw_fd();
@@ -556,15 +628,25 @@ impl Host {
                             return Ok(());
                         }
                     }
-                    Event::PaneExited(..) => {
+                    Event::PaneExited(pane, _) => {
+                        self.relaunch(pane)?;
                         if self.mux.panes().iter().all(|p| p.status().is_some()) {
                             return Ok(());
                         }
                     }
+                    Event::Zoom => self.toggle_zoom()?,
                     Event::Resized => self.lay_out()?,
                     Event::InputClosed => return Ok(()),
                     Event::Deadline => {}
                 }
+            }
+            // A change of focus ends the zoom.
+            if self
+                .zoomed
+                .get()
+                .is_some_and(|z| self.mux.focus() != Some(z))
+            {
+                self.unzoom()?;
             }
             let now = now_ms();
             for pane in self.enters.take_due(now) {
@@ -668,11 +750,11 @@ impl Host {
     }
 
     fn pane_of(&self, agent: &str) -> Option<PaneId> {
-        self.panes.iter().find(|(a, _)| a == agent).map(|&(_, p)| p)
+        self.panes.iter().find(|s| s.agent == agent).map(|s| s.pane)
     }
 
     fn pane_ids(&self) -> Vec<PaneId> {
-        self.panes.iter().map(|&(_, p)| p).collect()
+        self.panes.iter().map(|s| s.pane).collect()
     }
 
     /// Start an agent's harness in a new pane and lay the panes out again. A
@@ -705,27 +787,84 @@ impl Host {
             ws_row: rect.rows.max(1),
             ..Winsize::default()
         };
-        let env: Vec<_> = launch.env.iter().collect();
-        match Pty::spawn(&launch.argv, &launch.cwd, &env, ws) {
+        match spawn(&launch, ws) {
             Ok(pty) => self.mux.attach(pane, pty),
             Err(e) => {
                 self.mux.remove_pane(pane);
-                return Err(e.into());
+                return Err(e);
             }
         }
-        self.panes.push((agent.id.clone(), pane));
+        self.panes.push(Slot::new(&agent.id, pane));
+        self.zoomed.set(None);
         self.mux.set_layout(&layout)?;
         Ok(())
+    }
+
+    /// Start the harness of an agent whose program exited again in its pane,
+    /// with its saved session, as when the host launches it. An agent whose
+    /// program has exited quickly `MAX_QUICK_EXITS` times in a row is left
+    /// exited. If the harness fails to start, the pane shows why, and the
+    /// host doesn't try again.
+    fn relaunch(&mut self, pane: PaneId) -> Result<()> {
+        let Some(slot) = self.panes.iter_mut().find(|s| s.pane == pane) else {
+            return Ok(());
+        };
+        let now = now_ms();
+        slot.quick_exits = if now - slot.started < QUICK_EXIT_MS {
+            slot.quick_exits + 1
+        } else {
+            0
+        };
+        if slot.quick_exits >= MAX_QUICK_EXITS {
+            return Ok(());
+        }
+        slot.started = now;
+        let id = slot.agent.clone();
+        let state = store::load(&self.state_path)?;
+        let agent = state.agent(&id)?;
+        self.mux.restart(pane, &harness::label(agent));
+        let ws = self.mux.pane(pane).map(Pane::ws).unwrap_or_default();
+        let started = harness::command(&self.exe, agent, &self.state_path, start_prompt(agent))
+            .and_then(|launch| spawn(&launch, ws));
+        match started {
+            Ok(pty) => {
+                self.mux.attach(pane, pty);
+                store::update(&self.state_path, |s| {
+                    s.agent_mut(&id)?.activity = start_activity(agent).into();
+                    Ok(())
+                })?;
+            }
+            Err(e) => self.show_failure(pane, agent, &e.to_string()),
+        }
+        Ok(())
+    }
+
+    /// Zoom the focused pane, or end the zoom.
+    fn toggle_zoom(&mut self) -> Result<()> {
+        if self.zoomed.get().is_some() {
+            return self.unzoom();
+        }
+        self.zoomed.set(self.mux.focus());
+        self.lay_out()
+    }
+
+    /// Lay the panes out normally if one is zoomed.
+    fn unzoom(&mut self) -> Result<()> {
+        if self.zoomed.take().is_none() {
+            return Ok(());
+        }
+        self.lay_out()
     }
 
     /// Hang up an agent's program, remove its pane, and lay the panes out
     /// again. An agent without a pane is already closed.
     fn close(&mut self, id: &str) -> Result<()> {
-        let Some(i) = self.panes.iter().position(|(a, _)| a == id) else {
+        let Some(i) = self.panes.iter().position(|s| s.agent == id) else {
             return Ok(());
         };
-        let (_, pane) = self.panes.remove(i);
-        self.mux.remove_pane(pane);
+        let slot = self.panes.remove(i);
+        self.mux.remove_pane(slot.pane);
+        self.zoomed.set(None);
         self.lay_out()
     }
 
@@ -752,8 +891,14 @@ impl Host {
     /// for them, the panes are hidden until it grows.
     fn lay_out(&mut self) -> Result<()> {
         let ids = self.pane_ids();
-        let layout = layout(self.mux.size(), &ids).unwrap_or_else(|| hidden(&ids));
-        Ok(self.mux.set_layout(&layout)?)
+        let size = self.mux.size();
+        let layout = match self.zoomed.get() {
+            Some(zoomed) => zoom_layout(size, &ids, zoomed),
+            None => layout(size, &ids),
+        };
+        Ok(self
+            .mux
+            .set_layout(&layout.unwrap_or_else(|| hidden(&ids)))?)
     }
 }
 
@@ -838,6 +983,26 @@ mod tests {
         assert!(layout(size(0, 24), &ids(1)).is_none());
     }
 
+    #[test]
+    fn a_zoomed_pane_takes_the_pane_area_and_the_others_are_hidden() {
+        let panes = ids(3);
+        for zoomed in &panes {
+            let layout = zoom_layout(size(100, 25), &panes, *zoomed).unwrap();
+            let ids: Vec<PaneId> = layout.iter().map(|&(id, _)| id).collect();
+            assert_eq!(ids, panes);
+            for (id, r) in layout {
+                let expected = if id == *zoomed {
+                    rect(0, 1, 100, 23)
+                } else {
+                    Rect::default()
+                };
+                assert_eq!(r, expected);
+            }
+        }
+        assert!(zoom_layout(size(80, 2), &ids(2), PaneId(2)).is_none());
+        assert_eq!(zoom_layout(size(80, 24), &[], PaneId(1)), Some(Vec::new()));
+    }
+
     struct Screen(Terminal<'static, 'static>);
 
     impl Screen {
@@ -845,6 +1010,7 @@ mod tests {
             let mut chrome = TeamChrome {
                 status: "~/src/team".into(),
                 limits: Rc::default(),
+                zoomed: Rc::default(),
             };
             let mut out = Vec::new();
             chrome.draw(&mut out, panes, size(cols, rows));
@@ -934,6 +1100,28 @@ mod tests {
     }
 
     #[test]
+    fn chrome_marks_the_zoomed_pane_and_draws_no_rule() {
+        let layout = rects(zoom_layout(size(30, 6), &ids(2), PaneId(2)));
+        let panes = [
+            view(1, "orch", layout[0], false, None),
+            view(2, "w1", layout[1], true, Some(3)),
+        ];
+        let mut chrome = TeamChrome {
+            status: "~/src/team".into(),
+            limits: Rc::default(),
+            zoomed: Rc::new(Cell::new(Some(PaneId(2)))),
+        };
+        let mut out = Vec::new();
+        chrome.draw(&mut out, &panes, size(30, 6));
+        let mut terminal = Terminal::new(30, 6).unwrap();
+        terminal.vt_write(&out);
+        let screen = Screen(terminal);
+        assert_eq!(screen.row(0), "━━ w1 · zoomed · exited 3 ━━━━");
+        assert_eq!(screen.row(1), " ".repeat(30));
+        assert_eq!(screen.row(5), " ~/src/team".to_owned() + &" ".repeat(19));
+    }
+
+    #[test]
     fn chrome_truncates_labels_and_skips_hidden_panes() {
         let panes = [view(1, "orchestrator", rect(0, 1, 8, 2), false, None)];
         let screen = Screen::draw(&panes, 8, 4);
@@ -955,6 +1143,7 @@ mod tests {
         let mut chrome = TeamChrome {
             status: "e\u{301}界界界界界".into(),
             limits: Rc::default(),
+            zoomed: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &panes, size(9, 4));
@@ -973,6 +1162,7 @@ mod tests {
         let mut chrome = TeamChrome {
             status: status.into(),
             limits: Rc::new(RefCell::new(limits.into())),
+            zoomed: Rc::default(),
         };
         let mut out = Vec::new();
         chrome.draw(&mut out, &[], size(cols, 2));

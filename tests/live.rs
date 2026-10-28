@@ -602,6 +602,88 @@ fn exited_pane_keeps_its_place_and_loses_focus() {
 }
 
 #[test]
+fn the_zoom_key_is_reported_and_goes_to_no_pane() {
+    let mut h = Host::new(81, 12);
+    h.spawn("left", &["input", "left", "plain", "0"]);
+    h.wait_screen("left ready");
+    let zooms = |h: &Host| h.events.iter().filter(|e| **e == Event::Zoom).count();
+    h.send("\x1ca");
+    h.wait_screen("left got 97");
+    assert_eq!(zooms(&h), 1);
+    // Kitty's press is reported; its repeat and release are consumed.
+    h.send("\x1b[92;5u\x1b[92;5:2u\x1b[92;5:3ub");
+    h.wait_screen("left got 98");
+    assert_eq!(zooms(&h), 2);
+    assert!(!h.screen().contains("got 28"));
+}
+
+#[test]
+fn a_hidden_pane_keeps_its_size_while_the_others_resize() {
+    let mut h = Host::new(81, 12);
+    let left = h.spawn("left", &["size"]);
+    let right = h.spawn("right", &["size"]);
+    h.wait_screen("size 40x11");
+    let rects = layout(h.mux.size(), &[left, right]);
+    let full = Rect {
+        col: 0,
+        row: 1,
+        cols: 81,
+        rows: 11,
+    };
+    h.mux
+        .set_layout(&[(left, full), (right, Rect::default())])
+        .unwrap();
+    h.wait_screen("size 81x11");
+    assert!(!h.screen().contains("right"));
+    // The hidden program saw no resize.
+    h.step(200);
+    assert!(h.screen().lines().all(|l| !l.contains("size 40x")));
+    assert_eq!(h.mux.pane(right).unwrap().ws().ws_col, rects[1].1.cols);
+    // It keeps running, and is drawn again once it has a place.
+    h.layout();
+    h.wait_screen("right");
+    h.wait_screen("size 40x11");
+}
+
+#[test]
+fn a_restarted_pane_runs_a_new_program_in_the_same_place() {
+    let mut h = Host::new(81, 12);
+    let left = h.spawn("left", &["exit", "7", "old output"]);
+    let right = h.spawn("right", &["input", "right", "plain", "0"]);
+    assert_eq!(h.wait_exit(left), 7);
+    h.wait_screen("left (exited 7)");
+    h.wait_screen("old output");
+    let place = h.mux.pane(left).unwrap().rect();
+
+    // A pane whose program is running is left as it is.
+    h.mux.restart(right, "ignored");
+    assert_eq!(h.mux.pane(right).unwrap().label, "right");
+
+    h.mux.restart(left, "left again");
+    let ws = h.mux.pane(left).unwrap().ws();
+    let env: &[(&str, &str)] = &[];
+    let pty = Pty::spawn(
+        &[CHILD, "input", "left", "plain", "0"],
+        &std::env::temp_dir(),
+        env,
+        ws,
+    )
+    .unwrap();
+    h.mux.attach(left, pty);
+    h.wait_screen("left ready");
+    let screen = h.screen();
+    assert!(screen.contains("left again"), "{screen}");
+    assert!(!screen.contains("exited"), "{screen}");
+    assert!(!screen.contains("old output"), "{screen}");
+    assert_eq!(h.mux.pane(left).unwrap().rect(), place);
+    assert_eq!(h.mux.pane(left).unwrap().status(), None);
+
+    // The new program takes input once it has the focus.
+    h.send("\x1da");
+    h.wait_screen("left got 97");
+}
+
+#[test]
 fn focus_skips_a_pane_marked_exited() {
     let mut h = Host::new(81, 12);
     h.spawn("left", &["input", "left", "plain", "0"]);

@@ -476,6 +476,23 @@ impl Pane {
         self.state.write_input();
     }
 
+    /// Hang up the program and give up the pane's hold on it. Returns its
+    /// process group, to be killed if it outlasts `HANGUP_GRACE_MS`.
+    fn hang_up(&mut self) -> Option<Orphan> {
+        self.signal(libc::SIGHUP);
+        self.close_master();
+        let child = self.child.take()?;
+        // The program may have been reaped while others in its group, which
+        // it started, still run.
+        let pgid = child.id() as libc::pid_t;
+        unsafe { libc::killpg(pgid, libc::SIGHUP) };
+        Some(Orphan {
+            pgid,
+            child: self.status.is_none().then_some(child),
+            since: now_ms(),
+        })
+    }
+
     /// Send `signal` to the program's process group, unless it has been
     /// reaped.
     pub fn signal(&self, signal: libc::c_int) {
@@ -679,6 +696,8 @@ pub struct Mux {
     held_since: i64,
     /// The pane a bracketed paste in progress goes to.
     pasting: Option<PaneId>,
+    /// Whether the zoom key was pressed since the caller last took it.
+    zoom: bool,
 }
 
 impl Mux {
@@ -705,6 +724,7 @@ impl Mux {
             held_input: Vec::new(),
             held_since: 0,
             pasting: None,
+            zoom: false,
         };
         m.reset_host_modes();
         m
@@ -825,25 +845,36 @@ impl Mux {
         }
     }
 
+    /// Ready a pane whose program has exited for a new one: its terminal is
+    /// reset, it is live again, and `label` replaces its label. The old
+    /// program's process group is hung up like a removed pane's. A pane
+    /// whose program is running is left as it is. The caller attaches the
+    /// new program, or shows why there is none with `mark_exited`.
+    pub fn restart(&mut self, id: PaneId, label: &str) {
+        let Some(index) = self.index(id) else { return };
+        let p = &mut self.panes[index];
+        if p.live() {
+            return;
+        }
+        self.orphans.extend(p.hang_up());
+        p.status = None;
+        p.label = label.to_owned();
+        p.terminal.reset();
+        p.notifications = Notifications::default();
+        let _ = p.repaint();
+        if self.selection == Some(id) {
+            self.selection = None;
+        }
+        self.chrome_dirty = true;
+    }
+
     /// Remove a pane, hanging up its program if it is still running, and
     /// move the focus off it. The rest of the screen is drawn again. A
     /// program still running `HANGUP_GRACE_MS` later is killed.
     pub fn remove_pane(&mut self, id: PaneId) {
         let Some(index) = self.index(id) else { return };
         let mut pane = self.panes.remove(index);
-        pane.signal(libc::SIGHUP);
-        pane.close_master();
-        if let Some(child) = pane.child.take() {
-            // The program may have been reaped while others in its group,
-            // which it started, still run.
-            let pgid = child.id() as libc::pid_t;
-            unsafe { libc::killpg(pgid, libc::SIGHUP) };
-            self.orphans.push(Orphan {
-                pgid,
-                child: pane.status.is_none().then_some(child),
-                since: now_ms(),
-            });
-        }
+        self.orphans.extend(pane.hang_up());
         if self.focus() == Some(id) {
             self.shared.focus.set(None);
             self.focus_from(index);
@@ -905,15 +936,17 @@ impl Mux {
     }
 
     /// Place panes on the host terminal, resizing their terminals and ptys,
-    /// and draw everything again. Panes not listed keep their places. Ghostty
-    /// and the pty need at least one cell in each dimension, so an empty
-    /// rectangle still sizes the pane's terminal to one cell.
+    /// and draw everything again. Panes not listed keep their places. A pane
+    /// given an empty rectangle is hidden and keeps its size.
     pub fn set_layout(&mut self, layout: &[(PaneId, Rect)]) -> Result<()> {
         let host = self.ws;
         for &(id, rect) in layout {
             let Some(p) = self.pane_mut(id) else { continue };
-            let cols = rect.cols.max(1);
-            let rows = rect.rows.max(1);
+            p.rect = rect;
+            if rect.cols == 0 || rect.rows == 0 {
+                continue;
+            }
+            let (cols, rows) = (rect.cols, rect.rows);
             let ws = Winsize {
                 ws_col: cols,
                 ws_row: rows,
@@ -922,7 +955,6 @@ impl Mux {
                 ws_ypixel: (u32::from(host.ws_ypixel) * u32::from(rows)
                     / u32::from(host.ws_row.max(1))) as u16,
             };
-            p.rect = rect;
             let old = p.state.ws.replace(ws);
             // Resizing a terminal ends its hold, so a pane that only moves
             // keeps its size and its hold.
@@ -1096,6 +1128,11 @@ impl Mux {
         self.route(&input, false);
     }
 
+    /// Whether the zoom key was pressed since the last call.
+    pub fn take_zoom(&mut self) -> bool {
+        std::mem::take(&mut self.zoom)
+    }
+
     /// When held input is taken as it is: a lone Esc as the Esc key, and a
     /// cut-off sequence as typed.
     pub fn input_deadline(&self) -> Option<i64> {
@@ -1161,6 +1198,7 @@ impl Mux {
                     start = end;
                     match route {
                         Route::FocusNext => self.focus_next(),
+                        Route::Zoom => self.zoom = true,
                         Route::Mouse(event) => self.mouse(event),
                         Route::Scroll(key) => self.scroll_focused(key),
                         _ => {}
@@ -1186,14 +1224,17 @@ impl Mux {
 
     /// What to do with one key or escape sequence of host input.
     fn classify(&self, token: &[u8]) -> Route {
-        if token == [0x1d] {
+        if token == [CTRL_RIGHT_BRACKET] {
             return Route::FocusNext;
+        }
+        if token == [CTRL_BACKSLASH] {
+            return Route::Zoom;
         }
         if let Some((&last, params)) = token.strip_prefix(b"\x1b[").and_then(|t| t.split_last()) {
             if last == b'u'
-                && let Some(press) = focus_key(params)
+                && let Some((route, press)) = ctrl_key(params)
             {
-                return if press { Route::FocusNext } else { Route::Drop };
+                return if press { route } else { Route::Drop };
             }
             // The host reports the mouse only in SGR form.
             if last == b'M' || last == b'm' {
@@ -1527,6 +1568,7 @@ enum Route {
     /// Nowhere.
     Drop,
     FocusNext,
+    Zoom,
     Mouse(MouseEvent),
     Scroll(ScrollKey),
     /// To the focused pane, after returning its view to the bottom.
@@ -1543,6 +1585,9 @@ enum ScrollKey {
     Exit,
 }
 
+/// The legacy bytes of Ctrl-] and Ctrl-\.
+const CTRL_RIGHT_BRACKET: u8 = 0x1d;
+const CTRL_BACKSLASH: u8 = 0x1c;
 /// The Kitty modifiers value of Shift alone.
 const SHIFT: u16 = 2;
 /// The Kitty event type of a key release.
@@ -1568,13 +1613,16 @@ fn csi_key(params: &[u8]) -> Option<(u32, u16, u8)> {
     Some((key, mods, event))
 }
 
-/// Whether Ctrl-] in Kitty's form is a press, or a repeat or release.
-fn focus_key(params: &[u8]) -> Option<bool> {
-    match csi_key(params)? {
-        (93, 5, 1) => Some(true),
-        (93, 5, 2 | 3) => Some(false),
-        _ => None,
-    }
+/// The route of Ctrl-] or Ctrl-\ in Kitty's form, and whether the event is
+/// a press, not a repeat or release.
+fn ctrl_key(params: &[u8]) -> Option<(Route, bool)> {
+    let (code, mods, event) = csi_key(params)?;
+    let route = match (code, mods) {
+        (93, 5) => Route::FocusNext,
+        (92, 5) => Route::Zoom,
+        _ => return None,
+    };
+    Some((route, event == 1))
 }
 
 /// The scrolling key a token is, with its Kitty modifiers value and event
@@ -2342,6 +2390,85 @@ mod tests {
             assert_eq!(p.got(1), "é".as_bytes(), "split at {at}");
             assert_eq!(p.got(0), b"", "split at {at}");
         }
+    }
+
+    #[test]
+    fn ctrl_backslash_asks_for_zoom_and_goes_to_no_pane() {
+        let mut p = Piped::new();
+        assert!(!p.mux.take_zoom());
+        // Legacy, and Kitty's press; repeats and releases are consumed.
+        p.mux.input(b"\x1c");
+        assert!(p.mux.take_zoom());
+        assert!(!p.mux.take_zoom());
+        p.mux.input(b"\x1b[92;5u");
+        assert!(p.mux.take_zoom());
+        p.mux.input(b"\x1b[92;5:2u\x1b[92;5:3u");
+        assert!(!p.mux.take_zoom());
+        // Other modifiers pass through, and scrolling doesn't change the key.
+        p.mux.input(b"\x1b[92;1u");
+        assert!(!p.mux.take_zoom());
+        assert_eq!(p.got(0), b"\x1b[92;1u");
+        let id = p.ids[0];
+        for i in 0..30 {
+            p.mux
+                .pane_mut(id)
+                .unwrap()
+                .feed(format!("{i}\r\n").as_bytes());
+        }
+        p.mux.input(b"\x1b[5;2~\x1c");
+        assert!(p.mux.take_zoom());
+        assert_eq!(p.mux.pane(id).unwrap().scrolled(), 10);
+        assert_eq!(p.got(0), b"");
+    }
+
+    #[test]
+    fn restarting_a_pane_clears_its_scrollback() {
+        let mut p = Piped::new();
+        let id = p.ids[0];
+        for i in 0..30 {
+            p.mux
+                .pane_mut(id)
+                .unwrap()
+                .feed(format!("line {i}\r\n").as_bytes());
+        }
+        p.mux.pane_mut(id).unwrap().scroll(-5);
+        assert_eq!(p.mux.pane(id).unwrap().scrolled(), 5);
+        // A pane with a running program is left alone.
+        p.mux.restart(id, "again");
+        assert_eq!(p.mux.pane(id).unwrap().scrolled(), 5);
+
+        p.mux.mark_exited(id, 1);
+        assert_eq!(p.mux.pane(id).unwrap().status(), Some(1));
+        p.mux.restart(id, "again");
+        let pane = p.mux.pane_mut(id).unwrap();
+        assert_eq!((pane.status(), pane.label.as_str()), (None, "again"));
+        pane.scroll(-100);
+        assert_eq!(pane.scrolled(), 0);
+    }
+
+    #[test]
+    fn a_hidden_pane_keeps_its_size_and_is_not_under_the_pointer() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        let size = |p: &Piped, id| {
+            let ws = p.mux.pane(id).unwrap().ws();
+            (ws.ws_col, ws.ws_row)
+        };
+        assert_eq!(size(&p, right), (40, 10));
+        let full = Rect {
+            col: 0,
+            row: 0,
+            cols: 81,
+            rows: 10,
+        };
+        p.mux
+            .set_layout(&[(left, full), (right, Rect::default())])
+            .unwrap();
+        assert_eq!(size(&p, left), (81, 10));
+        assert_eq!(size(&p, right), (40, 10));
+        // A click where the right pane was lands in the left one.
+        p.mux.input(b"\x1b[<0;50;5M\x1b[<0;50;5m");
+        assert_eq!(p.mux.focus(), Some(left));
     }
 
     #[test]

@@ -860,6 +860,16 @@ fn remove_agent_closes_the_pane() {
     assert!(!fx.worktree("w1").exists());
     assert_eq!(fx.git(&fx.repo, &["branch", "--list", "hypercube/w1"]), "");
     assert!(host::running(&fx.state_path()).unwrap().is_some());
+    // The closed agent is not relaunched.
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(
+        fx.events_of(&w1)
+            .iter()
+            .filter(|e| e["event"] == "launch")
+            .count(),
+        1
+    );
+    assert_eq!(fx.pids().len(), 2);
 }
 
 #[test]
@@ -897,6 +907,8 @@ fn status_shows_running_and_stop_ends_every_stand_in() {
 
     fx.stop();
     fx.wait_gone(&pids);
+    // The agents that stop hung up are not relaunched.
+    assert_eq!(fx.pids(), pids);
     assert_eq!(
         fx.status().unwrap()[..3],
         [repo, "stopped".into(), "3".into()]
@@ -1087,6 +1099,161 @@ fn unsupported_harness_does_not_stop_startup() {
     fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 2]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap().is_some());
+}
+
+#[test]
+fn an_exited_agent_is_relaunched_in_its_pane() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_screen("w1 · claude haiku low");
+    let session = fx.state().agent("w1").unwrap().session_id.clone();
+    let prompts = fx.agent_events("w1", "prompt").len();
+
+    fx.command("w1", "exit 3");
+    let launches = fx.wait_event("w1", "ready", 2);
+    assert_eq!(launches.len(), 2);
+    let launches = fx.agent_events("w1", "launch");
+    let again = &launches[1];
+    // It resumes its session in the same place, and picks up its messages.
+    assert_eq!(
+        flag_value(args_of(again), "--resume"),
+        Some(session.as_str())
+    );
+    assert_eq!(args_of(again).last().unwrap(), NUDGE);
+    assert_eq!(again["size"], launches[0]["size"]);
+    assert_ne!(again["pid"], launches[0]["pid"]);
+    let prompt = fx.wait_event("w1", "prompt", prompts + 1);
+    assert_eq!(prompt[prompts]["text"], NUDGE);
+    fx.wait_idle("w1");
+    fx.wait_size("orchestrator", [48, 38]);
+    let screen = fx.screen();
+    assert!(screen.contains("w1 · claude haiku low"), "{screen}");
+    assert!(!screen.contains("exited"), "{screen}");
+    assert_eq!(fx.state().agent("w1").unwrap().session_id, session);
+
+    // The orchestrator, which has no nudge, comes back idle.
+    fx.command("orchestrator", "exit 0");
+    fx.wait_event("orchestrator", "ready", 2);
+    let launch = fx.agent_events("orchestrator", "launch").remove(1);
+    assert_ne!(args_of(&launch).last().unwrap(), NUDGE);
+    fx.wait_idle("orchestrator");
+    assert_eq!(fx.agent_events("w1", "launch").len(), 2);
+}
+
+#[test]
+fn an_agent_that_keeps_exiting_is_left_exited() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    for n in 2..=3 {
+        fx.command("w1", "exit 1");
+        fx.wait_event("w1", "ready", n);
+    }
+    // The third quick exit in a row is not relaunched.
+    let pid = fx.pid("w1");
+    fx.command("w1", "exit 1");
+    fx.wait_gone(&[pid]);
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fx.agent_events("w1", "launch").len(), 3);
+
+    // The session goes on with the other agents.
+    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    let (text, is_error) = fx.call("orchestrator", "list_agents", json!({}));
+    assert!(!is_error && text.contains("\"w1\""), "{text}");
+    fx.stop();
+}
+
+#[test]
+fn the_session_ends_when_every_agent_is_left_exited() {
+    let mut fx = Fixture::new();
+    fx.start();
+    for n in 2..=3 {
+        fx.command("orchestrator", "exit 1");
+        fx.wait_event("orchestrator", "ready", n);
+    }
+    fx.command("orchestrator", "exit 1");
+    fx.wait_host_exit();
+    assert_eq!(fx.agent_events("orchestrator", "launch").len(), 3);
+    assert!(host::running(&fx.state_path()).unwrap().is_none());
+}
+
+#[test]
+fn a_relaunch_that_fails_shows_why_and_is_not_retried() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    store::update(&fx.state_path(), |s| {
+        s.agent_mut("w1")?.harness = "codex".into();
+        Ok(())
+    })
+    .unwrap();
+
+    fx.command("w1", "exit 1");
+    fx.wait_screen("w1 failed to launch");
+    std::thread::sleep(Duration::from_millis(500));
+    assert_eq!(fx.agent_events("w1", "launch").len(), 1);
+    assert!(host::running(&fx.state_path()).unwrap().is_some());
+    fx.stop();
+}
+
+#[test]
+fn ctrl_backslash_zooms_the_focused_pane() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_size("orchestrator", [48, 38]);
+    let (w1_size, w1_resizes) = (fx.size("w1"), fx.agent_events("w1", "size").len());
+    let whole = [u64::from(COLS), u64::from(ROWS) - 2];
+
+    // The orchestrator fills the pane area, and w1 is hidden at its size.
+    fx.type_text("\x1c");
+    fx.wait_size("orchestrator", whole);
+    fx.wait_screen("zoomed");
+    fx.wait_no_screen("w1 ·");
+    fx.type_text("hi\r");
+    fx.wait_event("orchestrator", "prompt", 1);
+    fx.wait_idle("orchestrator");
+
+    // The same key restores the layout.
+    fx.type_text("\x1c");
+    fx.wait_size("orchestrator", [48, 38]);
+    fx.wait_screen("w1 · claude haiku low");
+    fx.wait_no_screen("zoomed");
+
+    // A change of focus restores it too.
+    fx.type_text("\x1d\x1c");
+    fx.wait_size("w1", whole);
+    fx.wait_screen("zoomed");
+    fx.wait_no_screen("orchestrator ·");
+    fx.type_text("\x1d");
+    fx.wait_size("w1", w1_size.clone().try_into().unwrap());
+    fx.wait_screen("orchestrator ·");
+    fx.wait_no_screen("zoomed");
+
+    // As does adding or removing a pane.
+    fx.type_text("\x1c");
+    fx.wait_size("orchestrator", whole);
+    let w2 = fx.create("w2", "fast", "");
+    fx.wait_no_screen("zoomed");
+    fx.wait_size("orchestrator", [48, 38]);
+    fx.type_text("\x1c");
+    fx.wait_size("orchestrator", whole);
+    let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": w2}));
+    assert!(!is_error, "{text}");
+    fx.wait_no_screen("zoomed");
+    fx.wait_size("orchestrator", [48, 38]);
+
+    // w1 was resized only to be zoomed and restored, and the stand-ins
+    // never received the key.
+    assert_eq!(fx.size("w1"), w1_size);
+    assert!(fx.agent_events("w1", "size").len() > w1_resizes);
+    let typed: String = ["orchestrator", "w1"]
+        .iter()
+        .flat_map(|n| fx.agent_events(n, "input"))
+        .map(|e| e["data"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(typed, "hi\r");
 }
 
 /// Claude Code's status line input with the given limits.
