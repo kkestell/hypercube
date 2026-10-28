@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use crate::store::Agent;
+use crate::store::{Agent, ORCHESTRATOR};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
@@ -51,7 +51,15 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
                     )
                 })
                 .collect();
-            let settings = json!({"hooks": hooks});
+            // The orchestrator's status line also shows the usage limits.
+            let mut statusline = format!("{} statusline", shell_quote(exe_str));
+            if agent.role == ORCHESTRATOR {
+                statusline.push_str(" --limits");
+            }
+            let settings = json!({
+                "hooks": hooks,
+                "statusLine": {"type": "command", "command": statusline},
+            });
             let mut argv = strings(["claude", "--mcp-config"]);
             argv.extend([
                 mcp.to_string(),
@@ -224,7 +232,19 @@ mod tests {
                     "PostToolUse": hook("PostToolUse"),
                     "Stop": hook("Stop"),
                 },
+                "statusLine": {"type": "command", "command": format!("'{EXE}' statusline")},
             })
+        );
+    }
+
+    #[test]
+    fn the_orchestrator_status_line_shows_the_limits() {
+        let mut a = agent("claude", "");
+        a.role = ORCHESTRATOR.into();
+        let settings = json_arg(&launch(Path::new("/tmp/w.json"), &a, "").argv, "--settings");
+        assert_eq!(
+            settings["statusLine"]["command"],
+            format!("'{EXE}' statusline --limits")
         );
     }
 

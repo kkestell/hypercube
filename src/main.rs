@@ -9,12 +9,11 @@ use std::process::ExitCode;
 use std::time::{Duration, SystemTime};
 
 use hypercube::store::{Agent, State};
-use hypercube::{control, hook, host, mcp, store, workspace};
+use hypercube::{control, hook, host, mcp, statusline, store, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const USAGE: &str =
-    "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event>]";
+const USAGE: &str = "usage: hypercube [stop [dir | --all] | delete [dir | --all] | status | mcp | hook <event> | statusline [--limits]]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -30,6 +29,10 @@ fn main() -> ExitCode {
         ["status"] => status(),
         ["mcp"] => mcp::serve(std::io::stdin().lock(), std::io::stdout().lock()),
         ["hook", event] => hook::run(event, std::io::stdin().lock(), std::io::stdout().lock()),
+        ["statusline"] => statusline::run(false, std::io::stdin().lock(), std::io::stdout().lock()),
+        ["statusline", "--limits"] => {
+            statusline::run(true, std::io::stdin().lock(), std::io::stdout().lock())
+        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);

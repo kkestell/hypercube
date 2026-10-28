@@ -21,6 +21,7 @@ pub mod mux;
 pub mod pty;
 pub mod recording;
 pub mod runtime;
+pub mod statusline;
 pub mod store;
 pub mod winch;
 pub mod workspace;

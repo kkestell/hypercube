@@ -63,6 +63,7 @@ tmux, granite, or any other predecessor. `v1/` is reference material only.
 - `src/harness/pi.js`: the Pi extension, embedded in the binary and written for
   each Pi launch.
 - `src/hook.rs`: the harness hook events and the messages they deliver.
+- `src/statusline.rs`: `hypercube statusline`, Claude Code's status line.
 - `src/control.rs`: the control socket's request and reply protocol, its
   client, and the socket's path.
 - `src/mcp.rs`: the agents' stdio MCP server and its tools.

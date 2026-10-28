@@ -49,7 +49,10 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
 - `--mcp-config` registers the `hypercube` stdio server: `exe mcp`, with
   `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE` in its environment.
 - `--settings` carries a `hooks` entry for each event running
-  `'<exe>' hook <event>`.
+  `'<exe>' hook <event>`, and a `statusLine` running `'<exe>' statusline`,
+  with `--limits` for the orchestrator. The status line shows the model, the
+  effort while thinking is on, and the context window's tokens in use, size,
+  and percentage; `--limits` adds bars for the 5-hour and 7-day usage limits.
 - `--resume` is present when the agent has a saved session ID.
 
 Claude Code handles folder trust in its pane. Worktree workers live under

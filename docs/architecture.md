@@ -10,6 +10,8 @@
   `config.json`, and asks the host to launch, close, and nudge panes.
 - `hypercube hook <event>` runs for each harness hook event. It changes the
   state file, and reads `config.json` for the orchestrator's profiles.
+- `hypercube statusline` prints Claude Code's status line from the status
+  JSON on its input.
 - `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
   `delete` act on the workspace of the working directory, of a directory
   argument, or, with `--all`, of every workspace.
