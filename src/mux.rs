@@ -889,10 +889,10 @@ impl Pane {
         let elapsed = now - melt.start;
         let rows = i64::from(rect.rows);
         for y in 0..rect.rows {
+            let _ = write!(out, "\x1b[{};{}H", rect.row + y + 1, rect.col + 1);
             let mut prev: Option<Style> = None;
             for x in 0..rect.cols {
                 let col = rect.col + x;
-                let _ = write!(out, "\x1b[{};{}H", rect.row + y + 1, col + 1);
                 let fall = melt.fall(x, elapsed, rows);
                 let Some(row) = (i64::from(y) >= fall)
                     .then(|| melt.rows.get((i64::from(y) - fall) as usize))
