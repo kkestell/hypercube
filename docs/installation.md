@@ -31,10 +31,8 @@ submodule when they are missing, then runs `cargo build`. The binary is
 make install
 ```
 
-This runs `cargo install --path .`, which builds `hypercube` in release mode
-and copies it to `~/.cargo/bin`, or `$CARGO_HOME/bin` when `CARGO_HOME` is set.
-Once `make` has fetched the toolchain and the submodule, running
-`cargo install --path .` directly does the same.
+This builds `hypercube` in release mode and copies it to `~/.local/bin`, which
+must be on `PATH`. `make install BINDIR=<dir>` installs it elsewhere.
 
 Each agent runs the `hypercube` executable that started its session, as its MCP
 server and hook command.

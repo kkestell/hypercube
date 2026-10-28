@@ -5,6 +5,7 @@ ZIG_SHA256 := b607e9b9234790a008116ae5bdb71c6243b84b9fb42a53a9e70fde41c06c536a
 ZIG := .toolchain/$(ZIG_NAME)/zig
 GHOSTTY := vendor/ghostty/build.zig
 DOWNLOAD := .toolchain/download
+BINDIR := $(HOME)/.local/bin
 
 .PHONY: build test check install
 
@@ -21,7 +22,9 @@ check: $(ZIG) $(GHOSTTY)
 	cargo test
 
 install: $(ZIG) $(GHOSTTY)
-	cargo install --path .
+	cargo build --release --bin hypercube
+	mkdir -p $(BINDIR)
+	install -m 755 target/release/hypercube $(BINDIR)/hypercube
 
 $(ZIG):
 	rm -rf $(DOWNLOAD)
