@@ -93,6 +93,15 @@ fn delete(dir: &str) -> Result<()> {
     if host::running(&path)?.is_some() {
         host::stop(&path)?;
     }
+    // Holding the host lock keeps a host from starting until the workspace is
+    // gone.
+    let Some(_lock) = host::try_lock(&host::lock_path(&path))? else {
+        return Err(format!(
+            "hypercube started again for {}; stop it and delete again",
+            workspace::short(&root)
+        )
+        .into());
+    };
     // A worker can change its worktree before the session ends. Such a worker
     // stays in the state, so delete can run again after it is fixed.
     for a in workers {
@@ -104,7 +113,7 @@ fn delete(dir: &str) -> Result<()> {
         })?;
     }
     store::delete(&path)?;
-    for file in [host::lock_path(&path), control::socket_path(&path)?] {
+    for file in [control::socket_path(&path)?, host::lock_path(&path)] {
         match fs::remove_file(&file) {
             Err(e) if e.kind() != ErrorKind::NotFound => {
                 return Err(format!("remove {}: {e}", file.display()).into());

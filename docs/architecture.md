@@ -84,7 +84,8 @@ Each connection carries one JSON request line and gets one JSON reply line,
   panes out again. An agent without a pane is already closed.
 - `nudge {agent}`: type `Check your Hypercube messages.` into the agent's
   pane and press Enter 200 ms later, encoded for the pane's keyboard modes.
-  Fails if the agent has no pane or its program has exited.
+  A nudge whose Enter is still pending covers the next one for the same
+  pane. Fails if the agent has no pane or its program has exited.
 - `stop`: reply, then end the session.
 
 The MCP server and `hypercube stop` find the socket from the state file's
@@ -108,8 +109,11 @@ with its directory, whether its host lock is held, its number of agents, and
 both times.
 
 `hypercube delete` refuses if a worker's worktree is dirty or its branch is
-not merged. Otherwise it stops the host, removes each worker's worktree and
-branch, and deletes the state, its lock, the host lock, and the socket.
+not merged. Otherwise it stops the host and takes the host lock itself, so
+no host starts while it works. It removes each worker's worktree and branch,
+deletes the state, its lock, and the socket, and removes the host lock file
+last. A host that takes the host lock checks that the file it locked is still
+the one at the path, and otherwise locks the current one.
 
 ## Message delivery
 

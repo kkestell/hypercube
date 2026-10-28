@@ -7,6 +7,7 @@ use std::error::Error;
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::io::{ErrorKind, Read, Write};
 use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::fs::MetadataExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -77,20 +78,42 @@ pub fn stop(state_path: &Path) -> Result<()> {
 }
 
 /// Take the host lock without waiting, or `None` if another host holds it.
-fn try_lock(path: &Path) -> Result<Option<File>> {
+/// `delete` unlinks the lock file while holding the lock, so a lock obtained
+/// on a file that is no longer at the path is released and the current file
+/// locked instead.
+pub fn try_lock(path: &Path) -> Result<Option<File>> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     }
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(path)
-        .map_err(|e| format!("open {}: {e}", path.display()))?;
-    match file.try_lock() {
-        Ok(()) => Ok(Some(file)),
-        Err(TryLockError::WouldBlock) => Ok(None),
-        Err(TryLockError::Error(e)) => Err(format!("lock {}: {e}", path.display()).into()),
+    loop {
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)
+            .map_err(|e| format!("open {}: {e}", path.display()))?;
+        match file.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => return Ok(None),
+            Err(TryLockError::Error(e)) => {
+                return Err(format!("lock {}: {e}", path.display()).into());
+            }
+        }
+        if at_path(&file, path)? {
+            return Ok(Some(file));
+        }
+    }
+}
+
+/// Whether `file` is the file at `path`.
+fn at_path(file: &File, path: &Path) -> Result<bool> {
+    let held = file
+        .metadata()
+        .map_err(|e| format!("stat {}: {e}", path.display()))?;
+    match fs::metadata(path) {
+        Ok(current) => Ok((current.dev(), current.ino()) == (held.dev(), held.ino())),
+        Err(e) if e.kind() == ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(format!("stat {}: {e}", path.display()).into()),
     }
 }
 
@@ -293,8 +316,36 @@ struct Host {
     /// Each agent's ID and pane, in launch order.
     panes: Vec<(String, PaneId)>,
     clients: Vec<Client>,
-    /// Nudged panes and when to press Enter in each.
-    enters: Vec<(i64, PaneId)>,
+    enters: Enters,
+}
+
+/// Nudged panes and when to press Enter in each. A pane has at most one
+/// nudge pending.
+#[derive(Default)]
+struct Enters(Vec<(i64, PaneId)>);
+
+impl Enters {
+    /// Press Enter in `pane` `NUDGE_ENTER_MS` after `now`. Returns false,
+    /// scheduling nothing, if the pane already has a nudge pending.
+    fn schedule(&mut self, pane: PaneId, now: i64) -> bool {
+        if self.0.iter().any(|&(_, p)| p == pane) {
+            return false;
+        }
+        self.0.push((now + NUDGE_ENTER_MS, pane));
+        true
+    }
+
+    /// When the next Enter is due.
+    fn next(&self) -> Option<i64> {
+        self.0.iter().map(|&(at, _)| at).min()
+    }
+
+    /// Remove and return the panes whose Enter is due at `now`.
+    fn take_due(&mut self, now: i64) -> Vec<PaneId> {
+        let (due, later): (Vec<_>, Vec<_>) = self.0.iter().partition(|&&(at, _)| at <= now);
+        self.0 = later;
+        due.into_iter().map(|(_, pane)| pane).collect()
+    }
 }
 
 /// Host the workspace whose checkout is `root` in this terminal until the
@@ -336,7 +387,7 @@ pub fn run(root: &Path) -> Result<()> {
         signals,
         panes: Vec::new(),
         clients: Vec::new(),
-        enters: Vec::new(),
+        enters: Enters::default(),
     };
     let result = host.start(&agents).and_then(|()| host.serve());
     host.end();
@@ -405,10 +456,10 @@ impl Host {
             let mut fds = vec![listener, self.signals];
             fds.extend(self.clients.iter().map(|c| c.stream.as_raw_fd()));
             let deadline = self
-                .enters
+                .clients
                 .iter()
-                .map(|&(at, _)| at)
-                .chain(self.clients.iter().map(|c| c.since + REQUEST_TIMEOUT_MS))
+                .map(|c| c.since + REQUEST_TIMEOUT_MS)
+                .chain(self.enters.next())
                 .min();
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
@@ -430,9 +481,7 @@ impl Host {
                 }
             }
             let now = now_ms();
-            let (due, later) = self.enters.iter().partition(|&&(at, _)| at <= now);
-            self.enters = later;
-            for (_, pane) in due {
+            for pane in self.enters.take_due(now) {
                 self.mux.send_key(pane, Key::Enter)?;
             }
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
@@ -575,7 +624,7 @@ impl Host {
     }
 
     /// Type the nudge into an agent's pane, and press Enter `NUDGE_ENTER_MS`
-    /// later.
+    /// later. A nudge still pending covers this one.
     fn nudge(&mut self, id: &str) -> Result<()> {
         let pane = self
             .pane_of(id)
@@ -583,8 +632,9 @@ impl Host {
         if let Some(status) = self.mux.pane(pane).and_then(Pane::status) {
             return Err(format!("agent {id} exited with status {status}").into());
         }
-        self.mux.send_text(pane, NUDGE)?;
-        self.enters.push((now_ms() + NUDGE_ENTER_MS, pane));
+        if self.enters.schedule(pane, now_ms()) {
+            self.mux.send_text(pane, NUDGE)?;
+        }
         Ok(())
     }
 
@@ -803,6 +853,40 @@ mod tests {
         }
         assert_eq!(running(&state).unwrap(), None);
         assert!(try_lock(&lock_path(&state)).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_lock_on_an_unlinked_file_is_not_the_host_lock() {
+        let dir = TempDir::new();
+        let path = dir.path().join("w.host.lock");
+        let lock = try_lock(&path).unwrap().unwrap();
+        assert!(at_path(&lock, &path).unwrap());
+        // A host that opened the file before delete unlinked it would lock
+        // the old file.
+        let old = File::open(&path).unwrap();
+        fs::remove_file(&path).unwrap();
+        assert!(!at_path(&old, &path).unwrap());
+        let new = try_lock(&path).unwrap().unwrap();
+        assert!(!at_path(&old, &path).unwrap());
+        assert!(at_path(&new, &path).unwrap());
+        drop(lock);
+    }
+
+    #[test]
+    fn a_pending_nudge_covers_the_next_one_for_its_pane() {
+        let mut enters = Enters::default();
+        assert_eq!(enters.next(), None);
+        assert!(enters.schedule(PaneId(1), 1000));
+        assert!(!enters.schedule(PaneId(1), 1100));
+        assert!(enters.schedule(PaneId(2), 1100));
+        assert_eq!(enters.next(), Some(1000 + NUDGE_ENTER_MS));
+        assert_eq!(enters.take_due(1000 + NUDGE_ENTER_MS - 1), []);
+        assert_eq!(enters.take_due(1000 + NUDGE_ENTER_MS), [PaneId(1)]);
+        assert_eq!(enters.next(), Some(1100 + NUDGE_ENTER_MS));
+        // Once its Enter is pressed, a pane takes a new nudge.
+        assert!(enters.schedule(PaneId(1), 1250));
+        assert_eq!(enters.take_due(2000), [PaneId(2), PaneId(1)]);
+        assert_eq!(enters.next(), None);
     }
 
     #[test]
