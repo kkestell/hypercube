@@ -30,7 +30,7 @@ impl Colors {
 const BLACK: Rgb = (0, 0, 0);
 const WHITE: Rgb = (255, 255, 255);
 
-/// The dot on the tab of a workspace with an agent waiting for a tool
+/// The dot in an agent's title or workspace's tab while waiting for a tool
 /// approval.
 pub const ATTENTION: Rgb = (255, 70, 70);
 
@@ -57,12 +57,6 @@ pub struct Palette {
     /// The header, the bar, and the title rows of the overlay and the list
     /// of keys: the accent lightened nearly to white on the accent darkened.
     pub bar: Colors,
-    /// The workspace's entry in the bar: the bar's text on the accent
-    /// darkened a little less than the bar.
-    pub tab: Colors,
-    /// The workspace's number on its tab: the accent lightened less than
-    /// the tab's text.
-    pub number: Rgb,
 }
 
 impl Palette {
@@ -76,11 +70,6 @@ impl Palette {
                 fg: mix(accent, WHITE, 0.85),
                 bg: mix(accent, BLACK, 0.78),
             },
-            tab: Colors {
-                fg: mix(accent, WHITE, 0.85),
-                bg: mix(accent, BLACK, 0.65),
-            },
-            number: mix(accent, WHITE, 0.6),
         }
     }
 }
@@ -100,7 +89,7 @@ impl Default for Palette {
 
 /// `c` moved `amount`, from 0 to 1, of the way to `to`. Toward black or
 /// white, the hue stays.
-fn mix(c: Rgb, to: Rgb, amount: f32) -> Rgb {
+pub fn mix(c: Rgb, to: Rgb, amount: f32) -> Rgb {
     let m = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * amount).round() as u8;
     (m(c.0, to.0), m(c.1, to.1), m(c.2, to.2))
 }
@@ -116,7 +105,8 @@ mod tests {
         assert_eq!(p.text, (144, 198, 234));
         assert_eq!(p.bar.fg, (227, 241, 250));
         assert_eq!(p.bar.bg, (15, 35, 48));
-        assert_eq!(p.tab.bg, (25, 56, 77));
+        assert_eq!(mix(p.bar.fg, p.bar.bg, 0.4), (142, 159, 169));
+        assert_eq!(mix(p.bar.fg, p.bar.bg, 0.55), (110, 128, 139));
         assert_eq!(Palette::of(ACCENTS.len() + 1), Palette::of(1));
     }
 

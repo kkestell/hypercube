@@ -186,17 +186,16 @@ agent and ending the session hang up the programs without relaunching them.
 ### Layout and chrome
 
 The first row is the header and the last is the bar. The panes go between
-them. `host::layout` places the orchestrator's pane in the
-left 40% of the area, or all of it when it is alone, then a column for the
-divider, then the workers stacked with equal heights. The
-orchestrator's pane has no label row; each worker has a label row above its
-pane. A layout in which some pane would get no row or column fails; a launch
-requested on the control socket then fails with "no room for another pane", and
+them. `host::layout` reserves one column for the divider and gives the
+orchestrator half the remaining columns, rounded down, with the workers
+stacked at equal heights in the rest. Alone, the orchestrator takes the full
+width. Every pane has a label row above its content. A layout in which some
+pane would get no row or column fails; a launch requested on the control
+socket then fails with "no room for another pane", and
 a terminal resized below that hides the panes until it grows.
 
-`host::zoom_layout` gives one pane the whole area, with its label row unless
-it is the orchestrator's, and hides the others. A hidden pane has an empty
-rectangle: it is not drawn, takes no mouse input (a press it had captured ends
+`host::zoom_layout` gives one pane the whole area, keeping its label row,
+and hides the others. A hidden pane has an empty rectangle: it is not drawn, takes no mouse input (a press it had captured ends
 there), and keeps its size, so its program sees no resize. The host zooms the
 focused pane on Ctrl-b z. It restores the normal layout when
 the key is pressed again, when the focus changes, and when a pane is added or
@@ -204,7 +203,7 @@ removed. The host resizing keeps the zoom.
 
 `TeamChrome` draws in the workspace's palette, which `colors::Palette`
 shades from one accent color: the accent itself for the divider and the
-workers' lines, the accent mixed 40% toward white for the workers' names and
+titles' lines, the accent mixed 40% toward white for the agents' names and
 details, and for the header, the bar, and the title rows of the overlay and
 the list of keys, the accent mixed 85% toward white on the accent mixed 78%
 toward black. The accent is one of the eight in `colors::ACCENTS`, numbered
@@ -214,37 +213,39 @@ moves the
 workspace to the next one, wrapping around, writes it to the state, and
 redraws. It draws:
 
-- The header across the first row: one space and the orchestrator's directory,
-  with the home directory written as `~`. The right end has what a label's left
-  end has below, for the orchestrator: "zoomed", "exited N", and "↑N".
-- Each worker's label row across its pane's full width. The left end has one
-  space and the agent's name, bold for the focused pane, followed by "zoomed"
-  while the pane fills the area, "exited N" once the pane's program has exited
+- The header across the first row: one space and the workspace's directory,
+  with the home directory written as `~`, clipped to fit.
+- Each agent's label row across its pane's full width. The left end has one
+  space and the agent's name, bold for the focused pane, followed by a red
+  ` ●` while the agent waits for a tool approval, only if the dot fits, then
+  "zoomed" while the pane fills the area, "exited N" once the pane's program has exited
   and is not relaunched, "failed:" and the error for an agent whose harness did
   not start, and "↑N" while its view is scrolled N rows up. The right end has,
-  followed by one space, "⎇ " and the branch without its `hypercube/` prefix
-  for a worker with a worktree, or the directory with the home directory
-  written as `~` for workers in existing directories. A row too narrow for the
-  right text drops it, keeping a blank column after the left text, and then
-  clips the left text at a grapheme cluster. The header is clipped the same
-  way. The row is a heavy line (`━`) with a space on each side of the text and
-  a column of line at each end.
+  followed by one space, "⎇ " and the branch (without its `hypercube/` prefix
+  for a worker), or the directory with the home directory written as `~` for
+  agents without a branch. A row too narrow for the right text drops it,
+  keeping a blank column after the left text, and then clips the left text
+  at a grapheme cluster. The row is a heavy line (`━`) with a space on each
+  side of the text and a column of line at each end.
 - The divider: a heavy `┃` between the orchestrator and the
-  workers, down every row between the header and the bar, with a `┣` on each
-  worker's label row, where the divider branches into its line.
+  workers, down every row between the header and the bar, with a `┳` where
+  the top titles meet and a `┣` on each lower worker's label row.
 
 `bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification
-time of its host lock), as adjoining tabs, ` 0 foo  1 bar  2 glarpy `: each
-the name of its checkout's directory after its number, with the host's own
-workspace bold. A tab is drawn in its workspace's accent: the
-bar's text on the accent mixed 65% toward black, with the number the accent
-mixed 60% toward white. A red `●` follows the name while an agent of the
+time of its host lock), with one leading space and ` | ` between tabs:
+` 0 foo | 1 bar | 2 glarpy`. Each tab has the name of its checkout's directory
+after its number. All tabs share the bar's background: the current workspace's
+text is the bar's foreground and bold, other tabs' text is mixed 40% toward
+the background, and separators are mixed 55% toward the background and not
+bold. A red `●` follows the name while an agent of the
 workspace waits for a tool approval, until the approval is answered (see
-[harness support](harness-support.md)). It shows as many as fit, whole. A click on a tab
-switches to that workspace, as Ctrl-b and its number do. The host reads the list on each attach and every
-second while a client is attached. Ctrl-b and a digit switch the client to the
-workspace with that number, as the overlay's Enter does; on the host's own
+[harness support](harness-support.md)). It shows as many as fit, whole. A click
+on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
+the leading space or separators do nothing. The host reads the list and the
+current agents' attention flags on each attach and every second while a client
+is attached, redrawing when either changes. Ctrl-b and a digit switch the
+client to the workspace with that number, as the overlay's Enter does; on the host's own
 workspace they close the overlay if it is open. A failed switch shows its
 error in the bar for five seconds, or in the overlay while it is open.
 

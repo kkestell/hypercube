@@ -140,9 +140,9 @@ fn pane_area(size: Winsize) -> Rect {
 const DIVIDER: u32 = 1;
 
 /// Where each pane goes, below the header and above the bar in the last row.
-/// The first pane, the orchestrator's, takes the left 40% of the area, or all of
-/// it when it is alone, and has no label. The other panes split the remaining
-/// columns, after the divider's, with equal heights. Each has a label row above
+/// The first pane, the orchestrator's, takes half the columns after reserving
+/// the divider, rounded down, or all of them when alone. The other panes split
+/// the remaining columns with equal heights. Each has a label row above
 /// it. `None` if a pane would get no row or column.
 pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
     let area = pane_area(size);
@@ -150,12 +150,18 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
     let Some((&first, rest)) = panes.split_first() else {
         return Some(Vec::new());
     };
-    let left = if rest.is_empty() { cols } else { cols * 2 / 5 };
+    let left = if rest.is_empty() {
+        cols
+    } else {
+        cols.saturating_sub(DIVIDER) / 2
+    };
     let n = rest.len() as u32;
     let mut layout = vec![(
         first,
         Rect {
+            row: area.row + 1,
             cols: left as u16,
+            rows: area.rows.saturating_sub(1),
             ..area
         },
     )];
@@ -176,19 +182,15 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
         .then_some(layout)
 }
 
-/// Where each pane goes while `zoomed` fills the pane area, with its label row
-/// unless it is the first pane: every other pane is hidden at its current size.
+/// Where each pane goes while `zoomed` fills the pane area, with its label row:
+/// every other pane is hidden at its current size.
 /// `None` if the pane would get no row or column.
 pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Vec<(PaneId, Rect)>> {
     let area = pane_area(size);
-    let rect = if panes.first() == Some(&zoomed) {
-        area
-    } else {
-        Rect {
-            row: area.row + 1,
-            rows: area.rows.saturating_sub(1),
-            ..area
-        }
+    let rect = Rect {
+        row: area.row + 1,
+        rows: area.rows.saturating_sub(1),
+        ..area
     };
     (rect.cols > 0 && rect.rows > 0).then(|| {
         panes
@@ -199,8 +201,12 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
 }
 
 /// The header, the divider between the panes, the labels
-/// above the workers, and the bar, or the workspace overlay while it is open.
+/// above every pane, and the bar, or the workspace overlay while it is open.
 pub struct TeamChrome {
+    /// The workspace path, shortened for the header.
+    pub workspace: String,
+    /// Panes whose agents wait for a tool approval, refreshed with the bar.
+    pub attention: Rc<RefCell<Vec<PaneId>>>,
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
     pub overlay: Rc<RefCell<Option<Overlay>>>,
@@ -225,26 +231,14 @@ impl Chrome for TeamChrome {
         let mut s = String::new();
         // Panes are hidden while the terminal is too small for them.
         let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.rows > 0).collect();
-        // The first pane is the orchestrator's: the header names its
-        // workspace, and it has no label.
-        let orchestrator = panes.first().map(|p| p.id);
-        if let Some(p) = panes.first() {
-            let notes = notes(p, self.zoomed.get() == Some(p.id));
-            let right = if notes.is_empty() {
-                String::new()
-            } else {
-                format!("{} ", notes.join(" · "))
-            };
-            let pos = (1, 1, size.ws_col);
-            draw_row(
-                &mut s,
-                &RowStyle::bar(palette.bar),
-                pos,
-                false,
-                &format!(" {}", p.detail),
-                &right,
-            );
-        }
+        draw_row(
+            &mut s,
+            &RowStyle::bar(palette.bar),
+            (1, 1, size.ws_col),
+            false,
+            &format!(" {}", self.workspace),
+            "",
+        );
         if let [first, _, ..] = shown.as_slice() {
             let col = u32::from(first.rect.col + first.rect.cols);
             s.push_str(&colors::fg(palette.line));
@@ -253,18 +247,22 @@ impl Chrome for TeamChrome {
             }
         }
         for p in &shown {
-            let labeled = Some(p.id) != orchestrator;
-            if labeled {
-                draw_label(&mut s, p, self.zoomed.get() == Some(p.id), palette);
-                // The divider, left of the pane, branches into the title's
-                // line, unless the pane is zoomed and the divider is not drawn.
-                if let Some(col) = p.rect.col.checked_sub(1) {
-                    s.push_str(&format!(
-                        "{}{}┣",
-                        colors::fg(palette.line),
-                        at(u32::from(p.rect.row) - 1, u32::from(col))
-                    ));
-                }
+            draw_label(
+                &mut s,
+                p,
+                self.zoomed.get() == Some(p.id),
+                self.attention.borrow().contains(&p.id),
+                palette,
+            );
+            // The top titles meet at ┳; lower worker titles branch at ┣.
+            // A zoomed pane has no divider to branch from.
+            if let Some(col) = p.rect.col.checked_sub(1) {
+                let joint = if p.rect.row == 2 { '┳' } else { '┣' };
+                s.push_str(&format!(
+                    "{}{}{joint}",
+                    colors::fg(palette.line),
+                    at(u32::from(p.rect.row) - 1, u32::from(col))
+                ));
             }
         }
         self.bar.borrow().draw(&mut s, size, palette);
@@ -295,13 +293,18 @@ fn notes(p: &PaneView, zoomed: bool) -> Vec<String> {
     notes
 }
 
-/// A worker's label row above its pane, across the pane's width, with the name
-/// at the left, bold when the pane has the focus, and its notes. The detail
-/// goes at the right end unless the row is too narrow for it. The row is a
-/// heavy line with a space on each side of its text, and a line's width to
-/// spare at each end.
-fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, palette: Palette) {
+/// An agent's label row above its pane, across the pane's width, with the name
+/// at the left, bold when focused, a red attention dot if it fits, and notes.
+/// The detail goes at the right end unless the row is too narrow for it. The
+/// row is a heavy line with a space on each side of its text, and a line's
+/// width to spare at each end.
+fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palette: Palette) {
     let mut left = format!(" {}", p.label);
+    let name_width = text_width(&left);
+    let dot = attention && name_width + 2 <= usize::from(p.rect.cols.saturating_sub(2));
+    if dot {
+        left.push_str(" ●");
+    }
     for note in notes(p, zoomed) {
         left.push_str(&format!(" · {note}"));
     }
@@ -325,6 +328,18 @@ fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, palette: Palette) {
         p.rect.cols,
     );
     draw_row(s, &style, pos, p.focused, &left, &right);
+    if dot {
+        // Recolor the dot without including SGR bytes in the row's width.
+        s.push_str(&format!(
+            "{}{}{}●",
+            at(
+                u32::from(p.rect.row) - 1,
+                u32::from(p.rect.col) + name_width as u32 + 2
+            ),
+            colors::fg(colors::ATTENTION),
+            if p.focused { "\x1b[1m" } else { "" },
+        ));
+    }
 }
 
 /// How a row of text is drawn: filled with `fill` in `fill_sgr`, and the text
@@ -407,14 +422,18 @@ fn cluster_width(rest: &[char]) -> (usize, usize) {
     (len, usize::from(clustered).max(separate))
 }
 
-/// The right end of an agent's label: "⎇ " and the branch of a worker with a
-/// worktree, without the `hypercube/` prefix, or else the directory.
+/// The right end of an agent's label: "⎇ " and its branch, without the
+/// `hypercube/` prefix for workers, or else the directory.
 fn detail(agent: &Agent) -> String {
-    if agent.role == store::WORKER && !agent.branch.is_empty() {
-        let branch = agent
-            .branch
-            .strip_prefix("hypercube/")
-            .unwrap_or(&agent.branch);
+    if !agent.branch.is_empty() {
+        let branch = if agent.role == store::WORKER {
+            agent
+                .branch
+                .strip_prefix("hypercube/")
+                .unwrap_or(&agent.branch)
+        } else {
+            &agent.branch
+        };
         format!("⎇ {branch}")
     } else {
         workspace::short(Path::new(&agent.dir))
@@ -565,8 +584,10 @@ struct Host {
     help: Rc<Cell<bool>>,
     /// The bar, shared with the chrome.
     bar: Rc<RefCell<Bar>>,
-    /// When the bar's list was last read.
+    /// When the bar's list and pane attention flags were last read.
     bar_read: i64,
+    /// Panes waiting for a tool approval, shared with the chrome.
+    attention: Rc<RefCell<Vec<PaneId>>>,
     /// The workspace's colors, shared with the chrome.
     palette: Rc<Cell<Palette>>,
     /// Stops of other workspaces, which run on threads so the host keeps
@@ -629,7 +650,10 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     let palette = Rc::new(Cell::new(Palette::of(
         store::load(&state_path)?.accent as usize,
     )));
+    let attention = Rc::new(RefCell::new(Vec::new()));
     let chrome = TeamChrome {
+        workspace: workspace::short(root),
+        attention: Rc::clone(&attention),
         zoomed: Rc::clone(&zoomed),
         overlay: Rc::clone(&overlay),
         help: Rc::clone(&help),
@@ -653,6 +677,7 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         help,
         bar,
         bar_read: 0,
+        attention,
         palette,
         stopped: pipe()?,
         stop_results: mpsc::channel(),
@@ -750,7 +775,7 @@ impl Host {
     }
 
     /// Add a pane labeled for `agent`: its name at the left, and at the right
-    /// its branch if it has a worktree, or its directory.
+    /// its branch if set, or its directory.
     fn add_labeled_pane(&mut self, agent: &Agent) -> Result<PaneId> {
         let pane = self.mux.add_pane(&agent.name)?;
         if let Some(p) = self.mux.pane_mut(pane) {
@@ -948,16 +973,31 @@ impl Host {
         self.mux.invalidate_chrome();
     }
 
-    /// Read the bar's list again, and redraw it if it changed.
+    /// Read the bar's list and pane attention flags, redrawing on either change.
     fn read_bar(&mut self) {
         let mut bar = self.bar.borrow_mut();
-        let changed = match bar::running() {
+        let mut changed = match bar::running() {
             Ok(entries) => bar.update(entries),
             Err(e) => {
                 bar.fail(e.to_string());
                 true
             }
         };
+        if let Ok(state) = store::load(&self.state_path) {
+            let attention: Vec<PaneId> = self
+                .panes
+                .iter()
+                .filter_map(|slot| {
+                    state
+                        .agent(&slot.agent)
+                        .ok()
+                        .filter(|a| a.attention)
+                        .map(|_| slot.pane)
+                })
+                .collect();
+            changed |= *self.attention.borrow() != attention;
+            *self.attention.borrow_mut() = attention;
+        }
         if changed {
             self.mux.invalidate_chrome();
         }
@@ -1382,32 +1422,32 @@ mod tests {
 
     #[test]
     fn a_lone_pane_fills_the_area_between_the_header_and_the_bar() {
-        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 1, 80, 22)]);
+        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 2, 80, 21)]);
         assert_eq!(layout(size(80, 24), &[]), Some(Vec::new()));
     }
 
     #[test]
     fn workers_stack_right_of_the_orchestrator() {
-        // The orchestrator takes 40% of the columns, then the divider's. A
-        // worker's label row is above its rect.
+        // Reserve the divider, then give half the columns to the orchestrator,
+        // rounded down. Every pane has a label row above its rect.
         assert_eq!(
             rects(layout(size(100, 25), &ids(2))),
-            [rect(0, 1, 40, 23), rect(41, 2, 59, 22)]
+            [rect(0, 2, 49, 22), rect(50, 2, 50, 22)]
         );
         // 23 rows over three workers: blocks of 7, 8 and 8 rows, each a label
         // row and the rest content.
         assert_eq!(
             rects(layout(size(100, 25), &ids(4))),
             [
-                rect(0, 1, 40, 23),
-                rect(41, 2, 59, 6),
-                rect(41, 9, 59, 7),
-                rect(41, 17, 59, 7),
+                rect(0, 2, 49, 22),
+                rect(50, 2, 50, 6),
+                rect(50, 9, 50, 7),
+                rect(50, 17, 50, 7),
             ]
         );
         // Uneven heights differ by at most a row and fill the column.
         let layout = rects(layout(size(81, 32), &ids(5)));
-        assert_eq!(layout[0], rect(0, 1, 32, 30));
+        assert_eq!(layout[0], rect(0, 2, 40, 29));
         let heights: Vec<u16> = layout[1..].iter().map(|r| r.rows + 1).collect();
         assert_eq!(heights, [7, 8, 7, 8]);
         assert_eq!(layout[4].row + layout[4].rows, 31);
@@ -1415,9 +1455,9 @@ mod tests {
 
     #[test]
     fn a_layout_without_room_for_every_pane_fails() {
-        // The orchestrator needs a content row between the header and the bar.
-        assert!(layout(size(80, 2), &ids(1)).is_none());
-        assert!(layout(size(80, 3), &ids(1)).is_some());
+        // The orchestrator needs a label and content row between header and bar.
+        assert!(layout(size(80, 3), &ids(1)).is_none());
+        assert!(layout(size(80, 4), &ids(1)).is_some());
         // Each worker needs a label row and a content row.
         assert!(layout(size(80, 7), &ids(4)).is_none());
         assert!(layout(size(80, 8), &ids(4)).is_some());
@@ -1435,11 +1475,10 @@ mod tests {
             let ids: Vec<PaneId> = layout.iter().map(|&(id, _)| id).collect();
             assert_eq!(ids, panes);
             for (id, r) in layout {
-                // The orchestrator has no label row.
-                let expected = match (id == *zoomed, id == PaneId(1)) {
-                    (false, _) => Rect::default(),
-                    (true, true) => rect(0, 1, 100, 23),
-                    (true, false) => rect(0, 2, 100, 22),
+                let expected = if id == *zoomed {
+                    rect(0, 2, 100, 22)
+                } else {
+                    Rect::default()
                 };
                 assert_eq!(r, expected);
             }
@@ -1500,6 +1539,8 @@ mod tests {
 
     fn chrome() -> TeamChrome {
         TeamChrome {
+            workspace: String::new(),
+            attention: Rc::default(),
             zoomed: Rc::default(),
             overlay: Rc::default(),
             help: Rc::default(),
@@ -1535,7 +1576,7 @@ mod tests {
         let layout = rects(layout(size(40, 10), &ids(3)));
         let panes = [
             PaneView {
-                detail: "~/src/r",
+                detail: "⎇ main",
                 ..view(1, "orch", layout[0], false, None)
             },
             PaneView {
@@ -1548,20 +1589,22 @@ mod tests {
                 ..view(3, "w2", layout[2], true, Some(3))
             },
         ];
-        let screen = draw_with(&mut chrome(), &panes, 40, 10);
+        let mut chrome = chrome();
+        chrome.workspace = "~/src/r".into();
+        let screen = draw_with(&mut chrome, &panes, 40, 10);
         let rows: Vec<String> = (0..10).map(|y| screen.row(y)).collect();
         let (sp, bar) = (|n| " ".repeat(n), |n| "━".repeat(n));
-        let side = format!("{}┃{}", sp(16), sp(23));
+        let side = format!("{}┃{}", sp(19), sp(20));
         assert_eq!(
             rows,
             [
                 format!(" ~/src/r{}", sp(32)),
-                format!("{}┣━ w1 · ↑42 {} ⎇ w1 ━", sp(16), bar(5)),
+                format!("━ orch {} ⎇ main ━┳━ w1 · ↑42 {} ⎇ w1 ━", bar(3), bar(2)),
                 side.clone(),
                 side.clone(),
                 side.clone(),
                 // The detail doesn't fit.
-                format!("{}┣━ w2 · exited 3 {}", sp(16), bar(7)),
+                format!("{}┣━ w2 · exited 3 {}", sp(19), bar(4)),
                 side.clone(),
                 side.clone(),
                 side,
@@ -1586,26 +1629,26 @@ mod tests {
             );
         }
         for (x, y) in [
-            (16, 1),
-            (16, 3),
-            (17, 1),
-            (30, 1),
+            (19, 1),
+            (19, 3),
+            (20, 1),
+            (32, 1),
             (39, 1),
-            (16, 5),
-            (33, 5),
+            (19, 5),
+            (38, 5),
         ] {
             assert_eq!(fg(&screen, x, y), blue, "foreground at {x},{y}");
             assert_eq!(screen.bg(x, y), StyleColor::None, "background at {x},{y}");
         }
-        for (x, y) in [(19, 1), (36, 1), (19, 5)] {
+        for (x, y) in [(22, 1), (36, 1), (22, 5), (3, 1)] {
             assert_eq!(
                 fg(&screen, x, y),
                 rgb(palette.text),
                 "foreground at {x},{y}"
             );
         }
-        assert!(!screen.bold(19, 1));
-        assert!(screen.bold(19, 5));
+        assert!(!screen.bold(22, 1));
+        assert!(screen.bold(22, 5));
         // Nothing but the chrome is painted: the panes' cells and the gaps
         // have the terminal's own background.
         assert_eq!(screen.bg(5, 5), StyleColor::None);
@@ -1627,23 +1670,27 @@ mod tests {
     }
 
     #[test]
-    fn the_header_notes_the_orchestrator_where_a_label_would() {
+    fn the_orchestrator_keeps_its_label_and_notes_while_zoomed() {
         let layout = rects(zoom_layout(size(40, 8), &ids(2), PaneId(1)));
         let panes = [
             PaneView {
                 scrolled: 5,
-                detail: "~/src/r",
+                detail: "⎇ main",
                 ..view(1, "orch", layout[0], true, Some(3))
             },
             view(2, "w1", layout[1], false, None),
         ];
         let mut chrome = chrome();
         chrome.zoomed.set(Some(PaneId(1)));
+        chrome.workspace = "~/src/r".into();
         let screen = draw_with(&mut chrome, &panes, 40, 8);
+        assert_eq!(screen.row(0), format!(" ~/src/r{}", " ".repeat(32)));
         assert_eq!(
-            screen.row(0),
-            format!(" ~/src/r{}zoomed · exited 3 · ↑5 ", " ".repeat(9))
+            screen.row(1),
+            format!("━ orch · zoomed · exited 3 · ↑5 {}", "━".repeat(8))
         );
+        assert!(screen.bold(2, 1));
+        assert!(!screen.bold(0, 0));
     }
 
     #[test]
@@ -1669,9 +1716,9 @@ mod tests {
         let row =
             |label, cols: u16| worker_row(label, "~/src/r", rect(1, 2, cols, 2), cols + 1, 6, 1);
         // The detail needs a blank column between it and the name.
-        assert_eq!(row("orch", 18), "┣━ orch ━ ~/src/r ━");
-        assert_eq!(row("orch", 17), "┣━ orch ━━━━━━━━━━");
-        assert_eq!(row("orchestrator", 8), "┣━ orche━");
+        assert_eq!(row("orch", 18), "┳━ orch ━ ~/src/r ━");
+        assert_eq!(row("orch", 17), "┳━ orch ━━━━━━━━━━");
+        assert_eq!(row("orchestrator", 8), "┳━ orche━");
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),
@@ -1686,13 +1733,59 @@ mod tests {
     fn chrome_measures_wide_and_combining_characters_in_columns() {
         let row = worker_row("界界界界界", "", rect(1, 2, 9, 2), 12, 6, 1);
         // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
-        assert_eq!(row, "┣━ 界 界 界 ━  ");
+        assert_eq!(row, "┳━ 界 界 界 ━  ");
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
     }
 
     #[test]
-    fn labels_show_the_branch_of_a_worktree_and_otherwise_the_directory() {
+    fn title_attention_dots_follow_names_before_notes_and_keep_focus_style() {
+        let layout = rects(layout(size(80, 12), &ids(3)));
+        let panes = [
+            PaneView {
+                detail: "⎇ main",
+                scrolled: 2,
+                ..view(1, "orch", layout[0], true, None)
+            },
+            PaneView {
+                detail: "⎇ w1",
+                ..view(2, "w1", layout[1], false, Some(3))
+            },
+            view(3, "w2", layout[2], false, None),
+        ];
+        let mut chrome = chrome();
+        *chrome.attention.borrow_mut() = vec![PaneId(1), PaneId(2)];
+        let screen = draw_with(&mut chrome, &panes, 80, 12);
+        assert!(screen.row(1).starts_with("━ orch ● · ↑2 "));
+        assert!(screen.row(1).contains("┳━ w1 ● · exited 3 "));
+        for (x, focused) in [(7, true), (45, false)] {
+            assert_eq!(fg(&screen, x, 1), rgb(colors::ATTENTION));
+            assert_eq!(screen.bold(x, 1), focused);
+        }
+        assert!(!screen.row(6).contains('●'));
+        chrome.attention.borrow_mut().clear();
+        let screen = draw_with(&mut chrome, &panes, 80, 12);
+        assert!(!screen.row(1).contains('●'));
+    }
+
+    #[test]
+    fn title_attention_dots_are_only_drawn_if_the_whole_dot_fits() {
+        let mut chrome = chrome();
+        *chrome.attention.borrow_mut() = vec![PaneId(1)];
+        let row = |chrome: &mut TeamChrome, cols| {
+            let panes = [view(1, "界x", rect(0, 2, cols, 1), true, None)];
+            draw_with(chrome, &panes, cols, 4)
+        };
+        let screen = row(&mut chrome, 8);
+        assert_eq!(screen.row(1), "━ 界 x ●━");
+        assert_eq!(fg(&screen, 6, 1), rgb(colors::ATTENTION));
+        let screen = row(&mut chrome, 7);
+        assert_eq!(screen.row(1), "━ 界 x ━");
+        assert!(!screen.row(1).contains('●'));
+    }
+
+    #[test]
+    fn labels_show_the_branch_and_otherwise_the_directory() {
         let mut a = Agent {
             role: store::WORKER.into(),
             branch: "hypercube/parser".into(),
@@ -1707,6 +1800,10 @@ mod tests {
         a.role = store::ORCHESTRATOR.into();
         a.branch = "main".into();
         a.dir = "/r".into();
+        assert_eq!(detail(&a), "⎇ main");
+        a.branch = "hypercube/main".into();
+        assert_eq!(detail(&a), "⎇ hypercube/main");
+        a.branch.clear();
         assert_eq!(detail(&a), "/r");
     }
 

@@ -10,7 +10,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use crate::colors::{ATTENTION, Palette};
+use crate::colors::{self, ATTENTION, Palette};
 use crate::host::{self, fit, text_width};
 use crate::mux::{Winsize, now_ms};
 use crate::store;
@@ -31,7 +31,7 @@ pub struct Entry {
     pub root: Option<PathBuf>,
     /// The checkout's directory name, or the state's name without one.
     pub name: String,
-    /// The workspace's accent color, numbered in `colors::ACCENTS`.
+    /// The workspace's accent, used to pick a new workspace's least-used color.
     pub accent: usize,
     /// Whether an agent there waits for a tool approval.
     pub attention: bool,
@@ -125,41 +125,45 @@ impl Bar {
         }
     }
 
-    /// The width of each tab, ` 0 name ` or ` 0 name ● `.
+    /// The width of each tab's text, `0 name` or `0 name ●`.
     fn widths(&self) -> impl Iterator<Item = usize> {
         (self.entries.iter().enumerate())
-            .map(|(i, e)| text_width(&format!(" {i} {}{} ", e.name, e.dot())))
+            .map(|(i, e)| text_width(&format!("{i} {}{}", e.name, e.dot())))
     }
 
     /// How many tabs fit, whole, in `cols`.
     fn fit(&self, cols: u16) -> usize {
-        let mut used = 0;
+        let mut used = 1; // One leading space; three between tabs.
         self.widths()
-            .take_while(|w| {
-                used += w;
+            .enumerate()
+            .take_while(|(i, w)| {
+                used += w + if *i == 0 { 0 } else { 3 };
                 used <= usize::from(cols)
             })
             .count()
     }
 
     /// The number of the workspace whose tab is at column `col` of a bar
-    /// `cols` wide, while the bar lists the workspaces.
+    /// `cols` wide, while the bar lists the workspaces. The leading space and
+    /// separators do not belong to a tab.
     pub fn tab_at(&self, col: u16, cols: u16) -> Option<usize> {
         if self.prompt.is_some() || !self.error.is_empty() {
             return None;
         }
-        let mut end = 0;
-        self.widths().take(self.fit(cols)).position(|w| {
-            end += w;
-            usize::from(col) < end
-        })
+        let mut start = 1;
+        for (i, width) in self.widths().take(self.fit(cols)).enumerate() {
+            if (start..start + width).contains(&usize::from(col)) {
+                return Some(i);
+            }
+            start += width + 3;
+        }
+        None
     }
 
     /// Draw the bar across the last row in the bar colors: the prompt while
-    /// it is open, or each workspace that fits after its number, on its own
-    /// accent's tab colors with the number dimmer, with the host's own
-    /// bold, and a red dot after the name of each with an agent waiting for
-    /// an approval.
+    /// it is open, or numbered workspace tabs joined by dim ` | ` separators.
+    /// The host's own tab is bold, other tabs are dimmed, and a red dot follows
+    /// the name of each workspace with an agent waiting for an approval.
     pub fn draw(&self, s: &mut String, size: Winsize, palette: Palette) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
@@ -189,33 +193,36 @@ impl Bar {
             s.push_str(&fit(&format!(" {}", self.error), cols));
             return;
         }
+        s.push_str(&fit(" ", cols));
         for (i, e) in self.entries.iter().take(self.fit(cols)).enumerate() {
+            if i > 0 {
+                s.push_str(
+                    &colors::Colors {
+                        fg: colors::mix(palette.bar.fg, palette.bar.bg, 0.55),
+                        bg: palette.bar.bg,
+                    }
+                    .sgr(),
+                );
+                s.push_str(" | ");
+            }
             let current = e.path == self.current;
-            // The host's own palette has its accent before the list does.
-            let tab = if current {
-                palette
+            let text = if current {
+                palette.bar.fg
             } else {
-                Palette::of(e.accent)
+                colors::mix(palette.bar.fg, palette.bar.bg, 0.4)
             };
-            let bold = if current { "\x1b[1m" } else { "" };
-            let (number, text) = (tab.number, tab.tab.fg);
-            let dot = if e.attention {
+            // Foreground-only changes keep the bar's background throughout.
+            // Reset attributes explicitly so separators and other tabs aren't bold.
+            let (r, g, b) = text;
+            s.push_str(&format!("\x1b[22;38;2;{r};{g};{b}m"));
+            if current {
+                s.push_str("\x1b[1m");
+            }
+            s.push_str(&format!("{i} {}", e.name));
+            if e.attention {
                 let (r, g, b) = ATTENTION;
-                format!(" \x1b[38;2;{r};{g};{b}m●")
-            } else {
-                String::new()
-            };
-            s.push_str(&format!(
-                "{}{bold} \x1b[38;2;{};{};{}m{i}\x1b[38;2;{};{};{}m {}{dot} ",
-                tab.tab.sgr(),
-                number.0,
-                number.1,
-                number.2,
-                text.0,
-                text.1,
-                text.2,
-                e.name,
-            ));
+                s.push_str(&format!("\x1b[38;2;{r};{g};{b}m ●"));
+            }
         }
         s.push_str(&palette.bar.sgr());
     }
@@ -351,32 +358,25 @@ mod tests {
     #[test]
     fn the_bar_numbers_the_workspaces_and_marks_the_current_one() {
         let t = screen(&bar(&["foo", "bar", "glarpy"], "bar"), 30);
-        assert_eq!(row(&t), " 0 foo  1 bar  2 glarpy       ");
-        assert!(!bold(&t, 1) && !bold(&t, 6));
-        assert!((7..14).all(|x| bold(&t, x)));
-        assert!(!bold(&t, 14) && !bold(&t, 15));
+        assert_eq!(row(&t), " 0 foo | 1 bar | 2 glarpy     ");
+        assert!((0..9).all(|x| !bold(&t, x)));
+        assert!((9..14).all(|x| bold(&t, x)));
+        assert!((14..30).all(|x| !bold(&t, x)));
     }
 
     #[test]
-    fn each_workspace_shows_on_its_own_accent() {
+    fn tabs_share_the_bar_colors_with_dim_inactive_text_and_separators() {
         let t = screen(&bar(&["foo", "glarpy"], "glarpy"), 24);
-        let (bar, current) = (Palette::default().bar.bg, Palette::default().tab.bg);
+        let palette = Palette::default();
         let point = |x| Point::Active(PointCoordinate { x, y: 1 });
         let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
             StyleColor::Rgb(c) => (c.r, c.g, c.b),
             other => panic!("foreground {other:?}"),
         };
-        assert_eq!(
-            [fg(1), fg(3)],
-            [Palette::of(3).number, Palette::of(3).tab.fg]
-        );
-        assert_eq!(
-            [fg(8), fg(10)],
-            [Palette::default().number, Palette::default().tab.fg]
-        );
-        assert!((0..7).all(|x| bg(&t, x) == Palette::of(3).tab.bg));
-        assert!((7..17).all(|x| bg(&t, x) == current));
-        assert!((17..24).all(|x| bg(&t, x) == bar));
+        assert!((1..6).all(|x| fg(x) == colors::mix(palette.bar.fg, palette.bar.bg, 0.4)));
+        assert!((6..9).all(|x| fg(x) == colors::mix(palette.bar.fg, palette.bar.bg, 0.55)));
+        assert!((9..17).all(|x| fg(x) == palette.bar.fg));
+        assert!((0..24).all(|x| bg(&t, x) == palette.bar.bg));
     }
 
     #[test]
@@ -385,19 +385,25 @@ mod tests {
         b.entries[0].attention = true;
         b.entries[1].attention = true;
         let t = screen(&b, 20);
-        assert_eq!(row(&t), " 0 foo ●  1 bar ●   ");
+        assert_eq!(row(&t), " 0 foo ● | 1 bar ●  ");
         let point = |x| Point::Active(PointCoordinate { x, y: 1 });
         let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
             StyleColor::Rgb(c) => (c.r, c.g, c.b),
             other => panic!("foreground {other:?}"),
         };
-        assert_eq!([fg(7), fg(16)], [ATTENTION, ATTENTION]);
-        assert_eq!(fg(5), Palette::of(3).tab.fg);
-        assert!((0..9).all(|x| bg(&t, x) == Palette::of(3).tab.bg));
-        assert!(bold(&t, 16));
-        // The dot widens the tab.
-        assert_eq!(b.tab_at(8, 20), Some(0));
-        assert_eq!(b.tab_at(9, 20), Some(1));
+        assert_eq!([fg(7), fg(17)], [ATTENTION, ATTENTION]);
+        assert_eq!(
+            fg(5),
+            colors::mix(Palette::default().bar.fg, Palette::default().bar.bg, 0.4)
+        );
+        assert!((0..20).all(|x| bg(&t, x) == Palette::default().bar.bg));
+        assert!(!bold(&t, 7));
+        assert!(bold(&t, 17));
+        // The dot widens the tab; separator clicks do nothing.
+        assert_eq!(b.tab_at(7, 20), Some(0));
+        assert_eq!(b.tab_at(8, 20), None);
+        assert_eq!(b.tab_at(10, 20), None);
+        assert_eq!(b.tab_at(11, 20), Some(1));
         assert_eq!(row(&screen(&b, 17)), " 0 foo ●         ");
     }
 
@@ -406,10 +412,20 @@ mod tests {
         let mut b = bar(&["foo", "bar", "glarpy"], "foo");
         let at = |b: &Bar, cols: &[u16]| cols.iter().map(|&c| b.tab_at(c, 23)).collect::<Vec<_>>();
         assert_eq!(
-            at(&b, &[0, 6, 7, 13, 14, 22]),
-            [Some(0), Some(0), Some(1), Some(1), None, None]
+            at(&b, &[0, 1, 5, 6, 8, 9, 13, 14, 22]),
+            [
+                None,
+                Some(0),
+                Some(0),
+                None,
+                None,
+                Some(1),
+                Some(1),
+                None,
+                None
+            ]
         );
-        assert_eq!(b.tab_at(23, 24), Some(2));
+        assert_eq!(b.tab_at(24, 25), Some(2));
         b.prompt = Some(String::new());
         assert_eq!(at(&b, &[0]), [None]);
         b.prompt = None;
@@ -420,9 +436,10 @@ mod tests {
     #[test]
     fn only_the_workspaces_that_fit_are_shown() {
         let b = bar(&["foo", "bar", "glarpy"], "foo");
-        assert_eq!(row(&screen(&b, 24)), " 0 foo  1 bar  2 glarpy ");
-        assert_eq!(row(&screen(&b, 23)), " 0 foo  1 bar          ");
-        assert_eq!(row(&screen(&b, 6)), "      ");
+        assert_eq!(row(&screen(&b, 25)), " 0 foo | 1 bar | 2 glarpy");
+        assert_eq!(row(&screen(&b, 24)), " 0 foo | 1 bar          ");
+        assert_eq!(row(&screen(&b, 6)), " 0 foo");
+        assert_eq!(row(&screen(&b, 5)), "     ");
     }
 
     #[test]
