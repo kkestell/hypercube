@@ -1,5 +1,132 @@
 # Architecture
 
+## Processes
+
+- `hypercube`, run in a checkout, is the host. It runs in the user's terminal
+  for the whole session and owns every agent's pty and pane and the control
+  socket.
+- `hypercube mcp` is each agent's MCP server, started by its harness. It
+  changes the state file and worktrees itself, and asks the host to launch,
+  close, and nudge panes.
+- `hypercube hook <event>` runs for each harness hook event and reads and
+  writes only the state file.
+- `hypercube stop`, `status`, and `delete` are short-lived commands.
+
+A workspace is named from its checkout path (`workspace::name`): the
+directory's name and the start of a hash of the path. Outside Git, the
+workspace is the directory itself. The name keys every file of the workspace
+in the state directory, `$XDG_STATE_HOME/hypercube` or
+`~/.local/state/hypercube`:
+
+- `<name>.json`: the state file.
+- `<name>.lock`: the state file's lock.
+- `<name>.host.lock`: the host lock.
+- `<hash>.sock`: the control socket, named from a hash of the workspace name
+  so its path stays within the 104 bytes macOS allows.
+
+## The host
+
+`host::run` hosts a workspace:
+
+1. It takes an exclusive, non-blocking `flock` on the host lock and writes its
+   terminal's name into the file. A workspace is running while that lock is
+   held, and the kernel releases it however the host ends. If another host
+   holds it, `hypercube` reports the terminal that host runs in and exits.
+2. It readies the state: on the first run it creates the orchestrator, with
+   `no_git` set outside Git; it sets the orchestrator's branch, marks it idle,
+   and marks the workers busy.
+3. It removes a socket file left by an earlier host and listens on the
+   control socket.
+4. It takes over the terminal with a `Runtime` and launches each agent in its
+   own pane, the orchestrator first. Saved sessions resume, and workers start
+   with the nudge as their prompt, so they pick up messages queued while they
+   were down. A failed launch ends the session with its error.
+5. It serves until the session ends.
+
+The loop is single-threaded: `Runtime::wait` polls the panes, the host
+terminal, the listener, the accepted connections, and a pipe that SIGHUP,
+SIGINT, and SIGTERM write to. Connections are non-blocking; a request is
+carried out once its line has arrived, and a connection that sends no
+complete request within five seconds is dropped, so no client can stall the
+panes.
+
+The session ends on a `stop` request, a signal, the end of the terminal's
+input, or when every pane's program has exited. The host then removes every
+pane, which sends SIGHUP to each program's process group, gives the programs
+up to `HANGUP_GRACE_MS` (two seconds) before SIGKILL, restores the terminal,
+removes the socket, and releases the host lock. The next `hypercube` resumes
+the agents from their saved sessions and the queued messages.
+
+### Layout and chrome
+
+`host::layout` places the orchestrator's pane in the left 40% of the columns,
+or all of them when it is alone, then a one-column rule, then the workers
+stacked with equal heights. Each pane has a label row above it, and the bottom
+row is the status bar. A layout in which some pane would get no row or column
+fails; a launch then fails with "no room for another pane", and a terminal
+resized below that hides the panes until it grows.
+
+`TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
+in black on `#87d7ff`, bold for the focused pane, followed by "exited N" once
+the pane's program has exited. An exited pane keeps its place until
+`remove_agent` closes it. The status bar is black on `#87d7ff` with the
+checkout path. Ctrl-] moves the focus to the next live pane.
+
+## Control socket
+
+Each connection carries one JSON request line and gets one JSON reply line,
+`{"ok":true}` or `{"ok":false,"error":"..."}`. Agents are named by ID.
+
+- `launch {agent, prompt}`: load the agent from the state, build its command
+  with `harness::command`, start it in a new pane, and lay the panes out
+  again. A non-empty prompt starts its first turn.
+- `close {agent}`: hang up the agent's program, remove its pane, and lay the
+  panes out again. An agent without a pane is already closed.
+- `nudge {agent}`: type `Check your Hypercube messages.` into the agent's
+  pane and press Enter 200 ms later, encoded for the pane's keyboard modes.
+  Fails if the agent has no pane or its program has exited.
+- `stop`: reply, then end the session.
+
+The MCP server and `hypercube stop` find the socket from the state file's
+path. A request that finds no socket, or nothing listening on it, means no
+host is running.
+
+## State file
+
+The state file holds the agents (ID, name, role, harness, model, effort,
+directory, branch, session ID, activity), the queued messages, and `no_git`.
+Every change takes an exclusive `flock` on the state's lock, reads the file,
+and writes the result to a temporary file renamed over it, so hooks, MCP
+servers, and the host change it concurrently and readers always see a whole
+file.
+
+The state's lock file is created with the state and never written, so its
+modification time is the workspace's creation time. Every hook writes the
+state, so the state file's modification time is its last activity.
+`hypercube status` lists every workspace with a state file by last activity,
+with its directory, whether its host lock is held, its number of agents, and
+both times.
+
+`hypercube delete` refuses if a worker's worktree is dirty or its branch is
+not merged. Otherwise it stops the host, removes each worker's worktree and
+branch, and deletes the state, its lock, the host lock, and the socket.
+
+## Message delivery
+
+`send_message` queues a message in the state file. If the recipient is idle,
+the MCP server asks the host to nudge it, which starts a turn. Hooks deliver:
+
+- SessionStart gives the agent its identity, team, and tools.
+- UserPromptSubmit records the session ID, marks the agent busy, and delivers
+  queued messages as context.
+- PostToolUse delivers messages that arrived during the turn.
+- Stop blocks the stop while messages are queued, delivering them, and
+  otherwise marks the agent idle.
+
+Each message reaches the model as `Message from <name> (<id>):` and its text.
+The hook writes its response inside the state update, so messages it takes
+stay queued if the harness cannot read the response.
+
 ## Terminal layer
 
 The terminal layer (`src/lib.rs`) runs programs in ptys, keeps a Ghostty
