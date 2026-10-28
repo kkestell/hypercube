@@ -11,11 +11,10 @@ use std::time::SystemTime;
 use crate::host::{self, fit, text_width};
 use crate::mux::{Winsize, now_ms};
 use crate::store;
+use crate::theme;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-/// Black on light blue, as the labels.
-const STYLE: &str = "\x1b[0;38;2;0;0;0;48;2;135;215;255m";
 /// How long an error shows in place of the workspaces.
 const ERROR_MS: i64 = 5000;
 
@@ -66,7 +65,7 @@ impl Bar {
         changed || expired
     }
 
-    /// Draw the bar across the last row: black on light blue, with each
+    /// Draw the bar across the last row in the footer's colors, with each
     /// workspace that fits after its number, and the host's own marked `*`
     /// and bold.
     pub fn draw(&self, s: &mut String, size: Winsize) {
@@ -75,7 +74,8 @@ impl Bar {
             return;
         }
         s.push_str(&format!(
-            "\x1b[{row};1H{STYLE}{}\x1b[{row};1H",
+            "\x1b[{row};1H{}{}\x1b[{row};1H",
+            theme::FOOTER.sgr(),
             " ".repeat(usize::from(cols))
         ));
         if !self.error.is_empty() {

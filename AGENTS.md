@@ -39,6 +39,8 @@ and change over generalized infrastructure or speculative requirements.
   delivery.
 - `docs/configuration.md`: `config.json`, orchestrator and worker profiles.
 - `docs/installation.md`: prerequisites, building, and installing.
+- `docs/themes.md`: the direction for themes, the fancy theme that exists, and
+  the layout mockup script.
 - `docs/harness-support.md`: how each harness is launched and hooked.
 - `docs/models.md`: model and effort level recommendations for coding agents,
   from Artificial Analysis benchmark data.
@@ -83,6 +85,10 @@ Code and docs stand alone and do not refer to predecessor implementations.
   actions, launches, closes, and teardown.
 - `src/bar.rs`: the bar of running workspaces in the last row, and its
   drawing.
+- `src/theme.rs`: the colors and spacing of the header, footer, titles,
+  backdrop, and shadows.
+- `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
+  borders without running Hypercube.
 - `src/overlay.rs`: the workspace overlay's list, keys, and drawing.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in

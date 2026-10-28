@@ -179,36 +179,50 @@ agent and ending the session hang up the programs without relaunching them.
 
 ### Layout and chrome
 
-`host::layout` places the orchestrator's pane in the left 40% of the columns,
-or all of them when it is alone, then a one-column separator, then the workers
-stacked with equal heights. Each pane has a label row above it, and the panes
-use every row of the terminal but the last, which holds the bar. A layout in which some pane would get no row or
-column fails; a launch requested on the control socket then fails with "no room
-for another pane", and a terminal resized below that hides the panes until
-it grows.
+The first row is the header and the last is the bar. Between them the panes
+sit inside a gap of one cell, `theme::GAP`, all around and between them. A
+pane's shadow takes one more column to its right, so the gaps there are a
+column wider. `host::layout` places the orchestrator's pane in the left 40% of
+the area between the gaps, or all of it when it is alone, then the workers
+stacked with equal heights. The orchestrator's pane has no label row; each
+worker has a label row above its pane. A layout in which some pane would get no
+row or column fails; a launch requested on the control socket then fails with
+"no room for another pane", and a terminal resized below that hides the panes
+until it grows.
 
-`host::zoom_layout` gives one pane the rectangle a lone pane has, so it fills
-the pane area, and hides the others. A hidden pane has an empty rectangle: it
-is not drawn, takes no mouse input (a press it had captured ends there), and
-keeps its size, so its program sees no resize. The host zooms the focused pane
-when the zoom key is pressed. It restores the normal layout when the key is
-pressed again, when the focus changes, and when a pane is added or removed. The
-host resizing keeps the zoom.
+`host::zoom_layout` gives one pane the whole area, with its label row unless
+it is the orchestrator's, and hides the others. A hidden pane has an empty
+rectangle: it is not drawn, takes no mouse input (a press it had captured ends
+there), and keeps its size, so its program sees no resize. The host zooms the
+focused pane when the zoom key is pressed. It restores the normal layout when
+the key is pressed again, when the focus changes, and when a pane is added or
+removed. The host resizing keeps the zoom.
 
-`TeamChrome` draws each label row across its pane's full width in black on
-light blue (`#87d7ff`). The left end has one space and the agent's name, bold for the
-focused pane, followed by "zoomed" while the pane fills the pane area, "exited
-N" once the pane's program has exited and is not relaunched, "failed:" and the
-error for an agent whose harness did not start, and "↑N" while its view is
-scrolled N rows up. The right end has, followed by one space, "⎇ " and the
-branch without its `hypercube/` prefix for a worker with a worktree, or the
-directory with the home directory written as `~` for the orchestrator and for
-workers in existing directories. A row too narrow for the right text drops it,
-keeping a blank column after the left text, and then clips the left text at a
-grapheme cluster. Between the first pane and the workers a plain `┃` in
-`#0087ff` runs the height of the pane area.
+`TeamChrome` draws, from the `theme` module's colors (`docs/themes.md`):
 
-`bar::Bar` draws the last row in the labels' colors. It lists every running
+- The header across the first row: one space and the orchestrator's directory,
+  with the home directory written as `~`. The right end has what a label's left
+  end has below, for the orchestrator: "zoomed", "exited N", and "↑N".
+- The backdrop in every cell between the header and the bar that no pane
+  covers. The panes draw their own cells.
+- Each pane's shadow, in the gaps below and to its right, starting a column in
+  from its left and half a row down from its top, to look raised. A cell is
+  about twice as tall as wide, so the shadow is upper half blocks (`▀`) below
+  and full blocks (`█`) to the right, a lower half block (`▄`) at the top, and
+  an upper half block at the corner.
+- Each worker's label row across its pane's full width. The left end has one
+  space and the agent's name, bold for the focused pane, followed by "zoomed"
+  while the pane fills the area, "exited N" once the pane's program has exited
+  and is not relaunched, "failed:" and the error for an agent whose harness did
+  not start, and "↑N" while its view is scrolled N rows up. The right end has,
+  followed by one space, "⎇ " and the branch without its `hypercube/` prefix
+  for a worker with a worktree, or the directory with the home directory
+  written as `~` for workers in existing directories. A row too narrow for the
+  right text drops it, keeping a blank column after the left text, and then
+  clips the left text at a grapheme cluster. The header is clipped the same
+  way.
+
+`bar::Bar` draws the last row in the footer's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification
 time of its host lock), as `0 foo  1 *bar  2 glarpy`: each the name of its
 checkout's directory, with the host's own workspace marked `*` and bold. It
