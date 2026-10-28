@@ -6,12 +6,17 @@
   for the whole session and owns every agent's pty and pane and the control
   socket.
 - `hypercube mcp` is each agent's MCP server, started by its harness. It
-  changes the state file and worktrees itself, and asks the host to launch,
-  close, and nudge panes.
-- `hypercube hook <event>` runs for each harness hook event and reads and
-  writes only the state file.
+  changes the state file and worktrees itself, reads the profiles from
+  `config.json`, and asks the host to launch, close, and nudge panes.
+- `hypercube hook <event>` runs for each harness hook event. It changes the
+  state file, and reads `config.json` for the orchestrator's profiles.
 - `hypercube stop`, `status`, and `delete` are short-lived commands. `stop` and
-  `delete` take `--all` to act on every workspace.
+  `delete` act on the workspace of the working directory, of a directory
+  argument, or, with `--all`, of every workspace.
+
+Each agent's harness runs with `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`, the
+agent's ID and its workspace's state file, which the MCP server and the hooks
+read to find their agent.
 
 A workspace is named from its checkout path (`workspace::name`): the
 directory's name and the start of a hash of the path. Outside Git, the
@@ -34,7 +39,8 @@ The state directory also holds `pi-extension/index.js`.
 1. It takes an exclusive, non-blocking `flock` on the host lock and writes its
    terminal's name into the file. A workspace is running while that lock is
    held, and the kernel releases it however the host ends. If another host
-   holds it, `hypercube` reports the terminal that host runs in and exits.
+   holds it, `hypercube` reports the terminal that host runs in and exits. It
+   also exits unless its input and output are terminals.
 2. It readies the state: on the first run it creates the orchestrator, with
    `no_git` set outside Git; it sets the orchestrator's branch, marks it idle,
    and marks the workers busy.
@@ -63,8 +69,8 @@ input, when every pane's program has exited and none is relaunched, or when
 the host panics. The host then removes every pane, which sends SIGHUP to each
 program's process group, gives the programs up to `HANGUP_GRACE_MS` (two
 seconds) before SIGKILL, restores the terminal, removes the socket, and
-releases the host lock. The next `hypercube` resumes
-the agents from their saved sessions and the queued messages.
+releases the host lock. The next `hypercube` resumes the agents from their
+saved sessions and the queued messages.
 
 ### Relaunching
 
@@ -103,13 +109,14 @@ it grows.
 `host::zoom_layout` gives one pane the rectangle a lone pane has, so it fills
 the pane area, and hides the others. A hidden pane has an empty rectangle: it
 is not drawn, takes no mouse input (a press it had captured ends there), and
-keeps its size, so its program sees no resize. The host zooms the focused pane when the zoom key is pressed. It
-restores the normal layout when the key is pressed again, when the focus
-changes, and when a pane is added or removed. The host resizing keeps the
-zoom.
+keeps its size, so its program sees no resize. The host zooms the focused pane
+when the zoom key is pressed. It restores the normal layout when the key is
+pressed again, when the focus changes, and when a pane is added or removed. The
+host resizing keeps the zoom.
 
 `TeamChrome` draws each label row as a heavy rule in `#0087ff` with the label
-in black on `#87d7ff`, bold for the focused pane, followed by "zoomed" while
+in black on `#87d7ff`, bold for the focused pane. The label is the agent's
+name, harness, model, effort, and directory, followed by "zoomed" while
 the pane fills the pane area, "exited N" once the pane's program has exited
 and is not relaunched, and "↑N" while its view is scrolled N rows up. The
 status bar is black on `#87d7ff`, with the checkout path on the left.
@@ -127,7 +134,8 @@ The keys and the mouse (see Input):
   program.
 - A drag selects text and copies it to the clipboard on release.
 
-The status bar clips its text to whole grapheme clusters, measured in columns.
+Labels and the status bar are clipped to whole grapheme clusters, measured in
+columns.
 
 ## Control socket
 
@@ -149,10 +157,14 @@ The MCP server and `hypercube stop` find the socket from the state file's
 path. A request that finds no socket, or nothing listening on it, means no
 host is running.
 
+`launch` fails if the agent already has a pane or the terminal has no room for
+another. `launch` and `close` end any zoom.
+
 ## State file
 
 The state file holds the agents (ID, name, role, harness, model, effort,
-directory, branch, session ID, activity), the queued messages, and `no_git`.
+directory, branch, session ID, activity), the queued messages (sender,
+recipient, text), and `no_git`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
 servers, and the host change it concurrently and readers always see a whole
@@ -164,6 +176,12 @@ state, so the state file's modification time is its last activity.
 `hypercube status` lists every workspace with a state file by last activity,
 with its directory, whether its host lock is held, its number of agents, and
 both times. A workspace's directory is its orchestrator's.
+
+A worker created without a directory has the branch `hypercube/<name>` and
+the worktree `<checkout>/.hypercube/<name>`, created from the orchestrator's
+HEAD. `.hypercube/` is in the checkout's local Git excludes, and the directory
+is removed with the last worktree. A workspace outside Git has no branches or
+worktrees: each worker works in the directory `create_agent` gives it.
 
 `hypercube delete` refuses if a worker's worktree is dirty or its branch is
 not merged. Otherwise it stops the host and takes the host lock itself, so
@@ -200,10 +218,10 @@ stay queued if the harness cannot read the response.
 
 ## Terminal layer
 
-The terminal layer (`src/lib.rs`) runs programs in ptys, keeps a Ghostty
-terminal for each, and draws them into the host terminal. It knows nothing
-about agents: the caller decides where panes go, what the chrome looks like,
-and what to do when something happens.
+The terminal layer (`mux`, `pty`, `runtime`, and `winch`) runs programs in
+ptys, keeps a Ghostty terminal for each, and draws them into the host terminal.
+It knows nothing about agents: the caller decides where panes go, what the
+chrome looks like, and what to do when something happens.
 
 ### Panes
 
@@ -216,7 +234,8 @@ child process.
 - `Pty::spawn(argv, cwd, env, size)` starts a program in its own session with
   a new pty as its controlling terminal. `TERM` is `xterm-256color` and
   `COLORTERM` is `truecolor`. The master is non-blocking and close-on-exec,
-  so later programs don't inherit it. `Mux::attach(id, pty)` gives the pane its program.
+  so later programs don't inherit it. `Mux::attach(id, pty)` gives the pane
+  its program.
 - `Mux::set_layout(&[(PaneId, Rect)])` places panes on the host terminal,
   resizes the terminals and ptys whose size changed, and redraws the screen.
   A pane given an empty rectangle is hidden and keeps its size. The caller
@@ -269,12 +288,12 @@ A pane draws its terminal's viewport. Scrolling moves the viewport through
 Ghostty's scrollback, and new output leaves a scrolled viewport where it is.
 Scrolling a pane ends its hold. Selected cells are drawn in reverse video.
 
-The focused pane's input modes are mirrored onto the host: cursor and keypad
-modes, focus events, bracketed paste, grapheme clustering, and the Kitty
-keyboard flags. Focus events, the window title, and mode changes follow the
-focus. The host always reports mouse buttons and drags in SGR form (modes
-1002 and 1006), and motion without a button (mode 1003) while the focused
-pane asks for it.
+The focused pane's input modes are mirrored onto the host: cursor, keypad,
+backspace, and Alt-key modes, reverse video, focus events, bracketed paste,
+grapheme clustering, and the Kitty keyboard flags. Focus events, the window
+title, and mode changes follow the focus. The host always reports mouse buttons
+and drags in SGR form (modes 1002 and 1006), and motion without a button (mode
+1003) while the focused pane asks for it.
 
 Bells pass through to the host. So do desktop notifications, OSC 9 and OSC
 777: `Pane::feed` scans the program's output for them before Ghostty sees
@@ -291,8 +310,8 @@ again. Resizing a pane's terminal ends its hold. A hold that lasts
 ### Input
 
 Host input goes to the focused pane. A bracketed paste, from `ESC [ 200 ~`
-through `ESC [ 201 ~`, goes as it is to the pane focused when it began. Outside a paste, these are
-routed elsewhere:
+through `ESC [ 201 ~`, goes as it is to the pane focused when it began. Outside
+a paste, these are routed elsewhere:
 
 - Ctrl-], in its legacy byte or as a Kitty key press, moves the focus to the
   next live pane; Kitty repeats and releases of it are consumed.
@@ -303,24 +322,24 @@ routed elsewhere:
   Up and Down a row, and Esc and q return it to the bottom. Any other key
   returns it to the bottom and goes to the program. Kitty key releases are
   consumed.
-- Mouse reports go to the pane under the pointer. A button press focuses
-  it, and that button's motion and release go to the same pane, clamped to
-  its edges. A pane whose program tracks the mouse, and whose view is not
-  scrolled, gets every report in its coordinates, encoded by Ghostty's mouse
-  encoder for its tracking mode and format. In any other pane, the wheel
-  scrolls three rows, or on the alternate screen with alternate scroll mode
-  (1007) sends Up or Down three times, and a left-button drag selects text
-  linearly through Ghostty's selection, from where the button was pressed to
-  where it was released. A press released where it began is a click. On release, the selection's text,
-  with soft wraps joined and trailing spaces trimmed, goes to the host's
-  clipboard as OSC 52. The selection stays highlighted until the next press
-  or until input is typed into its pane.
+- Mouse reports go to the pane under the pointer. A button press focuses it, and
+  that button's motion and release go to the same pane, clamped to its edges. A
+  pane whose program tracks the mouse, and whose view is not scrolled, gets
+  every report in its coordinates, encoded by Ghostty's mouse encoder for its
+  tracking mode and format. In any other pane, the wheel scrolls three rows, or
+  on the alternate screen with alternate scroll mode (1007) sends Up or Down
+  three times, and a left-button drag selects text linearly through Ghostty's
+  selection, from where the button was pressed to where it was released. A press
+  released where it began is a click. On release, the selection's text, with
+  soft wraps joined and trailing spaces trimmed, goes to the host's clipboard as
+  OSC 52. The selection stays highlighted until the next press or until input is
+  typed into its pane.
 
-A key or escape sequence cut off by the end of a read, up to 256 bytes,
-waits for the next read. After `INPUT_HOLD_MS` (25 ms) without the rest, what was held is taken
-as it is: a lone Esc is the Esc key, and anything else goes to the focused
-pane as typed. The runtime wakes for that deadline. A paste's end cut off by
-a read waits for the next read without a deadline.
+A key or escape sequence cut off by the end of a read, up to 256 bytes, waits
+for the next read. After `INPUT_HOLD_MS` (25 ms) without the rest, what was held
+is taken as it is: a lone Esc is the Esc key, and anything else goes to the
+focused pane as typed. The runtime wakes for that deadline. A paste's end cut
+off by a read waits for the next read without a deadline.
 
 ### Runtime
 
