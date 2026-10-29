@@ -13,18 +13,19 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 /// The hook events Claude Code runs `hypercube hook` for. The OpenCode plugin
 /// calls all but PermissionRequest.
-const EVENTS: [&str; 5] = [
+const EVENTS: [&str; 6] = [
     "SessionStart",
     "UserPromptSubmit",
     "PostToolUse",
     "Stop",
+    "StopFailure",
     "PermissionRequest",
 ];
 
 /// The events after which Claude Code starts `hypercube wait` in the
 /// background: the start of a session and the end of each turn. The waiter's
 /// exit status 2 wakes the session with the messages it wrote.
-const WAIT_EVENTS: [&str; 2] = ["SessionStart", "Stop"];
+const WAIT_EVENTS: [&str; 3] = ["SessionStart", "Stop", "StopFailure"];
 
 /// How long Claude Code lets a waiter run: 20 days.
 const WAIT_TIMEOUT_SECONDS: u64 = 20 * 24 * 60 * 60;
@@ -268,6 +269,7 @@ mod tests {
                     "UserPromptSubmit": [{"hooks": [hook("UserPromptSubmit")]}],
                     "PostToolUse": [{"hooks": [hook("PostToolUse")]}],
                     "Stop": [{"hooks": [hook("Stop"), wait]}],
+                    "StopFailure": [{"hooks": [hook("StopFailure"), wait]}],
                     "PermissionRequest": [{"hooks": [hook("PermissionRequest")]}],
                 },
                 "statusLine": {"type": "command", "command": format!("'{EXE}' statusline")},
@@ -510,7 +512,7 @@ const ctx = {
     },
   },
 }
-const emit = (type, sessionID) => { events.push({ type, data: { sessionID } }); push?.() }
+const emit = (type, sessionID, data = {}) => { events.push({ type, data: { sessionID, ...data } }); push?.() }
 const until = async (what, f) => {
   for (let i = 0; i < 500; i++) {
     if (f()) return
@@ -580,8 +582,21 @@ await until("a waiter after the stop", () => waits().length === 2)
 assert.equal(prompts.length, 2)
 assert.deepEqual(calls().slice(3), [["PostToolUse", "s1"], ["Stop", "s1"], ["Stop", "s1"]])
 
+// A failed execution runs StopFailure with its structured error, not Stop.
+// End the stand-in waiter before replacing it; it has no generation check.
+process.kill(waits()[1])
+await until("the previous waiter to end", () => !alive(waits()[1]))
+const error = { type: "provider.api", message: "This request would exceed your available credits.", status: 402 }
+emit("session.execution.failed", "child", { error })
+emit("session.execution.failed", "s1", { error })
+await until("a waiter after the failure", () => waits().length === 3)
+assert.equal(prompts.length, 2, "a failure never continues the turn with a Stop block reason")
+assert.deepEqual(calls().slice(6), [["StopFailure", "s1"]])
+const failure = JSON.parse(lines(process.env.HYPERCUBE_TEST_LOG).at(-1).slice("StopFailure ".length))
+assert.deepEqual(failure, { session_id: "s1", error: error.type, error_details: error.message })
+
 // Cleanup ends the waiter.
-const waiter = waits()[1]
+const waiter = waits().at(-1)
 assert(alive(waiter))
 cleanup()
 await until("the waiter to end", () => !alive(waiter))

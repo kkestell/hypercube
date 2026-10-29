@@ -915,6 +915,29 @@ fn send_message_wakes_an_idle_agent_without_typing() {
 }
 
 #[test]
+fn a_workers_failed_turn_wakes_its_orchestrator() {
+    let mut fx = Fixture::new();
+    fx.start();
+    let w1 = fx.create("w1", "fast", "");
+    let w2 = fx.create("w2", "deepseek", "");
+
+    for (i, (name, id)) in [("w1", w1), ("w2", w2)].into_iter().enumerate() {
+        fx.wait_idle("orchestrator");
+        let error = "This request would exceed your available credits.";
+        fx.command(name, &format!("failure {error}"));
+        let wakes = fx.wait_event("orchestrator", "wake", i + 1);
+        assert_eq!(
+            wakes[i]["text"],
+            format!("Message from {name} ({id}):\nMy turn failed: {error}\n")
+        );
+        fx.wait_idle(name);
+        assert!(fx.agent_events(name, "input").is_empty());
+    }
+    fx.wait_idle("orchestrator");
+    assert!(fx.state().messages.is_empty());
+}
+
+#[test]
 fn a_woken_agent_keeps_the_prompt_being_typed() {
     let mut fx = Fixture::new();
     fx.start();

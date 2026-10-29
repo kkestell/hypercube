@@ -11,6 +11,7 @@
 //! - `exit <status>` makes the stub exit with that status.
 //! - `permission` asks for a tool approval: it runs the PermissionRequest
 //!   hook.
+//! - `failure <text>` ends a turn with StopFailure and the error text.
 //! - `hold-hup` makes the stub, once hung up, wait for the file `release` in
 //!   its directory before it exits.
 use std::collections::BTreeMap;
@@ -254,6 +255,15 @@ impl Stub {
         if line == "permission" {
             self.hook("PermissionRequest", json!({"tool_name": "Bash"}));
             self.record("permission", json!({}));
+            return;
+        }
+        if let Some(error) = line.strip_prefix("failure ") {
+            self.hook("UserPromptSubmit", json!({}));
+            self.hook(
+                "StopFailure",
+                json!({"error": "billing_error", "error_details": error}),
+            );
+            self.start_waiter();
             return;
         }
         if line == "hold-hup" {

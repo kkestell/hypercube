@@ -631,6 +631,11 @@ a busy agent:
 - PostToolUse delivers messages that arrived during the turn.
 - Stop blocks the stop while messages are queued, delivering them, and
   otherwise marks the agent idle.
+- StopFailure marks the agent idle and leaves its incoming messages queued.
+  A worker's failed turn queues a message from the worker to its team's
+  orchestrator, with a failure notice and the error text trimmed to 2,000
+  characters. An orchestrator's failure queues no message. A user-interrupted
+  turn sends no failure notice.
 
 An idle agent is woken by its waiter, `hypercube wait`, which the harness
 starts when a session starts and after each turn's stop. A waiter increments
@@ -649,6 +654,8 @@ A message whose sender is no agent, such as a task's firing, reaches it as
 `Message from <sender>:`, as in `Message from schedule:`.
 A hook writes its response, and a waiter its messages, inside the state
 update, so messages it takes stay queued if they cannot be written.
+Failure notices use the same queue and delivery: a busy orchestrator receives
+them through its hooks, and an idle orchestrator is woken by its waiter.
 
 ## Terminal layer
 

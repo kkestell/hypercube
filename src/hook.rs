@@ -17,6 +17,9 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 #[serde(default)]
 struct Input {
     session_id: String,
+    error: String,
+    error_details: String,
+    last_assistant_message: String,
 }
 
 #[derive(Serialize)]
@@ -116,6 +119,19 @@ pub fn handle(
                     })
                 }
             }
+            "StopFailure" => {
+                if agent.role == store::WORKER
+                    && let Some(orchestrator) = state.team_orchestrator(&agent.team)
+                {
+                    state.messages.push(Message {
+                        from: id.into(),
+                        to: orchestrator.id.clone(),
+                        text: failure(&input),
+                    });
+                }
+                state.agent_mut(id)?.activity = store::IDLE.into();
+                None
+            }
             _ => return Err(format!("unknown hook event {event:?}").into()),
         };
         // Writing the response inside the update keeps taken messages queued
@@ -130,6 +146,27 @@ pub fn handle(
         }
         Ok(())
     })
+}
+
+fn failure(input: &Input) -> String {
+    let detail = [
+        &input.error_details,
+        &input.last_assistant_message,
+        &input.error,
+    ]
+    .into_iter()
+    .map(|s| s.trim())
+    .find(|s| !s.is_empty())
+    .unwrap_or("");
+    if detail.is_empty() {
+        return "My turn failed.".into();
+    }
+    let mut chars = detail.chars();
+    let mut text: String = chars.by_ref().take(2000).collect();
+    if chars.next().is_some() {
+        text.push('…');
+    }
+    format!("My turn failed: {text}")
 }
 
 fn context<'a>(event: &'a str, text: String) -> Option<Response<'a>> {
@@ -517,6 +554,99 @@ mod tests {
         let r = f.run("b", "Stop");
         assert!(r.is_null(), "{r}");
         assert_eq!(f.load().agents[1].activity, store::IDLE);
+    }
+
+    #[test]
+    fn stop_failure_notifies_the_workers_team_and_keeps_its_messages() {
+        let mut agents = pair();
+        agents[1].team = "docs".into();
+        agents[1].activity = store::BUSY.into();
+        agents.push(Agent {
+            team: "docs".into(),
+            ..agent("c", "docs", store::ORCHESTRATOR)
+        });
+        let f = Fixture::new(agents, vec![], false);
+        f.queue("c", "b", "more");
+        let mut out = Vec::new();
+        f.try_run(
+            "b",
+            "StopFailure",
+            r#"{"error":"billing_error","error_details":"  This request would exceed your available credits.\n"}"#,
+            &mut out,
+        )
+        .unwrap();
+        assert!(out.is_empty());
+        let s = f.load();
+        assert_eq!(s.agents[1].activity, store::IDLE);
+        assert_eq!(s.messages.len(), 2);
+        assert_eq!(s.messages[0].to, "b");
+        assert_eq!(s.messages[0].text, "more");
+        assert_eq!(s.messages[1].from, "b");
+        assert_eq!(s.messages[1].to, "c");
+        assert_eq!(
+            s.messages[1].text,
+            "My turn failed: This request would exceed your available credits."
+        );
+        // The notice uses the same queue and sender formatting as any message.
+        let r = f.run("c", "PostToolUse");
+        assert_eq!(
+            context_of(&r),
+            "Message from w1 (b):\nMy turn failed: This request would exceed your available credits."
+        );
+        assert_eq!(f.load().messages.len(), 1);
+    }
+
+    #[test]
+    fn stop_failure_uses_the_available_error_text() {
+        let f = Fixture::new(pair(), vec![], false);
+        for (input, want) in [
+            (r#"{"error":"rate_limit"}"#, "My turn failed: rate_limit"),
+            (
+                r#"{"error":"rate_limit","error_details":" ","last_assistant_message":"Request rejected (429)"}"#,
+                "My turn failed: Request rejected (429)",
+            ),
+            ("{}", "My turn failed."),
+        ] {
+            f.try_run("b", "StopFailure", input, Vec::new()).unwrap();
+            assert_eq!(f.load().messages.last().unwrap().text, want);
+        }
+    }
+
+    #[test]
+    fn stop_failure_limits_error_text_at_a_character_boundary() {
+        let f = Fixture::new(pair(), vec![], false);
+        for n in [2000, 2001] {
+            let detail = "é".repeat(n);
+            let input = serde_json::json!({"error_details": detail}).to_string();
+            f.try_run("b", "StopFailure", &input, Vec::new()).unwrap();
+            let suffix = if n > 2000 { "…" } else { "" };
+            assert_eq!(
+                f.load().messages.last().unwrap().text,
+                format!("My turn failed: {}{suffix}", "é".repeat(2000))
+            );
+        }
+    }
+
+    #[test]
+    fn an_orchestrators_failure_only_marks_it_idle() {
+        let mut agents = pair();
+        agents[0].activity = store::BUSY.into();
+        let f = Fixture::new(agents, vec![], false);
+        f.queue("b", "a", "hello");
+        assert!(f.run("a", "StopFailure").is_null());
+        let s = f.load();
+        assert_eq!(s.agents[0].activity, store::IDLE);
+        assert_eq!(s.messages.len(), 1);
+        assert_eq!(s.messages[0].text, "hello");
+    }
+
+    #[test]
+    fn a_workers_failure_without_an_orchestrator_still_marks_it_idle() {
+        let f = Fixture::new(vec![agent("b", "w1", store::WORKER)], vec![], false);
+        assert!(f.run("b", "StopFailure").is_null());
+        let s = f.load();
+        assert_eq!(s.agents[0].activity, store::IDLE);
+        assert!(s.messages.is_empty());
     }
 
     #[test]

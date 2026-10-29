@@ -22,7 +22,7 @@ They are the agent's identity for `hypercube mcp`, `hypercube hook`, and
 `hypercube wait`.
 
 Hook events are `SessionStart`, `UserPromptSubmit`, `PostToolUse`, `Stop`,
-and, for Claude Code only, `PermissionRequest`.
+`StopFailure`, and, for Claude Code only, `PermissionRequest`.
 `hypercube hook <event>` reads the harness's hook JSON on stdin and writes the
 response on stdout. `hookSpecificOutput.additionalContext` carries text for the
 model, and `decision: "block"` with `reason` keeps an agent running with a
@@ -36,6 +36,10 @@ queued message.
 - `PostToolUse` delivers queued messages during a turn.
 - `Stop` delivers queued messages as a block reason, or marks the agent idle
   when its queue is empty.
+- `StopFailure` marks the agent idle without taking its queued messages. A
+  worker's failure queues a message from that worker to its team's
+  orchestrator, stating that its turn failed and including the error text,
+  trimmed to 2,000 characters. An orchestrator's failure queues no message.
 - `PermissionRequest` sets the agent's attention flag, which puts a red dot
   on its workspace's tab in the bar, and writes nothing, so the user decides.
 
@@ -62,11 +66,16 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
   with `--limits` for the orchestrator. The status line shows the model, the
   effort while thinking is on, and the context window's tokens in use, size,
   and percentage; `--limits` adds bars for the 5-hour and 7-day usage limits.
-- The `SessionStart` and `Stop` entries also run `'<exe>' wait` with
-  `asyncRewake` and a 20-day `timeout`. Claude Code runs it in the background,
-  and when it exits with status 2, wakes the session with its stderr as a
-  system reminder, even when the session is idle. The prompt being typed stays
-  in the editor.
+- The `SessionStart`, `Stop`, and `StopFailure` entries also run `'<exe>' wait`
+  with `asyncRewake` and a 20-day `timeout`. Claude Code runs it in the
+  background, and when it exits with status 2, wakes the session with its stderr
+  as a system reminder, even when the session is idle. The prompt being typed
+  stays in the editor.
+- `StopFailure` runs when a turn ends due to an API error. Its input carries
+  the error type in `error`, with optional `error_details` and
+  `last_assistant_message`. The failure message uses the first non-empty
+  error details, assistant message, or error type, or just the failure notice
+  if none is present.
 - `--permission-mode auto` starts the session in auto mode. A tool call auto
   mode does not allow opens an approval dialog, after the `PermissionRequest`
   hook.
@@ -117,9 +126,12 @@ only, since subagent sessions have a parent:
   falls back to a recent model for an unavailable ID.
 - `tool.hook("execute.after")`: PostToolUse for a completed tool, appended to
   its result.
-- The `session.execution.succeeded`, `failed`, and `interrupted` events:
+- The `session.execution.succeeded` and `interrupted` events:
   Stop. A block reason is sent back with `session.prompt`, which starts a new
   turn. Otherwise the plugin starts a waiter.
+- `session.execution.failed`: StopFailure, with `data.error.type` as `error`
+  and `data.error.message` as `error_details`, then a waiter. An interrupted
+  turn, such as the user pressing Esc, sends no failure notice.
 
 The plugin also starts a waiter when it loads if the launch's session exists.
 A new session gets its first waiter at the end of its first turn. When a
@@ -128,4 +140,5 @@ The server queues the prompt and starts a turn, and text being typed in the
 TUI's editor stays there. The prompt runs the `prompt` hook like any other.
 The plugin's cleanup kills the current waiter.
 
-Each hook call sends `{ "session_id": "<session ID>" }` on stdin.
+Each hook call sends `{ "session_id": "<session ID>" }` on stdin, with
+`error` and `error_details` added for StopFailure.

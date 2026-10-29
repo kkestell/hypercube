@@ -4,13 +4,13 @@ import { execFile } from "node:child_process"
 
 const exe = HYPERCUBE_EXE
 
-async function hook(event, sessionID) {
+async function hook(event, sessionID, extra = {}) {
   const out = await new Promise((resolve, reject) => {
     const proc = execFile(exe, ["hook", event], (err, stdout) => {
       if (err) reject(err)
       else resolve(stdout)
     })
-    proc.stdin.end(JSON.stringify({ session_id: sessionID }))
+    proc.stdin.end(JSON.stringify({ session_id: sessionID, ...extra }))
   })
   return out.trim() ? JSON.parse(out) : {}
 }
@@ -86,7 +86,13 @@ export default {
     // stop starts, and subscribes again a second after the stream ends. A
     // loop that ended would leave the agent busy and never woken.
     const controller = new AbortController()
-    async function stopped(sessionID) {
+    async function stopped(event) {
+      const { sessionID, error } = event.data
+      if (event.type === "session.execution.failed") {
+        await hook("StopFailure", sessionID, { error: error?.type, error_details: error?.message })
+        wait(sessionID)
+        return
+      }
       const response = await hook("Stop", sessionID)
       if (response.reason) ctx.session.prompt({ sessionID, text: response.reason }).catch(() => {})
       else wait(sessionID)
@@ -96,7 +102,7 @@ export default {
         try {
           for await (const event of ctx.event.subscribe({ types: [...ends], signal: controller.signal })) {
             if (!ends.has(event.type) || !started.has(event.data.sessionID)) continue
-            await stopped(event.data.sessionID).catch(() => {})
+            await stopped(event).catch(() => {})
           }
         } catch {}
         await new Promise((resolve) => setTimeout(resolve, 1000))
