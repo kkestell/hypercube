@@ -1,0 +1,21 @@
+/* Generate utilities only from this app's sources, so class names inside bundled
+   libraries (dockview's "visible", for one) don't become Tailwind utilities. */
+@import "tailwindcss" source(none);
+@source "./";
+
+@layer base {
+  html,
+  body {
+    @apply h-full overflow-hidden bg-[#1e1e1e];
+  }
+}
+
+/* Hides an element and everything in it, including descendants that set their
+   own visibility (dockview does), while keeping its layout size. */
+@utility invisible-subtree {
+  visibility: hidden;
+
+  & * {
+    visibility: hidden !important;
+  }
+}
