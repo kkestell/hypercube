@@ -63,8 +63,12 @@ fn workspace_at(dir: &str) -> Result<(PathBuf, PathBuf)> {
 }
 
 /// Attach this terminal to the workspace containing the working directory,
-/// starting its host if none is running.
+/// starting its host if none is running. While no workspace is running at
+/// all, show the splash instead, where the user starts one.
 fn start() -> Result<()> {
+    if bar::running()?.is_empty() {
+        return client::run_splash(&std::env::current_dir()?);
+    }
     let (root, _) = workspace_at(".")?;
     client::run(&root)
 }

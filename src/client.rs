@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use crate::link::{Decoder, Message, Size, encode};
 use crate::mux::{self, Winsize, now_ms, read};
 use crate::runtime::{poll, pollfd};
+use crate::splash::{self, Outcome, Splash};
 use crate::{control, host, signals, store, workspace};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -76,6 +77,18 @@ impl Tty {
 /// host lets it go or the terminal goes away, then give the terminal back
 /// and print the host's reason, if it gave one.
 pub fn run(root: &Path) -> Result<()> {
+    session(|_| Ok(Some(root.to_path_buf())))
+}
+
+/// Show the splash, and attach this terminal to the workspace the user
+/// starts there, as `run` does. `cwd` is the working directory.
+pub fn run_splash(cwd: &Path) -> Result<()> {
+    session(|tty| splash(tty, cwd))
+}
+
+/// Take the terminal, attach it to the workspace `choose` returns the
+/// checkout of, or end if it returns `None`, and give the terminal back.
+fn session(choose: impl FnOnce(&Tty) -> Result<Option<PathBuf>>) -> Result<()> {
     if unsafe { libc::isatty(0) == 0 || libc::isatty(1) == 0 } {
         return Err("hypercube must run in a terminal".into());
     }
@@ -90,7 +103,10 @@ pub fn run(root: &Path) -> Result<()> {
             replies: raw.replies.clone(),
             exe,
         };
-        tty.connect(root).and_then(|stream| proxy(&tty, stream))
+        let Some(root) = choose(&tty)? else {
+            return Ok(String::new());
+        };
+        tty.connect(&root).and_then(|stream| proxy(&tty, stream))
     });
     // A signal ends the client quietly: the terminal may not take the
     // message, and writing it could block.
@@ -102,6 +118,52 @@ pub fn run(root: &Path) -> Result<()> {
         eprintln!("hypercube: {reason}");
     }
     Ok(())
+}
+
+/// Draw the splash until the user starts a workspace, and return its
+/// checkout, or `None` if the user quits or the terminal goes away. A path
+/// that is no directory shows its error on the splash.
+fn splash(tty: &Tty, cwd: &Path) -> Result<Option<PathBuf>> {
+    let mut splash = Splash::new(&cwd.display().to_string());
+    let mut buf = vec![0u8; 4096];
+    let start = now_ms();
+    loop {
+        let mut out = Vec::new();
+        splash.draw(&mut out, tty.size().into(), now_ms() - start);
+        if write_fd(tty.output, &out).is_err() {
+            return Ok(None);
+        }
+        let mut fds = [pollfd(tty.input), pollfd(tty.winch), pollfd(tty.hangup)];
+        if !poll(&mut fds, splash::FRAME_MS)? {
+            continue;
+        }
+        if fds[2].revents != 0 {
+            return Ok(None);
+        }
+        if fds[1].revents != 0 {
+            signals::take(tty.winch);
+        }
+        if fds[0].revents == 0 {
+            continue;
+        }
+        let n = read(tty.input, &mut buf);
+        if n <= 0 {
+            return Ok(None);
+        }
+        match splash.input(&buf[..n as usize]) {
+            Outcome::Stay => {}
+            Outcome::Quit => return Ok(None),
+            Outcome::Open(path) => match workspace::locate(cwd, path.trim()) {
+                Ok(root) => {
+                    let clusters = mux::host_clusters(&tty.replies);
+                    let reset = [mux::host_reset(Some(clusters)), b"\x1b[2J".to_vec()].concat();
+                    write_fd(tty.output, &reset)?;
+                    return Ok(Some(root));
+                }
+                Err(e) => splash.fail(e.to_string()),
+            },
+        }
+    }
 }
 
 /// Pass the terminal's input and size to the host at the other end of

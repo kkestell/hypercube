@@ -4,7 +4,8 @@
 
 - `hypercube`, run in a checkout, is the client. It runs in the user's
   terminal and attaches it to the workspace's host, starting the host if none
-  is running.
+  is running. While no workspace is running at all, it shows the splash, where
+  the user starts a workspace.
 - `hypercube host <dir>` is the host of the workspace whose checkout is
   `<dir>`. It runs in the background, in its own session, from when a client
   starts it until the session ends, and owns every agent's pty and pane and
@@ -148,6 +149,39 @@ sequenceDiagram
     B->>C: screen
 ```
 
+### Splash
+
+While `bar::running` lists no workspace, `hypercube` with no arguments takes
+the terminal as `client::run` does and calls `client::run_splash` in place of
+attaching. `client::splash` draws `splash::Splash` until the user starts a
+workspace, and then attaches to it as `client::run` does, or until the user
+quits, which gives the terminal back and exits with status 0. A signal ends it
+the same way, and a new terminal size draws everything again.
+
+The tesseract fills every row but the last, in the shades of the first accent,
+gray. The last row is the hint ` Ctrl-b c new workspace · Ctrl-b d exit` in the
+bar's colors. The keys, which the client reads in their legacy form:
+
+- Ctrl-b c turns the last row into the bar's prompt for a workspace's path,
+  starting with the working directory. The prompt takes the keys it takes in
+  the host (see the bar below), and Esc closes it.
+- Enter on the prompt starts the host of the workspace containing the path,
+  the top of the checkout or the directory itself outside Git, and attaches to
+  it. A path that is no directory shows its error in the last row for five
+  seconds.
+- Ctrl-b d and Ctrl-c exit, whether or not the prompt is open.
+
+`tesseract::Tesseract` draws the tesseract as a wireframe of its 32 edges. It
+turns in the XW plane at 0.5 radians a second and in the YZ plane at 0.31,
+and is projected with perspective along W, then along Z. Its edges are drawn
+with braille dots, two across and four down each cell, which are square on a
+terminal. The size is set by the cube's widest reach over every angle, so that
+it fills 95% of the smaller side of the area at its widest and does not change
+size otherwise. A cell is shaded by its nearest dot's depth, in twelve steps
+from the accent mixed 25% toward black, for the nearest, to the accent mixed
+60% toward black. The splash draws a frame every `splash::FRAME_MS` (40 ms),
+writing only the cells that differ from the last.
+
 ### Attach stream
 
 `attach {protocol, size, replies}` carries `link::PROTOCOL`, the terminal's
@@ -195,8 +229,8 @@ agent and ending the session hang up the programs without relaunching them.
 The first row is the header and the last is the bar. The panes go between
 them. `host::layout` reserves one column for the divider and gives the
 orchestrator its share of the remaining columns, half to start with, rounded
-down, with the workers stacked in the rest. Alone, the orchestrator keeps its
-share, and a tesseract turns in the rest. Every pane has a label row above its
+down, with the workers stacked in the rest. Alone, the orchestrator has all the
+columns and no divider. Every pane has a label row above its
 content, and every expanded worker at least one row; the rows left go to the
 expanded workers by weight, equal to start with. A collapsed worker keeps its
 label row and gets no rows, so the next label sits right below it; its pane
@@ -262,31 +296,8 @@ The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
   side of the text and a column of line at each end.
 - The divider: a heavy `┃` right of the orchestrator, down every row between
   the header and the bar, with a `┳` where the top titles meet and a `┣` on
-  each lower worker's label row. With no workers, the orchestrator's title
-  turns down into it at a `┓`. A zoomed pane has no divider.
-- The tesseract, while the orchestrator is the only pane and no zoom, overlay,
-  or list of keys covers the screen: the columns right of the divider, from
-  the header to the bar.
-
-`tesseract::Tesseract` draws the tesseract as a wireframe of its 32 edges. It
-turns in the XW plane at 0.5 radians a second and in the YZ plane at 0.31,
-and is projected with perspective along W, then along Z. Its edges are drawn
-with braille dots, two across and four down each cell, which are square on a
-terminal. The size is set by the cube's widest reach over every angle, so that
-it fills 95% of the smaller side of the area at its widest and does not change
-size otherwise. A cell is shaded by its nearest dot's depth, in twelve steps
-from the accent mixed 25% toward black, for the nearest, to the accent mixed
-60% toward black.
-
-The tesseract is the chrome's animation. `Chrome::animated` says whether the
-chrome animates, and `Chrome::animate` draws a frame. While a client is
-attached and the chrome animates, the mux draws a frame every
-`mux::ANIMATION_MS` (40 ms), and with every frame that draws the chrome. A
-frame writes only the cells that differ from the last, or all of them after
-the chrome was drawn. `Mux::animation_deadline` is the time of the next
-frame, which the runtime waits for as it does for a hold or a melt. When the
-chrome stops animating, the mux repaints the screen, and with no animation or
-no client the host has no wake-up for it.
+  each lower worker's label row. A zoomed pane has no divider, and neither
+  does a lone orchestrator, which has only its label row.
 
 `bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification

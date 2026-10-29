@@ -13,9 +13,9 @@
 //! messages arrive, `control` the host's control socket protocol, `host` the
 //! background session of a workspace, `bar` its bar of running workspaces,
 //! `overlay` its workspace list, `colors` the colors of its chrome, `icons`
-//! the Nerd Font icons it draws,
-//! `tesseract` the animation beside a lone orchestrator, and `mcp` the agents'
-//! MCP server.
+//! the Nerd Font icons it draws, `splash` the client's screen while no
+//! workspace is running, `tesseract` the animation on it, and `mcp` the
+//! agents' MCP server.
 
 pub mod bar;
 pub mod client;
@@ -35,6 +35,7 @@ pub mod pty;
 pub mod recording;
 pub mod runtime;
 pub mod signals;
+pub mod splash;
 pub mod statusline;
 pub mod store;
 pub mod tesseract;

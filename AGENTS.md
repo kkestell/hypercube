@@ -89,8 +89,10 @@ Code and docs stand alone and do not refer to predecessor implementations.
   draw.
 - `src/colors.rs`: the accent colors, and the palette of the header, bar,
   titles, and divider each shades from one.
-- `src/tesseract.rs`: the rotating tesseract drawn beside a lone
-  orchestrator: its projection, and the braille canvas it is drawn on.
+- `src/splash.rs`: the splash the client draws while no workspace is
+  running: the tesseract, the hint, and the prompt for a new workspace's path.
+- `src/tesseract.rs`: the rotating tesseract the splash draws: its
+  projection, and the braille canvas it is drawn on.
 - `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
   borders without running Hypercube.
 - `src/overlay.rs`: the workspace overlay's list, keys, and drawing.
@@ -118,8 +120,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
   the test child in the panes.
 - `tests/integration.rs`: `hypercube` in a pty with isolated state and
   configuration, a temporary repository, and the harness stand-ins first on
-  `PATH`: panes, worktrees, waking idle agents, agent relaunches, zoom,
-  detaching and attaching again, the workspace overlay, session restart,
+  `PATH`: the splash, panes, worktrees, waking idle agents, agent relaunches,
+  zoom, detaching and attaching again, the workspace overlay, session restart,
   `stop`, `delete`, their `--all` variants, and `status`. The client starts
   each host in the background, and the fixture stops every host it started.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision

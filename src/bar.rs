@@ -97,6 +97,11 @@ impl Bar {
         changed || expired
     }
 
+    /// Whether the bar shows neither the prompt nor an error.
+    pub fn idle(&self) -> bool {
+        self.prompt.is_none() && self.error.is_empty()
+    }
+
     /// Take a key typed at the prompt: text goes at the end of the path,
     /// Backspace erases its last character, and Enter and Esc close the
     /// prompt.

@@ -207,12 +207,7 @@ impl Runtime {
                 Some(_) if mux.needs_render() => {
                     wake = earliest(wake, self.last_render + FRAME_MS);
                 }
-                Some(_) => {
-                    if let Some(frame) = mux.animation_deadline() {
-                        wake = earliest(wake, frame);
-                    }
-                }
-                None => {}
+                _ => {}
             }
             for link in &self.closing {
                 wake = earliest(wake, link.last_progress() + self.stall_ms);

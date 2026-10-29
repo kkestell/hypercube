@@ -1,4 +1,4 @@
-//! The tesseract drawn beside a lone orchestrator: a wireframe four-dimensional
+//! The tesseract the splash draws: a wireframe four-dimensional
 //! cube turning in two planes, projected down to the screen with perspective
 //! and drawn with braille dots, two across and four down in each cell.
 

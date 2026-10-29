@@ -74,9 +74,6 @@ pub const HOLD_TIMEOUT_MS: i64 = 1000;
 /// process group gets SIGKILL.
 pub const HANGUP_GRACE_MS: i64 = 2000;
 
-/// The time between frames of the chrome's animation.
-pub const ANIMATION_MS: i64 = 40;
-
 /// How long a melting pane's columns may wait before they start to fall.
 const MELT_DELAY_MS: i64 = 300;
 
@@ -188,22 +185,6 @@ pub struct PaneView<'a> {
     pub scrolled: usize,
 }
 
-/// What the chrome sees of `panes`, with `focus` focused.
-fn pane_views(panes: &[Pane], focus: Option<PaneId>) -> Vec<PaneView<'_>> {
-    panes
-        .iter()
-        .map(|p| PaneView {
-            id: p.id,
-            label: &p.label,
-            detail: &p.detail,
-            rect: p.rect,
-            focused: Some(p.id) == focus,
-            status: p.status,
-            scrolled: p.scrolled_drawn,
-        })
-        .collect()
-}
-
 /// Draws everything around the panes: borders and labels.
 pub trait Chrome {
     /// Write the escape sequences that draw all of the chrome into `out`,
@@ -211,19 +192,6 @@ pub trait Chrome {
     /// whenever the panes, the focus, or the host size changed, or after
     /// `Mux::invalidate_chrome`.
     fn draw(&mut self, out: &mut Vec<u8>, panes: &[PaneView<'_>], size: Winsize);
-
-    /// Whether the chrome has something to draw every `ANIMATION_MS`. The
-    /// mux asks again after every change, and stops animating when it
-    /// answers no.
-    fn animated(&self, _panes: &[PaneView<'_>], _size: Winsize) -> bool {
-        false
-    }
-
-    /// Write the escape sequences that draw the next frame of the animation,
-    /// at `now` in `now_ms` time, leaving the SGR attributes reset. The mux
-    /// calls this after `draw`, and between draws once the interval has
-    /// passed, only while `animated`.
-    fn animate(&mut self, _out: &mut Vec<u8>, _panes: &[PaneView<'_>], _size: Winsize, _now: i64) {}
 }
 
 /// Chrome that draws nothing.
@@ -999,10 +967,6 @@ pub struct Mux {
     shared: Rc<Shared>,
     chrome: Box<dyn Chrome>,
     chrome_dirty: bool,
-    /// Whether the last frame drew the chrome's animation, and when it
-    /// drew it last.
-    animated: bool,
-    animation_at: i64,
     /// Whether the next frame clears the host screen and draws everything.
     clear: bool,
     /// Process groups of removed panes, until they are empty or killed.
@@ -1034,8 +998,6 @@ impl Mux {
             }),
             chrome,
             chrome_dirty: true,
-            animated: false,
-            animation_at: 0,
             clear: false,
             orphans: Vec::new(),
             host_replies: Vec::new(),
@@ -1460,25 +1422,9 @@ impl Mux {
         self.notices.extend(melted.into_iter().map(Notice::Melted));
     }
 
-    /// Whether the chrome animates now: a host terminal is connected and
-    /// the chrome says so.
-    fn animating(&self) -> bool {
-        self.connected()
-            && self
-                .chrome
-                .animated(&pane_views(&self.panes, self.focus()), self.ws)
-    }
-
-    /// When the next frame of the chrome's animation is due, `None` while it
-    /// doesn't animate.
-    pub fn animation_deadline(&self) -> Option<i64> {
-        self.animating().then(|| self.animation_at + ANIMATION_MS)
-    }
-
     pub fn needs_render(&self) -> bool {
         self.chrome_dirty
             || self.clear
-            || self.animation_deadline().is_some_and(|due| now_ms() >= due)
             || self.shared.bell.get()
             || self.shared.title_changed.get()
             || self
@@ -1992,13 +1938,6 @@ impl Mux {
         // Grapheme clustering must be synchronized before drawing rows.
         self.sync_modes(&mut out);
 
-        // Whatever the animation drew is cleared when it ends.
-        let animated = self.animating();
-        if self.animated && !animated {
-            self.repaint();
-        }
-        self.animated = animated;
-
         if self.clear {
             out.extend_from_slice(b"\x1b[0m\x1b[2J");
             self.clear = false;
@@ -2010,18 +1949,25 @@ impl Mux {
                 self.chrome_dirty = true;
             }
         }
-        let now = now_ms();
-        let redrawn = self.chrome_dirty;
-        if redrawn {
-            self.chrome
-                .draw(&mut out, &pane_views(&self.panes, self.focus()), self.ws);
+        if self.chrome_dirty {
+            let focus = self.focus();
+            let views: Vec<PaneView> = self
+                .panes
+                .iter()
+                .map(|p| PaneView {
+                    id: p.id,
+                    label: &p.label,
+                    detail: &p.detail,
+                    rect: p.rect,
+                    focused: Some(p.id) == focus,
+                    status: p.status,
+                    scrolled: p.scrolled_drawn,
+                })
+                .collect();
+            self.chrome.draw(&mut out, &views, self.ws);
             self.chrome_dirty = false;
         }
-        if animated && (redrawn || now >= self.animation_at + ANIMATION_MS) {
-            let views = pane_views(&self.panes, self.focus());
-            self.chrome.animate(&mut out, &views, self.ws, now);
-            self.animation_at = now;
-        }
+        let now = now_ms();
         for p in &mut self.panes {
             if p.rect.cols == 0 || p.rect.rows == 0 {
                 continue;
@@ -2507,7 +2453,7 @@ fn parse_int<T: std::str::FromStr>(s: &[u8]) -> Option<T> {
 /// Where the key or escape sequence at `i` ends: a CSI or SS3 sequence, Alt
 /// and a byte, Esc, or a character. Returns `None` if the end of `data` cuts
 /// it off, unless `flush`, when it runs to the end of `data`.
-fn token_end(data: &[u8], i: usize, flush: bool) -> Option<usize> {
+pub fn token_end(data: &[u8], i: usize, flush: bool) -> Option<usize> {
     let len = data.len();
     let end = match (data[i], data.get(i + 1)) {
         (0x1b, Some(b'[')) => data[i + 2..]
@@ -3554,122 +3500,6 @@ mod tests {
                 assert!((pair[0] - pair[1]).abs() <= step, "{delays:?}");
             }
         }
-    }
-
-    /// Chrome that animates while `on`, counting its frames.
-    struct Ticker {
-        on: Rc<Cell<bool>>,
-        frames: Rc<Cell<u32>>,
-        draws: Rc<Cell<u32>>,
-    }
-
-    impl Chrome for Ticker {
-        fn draw(&mut self, _: &mut Vec<u8>, _: &[PaneView<'_>], _: Winsize) {
-            self.draws.set(self.draws.get() + 1);
-        }
-
-        fn animated(&self, _: &[PaneView<'_>], _: Winsize) -> bool {
-            self.on.get()
-        }
-
-        fn animate(&mut self, out: &mut Vec<u8>, _: &[PaneView<'_>], _: Winsize, _: i64) {
-            self.frames.set(self.frames.get() + 1);
-            out.push(b'~');
-        }
-    }
-
-    /// A connected mux with a `Ticker` for chrome, after its first frame.
-    struct Ticked {
-        mux: Mux,
-        on: Rc<Cell<bool>>,
-        frames: Rc<Cell<u32>>,
-        draws: Rc<Cell<u32>>,
-    }
-
-    fn ticker() -> Ticked {
-        let ws = Winsize {
-            ws_col: 20,
-            ws_row: 5,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
-        };
-        let (on, frames, draws) = (Rc::default(), Rc::default(), Rc::default());
-        let chrome = Ticker {
-            on: Rc::clone(&on),
-            frames: Rc::clone(&frames),
-            draws: Rc::clone(&draws),
-        };
-        let mut mux = Mux::new(ws, Box::new(chrome));
-        mux.connect_host(&[], ws).unwrap();
-        mux.render().unwrap();
-        mux.take_output();
-        Ticked {
-            mux,
-            on,
-            frames,
-            draws,
-        }
-    }
-
-    #[test]
-    fn an_animation_has_a_deadline_only_while_the_chrome_animates_and_a_host_is_connected() {
-        let Ticked { mut mux, on, .. } = ticker();
-        assert_eq!(mux.animation_deadline(), None);
-        assert!(!mux.needs_render());
-        on.set(true);
-        mux.animation_at = now_ms();
-        assert!(mux.animation_deadline().is_some());
-        mux.disconnect_host();
-        assert_eq!(mux.animation_deadline(), None);
-        assert!(!mux.needs_render());
-    }
-
-    #[test]
-    fn an_animation_frame_is_drawn_with_the_chrome_and_once_it_is_due() {
-        let Ticked {
-            mut mux,
-            on,
-            frames,
-            draws,
-        } = ticker();
-        on.set(true);
-        // The first frame is due at once.
-        mux.animation_at = 0;
-        assert!(mux.needs_render());
-        mux.render().unwrap();
-        assert_eq!((frames.get(), draws.get()), (1, 1));
-        assert!(mux.take_output().contains(&b'~'));
-        assert_eq!(
-            mux.animation_deadline(),
-            Some(mux.animation_at + ANIMATION_MS)
-        );
-        // Until the next is due, a frame drawn for another reason draws none.
-        mux.animation_at = now_ms() + 60_000;
-        assert!(!mux.needs_render());
-        mux.shared.title_changed.set(true);
-        mux.render().unwrap();
-        assert_eq!(frames.get(), 1);
-        // A frame that draws the chrome draws the animation after it.
-        mux.invalidate_chrome();
-        mux.render().unwrap();
-        assert_eq!((frames.get(), draws.get()), (2, 2));
-        mux.animation_at = 0;
-        mux.render().unwrap();
-        assert_eq!((frames.get(), draws.get()), (3, 2));
-    }
-
-    #[test]
-    fn the_screen_is_cleared_when_the_animation_ends() {
-        let Ticked { mut mux, on, .. } = ticker();
-        on.set(true);
-        mux.render().unwrap();
-        mux.take_output();
-        on.set(false);
-        assert_eq!(mux.animation_deadline(), None);
-        mux.render().unwrap();
-        let out = mux.take_output();
-        assert!(String::from_utf8_lossy(&out).contains("\x1b[2J"));
-        assert!(!out.contains(&b'~'));
     }
 
     #[test]

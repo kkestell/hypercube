@@ -27,7 +27,6 @@ use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
 use crate::store::{self, Agent};
-use crate::tesseract::{Canvas, SHADES, Tesseract};
 use crate::{config, signals, workspace};
 use libghostty_vt::unicode;
 
@@ -108,8 +107,8 @@ const DIVIDER: u32 = 1;
 /// Where each pane goes, below the header and above the bar in the last row.
 /// The first pane, the orchestrator's, takes the share `split.0` of
 /// `split.0 + split.1` of the columns after reserving the divider, rounded
-/// down, even when alone. The other panes, the workers, stack in the
-/// remaining columns. Each `panes` entry after the first has the worker's
+/// down, or all the columns when alone. The other panes, the workers, stack
+/// in the remaining columns. Each `panes` entry after the first has the worker's
 /// weight, or `None` while it is collapsed to its label row. Every pane has a
 /// label row above it, and every expanded worker at least one row; the rows
 /// left after those go to the expanded workers by weight. A collapsed worker
@@ -125,10 +124,13 @@ pub fn layout(
         return Some(Vec::new());
     };
     let wide = cols.saturating_sub(DIVIDER);
-    if wide < 2 {
+    let left = if rest.is_empty() {
+        cols
+    } else if wide < 2 {
         return None;
-    }
-    let left = (wide * split.0 / (split.0 + split.1).max(1)).clamp(1, wide - 1);
+    } else {
+        (wide * split.0 / (split.0 + split.1).max(1)).clamp(1, wide - 1)
+    };
     let mut layout = vec![(
         first,
         Rect {
@@ -212,28 +214,11 @@ pub struct TeamChrome {
     pub bar: Rc<RefCell<Bar>>,
     /// The workspace's colors.
     pub palette: Rc<Cell<Palette>>,
-    /// The tesseract beside a lone orchestrator.
-    pub cube: Cube,
 }
-
-/// The tesseract, and what of it is on the screen.
-#[derive(Default)]
-pub struct Cube {
-    shape: Tesseract,
-    /// The cells drawn last, `None` while the screen may hold anything else
-    /// in their place.
-    drawn: Option<Canvas>,
-}
-
-/// How dark the nearest and farthest shades of the tesseract are, as shares
-/// of the way from the accent to black.
-const NEAREST_SHADE: f32 = 0.25;
-const FARTHEST_SHADE: f32 = 0.6;
 
 impl Chrome for TeamChrome {
     fn draw(&mut self, out: &mut Vec<u8>, panes: &[PaneView<'_>], size: Winsize) {
         let palette = self.palette.get();
-        self.cube.drawn = None;
         if let Some(overlay) = &*self.overlay.borrow() {
             overlay.draw(out, size, palette);
             return;
@@ -254,18 +239,11 @@ impl Chrome for TeamChrome {
             &format!(" {} {}", icons::HEADER, self.workspace),
             "",
         );
-        // The divider follows the orchestrator unless it fills the width.
-        if let Some(first) = shown.first()
-            && first.rect.col + first.rect.cols < size.ws_col
-        {
+        if let [first, _, ..] = shown.as_slice() {
             let col = u32::from(first.rect.col + first.rect.cols);
             s.push_str(&colors::fg(palette.line));
             for row in 1..u32::from(size.ws_row).saturating_sub(1) {
                 s.push_str(&format!("{}┃", at(row, col)));
-            }
-            // Alone, the orchestrator's title turns down into the divider.
-            if shown.len() == 1 {
-                s.push_str(&format!("{}┓", at(1, col)));
             }
         }
         for p in &shown {
@@ -290,79 +268,6 @@ impl Chrome for TeamChrome {
         self.bar.borrow().draw(&mut s, size, palette);
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
-    }
-
-    fn animated(&self, panes: &[PaneView<'_>], size: Winsize) -> bool {
-        self.cube_area(panes, size).is_some()
-    }
-
-    /// Draw the tesseract's cells that differ from the last frame, or all of
-    /// them after the chrome was drawn.
-    fn animate(&mut self, out: &mut Vec<u8>, panes: &[PaneView<'_>], size: Winsize, now: i64) {
-        let Some(area) = self.cube_area(panes, size) else {
-            return;
-        };
-        let palette = self.palette.get();
-        let canvas = self
-            .cube
-            .shape
-            .draw(area.cols, area.rows, now as f64 / 1000.0);
-        let last = self
-            .cube
-            .drawn
-            .take()
-            .filter(|last| (last.cols(), last.rows()) == (canvas.cols(), canvas.rows()));
-        let mut s = String::new();
-        let mut shade = None;
-        for y in 0..area.rows {
-            // The cursor is already at the cell after one just drawn.
-            let mut next = None;
-            for x in 0..area.cols {
-                let cell = canvas.cell(x, y);
-                if last.as_ref().is_some_and(|last| last.cell(x, y) == cell) {
-                    continue;
-                }
-                if next != Some(x) {
-                    s.push_str(&at(u32::from(area.row + y), u32::from(area.col + x)));
-                }
-                next = Some(x + 1);
-                if cell.dots != 0 && shade != Some(cell.shade) {
-                    shade = Some(cell.shade);
-                    let depth = f32::from(cell.shade) / f32::from(SHADES - 1);
-                    let rgb = colors::mix(
-                        palette.line,
-                        colors::BLACK,
-                        NEAREST_SHADE + depth * (FARTHEST_SHADE - NEAREST_SHADE),
-                    );
-                    s.push_str(&colors::fg(rgb));
-                }
-                s.push(cell.glyph());
-            }
-        }
-        if !s.is_empty() {
-            s.push_str("\x1b[0m");
-        }
-        out.extend_from_slice(s.as_bytes());
-        self.cube.drawn = Some(canvas);
-    }
-}
-
-impl TeamChrome {
-    /// The empty area right of the divider while the orchestrator is alone
-    /// with the screen to itself, from the header to the bar.
-    fn cube_area(&self, panes: &[PaneView<'_>], size: Winsize) -> Option<Rect> {
-        let [only] = panes else { return None };
-        if self.zoomed.get().is_some() || self.overlay.borrow().is_some() || self.help.get() {
-            return None;
-        }
-        let col = only.rect.col + only.rect.cols + DIVIDER as u16;
-        let area = Rect {
-            col,
-            row: 1,
-            cols: size.ws_col.saturating_sub(col),
-            rows: size.ws_row.saturating_sub(2),
-        };
-        (only.rect.rows > 0 && only.rect.cols > 0 && area.cols > 0 && area.rows > 0).then_some(area)
     }
 }
 
@@ -808,7 +713,6 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         help: Rc::clone(&help),
         bar: Rc::clone(&bar),
         palette: Rc::clone(&palette),
-        cube: Cube::default(),
     };
     let mut host = Host {
         exe,
@@ -1718,10 +1622,14 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_orchestrator_keeps_its_half_of_the_columns() {
+    fn a_lone_orchestrator_fills_the_area_between_the_header_and_the_bar() {
         assert_eq!(
             rects(layout(size(80, 24), &even(1), EVEN)),
-            [rect(0, 2, 39, 21)]
+            [rect(0, 2, 80, 21)]
+        );
+        assert_eq!(
+            rects(layout(size(80, 24), &even(1), (1, 3))),
+            [rect(0, 2, 80, 21)]
         );
         assert_eq!(layout(size(80, 24), &[], EVEN), Some(Vec::new()));
     }
@@ -1825,8 +1733,8 @@ mod tests {
         // A column for the divider, and one for each pane.
         assert!(layout(size(2, 24), &even(2), EVEN).is_none());
         assert!(layout(size(3, 24), &even(2), EVEN).is_some());
-        assert!(layout(size(2, 24), &even(1), EVEN).is_none());
-        assert!(layout(size(3, 24), &even(1), EVEN).is_some());
+        assert!(layout(size(0, 24), &even(1), EVEN).is_none());
+        assert!(layout(size(1, 24), &even(1), EVEN).is_some());
     }
 
     #[test]
@@ -1908,7 +1816,6 @@ mod tests {
             help: Rc::default(),
             palette: Rc::default(),
             bar: Rc::default(),
-            cube: Cube::default(),
         }
     }
 
@@ -1935,118 +1842,16 @@ mod tests {
     }
 
     #[test]
-    fn a_lone_orchestrator_has_a_divider_its_title_turns_into() {
+    fn a_lone_orchestrator_has_a_label_row_and_no_divider() {
         let layout = rects(layout(size(20, 5), &even(1), EVEN));
         let panes = [view(1, "orch", layout[0], true, None)];
         let screen = draw_with(&mut chrome(), &panes, 20, 5);
         let rows: Vec<String> = (1..4).map(|y| screen.row(y)).collect();
-        let side = format!("{}┃{}", " ".repeat(9), " ".repeat(10));
+        let blank = " ".repeat(20);
         assert_eq!(
             rows,
-            [format!("━ orch ━━┓{}", " ".repeat(10)), side.clone(), side]
+            [format!("━ orch {}", "━".repeat(13)), blank.clone(), blank]
         );
-    }
-
-    /// The chrome of a lone orchestrator on a screen of `cols` by `rows`, with
-    /// its pane's view, drawn and then animated at `now`.
-    fn lone_cube(cols: u16, rows: u16, now: i64) -> (TeamChrome, Rect, Screen) {
-        let rect = rects(layout(size(cols, rows), &even(1), EVEN))[0];
-        let mut chrome = chrome();
-        let mut out = Vec::new();
-        let panes = [view(1, "orch", rect, true, None)];
-        chrome.draw(&mut out, &panes, size(cols, rows));
-        chrome.animate(&mut out, &panes, size(cols, rows), now);
-        let mut terminal = Terminal::new(cols, rows).unwrap();
-        terminal.vt_write(&out);
-        (chrome, rect, Screen(terminal))
-    }
-
-    fn is_braille(c: char) -> bool {
-        ('\u{2800}'..='\u{28ff}').contains(&c)
-    }
-
-    #[test]
-    fn the_tesseract_fills_the_area_right_of_the_divider_in_the_accents_shades() {
-        let (cols, rows) = (60, 20);
-        let (_, rect, screen) = lone_cube(cols, rows, 3000);
-        let left = rect.col + rect.cols + 1;
-        let accent = Palette::default().line;
-        let mut drawn = 0;
-        for y in 0..rows {
-            for (x, c) in (0..).zip(screen.row(y).chars()) {
-                let inside = x >= left && (1..rows - 1).contains(&y);
-                assert!(inside || !is_braille(c), "braille at {x},{y}");
-                if !is_braille(c) {
-                    continue;
-                }
-                drawn += 1;
-                let StyleColor::Rgb(RgbColor { r, g, b }) = fg(&screen, x, y) else {
-                    panic!("no color at {x},{y}");
-                };
-                let near = |c: u8, accent: u8| {
-                    c <= accent && f32::from(c) >= 0.2 * f32::from(accent) - 1.0
-                };
-                assert!(near(r, accent.0) && near(g, accent.1) && near(b, accent.2));
-            }
-        }
-        assert!(drawn > 40, "{drawn} cells");
-    }
-
-    #[test]
-    fn an_animation_frame_draws_only_the_cells_that_changed() {
-        let (cols, rows) = (60, 20);
-        let rect = rects(layout(size(cols, rows), &even(1), EVEN))[0];
-        let panes = [view(1, "orch", rect, true, None)];
-        let mut chrome = chrome();
-        let mut frame = |now| {
-            let mut out = Vec::new();
-            chrome.animate(&mut out, &panes, size(cols, rows), now);
-            out
-        };
-        let first = frame(3000);
-        let again = frame(3000);
-        let next = frame(3040);
-        assert!(!first.is_empty());
-        assert!(again.is_empty());
-        assert!(!next.is_empty() && next.len() < first.len());
-        assert!(next.ends_with(b"\x1b[0m"));
-    }
-
-    #[test]
-    fn the_tesseract_is_drawn_only_while_the_orchestrator_has_the_screen_alone() {
-        let animated = |chrome: &TeamChrome, n| {
-            let rects = rects(layout(size(60, 20), &even(n), EVEN));
-            let labels = ["a", "b", "c"];
-            let panes: Vec<PaneView> = (1..=n)
-                .map(|i| {
-                    view(
-                        i,
-                        labels[i as usize - 1],
-                        rects[i as usize - 1],
-                        i == 1,
-                        None,
-                    )
-                })
-                .collect();
-            chrome.animated(&panes, size(60, 20))
-        };
-        let chrome = chrome();
-        assert!(animated(&chrome, 1));
-        assert!(!animated(&chrome, 2));
-        chrome.zoomed.set(Some(PaneId(1)));
-        assert!(!animated(&chrome, 1));
-        chrome.zoomed.set(None);
-        chrome.help.set(true);
-        assert!(!animated(&chrome, 1));
-        chrome.help.set(false);
-        assert!(animated(&chrome, 1));
-        // No pane is shown, or no area is left.
-        assert!(!chrome.animated(&[view(1, "a", Rect::default(), true, None)], size(60, 20)));
-        assert!(!chrome.animated(
-            &[view(1, "a", rect(0, 2, 80, 21), true, None)],
-            size(80, 24)
-        ));
-        assert!(!chrome.animated(&[], size(60, 20)));
     }
 
     #[test]

@@ -3,8 +3,7 @@
 the scheduled tasks of agents/plans/2026-10-28-003-scheduled-tasks.md.
 
 Mirrors host.rs (layout, TeamChrome, draw_label, draw_row), bar.rs,
-overlay.rs, and the planned tasklist.rs. Pane contents are blank, and the
-tesseract beside a lone orchestrator is left out. A thin gray border drawn
+overlay.rs, and the planned tasklist.rs. Pane contents are blank. A thin gray border drawn
 outside the canvas shows where it ends. `--icons` picks a set from ICONS.
 
 The workers cycle through the states in WORKERS, so a few of them show every
@@ -194,7 +193,7 @@ def layout(cols, rows, workers):
     """Each pane's (col, row, cols, rows), the label row above `row`. `workers`
     holds whether each is collapsed. Mirrors host::layout with even weights."""
     area_rows = rows - 2
-    left = (cols - 1) // 2
+    left = (cols - 1) // 2 if workers else cols
     rects = [(0, 2, left, area_rows - 1)]
     expanded = [w for w in workers if not w]
     extras = iter(shares(area_rows - len(workers) - len(expanded), [1] * len(expanded)))
@@ -316,8 +315,6 @@ def draw(args):
         left = first[0] + first[2]
         for row in range(1, rows - 1):
             c.put(row, left, "┃", divider)
-        if len(panes) == 1:
-            c.put(1, left, "┓", divider)
     for i, (pane, rect) in enumerate(zip(panes, rects)):
         col, top, width, height = rect
         if not width:

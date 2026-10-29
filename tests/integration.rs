@@ -29,6 +29,8 @@ use terminal::{contains, host_replies, winsize};
 
 const HYPERCUBE: &str = env!("CARGO_BIN_EXE_hypercube");
 const HARNESS: &str = env!("CARGO_BIN_EXE_hypercube-test-harness");
+/// The splash's hint in the last row.
+const SPLASH_HINT: &str = " Ctrl-b c new workspace";
 const NUDGE: &str = "Check your Hypercube messages.";
 /// The user's terminal. A pane's program gets the rows below its label.
 const COLS: u16 = 120;
@@ -315,11 +317,20 @@ impl Fixture {
     }
 
     /// Run `hypercube` in a terminal and wait for the orchestrator's stand-in.
-    /// Every start after the first waits for its latest launch.
+    /// With no workspace running, start the repository's workspace on the
+    /// splash. Every start after the first waits for its latest launch.
     fn start(&mut self) {
         assert!(self.session.is_none());
         let launches = self.agent_events("orchestrator", "launch").len();
+        let splash = self.run(&["running"]).stdout.is_empty();
         self.session = Some(self.client());
+        if splash {
+            self.wait_screen(SPLASH_HINT);
+            self.type_text("\x02c");
+            let prompt = format!("workspace path: {}", self.repo.display());
+            self.wait_screen(&prompt);
+            self.type_text("\r");
+        }
         self.wait("the orchestrator to start", |fx| {
             (fx.agent_events("orchestrator", "ready").len() > launches).then_some(())
         });
@@ -725,9 +736,9 @@ fn first_start_lays_out_one_pane() {
         fx.state_path().to_str().unwrap()
     );
     assert_eq!(launch["env"]["TERM"], "xterm-256color");
-    // The pane takes half the columns, and every row but the header, title,
-    // and bar.
-    assert_eq!(fx.size("orchestrator"), [59, u64::from(ROWS) - 3]);
+    // The pane takes every column, and every row but the header, title, and
+    // bar.
+    assert_eq!(fx.size("orchestrator"), [COLS.into(), u64::from(ROWS) - 3]);
 
     let events = fx.agent_events("orchestrator", "hook");
     let facts = &hook_contexts(&events, "SessionStart")[0];
@@ -749,9 +760,10 @@ fn first_start_lays_out_one_pane() {
         lines[0].starts_with(&format!(" \u{f07c} {dir}")),
         "{screen}"
     );
-    // The title turns down into the divider right of the pane.
-    assert!(lines[1].trim_end().ends_with("━┓"), "{screen}");
-    assert_eq!(lines[2].trim_end().chars().nth(59), Some('┃'), "{screen}");
+    // The title runs the pane's width, with no divider.
+    assert!(lines[1].starts_with("━ orchestrator ━"), "{screen}");
+    assert!(lines[1].trim_end().ends_with(" main ━"), "{screen}");
+    assert!(!screen.contains('┃') && !screen.contains('┓'), "{screen}");
     // The bar lists the workspace, the only one running.
     assert_eq!(
         lines[usize::from(ROWS) - 1].trim_end(),
@@ -1007,8 +1019,8 @@ fn remove_agent_closes_the_pane() {
 
     fx.wait_gone(&[pid]);
     fx.wait_no_screen("\u{e725} w1");
-    // The orchestrator keeps its half of the terminal.
-    assert_eq!(fx.size("orchestrator"), [59, 37]);
+    // The orchestrator alone takes the whole terminal.
+    fx.wait_size("orchestrator", [COLS.into(), 37]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(!fx.worktree("w1").exists());
     assert_eq!(fx.git(&fx.repo, &["branch", "--list", "hypercube/w1"]), "");
@@ -1298,7 +1310,7 @@ fn unsupported_harness_does_not_stop_startup() {
     assert!(!is_error, "{text}");
     assert_eq!(text, "Removed old (old00001).");
     fx.wait_no_screen("old · \u{f071}");
-    assert_eq!(fx.size("orchestrator"), [59, u64::from(ROWS) - 3]);
+    fx.wait_size("orchestrator", [COLS.into(), u64::from(ROWS) - 3]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap());
 }
@@ -1767,6 +1779,81 @@ fn the_overlay_switches_between_workspaces() {
     fx.type_text("x");
     fx.wait_host_exit();
     fx.wait_gone(&pids);
+}
+
+/// Whether `screen` has braille dots, as the splash's tesseract draws.
+fn has_braille(screen: &str) -> bool {
+    screen
+        .chars()
+        .any(|c| ('\u{2801}'..='\u{28ff}').contains(&c))
+}
+
+#[test]
+fn the_splash_shows_while_no_workspace_runs_and_ctrl_b_c_starts_one() {
+    let mut fx = Fixture::new();
+    fx.session = Some(fx.client());
+    fx.wait_screen(SPLASH_HINT);
+    fx.wait("the tesseract", |fx| {
+        has_braille(&fx.screen()).then_some(())
+    });
+    assert!(fx.run(&["running"]).stdout.is_empty());
+    assert!(fx.status().is_none());
+
+    // The prompt starts with the working directory, and Esc closes it.
+    let prompt = format!("workspace path: {}", fx.repo.display());
+    fx.type_text("\x02c");
+    fx.wait_screen(&prompt);
+    fx.type_text("\x1b");
+    fx.wait_no_screen("workspace path:");
+    fx.wait_screen(SPLASH_HINT);
+
+    // A path that isn't a directory shows its error.
+    fx.type_text("\x02c/nonexistent-hypercube\r");
+    fx.wait_screen("/nonexistent-hypercube: No such file or directory");
+    assert!(fx.run(&["running"]).stdout.is_empty());
+
+    // Enter starts the workspace at the path and attaches to it.
+    fx.type_text("\x02c\r");
+    fx.wait_event("orchestrator", "ready", 1);
+    fx.wait_screen(" 0 repo");
+    assert!(!has_braille(&fx.screen()));
+    assert_eq!(fx.status().unwrap()[1], "running");
+    fx.stop();
+}
+
+#[test]
+fn the_splash_starts_the_workspace_of_a_path_typed_after_the_working_directory() {
+    let mut fx = Fixture::new();
+    fs::create_dir(fx.repo.join("sub")).unwrap();
+    fx.session = Some(fx.client());
+    fx.wait_screen(SPLASH_HINT);
+    // The path after the working directory is inside the checkout.
+    fx.type_text("\x02c/sub\r");
+    fx.wait_event("orchestrator", "ready", 1);
+    fx.wait_screen(" 0 repo");
+    assert_eq!(
+        fx.state().agent("orchestrator").unwrap().dir,
+        fx.repo.to_str().unwrap()
+    );
+    fx.stop();
+}
+
+#[test]
+fn ctrl_b_d_and_ctrl_c_exit_the_splash() {
+    let mut fx = Fixture::new();
+    for keys in ["\x02d", "\x03", "\x02c\x03"] {
+        fx.session = Some(fx.client());
+        fx.wait_screen(SPLASH_HINT);
+        assert!(!canonical(fx.session()));
+        fx.type_text(keys);
+        let code = fx.wait("the client to exit", |fx| fx.session().exited());
+        assert_eq!(code, 0, "{keys:?}");
+        let session = fx.session.take().unwrap();
+        assert!(canonical(&session), "{keys:?}");
+        assert!(session.text().ends_with("\x1b[?1049l"), "{keys:?}");
+        session.end();
+        assert!(fx.run(&["running"]).stdout.is_empty());
+    }
 }
 
 #[test]
