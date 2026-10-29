@@ -30,13 +30,21 @@ impl Colors {
 pub const BLACK: Rgb = (0, 0, 0);
 const WHITE: Rgb = (255, 255, 255);
 
-/// The dot in an agent's title or workspace's tab while waiting for a tool
-/// approval.
-pub const ATTENTION: Rgb = (255, 70, 70);
+/// Each of these colors means one thing wherever it is drawn.
+///
+/// Waiting for the user: the bell in an agent's title or after a workspace's
+/// tab while it waits for a tool approval.
+pub const ATTENTION: Rgb = (240, 170, 40);
+/// An error: a harness that failed to start, or a program that exited.
+pub const ERROR: Rgb = (230, 80, 70);
+/// Running: a running workspace's icon in the overlay.
+pub const RUNNING: Rgb = (110, 190, 90);
+/// Idle or stopped: a stopped workspace's icon in the overlay.
+pub const QUIET: Rgb = (140, 140, 140);
 
 /// The accents, in the order Ctrl-b a cycles through them: blue, teal,
-/// green, amber, orange, red, pink, and purple.
-pub const ACCENTS: [Rgb; 8] = [
+/// green, amber, orange, red, pink, purple, and gray.
+pub const ACCENTS: [Rgb; 9] = [
     (70, 160, 220),
     (40, 180, 170),
     (100, 180, 80),
@@ -45,6 +53,7 @@ pub const ACCENTS: [Rgb; 8] = [
     (220, 80, 80),
     (220, 90, 170),
     (150, 110, 220),
+    (160, 160, 160),
 ];
 
 /// The colors of the chrome, all shades of one accent.
@@ -57,6 +66,9 @@ pub struct Palette {
     /// The header, the bar, and the title rows of the overlay and the list
     /// of keys: the accent lightened nearly to white on the accent darkened.
     pub bar: Colors,
+    /// The selected row of the overlay: the bar's text on the accent darkened
+    /// less than the bar.
+    pub selected: Colors,
 }
 
 impl Palette {
@@ -69,6 +81,10 @@ impl Palette {
             bar: Colors {
                 fg: mix(accent, WHITE, 0.85),
                 bg: mix(accent, BLACK, 0.78),
+            },
+            selected: Colors {
+                fg: mix(accent, WHITE, 0.85),
+                bg: mix(accent, BLACK, 0.55),
             },
         }
     }
@@ -105,6 +121,7 @@ mod tests {
         assert_eq!(p.text, (144, 198, 234));
         assert_eq!(p.bar.fg, (227, 241, 250));
         assert_eq!(p.bar.bg, (15, 35, 48));
+        assert_eq!(p.selected.bg, (32, 72, 99));
         assert_eq!(mix(p.bar.fg, p.bar.bg, 0.4), (142, 159, 169));
         assert_eq!(mix(p.bar.fg, p.bar.bg, 0.55), (110, 128, 139));
         assert_eq!(Palette::of(ACCENTS.len() + 1), Palette::of(1));

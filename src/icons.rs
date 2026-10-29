@@ -19,9 +19,7 @@ pub const EXITED: char = '\u{f057}';
 /// Before the error of an agent whose harness failed to start
 /// (nf-fa-warning).
 pub const FAILED: char = '\u{f071}';
-/// Marks the current workspace in the overlay (nf-fa-circle).
-pub const CURRENT: char = '\u{f111}';
-/// Before a running workspace's state in the overlay (nf-fa-play).
+/// Starts a running workspace's row in the overlay (nf-fa-play).
 pub const RUNNING: char = '\u{f04b}';
-/// Before a stopped workspace's state in the overlay (nf-fa-stop).
+/// Starts a stopped workspace's row in the overlay (nf-fa-stop).
 pub const STOPPED: char = '\u{f04d}';

@@ -372,18 +372,18 @@ fn at(row: u32, col: u32) -> String {
 }
 
 /// What to note about a pane after its name: an icon while it fills the pane
-/// area, the exit status once its program has exited, and how many rows its
-/// view is scrolled up.
-fn notes(p: &PaneView, zoomed: bool) -> Vec<String> {
+/// area, the exit status once its program has exited, in the error color, and
+/// how many rows its view is scrolled up.
+fn notes(p: &PaneView, zoomed: bool) -> Vec<(String, Option<colors::Rgb>)> {
     let mut notes = Vec::new();
     if zoomed {
-        notes.push(icons::ZOOMED.to_string());
+        notes.push((icons::ZOOMED.to_string(), None));
     }
     if let Some(status) = p.status {
-        notes.push(format!("{} {status}", icons::EXITED));
+        notes.push((format!("{} {status}", icons::EXITED), Some(colors::ERROR)));
     }
     if p.scrolled > 0 {
-        notes.push(format!("↑{}", p.scrolled));
+        notes.push((format!("↑{}", p.scrolled), None));
     }
     notes
 }
@@ -395,7 +395,8 @@ fn arrow_col(rect: Rect) -> u16 {
 }
 
 /// An agent's label row above its pane, across the pane's width, with the name
-/// at the left, bold when focused, a red attention bell if it fits, and notes.
+/// at the left, bold when focused, a harness's failure to start in the error
+/// color, an attention bell if it fits, and notes.
 /// A worker beside the divider has an arrow before its name, pointing right
 /// while it is collapsed and down while it is not.
 /// The detail goes at the right end unless the row is too narrow for it. The
@@ -412,13 +413,33 @@ fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palet
     } else {
         format!(" {}", p.label)
     };
-    let name_width = text_width(&left);
-    let dot = attention && name_width + 2 <= usize::from(p.rect.cols.saturating_sub(2));
-    if dot {
-        left.push_str(&format!(" {}", icons::ATTENTION));
+    // Parts of the text drawn in their own color: where each starts, in
+    // columns from the start of the text, the part, and its color.
+    let mut spans = Vec::new();
+    let failed = format!(" · {}", icons::FAILED);
+    if let Some(i) = left.find(&failed) {
+        let start = i + " · ".len();
+        spans.push((
+            text_width(&left[..start]),
+            left[start..].to_string(),
+            colors::ERROR,
+        ));
     }
-    for note in notes(p, zoomed) {
-        left.push_str(&format!(" · {note}"));
+    let name_width = text_width(&left);
+    if attention && name_width + 2 <= usize::from(p.rect.cols.saturating_sub(2)) {
+        left.push_str(&format!(" {}", icons::ATTENTION));
+        spans.push((
+            name_width + 1,
+            icons::ATTENTION.to_string(),
+            colors::ATTENTION,
+        ));
+    }
+    for (note, color) in notes(p, zoomed) {
+        left.push_str(" · ");
+        if let Some(color) = color {
+            spans.push((text_width(&left), note.clone(), color));
+        }
+        left.push_str(&note);
     }
     left.push(' ');
     let style = RowStyle {
@@ -440,17 +461,22 @@ fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palet
         p.rect.cols,
     );
     draw_row(s, &style, pos, p.focused, &left, &right);
-    if dot {
-        // Recolor the dot without including SGR bytes in the row's width.
+    // Recolor the spans, as much of each as the row shows, without including
+    // SGR bytes in the row's width.
+    let shown = text_width(&fit(&left, p.rect.cols.saturating_sub(2)));
+    for (start, text, color) in spans {
+        let Some(room) = shown.checked_sub(start).filter(|&room| room > 0) else {
+            continue;
+        };
         s.push_str(&format!(
             "{}{}{}{}",
             at(
                 u32::from(p.rect.row) - 1,
-                u32::from(p.rect.col) + name_width as u32 + 2
+                u32::from(p.rect.col) + 1 + start as u32
             ),
-            colors::fg(colors::ATTENTION),
+            colors::fg(color),
             if p.focused { "\x1b[1m" } else { "" },
-            icons::ATTENTION,
+            fit(&text, u16::try_from(room).unwrap_or(u16::MAX)),
         ));
     }
 }
@@ -2264,6 +2290,23 @@ mod tests {
         chrome.attention.borrow_mut().clear();
         let screen = draw_with(&mut chrome, &panes, 80, 12);
         assert!(!screen.row(1).contains('\u{f0f3}'));
+    }
+
+    #[test]
+    fn title_failures_and_exit_statuses_are_drawn_in_the_error_color() {
+        let layout = rects(layout(size(80, 12), &even(2), EVEN));
+        let label = format!("w1 · {} boom", icons::FAILED);
+        let panes = [
+            view(1, "orch", layout[0], true, None),
+            view(2, &label, layout[1], false, Some(127)),
+        ];
+        let screen = draw_with(&mut chrome(), &panes, 80, 12);
+        let row = screen.row(1);
+        let x = |c| row.chars().position(|r| r == c).unwrap() as u16;
+        for c in [icons::FAILED, 'b', icons::EXITED, '7'] {
+            assert_eq!(fg(&screen, x(c), 1), rgb(colors::ERROR), "{c}");
+        }
+        assert_ne!(fg(&screen, x('w'), 1), rgb(colors::ERROR));
     }
 
     #[test]

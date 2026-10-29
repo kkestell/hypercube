@@ -1,7 +1,7 @@
 //! The workspace bar: the bottom row of the screen, which numbers every
 //! running workspace in the order its host started. Ctrl-b and a workspace's
 //! number switch the terminal to it. Ctrl-b c turns the bar into a prompt
-//! for the path of a workspace to switch to, starting it if need be. A red dot
+//! for the path of a workspace to switch to, starting it if need be. An amber bell
 //! marks a workspace with an agent waiting for a tool approval.
 
 use std::error::Error;
@@ -167,9 +167,9 @@ impl Bar {
     }
 
     /// Draw the bar across the last row in the bar colors: the prompt while
-    /// it is open, or numbered workspace tabs joined by dim ` | ` separators.
-    /// The host's own tab is bold, other tabs are dimmed, and a red dot follows
-    /// the name of each workspace with an agent waiting for an approval.
+    /// it is open, or numbered workspace tabs joined by dim ` · ` separators.
+    /// The host's own tab is bold, other tabs are dimmed, and an amber bell
+    /// follows the name of each workspace with an agent waiting for an approval.
     pub fn draw(&self, s: &mut String, size: Winsize, palette: Palette) {
         let (cols, row) = (size.ws_col, size.ws_row);
         if row == 0 {
@@ -209,7 +209,7 @@ impl Bar {
                     }
                     .sgr(),
                 );
-                s.push_str(" | ");
+                s.push_str(" · ");
             }
             let current = e.path == self.current;
             let text = if current {
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn the_bar_numbers_the_workspaces_and_marks_the_current_one() {
         let t = screen(&bar(&["foo", "bar", "glarpy"], "bar"), 30);
-        assert_eq!(row(&t), " 0 foo | 1 bar | 2 glarpy     ");
+        assert_eq!(row(&t), " 0 foo · 1 bar · 2 glarpy     ");
         assert!((0..9).all(|x| !bold(&t, x)));
         assert!((9..14).all(|x| bold(&t, x)));
         assert!((14..30).all(|x| !bold(&t, x)));
@@ -380,12 +380,12 @@ mod tests {
     }
 
     #[test]
-    fn a_red_dot_marks_a_workspace_waiting_for_an_approval() {
+    fn a_bell_marks_a_workspace_waiting_for_an_approval() {
         let mut b = bar(&["foo", "bar"], "bar");
         b.entries[0].attention = true;
         b.entries[1].attention = true;
         let t = screen(&b, 20);
-        assert_eq!(row(&t), " 0 foo \u{f0f3} | 1 bar \u{f0f3}  ");
+        assert_eq!(row(&t), " 0 foo \u{f0f3} · 1 bar \u{f0f3}  ");
         let point = |x| Point::Active(PointCoordinate { x, y: 1 });
         let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
             StyleColor::Rgb(c) => (c.r, c.g, c.b),
@@ -436,8 +436,8 @@ mod tests {
     #[test]
     fn only_the_workspaces_that_fit_are_shown() {
         let b = bar(&["foo", "bar", "glarpy"], "foo");
-        assert_eq!(row(&screen(&b, 25)), " 0 foo | 1 bar | 2 glarpy");
-        assert_eq!(row(&screen(&b, 24)), " 0 foo | 1 bar          ");
+        assert_eq!(row(&screen(&b, 25)), " 0 foo · 1 bar · 2 glarpy");
+        assert_eq!(row(&screen(&b, 24)), " 0 foo · 1 bar          ");
         assert_eq!(row(&screen(&b, 6)), " 0 foo");
         assert_eq!(row(&screen(&b, 5)), "     ");
     }

@@ -225,12 +225,20 @@ shades from one accent color: the accent itself for the divider and the
 titles' lines, the accent mixed 40% toward white for the agents' names and
 details, and for the header, the bar, and the title rows of the overlay and
 the list of keys, the accent mixed 85% toward white on the accent mixed 78%
-toward black. The accent is one of the eight in `colors::ACCENTS`, numbered
+toward black, and for the overlay's selected row, the same text on the accent
+mixed 55% toward black. The accent is one of the nine in `colors::ACCENTS`,
+the last of them gray, numbered
 by the state's `accent` field. A new workspace takes the accent that the
 other running workspaces use least, the first of those in `ACCENTS`. Ctrl-b a
 moves the
 workspace to the next one, wrapping around, writes it to the state, and
 redraws.
+
+Four colors in `colors.rs` keep one meaning wherever they are drawn:
+`ATTENTION`, amber, for an agent or workspace waiting for a tool approval;
+`ERROR`, red, for a harness that failed to start or a program that exited;
+`RUNNING`, green, for a running workspace; and `QUIET`, gray, for a stopped
+one.
 
 The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 `icons.rs`, each followed by a space. `TeamChrome` draws:
@@ -241,11 +249,12 @@ The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 - Each agent's label row across its pane's full width. The left end has one
   space, for a worker beside the divider a chevron and a space, pointing down
   while expanded and right while collapsed, and the agent's name, bold for
-  the focused pane, followed by a red bell while the agent waits for a tool
+  the focused pane, followed by an `ATTENTION` bell while the agent waits for a tool
   approval, only if the bell fits, then the expand icon while the pane fills
   the area, the exit icon and the status once the pane's program has exited
   and is not relaunched, the warning icon and the error for an agent whose
-  harness did not start, and "↑N" while its view is scrolled N rows up. Each
+  harness did not start, both in `ERROR`, and "↑N" while its view is
+  scrolled N rows up. Each
   note after the name follows ` · `. The right end has, followed by one
   space, the branch icon and the branch (without its `hypercube/` prefix for
   a worker), or the folder icon and the directory with the home directory
@@ -283,12 +292,12 @@ no client the host has no wake-up for it.
 
 `bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification
-time of its host lock), with one leading space and ` | ` between tabs:
-` 0 foo | 1 bar | 2 glarpy`. Each tab has the name of its checkout's directory
+time of its host lock), with one leading space and ` · ` between tabs:
+` 0 foo · 1 bar · 2 glarpy`. Each tab has the name of its checkout's directory
 after its number. All tabs share the bar's background: the current workspace's
 text is the bar's foreground and bold, other tabs' text is mixed 40% toward
 the background, and separators are mixed 55% toward the background and not
-bold. A red bell follows the name while an agent of the
+bold. An `ATTENTION` bell follows the name while an agent of the
 workspace waits for a tool approval, until the approval is answered (see
 [harness support](harness-support.md)). It shows as many as fit, whole. A click
 on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
@@ -360,10 +369,11 @@ columns.
 Ctrl-b s opens the overlay. While it is open, the host lays every pane out
 hidden, so the panes keep their sizes, and `TeamChrome` draws the overlay across the
 whole screen: a title row, a row for each workspace with a state file, most
-recently active first, and the keys in the last row. Each workspace row shows
-its directory, running or stopped after a play or stop icon, its number of
-agents and of busy agents, and its last activity; the host's own workspace is
-marked with a filled circle. The list is
+recently active first, and the keys in the last row. Each workspace row starts
+with a play icon in `RUNNING` while the workspace runs, or a stop icon in
+`QUIET` while it is stopped, then shows its directory, bold for the host's own
+workspace, its number of agents and of busy agents, and its last activity. The
+selected row is drawn in the palette's selection colors. The list is
 read again every second while the overlay is open.
 
 The mux captures input while the overlay is open (see Input). The keys:

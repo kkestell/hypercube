@@ -5,7 +5,7 @@
 use std::error::Error;
 use std::path::{Path, PathBuf};
 
-use crate::colors::Palette;
+use crate::colors::{self, Palette, Rgb};
 use crate::host::{self, fit};
 use crate::icons;
 use crate::mux::Winsize;
@@ -13,7 +13,6 @@ use crate::store;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
-const SELECTED: &str = "\x1b[0;7m";
 const ERROR: &str = "\x1b[0;31m";
 pub(crate) const HELP: &str = "\x1b[0;2m";
 
@@ -148,7 +147,9 @@ impl Overlay {
     }
 
     /// Draw the overlay over the whole screen: a title row, a row for each
-    /// workspace, and the error or the keys in the last row.
+    /// workspace, and the error or the keys in the last row. A workspace's
+    /// row starts with its state's icon in the state's color, and the current
+    /// workspace's name is bold.
     pub fn draw(&self, out: &mut Vec<u8>, size: Winsize, palette: Palette) {
         let (cols, rows) = (size.ws_col, usize::from(size.ws_row));
         if rows == 0 {
@@ -169,28 +170,25 @@ impl Overlay {
         // Scroll the list to keep the selection in view.
         let first = self.selected.saturating_sub(list.saturating_sub(1));
         for (i, r) in self.rows.iter().enumerate().skip(first).take(list) {
-            let mark = if r.path == self.current {
-                icons::CURRENT
-            } else {
-                ' '
-            };
             let state = if r.running {
-                format!("{} running", icons::RUNNING)
+                (icons::RUNNING, colors::RUNNING)
             } else {
-                format!("{} stopped", icons::STOPPED)
+                (icons::STOPPED, colors::QUIET)
             };
             let agents = if r.agents == 1 { "agent" } else { "agents" };
             let gap = " ".repeat(width - host::text_width(&r.name));
-            let text = format!(
-                " {mark} {}{gap}  {state}  {} {agents}, {} busy  {}",
-                r.name, r.agents, r.busy, r.active
+            let rest = format!(
+                "{gap}  {} {agents}, {} busy  {}",
+                r.agents, r.busy, r.active
             );
-            let (style, text) = if i == self.selected {
-                (SELECTED, pad(&text, cols))
-            } else {
-                ("", text)
+            let row = ListRow {
+                state,
+                name: &r.name,
+                current: r.path == self.current,
+                rest: &rest,
+                selected: i == self.selected,
             };
-            line(&mut s, 1 + i - first, style, &text);
+            row.draw(&mut s, 1 + i - first, cols, palette);
         }
         s.push_str(&format!("\x1b[{};1H\x1b[0J", 2 + self.rows.len().min(list)));
         if rows > 1 {
@@ -210,6 +208,52 @@ impl Overlay {
     }
 }
 
+/// A row of a list of workspaces or teams: a state's icon in the state's
+/// color, then a name, bold for the current one, then the rest of the row.
+/// The selected row is drawn in the palette's selection colors across the
+/// whole width.
+pub(crate) struct ListRow<'a> {
+    pub state: (char, Rgb),
+    pub name: &'a str,
+    pub current: bool,
+    pub rest: &'a str,
+    pub selected: bool,
+}
+
+impl ListRow<'_> {
+    /// Draw the row at `row`, from 0, cut to `cols` columns.
+    pub fn draw(&self, s: &mut String, row: usize, cols: u16, palette: Palette) {
+        let bg = self.selected.then_some(palette.selected.bg);
+        let color = |fg: Rgb| match bg {
+            Some(bg) => colors::Colors { fg, bg }.sgr(),
+            None => colors::fg(fg),
+        };
+        let text = match bg {
+            Some(_) => palette.selected.sgr(),
+            None => "\x1b[0m".to_string(),
+        };
+        let bold = if self.current { "\x1b[1m" } else { "" };
+        let (icon, state) = self.state;
+        s.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[2K", row + 1));
+        let mut room = cols;
+        for (style, part) in [
+            (text.clone(), " ".to_string()),
+            (color(state), icon.to_string()),
+            (text.clone(), " ".to_string()),
+            (format!("{text}{bold}"), self.name.to_string()),
+            (text.clone(), self.rest.to_string()),
+        ] {
+            let part = fit(&part, room);
+            room -= host::text_width(&part) as u16;
+            s.push_str(&format!("{style}{part}"));
+        }
+        if bg.is_some() {
+            s.push_str(&format!("{text}{}", " ".repeat(usize::from(room))));
+        }
+        s.push_str("\x1b[0m");
+    }
+}
+
 /// `text` with spaces after it to fill `cols` columns, for a row with a
 /// background.
 pub(crate) fn pad(text: &str, cols: u16) -> String {
@@ -225,6 +269,7 @@ pub(crate) fn pad(text: &str, cols: u16) -> String {
 mod tests {
     use super::*;
     use libghostty_vt::Terminal;
+    use libghostty_vt::style::StyleColor;
     use libghostty_vt::terminal::{Point, PointCoordinate};
 
     fn row(name: &str, running: bool) -> Row {
@@ -293,19 +338,30 @@ mod tests {
             lines,
             [
                 " Workspaces",
-                "   ~/src/foo  \u{f04b} running  3 agents, 1 busy  2m ago",
-                " \u{f111} ~/src/bar  \u{f04d} stopped  3 agents, 1 busy  2m ago",
+                " \u{f04b} ~/src/foo  3 agents, 1 busy  2m ago",
+                " \u{f04d} ~/src/bar  3 agents, 1 busy  2m ago",
                 "",
                 "",
                 " ↑↓ move  enter switch  x stop  d detach  esc close",
             ]
         );
-        let inverse = |x, y| {
+        let style = |x, y| {
             let point = Point::Active(PointCoordinate { x, y });
-            t.grid_ref(point).unwrap().style().unwrap().inverse
+            t.grid_ref(point).unwrap().style().unwrap()
         };
-        assert!(inverse(1, 2) && inverse(59, 2));
-        assert!(!inverse(1, 1));
+        let rgb = |c| match c {
+            StyleColor::Rgb(c) => (c.r, c.g, c.b),
+            other => panic!("color {other:?}"),
+        };
+        let selected = Palette::default().selected;
+        assert_eq!(rgb(style(1, 1).fg_color), colors::RUNNING);
+        assert_eq!(rgb(style(1, 2).fg_color), colors::QUIET);
+        assert_eq!(rgb(style(1, 2).bg_color), selected.bg);
+        assert_eq!(rgb(style(3, 2).fg_color), selected.fg);
+        assert_eq!(rgb(style(59, 2).bg_color), selected.bg);
+        assert!(matches!(style(3, 1).bg_color, StyleColor::None));
+        assert!(style(3, 2).bold && style(11, 2).bold && !style(12, 2).bold);
+        assert!(!style(3, 1).bold);
     }
 
     #[test]
@@ -315,9 +371,9 @@ mod tests {
         let o = overlay(vec![wide], "foo");
         let (_, lines) = screen(&o, 11, 3);
         // Spacer cells read as blanks.
-        assert_eq!(lines[1], " \u{f111} 界 界 界 e\u{301}x");
+        assert_eq!(lines[1], " \u{f04b} 界 界 界 e\u{301}x");
         let (_, lines) = screen(&o, 8, 3);
-        assert_eq!(lines[1], " \u{f111} 界 界");
+        assert_eq!(lines[1], " \u{f04b} 界 界");
     }
 
     #[test]

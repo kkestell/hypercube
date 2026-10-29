@@ -374,14 +374,10 @@ impl Fixture {
         self.wait_screen(&dir);
         let screen = self.screen();
         let lines: Vec<&str> = screen.lines().collect();
-        let row = |text: &str| lines.iter().position(|l| l.contains(text)).unwrap();
-        let current = lines
-            .iter()
-            .position(|l| l.starts_with(" \u{f111} "))
-            .unwrap();
-        let target = row(&dir);
-        let key = if target > current { "j" } else { "k" };
-        self.type_text(&key.repeat(target.abs_diff(current)));
+        let target = lines.iter().position(|l| l.contains(&dir)).unwrap();
+        // The selection stops at the first row, below the title.
+        self.type_text(&"k".repeat(lines.len()));
+        self.type_text(&"j".repeat(target - 1));
     }
 
     /// The process ID the workspace's host wrote into its lock.
@@ -1698,7 +1694,7 @@ fn the_overlay_switches_between_workspaces() {
     fx.select_workspace(&other);
     let screen = fx.screen();
     assert!(
-        screen.contains("running") && screen.contains("stopped"),
+        screen.contains(" \u{f04b} ") && screen.contains(" \u{f04d} "),
         "{screen}"
     );
     fx.type_text("\r");
@@ -1722,18 +1718,18 @@ fn the_overlay_switches_between_workspaces() {
 
     // The bar numbers the running workspaces in the order their hosts
     // started, and Ctrl-b and a number switches to one.
-    fx.wait_screen(" 0 first | 1 repo");
+    fx.wait_screen(" 0 first · 1 repo");
     fx.type_text("\x021");
     fx.wait_no_screen("\u{e725} w1");
     fx.type_text("\x020");
-    fx.wait_screen(" 0 first | 1 repo");
+    fx.wait_screen(" 0 first · 1 repo");
     fx.wait_screen("\u{e725} w1");
     // Ctrl-b ( and ) step along the bar, wrapping around.
     fx.type_text("\x02(");
-    fx.wait_screen(" 0 first | 1 repo");
+    fx.wait_screen(" 0 first · 1 repo");
     fx.wait_no_screen("\u{e725} w1");
     fx.type_text("\x02)");
-    fx.wait_screen(" 0 first | 1 repo");
+    fx.wait_screen(" 0 first · 1 repo");
     fx.wait_screen("\u{e725} w1");
 
     // x stops the other workspace. While its teardown is held, this host
@@ -1757,7 +1753,13 @@ fn the_overlay_switches_between_workspaces() {
     });
     fx.type_text("\x02s");
     fx.wait_screen("Workspaces");
-    fx.wait_screen("stopped  1 agent");
+    fx.wait("the overlay to show the other workspace stopped", |fx| {
+        let screen = fx.screen();
+        let stopped = screen
+            .lines()
+            .any(|l| l.starts_with(" \u{f04d} ") && l.contains("1 agent"));
+        stopped.then_some(())
+    });
     // Esc closes the overlay, and x on this workspace ends the client.
     fx.type_text("\x1b");
     fx.wait_no_screen("Workspaces");
@@ -1789,7 +1791,7 @@ fn ctrl_b_c_switches_to_a_new_workspace_at_a_typed_path() {
     fs::create_dir(fx.repo.join("sub")).unwrap();
     fx.type_text("\x02c../second/sub\x7fb\r");
     fx.wait_event("orchestrator", "ready", 1);
-    fx.wait_screen(" 0 repo | 1 second");
+    fx.wait_screen(" 0 repo · 1 second");
     let second = fx.repo.clone();
     fx.wait_screen(second.to_str().unwrap());
     assert!(host::running(&fx.state_path()).unwrap());

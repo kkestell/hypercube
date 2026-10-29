@@ -3,15 +3,17 @@
 ## Goal
 
 The orchestrator creates, changes, lists, and deletes scheduled tasks through
-MCP tools. A task has a name, a cron schedule, and a prompt. Each task has its
+MCP tools. A task has a name, a cron schedule, a prompt, and the profile its
+orchestrator runs with. Each task has its
 own orchestrator, the task orchestrator, with one persistent harness session:
 every time the task fires, its prompt reaches that same session as a message,
 the way any message wakes an idle agent. The task orchestrator can create
 workers, which belong to the task's team. The header shows how many tasks the
-workspace has and how many are running. Ctrl-b t opens a list of the
-workspace's teams, the main team and one per task; Enter views the selected
-team's panes, the task orchestrator and its workers, in place of the main
-team's, and the same list goes back.
+workspace has, how many are running, and which teams out of view wait for a
+tool approval. Ctrl-b t opens the team list: the main team, then the team of
+each task under "Scheduled"; Enter views the selected team's panes, the task
+orchestrator and its workers, in place of the main team's, and the same list
+goes back. The workspace overlay counts the main team's agents and the tasks.
 
 ## Overview
 
@@ -44,7 +46,7 @@ flowchart LR
   first slot's branch detail), `TeamChrome::draw` (the header row through
   `draw_row`, whose right text is unused), `toggle_overlay`, `close_screens`,
   `serve` (the loop's deadlines and events).
-- `src/overlay.rs` — the workspace overlay, the pattern for the task list:
+- `src/overlay.rs` — the workspace overlay, the pattern for the team list:
   rows, selection, `key` returning an action, `draw` over the whole screen.
 - `src/mux.rs` — `Notice`, `Prefixed::typed`, the prefix handling around
   L1610 that toggles capture for `Overlay` and `Help`, `add_pane`'s
@@ -73,8 +75,11 @@ flowchart LR
   with role `orchestrator` and `task == task.id`; there is no second link.
 - **The task orchestrator.** Named after the task, so the main orchestrator
   can `send_message` it by the task's name, which is also how to run a task
-  now. It uses `config.orchestrator`'s harness, model, and effort, works in
-  the checkout on the checkout's branch like the main orchestrator, and its
+  now. It runs with the harness, model, and effort of the profile
+  `create_task` names, saved on the agent as a worker's are, so a session
+  restart keeps them and later changes to `config.json` do not. The profile
+  is fixed for the task's life, since the task orchestrator keeps one harness
+  session. It works in the checkout on the checkout's branch like the main orchestrator, and its
   workers get worktrees from HEAD as usual. Like the main orchestrator, it
   starts idle with no prompt and resumes its saved session on every launch.
   A task orchestrator that fails to launch gets a failed pane like a worker;
@@ -90,7 +95,7 @@ flowchart LR
   relaunch's harness fails to start, and in `add_failed`. `launch` and
   `relaunch` set `start_activity` before spawning, as now, which replaces
   it, and a dead program runs no hooks to overwrite it. So the state alone
-  says which agents are running, and the scheduler, the header, the task
+  says which agents are running, and the scheduler, the header, the team
   list, and `list_tasks` agree.
 - **Cron schedule.** Five fields, minute hour day-of-month month day-of-week,
   in local time. Each field takes `*`, a number, `a-b`, `*/s`, `a-b/s`, and
@@ -123,15 +128,21 @@ flowchart LR
   `Message from schedule:` followed by the prompt. `send_message` cannot send
   to `schedule`, since it is no agent.
 - **Tools.** Every agent's tool list gains:
-  - `create_task(name, schedule, prompt)`: validates the name with
-    `valid_name` and against existing agents, and the schedule; adds the task
+  - `create_task(name, schedule, prompt, profile)`: all four required. The
+    `profile` schema is the enum of profile names, as in `create_agent`'s,
+    and its description tells the agent to use the profile the user names
+    and otherwise to choose one suited to the task, read from the profiles'
+    descriptions, harnesses, models, and efforts. It validates the name with
+    `valid_name` and against existing agents, the schedule, and the profile
+    against the current `config.json`; adds the task
     and its orchestrator in one update; asks the host to `launch` the
     orchestrator with an empty prompt. A failed launch rolls back as in
     `create_agent`: close the pane, then forget the agent and the task.
-  - `update_task(name, schedule?, prompt?)`: changes the given fields.
+  - `update_task(name, schedule?, prompt?)`: changes the given fields. It
+    takes no profile.
   - `list_tasks()`: each task's id, name, schedule, prompt, whether it is
-    running, idle, or failed, its last run (`store::ago`, or "never"), and
-    its agents.
+    running, idle, or failed, its last run (`store::ago`, or "never"), its
+    orchestrator's harness, model, and effort, and its agents.
   - `delete_task(name)`: refuses while the task's team has workers, naming
     them. Otherwise it closes the task orchestrator's pane, then in one
     update checks again for workers, since the task orchestrator may have
@@ -174,21 +185,39 @@ flowchart LR
   When the viewed task's last pane is removed, the host views the main team.
 - **Header.** The left text is the directory, followed by ` › <task name>`
   while a task is viewed. The right text, when the workspace has tasks, is
-  `N task(s), M running`. `read_bar` reads the counts and the viewed task's
-  name from the state it already loads every second, and refreshes every
-  orchestrator's branch detail, not just the first slot's.
-- **Task list.** Ctrl-b t (`Prefixed::Tasks`, `Notice::Tasks`,
-  `Event::Tasks`) opens or closes it and toggles capture as Ctrl-b s does. It
-  is a full-screen view in the overlay's style, `tasklist::TaskList`: a title
-  row ` Tasks`, a first row for the main team named `orchestrator`, then one
-  row per task in creation order with its name, schedule, `running`,
-  `idle`, or `failed`, its agent count, its last run, and a red `●` while one of its
-  agents waits for a tool approval; the viewed team is marked `*`. It opens
-  with the main team selected while a task is viewed, and the first task
-  selected otherwise, so Ctrl-b t Enter goes back and forth. Up/Down or k/j
-  move, Enter views the selected team and closes the list, Esc or Ctrl-b t
-  closes it. It is read again every second while open. The task list, the
+  `<clock> N task(s), M running`, then ` · <team> <bell>` for each team other
+  than the viewed one with an agent waiting for a tool approval, the main
+  team first as `main`, then tasks in creation order. The bell is drawn in
+  `colors::ATTENTION`. `read_bar` reads the counts, the viewed task's name,
+  and the waiting teams from the state it already loads every second, and
+  refreshes every orchestrator's branch detail, not just the first slot's.
+  The bar's attention bell after a workspace's tab already counts every agent
+  in the state, so it covers task teams unchanged.
+- **Team list.** Ctrl-b t (`Prefixed::Teams`, `Notice::Teams`,
+  `Event::Teams`) opens or closes it and toggles capture as Ctrl-b s does. It
+  is a full-screen view in the overlay's style, `teamlist::TeamList`, drawn
+  like the overlay's rows: each row starts with its state icon in its state
+  color, then the name, bold for the viewed team, and the selected row is
+  drawn in `Palette::selected`. A title row ` Teams`; a row for the main team
+  named `main` with its agent count; a blank row; a dim ` Scheduled` row; then
+  one row per task in creation order with its name, schedule, agent count,
+  and last run, the columns aligned. The state icons are `icons::RUNNING` in
+  `colors::RUNNING` while the team is running, `icons::IDLE` in
+  `colors::QUIET` while idle, and `icons::FAILED` in `colors::ERROR` while
+  failed; there is no state text. A row ends with an `icons::ATTENTION` bell
+  in `colors::ATTENTION` while one of its team's agents waits for a tool
+  approval. The main team is running while any of its agents is busy and
+  idle otherwise. It opens with the main team selected while a task is
+  viewed, and the first task selected otherwise, so Ctrl-b t Enter goes back
+  and forth. Up/Down or k/j move over the team rows, skipping the section
+  row, Enter views the selected team and closes the list, Esc or Ctrl-b t
+  closes it. It is read again every second while open. The team list, the
   workspace overlay, the list of keys, and the prompt each close the others.
+- **Workspace overlay.** A workspace's agent and busy counts are its main
+  team's. While it has tasks, a column after them reads
+  `<clock> N task(s), M running`, and rows without tasks leave it blank,
+  keeping the last active column aligned. Tasks are not rows of the overlay;
+  the team list switches between teams.
 
 ## Test plan
 
@@ -206,9 +235,11 @@ flowchart LR
   fired.
 - `store`: a state without `tasks` or `task` loads; `main_orchestrator`
   ignores task orchestrators.
-- `mcp`: `create_task` rejects a bad name, a taken name, a bad schedule, and a
-  caller other than the main orchestrator, changing nothing; it launches the
-  task orchestrator in the checkout with the task's ID; it rolls back the
+- `mcp`: `create_task` rejects a bad name, a taken name, a bad schedule, a
+  missing or unknown profile, and a caller other than the main orchestrator,
+  changing nothing; its `profile` schema is the enum of profile names; it
+  launches the task orchestrator in the checkout with the task's ID and the
+  profile's harness, model, and effort; it rolls back the
   agent and task when the host refuses. `update_task` changes only the given
   fields. `delete_task` refuses while workers remain, keeps the task when a
   worker appears between its check and its update, and otherwise closes the
@@ -221,9 +252,14 @@ flowchart LR
   task; `format` writes a message from `schedule` as `Message from schedule:`.
 - `mux`: a background pane is not focused by `add_pane`, `focus_next`, or
   `release_focus`, and `set_background` on the focused pane drops the focus.
-- `host`: the header shows the task counts and the viewed task's name.
-- `tasklist`: keys move, view, and close; the initial selection follows the
-  view; drawing shows the rows, the `*`, and the `●`.
+- `host`: the header shows the task counts, the viewed task's name, and the
+  waiting teams other than the viewed one.
+- `teamlist`: keys move, skipping the section row, view, and close; the
+  initial selection follows the view; drawing shows the main row, the
+  section, the task rows, the state icons in their colors, the bold viewed
+  team, and the bell.
+- `overlay`: the agent counts are the main team's, and the task column shows
+  only for workspaces with tasks.
 - Integration: the main orchestrator's stand-in calls `create_task`; the
   header shows `1 task, 0 running`; Ctrl-b t then Enter shows the task
   orchestrator's pane alone; its stand-in's `create_agent` adds a worker shown
@@ -246,16 +282,19 @@ flowchart LR
 - `src/mcp.rs`: the four task tools, their schemas and descriptions; teams in
   `create_agent`, `remove_agent`, and `list_agents`.
 - `src/bar.rs`: `running` uses `main_orchestrator`.
+- `src/overlay.rs`: main team counts and the task column.
+- `src/icons.rs`: `IDLE` (nf-fa-pause) and `TASKS` (nf-fa-clock_o).
 - `src/mux.rs`: `add_pane`'s `background`, `set_background`, and the focus
-  rules; `Prefixed::Tasks` on
-  `t`, `Notice::Tasks`, toggling capture.
-- `src/runtime.rs`: `Event::Tasks`.
-- `src/tasklist.rs` (new): `TaskList` with `load`, `reload`, `key`, and
-  `draw`, and its `Action`. Declare it in `src/lib.rs`.
+  rules; `Prefixed::Teams` on
+  `t`, `Notice::Teams`, toggling capture.
+- `src/runtime.rs`: `Event::Teams`.
+- `src/teamlist.rs` (new): `TeamList` with `load`, `reload`, `key`, and
+  `draw`, and its `Action`, drawing its rows through the overlay's row
+  drawing. Declare it in `src/lib.rs`.
 - `src/host.rs`: `Slot::task`, `Host::view`, `view_team`, writing `EXITED`
   in `relaunch` and `add_failed`, team-aware
   `prepare` ordering, `start`, `launch`, `lay_out`, and `finish_close`; the
-  task list's toggle, keys, refresh, and place among the full-screen views;
+  team list's toggle, keys, refresh, and place among the full-screen views;
   the minute check and `fire_tasks`; the header's text in `TeamChrome`.
 - `src/help.rs`: add `Ctrl-b t`.
 - `tests/integration.rs`: the scheduled task test above.
@@ -263,9 +302,11 @@ flowchart LR
 ## Documentation updates
 
 - `docs/architecture.md`: a "Scheduled tasks" section (teams, firing,
-  running, viewing, the task list); the state file's tasks and agents' task;
-  the header's text; Ctrl-b t in the keys and in Input's prefix list;
-  `Event::Tasks`; background panes under Panes; the message format for
+  running, viewing, the team list); the state file's tasks and agents' task;
+  the header's text; the overlay's task column; Ctrl-b t in the keys and in
+  Input's prefix list; `Event::Teams`; background panes under Panes; the message format for
   `schedule`; the four tools.
-- `AGENTS.md`: `src/schedule.rs` and `src/tasklist.rs` in the layout, and
+- `docs/configuration.md`: profiles are given to workers and to task
+  orchestrators, and `create_task` takes one as `profile`.
+- `AGENTS.md`: `src/schedule.rs` and `src/teamlist.rs` in the layout, and
   tasks in the integration tests' description.
