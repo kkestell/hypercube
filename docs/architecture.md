@@ -58,21 +58,22 @@ The state directory also holds `opencode-plugin/index.js`.
    process ID into the file. A workspace is running while that lock is held,
    and the kernel releases it however the host ends. If another host holds
    it, the new host exits with an error.
-2. It readies the state: on the first run it creates the orchestrator; it
-   sets `no_git` outside Git, sets the orchestrator's branch, marks it idle,
+2. It readies the state: on the first run it creates the default team's
+   orchestrator; it puts agents without a team in the default team, sets
+   `no_git` outside Git, sets the orchestrators' branch, marks them idle,
    and marks the workers busy.
 3. It removes a socket file left by an earlier host and listens on the
    control socket. It ignores SIGHUP and ends on SIGINT and SIGTERM.
 4. On the first attach, which supplies the terminal's size and its replies to
    the color queries, it launches each agent in its own pane, the
-   orchestrator first. Saved sessions resume, and workers start with the
+   orchestrators first. Saved sessions resume, and workers start with the
    prompt `Check your Hypercube messages.`, so they pick up messages queued
-   while they were down. If the orchestrator fails to launch, the session
-   ends with the error. A worker that fails to launch gets a pane without a
-   program, with the failure icon and the error in its label and the error in the
-   pane, marked exited with status 127 so the focus skips it, and keeps it
-   until `remove_agent` closes it. Agents that don't fit in the terminal
-   still launch; their panes are hidden until it grows.
+   while they were down. If the default team's orchestrator fails to launch,
+   the session ends with the error. Any other agent that fails to launch gets
+   a pane without a program, with the failure icon and the error in its label
+   and the error in the pane, marked exited with status 127 so the focus
+   skips it, and keeps it until it is removed. Agents that don't fit in the
+   terminal still launch; their panes are hidden until it grows.
 5. It serves until the session ends.
 
 The loop is single-threaded: `Runtime::wait` polls the panes, the attached
@@ -254,8 +255,8 @@ and hides the others. A hidden pane has an empty rectangle: it is not drawn,
 takes no mouse input (a press it had captured ends there), and keeps its
 size, so its program sees no resize. The host zooms the focused pane on
 Ctrl-b z. It restores the normal layout when the key is pressed again, when
-the focus changes, when a pane is added, and once a closed pane has melted
-away. The host resizing keeps the zoom.
+the focus changes, when a pane is added to the viewed team, and once a closed
+pane of the viewed team has melted away. The host resizing keeps the zoom.
 
 `TeamChrome` draws in the workspace's palette, which `colors::Palette`
 shades from one accent color: the accent itself for the divider and the
@@ -270,17 +271,22 @@ purple. Ctrl-b a moves the workspace to the next one, wrapping around, writes
 it to the state, and redraws.
 
 Four colors in `colors.rs` keep one meaning wherever they are drawn:
-`ATTENTION`, amber, for an agent or workspace waiting for a tool approval;
-`ERROR`, red, for a harness that failed to start or a program that exited;
-`RUNNING`, green, for a running workspace; and `QUIET`, gray, for a stopped
-one.
+`ATTENTION`, amber, for an agent, team, or workspace waiting for a tool
+approval; `ERROR`, red, for a harness that failed to start, a program that
+exited, or a team whose orchestrator exited; `RUNNING`, green, for a running
+workspace or busy team; and `QUIET`, gray, for a stopped workspace or idle
+team.
 
 The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 `icons.rs`, each followed by a space. `TeamChrome` draws:
 
 - The header across the first row: one space, the open folder icon, and the
   workspace's directory, with the home directory written as `~`, clipped to
-  fit.
+  fit. While the workspace has more than one team, ` › ` and the viewed
+  team's name follow. At the right end, followed by one space, each other
+  team with an agent waiting for a tool approval is listed as its name and
+  an `ATTENTION` bell, in `State::teams` order, joined by ` · `. The list is
+  dropped when it doesn't fit beside the left text.
 - Each agent's label row across its pane's full width. The left end has one
   space, for a worker beside the divider a chevron and a space, pointing down
   while expanded and right while collapsed, and the agent's name, bold for
@@ -314,7 +320,8 @@ workspace waits for a tool approval, until the approval is answered (see
 [harness support](harness-support.md)). It shows as many as fit, whole. A click
 on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
 the leading space or separators do nothing. The host reads the list, the
-current agents' attention flags, and the orchestrator's branch on each attach
+current agents' and teams' attention flags, and the orchestrators' branch on
+each attach
 and every second while a client is attached, redrawing when any changes.
 It reads the checkout's `HEAD` file rather than spawning Git; a detached
 HEAD drops the branch detail in favor of the directory. Ctrl-b and a digit
@@ -354,6 +361,7 @@ The keys and the mouse (see Input):
   - z zooms the focused pane, or restores the layout.
   - [ and PageUp scroll the focused pane up a page.
   - s opens the workspace overlay, or closes it.
+  - t opens the team list, or closes it.
   - a digit switches to the workspace with that number in the bar.
   - ( and ) switch to the previous and next workspace in the bar, wrapping
     around.
@@ -369,9 +377,9 @@ The keys and the mouse (see Input):
   keys go on as usual and leave the prefix waiting. A Kitty key with Shift is
   taken as its shifted key, or without one reported, as the character Shift
   gives it on a US keyboard. The prefix works while the overlay, the list of
-  keys, or the prompt is open too, where o, z, [, PageUp, and Ctrl-b do
-  nothing. The overlay, the list of keys, and the prompt each close the
-  others.
+  keys, the team list, or the prompt is open too, where o, z, [, PageUp, and
+  Ctrl-b do nothing. The overlay, the list of keys, the team list, and the
+  prompt each close the others.
 
 Labels are clipped to whole grapheme clusters, measured in
 columns.
@@ -404,6 +412,68 @@ The mux captures input while the overlay is open (see Input). The keys:
 
 A failed switch or stop shows its error in the last row until the next key.
 
+### Teams
+
+A workspace holds one or more teams. Each agent's `team` field names its
+team. A team is its orchestrator, the agent with role `orchestrator` and that
+team, and the workers whose `team` matches. Every workspace has the team
+`default`, whose orchestrator is named `orchestrator` and is created on the
+first run. Every other team's orchestrator has the team's name. A team's name
+is lowercase letters, digits, and hyphens, and no other team or agent has it.
+Every orchestrator runs with `config.orchestrator`'s harness, model, and
+effort in the checkout, on the checkout's branch, so the teams share the
+checkout. `State::teams` lists the teams in the order of their orchestrators:
+`default` first, then the others in the order they were created.
+
+The tools act within the caller's team. `create_agent` puts the new worker in
+the calling orchestrator's team, `remove_agent` removes only workers of the
+caller's team, and `list_agents` lists the caller's team. `send_message`
+reaches any agent in the workspace. SessionStart lists the agent's own team,
+and while the workspace has other teams, an orchestrator's also names each
+other team's orchestrator with its ID. Worker names are unique across the
+workspace, since worktrees and branches are named after workers.
+
+The host shows one team at a time, the viewed team, and starts every session
+viewing `default`. Every other team's agents keep running in background panes:
+the host lays each team out as `host::layout` would place it if it were
+viewed, at the terminal's size, so its programs run at the size they will be
+shown at, then hides its panes. A background pane is never focused: Ctrl-b
+o, a melt, and an exit move the focus only among the viewed team's panes.
+Bells and notifications from background panes still reach the terminal.
+Viewing a team ends any zoom, puts every other team's panes in the
+background, focuses the team's first live pane, and lays the panes out. The
+divider's split is shared by all teams, and the workers' weights and
+collapsed state are each team's own. A team with only its orchestrator lays
+out as a lone orchestrator does.
+
+Ctrl-b t opens the team list, drawn across the whole screen in the overlay's
+style: a title row, ` Teams`, a row for each team, and the keys in the last
+row. Each row starts with the team's state icon: the play icon in `RUNNING`
+while any of its agents is busy, the warning icon in `ERROR` while its
+orchestrator is `exited`, and the pause icon in `QUIET` otherwise. The name
+follows, bold for the viewed team, then the number of its agents, and an
+`ATTENTION` bell while one of them waits for a tool approval. The list opens
+with the viewed team selected, and is read again every second while it is
+open. The mux captures input while it is open. The keys:
+
+- Up and Down, or k and j, move the selection, stopping at the ends.
+- Enter views the selected team and closes the list.
+- n opens the prompt ` New team: ` in the last row. While it is open, typed
+  characters build the name, Backspace erases the last one, Esc closes the
+  prompt, and Enter creates the team.
+- x deletes the selected team.
+- Esc or Ctrl-b t closes the list.
+
+Creating a team adds its orchestrator to the state, launches it with an empty
+prompt, views the team, and closes the list. If the launch fails, the
+orchestrator is removed again. Deleting a team refuses the default team and a
+team with workers, naming them. Otherwise it closes the orchestrator's pane,
+then removes the orchestrator and its queued messages unless the team gained
+a worker meanwhile, in which case the orchestrator stays, without a pane,
+until the workers are removed and the team is deleted again. Deleting the
+viewed team views `default`. The orchestrator's harness session stays where
+the harness keeps it. A failure shows in the last row until the next key.
+
 ## Control socket
 
 Each connection carries one JSON request line and gets one JSON reply line,
@@ -423,14 +493,15 @@ The MCP server and `hypercube stop` find the socket from the state file's
 path. A request that finds no socket, or nothing listening on it, means no
 host is running.
 
-`launch` fails if the agent already has a pane or the terminal has no room for
-another. `launch` and `close` end any zoom.
+`launch` fails if the agent already has a pane or its team's layout has no
+room for another. `launch` and `close` of an agent in the viewed team end any
+zoom.
 
 ## State file
 
 The state file holds the agents (ID, name, role, harness, model, effort,
-directory, branch, session ID, activity, the number of the newest waiter,
-and whether it waits for a tool approval), the queued messages (sender,
+directory, branch, team, session ID, activity, the number of the newest
+waiter, and whether it waits for a tool approval), the queued messages (sender,
 recipient, text), `no_git`, and the accent color's number, `accent`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
@@ -442,7 +513,8 @@ modification time is the workspace's creation time. Every hook writes the
 state, so the state file's modification time is its last activity.
 `hypercube status` lists every workspace with a state file by last activity,
 with its directory, whether its host lock is held, its number of agents, and
-both times. A workspace's directory is its orchestrator's.
+both times. A workspace's directory is its default team's orchestrator's. An
+agent written without a team loads into the default team.
 
 A worker created without a directory has the branch `hypercube/<name>` and
 the worktree `<checkout>/.hypercube/<name>`, created from the orchestrator's
@@ -472,7 +544,7 @@ prints `No workspaces to stop.` or `No workspaces to delete.`.
 `send_message` queues a message in the state file. Hooks deliver messages to
 a busy agent:
 
-- SessionStart gives the agent its identity, team, and tools.
+- SessionStart gives the agent its identity, team, and tools (see Teams).
 - UserPromptSubmit records the session ID, marks the agent busy, and delivers
   queued messages as context.
 - PostToolUse delivers messages that arrived during the turn.
@@ -617,7 +689,7 @@ a paste, these are routed elsewhere:
   focused pane, once per press, s as `Event::Overlay`, a digit as
   `Event::Workspace(n)`, ( and ) as `Event::Step(-1)` and `Event::Step(1)`,
   c as `Event::NewWorkspace`, d as `Event::Detach`, a as `Event::Accent`,
-  and ? as `Event::Help`.
+  ? as `Event::Help`, and t as `Event::Teams`.
 - Shift-PageUp, in legacy or Kitty form, scrolls the focused pane up a page.
 - While the focused pane is scrolled, PageUp and PageDown scroll it a page,
   Up and Down a row, and Esc and q return it to the bottom. Any other key
@@ -642,7 +714,7 @@ a paste, these are routed elsewhere:
 
 `Mux::set_captured(true)` captures input: each key or escape sequence is
 reported as `Event::Key(bytes)` instead of routed, the prefix keys are still
-reported, and pastes and mouse reports are dropped. Ctrl-b s and ? turn
+reported, and pastes and mouse reports are dropped. Ctrl-b s, ?, and t turn
 capturing on, or off while captured, and Ctrl-b c turns it on, so the keys
 after them in the same read go to the host or the panes in the order they
 were typed; the caller sets capturing to match when it handles

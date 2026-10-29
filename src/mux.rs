@@ -161,6 +161,8 @@ pub enum Notice {
     Accent,
     /// Ctrl-b ? was pressed, which opens or closes the list of keys.
     Help,
+    /// Ctrl-b t was pressed, which opens or closes the team list.
+    Teams,
     /// The left button was pressed outside every pane, at this column and
     /// row.
     Click(u16, u16),
@@ -507,6 +509,9 @@ pub struct Pane {
     notifications: Notifications,
     /// How far the view was scrolled when the chrome was last drawn.
     scrolled_drawn: usize,
+    /// Whether the pane belongs to what the screen does not show, so it is
+    /// never focused.
+    background: bool,
 }
 
 impl Pane {
@@ -542,6 +547,7 @@ impl Pane {
             dirty: true,
             notifications: Notifications::default(),
             scrolled_drawn: 0,
+            background: false,
         })
     }
 
@@ -841,6 +847,12 @@ impl Pane {
         self.status.is_none() && self.melt.is_none()
     }
 
+    /// Whether the pane can take the focus: it is live and not in the
+    /// background.
+    fn focusable(&self) -> bool {
+        self.live() && !self.background
+    }
+
     fn mode(&self, mode: Mode) -> bool {
         self.terminal.mode(mode).unwrap_or(false)
     }
@@ -1080,8 +1092,8 @@ impl Mux {
     }
 
     /// Report host input as `Notice::Key`, one key or escape sequence each,
-    /// instead of routing it to the panes, or stop. Ctrl-b s, ?, and c turn
-    /// capturing on, and Ctrl-b s and ? off while captured, so input after
+    /// instead of routing it to the panes, or stop. Ctrl-b s, ?, t, and c turn
+    /// capturing on, and Ctrl-b s, ?, and t off while captured, so input after
     /// them in the same read goes where the caller will want it, and the
     /// caller sets it to match when it handles their notices. While
     /// captured, pastes
@@ -1110,11 +1122,13 @@ impl Mux {
         }
     }
 
-    /// Add a pane without a program. It is drawn once `set_layout` places
-    /// it, and focused if no other pane is.
-    pub fn add_pane(&mut self, label: &str) -> Result<PaneId> {
+    /// Add a pane without a program, in the `background` or not. It is drawn
+    /// once `set_layout` places it, and unless it is in the background,
+    /// focused if no other pane is.
+    pub fn add_pane(&mut self, label: &str, background: bool) -> Result<PaneId> {
         let id = PaneId(self.next_id);
         let mut pane = Pane::new(&self.shared, id, label)?;
+        pane.background = background;
         use_host_replies_for(&mut pane.terminal, &self.host_replies)?;
         self.next_id += 1;
         self.panes.push(pane);
@@ -1123,6 +1137,23 @@ impl Mux {
         }
         self.chrome_dirty = true;
         Ok(id)
+    }
+
+    /// Put a pane in the background, where it is never focused, or bring it
+    /// back. A focused pane put in the background loses the focus.
+    pub fn set_background(&mut self, id: PaneId, background: bool) {
+        let Some(p) = self.pane_mut(id) else { return };
+        p.background = background;
+        if background && self.focus() == Some(id) {
+            if let Some(p) = self.focused()
+                && p.mode(Mode::FOCUS_EVENT)
+            {
+                p.send(b"\x1b[O");
+            }
+            self.shared.focus.set(None);
+            self.chrome_dirty = true;
+            self.shared.title_changed.set(true);
+        }
     }
 
     /// Give a pane its program.
@@ -1433,10 +1464,10 @@ impl Mux {
                 .any(|p| p.rect.cols > 0 && p.rect.rows > 0 && (p.melting() || p.needs_render()))
     }
 
-    /// Focus a pane whose program hasn't exited, sending focus events to
-    /// the panes that ask for them.
+    /// Focus a pane whose program hasn't exited and that is not in the
+    /// background, sending focus events to the panes that ask for them.
     pub fn set_focus(&mut self, id: PaneId) {
-        if self.focus() == Some(id) || !self.pane(id).is_some_and(Pane::live) {
+        if self.focus() == Some(id) || !self.pane(id).is_some_and(Pane::focusable) {
             return;
         }
         if let Some(old) = self.focused()
@@ -1454,19 +1485,21 @@ impl Mux {
         self.shared.title_changed.set(true);
     }
 
-    /// Focus the next live pane after the focused one, in pane order.
+    /// Focus the next live pane after the focused one, in pane order,
+    /// skipping the background.
     pub fn focus_next(&mut self) {
         if let Some(index) = self.focus().and_then(|id| self.index(id)) {
             self.focus_from(index + 1);
         }
     }
 
-    /// Focus the first live pane at or after `start`, wrapping around.
+    /// Focus the first live pane at or after `start` that is not in the
+    /// background, wrapping around.
     fn focus_from(&mut self, start: usize) {
         let count = self.panes.len();
         let next = (0..count)
             .map(|step| &self.panes[(start + step) % count])
-            .find(|p| p.live() && Some(p.id) != self.focus())
+            .find(|p| p.focusable() && Some(p.id) != self.focus())
             .map(|p| p.id);
         if let Some(id) = next {
             self.set_focus(id);
@@ -1613,14 +1646,18 @@ impl Mux {
                     Prefixed::Step(n) => self.notices.push(Notice::Step(n)),
                     Prefixed::Detach => self.notices.push(Notice::Detach),
                     Prefixed::Accent => self.notices.push(Notice::Accent),
-                    // The overlay, the list of keys, and the prompt for a
-                    // path take the input that follows.
+                    // The overlay, the list of keys, the team list, and the
+                    // prompt for a path take the input that follows.
                     Prefixed::Overlay => {
                         self.notices.push(Notice::Overlay);
                         self.set_captured(!captured);
                     }
                     Prefixed::Help => {
                         self.notices.push(Notice::Help);
+                        self.set_captured(!captured);
+                    }
+                    Prefixed::Teams => {
+                        self.notices.push(Notice::Teams);
                         self.set_captured(!captured);
                     }
                     Prefixed::NewWorkspace => {
@@ -2176,6 +2213,8 @@ enum Prefixed {
     Accent,
     /// ?: open or close the list of keys.
     Help,
+    /// t: open or close the team list.
+    Teams,
     /// o: focus the next live pane.
     FocusNext,
     /// z: zoom the focused pane, or restore the layout.
@@ -2200,6 +2239,7 @@ impl Prefixed {
             Some('d') => Prefixed::Detach,
             Some('a') => Prefixed::Accent,
             Some('?') => Prefixed::Help,
+            Some('t') => Prefixed::Teams,
             Some('o') => Prefixed::FocusNext,
             Some('z') => Prefixed::Zoom,
             Some('[') => Prefixed::Scroll,
@@ -2933,8 +2973,8 @@ mod tests {
             let mut mux = Mux::new(ws, Box::new(NoChrome));
             mux.connect_host(&[], ws).unwrap();
             let ids = [
-                mux.add_pane("left").unwrap(),
-                mux.add_pane("right").unwrap(),
+                mux.add_pane("left", false).unwrap(),
+                mux.add_pane("right", false).unwrap(),
             ];
             let rect = |col| Rect {
                 col,
@@ -3153,6 +3193,13 @@ mod tests {
                 Notice::Help
             ]
         );
+        assert_eq!(p.got(0), b"");
+        // Ctrl-b t opens the team list, and closes it while it is open.
+        p.mux.set_captured(false);
+        p.mux.input(b"\x02t");
+        assert_eq!(p.mux.take_notices(), [Notice::Teams]);
+        p.mux.input(b"\x02t");
+        assert_eq!(p.mux.take_notices(), [Notice::Teams]);
         assert_eq!(p.got(0), b"");
         // Ctrl-b [ and Ctrl-b PageUp scroll up a page.
         p.mux.set_captured(false);
@@ -3519,6 +3566,34 @@ mod tests {
         p.mux.melt_pane(left);
         assert!(p.mux.pane(left).unwrap().melting());
         assert_eq!(p.mux.take_notices(), []);
+    }
+
+    #[test]
+    fn a_background_pane_is_never_focused() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        let hidden = p.mux.add_pane("hidden", true).unwrap();
+        assert_eq!(p.mux.focus(), Some(left));
+        // Ctrl-b o and a released focus skip it.
+        p.mux.focus_next();
+        assert_eq!(p.mux.focus(), Some(right));
+        p.mux.focus_next();
+        assert_eq!(p.mux.focus(), Some(left));
+        p.mux.set_focus(hidden);
+        assert_eq!(p.mux.focus(), Some(left));
+        p.mux.mark_exited(right, 1);
+        p.mux.release_focus(left);
+        assert_eq!(p.mux.focus(), Some(left));
+
+        // Put in the background, the focused pane loses the focus, and a
+        // pane added in the background doesn't take it.
+        p.mux.set_background(left, true);
+        assert_eq!(p.mux.focus(), None);
+        p.mux.add_pane("another", true).unwrap();
+        assert_eq!(p.mux.focus(), None);
+        p.mux.set_background(hidden, false);
+        p.mux.set_focus(hidden);
+        assert_eq!(p.mux.focus(), Some(hidden));
     }
 
     #[test]

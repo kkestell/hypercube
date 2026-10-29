@@ -16,7 +16,7 @@ fn winsize(cols: u16, rows: u16, cell_px: u16) -> Winsize {
 fn one_pane(ws: Winsize) -> (Mux, PaneId) {
     let mut m = Mux::new(ws, Box::new(NoChrome));
     m.connect_host(&[], ws).unwrap();
-    let id = m.add_pane("test").unwrap();
+    let id = m.add_pane("test", false).unwrap();
     m.set_layout(&[(id, Rect::full(ws))]).unwrap();
     (m, id)
 }

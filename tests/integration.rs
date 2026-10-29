@@ -1781,6 +1781,77 @@ fn the_overlay_switches_between_workspaces() {
     fx.wait_gone(&pids);
 }
 
+#[test]
+fn the_team_list_creates_views_and_deletes_teams() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_screen("\u{e725} w1");
+
+    // Ctrl-b t lists the default team, and n, a name, and Enter create a
+    // team whose orchestrator is shown alone.
+    fx.type_text("\x02t");
+    fx.wait_screen(" Teams");
+    fx.wait_screen(" default  2 agents");
+    fx.type_text("n");
+    fx.wait_screen(" New team:");
+    fx.type_text("docs\r");
+    fx.wait_event("docs", "ready", 1);
+    fx.wait_screen(" › docs");
+    fx.wait_no_screen("\u{e725} w1");
+    fx.wait_size("docs", [COLS.into(), 37]);
+    let docs = fx.state().agent("docs").unwrap().clone();
+    assert_eq!(
+        (docs.role.as_str(), docs.team.as_str()),
+        ("orchestrator", "docs")
+    );
+    assert_eq!(Path::new(&docs.dir), fx.repo.as_path());
+    let launch = fx.agent_events("docs", "launch").remove(0);
+    assert_eq!(launch["cwd"], fx.repo.to_str().unwrap());
+
+    // The docs team's worker is shown only in its team's view.
+    let (text, is_error) = fx.call(
+        "docs",
+        "create_agent",
+        json!({"name": "writer", "profile": "fast"}),
+    );
+    assert!(!is_error, "{text}");
+    fx.wait_event("writer", "ready", 1);
+    fx.wait_screen("\u{e725} writer");
+    assert_eq!(fx.state().agent("writer").unwrap().team, "docs");
+    fx.wait_size("docs", [59, 37]);
+
+    // Selecting the default team and Enter return to its panes.
+    fx.type_text("\x02t");
+    fx.wait_screen(" Teams");
+    fx.type_text("k\r");
+    fx.wait_screen("\u{e725} w1");
+    fx.wait_no_screen("\u{e725} writer");
+    fx.wait_no_screen(" › docs");
+    fx.wait_screen(" › default");
+    // The docs team keeps running, and its approval request shows in the
+    // header.
+    fx.command("writer", "permission");
+    fx.wait_screen("docs \u{f0f3}");
+
+    // Once its worker is removed, x deletes the team.
+    let writer = fx.agent_id("writer").unwrap();
+    let pids = [fx.pid("docs"), fx.pid("writer")];
+    let (text, is_error) = fx.call("docs", "remove_agent", json!({"id": writer}));
+    assert!(!is_error, "{text}");
+    fx.wait_no_screen("docs \u{f0f3}");
+    fx.type_text("\x02t");
+    fx.wait_screen(" docs     1 agent");
+    fx.type_text("jx");
+    fx.wait_no_screen(" docs     1 agent");
+    fx.wait_gone(&pids);
+    assert_eq!(fx.state().teams(), [store::DEFAULT_TEAM]);
+    fx.type_text("\x1b");
+    fx.wait_no_screen(" Teams");
+    fx.wait_screen("\u{e725} w1");
+    assert!(!fx.screen().contains(" › "));
+}
+
 /// Whether `screen` has braille dots, as the splash's tesseract draws.
 fn has_braille(screen: &str) -> bool {
     screen

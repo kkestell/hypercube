@@ -72,7 +72,7 @@ fn round_trip(label: &str, initial: Size, records: &[Input]) -> Option<String> {
     let size = winsize(initial.cols, initial.rows);
     let mut m = Mux::new(size, Box::new(NoChrome));
     m.connect_host(&replies, size).unwrap();
-    let id = m.add_pane("test").unwrap();
+    let id = m.add_pane("test", false).unwrap();
     m.set_layout(&[(id, Rect::full(size))]).unwrap();
     let mut twin = term(initial, &replies);
     let mut host = term(initial, &replies);

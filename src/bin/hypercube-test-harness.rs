@@ -9,6 +9,8 @@
 //!
 //! - `<tag> <tool> <json arguments>` calls an MCP tool and records the result.
 //! - `exit <status>` makes the stub exit with that status.
+//! - `permission` asks for a tool approval: it runs the PermissionRequest
+//!   hook.
 //! - `hold-hup` makes the stub, once hung up, wait for the file `release` in
 //!   its directory before it exits.
 use std::collections::BTreeMap;
@@ -248,6 +250,11 @@ impl Stub {
         if let Some(status) = line.strip_prefix("exit ") {
             self.record("exit", json!({"status": status}));
             std::process::exit(status.parse().unwrap_or(1));
+        }
+        if line == "permission" {
+            self.hook("PermissionRequest", json!({"tool_name": "Bash"}));
+            self.record("permission", json!({}));
+            return;
         }
         if line == "hold-hup" {
             self.hold_hup = true;

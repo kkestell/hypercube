@@ -10,6 +10,7 @@ const KEYS: &[(&str, &str)] = &[
     ("Ctrl-b o", "focus the next pane"),
     ("Ctrl-b z", "zoom the focused pane, or restore the layout"),
     ("Ctrl-b [", "scroll the focused pane up a page"),
+    ("Ctrl-b t", "open the team list"),
     ("Ctrl-b s", "open the workspace overlay"),
     ("Ctrl-b 0-9", "switch to the workspace with that number"),
     ("Ctrl-b ( )", "switch to the previous or next workspace"),

@@ -315,6 +315,7 @@ mod tests {
     fn known(name: &str, dir: Option<&str>) -> Workspace {
         let agents = dir.map(|dir| Agent {
             role: store::ORCHESTRATOR.into(),
+            team: store::DEFAULT_TEAM.into(),
             dir: dir.into(),
             ..Agent::default()
         });

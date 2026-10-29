@@ -94,7 +94,7 @@ pub fn tools(no_git: bool, profiles: &[Profile]) -> Vec<Value> {
         ),
         tool(
             "list_agents",
-            "List the team: id, name, role, harness, activity, directory, and branch.".into(),
+            "List your team: id, name, role, harness, activity, directory, and branch.".into(),
             schema(&[], &[]),
         ),
         create,
@@ -206,9 +206,11 @@ impl Server {
             branch: &'a str,
         }
         let state = store::load(&self.state)?;
+        let caller = state.agent(&self.agent)?;
         let team: Vec<Entry> = state
             .agents
             .iter()
+            .filter(|a| a.team == caller.team)
             .map(|a| Entry {
                 id: &a.id,
                 name: &a.name,
@@ -264,7 +266,9 @@ impl Server {
             ..Agent::default()
         };
         let root = store::update(&self.state, |s| {
-            let root = PathBuf::from(&orchestrator(s, &self.agent)?.dir);
+            let caller = orchestrator(s, &self.agent)?;
+            let root = PathBuf::from(&caller.dir);
+            agent.team = caller.team.clone();
             if s.agent(name).is_ok() {
                 return Err(format!("an agent named {name} already exists").into());
             }
@@ -342,10 +346,14 @@ impl Server {
 
     fn remove_agent(&self, id: &str) -> Result<String> {
         let state = store::load(&self.state)?;
-        let root = PathBuf::from(&orchestrator(&state, &self.agent)?.dir);
+        let caller = orchestrator(&state, &self.agent)?;
+        let root = PathBuf::from(&caller.dir);
         let agent = state.agent(id)?;
         if agent.role != store::WORKER {
             return Err("only workers can be removed".into());
+        }
+        if agent.team != caller.team {
+            return Err(format!("{} is in another team", agent.name).into());
         }
         // The worktree goes first, so a refusal from Git leaves the pane open.
         if !agent.branch.is_empty() {
@@ -359,7 +367,7 @@ impl Server {
 }
 
 /// Lowercase letters, digits, and hyphens, starting with a letter or digit.
-fn valid_name(name: &str) -> bool {
+pub(crate) fn valid_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars
         .next()
@@ -1073,6 +1081,75 @@ mod tests {
             "only the orchestrator can do this"
         );
         assert_eq!(team.state().agents.len(), 2);
+    }
+
+    #[test]
+    fn tools_act_within_the_callers_team() {
+        let repo = repo();
+        let team = team(false, repo.path(), Some(repo.path()));
+        store::update(&team.state, |s| {
+            for a in &mut s.agents {
+                a.team = store::DEFAULT_TEAM.into();
+            }
+            s.agents.push(Agent {
+                id: "d".into(),
+                name: "docs".into(),
+                role: store::ORCHESTRATOR.into(),
+                team: "docs".into(),
+                dir: repo.path().to_str().unwrap().into(),
+                ..Agent::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+        let _seen = team.host(|_| Reply::ok());
+        let docs = team.as_agent("d");
+        let arguments = |args: &[(&str, &str)]| -> Map<String, Value> {
+            args.iter()
+                .map(|(k, v)| (k.to_string(), json!(v)))
+                .collect()
+        };
+
+        // A worker created by the docs team's orchestrator joins its team.
+        docs.call(
+            "create_agent",
+            &arguments(&[("name", "writer"), ("profile", "sol"), ("dir", ".")]),
+        )
+        .unwrap();
+        assert_eq!(team.state().agent("writer").unwrap().team, "docs");
+
+        // Each orchestrator lists its own team.
+        let names = |text: String| -> Vec<String> {
+            let list: Value = serde_json::from_str(&text).unwrap();
+            let list = list.as_array().unwrap().iter();
+            list.map(|a| a["name"].as_str().unwrap().to_string())
+                .collect()
+        };
+        assert_eq!(
+            names(docs.call("list_agents", &Map::new()).unwrap()),
+            ["docs", "writer"]
+        );
+        assert_eq!(
+            names(team.call("list_agents", &[]).unwrap()),
+            ["orchestrator", "w1"]
+        );
+
+        // Neither removes the other team's worker.
+        assert_eq!(
+            team.error("remove_agent", &[("id", "writer")]),
+            "writer is in another team"
+        );
+        assert_eq!(
+            docs.call("remove_agent", &arguments(&[("id", "w1")]))
+                .unwrap_err()
+                .to_string(),
+            "w1 is in another team"
+        );
+        assert_eq!(team.state().agents.len(), 4);
+        // Messages reach any team.
+        docs.call("send_message", &arguments(&[("to", "w1"), ("text", "hi")]))
+            .unwrap();
+        assert_eq!(team.state().messages[0].to, "b");
     }
 
     #[test]

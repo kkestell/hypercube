@@ -32,14 +32,17 @@ const WHITE: Rgb = (255, 255, 255);
 
 /// Each of these colors means one thing wherever it is drawn.
 ///
-/// Waiting for the user: the bell in an agent's title or after a workspace's
-/// tab while it waits for a tool approval.
+/// Waiting for the user: the bell in an agent's title, after a workspace's
+/// tab, or after a team's name while it waits for a tool approval.
 pub const ATTENTION: Rgb = (240, 170, 40);
-/// An error: a harness that failed to start, or a program that exited.
+/// An error: a harness that failed to start, a program that exited, or a
+/// team whose orchestrator exited.
 pub const ERROR: Rgb = (230, 80, 70);
-/// Running: a running workspace's icon in the overlay.
+/// Running: a running workspace's icon in the overlay, or a busy team's in
+/// the team list.
 pub const RUNNING: Rgb = (110, 190, 90);
-/// Idle or stopped: a stopped workspace's icon in the overlay.
+/// Idle or stopped: a stopped workspace's icon in the overlay, or an idle
+/// team's in the team list.
 pub const QUIET: Rgb = (140, 140, 140);
 
 /// The accents, in the order Ctrl-b a cycles through them: gray, the one a

@@ -186,6 +186,7 @@ impl Overlay {
                 name: &r.name,
                 current: r.path == self.current,
                 rest: &rest,
+                attention: false,
                 selected: i == self.selected,
             };
             row.draw(&mut s, 1 + i - first, cols, palette);
@@ -209,7 +210,8 @@ impl Overlay {
 }
 
 /// A row of a list of workspaces or teams: a state's icon in the state's
-/// color, then a name, bold for the current one, then the rest of the row.
+/// color, then a name, bold for the current one, then the rest of the row,
+/// and a bell in the attention color while it waits for a tool approval.
 /// The selected row is drawn in the palette's selection colors across the
 /// whole width.
 pub(crate) struct ListRow<'a> {
@@ -217,6 +219,7 @@ pub(crate) struct ListRow<'a> {
     pub name: &'a str,
     pub current: bool,
     pub rest: &'a str,
+    pub attention: bool,
     pub selected: bool,
 }
 
@@ -236,13 +239,18 @@ impl ListRow<'_> {
         let (icon, state) = self.state;
         s.push_str(&format!("\x1b[{};1H\x1b[0m\x1b[2K", row + 1));
         let mut room = cols;
-        for (style, part) in [
+        let mut parts = vec![
             (text.clone(), " ".to_string()),
             (color(state), icon.to_string()),
             (text.clone(), " ".to_string()),
             (format!("{text}{bold}"), self.name.to_string()),
             (text.clone(), self.rest.to_string()),
-        ] {
+        ];
+        if self.attention {
+            parts.push((text.clone(), " ".to_string()));
+            parts.push((color(colors::ATTENTION), icons::ATTENTION.to_string()));
+        }
+        for (style, part) in parts {
             let part = fit(&part, room);
             room -= host::text_width(&part) as u16;
             s.push_str(&format!("{style}{part}"));

@@ -12,7 +12,8 @@
 //! harness hook events, `wait` the waiter that wakes an idle agent when
 //! messages arrive, `control` the host's control socket protocol, `host` the
 //! background session of a workspace, `bar` its bar of running workspaces,
-//! `overlay` its workspace list, `colors` the colors of its chrome, `icons`
+//! `overlay` its workspace list, `teamlist`
+//! its list of teams, `colors` the colors of its chrome, `icons`
 //! the Nerd Font icons it draws, `splash` the client's screen while no
 //! workspace is running, `tesseract` the animation on it, and `mcp` the
 //! agents' MCP server.
@@ -38,6 +39,7 @@ pub mod signals;
 pub mod splash;
 pub mod statusline;
 pub mod store;
+pub mod teamlist;
 pub mod tesseract;
 pub mod wait;
 pub mod workspace;

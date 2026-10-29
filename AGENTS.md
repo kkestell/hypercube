@@ -82,7 +82,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/mcp.rs`: the agents' stdio MCP server and its tools.
 - `src/host.rs`: the session host, `hypercube host`: the host lock, the
   control socket, attaches, the panes, layout and chrome, the overlay's
-  actions, launches, closes, and teardown.
+  actions, the viewed team, creating and deleting teams, launches, closes,
+  and teardown.
 - `src/bar.rs`: the bar of running workspaces in the last row, its prompt
   for a new workspace's path, and its drawing.
 - `src/icons.rs`: the Nerd Font icons the chrome, the bar, and the overlay
@@ -96,13 +97,16 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
   borders without running Hypercube.
 - `src/overlay.rs`: the workspace overlay's list, keys, and drawing.
+- `src/teamlist.rs`: the team list's rows, keys, prompt for a new team's
+  name, and drawing.
 - `src/help.rs`: the list of keys Ctrl-b ? shows.
 - `src/testutil.rs`: helpers for unit tests.
 - `src/bin/hypercube-test-child.rs`: the scripted program the live tests run in
   panes.
 - `src/bin/hypercube-test-harness.rs`: the `claude` and `opencode` stand-in the
   integration tests run in panes. It runs the harness hooks and waiters,
-  serves the MCP tools on command, and records what it sees.
+  serves the MCP tools and asks for tool approvals on command, and records
+  what it sees.
 - `tests/roundtrip.rs`: feeds program output to the mux, renders frames into a
   stand-in host terminal, and compares the screens cell by cell. Inputs are the
   fixtures in `tests/support/fixtures.rs`, seeded streams from
@@ -121,8 +125,9 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `tests/integration.rs`: `hypercube` in a pty with isolated state and
   configuration, a temporary repository, and the harness stand-ins first on
   `PATH`: the splash, panes, worktrees, waking idle agents, agent relaunches,
-  zoom, detaching and attaching again, the workspace overlay, session restart,
-  `stop`, `delete`, their `--all` variants, and `status`. The client starts
+  zoom, detaching and attaching again, the workspace overlay, teams and the
+  team list, session restart, `stop`, `delete`, their `--all` variants, and
+  `status`. The client starts
   each host in the background, and the fixture stops every host it started.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision
   pins. `.cargo/config.toml` points the libghostty-vt build at it.

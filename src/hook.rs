@@ -157,8 +157,8 @@ pub fn format(state: &State, messages: &[Message]) -> String {
         .join("\n\n")
 }
 
-/// Describe the agent's place in the team. The orchestrator also gets the
-/// configured worker profiles.
+/// Describe the agent's place in its team. An orchestrator also gets the
+/// other teams' orchestrators and the configured worker profiles.
 pub fn facts(state: &State, agent: &Agent, profiles: &[Profile]) -> String {
     let mut b = format!(
         "You are {} ({}), the {} in a Hypercube team of coding agents.\n",
@@ -169,7 +169,7 @@ pub fn facts(state: &State, agent: &Agent, profiles: &[Profile]) -> String {
         agent.dir,
         on_branch(&agent.branch)
     ));
-    for t in &state.agents {
+    for t in state.agents.iter().filter(|t| t.team == agent.team) {
         b.push_str(&format!(
             "- {} ({}): {}, {}, {}{}\n",
             t.name,
@@ -201,6 +201,7 @@ pub fn facts(state: &State, agent: &Agent, profiles: &[Profile]) -> String {
 Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 "#,
         );
+        write_other_teams(&mut b, state, agent, "directory");
         write_teamwork(&mut b, profiles);
     } else if orchestrator {
         b.push_str(
@@ -208,6 +209,7 @@ Your working directory is not a Git checkout. Each worker works directly in the 
 You work in the original checkout. Unless the user says otherwise, give a worker its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then remove the worker when its work is merged. A worker that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and remove it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the worker how to handle branches and commits there. Workers given the same directory share one checkout. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 "#,
         );
+        write_other_teams(&mut b, state, agent, "checkout");
         write_teamwork(&mut b, profiles);
     } else if !agent.branch.is_empty() {
         b.push_str(
@@ -221,6 +223,23 @@ You work in the original checkout. Unless the user says otherwise, give a worker
         b.push_str(REPORT_BACK);
     }
     b
+}
+
+/// The other teams' orchestrators, which work in the same `place` as
+/// `agent`, if the workspace has other teams.
+fn write_other_teams(b: &mut String, state: &State, agent: &Agent, place: &str) {
+    let others: Vec<String> = state
+        .agents
+        .iter()
+        .filter(|a| a.role == store::ORCHESTRATOR && a.team != agent.team)
+        .map(|a| format!("{} ({})", a.name, a.id))
+        .collect();
+    if !others.is_empty() {
+        b.push_str(&format!(
+            "Other teams' orchestrators work in the same {place}: {}.\n",
+            others.join(", ")
+        ));
+    }
 }
 
 fn on_branch(branch: &str) -> String {
@@ -698,5 +717,52 @@ Hypercube MCP tools:
 Commit your work on your branch. The orchestrator merges it from its checkout. When you finish, or need something, send the orchestrator a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
 "#;
         assert_eq!(facts(&state, &state.agents[1], &[]), want);
+    }
+
+    #[test]
+    fn facts_list_the_agents_team_and_the_other_teams_orchestrators() {
+        let member = |id: &str, name: &str, role: &str, team: &str| Agent {
+            team: team.into(),
+            ..agent(id, name, role)
+        };
+        let mut state = State {
+            agents: vec![
+                member(
+                    "a",
+                    "orchestrator",
+                    store::ORCHESTRATOR,
+                    store::DEFAULT_TEAM,
+                ),
+                member("b", "w1", store::WORKER, store::DEFAULT_TEAM),
+                member("d", "docs", store::ORCHESTRATOR, "docs"),
+                member("e", "writer", store::WORKER, "docs"),
+            ],
+            ..State::default()
+        };
+        let team = |text: &str| -> Vec<String> {
+            let (_, rest) = text.split_once("Team:\n").unwrap();
+            let (list, _) = rest.split_once("\n\n").unwrap();
+            list.lines()
+                .map(|l| l.split(' ').nth(1).unwrap().into())
+                .collect()
+        };
+        let writer = facts(&state, &state.agents[3], &[]);
+        assert_eq!(team(&writer), ["docs", "writer"]);
+        assert!(!writer.contains("Other teams"), "{writer}");
+        let docs = facts(&state, &state.agents[2], &[]);
+        assert_eq!(team(&docs), ["docs", "writer"]);
+        assert!(
+            docs.contains("in this session.\nOther teams' orchestrators work in the same checkout: orchestrator (a).\n\nTeamwork:"),
+            "{docs}"
+        );
+        let orchestrator = facts(&state, &state.agents[0], &[]);
+        assert_eq!(team(&orchestrator), ["orchestrator", "w1"]);
+        assert!(orchestrator.contains("work in the same checkout: docs (d).\n"));
+        state.no_git = true;
+        let docs = facts(&state, &state.agents[2], &[]);
+        assert!(docs.contains("work in the same directory: orchestrator (a).\n"));
+        // With one team, there are no others to name.
+        state.agents.truncate(2);
+        assert!(!facts(&state, &state.agents[0], &[]).contains("Other teams"));
     }
 }

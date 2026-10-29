@@ -20,6 +20,8 @@ pub const IDLE: &str = "idle";
 /// The activity of an agent the host has given up running until the session
 /// starts again.
 pub const EXITED: &str = "exited";
+/// The team every workspace has, whose orchestrator is named `orchestrator`.
+pub const DEFAULT_TEAM: &str = "default";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -32,6 +34,10 @@ pub struct Agent {
     pub effort: String,
     pub dir: String,
     pub branch: String,
+    /// The name of the agent's team. An agent written without one is in the
+    /// default team.
+    #[serde(default = "default_team")]
+    pub team: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub session_id: String,
     pub activity: String,
@@ -42,6 +48,10 @@ pub struct Agent {
     /// Set while the agent waits for the user to answer a tool approval.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub attention: bool,
+}
+
+fn default_team() -> String {
+    DEFAULT_TEAM.into()
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -271,10 +281,31 @@ pub fn ago(time: SystemTime) -> String {
 }
 
 impl State {
-    /// The workspace's checkout: the orchestrator's directory.
+    /// The workspace's checkout: the default team's orchestrator's
+    /// directory.
     pub fn root(&self) -> Option<&Path> {
-        let o = self.agents.iter().find(|a| a.role == ORCHESTRATOR)?;
+        let o = self.team_orchestrator(DEFAULT_TEAM)?;
         Some(Path::new(&o.dir))
+    }
+
+    /// The name of every team, in the order of their orchestrators: the
+    /// default team first, then the others in the order they were created.
+    pub fn teams(&self) -> Vec<&str> {
+        let mut teams: Vec<&str> = self
+            .agents
+            .iter()
+            .filter(|a| a.role == ORCHESTRATOR)
+            .map(|a| a.team.as_str())
+            .collect();
+        teams.sort_by_key(|&t| t != DEFAULT_TEAM);
+        teams
+    }
+
+    /// The orchestrator of the named team.
+    pub fn team_orchestrator(&self, team: &str) -> Option<&Agent> {
+        self.agents
+            .iter()
+            .find(|a| a.role == ORCHESTRATOR && a.team == team)
     }
 
     /// The agent with the given ID or name.
@@ -442,6 +473,7 @@ mod tests {
         let a = &state.agents[0];
         assert_eq!((a.id.as_str(), a.session_id.as_str()), ("a1b2c3d4", "s1"));
         assert_eq!((a.branch.as_str(), a.activity.as_str()), ("main", IDLE));
+        assert_eq!(a.team, DEFAULT_TEAM);
         assert!(state.messages.is_empty() && !state.no_git);
 
         // Rewriting drops the target and keeps the rest.
@@ -492,6 +524,33 @@ mod tests {
         assert!(s.agent("missing").is_err());
         s.agent_mut("one").unwrap().activity = BUSY.into();
         assert_eq!(s.agents[0].activity, BUSY);
+    }
+
+    #[test]
+    fn teams_follow_their_orchestrators_with_the_default_team_first() {
+        let member = |id: &str, role: &str, team: &str| Agent {
+            id: id.into(),
+            role: role.into(),
+            team: team.into(),
+            dir: format!("/{id}"),
+            ..Agent::default()
+        };
+        let s = State {
+            agents: vec![
+                member("d", ORCHESTRATOR, "docs"),
+                member("w", WORKER, "docs"),
+                member("o", ORCHESTRATOR, DEFAULT_TEAM),
+                member("r", ORCHESTRATOR, "review"),
+            ],
+            ..State::default()
+        };
+        assert_eq!(s.teams(), [DEFAULT_TEAM, "docs", "review"]);
+        assert_eq!(s.team_orchestrator("docs").unwrap().id, "d");
+        assert_eq!(s.team_orchestrator(DEFAULT_TEAM).unwrap().id, "o");
+        assert!(s.team_orchestrator("missing").is_none());
+        assert_eq!(s.root(), Some(Path::new("/o")));
+        assert!(State::default().teams().is_empty());
+        assert_eq!(State::default().root(), None);
     }
 
     #[test]

@@ -22,11 +22,13 @@ use crate::harness;
 use crate::help;
 use crate::icons;
 use crate::link::{self, Link, Message};
+use crate::mcp;
 use crate::mux::{self, Chrome, Mux, Notice, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
 use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
-use crate::store::{self, Agent};
+use crate::store::{self, Agent, State};
+use crate::teamlist::{self, TeamList};
 use crate::{config, signals, workspace};
 use libghostty_vt::unicode;
 
@@ -46,6 +48,8 @@ const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 const OVERLAY_REFRESH_MS: i64 = 1000;
 /// How often the bar's list is read again while a client is attached.
 const BAR_REFRESH_MS: i64 = 1000;
+/// How often the team list is read again while it is open.
+const TEAMLIST_REFRESH_MS: i64 = 1000;
 
 /// The host lock of the workspace whose state file is `state_path`. The host
 /// holds it for its whole life, and writes its process ID into it.
@@ -200,10 +204,17 @@ pub fn zoom_layout(size: Winsize, panes: &[PaneId], zoomed: PaneId) -> Option<Ve
 }
 
 /// The header, the divider between the panes, the labels
-/// above every pane, and the bar, or the workspace overlay while it is open.
+/// above every pane, and the bar, or the workspace overlay, the list of keys,
+/// or the team list while one is open.
 pub struct TeamChrome {
     /// The workspace path, shortened for the header.
     pub workspace: String,
+    /// The viewed team, which the host changes.
+    pub view: Rc<RefCell<String>>,
+    /// Every team, in `State::teams` order, and whether any of its agents
+    /// waits for a tool approval, refreshed with the bar.
+    pub teams: Rc<RefCell<Vec<(String, bool)>>>,
+    pub teamlist: Rc<RefCell<Option<TeamList>>>,
     /// Panes whose agents wait for a tool approval, refreshed with the bar.
     pub attention: Rc<RefCell<Vec<PaneId>>>,
     /// The pane that fills the pane area, which the host changes as it zooms.
@@ -227,18 +238,15 @@ impl Chrome for TeamChrome {
             help::draw(out, size, palette);
             return;
         }
+        if let Some(teamlist) = &*self.teamlist.borrow() {
+            teamlist.draw(out, size, palette);
+            return;
+        }
         let mut s = String::new();
         // Panes are hidden while the terminal is too small for them, and a
         // collapsed worker keeps only its label.
         let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.cols > 0).collect();
-        draw_row(
-            &mut s,
-            &RowStyle::bar(palette.bar),
-            (1, 1, size.ws_col),
-            false,
-            &format!(" {} {}", icons::HEADER, self.workspace),
-            "",
-        );
+        self.draw_header(&mut s, size.ws_col, palette);
         if let [first, _, ..] = shown.as_slice() {
             let col = u32::from(first.rect.col + first.rect.cols);
             s.push_str(&colors::fg(palette.line));
@@ -268,6 +276,62 @@ impl Chrome for TeamChrome {
         self.bar.borrow().draw(&mut s, size, palette);
         s.push_str("\x1b[0m");
         out.extend_from_slice(s.as_bytes());
+    }
+}
+
+impl TeamChrome {
+    /// The header: the workspace path, and while the workspace has more than
+    /// one team, the viewed team's name after it. At the right, each other
+    /// team whose agent waits for a tool approval, with a bell.
+    fn draw_header(&self, s: &mut String, cols: u16, palette: Palette) {
+        let view = self.view.borrow();
+        let teams = self.teams.borrow();
+        let mut left = format!(" {} {}", icons::HEADER, self.workspace);
+        if teams.len() > 1 {
+            left.push_str(&format!(" › {view}"));
+        }
+        let waiting: Vec<&str> = teams
+            .iter()
+            .filter(|(team, attention)| *attention && *team != *view)
+            .map(|(team, _)| team.as_str())
+            .collect();
+        let right = if waiting.is_empty() {
+            String::new()
+        } else {
+            let entries: Vec<String> = waiting
+                .iter()
+                .map(|team| format!("{team} {}", icons::ATTENTION))
+                .collect();
+            format!("{} ", entries.join(" · "))
+        };
+        draw_row(
+            s,
+            &RowStyle::bar(palette.bar),
+            (1, 1, cols),
+            false,
+            &left,
+            &right,
+        );
+        // Recolor the bells if the right text was drawn.
+        let right_width = text_width(&right);
+        if right.is_empty() || text_width(&fit(&left, cols)) + 1 + right_width > usize::from(cols) {
+            return;
+        }
+        let bell = colors::Colors {
+            fg: colors::ATTENTION,
+            bg: palette.bar.bg,
+        };
+        let mut col = usize::from(cols) - right_width;
+        for team in waiting {
+            col += text_width(team) + 1;
+            s.push_str(&format!(
+                "{}{}{}",
+                at(0, col as u32),
+                bell.sgr(),
+                icons::ATTENTION
+            ));
+            col += text_width(&format!("{} · ", icons::ATTENTION));
+        }
     }
 }
 
@@ -606,11 +670,21 @@ struct Host {
     unstarted: Option<Vec<Agent>>,
     /// Each agent's pane, in launch order.
     panes: Vec<Slot>,
+    /// The viewed team, whose panes the screen shows, shared with the
+    /// chrome.
+    view: Rc<RefCell<String>>,
+    /// Every team and whether it waits for a tool approval, shared with the
+    /// chrome.
+    teams: Rc<RefCell<Vec<(String, bool)>>>,
+    /// The team list while it is open, shared with the chrome.
+    teamlist: Rc<RefCell<Option<TeamList>>>,
+    /// When the team list was last read.
+    teamlist_read: i64,
     clients: Vec<Client>,
     /// The pane that fills the pane area, shared with the chrome.
     zoomed: Rc<Cell<Option<PaneId>>>,
     /// The orchestrator's and the workers' shares of the columns beside the
-    /// divider.
+    /// divider, in every team.
     split: (u32, u32),
     /// What a left-button drag outside the panes moves.
     drag: Option<Drag>,
@@ -640,14 +714,17 @@ struct Host {
 enum Drag {
     /// The divider between the orchestrator and the workers.
     Divider,
-    /// The label row of the worker in this slot, and the rows between it and
-    /// the expanded workers above and below it.
+    /// The label row of the worker in this place among the viewed team's
+    /// slots, and the rows between it and the expanded workers above and
+    /// below it.
     Label(usize),
 }
 
 /// An agent's pane and how its program has been running.
 struct Slot {
     agent: String,
+    /// The agent's team.
+    team: String,
     pane: PaneId,
     /// A worker's share of the rows beside the divider, by `layout`.
     weight: u32,
@@ -660,9 +737,10 @@ struct Slot {
 }
 
 impl Slot {
-    fn new(agent: &str, pane: PaneId, weight: u32) -> Slot {
+    fn new(agent: &Agent, pane: PaneId, weight: u32) -> Slot {
         Slot {
-            agent: agent.to_string(),
+            agent: agent.id.clone(),
+            team: agent.team.clone(),
             pane,
             weight,
             collapsed: false,
@@ -696,48 +774,7 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     let agents = prepare(root, &state_path)?;
     let socket = Socket::listen(&state_path)?;
     let signals = catch_signals()?;
-    let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
-    let zoomed = Rc::new(Cell::new(None));
-    let overlay = Rc::new(RefCell::new(None));
-    let help = Rc::new(Cell::new(false));
-    let bar = Rc::new(RefCell::new(Bar::new(state_path.clone())));
-    let palette = Rc::new(Cell::new(Palette::of(
-        store::load(&state_path)?.accent as usize,
-    )));
-    let attention = Rc::new(RefCell::new(Vec::new()));
-    let chrome = TeamChrome {
-        workspace: workspace::short(root),
-        attention: Rc::clone(&attention),
-        zoomed: Rc::clone(&zoomed),
-        overlay: Rc::clone(&overlay),
-        help: Rc::clone(&help),
-        bar: Rc::clone(&bar),
-        palette: Rc::clone(&palette),
-    };
-    let mut host = Host {
-        exe,
-        root: root.to_path_buf(),
-        state_path,
-        mux: Mux::new(Winsize::default(), Box::new(chrome)),
-        runtime: Runtime::new(),
-        socket,
-        signals,
-        unstarted: Some(agents),
-        panes: Vec::new(),
-        clients: Vec::new(),
-        zoomed,
-        split: (1, 1),
-        drag: None,
-        overlay,
-        overlay_read: 0,
-        help,
-        bar,
-        bar_read: 0,
-        attention,
-        palette,
-        stopped: signals::pipe().map_err(|e| format!("pipe: {e}"))?,
-        stop_results: mpsc::channel(),
-    };
+    let mut host = Host::new(root, state_path, socket, signals, agents)?;
     let result = host.serve();
     if let Err(e) = &result {
         host.end(&e.to_string());
@@ -745,40 +782,66 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
     result
 }
 
-/// Ready the state for a session: create the orchestrator on the first run,
-/// set its branch, and mark it idle and the workers busy. Returns the agents,
-/// the orchestrator first.
+/// Ready the state for a session; see `ready`. Returns the agents, the
+/// orchestrators first.
 fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
     let config = config::load()?;
-    let branch = workspace::branch(root);
+    let branch = workspace::branch(root).ok();
     let dir = workspace::utf8(root)?;
     store::update(state_path, |s| {
-        // A directory can become a checkout, so this is checked on every
-        // start.
-        s.no_git = branch.is_err();
-        if s.agents.is_empty() {
-            s.accent = 0;
-            let o = &config.orchestrator;
-            s.agents.push(Agent {
-                id: store::new_id()?,
-                name: "orchestrator".into(),
-                role: store::ORCHESTRATOR.into(),
-                harness: o.harness.clone(),
-                model: o.model.clone(),
-                effort: o.effort.clone(),
-                dir: dir.into(),
-                ..Agent::default()
-            });
+        ready(s, &config.orchestrator, dir, branch.as_deref())
+    })
+}
+
+/// Ready the state of the workspace whose checkout is `dir`, on `branch` if
+/// it is a Git checkout, for a session: create the default team's
+/// orchestrator on the first run, put agents without a team in the default
+/// team, set the orchestrators' branch, and mark them idle and the workers
+/// busy. Returns the agents, the orchestrators first.
+fn ready(
+    s: &mut State,
+    spec: &config::Spec,
+    dir: &str,
+    branch: Option<&str>,
+) -> Result<Vec<Agent>> {
+    // A directory can become a checkout, so this is checked on every start.
+    s.no_git = branch.is_none();
+    if s.agents.is_empty() {
+        s.accent = 0;
+        s.agents.push(new_orchestrator(
+            spec,
+            "orchestrator",
+            store::DEFAULT_TEAM,
+            dir,
+        )?);
+    }
+    for a in &mut s.agents {
+        if a.team.is_empty() {
+            a.team = store::DEFAULT_TEAM.into();
         }
-        for a in &mut s.agents {
-            if a.role == store::ORCHESTRATOR {
-                a.branch = branch.as_ref().cloned().unwrap_or_default();
-            }
-            a.activity = start_activity(a).into();
+        if a.role == store::ORCHESTRATOR {
+            a.branch = branch.unwrap_or_default().into();
         }
-        let mut agents = s.agents.clone();
-        agents.sort_by_key(|a| a.role != store::ORCHESTRATOR);
-        Ok(agents)
+        a.activity = start_activity(a).into();
+    }
+    let mut agents = s.agents.clone();
+    agents.sort_by_key(|a| a.role != store::ORCHESTRATOR);
+    Ok(agents)
+}
+
+/// An orchestrator named `name` of `team`, working in the checkout `dir`
+/// with the configured orchestrator's harness, model, and effort.
+fn new_orchestrator(spec: &config::Spec, name: &str, team: &str, dir: &str) -> Result<Agent> {
+    Ok(Agent {
+        id: store::new_id()?,
+        name: name.into(),
+        role: store::ORCHESTRATOR.into(),
+        harness: spec.harness.clone(),
+        model: spec.model.clone(),
+        effort: spec.effort.clone(),
+        dir: dir.into(),
+        team: team.into(),
+        ..Agent::default()
     })
 }
 
@@ -808,12 +871,77 @@ fn spawn(launch: &harness::Launch, ws: Winsize) -> Result<Pty> {
 }
 
 impl Host {
+    /// The host of the workspace whose checkout is `root`, listening on
+    /// `socket`, ending at a signal on the pipe `signals`, and launching
+    /// `agents` on the first attach. It views the default team.
+    fn new(
+        root: &Path,
+        state_path: PathBuf,
+        socket: Socket,
+        signals: RawFd,
+        agents: Vec<Agent>,
+    ) -> Result<Host> {
+        let exe = std::env::current_exe().map_err(|e| format!("finding hypercube: {e}"))?;
+        let zoomed = Rc::new(Cell::new(None));
+        let overlay = Rc::new(RefCell::new(None));
+        let help = Rc::new(Cell::new(false));
+        let bar = Rc::new(RefCell::new(Bar::new(state_path.clone())));
+        let palette = Rc::new(Cell::new(Palette::of(
+            store::load(&state_path)?.accent as usize,
+        )));
+        let attention = Rc::new(RefCell::new(Vec::new()));
+        let view = Rc::new(RefCell::new(store::DEFAULT_TEAM.to_string()));
+        let teams = Rc::new(RefCell::new(Vec::new()));
+        let teamlist = Rc::new(RefCell::new(None));
+        let chrome = TeamChrome {
+            workspace: workspace::short(root),
+            view: Rc::clone(&view),
+            teams: Rc::clone(&teams),
+            teamlist: Rc::clone(&teamlist),
+            attention: Rc::clone(&attention),
+            zoomed: Rc::clone(&zoomed),
+            overlay: Rc::clone(&overlay),
+            help: Rc::clone(&help),
+            bar: Rc::clone(&bar),
+            palette: Rc::clone(&palette),
+        };
+        Ok(Host {
+            exe,
+            root: root.to_path_buf(),
+            state_path,
+            mux: Mux::new(Winsize::default(), Box::new(chrome)),
+            runtime: Runtime::new(),
+            socket,
+            signals,
+            unstarted: Some(agents),
+            panes: Vec::new(),
+            view,
+            teams,
+            teamlist,
+            teamlist_read: 0,
+            clients: Vec::new(),
+            zoomed,
+            split: (1, 1),
+            drag: None,
+            overlay,
+            overlay_read: 0,
+            help,
+            bar,
+            bar_read: 0,
+            attention,
+            palette,
+            stopped: signals::pipe().map_err(|e| format!("pipe: {e}"))?,
+            stop_results: mpsc::channel(),
+        })
+    }
+
     /// Launch every agent, resuming saved sessions. Workers start a turn to
-    /// pick up messages queued while they were down.
+    /// pick up messages queued while they were down. Only a failure of the
+    /// default team's orchestrator ends the session.
     fn start(&mut self, agents: &[Agent]) -> Result<()> {
         for a in agents {
             if let Err(e) = self.launch(&a.id, start_prompt(a), true) {
-                if a.role == store::ORCHESTRATOR {
+                if a.role == store::ORCHESTRATOR && a.team == store::DEFAULT_TEAM {
                     return Err(format!("launching {}: {e}", a.name).into());
                 }
                 self.add_failed(a, &e.to_string())?;
@@ -823,23 +951,25 @@ impl Host {
     }
 
     /// Add a pane labeled for `agent`: its name at the left, and at the right
-    /// its branch if set, or its directory.
+    /// its branch if set, or its directory. It is in the background unless
+    /// its team is viewed.
     fn add_labeled_pane(&mut self, agent: &Agent) -> Result<PaneId> {
-        let pane = self.mux.add_pane(&agent.name)?;
+        let background = agent.team != *self.view.borrow();
+        let pane = self.mux.add_pane(&agent.name, background)?;
         if let Some(p) = self.mux.pane_mut(pane) {
             p.detail = detail(agent);
         }
         Ok(pane)
     }
 
-    /// Give a worker whose harness failed to start a pane without a program,
-    /// showing the error and exit status 127, so it keeps its place until
-    /// `remove_agent` closes it.
+    /// Give an agent whose harness failed to start a pane without a
+    /// program, showing the error and exit status 127, so it keeps its place
+    /// until it is removed.
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
         let pane = self.add_labeled_pane(agent)?;
         self.show_failure(pane, agent, error)?;
-        self.panes
-            .push(Slot::new(&agent.id, pane, self.new_weight()));
+        let weight = self.new_weight(&agent.team);
+        self.panes.push(Slot::new(agent, pane, weight));
         self.lay_out()
     }
 
@@ -880,6 +1010,10 @@ impl Host {
                 let refresh = self.overlay_read + OVERLAY_REFRESH_MS;
                 deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
             }
+            if self.teamlist.borrow().is_some() {
+                let refresh = self.teamlist_read + TEAMLIST_REFRESH_MS;
+                deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
+            }
             if self.runtime.connected() {
                 let refresh = self.bar_read + BAR_REFRESH_MS;
                 deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
@@ -908,9 +1042,13 @@ impl Host {
                     }
                     Event::Resized => self.lay_out()?,
                     Event::Notice(Notice::Overlay) => self.toggle_overlay()?,
+                    Event::Notice(Notice::Teams) => self.toggle_teamlist()?,
                     Event::Notice(Notice::Key(_)) if self.help.get() => self.toggle_help()?,
                     Event::Notice(Notice::Key(key)) if self.bar.borrow().prompt.is_some() => {
                         self.prompt_key(&key);
+                    }
+                    Event::Notice(Notice::Key(key)) if self.teamlist.borrow().is_some() => {
+                        self.teamlist_key(&key)?;
                     }
                     Event::Notice(Notice::Key(key)) => {
                         if self.overlay_key(&key)? {
@@ -940,6 +1078,11 @@ impl Host {
             if self.overlay.borrow().is_some() && now_ms() - self.overlay_read >= OVERLAY_REFRESH_MS
             {
                 self.read_overlay();
+            }
+            if self.teamlist.borrow().is_some()
+                && now_ms() - self.teamlist_read >= TEAMLIST_REFRESH_MS
+            {
+                self.read_teamlist();
             }
             if self.runtime.connected() && now_ms() - self.bar_read >= BAR_REFRESH_MS {
                 self.read_bar();
@@ -976,6 +1119,7 @@ impl Host {
         }
         self.bar.borrow_mut().prompt = None;
         self.help.set(false);
+        *self.teamlist.borrow_mut() = None;
         self.mux.invalidate_chrome();
         let overlay = match Overlay::load(&self.state_path) {
             Ok(overlay) => overlay,
@@ -1037,8 +1181,8 @@ impl Host {
         self.mux.invalidate_chrome();
     }
 
-    /// Refresh the bar, attention flags, and orchestrator branch title,
-    /// redrawing when any changes.
+    /// Refresh the bar, the attention flags of the panes and the teams, and
+    /// the orchestrators' branch titles, redrawing when any changes.
     fn read_bar(&mut self) {
         let mut bar = self.bar.borrow_mut();
         let mut changed = match bar::running() {
@@ -1062,18 +1206,27 @@ impl Host {
                 .collect();
             changed |= *self.attention.borrow() != attention;
             *self.attention.borrow_mut() = attention;
-        }
-        if let Some(slot) = self.panes.first()
-            && let Some(branch) = current_branch(&self.root)
-            && let Some(pane) = self.mux.pane_mut(slot.pane)
-        {
-            let detail = if branch.is_empty() {
-                format!("{} {}", icons::DIRECTORY, workspace::short(&self.root))
-            } else {
-                format!("{} {branch}", icons::BRANCH)
-            };
-            changed |= pane.detail != detail;
-            pane.detail = detail;
+            let teams = team_attention(&state);
+            changed |= *self.teams.borrow() != teams;
+            *self.teams.borrow_mut() = teams;
+            if let Some(branch) = current_branch(&self.root) {
+                let detail = if branch.is_empty() {
+                    format!("{} {}", icons::DIRECTORY, workspace::short(&self.root))
+                } else {
+                    format!("{} {branch}", icons::BRANCH)
+                };
+                for slot in &self.panes {
+                    let orchestrator = state
+                        .agent(&slot.agent)
+                        .is_ok_and(|a| a.role == store::ORCHESTRATOR);
+                    if let Some(pane) = self.mux.pane_mut(slot.pane)
+                        && orchestrator
+                    {
+                        changed |= pane.detail != detail;
+                        pane.detail = detail.clone();
+                    }
+                }
+            }
         }
         if changed {
             self.mux.invalidate_chrome();
@@ -1100,8 +1253,8 @@ impl Host {
         Ok(())
     }
 
-    /// Open the list of keys in place of the overlay or the prompt, or
-    /// close it.
+    /// Open the list of keys in place of the overlay, the team list, or the
+    /// prompt, or close it.
     fn toggle_help(&mut self) -> Result<()> {
         let open = !self.help.get();
         self.close_screens()?;
@@ -1110,9 +1263,11 @@ impl Host {
         self.lay_out()
     }
 
-    /// Close the overlay, the list of keys, and the prompt.
+    /// Close the overlay, the list of keys, the team list, and the prompt.
     fn close_screens(&mut self) -> Result<()> {
-        let covered = self.overlay.borrow_mut().take().is_some() | self.help.replace(false);
+        let covered = self.overlay.borrow_mut().take().is_some()
+            | self.help.replace(false)
+            | self.teamlist.borrow_mut().take().is_some();
         self.bar.borrow_mut().prompt = None;
         self.mux.set_captured(false);
         self.mux.invalidate_chrome();
@@ -1148,7 +1303,8 @@ impl Host {
                 continue;
             }
             if col == arrow_col(*r) {
-                self.panes[i].collapsed = !self.panes[i].collapsed;
+                let slot = self.viewed()[i];
+                self.panes[slot].collapsed = !self.panes[slot].collapsed;
                 return self.lay_out();
             }
             self.drag = Some(Drag::Label(i));
@@ -1184,7 +1340,8 @@ impl Host {
             }
             Some(Drag::Label(i)) => {
                 let rects = self.rects();
-                let expanded = |j: &usize| !self.panes[*j].collapsed && rects[*j].rows > 0;
+                let viewed = self.viewed();
+                let expanded = |j: &usize| !self.panes[viewed[*j]].collapsed && rects[*j].rows > 0;
                 let (Some(above), Some(below)) =
                     ((1..i).rev().find(expanded), (i..rects.len()).find(expanded))
                 else {
@@ -1198,7 +1355,8 @@ impl Host {
                 // The weights become the rows each expanded worker gets
                 // beyond its first, which `layout` gives back exactly at
                 // this size.
-                for (j, slot) in self.panes.iter_mut().enumerate().skip(1) {
+                for (j, &k) in viewed.iter().enumerate().skip(1) {
+                    let slot = &mut self.panes[k];
                     if slot.collapsed {
                         continue;
                     }
@@ -1371,6 +1529,7 @@ impl Host {
                 .detach(&mut self.mux, "attached in another terminal");
         }
         *self.overlay.borrow_mut() = None;
+        *self.teamlist.borrow_mut() = None;
         self.bar.borrow_mut().prompt = None;
         self.help.set(false);
         self.mux.set_captured(false);
@@ -1386,23 +1545,29 @@ impl Host {
         self.panes.iter().find(|s| s.agent == agent).map(|s| s.pane)
     }
 
-    fn pane_ids(&self) -> Vec<PaneId> {
-        self.panes.iter().map(|s| s.pane).collect()
+    /// The places in `panes` of the viewed team's slots.
+    fn viewed(&self) -> Vec<usize> {
+        let view = self.view.borrow();
+        (0..self.panes.len())
+            .filter(|&i| self.panes[i].team == *view)
+            .collect()
     }
 
-    /// Each pane with its weight for `layout`, `None` while collapsed.
-    fn weights(&self) -> Vec<(PaneId, Option<u32>)> {
+    /// Each pane of `team` with its weight for `layout`, `None` while
+    /// collapsed.
+    fn weights(&self, team: &str) -> Vec<(PaneId, Option<u32>)> {
         self.panes
             .iter()
+            .filter(|s| s.team == team)
             .map(|s| (s.pane, (!s.collapsed).then_some(s.weight)))
             .collect()
     }
 
-    /// The weight of a new worker: the average of the expanded workers', so
-    /// it takes about as many rows as each of them.
-    fn new_weight(&self) -> u32 {
+    /// The weight of a new worker of `team`: the average of its expanded
+    /// workers', so it takes about as many rows as each of them.
+    fn new_weight(&self, team: &str) -> u32 {
         let weights: Vec<u32> = self
-            .weights()
+            .weights(team)
             .iter()
             .skip(1)
             .filter_map(|&(_, w)| w)
@@ -1413,18 +1578,22 @@ impl Host {
         }
     }
 
-    /// Each pane's place on the screen, in slot order.
+    /// Each of the viewed team's panes' place on the screen, in slot order.
     fn rects(&self) -> Vec<Rect> {
-        self.panes
-            .iter()
-            .map(|s| self.mux.pane(s.pane).map(Pane::rect).unwrap_or_default())
+        self.viewed()
+            .into_iter()
+            .map(|i| {
+                let pane = self.mux.pane(self.panes[i].pane);
+                pane.map(Pane::rect).unwrap_or_default()
+            })
             .collect()
     }
 
-    /// Start an agent's harness in a new pane and lay the panes out again. A
-    /// non-empty `prompt` starts its first turn. If there is no room for the
-    /// pane, a launch at startup hides the panes until the terminal grows,
-    /// and any other launch fails, adding no pane.
+    /// Start an agent's harness in a new pane in its team and lay the panes
+    /// out again. A non-empty `prompt` starts its first turn. If there is no
+    /// room for the pane in its team's layout, a launch at startup hides the
+    /// team's panes until the terminal grows, and any other launch fails,
+    /// adding no pane.
     fn launch(&mut self, id: &str, prompt: &str, startup: bool) -> Result<()> {
         let state = store::load(&self.state_path)?;
         let agent = state.agent(id)?;
@@ -1433,8 +1602,8 @@ impl Host {
         }
         let launch = harness::command(&self.exe, agent, &self.state_path, prompt)?;
         let pane = self.add_labeled_pane(agent)?;
-        let weight = self.new_weight();
-        let mut weights = self.weights();
+        let weight = self.new_weight(&agent.team);
+        let mut weights = self.weights(&agent.team);
         weights.push((pane, Some(weight)));
         let ids: Vec<PaneId> = weights.iter().map(|&(id, _)| id).collect();
         let size = self.mux.size();
@@ -1460,9 +1629,11 @@ impl Host {
                 return Err(e);
             }
         }
-        self.panes.push(Slot::new(&agent.id, pane, weight));
-        self.zoomed.set(None);
-        self.place(&layout)
+        self.panes.push(Slot::new(agent, pane, weight));
+        if agent.team == *self.view.borrow() {
+            self.zoomed.set(None);
+        }
+        self.lay_out()
     }
 
     /// Start the harness of an agent whose program exited again in its pane,
@@ -1545,35 +1716,270 @@ impl Host {
         Ok(())
     }
 
-    /// Drop a closed pane's agent slot, end any zoom, and lay the panes out
-    /// again.
+    /// Drop a closed pane's agent slot, end the zoom if the pane was in the
+    /// viewed team, and lay the panes out again.
     fn finish_close(&mut self, pane: PaneId) -> Result<()> {
+        let viewed = self
+            .panes
+            .iter()
+            .any(|s| s.pane == pane && s.team == *self.view.borrow());
         self.panes.retain(|s| s.pane != pane);
-        self.zoomed.set(None);
+        if viewed {
+            self.zoomed.set(None);
+        }
         self.lay_out()
     }
 
-    /// Lay the panes out for the terminal's size. In a terminal too small
-    /// for them, the panes are hidden until it grows.
+    /// Lay the panes out for the terminal's size: the viewed team's, zoomed
+    /// or not, and every other team's as they would be placed if it were
+    /// viewed, so their programs run at the size they will be shown at. A
+    /// team too big for the terminal is hidden until it grows.
     fn lay_out(&mut self) -> Result<()> {
-        let ids = self.pane_ids();
         let size = self.mux.size();
-        let layout = match self.zoomed.get() {
-            Some(zoomed) => zoom_layout(size, &ids, zoomed),
-            None => layout(size, &self.weights(), self.split),
-        };
-        self.place(&layout.unwrap_or_else(|| hidden(&ids)))
+        let view = self.view.borrow().clone();
+        let mut teams: Vec<&str> = Vec::new();
+        for slot in &self.panes {
+            if !teams.contains(&slot.team.as_str()) {
+                teams.push(&slot.team);
+            }
+        }
+        let mut all = Vec::new();
+        for team in teams {
+            let weights = self.weights(team);
+            let ids: Vec<PaneId> = weights.iter().map(|&(id, _)| id).collect();
+            let layout = match self.zoomed.get() {
+                Some(zoomed) if team == view => zoom_layout(size, &ids, zoomed),
+                _ => layout(size, &weights, self.split),
+            };
+            all.extend(layout.unwrap_or_else(|| hidden(&ids)));
+        }
+        self.place(&all)
     }
 
-    /// Size and place the panes, then hide them while the overlay or the
-    /// list of keys covers the screen.
+    /// Size and place the panes, then hide every team's but the viewed
+    /// one's, or every pane while the overlay, the list of keys, or the team
+    /// list covers the screen.
     fn place(&mut self, layout: &[(PaneId, Rect)]) -> Result<()> {
         self.mux.set_layout(layout)?;
-        if self.overlay.borrow().is_some() || self.help.get() {
-            self.mux.set_layout(&hidden(&self.pane_ids()))?;
+        let covered =
+            self.overlay.borrow().is_some() || self.help.get() || self.teamlist.borrow().is_some();
+        let view = self.view.borrow();
+        let hide: Vec<PaneId> = self
+            .panes
+            .iter()
+            .filter(|s| covered || s.team != *view)
+            .map(|s| s.pane)
+            .collect();
+        drop(view);
+        if !hide.is_empty() {
+            self.mux.set_layout(&hidden(&hide))?;
         }
         Ok(())
     }
+
+    /// View `team`: show its panes, focusing its first live one, and put
+    /// every other team's in the background. Ends any zoom.
+    fn view_team(&mut self, team: &str) -> Result<()> {
+        *self.view.borrow_mut() = team.to_string();
+        self.zoomed.set(None);
+        self.drag = None;
+        for slot in &self.panes {
+            self.mux.set_background(slot.pane, slot.team != team);
+        }
+        for slot in self.panes.iter().filter(|s| s.team == team) {
+            self.mux.set_focus(slot.pane);
+            if self.mux.focus() == Some(slot.pane) {
+                break;
+            }
+        }
+        self.mux.invalidate_chrome();
+        self.lay_out()
+    }
+
+    /// Open the team list in place of the overlay, the list of keys, or the
+    /// prompt, or close it.
+    fn toggle_teamlist(&mut self) -> Result<()> {
+        if self.teamlist.borrow().is_some() {
+            return self.close_screens();
+        }
+        self.close_screens()?;
+        let view = self.view.borrow().clone();
+        let teamlist = match TeamList::load(&self.state_path, &view) {
+            Ok(teamlist) => teamlist,
+            // The list can't show without its teams; the error goes to the
+            // log.
+            Err(e) => {
+                eprintln!("hypercube: reading the teams: {e}");
+                return Ok(());
+            }
+        };
+        *self.teamlist.borrow_mut() = Some(teamlist);
+        self.teamlist_read = now_ms();
+        self.mux.set_captured(true);
+        self.lay_out()
+    }
+
+    /// Read the team list again.
+    fn read_teamlist(&mut self) {
+        if let Some(teamlist) = &mut *self.teamlist.borrow_mut()
+            && let Err(e) = teamlist.reload()
+        {
+            teamlist.error = e.to_string();
+        }
+        self.teamlist_read = now_ms();
+        self.mux.invalidate_chrome();
+    }
+
+    /// Carry out a key pressed in the team list. Viewing a team or creating
+    /// one closes the list, and a failure shows in it.
+    fn teamlist_key(&mut self, key: &[u8]) -> Result<()> {
+        let action = match &mut *self.teamlist.borrow_mut() {
+            Some(teamlist) => teamlist.key(key),
+            None => return Ok(()),
+        };
+        let result = match action {
+            teamlist::Action::None => return Ok(()),
+            teamlist::Action::Move => Ok(()),
+            teamlist::Action::View(team) => {
+                self.close_screens()?;
+                return self.view_team(&team);
+            }
+            teamlist::Action::Create(name) => match self.create_team(&name) {
+                Ok(()) => return self.close_screens(),
+                Err(e) => Err(e),
+            },
+            teamlist::Action::Delete(name) => self.delete_team(&name),
+            teamlist::Action::Close => return self.close_screens(),
+        };
+        if let Err(e) = result
+            && let Some(teamlist) = &mut *self.teamlist.borrow_mut()
+        {
+            teamlist.error = e.to_string();
+        }
+        self.read_teamlist();
+        Ok(())
+    }
+
+    /// Create a team named `name` whose orchestrator works in the checkout,
+    /// launch the orchestrator, and view the team. If the launch fails, the
+    /// team is removed again.
+    fn create_team(&mut self, name: &str) -> Result<()> {
+        let config = config::load()?;
+        let dir = workspace::utf8(&self.root)?;
+        let branch = current_branch(&self.root).unwrap_or_default();
+        let agent = store::update(&self.state_path, |s| {
+            add_team(s, name, &config.orchestrator, dir, &branch)
+        })?;
+        if let Err(e) = self.launch(&agent.id, "", false) {
+            store::update(&self.state_path, |s| {
+                s.remove(&agent.id);
+                Ok(())
+            })?;
+            return Err(e);
+        }
+        self.read_bar();
+        self.view_team(name)
+    }
+
+    /// Delete the team `name` and its orchestrator, closing the
+    /// orchestrator's pane. The default team and a team with workers stay.
+    /// Deleting the viewed team views the default team.
+    fn delete_team(&mut self, name: &str) -> Result<()> {
+        let state = store::load(&self.state_path)?;
+        let id = deletable(&state, name)?.id.clone();
+        self.close(&id)?;
+        // The orchestrator may have created a worker since the check.
+        store::update(&self.state_path, |s| remove_team(s, name))?;
+        self.read_bar();
+        if *self.view.borrow() == name {
+            self.view_team(store::DEFAULT_TEAM)?;
+        }
+        Ok(())
+    }
+}
+
+/// Each team of `state`, in `State::teams` order, and whether any of its
+/// agents waits for a tool approval.
+fn team_attention(state: &State) -> Vec<(String, bool)> {
+    state
+        .teams()
+        .into_iter()
+        .map(|team| {
+            let attention = state.agents.iter().any(|a| a.team == team && a.attention);
+            (team.to_string(), attention)
+        })
+        .collect()
+}
+
+/// Add the orchestrator of a new team named `name`, working in the checkout
+/// `dir` on `branch`. The name must be valid, and no team or agent may have
+/// it already.
+fn add_team(
+    s: &mut State,
+    name: &str,
+    spec: &config::Spec,
+    dir: &str,
+    branch: &str,
+) -> Result<Agent> {
+    if !mcp::valid_name(name) {
+        return Err("a team's name must be lowercase letters, digits, and hyphens".into());
+    }
+    if name == store::DEFAULT_TEAM || s.teams().contains(&name) {
+        return Err(format!("a team named {name} already exists").into());
+    }
+    if s.agent(name).is_ok() {
+        return Err(format!("an agent named {name} already exists").into());
+    }
+    let mut agent = new_orchestrator(spec, name, name, dir)?;
+    agent.branch = branch.into();
+    agent.activity = store::IDLE.into();
+    s.agents.push(agent.clone());
+    Ok(agent)
+}
+
+/// The names of the workers of `team`.
+fn team_workers<'a>(s: &'a State, team: &str) -> Vec<&'a str> {
+    s.agents
+        .iter()
+        .filter(|a| a.role == store::WORKER && a.team == team)
+        .map(|a| a.name.as_str())
+        .collect()
+}
+
+/// The orchestrator of `team`, if the team can be deleted: it is not the
+/// default team, and it has no workers.
+fn deletable<'a>(s: &'a State, team: &str) -> Result<&'a Agent> {
+    if team == store::DEFAULT_TEAM {
+        return Err("the default team can't be deleted".into());
+    }
+    let orchestrator = s
+        .team_orchestrator(team)
+        .ok_or_else(|| format!("no team {team:?}"))?;
+    let workers = team_workers(s, team);
+    if !workers.is_empty() {
+        return Err(format!(
+            "{team} has workers: {}; remove them first",
+            workers.join(", ")
+        )
+        .into());
+    }
+    Ok(orchestrator)
+}
+
+/// Remove the orchestrator of `team`, whose pane has been closed, and its
+/// queued messages, unless the team has workers.
+fn remove_team(s: &mut State, team: &str) -> Result<()> {
+    let workers = team_workers(s, team);
+    if !workers.is_empty() {
+        return Err(format!(
+            "closed the pane of {team}'s orchestrator, but {team} has workers: {}; remove them first",
+            workers.join(", ")
+        )
+        .into());
+    }
+    let id = deletable(s, team)?.id.clone();
+    s.remove(&id);
+    Ok(())
 }
 
 /// A layout that hides every pane.
@@ -1810,6 +2216,9 @@ mod tests {
     fn chrome() -> TeamChrome {
         TeamChrome {
             workspace: String::new(),
+            view: Rc::new(RefCell::new(store::DEFAULT_TEAM.into())),
+            teams: Rc::default(),
+            teamlist: Rc::default(),
             attention: Rc::default(),
             zoomed: Rc::default(),
             overlay: Rc::default(),
@@ -2123,6 +2532,60 @@ mod tests {
     }
 
     #[test]
+    fn the_header_names_the_viewed_team_and_the_others_waiting() {
+        let mut chrome = chrome();
+        chrome.workspace = "~/src/r".into();
+        let header = |chrome: &mut TeamChrome, cols| draw_with(chrome, &[], cols, 4);
+        // With one team, the header shows only the directory.
+        *chrome.teams.borrow_mut() = vec![("default".into(), true)];
+        let screen = header(&mut chrome, 50);
+        assert_eq!(screen.row(0).trim_end(), " \u{f07c} ~/src/r");
+
+        *chrome.teams.borrow_mut() = vec![
+            ("default".into(), true),
+            ("docs".into(), true),
+            ("api".into(), false),
+            ("review".into(), true),
+        ];
+        *chrome.view.borrow_mut() = "docs".into();
+        let screen = header(&mut chrome, 50);
+        let row = screen.row(0);
+        assert_eq!(
+            row,
+            format!(
+                " \u{f07c} ~/src/r › docs{}default \u{f0f3} · review \u{f0f3} ",
+                " ".repeat(12)
+            )
+        );
+        let palette = Palette::default();
+        let x = |c, nth| {
+            row.chars()
+                .enumerate()
+                .filter(|&(_, r)| r == c)
+                .nth(nth)
+                .unwrap()
+                .0 as u16
+        };
+        for nth in 0..2 {
+            let bell = x('\u{f0f3}', nth);
+            assert_eq!(fg(&screen, bell, 0), rgb(colors::ATTENTION));
+            assert_eq!(screen.bg(bell, 0), rgb(palette.bar.bg));
+        }
+        assert_eq!(fg(&screen, x('r', 1), 0), rgb(palette.bar.fg));
+        // The waiting teams don't fit beside the name.
+        let screen = header(&mut chrome, 30);
+        assert_eq!(
+            screen.row(0),
+            format!(" \u{f07c} ~/src/r › docs{}", " ".repeat(13))
+        );
+        // The viewed team is never listed.
+        *chrome.view.borrow_mut() = "default".into();
+        let row = header(&mut chrome, 60).row(0);
+        assert!(row.contains("docs \u{f0f3} · review \u{f0f3} "), "{row}");
+        assert!(!row.contains("default \u{f0f3}"), "{row}");
+    }
+
+    #[test]
     fn labels_show_the_branch_and_otherwise_the_directory() {
         let mut a = Agent {
             role: store::WORKER.into(),
@@ -2166,6 +2629,251 @@ mod tests {
             assert_eq!(current_branch(&linked).as_deref(), Some("linked"));
         }
         assert_eq!(current_branch(&root.join("missing")), None);
+    }
+
+    fn member(id: &str, role: &str, team: &str) -> Agent {
+        Agent {
+            id: id.into(),
+            name: id.into(),
+            role: role.into(),
+            team: team.into(),
+            ..Agent::default()
+        }
+    }
+
+    /// A host of a workspace in `dir` whose state has `agents`, each in a
+    /// pane without a program, in a terminal of `cols` by `rows`.
+    fn host_of(dir: &TempDir, agents: &[Agent], cols: u16, rows: u16) -> Host {
+        let state_path = dir.path().join("w.json");
+        store::update(&state_path, |s| {
+            s.agents = agents.to_vec();
+            Ok(())
+        })
+        .unwrap();
+        let socket = Socket::listen(&state_path).unwrap();
+        // No signal arrives, and the loop doesn't run.
+        let mut host = Host::new(dir.path(), state_path, socket, -1, Vec::new()).unwrap();
+        host.mux.resize(size(cols, rows));
+        for a in agents {
+            host.add_failed(a, "no program").unwrap();
+        }
+        host
+    }
+
+    fn pane_rect(host: &Host, agent: &str) -> Rect {
+        host.mux.pane(host.pane_of(agent).unwrap()).unwrap().rect()
+    }
+
+    fn pane_size(host: &Host, agent: &str) -> (u16, u16) {
+        let ws = host.mux.pane(host.pane_of(agent).unwrap()).unwrap().ws();
+        (ws.ws_col, ws.ws_row)
+    }
+
+    #[test]
+    fn ready_puts_agents_without_a_team_in_the_default_team() {
+        let spec = config::Spec {
+            harness: "claude".into(),
+            model: "opus".into(),
+            effort: "high".into(),
+        };
+        let mut s = State::default();
+        let agents = ready(&mut s, &spec, "/r", Some("main")).unwrap();
+        assert_eq!(agents.len(), 1);
+        let o = &s.agents[0];
+        assert_eq!(
+            (o.name.as_str(), o.role.as_str(), o.team.as_str()),
+            ("orchestrator", store::ORCHESTRATOR, store::DEFAULT_TEAM)
+        );
+        assert_eq!((o.dir.as_str(), o.branch.as_str()), ("/r", "main"));
+        assert_eq!((o.harness.as_str(), o.model.as_str()), ("claude", "opus"));
+
+        let mut s = State {
+            agents: vec![
+                member("w", store::WORKER, ""),
+                member("d", store::ORCHESTRATOR, "docs"),
+                member("o", store::ORCHESTRATOR, ""),
+            ],
+            ..State::default()
+        };
+        let agents = ready(&mut s, &spec, "/r", None).unwrap();
+        let order: Vec<&str> = agents.iter().map(|a| a.id.as_str()).collect();
+        assert_eq!(order, ["d", "o", "w"]);
+        let teams: Vec<&str> = s.agents.iter().map(|a| a.team.as_str()).collect();
+        assert_eq!(teams, [store::DEFAULT_TEAM, "docs", store::DEFAULT_TEAM]);
+        assert!(s.no_git);
+        assert_eq!(s.agents[1].activity, store::IDLE);
+        assert_eq!(s.agents[0].activity, store::BUSY);
+    }
+
+    #[test]
+    fn background_teams_are_laid_out_at_their_own_size_and_hidden() {
+        let dir = TempDir::new();
+        let agents = [
+            member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+            member("w", store::WORKER, store::DEFAULT_TEAM),
+            member("d", store::ORCHESTRATOR, "docs"),
+        ];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        // The default team is viewed; the docs team's lone orchestrator has
+        // the size it would have at full width.
+        assert_eq!(pane_rect(&host, "o"), rect(0, 2, 39, 21));
+        assert_eq!(pane_rect(&host, "w"), rect(40, 2, 40, 21));
+        assert_eq!(pane_rect(&host, "d"), Rect::default());
+        assert_eq!(pane_size(&host, "d"), (80, 21));
+
+        host.view_team("docs").unwrap();
+        assert_eq!(pane_rect(&host, "d"), rect(0, 2, 80, 21));
+        for id in ["o", "w"] {
+            assert_eq!(pane_rect(&host, id), Rect::default());
+        }
+        assert_eq!(pane_size(&host, "o"), (39, 21));
+        assert_eq!(pane_size(&host, "w"), (40, 21));
+        assert_eq!(host.rects(), [rect(0, 2, 80, 21)]);
+
+        // Every team takes the new size.
+        host.mux.resize(size(100, 30));
+        host.lay_out().unwrap();
+        assert_eq!(pane_rect(&host, "d"), rect(0, 2, 100, 27));
+        assert_eq!(pane_size(&host, "o"), (49, 27));
+        // A screen hides every pane.
+        host.toggle_help().unwrap();
+        assert_eq!(pane_rect(&host, "d"), Rect::default());
+        host.toggle_help().unwrap();
+        assert_eq!(pane_rect(&host, "d"), rect(0, 2, 100, 27));
+    }
+
+    #[test]
+    fn viewing_a_team_moves_the_focus_into_it() {
+        let dir = TempDir::new();
+        let agents = [member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM)];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        // A live pane of another team, added in the background.
+        let d = member("d", store::ORCHESTRATOR, "docs");
+        let pane = host.add_labeled_pane(&d).unwrap();
+        host.panes.push(Slot::new(&d, pane, 1));
+        assert_eq!(host.mux.focus(), host.pane_of("o"));
+        host.view_team("docs").unwrap();
+        assert_eq!(host.mux.focus(), Some(pane));
+        host.view_team(store::DEFAULT_TEAM).unwrap();
+        assert_eq!(host.mux.focus(), None);
+        assert!(host.mux.pane(pane).unwrap().rect() == Rect::default());
+    }
+
+    fn spec() -> config::Spec {
+        config::Spec {
+            harness: "claude".into(),
+            ..config::Spec::default()
+        }
+    }
+
+    #[test]
+    fn add_team_refuses_taken_and_invalid_names() {
+        let mut s = State {
+            agents: vec![
+                member("orchestrator", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+                member("w1", store::WORKER, store::DEFAULT_TEAM),
+                member("docs", store::ORCHESTRATOR, "docs"),
+            ],
+            ..State::default()
+        };
+        let before = s.clone();
+        for (name, error) in [
+            (
+                "Docs",
+                "a team's name must be lowercase letters, digits, and hyphens",
+            ),
+            (
+                "",
+                "a team's name must be lowercase letters, digits, and hyphens",
+            ),
+            ("default", "a team named default already exists"),
+            ("docs", "a team named docs already exists"),
+            ("w1", "an agent named w1 already exists"),
+            ("orchestrator", "an agent named orchestrator already exists"),
+        ] {
+            let err = add_team(&mut s, name, &spec(), "/r", "main").unwrap_err();
+            assert_eq!(err.to_string(), error);
+        }
+        assert_eq!(s, before);
+
+        let agent = add_team(&mut s, "api", &spec(), "/r", "main").unwrap();
+        assert_eq!(s.agents.last(), Some(&agent));
+        assert_eq!(
+            (
+                agent.name.as_str(),
+                agent.team.as_str(),
+                agent.role.as_str()
+            ),
+            ("api", "api", store::ORCHESTRATOR)
+        );
+        assert_eq!((agent.dir.as_str(), agent.branch.as_str()), ("/r", "main"));
+        assert_eq!(s.teams(), [store::DEFAULT_TEAM, "docs", "api"]);
+    }
+
+    #[test]
+    fn a_team_with_workers_is_not_removed() {
+        let mut s = State {
+            agents: vec![
+                member("orchestrator", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+                member("docs", store::ORCHESTRATOR, "docs"),
+            ],
+            messages: vec![store::Message {
+                to: "docs".into(),
+                ..store::Message::default()
+            }],
+            ..State::default()
+        };
+        assert_eq!(
+            deletable(&s, store::DEFAULT_TEAM).unwrap_err().to_string(),
+            "the default team can't be deleted"
+        );
+        assert_eq!(deletable(&s, "docs").unwrap().id, "docs");
+        // A worker created between the check and the update keeps the team.
+        s.agents.push(member("writer", store::WORKER, "docs"));
+        let before = s.clone();
+        assert_eq!(
+            remove_team(&mut s, "docs").unwrap_err().to_string(),
+            "closed the pane of docs's orchestrator, but docs has workers: writer; remove them first"
+        );
+        assert_eq!(s, before);
+        assert_eq!(
+            deletable(&s, "docs").unwrap_err().to_string(),
+            "docs has workers: writer; remove them first"
+        );
+        s.remove("writer");
+        remove_team(&mut s, "docs").unwrap();
+        assert_eq!(s.teams(), [store::DEFAULT_TEAM]);
+        assert!(s.messages.is_empty());
+    }
+
+    #[test]
+    fn deleting_the_viewed_team_closes_its_pane_and_views_the_default_team() {
+        let dir = TempDir::new();
+        let agents = [
+            member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+            member("d", store::ORCHESTRATOR, "docs"),
+            member("x", store::WORKER, "docs"),
+        ];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        host.view_team("docs").unwrap();
+        let err = host.delete_team("docs").unwrap_err().to_string();
+        assert_eq!(err, "docs has workers: x; remove them first");
+        assert!(host.pane_of("d").is_some());
+        assert!(host.delete_team(store::DEFAULT_TEAM).is_err());
+
+        host.close("x").unwrap();
+        store::update(&host.state_path, |s| {
+            s.remove("x");
+            Ok(())
+        })
+        .unwrap();
+        host.toggle_teamlist().unwrap();
+        host.delete_team("docs").unwrap();
+        assert_eq!(host.pane_of("d"), None);
+        assert_eq!(*host.view.borrow(), store::DEFAULT_TEAM);
+        let state = store::load(&host.state_path).unwrap();
+        assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
+        assert_eq!(*host.teams.borrow(), [(store::DEFAULT_TEAM.into(), false)]);
     }
 
     #[test]

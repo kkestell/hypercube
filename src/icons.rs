@@ -1,4 +1,5 @@
-//! The Nerd Font icons the chrome, the bar, and the overlay draw.
+//! The Nerd Font icons the chrome, the bar, the overlay, and the team list
+//! draw.
 
 /// Before a worker's name while it is expanded (nf-oct-chevron_down).
 pub const EXPANDED: char = '\u{f47c}';
@@ -19,7 +20,10 @@ pub const EXITED: char = '\u{f057}';
 /// Before the error of an agent whose harness failed to start
 /// (nf-fa-warning).
 pub const FAILED: char = '\u{f071}';
-/// Starts a running workspace's row in the overlay (nf-fa-play).
+/// Starts a running workspace's row in the overlay, or a running team's in
+/// the team list (nf-fa-play).
 pub const RUNNING: char = '\u{f04b}';
 /// Starts a stopped workspace's row in the overlay (nf-fa-stop).
 pub const STOPPED: char = '\u{f04d}';
+/// Starts an idle team's row in the team list (nf-fa-pause).
+pub const IDLE: char = '\u{f04c}';

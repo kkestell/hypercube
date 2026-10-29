@@ -232,7 +232,7 @@ impl Host {
         self.spawn_argv(label, &argv)
     }
     fn spawn_argv(&mut self, label: &str, argv: &[&str]) -> PaneId {
-        let id = self.mux.add_pane(label).unwrap();
+        let id = self.mux.add_pane(label, false).unwrap();
         self.layout();
         let env: &[(&str, &str)] = &[];
         let ws = self.mux.pane(id).unwrap().ws();
@@ -727,7 +727,7 @@ fn a_restarted_pane_runs_a_new_program_in_the_same_place() {
 fn focus_skips_a_pane_marked_exited() {
     let mut h = Host::new(81, 12);
     h.spawn("left", &["input", "left", "plain", "0"]);
-    let failed = h.mux.add_pane("failed").unwrap();
+    let failed = h.mux.add_pane("failed", false).unwrap();
     h.layout();
     h.mux.mark_exited(failed, 127);
     h.spawn("right", &["input", "right", "plain", "0"]);

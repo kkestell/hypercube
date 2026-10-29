@@ -349,7 +349,7 @@ mod tests {
         };
         let mut mux = Mux::new(ws, Box::new(NoChrome));
         mux.connect_host(&[], ws).unwrap();
-        let id = mux.add_pane("p").unwrap();
+        let id = mux.add_pane("p", false).unwrap();
         mux.set_layout(&[(id, Rect::full(ws))]).unwrap();
         let mut text = String::new();
         for i in 0..500 * 149 {
