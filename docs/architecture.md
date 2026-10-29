@@ -60,16 +60,18 @@ The state directory also holds `opencode-plugin/index.js`.
    it, the new host exits with an error.
 2. It readies the state: on the first run it creates the default team's
    orchestrator; it puts agents without a team in the default team, sets
-   `no_git` outside Git, sets the orchestrators' branch, marks them idle,
-   and marks the workers busy.
+   `no_git` outside Git, and sets the orchestrators' branch. Saved activity
+   stays unchanged until each harness launches.
 3. It removes a socket file left by an earlier host and listens on the
    control socket. It ignores SIGHUP and ends on SIGINT and SIGTERM.
 4. On the first attach, which supplies the terminal's size and its replies to
    the color queries, it launches each agent in its own pane, the
    orchestrators first. Saved sessions resume, and workers start with the
    prompt `Check your Hypercube messages.`, so they pick up messages queued
-   while they were down. If the default team's orchestrator fails to launch,
-   the session ends with the error. Any other agent that fails to launch gets
+   while they were down. Just before spawning each harness, it marks the
+   agent busy if it starts with a prompt and idle otherwise. If the default
+   team's orchestrator fails to launch, the session ends with the error. Any
+   other agent that fails to launch gets
    a pane without a program, with the failure icon and the error in its label
    and the error in the pane, marked exited with status 127 so the focus
    skips it, and keeps it until it is removed. Agents that don't fit in the
@@ -223,7 +225,7 @@ is not retried.
 When the host gives up on an agent this way, or a worker fails to launch at
 startup, it marks the agent `exited` in the state, so `list_agents` shows it
 and `send_message` to it says the agent is not running. Its messages stay
-queued; the next session's start marks it idle or busy again.
+queued; the next session's harness launch marks it idle or busy again.
 
 The host keeps running when every agent has been left exited. Closing an
 agent and ending the session hang up the programs without relaunching them.
@@ -238,8 +240,10 @@ columns and no divider. Every pane has a label row above its
 content, and every expanded worker at least one row; the rows left go to the
 expanded workers by weight, equal to start with. A collapsed worker keeps its
 label row and gets no rows, so the next label sits right below it; its pane
-is hidden. A layout in which some pane would get no row or column fails; a
-launch requested on the control socket then fails with "no room for another
+is hidden and cannot take focus. Collapsing the focused worker moves focus to
+the next live, expanded pane, or clears it if none is eligible. A layout in
+which some pane would get no row or column fails; a launch requested on the
+control socket then fails with "no room for another
 pane", and a terminal resized below that hides the panes until it grows.
 
 Dragging the divider sets the orchestrator's share of the columns to where
@@ -522,7 +526,8 @@ from `schedule` with its prompt, queued for its orchestrator, and its
 not parse. A task is running while any agent of its team is busy, and failed
 while its orchestrator is `exited`. Tasks fire only while the host runs, and
 their orchestrators launch only once a terminal has attached, so a firing
-before then waits in the queue, as it does for a failed orchestrator.
+before then waits in the queue, as it does for a failed orchestrator. Saved
+idle workers do not make an unlaunched task busy.
 
 The default team's orchestrator has four tools for tasks, which no other
 agent may call:
@@ -738,8 +743,9 @@ draws nothing and output from outside frames is discarded.
 
 Each pane captures the rows that changed since its last frame from a Ghostty
 render state. A frame draws those rows at the pane's offset, then the focused
-pane's cursor, inside synchronized output (mode 2026). A layout change, host
-resize, or removed pane clears the screen and draws every row and the chrome.
+pane's cursor if its rectangle has rows and columns, inside synchronized
+output (mode 2026). A layout change, host resize, or removed pane clears the
+screen and draws every row and the chrome.
 
 A pane draws its terminal's viewport. Scrolling moves the viewport through
 Ghostty's scrollback, and new output leaves a scrolled viewport where it is.

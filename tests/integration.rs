@@ -1207,12 +1207,23 @@ fn restart_resumes_saved_sessions() {
     }
     fx.stop();
 
+    // Starting the host without a terminal preserves saved activity until
+    // the first attach actually launches each harness.
+    let repo = fx.repo.to_str().unwrap();
+    let out = fx.run(&["start", repo]);
+    assert!(out.status.success(), "{out:?}");
+    for name in names {
+        assert_eq!(fx.state().agent(name).unwrap().activity, store::IDLE);
+        assert_eq!(fx.agent_events(name, "launch").len(), 1);
+    }
+
     fx.start();
     for name in names {
         fx.wait_event(name, "ready", 2);
     }
     let resumed = |fx: &Fixture, name: &str| fx.agent_events(name, "launch").remove(1);
     let launch = resumed(&fx, "orchestrator");
+    assert_eq!(launch["activity"], "idle");
     assert_eq!(
         flag_value(args_of(&launch), "--resume"),
         Some(sessions[0].as_str())
@@ -1220,12 +1231,14 @@ fn restart_resumes_saved_sessions() {
     assert_ne!(args_of(&launch).last().unwrap(), NUDGE);
     assert_eq!(launch["session"], sessions[0].as_str());
     let launch = resumed(&fx, "w1");
+    assert_eq!(launch["activity"], "busy");
     assert_eq!(
         flag_value(args_of(&launch), "--resume"),
         Some(sessions[1].as_str())
     );
     assert_eq!(args_of(&launch).last().unwrap(), NUDGE);
     let launch = resumed(&fx, "w2");
+    assert_eq!(launch["activity"], "busy");
     assert_eq!(
         flag_value(args_of(&launch), "--session"),
         Some(sessions[2].as_str())
