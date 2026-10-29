@@ -3,6 +3,7 @@ import type { Workspace } from "./model";
 import { useModel } from "./modelStore";
 import { layoutCards, type CardPlacement, type Size } from "./overviewLayout";
 import { connect, request } from "./socket";
+import { activity } from "./status";
 import { WorkspaceView } from "./WorkspaceView";
 import "./index.css";
 
@@ -38,6 +39,8 @@ type WorkspaceFrameProps = {
 function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, onSelect, onShowOverview }: WorkspaceFrameProps) {
   const fullscreen = active && !overview;
   const shown = active || overview;
+  const model = useModel();
+  const { busy, waiting } = activity(workspace.sessionIds.flatMap(id => model.sessions[id]?.agentIds ?? []).map(id => model.agents[id]));
   const transform = fullscreen
     ? "translate(0px, 0px) scale(1)"
     : `translate(${card.x}px, ${card.y}px) scale(${card.scale})`;
@@ -69,23 +72,37 @@ function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, o
         onClick={onSelect}
         className={`absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[#252526] text-neutral-200 transition-opacity ${transition} ${
           overview ? "" : "pointer-events-none"
-        } ${active ? "[--ring-color:var(--color-sky-500)]" : "hover:[--ring-color:var(--color-neutral-500)]"}`}
+        } ${
+          waiting.length > 0
+            ? "[--ring-color:var(--color-amber-400)]"
+            : active
+              ? "[--ring-color:var(--color-sky-500)]"
+              : "hover:[--ring-color:var(--color-neutral-500)]"
+        }`}
         style={{
           opacity: overview ? 1 : 0,
           fontSize: 18 / card.scale,
           boxShadow: `inset 0 0 0 ${2 / card.scale}px var(--ring-color, transparent)`,
         }}
       >
-        {workspace.name}
+        <span className="flex flex-col items-center" style={{ gap: 10 / card.scale }}>
+          <span>{workspace.name}</span>
+          {(waiting.length > 0 || busy.length > 0) && (
+            <span className="flex" style={{ fontSize: 14 / card.scale, gap: 14 / card.scale }}>
+              {waiting.length > 0 && <span className="text-amber-300">{waiting.length} waiting on you</span>}
+              {busy.length > 0 && <span className="text-sky-300">{busy.length} busy</span>}
+            </span>
+          )}
+        </span>
       </button>
     </div>
   );
 }
 
-/** Asks for a directory and opens it as a workspace. */
+/** Asks for a GitHub repository and opens it as a workspace. */
 function AddWorkspace({ onAdded }: { onAdded: (workspaceId: string) => void }) {
   const [editing, setEditing] = useState(false);
-  const [path, setPath] = useState("");
+  const [repo, setRepo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -93,10 +110,10 @@ function AddWorkspace({ onAdded }: { onAdded: (workspaceId: string) => void }) {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    request({ t: "addWorkspace", path })
+    request({ t: "addWorkspace", repo })
       .then(id => {
         setEditing(false);
-        setPath("");
+        setRepo("");
         onAdded(id!);
       })
       .catch((reason: Error) => setError(reason.message))
@@ -110,14 +127,14 @@ function AddWorkspace({ onAdded }: { onAdded: (workspaceId: string) => void }) {
         <form onSubmit={submit} className="flex gap-2">
           <input
             autoFocus
-            value={path}
-            onChange={event => setPath(event.target.value)}
+            value={repo}
+            onChange={event => setRepo(event.target.value)}
             onKeyDown={event => event.key === "Escape" && setEditing(false)}
-            placeholder="~/projects/my-repo"
-            aria-label="Workspace directory"
+            placeholder="owner/name or GitHub URL"
+            aria-label="GitHub repository"
             className="w-96 rounded border border-neutral-600 bg-[#1e1e1e] px-3 py-1.5 font-mono text-neutral-100 outline-none focus:border-sky-500"
           />
-          <button type="submit" disabled={busy || !path.trim()} className="rounded bg-sky-700 px-3 py-1.5 text-neutral-100 hover:bg-sky-600 disabled:opacity-50">
+          <button type="submit" disabled={busy || !repo.trim()} className="rounded bg-sky-700 px-3 py-1.5 text-neutral-100 hover:bg-sky-600 disabled:opacity-50">
             Add
           </button>
           <button type="button" onClick={() => setEditing(false)} className="rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800">

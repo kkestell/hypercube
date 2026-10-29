@@ -1,14 +1,18 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { afterAll, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { serve, type Server } from "bun";
 import type { ServerMessage } from "../protocol";
 import { bindServer, isAllowedUpgrade, socket, upgradeSocket, type SocketData } from "./socket";
 import { getModel, resetModelForTests } from "./sessions";
+import { localEnvironment } from "./environment";
 import { rawHttp, waitFor } from "../../test/helpers";
 
 let server: Server<SocketData>;
+const run = spyOn(localEnvironment, "run").mockResolvedValue({ stdout: "", stderr: "" });
+const setup = spyOn(localEnvironment, "setup").mockResolvedValue(undefined);
+// A session that becomes ready starts its lead; no test runs a real process.
+const spawn = spyOn(localEnvironment, "spawn").mockImplementation(() => {
+  throw new Error("no processes in tests");
+});
 
 beforeAll(() => {
   server = serve<SocketData>({
@@ -17,13 +21,16 @@ beforeAll(() => {
     fetch: (req, server) => upgradeSocket(req, server) ?? new Response(null),
     websocket: socket,
   });
-  bindServer(server);
+  bindServer(server, "http://127.0.0.1:0/mcp");
 });
 
 beforeEach(resetModelForTests);
 
 afterAll(async () => {
   await server.stop(true);
+  run.mockRestore();
+  setup.mockRestore();
+  spawn.mockRestore();
 });
 
 describe("connection", () => {
@@ -111,11 +118,10 @@ describe("model", () => {
   }
 
   test("a client gets the model on connect, and a change's model before the change's result", async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hypercube-ws-")));
     const client = await Client.connect();
     await waitFor(() => client.models().length > 0);
 
-    client.send({ t: "addWorkspace", req: 7, path: dir });
+    client.send({ t: "addWorkspace", req: 7, repo: "owner/repo" });
     await waitFor(() => client.messages.some(m => m.t === "result"));
     const result = client.messages.findIndex(m => m.t === "result");
     const withWorkspace = client.messages.findIndex(m => m.t === "model" && m.model.workspaces.length === 1);
@@ -123,7 +129,7 @@ describe("model", () => {
     expect(withWorkspace).toBeLessThan(result);
     expect(client.messages[result]).toMatchObject({ t: "result", req: 7, ok: true, id: getModel().workspaces[0]!.id });
 
-    client.send({ t: "addWorkspace", req: 8, path: dir });
+    client.send({ t: "addWorkspace", req: 8, repo: "owner/repo" });
     await waitFor(() => client.messages.some(m => m.t === "result" && m.req === 8));
     expect(client.messages.find(m => m.t === "result" && m.req === 8)).toMatchObject({ ok: false, error: expect.stringContaining("already open") });
 
@@ -134,13 +140,12 @@ describe("model", () => {
   });
 
   test("a change reaches every connected client", async () => {
-    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hypercube-ws-")));
     const [a, b] = await Promise.all([Client.connect(), Client.connect()]);
-    a.send({ t: "addWorkspace", req: 1, path: dir });
+    a.send({ t: "addWorkspace", req: 1, repo: "owner/repo" });
     await waitFor(() => a.messages.some(m => m.t === "result"));
     const workspaceId = getModel().workspaces[0]!.id;
 
-    a.send({ t: "createSession", req: 2, workspaceId });
+    a.send({ t: "createSession", req: 2, workspaceId, environment: "local" });
     await waitFor(() => Object.keys(b.models().at(-1)!.model.sessions).length === 1);
     expect(Object.values(b.models().at(-1)!.model.sessions)[0]!.name).toBe("Untitled 1");
     a.ws.close();

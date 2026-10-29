@@ -1,9 +1,12 @@
-import { useState, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import type { DockviewApi } from "dockview-react";
 import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from "react-resizable-panels";
+import { AgentsPanel } from "./AgentsPanel";
 import { SessionList } from "./SessionList";
 import type { Workspace } from "./model";
 import { useModel } from "./modelStore";
 import { SessionView } from "./SessionView";
+import { TerminalPanel } from "./TerminalPanel";
 
 type Side = "left" | "bottom" | "right";
 
@@ -82,13 +85,24 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
   const leftRef = usePanelRef();
   const bottomRef = usePanelRef();
   const rightRef = usePanelRef();
-  const [open, setOpen] = useState<Record<Side, boolean>>({ left: true, bottom: true, right: true });
-  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessions[0]?.id ?? null);
+  const [open, setOpen] = useState<Record<Side, boolean>>({ left: true, bottom: false, right: false });
+  // The bottom and right panels start hidden. Collapsing them after layout, rather than giving them no default size,
+  // lets the first expand restore their default size.
+  useLayoutEffect(() => {
+    bottomRef.current?.collapse();
+    rightRef.current?.collapse();
+  }, []);
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessions[0]?.id ?? null);
+  const activeSessionId = sessions.find(session => session.id === selectedSessionId)?.id ?? sessions[0]?.id ?? null;
   // Sessions mount on first visit and stay mounted, so their views keep their layouts.
   const [openedSessionIds, setOpenedSessionIds] = useState(() => new Set(activeSessionId ? [activeSessionId] : []));
 
+  const docks = useRef(new Map<string, DockviewApi>());
+  const showAgent = (agentId: string) => docks.current.get(activeSessionId!)?.getPanel(agentId)?.api.setActive();
+  const anyWaiting = Object.values(model.agents).some(agent => agent.status === "waiting");
+
   const selectSession = (sessionId: string) => {
-    setActiveSessionId(sessionId);
+    setSelectedSessionId(sessionId);
     setOpenedSessionIds(current => (current.has(sessionId) ? current : new Set(current).add(sessionId)));
   };
 
@@ -103,9 +117,10 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
           title="Show Overview"
           aria-label="Show Overview"
           onClick={onShowOverview}
-          className="rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
+          className="relative rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100"
         >
           <OverviewIcon />
+          {anyWaiting && <span title="An agent is waiting on you" className="absolute top-0.5 right-0.5 size-2 rounded-full bg-amber-400" />}
         </button>
         <span className="ml-1 flex-1 truncate text-neutral-400">{workspace.name}</span>
         <ToggleButton side="left" open={open.left} onClick={() => togglePanel(leftRef)} />
@@ -135,7 +150,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
             <Panel id={`${workspace.id}-content`} style={panelStyle} minSize={100}>
               <div className="relative h-full">
                 {sessions
-                  .filter(session => openedSessionIds.has(session.id))
+                  .filter(session => openedSessionIds.has(session.id) || session.id === activeSessionId)
                   .map(session => {
                     const shown = session.id === activeSessionId;
                     // Hidden sessions keep their size so their layouts stay put.
@@ -145,7 +160,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
                         inert={!shown}
                         className={`absolute inset-0 ${shown ? "" : "invisible-subtree"}`}
                       >
-                        <SessionView session={session} />
+                        <SessionView session={session} onApi={api => docks.current.set(session.id, api)} />
                       </div>
                     );
                   })}
@@ -162,7 +177,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
               groupResizeBehavior="preserve-pixel-size"
               onResize={trackOpen("bottom")}
             >
-              <SidePanel title="Bottom Panel" />
+              <TerminalPanel viewId={workspace.id} session={sessions.find(session => session.id === activeSessionId) ?? null} />
             </Panel>
           </Group>
         </Panel>
@@ -178,7 +193,9 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
           groupResizeBehavior="preserve-pixel-size"
           onResize={trackOpen("right")}
         >
-          <SidePanel title="Right Panel" />
+          <SidePanel title="Agents">
+            <AgentsPanel session={sessions.find(session => session.id === activeSessionId) ?? null} onSelect={showAgent} />
+          </SidePanel>
         </Panel>
       </Group>
     </div>

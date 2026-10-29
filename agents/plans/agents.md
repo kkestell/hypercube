@@ -1,11 +1,11 @@
 # Agents: phased implementation of `docs/agents.md`
 
-Builds the design in `docs/agents.md` in small phases. Each phase ends with something the user can reload and play with in the dev server. Speed over polish until phase 9: no new tests unless a bug report calls for one, happy paths first, edge cases listed under "Deferred" in each phase and picked up when hardening.
+Builds the design in `docs/agents.md` in small phases. Each phase ends with something the user can reload and play with in the dev server. Speed over polish until phase 10: no new tests unless a bug report calls for one, happy paths first, edge cases listed under "Deferred" in each phase and picked up when hardening.
 
 Two things are not deferred, because they are cheap now and expensive to retrofit:
 
 - **Invariant 1 (security).** Every new endpoint that changes state gets the loopback and origin checks from the start (`AGENTS.md`).
-- **Process groups.** Agent processes are spawned in their own process group and killed as a group, so a stopped agent doesn't leave its children running. Full ownership rules (reparented children, PID reuse, `setsid`) wait for phase 9.
+- **Process groups.** Agent processes are spawned in their own process group and killed as a group, so a stopped agent doesn't leave its children running. Full ownership rules (reparented children, PID reuse, `setsid`) wait for phase 10.
 
 Each phase updates `docs/architecture.md` for the routes, protocol and model it changes, and runs `bun test` and `bunx tsc --noEmit` before it's called done (existing tests may be rewritten when the model changes under them).
 
@@ -15,7 +15,7 @@ Each phase updates `docs/architecture.md` for the routes, protocol and model it 
 - **Advertised client capabilities.** None (`fs` and `terminal` off), per `agents/research/acp/protocol.md` §5.
 - **Transcripts: the server reduces, the browser replaces.** The server folds ACP `session/update`s into a list of transcript items per agent (`user`, `agent`, `thought`, `tool`, `plan`, `permission`, `notice`), keyed so streamed chunks and tool-call updates replace an existing item. It sends the browser item upserts, not raw ACP. The same items are what phase 6 stores.
 - **Transcripts don't go in the model push.** The model (workspaces, sessions, agents with status) is still pushed whole. Transcripts get their own messages: a snapshot per agent on connect, then `item` upserts to every socket. Simplest thing that works at the expected scale; per-panel subscription can come later.
-- **Environment seam.** A tiny `Environment` interface from phase 1 (`setup`, `spawn(cmd, cwd, env) → pipes + kill`, `run(cmd)`, `teardown`) with only a local implementation, so Docker in phase 8 is a second implementation rather than a refactor.
+- **Environment seam.** A tiny `Environment` interface from phase 1 (`setup`, `spawn(cmd, cwd, env) → pipes + kill`, `run(cmd)`, `teardown`) with only a local implementation, so Docker in phase 9 is a second implementation rather than a refactor.
 - **Runtime state on `globalThis`.** Agent processes and ACP connections live next to the model on `globalThis`, so `bun --hot` reloads keep them, as the model does today.
 
 ## Phase 1: GitHub workspaces and session clones
@@ -107,7 +107,24 @@ Deferred: automatic restart policies, schema migrations (drop and recreate is fi
 
 **You can test:** have a conversation, stop and restart `bun dev`, reload, and find every session, tab and transcript back; send the lead a follow-up that shows it remembers. Kill an `opencode` process by hand and restart it from the UI. Stop a session and start it again. Make a commit in a session, don't push, try to delete it and get asked.
 
-## Phase 7: Overview and status
+## Phase 7: Steering
+
+Redirect an agent while it works, from the user or from another agent, with nothing but ACP v1, and deliver messages between agents while the recipient is working instead of after. This is the only way to rein in a worker that's going wrong without throwing its turn away.
+
+ACP v1 allows one prompt at a time, and OpenCode rejects a second one mid-turn ("Session already has an active ACP prompt", verified). So a steer interrupts the turn at the next tool boundary and becomes the next prompt:
+
+- A steer to an idle agent is an ordinary prompt.
+- A steer to a busy agent: if a tool call is running, wait for it to finish (`tool_call_update` with `completed` or `failed`); otherwise (the model is thinking or writing) don't wait. Then `session/cancel`, and when the cancelled prompt returns, send the steer before anything in the queue. An open permission request is answered `cancelled` first.
+- The steer prompt says it was sent mid-turn and that the agent's previous turn was interrupted after its last finished step.
+- Verified with OpenCode on 2026-10-29: steered right after a 10 s tool call finished, the cancelled prompt returned at once, and the agent's next answer knew which commands had run and which hadn't. What's lost is only the model output after the last tool result. Other harnesses are unverified.
+- **Composer:** Enter while the agent is busy steers by default, with a way to queue instead. The panel shows a pending steer as "waiting for <tool> to finish" with an Interrupt now action (Stop, then send) for a tool that runs long or hangs.
+- **Agents:** every message between agents is delivered as a steer, not queued behind the turn. Queued messages arrive after the recipient has moved on (a lead saw workers' replies only after it had stopped them), and a lead that waits inside its turn never sees replies at all. Each delivered message says how long ago it was sent.
+
+Deferred: several steers arriving before the turn stops (send them as one prompt), a harness that loses tool results on cancel.
+
+**You can test:** give a worker a long multi-step task, steer it partway through from its tab, and watch it stop after the current command and follow the new instruction while remembering what it already did. Have a lead and its workers exchange messages while they work and see replies arrive mid-turn, after the current command, instead of after the turn. Start a long `sleep` and use Interrupt now.
+
+## Phase 8: Overview and status
 
 Make it usable at the expected scale (six workspaces, a few active sessions each, up to eight agents).
 
@@ -119,7 +136,7 @@ Deferred: notifications outside the tab.
 
 **You can test:** run a few sessions with workers, switch away, and see from the overview which agents are busy and which are waiting on a permission answer.
 
-## Phase 8: Docker environments
+## Phase 9: Docker environments
 
 The second environment, chosen when creating a session.
 
@@ -131,7 +148,7 @@ The second environment, chosen when creating a session.
 
 **You can test:** create a Docker session, chat with its lead, have it start workers, check with `docker ps` that everything runs in the container, delete the session and see the container go.
 
-## Phase 9: Harden
+## Phase 10: Harden
 
 Once the behavior is settled:
 

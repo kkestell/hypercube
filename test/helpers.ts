@@ -24,3 +24,7 @@ export function rawHttp(port: number, lines: string[], body = "") {
     });
   });
 }
+
+/** How many live processes' command lines match the pattern. */
+export const aliveCount = (pattern: string) =>
+  Bun.spawnSync(["pgrep", "-f", pattern]).stdout.toString().trim().split("\n").filter(Boolean).length;
