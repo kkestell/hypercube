@@ -47,6 +47,16 @@ Review findings then are those that can kill the wrong process, leak a process, 
 - Don't claim something is race-free or secure unless a test would fail if it weren't. State what you verified and what you didn't.
 - Don't commit or create branches unless asked.
 
+## Code style
+
+- Do less. Keep correct code simple, ordinary, and cheap to change.
+- Write idiomatic TypeScript and React. Prefer plain data and direct functions.
+- Give each concern a clear boundary and each lifecycle one owner.
+- Let real needs earn abstractions, dependencies, and configuration. Measure
+  before optimizing; harden against observed failures.
+- Return clear errors for bad input; fail loudly on broken invariants. Test
+  observable behavior; write comments that explain why.
+
 ## Bun
 
 Use Bun, not Node tooling: `bun <file>`, `bun test` (`bun:test`), `bun install`, `bun run`, `bunx`. Bun loads `.env` itself.

@@ -1,74 +1,104 @@
 # Agents, sessions and where they work
 
-How workspaces, sessions and agents map onto processes, directories and git. This is the design for bringing agent processes back; nothing here is implemented on `bun` yet. Process management as built before lives on branch `process-management`.
+How workspaces, sessions and agents map onto repos, directories and processes. This is the v1 design for bringing agent processes back; nothing here is implemented on `bun` yet. Process management as built before lives on branch `process-management`.
 
-Harnesses are treated as generic OS processes here. How a specific harness is launched and instrumented is the harness plugin's job (see `agents/research/harnesses/SUMMARY.md`).
+Background research: `agents/research/acp/` (the protocol and which harnesses support it) and `agents/research/harnesses/` (each harness's own integration points).
 
 ## Concepts
 
-**Environment.** Where processes run and what filesystem they see: the host, a sandbox on the host (bubblewrap on Linux, the macOS equivalent), or a container. An environment can:
+**Workspace.** A GitHub repo (`owner/name` or URL). It is the project; it has no local directory of its own.
 
-- start a process in a PTY (command, directory, environment variables) and kill it, with everything it owns;
-- run one-off commands, such as `git worktree add`;
-- map paths between its view and the host's;
-- be set up and torn down (e.g. start and stop a container).
+**Session.** A team working on the workspace in its own clone of the repo. Exactly one lead, plus any number of workers. A session can be about code, or just a place to ask questions, read logs or poke at infrastructure with the project's context; it doesn't have to produce changes.
 
-The host environment is what `process-management` built. Sandbox and container are other implementations of the same interface. Each workspace has one environment, and everything in the workspace runs in it.
+**Environment.** Where a session's clone lives and its agents run, chosen when the session is created:
 
-**Workspace.** A source plus an environment. For now the source is a local repo path: the main checkout.
+- **Local:** the repo is cloned to `~/.local/share/hypercube/sessions/<session-id>/` and agents run on the host.
+- **Docker:** the repo is cloned inside a container created for the session, and agents run in the container.
 
-**Working copy.** A directory inside the environment where agents work: the main checkout, or a git worktree created from it. Hypercube creates worktrees, tracks which agents use each one, and removes them. Several agents can share a working copy.
+Everything in a session runs in its environment. An environment can start a process with piped stdin and stdout (command, directory, environment variables), kill it with everything it owns, run one-off commands, and be set up and torn down.
 
-**Session.** A team with a home working copy. Exactly one lead, plus any number of workers. A session can be about code, or just a place to ask questions, read logs or poke at infrastructure with the project's context; it doesn't have to produce changes.
+**Agent.** An ACP agent process running in a directory inside its session's clone, with Hypercube as its ACP client. Its role is lead or worker.
 
-**Agent.** A harness process running in a working copy, started through the workspace's environment. Its role is lead or worker. Its working copy is assigned when it's created and never changes.
+**Profile.** A named combination of harness, model and effort, with a description of when to use it, as in the Rust Hypercube's `profiles` (`~/projects/hypercube/docs/configuration.md`). When the lead starts a worker it picks a profile, and the worker runs with exactly those settings.
 
-## Working copies and git
+## Harnesses: ACP
 
-**Session home.** Creating a session creates a worktree on a new branch, `hypercube/<session-slug>`, from the main checkout's current `HEAD` commit (not its uncommitted changes). The lead works there. Sessions never share files while they work.
+Hypercube standardizes on the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). Any harness that can act as an ACP agent, natively or through an adapter, works with Hypercube. Hypercube is the ACP client.
 
-**Workers.** When the lead starts a worker, it chooses where the worker works:
+- **One process per agent.** Hypercube starts each agent's ACP process in its environment and talks JSON-RPC over its stdio (`docker exec -i` for Docker). It creates one ACP session in it. One process per agent keeps agents' MCP identities apart; OpenCode, for one, shares injected MCP servers across sessions in the same process.
+- **Hypercube renders the agent.** There is no terminal. The UI shows the conversation from ACP updates: messages, thoughts, tool calls, plans, diffs, permission requests and usage. The user talks to an agent by sending it prompts.
+- **What's per harness** is small: the command that starts its ACP agent, and how a profile's model and effort map onto the agent's session config options (ACP leaves their names and values to each agent).
+- **Status** comes from Hypercube's own requests: busy while a prompt is in flight, waiting while a permission request is open, idle otherwise.
+- **Resuming.** Hypercube records each agent's ACP session id. After the agent's process stops (session stopped, Hypercube restarted), Hypercube starts a new process and resumes or loads that session. A turn that was running when the process stopped is lost.
+- **Transcripts.** Hypercube stores what it renders in its database, so history shows even for agents that can resume a session but not replay it.
 
-- **the lead's working copy** (shared with the lead and any other workers there), or
-- **its own worktree** on a new branch, `hypercube/<session-slug>/<worker-slug>`, from the session branch.
+**Initial build: OpenCode** (`opencode acp`, native ACP) with the user's ChatGPT subscription, already logged in locally. OpenCode supports resume and load, MCP servers over stdio and HTTP with headers, and model and effort as session options.
 
-Every mix is allowed: all shared, all separate, or some of each.
+**Claude Code: later.** It has no native ACP mode, and its ACP adapter is built on the Claude Agent SDK, which can't use a Claude subscription. How Claude Code fits is undecided.
 
-**Location.** Worktrees live in a Hypercube directory outside the repo, `~/.cache/hypercube/worktrees/<workspace>/<session>/…`, so they never appear in the main checkout's tree or tooling. In a container or sandbox they live wherever the environment can see them; the environment maps the path.
+## Working in the clone
 
-**Integration.** Hypercube never merges anything. The lead merges its workers' branches into the session branch. When the session's work is done, the lead lands it, by merging into the main checkout or opening a pull request, after coordinating with the other leads in the workspace.
+Hypercube creates the session's clone and deletes it with the session. What happens inside it is the lead's business:
 
-**Cleanup.** A session's worktrees and branches stay until the user deletes the session, since many sessions never change code and some are kept for a long time. A worker's worktree stays at least as long as its session.
+- The lead works in the clone. It may create branches and git worktrees inside the session's directory.
+- When the lead starts a worker, it picks the worker's profile and the directory it runs in: the clone itself or a worktree the lead made.
+- Hypercube never merges, rebases or pushes anything.
 
-**Non-git directories.** Eventually a workspace can be any directory. Without git there are no worktrees: the session's home is the directory itself and every agent shares it. Git is the main case; this is the fallback.
+Your own local checkout is not involved. A session's work reaches you through GitHub: fetch its branch or look at its pull request.
+
+## Landing work
+
+The lead lands work by opening a pull request and merging it into `main`. The pull request is the gate (CI, and review if the repo requires it) and GitHub is the conflict resolution mechanism: if another lead merged first and the branches conflict, the lead resolves the conflicts before it can merge.
+
+## Agent operations
+
+Agents talk to Hypercube through Hypercube's MCP server, which Hypercube passes to every agent in `mcpServers` when it creates the agent's ACP session. Each agent connects with its own identity (e.g. a per-agent token in an HTTP header), so Hypercube knows who is asking. v1 operations:
+
+- **Start and stop workers.** Lead only. Starting takes a profile and a directory in the session's clone.
+- **Send messages**, within the scopes below.
+- **List agents and profiles:** teammates and their status, and the profiles a lead can choose from.
 
 ## Messaging
 
 - Within a session, the lead and its workers message each other.
-- Within a workspace, leads message each other, mainly to coordinate landing work on the main branch.
+- Within a workspace, leads message each other, for example to avoid overlapping work.
 - Workers don't message outside their session; anything cross-session goes through their lead.
 
-Messaging is how leads avoid landing conflicting work at the same time. There is no lock in v1.
+A message reaches an agent as an ACP prompt that says who sent it. ACP allows one prompt at a time per session, so Hypercube queues messages, from agents and from the user, and sends the next when the agent's turn ends.
 
-How a message reaches a running harness differs per harness (hooks, plugins, typing into the PTY); see the research summary.
+## State
+
+Hypercube keeps its model (workspaces, sessions, agents with their ACP session ids, each session's environment and clone location, and transcripts) in `~/.local/share/hypercube/hypercube.db`, a SQLite database. Clones and containers outlive the server process, so the model must too.
+
+## Deleting a session
+
+Deleting a session stops its agents and removes its clone (and container, for Docker). If the clone has uncommitted changes or commits not pushed to GitHub, Hypercube shows them and asks before deleting.
+
+## Docker
+
+Hypercube maintains a base image that contains the harnesses. A workspace can name its own image, built `FROM` the base image, to add the project's toolchain; otherwise sessions use the base image. At container start, Hypercube injects a GitHub token (e.g. from `gh auth token`) and the harnesses' credentials as environment variables. Nothing from the host's home directory is mounted.
 
 ## Decisions
 
 | Question | Decision |
 |---|---|
-| Where a session's lead works | Its own worktree on `hypercube/<session-slug>` |
-| Where workers work | The lead chooses per worker: the lead's working copy or a new worktree from the session branch |
-| What a session branches from | The main checkout's `HEAD` commit |
-| Where worktrees live | `~/.cache/hypercube/worktrees/…`, outside the repo |
-| Who merges and lands | The lead, by merge into the main checkout or a pull request, after coordinating with other leads |
-| When worktrees and branches are removed | Only when the user deletes the session |
-| Environment scope | One per workspace |
-| Landing coordination | Messaging between leads; no lock in v1 |
-| Non-git workspaces | Part of the design, later; everyone shares the directory |
-
-## Open questions
-
-- Deleting a session with unmerged commits: delete the branch anyway, keep it, or ask?
-- How the lead asks Hypercube to start a worker (likely an MCP tool, as in the Rust Hypercube), and what else it can ask for.
-- Container specifics: whether the repo is bind-mounted or cloned, and how credentials get in.
-- Whether a lead picks its workers' harnesses, or the session or workspace sets a default.
+| What a workspace is | A GitHub repo |
+| Where a session works | Its own clone, local or in a Docker container, chosen at creation |
+| Local clone location | `~/.local/share/hypercube/sessions/<session-id>/` |
+| Interface to harnesses | ACP; Hypercube is the client, one ACP process per agent |
+| How agents are shown | Hypercube renders the conversation from ACP updates; no terminals |
+| First harness | OpenCode with the user's ChatGPT subscription |
+| Claude Code | Later; its ACP adapter can't use a Claude subscription |
+| Worktrees and branches | Up to the lead, inside the session's clone |
+| What a worker runs | The lead picks a profile and a directory in the clone |
+| How work lands | The lead opens a PR and merges it into `main`, resolving conflicts first |
+| Who merges | The lead; Hypercube never touches git history |
+| How agents ask Hypercube for things | Hypercube's MCP server, passed in `mcpServers`, one identity per agent |
+| Agent operations in v1 | Start/stop workers (lead only), send messages, list agents and profiles |
+| Message delivery | ACP prompts, queued while the agent's turn runs |
+| Persistence | SQLite at `~/.local/share/hypercube/hypercube.db`, including ACP session ids and transcripts |
+| Deleting a session with unpushed or uncommitted work | Ask |
+| Large repos | A full clone per session for now; a per-workspace mirror later if needed |
+| Non-GitHub or non-git workspaces | Not in v1 |
+| Docker image | A Hypercube base image with the harnesses; a workspace can supply its own image built `FROM` it to add the project's toolchain |
+| Docker credentials | GitHub token and harness credentials injected as environment variables at container start; nothing from the home directory is mounted |
