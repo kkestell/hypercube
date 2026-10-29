@@ -88,7 +88,7 @@ opencode --standalone --auto --session <session> [--prompt <prompt>]
 OpenCode 2.x is required. `--standalone` gives each agent a private server
 that reads the launch's configuration, and `--auto` makes the TUI approve
 every permission request itself, so an OpenCode agent never waits for an
-approval. The launch adds two variables to the identity
+approval. The launch adds three variables to the identity
 ones:
 
 - `OPENCODE_CONFIG_CONTENT`: the configuration. It sets the model, the `build`
@@ -96,6 +96,9 @@ ones:
   `hypercube` local MCP server, `exe mcp` with `HYPERCUBE_AGENT_ID` and
   `HYPERCUBE_STATE` in its environment and Code Mode off so its tools are
   called directly, and the Hypercube plugin.
+- `OPENCODE_CLI_CONFIG_CONTENT`: the TUI settings, merged over the user's
+  `cli.json`. It turns session tabs off, so the pane shows only the agent's
+  session.
 - `HYPERCUBE_SESSION_ID`: the session the launch opens.
 
 The session is the agent's saved session ID or, before one is saved,

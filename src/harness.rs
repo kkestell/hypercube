@@ -120,6 +120,11 @@ pub fn command(exe: &Path, agent: &Agent, state_path: &Path, prompt: &str) -> Re
                 "plugins": [utf8(&plugin)?],
             });
             env.insert("OPENCODE_CONFIG_CONTENT".into(), config.to_string());
+            // Session tabs would let the pane switch to other sessions.
+            env.insert(
+                "OPENCODE_CLI_CONFIG_CONTENT".into(),
+                json!({"tabs": {"mode": "off"}}).to_string(),
+            );
             env.insert("HYPERCUBE_SESSION_ID".into(), session.clone());
             let mut argv = strings(["opencode", "--standalone", "--auto", "--session"]);
             argv.push(session);
@@ -326,8 +331,10 @@ mod tests {
         assert_eq!(l.env["HYPERCUBE_AGENT_ID"], "a1");
         assert_eq!(l.env["HYPERCUBE_STATE"], state.to_str().unwrap());
         assert_eq!(l.env["HYPERCUBE_SESSION_ID"], "ses_hypercube_a1");
-        assert_eq!(l.env.len(), 4);
+        assert_eq!(l.env.len(), 5);
         assert_eq!(l.cwd, Path::new("/r/.hypercube/w1"));
+        let cli: Value = serde_json::from_str(&l.env["OPENCODE_CLI_CONFIG_CONTENT"]).unwrap();
+        assert_eq!(cli, json!({"tabs": {"mode": "off"}}));
         let config: Value = serde_json::from_str(&l.env["OPENCODE_CONFIG_CONTENT"]).unwrap();
         assert_eq!(
             config,
