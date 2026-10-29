@@ -160,7 +160,10 @@ the same way, and a new terminal size draws everything again.
 
 The tesseract fills every row but the last, in the shades of the first accent,
 gray. The last row is the hint ` Ctrl-b c new workspace · Ctrl-b d exit` in the
-bar's colors. The keys, which the client reads in their legacy form:
+bar's colors. The keys, which the client reads in their legacy form, as the
+mux reads host input: a key or escape sequence cut off by the end of a read
+waits for the next read, and a lone Esc or a cut-off sequence is taken as it is
+after `mux::INPUT_HOLD_MS`:
 
 - Ctrl-b c turns the last row into the bar's prompt for a workspace's path,
   starting with the working directory. The prompt takes the keys it takes in

@@ -134,23 +134,29 @@ fn splash(tty: &Tty, cwd: &Path) -> Result<Option<PathBuf>> {
             return Ok(None);
         }
         let mut fds = [pollfd(tty.input), pollfd(tty.winch), pollfd(tty.hangup)];
-        if !poll(&mut fds, splash::FRAME_MS)? {
-            continue;
+        let wait = splash.input_deadline().map_or(splash::FRAME_MS, |due| {
+            (due - now_ms()).clamp(0, splash::FRAME_MS)
+        });
+        let mut outcome = Outcome::Stay;
+        if poll(&mut fds, wait)? {
+            if fds[2].revents != 0 {
+                return Ok(None);
+            }
+            if fds[1].revents != 0 {
+                signals::take(tty.winch);
+            }
+            if fds[0].revents != 0 {
+                let n = read(tty.input, &mut buf);
+                if n <= 0 {
+                    return Ok(None);
+                }
+                outcome = splash.input(&buf[..n as usize], now_ms());
+            }
         }
-        if fds[2].revents != 0 {
-            return Ok(None);
+        if outcome == Outcome::Stay {
+            outcome = splash.flush_input(now_ms());
         }
-        if fds[1].revents != 0 {
-            signals::take(tty.winch);
-        }
-        if fds[0].revents == 0 {
-            continue;
-        }
-        let n = read(tty.input, &mut buf);
-        if n <= 0 {
-            return Ok(None);
-        }
-        match splash.input(&buf[..n as usize]) {
+        match outcome {
             Outcome::Stay => {}
             Outcome::Quit => return Ok(None),
             Outcome::Open(path) => match workspace::locate(cwd, path.trim()) {

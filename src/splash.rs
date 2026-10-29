@@ -5,7 +5,7 @@
 use crate::bar::{Bar, Typed};
 use crate::colors::{self, Palette};
 use crate::host::fit;
-use crate::mux::{Winsize, token_end};
+use crate::mux::{INPUT_HOLD_MS, Winsize, token_end};
 use crate::tesseract::{Canvas, SHADES, Tesseract};
 
 /// The time between frames.
@@ -39,6 +39,9 @@ pub struct Splash {
     palette: Palette,
     /// Whether the key after Ctrl-b is next.
     prefixed: bool,
+    /// Input cut off by the end of a read, and when it was held.
+    held: Vec<u8>,
+    held_since: i64,
     /// The columns and rows drawn, and the tesseract's cells drawn last;
     /// `None` while the screen may hold anything else in their place.
     screen: Option<(u16, u16)>,
@@ -53,6 +56,8 @@ impl Splash {
             bar: Bar::default(),
             palette: Palette::of(ACCENT),
             prefixed: false,
+            held: Vec::new(),
+            held_since: 0,
             screen: None,
             drawn: None,
         }
@@ -63,13 +68,39 @@ impl Splash {
         self.bar.fail(error);
     }
 
-    /// Take the terminal's input. Ctrl-b c prompts for a path, starting with
-    /// the working directory, Ctrl-b d and Ctrl-c quit, and while the prompt
-    /// is open the other keys type into it.
-    pub fn input(&mut self, data: &[u8]) -> Outcome {
+    /// Take the terminal's input, `now` in `now_ms` time. Ctrl-b c prompts
+    /// for a path, starting with the working directory, Ctrl-b d and Ctrl-c
+    /// quit, and while the prompt is open the other keys type into it. A key
+    /// or escape sequence cut off by the end of a read waits for the next
+    /// read, or for `input_deadline`.
+    pub fn input(&mut self, data: &[u8], now: i64) -> Outcome {
+        self.held.extend_from_slice(data);
+        self.route(false, now)
+    }
+
+    /// When held input is taken as it is: a lone Esc as the Esc key, and a
+    /// cut-off sequence as typed.
+    pub fn input_deadline(&self) -> Option<i64> {
+        (!self.held.is_empty()).then_some(self.held_since + INPUT_HOLD_MS)
+    }
+
+    /// Take held input as it is once `input_deadline` has passed.
+    pub fn flush_input(&mut self, now: i64) -> Outcome {
+        if self.input_deadline().is_some_and(|due| now >= due) {
+            return self.route(true, now);
+        }
+        Outcome::Stay
+    }
+
+    fn route(&mut self, flush: bool, now: i64) -> Outcome {
+        let data = std::mem::take(&mut self.held);
         let mut i = 0;
         while i < data.len() {
-            let end = token_end(data, i, true).unwrap_or(data.len());
+            let Some(end) = token_end(&data, i, flush) else {
+                self.held = data[i..].to_vec();
+                self.held_since = now;
+                break;
+            };
             let token = &data[i..end];
             i = end;
             if token == [CTRL_C] {
@@ -242,7 +273,7 @@ mod tests {
     #[test]
     fn ctrl_b_c_opens_the_prompt_with_the_working_directory() {
         let mut splash = Splash::new("/work");
-        assert_eq!(splash.input(b"\x02c"), Outcome::Stay);
+        assert_eq!(splash.input(b"\x02c", 0), Outcome::Stay);
         let rows = rows_of(&[frame(&mut splash, 60, 20, 3000)], 60, 20);
         assert!(
             rows[19].starts_with(" workspace path: /work"),
@@ -255,12 +286,12 @@ mod tests {
     fn the_prompt_edits_the_path_and_enter_opens_it() {
         let mut splash = Splash::new("/work");
         // Keys typed one at a time, or in one read.
-        assert_eq!(splash.input(b"\x02"), Outcome::Stay);
-        assert_eq!(splash.input(b"c"), Outcome::Stay);
-        assert_eq!(splash.input(b"\x7f\x7frx"), Outcome::Stay);
-        assert_eq!(splash.input(b"\r"), Outcome::Open("/worx".into()));
+        assert_eq!(splash.input(b"\x02", 0), Outcome::Stay);
+        assert_eq!(splash.input(b"c", 0), Outcome::Stay);
+        assert_eq!(splash.input(b"\x7f\x7frx", 0), Outcome::Stay);
+        assert_eq!(splash.input(b"\r", 0), Outcome::Open("/worx".into()));
         // Enter closed the prompt.
-        assert_eq!(splash.input(b"\r"), Outcome::Stay);
+        assert_eq!(splash.input(b"\r", 0), Outcome::Stay);
         let rows = rows_of(&[frame(&mut splash, 60, 20, 3000)], 60, 20);
         assert!(rows[19].starts_with(" Ctrl-b c new workspace"));
     }
@@ -268,24 +299,25 @@ mod tests {
     #[test]
     fn escape_closes_the_prompt() {
         let mut splash = Splash::new("/work");
-        splash.input(b"\x02c");
-        assert_eq!(splash.input(b"\x1b"), Outcome::Stay);
+        splash.input(b"\x02c", 0);
+        assert_eq!(splash.input(b"\x1b", 0), Outcome::Stay);
+        assert_eq!(splash.flush_input(INPUT_HOLD_MS), Outcome::Stay);
         let rows = rows_of(&[frame(&mut splash, 60, 20, 3000)], 60, 20);
         assert!(rows[19].starts_with(" Ctrl-b c new workspace"));
         // Typing without a prompt does nothing.
-        assert_eq!(splash.input(b"x\r"), Outcome::Stay);
+        assert_eq!(splash.input(b"x\r", 0), Outcome::Stay);
     }
 
     #[test]
     fn ctrl_b_d_and_ctrl_c_quit() {
         let mut splash = Splash::new("/work");
-        assert_eq!(splash.input(b"\x02d"), Outcome::Quit);
-        assert_eq!(splash.input(b"\x03"), Outcome::Quit);
-        splash.input(b"\x02c");
-        assert_eq!(splash.input(b"\x03"), Outcome::Quit);
+        assert_eq!(splash.input(b"\x02d", 0), Outcome::Quit);
+        assert_eq!(splash.input(b"\x03", 0), Outcome::Quit);
+        splash.input(b"\x02c", 0);
+        assert_eq!(splash.input(b"\x03", 0), Outcome::Quit);
         let mut splash = Splash::new("/work");
-        splash.input(b"\x02c");
-        assert_eq!(splash.input(b"\x02d"), Outcome::Quit);
+        splash.input(b"\x02c", 0);
+        assert_eq!(splash.input(b"\x02d", 0), Outcome::Quit);
     }
 
     #[test]
@@ -294,5 +326,39 @@ mod tests {
         splash.fail("no such directory".into());
         let rows = rows_of(&[frame(&mut splash, 60, 20, 3000)], 60, 20);
         assert!(rows[19].starts_with(" no such directory"), "{}", rows[19]);
+    }
+
+    #[test]
+    fn a_character_cut_off_by_the_end_of_a_read_waits_for_the_rest() {
+        let mut splash = Splash::new("/work");
+        splash.input(b"\x02c/caf", 0);
+        assert_eq!(splash.input(&[0xc3], 1), Outcome::Stay);
+        assert_eq!(splash.input(&[0xa9], 2), Outcome::Stay);
+        assert_eq!(splash.input(b"\r", 3), Outcome::Open("/work/café".into()));
+    }
+
+    #[test]
+    fn a_sequence_cut_off_by_the_end_of_a_read_leaves_the_prompt_open() {
+        let mut splash = Splash::new("/work");
+        splash.input(b"\x02c", 0);
+        assert_eq!(splash.input(b"\x1b", 1), Outcome::Stay);
+        assert_eq!(splash.input(b"[D", 2), Outcome::Stay);
+        assert_eq!(splash.input_deadline(), None);
+        assert_eq!(splash.input(b"\r", 3), Outcome::Open("/work".into()));
+    }
+
+    #[test]
+    fn a_lone_escape_closes_the_prompt_once_its_hold_ends() {
+        let mut splash = Splash::new("/work");
+        splash.input(b"\x02c", 0);
+        assert_eq!(splash.input(b"\x1b", 100), Outcome::Stay);
+        assert_eq!(splash.input_deadline(), Some(100 + INPUT_HOLD_MS));
+        // Before the deadline the Esc is still held.
+        assert_eq!(splash.flush_input(100 + INPUT_HOLD_MS - 1), Outcome::Stay);
+        assert!(splash.input_deadline().is_some());
+        assert_eq!(splash.flush_input(100 + INPUT_HOLD_MS), Outcome::Stay);
+        assert_eq!(splash.input_deadline(), None);
+        // The prompt is closed, so Enter opens nothing.
+        assert_eq!(splash.input(b"\r", 200), Outcome::Stay);
     }
 }
