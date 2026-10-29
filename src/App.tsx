@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import type { Workspace } from "./model";
 import { useModel } from "./modelStore";
 import { layoutCards, type CardPlacement, type Size } from "./overviewLayout";
-import { connect, request } from "./terminalSocket";
+import { connect, request } from "./socket";
 import { WorkspaceView } from "./WorkspaceView";
 import "./index.css";
 
@@ -60,7 +60,7 @@ function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, o
         className={`h-full transition-opacity ${transition} ${active ? "" : "invisible-subtree"}`}
         style={{ opacity: fullscreen ? 1 : 0 }}
       >
-        {opened && <WorkspaceView workspace={workspace} active={fullscreen} onShowOverview={onShowOverview} />}
+        {opened && <WorkspaceView workspace={workspace} onShowOverview={onShowOverview} />}
       </div>
 
       <button
@@ -145,7 +145,7 @@ export function App() {
   const { workspaces } = useModel();
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [overview, setOverview] = useState(true);
-  // Workspaces mount on first visit and stay mounted, so their views keep their screens.
+  // Workspaces mount on first visit and stay mounted, so their views keep their layouts.
   const [openedWorkspaceIds, setOpenedWorkspaceIds] = useState(() => new Set<string>());
   // Leaves room below the cards for the "Add workspace" button.
   const cards = layoutCards(workspaces.length, viewport, 48);

@@ -1,11 +1,12 @@
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { serve, type Server } from "bun";
-import { FRAME_SNAPSHOT, decodeFrame, type ClientMessage, type ServerMessage } from "../protocol";
-import { bindTerminalServer, isAllowedUpgrade, terminalSocket, upgradeTerminalSocket, type SocketData } from "./socket";
-import { aliveCount, rawHttp, waitFor } from "../../test/helpers";
-import { closeTerminal, createTerminal, getTerminal, shutdownTerminals, writeInput } from "./terminals";
-
-const decoder = new TextDecoder();
+import type { ServerMessage } from "../protocol";
+import { bindServer, isAllowedUpgrade, socket, upgradeSocket, type SocketData } from "./socket";
+import { getModel, resetModelForTests } from "./sessions";
+import { rawHttp, waitFor } from "../../test/helpers";
 
 let server: Server<SocketData>;
 
@@ -13,82 +14,21 @@ beforeAll(() => {
   server = serve<SocketData>({
     port: 0,
     hostname: "localhost",
-    fetch: (req, server) => upgradeTerminalSocket(req, server) ?? new Response(null),
-    websocket: terminalSocket,
+    fetch: (req, server) => upgradeSocket(req, server) ?? new Response(null),
+    websocket: socket,
   });
-  bindTerminalServer(server);
+  bindServer(server);
 });
 
-afterEach(async () => {
-  await shutdownTerminals();
-});
+beforeEach(resetModelForTests);
 
 afterAll(async () => {
   await server.stop(true);
 });
 
-class Client {
-  ws: WebSocket;
-  messages: ServerMessage[] = [];
-  snapshots: Record<string, string[]> = {};
-  output: Record<string, string> = {};
-  private decoders: Record<string, TextDecoder> = {};
-
-  private constructor(ws: WebSocket) {
-    this.ws = ws;
-    ws.binaryType = "arraybuffer";
-    ws.onmessage = event => {
-      if (typeof event.data === "string") {
-        this.messages.push(JSON.parse(event.data));
-        return;
-      }
-      const { kind, id, payload } = decodeFrame(event.data);
-      if (kind === FRAME_SNAPSHOT) (this.snapshots[id] ??= []).push(decoder.decode(payload));
-      else {
-        const streamDecoder = (this.decoders[id] ??= new TextDecoder());
-        this.output[id] = (this.output[id] ?? "") + streamDecoder.decode(payload, { stream: true });
-      }
-    };
-  }
-
-  static async connect() {
-    const ws = new WebSocket(`ws://localhost:${server.port}/pty`, {
-      headers: { origin: `http://localhost:${server.port}` },
-    } as never);
-    const client = new Client(ws);
-    await new Promise<void>((resolve, reject) => {
-      ws.onopen = () => resolve();
-      ws.onerror = () => reject(new Error("WebSocket failed to open"));
-    });
-    return client;
-  }
-
-  send(message: ClientMessage) {
-    this.ws.send(JSON.stringify(message));
-  }
-
-  close() {
-    this.ws.close();
-  }
-
-  /** Waits for the snapshot a given attach produces. */
-  async attach(id: string, size = { cols: 80, rows: 24 }) {
-    const before = this.snapshots[id]?.length ?? 0;
-    this.send({ t: "attach", id, ...size });
-    await waitFor(() => (this.snapshots[id]?.length ?? 0) > before);
-    return this.snapshots[id]!.at(-1)!;
-  }
-
-  status() {
-    return this.messages.filter((m): m is Extract<ServerMessage, { t: "status" }> => m.t === "status");
-  }
-}
-
-const sh = ["/bin/sh"];
-
 describe("connection", () => {
   const port = 3101;
-  const request = (headers: Record<string, string>) => new Request(`http://localhost:${port}/pty`, { headers });
+  const request = (headers: Record<string, string>) => new Request(`http://localhost:${port}/ws`, { headers });
   const allowed = (headers: Record<string, string>, peer: string | undefined = "127.0.0.1") =>
     isAllowedUpgrade(request(headers), port, peer);
 
@@ -131,7 +71,7 @@ describe("connection", () => {
   test("the running server upgrades a legitimate request and refuses a missing, cross-site or rebound one", async () => {
     const upgrade = (host: string, origin?: string) =>
       rawHttp(server.port!, [
-        "GET /pty HTTP/1.1",
+        "GET /ws HTTP/1.1",
         `Host: ${host}`,
         ...(origin ? [`Origin: ${origin}`] : []),
         "Upgrade: websocket",
@@ -149,147 +89,61 @@ describe("connection", () => {
     const rebound = `evil.example:${server.port}`;
     expect(await upgrade(rebound, `http://${rebound}`)).toContain("403");
   });
-
-  test("a client can't spawn or close a terminal", async () => {
-    const client = await Client.connect();
-    client.send({ t: "attach", id: "nope", cols: 80, rows: 24, create: {} } as never);
-    await waitFor(() => client.messages.some(m => m.t === "gone"));
-    expect(getTerminal("nope")).toBeUndefined();
-
-    const entry = createTerminal({ id: "kept", cols: 80, rows: 24, command: sh });
-    await client.attach("kept");
-    client.send({ t: "close", id: "kept" } as never);
-    client.send({ t: "input", id: "kept", data: "echo still-$((1+1))\n" });
-    await waitFor(() => client.output.kept?.includes("still-2") ?? false);
-    expect(getTerminal("kept")).toBe(entry);
-    client.close();
-  });
 });
 
-describe("attach and detach", () => {
-  test("attach sends a snapshot of what already happened, then live output to every attached client", async () => {
-    const entry = createTerminal({ id: "t", cols: 80, rows: 24, command: sh });
-    writeInput("t", "echo before-attach\n");
-    await waitFor(() => entry.lastOutputAt !== null);
-    await Bun.sleep(100);
-
-    const a = await Client.connect();
-    const b = await Client.connect();
-    expect(await a.attach("t")).toContain("before-attach");
-    await b.attach("t");
-
-    a.send({ t: "input", id: "t", data: "echo after-attach\n" });
-    await waitFor(() => (a.output.t?.includes("after-attach") && b.output.t?.includes("after-attach")) ?? false);
-    expect(a.output.t).not.toContain("before-attach\r\n$");
-    a.close();
-    b.close();
-  });
-
-  test("a detached client receives no output, and a re-attach resumes with a fresh snapshot", async () => {
-    createTerminal({ id: "t", cols: 80, rows: 24, command: sh });
-    const client = await Client.connect();
-    await client.attach("t");
-
-    client.send({ t: "detach", id: "t" });
-    // Detach and the input below arrive on the same socket, so they are processed in order.
-    client.send({ t: "input", id: "t", data: "echo while-detached\n" });
-    await waitFor(() => (getTerminal("t")?.lastOutputAt ?? 0) > 0);
-    await Bun.sleep(150);
-    expect(client.output.t ?? "").not.toContain("while-detached");
-
-    const snapshot = await client.attach("t");
-    expect(snapshot).toContain("while-detached");
-    client.close();
-  });
-});
-
-describe("persistence", () => {
-  test("terminals survive their socket closing, and a new socket reattaches with the screen restored", async () => {
-    const first = await Client.connect();
-    createTerminal({ id: "t", cols: 80, rows: 24, command: sh });
-    await first.attach("t");
-    first.send({ t: "input", id: "t", data: "echo survives-reload\n" });
-    await waitFor(() => first.output.t?.includes("survives-reload") ?? false);
-
-    first.close();
-    await Bun.sleep(100);
-    const entry = getTerminal("t")!;
-    expect(entry.state).toBe("running");
-    expect(entry.proc.killed).toBe(false);
-
-    const second = await Client.connect();
-    const snapshot = await second.attach("t");
-    expect(snapshot).toContain("survives-reload");
-
-    second.send({ t: "input", id: "t", data: "echo still-alive\n" });
-    await waitFor(() => second.output.t?.includes("still-alive") ?? false);
-    second.close();
-  });
-
-  test("an exited terminal's exit reaches clients, and it is forgotten once what its shell left behind is killed", async () => {
-    const client = await Client.connect();
-    const entry = createTerminal({ id: "t", cols: 80, rows: 24, command: ["/bin/sh", "-c", "nohup sleep 7203 >/dev/null 2>&1 & echo bye; exit 3"] });
-    await client.attach("t");
-    await waitFor(() => client.messages.some(m => m.t === "exit"));
-    expect(client.messages.find(m => m.t === "exit")).toEqual({ t: "exit", id: "t", exitCode: 3 });
-    await waitFor(() => getTerminal("t") === undefined);
-    await entry.reaping;
-    expect(aliveCount("sleep 7203")).toBe(0);
-    await waitFor(() => client.status().some(m => m.removed?.includes("t")));
-
-    client.send({ t: "attach", id: "t", cols: 80, rows: 24 });
-    await waitFor(() => client.messages.some(m => m.t === "gone"));
-    expect(await closeTerminal("t")).toBe(false);
-    client.close();
-  });
-});
-
-describe("status stream", () => {
-  test("a new client gets every terminal's status immediately, without attaching", async () => {
-    createTerminal({ id: "one", cols: 80, rows: 24, command: sh });
-    createTerminal({ id: "two", cols: 80, rows: 24, command: sh });
-
-    const client = await Client.connect();
-    await waitFor(() => client.status().length > 0);
-    const first = client.status()[0]!;
-    expect(first.full).toBe(true);
-    expect(first.terminals.one).toMatchObject({ state: "running", exitCode: null });
-    expect(first.terminals.two).toMatchObject({ state: "running", exitCode: null });
-    client.close();
-  });
-
-  test("changes reach every client, throttled, without output bytes", async () => {
-    const watcher = await Client.connect();
-    const bystander = await Client.connect();
-    createTerminal({ id: "busy", cols: 80, rows: 24, command: sh });
-    await watcher.attach("busy");
-
-    const startedAt = Date.now();
-    writeInput("busy", "i=0; while [ $i -lt 400 ]; do echo flood-$i; i=$((i+1)); done\n");
-    await waitFor(() => watcher.output.busy?.includes("flood-399") ?? false);
-    await Bun.sleep(300);
-    const elapsed = Date.now() - startedAt;
-
-    for (const client of [watcher, bystander]) {
-      const updates = client.status().filter(m => m.terminals.busy);
-      expect(updates.length).toBeGreaterThan(0);
-      // One update per 250ms at most, however much output there was.
-      expect(updates.length).toBeLessThanOrEqual(Math.ceil(elapsed / 250) + 1);
-      expect(updates.at(-1)!.terminals.busy!.lastOutputAt).toBeGreaterThanOrEqual(startedAt);
-      expect(JSON.stringify(updates)).not.toContain("flood-");
+describe("model", () => {
+  class Client {
+    messages: ServerMessage[] = [];
+    private constructor(readonly ws: WebSocket) {
+      ws.onmessage = event => this.messages.push(JSON.parse(event.data));
     }
-    // Only attached clients get a terminal's output.
-    expect(bystander.output.busy).toBeUndefined();
-    watcher.close();
-    bystander.close();
+    static async connect() {
+      const ws = new WebSocket(`ws://localhost:${server.port}/ws`, { headers: { origin: `http://localhost:${server.port}` } } as never);
+      await new Promise(resolve => (ws.onopen = resolve));
+      return new Client(ws);
+    }
+    send(message: unknown) {
+      this.ws.send(JSON.stringify(message));
+    }
+    models() {
+      return this.messages.filter((m): m is Extract<ServerMessage, { t: "model" }> => m.t === "model");
+    }
+  }
+
+  test("a client gets the model on connect, and a change's model before the change's result", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hypercube-ws-")));
+    const client = await Client.connect();
+    await waitFor(() => client.models().length > 0);
+
+    client.send({ t: "addWorkspace", req: 7, path: dir });
+    await waitFor(() => client.messages.some(m => m.t === "result"));
+    const result = client.messages.findIndex(m => m.t === "result");
+    const withWorkspace = client.messages.findIndex(m => m.t === "model" && m.model.workspaces.length === 1);
+    expect(withWorkspace).toBeGreaterThan(-1);
+    expect(withWorkspace).toBeLessThan(result);
+    expect(client.messages[result]).toMatchObject({ t: "result", req: 7, ok: true, id: getModel().workspaces[0]!.id });
+
+    client.send({ t: "addWorkspace", req: 8, path: dir });
+    await waitFor(() => client.messages.some(m => m.t === "result" && m.req === 8));
+    expect(client.messages.find(m => m.t === "result" && m.req === 8)).toMatchObject({ ok: false, error: expect.stringContaining("already open") });
+
+    const again = await Client.connect();
+    await waitFor(() => again.models().some(m => m.model.workspaces.length === 1));
+    client.ws.close();
+    again.ws.close();
   });
 
-  test("closing a terminal is reported as its removal", async () => {
-    createTerminal({ id: "t", cols: 80, rows: 24, command: sh });
-    const client = await Client.connect();
-    await client.attach("t");
-    await closeTerminal("t");
-    await waitFor(() => client.status().some(m => m.removed?.includes("t")));
-    client.close();
+  test("a change reaches every connected client", async () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "hypercube-ws-")));
+    const [a, b] = await Promise.all([Client.connect(), Client.connect()]);
+    a.send({ t: "addWorkspace", req: 1, path: dir });
+    await waitFor(() => a.messages.some(m => m.t === "result"));
+    const workspaceId = getModel().workspaces[0]!.id;
+
+    a.send({ t: "createSession", req: 2, workspaceId });
+    await waitFor(() => Object.keys(b.models().at(-1)!.model.sessions).length === 1);
+    expect(Object.values(b.models().at(-1)!.model.sessions)[0]!.name).toBe("Untitled 1");
+    a.ws.close();
+    b.ws.close();
   });
 });

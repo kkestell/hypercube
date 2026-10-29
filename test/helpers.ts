@@ -6,10 +6,6 @@ export async function waitFor(condition: () => boolean, timeoutMs = 5000) {
   }
 }
 
-/** How many live processes' command lines match the pattern. */
-export const aliveCount = (pattern: string) =>
-  Bun.spawnSync(["pgrep", "-f", pattern]).stdout.toString().trim().split("\n").filter(Boolean).length;
-
 /** Sends raw HTTP to localhost, so headers like Host are exactly what is given, and returns the status line. */
 export function rawHttp(port: number, lines: string[], body = "") {
   const request = `${lines.join("\r\n")}\r\n\r\n${body}`;

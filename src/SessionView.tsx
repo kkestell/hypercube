@@ -3,8 +3,7 @@ import { DockviewDefaultTab, DockviewReact, themeDark, type DockviewApi, type ID
 import "dockview-react/dist/styles/dockview.css";
 import type { Session } from "./model";
 import { useModel } from "./modelStore";
-import { AgentPanel } from "./TerminalPanel";
-import { focusView } from "./terminals";
+import { AgentPanel } from "./AgentPanel";
 
 const components = { agent: AgentPanel };
 
@@ -12,7 +11,7 @@ const components = { agent: AgentPanel };
 const Tab = (props: IDockviewPanelHeaderProps) => <DockviewDefaultTab {...props} hideClose />;
 
 /** A session's agents, arranged in tabs and splits. */
-export function SessionView({ session, active }: { session: Session; active: boolean }) {
+export function SessionView({ session }: { session: Session }) {
   const apiRef = useRef<DockviewApi | null>(null);
   const { agents } = useModel();
 
@@ -23,18 +22,11 @@ export function SessionView({ session, active }: { session: Session; active: boo
     for (const agentId of session.agentIds) {
       const agent = agents[agentId];
       if (!agent || api.getPanel(agentId)) continue;
-      api.addPanel({ id: agentId, component: "agent", title: agent.name, params: { agentId, active } });
+      api.addPanel({ id: agentId, component: "agent", title: agent.name, params: { agentId } });
     }
   };
 
   useEffect(syncPanels, [session.agentIds, agents]);
-
-  useEffect(() => {
-    const api = apiRef.current;
-    if (!api) return;
-    for (const panel of api.panels) panel.api.updateParameters({ agentId: panel.id, active });
-    if (active && api.activePanel) focusView(api.activePanel.id);
-  }, [active]);
 
   return (
     <DockviewReact
