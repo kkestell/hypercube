@@ -11,7 +11,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 
 use crate::config::{self, Profile};
-use crate::control::{self, NUDGE, Request};
+use crate::control::{self, NUDGE, Request, TASK_START};
 use crate::host;
 use crate::schedule::Schedule;
 use crate::store::{self, Agent, Message, State, Task};
@@ -428,7 +428,10 @@ impl Server {
         let agent = store::update(&self.state, |s| {
             let caller = default_orchestrator(s, &self.agent)?;
             let (dir, branch) = (caller.dir.clone(), caller.branch.clone());
-            let agent = host::add_team(s, name, spec, &dir, &branch)?;
+            let mut agent = host::add_team(s, name, spec, &dir, &branch)?;
+            // The start prompt's turn makes it busy.
+            agent.activity = store::BUSY.into();
+            s.agent_mut(&agent.id)?.activity = store::BUSY.into();
             s.tasks.push(Task {
                 name: name.into(),
                 schedule: schedule.into(),
@@ -439,7 +442,7 @@ impl Server {
         })?;
         let launch = Request::Launch {
             agent: agent.id.clone(),
-            prompt: String::new(),
+            prompt: TASK_START.into(),
         };
         if let Err(e) = self.ask_host(launch) {
             let mut message = e.to_string();
@@ -450,12 +453,9 @@ impl Server {
                 )
                 .into());
             }
-            let forget = store::update(&self.state, |s| {
-                s.remove(&agent.id);
-                s.tasks.retain(|t| t.name != name);
-                Ok(())
-            });
-            if let Err(e) = forget {
+            // The orchestrator may have created a worker before its pane
+            // closed, and the task stays until the worker is removed.
+            if let Err(e) = store::update(&self.state, |s| host::remove_team(s, name)) {
                 message.push_str(&format!("; removing the task failed: {e}"));
             }
             return Err(message.into());
@@ -1498,7 +1498,7 @@ mod tests {
                 o.dir.as_str(),
                 o.activity.as_str()
             ),
-            ("weekly", store::ORCHESTRATOR, "/o", store::IDLE)
+            ("weekly", store::ORCHESTRATOR, "/o", store::BUSY)
         );
         assert_eq!(
             (o.harness.as_str(), o.model.as_str(), o.effort.as_str()),
@@ -1517,7 +1517,7 @@ mod tests {
             *seen.lock().unwrap(),
             [Request::Launch {
                 agent: o.id.clone(),
-                prompt: String::new()
+                prompt: TASK_START.into()
             }]
         );
     }
@@ -1546,6 +1546,51 @@ mod tests {
             matches!(&seen[..], [Request::Launch { .. }, Request::Close { .. }]),
             "{seen:?}"
         );
+    }
+
+    #[test]
+    fn create_task_keeps_a_task_whose_orchestrator_made_a_worker_before_the_rollback() {
+        let team = tasks();
+        let state = team.state.clone();
+        let seen = team.host(move |r| match r {
+            Request::Launch { .. } => {
+                store::update(&state, |s| {
+                    s.agents.push(Agent {
+                        id: "h".into(),
+                        name: "helper".into(),
+                        role: store::WORKER.into(),
+                        team: "weekly".into(),
+                        ..Agent::default()
+                    });
+                    Ok(())
+                })
+                .unwrap();
+                Reply::error("no room for another pane")
+            }
+            _ => Reply::ok(),
+        });
+        let err = team.error(
+            "create_task",
+            &[
+                ("name", "weekly"),
+                ("schedule", "* * * * *"),
+                ("prompt", "report"),
+                ("profile", "sol"),
+            ],
+        );
+        assert!(
+            err.starts_with("no room for another pane; removing the task failed: ")
+                && err.contains("weekly has workers: helper; remove them first"),
+            "{err}"
+        );
+        let state = team.state();
+        assert!(state.task("weekly").is_some());
+        assert!(state.team_orchestrator("weekly").is_some());
+        assert_eq!(seen.lock().unwrap().len(), 2);
+        // Once the worker is removed, delete_task cleans up.
+        team.call("remove_agent", &[("id", "helper")]).unwrap();
+        team.call("delete_task", &[("name", "weekly")]).unwrap();
+        assert!(team.state().task("weekly").is_none());
     }
 
     #[test]

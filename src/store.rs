@@ -234,11 +234,16 @@ pub fn delete(path: &Path) -> Result<()> {
 }
 
 /// Apply `f` to the state under an exclusive lock and write the result. If
-/// `f` returns an error, nothing is written.
+/// `f` returns an error, or leaves an existing state as it was, nothing is
+/// written, so the file's modification time is its last change.
 pub fn update<T>(path: &Path, f: impl FnOnce(&mut State) -> Result<T>) -> Result<T> {
     let _lock = lock(path)?;
-    let mut state = load(path)?;
+    let before = load(path)?;
+    let mut state = before.clone();
     let value = f(&mut state)?;
+    if state == before && path.exists() {
+        return Ok(value);
+    }
     let data = serde_json::to_string_pretty(&state)?;
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
@@ -267,8 +272,8 @@ impl Workspace {
             .map_or_else(|| workspace(&self.path), crate::workspace::short)
     }
 
-    /// When the workspace was last active. Every hook writes the state, so
-    /// the state file's modification time is the last activity.
+    /// When the workspace was last active: when its state last changed, as
+    /// agents start and end turns and messages are queued and delivered.
     pub fn active(&self) -> Result<SystemTime> {
         fs::metadata(&self.path)
             .and_then(|m| m.modified())
@@ -482,6 +487,28 @@ mod tests {
     }
 
     #[test]
+    fn an_update_that_changes_nothing_writes_nothing() {
+        let dir = TempDir::new();
+        let path = dir.path().join("w.json");
+        // A missing state is written even unchanged.
+        update(&path, |_| Ok(())).unwrap();
+        assert!(path.exists());
+        fs::write(&path, "{\"agents\": []}").unwrap();
+        update(&path, |s| {
+            s.messages.clear();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "{\"agents\": []}");
+        update(&path, |s| {
+            s.accent = 2;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(load(&path).unwrap().accent, 2);
+    }
+
+    #[test]
     fn load_of_a_missing_file_is_empty() {
         let dir = TempDir::new();
         assert_eq!(load(&dir.path().join("w.json")).unwrap(), State::default());
@@ -531,10 +558,14 @@ mod tests {
         assert!(state.messages.is_empty() && state.tasks.is_empty() && !state.no_git);
 
         // Rewriting drops the target and keeps the rest.
-        update(&path, |_| Ok(())).unwrap();
+        update(&path, |s| {
+            s.accent = 1;
+            Ok(())
+        })
+        .unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(!text.contains("target"), "{text}");
-        assert_eq!(load(&path).unwrap(), state);
+        assert_eq!(load(&path).unwrap(), State { accent: 1, ..state });
     }
 
     #[test]

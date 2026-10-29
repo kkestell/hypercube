@@ -1878,6 +1878,23 @@ fn a_scheduled_task_runs_a_team_until_it_is_deleted() {
     assert_eq!(Path::new(&nightly.dir), fx.repo.as_path());
     assert_eq!(fx.state().task("nightly").unwrap().prompt, "check");
 
+    // A start prompt creates the new OpenCode session, whose waiter then
+    // wakes the orchestrator for messages, and saves the session to resume.
+    fx.wait_idle("nightly");
+    assert_eq!(
+        fx.agent_events("nightly", "prompt")[0]["text"],
+        control::TASK_START
+    );
+    assert!(!fx.state().agent("nightly").unwrap().session_id.is_empty());
+    let (text, is_error) = fx.call(
+        "orchestrator",
+        "send_message",
+        json!({"to": "nightly", "text": "run now"}),
+    );
+    assert!(!is_error, "{text}");
+    let wake = fx.wait_event("nightly", "wake", 1).remove(0);
+    assert!(wake["text"].as_str().unwrap().contains("run now"), "{wake}");
+
     // The team list shows the task under Scheduled, and viewing it shows
     // its orchestrator alone.
     fx.type_text("\x02t");

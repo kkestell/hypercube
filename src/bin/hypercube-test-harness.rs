@@ -454,8 +454,9 @@ fn main() {
     };
     let env: BTreeMap<String, String> = std::env::vars().collect();
     let cwd = std::env::current_dir().unwrap();
-    // The agent's activity at the moment the host started this stand-in.
-    let activity = (|| {
+    // The agent's activity and saved session at the moment the host started
+    // this stand-in.
+    let saved = |field: &str| {
         let state = std::fs::read_to_string(env.get("HYPERCUBE_STATE")?).ok()?;
         let state: Value = serde_json::from_str(&state).ok()?;
         let id = env.get("HYPERCUBE_AGENT_ID")?;
@@ -463,8 +464,10 @@ fn main() {
             .as_array()?
             .iter()
             .find(|a| a["id"] == *id)?;
-        agent["activity"].as_str().map(String::from)
-    })();
+        agent[field].as_str().map(String::from)
+    };
+    let activity = saved("activity");
+    let resumed = saved("session_id").is_some_and(|s| !s.is_empty());
     stub.record(
         "launch",
         json!({"pid": std::process::id(), "harness": stub.harness, "argv": args, "env": env,
@@ -472,7 +475,11 @@ fn main() {
     );
 
     stub.hook("SessionStart", json!({}));
-    stub.start_waiter();
+    // OpenCode's plugin starts a waiter at launch only for a session that
+    // exists, which a new one does from its first prompt.
+    if stub.harness != "opencode" || resumed {
+        stub.start_waiter();
+    }
     let fifo = open_fifo(&dir.join("fifo"));
     stub.record("ready", json!({}));
     if let Some(prompt) = flag_value(args, "--prompt").or_else(|| prompt_arg(args)) {

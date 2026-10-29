@@ -17,7 +17,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::bar::{self, Bar, Entry, Typed};
 use crate::colors::{self, ACCENTS, Palette};
-use crate::control::{self, NUDGE, Reply, Request};
+use crate::control::{self, NUDGE, Reply, Request, TASK_START};
 use crate::harness;
 use crate::help;
 use crate::icons;
@@ -821,8 +821,9 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
 /// Ready the state of the workspace whose checkout is `dir`, on `branch` if
 /// it is a Git checkout, for a session: create the default team's
 /// orchestrator on the first run, put agents without a team in the default
-/// team, set the orchestrators' branch, and mark them idle and the workers
-/// busy. Returns the agents, the orchestrators first.
+/// team, set the orchestrators' branch, and mark each agent busy if it
+/// starts with a prompt and idle otherwise (see `start_prompt`). Returns the
+/// agents, the orchestrators first.
 fn ready(
     s: &mut State,
     spec: &config::Spec,
@@ -847,7 +848,14 @@ fn ready(
         if a.role == store::ORCHESTRATOR {
             a.branch = branch.unwrap_or_default().into();
         }
-        a.activity = start_activity(a).into();
+    }
+    let activities: Vec<&str> = s
+        .agents
+        .iter()
+        .map(|a| start_activity(start_prompt(s, a)))
+        .collect();
+    for (a, activity) in s.agents.iter_mut().zip(activities) {
+        a.activity = activity.into();
     }
     let mut agents = s.agents.clone();
     agents.sort_by_key(|a| a.role != store::ORCHESTRATOR);
@@ -871,18 +879,23 @@ fn new_orchestrator(spec: &config::Spec, name: &str, team: &str, dir: &str) -> R
 }
 
 /// The prompt an agent's harness starts with when the host launches it.
-/// Workers start a turn to pick up messages queued while they were down.
-fn start_prompt(agent: &Agent) -> &'static str {
-    if agent.role == store::ORCHESTRATOR {
-        ""
-    } else {
+/// Workers start a turn to pick up messages queued while they were down. A
+/// task's orchestrator starts one until it has a saved session, so that the
+/// harness has a session to resume and to wake for the task's firings.
+fn start_prompt(s: &State, agent: &Agent) -> &'static str {
+    if agent.role != store::ORCHESTRATOR {
         NUDGE
+    } else if agent.session_id.is_empty() && s.task(&agent.team).is_some() {
+        TASK_START
+    } else {
+        ""
     }
 }
 
-/// What an agent is doing once the host has launched its harness.
-fn start_activity(agent: &Agent) -> &'static str {
-    if agent.role == store::ORCHESTRATOR {
+/// What an agent is doing once the host has launched its harness with
+/// `prompt`.
+fn start_activity(prompt: &str) -> &'static str {
+    if prompt.is_empty() {
         store::IDLE
     } else {
         store::BUSY
@@ -964,12 +977,13 @@ impl Host {
         })
     }
 
-    /// Launch every agent, resuming saved sessions. Workers start a turn to
-    /// pick up messages queued while they were down. Only a failure of the
-    /// default team's orchestrator ends the session.
+    /// Launch every agent, resuming saved sessions, each with its start
+    /// prompt (see `start_prompt`). Only a failure of the default team's
+    /// orchestrator ends the session.
     fn start(&mut self, agents: &[Agent]) -> Result<()> {
+        let state = store::load(&self.state_path)?;
         for a in agents {
-            if let Err(e) = self.launch(&a.id, start_prompt(a), true) {
+            if let Err(e) = self.launch(&a.id, start_prompt(&state, a), true) {
                 if a.role == store::ORCHESTRATOR && a.team == store::DEFAULT_TEAM {
                     return Err(format!("launching {}: {e}", a.name).into());
                 }
@@ -1711,14 +1725,15 @@ impl Host {
         let id = slot.agent.clone();
         // The activity is set before the harness starts, so its hooks, which
         // change it, run after.
-        let agent = store::update(&self.state_path, |s| {
+        let (agent, prompt) = store::update(&self.state_path, |s| {
+            let prompt = start_prompt(s, s.agent(&id)?);
             let agent = s.agent_mut(&id)?;
-            agent.activity = start_activity(agent).into();
-            Ok(agent.clone())
+            agent.activity = start_activity(prompt).into();
+            Ok((agent.clone(), prompt))
         })?;
         self.mux.restart(pane, &agent.name)?;
         let ws = self.mux.pane(pane).map(Pane::ws).unwrap_or_default();
-        let started = harness::command(&self.exe, &agent, &self.state_path, start_prompt(&agent))
+        let started = harness::command(&self.exe, &agent, &self.state_path, prompt)
             .and_then(|launch| spawn(&launch, ws));
         match started {
             Ok(pty) => self.mux.attach(pane, pty),
@@ -2982,6 +2997,36 @@ mod tests {
         let state = store::load(&host.state_path).unwrap();
         assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
         assert_eq!(*host.teams.borrow(), [(store::DEFAULT_TEAM.into(), false)]);
+    }
+
+    #[test]
+    fn a_tasks_orchestrator_starts_a_turn_until_it_has_a_session() {
+        let mut s = State {
+            agents: vec![
+                member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+                member("d", store::ORCHESTRATOR, "docs"),
+                member("n", store::ORCHESTRATOR, "nightly"),
+                member("w", store::WORKER, "nightly"),
+            ],
+            tasks: vec![store::Task {
+                name: "nightly".into(),
+                ..store::Task::default()
+            }],
+            ..State::default()
+        };
+        let prompts =
+            |s: &State| -> Vec<&str> { s.agents.iter().map(|a| start_prompt(s, a)).collect() };
+        assert_eq!(prompts(&s), ["", "", TASK_START, NUDGE]);
+        ready(&mut s, &spec(), "/r", Some("main")).unwrap();
+        let activities: Vec<&str> = s.agents.iter().map(|a| a.activity.as_str()).collect();
+        assert_eq!(
+            activities,
+            [store::IDLE, store::IDLE, store::BUSY, store::BUSY]
+        );
+        s.agents[2].session_id = "s1".into();
+        assert_eq!(prompts(&s), ["", "", "", NUDGE]);
+        ready(&mut s, &spec(), "/r", Some("main")).unwrap();
+        assert_eq!(s.agents[2].activity, store::IDLE);
     }
 
     #[test]

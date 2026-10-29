@@ -22,6 +22,12 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 /// its messages.
 pub const NUDGE: &str = "Check your Hypercube messages.";
 
+/// The prompt a task's orchestrator starts with until it has a saved
+/// session. Its turn creates the session, which the harness then resumes and
+/// the waiter wakes for each firing.
+pub const TASK_START: &str =
+    "You run a scheduled task. Wait for its firings, which arrive as messages from schedule.";
+
 /// The longest socket path macOS accepts: `sun_path` is 104 bytes with the
 /// terminating NUL.
 const MAX_SOCKET_PATH: usize = 103;

@@ -496,7 +496,11 @@ owns the team of its name, a task's team, whose orchestrator, the task's
 orchestrator, has the task's name too. The default team's orchestrator can
 therefore `send_message` it by the task's name, which also runs the task at
 once. A task's orchestrator keeps one harness session: every firing reaches
-that session as a message. Its workers join its team and stay until it
+that session as a message. Until the session is saved, the host and
+`create_task` launch the orchestrator busy with the start prompt
+`control::TASK_START`, whose turn creates the session, saves its ID through
+UserPromptSubmit, and ends in a waiter, which a new OpenCode session has only
+from its first prompt. Once saved, it resumes idle without a prompt. Its workers join its team and stay until it
 removes them. Like every team, a task's team runs all the time.
 
 A schedule is five cron fields in local time: minute, hour, day-of-month,
@@ -524,9 +528,11 @@ agent may call:
 - `create_task(name, schedule, prompt, profile)` checks the schedule and the
   profile against `config.json`, then in one update adds the task and its
   orchestrator, with the profile's harness, model, and effort, refusing a
-  name as a new team's is refused. It launches the orchestrator idle with an
-  empty prompt. If the launch fails, it closes the pane and removes the
-  orchestrator and the task. The `profile` schema is the enum of the
+  name as a new team's is refused. It launches the orchestrator with the
+  start prompt. If the launch fails, it closes the pane and removes the
+  orchestrator and the task as `remove_team` does, keeping both, with an
+  error naming the workers, if the orchestrator created workers before its
+  pane closed. The `profile` schema is the enum of the
   profile names, and its description asks for the profile the user names,
   or else one suited to the task.
 - `update_task(name, schedule?, prompt?)` changes the given fields.
@@ -582,8 +588,10 @@ servers, and the host change it concurrently and readers always see a whole
 file.
 
 The state's lock file is created with the state and never written, so its
-modification time is the workspace's creation time. Every hook writes the
-state, so the state file's modification time is its last activity.
+modification time is the workspace's creation time. An update that leaves
+the state as it was writes nothing, and agents change the state as they start
+and end turns and as messages are queued and delivered, so the state file's
+modification time is its last activity.
 `hypercube status` lists every workspace with a state file by last activity,
 with its directory, whether its host lock is held, its number of agents, and
 both times. A workspace's directory is its default team's orchestrator's. An
