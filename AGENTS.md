@@ -1,12 +1,13 @@
 # Hypercube
 
-Hypercube runs a team of local coding agents in one terminal. Each agent is a
+Hypercube runs teams of local coding agents in one terminal. Each agent is a
 native harness TUI, Claude Code or OpenCode, running in its own pty and pane.
 Hypercube draws the panes itself through Ghostty's libghostty-vt. Agents
 message each other through an MCP tool and receive messages through harness
-hooks. One orchestrator works in the original checkout and manages workers. A
-worker either has its own Git worktree or works directly in an existing
-directory.
+hooks. A workspace holds one or more teams, each an orchestrator and the
+workers it manages. Every team's orchestrator works in the original checkout,
+and the screen shows one team at a time. A worker either has its own Git
+worktree or works directly in an existing directory.
 
 Kyle is the only user. Favor small implementations that are easy to understand
 and change over generalized infrastructure or speculative requirements.

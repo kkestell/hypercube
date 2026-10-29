@@ -23,7 +23,9 @@ use crate::help;
 use crate::icons;
 use crate::link::{self, Link, Message};
 use crate::mcp;
-use crate::mux::{self, Chrome, Mux, Notice, Pane, PaneId, PaneView, Rect, Winsize, now_ms};
+use crate::mux::{
+    self, Captured, Chrome, Mux, Notice, Pane, PaneId, PaneView, Rect, Winsize, now_ms,
+};
 use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
@@ -1127,13 +1129,13 @@ impl Host {
             // the log.
             Err(e) => {
                 eprintln!("hypercube: reading the workspaces: {e}");
-                self.mux.set_captured(false);
+                self.mux.set_captured(None);
                 return Ok(());
             }
         };
         *self.overlay.borrow_mut() = Some(overlay);
         self.overlay_read = now_ms();
-        self.mux.set_captured(true);
+        self.mux.set_captured(Some(Captured::Overlay));
         self.lay_out()
     }
 
@@ -1141,7 +1143,7 @@ impl Host {
         if self.overlay.borrow_mut().take().is_none() {
             return Ok(());
         }
-        self.mux.set_captured(false);
+        self.mux.set_captured(None);
         self.lay_out()
     }
 
@@ -1259,7 +1261,7 @@ impl Host {
         let open = !self.help.get();
         self.close_screens()?;
         self.help.set(open);
-        self.mux.set_captured(open);
+        self.mux.set_captured(open.then_some(Captured::Help));
         self.lay_out()
     }
 
@@ -1269,7 +1271,7 @@ impl Host {
             | self.help.replace(false)
             | self.teamlist.borrow_mut().take().is_some();
         self.bar.borrow_mut().prompt = None;
-        self.mux.set_captured(false);
+        self.mux.set_captured(None);
         self.mux.invalidate_chrome();
         if covered { self.lay_out() } else { Ok(()) }
     }
@@ -1401,7 +1403,7 @@ impl Host {
     fn open_prompt(&mut self) -> Result<()> {
         self.close_screens()?;
         self.bar.borrow_mut().prompt = Some(String::new());
-        self.mux.set_captured(true);
+        self.mux.set_captured(Some(Captured::Prompt));
         Ok(())
     }
 
@@ -1413,9 +1415,9 @@ impl Host {
         match typed {
             Typed::None => return,
             Typed::Changed => {}
-            Typed::Cancel => self.mux.set_captured(false),
+            Typed::Cancel => self.mux.set_captured(None),
             Typed::Enter(path) => {
-                self.mux.set_captured(false);
+                self.mux.set_captured(None);
                 match workspace::locate(&self.root, path.trim()) {
                     Ok(root) if root == self.root => {}
                     Ok(root) => self.runtime.send(Message::Switch(root)),
@@ -1532,7 +1534,7 @@ impl Host {
         *self.teamlist.borrow_mut() = None;
         self.bar.borrow_mut().prompt = None;
         self.help.set(false);
-        self.mux.set_captured(false);
+        self.mux.set_captured(None);
         self.runtime.connect(&mut self.mux, link, replies, size)?;
         self.read_bar();
         match self.unstarted.take() {
@@ -1781,6 +1783,9 @@ impl Host {
     /// every other team's in the background. Ends any zoom.
     fn view_team(&mut self, team: &str) -> Result<()> {
         *self.view.borrow_mut() = team.to_string();
+        if let Some(teamlist) = &mut *self.teamlist.borrow_mut() {
+            teamlist.view = team.to_string();
+        }
         self.zoomed.set(None);
         self.drag = None;
         for slot in &self.panes {
@@ -1815,7 +1820,7 @@ impl Host {
         };
         *self.teamlist.borrow_mut() = Some(teamlist);
         self.teamlist_read = now_ms();
-        self.mux.set_captured(true);
+        self.mux.set_captured(Some(Captured::Teams));
         self.lay_out()
     }
 
@@ -2868,9 +2873,22 @@ mod tests {
         })
         .unwrap();
         host.toggle_teamlist().unwrap();
-        host.delete_team("docs").unwrap();
+        host.teamlist_key(b"x").unwrap();
         assert_eq!(host.pane_of("d"), None);
         assert_eq!(*host.view.borrow(), store::DEFAULT_TEAM);
+        // The open list shows the default team as viewed.
+        let mut out = Vec::new();
+        let teamlist = host.teamlist.borrow();
+        teamlist
+            .as_ref()
+            .unwrap()
+            .draw(&mut out, size(40, 5), Palette::default());
+        drop(teamlist);
+        let mut terminal = Terminal::new(40, 5).unwrap();
+        terminal.vt_write(&out);
+        let screen = Screen(terminal);
+        assert!(screen.row(1).starts_with(" \u{f071} default  1 agent"));
+        assert!(screen.bold(3, 1));
         let state = store::load(&host.state_path).unwrap();
         assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
         assert_eq!(*host.teams.borrow(), [(store::DEFAULT_TEAM.into(), false)]);

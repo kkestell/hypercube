@@ -714,11 +714,13 @@ a paste, these are routed elsewhere:
 
 `Mux::set_captured(true)` captures input: each key or escape sequence is
 reported as `Event::Key(bytes)` instead of routed, the prefix keys are still
-reported, and pastes and mouse reports are dropped. Ctrl-b s, ?, and t turn
-capturing on, or off while captured, and Ctrl-b c turns it on, so the keys
+reported, and pastes and mouse reports are dropped. The mux keeps which view
+captures the input, `mux::Captured`: the overlay, the list of keys, the team
+list, or the prompt. Ctrl-b s, ?, and t capture input for their view, or stop
+while their own view is open, and Ctrl-b c captures it for the prompt, so
+switching from one view to another keeps the input captured and the keys
 after them in the same read go to the host or the panes in the order they
-were typed; the caller sets capturing to match when it handles
-the event. The host then has every mirrored mode at its default and no Kitty
+were typed; the caller sets capturing to match when it handles the event. The host then has every mirrored mode at its default and no Kitty
 flags, so keys arrive in legacy form, and no cursor is drawn.
 
 A key or escape sequence cut off by the end of a read, up to 256 bytes, waits

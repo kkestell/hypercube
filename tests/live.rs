@@ -14,8 +14,8 @@ use std::thread::JoinHandle;
 use hypercube::client::{self, Tty};
 use hypercube::link::{self, Link, Message};
 use hypercube::mux::{
-    self, Chrome, Key, Mux, Notice, PaneId, PaneView, Rect, Winsize, host_replies_done, now_ms,
-    read, write_all,
+    self, Captured, Chrome, Key, Mux, Notice, PaneId, PaneView, Rect, Winsize, host_replies_done,
+    now_ms, read, write_all,
 };
 use hypercube::pty::{self, Pty};
 use hypercube::runtime::{Event, Runtime};
@@ -1275,7 +1275,7 @@ fn deadline_wakes_wait() {
 #[test]
 fn a_captured_lone_esc_is_reported_when_its_hold_ends() {
     let mut h = Host::new(40, 10);
-    h.mux.set_captured(true);
+    h.mux.set_captured(Some(Captured::Overlay));
     h.mux.input(b"\x1b");
     let start = now_ms();
     let events = h.runtime.wait(&mut h.mux, &[], Some(start + 1000)).unwrap();

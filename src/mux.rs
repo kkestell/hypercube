@@ -173,6 +173,16 @@ pub enum Notice {
     Melted(PaneId),
 }
 
+/// A view over the whole screen, or the bar's prompt, that takes host input
+/// while it is open; see `Mux::set_captured`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Captured {
+    Overlay,
+    Help,
+    Teams,
+    Prompt,
+}
+
 /// What the chrome sees of a pane.
 pub struct PaneView<'a> {
     pub id: PaneId,
@@ -987,8 +997,9 @@ pub struct Mux {
     /// `host_queries`, which every pane's terminal takes.
     host_replies: Vec<u8>,
     host: HostTerminal,
-    /// Whether host input is reported as `Notice::Key` instead of routed.
-    captured: bool,
+    /// The view host input is reported to as `Notice::Key` instead of
+    /// routed, while one is open.
+    captured: Option<Captured>,
     /// What host input and focus changes have told the caller since it
     /// last took them, in order.
     notices: Vec<Notice>,
@@ -1014,7 +1025,7 @@ impl Mux {
             orphans: Vec::new(),
             host_replies: Vec::new(),
             host: HostTerminal::new(false),
-            captured: false,
+            captured: None,
             notices: Vec::new(),
         }
     }
@@ -1092,18 +1103,19 @@ impl Mux {
     }
 
     /// Report host input as `Notice::Key`, one key or escape sequence each,
-    /// instead of routing it to the panes, or stop. Ctrl-b s, ?, t, and c turn
-    /// capturing on, and Ctrl-b s, ?, and t off while captured, so input after
-    /// them in the same read goes where the caller will want it, and the
-    /// caller sets it to match when it handles their notices. While
-    /// captured, pastes
-    /// and mouse reports are dropped, the host has every mirrored mode at
-    /// its default, so keys arrive in legacy form, and no cursor is shown.
-    pub fn set_captured(&mut self, captured: bool) {
-        if self.captured == captured {
+    /// instead of routing it to the panes, while `screen` is open, or stop.
+    /// Ctrl-b s, ?, t, and c open their view's capture, and Ctrl-b s, ?, and
+    /// t close it while their own view is open, so input after them in the
+    /// same read goes where the caller will want it, and the caller sets it
+    /// to match when it handles their notices. While captured, pastes and
+    /// mouse reports are dropped, the host has every mirrored mode at its
+    /// default, so keys arrive in legacy form, and no cursor is shown.
+    pub fn set_captured(&mut self, screen: Option<Captured>) {
+        let was = self.captured.is_some();
+        self.captured = screen;
+        if was == screen.is_some() {
             return;
         }
-        self.captured = captured;
         if let Some(Press::Report(_) | Press::Select(..)) = self.host.press {
             self.host.press = Some(Press::Ignore);
         }
@@ -1112,6 +1124,12 @@ impl Mux {
             self.host.pasting = Some(NO_PANE);
         }
         self.chrome_dirty = true;
+    }
+
+    /// Capture input for `screen`, or stop if it is the view open.
+    fn toggle_captured(&mut self, screen: Captured) {
+        let open = self.captured != Some(screen);
+        self.set_captured(open.then_some(screen));
     }
 
     fn mode_default(&self, value: u16, default: bool) -> bool {
@@ -1640,7 +1658,7 @@ impl Mux {
             {
                 self.send(&data[start..i]);
                 self.host.prefixed = false;
-                let captured = self.captured;
+                let captured = self.captured.is_some();
                 match key {
                     Prefixed::Workspace(n) => self.notices.push(Notice::Workspace(n)),
                     Prefixed::Step(n) => self.notices.push(Notice::Step(n)),
@@ -1650,19 +1668,19 @@ impl Mux {
                     // prompt for a path take the input that follows.
                     Prefixed::Overlay => {
                         self.notices.push(Notice::Overlay);
-                        self.set_captured(!captured);
+                        self.toggle_captured(Captured::Overlay);
                     }
                     Prefixed::Help => {
                         self.notices.push(Notice::Help);
-                        self.set_captured(!captured);
+                        self.toggle_captured(Captured::Help);
                     }
                     Prefixed::Teams => {
                         self.notices.push(Notice::Teams);
-                        self.set_captured(!captured);
+                        self.toggle_captured(Captured::Teams);
                     }
                     Prefixed::NewWorkspace => {
                         self.notices.push(Notice::NewWorkspace);
-                        self.set_captured(true);
+                        self.set_captured(Some(Captured::Prompt));
                     }
                     _ if captured => {}
                     Prefixed::Prefix => self.send(token),
@@ -1679,7 +1697,7 @@ impl Mux {
                 start = end;
                 continue;
             }
-            if self.captured {
+            if self.captured.is_some() {
                 self.capture(token);
                 i = end;
                 start = end;
@@ -1914,7 +1932,11 @@ impl Mux {
 
     /// The focused pane, unless input is captured.
     fn input_pane(&self) -> Option<&Pane> {
-        if self.captured { None } else { self.focused() }
+        if self.captured.is_some() {
+            None
+        } else {
+            self.focused()
+        }
     }
 
     fn sync_modes(&mut self, out: &mut Vec<u8>) {
@@ -3195,14 +3217,14 @@ mod tests {
         );
         assert_eq!(p.got(0), b"");
         // Ctrl-b t opens the team list, and closes it while it is open.
-        p.mux.set_captured(false);
+        p.mux.set_captured(None);
         p.mux.input(b"\x02t");
         assert_eq!(p.mux.take_notices(), [Notice::Teams]);
-        p.mux.input(b"\x02t");
+        p.mux.input(b"\x02ta");
         assert_eq!(p.mux.take_notices(), [Notice::Teams]);
-        assert_eq!(p.got(0), b"");
+        assert_eq!(p.got(0), b"a");
         // Ctrl-b [ and Ctrl-b PageUp scroll up a page.
-        p.mux.set_captured(false);
+        p.mux.set_captured(None);
         let id = p.ids[0];
         for i in 0..30 {
             p.mux
@@ -3797,7 +3819,7 @@ mod tests {
     #[test]
     fn captured_input_is_reported_as_keys() {
         let mut p = Piped::new();
-        p.mux.set_captured(true);
+        p.mux.set_captured(Some(Captured::Overlay));
         p.mux.take_notices();
         p.mux
             .input(b"j\x1b[A\x1b[<0;1;1M\x1b[200~paste\x1b[201~\r\x02s\x1b[98;5u\x1b[115u");
@@ -3817,9 +3839,36 @@ mod tests {
         let out = frame(&mut p.mux);
         assert!(!has(&out, b"\x1b[?25h"));
 
-        p.mux.set_captured(false);
+        p.mux.set_captured(None);
         p.mux.input(b"a");
         assert_eq!(p.got(0), b"a");
+    }
+
+    #[test]
+    fn switching_from_one_captured_view_to_another_keeps_the_input_captured() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        let key = |k: &[u8]| Notice::Key(k.to_vec());
+        for (open, notice) in [(&b"\x02?"[..], Notice::Help), (b"\x02s", Notice::Overlay)] {
+            p.mux.input(open);
+            p.mux.input(b"\x02tnd\r");
+            assert_eq!(
+                p.mux.take_notices(),
+                [notice, Notice::Teams, key(b"n"), key(b"d"), key(b"\r")]
+            );
+            assert_eq!(p.got(0), b"", "{open:?}");
+            // The team list's own key closes it.
+            p.mux.input(b"\x02tx");
+            assert_eq!(p.mux.take_notices(), [Notice::Teams]);
+            assert_eq!(p.got(0), b"x");
+        }
+        // The prompt for a path, then the list of keys.
+        p.mux.input(b"\x02c\x02?q");
+        assert_eq!(
+            p.mux.take_notices(),
+            [Notice::NewWorkspace, Notice::Help, key(b"q")]
+        );
+        assert_eq!(p.got(0), b"");
     }
 
     #[test]
@@ -3839,7 +3888,7 @@ mod tests {
         assert_eq!(p.got(0), b"ab\x1b[57442;5u\x02\x1b[98;5uc");
 
         // It works while input is captured, and sends nothing.
-        p.mux.set_captured(true);
+        p.mux.set_captured(Some(Captured::Overlay));
         p.mux.input(b"\x021\x02\x02j");
         assert_eq!(
             p.mux.take_notices(),
@@ -3864,7 +3913,7 @@ mod tests {
         );
         assert_eq!(p.got(0), b"a");
 
-        p.mux.set_captured(false);
+        p.mux.set_captured(None);
         p.mux.input(b"\x1b[98;5u\x1b[99uy");
         assert_eq!(
             p.mux.take_notices(),

@@ -68,8 +68,8 @@ pub struct TeamList {
     selected: usize,
     /// The workspace's state file.
     state_path: PathBuf,
-    /// The viewed team.
-    view: String,
+    /// The viewed team, which the host keeps current.
+    pub view: String,
     /// The name typed for a new team, while the prompt for it is open.
     prompt: Option<String>,
     /// Shown in the last row, until the next key.
