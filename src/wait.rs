@@ -30,16 +30,24 @@ enum Found {
 
 /// Wait for the agent named by `HYPERCUBE_AGENT_ID` and `HYPERCUBE_STATE`,
 /// and return whether it wrote the agent's messages to `out`. Processes
-/// outside a Hypercube agent return at once. A harness may write hook input to
-/// `stdin`; it is read and ignored.
-pub fn run(mut stdin: impl Read, out: impl Write) -> Result<bool> {
+/// outside a Hypercube agent and hooks from native subagents return at once.
+pub fn run(stdin: impl Read, out: impl Write) -> Result<bool> {
     let id = std::env::var("HYPERCUBE_AGENT_ID").unwrap_or_default();
     let state = std::env::var("HYPERCUBE_STATE").unwrap_or_default();
     if id.is_empty() || state.is_empty() {
         return Ok(false);
     }
-    let _ = stdin.read_to_end(&mut Vec::new());
-    wait(&id, Path::new(&state), out)
+    from_hook(&id, Path::new(&state), stdin, out)
+}
+
+fn from_hook(id: &str, state: &Path, stdin: impl Read, out: impl Write) -> Result<bool> {
+    // OpenCode supplies no hook input. Claude Code's native subagents must
+    // neither replace the main conversation's waiter nor receive its queue.
+    let input: hook::Input = serde_json::from_reader(stdin).unwrap_or_default();
+    if input.agent_id.is_some() {
+        return Ok(false);
+    }
+    wait(id, state, out)
 }
 
 /// Become agent `id`'s newest waiter, then wait until the agent is idle with
@@ -211,6 +219,41 @@ mod tests {
             s.agent_mut("w1").unwrap().activity = store::IDLE.into();
         });
         assert!(newer.join().unwrap().0);
+    }
+
+    #[test]
+    fn a_native_subagents_hook_keeps_the_main_conversations_waiter() {
+        let (_dir, state) = fixture(store::BUSY, vec![message("o1", "w1", "main only")]);
+        let waiter = start("w1", &state);
+        let before = store::load(&state).unwrap();
+        let mut out = Vec::new();
+        assert!(
+            !from_hook(
+                "w1",
+                &state,
+                r#"{"session_id":"s1","agent_id":"native-subagent"}"#.as_bytes(),
+                &mut out,
+            )
+            .unwrap()
+        );
+        assert!(out.is_empty());
+        assert_eq!(store::load(&state).unwrap(), before);
+        update(&state, |s| {
+            s.agent_mut("w1").unwrap().activity = store::IDLE.into();
+        });
+        let (delivered, out) = waiter.join().unwrap();
+        assert!(delivered);
+        assert_eq!(out, "Message from orchestrator (o1):\nmain only\n");
+    }
+
+    #[test]
+    fn a_waiter_accepts_main_conversation_and_empty_hook_input() {
+        for input in ["", r#"{"session_id":"s1","agent_type":"code-reviewer"}"#] {
+            let (_dir, state) = fixture(store::IDLE, vec![message("o1", "w1", "hi")]);
+            let mut out = Vec::new();
+            assert!(from_hook("w1", &state, input.as_bytes(), &mut out).unwrap());
+            assert_eq!(out, b"Message from orchestrator (o1):\nhi\n");
+        }
     }
 
     #[test]

@@ -15,8 +15,9 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 #[derive(Default, Deserialize)]
 #[serde(default)]
-struct Input {
+pub(crate) struct Input {
     session_id: String,
+    pub(crate) agent_id: Option<String>,
     error: String,
     error_details: String,
     last_assistant_message: String,
@@ -73,6 +74,13 @@ pub fn handle(
         .next()
         .ok_or("hook input is empty")?
         .map_err(|e| format!("hook input: {e}"))?;
+
+    // Settings hooks also run in Claude Code's native subagents. Their
+    // context and activity are not the Hypercube agent's, but an approval
+    // still needs the user's attention in the same pane.
+    if input.agent_id.is_some() && event != "PermissionRequest" {
+        return Ok(());
+    }
 
     store::update(state_path, |state| {
         let agent = state.agent(id)?;
@@ -516,21 +524,22 @@ mod tests {
 
     #[test]
     fn permission_request_sets_the_attention_flag() {
-        let f = Fixture::new(pair(), Vec::new(), false);
-        f.queue("a", "b", "hi");
-        let mut out = Vec::new();
-        f.try_run(
-            "b",
-            "PermissionRequest",
+        for input in [
             r#"{"session_id":"s1","tool_name":"Bash"}"#,
-            &mut out,
-        )
-        .unwrap();
-        // No output leaves the decision to the user, and messages stay queued.
-        assert!(out.is_empty());
-        let s = f.load();
-        assert!(s.agents[1].attention && !s.agents[0].attention);
-        assert_eq!(s.messages.len(), 1);
+            r#"{"session_id":"s1","tool_name":"Bash","agent_id":"native-subagent"}"#,
+        ] {
+            let f = Fixture::new(pair(), Vec::new(), false);
+            f.queue("a", "b", "hi");
+            let mut out = Vec::new();
+            f.try_run("b", "PermissionRequest", input, &mut out)
+                .unwrap();
+            // A subagent's approval needs attention too. No output leaves the
+            // decision to the user, and messages stay queued.
+            assert!(out.is_empty());
+            let s = f.load();
+            assert!(s.agents[1].attention && !s.agents[0].attention);
+            assert_eq!(s.messages.len(), 1);
+        }
     }
 
     #[test]
@@ -664,6 +673,59 @@ mod tests {
         assert_eq!(s.messages[0].to, "a");
         assert_eq!(s.agents[1].activity, store::BUSY);
         assert!(f.run("b", "PostToolUse").is_null());
+    }
+
+    #[test]
+    fn native_subagent_hooks_leave_the_main_conversations_state_untouched() {
+        let mut agents = pair();
+        agents[1].activity = store::BUSY.into();
+        agents[1].session_id = "main".into();
+        let f = Fixture::new(agents, vec![], false);
+        f.queue("a", "b", "for the main conversation");
+        let before = f.load();
+        for event in [
+            "SessionStart",
+            "UserPromptSubmit",
+            "PostToolUse",
+            "Stop",
+            "StopFailure",
+        ] {
+            let mut out = Vec::new();
+            f.try_run(
+                "b",
+                event,
+                r#"{"session_id":"s1","agent_id":"native-subagent","agent_type":"Explore","error":"server_error"}"#,
+                &mut out,
+            )
+            .unwrap();
+            assert!(out.is_empty(), "{event}");
+            assert_eq!(f.load(), before, "{event}");
+        }
+        let r = f.run("b", "PostToolUse");
+        assert_eq!(
+            context_of(&r),
+            "Message from orchestrator (a):\nfor the main conversation"
+        );
+    }
+
+    #[test]
+    fn an_agent_type_alone_does_not_identify_a_native_subagent() {
+        let f = Fixture::new(pair(), vec![], false);
+        f.queue("a", "b", "main conversation using --agent");
+        let mut out = Vec::new();
+        f.try_run(
+            "b",
+            "PostToolUse",
+            r#"{"session_id":"s1","agent_type":"code-reviewer"}"#,
+            &mut out,
+        )
+        .unwrap();
+        let r = serde_json::from_slice(&out).unwrap();
+        assert_eq!(
+            context_of(&r),
+            "Message from orchestrator (a):\nmain conversation using --agent"
+        );
+        assert!(f.load().messages.is_empty());
     }
 
     #[test]

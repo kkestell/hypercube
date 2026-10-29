@@ -66,16 +66,28 @@ claude --mcp-config <json> --settings <json> --model <model> --effort <effort>
   with `--limits` for the orchestrator. The status line shows the model, the
   effort while thinking is on, and the context window's tokens in use, size,
   and percentage; `--limits` adds bars for the 5-hour and 7-day usage limits.
+- Hooks carrying `agent_id` belong to a native subagent, not the main
+  conversation. They leave messages, session IDs, and activity untouched.
+  `PermissionRequest` still sets the attention flag, since a subagent's
+  approval needs the user's attention in the same pane. `agent_type` alone
+  does not identify a subagent: the main conversation can have one too.
 - The `SessionStart`, `Stop`, and `StopFailure` entries also run `'<exe>' wait`
   with `asyncRewake` and a 20-day `timeout`. Claude Code runs it in the
   background, and when it exits with status 2, wakes the session with its stderr
   as a system reminder, even when the session is idle. The prompt being typed
-  stays in the editor.
+  stays in the editor. A wait hook carrying `agent_id` exits without replacing
+  the main conversation's waiter or taking its messages.
 - `StopFailure` runs when a turn ends due to an API error. Its input carries
   the error type in `error`, with optional `error_details` and
   `last_assistant_message`. The failure message uses the first non-empty
   error details, assistant message, or error type, or just the failure notice
   if none is present.
+- A user-interrupted turn runs no `Stop` hook. Claude Code 2.1.312 supplies no
+  reliable hook signal for that interruption, so activity can stay busy until
+  the next prompt or completed turn. The `idle_prompt` notification uses the
+  last completed query, not the interruption: the first interrupted turn has
+  none, and typing since an earlier completion suppresses its notification.
+  The status line input carries no turn activity field.
 - `--permission-mode auto` starts the session in auto mode. A tool call auto
   mode does not allow opens an approval dialog, after the `PermissionRequest`
   hook.
