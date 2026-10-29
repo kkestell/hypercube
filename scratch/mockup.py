@@ -18,6 +18,12 @@ green is running, and gray is idle or stopped.
     ./mockup.py --view 2 --icons nerd
     ./mockup.py --teams --icons nerd
     ./mockup.py --overlay --icons nerd
+    ./mockup.py --sidebar --icons nerd
+    ./mockup.py --sidebar --sidebar-focus --selected 2 --icons nerd
+
+`--sidebar` replaces the header, the bar, the workspace overlay, and the team
+list with a sidebar: every workspace, the current one's teams, and the viewed
+team's agents.
 """
 import argparse
 
@@ -195,23 +201,23 @@ def shares(total, weights):
     return out
 
 
-def layout(cols, rows, workers):
-    """Each pane's (col, row, cols, rows), the label row above `row`. `workers`
-    holds whether each is collapsed. Mirrors host::layout with even weights."""
-    area_rows = rows - 2
+def layout(x, y, cols, rows, workers):
+    """Each pane's (col, row, cols, rows), the label row above `row`, in the
+    area of `cols` by `rows` at column `x` and row `y`. `workers` holds
+    whether each is collapsed. Mirrors host::layout with even weights."""
     left = (cols - 1) // 2 if workers else cols
-    rects = [(0, 2, left, area_rows - 1)]
+    rects = [(x, y + 1, left, rows - 1)]
     expanded = [w for w in workers if not w]
-    extras = iter(shares(area_rows - len(workers) - len(expanded), [1] * len(expanded)))
-    top = 0
+    extras = iter(shares(rows - len(workers) - len(expanded), [1] * len(expanded)))
+    top = y
     for collapsed in workers:
         height = 0 if collapsed else 1 + next(extras)
-        rects.append((left + 1, 1 + top + 1, cols - left - 1, height))
+        rects.append((x + left + 1, top + 1, cols - left - 1, height))
         top += 1 + height
     return rects
 
 
-def draw_label(c, pal, icons, rect, pane, focused, zoomed):
+def draw_label(c, pal, icons, rect, pane, focused, zoomed, worker):
     """A title drawn on a horizontal line: ━ ▾ name ● 🔔 · notes ━━━ detail ━.
     Mirrors host::draw_label and draw_row."""
     col, row, width, height = rect
@@ -219,7 +225,7 @@ def draw_label(c, pal, icons, rect, pane, focused, zoomed):
     c.put(row, col, "━" * width, fg(pal.line))
     bold = BOLD if focused else ""
     style = fg(pal.text) + bold
-    left = f" {icons['collapsed' if height == 0 else 'expanded']} {pane['name']}" if col > 0 else f" {pane['name']}"
+    left = f" {icons['collapsed' if height == 0 else 'expanded']} {pane['name']}" if worker else f" {pane['name']}"
     # Spans of `left` drawn in another color: (start, text, color).
     spans = []
     if pane.get("failed"):
@@ -262,20 +268,9 @@ def draw_label(c, pal, icons, rect, pane, focused, zoomed):
         c.put(row, col + width - 1 - len(right), right, style)
 
 
-def draw(args):
-    cols, rows = args.cols, args.rows
-    icons = ICONS[args.icons]
-    c = Canvas(cols, rows)
-    pal = Palette(args.accent)
-    divider, bar = fg(pal.line), sgr(pal.bar_fg, pal.bar_bg)
-    if args.overlay:
-        return draw_overlay(c, pal, icons, args)
-    if args.teams:
-        return draw_teams(c, pal, icons, args)
-
-    # The viewed team: the main team, or a task's orchestrator, named after
-    # the task, and its workers.
-    task = TASKS[args.view - 1] if args.view else None
+def team(icons, args, task):
+    """The panes of the main team, or of `task`'s team: its orchestrator,
+    named after the task, and its workers."""
     lead = dict(name="orchestrator", detail=icon(icons, "branch", "main"), busy=False)
     workers, prefix = args.workers, "worker-"
     if task:
@@ -292,11 +287,58 @@ def draw(args):
         else:
             w["detail"] = icon(icons, "directory", w["directory"])
         panes.append(w)
+    return panes
+
+
+def draw_panes(c, pal, icons, args, panes, rects, right, top, rows):
+    """The panes, their titles, and the divider, which follows the
+    orchestrator from row `top` for `rows` rows unless it reaches column
+    `right`."""
+    divider = fg(pal.line)
+    first = rects[0]
+    if first[2] and first[0] + first[2] < right:
+        for row in range(top, top + rows):
+            c.put(row, first[0] + first[2], "┃", divider)
+    for i, (pane, rect) in enumerate(zip(panes, rects)):
+        col, row, width, height = rect
+        if not width:
+            continue
+        for r in range(row, row + height):
+            c.put(r, col, " " * width, HARNESS)
+        draw_label(c, pal, icons, rect, pane, i == args.focus, i == args.zoom, i > 0 and args.zoom is None)
+        if i > 0 and args.zoom is None:
+            # The top titles meet at ┳; lower worker titles branch at ┣.
+            c.put(row - 1, col - 1, "┳" if row == top + 1 else "┣", divider)
+
+
+def draw(args):
+    cols, rows = args.cols, args.rows
+    icons = ICONS[args.icons]
+    c = Canvas(cols, rows)
+    pal = Palette(args.accent)
+    bar = sgr(pal.bar_fg, pal.bar_bg)
+    if args.overlay:
+        return draw_overlay(c, pal, icons, args)
+    if args.teams:
+        return draw_teams(c, pal, icons, args)
+
+    task = TASKS[args.view - 1] if args.view else None
+    panes = team(icons, args, task)
+    # The panes' area: between the header and the bar, or right of the
+    # sidebar and the blank column that pads it.
+    if args.sidebar:
+        x, y, area_cols, area_rows = args.sidebar + 1, 0, cols - args.sidebar - 1, rows
+    else:
+        x, y, area_cols, area_rows = 0, 1, cols, rows - 2
     if args.zoom is not None:
         rects = [(0, 0, 0, 0)] * len(panes)
-        rects[args.zoom] = (0, 2, cols, rows - 3)
+        rects[args.zoom] = (x, y + 1, area_cols, area_rows - 1)
     else:
-        rects = layout(cols, rows, [bool(p.get("collapsed")) for p in panes[1:]])
+        rects = layout(x, y, area_cols, area_rows, [bool(p.get("collapsed")) for p in panes[1:]])
+    draw_panes(c, pal, icons, args, panes, rects, x + area_cols, y, area_rows)
+    if args.sidebar:
+        draw_sidebar(c, pal, icons, args, panes, task)
+        return c.render(not args.no_border)
 
     # The header, in the bar colors: the workspace path and the viewed task's
     # name, and the task counts at the right while the workspace has tasks,
@@ -325,23 +367,6 @@ def draw(args):
             c.put(0, start, right, bar)
             for dot in dots:
                 c.put(0, start + dot, icons["attention"], sgr(ATTENTION, pal.bar_bg))
-    # The divider follows the orchestrator unless it fills the width.
-    first = rects[0]
-    if first[2] and first[0] + first[2] < cols:
-        left = first[0] + first[2]
-        for row in range(1, rows - 1):
-            c.put(row, left, "┃", divider)
-    for i, (pane, rect) in enumerate(zip(panes, rects)):
-        col, top, width, height = rect
-        if not width:
-            continue
-        for row in range(top, top + height):
-            c.put(row, col, " " * width, HARNESS)
-        draw_label(c, pal, icons, rect, pane, i == args.focus, i == args.zoom)
-        if col > 0:
-            # The top titles meet at ┳; lower worker titles branch at ┣.
-            c.put(top - 1, col - 1, "┳" if top == 2 else "┣", divider)
-
     # The bar: a tab for each workspace that fits, with a dim separator
     # between them, the current one bold and the others dim, and an
     # attention icon after any workspace waiting for an approval. The current
@@ -366,6 +391,130 @@ def draw(args):
             c.put(rows - 1, col, dot, sgr(ATTENTION, pal.bar_bg) + bold)
             col += len(dot)
     return c.render(not args.no_border)
+
+
+# The workspaces in number order, the first the current one: each one's
+# name, checkout, accent in ACCENTS, whether its host runs, its main team's
+# agents, and its tasks, each with its team's agents. The current one's
+# checkout is --path, its accent --accent, and its teams those of WORKERS
+# and TASKS.
+WORKSPACES = [
+    dict(name="hypercube"),
+    dict(
+        name="api-server",
+        path="~/src/api-server",
+        accent=0,
+        running=True,
+        agents=[
+            dict(name="orchestrator", busy=True),
+            dict(name="worker-1", busy=True, attention=True),
+            dict(name="worker-2", busy=False),
+        ],
+        tasks=[dict(name="deps", state="idle", last="2h ago", agents=[dict(name="deps", busy=False)])],
+    ),
+    dict(
+        name="docs",
+        path="~/src/docs",
+        accent=4,
+        running=False,
+        agents=[dict(name="orchestrator"), dict(name="worker-1")],
+        tasks=[],
+    ),
+]
+
+
+def agent_marks(icons, pane):
+    """An agent's mark at the right of its sidebar row, the most urgent of:
+    failed or exited, waiting for an approval, and busy. An idle agent has
+    none."""
+    if pane.get("failed"):
+        return [(icons["task_failed"], ERROR)]
+    if pane.get("status") is not None:
+        return [(icons["exited"].format(pane["status"]), ERROR)]
+    if pane.get("attention"):
+        return [(icons["attention"], ATTENTION)]
+    if pane.get("busy"):
+        return [(icons["activity"], RUNNING)]
+    return []
+
+
+# The sidebar's columns right of its marks. A Nerd Font icon followed by a
+# space draws across both cells, so the last mark needs two to clear the edge.
+PAD = 2
+
+
+def draw_sidebar(c, pal, icons, args, panes, task):
+    """The sidebar, in place of the header, the bar, the workspace overlay,
+    and the team list: every workspace in number order with its checkout,
+    its main team, and its scheduled tasks' teams under "Scheduled", each
+    team with its agents, and a row to start a workspace. The current
+    workspace, the viewed team, and the focused agent are bold. With `--sidebar-focus` the `--selected`th selectable row is
+    highlighted and the last row shows its keys."""
+    width, rows, bg = args.sidebar, args.rows, pal.bar_bg
+    text = sgr(pal.bar_fg, bg)
+    faint = sgr(mix(pal.bar_fg, bg, 0.45), bg)
+    for row in range(rows):
+        c.put(row, 0, " " * width, text)
+    # Each row: its indent, label, marks, style, whether it is bold, whether
+    # it is selectable, and the color of the label's first word, if any.
+    items = []
+
+    def add(indent, label, marks=(), style=text, bold=False, select=True, lead=None):
+        items.append(dict(indent=indent, label=label, marks=list(marks), style=style, bold=bold, select=select, lead=lead))
+
+    def add_team(name, team_panes, style, viewed):
+        """A team, its orchestrator under it, and its workers under the
+        orchestrator."""
+        add(3, name, style=style, bold=viewed)
+        for i, p in enumerate(team_panes):
+            add(7 if i else 5, p["name"], agent_marks(icons, p), style=style, bold=viewed and i == args.focus)
+
+    def add_workspace(n, name, accent, path, main, tasks, running, current):
+        style = text if running else faint
+        add(1, f"{n} {name}", style=style, bold=current, lead=accent)
+        room = width - 3 - PAD
+        add(3, path if len(path) <= room else "…" + path[-(room - 1) :], style=faint, select=False)
+        add_team(MAIN, main, style, current and task is None)
+        if tasks:
+            add(3, "Scheduled", style=faint, select=False)
+        for t, agents in tasks:
+            add_team(t["name"], agents, style, current and t is task)
+        add(0, "", select=False)
+
+    for n, ws in enumerate(WORKSPACES):
+        if n == 0:
+            main = team(icons, args, None)
+            tasks = [(t, team(icons, args, t)) for t in TASKS]
+            add_workspace(n, ws["name"], pal.line, args.path, main, tasks, True, True)
+        else:
+            tasks = [(t, t["agents"]) for t in ws["tasks"]]
+            accent = Palette(ws["accent"]).line
+            add_workspace(n, ws["name"], accent, ws["path"], ws["agents"], tasks, ws["running"], False)
+    add(1, "+ workspace", style=faint)
+
+    selectable = 0
+    for row, item in enumerate(items[: rows - 1]):
+        selected = args.sidebar_focus and item["select"] and selectable == args.selected
+        selectable += item["select"]
+        row_bg = pal.selected_bg if selected else bg
+        style = sgr(pal.selected_fg, row_bg) if selected else item["style"]
+        if selected:
+            c.put(row, 0, " " * width, style)
+        marks = " ".join(m for m, _ in item["marks"])
+        room = width - item["indent"] - PAD - (len(marks) + 1 if marks else 0)
+        label = item["label"]
+        if len(label) > room:
+            label = label[: max(room - 1, 0)] + "…"
+        c.put(row, item["indent"], label, style + (BOLD if item["bold"] else ""))
+        if item["lead"]:
+            first = label.split(" ")[0]
+            c.put(row, item["indent"], first, sgr(item["lead"], row_bg) + BOLD)
+        col = width - PAD - len(marks)
+        for mark, color in item["marks"]:
+            c.put(row, col, mark, sgr(color, row_bg))
+            col += len(mark) + 1
+    hint = " ⏎ open  n new  x del" if args.sidebar_focus else " ^b ? keys"
+    c.put(rows - 1, 0, hint[:width], faint)
 
 
 # Each state's icon in ICONS.
@@ -461,6 +610,16 @@ def main():
     p.add_argument("--view", type=int, default=0, help="the viewed team: 0 is the main team, n the nth of TASKS")
     p.add_argument("--teams", action="store_true", help="draw the team list")
     p.add_argument("--no-tasks", action="store_true", help="draw the header of a workspace without tasks")
+    p.add_argument(
+        "--sidebar",
+        type=int,
+        nargs="?",
+        const=30,
+        default=0,
+        metavar="WIDTH",
+        help="draw the sidebar, 30 columns unless given, in place of the header and bar",
+    )
+    p.add_argument("--sidebar-focus", action="store_true", help="draw the sidebar with keyboard focus")
     p.add_argument("--no-border", action="store_true", help="omit the gray canvas border")
     print(draw(p.parse_args()))
 
