@@ -194,12 +194,23 @@ agent and ending the session hang up the programs without relaunching them.
 
 The first row is the header and the last is the bar. The panes go between
 them. `host::layout` reserves one column for the divider and gives the
-orchestrator half the remaining columns, rounded down, with the workers
-stacked at equal heights in the rest. Alone, the orchestrator keeps its half,
-and a tesseract turns in the rest. Every pane has a label row above its
-content. A layout in which some pane would get no row or column fails; a
+orchestrator its share of the remaining columns, half to start with, rounded
+down, with the workers stacked in the rest. Alone, the orchestrator keeps its
+share, and a tesseract turns in the rest. Every pane has a label row above its
+content, and every expanded worker at least one row; the rows left go to the
+expanded workers by weight, equal to start with. A collapsed worker keeps its
+label row and gets no rows, so the next label sits right below it; its pane
+is hidden. A layout in which some pane would get no row or column fails; a
 launch requested on the control socket then fails with "no room for another
 pane", and a terminal resized below that hides the panes until it grows.
+
+Dragging the divider sets the orchestrator's share of the columns to where
+the pointer is. Dragging a worker's label row moves it up or down, resizing
+the nearest expanded workers above and below it, each keeping a row; every
+expanded worker's weight becomes its rows beyond the first, so the layout
+gives them back exactly at this size and scales them when the terminal
+resizes. A new worker takes the average weight of the expanded workers. The
+shares, weights, and collapsed workers last as long as the host.
 
 `host::zoom_layout` gives one pane the whole area, keeping its label row,
 and hides the others. A hidden pane has an empty rectangle: it is not drawn,
@@ -224,7 +235,8 @@ redraws. It draws:
 - The header across the first row: one space and the workspace's directory,
   with the home directory written as `~`, clipped to fit.
 - Each agent's label row across its pane's full width. The left end has one
-  space and the agent's name, bold for the focused pane, followed by a red
+  space, for a worker beside the divider an arrow and a space, `▾` while
+  expanded and `▸` while collapsed, and the agent's name, bold for the focused pane, followed by a red
   ` ●` while the agent waits for a tool approval, only if the dot fits, then
   "zoomed" while the pane fills the area, "exited N" once the pane's program has exited
   and is not relaunched, "failed:" and the error for an agent whose harness did
@@ -298,7 +310,9 @@ prompt, and a path that is no directory shows its error in the bar.
 The keys and the mouse (see Input):
 
 - A click focuses the pane under the pointer, and a click on a workspace's
-  tab in the bar switches to it.
+  tab in the bar switches to it. A click on a worker's arrow collapses or
+  expands it.
+- Dragging the divider or a lower worker's label row resizes the panes.
 - The wheel scrolls the pane under the pointer, unless its program reports
   the mouse.
 - Shift-PageUp, Ctrl-b [, and Ctrl-b PageUp scroll the focused pane up a
@@ -582,7 +596,9 @@ a paste, these are routed elsewhere:
   consumed.
 - Mouse reports go to the pane under the pointer, and a left-button press
   outside every pane is `Event::Click`, which the host checks against the
-  bar's tabs. A button press in a pane focuses it, and
+  bar's tabs, the workers' arrows, the divider, and the label rows; the
+  motion of that press is `Event::Drag` and reaches no pane. A button press in
+  a pane focuses it, and
   that button's motion and release go to the same pane, clamped to its edges. A
   pane whose program tracks the mouse, and whose view is not scrolled, gets
   every report in its coordinates, encoded by Ghostty's mouse encoder for its

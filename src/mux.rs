@@ -167,6 +167,9 @@ pub enum Notice {
     /// The left button was pressed outside every pane, at this column and
     /// row.
     Click(u16, u16),
+    /// The left button, pressed outside every pane, was dragged to this
+    /// column and row.
+    Drag(u16, u16),
     /// This pane has finished melting and was removed.
     Melted(PaneId),
 }
@@ -1793,7 +1796,7 @@ impl Mux {
     /// clipboard when the button is released. A button press focuses the
     /// pane under the pointer, and the button's motion and release go to
     /// that pane, clamped to it. A left-button press outside every pane is a
-    /// click on the chrome.
+    /// click on the chrome, and its motion a drag of the chrome.
     fn mouse(&mut self, event: MouseEvent) {
         let wheel = matches!(
             event.button,
@@ -1805,6 +1808,13 @@ impl Mux {
         {
             let id = match &press {
                 Press::Report(id) | Press::Select(id, ..) => *id,
+                Press::Chrome => {
+                    if event.action == mouse::Action::Motion {
+                        self.notices.push(Notice::Drag(event.col, event.row));
+                        self.host.press = Some(Press::Chrome);
+                    }
+                    return;
+                }
                 Press::Ignore => {
                     if event.action != mouse::Action::Release {
                         self.host.press = Some(Press::Ignore);
@@ -1827,7 +1837,7 @@ impl Mux {
                 Press::Report(_) => {
                     let _ = p.report_mouse(&event, col, row);
                 }
-                Press::Ignore => {}
+                Press::Ignore | Press::Chrome => {}
                 Press::Select(_, anchor, start) => {
                     // A press released where it began, without moving, is
                     // a click.
@@ -1858,6 +1868,7 @@ impl Mux {
         else {
             if event.action == mouse::Action::Press && event.button == Some(Button::Left) {
                 self.notices.push(Notice::Click(event.col, event.row));
+                self.host.press = Some(Press::Chrome);
             }
             return;
         };
@@ -2408,6 +2419,8 @@ enum Press {
     Select(PaneId, TrackedGridRef, (u16, u16)),
     /// The pane's program was replaced; the rest of the press is dropped.
     Ignore,
+    /// Pressed outside every pane: its motion drags the chrome.
+    Chrome,
 }
 
 /// Finds the desktop notifications in a program's output, OSC 9 and OSC
@@ -3330,6 +3343,32 @@ mod tests {
             .input(b"\x1b[<0;41;3M\x1b[<0;41;3m\x1b[<2;41;3M\x1b[<2;41;3m");
         assert_eq!(p.mux.take_notices(), [Notice::Click(40, 2)]);
         assert_eq!((p.got(0), p.got(1)), (b"".to_vec(), b"".to_vec()));
+    }
+
+    #[test]
+    fn a_drag_from_outside_every_pane_drags_the_chrome_and_reaches_no_pane() {
+        let mut p = Piped::new();
+        p.mux.take_notices();
+        p.mux
+            .pane_mut(p.ids[1])
+            .unwrap()
+            .feed(b"\x1b[?1002h\x1b[?1006h");
+        // Column 41 is between the panes, and the drag moves into the right
+        // one, whose program reports the mouse.
+        p.mux
+            .input(b"\x1b[<0;41;3M\x1b[<32;43;3M\x1b[<32;45;4M\x1b[<0;45;4m");
+        assert_eq!(
+            p.mux.take_notices(),
+            [
+                Notice::Click(40, 2),
+                Notice::Drag(42, 2),
+                Notice::Drag(44, 3)
+            ]
+        );
+        assert_eq!(p.got(1), b"".to_vec());
+        // After the release, motion goes where it did before.
+        p.mux.input(b"\x1b[<32;45;4M");
+        assert_eq!(p.mux.take_notices(), []);
     }
 
     #[test]

@@ -105,18 +105,29 @@ fn pane_area(size: Winsize) -> Rect {
 const DIVIDER: u32 = 1;
 
 /// Where each pane goes, below the header and above the bar in the last row.
-/// The first pane, the orchestrator's, takes half the columns after reserving
-/// the divider, rounded down, even when alone. The other panes split the
-/// remaining columns with equal heights. Each has a label row above
-/// it. `None` if a pane would get no row or column.
-pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
+/// The first pane, the orchestrator's, takes the share `split.0` of
+/// `split.0 + split.1` of the columns after reserving the divider, rounded
+/// down, even when alone. The other panes, the workers, stack in the
+/// remaining columns. Each `panes` entry after the first has the worker's
+/// weight, or `None` while it is collapsed to its label row. Every pane has a
+/// label row above it, and every expanded worker at least one row; the rows
+/// left after those go to the expanded workers by weight. A collapsed worker
+/// gets its place with no rows. `None` if a pane would get no row or column.
+pub fn layout(
+    size: Winsize,
+    panes: &[(PaneId, Option<u32>)],
+    split: (u32, u32),
+) -> Option<Vec<(PaneId, Rect)>> {
     let area = pane_area(size);
     let (cols, rows) = (u32::from(area.cols), u32::from(area.rows));
-    let Some((&first, rest)) = panes.split_first() else {
+    let Some((&(first, _), rest)) = panes.split_first() else {
         return Some(Vec::new());
     };
-    let left = cols.saturating_sub(DIVIDER) / 2;
-    let n = rest.len() as u32;
+    let wide = cols.saturating_sub(DIVIDER);
+    if wide < 2 {
+        return None;
+    }
+    let left = (wide * split.0 / (split.0 + split.1).max(1)).clamp(1, wide - 1);
     let mut layout = vec![(
         first,
         Rect {
@@ -126,21 +137,42 @@ pub fn layout(size: Winsize, panes: &[PaneId]) -> Option<Vec<(PaneId, Rect)>> {
             ..area
         },
     )];
-    for (i, &id) in (0..).zip(rest) {
-        let top = rows * i / n;
-        let bottom = rows * (i + 1) / n;
+    let weights: Vec<u32> = rest.iter().filter_map(|&(_, w)| w).collect();
+    let extra = rows.checked_sub(rest.len() as u32 + weights.len() as u32)?;
+    let mut extras = shares(extra, &weights).into_iter();
+    let mut top = 0;
+    for &(id, weight) in rest {
+        let height = weight.map_or(0, |_| 1 + extras.next().unwrap_or(0));
         let rect = Rect {
             col: area.col + (left + DIVIDER) as u16,
             row: area.row + top as u16 + 1,
             cols: cols.saturating_sub(left + DIVIDER) as u16,
-            rows: bottom.saturating_sub(top + 1) as u16,
+            rows: height as u16,
         };
+        top += 1 + height;
         layout.push((id, rect));
     }
-    layout
+    (layout.iter().all(|(_, r)| r.cols > 0) && layout[0].1.rows > 0).then_some(layout)
+}
+
+/// `total` split by `weights`, rounded so the parts add up to it. Weights
+/// that are all 0 count as equal.
+fn shares(total: u32, weights: &[u32]) -> Vec<u32> {
+    let equal = weights.iter().all(|&w| w == 0);
+    let weights: Vec<u64> = weights
         .iter()
-        .all(|(_, r)| r.cols > 0 && r.rows > 0)
-        .then_some(layout)
+        .map(|&w| if equal { 1 } else { u64::from(w) })
+        .collect();
+    let (total, sum) = (u64::from(total), weights.iter().sum::<u64>());
+    let mut before = 0;
+    weights
+        .iter()
+        .map(|&w| {
+            let start = total * before / sum;
+            before += w;
+            (total * before / sum - start) as u32
+        })
+        .collect()
 }
 
 /// Where each pane goes while `zoomed` fills the pane area, with its label row:
@@ -210,8 +242,9 @@ impl Chrome for TeamChrome {
             return;
         }
         let mut s = String::new();
-        // Panes are hidden while the terminal is too small for them.
-        let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.rows > 0).collect();
+        // Panes are hidden while the terminal is too small for them, and a
+        // collapsed worker keeps only its label.
+        let shown: Vec<&PaneView> = panes.iter().filter(|p| p.rect.cols > 0).collect();
         draw_row(
             &mut s,
             &RowStyle::bar(palette.bar),
@@ -354,13 +387,26 @@ fn notes(p: &PaneView, zoomed: bool) -> Vec<String> {
     notes
 }
 
+/// The column of the arrow that collapses or expands a worker in its label
+/// row, for a worker whose pane is at `rect`.
+fn arrow_col(rect: Rect) -> u16 {
+    rect.col + 2
+}
+
 /// An agent's label row above its pane, across the pane's width, with the name
 /// at the left, bold when focused, a red attention dot if it fits, and notes.
+/// A worker beside the divider has an arrow before its name, pointing right
+/// while it is collapsed and down while it is not.
 /// The detail goes at the right end unless the row is too narrow for it. The
 /// row is a heavy line with a space on each side of its text, and a line's
 /// width to spare at each end.
 fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palette: Palette) {
-    let mut left = format!(" {}", p.label);
+    let mut left = if p.rect.col > 0 {
+        let arrow = if p.rect.rows == 0 { '▸' } else { '▾' };
+        format!(" {arrow} {}", p.label)
+    } else {
+        format!(" {}", p.label)
+    };
     let name_width = text_width(&left);
     let dot = attention && name_width + 2 <= usize::from(p.rect.cols.saturating_sub(2));
     if dot {
@@ -621,6 +667,11 @@ struct Host {
     clients: Vec<Client>,
     /// The pane that fills the pane area, shared with the chrome.
     zoomed: Rc<Cell<Option<PaneId>>>,
+    /// The orchestrator's and the workers' shares of the columns beside the
+    /// divider.
+    split: (u32, u32),
+    /// What a left-button drag outside the panes moves.
+    drag: Option<Drag>,
     /// The workspace overlay while it is open, shared with the chrome.
     overlay: Rc<RefCell<Option<Overlay>>>,
     /// When the overlay's list was last read.
@@ -642,10 +693,24 @@ struct Host {
     stop_results: (mpsc::Sender<StopResult>, mpsc::Receiver<StopResult>),
 }
 
+/// What a left-button drag outside the panes moves.
+#[derive(Clone, Copy)]
+enum Drag {
+    /// The divider between the orchestrator and the workers.
+    Divider,
+    /// The label row of the worker in this slot, and the rows between it and
+    /// the expanded workers above and below it.
+    Label(usize),
+}
+
 /// An agent's pane and how its program has been running.
 struct Slot {
     agent: String,
     pane: PaneId,
+    /// A worker's share of the rows beside the divider, by `layout`.
+    weight: u32,
+    /// Whether a worker is collapsed to its label row.
+    collapsed: bool,
     /// When the program started, in `now_ms` time.
     started: i64,
     /// How many times in a row the program has exited quickly.
@@ -653,10 +718,12 @@ struct Slot {
 }
 
 impl Slot {
-    fn new(agent: &str, pane: PaneId) -> Slot {
+    fn new(agent: &str, pane: PaneId, weight: u32) -> Slot {
         Slot {
             agent: agent.to_string(),
             pane,
+            weight,
+            collapsed: false,
             started: now_ms(),
             quick_exits: 0,
         }
@@ -718,6 +785,8 @@ pub fn serve_workspace(root: &Path) -> Result<()> {
         panes: Vec::new(),
         clients: Vec::new(),
         zoomed,
+        split: (1, 1),
+        drag: None,
         overlay,
         overlay_read: 0,
         help,
@@ -836,7 +905,8 @@ impl Host {
     fn add_failed(&mut self, agent: &Agent, error: &str) -> Result<()> {
         let pane = self.add_labeled_pane(agent)?;
         self.show_failure(pane, agent, error)?;
-        self.panes.push(Slot::new(&agent.id, pane));
+        self.panes
+            .push(Slot::new(&agent.id, pane, self.new_weight()));
         self.lay_out()
     }
 
@@ -919,6 +989,7 @@ impl Host {
                     Event::Notice(Notice::NewWorkspace) => self.open_prompt()?,
                     Event::Notice(Notice::Help) => self.toggle_help()?,
                     Event::Notice(Notice::Click(col, row)) => self.click(col, row)?,
+                    Event::Notice(Notice::Drag(col, row)) => self.drag(col, row)?,
                     Event::Notice(Notice::Detach) => self.detach()?,
                     Event::Notice(Notice::Accent) => self.next_accent(),
                     Event::Message(Message::SwitchFailed(error)) => {
@@ -1121,15 +1192,89 @@ impl Host {
         self.close_screens()
     }
 
-    /// Switch the client to the workspace whose tab in the bar was clicked.
+    /// Act on a left click outside the panes: switch the client to the
+    /// workspace whose tab in the bar was clicked, collapse or expand the
+    /// worker whose arrow was clicked, or start dragging the divider or a
+    /// worker's label row.
     fn click(&mut self, col: u16, row: u16) -> Result<()> {
+        self.drag = None;
         let size = self.mux.size();
-        let n = (row + 1 == size.ws_row)
-            .then(|| self.bar.borrow().tab_at(col, size.ws_col))
-            .flatten();
-        match n {
-            Some(n) => self.switch_to(n),
+        if row + 1 == size.ws_row {
+            let n = self.bar.borrow().tab_at(col, size.ws_col);
+            return match n {
+                Some(n) => self.switch_to(n),
+                None => Ok(()),
+            };
+        }
+        if self.zoomed.get().is_some() {
+            return Ok(());
+        }
+        let rects = self.rects();
+        for (i, r) in rects.iter().enumerate().skip(1) {
+            if r.cols == 0 || row + 1 != r.row || !(r.col..r.col + r.cols).contains(&col) {
+                continue;
+            }
+            if col == arrow_col(*r) {
+                self.panes[i].collapsed = !self.panes[i].collapsed;
+                return self.lay_out();
+            }
+            self.drag = Some(Drag::Label(i));
+            return Ok(());
+        }
+        if let Some(first) = rects.first()
+            && first.cols > 0
+            && col == first.col + first.cols
+            && row > 0
+        {
+            self.drag = Some(Drag::Divider);
+        }
+        Ok(())
+    }
+
+    /// Move what the left button is dragging to the pointer at `col` and
+    /// `row`: the divider to its column, or a worker's label row to its row,
+    /// keeping a row in each expanded worker, and lay the panes out again.
+    fn drag(&mut self, col: u16, row: u16) -> Result<()> {
+        if self.zoomed.get().is_some() {
+            return Ok(());
+        }
+        match self.drag {
             None => Ok(()),
+            Some(Drag::Divider) => {
+                let wide = u32::from(self.mux.size().ws_col).saturating_sub(DIVIDER);
+                if wide < 2 {
+                    return Ok(());
+                }
+                let left = u32::from(col).clamp(1, wide - 1);
+                self.split = (left, wide - left);
+                self.lay_out()
+            }
+            Some(Drag::Label(i)) => {
+                let rects = self.rects();
+                let expanded = |j: &usize| !self.panes[*j].collapsed && rects[*j].rows > 0;
+                let (Some(above), Some(below)) =
+                    ((1..i).rev().find(expanded), (i..rects.len()).find(expanded))
+                else {
+                    return Ok(());
+                };
+                let (up, down) = (i32::from(rects[above].rows), i32::from(rects[below].rows));
+                let moved = (i32::from(row) + 1 - i32::from(rects[i].row)).clamp(1 - up, down - 1);
+                if moved == 0 {
+                    return Ok(());
+                }
+                // The weights become the rows each expanded worker gets
+                // beyond its first, which `layout` gives back exactly at
+                // this size.
+                for (j, slot) in self.panes.iter_mut().enumerate().skip(1) {
+                    if slot.collapsed {
+                        continue;
+                    }
+                    let rows = i32::from(rects[j].rows) + if j == above { moved } else { 0 }
+                        - if j == below { moved } else { 0 };
+                    slot.weight = (rows - 1).max(0) as u32;
+                }
+                self.lay_out()
+            }
         }
     }
 
@@ -1312,6 +1457,37 @@ impl Host {
         self.panes.iter().map(|s| s.pane).collect()
     }
 
+    /// Each pane with its weight for `layout`, `None` while collapsed.
+    fn weights(&self) -> Vec<(PaneId, Option<u32>)> {
+        self.panes
+            .iter()
+            .map(|s| (s.pane, (!s.collapsed).then_some(s.weight)))
+            .collect()
+    }
+
+    /// The weight of a new worker: the average of the expanded workers', so
+    /// it takes about as many rows as each of them.
+    fn new_weight(&self) -> u32 {
+        let weights: Vec<u32> = self
+            .weights()
+            .iter()
+            .skip(1)
+            .filter_map(|&(_, w)| w)
+            .collect();
+        match weights.len() {
+            0 => 1,
+            n => weights.iter().sum::<u32>() / n as u32,
+        }
+    }
+
+    /// Each pane's place on the screen, in slot order.
+    fn rects(&self) -> Vec<Rect> {
+        self.panes
+            .iter()
+            .map(|s| self.mux.pane(s.pane).map(Pane::rect).unwrap_or_default())
+            .collect()
+    }
+
     /// Start an agent's harness in a new pane and lay the panes out again. A
     /// non-empty `prompt` starts its first turn. If there is no room for the
     /// pane, a launch at startup hides the panes until the terminal grows,
@@ -1324,10 +1500,12 @@ impl Host {
         }
         let launch = harness::command(&self.exe, agent, &self.state_path, prompt)?;
         let pane = self.add_labeled_pane(agent)?;
-        let mut ids = self.pane_ids();
-        ids.push(pane);
+        let weight = self.new_weight();
+        let mut weights = self.weights();
+        weights.push((pane, Some(weight)));
+        let ids: Vec<PaneId> = weights.iter().map(|&(id, _)| id).collect();
         let size = self.mux.size();
-        let layout = layout(size, &ids).or_else(|| startup.then(|| hidden(&ids)));
+        let layout = layout(size, &weights, self.split).or_else(|| startup.then(|| hidden(&ids)));
         let Some(layout) = layout else {
             self.mux.remove_pane(pane);
             return Err(format!(
@@ -1349,7 +1527,7 @@ impl Host {
                 return Err(e);
             }
         }
-        self.panes.push(Slot::new(&agent.id, pane));
+        self.panes.push(Slot::new(&agent.id, pane, weight));
         self.zoomed.set(None);
         self.place(&layout)
     }
@@ -1449,7 +1627,7 @@ impl Host {
         let size = self.mux.size();
         let layout = match self.zoomed.get() {
             Some(zoomed) => zoom_layout(size, &ids, zoomed),
-            None => layout(size, &ids),
+            None => layout(size, &self.weights(), self.split),
         };
         self.place(&layout.unwrap_or_else(|| hidden(&ids)))
     }
@@ -1490,6 +1668,13 @@ mod tests {
         (1..=n).map(PaneId).collect()
     }
 
+    /// `n` panes, the workers expanded with equal weights.
+    fn even(n: u32) -> Vec<(PaneId, Option<u32>)> {
+        ids(n).into_iter().map(|id| (id, Some(1))).collect()
+    }
+
+    const EVEN: (u32, u32) = (1, 1);
+
     fn rect(col: u16, row: u16, cols: u16, rows: u16) -> Rect {
         Rect {
             col,
@@ -1505,8 +1690,11 @@ mod tests {
 
     #[test]
     fn a_lone_orchestrator_keeps_its_half_of_the_columns() {
-        assert_eq!(rects(layout(size(80, 24), &ids(1))), [rect(0, 2, 39, 21)]);
-        assert_eq!(layout(size(80, 24), &[]), Some(Vec::new()));
+        assert_eq!(
+            rects(layout(size(80, 24), &even(1), EVEN)),
+            [rect(0, 2, 39, 21)]
+        );
+        assert_eq!(layout(size(80, 24), &[], EVEN), Some(Vec::new()));
     }
 
     #[test]
@@ -1514,13 +1702,13 @@ mod tests {
         // Reserve the divider, then give half the columns to the orchestrator,
         // rounded down. Every pane has a label row above its rect.
         assert_eq!(
-            rects(layout(size(100, 25), &ids(2))),
+            rects(layout(size(100, 25), &even(2), EVEN)),
             [rect(0, 2, 49, 22), rect(50, 2, 50, 22)]
         );
         // 23 rows over three workers: blocks of 7, 8 and 8 rows, each a label
         // row and the rest content.
         assert_eq!(
-            rects(layout(size(100, 25), &ids(4))),
+            rects(layout(size(100, 25), &even(4), EVEN)),
             [
                 rect(0, 2, 49, 22),
                 rect(50, 2, 50, 6),
@@ -1529,7 +1717,7 @@ mod tests {
             ]
         );
         // Uneven heights differ by at most a row and fill the column.
-        let layout = rects(layout(size(81, 32), &ids(5)));
+        let layout = rects(layout(size(81, 32), &even(5), EVEN));
         assert_eq!(layout[0], rect(0, 2, 40, 29));
         let heights: Vec<u16> = layout[1..].iter().map(|r| r.rows + 1).collect();
         assert_eq!(heights, [7, 8, 7, 8]);
@@ -1537,18 +1725,79 @@ mod tests {
     }
 
     #[test]
+    fn the_split_and_worker_weights_size_the_panes() {
+        let panes = [
+            (PaneId(1), None),
+            (PaneId(2), Some(3)),
+            (PaneId(3), Some(1)),
+        ];
+        // 99 columns beside the divider, a quarter to the orchestrator. The
+        // 23 rows less two label rows and two first rows leave 19, split 14
+        // to 5.
+        assert_eq!(
+            rects(layout(size(100, 25), &panes, (1, 3))),
+            [rect(0, 2, 24, 22), rect(25, 2, 75, 15), rect(25, 18, 75, 6)]
+        );
+        // Workers of weight 0 get a row each, and the rest goes to the others.
+        let panes = [
+            (PaneId(1), None),
+            (PaneId(2), Some(0)),
+            (PaneId(3), Some(5)),
+        ];
+        assert_eq!(
+            rects(layout(size(100, 25), &panes, EVEN))[1..],
+            [rect(50, 2, 50, 1), rect(50, 4, 50, 20)]
+        );
+        // Every pane keeps a column, however far the split goes.
+        assert_eq!(rects(layout(size(100, 25), &even(2), (1, 0)))[0].cols, 98);
+        assert_eq!(rects(layout(size(100, 25), &even(2), (0, 1)))[0].cols, 1);
+    }
+
+    #[test]
+    fn a_collapsed_worker_keeps_only_its_label_row() {
+        let panes = [
+            (PaneId(1), None),
+            (PaneId(2), Some(1)),
+            (PaneId(3), None),
+            (PaneId(4), Some(1)),
+        ];
+        // The collapsed worker's label sits right below the first worker,
+        // and the label of the next one right below it.
+        assert_eq!(
+            rects(layout(size(100, 25), &panes, EVEN))[1..],
+            [
+                rect(50, 2, 50, 10),
+                rect(50, 13, 50, 0),
+                rect(50, 14, 50, 10)
+            ]
+        );
+        // A collapsed worker needs no content row.
+        assert!(layout(size(80, 7), &panes, EVEN).is_some());
+        assert!(layout(size(80, 6), &panes, EVEN).is_none());
+    }
+
+    #[test]
+    fn shares_add_up_to_the_total() {
+        assert_eq!(shares(10, &[1, 1, 1]), [3, 3, 4]);
+        assert_eq!(shares(10, &[0, 0]), [5, 5]);
+        assert_eq!(shares(10, &[0, 2, 3]), [0, 4, 6]);
+        assert_eq!(shares(0, &[1, 2]), [0, 0]);
+        assert_eq!(shares(7, &[]), Vec::<u32>::new());
+    }
+
+    #[test]
     fn a_layout_without_room_for_every_pane_fails() {
         // The orchestrator needs a label and content row between header and bar.
-        assert!(layout(size(80, 3), &ids(1)).is_none());
-        assert!(layout(size(80, 4), &ids(1)).is_some());
+        assert!(layout(size(80, 3), &even(1), EVEN).is_none());
+        assert!(layout(size(80, 4), &even(1), EVEN).is_some());
         // Each worker needs a label row and a content row.
-        assert!(layout(size(80, 7), &ids(4)).is_none());
-        assert!(layout(size(80, 8), &ids(4)).is_some());
+        assert!(layout(size(80, 7), &even(4), EVEN).is_none());
+        assert!(layout(size(80, 8), &even(4), EVEN).is_some());
         // A column for the divider, and one for each pane.
-        assert!(layout(size(2, 24), &ids(2)).is_none());
-        assert!(layout(size(3, 24), &ids(2)).is_some());
-        assert!(layout(size(2, 24), &ids(1)).is_none());
-        assert!(layout(size(3, 24), &ids(1)).is_some());
+        assert!(layout(size(2, 24), &even(2), EVEN).is_none());
+        assert!(layout(size(3, 24), &even(2), EVEN).is_some());
+        assert!(layout(size(2, 24), &even(1), EVEN).is_none());
+        assert!(layout(size(3, 24), &even(1), EVEN).is_some());
     }
 
     #[test]
@@ -1658,7 +1907,7 @@ mod tests {
 
     #[test]
     fn a_lone_orchestrator_has_a_divider_its_title_turns_into() {
-        let layout = rects(layout(size(20, 5), &ids(1)));
+        let layout = rects(layout(size(20, 5), &even(1), EVEN));
         let panes = [view(1, "orch", layout[0], true, None)];
         let screen = draw_with(&mut chrome(), &panes, 20, 5);
         let rows: Vec<String> = (1..4).map(|y| screen.row(y)).collect();
@@ -1672,7 +1921,7 @@ mod tests {
     /// The chrome of a lone orchestrator on a screen of `cols` by `rows`, with
     /// its pane's view, drawn and then animated at `now`.
     fn lone_cube(cols: u16, rows: u16, now: i64) -> (TeamChrome, Rect, Screen) {
-        let rect = rects(layout(size(cols, rows), &ids(1)))[0];
+        let rect = rects(layout(size(cols, rows), &even(1), EVEN))[0];
         let mut chrome = chrome();
         let mut out = Vec::new();
         let panes = [view(1, "orch", rect, true, None)];
@@ -1717,7 +1966,7 @@ mod tests {
     #[test]
     fn an_animation_frame_draws_only_the_cells_that_changed() {
         let (cols, rows) = (60, 20);
-        let rect = rects(layout(size(cols, rows), &ids(1)))[0];
+        let rect = rects(layout(size(cols, rows), &even(1), EVEN))[0];
         let panes = [view(1, "orch", rect, true, None)];
         let mut chrome = chrome();
         let mut frame = |now| {
@@ -1737,7 +1986,7 @@ mod tests {
     #[test]
     fn the_tesseract_is_drawn_only_while_the_orchestrator_has_the_screen_alone() {
         let animated = |chrome: &TeamChrome, n| {
-            let rects = rects(layout(size(60, 20), &ids(n)));
+            let rects = rects(layout(size(60, 20), &even(n), EVEN));
             let labels = ["a", "b", "c"];
             let panes: Vec<PaneView> = (1..=n)
                 .map(|i| {
@@ -1773,7 +2022,7 @@ mod tests {
 
     #[test]
     fn chrome_draws_the_header_rule_titles_and_a_divider_that_branches_into_them() {
-        let layout = rects(layout(size(40, 10), &ids(3)));
+        let layout = rects(layout(size(40, 10), &even(3), EVEN));
         let panes = [
             PaneView {
                 detail: "⎇ main",
@@ -1799,12 +2048,13 @@ mod tests {
             rows,
             [
                 format!(" ~/src/r{}", sp(32)),
-                format!("━ orch {} ⎇ main ━┳━ w1 · ↑42 {} ⎇ w1 ━", bar(3), bar(2)),
+                // A worker's detail doesn't fit beside its arrow and notes.
+                format!("━ orch {} ⎇ main ━┳━ ▾ w1 · ↑42 {}", bar(3), bar(7)),
                 side.clone(),
                 side.clone(),
                 side.clone(),
                 // The detail doesn't fit.
-                format!("{}┣━ w2 · exited 3 {}", sp(19), bar(4)),
+                format!("{}┣━ ▾ w2 · exited 3 {}", sp(19), bar(2)),
                 side.clone(),
                 side.clone(),
                 side,
@@ -1832,7 +2082,7 @@ mod tests {
             (19, 1),
             (19, 3),
             (20, 1),
-            (32, 1),
+            (34, 1),
             (39, 1),
             (19, 5),
             (38, 5),
@@ -1840,7 +2090,7 @@ mod tests {
             assert_eq!(fg(&screen, x, y), blue, "foreground at {x},{y}");
             assert_eq!(screen.bg(x, y), StyleColor::None, "background at {x},{y}");
         }
-        for (x, y) in [(22, 1), (36, 1), (22, 5), (3, 1)] {
+        for (x, y) in [(22, 1), (25, 1), (22, 5), (3, 1)] {
             assert_eq!(
                 fg(&screen, x, y),
                 rgb(palette.text),
@@ -1853,6 +2103,29 @@ mod tests {
         // have the terminal's own background.
         assert_eq!(screen.bg(5, 5), StyleColor::None);
         assert_eq!(screen.bg(30, 3), StyleColor::None);
+    }
+
+    #[test]
+    fn a_collapsed_workers_label_points_right_and_the_next_label_follows_it() {
+        let weights = [(PaneId(1), None), (PaneId(2), None), (PaneId(3), Some(1))];
+        let layout = rects(layout(size(40, 10), &weights, EVEN));
+        let panes = [
+            view(1, "orch", layout[0], false, None),
+            view(2, "w1", layout[1], false, None),
+            view(3, "w2", layout[2], false, None),
+        ];
+        let screen = draw_with(&mut chrome(), &panes, 40, 10);
+        let bar = |n| "━".repeat(n);
+        assert_eq!(
+            screen.row(1),
+            format!("━ orch {}┳━ ▸ w1 {}", bar(12), bar(13))
+        );
+        assert_eq!(
+            screen.row(2),
+            format!("{}┣━ ▾ w2 {}", " ".repeat(19), bar(13))
+        );
+        let arrow = usize::from(arrow_col(layout[1]));
+        assert_eq!(screen.row(1).chars().nth(arrow), Some('▸'));
     }
 
     #[test]
@@ -1916,9 +2189,9 @@ mod tests {
         let row =
             |label, cols: u16| worker_row(label, "~/src/r", rect(1, 2, cols, 2), cols + 1, 6, 1);
         // The detail needs a blank column between it and the name.
-        assert_eq!(row("orch", 18), "┳━ orch ━ ~/src/r ━");
-        assert_eq!(row("orch", 17), "┳━ orch ━━━━━━━━━━");
-        assert_eq!(row("orchestrator", 8), "┳━ orche━");
+        assert_eq!(row("orch", 20), "┳━ ▾ orch ━ ~/src/r ━");
+        assert_eq!(row("orch", 19), "┳━ ▾ orch ━━━━━━━━━━");
+        assert_eq!(row("orchestrator", 10), "┳━ ▾ orche━");
 
         let hidden = [
             view(1, "orch", Rect::default(), true, None),
@@ -1931,16 +2204,16 @@ mod tests {
 
     #[test]
     fn chrome_measures_wide_and_combining_characters_in_columns() {
-        let row = worker_row("界界界界界", "", rect(1, 2, 9, 2), 10, 6, 1);
+        let row = worker_row("界界界界界", "", rect(1, 2, 11, 2), 12, 6, 1);
         // Nothing wraps, so nothing scrolls, and spacer cells read as blanks.
-        assert_eq!(row, "┳━ 界 界 界 ━");
+        assert_eq!(row, "┳━ ▾ 界 界 界 ━");
         assert_eq!(fit("e\u{301}x", 1), "e\u{301}");
         assert_eq!(fit("界", 1), "");
     }
 
     #[test]
     fn title_attention_dots_follow_names_before_notes_and_keep_focus_style() {
-        let layout = rects(layout(size(80, 12), &ids(3)));
+        let layout = rects(layout(size(80, 12), &even(3), EVEN));
         let panes = [
             PaneView {
                 detail: "⎇ main",
@@ -1957,8 +2230,8 @@ mod tests {
         *chrome.attention.borrow_mut() = vec![PaneId(1), PaneId(2)];
         let screen = draw_with(&mut chrome, &panes, 80, 12);
         assert!(screen.row(1).starts_with("━ orch ● · ↑2 "));
-        assert!(screen.row(1).contains("┳━ w1 ● · exited 3 "));
-        for (x, focused) in [(7, true), (45, false)] {
+        assert!(screen.row(1).contains("┳━ ▾ w1 ● · exited 3 "));
+        for (x, focused) in [(7, true), (47, false)] {
             assert_eq!(fg(&screen, x, 1), rgb(colors::ATTENTION));
             assert_eq!(screen.bold(x, 1), focused);
         }
