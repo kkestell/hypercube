@@ -32,8 +32,6 @@ pub struct Entry {
     pub root: Option<PathBuf>,
     /// The checkout's directory name, or the state's name without one.
     pub name: String,
-    /// The workspace's accent, used to pick a new workspace's least-used color.
-    pub accent: usize,
     /// Whether an agent there waits for a tool approval.
     pub attention: bool,
 }
@@ -266,7 +264,6 @@ pub fn running() -> Result<Vec<Entry>> {
         let attention = state
             .as_ref()
             .is_some_and(|state| state.agents.iter().any(|a| a.attention));
-        let accent = state.map_or(0, |state| state.accent as usize);
         let name = root
             .as_ref()
             .and_then(|r| r.file_name())
@@ -277,7 +274,6 @@ pub fn running() -> Result<Vec<Entry>> {
                 path,
                 root,
                 name,
-                accent,
                 attention,
             },
         ));
@@ -299,7 +295,6 @@ mod tests {
             path: PathBuf::from(format!("/state/{name}.json")),
             root: Some(PathBuf::from(format!("/src/{name}"))),
             name: name.into(),
-            accent: name.len(),
             attention: false,
         }
     }

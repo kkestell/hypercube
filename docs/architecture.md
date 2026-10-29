@@ -227,12 +227,10 @@ details, and for the header, the bar, and the title rows of the overlay and
 the list of keys, the accent mixed 85% toward white on the accent mixed 78%
 toward black, and for the overlay's selected row, the same text on the accent
 mixed 55% toward black. The accent is one of the nine in `colors::ACCENTS`,
-the last of them gray, numbered
-by the state's `accent` field. A new workspace takes the accent that the
-other running workspaces use least, the first of those in `ACCENTS`. Ctrl-b a
-moves the
-workspace to the next one, wrapping around, writes it to the state, and
-redraws.
+numbered by the state's `accent` field. A new workspace takes gray, the first
+of them. `ACCENTS` runs gray, blue, teal, green, amber, orange, red, pink, and
+purple. Ctrl-b a moves the workspace to the next one, wrapping around, writes
+it to the state, and redraws.
 
 Four colors in `colors.rs` keep one meaning wherever they are drawn:
 `ATTENTION`, amber, for an agent or workspace waiting for a tool approval;

@@ -42,9 +42,11 @@ pub const RUNNING: Rgb = (110, 190, 90);
 /// Idle or stopped: a stopped workspace's icon in the overlay.
 pub const QUIET: Rgb = (140, 140, 140);
 
-/// The accents, in the order Ctrl-b a cycles through them: blue, teal,
-/// green, amber, orange, red, pink, purple, and gray.
+/// The accents, in the order Ctrl-b a cycles through them: gray, the one a
+/// new workspace takes, then blue, teal, green, amber, orange, red, pink, and
+/// purple.
 pub const ACCENTS: [Rgb; 9] = [
+    (160, 160, 160),
     (70, 160, 220),
     (40, 180, 170),
     (100, 180, 80),
@@ -53,7 +55,6 @@ pub const ACCENTS: [Rgb; 9] = [
     (220, 80, 80),
     (220, 90, 170),
     (150, 110, 220),
-    (160, 160, 160),
 ];
 
 /// The colors of the chrome, all shades of one accent.
@@ -90,13 +91,6 @@ impl Palette {
     }
 }
 
-/// The accent fewest of the `taken` use, the first of those in `ACCENTS`.
-pub fn least_used(taken: &[usize]) -> usize {
-    (0..ACCENTS.len())
-        .min_by_key(|&n| taken.iter().filter(|&&t| t % ACCENTS.len() == n).count())
-        .unwrap_or(0)
-}
-
 impl Default for Palette {
     fn default() -> Palette {
         Palette::of(0)
@@ -115,8 +109,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_default_palette_is_gray() {
+        assert_eq!(Palette::default().line, (160, 160, 160));
+    }
+
+    #[test]
     fn a_palette_shades_its_accent() {
-        let p = Palette::of(0);
+        let p = Palette::of(1);
         assert_eq!(p.line, (70, 160, 220));
         assert_eq!(p.text, (144, 198, 234));
         assert_eq!(p.bar.fg, (227, 241, 250));
@@ -125,13 +124,5 @@ mod tests {
         assert_eq!(mix(p.bar.fg, p.bar.bg, 0.4), (142, 159, 169));
         assert_eq!(mix(p.bar.fg, p.bar.bg, 0.55), (110, 128, 139));
         assert_eq!(Palette::of(ACCENTS.len() + 1), Palette::of(1));
-    }
-
-    #[test]
-    fn a_new_workspace_takes_the_least_used_accent() {
-        assert_eq!(least_used(&[]), 0);
-        assert_eq!(least_used(&[0, 1, 3]), 2);
-        let all: Vec<usize> = (0..ACCENTS.len()).collect();
-        assert_eq!(least_used(&[all.clone(), vec![0, 1]].concat()), 2);
     }
 }

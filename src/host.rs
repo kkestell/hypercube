@@ -848,20 +848,12 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
     let config = config::load()?;
     let branch = workspace::branch(root);
     let dir = workspace::utf8(root)?;
-    // A new workspace takes the accent the other running workspaces use
-    // least.
-    let taken: Vec<usize> = bar::running()
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|e| e.path != state_path)
-        .map(|e| e.accent)
-        .collect();
     store::update(state_path, |s| {
         // A directory can become a checkout, so this is checked on every
         // start.
         s.no_git = branch.is_err();
         if s.agents.is_empty() {
-            s.accent = colors::least_used(&taken) as u64;
+            s.accent = 0;
             let o = &config.orchestrator;
             s.agents.push(Agent {
                 id: store::new_id()?,
