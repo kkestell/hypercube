@@ -14,7 +14,9 @@ use libghostty_vt::fmt::Format;
 use libghostty_vt::key::{self, Action};
 use libghostty_vt::mouse::{self, Button, EncoderSize, Position};
 use libghostty_vt::render::{CellIterator, Cursor, CursorVisualStyle, Dirty, RowIterator};
-use libghostty_vt::screen::{Cell as RawCell, CellContentTag, CellWide, Screen, TrackedGridRef};
+use libghostty_vt::screen::{
+    Cell as RawCell, CellContentTag, CellWide, GridRef, Screen, TrackedGridRef,
+};
 use libghostty_vt::selection::{FormatOptions, Selection};
 use libghostty_vt::style::{Palette, RgbColor, Style, StyleColor, Underline};
 use libghostty_vt::terminal::{
@@ -333,6 +335,8 @@ struct Frame {
     cursor: Cursor,
     /// Rows to capture from the terminal itself; see `Pane::feed`.
     stale_rows: Vec<u16>,
+    /// Reused only for cells with a hyperlink; unlinked captures allocate none.
+    hyperlink_uri: Vec<u8>,
 }
 
 impl Frame {
@@ -351,6 +355,7 @@ impl Frame {
                 visual_style: CursorVisualStyle::Block,
             },
             stale_rows: Vec::new(),
+            hyperlink_uri: Vec::new(),
         })
     }
 
@@ -385,6 +390,9 @@ impl Frame {
                         let raw = grid.cell()?;
                         let style = grid.style()?;
                         row.push(raw, style, |buf| grid.graphemes(buf))?;
+                        if raw.has_hyperlink()? {
+                            row.push_hyperlink(&grid, &mut self.hyperlink_uri)?;
+                        }
                     }
                     *changed = true;
                 } else if dirty == Dirty::Full || r.dirty()? {
@@ -401,6 +409,13 @@ impl Frame {
                             c.graphemes_buf(&mut buf[..len])?;
                             Ok(len)
                         })?;
+                        if raw.has_hyperlink()? {
+                            let grid = terminal.grid_ref(Point::Viewport(PointCoordinate {
+                                x: (row.cells.len() - 1) as u16,
+                                y: u32::from(y),
+                            }))?;
+                            row.push_hyperlink(&grid, &mut self.hyperlink_uri)?;
+                        }
                     }
                     *changed = true;
                 }
@@ -915,7 +930,7 @@ impl Pane {
         let rows = i64::from(rect.rows);
         for y in 0..rect.rows {
             let _ = write!(out, "\x1b[{};{}H", rect.row + y + 1, rect.col + 1);
-            let mut prev: Option<Style> = None;
+            let mut prev = CellState::default();
             for x in 0..rect.cols {
                 let col = rect.col + x;
                 let fall = melt.fall(x, elapsed, rows);
@@ -944,6 +959,7 @@ impl Pane {
                                 raw,
                                 style,
                                 &row.text[start..start + len],
+                                row.hyperlink(usize::from(x)),
                                 &mut prev,
                             );
                         } else {
@@ -961,11 +977,13 @@ impl Pane {
                             raw,
                             style,
                             &row.text[start..start + len],
+                            row.hyperlink(usize::from(x)),
                             &mut prev,
                         );
                     }
                 }
             }
+            prev.set_hyperlink(out, None);
         }
         out.extend_from_slice(b"\x1b[0m");
     }
@@ -2022,7 +2040,7 @@ impl Mux {
         self.sync_modes(&mut out);
 
         if self.clear {
-            out.extend_from_slice(b"\x1b[0m\x1b[2J");
+            out.extend_from_slice(b"\x1b]8;;\x1b\\\x1b[0m\x1b[2J");
             self.clear = false;
         }
         for p in &mut self.panes {
@@ -2115,9 +2133,9 @@ fn press_and_release(
 
 /// What turns the host terminal back from anything the mux mirrored onto
 /// it, leaving it on the alternate screen: every mirrored mode at its
-/// default, no Kitty keyboard flags, the default cursor, default SGR
-/// attributes, and synchronized output ended, in case a frame was cut off. `clusters` is whether the host clusters graphemes by default,
-/// if known.
+/// default, no Kitty keyboard flags, no open hyperlink, the default cursor and
+/// SGR attributes, and synchronized output ended, in case a frame was cut off.
+/// `clusters` is whether the host clusters graphemes by default, if known.
 pub fn host_reset(clusters: Option<bool>) -> Vec<u8> {
     let mut out = Vec::new();
     for &(value, default) in &MIRRORED_MODES {
@@ -2130,7 +2148,7 @@ pub fn host_reset(clusters: Option<bool>) -> Vec<u8> {
         let _ = write!(out, "\x1b[?{}{}", value, if default { 'h' } else { 'l' });
     }
     out.extend_from_slice(
-        b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b[0m\x1b[?25h\x1b[?2026l",
+        b"\x1b[?1003l\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[0 q\x1b]8;;\x1b\\\x1b[0m\x1b[?25h\x1b[?2026l",
     );
     out
 }
@@ -2612,6 +2630,9 @@ pub fn write_all(fd: RawFd, data: &[u8]) {
 struct RowBuf {
     cells: Vec<(RawCell, Style, usize, usize)>,
     text: Vec<char>,
+    /// Sparse linked column ranges and their URI bytes, one copy per run.
+    hyperlinks: Vec<Hyperlink>,
+    uris: Vec<u8>,
     /// The first and last selected columns, drawn in reverse video.
     selected: Option<(u16, u16)>,
 }
@@ -2620,6 +2641,8 @@ impl RowBuf {
     fn clear(&mut self, selected: Option<(u16, u16)>) {
         self.cells.clear();
         self.text.clear();
+        self.hyperlinks.clear();
+        self.uris.clear();
         self.selected = selected;
     }
 
@@ -2646,13 +2669,53 @@ impl RowBuf {
         Ok(())
     }
 
+    /// Capture the last cell's URI without allocating a string per cell.
+    fn push_hyperlink(&mut self, grid: &GridRef<'_>, buf: &mut Vec<u8>) -> Result<()> {
+        let len = loop {
+            match grid.hyperlink_uri(buf) {
+                Ok(len) => break len,
+                Err(Error::OutOfSpace { required }) => buf.resize(required, 0),
+                Err(e) => return Err(e),
+            }
+        };
+        if len == 0 {
+            return Ok(());
+        }
+        let x = self.cells.len() - 1;
+        let uri = &buf[..len];
+        if let Some(last) = self.hyperlinks.last_mut()
+            && last.columns.end == x
+            && self.uris[last.uri.clone()] == *uri
+        {
+            last.columns.end += 1;
+        } else {
+            let start = self.uris.len();
+            self.uris.extend_from_slice(uri);
+            self.hyperlinks.push(Hyperlink {
+                columns: x..x + 1,
+                uri: start..self.uris.len(),
+            });
+        }
+        Ok(())
+    }
+
+    fn hyperlink(&self, x: usize) -> Option<&[u8]> {
+        let i = self
+            .hyperlinks
+            .partition_point(|link| link.columns.end <= x);
+        self.hyperlinks
+            .get(i)
+            .filter(|link| link.columns.start <= x)
+            .map(|link| &self.uris[link.uri.clone()])
+    }
+
     /// Write the row as row `y` of `rect`, leaving out cells that don't fit,
     /// as when a held pane is drawn at a new size.
     fn write(&self, out: &mut Vec<u8>, y: u16, rect: Rect) {
         let (row, col) = (rect.row, rect.col);
         let _ = write!(out, "\x1b[{};{}H", y + row + 1, col + 1);
 
-        let mut prev: Option<Style> = None;
+        let mut prev = CellState::default();
         for (x, &(raw, style, start, len)) in self.cells.iter().enumerate() {
             let wide = raw.wide().unwrap_or(CellWide::Narrow);
             if wide == CellWide::SpacerTail {
@@ -2676,28 +2739,60 @@ impl RowBuf {
                 raw,
                 s,
                 &self.text[start..start + len],
+                self.hyperlink(x),
                 &mut prev,
             );
         }
+        prev.set_hyperlink(out, None);
         out.extend_from_slice(b"\x1b[0m");
+    }
+}
+
+struct Hyperlink {
+    columns: std::ops::Range<usize>,
+    uri: std::ops::Range<usize>,
+}
+
+/// Attributes written last within one row; links never cross cursor jumps.
+#[derive(Default)]
+struct CellState<'a> {
+    style: Option<Style>,
+    hyperlink: Option<&'a [u8]>,
+}
+
+impl<'a> CellState<'a> {
+    fn set_hyperlink(&mut self, out: &mut Vec<u8>, uri: Option<&'a [u8]>) {
+        if self.hyperlink == uri {
+            return;
+        }
+        if self.hyperlink.is_some() {
+            out.extend_from_slice(b"\x1b]8;;\x1b\\");
+        }
+        if let Some(uri) = uri {
+            out.extend_from_slice(b"\x1b]8;;");
+            out.extend_from_slice(uri);
+            out.extend_from_slice(b"\x1b\\");
+        }
+        self.hyperlink = uri;
     }
 }
 
 /// Write one cell's text at the cursor with `style`, and a space if it has
 /// none. `col` is its 0-based column on the host terminal, for re-syncing
-/// after a wide character. `prev` is the style written last, so an SGR
-/// sequence is written only when the style changes.
-fn write_cell(
+/// after a wide character. `prev` keeps SGR and OSC 8 sequences to changes.
+fn write_cell<'a>(
     out: &mut Vec<u8>,
     col: u16,
     raw: RawCell,
     style: Style,
     text: &[char],
-    prev: &mut Option<Style>,
+    hyperlink: Option<&'a [u8]>,
+    prev: &mut CellState<'a>,
 ) {
-    if *prev != Some(style) {
+    prev.set_hyperlink(out, hyperlink);
+    if prev.style != Some(style) {
         write_sgr(out, style);
-        *prev = Some(style);
+        prev.style = Some(style);
     }
     if raw.has_text().unwrap_or(false) && !text.is_empty() {
         let mut buf = [0; 4];
@@ -2710,17 +2805,19 @@ fn write_cell(
     // Re-sync the column after a wide character in case the host terminal
     // disagrees about its width.
     if raw.wide().unwrap_or(CellWide::Narrow) == CellWide::Wide {
+        prev.set_hyperlink(out, None);
         let _ = write!(out, "\x1b[{}G", u32::from(col) + 3);
     }
 }
 
 /// Write a blank in the default style at the cursor, after the style written
 /// last, `prev`.
-fn write_blank(out: &mut Vec<u8>, prev: &mut Option<Style>) {
+fn write_blank(out: &mut Vec<u8>, prev: &mut CellState<'_>) {
+    prev.set_hyperlink(out, None);
     let style = Style::default();
-    if *prev != Some(style) {
+    if prev.style != Some(style) {
         write_sgr(out, style);
-        *prev = Some(style);
+        prev.style = Some(style);
     }
     out.push(b' ');
 }
@@ -2968,6 +3065,127 @@ mod tests {
         ] {
             assert_eq!(base64(data.as_bytes()), encoded);
         }
+    }
+
+    #[test]
+    fn captured_hyperlinks_are_sparse_runs_with_reused_storage() {
+        let mut terminal = Terminal::new(12, 2).unwrap();
+        let uri = format!("https://example.com/{}", "x".repeat(512));
+        let output = format!(
+            "\x1b]8;;{uri}\x1b\\ab\x1b[1mc\x1b]8;;\x1b\\ \x1b]8;;{uri}\x1b\\de\x1b]8;;\x1b\\"
+        );
+        terminal.vt_write(output.as_bytes());
+        let mut frame = Frame::new().unwrap();
+        frame.capture(&terminal).unwrap();
+        let row = &frame.rows_seen[0].0;
+        assert_eq!(row.hyperlinks.len(), 2);
+        assert_eq!(row.hyperlinks[0].columns, 0..3);
+        assert_eq!(row.hyperlinks[1].columns, 4..6);
+        assert_eq!(row.uris.len(), uri.len() * 2);
+        assert_eq!(row.hyperlink(0), Some(uri.as_bytes()));
+        assert_eq!(row.hyperlink(3), None);
+        assert_eq!(row.hyperlink(5), Some(uri.as_bytes()));
+        assert_eq!(row.hyperlink(6), None);
+        // A row with no links has no heap storage for them.
+        assert_eq!(frame.rows_seen[1].0.hyperlinks.capacity(), 0);
+        assert_eq!(frame.rows_seen[1].0.uris.capacity(), 0);
+        let storage = (
+            row.hyperlinks.as_ptr(),
+            row.uris.as_ptr(),
+            frame.hyperlink_uri.as_ptr(),
+        );
+        // Exercise the active-grid capture as well as the render-state path.
+        frame.stale_rows.push(0);
+        frame.capture(&terminal).unwrap();
+        let row = &frame.rows_seen[0].0;
+        assert_eq!(
+            storage,
+            (
+                row.hyperlinks.as_ptr(),
+                row.uris.as_ptr(),
+                frame.hyperlink_uri.as_ptr()
+            )
+        );
+        terminal.vt_write(b"\x1b[H\x1b[2Kplain");
+        frame.capture(&terminal).unwrap();
+        assert!(frame.rows_seen[0].0.hyperlinks.is_empty());
+        assert!(frame.rows_seen[0].0.uris.is_empty());
+    }
+
+    #[test]
+    fn hyperlinks_are_captured_from_the_scrolled_viewport() {
+        let mut terminal = Terminal::new(8, 2).unwrap();
+        terminal.vt_write(b"\x1b]8;;https://old.test\x1b\\old\x1b]8;;\x1b\\\r\nplain\r\n\x1b]8;;https://new.test\x1b\\new\x1b]8;;\x1b\\");
+        let mut frame = Frame::new().unwrap();
+        frame.capture(&terminal).unwrap();
+        assert_eq!(
+            frame.rows_seen[1].0.hyperlink(0),
+            Some(b"https://new.test".as_slice())
+        );
+        terminal.scroll_viewport(ScrollViewport::Top);
+        frame.stale_rows.push(0);
+        frame.capture(&terminal).unwrap();
+        assert_eq!(
+            frame.rows_seen[0].0.hyperlink(0),
+            Some(b"https://old.test".as_slice())
+        );
+        assert_eq!(frame.rows_seen[1].0.hyperlink(0), None);
+    }
+
+    /// Every absolute row or column jump must happen with OSC 8 closed.
+    fn assert_links_end_before_cursor_jumps(mut out: &[u8]) {
+        let mut linked = false;
+        while !out.is_empty() {
+            if let Some(rest) = out.strip_prefix(b"\x1b]8;;") {
+                let end = find(rest, b"\x1b\\").unwrap();
+                linked = end != 0;
+                out = &rest[end + 2..];
+            } else if let Some(rest) = out.strip_prefix(b"\x1b[") {
+                let end = rest.iter().position(|b| (0x40..=0x7e).contains(b)).unwrap();
+                if matches!(rest[end], b'H' | b'G') {
+                    assert!(!linked, "link open at {:?}", &rest[..=end]);
+                }
+                out = &rest[end + 1..];
+            } else {
+                out = &out[1..];
+            }
+        }
+        assert!(!linked, "link open at frame's end");
+    }
+
+    #[test]
+    fn hyperlinks_end_at_pane_edges_and_wide_character_cursor_jumps() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        let text = format!("\x1b]8;;https://example.com\x1b\\a中{}", "b".repeat(37));
+        p.mux.pane_mut(left).unwrap().feed(text.as_bytes());
+        p.mux.pane_mut(right).unwrap().feed(b"plain");
+        let out = frame(&mut p.mux);
+        assert_links_end_before_cursor_jumps(&out);
+        // A wide cell closes the link before CHA and reopens it afterwards.
+        assert!(has(
+            &out,
+            "中\x1b]8;;\x1b\\\x1b[4G\x1b]8;;https://example.com\x1b\\b".as_bytes()
+        ));
+        let mut host = Terminal::new(81, 10).unwrap();
+        host.vt_write(&out);
+        host.vt_write(b"\x1b[10;41H#");
+        let grid = host
+            .grid_ref(Point::Active(PointCoordinate { x: 40, y: 9 }))
+            .unwrap();
+        assert_eq!(grid.hyperlink_uri(&mut []).unwrap(), 0);
+
+        // The melt uses the same link state for cells and newly blank columns.
+        p.mux.melt_pane(left);
+        let pane = p.mux.pane_mut(left).unwrap();
+        let melt = pane.melt.as_mut().unwrap();
+        melt.delays.fill(0);
+        melt.delays[1] = MELT_DELAY_MS;
+        let now = melt.start + MELT_DELAY_MS;
+        let mut out = Vec::new();
+        pane.draw_melt(&mut out, now);
+        assert!(has(&out, b"\x1b]8;;https://example.com\x1b\\"));
+        assert_links_end_before_cursor_jumps(&out);
     }
 
     #[test]

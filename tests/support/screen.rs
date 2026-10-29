@@ -1,10 +1,10 @@
 //! Independent snapshots and cell-level diagnostics .
 //! Reading a fresh render state consumes dirty flags: never snapshot the mux's terminal.
-use libghostty_vt::error::Result;
+use libghostty_vt::error::{Error, Result};
 use libghostty_vt::render::{CellIterator, Colors, CursorVisualStyle, RowIterator};
 use libghostty_vt::screen::{CellContentTag, CellWide};
 use libghostty_vt::style::{RgbColor, Style, StyleColor};
-use libghostty_vt::terminal::{Mode, ModeKind};
+use libghostty_vt::terminal::{Mode, ModeKind, Point, PointCoordinate};
 use libghostty_vt::{RenderState, Terminal};
 use std::fmt::Write as _;
 
@@ -39,6 +39,7 @@ pub struct Cell {
     pub fg: RgbColor,
     pub bg: RgbColor,
     pub underline_color: Option<RgbColor>,
+    pub hyperlink: Option<Vec<u8>>,
 }
 #[derive(Debug, PartialEq, Eq)]
 pub struct Cursor {
@@ -67,6 +68,7 @@ pub fn take(t: &Terminal) -> Result<Snapshot> {
     let mut state = RenderState::new()?;
     let snapshot = state.update(t)?;
     let colors = snapshot.colors()?;
+    let cols = snapshot.cols()?;
     let mut cells = Vec::new();
     let mut row_iter = RowIterator::new()?;
     let mut cell_iter = CellIterator::new()?;
@@ -97,6 +99,25 @@ pub fn take(t: &Terminal) -> Result<Snapshot> {
             if text == [' '] {
                 text.clear();
             }
+            let hyperlink = if raw.has_hyperlink()? {
+                let grid = t.grid_ref(Point::Viewport(PointCoordinate {
+                    x: (cells.len() % usize::from(cols)) as u16,
+                    y: (cells.len() / usize::from(cols)) as u32,
+                }))?;
+                let mut uri = Vec::new();
+                loop {
+                    match grid.hyperlink_uri(&mut uri) {
+                        Ok(len) => {
+                            uri.truncate(len);
+                            break Some(uri);
+                        }
+                        Err(Error::OutOfSpace { required }) => uri.resize(required, 0),
+                        Err(e) => return Err(e),
+                    }
+                }
+            } else {
+                None
+            };
             cells.push(Cell {
                 text,
                 wide: match raw.wide()? {
@@ -108,12 +129,13 @@ pub fn take(t: &Terminal) -> Result<Snapshot> {
                 fg,
                 bg,
                 underline_color,
+                hyperlink,
             });
         }
     }
     let c = snapshot.cursor()?;
     Ok(Snapshot {
-        cols: snapshot.cols()?,
+        cols,
         rows: snapshot.rows()?,
         cells,
         cursor: Cursor {
