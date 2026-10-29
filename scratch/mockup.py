@@ -27,14 +27,18 @@ FRAME = "\x1b[0;38;2;100;100;100m"
 HARNESS = "\x1b[0;48;2;40;46;64m"
 # Waiting for a tool approval.
 ATTENTION = (240, 170, 40)
+# Running, including a busy agent's dot in its title.
+RUNNING = (110, 190, 90)
+# Idle or stopped, including an idle agent's dot in its title.
+QUIET = (140, 140, 140)
 # A harness that failed to start, a program that exited, a failed task.
 ERROR = (230, 80, 70)
 # The state of a workspace or team in the overlay and the team list: its
 # icon's color.
 STATES = {
-    "running": (110, 190, 90),
-    "idle": (140, 140, 140),
-    "stopped": (140, 140, 140),
+    "running": RUNNING,
+    "idle": QUIET,
+    "stopped": QUIET,
     "failed": ERROR,
 }
 # The main team's name in the team list and the header.
@@ -62,6 +66,7 @@ ICONS = {
         "collapsed": "▸",
         "branch": "⎇",
         "directory": "",
+        "activity": "●",
         "attention": "●",
         "zoomed": "zoomed",
         "exited": "exited {}",
@@ -80,6 +85,7 @@ ICONS = {
         "collapsed": "",  # nf-oct-chevron_right
         "branch": "",  # nf-dev-git_branch
         "directory": "",  # nf-fa-folder
+        "activity": "",  # nf-fa-circle
         "attention": "",  # nf-fa-bell
         "zoomed": "",  # nf-fa-expand
         "exited": " {}",  # nf-fa-times_circle
@@ -95,13 +101,13 @@ ICONS = {
     },
 }
 
-# What each worker shows, cycling: whether it waits for an approval, rows
-# scrolled, exit status, whether it is collapsed, a failure, and its branch,
-# or its directory when the branch is empty.
+# What each worker shows, cycling: whether it is busy, waits for an approval,
+# rows scrolled, exit status, whether it is collapsed, a failure, and its
+# branch, or its directory when the branch is empty.
 WORKERS = [
-    dict(attention=True, scrolled=42, branch="feature-{}"),
-    dict(status=3, branch="feature-{}"),
-    dict(collapsed=True, branch="feature-{}"),
+    dict(busy=True, attention=True, scrolled=42, branch="feature-{}"),
+    dict(busy=True, status=3, branch="feature-{}"),
+    dict(busy=False, collapsed=True, branch="feature-{}"),
     dict(failed="opencode: not found", directory="~/src/docs"),
     dict(branch="feature-{}"),
 ]
@@ -206,7 +212,7 @@ def layout(cols, rows, workers):
 
 
 def draw_label(c, pal, icons, rect, pane, focused, zoomed):
-    """A title drawn on a horizontal line: ━ ▾ name ● · notes ━━━ detail ━.
+    """A title drawn on a horizontal line: ━ ▾ name ● 🔔 · notes ━━━ detail ━.
     Mirrors host::draw_label and draw_row."""
     col, row, width, height = rect
     row -= 1
@@ -221,6 +227,15 @@ def draw_label(c, pal, icons, rect, pane, focused, zoomed):
         spans.append((len(left), f"{icons['failed']} {pane['failed']}", ERROR))
         left += spans[-1][1]
     room = max(width - 2, 0)
+    if (
+        pane.get("status") is None
+        and not pane.get("failed")
+        and pane.get("busy") is not None
+        and len(left) + 2 <= room
+    ):
+        left += " "
+        spans.append((len(left), icons["activity"], RUNNING if pane["busy"] else QUIET))
+        left += icons["activity"]
     if pane.get("attention") and len(left) + 2 <= room:
         left += " "
         spans.append((len(left), icons["attention"], ATTENTION))
@@ -261,10 +276,11 @@ def draw(args):
     # The viewed team: the main team, or a task's orchestrator, named after
     # the task, and its workers.
     task = TASKS[args.view - 1] if args.view else None
-    lead = dict(name="orchestrator", detail=icon(icons, "branch", "main"))
+    lead = dict(name="orchestrator", detail=icon(icons, "branch", "main"), busy=False)
     workers, prefix = args.workers, "worker-"
     if task:
         lead["name"] = task["name"]
+        lead["busy"] = task["state"] == "running"
         if task["state"] == "failed":
             lead["failed"] = "claude: not found"
         workers, prefix = task["workers"], f"{task['name']}-"

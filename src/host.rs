@@ -223,6 +223,8 @@ pub struct TeamChrome {
     pub teamlist: Rc<RefCell<Option<TeamList>>>,
     /// Panes whose agents wait for a tool approval, refreshed with the bar.
     pub attention: Rc<RefCell<Vec<PaneId>>>,
+    /// Panes whose agents are busy (true) or idle (false), refreshed with the bar.
+    pub activity: Rc<RefCell<Vec<(PaneId, bool)>>>,
     /// The pane that fills the pane area, which the host changes as it zooms.
     pub zoomed: Rc<Cell<Option<PaneId>>>,
     pub overlay: Rc<RefCell<Option<Overlay>>>,
@@ -266,6 +268,11 @@ impl Chrome for TeamChrome {
                 p,
                 self.zoomed.get() == Some(p.id),
                 self.attention.borrow().contains(&p.id),
+                self.activity
+                    .borrow()
+                    .iter()
+                    .find(|(id, _)| *id == p.id)
+                    .map(|(_, busy)| *busy),
                 palette,
             );
             // The top titles meet at ┳; lower worker titles branch at ┣.
@@ -385,13 +392,22 @@ fn arrow_col(rect: Rect) -> u16 {
 
 /// An agent's label row above its pane, across the pane's width, with the name
 /// at the left, bold when focused, a harness's failure to start in the error
-/// color, an attention bell if it fits, and notes.
+/// color, an activity dot while its program runs, an attention bell, and notes.
+/// The dot and bell are drawn only if each fits, the dot green while busy and
+/// gray while idle.
 /// A worker beside the divider has an arrow before its name, pointing right
 /// while it is collapsed and down while it is not.
 /// The detail goes at the right end unless the row is too narrow for it. The
 /// row is a heavy line with a space on each side of its text, and a line's
 /// width to spare at each end.
-fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palette: Palette) {
+fn draw_label(
+    s: &mut String,
+    p: &PaneView,
+    zoomed: bool,
+    attention: bool,
+    busy: Option<bool>,
+    palette: Palette,
+) {
     let mut left = if p.rect.col > 0 {
         let arrow = if p.rect.rows == 0 {
             icons::COLLAPSED
@@ -414,14 +430,23 @@ fn draw_label(s: &mut String, p: &PaneView, zoomed: bool, attention: bool, palet
             colors::ERROR,
         ));
     }
+    let room = usize::from(p.rect.cols.saturating_sub(2));
     let name_width = text_width(&left);
-    if attention && name_width + 2 <= usize::from(p.rect.cols.saturating_sub(2)) {
-        left.push_str(&format!(" {}", icons::ATTENTION));
+    if p.status.is_none()
+        && let Some(busy) = busy
+        && name_width + 2 <= room
+    {
+        left.push_str(&format!(" {}", icons::ACTIVITY));
         spans.push((
             name_width + 1,
-            icons::ATTENTION.to_string(),
-            colors::ATTENTION,
+            icons::ACTIVITY.to_string(),
+            if busy { colors::RUNNING } else { colors::QUIET },
         ));
+    }
+    let width = text_width(&left);
+    if attention && width + 2 <= room {
+        left.push_str(&format!(" {}", icons::ATTENTION));
+        spans.push((width + 1, icons::ATTENTION.to_string(), colors::ATTENTION));
     }
     for (note, color) in notes(p, zoomed) {
         left.push_str(" · ");
@@ -721,10 +746,12 @@ struct Host {
     help: Rc<Cell<bool>>,
     /// The bar, shared with the chrome.
     bar: Rc<RefCell<Bar>>,
-    /// When the bar's list and pane attention flags were last read.
+    /// When the bar's list and pane attention and activity flags were last read.
     bar_read: i64,
     /// Panes waiting for a tool approval, shared with the chrome.
     attention: Rc<RefCell<Vec<PaneId>>>,
+    /// Panes whose agents are busy or idle, shared with the chrome.
+    activity: Rc<RefCell<Vec<(PaneId, bool)>>>,
     /// The workspace's colors, shared with the chrome.
     palette: Rc<Cell<Palette>>,
     /// Stops of other workspaces, which run on threads so the host keeps
@@ -928,6 +955,7 @@ impl Host {
             store::load(&state_path)?.accent as usize,
         )));
         let attention = Rc::new(RefCell::new(Vec::new()));
+        let activity = Rc::new(RefCell::new(Vec::new()));
         let view = Rc::new(RefCell::new(store::DEFAULT_TEAM.to_string()));
         let teams = Rc::new(RefCell::new(Vec::new()));
         let tasks = Rc::new(Cell::new((0, 0)));
@@ -939,6 +967,7 @@ impl Host {
             tasks: Rc::clone(&tasks),
             teamlist: Rc::clone(&teamlist),
             attention: Rc::clone(&attention),
+            activity: Rc::clone(&activity),
             zoomed: Rc::clone(&zoomed),
             overlay: Rc::clone(&overlay),
             help: Rc::clone(&help),
@@ -971,6 +1000,7 @@ impl Host {
             bar,
             bar_read: 0,
             attention,
+            activity,
             palette,
             stopped: signals::pipe().map_err(|e| format!("pipe: {e}"))?,
             stop_results: mpsc::channel(),
@@ -1241,8 +1271,9 @@ impl Host {
         self.mux.invalidate_chrome();
     }
 
-    /// Refresh the bar, the attention flags of the panes and the teams, and
-    /// the orchestrators' branch titles, redrawing when any changes.
+    /// Refresh the bar, the panes' activity, the attention flags of the panes
+    /// and the teams, and the orchestrators' branch titles, redrawing when any
+    /// changes.
     fn read_bar(&mut self) {
         let mut bar = self.bar.borrow_mut();
         let mut changed = match bar::running() {
@@ -1266,6 +1297,20 @@ impl Host {
                 .collect();
             changed |= *self.attention.borrow() != attention;
             *self.attention.borrow_mut() = attention;
+            let activity: Vec<(PaneId, bool)> = self
+                .panes
+                .iter()
+                .filter_map(|slot| {
+                    let agent = state.agent(&slot.agent).ok()?;
+                    match agent.activity.as_str() {
+                        store::BUSY => Some((slot.pane, true)),
+                        store::IDLE => Some((slot.pane, false)),
+                        _ => None,
+                    }
+                })
+                .collect();
+            changed |= *self.activity.borrow() != activity;
+            *self.activity.borrow_mut() = activity;
             let teams = team_attention(&state);
             changed |= *self.teams.borrow() != teams;
             *self.teams.borrow_mut() = teams;
@@ -2304,6 +2349,7 @@ mod tests {
             tasks: Rc::default(),
             teamlist: Rc::default(),
             attention: Rc::default(),
+            activity: Rc::default(),
             zoomed: Rc::default(),
             overlay: Rc::default(),
             help: Rc::default(),
@@ -2579,6 +2625,68 @@ mod tests {
         assert!(!screen.row(6).contains('\u{f0f3}'));
         chrome.attention.borrow_mut().clear();
         let screen = draw_with(&mut chrome, &panes, 80, 12);
+        assert!(!screen.row(1).contains('\u{f0f3}'));
+    }
+
+    #[test]
+    fn title_activity_dots_follow_names_before_bells() {
+        let layout = rects(layout(size(80, 12), &even(3), EVEN));
+        let panes = [
+            PaneView {
+                scrolled: 2,
+                ..view(1, "orch", layout[0], true, None)
+            },
+            view(2, "w1", layout[1], false, None),
+            view(3, "w2", layout[2], false, None),
+        ];
+        let mut chrome = chrome();
+        *chrome.activity.borrow_mut() = vec![(PaneId(1), true), (PaneId(2), false)];
+        *chrome.attention.borrow_mut() = vec![PaneId(1)];
+        let screen = draw_with(&mut chrome, &panes, 80, 12);
+        assert!(screen.row(1).starts_with("━ orch \u{f111} \u{f0f3} · ↑2 "));
+        assert!(screen.row(1).contains("┳━ \u{f47c} w1 \u{f111} "));
+        assert!(screen.row(6).contains("┣━ \u{f47c} w2 "));
+        assert!(!screen.row(6).contains('\u{f111}'));
+        for (x, color, focused) in [
+            (7, colors::RUNNING, true),
+            (9, colors::ATTENTION, true),
+            (47, colors::QUIET, false),
+        ] {
+            assert_eq!(fg(&screen, x, 1), rgb(color));
+            assert_eq!(screen.bold(x, 1), focused);
+        }
+    }
+
+    #[test]
+    fn title_activity_dots_skip_exited_panes() {
+        let panes = [view(1, "orch", rect(0, 2, 30, 1), true, Some(127))];
+        let mut chrome = chrome();
+        *chrome.activity.borrow_mut() = vec![(PaneId(1), true)];
+        let screen = draw_with(&mut chrome, &panes, 30, 4);
+        assert!(screen.row(1).starts_with("━ orch · \u{f057} 127 "));
+        assert!(!screen.row(1).contains('\u{f111}'));
+    }
+
+    #[test]
+    fn title_activity_dots_are_only_drawn_if_the_whole_dot_fits() {
+        let mut chrome = chrome();
+        *chrome.activity.borrow_mut() = vec![(PaneId(1), true)];
+        *chrome.attention.borrow_mut() = vec![PaneId(1)];
+        let row = |chrome: &mut TeamChrome, cols| {
+            let panes = [view(1, "界x", rect(0, 2, cols, 1), true, None)];
+            draw_with(chrome, &panes, cols, 4)
+        };
+        let screen = row(&mut chrome, 10);
+        assert_eq!(screen.row(1), "━ 界 x \u{f111} \u{f0f3}━");
+        assert_eq!(fg(&screen, 8, 1), rgb(colors::ATTENTION));
+        let screen = row(&mut chrome, 9);
+        assert_eq!(screen.row(1), "━ 界 x \u{f111} ━");
+        let screen = row(&mut chrome, 8);
+        assert_eq!(screen.row(1), "━ 界 x \u{f111}━");
+        assert_eq!(fg(&screen, 6, 1), rgb(colors::RUNNING));
+        let screen = row(&mut chrome, 7);
+        assert_eq!(screen.row(1), "━ 界 x ━");
+        assert!(!screen.row(1).contains('\u{f111}'));
         assert!(!screen.row(1).contains('\u{f0f3}'));
     }
 

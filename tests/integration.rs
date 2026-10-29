@@ -754,6 +754,7 @@ fn first_start_lays_out_one_pane() {
     // The header names the workspace, at the left.
     let dir = fx.state().agent("orchestrator").unwrap().dir.clone();
     fx.wait_screen(&format!(" \u{f07c} {dir}"));
+    fx.wait_screen("orchestrator \u{f111}");
     let screen = fx.screen();
     let lines: Vec<&str> = screen.lines().collect();
     assert!(
@@ -761,7 +762,10 @@ fn first_start_lays_out_one_pane() {
         "{screen}"
     );
     // The title runs the pane's width, with no divider.
-    assert!(lines[1].starts_with("━ orchestrator ━"), "{screen}");
+    assert!(
+        lines[1].starts_with("━ orchestrator \u{f111} ━"),
+        "{screen}"
+    );
     assert!(lines[1].trim_end().ends_with(" main ━"), "{screen}");
     assert!(!screen.contains('┃') && !screen.contains('┓'), "{screen}");
     // The bar lists the workspace, the only one running.
@@ -984,6 +988,42 @@ fn the_orchestrator_title_tracks_checkout_branch_changes() {
 }
 
 #[test]
+fn title_activity_follows_the_state() {
+    let mut fx = Fixture::new();
+    fx.start();
+    fx.create("w1", "fast", "");
+    fx.wait_idle("orchestrator");
+    fx.wait_idle("w1");
+    fx.wait_screen("orchestrator \u{f111}");
+    fx.wait_screen("w1 \u{f111}");
+
+    store::update(&fx.state_path(), |s| {
+        s.agents
+            .iter_mut()
+            .find(|a| a.name == "orchestrator")
+            .unwrap()
+            .activity
+            .clear();
+        Ok(())
+    })
+    .unwrap();
+    fx.wait_no_screen("orchestrator \u{f111}");
+    fx.wait_screen("w1 \u{f111}");
+
+    store::update(&fx.state_path(), |s| {
+        s.agents
+            .iter_mut()
+            .find(|a| a.name == "orchestrator")
+            .unwrap()
+            .activity = store::IDLE.into();
+        Ok(())
+    })
+    .unwrap();
+    fx.wait_screen("orchestrator \u{f111}");
+    fx.wait_screen("w1 \u{f111}");
+}
+
+#[test]
 fn title_attention_refreshes_even_when_the_workspace_dot_does_not_change() {
     let mut fx = Fixture::new();
     fx.start();
@@ -997,8 +1037,8 @@ fn title_attention_refreshes_even_when_the_workspace_dot_does_not_change() {
         Ok(())
     })
     .unwrap();
-    fx.wait_screen("orchestrator \u{f0f3}");
-    fx.wait_screen("w1 \u{f0f3}");
+    fx.wait_screen("orchestrator \u{f111} \u{f0f3}");
+    fx.wait_screen("w1 \u{f111} \u{f0f3}");
     fx.wait_screen("0 repo \u{f0f3}");
 
     // The bar still has a dot, but the orchestrator's title must redraw.
@@ -1011,8 +1051,8 @@ fn title_attention_refreshes_even_when_the_workspace_dot_does_not_change() {
         Ok(())
     })
     .unwrap();
-    fx.wait_no_screen("orchestrator \u{f0f3}");
-    fx.wait_screen("w1 \u{f0f3}");
+    fx.wait_no_screen("orchestrator \u{f111} \u{f0f3}");
+    fx.wait_screen("w1 \u{f111} \u{f0f3}");
     fx.wait_screen("0 repo \u{f0f3}");
 
     store::update(&fx.state_path(), |s| {
@@ -1022,7 +1062,7 @@ fn title_attention_refreshes_even_when_the_workspace_dot_does_not_change() {
         Ok(())
     })
     .unwrap();
-    fx.wait_no_screen("w1 \u{f0f3}");
+    fx.wait_no_screen("w1 \u{f111} \u{f0f3}");
     fx.wait_no_screen("0 repo \u{f0f3}");
 }
 

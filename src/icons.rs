@@ -11,6 +11,8 @@ pub const BRANCH: char = '\u{e725}';
 pub const DIRECTORY: char = '\u{f07b}';
 /// Before the workspace's path in the header (nf-fa-folder_open).
 pub const HEADER: char = '\u{f07c}';
+/// After an agent's name: whether it has a turn in progress (nf-fa-circle).
+pub const ACTIVITY: char = '\u{f111}';
 /// After an agent or workspace waiting for a tool approval (nf-fa-bell).
 pub const ATTENTION: char = '\u{f0f3}';
 /// The note on a zoomed pane (nf-fa-expand).

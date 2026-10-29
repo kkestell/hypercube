@@ -38,11 +38,11 @@ pub const ATTENTION: Rgb = (240, 170, 40);
 /// An error: a harness that failed to start, a program that exited, or a
 /// team whose orchestrator exited.
 pub const ERROR: Rgb = (230, 80, 70);
-/// Running: a running workspace's icon in the overlay, or a busy team's in
-/// the team list.
+/// Running: a running workspace's icon in the overlay, a busy team's in the
+/// team list, or a busy agent's dot in its title.
 pub const RUNNING: Rgb = (110, 190, 90);
-/// Idle or stopped: a stopped workspace's icon in the overlay, or an idle
-/// team's in the team list.
+/// Idle or stopped: a stopped workspace's icon in the overlay, an idle team's
+/// in the team list, or an idle agent's dot in its title.
 pub const QUIET: Rgb = (140, 140, 140);
 
 /// The accents, in the order Ctrl-b a cycles through them: gray, the one a

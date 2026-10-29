@@ -274,8 +274,8 @@ Four colors in `colors.rs` keep one meaning wherever they are drawn:
 `ATTENTION`, amber, for an agent, team, or workspace waiting for a tool
 approval; `ERROR`, red, for a harness that failed to start, a program that
 exited, or a team whose orchestrator exited; `RUNNING`, green, for a running
-workspace or busy team; and `QUIET`, gray, for a stopped workspace or idle
-team.
+workspace, busy team, or busy agent; and `QUIET`, gray, for a stopped workspace,
+idle team, or idle agent.
 
 The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 `icons.rs`, each followed by a space. `TeamChrome` draws:
@@ -292,13 +292,15 @@ The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 - Each agent's label row across its pane's full width. The left end has one
   space, for a worker beside the divider a chevron and a space, pointing down
   while expanded and right while collapsed, and the agent's name, bold for
-  the focused pane, followed by an `ATTENTION` bell while the agent waits for a tool
-  approval, only if the bell fits, then the expand icon while the pane fills
-  the area, the exit icon and the status once the pane's program has exited
-  and is not relaunched, the warning icon and the error for an agent whose
-  harness did not start, both in `ERROR`, and "↑N" while its view is
-  scrolled N rows up. Each
-  note after the name follows ` · `. The right end has, followed by one
+  the focused pane, followed by an activity dot in `RUNNING` while the agent
+  is busy and `QUIET` while it is idle, only if the dot fits and the pane's
+  program has not exited. An `ATTENTION` bell follows while the agent waits
+  for a tool approval, only if the bell fits. Then come the expand icon while
+  the pane fills the area, the exit icon and the status once the pane's
+  program has exited and is not relaunched, the warning icon and the error
+  for an agent whose harness did not start, both in `ERROR`, and "↑N" while
+  its view is scrolled N rows up. Each note after the name follows ` · `.
+  The right end has, followed by one
   space, the branch icon and the branch (without its `hypercube/` prefix for
   a worker), or the folder icon and the directory with the home directory
   written as `~` for agents without a branch. A row too narrow for the right text drops it,
@@ -322,9 +324,9 @@ workspace waits for a tool approval, until the approval is answered (see
 [harness support](harness-support.md)). It shows as many as fit, whole. A click
 on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
 the leading space or separators do nothing. The host reads the list, the
-current agents' and teams' attention flags, and the orchestrators' branch on
-each attach
-and every second while a client is attached, redrawing when any changes.
+current agents' activity, the agents' and teams' attention flags, and the
+orchestrators' branch on each attach and every second while a client is
+attached, redrawing when any changes.
 It reads the checkout's `HEAD` file rather than spawning Git; a detached
 HEAD drops the branch detail in favor of the directory. Ctrl-b and a digit
 switch the client to the workspace with that number, as the overlay's Enter
