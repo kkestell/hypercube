@@ -73,3 +73,20 @@ fn held_pane_draws_its_completed_frame_after_a_repaint() {
     assert!(out.contains("complete"), "{out:?}");
     assert!(!out.contains("partial"), "{out:?}");
 }
+
+#[test]
+fn held_pane_keeps_its_completed_hyperlinks_after_a_repaint() {
+    let ws = winsize(20, 4, 8);
+    let (mut m, id) = one_pane(ws);
+    m.pane_mut(id)
+        .unwrap()
+        .feed(b"\x1b]8;;https://old.test\x1b\\old\x1b]8;;\x1b\\");
+    frame(&mut m);
+    m.pane_mut(id)
+        .unwrap()
+        .feed(b"\x1b[?2026h\x1b[H\x1b]8;;https://new.test\x1b\\new\x1b]8;;\x1b\\");
+    m.set_layout(&[(id, Rect::full(ws))]).unwrap();
+    let out = frame(&mut m);
+    assert!(out.contains("\x1b]8;;https://old.test\x1b\\"), "{out:?}");
+    assert!(!out.contains("https://new.test"), "{out:?}");
+}

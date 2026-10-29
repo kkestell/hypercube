@@ -333,3 +333,25 @@ fn combining_mark_survives_same_size_resize() {
         panic!("{diff}");
     }
 }
+
+#[test]
+fn hyperlinks_survive_styles_wraps_wide_characters_and_repaints() {
+    let initial = Size { cols: 12, rows: 4 };
+    let records = [
+        Input::Output(
+            "\x1b]8;;https://example.com\x1b\\ab\x1b[1mcd\x1b[0m中文efghijkl"
+                .as_bytes()
+                .to_vec(),
+        ),
+        Input::Output(b"\x1b]8;;file:///src/main.rs\x07file\x1b]8;;\x07 plain".to_vec()),
+        Input::Size(initial),
+        Input::Size(Size { cols: 16, rows: 4 }),
+        Input::Output(
+            b"\x1b[H\x1b[2Kplain\x1b[2;3H\x1b]8;;https://other.test\x1b\\new\x1b]8;;\x1b\\"
+                .to_vec(),
+        ),
+    ];
+    if let Some(diff) = round_trip_splits("hyperlink runs and repaint", initial, &records, 8) {
+        panic!("{diff}");
+    }
+}

@@ -741,6 +741,12 @@ render state. A frame draws those rows at the pane's offset, then the focused
 pane's cursor, inside synchronized output (mode 2026). A layout change, host
 resize, or removed pane clears the screen and draws every row and the chrome.
 
+Captured rows keep hyperlinks as sparse column runs with one copy of each
+run's URI and a reusable URI buffer. Unlinked cells allocate no link storage.
+The renderer writes OSC 8 around linked runs, closing links at every row and
+pane edge and before cursor jumps, including wide-character resynchronization.
+Held and melting panes draw the hyperlinks kept with their captured rows.
+
 A pane draws its terminal's viewport. Scrolling moves the viewport through
 Ghostty's scrollback, and new output leaves a scrolled viewport where it is.
 Scrolling a pane ends its hold. Selected cells are drawn in reverse video.
@@ -865,9 +871,9 @@ the host never blocks on it. A link whose queue makes no progress for
 - `Event::Deadline`: the deadline passed.
 
 `mux::host_reset` returns the terminal's mirrored modes to their defaults,
-with no Kitty keyboard flags, the default cursor, default attributes, and
-synchronized output ended, in case a frame was cut off, on the alternate
-screen; the client writes it after a switch. `mux::host_restore`
+with no Kitty keyboard flags, the default cursor, default attributes, no open
+hyperlink, and synchronized output ended, in case a frame was cut off, on the
+alternate screen; the client writes it after a switch. `mux::host_restore`
 is `host_reset` and the main screen, which the client writes before it
 restores the terminal's settings and exits.
 
