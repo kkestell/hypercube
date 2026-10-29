@@ -27,7 +27,7 @@ impl Colors {
     }
 }
 
-const BLACK: Rgb = (0, 0, 0);
+pub const BLACK: Rgb = (0, 0, 0);
 const WHITE: Rgb = (255, 255, 255);
 
 /// The dot in an agent's title or workspace's tab while waiting for a tool

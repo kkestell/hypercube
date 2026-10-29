@@ -195,11 +195,11 @@ agent and ending the session hang up the programs without relaunching them.
 The first row is the header and the last is the bar. The panes go between
 them. `host::layout` reserves one column for the divider and gives the
 orchestrator half the remaining columns, rounded down, with the workers
-stacked at equal heights in the rest. Alone, the orchestrator takes the full
-width. Every pane has a label row above its content. A layout in which some
-pane would get no row or column fails; a launch requested on the control
-socket then fails with "no room for another pane", and
-a terminal resized below that hides the panes until it grows.
+stacked at equal heights in the rest. Alone, the orchestrator keeps its half,
+and a tesseract turns in the rest. Every pane has a label row above its
+content. A layout in which some pane would get no row or column fails; a
+launch requested on the control socket then fails with "no room for another
+pane", and a terminal resized below that hides the panes until it grows.
 
 `host::zoom_layout` gives one pane the whole area, keeping its label row,
 and hides the others. A hidden pane has an empty rectangle: it is not drawn,
@@ -235,9 +235,33 @@ redraws. It draws:
   keeping a blank column after the left text, and then clips the left text
   at a grapheme cluster. The row is a heavy line (`━`) with a space on each
   side of the text and a column of line at each end.
-- The divider: a heavy `┃` between the orchestrator and the
-  workers, down every row between the header and the bar, with a `┳` where
-  the top titles meet and a `┣` on each lower worker's label row.
+- The divider: a heavy `┃` right of the orchestrator, down every row between
+  the header and the bar, with a `┳` where the top titles meet and a `┣` on
+  each lower worker's label row. With no workers, the orchestrator's title
+  turns down into it at a `┓`. A zoomed pane has no divider.
+- The tesseract, while the orchestrator is the only pane and no zoom, overlay,
+  or list of keys covers the screen: the columns right of the divider, from
+  the header to the bar.
+
+`tesseract::Tesseract` draws the tesseract as a wireframe of its 32 edges. It
+turns in the XW plane at 0.5 radians a second and in the YZ plane at 0.31,
+and is projected with perspective along W, then along Z. Its edges are drawn
+with braille dots, two across and four down each cell, which are square on a
+terminal. The size is set by the cube's widest reach over every angle, so that
+it fills 95% of the smaller side of the area at its widest and does not change
+size otherwise. A cell is shaded by its nearest dot's depth, in twelve steps
+from the accent mixed 25% toward black, for the nearest, to the accent mixed
+60% toward black.
+
+The tesseract is the chrome's animation. `Chrome::animated` says whether the
+chrome animates, and `Chrome::animate` draws a frame. While a client is
+attached and the chrome animates, the mux draws a frame every
+`mux::ANIMATION_MS` (40 ms), and with every frame that draws the chrome. A
+frame writes only the cells that differ from the last, or all of them after
+the chrome was drawn. `Mux::animation_deadline` is the time of the next
+frame, which the runtime waits for as it does for a hold or a melt. When the
+chrome stops animating, the mux repaints the screen, and with no animation or
+no client the host has no wake-up for it.
 
 `bar::Bar` draws the last row in the header's colors. It lists every running
 workspace, numbered from 0 in the order its host started (the modification

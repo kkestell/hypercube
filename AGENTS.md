@@ -87,6 +87,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
   for a new workspace's path, and its drawing.
 - `src/colors.rs`: the accent colors, and the palette of the header, bar,
   titles, and divider each shades from one.
+- `src/tesseract.rs`: the rotating tesseract drawn beside a lone
+  orchestrator: its projection, and the braille canvas it is drawn on.
 - `scratch/mockup.py`: prints a mockup of the screen, to try layouts and
   borders without running Hypercube.
 - `src/overlay.rs`: the workspace overlay's list, keys, and drawing.

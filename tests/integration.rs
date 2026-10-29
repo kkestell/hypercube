@@ -726,11 +726,9 @@ fn first_start_lays_out_one_pane() {
         fx.state_path().to_str().unwrap()
     );
     assert_eq!(launch["env"]["TERM"], "xterm-256color");
-    // The pane takes the whole terminal but the header, title, and bar.
-    assert_eq!(
-        fx.size("orchestrator"),
-        [u64::from(COLS), u64::from(ROWS) - 3]
-    );
+    // The pane takes half the columns, and every row but the header, title,
+    // and bar.
+    assert_eq!(fx.size("orchestrator"), [59, u64::from(ROWS) - 3]);
 
     let events = fx.agent_events("orchestrator", "hook");
     let facts = &hook_contexts(&events, "SessionStart")[0];
@@ -749,7 +747,9 @@ fn first_start_lays_out_one_pane() {
     let screen = fx.screen();
     let lines: Vec<&str> = screen.lines().collect();
     assert!(lines[0].starts_with(&format!(" {dir}")), "{screen}");
-    assert!(!screen.contains('┃'), "{screen}");
+    // The title turns down into the divider right of the pane.
+    assert!(lines[1].trim_end().ends_with("━┓"), "{screen}");
+    assert_eq!(lines[2].trim_end().chars().nth(59), Some('┃'), "{screen}");
     // The bar lists the workspace, the only one running.
     assert_eq!(
         lines[usize::from(ROWS) - 1].trim_end(),
@@ -1005,8 +1005,8 @@ fn remove_agent_closes_the_pane() {
 
     fx.wait_gone(&[pid]);
     fx.wait_no_screen("⎇ w1");
-    // The orchestrator has the terminal to itself again.
-    fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 3]);
+    // The orchestrator keeps its half of the terminal.
+    assert_eq!(fx.size("orchestrator"), [59, 37]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(!fx.worktree("w1").exists());
     assert_eq!(fx.git(&fx.repo, &["branch", "--list", "hypercube/w1"]), "");
@@ -1296,7 +1296,7 @@ fn unsupported_harness_does_not_stop_startup() {
     assert!(!is_error, "{text}");
     assert_eq!(text, "Removed old (old00001).");
     fx.wait_no_screen("old · failed");
-    fx.wait_size("orchestrator", [u64::from(COLS), u64::from(ROWS) - 3]);
+    assert_eq!(fx.size("orchestrator"), [59, u64::from(ROWS) - 3]);
     assert_eq!(fx.state().agents.len(), 1);
     assert!(host::running(&fx.state_path()).unwrap());
 }
