@@ -522,6 +522,8 @@ pub struct Pane {
     /// Whether the pane belongs to what the screen does not show, so it is
     /// never focused.
     background: bool,
+    /// Whether the pane is collapsed to its label and cannot take focus.
+    collapsed: bool,
 }
 
 impl Pane {
@@ -558,6 +560,7 @@ impl Pane {
             notifications: Notifications::default(),
             scrolled_drawn: 0,
             background: false,
+            collapsed: false,
         })
     }
 
@@ -857,10 +860,10 @@ impl Pane {
         self.status.is_none() && self.melt.is_none()
     }
 
-    /// Whether the pane can take the focus: it is live and not in the
-    /// background.
+    /// Whether the pane can take the focus: it is live, expanded, and not in
+    /// the background. Hiding it for a zoom or a screen does not change this.
     fn focusable(&self) -> bool {
-        self.live() && !self.background
+        self.live() && !self.background && !self.collapsed
     }
 
     fn mode(&self, mode: Mode) -> bool {
@@ -1163,15 +1166,33 @@ impl Mux {
         let Some(p) = self.pane_mut(id) else { return };
         p.background = background;
         if background && self.focus() == Some(id) {
-            if let Some(p) = self.focused()
-                && p.mode(Mode::FOCUS_EVENT)
-            {
-                p.send(b"\x1b[O");
-            }
-            self.shared.focus.set(None);
-            self.chrome_dirty = true;
-            self.shared.title_changed.set(true);
+            self.clear_focus();
         }
+    }
+
+    /// Collapse a pane to its label or expand it. Collapsing the focused
+    /// pane moves focus to the next eligible pane, or clears it if none is.
+    pub fn set_collapsed(&mut self, id: PaneId, collapsed: bool) {
+        let Some(p) = self.pane_mut(id) else { return };
+        p.collapsed = collapsed;
+        if collapsed && self.focus() == Some(id) {
+            self.release_focus(id);
+            if self.focus() == Some(id) {
+                self.clear_focus();
+            }
+        }
+    }
+
+    /// Clear focus, sending focus-out if the focused pane asks for it.
+    fn clear_focus(&mut self) {
+        if let Some(p) = self.focused()
+            && p.mode(Mode::FOCUS_EVENT)
+        {
+            p.send(b"\x1b[O");
+        }
+        self.shared.focus.set(None);
+        self.chrome_dirty = true;
+        self.shared.title_changed.set(true);
     }
 
     /// Give a pane its program.
@@ -1482,8 +1503,8 @@ impl Mux {
                 .any(|p| p.rect.cols > 0 && p.rect.rows > 0 && (p.melting() || p.needs_render()))
     }
 
-    /// Focus a pane whose program hasn't exited and that is not in the
-    /// background, sending focus events to the panes that ask for them.
+    /// Focus a live, expanded pane that is not in the background, sending
+    /// focus events to the panes that ask for them.
     pub fn set_focus(&mut self, id: PaneId) {
         if self.focus() == Some(id) || !self.pane(id).is_some_and(Pane::focusable) {
             return;
@@ -1504,15 +1525,15 @@ impl Mux {
     }
 
     /// Focus the next live pane after the focused one, in pane order,
-    /// skipping the background.
+    /// skipping collapsed panes and the background.
     pub fn focus_next(&mut self) {
         if let Some(index) = self.focus().and_then(|id| self.index(id)) {
             self.focus_from(index + 1);
         }
     }
 
-    /// Focus the first live pane at or after `start` that is not in the
-    /// background, wrapping around.
+    /// Focus the first live, expanded pane at or after `start` that is not
+    /// in the background, wrapping around.
     fn focus_from(&mut self, start: usize) {
         let count = self.panes.len();
         let next = (0..count)
@@ -2060,7 +2081,7 @@ impl Mux {
             shape -= 1;
         }
         let _ = write!(out, "\x1b[{shape} q");
-        if cursor.visible && cursor.viewport.is_some() && p.rect.cols > 0 {
+        if cursor.visible && cursor.viewport.is_some() && p.rect.cols > 0 && p.rect.rows > 0 {
             out.extend_from_slice(b"\x1b[?25h");
         }
         out.extend_from_slice(b"\x1b[?2026l");
@@ -3600,6 +3621,60 @@ mod tests {
         p.mux.melt_pane(left);
         assert!(p.mux.pane(left).unwrap().melting());
         assert_eq!(p.mux.take_notices(), []);
+    }
+
+    #[test]
+    fn collapsed_panes_lose_focus_and_cannot_receive_keys_or_focus() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        for id in p.ids {
+            p.mux.pane_mut(id).unwrap().feed(b"\x1b[?1004h");
+        }
+        p.mux.take_notices();
+        p.mux.set_collapsed(left, true);
+        assert_eq!(p.mux.focus(), Some(right));
+        assert_eq!(p.mux.take_notices(), [Notice::Focus(right)]);
+        assert_eq!(p.got(0), b"\x1b[O");
+        assert_eq!(p.got(1), b"\x1b[I");
+        p.mux.input(b"\x02ohello");
+        assert_eq!(p.mux.focus(), Some(right));
+        assert_eq!(p.got(0), b"");
+        assert_eq!(p.got(1), b"hello");
+        p.mux.set_focus(left);
+        assert_eq!(p.mux.focus(), Some(right));
+
+        // Collapsing the last eligible pane clears focus and sends focus-out.
+        p.mux.set_collapsed(right, true);
+        assert_eq!(p.mux.focus(), None);
+        assert_eq!(p.got(1), b"\x1b[O");
+        p.mux.input(b"hidden");
+        assert_eq!(p.got(0), b"");
+        assert_eq!(p.got(1), b"");
+        p.mux.set_collapsed(left, false);
+        p.mux.set_focus(left);
+        assert_eq!(p.mux.focus(), Some(left));
+        assert_eq!(p.got(0), b"\x1b[I");
+    }
+
+    #[test]
+    fn a_focused_pane_with_no_rows_or_columns_shows_no_cursor() {
+        let mut p = Piped::new();
+        let left = p.ids[0];
+        p.mux.render().unwrap();
+        assert!(find(&p.mux.take_output(), b"\x1b[?25h").is_some());
+        let rect = p.mux.pane(left).unwrap().rect();
+        for (cols, rows) in [(40, 0), (0, 10), (0, 0)] {
+            p.mux
+                .set_layout(&[(left, Rect { cols, rows, ..rect })])
+                .unwrap();
+            // Zoom and overlay hiding still keep the focus.
+            assert_eq!(p.mux.focus(), Some(left));
+            p.mux.render().unwrap();
+            assert!(find(&p.mux.take_output(), b"\x1b[?25h").is_none());
+        }
+        p.mux.set_layout(&[(left, rect)]).unwrap();
+        p.mux.render().unwrap();
+        assert!(find(&p.mux.take_output(), b"\x1b[?25h").is_some());
     }
 
     #[test]

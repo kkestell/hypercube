@@ -848,9 +848,8 @@ fn prepare(root: &Path, state_path: &Path) -> Result<Vec<Agent>> {
 /// Ready the state of the workspace whose checkout is `dir`, on `branch` if
 /// it is a Git checkout, for a session: create the default team's
 /// orchestrator on the first run, put agents without a team in the default
-/// team, set the orchestrators' branch, and mark each agent busy if it
-/// starts with a prompt and idle otherwise (see `start_prompt`). Returns the
-/// agents, the orchestrators first.
+/// team, and set the orchestrators' branch. Saved activity stays unchanged
+/// until the harnesses launch. Returns the agents, the orchestrators first.
 fn ready(
     s: &mut State,
     spec: &config::Spec,
@@ -875,14 +874,6 @@ fn ready(
         if a.role == store::ORCHESTRATOR {
             a.branch = branch.unwrap_or_default().into();
         }
-    }
-    let activities: Vec<&str> = s
-        .agents
-        .iter()
-        .map(|a| start_activity(start_prompt(s, a)))
-        .collect();
-    for (a, activity) in s.agents.iter_mut().zip(activities) {
-        a.activity = activity.into();
     }
     let mut agents = s.agents.clone();
     agents.sort_by_key(|a| a.role != store::ORCHESTRATOR);
@@ -1412,6 +1403,8 @@ impl Host {
             if col == arrow_col(*r) {
                 let slot = self.viewed()[i];
                 self.panes[slot].collapsed = !self.panes[slot].collapsed;
+                self.mux
+                    .set_collapsed(self.panes[slot].pane, self.panes[slot].collapsed);
                 return self.lay_out();
             }
             self.drag = Some(Drag::Label(i));
@@ -1729,7 +1722,14 @@ impl Host {
             ws_row: rect.rows.max(1),
             ..Winsize::default()
         };
-        match spawn(&launch, ws) {
+        // Set activity just before spawning, so the harness's hooks run
+        // after it, not while the agent is still waiting for the first attach.
+        let started = store::update(&self.state_path, |s| {
+            s.agent_mut(id)?.activity = start_activity(prompt).into();
+            Ok(())
+        })
+        .and_then(|()| spawn(&launch, ws));
+        match started {
             Ok(pty) => self.mux.attach(pane, pty),
             Err(e) => {
                 self.mux.remove_pane(pane);
@@ -2919,8 +2919,85 @@ mod tests {
         let teams: Vec<&str> = s.agents.iter().map(|a| a.team.as_str()).collect();
         assert_eq!(teams, [store::DEFAULT_TEAM, "docs", store::DEFAULT_TEAM]);
         assert!(s.no_git);
-        assert_eq!(s.agents[1].activity, store::IDLE);
-        assert_eq!(s.agents[0].activity, store::BUSY);
+        assert_eq!(s.agents[1].activity, "");
+        assert_eq!(s.agents[0].activity, "");
+    }
+
+    #[test]
+    fn ready_preserves_activity_so_an_unattached_task_with_workers_can_fire() {
+        let mut s = State {
+            agents: vec![
+                member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+                member("n", store::ORCHESTRATOR, "nightly"),
+                member("w", store::WORKER, "nightly"),
+                member("b", store::WORKER, store::DEFAULT_TEAM),
+                member("e", store::WORKER, store::DEFAULT_TEAM),
+            ],
+            tasks: vec![store::Task {
+                name: "nightly".into(),
+                schedule: "* * * * *".into(),
+                prompt: "go".into(),
+                last_run: 0,
+            }],
+            ..State::default()
+        };
+        let saved = [
+            store::IDLE,
+            store::IDLE,
+            store::IDLE,
+            store::BUSY,
+            store::EXITED,
+        ];
+        for (agent, activity) in s.agents.iter_mut().zip(saved) {
+            agent.activity = activity.into();
+        }
+        ready(&mut s, &spec(), "/r", Some("main")).unwrap();
+        let activities: Vec<&str> = s.agents.iter().map(|a| a.activity.as_str()).collect();
+        assert_eq!(activities, saved);
+
+        let now = 60;
+        assert_eq!(
+            schedule::fire(&mut s, &schedule::LocalMinute::at(now), now),
+            ["nightly"]
+        );
+        assert_eq!(s.messages.len(), 1);
+        assert_eq!(s.messages[0].to, "n");
+        assert_eq!(s.messages[0].text, "go");
+        assert_eq!(s.tasks[0].last_run, now);
+    }
+
+    #[test]
+    fn clicking_a_focused_workers_arrow_moves_focus_and_skips_it_until_expanded() {
+        let dir = TempDir::new();
+        let agents = [
+            member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+            member("w", store::WORKER, store::DEFAULT_TEAM),
+        ];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        // Live panes without programs: no harness or pty is needed.
+        for slot in &host.panes {
+            host.mux.restart(slot.pane, &slot.agent).unwrap();
+        }
+        let worker = host.pane_of("w").unwrap();
+        host.mux.set_focus(worker);
+        let rect = pane_rect(&host, "w");
+        host.click(arrow_col(rect), rect.row - 1).unwrap();
+        assert!(host.panes[1].collapsed);
+        assert_eq!(pane_rect(&host, "w").rows, 0);
+        assert_eq!(host.mux.focus(), host.pane_of("o"));
+        host.mux.focus_next();
+        assert_eq!(host.mux.focus(), host.pane_of("o"));
+
+        host.toggle_help().unwrap();
+        host.toggle_help().unwrap();
+        host.mux.focus_next();
+        assert_eq!(host.mux.focus(), host.pane_of("o"));
+
+        host.click(arrow_col(rect), rect.row - 1).unwrap();
+        assert!(!host.panes[1].collapsed);
+        assert!(pane_rect(&host, "w").rows > 0);
+        host.mux.focus_next();
+        assert_eq!(host.mux.focus(), Some(worker));
     }
 
     #[test]
@@ -3125,16 +3202,14 @@ mod tests {
         let prompts =
             |s: &State| -> Vec<&str> { s.agents.iter().map(|a| start_prompt(s, a)).collect() };
         assert_eq!(prompts(&s), ["", "", TASK_START, NUDGE]);
-        ready(&mut s, &spec(), "/r", Some("main")).unwrap();
-        let activities: Vec<&str> = s.agents.iter().map(|a| a.activity.as_str()).collect();
+        let activities: Vec<&str> = prompts(&s).into_iter().map(start_activity).collect();
         assert_eq!(
             activities,
             [store::IDLE, store::IDLE, store::BUSY, store::BUSY]
         );
         s.agents[2].session_id = "s1".into();
         assert_eq!(prompts(&s), ["", "", "", NUDGE]);
-        ready(&mut s, &spec(), "/r", Some("main")).unwrap();
-        assert_eq!(s.agents[2].activity, store::IDLE);
+        assert_eq!(start_activity(start_prompt(&s, &s.agents[2])), store::IDLE);
     }
 
     #[test]
