@@ -1,5 +1,6 @@
 //! The team list: every team of the workspace, drawn over the whole screen,
-//! from which the user views a team, creates one, or deletes one.
+//! from which the user views a team, creates one, or deletes one. The
+//! scheduled tasks' teams follow the others under "Scheduled".
 
 use std::error::Error;
 use std::path::{Path, PathBuf};
@@ -26,25 +27,49 @@ pub struct Row {
     pub failed: bool,
     /// Whether any of its agents waits for a tool approval.
     pub attention: bool,
+    /// A task's team's schedule and last run.
+    pub task: Option<Scheduled>,
 }
 
-/// Each team of `state`, in `State::teams` order.
+/// A scheduled task as the list shows it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scheduled {
+    pub schedule: String,
+    /// How long ago it last fired, or "never".
+    pub ran: String,
+}
+
+/// Each team of `state` without a scheduled task, in `State::teams` order,
+/// then each task's team, in the order the tasks were created.
 pub fn rows(state: &State) -> Vec<Row> {
-    state
+    let row = |team: &str| {
+        let members: Vec<_> = state.agents.iter().filter(|a| a.team == team).collect();
+        Row {
+            name: team.to_string(),
+            agents: members.len(),
+            busy: state.running(team),
+            failed: state.failed(team),
+            attention: members.iter().any(|a| a.attention),
+            task: None,
+        }
+    };
+    let plain = state
         .teams()
         .into_iter()
-        .map(|team| {
-            let members: Vec<_> = state.agents.iter().filter(|a| a.team == team).collect();
-            Row {
-                name: team.to_string(),
-                agents: members.len(),
-                busy: members.iter().any(|a| a.activity == store::BUSY),
-                failed: state
-                    .team_orchestrator(team)
-                    .is_some_and(|o| o.activity == store::EXITED),
-                attention: members.iter().any(|a| a.attention),
-            }
-        })
+        .filter(|t| state.task(t).is_none());
+    let tasks = state
+        .tasks
+        .iter()
+        .filter(|t| state.team_orchestrator(&t.name).is_some());
+    plain
+        .map(row)
+        .chain(tasks.map(|t| Row {
+            task: Some(Scheduled {
+                schedule: t.schedule.clone(),
+                ran: t.ran(),
+            }),
+            ..row(&t.name)
+        }))
         .collect()
 }
 
@@ -169,7 +194,9 @@ impl TeamList {
     /// team, and the prompt, the error, or the keys in the last row. A
     /// team's row starts with its state's icon in the state's color, the
     /// viewed team's name is bold, and a bell ends the row of a team waiting
-    /// for a tool approval.
+    /// for a tool approval. The tasks' teams follow a blank row and a dim
+    /// "Scheduled" row, with their schedules, agent counts, and last runs in
+    /// aligned columns.
     pub fn draw(&self, out: &mut Vec<u8>, size: Winsize, palette: Palette) {
         let (cols, rows) = (size.ws_col, usize::from(size.ws_row));
         if rows == 0 {
@@ -186,13 +213,49 @@ impl TeamList {
         line(&mut s, 0, &palette.bar.sgr(), &pad(" Teams", cols));
         let width = self.rows.iter().map(|r| host::text_width(&r.name)).max();
         let width = width.unwrap_or(0);
+        let tasks: Vec<&Scheduled> = self.rows.iter().filter_map(|r| r.task.as_ref()).collect();
+        let schedule_width = tasks.iter().map(|t| host::text_width(&t.schedule)).max();
+        let schedule_width = schedule_width.unwrap_or(0);
+        let counts: Vec<String> = self.rows.iter().map(agents).collect();
+        let count_width = (self.rows.iter().zip(&counts))
+            .filter(|(r, _)| r.task.is_some())
+            .map(|(_, c)| host::text_width(c))
+            .max()
+            .unwrap_or(0);
+        // Each row of the list: a team's place in `rows`, or the text of the
+        // blank row or the section's title before the tasks' teams.
+        let mut lines: Vec<std::result::Result<usize, &str>> = Vec::new();
+        for (i, r) in self.rows.iter().enumerate() {
+            if r.task.is_some() && lines.len() == i {
+                lines.extend([Err(""), Err(" Scheduled")]);
+            }
+            lines.push(Ok(i));
+        }
+        let selected = lines.iter().position(|&l| l == Ok(self.selected));
         let list = rows.saturating_sub(2);
         // Scroll the list to keep the selection in view.
-        let first = self.selected.saturating_sub(list.saturating_sub(1));
-        for (i, r) in self.rows.iter().enumerate().skip(first).take(list) {
-            let agents = if r.agents == 1 { "agent" } else { "agents" };
+        let first = selected.unwrap_or(0).saturating_sub(list.saturating_sub(1));
+        for (n, &entry) in lines.iter().enumerate().skip(first).take(list) {
+            let i = match entry {
+                Ok(i) => i,
+                Err(text) => {
+                    line(&mut s, 1 + n - first, HELP, text);
+                    continue;
+                }
+            };
+            let r = &self.rows[i];
             let gap = " ".repeat(width - host::text_width(&r.name));
-            let rest = format!("{gap}  {} {agents}", r.agents);
+            let rest = match &r.task {
+                None => format!("{gap}  {}", counts[i]),
+                Some(t) => format!(
+                    "{gap}  {}{}  {}{}  {}",
+                    t.schedule,
+                    " ".repeat(schedule_width - host::text_width(&t.schedule)),
+                    counts[i],
+                    " ".repeat(count_width - host::text_width(&counts[i])),
+                    t.ran
+                ),
+            };
             let row = ListRow {
                 state: state(r),
                 name: &r.name,
@@ -201,9 +264,9 @@ impl TeamList {
                 attention: r.attention,
                 selected: i == self.selected,
             };
-            row.draw(&mut s, 1 + i - first, cols, palette);
+            row.draw(&mut s, 1 + n - first, cols, palette);
         }
-        s.push_str(&format!("\x1b[{};1H\x1b[0J", 2 + self.rows.len().min(list)));
+        s.push_str(&format!("\x1b[{};1H\x1b[0J", 2 + lines.len().min(list)));
         if rows > 1 {
             let (style, text) = match &self.prompt {
                 Some(name) => ("\x1b[0m", format!(" New team: {name}")),
@@ -217,6 +280,12 @@ impl TeamList {
         }
         out.extend_from_slice(s.as_bytes());
     }
+}
+
+/// A team's count of agents.
+fn agents(r: &Row) -> String {
+    let noun = if r.agents == 1 { "agent" } else { "agents" };
+    format!("{} {noun}", r.agents)
 }
 
 /// A team's state icon and its color: running while an agent is busy,
@@ -246,6 +315,17 @@ mod tests {
             busy: false,
             failed: false,
             attention: false,
+            task: None,
+        }
+    }
+
+    fn task(name: &str, agents: usize, schedule: &str, ran: &str) -> Row {
+        Row {
+            task: Some(Scheduled {
+                schedule: schedule.into(),
+                ran: ran.into(),
+            }),
+            ..row(name, agents)
         }
     }
 
@@ -380,6 +460,94 @@ mod tests {
         assert!(!style(3, 1).bold && !style(3, 3).bold);
         assert_eq!(rgb(style(20, 2).fg_color), colors::ATTENTION);
         assert_eq!(rgb(style(20, 2).bg_color), selected.bg);
+    }
+
+    #[test]
+    fn rows_put_the_tasks_teams_last_in_the_order_of_the_tasks() {
+        let agent = |id: &str, role: &str, team: &str| Agent {
+            id: id.into(),
+            role: role.into(),
+            team: team.into(),
+            ..Agent::default()
+        };
+        let task = |name: &str| store::Task {
+            name: name.into(),
+            schedule: "0 3 * * *".into(),
+            ..store::Task::default()
+        };
+        let state = State {
+            agents: vec![
+                agent("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+                agent("w", store::ORCHESTRATOR, "weekly"),
+                agent("n", store::ORCHESTRATOR, "nightly"),
+                agent("h", store::WORKER, "nightly"),
+                agent("d", store::ORCHESTRATOR, "docs"),
+            ],
+            tasks: vec![task("nightly"), task("weekly")],
+            ..State::default()
+        };
+        assert_eq!(
+            rows(&state),
+            [
+                row(store::DEFAULT_TEAM, 1),
+                row("docs", 1),
+                self::task("nightly", 2, "0 3 * * *", "never"),
+                self::task("weekly", 1, "0 3 * * *", "never"),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_scheduled_section_shows_only_with_tasks() {
+        let (_, lines) = screen(&list(vec![row("default", 1)], "default"), 50, 5);
+        assert!(!lines.iter().any(|l| l.contains("Scheduled")), "{lines:?}");
+
+        let rows = vec![
+            row("default", 1),
+            row("docs", 1),
+            task("nightly", 2, "0 3 * * *", "never"),
+            task("weekly", 1, "*/30 9-17 * * 1-5", "5m ago"),
+        ];
+        let l = list(rows, "default");
+        let (t, lines) = screen(&l, 60, 9);
+        assert_eq!(
+            lines,
+            [
+                " Teams",
+                " \u{f04c} default  1 agent",
+                " \u{f04c} docs     1 agent",
+                "",
+                " Scheduled",
+                " \u{f04c} nightly  0 3 * * *          2 agents  never",
+                " \u{f04c} weekly   */30 9-17 * * 1-5  1 agent   5m ago",
+                "",
+                " ↑↓ move  enter view  n new  x delete  esc close",
+            ]
+        );
+        assert!(
+            t.grid_ref(Point::Active(PointCoordinate { x: 1, y: 4 }))
+                .unwrap()
+                .style()
+                .unwrap()
+                .faint
+        );
+    }
+
+    #[test]
+    fn keys_skip_the_section_and_x_deletes_a_tasks_team() {
+        let rows = vec![row("default", 1), task("nightly", 1, "0 3 * * *", "never")];
+        let mut l = list(rows, "default");
+        assert_eq!(l.key(b"j"), Action::Move);
+        assert_eq!(l.selected, 1);
+        assert_eq!(l.key(b"x"), Action::Delete("nightly".into()));
+        assert_eq!(l.key(b"\r"), Action::View("nightly".into()));
+        assert_eq!(l.key(b"k"), Action::Move);
+        assert_eq!(l.selected, 0);
+        // A short screen scrolls the selected task's team into view.
+        l.key(b"j");
+        let (_, lines) = screen(&l, 50, 4);
+        assert_eq!(lines[1], " Scheduled");
+        assert!(lines[2].starts_with(" \u{f04c} nightly"), "{lines:?}");
     }
 
     #[test]

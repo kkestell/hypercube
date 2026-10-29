@@ -10,8 +10,9 @@
 //! state file, `config` the user's profiles, `workspace` the Git checkout and
 //! worktrees, `harness` the launch command of each harness, `hook` the
 //! harness hook events, `wait` the waiter that wakes an idle agent when
-//! messages arrive, `control` the host's control socket protocol, `host` the
-//! background session of a workspace, `bar` its bar of running workspaces,
+//! messages arrive, `control` the host's control socket protocol, `schedule`
+//! the scheduled tasks' schedules and firing, `host` the background session
+//! of a workspace, `bar` its bar of running workspaces,
 //! `overlay` its workspace list, `teamlist`
 //! its list of teams, `colors` the colors of its chrome, `icons`
 //! the Nerd Font icons it draws, `splash` the client's screen while no
@@ -35,6 +36,7 @@ pub mod overlay;
 pub mod pty;
 pub mod recording;
 pub mod runtime;
+pub mod schedule;
 pub mod signals;
 pub mod splash;
 pub mod statusline;

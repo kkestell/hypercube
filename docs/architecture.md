@@ -8,8 +8,8 @@
   the user starts a workspace.
 - `hypercube host <dir>` is the host of the workspace whose checkout is
   `<dir>`. It runs in the background, in its own session, from when a client
-  starts it until the session ends, and owns every agent's pty and pane and
-  the control socket. The client or `hypercube start` starts it; it is not
+  starts it until the session ends, owns every agent's pty and pane and
+  the control socket, and fires the scheduled tasks. The client or `hypercube start` starts it; it is not
   listed in the usage.
 - `hypercube mcp` is each agent's MCP server, started by its harness. It
   changes the state file and worktrees itself, reads the profiles from
@@ -283,10 +283,12 @@ The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
 - The header across the first row: one space, the open folder icon, and the
   workspace's directory, with the home directory written as `~`, clipped to
   fit. While the workspace has more than one team, ` › ` and the viewed
-  team's name follow. At the right end, followed by one space, each other
-  team with an agent waiting for a tool approval is listed as its name and
-  an `ATTENTION` bell, in `State::teams` order, joined by ` · `. The list is
-  dropped when it doesn't fit beside the left text.
+  team's name follow. At the right end, followed by one space, while the
+  workspace has scheduled tasks, the clock icon, `TASKS`, and
+  `N task(s), M running`, then each other team with an agent waiting for a
+  tool approval as its name and an `ATTENTION` bell, in `State::teams` order,
+  all joined by ` · `. The host reads the counts with the attention flags.
+  The right text is dropped when it doesn't fit beside the left text.
 - Each agent's label row across its pane's full width. The left end has one
   space, for a worker beside the divider a chevron and a space, pointing down
   while expanded and right while collapsed, and the agent's name, bold for
@@ -392,7 +394,11 @@ whole screen: a title row, a row for each workspace with a state file, most
 recently active first, and the keys in the last row. Each workspace row starts
 with a play icon in `RUNNING` while the workspace runs, or a stop icon in
 `QUIET` while it is stopped, then shows its directory, bold for the host's own
-workspace, its number of agents and of busy agents, and its last activity. The
+workspace, its number of agents and of busy agents, and its last activity.
+While any workspace has scheduled tasks, a column between the agent counts
+and the last activity shows the clock icon and `N task(s), M running` for
+each workspace with tasks, and is blank for the others, so the last activity
+stays aligned. The
 selected row is drawn in the palette's selection colors. The list is
 read again every second while the overlay is open.
 
@@ -420,14 +426,16 @@ team, and the workers whose `team` matches. Every workspace has the team
 `default`, whose orchestrator is named `orchestrator` and is created on the
 first run. Every other team's orchestrator has the team's name. A team's name
 is lowercase letters, digits, and hyphens, and no other team or agent has it.
-Every orchestrator runs with `config.orchestrator`'s harness, model, and
-effort in the checkout, on the checkout's branch, so the teams share the
-checkout. `State::teams` lists the teams in the order of their orchestrators:
+Every orchestrator runs in the checkout, on the checkout's branch, so the
+teams share the checkout. A task's orchestrator runs with the harness,
+model, and effort of the profile its task was created with (see Scheduled
+tasks), and every other orchestrator with `config.orchestrator`'s. `State::teams` lists the teams in the order of their orchestrators:
 `default` first, then the others in the order they were created.
 
 The tools act within the caller's team. `create_agent` puts the new worker in
 the calling orchestrator's team, `remove_agent` removes only workers of the
-caller's team, and `list_agents` lists the caller's team. `send_message`
+caller's team, except that the default team's orchestrator also removes the
+workers of a task's team, and `list_agents` lists the caller's team. `send_message`
 reaches any agent in the workspace. SessionStart lists the agent's own team,
 and while the workspace has other teams, an orchestrator's also names each
 other team's orchestrator with its ID. Worker names are unique across the
@@ -448,7 +456,11 @@ out as a lone orchestrator does.
 
 Ctrl-b t opens the team list, drawn across the whole screen in the overlay's
 style: a title row, ` Teams`, a row for each team, and the keys in the last
-row. Each row starts with the team's state icon: the play icon in `RUNNING`
+row. The teams without a scheduled task come first, in `State::teams` order.
+While the workspace has tasks, a blank row and a dim ` Scheduled` row follow,
+then a row for each task's team in the order the tasks were created, with
+its schedule, its number of agents, and how long ago it last fired, or
+`never`, in aligned columns. Each row starts with the team's state icon: the play icon in `RUNNING`
 while any of its agents is busy, the warning icon in `ERROR` while its
 orchestrator is `exited`, and the pause icon in `QUIET` otherwise. The name
 follows, bold for the viewed team, then the number of its agents, and an
@@ -456,23 +468,83 @@ follows, bold for the viewed team, then the number of its agents, and an
 with the viewed team selected, and is read again every second while it is
 open. The mux captures input while it is open. The keys:
 
-- Up and Down, or k and j, move the selection, stopping at the ends.
+- Up and Down, or k and j, move the selection among the teams, stopping at
+  the ends.
 - Enter views the selected team and closes the list.
 - n opens the prompt ` New team: ` in the last row. While it is open, typed
   characters build the name, Backspace erases the last one, Esc closes the
   prompt, and Enter creates the team.
-- x deletes the selected team.
+- x deletes the selected team, and a task's team's task with it.
 - Esc or Ctrl-b t closes the list.
 
 Creating a team adds its orchestrator to the state, launches it with an empty
 prompt, views the team, and closes the list. If the launch fails, the
 orchestrator is removed again. Deleting a team refuses the default team and a
 team with workers, naming them. Otherwise it closes the orchestrator's pane,
-then removes the orchestrator and its queued messages unless the team gained
-a worker meanwhile, in which case the orchestrator stays, without a pane,
-until the workers are removed and the team is deleted again. Deleting the
-viewed team views `default`. The orchestrator's harness session stays where
+then removes the orchestrator, its queued messages, and the team's task, if
+it has one, unless the team gained a worker meanwhile, in which case the
+orchestrator stays, without a pane, until the workers are removed and the
+team is deleted again. Deleting the viewed team views `default`, as does the
+closing of the viewed team's last pane. The orchestrator's harness session stays where
 the harness keeps it. A failure shows in the last row until the next key.
+
+### Scheduled tasks
+
+A scheduled task (`store::Task`) has a name, a schedule, a prompt, and the
+Unix time it last fired, `last_run`, 0 before its first firing. Each task
+owns the team of its name, a task's team, whose orchestrator, the task's
+orchestrator, has the task's name too. The default team's orchestrator can
+therefore `send_message` it by the task's name, which also runs the task at
+once. A task's orchestrator keeps one harness session: every firing reaches
+that session as a message. Its workers join its team and stay until it
+removes them. Like every team, a task's team runs all the time.
+
+A schedule is five cron fields in local time: minute, hour, day-of-month,
+month, and day-of-week. Each field is `*`, a number, `a-b`, `*/s`, `a-b/s`, or
+a comma list of these. Day-of-week runs from 0 to 7, with 0 and 7 both
+Sunday. When neither day field starts with `*`, a day matching either
+matches. `schedule::Schedule` parses and matches schedules.
+
+The host checks the tasks once a minute of the wall clock, waking at each
+minute's start. It starts with the minute it starts in as checked, so that
+minute is never checked and a restart cannot fire a task twice in one minute,
+and it does not make up minutes it did not run in. `schedule::fire` runs in
+one state update: each task whose schedule matches the minute gets a message
+from `schedule` with its prompt, queued for its orchestrator, and its
+`last_run` set. A task is skipped while it is running, while a message from
+`schedule` is still queued for its orchestrator, and while its schedule does
+not parse. A task is running while any agent of its team is busy, and failed
+while its orchestrator is `exited`. Tasks fire only while the host runs, and
+their orchestrators launch only once a terminal has attached, so a firing
+before then waits in the queue, as it does for a failed orchestrator.
+
+The default team's orchestrator has four tools for tasks, which no other
+agent may call:
+
+- `create_task(name, schedule, prompt, profile)` checks the schedule and the
+  profile against `config.json`, then in one update adds the task and its
+  orchestrator, with the profile's harness, model, and effort, refusing a
+  name as a new team's is refused. It launches the orchestrator idle with an
+  empty prompt. If the launch fails, it closes the pane and removes the
+  orchestrator and the task. The `profile` schema is the enum of the
+  profile names, and its description asks for the profile the user names,
+  or else one suited to the task.
+- `update_task(name, schedule?, prompt?)` changes the given fields.
+- `list_tasks()` lists each task's name, schedule, prompt, state (running,
+  failed, or idle), last run, its orchestrator's harness, model, and effort,
+  and its team's agents.
+- `delete_task(name)` deletes the task's team as the team list's x does,
+  with the same refusals and the same check for a worker created meanwhile,
+  and removes the task in the update that removes its orchestrator.
+
+The default team's orchestrator's SessionStart describes the task tools and
+lists the tasks with their schedules. A task's orchestrator's names its task
+and schedule, says that each firing arrives in its session as a message from
+`schedule`, that it leaves the checkout's files, commits, and merges to the
+default team's orchestrator, doing only read-only work there and giving work
+that changes files to workers with worktrees, whose branches it sends to the
+default team's orchestrator, and that the user sees its session only when
+viewing its team.
 
 ## Control socket
 
@@ -502,7 +574,8 @@ zoom.
 The state file holds the agents (ID, name, role, harness, model, effort,
 directory, branch, team, session ID, activity, the number of the newest
 waiter, and whether it waits for a tool approval), the queued messages (sender,
-recipient, text), `no_git`, and the accent color's number, `accent`.
+recipient, text), the scheduled tasks (name, schedule, prompt, last run),
+`no_git`, and the accent color's number, `accent`.
 Every change takes an exclusive `flock` on the state's lock, reads the file,
 and writes the result to a temporary file renamed over it, so hooks, MCP
 servers, and the host change it concurrently and readers always see a whole
@@ -564,6 +637,8 @@ A waiter exits with status 0 once the agent is gone, the agent's waiter
 number has moved past its own, or the process that started it has exited.
 
 Each message reaches the model as `Message from <name> (<id>):` and its text.
+A message whose sender is no agent, such as a task's firing, reaches it as
+`Message from <sender>:`, as in `Message from schedule:`.
 A hook writes its response, and a waiter its messages, inside the state
 update, so messages it takes stay queued if they cannot be written.
 

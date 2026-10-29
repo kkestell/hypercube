@@ -27,6 +27,8 @@ pub struct Row {
     pub running: bool,
     pub agents: usize,
     pub busy: usize,
+    /// How many scheduled tasks it has, and how many are running.
+    pub tasks: (usize, usize),
     /// How long ago it was last active.
     pub active: String,
 }
@@ -90,6 +92,7 @@ impl Overlay {
                     .iter()
                     .filter(|a| a.activity == store::BUSY)
                     .count(),
+                tasks: w.state.task_counts(),
                 active: store::ago(active),
                 path: w.path,
             };
@@ -149,7 +152,9 @@ impl Overlay {
     /// Draw the overlay over the whole screen: a title row, a row for each
     /// workspace, and the error or the keys in the last row. A workspace's
     /// row starts with its state's icon in the state's color, and the current
-    /// workspace's name is bold.
+    /// workspace's name is bold. While any workspace has scheduled tasks, a
+    /// column of their counts follows the agent counts, blank in the rows of
+    /// workspaces without tasks.
     pub fn draw(&self, out: &mut Vec<u8>, size: Winsize, palette: Palette) {
         let (cols, rows) = (size.ws_col, usize::from(size.ws_row));
         if rows == 0 {
@@ -166,6 +171,11 @@ impl Overlay {
         line(&mut s, 0, &palette.bar.sgr(), &pad(" Workspaces", cols));
         let width = self.rows.iter().map(|r| host::text_width(&r.name)).max();
         let width = width.unwrap_or(0);
+        let counts: Vec<(String, String)> = self.rows.iter().map(counts).collect();
+        let agents_width = counts.iter().map(|(a, _)| host::text_width(a)).max();
+        let agents_width = agents_width.unwrap_or(0);
+        let tasks_width = counts.iter().map(|(_, t)| host::text_width(t)).max();
+        let tasks_width = tasks_width.unwrap_or(0);
         let list = rows.saturating_sub(2);
         // Scroll the list to keep the selection in view.
         let first = self.selected.saturating_sub(list.saturating_sub(1));
@@ -175,12 +185,17 @@ impl Overlay {
             } else {
                 (icons::STOPPED, colors::QUIET)
             };
-            let agents = if r.agents == 1 { "agent" } else { "agents" };
             let gap = " ".repeat(width - host::text_width(&r.name));
-            let rest = format!(
-                "{gap}  {} {agents}, {} busy  {}",
-                r.agents, r.busy, r.active
+            let (agents, tasks) = &counts[i];
+            let mut rest = format!(
+                "{gap}  {agents}{}  ",
+                " ".repeat(agents_width - host::text_width(agents))
             );
+            if tasks_width > 0 {
+                let gap = " ".repeat(tasks_width - host::text_width(tasks));
+                rest.push_str(&format!("{tasks}{gap}  "));
+            }
+            rest.push_str(&r.active);
             let row = ListRow {
                 state,
                 name: &r.name,
@@ -207,6 +222,17 @@ impl Overlay {
         }
         out.extend_from_slice(s.as_bytes());
     }
+}
+
+/// A workspace's agent counts, and its task counts if it has tasks.
+fn counts(r: &Row) -> (String, String) {
+    let agents = if r.agents == 1 { "agent" } else { "agents" };
+    let agents = format!("{} {agents}, {} busy", r.agents, r.busy);
+    let tasks = match r.tasks {
+        (0, _) => String::new(),
+        (tasks, running) => host::task_counts(tasks, running),
+    };
+    (agents, tasks)
 }
 
 /// A row of a list of workspaces or teams: a state's icon in the state's
@@ -288,6 +314,7 @@ mod tests {
             running,
             agents: 3,
             busy: 1,
+            tasks: (0, 0),
             active: "2m ago".into(),
         }
     }
@@ -370,6 +397,22 @@ mod tests {
         assert!(matches!(style(3, 1).bg_color, StyleColor::None));
         assert!(style(3, 2).bold && style(11, 2).bold && !style(12, 2).bold);
         assert!(!style(3, 1).bold);
+    }
+
+    #[test]
+    fn the_task_column_shows_only_for_workspaces_with_tasks() {
+        let mut tasks = row("foo", true);
+        tasks.tasks = (2, 1);
+        tasks.agents = 12;
+        let o = overlay(vec![tasks, row("bar", false)], "bar");
+        let (_, lines) = screen(&o, 80, 4);
+        assert_eq!(
+            lines[1..3],
+            [
+                " \u{f04b} ~/src/foo  12 agents, 1 busy  \u{f017} 2 tasks, 1 running  2m ago",
+                " \u{f04d} ~/src/bar  3 agents, 1 busy                         2m ago",
+            ]
+        );
     }
 
     #[test]

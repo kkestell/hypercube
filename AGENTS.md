@@ -66,8 +66,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
     attaches to hosts, and proxies the terminal to them.
   - `src/signals.rs`: signals, such as SIGWINCH, delivered through pipes.
   - `src/recording.rs`: the recording format the round-trip tests replay.
-- `src/store.rs`: the workspace state file: agents, queued messages, and
-  locked, atomic updates.
+- `src/store.rs`: the workspace state file: agents, queued messages,
+  scheduled tasks, and locked, atomic updates.
 - `src/config.rs`: loading and validating `config.json`.
 - `src/workspace.rs`: the Git checkout, worker branches and worktrees, and
   worker directories.
@@ -75,6 +75,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/harness/opencode.js`: the OpenCode plugin, embedded in the binary and
   written for each OpenCode launch.
 - `src/hook.rs`: the harness hook events and the messages they deliver.
+- `src/schedule.rs`: the scheduled tasks' cron schedules, local minutes, and
+  firing.
 - `src/wait.rs`: `hypercube wait`, which wakes an idle agent when messages
   arrive for it.
 - `src/statusline.rs`: `hypercube statusline`, Claude Code's status line.
@@ -83,8 +85,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
 - `src/mcp.rs`: the agents' stdio MCP server and its tools.
 - `src/host.rs`: the session host, `hypercube host`: the host lock, the
   control socket, attaches, the panes, layout and chrome, the overlay's
-  actions, the viewed team, creating and deleting teams, launches, closes,
-  and teardown.
+  actions, the viewed team, creating and deleting teams, firing the
+  scheduled tasks, launches, closes, and teardown.
 - `src/bar.rs`: the bar of running workspaces in the last row, its prompt
   for a new workspace's path, and its drawing.
 - `src/icons.rs`: the Nerd Font icons the chrome, the bar, and the overlay
@@ -127,7 +129,7 @@ Code and docs stand alone and do not refer to predecessor implementations.
   configuration, a temporary repository, and the harness stand-ins first on
   `PATH`: the splash, panes, worktrees, waking idle agents, agent relaunches,
   zoom, detaching and attaching again, the workspace overlay, teams and the
-  team list, session restart, `stop`, `delete`, their `--all` variants, and
+  team list, scheduled tasks, session restart, `stop`, `delete`, their `--all` variants, and
   `status`. The client starts
   each host in the background, and the fixture stops every host it started.
 - `vendor/ghostty`: Ghostty source at the commit the libghostty-rs revision

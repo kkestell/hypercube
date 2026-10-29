@@ -1,4 +1,4 @@
-//! A workspace's agents and message queue in one JSON file. Every change
+//! A workspace's agents, message queue, and scheduled tasks in one JSON file. Every change
 //! holds an exclusive lock, so hooks, the MCP server, and the host can update
 //! the file concurrently.
 
@@ -22,6 +22,9 @@ pub const IDLE: &str = "idle";
 pub const EXITED: &str = "exited";
 /// The team every workspace has, whose orchestrator is named `orchestrator`.
 pub const DEFAULT_TEAM: &str = "default";
+/// The sender of the messages a scheduled task's firings queue for its
+/// orchestrator.
+pub const SCHEDULE: &str = "schedule";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -66,6 +69,29 @@ pub struct Message {
     pub text: String,
 }
 
+/// A scheduled task. Its team, and its orchestrator's, has its name.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Task {
+    pub name: String,
+    /// Five cron fields; see `schedule::Schedule`.
+    pub schedule: String,
+    /// The text each firing sends the task's orchestrator.
+    pub prompt: String,
+    /// When the task last fired, in Unix seconds, or 0 if it never has.
+    pub last_run: u64,
+}
+
+impl Task {
+    /// How long ago the task last fired, or "never".
+    pub fn ran(&self) -> String {
+        match self.last_run {
+            0 => "never".into(),
+            secs => ago(SystemTime::UNIX_EPOCH + Duration::from_secs(secs)),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct State {
@@ -73,6 +99,9 @@ pub struct State {
     pub agents: Vec<Agent>,
     #[serde(deserialize_with = "null_as_default")]
     pub messages: Vec<Message>,
+    /// The scheduled tasks, in the order they were created.
+    #[serde(deserialize_with = "null_as_default")]
+    pub tasks: Vec<Task>,
     /// Set for a workspace whose directory is not a Git checkout. Its workers
     /// work directly in existing directories, without branches or worktrees.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -308,6 +337,31 @@ impl State {
             .find(|a| a.role == ORCHESTRATOR && a.team == team)
     }
 
+    /// The scheduled task named `name`.
+    pub fn task(&self, name: &str) -> Option<&Task> {
+        self.tasks.iter().find(|t| t.name == name)
+    }
+
+    /// Whether any agent of `team` is busy. A running task does not fire.
+    pub fn running(&self, team: &str) -> bool {
+        self.agents
+            .iter()
+            .any(|a| a.team == team && a.activity == BUSY)
+    }
+
+    /// Whether the orchestrator of `team` has exited and is not running
+    /// again.
+    pub fn failed(&self, team: &str) -> bool {
+        self.team_orchestrator(team)
+            .is_some_and(|o| o.activity == EXITED)
+    }
+
+    /// How many scheduled tasks there are, and how many of them are running.
+    pub fn task_counts(&self) -> (usize, usize) {
+        let running = self.tasks.iter().filter(|t| self.running(&t.name)).count();
+        (self.tasks.len(), running)
+    }
+
     /// The agent with the given ID or name.
     pub fn agent(&self, id_or_name: &str) -> Result<&Agent> {
         self.agents
@@ -474,7 +528,7 @@ mod tests {
         assert_eq!((a.id.as_str(), a.session_id.as_str()), ("a1b2c3d4", "s1"));
         assert_eq!((a.branch.as_str(), a.activity.as_str()), ("main", IDLE));
         assert_eq!(a.team, DEFAULT_TEAM);
-        assert!(state.messages.is_empty() && !state.no_git);
+        assert!(state.messages.is_empty() && state.tasks.is_empty() && !state.no_git);
 
         // Rewriting drops the target and keeps the rest.
         update(&path, |_| Ok(())).unwrap();
@@ -492,6 +546,12 @@ mod tests {
                 to: "b".into(),
                 text: "hi".into(),
             }],
+            tasks: vec![Task {
+                name: "nightly".into(),
+                schedule: "0 3 * * *".into(),
+                prompt: "check".into(),
+                last_run: 5,
+            }],
             no_git: true,
             accent: 3,
         };
@@ -499,6 +559,8 @@ mod tests {
         assert_eq!(value["agents"][0]["id"], "a");
         assert!(value["agents"][0].get("session_id").is_none());
         assert_eq!(value["messages"][0]["from"], "a");
+        assert_eq!(value["tasks"][0]["schedule"], "0 3 * * *");
+        assert_eq!(value["tasks"][0]["last_run"], 5);
         assert_eq!(value["no_git"], true);
         assert_eq!(value["accent"], 3);
         let value = serde_json::to_value(State::default()).unwrap();
@@ -551,6 +613,43 @@ mod tests {
         assert_eq!(s.root(), Some(Path::new("/o")));
         assert!(State::default().teams().is_empty());
         assert_eq!(State::default().root(), None);
+    }
+
+    #[test]
+    fn tasks_and_the_running_and_failed_teams() {
+        let member = |id: &str, role: &str, team: &str, activity: &str| Agent {
+            id: id.into(),
+            role: role.into(),
+            team: team.into(),
+            activity: activity.into(),
+            ..Agent::default()
+        };
+        let task = |name: &str| Task {
+            name: name.into(),
+            ..Task::default()
+        };
+        let mut s = State {
+            agents: vec![
+                member("n", ORCHESTRATOR, "nightly", IDLE),
+                member("w", WORKER, "nightly", BUSY),
+                member("r", ORCHESTRATOR, "report", EXITED),
+                member("x", WORKER, "report", EXITED),
+            ],
+            tasks: vec![task("nightly"), task("report")],
+            ..State::default()
+        };
+        assert_eq!(s.task("report"), Some(&s.tasks[1]));
+        assert_eq!(s.task("missing"), None);
+        assert!(s.running("nightly") && !s.failed("nightly"));
+        // An exited worker is not busy.
+        assert!(!s.running("report") && s.failed("report"));
+        assert_eq!(s.task_counts(), (2, 1));
+        s.agents[1].activity = IDLE.into();
+        assert_eq!(s.task_counts(), (2, 0));
+        assert_eq!(s.tasks[0].ran(), "never");
+        let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH);
+        s.tasks[0].last_run = now.unwrap().as_secs() - 7200;
+        assert_eq!(s.tasks[0].ran(), "2h ago");
     }
 
     #[test]

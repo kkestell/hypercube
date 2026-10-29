@@ -1852,6 +1852,70 @@ fn the_team_list_creates_views_and_deletes_teams() {
     assert!(!fx.screen().contains(" › "));
 }
 
+#[test]
+fn a_scheduled_task_runs_a_team_until_it_is_deleted() {
+    let mut fx = Fixture::new();
+    fx.start();
+
+    // February 31st never comes, so the task does not fire during the test.
+    let (text, is_error) = fx.call(
+        "orchestrator",
+        "create_task",
+        json!({"name": "nightly", "schedule": "0 3 31 2 *", "prompt": "check", "profile": "deepseek"}),
+    );
+    assert!(!is_error, "{text}");
+    fx.wait_event("nightly", "ready", 1);
+    fx.wait_screen("\u{f017} 1 task, 0 running");
+    let nightly = fx.state().agent("nightly").unwrap().clone();
+    assert_eq!(
+        (
+            nightly.role.as_str(),
+            nightly.team.as_str(),
+            nightly.harness.as_str()
+        ),
+        ("orchestrator", "nightly", "opencode")
+    );
+    assert_eq!(Path::new(&nightly.dir), fx.repo.as_path());
+    assert_eq!(fx.state().task("nightly").unwrap().prompt, "check");
+
+    // The team list shows the task under Scheduled, and viewing it shows
+    // its orchestrator alone.
+    fx.type_text("\x02t");
+    fx.wait_screen(" Scheduled");
+    fx.wait_screen(" nightly  0 3 31 2 *  1 agent  never");
+    fx.type_text("j\r");
+    fx.wait_screen(" › nightly");
+    fx.wait_size("nightly", [COLS.into(), 37]);
+
+    // Its worker joins its team and is shown only in its view.
+    let (text, is_error) = fx.call(
+        "nightly",
+        "create_agent",
+        json!({"name": "helper", "profile": "fast"}),
+    );
+    assert!(!is_error, "{text}");
+    fx.wait_event("helper", "ready", 1);
+    fx.wait_screen("\u{e725} helper");
+    assert_eq!(fx.state().agent("helper").unwrap().team, "nightly");
+
+    // delete_task refuses while the worker remains. Once the default
+    // orchestrator removes it, the task and its team go, the screen views
+    // the default team, and the header drops the counts.
+    let (text, is_error) = fx.call("orchestrator", "delete_task", json!({"name": "nightly"}));
+    assert!(is_error && text.contains("has workers: helper"), "{text}");
+    let pids = [fx.pid("nightly"), fx.pid("helper")];
+    let (text, is_error) = fx.call("orchestrator", "remove_agent", json!({"id": "helper"}));
+    assert!(!is_error, "{text}");
+    let (text, is_error) = fx.call("orchestrator", "delete_task", json!({"name": "nightly"}));
+    assert!(!is_error, "{text}");
+    fx.wait_gone(&pids);
+    fx.wait_no_screen("1 task");
+    fx.wait_no_screen(" › ");
+    let state = fx.state();
+    assert!(state.tasks.is_empty());
+    assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
+}
+
 /// Whether `screen` has braille dots, as the splash's tesseract draws.
 fn has_braille(screen: &str) -> bool {
     screen

@@ -27,3 +27,6 @@ pub const RUNNING: char = '\u{f04b}';
 pub const STOPPED: char = '\u{f04d}';
 /// Starts an idle team's row in the team list (nf-fa-pause).
 pub const IDLE: char = '\u{f04c}';
+/// Before the scheduled tasks' counts in the header and the overlay
+/// (nf-fa-clock_o).
+pub const TASKS: char = '\u{f017}';

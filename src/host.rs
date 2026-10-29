@@ -1,7 +1,7 @@
 //! The session host: `hypercube host`, in the background. It holds the
 //! workspace's host lock, runs every agent in a pane, draws the panes with
-//! their labels for the attached client, and answers requests on the control
-//! socket until the session ends.
+//! their labels for the attached client, fires the scheduled tasks, and
+//! answers requests on the control socket until the session ends.
 
 use std::cell::{Cell, RefCell};
 use std::error::Error;
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::AtomicI32;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::bar::{self, Bar, Entry, Typed};
 use crate::colors::{self, ACCENTS, Palette};
@@ -29,6 +29,7 @@ use crate::mux::{
 use crate::overlay::{Action, Overlay};
 use crate::pty::Pty;
 use crate::runtime::{Event, Runtime};
+use crate::schedule::{self, LocalMinute};
 use crate::store::{self, Agent, State};
 use crate::teamlist::{self, TeamList};
 use crate::{config, signals, workspace};
@@ -216,6 +217,9 @@ pub struct TeamChrome {
     /// Every team, in `State::teams` order, and whether any of its agents
     /// waits for a tool approval, refreshed with the bar.
     pub teams: Rc<RefCell<Vec<(String, bool)>>>,
+    /// How many scheduled tasks there are and how many are running,
+    /// refreshed with the bar.
+    pub tasks: Rc<Cell<(usize, usize)>>,
     pub teamlist: Rc<RefCell<Option<TeamList>>>,
     /// Panes whose agents wait for a tool approval, refreshed with the bar.
     pub attention: Rc<RefCell<Vec<PaneId>>>,
@@ -283,8 +287,9 @@ impl Chrome for TeamChrome {
 
 impl TeamChrome {
     /// The header: the workspace path, and while the workspace has more than
-    /// one team, the viewed team's name after it. At the right, each other
-    /// team whose agent waits for a tool approval, with a bell.
+    /// one team, the viewed team's name after it. At the right, while the
+    /// workspace has scheduled tasks, their counts, then each other team
+    /// whose agent waits for a tool approval, with a bell.
     fn draw_header(&self, s: &mut String, cols: u16, palette: Palette) {
         let view = self.view.borrow();
         let teams = self.teams.borrow();
@@ -297,13 +302,20 @@ impl TeamChrome {
             .filter(|(team, attention)| *attention && *team != *view)
             .map(|(team, _)| team.as_str())
             .collect();
-        let right = if waiting.is_empty() {
+        let mut entries: Vec<String> = Vec::new();
+        let (tasks, running) = self.tasks.get();
+        if tasks > 0 {
+            entries.push(task_counts(tasks, running));
+        }
+        let before_bells: usize = entries.iter().map(|e| text_width(&format!("{e} · "))).sum();
+        entries.extend(
+            waiting
+                .iter()
+                .map(|team| format!("{team} {}", icons::ATTENTION)),
+        );
+        let right = if entries.is_empty() {
             String::new()
         } else {
-            let entries: Vec<String> = waiting
-                .iter()
-                .map(|team| format!("{team} {}", icons::ATTENTION))
-                .collect();
             format!("{} ", entries.join(" · "))
         };
         draw_row(
@@ -323,7 +335,7 @@ impl TeamChrome {
             fg: colors::ATTENTION,
             bg: palette.bar.bg,
         };
-        let mut col = usize::from(cols) - right_width;
+        let mut col = usize::from(cols) - right_width + before_bells;
         for team in waiting {
             col += text_width(team) + 1;
             s.push_str(&format!(
@@ -335,6 +347,12 @@ impl TeamChrome {
             col += text_width(&format!("{} · ", icons::ATTENTION));
         }
     }
+}
+
+/// The scheduled tasks' counts, as the header and the overlay show them.
+pub(crate) fn task_counts(tasks: usize, running: usize) -> String {
+    let noun = if tasks == 1 { "task" } else { "tasks" };
+    format!("{} {tasks} {noun}, {running} running", icons::TASKS)
 }
 
 /// Move the cursor to `row` and `col`, both from 0.
@@ -678,6 +696,11 @@ struct Host {
     /// Every team and whether it waits for a tool approval, shared with the
     /// chrome.
     teams: Rc<RefCell<Vec<(String, bool)>>>,
+    /// The scheduled tasks' counts, shared with the chrome.
+    tasks: Rc<Cell<(usize, usize)>>,
+    /// The last minute the scheduled tasks were checked in, in Unix
+    /// minutes. The minute the host starts in is never checked.
+    checked: u64,
     /// The team list while it is open, shared with the chrome.
     teamlist: Rc<RefCell<Option<TeamList>>>,
     /// When the team list was last read.
@@ -894,11 +917,13 @@ impl Host {
         let attention = Rc::new(RefCell::new(Vec::new()));
         let view = Rc::new(RefCell::new(store::DEFAULT_TEAM.to_string()));
         let teams = Rc::new(RefCell::new(Vec::new()));
+        let tasks = Rc::new(Cell::new((0, 0)));
         let teamlist = Rc::new(RefCell::new(None));
         let chrome = TeamChrome {
             workspace: workspace::short(root),
             view: Rc::clone(&view),
             teams: Rc::clone(&teams),
+            tasks: Rc::clone(&tasks),
             teamlist: Rc::clone(&teamlist),
             attention: Rc::clone(&attention),
             zoomed: Rc::clone(&zoomed),
@@ -919,6 +944,8 @@ impl Host {
             panes: Vec::new(),
             view,
             teams,
+            tasks,
+            checked: schedule::unix_now() / 60,
             teamlist,
             teamlist_read: 0,
             clients: Vec::new(),
@@ -1020,6 +1047,8 @@ impl Host {
                 let refresh = self.bar_read + BAR_REFRESH_MS;
                 deadline = Some(deadline.map_or(refresh, |d| d.min(refresh)));
             }
+            let minute = now_ms() + next_minute_ms();
+            deadline = Some(deadline.map_or(minute, |d| d.min(minute)));
             for event in self.runtime.wait(&mut self.mux, &fds, deadline)? {
                 match event {
                     Event::Ready(fd) if fd == listener => self.accept(),
@@ -1089,8 +1118,23 @@ impl Host {
             if self.runtime.connected() && now_ms() - self.bar_read >= BAR_REFRESH_MS {
                 self.read_bar();
             }
+            self.fire_tasks(schedule::unix_now());
             let now = now_ms();
             self.clients.retain(|c| now - c.since < REQUEST_TIMEOUT_MS);
+        }
+    }
+
+    /// Fire the scheduled tasks for the minute of `now`, in Unix seconds, once
+    /// a minute after the last one checked has begun. Minutes the host did not
+    /// run in are not made up.
+    fn fire_tasks(&mut self, now: u64) {
+        if now / 60 <= self.checked {
+            return;
+        }
+        self.checked = now / 60;
+        let at = LocalMinute::at(now);
+        if let Err(e) = store::update(&self.state_path, |s| Ok(schedule::fire(s, &at, now))) {
+            eprintln!("hypercube: firing the scheduled tasks: {e}");
         }
     }
 
@@ -1211,6 +1255,8 @@ impl Host {
             let teams = team_attention(&state);
             changed |= *self.teams.borrow() != teams;
             *self.teams.borrow_mut() = teams;
+            let tasks = state.task_counts();
+            changed |= self.tasks.replace(tasks) != tasks;
             if let Some(branch) = current_branch(&self.root) {
                 let detail = if branch.is_empty() {
                     format!("{} {}", icons::DIRECTORY, workspace::short(&self.root))
@@ -1719,7 +1765,8 @@ impl Host {
     }
 
     /// Drop a closed pane's agent slot, end the zoom if the pane was in the
-    /// viewed team, and lay the panes out again.
+    /// viewed team, and lay the panes out again. When the viewed team's last
+    /// pane closes, as when `delete_task` deletes it, view the default team.
     fn finish_close(&mut self, pane: PaneId) -> Result<()> {
         let viewed = self
             .panes
@@ -1728,6 +1775,10 @@ impl Host {
         self.panes.retain(|s| s.pane != pane);
         if viewed {
             self.zoomed.set(None);
+            let view = self.view.borrow().clone();
+            if view != store::DEFAULT_TEAM && self.panes.iter().all(|s| s.team != view) {
+                return self.view_team(store::DEFAULT_TEAM);
+            }
         }
         self.lay_out()
     }
@@ -1886,9 +1937,10 @@ impl Host {
         self.view_team(name)
     }
 
-    /// Delete the team `name` and its orchestrator, closing the
-    /// orchestrator's pane. The default team and a team with workers stay.
-    /// Deleting the viewed team views the default team.
+    /// Delete the team `name` and its orchestrator, and its scheduled task if
+    /// it has one, closing the orchestrator's pane. The default team and a
+    /// team with workers stay. Deleting the viewed team views the default
+    /// team.
     fn delete_team(&mut self, name: &str) -> Result<()> {
         let state = store::load(&self.state_path)?;
         let id = deletable(&state, name)?.id.clone();
@@ -1919,7 +1971,7 @@ fn team_attention(state: &State) -> Vec<(String, bool)> {
 /// Add the orchestrator of a new team named `name`, working in the checkout
 /// `dir` on `branch`. The name must be valid, and no team or agent may have
 /// it already.
-fn add_team(
+pub(crate) fn add_team(
     s: &mut State,
     name: &str,
     spec: &config::Spec,
@@ -1953,7 +2005,7 @@ fn team_workers<'a>(s: &'a State, team: &str) -> Vec<&'a str> {
 
 /// The orchestrator of `team`, if the team can be deleted: it is not the
 /// default team, and it has no workers.
-fn deletable<'a>(s: &'a State, team: &str) -> Result<&'a Agent> {
+pub(crate) fn deletable<'a>(s: &'a State, team: &str) -> Result<&'a Agent> {
     if team == store::DEFAULT_TEAM {
         return Err("the default team can't be deleted".into());
     }
@@ -1971,9 +2023,10 @@ fn deletable<'a>(s: &'a State, team: &str) -> Result<&'a Agent> {
     Ok(orchestrator)
 }
 
-/// Remove the orchestrator of `team`, whose pane has been closed, and its
-/// queued messages, unless the team has workers.
-fn remove_team(s: &mut State, team: &str) -> Result<()> {
+/// Remove the orchestrator of `team`, whose pane has been closed, its
+/// queued messages, and the team's scheduled task, unless the team has
+/// workers. The team list's x and `delete_task` both delete a team this way.
+pub(crate) fn remove_team(s: &mut State, team: &str) -> Result<()> {
     let workers = team_workers(s, team);
     if !workers.is_empty() {
         return Err(format!(
@@ -1984,7 +2037,17 @@ fn remove_team(s: &mut State, team: &str) -> Result<()> {
     }
     let id = deletable(s, team)?.id.clone();
     s.remove(&id);
+    s.tasks.retain(|t| t.name != team);
     Ok(())
+}
+
+/// How long until the next minute of the wall clock begins, in
+/// milliseconds.
+fn next_minute_ms() -> i64 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    60_000 - (now.as_millis() % 60_000) as i64
 }
 
 /// A layout that hides every pane.
@@ -2223,6 +2286,7 @@ mod tests {
             workspace: String::new(),
             view: Rc::new(RefCell::new(store::DEFAULT_TEAM.into())),
             teams: Rc::default(),
+            tasks: Rc::default(),
             teamlist: Rc::default(),
             attention: Rc::default(),
             zoomed: Rc::default(),
@@ -2591,6 +2655,32 @@ mod tests {
     }
 
     #[test]
+    fn the_header_shows_the_task_counts_before_the_waiting_teams() {
+        let mut chrome = chrome();
+        chrome.workspace = "~/src/r".into();
+        *chrome.teams.borrow_mut() = vec![("default".into(), false), ("nightly".into(), false)];
+        chrome.tasks.set((1, 0));
+        let row = draw_with(&mut chrome, &[], 60, 4).row(0);
+        assert!(row.ends_with(" \u{f017} 1 task, 0 running "), "{row}");
+
+        *chrome.teams.borrow_mut() = vec![("default".into(), false), ("nightly".into(), true)];
+        chrome.tasks.set((2, 1));
+        let screen = draw_with(&mut chrome, &[], 70, 4);
+        let row = screen.row(0);
+        assert!(
+            row.ends_with(" \u{f017} 2 tasks, 1 running · nightly \u{f0f3} "),
+            "{row}"
+        );
+        let bell = row.chars().position(|c| c == '\u{f0f3}').unwrap() as u16;
+        assert_eq!(fg(&screen, bell, 0), rgb(colors::ATTENTION));
+        assert_eq!(fg(&screen, bell - 2, 0), rgb(Palette::default().bar.fg));
+        // Without tasks, the counts are gone.
+        chrome.tasks.set((0, 0));
+        let row = draw_with(&mut chrome, &[], 70, 4).row(0);
+        assert!(!row.contains("task"), "{row}");
+    }
+
+    #[test]
     fn labels_show_the_branch_and_otherwise_the_directory() {
         let mut a = Agent {
             role: store::WORKER.into(),
@@ -2892,6 +2982,75 @@ mod tests {
         let state = store::load(&host.state_path).unwrap();
         assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
         assert_eq!(*host.teams.borrow(), [(store::DEFAULT_TEAM.into(), false)]);
+    }
+
+    #[test]
+    fn the_minute_the_host_starts_in_is_not_fired() {
+        let dir = TempDir::new();
+        let mut host = host_of(&dir, &[member("n", store::ORCHESTRATOR, "nightly")], 80, 24);
+        store::update(&host.state_path, |s| {
+            s.agents[0].activity = store::IDLE.into();
+            s.tasks.push(store::Task {
+                name: "nightly".into(),
+                schedule: "* * * * *".into(),
+                prompt: "go".into(),
+                last_run: 0,
+            });
+            Ok(())
+        })
+        .unwrap();
+        let start = host.checked * 60;
+        host.fire_tasks(start + 59);
+        assert!(store::load(&host.state_path).unwrap().messages.is_empty());
+        host.fire_tasks(start + 60);
+        let state = store::load(&host.state_path).unwrap();
+        assert_eq!(state.messages.len(), 1);
+        assert_eq!(state.tasks[0].last_run, start + 60);
+        assert_eq!(host.checked, start / 60 + 1);
+    }
+
+    #[test]
+    fn deleting_a_task_team_deletes_its_task() {
+        let dir = TempDir::new();
+        let agents = [
+            member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+            member("n", store::ORCHESTRATOR, "nightly"),
+        ];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        store::update(&host.state_path, |s| {
+            s.tasks.push(store::Task {
+                name: "nightly".into(),
+                ..store::Task::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+        host.toggle_teamlist().unwrap();
+        host.teamlist_key(b"j").unwrap();
+        host.teamlist_key(b"x").unwrap();
+        assert_eq!(host.pane_of("n"), None);
+        let state = store::load(&host.state_path).unwrap();
+        assert_eq!(state.teams(), [store::DEFAULT_TEAM]);
+        assert!(state.tasks.is_empty());
+    }
+
+    #[test]
+    fn closing_the_viewed_teams_last_pane_views_the_default_team() {
+        let dir = TempDir::new();
+        let agents = [
+            member("o", store::ORCHESTRATOR, store::DEFAULT_TEAM),
+            member("n", store::ORCHESTRATOR, "nightly"),
+            member("w", store::WORKER, "nightly"),
+        ];
+        let mut host = host_of(&dir, &agents, 80, 24);
+        host.view_team("nightly").unwrap();
+        // As the melts end.
+        for (id, view) in [("w", "nightly"), ("n", store::DEFAULT_TEAM)] {
+            let pane = host.pane_of(id).unwrap();
+            host.close(id).unwrap();
+            host.finish_close(pane).unwrap();
+            assert_eq!(*host.view.borrow(), view, "{id}");
+        }
     }
 
     #[test]

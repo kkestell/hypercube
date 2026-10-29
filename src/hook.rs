@@ -145,20 +145,23 @@ fn context<'a>(event: &'a str, text: String) -> Option<Response<'a>> {
     })
 }
 
-/// Render messages as the model sees them.
+/// Render messages as the model sees them. A sender that is no agent, such
+/// as the schedule, is named alone.
 pub fn format(state: &State, messages: &[Message]) -> String {
     messages
         .iter()
-        .map(|m| {
-            let name = state.agent(&m.from).map_or(m.from.as_str(), |a| &a.name);
-            format!("Message from {name} ({}):\n{}", m.from, m.text)
+        .map(|m| match state.agent(&m.from) {
+            Ok(a) => format!("Message from {} ({}):\n{}", a.name, m.from, m.text),
+            Err(_) => format!("Message from {}:\n{}", m.from, m.text),
         })
         .collect::<Vec<_>>()
         .join("\n\n")
 }
 
 /// Describe the agent's place in its team. An orchestrator also gets the
-/// other teams' orchestrators and the configured worker profiles.
+/// other teams' orchestrators and the configured worker profiles, the default
+/// team's orchestrator the task tools and the scheduled tasks, and a task's
+/// orchestrator its task.
 pub fn facts(state: &State, agent: &Agent, profiles: &[Profile]) -> String {
     let mut b = format!(
         "You are {} ({}), the {} in a Hypercube team of coding agents.\n",
@@ -195,13 +198,27 @@ pub fn facts(state: &State, agent: &Agent, profiles: &[Profile]) -> String {
         ));
     }
     let orchestrator = agent.role == store::ORCHESTRATOR;
-    if orchestrator && state.no_git {
+    let task = state.task(&agent.team).filter(|_| orchestrator);
+    if orchestrator && agent.team == store::DEFAULT_TEAM {
+        b.push_str(TASK_TOOLS);
+    }
+    if let Some(task) = task {
+        write_task(&mut b, state, task);
+        let place = if state.no_git {
+            "directory"
+        } else {
+            "checkout"
+        };
+        write_other_teams(&mut b, state, agent, place);
+        write_teamwork(&mut b, profiles);
+    } else if orchestrator && state.no_git {
         b.push_str(
             r#"
 Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 "#,
         );
         write_other_teams(&mut b, state, agent, "directory");
+        write_tasks(&mut b, state, agent);
         write_teamwork(&mut b, profiles);
     } else if orchestrator {
         b.push_str(
@@ -210,6 +227,7 @@ You work in the original checkout. Unless the user says otherwise, give a worker
 "#,
         );
         write_other_teams(&mut b, state, agent, "checkout");
+        write_tasks(&mut b, state, agent);
         write_teamwork(&mut b, profiles);
     } else if !agent.branch.is_empty() {
         b.push_str(
@@ -242,6 +260,43 @@ fn write_other_teams(b: &mut String, state: &State, agent: &Agent, place: &str) 
     }
 }
 
+/// The scheduled tasks and their schedules, for the default team's
+/// orchestrator, if there are any.
+fn write_tasks(b: &mut String, state: &State, agent: &Agent) {
+    if agent.team != store::DEFAULT_TEAM || state.tasks.is_empty() {
+        return;
+    }
+    b.push_str("\nScheduled tasks:\n");
+    for t in &state.tasks {
+        b.push_str(&format!("- {}: {}\n", t.name, t.schedule));
+    }
+}
+
+/// The guidance of the orchestrator of `task`, which works in the checkout
+/// it shares with the default team's orchestrator.
+fn write_task(b: &mut String, state: &State, task: &store::Task) {
+    let lead = state.team_orchestrator(store::DEFAULT_TEAM).map_or_else(
+        || "orchestrator".to_string(),
+        |o| format!("{} ({})", o.name, o.id),
+    );
+    b.push_str(&format!(
+        "\nYou run the scheduled task {} on the schedule {}, in local time. Each time it fires, its prompt arrives in this same session as a message from schedule. A firing is skipped while you or one of your workers is busy, or while the last one is still queued.\n",
+        task.name, task.schedule
+    ));
+    if state.no_git {
+        b.push_str(&format!(
+            "You work in the workspace's directory, which you share with the default team's orchestrator, {lead}. Do not change files in it. Do read-only work yourself, and give work that changes files to workers in the directories it belongs in, telling each how to handle branches and commits there. Report what changed to {lead} with send_message. Remove a worker when its work is done.\n"
+        ));
+    } else {
+        b.push_str(&format!(
+            "You work in the original checkout, which you share with the default team's orchestrator, {lead}. Do not merge, commit, or change files in it. Do read-only work yourself. Give work that changes files to workers with their own worktrees, by omitting dir, and send their branches to {lead} with send_message; it integrates them. Remove a worker once its branch is merged.\n"
+        ));
+    }
+    b.push_str(&format!(
+        "Reach {lead} with send_message. The user sees this session only when they view your team.\n"
+    ));
+}
+
 fn on_branch(branch: &str) -> String {
     if branch.is_empty() {
         String::new()
@@ -258,6 +313,13 @@ const MESSAGE_TOOLS: &str = r#"
 Hypercube MCP tools:
 - send_message(to, text) sends a message to an agent by ID or name. Messages arrive in your context as "Message from <name> (<id>):".
 - list_agents() returns the team with each agent's activity.
+"#;
+
+const TASK_TOOLS: &str = r#"- create_task(name, schedule, prompt, profile) creates a scheduled task and its team, both named name, whose orchestrator works in your checkout with the profile's harness, model, and effort and keeps one session. Each time the schedule fires while the task's team is idle, the prompt arrives in that session as a message from schedule. The schedule is five cron fields in local time: minute hour day-of-month month day-of-week, each *, a number, a-b, */s, a-b/s, or a comma list of these. Use the profile the user names, and otherwise the worker profile below that suits the task.
+- update_task(name, schedule?, prompt?) changes a task's schedule or prompt.
+- list_tasks() returns each task's schedule, prompt, state, last run, orchestrator's harness, model, and effort, and agents.
+- delete_task(name) deletes a task, its team, and its orchestrator. A task whose team has workers stays until they are removed.
+To run a task now, send a message to its orchestrator, which has the task's name. remove_agent also removes the workers of a task's team.
 "#;
 
 /// The orchestrator's teamwork guidance and the configured worker
@@ -482,8 +544,16 @@ mod tests {
         let r = f.run("b", "PostToolUse");
         assert_eq!(
             context_of(&r),
-            "Message from orchestrator (a):\none\n\nMessage from gone (gone):\ntwo"
+            "Message from orchestrator (a):\none\n\nMessage from gone:\ntwo"
         );
+    }
+
+    #[test]
+    fn a_firing_is_a_message_from_schedule() {
+        let f = Fixture::new(pair(), vec![], false);
+        f.queue(store::SCHEDULE, "a", "check the build");
+        let r = f.run("a", "UserPromptSubmit");
+        assert_eq!(context_of(&r), "Message from schedule:\ncheck the build");
     }
 
     #[test]
@@ -764,5 +834,70 @@ Commit your work on your branch. The orchestrator merges it from its checkout. W
         // With one team, there are no others to name.
         state.agents.truncate(2);
         assert!(!facts(&state, &state.agents[0], &[]).contains("Other teams"));
+    }
+
+    #[test]
+    fn task_facts() {
+        let member = |id: &str, name: &str, role: &str, team: &str| Agent {
+            team: team.into(),
+            dir: "/r".into(),
+            branch: "main".into(),
+            ..agent(id, name, role)
+        };
+        let mut state = State {
+            agents: vec![
+                member(
+                    "a",
+                    "orchestrator",
+                    store::ORCHESTRATOR,
+                    store::DEFAULT_TEAM,
+                ),
+                member("n", "nightly", store::ORCHESTRATOR, "nightly"),
+                member("w", "helper", store::WORKER, "nightly"),
+                member("d", "docs", store::ORCHESTRATOR, "docs"),
+            ],
+            tasks: vec![store::Task {
+                name: "nightly".into(),
+                schedule: "0 3 * * *".into(),
+                prompt: "check".into(),
+                last_run: 0,
+            }],
+            ..State::default()
+        };
+        let lead = facts(&state, &state.agents[0], &[]);
+        for want in [
+            "- create_task(name, schedule, prompt, profile) creates a scheduled task",
+            "- delete_task(name) deletes a task",
+            "\nScheduled tasks:\n- nightly: 0 3 * * *\n\nTeamwork:",
+        ] {
+            assert!(lead.contains(want), "lacks {want:?}:\n{lead}");
+        }
+        let nightly = facts(&state, &state.agents[1], &[]);
+        for want in [
+            "You run the scheduled task nightly on the schedule 0 3 * * *, in local time.",
+            "its prompt arrives in this same session as a message from schedule.",
+            "Do not merge, commit, or change files in it.",
+            "send their branches to orchestrator (a) with send_message",
+            "The user sees this session only when they view your team.",
+            "Worker profiles.",
+        ] {
+            assert!(nightly.contains(want), "lacks {want:?}:\n{nightly}");
+        }
+        for unwanted in ["create_task", "Scheduled tasks:", "Merge its branch"] {
+            assert!(!nightly.contains(unwanted), "has {unwanted:?}:\n{nightly}");
+        }
+        // Neither another team's orchestrator nor a task's worker gets them.
+        for i in [2, 3] {
+            let text = facts(&state, &state.agents[i], &[]);
+            for unwanted in ["create_task", "scheduled task", "Scheduled tasks:"] {
+                assert!(!text.contains(unwanted), "has {unwanted:?}:\n{text}");
+            }
+        }
+        state.no_git = true;
+        let nightly = facts(&state, &state.agents[1], &[]);
+        assert!(nightly.contains("Do not change files in it."), "{nightly}");
+        assert!(!nightly.contains("worktree"), "{nightly}");
+        state.tasks.clear();
+        assert!(!facts(&state, &state.agents[0], &[]).contains("Scheduled tasks:"));
     }
 }

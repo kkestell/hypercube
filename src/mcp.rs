@@ -12,7 +12,9 @@ use serde_json::{Map, Value, json};
 
 use crate::config::{self, Profile};
 use crate::control::{self, NUDGE, Request};
-use crate::store::{self, Agent, Message, State};
+use crate::host;
+use crate::schedule::Schedule;
+use crate::store::{self, Agent, Message, State, Task};
 use crate::workspace;
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
@@ -20,6 +22,10 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
 const DIR_ARG: &str = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it";
 
 const PROFILE_ARG: &str = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts.";
+
+const TASK_PROFILE: &str = "The task orchestrator's profile. Use the profile the user names; otherwise choose one suited to the task from the profiles' descriptions, harnesses, models, and efforts.";
+
+const SCHEDULE_ARG: &str = "Five cron fields in local time: minute hour day-of-month month day-of-week. Each is *, a number, a-b, */s, a-b/s, or a comma list of these. Day-of-week is 0-7, with 0 and 7 Sunday.";
 
 /// The MCP server of one agent.
 pub struct Server {
@@ -82,9 +88,26 @@ pub fn tools(no_git: bool, profiles: &[Profile]) -> Vec<Value> {
         ),
         schema(&["id"], &["id"]),
     );
+    let mut create_task = tool(
+        "create_task",
+        "Default orchestrator only. Create a scheduled task and its team, both named name, and launch its orchestrator in your checkout with the profile's harness, model, and effort. Each time the schedule fires while the task's team is idle, the prompt arrives in the orchestrator's session as a message from schedule.".into(),
+        schema(
+            &["name", "schedule", "prompt", "profile"],
+            &["name", "schedule", "prompt", "profile"],
+        ),
+    );
+    create_task["inputSchema"]["properties"]["schedule"]["description"] = json!(SCHEDULE_ARG);
+    create_task["inputSchema"]["properties"]["profile"]["description"] = json!(TASK_PROFILE);
+    let mut update_task = tool(
+        "update_task",
+        "Default orchestrator only. Change a scheduled task's schedule, prompt, or both.".into(),
+        schema(&["name"], &["name", "schedule", "prompt"]),
+    );
+    update_task["inputSchema"]["properties"]["schedule"]["description"] = json!(SCHEDULE_ARG);
     if !profiles.is_empty() {
         let names: Vec<&str> = profiles.iter().map(|p| p.name.as_str()).collect();
         create["inputSchema"]["properties"]["profile"] = json!({"type": "string", "enum": names});
+        create_task["inputSchema"]["properties"]["profile"]["enum"] = json!(names);
     }
     vec![
         tool(
@@ -99,6 +122,18 @@ pub fn tools(no_git: bool, profiles: &[Profile]) -> Vec<Value> {
         ),
         create,
         remove,
+        create_task,
+        update_task,
+        tool(
+            "list_tasks",
+            "Default orchestrator only. List the scheduled tasks: name, schedule, prompt, state (running, idle, or failed), last run, the orchestrator's harness, model, and effort, and the team's agents.".into(),
+            schema(&[], &[]),
+        ),
+        tool(
+            "delete_task",
+            "Default orchestrator only. Delete a scheduled task, its team, and its orchestrator. A task whose team has workers stays until they are removed.".into(),
+            schema(&["name"], &["name"]),
+        ),
     ]
 }
 
@@ -170,6 +205,12 @@ impl Server {
                 self.create_agent(arg("name"), arg("profile"), arg("dir"), arg("message"))
             }
             "remove_agent" => self.remove_agent(arg("id")),
+            "create_task" => {
+                self.create_task(arg("name"), arg("schedule"), arg("prompt"), arg("profile"))
+            }
+            "update_task" => self.update_task(arg("name"), arg("schedule"), arg("prompt")),
+            "list_tasks" => self.list_tasks(),
+            "delete_task" => self.delete_task(arg("name")),
             _ => Err(format!("unknown tool {name:?}").into()),
         }
     }
@@ -352,7 +393,9 @@ impl Server {
         if agent.role != store::WORKER {
             return Err("only workers can be removed".into());
         }
-        if agent.team != caller.team {
+        // The default team's orchestrator also cleans up after tasks.
+        let task_worker = caller.team == store::DEFAULT_TEAM && state.task(&agent.team).is_some();
+        if agent.team != caller.team && !task_worker {
             return Err(format!("{} is in another team", agent.name).into());
         }
         // The worktree goes first, so a refusal from Git leaves the pane open.
@@ -363,6 +406,154 @@ impl Server {
             .map_err(|e| format!("closing the pane of {}: {e}", agent.name))?;
         self.forget(&agent.id)?;
         Ok(format!("Removed {} ({}).", agent.name, agent.id))
+    }
+
+    /// Add a scheduled task and its team, whose orchestrator works in the
+    /// checkout with the profile's harness, model, and effort, and launch
+    /// the orchestrator idle. If the launch fails, the task and its
+    /// orchestrator are removed again.
+    fn create_task(
+        &self,
+        name: &str,
+        schedule: &str,
+        prompt: &str,
+        profile: &str,
+    ) -> Result<String> {
+        Schedule::parse(schedule)?;
+        if prompt.is_empty() {
+            return Err("a task needs a prompt".into());
+        }
+        let config = config::load_from(&self.config)?;
+        let spec = &config.profile(profile)?.spec;
+        let agent = store::update(&self.state, |s| {
+            let caller = default_orchestrator(s, &self.agent)?;
+            let (dir, branch) = (caller.dir.clone(), caller.branch.clone());
+            let agent = host::add_team(s, name, spec, &dir, &branch)?;
+            s.tasks.push(Task {
+                name: name.into(),
+                schedule: schedule.into(),
+                prompt: prompt.into(),
+                last_run: 0,
+            });
+            Ok(agent)
+        })?;
+        let launch = Request::Launch {
+            agent: agent.id.clone(),
+            prompt: String::new(),
+        };
+        if let Err(e) = self.ask_host(launch) {
+            let mut message = e.to_string();
+            // The host may have launched the orchestrator before the failure.
+            if let Err(e) = self.close_pane(&agent.id) {
+                return Err(format!(
+                    "{message}; closing the pane failed: {e}; the task {name} was kept so delete_task can clean it up"
+                )
+                .into());
+            }
+            let forget = store::update(&self.state, |s| {
+                s.remove(&agent.id);
+                s.tasks.retain(|t| t.name != name);
+                Ok(())
+            });
+            if let Err(e) = forget {
+                message.push_str(&format!("; removing the task failed: {e}"));
+            }
+            return Err(message.into());
+        }
+        Ok(format!(
+            "Created the task {name} and its orchestrator {} ({}), on the schedule {schedule}.",
+            agent.name, agent.id
+        ))
+    }
+
+    /// Change the given fields of a task.
+    fn update_task(&self, name: &str, schedule: &str, prompt: &str) -> Result<String> {
+        if !schedule.is_empty() {
+            Schedule::parse(schedule)?;
+        }
+        store::update(&self.state, |s| {
+            default_orchestrator(s, &self.agent)?;
+            let task = s
+                .tasks
+                .iter_mut()
+                .find(|t| t.name == name)
+                .ok_or_else(|| format!("no task named {name:?}"))?;
+            if !schedule.is_empty() {
+                task.schedule = schedule.into();
+            }
+            if !prompt.is_empty() {
+                task.prompt = prompt.into();
+            }
+            Ok(format!(
+                "Updated the task {name}, on the schedule {}.",
+                task.schedule
+            ))
+        })
+    }
+
+    fn list_tasks(&self) -> Result<String> {
+        #[derive(Serialize)]
+        struct Entry<'a> {
+            name: &'a str,
+            schedule: &'a str,
+            prompt: &'a str,
+            state: &'a str,
+            last_run: String,
+            harness: &'a str,
+            model: &'a str,
+            effort: &'a str,
+            agents: Vec<&'a str>,
+        }
+        let state = store::load(&self.state)?;
+        default_orchestrator(&state, &self.agent)?;
+        let tasks: Vec<Entry> = state
+            .tasks
+            .iter()
+            .map(|t| {
+                let orchestrator = state.team_orchestrator(&t.name);
+                let spec = |f: fn(&Agent) -> &str| orchestrator.map_or("", f);
+                Entry {
+                    name: &t.name,
+                    schedule: &t.schedule,
+                    prompt: &t.prompt,
+                    state: if state.running(&t.name) {
+                        "running"
+                    } else if state.failed(&t.name) {
+                        "failed"
+                    } else {
+                        "idle"
+                    },
+                    last_run: t.ran(),
+                    harness: spec(|a| &a.harness),
+                    model: spec(|a| &a.model),
+                    effort: spec(|a| &a.effort),
+                    agents: state
+                        .agents
+                        .iter()
+                        .filter(|a| a.team == t.name)
+                        .map(|a| a.name.as_str())
+                        .collect(),
+                }
+            })
+            .collect();
+        Ok(serde_json::to_string_pretty(&tasks)?)
+    }
+
+    /// Delete a task's team as the team list does: close its orchestrator's
+    /// pane, then remove the orchestrator and the task, unless the team has
+    /// workers.
+    fn delete_task(&self, name: &str) -> Result<String> {
+        let state = store::load(&self.state)?;
+        default_orchestrator(&state, &self.agent)?;
+        if state.task(name).is_none() {
+            return Err(format!("no task named {name:?}").into());
+        }
+        let id = host::deletable(&state, name)?.id.clone();
+        self.close_pane(&id)
+            .map_err(|e| format!("closing the pane of {name}: {e}"))?;
+        // The task's orchestrator may have created a worker since the check.
+        store::update(&self.state, |s| host::remove_team(s, name))?;
+        Ok(format!("Deleted the task {name}."))
     }
 }
 
@@ -379,6 +570,14 @@ fn orchestrator<'a>(state: &'a State, id: &str) -> Result<&'a Agent> {
     let agent = state.agent(id)?;
     if agent.role != store::ORCHESTRATOR {
         return Err("only the orchestrator can do this".into());
+    }
+    Ok(agent)
+}
+
+fn default_orchestrator<'a>(state: &'a State, id: &str) -> Result<&'a Agent> {
+    let agent = state.agent(id)?;
+    if agent.role != store::ORCHESTRATOR || agent.team != store::DEFAULT_TEAM {
+        return Err("only the default team's orchestrator can do this".into());
     }
     Ok(agent)
 }
@@ -453,6 +652,7 @@ mod tests {
                 id: "a".into(),
                 name: "orchestrator".into(),
                 role: store::ORCHESTRATOR.into(),
+                team: store::DEFAULT_TEAM.into(),
                 dir: orchestrator_dir.to_str().unwrap().into(),
                 ..Agent::default()
             });
@@ -461,6 +661,7 @@ mod tests {
                     id: "b".into(),
                     name: "w1".into(),
                     role: store::WORKER.into(),
+                    team: store::DEFAULT_TEAM.into(),
                     dir: worker_dir.to_str().unwrap().into(),
                     ..Agent::default()
                 });
@@ -526,8 +727,33 @@ mod tests {
                 "send_message",
                 "list_agents",
                 "create_agent",
-                "remove_agent"
+                "remove_agent",
+                "create_task",
+                "update_task",
+                "list_tasks",
+                "delete_task"
             ]
+        );
+        let create_task = &find(&tools, "create_task")["inputSchema"];
+        assert_eq!(
+            create_task["required"],
+            json!(["name", "schedule", "prompt", "profile"])
+        );
+        let profile = &create_task["properties"]["profile"];
+        assert_eq!(profile["enum"], json!(["sol", "haiku"]));
+        assert!(
+            profile["description"]
+                .as_str()
+                .unwrap()
+                .contains("Use the profile the user names")
+        );
+        assert_eq!(
+            find(&tools, "update_task")["inputSchema"]["required"],
+            json!(["name"])
+        );
+        assert_eq!(
+            find(&tools, "delete_task")["inputSchema"]["required"],
+            json!(["name"])
         );
         let create = &find(&tools, "create_agent")["inputSchema"];
         assert_eq!(create["required"], json!(["name", "profile"]));
@@ -1152,6 +1378,382 @@ mod tests {
         assert_eq!(team.state().messages[0].to, "b");
     }
 
+    /// A workspace whose default orchestrator `a` works in `/o`, with a
+    /// plain team `docs` and a task `nightly` whose orchestrator is `n`.
+    fn tasks() -> Team {
+        let team = team(false, Path::new("/o"), None);
+        store::update(&team.state, |s| {
+            let member = |id: &str, role: &str, t: &str| Agent {
+                id: id.into(),
+                name: id.into(),
+                role: role.into(),
+                team: t.into(),
+                activity: store::IDLE.into(),
+                dir: "/o".into(),
+                harness: "claude".into(),
+                model: "haiku".into(),
+                effort: "low".into(),
+                ..Agent::default()
+            };
+            s.agents.push(member("docs", store::ORCHESTRATOR, "docs"));
+            s.agents.push(Agent {
+                name: "nightly".into(),
+                ..member("n", store::ORCHESTRATOR, "nightly")
+            });
+            s.tasks.push(Task {
+                name: "nightly".into(),
+                schedule: "0 3 * * *".into(),
+                prompt: "check".into(),
+                last_run: 0,
+            });
+            Ok(())
+        })
+        .unwrap();
+        team
+    }
+
+    fn arguments(args: &[(&str, &str)]) -> Map<String, Value> {
+        args.iter()
+            .map(|(k, v)| (k.to_string(), json!(v)))
+            .collect()
+    }
+
+    #[test]
+    fn create_task_validates_before_changing_anything() {
+        let team = tasks();
+        let before = team.state();
+        let args = |name, schedule, profile| {
+            vec![
+                ("name", name),
+                ("schedule", schedule),
+                ("prompt", "go"),
+                ("profile", profile),
+            ]
+        };
+        for (args, expected) in [
+            (args("Bad", "* * * * *", "sol"), "lowercase letters"),
+            (
+                args("docs", "* * * * *", "sol"),
+                "a team named docs already exists",
+            ),
+            (
+                args("default", "* * * * *", "sol"),
+                "a team named default already exists",
+            ),
+            (
+                args("orchestrator", "* * * * *", "sol"),
+                "an agent named orchestrator already exists",
+            ),
+            (args("x", "* * *", "sol"), "five fields"),
+            (args("x", "61 * * * *", "sol"), "outside 0-59"),
+            (args("x", "* * * * *", "nope"), "no profile named"),
+            (args("x", "* * * * *", ""), "no profile named"),
+            (
+                vec![("name", "x"), ("schedule", "* * * * *"), ("profile", "sol")],
+                "a task needs a prompt",
+            ),
+        ] {
+            let err = team.error("create_task", &args);
+            assert!(err.contains(expected), "{args:?}: {err}");
+        }
+        for caller in ["docs", "n"] {
+            let err = team
+                .as_agent(caller)
+                .call("create_task", &arguments(&args("x", "* * * * *", "sol")))
+                .unwrap_err()
+                .to_string();
+            assert_eq!(err, "only the default team's orchestrator can do this");
+        }
+        assert_eq!(team.state(), before);
+    }
+
+    #[test]
+    fn create_task_launches_its_orchestrator_in_the_checkout() {
+        let team = tasks();
+        let seen = team.host(|_| Reply::ok());
+        let text = team
+            .call(
+                "create_task",
+                &[
+                    ("name", "weekly"),
+                    ("schedule", "0 9 * * 1"),
+                    ("prompt", "report"),
+                    ("profile", "sol"),
+                ],
+            )
+            .unwrap();
+        let state = team.state();
+        let o = state.team_orchestrator("weekly").unwrap();
+        assert_eq!(
+            text,
+            format!(
+                "Created the task weekly and its orchestrator weekly ({}), on the schedule 0 9 * * 1.",
+                o.id
+            )
+        );
+        assert_eq!(
+            (
+                o.name.as_str(),
+                o.role.as_str(),
+                o.dir.as_str(),
+                o.activity.as_str()
+            ),
+            ("weekly", store::ORCHESTRATOR, "/o", store::IDLE)
+        );
+        assert_eq!(
+            (o.harness.as_str(), o.model.as_str(), o.effort.as_str()),
+            ("opencode", "gpt-6.1-sol", "medium")
+        );
+        assert_eq!(
+            state.task("weekly"),
+            Some(&Task {
+                name: "weekly".into(),
+                schedule: "0 9 * * 1".into(),
+                prompt: "report".into(),
+                last_run: 0,
+            })
+        );
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [Request::Launch {
+                agent: o.id.clone(),
+                prompt: String::new()
+            }]
+        );
+    }
+
+    #[test]
+    fn create_task_rolls_back_when_the_host_refuses_the_launch() {
+        let team = tasks();
+        let before = team.state();
+        let seen = team.host(|r| match r {
+            Request::Launch { .. } => Reply::error("no room for another pane"),
+            _ => Reply::ok(),
+        });
+        let err = team.error(
+            "create_task",
+            &[
+                ("name", "weekly"),
+                ("schedule", "* * * * *"),
+                ("prompt", "report"),
+                ("profile", "sol"),
+            ],
+        );
+        assert_eq!(err, "no room for another pane");
+        assert_eq!(team.state(), before);
+        let seen = seen.lock().unwrap();
+        assert!(
+            matches!(&seen[..], [Request::Launch { .. }, Request::Close { .. }]),
+            "{seen:?}"
+        );
+    }
+
+    #[test]
+    fn update_task_changes_only_the_given_fields() {
+        let team = tasks();
+        team.call("update_task", &[("name", "nightly"), ("prompt", "again")])
+            .unwrap();
+        let task = team.state().task("nightly").cloned().unwrap();
+        assert_eq!(
+            (task.schedule.as_str(), task.prompt.as_str()),
+            ("0 3 * * *", "again")
+        );
+        let text = team
+            .call(
+                "update_task",
+                &[("name", "nightly"), ("schedule", "*/5 * * * *")],
+            )
+            .unwrap();
+        assert_eq!(
+            text,
+            "Updated the task nightly, on the schedule */5 * * * *."
+        );
+        let task = team.state().task("nightly").cloned().unwrap();
+        assert_eq!(
+            (task.schedule.as_str(), task.prompt.as_str()),
+            ("*/5 * * * *", "again")
+        );
+
+        let before = team.state();
+        assert!(
+            team.error("update_task", &[("name", "nightly"), ("schedule", "* *")])
+                .contains("five fields")
+        );
+        assert_eq!(
+            team.error("update_task", &[("name", "docs"), ("prompt", "x")]),
+            "no task named \"docs\""
+        );
+        let err = team
+            .as_agent("n")
+            .call(
+                "update_task",
+                &arguments(&[("name", "nightly"), ("prompt", "x")]),
+            )
+            .unwrap_err()
+            .to_string();
+        assert_eq!(err, "only the default team's orchestrator can do this");
+        assert_eq!(team.state(), before);
+    }
+
+    #[test]
+    fn list_tasks_reports_each_tasks_state_and_last_run() {
+        let team = tasks();
+        let list = |team: &Team| -> Value {
+            serde_json::from_str(&team.call("list_tasks", &[]).unwrap()).unwrap()
+        };
+        assert_eq!(
+            list(&team),
+            json!([{
+                "name": "nightly",
+                "schedule": "0 3 * * *",
+                "prompt": "check",
+                "state": "idle",
+                "last_run": "never",
+                "harness": "claude",
+                "model": "haiku",
+                "effort": "low",
+                "agents": ["nightly"],
+            }])
+        );
+        let now = crate::schedule::unix_now();
+        store::update(&team.state, |s| {
+            s.tasks[0].last_run = now - 120;
+            s.agents.push(Agent {
+                id: "h".into(),
+                name: "helper".into(),
+                role: store::WORKER.into(),
+                team: "nightly".into(),
+                activity: store::BUSY.into(),
+                ..Agent::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+        let listed = list(&team);
+        assert_eq!(listed[0]["state"], "running");
+        assert_eq!(listed[0]["last_run"], "2m ago");
+        assert_eq!(listed[0]["agents"], json!(["nightly", "helper"]));
+        store::update(&team.state, |s| {
+            s.agent_mut("h")?.activity = store::EXITED.into();
+            s.agent_mut("n")?.activity = store::EXITED.into();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(list(&team)[0]["state"], "failed");
+        let err = team
+            .as_agent("docs")
+            .call("list_tasks", &Map::new())
+            .unwrap_err()
+            .to_string();
+        assert_eq!(err, "only the default team's orchestrator can do this");
+    }
+
+    #[test]
+    fn delete_task_removes_the_task_its_orchestrator_and_messages() {
+        let team = tasks();
+        store::update(&team.state, |s| {
+            s.messages.push(Message {
+                from: store::SCHEDULE.into(),
+                to: "n".into(),
+                text: "check".into(),
+            });
+            Ok(())
+        })
+        .unwrap();
+        let seen = team.host(|_| Reply::ok());
+        assert_eq!(
+            team.error("delete_task", &[("name", "docs")]),
+            "no task named \"docs\""
+        );
+        assert_eq!(
+            team.call("delete_task", &[("name", "nightly")]).unwrap(),
+            "Deleted the task nightly."
+        );
+        let state = team.state();
+        assert!(state.tasks.is_empty() && state.messages.is_empty());
+        assert!(state.agent("n").is_err());
+        assert_eq!(state.teams(), [store::DEFAULT_TEAM, "docs"]);
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [Request::Close { agent: "n".into() }]
+        );
+    }
+
+    #[test]
+    fn delete_task_keeps_a_task_with_workers() {
+        let team = tasks();
+        let add_worker = |state: &Path| {
+            store::update(state, |s| {
+                s.agents.push(Agent {
+                    id: "h".into(),
+                    name: "helper".into(),
+                    role: store::WORKER.into(),
+                    team: "nightly".into(),
+                    ..Agent::default()
+                });
+                Ok(())
+            })
+            .unwrap();
+        };
+        // A worker created between the check and the update keeps the task.
+        let state = team.state.clone();
+        let closes = std::sync::atomic::AtomicU32::new(0);
+        let seen = team.host(move |r| {
+            if let Request::Close { .. } = r
+                && closes.fetch_add(1, std::sync::atomic::Ordering::Relaxed) == 0
+            {
+                add_worker(&state);
+            }
+            Reply::ok()
+        });
+        let err = team.error("delete_task", &[("name", "nightly")]);
+        assert!(err.contains("nightly has workers: helper"), "{err}");
+        assert!(team.state().task("nightly").is_some());
+        assert!(team.state().agent("n").is_ok());
+        assert_eq!(seen.lock().unwrap().len(), 1);
+
+        // With the worker there, nothing is closed.
+        let err = team.error("delete_task", &[("name", "nightly")]);
+        assert_eq!(err, "nightly has workers: helper; remove them first");
+        assert_eq!(seen.lock().unwrap().len(), 1);
+
+        // The default orchestrator removes it, and the task goes.
+        team.call("remove_agent", &[("id", "helper")]).unwrap();
+        team.call("delete_task", &[("name", "nightly")]).unwrap();
+        assert!(team.state().tasks.is_empty());
+    }
+
+    #[test]
+    fn only_the_default_orchestrator_removes_another_teams_worker_and_only_a_tasks() {
+        let team = tasks();
+        store::update(&team.state, |s| {
+            for (id, t) in [("h", "nightly"), ("x", "docs")] {
+                s.agents.push(Agent {
+                    id: id.into(),
+                    name: id.into(),
+                    role: store::WORKER.into(),
+                    team: t.into(),
+                    ..Agent::default()
+                });
+            }
+            Ok(())
+        })
+        .unwrap();
+        let _seen = team.host(|_| Reply::ok());
+        assert_eq!(
+            team.error("remove_agent", &[("id", "x")]),
+            "x is in another team"
+        );
+        let err = team
+            .as_agent("docs")
+            .call("remove_agent", &arguments(&[("id", "h")]))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(err, "h is in another team");
+        team.call("remove_agent", &[("id", "h")]).unwrap();
+        assert!(team.state().agent("h").is_err());
+    }
+
     #[test]
     fn unknown_tools_are_errors() {
         let team = team(false, Path::new("/o"), None);
@@ -1196,7 +1798,7 @@ mod tests {
         );
         assert_eq!(replies[1]["id"], "x");
         let listed = replies[1]["result"]["tools"].as_array().unwrap();
-        assert_eq!(listed.len(), 4);
+        assert_eq!(listed.len(), 8);
         assert_eq!(
             find(listed, "create_agent")["inputSchema"]["properties"]["profile"]["enum"],
             json!(["sol"])
