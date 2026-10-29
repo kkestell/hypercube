@@ -757,7 +757,8 @@ of bells since the last frame. The focused pane's title goes to the host in
 the frame after it changes. Desktop notifications, OSC 9 and OSC 777, pass
 through too: `Pane::feed` scans the program's output for them before Ghostty
 sees it, keeping the scan's state between reads so a sequence split across
-reads is found, and writes each one to the host terminated by BEL.
+reads is found, and writes each one to the host terminated by BEL. OSC 9;4,
+a progress report, is not a notification and does not pass through.
 Notifications over 4096 bytes and sequences cut off by another control
 character are dropped. Notifications and clipboard copies, the output from
 outside frames, wait for the next frame only while it stays under

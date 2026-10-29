@@ -2432,7 +2432,8 @@ enum Press {
 }
 
 /// Finds the desktop notifications in a program's output, OSC 9 and OSC
-/// 777, including those split across reads.
+/// 777, including those split across reads. OSC 9;4 reports progress, not a
+/// notification, and stays in the pane.
 #[derive(Default)]
 struct Notifications {
     state: OscState,
@@ -2479,7 +2480,9 @@ impl Notifications {
     }
 
     fn finish(&mut self, out: &mut Vec<u8>) {
+        let progress = self.body == b"9;4" || self.body.starts_with(b"9;4;");
         if self.body.len() <= NOTIFICATION_MAX
+            && !progress
             && (self.body.starts_with(b"9;") || self.body.starts_with(b"777;"))
         {
             out.extend_from_slice(b"\x1b]");
@@ -2919,6 +2922,15 @@ mod tests {
         assert_eq!(notifications(&[&long]), b"");
         // An OSC sequence started over another's Esc is scanned on its own.
         assert_eq!(notifications(&[b"\x1b]2;x\x1b]9;y\x07"]), b"\x1b]9;y\x07");
+    }
+
+    #[test]
+    fn progress_reports_are_not_notifications() {
+        assert_eq!(notifications(&[b"\x1b]9;4;3\x07\x1b]9;4;1;50\x1b\\"]), b"");
+        assert_eq!(
+            notifications(&[b"\x1b]9;4\x07\x1b]9;42\x07"]),
+            b"\x1b]9;42\x07"
+        );
     }
 
     #[test]
