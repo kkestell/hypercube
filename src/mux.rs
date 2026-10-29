@@ -1525,11 +1525,14 @@ impl Mux {
     }
 
     /// Focus the next live pane after the focused one, in pane order,
-    /// skipping collapsed panes and the background.
+    /// skipping collapsed panes and the background. With no focus, start at
+    /// the first eligible pane.
     pub fn focus_next(&mut self) {
-        if let Some(index) = self.focus().and_then(|id| self.index(id)) {
-            self.focus_from(index + 1);
-        }
+        let start = self
+            .focus()
+            .and_then(|id| self.index(id))
+            .map_or(0, |index| index + 1);
+        self.focus_from(start);
     }
 
     /// Focus the first live, expanded pane at or after `start` that is not
@@ -3654,6 +3657,24 @@ mod tests {
         p.mux.set_focus(left);
         assert_eq!(p.mux.focus(), Some(left));
         assert_eq!(p.got(0), b"\x1b[I");
+    }
+
+    #[test]
+    fn focus_next_recovers_an_expanded_worker_when_no_pane_has_focus() {
+        let mut p = Piped::new();
+        let [left, right] = p.ids;
+        p.mux.mark_exited(left, 1);
+        assert_eq!(p.mux.focus(), Some(right));
+        p.mux.set_collapsed(right, true);
+        assert_eq!(p.mux.focus(), None);
+        p.mux.input(b"\x02o");
+        assert_eq!(p.mux.focus(), None);
+
+        p.mux.set_collapsed(right, false);
+        p.mux.input(b"\x02ohello");
+        assert_eq!(p.mux.focus(), Some(right));
+        assert_eq!(p.got(0), b"");
+        assert_eq!(p.got(1), b"hello");
     }
 
     #[test]
