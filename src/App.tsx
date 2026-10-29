@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import type { Workspace } from "./model";
+import { useModel } from "./modelStore";
 import { layoutCards, type CardPlacement, type Size } from "./overviewLayout";
+import { connect, request } from "./terminalSocket";
 import { WorkspaceView } from "./WorkspaceView";
-import { stubWorkspaces, type Workspace } from "./workspaces";
 import "./index.css";
 
 const transition = "duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none";
@@ -80,13 +82,76 @@ function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, o
   );
 }
 
+/** Asks for a directory and opens it as a workspace. */
+function AddWorkspace({ onAdded }: { onAdded: (workspaceId: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [path, setPath] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    request({ t: "addWorkspace", path })
+      .then(id => {
+        setEditing(false);
+        setPath("");
+        onAdded(id!);
+      })
+      .catch((reason: Error) => setError(reason.message))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="absolute inset-x-0 bottom-6 z-10 flex flex-col items-center gap-2 text-sm">
+      {error && <div className="rounded bg-red-950 px-3 py-1 text-red-200">{error}</div>}
+      {editing ? (
+        <form onSubmit={submit} className="flex gap-2">
+          <input
+            autoFocus
+            value={path}
+            onChange={event => setPath(event.target.value)}
+            onKeyDown={event => event.key === "Escape" && setEditing(false)}
+            placeholder="~/projects/my-repo"
+            aria-label="Workspace directory"
+            className="w-96 rounded border border-neutral-600 bg-[#1e1e1e] px-3 py-1.5 font-mono text-neutral-100 outline-none focus:border-sky-500"
+          />
+          <button type="submit" disabled={busy || !path.trim()} className="rounded bg-sky-700 px-3 py-1.5 text-neutral-100 hover:bg-sky-600 disabled:opacity-50">
+            Add
+          </button>
+          <button type="button" onClick={() => setEditing(false)} className="rounded px-3 py-1.5 text-neutral-400 hover:bg-neutral-800">
+            Cancel
+          </button>
+        </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setError(null);
+            setEditing(true);
+          }}
+          className="rounded bg-neutral-800 px-4 py-1.5 text-neutral-200 hover:bg-neutral-700"
+        >
+          Add workspace
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function App() {
   const viewport = useViewportSize();
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(stubWorkspaces[0]!.id);
-  const [overview, setOverview] = useState(false);
-  // Workspaces mount on first visit and stay mounted, so their terminals keep running in the background.
-  const [openedWorkspaceIds, setOpenedWorkspaceIds] = useState(() => new Set([activeWorkspaceId]));
-  const cards = layoutCards(stubWorkspaces.length, viewport);
+  const { workspaces } = useModel();
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [overview, setOverview] = useState(true);
+  // Workspaces mount on first visit and stay mounted, so their views keep their screens.
+  const [openedWorkspaceIds, setOpenedWorkspaceIds] = useState(() => new Set<string>());
+  // Leaves room below the cards for the "Add workspace" button.
+  const cards = layoutCards(workspaces.length, viewport, 48);
+  const canLeaveOverview = workspaces.some(workspace => workspace.id === activeWorkspaceId);
+
+  useEffect(connect, []);
 
   const openWorkspace = (workspaceId: string) => {
     setActiveWorkspaceId(workspaceId);
@@ -95,22 +160,22 @@ export function App() {
   };
 
   useEffect(() => {
-    if (!overview) return;
+    if (!overview || !canLeaveOverview) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOverview(false);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [overview]);
+  }, [overview, canLeaveOverview]);
 
   return (
     <div
       className="relative h-screen overflow-hidden bg-[#141414]"
       onClick={event => {
-        if (overview && event.target === event.currentTarget) setOverview(false);
+        if (overview && canLeaveOverview && event.target === event.currentTarget) setOverview(false);
       }}
     >
-      {stubWorkspaces.map((workspace, index) => (
+      {workspaces.map((workspace, index) => (
         <WorkspaceFrame
           key={workspace.id}
           workspace={workspace}
@@ -123,6 +188,7 @@ export function App() {
           onShowOverview={() => setOverview(true)}
         />
       ))}
+      {overview && <AddWorkspace onAdded={openWorkspace} />}
     </div>
   );
 }

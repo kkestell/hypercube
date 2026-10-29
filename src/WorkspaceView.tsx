@@ -1,8 +1,11 @@
 import { useState, type ReactNode, type RefObject } from "react";
 import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from "react-resizable-panels";
 import { SessionList } from "./SessionList";
+import type { Workspace } from "./model";
+import { useModel } from "./modelStore";
 import { SessionView } from "./SessionView";
-import type { Workspace } from "./workspaces";
+import { button, TerminalHost } from "./TerminalPanel";
+import { request } from "./terminalSocket";
 
 type Side = "left" | "bottom" | "right";
 
@@ -69,6 +72,27 @@ function ResizeHandle({ orientation }: { orientation: "horizontal" | "vertical" 
   return <Separator className={`${size} bg-neutral-700 transition-colors data-[separator=hover]:bg-sky-500 data-[separator=active]:bg-sky-500`} />;
 }
 
+/** The workspace's plain shell. It is not restarted automatically. */
+function ShellPanel({ workspace }: { workspace: Workspace }) {
+  const { terminalId, exitCode } = workspace.shell;
+  const restart = () => request({ t: "restartShell", workspaceId: workspace.id }).catch((error: Error) => alert(error.message));
+  return (
+    <TerminalHost
+      viewId={`shell:${workspace.id}`}
+      terminalId={terminalId}
+      active={false}
+      overlay={
+        <div className="flex items-center gap-3 text-sm text-neutral-400">
+          <span>Shell exited{exitCode !== null ? ` (${exitCode})` : ""}</span>
+          <button type="button" className={button} onClick={restart}>
+            Restart
+          </button>
+        </div>
+      }
+    />
+  );
+}
+
 type WorkspaceViewProps = {
   workspace: Workspace;
   /** The workspace fills the window and takes input. */
@@ -78,14 +102,15 @@ type WorkspaceViewProps = {
 
 /** A workspace: its sessions, the active session's agents, and the side panels. */
 export function WorkspaceView({ workspace, active, onShowOverview }: WorkspaceViewProps) {
-  const { sessions } = workspace;
+  const model = useModel();
+  const sessions = workspace.sessionIds.map(id => model.sessions[id]!).filter(Boolean);
   const leftRef = usePanelRef();
   const bottomRef = usePanelRef();
   const rightRef = usePanelRef();
   const [open, setOpen] = useState<Record<Side, boolean>>({ left: true, bottom: true, right: true });
-  const [activeSessionId, setActiveSessionId] = useState(sessions[0]!.id);
-  // Sessions mount on first visit and stay mounted, so their terminals keep running in the background.
-  const [openedSessionIds, setOpenedSessionIds] = useState(() => new Set([activeSessionId]));
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(sessions[0]?.id ?? null);
+  // Sessions mount on first visit and stay mounted, so their views keep their screens.
+  const [openedSessionIds, setOpenedSessionIds] = useState(() => new Set(activeSessionId ? [activeSessionId] : []));
 
   const selectSession = (sessionId: string) => {
     setActiveSessionId(sessionId);
@@ -125,7 +150,7 @@ export function WorkspaceView({ workspace, active, onShowOverview }: WorkspaceVi
           onResize={trackOpen("left")}
         >
           <SidePanel title="Sessions">
-            <SessionList sessions={sessions} activeSessionId={activeSessionId} onSelect={selectSession} />
+            <SessionList workspaceId={workspace.id} sessions={sessions} activeSessionId={activeSessionId} onSelect={selectSession} />
           </SidePanel>
         </Panel>
         <ResizeHandle orientation="horizontal" />
@@ -162,7 +187,7 @@ export function WorkspaceView({ workspace, active, onShowOverview }: WorkspaceVi
               groupResizeBehavior="preserve-pixel-size"
               onResize={trackOpen("bottom")}
             >
-              <SidePanel title="Bottom Panel" />
+              <ShellPanel workspace={workspace} />
             </Panel>
           </Group>
         </Panel>

@@ -10,8 +10,10 @@ const GAP = 32;
  * Arranges `count` cards, each a scaled-down copy of the window, in the grid
  * that makes them largest. Rows are centered, including a shorter last row.
  */
-export function layoutCards(count: number, viewport: Size): CardPlacement[] {
+export function layoutCards(count: number, viewport: Size, bottomReserve = 0): CardPlacement[] {
   const { width, height } = viewport;
+  /** Height the grid may use; cards keep the window's aspect ratio. */
+  const available = height - bottomReserve;
 
   let columns = 1;
   let scale = 0;
@@ -19,7 +21,7 @@ export function layoutCards(count: number, viewport: Size): CardPlacement[] {
     const rows = Math.ceil(count / candidate);
     const candidateScale = Math.min(
       (width - 2 * PADDING - (candidate - 1) * GAP) / candidate / width,
-      (height - 2 * PADDING - (rows - 1) * GAP) / rows / height,
+      (available - 2 * PADDING - (rows - 1) * GAP) / rows / height,
     );
     if (candidateScale > scale) {
       columns = candidate;
@@ -31,7 +33,7 @@ export function layoutCards(count: number, viewport: Size): CardPlacement[] {
   const rows = Math.ceil(count / columns);
   const cardWidth = width * scale;
   const cardHeight = height * scale;
-  const top = (height - (rows * cardHeight + (rows - 1) * GAP)) / 2;
+  const top = (available - (rows * cardHeight + (rows - 1) * GAP)) / 2;
 
   return Array.from({ length: count }, (_, index) => {
     const row = Math.floor(index / columns);
