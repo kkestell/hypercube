@@ -68,7 +68,7 @@ The state directory also holds `opencode-plugin/index.js`.
    prompt `Check your Hypercube messages.`, so they pick up messages queued
    while they were down. If the orchestrator fails to launch, the session
    ends with the error. A worker that fails to launch gets a pane without a
-   program, with "failed:" and the error in its label and the error in the
+   program, with the failure icon and the error in its label and the error in the
    pane, marked exited with status 127 so the focus skips it, and keeps it
    until `remove_agent` closes it. Agents that don't fit in the terminal
    still launch; their panes are hidden until it grows.
@@ -177,7 +177,7 @@ and the rest of a paste.
 
 A program that exits within `QUICK_EXIT_MS` (ten seconds) of starting has
 exited quickly. After `MAX_QUICK_EXITS` (three) quick exits in a row the host
-leaves the pane showing "exited N" and gives up its focus, until `remove_agent`
+leaves the pane showing its exit status N and gives up its focus, until `remove_agent`
 closes it. An exit after a longer run resets the count. A relaunch whose
 harness fails to start shows the failure as a worker's failed launch does, and
 is not retried.
@@ -230,20 +230,26 @@ by the state's `accent` field. A new workspace takes the accent that the
 other running workspaces use least, the first of those in `ACCENTS`. Ctrl-b a
 moves the
 workspace to the next one, wrapping around, writes it to the state, and
-redraws. It draws:
+redraws.
 
-- The header across the first row: one space and the workspace's directory,
-  with the home directory written as `~`, clipped to fit.
+The chrome, the bar, and the overlay draw Nerd Font icons, all of them in
+`icons.rs`, each followed by a space. `TeamChrome` draws:
+
+- The header across the first row: one space, the open folder icon, and the
+  workspace's directory, with the home directory written as `~`, clipped to
+  fit.
 - Each agent's label row across its pane's full width. The left end has one
-  space, for a worker beside the divider an arrow and a space, `▾` while
-  expanded and `▸` while collapsed, and the agent's name, bold for the focused pane, followed by a red
-  ` ●` while the agent waits for a tool approval, only if the dot fits, then
-  "zoomed" while the pane fills the area, "exited N" once the pane's program has exited
-  and is not relaunched, "failed:" and the error for an agent whose harness did
-  not start, and "↑N" while its view is scrolled N rows up. The right end has,
-  followed by one space, "⎇ " and the branch (without its `hypercube/` prefix
-  for a worker), or the directory with the home directory written as `~` for
-  agents without a branch. A row too narrow for the right text drops it,
+  space, for a worker beside the divider a chevron and a space, pointing down
+  while expanded and right while collapsed, and the agent's name, bold for
+  the focused pane, followed by a red bell while the agent waits for a tool
+  approval, only if the bell fits, then the expand icon while the pane fills
+  the area, the exit icon and the status once the pane's program has exited
+  and is not relaunched, the warning icon and the error for an agent whose
+  harness did not start, and "↑N" while its view is scrolled N rows up. Each
+  note after the name follows ` · `. The right end has, followed by one
+  space, the branch icon and the branch (without its `hypercube/` prefix for
+  a worker), or the folder icon and the directory with the home directory
+  written as `~` for agents without a branch. A row too narrow for the right text drops it,
   keeping a blank column after the left text, and then clips the left text
   at a grapheme cluster. The row is a heavy line (`━`) with a space on each
   side of the text and a column of line at each end.
@@ -282,7 +288,7 @@ time of its host lock), with one leading space and ` | ` between tabs:
 after its number. All tabs share the bar's background: the current workspace's
 text is the bar's foreground and bold, other tabs' text is mixed 40% toward
 the background, and separators are mixed 55% toward the background and not
-bold. A red `●` follows the name while an agent of the
+bold. A red bell follows the name while an agent of the
 workspace waits for a tool approval, until the approval is answered (see
 [harness support](harness-support.md)). It shows as many as fit, whole. A click
 on tab text switches to that workspace, as Ctrl-b and its number do; clicks on
@@ -355,8 +361,9 @@ Ctrl-b s opens the overlay. While it is open, the host lays every pane out
 hidden, so the panes keep their sizes, and `TeamChrome` draws the overlay across the
 whole screen: a title row, a row for each workspace with a state file, most
 recently active first, and the keys in the last row. Each workspace row shows
-its directory, running or stopped, its number of agents and of busy agents,
-and its last activity; the host's own workspace is marked `*`. The list is
+its directory, running or stopped after a play or stop icon, its number of
+agents and of busy agents, and its last activity; the host's own workspace is
+marked with a filled circle. The list is
 read again every second while the overlay is open.
 
 The mux captures input while the overlay is open (see Input). The keys:

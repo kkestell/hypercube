@@ -85,6 +85,8 @@ Code and docs stand alone and do not refer to predecessor implementations.
   actions, launches, closes, and teardown.
 - `src/bar.rs`: the bar of running workspaces in the last row, its prompt
   for a new workspace's path, and its drawing.
+- `src/icons.rs`: the Nerd Font icons the chrome, the bar, and the overlay
+  draw.
 - `src/colors.rs`: the accent colors, and the palette of the header, bar,
   titles, and divider each shades from one.
 - `src/tesseract.rs`: the rotating tesseract drawn beside a lone

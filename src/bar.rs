@@ -12,6 +12,7 @@ use std::time::SystemTime;
 
 use crate::colors::{self, ATTENTION, Palette};
 use crate::host::{self, fit, text_width};
+use crate::icons;
 use crate::mux::{Winsize, now_ms};
 use crate::store;
 
@@ -38,9 +39,13 @@ pub struct Entry {
 }
 
 impl Entry {
-    /// The dot after the name while an agent waits for an approval.
-    fn dot(&self) -> &'static str {
-        if self.attention { " ●" } else { "" }
+    /// The bell after the name while an agent waits for an approval.
+    fn bell(&self) -> String {
+        if self.attention {
+            format!(" {}", icons::ATTENTION)
+        } else {
+            String::new()
+        }
     }
 }
 
@@ -125,10 +130,11 @@ impl Bar {
         }
     }
 
-    /// The width of each tab's text, `0 name` or `0 name ●`.
+    /// The width of each tab's text, `0 name`, followed by the bell while
+    /// an agent there waits.
     fn widths(&self) -> impl Iterator<Item = usize> {
         (self.entries.iter().enumerate())
-            .map(|(i, e)| text_width(&format!("{i} {}{}", e.name, e.dot())))
+            .map(|(i, e)| text_width(&format!("{i} {}{}", e.name, e.bell())))
     }
 
     /// How many tabs fit, whole, in `cols`.
@@ -221,7 +227,7 @@ impl Bar {
             s.push_str(&format!("{i} {}", e.name));
             if e.attention {
                 let (r, g, b) = ATTENTION;
-                s.push_str(&format!("\x1b[38;2;{r};{g};{b}m ●"));
+                s.push_str(&format!("\x1b[38;2;{r};{g};{b}m{}", e.bell()));
             }
         }
         s.push_str(&palette.bar.sgr());
@@ -379,7 +385,7 @@ mod tests {
         b.entries[0].attention = true;
         b.entries[1].attention = true;
         let t = screen(&b, 20);
-        assert_eq!(row(&t), " 0 foo ● | 1 bar ●  ");
+        assert_eq!(row(&t), " 0 foo \u{f0f3} | 1 bar \u{f0f3}  ");
         let point = |x| Point::Active(PointCoordinate { x, y: 1 });
         let fg = |x| match t.grid_ref(point(x)).unwrap().style().unwrap().fg_color {
             StyleColor::Rgb(c) => (c.r, c.g, c.b),
@@ -398,7 +404,7 @@ mod tests {
         assert_eq!(b.tab_at(8, 20), None);
         assert_eq!(b.tab_at(10, 20), None);
         assert_eq!(b.tab_at(11, 20), Some(1));
-        assert_eq!(row(&screen(&b, 17)), " 0 foo ●         ");
+        assert_eq!(row(&screen(&b, 17)), " 0 foo \u{f0f3}         ");
     }
 
     #[test]

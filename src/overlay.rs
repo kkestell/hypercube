@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use crate::colors::Palette;
 use crate::host::{self, fit};
+use crate::icons;
 use crate::mux::Winsize;
 use crate::store;
 
@@ -168,8 +169,16 @@ impl Overlay {
         // Scroll the list to keep the selection in view.
         let first = self.selected.saturating_sub(list.saturating_sub(1));
         for (i, r) in self.rows.iter().enumerate().skip(first).take(list) {
-            let mark = if r.path == self.current { '*' } else { ' ' };
-            let state = if r.running { "running" } else { "stopped" };
+            let mark = if r.path == self.current {
+                icons::CURRENT
+            } else {
+                ' '
+            };
+            let state = if r.running {
+                format!("{} running", icons::RUNNING)
+            } else {
+                format!("{} stopped", icons::STOPPED)
+            };
             let agents = if r.agents == 1 { "agent" } else { "agents" };
             let gap = " ".repeat(width - host::text_width(&r.name));
             let text = format!(
@@ -284,8 +293,8 @@ mod tests {
             lines,
             [
                 " Workspaces",
-                "   ~/src/foo  running  3 agents, 1 busy  2m ago",
-                " * ~/src/bar  stopped  3 agents, 1 busy  2m ago",
+                "   ~/src/foo  \u{f04b} running  3 agents, 1 busy  2m ago",
+                " \u{f111} ~/src/bar  \u{f04d} stopped  3 agents, 1 busy  2m ago",
                 "",
                 "",
                 " ↑↓ move  enter switch  x stop  d detach  esc close",
@@ -306,9 +315,9 @@ mod tests {
         let o = overlay(vec![wide], "foo");
         let (_, lines) = screen(&o, 11, 3);
         // Spacer cells read as blanks.
-        assert_eq!(lines[1], " * 界 界 界 e\u{301}x");
+        assert_eq!(lines[1], " \u{f111} 界 界 界 e\u{301}x");
         let (_, lines) = screen(&o, 8, 3);
-        assert_eq!(lines[1], " * 界 界");
+        assert_eq!(lines[1], " \u{f111} 界 界");
     }
 
     #[test]

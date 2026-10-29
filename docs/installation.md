@@ -10,6 +10,8 @@ Hypercube is a Rust crate built with Cargo. It runs on macOS.
 - Network access for the first build. `make` downloads Zig and checks its
   SHA-256. The Ghostty submodule comes from GitHub, and Cargo fetches
   `libghostty-rs` from GitHub.
+- A Nerd Font in the terminal, such as Fira Code Nerd Font, for the icons in
+  the chrome.
 - The harnesses selected in `config.json` on `PATH`: `claude` for Claude
   Code, `opencode` for OpenCode 2.x. Each harness uses its own configured
   credentials. See
