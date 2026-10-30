@@ -60,11 +60,6 @@ func NewPane(session, team, label, dir string, env map[string]string, argv []str
 	if err != nil {
 		return pane, err
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return pane, err
-	}
-	died := "run-shell -b " + quote(quote(exe)+" exited "+quote(env["HYPERCUBE_STATE"])+" '#{pane_id}' '#{pane_dead_status}'")
 	_, err = run("set-option", "-p", "-t", pane, "@hypercube_id", env["HYPERCUBE_AGENT_ID"], ";",
 		"set-option", "-p", "-t", pane, "@hypercube_label", strings.ReplaceAll(label, "#", "##"), ";",
 		"set-option", "-w", "-t", window, "remain-on-exit", "on", ";",
@@ -80,7 +75,6 @@ func NewPane(session, team, label, dir string, env map[string]string, argv []str
 		"set-option", "-w", "-t", window, "window-status-current-format", "#[fg=green,bold] #I #W"+attention("green")+" #[fg=colour245,nobold]", ";",
 		"set-option", "-w", "-t", window, "window-status-separator", "", ";",
 		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
-		"set-hook", "-w", "-t", window, "pane-died", died, ";",
 		"select-layout", "-t", window, "main-vertical")
 	if err != nil {
 		return pane, err
@@ -309,12 +303,6 @@ func KillWindow(session, team, state string) error {
 	return err
 }
 
-// Restart reuses the pane's original command and launch environment.
-func Restart(pane, id, state string) error {
-	_, err := run("respawn-pane", "-k", "-t", pane, "-e", "HYPERCUBE_AGENT_ID="+id, "-e", "HYPERCUBE_STATE="+state)
-	return err
-}
-
 // FindPane looks up the agent by its live pane marker. A saved pane number can
 // be stale; it must neither close someone else's pane nor leave ours behind.
 func FindPane(session, id, state string) (string, error) {
@@ -350,13 +338,4 @@ func RefreshActivity(path, id string) {
 		markReply(session, a.Target, id, path)
 	}
 	Activity(session, a.Target, id, path, a.Activity, a.Attention)
-}
-
-// Dead guards against a queued pane-died hook arriving after a later respawn.
-func Dead(session, pane, id, state string) bool {
-	if !Owns(session, pane, id, state) {
-		return false
-	}
-	got, err := run("display-message", "-p", "-t", pane, "#{pane_dead}")
-	return err == nil && got == "1"
 }

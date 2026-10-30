@@ -114,8 +114,8 @@ func jsonString(v any) string {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
-// Launch starts a short-lived wrapper in a tmux pane. The wrapper records the
-// pane and current launch state, then replaces itself with the native harness.
+// Launch starts a wrapper in a tmux pane. The wrapper runs the native harness
+// as a child and relaunches it when it exits.
 func Launch(a store.Agent, statePath, prompt string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {

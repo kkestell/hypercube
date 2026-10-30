@@ -8,12 +8,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
@@ -62,9 +61,12 @@ func main() {
 			os.Exit(2)
 		}
 	case len(os.Args) == 3 && os.Args[1] == "agent":
-		err = runAgent(os.Args[2])
-	case len(os.Args) == 5 && os.Args[1] == "exited":
-		err = exited(os.Args[2], os.Args[3], os.Args[4])
+		var code int
+		code, err = runAgent(os.Args[2])
+		if err == nil {
+			// A harness killed by a signal reports -1, which the pane shows as 255.
+			os.Exit(code)
+		}
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
 		err = mcp.Serve(os.Stdin, os.Stdout)
 	case len(os.Args) == 3 && os.Args[1] == "hook":
@@ -447,7 +449,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 				if !missing[a.Team] {
 					continue
 				}
-				a.Target, a.QuickExits, a.Attention = "", 0, false
+				a.Target, a.Attention = "", false
 				if a.Role == store.Lead {
 					a.Branch = branch
 				}
@@ -522,115 +524,79 @@ func windowAction(args []string) error {
 	return errors.New("no matching Hypercube session")
 }
 
-// runAgent replaces the wrapper with the harness. tmux owns its PTY and process
-// lifetime; the pane-died hook handles relaunches using the saved conversation.
-func runAgent(prompt string) error {
+// runAgent runs the harness as a child and relaunches it with its saved
+// conversation until it exits quickly three times in a row.
+func runAgent(prompt string) (int, error) {
 	id, path, pane := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE"), os.Getenv("TMUX_PANE")
 	if id == "" || path == "" || !tmux.Owns(store.Workspace(path), pane, id, path) {
-		return errors.New("agent must run in its own Hypercube pane")
+		return 0, errors.New("agent must run in its own Hypercube pane")
 	}
-	var agent store.Agent
-	err := store.Update(path, func(s *store.State) error {
-		a, err := s.Agent(id)
-		if err != nil {
-			return err
-		}
-		a.Target, a.Launched, a.Attention = pane, time.Now().UnixMilli(), false
-		a.Activity = store.Idle
-		if prompt != "" {
-			a.Activity = store.Busy
-		}
-		agent = *a
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	argv, env, err := harness.Command(agent, path, prompt)
-	if err == nil {
-		var binary string
-		binary, err = exec.LookPath(argv[0])
-		if err == nil {
-			tmux.Activity(store.Workspace(path), pane, id, path, agent.Activity, false)
-			var inherited []string
-			for _, item := range os.Environ() {
-				key, _, _ := strings.Cut(item, "=")
-				if _, replaced := env[key]; !replaced {
-					inherited = append(inherited, item)
-				}
+	// Ctrl-C reaches the harness through the process group. Catch it here
+	// rather than ignore it: an ignored signal stays ignored in the child.
+	signal.Notify(make(chan os.Signal, 1), os.Interrupt)
+	quickExits := 0
+	for {
+		var agent store.Agent
+		err := store.Update(path, func(s *store.State) error {
+			a, err := s.Agent(id)
+			if err != nil {
+				return err
 			}
-			for key, value := range env {
-				inherited = append(inherited, key+"="+value)
-			}
-			err = syscall.Exec(binary, argv, inherited)
-		}
-	}
-	_ = store.Update(path, func(s *store.State) error {
-		a, e := s.Agent(id)
-		if e == nil {
-			a.Activity = store.Exited
-		}
-		return e
-	})
-	return err
-}
-
-func exited(path, pane, status string) error {
-	if _, err := strconv.Atoi(status); err != nil {
-		return err
-	}
-	lock, err := store.LockFile(path + ".session.lock")
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if !tmux.WorkspaceSession(store.Workspace(path), path) {
-		return nil
-	}
-	var agent store.Agent
-	restart := false
-	err = store.Update(path, func(s *store.State) error {
-		for i := range s.Agents {
-			a := &s.Agents[i]
-			if a.Target != pane || !tmux.Dead(store.Workspace(path), pane, a.ID, path) {
-				continue
-			}
-			if a.Activity == store.Exited {
-				return nil
-			}
-			a.QuickExits++
-			if time.Since(time.UnixMilli(a.Launched)) >= 10*time.Second {
-				a.QuickExits = 0
-			}
-			a.Attention = false
-			if a.QuickExits >= 3 {
-				a.Activity = store.Exited
-			} else {
-				restart = true
+			a.Target, a.Attention = pane, false
+			a.Activity = store.Idle
+			if prompt != "" {
+				a.Activity = store.Busy
 			}
 			agent = *a
 			return nil
+		})
+		if err != nil {
+			return 0, err
 		}
-		return nil
-	})
-	if err != nil {
+		argv, env, err := harness.Command(agent, path, prompt)
+		if err != nil {
+			markExited(path, id)
+			return 0, err
+		}
+		tmux.Activity(store.Workspace(path), pane, id, path, agent.Activity, false)
+		cmd := exec.Command(argv[0], argv[1:]...)
+		for _, item := range os.Environ() {
+			key, _, _ := strings.Cut(item, "=")
+			if _, replaced := env[key]; !replaced {
+				cmd.Env = append(cmd.Env, item)
+			}
+		}
+		for key, value := range env {
+			cmd.Env = append(cmd.Env, key+"="+value)
+		}
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		started := time.Now()
+		err = cmd.Run()
+		var exit *exec.ExitError
+		if err != nil && !errors.As(err, &exit) {
+			markExited(path, id)
+			return 0, err
+		}
+		quickExits++
+		if time.Since(started) >= 10*time.Second {
+			quickExits = 0
+		}
+		if quickExits >= 3 {
+			markExited(path, id)
+			tmux.Activity(store.Workspace(path), pane, id, path, store.Exited, false)
+			return cmd.ProcessState.ExitCode(), nil
+		}
+	}
+}
+
+func markExited(path, id string) {
+	_ = store.Update(path, func(s *store.State) error {
+		a, err := s.Agent(id)
+		if err == nil {
+			a.Activity, a.Attention = store.Exited, false
+		}
 		return err
-	}
-	if restart {
-		if err := tmux.Restart(pane, agent.ID, path); err != nil {
-			_ = store.Update(path, func(s *store.State) error {
-				a, e := s.Agent(agent.ID)
-				if e == nil {
-					a.Activity = store.Exited
-				}
-				return e
-			})
-			return err
-		}
-	} else if agent.ID != "" {
-		tmux.Activity(store.Workspace(path), pane, agent.ID, path, store.Exited, false)
-	}
-	return nil
+	})
 }
 
 func running() error {

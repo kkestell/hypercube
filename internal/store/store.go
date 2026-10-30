@@ -24,22 +24,20 @@ const (
 )
 
 type Agent struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Harness    string `json:"harness"`
-	Model      string `json:"model"`
-	Effort     string `json:"effort"`
-	Dir        string `json:"dir"`
-	Branch     string `json:"branch"`
-	SessionID  string `json:"session_id,omitempty"`
-	Target     string `json:"target,omitempty"`
-	Activity   string `json:"activity"`
-	Team       string `json:"team"`
-	Waiter     uint64 `json:"waiter,omitempty"`
-	Attention  bool   `json:"attention,omitempty"`
-	Launched   int64  `json:"launched,omitempty"`
-	QuickExits int    `json:"quick_exits,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	Harness   string `json:"harness"`
+	Model     string `json:"model"`
+	Effort    string `json:"effort"`
+	Dir       string `json:"dir"`
+	Branch    string `json:"branch"`
+	SessionID string `json:"session_id,omitempty"`
+	Target    string `json:"target,omitempty"`
+	Activity  string `json:"activity"`
+	Team      string `json:"team"`
+	Waiter    uint64 `json:"waiter,omitempty"`
+	Attention bool   `json:"attention,omitempty"`
 }
 
 type Message struct {

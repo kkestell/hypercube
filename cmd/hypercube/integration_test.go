@@ -406,6 +406,27 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if state().Agents[1].Target != worker.Target || !strings.Contains(logOf(worker.ID), worker.ID+"-session") {
 		t.Fatal("relaunch lost the pane or session")
 	}
+	// Ctrl-C reaches the harness but not the wrapper, and a third quick exit in
+	// a row ends the agent.
+	call(lead.ID, "create_agent", map[string]string{"name": "flaky", "profile": "worker"})
+	until("flaky worker", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
+	flaky := state().Agents[4]
+	launches := func(n int) func() bool {
+		return func() bool { return strings.Count(logOf(flaky.ID), `"kind":"launch"`) == n }
+	}
+	tmux("send-keys", "-t", flaky.Target, "C-c")
+	until("relaunch after Ctrl-C", launches(2))
+	tmux("send-keys", "-t", flaky.Target, "exit", "Enter")
+	until("relaunch after exit", launches(3))
+	tmux("send-keys", "-t", flaky.Target, "exit", "Enter")
+	until("flaky agent ended", func() bool { return state().Agents[4].Activity == store.Exited })
+	until("dead pane", func() bool {
+		return strings.TrimSpace(tmux("display-message", "-p", "-t", flaky.Target, "#{pane_dead} #{pane_dead_status}")) == "1 0"
+	})
+	if !launches(3)() {
+		t.Fatal("ended agent was relaunched")
+	}
+	call(lead.ID, "remove_agent", map[string]string{"name": flaky.Name})
 	// A stale target in another team's window must not close its worker.
 	stranger := otherWorker.Target
 	if err := store.Update(path, func(s *store.State) error { s.Agents[1].Target = stranger; return nil }); err != nil {
