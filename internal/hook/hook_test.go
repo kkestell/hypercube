@@ -33,7 +33,7 @@ func TestDelivery(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker}}
+		s.Agents = []store.Agent{{ID: "a", Team: store.DefaultTeam, Name: "lead", Role: store.Lead}, {ID: "b", Team: store.DefaultTeam, Name: "w1", Role: store.Worker}}
 		return nil
 	})
 	queue := func(text string) {
@@ -83,7 +83,7 @@ func TestPostToolUseDelivers(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker, Activity: store.Busy}}
+		s.Agents = []store.Agent{{ID: "a", Team: store.DefaultTeam, Name: "lead", Role: store.Lead}, {ID: "b", Team: store.DefaultTeam, Name: "w1", Role: store.Worker, Activity: store.Busy}}
 		s.Messages = []store.Message{{From: "a", To: "b", Text: "mid-turn"}, {From: "a", To: "a", Text: "other"}}
 		return nil
 	})
@@ -108,7 +108,7 @@ func TestFailedResponseKeepsMessages(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker}}
+		s.Agents = []store.Agent{{ID: "a", Team: store.DefaultTeam, Name: "lead", Role: store.Lead}, {ID: "b", Team: store.DefaultTeam, Name: "w1", Role: store.Worker}}
 		s.Messages = []store.Message{{From: "a", To: "b", Text: "hello"}}
 		return nil
 	})
@@ -125,7 +125,7 @@ func TestNativeSubagentsAndTurnFailures(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "w")
 	if err := store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "o", Name: "lead", Role: store.Lead}, {ID: "w", Name: "worker", Role: store.Worker, Activity: store.Busy, SessionID: "main"}}
+		s.Agents = []store.Agent{{ID: "o", Team: store.DefaultTeam, Name: "lead", Role: store.Lead}, {ID: "w", Team: store.DefaultTeam, Name: "worker", Role: store.Worker, Activity: store.Busy, SessionID: "main"}}
 		s.Messages = []store.Message{{From: "o", To: "w", Text: "main only"}}
 		return nil
 	}); err != nil {
@@ -167,8 +167,8 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 	t.Setenv("HYPERCUBE_AGENT_ID", "other-worker")
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = []store.Agent{
-			{ID: "o", Name: "lead", Role: store.Lead},
-			{ID: "w", Name: "worker", Role: store.Worker},
+			{ID: "o", Team: store.DefaultTeam, Name: "lead", Role: store.Lead},
+			{ID: "w", Team: store.DefaultTeam, Name: "worker", Role: store.Worker},
 			{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other"},
 			{ID: "other-worker", Name: "worker", Role: store.Worker, Team: "other"},
 		}

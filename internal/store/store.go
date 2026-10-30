@@ -96,12 +96,6 @@ func Load(path string) (State, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return s, fmt.Errorf("%s: %w", path, err)
 	}
-	// Agents saved before sessions existed belong to the default session.
-	for i := range s.Agents {
-		if s.Agents[i].Team == "" {
-			s.Agents[i].Team = DefaultTeam
-		}
-	}
 	return s, nil
 }
 

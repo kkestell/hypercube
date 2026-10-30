@@ -21,7 +21,7 @@ func TestWaiterReplacementAndDelivery(t *testing.T) {
 		}
 	}
 	update(func(s *store.State) {
-		s.Agents = []store.Agent{{ID: "o", Name: "lead"}, {ID: "w", Name: "worker", Activity: store.Busy}}
+		s.Agents = []store.Agent{{ID: "o", Team: store.DefaultTeam, Name: "lead"}, {ID: "w", Team: store.DefaultTeam, Name: "worker", Activity: store.Busy}}
 		s.Messages = []store.Message{{From: "o", To: "w", Text: "first"}, {From: "w", To: "o", Text: "other"}, {From: "o", To: "w", Text: "second"}}
 	})
 	done := []chan bool{make(chan bool, 1), make(chan bool, 1)}
@@ -79,7 +79,7 @@ func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("closed") 
 func TestSubagentsAndFailedWritesKeepMessages(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "w", Activity: store.Idle}}
+		s.Agents = []store.Agent{{ID: "w", Team: store.DefaultTeam, Activity: store.Idle}}
 		s.Messages = []store.Message{{From: "user", To: "w", Text: "preserved"}}
 		return nil
 	}); err != nil {

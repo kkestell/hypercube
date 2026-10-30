@@ -60,9 +60,9 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {
 		s.NoGit = noGit
-		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Dir: leadDir}}
+		s.Agents = []store.Agent{{ID: "a", Team: store.DefaultTeam, Name: "lead", Role: store.Lead, Dir: leadDir}}
 		if workerDir != "" {
-			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir, Target: "p1-0000"})
+			s.Agents = append(s.Agents, store.Agent{ID: "b", Team: store.DefaultTeam, Name: "w1", Role: store.Worker, Dir: workerDir, Target: "p1-0000"})
 		}
 		return nil
 	})
