@@ -34,6 +34,26 @@ type Reply struct {
 	Window  string `json:"window,omitempty"`
 	Pane    string `json:"pane,omitempty"`
 	Text    string `json:"text,omitempty"`
+
+	Sessions []Session `json:"sessions,omitempty"`
+}
+
+// Session, Window, and Pane are the tree a list reply returns, in creation
+// order. A pane's status is 0 while it is alive.
+type Session struct {
+	ID      string   `json:"id"`
+	Windows []Window `json:"windows"`
+}
+
+type Window struct {
+	ID    string `json:"id"`
+	Panes []Pane `json:"panes"`
+}
+
+type Pane struct {
+	ID     string `json:"id"`
+	Alive  bool   `json:"alive"`
+	Status int    `json:"status"`
 }
 
 // Output is one line of an attached client's stream: a frame to write to the

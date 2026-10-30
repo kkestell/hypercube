@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 	"syscall"
@@ -142,6 +143,39 @@ func waitCapture(t *testing.T, c *client.Conn, pane string, want ...string) stri
 	return ""
 }
 
+// waitExited polls list until the pane has exited and returns its status.
+func waitExited(t *testing.T, c *client.Conn, pane string) int {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		reply, err := c.Call(client.Request{Type: "list"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range reply.Sessions {
+			for _, w := range s.Windows {
+				for _, p := range w.Panes {
+					if p.ID == pane && !p.Alive {
+						return p.Status
+					}
+				}
+			}
+		}
+	}
+	t.Fatalf("pane %s never exited", pane)
+	return 0
+}
+
+func spawnPane(t *testing.T, c *client.Conn, req client.Request) client.Reply {
+	t.Helper()
+	req.Type = "spawn"
+	req.Env = []string{"PATH=/usr/bin:/bin"}
+	reply, err := c.Call(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reply
+}
+
 func TestSpawnCommandStartsServer(t *testing.T) {
 	newState(t)
 	out := runMux(t, "spawn", "sh", "-c", "echo ready; sleep 60")
@@ -245,12 +279,103 @@ func TestAttachKeepsPaletteColors(t *testing.T) {
 	}
 }
 
+func TestExitStatus(t *testing.T) {
+	c := startServer(t)
+	exits := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "echo bye; exit 3"}})
+	killed := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "kill -TERM $$"}})
+	running := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+
+	if got := waitExited(t, c, exits.Pane); got != 3 {
+		t.Errorf("exit status = %d, want 3", got)
+	}
+	waitCapture(t, c, exits.Pane, "bye")
+	if got := waitExited(t, c, killed.Pane); got != 143 {
+		t.Errorf("status after SIGTERM = %d, want 143", got)
+	}
+	list, err := c.Call(client.Request{Type: "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range list.Sessions {
+		for _, w := range s.Windows {
+			for _, p := range w.Panes {
+				if p.ID == running.Pane && !p.Alive {
+					t.Error("sleep 60 is not alive")
+				}
+			}
+		}
+	}
+}
+
+func TestSpawnIntoSessionAndWindow(t *testing.T) {
+	c := startServer(t)
+	sleep := client.Request{Argv: []string{"sleep", "60"}}
+	first := spawnPane(t, c, sleep)
+	sleep.Window = first.Window
+	second := spawnPane(t, c, sleep)
+	sleep.Window = ""
+	sleep.Session = first.Session
+	third := spawnPane(t, c, sleep)
+
+	if second.Session != first.Session || second.Window != first.Window || second.Pane == first.Pane {
+		t.Errorf("pane into a window: %+v after %+v", second, first)
+	}
+	if third.Session != first.Session || third.Window == first.Window {
+		t.Errorf("window into a session: %+v after %+v", third, first)
+	}
+	list, err := c.Call(client.Request{Type: "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []client.Session{{ID: first.Session, Windows: []client.Window{
+		{ID: first.Window, Panes: []client.Pane{{ID: first.Pane, Alive: true}, {ID: second.Pane, Alive: true}}},
+		{ID: third.Window, Panes: []client.Pane{{ID: third.Pane, Alive: true}}},
+	}}}
+	if !reflect.DeepEqual(list.Sessions, want) {
+		t.Errorf("list = %+v, want %+v", list.Sessions, want)
+	}
+}
+
+func TestLsCommand(t *testing.T) {
+	newState(t)
+	dir, err := filepath.EvalSymlinks(t.TempDir()) // /var is a symlink on macOS
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := strings.Fields(runMux(t, "spawn", "sleep", "60"))
+	second := strings.Fields(runMux(t, "spawn", "-w", first[1], "-c", dir, "sh", "-c", "pwd; exit 3"))
+	if second[0] != first[0] || second[1] != first[1] {
+		t.Fatalf("second spawn printed %v after %v", second, first)
+	}
+	waitCapture(t, dial(t), second[2], dir)
+
+	want := strings.Join([]string{
+		first[0] + " " + first[1] + " " + first[2] + " running",
+		second[0] + " " + second[1] + " " + second[2] + " exited 3",
+	}, "\n") + "\n"
+	var out string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if out = runMux(t, "ls"); out == want {
+			return
+		}
+	}
+	t.Fatalf("mux ls printed %q, want %q", out, want)
+}
+
 func TestErrors(t *testing.T) {
 	c := startServer(t)
+	a := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+	b := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+	sleep := []string{"sleep", "60"}
+	env := []string{"PATH=/usr/bin:/bin"}
+	// Each spawn has a valid command and PATH, so only its IDs can fail it.
 	for name, req := range map[string]client.Request{
-		"capture of an unknown pane": {Type: "capture", Pane: "p99"},
-		"spawn with no command":      {Type: "spawn", Env: os.Environ()},
-		"unknown request type":       {Type: "bogus"},
+		"capture of an unknown pane":          {Type: "capture", Pane: "p99"},
+		"spawn with no command":               {Type: "spawn", Env: os.Environ()},
+		"unknown request type":                {Type: "bogus"},
+		"spawn into an unknown session":       {Type: "spawn", Session: "s99", Argv: sleep, Env: env},
+		"spawn into an unknown window":        {Type: "spawn", Window: "w99", Argv: sleep, Env: env},
+		"spawn into another session's window": {Type: "spawn", Session: a.Session, Window: b.Window, Argv: sleep, Env: env},
 	} {
 		if _, err := c.Call(req); err == nil {
 			t.Errorf("%s: no error", name)

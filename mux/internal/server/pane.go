@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/creack/pty"
 	"go.mitchellh.com/libghostty"
@@ -18,13 +19,16 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards term and rs, which are not safe for concurrent use.
+// guards alive, status, term, and rs; the terminal and render state are not
+// safe for concurrent use.
 type pane struct {
-	id   string
-	cmd  *exec.Cmd
-	ptmx *os.File
-	term *libghostty.Terminal
-	rs   *libghostty.RenderState
+	id     string
+	cmd    *exec.Cmd
+	ptmx   *os.File
+	term   *libghostty.Terminal
+	rs     *libghostty.RenderState
+	alive  bool
+	status int // the exit status once alive is false
 }
 
 // startPane runs argv with exactly env and starts a goroutine that feeds the
@@ -43,7 +47,7 @@ func (s *Server) startPane(id, dir string, argv, env []string) (*pane, error) {
 		return nil, err
 	}
 
-	p := &pane{id: id, cmd: cmd, ptmx: ptmx}
+	p := &pane{id: id, cmd: cmd, ptmx: ptmx, alive: true}
 	// The callback runs with the server's mutex held. A full PTY input buffer
 	// could block it; that is unlikely.
 	p.term, err = libghostty.NewTerminal(
@@ -77,11 +81,27 @@ func (s *Server) readPane(p *pane) {
 			s.mu.Unlock()
 		}
 		if err != nil {
-			// The process exited. Task 2 records its status.
+			// The read fails once every holder of the PTY's terminal side has
+			// closed it. A background child that keeps it open delays the exit
+			// until that child ends; that is unlikely.
 			p.cmd.Wait()
+			s.mu.Lock()
+			p.alive = false
+			p.status = exitStatus(p.cmd.ProcessState)
+			s.mu.Unlock()
 			return
 		}
 	}
+}
+
+// exitStatus returns the process's exit code, or 128 plus the signal number if
+// a signal killed it.
+func exitStatus(state *os.ProcessState) int {
+	ws := state.Sys().(syscall.WaitStatus)
+	if ws.Signaled() {
+		return 128 + int(ws.Signal())
+	}
+	return ws.ExitStatus()
 }
 
 // resize must be called with the server's mutex held.

@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -23,13 +24,15 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mux spawn [command...] | mux attach <session>")
+		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux attach <session>")
 	}
 	switch args[0] {
 	case "server":
 		return server.New().ListenAndServe(client.SocketPath())
 	case "spawn":
 		return spawn(args[1:])
+	case "ls":
+		return ls()
 	case "attach":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: mux attach <session>")
@@ -39,24 +42,58 @@ func run(args []string) error {
 	return fmt.Errorf("unknown command %q", args[0])
 }
 
-func spawn(argv []string) error {
-	if len(argv) == 0 {
-		argv = []string{os.Getenv("SHELL")}
-	}
+func spawn(args []string) error {
 	dir, err := os.Getwd()
 	if err != nil {
 		return err
+	}
+	// Parsing stops at the first non-option, so the command keeps its own flags.
+	flags := flag.NewFlagSet("spawn", flag.ContinueOnError)
+	session := flags.String("s", "", "add a window to this session")
+	window := flags.String("w", "", "add a pane to this window")
+	flags.StringVar(&dir, "c", dir, "run the command in this directory")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	argv := flags.Args()
+	if len(argv) == 0 {
+		argv = []string{os.Getenv("SHELL")}
 	}
 	c, err := connect()
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-	reply, err := c.Call(client.Request{Type: "spawn", Dir: dir, Argv: argv, Env: os.Environ()})
+	reply, err := c.Call(client.Request{Type: "spawn", Session: *session, Window: *window, Dir: dir, Argv: argv, Env: os.Environ()})
 	if err != nil {
 		return err
 	}
 	fmt.Println(strings.Join([]string{reply.Session, reply.Window, reply.Pane}, " "))
+	return nil
+}
+
+// ls prints one line per pane.
+func ls() error {
+	c, err := connect()
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	reply, err := c.Call(client.Request{Type: "list"})
+	if err != nil {
+		return err
+	}
+	for _, s := range reply.Sessions {
+		for _, w := range s.Windows {
+			for _, p := range w.Panes {
+				state := "running"
+				if !p.Alive {
+					state = fmt.Sprintf("exited %d", p.Status)
+				}
+				fmt.Println(s.ID, w.ID, p.ID, state)
+			}
+		}
+	}
 	return nil
 }
 
