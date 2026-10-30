@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
@@ -33,17 +34,27 @@ type window struct {
 	marks
 }
 
-// marks is what a client sets on a session, window, or pane. The server's
+// marks is the label a client set on a session, window, or pane. The server's
 // mutex guards it.
 type marks struct {
-	attention bool
-	spans     []client.Span // the label a client set; empty shows the default
+	spans []client.Span // empty shows the default
+}
+
+// attention reports whether any pane of w is marked.
+func (w *window) attention() bool {
+	return slices.ContainsFunc(w.panes, func(p *pane) bool { return p.attention })
+}
+
+// attention reports whether any pane of sess is marked.
+func (sess *session) attention() bool {
+	return slices.ContainsFunc(sess.windows, (*window).attention)
 }
 
 // Server guards the session tree and every terminal with one mutex.
 type Server struct {
 	mu       sync.Mutex
 	counters map[byte]int // one per kind of ID: 's', 'w', 'p'
+	tag      string       // the random part of every ID, so an ID from an earlier server names nothing
 	sessions []*session
 	attached map[*attachment]struct{}
 
@@ -55,6 +66,7 @@ type Server struct {
 func New() *Server {
 	return &Server{
 		counters: map[byte]int{},
+		tag:      fmt.Sprintf("%04x", rand.IntN(1<<16)),
 		attached: map[*attachment]struct{}{},
 		exited:   make(chan struct{}),
 	}
@@ -141,6 +153,8 @@ func (s *Server) handle(req client.Request) client.Reply {
 		err = s.collapse(req)
 	case "label":
 		err = s.label(req)
+	case "select":
+		err = s.selectTarget(req)
 	default:
 		err = fmt.Errorf("unknown request type %q", req.Type)
 	}
@@ -157,10 +171,11 @@ func (s *Server) empty() bool {
 	return len(s.sessions) == 0
 }
 
-// nextID must be called with the mutex held.
+// nextID must be called with the mutex held. Two servers that draw the same tag
+// and counter give the same ID, a 1 in 65,536 chance; that is unlikely.
 func (s *Server) nextID(kind byte) string {
 	s.counters[kind]++
-	return fmt.Sprintf("%c%d", kind, s.counters[kind])
+	return fmt.Sprintf("%c%d-%s", kind, s.counters[kind], s.tag)
 }
 
 // spawn starts a pane in a new session, or in a new window of req.Session, or in
@@ -335,20 +350,59 @@ func (w *window) setCollapsed(p *pane, on bool) {
 	}
 }
 
-// attention marks the one pane, window, or session req names as needing
-// attention, or clears the mark when req.On is false.
+// attention marks the pane req names as needing attention, or clears the mark
+// when req.On is false. A window or session shows the bell while any of its
+// panes is marked.
 func (s *Server) attention(req client.Request) error {
+	if req.Pane == "" || req.Window != "" || req.Session != "" {
+		return fmt.Errorf("attention needs a pane")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	m, err := s.marks(req)
-	if err != nil {
-		return err
+	p := s.findPane(req.Pane)
+	if p == nil {
+		return fmt.Errorf("unknown pane %q", req.Pane)
 	}
-	if req.On && !m.attention {
+	if req.On && !p.attention {
 		s.ring()
 	}
-	m.attention = req.On
+	p.attention = req.On
 	s.signalAll() // every status bar lists the sessions
+	return nil
+}
+
+// selectTarget makes the window or pane req names the one its session shows
+// and, for a pane, the one its window types into. A collapsed pane opens first,
+// as a click on its title does. It does not move an attached client to another
+// session.
+func (s *Server) selectTarget(req client.Request) error {
+	if req.Session != "" || (req.Window == "") == (req.Pane == "") {
+		return fmt.Errorf("select needs exactly one of window or pane")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var sess *session
+	var w *window
+	if req.Window != "" {
+		if sess, w = s.findWindow(req.Window); w == nil {
+			return fmt.Errorf("unknown window %q", req.Window)
+		}
+	} else {
+		for _, candidate := range s.sessions {
+			for _, cw := range candidate.windows {
+				if i := slices.IndexFunc(cw.panes, func(p *pane) bool { return p.id == req.Pane }); i >= 0 {
+					sess, w = candidate, cw
+					w.panes[i].collapsed = false
+					w.active = w.panes[i]
+				}
+			}
+		}
+		if w == nil {
+			return fmt.Errorf("unknown pane %q", req.Pane)
+		}
+	}
+	sess.active = w
+	s.layoutSession(sess)
 	return nil
 }
 
@@ -407,7 +461,7 @@ func (s *Server) respawn(req client.Request) error {
 	if err != nil {
 		return err
 	}
-	p.collapsed, p.marks = old.collapsed, old.marks
+	p.collapsed, p.attention, p.marks = old.collapsed, old.attention, old.marks
 	for _, sess := range s.sessions {
 		for _, w := range sess.windows {
 			if i := slices.Index(w.panes, old); i >= 0 {

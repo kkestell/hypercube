@@ -88,6 +88,7 @@ requests, so the mux works by hand with plain shells and no Hypercube:
 | `mux kill <id>` | `kill` |
 | `mux attention <pane> on\|off` | `attention` |
 | `mux collapse <pane> on\|off` | `collapse` |
+| `mux select <id>` | `select` |
 | `mux label <id> [text...]` | `label`, with the text as one span; no text restores the default |
 | `mux ls` | `list` |
 | `mux attach [session]` | attach |

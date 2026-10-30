@@ -5,11 +5,18 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
+	"syscall"
+	"time"
 )
+
+// ErrNoServer is what Dial returns when no server is running.
+var ErrNoServer = errors.New("no server is running")
 
 // Request is one flat struct for every request type. Each field is omitted
 // when empty.
@@ -89,12 +96,47 @@ type Conn struct {
 	enc  *json.Encoder
 }
 
+// Dial connects to the server at path. It wraps ErrNoServer when there is no
+// socket, or nothing listens on one a dead server left.
 func Dial(path string) (*Conn, error) {
 	c, err := net.Dial("unix", path)
+	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
+		return nil, fmt.Errorf("%w: %w", ErrNoServer, err)
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Conn{conn: c, r: bufio.NewReader(c), enc: json.NewEncoder(c)}, nil
+}
+
+// DialOrStart dials the server on SocketPath, starting it first with
+// "<mux> server" if none is running. Two callers starting a server at the same
+// moment is unlikely; the loser's server exits with an error and its dial
+// reaches the winner.
+func DialOrStart(mux string) (*Conn, error) {
+	path := SocketPath()
+	c, err := Dial(path)
+	if !errors.Is(err, ErrNoServer) {
+		return c, err
+	}
+	cmd := exec.Command(mux, "server")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	cmd.Process.Release()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		c, err := Dial(path)
+		if err == nil {
+			return c, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("server did not start: %w", err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (c *Conn) Close() error { return c.conn.Close() }

@@ -19,7 +19,7 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards alive, status, killed, cols, rows, collapsed, marks, progress,
+// guards alive, status, killed, cols, rows, collapsed, attention, marks, progress,
 // term, and rs; the terminal and
 // render state are not safe for concurrent use.
 type pane struct {
@@ -38,6 +38,7 @@ type pane struct {
 	// collapsed shows only a stacked pane's title row. The main pane is never
 	// collapsed.
 	collapsed bool
+	attention bool // a client marked the pane as needing attention
 	marks
 	progress libghostty.TerminalProgressReport // the last OSC 9;4 report
 }

@@ -14,16 +14,26 @@ import (
 // server draws every frame and puts the terminal in the focused pane's keyboard
 // mode; this only passes frames, input, and size changes along.
 func attach(session string) error {
+	var c *client.Conn
+	var err error
+	if session == "" {
+		var exe string
+		if exe, err = os.Executable(); err != nil {
+			return err
+		}
+		c, err = client.DialOrStart(exe)
+	} else {
+		c, err = client.Dial(client.SocketPath())
+	}
+	if err != nil {
+		return err
+	}
+	defer c.Close()
 	fd := int(os.Stdin.Fd())
 	cols, rows, err := term.GetSize(fd)
 	if err != nil {
 		return err
 	}
-	c, err := connect()
-	if err != nil {
-		return err
-	}
-	defer c.Close()
 	if session == "" {
 		if session, err = firstSession(c); err != nil {
 			return err

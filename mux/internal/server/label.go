@@ -123,7 +123,7 @@ func sessionsAt(cols int, labels []string) int {
 func sessionLabels(sessions []*session) []string {
 	var labels []string
 	for _, sess := range sessions {
-		labels = append(labels, bell(sess.attention)+sess.label())
+		labels = append(labels, bell(sess.attention())+sess.label())
 	}
 	return labels
 }
@@ -133,7 +133,7 @@ func sessionLabels(sessions []*session) []string {
 func windowLabels(sess *session) []string {
 	var labels []string
 	for i, w := range sess.windows {
-		labels = append(labels, fmt.Sprintf("%d %s%s", i, bell(w.attention), w.label()))
+		labels = append(labels, fmt.Sprintf("%d %s%s", i, bell(w.attention()), w.label()))
 	}
 	return labels
 }

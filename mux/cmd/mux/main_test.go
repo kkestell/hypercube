@@ -93,6 +93,17 @@ func runMux(t *testing.T, args ...string) string {
 	return string(out)
 }
 
+// runMuxFails runs the mux command line, fails the test if it succeeds, and
+// returns its output.
+func runMuxFails(t *testing.T, args ...string) string {
+	t.Helper()
+	out, err := exec.Command(muxBin, args...).CombinedOutput()
+	if err == nil {
+		t.Fatalf("mux %v succeeded:\n%s", args, out)
+	}
+	return string(out)
+}
+
 // dial connects to the server. A hung test closes the connection instead of
 // blocking.
 func dial(t *testing.T) *client.Conn {
@@ -282,7 +293,7 @@ func alive(id string) client.Pane { return client.Pane{ID: id, Alive: true} }
 func TestSpawnCommandStartsServer(t *testing.T) {
 	newState(t)
 	out := runMux(t, "spawn", "sh", "-c", "echo ready; sleep 60")
-	if !regexp.MustCompile(`^s\d+ w\d+ p\d+\n$`).MatchString(out) {
+	if !regexp.MustCompile(`^s\d+-[0-9a-f]{4} w\d+-[0-9a-f]{4} p\d+-[0-9a-f]{4}\n$`).MatchString(out) {
 		t.Fatalf("spawn printed %q", out)
 	}
 	if _, err := os.Stat(client.SocketPath()); err != nil {
@@ -474,8 +485,8 @@ func TestCursorAndOffsets(t *testing.T) {
 }
 
 // waitFrame reads frames until one contains every want, failing if the stream
-// ends first.
-func waitFrame(t *testing.T, a *client.Conn, want ...string) {
+// ends first. It returns that frame.
+func waitFrame(t *testing.T, a *client.Conn, want ...string) []byte {
 	t.Helper()
 	for {
 		out, err := a.ReadOutput()
@@ -487,7 +498,7 @@ func waitFrame(t *testing.T, a *client.Conn, want ...string) {
 			found = found && bytes.Contains(out.Frame, []byte(w))
 		}
 		if found {
-			return
+			return out.Frame
 		}
 	}
 }
@@ -727,7 +738,8 @@ func TestKillEndsAttach(t *testing.T) {
 
 func TestKillCommandStopsServer(t *testing.T) {
 	newState(t)
-	session := strings.Fields(runMux(t, "spawn", "sleep", "60"))[0]
+	ids := strings.Fields(runMux(t, "spawn", "sleep", "60"))
+	session := ids[0]
 	pid, err := serverPID(client.SocketPath())
 	if err != nil {
 		t.Fatal(err)
@@ -741,8 +753,29 @@ func TestKillCommandStopsServer(t *testing.T) {
 	}
 	waitGone(t, pid)
 
-	if out := runMux(t, "spawn", "sleep", "60"); out != "s1 w1 p1\n" {
-		t.Errorf("spawn after the server exited printed %q, want a new server's s1 w1 p1", out)
+	runMux(t, "spawn", "sleep", "60")
+	if out := runMuxFails(t, "kill", ids[2]); !strings.Contains(out, "unknown") {
+		t.Errorf("kill of the first server's pane printed %q, want unknown", out)
+	}
+}
+
+func TestNoServer(t *testing.T) {
+	newState(t)
+	for _, args := range [][]string{
+		{"ls"},
+		{"kill", "p1-0000"},
+		{"label", "p1-0000", "text"},
+		{"attention", "p1-0000", "on"},
+		{"collapse", "p1-0000", "on"},
+		{"select", "p1-0000"},
+		{"attach", "s1-0000"},
+	} {
+		if out := runMuxFails(t, args...); !strings.Contains(out, "no server is running") {
+			t.Errorf("mux %v printed %q, want no server is running", args, out)
+		}
+	}
+	if _, err := os.Stat(client.SocketPath()); !os.IsNotExist(err) {
+		t.Errorf("socket after commands that only dial: %v", err)
 	}
 }
 
@@ -820,6 +853,12 @@ func TestErrors(t *testing.T) {
 		"kill of an unknown pane":             {Type: "kill", Pane: "p99"},
 		"kill of an unknown window":           {Type: "kill", Window: "w99"},
 		"kill of an unknown session":          {Type: "kill", Session: "s99"},
+		"attention with a window":             {Type: "attention", Window: a.Window, On: true},
+		"attention with a session":            {Type: "attention", Session: a.Session, On: true},
+		"select with a session":               {Type: "select", Session: a.Session},
+		"select with no target":               {Type: "select"},
+		"select with a window and a pane":     {Type: "select", Window: a.Window, Pane: a.Pane},
+		"select of an unknown pane":           {Type: "select", Pane: "p99"},
 		"respawn with no command":             {Type: "respawn", Pane: a.Pane, Env: env},
 		"respawn of an unknown pane":          {Type: "respawn", Pane: "p99", Argv: sleep, Env: env},
 		"respawn with a command not in PATH":  {Type: "respawn", Pane: a.Pane, Argv: []string{"no-such-command"}, Env: env},
@@ -1072,29 +1111,69 @@ func TestClickCollapses(t *testing.T) {
 
 func TestAttention(t *testing.T) {
 	c := startServer(t)
-	pane := spawnPane(t, c, titled("one"))
-	a := attachAt(t, pane.Session, 100, 30)
+	one := spawnPane(t, c, titled("one"))
+	two := titled("two")
+	two.Window = one.Window
+	second := spawnPane(t, c, two)
+	a := attachAt(t, one.Session, 100, 30)
 	waitFrame(t, a, "shown-one")
 
-	for _, req := range []client.Request{{Session: pane.Session}, {Window: pane.Window}, {Pane: pane.Pane}} {
-		req.Type, req.On = "attention", true
-		if _, err := c.Call(req); err != nil {
+	mark := func(pane string, on bool) {
+		t.Helper()
+		if _, err := c.Call(client.Request{Type: "attention", Pane: pane, On: on}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	waitFrame(t, a,
-		"\x1b[30;94H\x1b[7m \U000F009A one \x1b[0m",
-		"\x1b[30;1H\x1b[7m 0 \U000F009A one \x1b[0m",
-		"\x1b[1;1H─\x1b[7m \U000F009A one \x1b[0m─")
+	const (
+		windowBell  = "\x1b[30;1H\x1b[7m 0 \U000F009A one \x1b[0m"
+		sessionBell = "\x1b[30;94H\x1b[7m \U000F009A one \x1b[0m"
+	)
 
-	if _, err := c.Call(client.Request{Type: "attention", Pane: pane.Pane}); err != nil {
-		t.Fatal(err)
+	// Only the marked pane's title shows the bell.
+	mark(one.Pane, true)
+	frame := waitFrame(t, a, windowBell, sessionBell, "\x1b[1;1H─\x1b[7m \U000F009A one \x1b[0m─")
+	if bytes.Contains(frame, []byte("\U000F009A two")) {
+		t.Error("the unmarked pane's title shows a bell")
 	}
-	waitFrame(t, a, "\x1b[1;1H─\x1b[7m one \x1b[0m─", "\x1b[30;1H\x1b[7m 0 \U000F009A one \x1b[0m")
+
+	// The window and session keep the bell while any pane is marked.
+	mark(second.Pane, true)
+	mark(one.Pane, false)
+	frame = waitFrame(t, a, "\x1b[1;1H─\x1b[7m one \x1b[0m─", "\x1b[1;42H─ \U000F009A two ─")
+	if bytes.Contains(frame, []byte("\x1b[30;1H\x1b[7m 0 one")) || bytes.Contains(frame, []byte("\x1b[30;96H")) {
+		t.Error("the window or session lost its bell while a pane is marked")
+	}
+
+	mark(second.Pane, false)
+	waitFrame(t, a, "\x1b[1;42H─ two ─", "\x1b[30;1H\x1b[7m 0 one \x1b[0m", "\x1b[30;96H\x1b[7m one \x1b[0m")
 
 	if _, err := c.Call(client.Request{Type: "attention", Pane: "p99", On: true}); err == nil {
 		t.Error("attention on an unknown pane succeeded")
 	}
+}
+
+func TestSelect(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, titled("one"))
+	two := client.Request{Argv: []string{"sh", "-c", setTitle + "two; exec cat"}, Window: one.Window}
+	stacked := spawnPane(t, c, two)
+	if _, err := c.Call(client.Request{Type: "collapse", Pane: stacked.Pane, On: true}); err != nil {
+		t.Fatal(err)
+	}
+	three := titled("three")
+	three.Session = one.Session
+	window := spawnPane(t, c, three)
+	a := attachAt(t, one.Session, 100, 30)
+
+	runMux(t, "select", window.Window)
+	waitFrame(t, a, "\x1b[30;1H 0 one \x1b[7m 1 three \x1b[0m")
+
+	// The pane's window becomes current, and the collapsed pane opens and
+	// takes the keys.
+	runMux(t, "select", stacked.Pane)
+	waitFrame(t, a, "\x1b[30;1H\x1b[7m 0 one \x1b[0m 1 three", "\x1b[1;42H─\x1b[7m two \x1b[0m─")
+	sendInput(t, a, "typed\r")
+	waitCapture(t, c, stacked.Pane, "typed")
 }
 
 func TestCollapse(t *testing.T) {
@@ -1143,7 +1222,7 @@ func TestBellAndTitle(t *testing.T) {
 	}
 	waitFrame(t, a, "\x1b]2;work | one | one\x07")
 
-	if _, err := c.Call(client.Request{Type: "attention", Window: pane.Window, On: true}); err != nil {
+	if _, err := c.Call(client.Request{Type: "attention", Pane: pane.Pane, On: true}); err != nil {
 		t.Fatal(err)
 	}
 	waitFrame(t, a, "\x07\x1b[?2026h")

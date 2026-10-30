@@ -6,10 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
-	"syscall"
-	"time"
 
 	"github.com/kkestell/hypercube/mux/client"
 	"github.com/kkestell/hypercube/mux/internal/server"
@@ -24,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attention <id> on|off | mux collapse <pane> on|off | mux label <id> [text...] | mux attach [session]")
+		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attention <id> on|off | mux collapse <pane> on|off | mux select <id> | mux label <id> [text...] | mux attach [session]")
 	}
 	switch args[0] {
 	case "server":
@@ -40,7 +37,7 @@ func run(args []string) error {
 		return kill(args[1])
 	case "attention":
 		if len(args) != 3 || (args[2] != "on" && args[2] != "off") {
-			return fmt.Errorf("usage: mux attention <id> on|off")
+			return fmt.Errorf("usage: mux attention <pane> on|off")
 		}
 		return attention(args[1], args[2] == "on")
 	case "label":
@@ -57,6 +54,11 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mux collapse <pane> on|off")
 		}
 		return call(client.Request{Type: "collapse", On: args[2] == "on"}, args[1])
+	case "select":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: mux select <id>")
+		}
+		return call(client.Request{Type: "select"}, args[1])
 	case "attach":
 		if len(args) > 2 {
 			return fmt.Errorf("usage: mux attach [session]")
@@ -87,7 +89,11 @@ func spawn(args []string) error {
 	if len(argv) == 0 {
 		argv = []string{os.Getenv("SHELL")}
 	}
-	c, err := connect()
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	c, err := client.DialOrStart(exe)
 	if err != nil {
 		return err
 	}
@@ -102,7 +108,7 @@ func spawn(args []string) error {
 
 // ls prints one line per pane.
 func ls() error {
-	c, err := connect()
+	c, err := client.Dial(client.SocketPath())
 	if err != nil {
 		return err
 	}
@@ -130,8 +136,8 @@ func kill(id string) error {
 	return call(client.Request{Type: "kill"}, id)
 }
 
-// attention marks the pane, window, or session with the given ID as needing
-// attention, or clears the mark.
+// attention marks the pane with the given ID as needing attention, or clears
+// the mark.
 func attention(id string, on bool) error {
 	return call(client.Request{Type: "attention", On: on}, id)
 }
@@ -149,43 +155,11 @@ func call(req client.Request, id string) error {
 	default:
 		return fmt.Errorf("unknown ID %q", id)
 	}
-	c, err := connect()
+	c, err := client.Dial(client.SocketPath())
 	if err != nil {
 		return err
 	}
 	defer c.Close()
 	_, err = c.Call(req)
 	return err
-}
-
-// connect dials the server, starting it first if nothing is listening. Two
-// commands starting a server at the same moment is unlikely; the loser's server
-// exits with an error and its dial reaches the winner.
-func connect() (*client.Conn, error) {
-	path := client.SocketPath()
-	if c, err := client.Dial(path); err == nil {
-		return c, nil
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
-	}
-	cmd := exec.Command(exe, "server")
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-	cmd.Process.Release()
-
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		c, err := client.Dial(path)
-		if err == nil {
-			return c, nil
-		}
-		if time.Now().After(deadline) {
-			return nil, fmt.Errorf("server did not start: %w", err)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
 }
