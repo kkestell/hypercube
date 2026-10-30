@@ -183,6 +183,7 @@ func (s *Server) spawn(req client.Request) (client.Reply, error) {
 		sess.windows = append(sess.windows, w)
 	}
 	s.layoutSession(sess)
+	s.signalAll() // every top bar lists the session's label
 	return client.Reply{Session: sess.id, Window: w.id, Pane: p.id}, nil
 }
 
@@ -264,6 +265,7 @@ func (s *Server) kill(req client.Request) error {
 			a.conn.Close()
 		}
 	}
+	s.signalAll() // every top bar lists the labels
 
 	if len(s.sessions) == 0 {
 		os.Remove(s.path)
@@ -297,7 +299,7 @@ func (s *Server) respawn(req client.Request) error {
 			}
 		}
 	}
-	s.wake(p)
+	s.signalAll() // the command name may differ
 	old.hangUp()
 	return nil
 }

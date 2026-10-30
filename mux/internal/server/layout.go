@@ -1,8 +1,8 @@
 package server
 
 const (
-	barRows   = 2 // rows at the top of the terminal, drawn by a later task
-	titleRows = 1 // the row above each pane, drawn by a later task
+	barRows   = 2 // rows at the top of the terminal: the session bar and the window bar
+	titleRows = 1 // the row above each pane
 )
 
 // rect is a pane's screen in terminal cells, 0-based. Its title row is y-1.

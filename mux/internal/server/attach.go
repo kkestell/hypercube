@@ -44,6 +44,14 @@ func (s *Server) wake(p *pane) {
 	}
 }
 
+// signalAll redraws every attachment. A label change in one session shows in
+// every client's top bar. It must be called with the mutex held.
+func (s *Server) signalAll() {
+	for a := range s.attached {
+		a.signal()
+	}
+}
+
 func (a *attachment) signal() {
 	select {
 	case a.wake <- struct{}{}:
@@ -199,7 +207,7 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 			s.mu.Unlock()
 			return
 		}
-		frame, err := drawFrame(a)
+		frame, err := drawFrame(a, s.sessions)
 		s.mu.Unlock()
 		if err != nil {
 			panic(err) // The render state is broken; fail loudly.
@@ -210,10 +218,10 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 	}
 }
 
-// drawFrame renders the shown window as one synchronized update. Clearing the
-// screen first blanks the bars, title rows, and any space no pane uses. It must
-// be called with the server's mutex held.
-func drawFrame(a *attachment) ([]byte, error) {
+// drawFrame renders the bars, the shown window, and each pane's title row as
+// one synchronized update. Clearing the screen first blanks any space nothing
+// uses. It must be called with the server's mutex held.
+func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	rows, err := libghostty.NewRenderStateRowIterator()
 	if err != nil {
 		return nil, err
@@ -228,6 +236,30 @@ func drawFrame(a *attachment) ([]byte, error) {
 	panes := a.window().panes
 	rects := layout(len(panes), a.cols, a.rows)
 	b := []byte("\x1b[?2026h\x1b[0m\x1b[H\x1b[2J")
+
+	// The chrome comes before the cells, and each item ends with a reset, so
+	// the cell loop's SGR tracking starts from a known state.
+	var labels []string
+	for _, sess := range sessions {
+		labels = append(labels, sess.label())
+	}
+	b = appendBar(b, 1, 1, a.cols, labels, slices.Index(sessions, a.session))
+	labels = labels[:0]
+	for i, w := range a.session.windows {
+		labels = append(labels, fmt.Sprintf("%d %s", i, w.label()))
+	}
+	b = appendBar(b, 2, 1, a.cols, labels, slices.Index(a.session.windows, a.window()))
+	for i, r := range rects {
+		label := panes[i].label()
+		if !panes[i].alive {
+			label = fmt.Sprintf("%s (exited %d)", label, panes[i].status)
+		}
+		current := -1
+		if panes[i] == a.focus() {
+			current = 0
+		}
+		b = appendBar(b, r.y, r.x+1, r.cols, []string{label}, current)
+	}
 	if len(rects) > 1 {
 		for y := barRows; y < a.rows; y++ {
 			b = append(b, fmt.Sprintf("\x1b[%d;%dH│", y+1, rects[0].cols+1)...)
@@ -294,6 +326,30 @@ func drawFrame(a *attachment) ([]byte, error) {
 		b = append(b, "\x1b[?25l"...)
 	}
 	return append(b, "\x1b[?2026l"...), nil
+}
+
+// appendBar moves to row and col (both 1-based) and writes each item as " text
+// ", the current one in inverse video, cut off at width columns. Pass current -1
+// for none. Width is counted in runes, so a title with wide or combining
+// characters may draw a little off; that is unlikely.
+func appendBar(b []byte, row, col, width int, items []string, current int) []byte {
+	b = fmt.Appendf(b, "\x1b[%d;%dH", row, col)
+	for i, item := range items {
+		if width <= 0 {
+			break
+		}
+		text := []rune(" " + item + " ")
+		text = text[:min(len(text), width)]
+		width -= len(text)
+		if i == current {
+			b = append(b, "\x1b[7m"...)
+		}
+		b = append(b, string(text)...)
+		if i == current {
+			b = append(b, "\x1b[0m"...)
+		}
+	}
+	return b
 }
 
 // appendSGR resets, then sets the cell's attributes. Palette colors stay

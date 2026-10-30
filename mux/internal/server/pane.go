@@ -23,6 +23,7 @@ const (
 // render state are not safe for concurrent use.
 type pane struct {
 	id     string
+	name   string // the command's base name, the label until the program sets a title
 	cmd    *exec.Cmd
 	ptmx   *os.File
 	term   *libghostty.Terminal
@@ -50,14 +51,19 @@ func (s *Server) startPane(id, dir string, argv, env []string, cols, rows uint16
 		return nil, err
 	}
 
-	p := &pane{id: id, cmd: cmd, ptmx: ptmx, alive: true, cols: cols, rows: rows}
-	// The callback runs with the server's mutex held. A full PTY input buffer
-	// could block it; that is unlikely.
+	p := &pane{id: id, name: filepath.Base(argv[0]), cmd: cmd, ptmx: ptmx, alive: true, cols: cols, rows: rows}
+	// The callbacks run with the server's mutex held. A full PTY input buffer
+	// could block the write callback; that is unlikely. A full reset (ESC c)
+	// clears the title without calling the title callback, so a hidden pane's
+	// label can stay stale until the next redraw; that is unlikely too.
 	p.term, err = libghostty.NewTerminal(
 		libghostty.WithSize(cols, rows),
 		libghostty.WithMaxScrollbackLines(scrollback),
 		libghostty.WithWritePty(func(_ *libghostty.Terminal, data []byte) {
 			ptmx.Write(data)
+		}),
+		libghostty.WithTitleChanged(func(*libghostty.Terminal) {
+			s.signalAll()
 		}),
 	)
 	if err == nil {
@@ -94,6 +100,7 @@ func (s *Server) readPane(p *pane) {
 			if p.killed {
 				p.free()
 			}
+			s.wake(p) // the title row shows the status
 			s.mu.Unlock()
 			return
 		}

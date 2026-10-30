@@ -473,6 +473,55 @@ func TestCursorAndOffsets(t *testing.T) {
 	}
 }
 
+// waitFrame reads frames until one contains every want, failing if the stream
+// ends first.
+func waitFrame(t *testing.T, a *client.Conn, want ...string) {
+	t.Helper()
+	for {
+		out, err := a.ReadOutput()
+		if err != nil {
+			t.Fatalf("stream ended before a frame contained %q: %v", want, err)
+		}
+		found := true
+		for _, w := range want {
+			found = found && bytes.Contains(out.Frame, []byte(w))
+		}
+		if found {
+			return
+		}
+	}
+}
+
+const setTitle = `printf "\033]0;%s\007" `
+
+func TestTitleLabels(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", setTitle + "hello; exec sleep 60"}})
+	a := attachAt(t, pane.Session, 100, 30)
+	waitFrame(t, a,
+		"\x1b[1;1H\x1b[7m hello \x1b[0m",
+		"\x1b[2;1H\x1b[7m 0 hello \x1b[0m",
+		"\x1b[3;1H\x1b[7m hello \x1b[0m")
+}
+
+func TestCommandNameLabels(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+	spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", setTitle + "other; exec sleep 60"}})
+	spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}, Window: one.Window})
+	a := attachAt(t, one.Session, 100, 30)
+	waitFrame(t, a,
+		"\x1b[1;1H\x1b[7m sleep \x1b[0m other ",
+		"\x1b[3;42H sleep ")
+}
+
+func TestExitedTitle(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "exit 3"}})
+	a := attachAt(t, pane.Session, 100, 30)
+	waitFrame(t, a, "\x1b[3;1H\x1b[7m sh (exited 3) \x1b[0m")
+}
+
 // Palette colors reach the outer terminal as palette colors, so its theme
 // shows.
 func TestAttachKeepsPaletteColors(t *testing.T) {
