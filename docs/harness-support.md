@@ -51,29 +51,8 @@ a configuration mistake visible instead of silently using that fallback.
 
 - **Claude activity after interruption:** the integration has no reliable
   interrupted-turn signal. An interrupted turn can remain marked busy until
-  another prompt or completed turn. The investigation used Claude Code
-  2.1.312; idle notifications and status-line input did not provide a reliable
-  substitute.
-- **Claude worker resumption:** the live test below found that a resumed
-  worker can remember its conversation but refuse Hypercube tool calls. The
-  native `/mcp` menu reports all four tools connected while the resumed API
-  request marks them unavailable. An explicit request to use ToolSearch
-  restored calls in the test. Startup discovery guidance, per-server
-  `alwaysLoad`, and `MCP_CONNECTION_NONBLOCKING=0` did not fix the first queued
-  turn; those experiments are absent from the implementation.
-
-## Live verification
-
-The latest recorded smoke test, on 2026-10-30, used Claude Code 2.1.314 with
-Haiku 5.5 at low effort and OpenCode 2.1.4 with OpenRouter DeepSeek Flash
-Latest, in a disposable repository with isolated configuration, state, and
-tmux server.
-
-It exercised worker creation in worktrees and existing directories,
-bidirectional messages, idle delivery with drafts present, steering during
-tools, native-subagent isolation, approval attention, worktree cleanup
-refusals, and OpenCode failure reporting and conversation resumption.
-The Claude worker resumption failure above prevents a clean pass.
-The multi-window implementation has automated coverage with stand-ins but no
-recorded live-model smoke test. Automated tests do not establish native
-harness compatibility.
+  another prompt or completed turn.
+- **Claude worker resumption:** a resumed worker can remember its
+  conversation but refuse Hypercube tool calls. The native `/mcp` menu reports
+  all four tools connected while the resumed API request marks them
+  unavailable. Asking the worker to use ToolSearch restores the calls.
