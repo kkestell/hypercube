@@ -159,3 +159,31 @@ func TestNativeSubagentsAndTurnFailures(t *testing.T) {
 		t.Fatal(r)
 	}
 }
+
+func TestSessionContextAndFailureRouting(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "other-worker")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{
+			{ID: "o", Name: "orchestrator", Role: store.Orchestrator},
+			{ID: "w", Name: "worker", Role: store.Worker},
+			{ID: "other-orch", Name: "orchestrator", Role: store.Orchestrator, Team: "other"},
+			{ID: "other-worker", Name: "worker", Role: store.Worker, Team: "other"},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
+	if strings.Contains(got, "orchestrator (o)") || strings.Contains(got, "worker (w)") || !strings.Contains(got, "orchestrator (other-orch)") {
+		t.Fatal("session context exposed the wrong team", got)
+	}
+	if err := Run("StopFailure", strings.NewReader(`{"error":"failure in other session"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Load(path)
+	if err != nil || len(s.Messages) != 1 || s.Messages[0].To != "other-orch" {
+		t.Fatal(s, err)
+	}
+}

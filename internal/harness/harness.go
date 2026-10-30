@@ -134,5 +134,5 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 		}
 	}
 	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
-	return tmux.NewPane(store.Workspace(statePath), label, a.Dir, env, []string{exe, "agent", prompt})
+	return tmux.NewPane(store.Workspace(statePath), a.TeamOf(), label, a.Dir, env, []string{exe, "agent", prompt})
 }

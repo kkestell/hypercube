@@ -4,10 +4,12 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +32,19 @@ func main() {
 	switch {
 	case len(os.Args) == 1:
 		err = start()
+	case len(os.Args) >= 2 && os.Args[1] == "new":
+		err = newSessionArgs(os.Args[2:])
+	case len(os.Args) == 3 && os.Args[1] == "delete-session":
+		var root, name string
+		root, name, err = existingWorkspaceAt(".")
+		if err == nil {
+			err = deleteTeam(root, store.Path(name), os.Args[2], "")
+		}
+	case (len(os.Args) == 4 || len(os.Args) == 6) && os.Args[1] == "window":
+		err = windowAction(os.Args[2:])
+		if err != nil && len(os.Args) == 6 {
+			_ = exec.Command("tmux", "display-message", "-t", os.Args[5], strings.ReplaceAll(err.Error(), "#", "##")).Run()
+		}
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
 		err = stopOrDelete(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
@@ -55,7 +70,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "hook":
 		err = hook.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | hook <event> | wait | statusline [--limits]]")
+		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | hook <event> | wait | statusline [--limits]]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -247,7 +262,13 @@ func ago(t time.Time) string {
 // changes in its worktree or an unmerged branch. Workers without worktrees
 // have their directories left alone.
 func deleteWorkspace(root, name string) error {
-	path := store.Path(name)
+	return deleteTeam(root, store.Path(name), "", "")
+}
+
+// An empty team deletes the workspace. Otherwise only that window and its
+// team's resources are removed, with the same worktree safety checks.
+func deleteTeam(root, path, team, expectedWindow string) error {
+	name := store.Workspace(path)
 	lock, err := store.LockFile(path+".session.lock", true)
 	if err != nil {
 		return err
@@ -263,10 +284,22 @@ func deleteWorkspace(root, name string) error {
 	if err != nil {
 		return err
 	}
+	if team != "" {
+		if s.TeamOrchestrator(team) == nil {
+			return fmt.Errorf("no session %q", team)
+		}
+		window, err := tmux.FindWindow(name, team, path)
+		if err != nil {
+			return err
+		}
+		if expectedWindow != "" && window != expectedWindow {
+			return errors.New("the window no longer belongs to this session")
+		}
+	}
 	var workers []store.Agent
 	var problems []string
 	for _, a := range s.Agents {
-		if a.Role != store.Worker || a.Branch == "" {
+		if a.Role != store.Worker || a.Branch == "" || team != "" && a.TeamOf() != team {
 			continue
 		}
 		workers = append(workers, a)
@@ -278,10 +311,14 @@ func deleteWorkspace(root, name string) error {
 		}
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("not deleting the workspace:\n  %s", strings.Join(problems, "\n  "))
+		return fmt.Errorf("not deleting: problem worktrees:\n  %s", strings.Join(problems, "\n  "))
 	}
 
-	if tmux.HasSession(name) {
+	if team != "" {
+		if err := tmux.KillWindow(name, team, path); err != nil {
+			return err
+		}
+	} else if tmux.HasSession(name) {
 		if err := tmux.KillSession(name); err != nil {
 			return err
 		}
@@ -299,13 +336,57 @@ func deleteWorkspace(root, name string) error {
 			return err
 		}
 	}
+	if team != "" {
+		empty := false
+		if err := store.Update(path, func(s *store.State) error {
+			var remove []string
+			for _, a := range s.Agents {
+				if a.TeamOf() == team {
+					remove = append(remove, a.ID)
+				}
+			}
+			for _, id := range remove {
+				s.Remove(id)
+			}
+			empty = len(s.Agents) == 0
+			return nil
+		}); err != nil {
+			return err
+		}
+		if !empty {
+			return nil
+		}
+	}
 	return store.Delete(path)
 }
 
-// start attaches to the workspace, starting its team when necessary.
+// start attaches to the workspace, starting its saved sessions when necessary.
 func start() error { return startWorkspace(".", true) }
 
 func startWorkspace(dir string, attach bool) error {
+	return openWorkspace(dir, "", false, false, attach)
+}
+
+func newSessionArgs(args []string) error {
+	flags := flag.NewFlagSet("new", flag.ContinueOnError)
+	detached := flags.Bool("d", false, "create the session without attaching")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	if flags.NArg() > 1 {
+		return errors.New("usage: hypercube new [-d] [name]")
+	}
+	return openWorkspace(".", flags.Arg(0), true, !*detached, !*detached)
+}
+
+var sessionName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+
+// A workspace owns one tmux session. Each Hypercube session is a team in its
+// own marked window; names and worker lifecycle are local to that team.
+func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
+	if create && newName != "" && !sessionName.MatchString(newName) {
+		return errors.New("session names must be lowercase letters, digits, and hyphens")
+	}
 	root, name, err := workspaceAt(dir)
 	if err != nil {
 		return err
@@ -319,64 +400,129 @@ func startWorkspace(dir string, attach bool) error {
 	if err := legacyStopped(path); err != nil {
 		return err
 	}
-	if tmux.HasSession(name) {
-		if !tmux.WorkspaceSession(name, path) {
-			return errors.New("a tmux session with this name belongs to something else")
-		}
-		lock.Close()
-		if attach {
-			return tmux.Attach(name)
-		}
-		return nil
+	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
+		return errors.New("a tmux session with this name belongs to something else")
 	}
-	cfg, err := harness.LoadConfig()
+	s, err := store.Load(path)
 	if err != nil {
 		return err
 	}
-	branch, branchErr := workspace.Branch(root)
-	var agents []store.Agent
-	err = store.Update(path, func(s *store.State) error {
-		if err := oneTeam(s); err != nil {
-			return err
-		}
-		s.NoGit = branchErr != nil
-		if len(s.Agents) == 0 {
-			o := cfg.Orchestrator
-			s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "orchestrator", Role: store.Orchestrator,
-				Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: store.DefaultTeam})
-		}
-		for i := range s.Agents {
-			a := &s.Agents[i]
-			a.Target, a.QuickExits, a.Attention = "", 0, false
-			if a.Role == store.Orchestrator {
-				a.Branch = branch
+	if err := validSessions(&s); err != nil {
+		return err
+	}
+	add := create || len(s.Agents) == 0
+	if add {
+		if !create {
+			newName = store.DefaultTeam
+		} else if newName == "" {
+			for n := 1; ; n++ {
+				newName = fmt.Sprintf("session-%d", n)
+				if s.TeamOrchestrator(newName) == nil {
+					break
+				}
 			}
 		}
-		agents = append([]store.Agent(nil), s.Agents...)
-		return nil
-	})
-	if err != nil {
-		return err
+		if s.TeamOrchestrator(newName) != nil {
+			return fmt.Errorf("session %q already exists; select its window with Ctrl-b w", newName)
+		}
 	}
-	sort.SliceStable(agents, func(i, j int) bool {
-		return agents[i].Role == store.Orchestrator && agents[j].Role != store.Orchestrator
+	missing := map[string]bool{}
+	for _, a := range s.Agents {
+		if a.Role != store.Orchestrator {
+			continue
+		}
+		window, err := tmux.FindWindow(name, a.TeamOf(), path)
+		if err != nil {
+			return err
+		}
+		missing[a.TeamOf()] = window == ""
+	}
+	// Older running builds have no window identity. Require a restart instead
+	// of launching a second copy against their agents' queues and sessions.
+	for _, a := range s.Agents {
+		if !missing[a.TeamOf()] {
+			continue
+		}
+		pane, err := tmux.FindPane(name, a.ID, path)
+		if err != nil {
+			return err
+		}
+		if pane != "" {
+			return errors.New("a running Hypercube window has no session marker; stop and restart the workspace before using this build")
+		}
+	}
+	if add {
+		missing[newName] = true
+	}
+	var launch []store.Agent
+	needsLaunch := false
+	for _, absent := range missing {
+		needsLaunch = needsLaunch || absent
+	}
+	if needsLaunch {
+		cfg, err := harness.LoadConfig()
+		if err != nil {
+			return err
+		}
+		branch, branchErr := workspace.Branch(root)
+		err = store.Update(path, func(s *store.State) error {
+			s.NoGit = branchErr != nil
+			if add {
+				o := cfg.Orchestrator
+				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "orchestrator", Role: store.Orchestrator,
+					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: newName})
+			}
+			for i := range s.Agents {
+				a := &s.Agents[i]
+				if !missing[a.TeamOf()] {
+					continue
+				}
+				a.Target, a.QuickExits, a.Attention = "", 0, false
+				if a.Role == store.Orchestrator {
+					a.Branch = branch
+				}
+				launch = append(launch, *a)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	sort.SliceStable(launch, func(i, j int) bool {
+		return launch[i].Role == store.Orchestrator && launch[j].Role != store.Orchestrator
 	})
-	for _, a := range agents {
+	for _, a := range launch {
 		prompt := mcp.Nudge
 		if a.Role == store.Orchestrator {
 			prompt = ""
 		}
 		if _, err := harness.Launch(a, path, prompt); err != nil {
-			// A partially launched team must not remain hidden after a failed start.
-			if tmux.WorkspaceSession(name, path) {
-				_ = tmux.KillSession(name)
+			// Keep healthy windows running and the failed team's state for retry.
+			if cleanup := tmux.KillWindow(name, a.TeamOf(), path); cleanup != nil {
+				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
 			}
-			return fmt.Errorf("launching %s: %w", a.Name, err)
+			return fmt.Errorf("launching %s in session %s: %w", a.Name, a.TeamOf(), err)
 		}
 	}
-	if err := tmux.ConfigureSession(name, workspace.Short(root)); err != nil {
-		_ = tmux.KillSession(name)
-		return err
+	if len(launch) > 0 {
+		if err := tmux.ConfigureSession(name, workspace.Short(root)); err != nil {
+			return err
+		}
+	}
+	if create {
+		window, err := tmux.FindWindow(name, newName, path)
+		if err != nil {
+			return err
+		}
+		if window == "" {
+			return fmt.Errorf("session %q has no tmux window", newName)
+		}
+		if selectNew {
+			if err := tmux.SelectWindow(window); err != nil {
+				return err
+			}
+		}
 	}
 	lock.Close()
 	if attach {
@@ -385,23 +531,57 @@ func startWorkspace(dir string, attach bool) error {
 	return nil
 }
 
-func oneTeam(s *store.State) error {
+func validSessions(s *store.State) error {
 	if len(s.Tasks) != 0 {
-		return errors.New("this workspace has scheduled tasks; this version supports one team without scheduled tasks; its saved state was left unchanged")
+		return errors.New("this workspace has scheduled tasks, which are unsupported; its saved state was left unchanged")
 	}
-	leads := 0
+	leads := map[string]int{}
+	names := map[string]bool{}
+	ids := map[string]bool{}
 	for _, a := range s.Agents {
-		if a.TeamOf() != store.DefaultTeam {
-			return fmt.Errorf("this workspace has another team (%s); this version supports one team; its saved state was left unchanged", a.TeamOf())
+		team := a.TeamOf()
+		if !sessionName.MatchString(team) {
+			return fmt.Errorf("invalid saved session name %q; its saved state was left unchanged", team)
+		}
+		if _, ok := leads[team]; !ok {
+			leads[team] = 0
 		}
 		if a.Role == store.Orchestrator {
-			leads++
+			leads[team]++
+		}
+		key := team + "/" + a.Name
+		if names[key] || ids[a.ID] {
+			return fmt.Errorf("duplicate agent name or ID in session %q", team)
+		}
+		names[key], ids[a.ID] = true, true
+	}
+	for team, n := range leads {
+		if n != 1 {
+			return fmt.Errorf("session %q must have exactly one orchestrator", team)
 		}
 	}
-	if len(s.Agents) != 0 && leads != 1 {
-		return errors.New("a workspace must have exactly one orchestrator")
-	}
 	return nil
+}
+
+// These commands run from tmux bindings, using its workspace marker instead
+// of a worker's current directory.
+func windowAction(args []string) error {
+	s, err := store.Load(args[1])
+	if err != nil {
+		return err
+	}
+	for _, a := range s.Agents {
+		if a.Role != store.Orchestrator {
+			continue
+		}
+		if args[0] == "new" && len(args) == 2 {
+			return openWorkspace(a.Dir, "", true, true, false)
+		}
+		if args[0] == "delete" && len(args) == 4 && a.TeamOf() == args[2] {
+			return deleteTeam(a.Dir, args[1], args[2], args[3])
+		}
+	}
+	return errors.New("no matching Hypercube session")
 }
 
 // Avoid running two implementations against the same live workspace state.

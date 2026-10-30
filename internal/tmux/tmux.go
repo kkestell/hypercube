@@ -26,12 +26,18 @@ func HasSession(name string) bool {
 // NewPane allocates the pane before launching its harness, so even an immediate
 // launch failure remains visible. The caller serializes workspace lifecycle
 // operations. The temporary sleep is replaced after the pane is configured.
-func NewPane(session, label, dir string, env map[string]string, argv []string) (pane string, err error) {
-	window := "=" + session + ":"
+func NewPane(session, team, label, dir string, env map[string]string, argv []string) (pane string, err error) {
 	first := !HasSession(session)
+	window, err := FindWindow(session, team, env["HYPERCUBE_STATE"])
+	if err != nil {
+		return "", err
+	}
+	newWindow := window == ""
 	var args []string
 	if first {
-		args = []string{"new-session", "-d", "-s", session, "-n", "hypercube"}
+		args = []string{"new-session", "-d", "-s", session, "-n", team}
+	} else if newWindow {
+		args = []string{"new-window", "-d", "-t", "=" + session + ":", "-n", team}
 	} else {
 		panes, err := run("list-panes", "-t", window, "-F", "#{pane_id}")
 		if err != nil {
@@ -50,6 +56,10 @@ func NewPane(session, label, dir string, env map[string]string, argv []string) (
 			_, _ = run("kill-pane", "-t", pane)
 		}
 	}()
+	window, err = run("display-message", "-p", "-t", pane, "#{window_id}")
+	if err != nil {
+		return pane, err
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return pane, err
@@ -61,8 +71,14 @@ func NewPane(session, label, dir string, env map[string]string, argv []string) (
 		"set-option", "-w", "-t", window, "pane-border-status", "top", ";",
 		"set-option", "-w", "-t", window, "pane-border-format", " #{?pane_active,#[bold],}#{@hypercube_label} #{@hypercube_activity}#{?pane_dead, · exited #{pane_dead_status},} #[default]", ";",
 		"set-option", "-w", "-t", window, "main-pane-width", "40%", ";",
+		"set-option", "-w", "-t", window, "@hypercube_state", env["HYPERCUBE_STATE"], ";",
+		"set-option", "-w", "-t", window, "@hypercube_team", team, ";",
+		"set-option", "-w", "-t", window, "automatic-rename", "off", ";",
+		"set-option", "-w", "-t", window, "allow-rename", "off", ";",
+		"set-option", "-w", "-t", window, "allow-passthrough", "on", ";",
+		"set-option", "-w", "-t", window, "extended-keys", "always", ";",
 		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
-		"set-hook", "-t", "="+session+":", "pane-died", died, ";",
+		"set-hook", "-w", "-t", window, "pane-died", died, ";",
 		"select-layout", "-t", window, "main-vertical")
 	if err != nil {
 		return pane, err
@@ -85,7 +101,7 @@ func NewPane(session, label, dir string, env map[string]string, argv []string) (
 		}
 	}
 	err = Respawn(pane, dir, env, argv)
-	if err == nil && first {
+	if err == nil && newWindow {
 		_, err = run("select-pane", "-t", pane)
 	}
 	return pane, err
@@ -114,11 +130,15 @@ func KillPane(session, target string) error {
 	if target == "" {
 		return nil
 	}
+	window, err := run("display-message", "-p", "-t", target, "#{window_id}")
+	if err != nil {
+		return err
+	}
 	if _, err := run("kill-pane", "-t", target); err != nil {
 		return err
 	}
 	if HasSession(session) {
-		_, err := run("select-layout", "-t", "="+session+":", "main-vertical")
+		_, err := run("select-layout", "-t", window, "main-vertical")
 		return err
 	}
 	return nil
@@ -128,9 +148,22 @@ func ConfigureSession(session, left string) error {
 	_, err := run("set-option", "-t", "="+session+":", "mouse", "on", ";",
 		"set-option", "-t", "="+session+":", "status-left", " "+strings.ReplaceAll(left, "#", "##")+" ", ";",
 		"set-option", "-t", "="+session+":", "status-left-length", "100", ";",
-		"set-option", "-t", "="+session+":", "status-right", "", ";",
-		"set-option", "-w", "-t", "="+session+":", "allow-passthrough", "on", ";",
-		"set-option", "-w", "-t", "="+session+":", "extended-keys", "always")
+		"set-option", "-t", "="+session+":", "status-right", "")
+	if err != nil {
+		return err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	newCommand := `#{q:@hypercube_exe} window new #{q:@hypercube_state}`
+	// Cleanup must survive tmux exiting when its last window is removed.
+	deleteCommand := `nohup #{q:@hypercube_exe} window delete #{q:@hypercube_state} #{@hypercube_team} #{window_id} >/dev/null 2>&1 &`
+	owned := `#{&&:#{@hypercube_state},#{@hypercube_team}}`
+	_, err = run("set-option", "-t", "="+session+":", "@hypercube_exe", exe, ";",
+		"bind-key", "C", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), ";",
+		"bind-key", "X", "if-shell", "-F", owned,
+		"confirm-before -p 'Delete current Hypercube session? (y/n)' "+quote("run-shell -b "+quote(deleteCommand)))
 	return err
 }
 
@@ -172,6 +205,46 @@ func WorkspaceSession(session, state string) bool {
 	return err == nil && got == state
 }
 
+// FindWindow uses live markers rather than a window's index or editable name.
+func FindWindow(session, team, state string) (string, error) {
+	if !HasSession(session) {
+		return "", nil
+	}
+	if !WorkspaceSession(session, state) {
+		return "", fmt.Errorf("tmux session %q belongs to something else", session)
+	}
+	rows, err := run("list-windows", "-t", "="+session, "-F", "#{window_id}\t#{@hypercube_team}\t#{@hypercube_state}")
+	if err != nil {
+		return "", err
+	}
+	var found string
+	for _, row := range strings.Split(rows, "\n") {
+		fields := strings.Split(row, "\t")
+		if len(fields) != 3 || fields[1] != team || fields[2] != state {
+			continue
+		}
+		if found != "" {
+			return "", fmt.Errorf("multiple tmux windows claim session %q", team)
+		}
+		found = fields[0]
+	}
+	return found, nil
+}
+
+func SelectWindow(window string) error {
+	_, err := run("select-window", "-t", window)
+	return err
+}
+
+func KillWindow(session, team, state string) error {
+	window, err := FindWindow(session, team, state)
+	if err != nil || window == "" {
+		return err
+	}
+	_, err = run("kill-window", "-t", window)
+	return err
+}
+
 // Restart reuses the pane's original command and launch environment.
 func Restart(pane, id, state string) error {
 	_, err := run("respawn-pane", "-k", "-t", pane, "-e", "HYPERCUBE_AGENT_ID="+id, "-e", "HYPERCUBE_STATE="+state)
@@ -184,7 +257,7 @@ func FindPane(session, id, state string) (string, error) {
 	if !WorkspaceSession(session, state) {
 		return "", nil
 	}
-	rows, err := run("list-panes", "-t", "="+session+":", "-F", "#{pane_id}\t#{@hypercube_id}")
+	rows, err := run("list-panes", "-s", "-t", "="+session, "-F", "#{pane_id}\t#{@hypercube_id}")
 	if err != nil {
 		return "", err
 	}

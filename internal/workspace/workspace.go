@@ -266,8 +266,13 @@ func RemoveWorktree(root, dir, branch string) error {
 	if _, err := git(root, "worktree", "prune"); err != nil {
 		return err
 	}
-	if err := os.Remove(filepath.Join(root, ".hypercube")); err != nil && !os.IsNotExist(err) && !errors.Is(err, syscall.ENOTEMPTY) {
-		return err
+	base := filepath.Join(root, ".hypercube")
+	for parent := filepath.Dir(dir); parent == base || strings.HasPrefix(parent, base+string(filepath.Separator)); parent = filepath.Dir(parent) {
+		if err := os.Remove(parent); errors.Is(err, syscall.ENOTEMPTY) {
+			break
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 	if !exists(root, branch) {
 		return nil

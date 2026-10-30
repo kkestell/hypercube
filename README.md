@@ -1,0 +1,18 @@
+# Hypercube
+
+Local coding-agent teams for macOS, built with Go and tmux.
+
+- [Installation and use](docs/installation.md): prerequisites, commands,
+  keyboard controls, upgrades, and development sessions.
+- [Configuration](docs/configuration.md): orchestrator settings, worker
+  profiles, and worktree setup.
+- [Architecture](docs/architecture.md): ownership, persistence, and design
+  rationale, with links to the implementation.
+- [Harness support](docs/harness-support.md): native integration, permissions,
+  and known harness limitations.
+- [Contributor instructions](AGENTS.md): scope, implementation constraints,
+  and required validation.
+
+User-facing procedures belong in these guides. Internal command wiring, tool
+schemas, hook payloads, validation edge cases, and algorithms belong in the
+source; link to them instead of maintaining a second specification.

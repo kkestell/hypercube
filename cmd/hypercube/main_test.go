@@ -84,6 +84,7 @@ func TestSavedStateCompatibility(t *testing.T) {
 	for _, source := range []string{
 		`{"agents":[{"id":"o","role":"orchestrator","session_id":"saved"}],"messages":[{"from":"user","to":"o","text":"kept"}],"tasks":null}`,
 		`{"agents":[{"id":"o","role":"orchestrator"},{"id":"other","role":"orchestrator","team":"docs"}],"messages":[],"tasks":[]}`,
+		`{"agents":[{"id":"o","role":"orchestrator"},{"id":"other","role":"orchestrator"}],"messages":[],"tasks":[]}`,
 		`{"agents":[{"id":"o","role":"orchestrator"}],"tasks":[{"name":"nightly","schedule":"0 3 * * *","prompt":"check"}]}`,
 	} {
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
@@ -93,10 +94,13 @@ func TestSavedStateCompatibility(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = oneTeam(&s)
-		if strings.Contains(source, `"session_id"`) {
-			if err != nil || s.Agents[0].SessionID != "saved" || len(s.Messages) != 1 {
+		err = validSessions(&s)
+		if strings.Contains(source, `"session_id"`) || strings.Contains(source, `"team":"docs"`) {
+			if err != nil {
 				t.Fatal(s, err)
+			}
+			if strings.Contains(source, `"session_id"`) && (s.Agents[0].SessionID != "saved" || len(s.Messages) != 1) {
+				t.Fatal(s)
 			}
 		} else if err == nil {
 			t.Fatal("unsupported saved state accepted")

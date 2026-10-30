@@ -1,9 +1,7 @@
 # Configuration
 
-`config.json` lives at `~/.config/hypercube/config.json`. A non-empty
-`XDG_CONFIG_HOME` selects `$XDG_CONFIG_HOME/hypercube/config.json` instead.
-`harness.LoadConfig` reads and validates it. The orchestrator's harness, model, and
-effort and every profile field shown below are required.
+Create `~/.config/hypercube/config.json`, or
+`$XDG_CONFIG_HOME/hypercube/config.json` when that variable is non-empty:
 
 ```json
 {
@@ -21,65 +19,47 @@ effort and every profile field shown below are required.
       "effort": "low"
     },
     {
-      "name": "deepseek",
-      "description": "Bulk edits and mechanical refactors.",
+      "name": "opencode",
+      "description": "Work assigned to an OpenCode worker.",
       "harness": "opencode",
-      "model": "openrouter/~deepseek/deepseek-flash-latest",
-      "effort": "high"
+      "model": "provider/model",
+      "effort": "variant"
     }
   ]
 }
 ```
 
-## Orchestrator
+All fields shown are required. Provide at least one worker profile with a
+unique name. Replace the OpenCode placeholders with a full model ID from
+`opencode models` and a variant supported by that model, or remove that
+profile.
 
-`orchestrator` sets the harness, model, and effort of the orchestrator agent
-in the workspace's single team. When a workspace has no saved agents, `hypercube` creates the orchestrator from these
-settings. Existing agents retain the harness, model, and effort
-saved in the workspace state file when a session restarts.
+`orchestrator` selects the settings for new teams. `profiles` defines the
+choices offered to the orchestrator when creating workers; descriptions
+should explain which work suits each profile. Existing agents keep their
+saved settings across restarts. Changes affect subsequently created agents,
+and the available profiles are reread when tools and startup context are
+requested.
 
-## Profiles
+Model and effort values are interpreted by the selected harness. Claude Code
+receives them as its model and effort; OpenCode uses effort as the model's
+variant. Consult the harness for accepted values. Hypercube's exact schema
+and validation are maintained in [config.go](../internal/harness/config.go).
 
-`profiles` lists the combinations the orchestrator can give workers. Each has:
+## Files needed by worker worktrees
 
-- `name`: unique within the file. `create_agent` takes it as `profile`.
-- `description`: when to use the profile. The orchestrator reads it, together
-  with the harness, model, and effort, in its SessionStart facts.
-- `harness`, `model`, `effort`: the agent's settings, used exactly as given.
+A new managed worktree starts at the orchestrator's HEAD and initializes
+submodules. Uncommitted changes in the original checkout are absent.
 
-At least one profile is required. Worker creation reads the current
-file and saves the chosen profile's settings on the new agent, which keeps
-them for its life. The MCP tool list and
-the orchestrator's SessionStart facts also read profiles from the current
-file.
+To supply ignored local files, add a `.worktreeinclude` file at the checkout
+root using Git ignore patterns, for example:
 
-## Validation
+```gitignore
+.env
+node_modules/
+```
 
-Loading errors name the file; validation errors also identify the
-orchestrator or profile involved. Loading fails when:
-
-- the file is unreadable, is not valid JSON, or has values of the wrong type;
-- `harness` is not `claude` or `opencode`, for the orchestrator or any profile;
-- `model` or `effort` is empty;
-- `profiles` is empty;
-- a profile has no `name` or no `description`;
-- two profiles share a `name`.
-
-Names are compared exactly, including case. Required strings are checked for
-zero length. Unknown fields are ignored.
-
-## Harness settings
-
-`harness` is `claude` or `opencode`.
-
-Claude Code takes `model` as its `--model` and `effort` as its `--effort`.
-OpenCode takes `model` as the model and `effort` as the model's variant.
-Hypercube validates both as non-empty strings; the harness interprets the
-supplied values.
-
-Claude Code model names include `opus` and `haiku`. OpenCode takes the full
-`provider/model` ID that `opencode models` lists, such as
-`openrouter/~deepseek/deepseek-flash-latest`. OpenCode rejects a variant the
-model does not list, and the pane shows the error. Since OpenCode otherwise
-falls back to a recent model for an unavailable ID, the Hypercube plugin
-refuses the first prompt of a session on another model.
+Only paths also ignored by Git are copied. Copies are independent APFS
+clones, so workers can change them without modifying the originals. They are
+made when the worktree is created, not kept in sync. The implementation is
+in [workspace.go](../internal/workspace/workspace.go).

@@ -236,11 +236,37 @@ func (s *State) TeamOrchestrator(team string) *Agent {
 // Agent returns the agent with the given ID or name.
 func (s *State) Agent(idOrName string) (*Agent, error) {
 	for i := range s.Agents {
-		if s.Agents[i].ID == idOrName || s.Agents[i].Name == idOrName {
+		if s.Agents[i].ID == idOrName {
+			return &s.Agents[i], nil
+		}
+	}
+	for i := range s.Agents {
+		if s.Agents[i].Name == idOrName {
 			return &s.Agents[i], nil
 		}
 	}
 	return nil, fmt.Errorf("no agent %q", idOrName)
+}
+
+// TeamAgent resolves names within one session. IDs from another session are
+// refused too, so knowing an ID cannot cross the session boundary.
+func (s *State) TeamAgent(team, idOrName string) (*Agent, error) {
+	for i := range s.Agents {
+		a := &s.Agents[i]
+		if a.ID == idOrName {
+			if a.TeamOf() == team {
+				return a, nil
+			}
+			return nil, fmt.Errorf("no agent %q in session %q", idOrName, team)
+		}
+	}
+	for i := range s.Agents {
+		a := &s.Agents[i]
+		if a.TeamOf() == team && a.Name == idOrName {
+			return a, nil
+		}
+	}
+	return nil, fmt.Errorf("no agent %q in session %q", idOrName, team)
 }
 
 // Take removes and returns the messages queued for an agent.

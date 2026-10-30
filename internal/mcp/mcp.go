@@ -135,6 +135,10 @@ func call(self, path, name string, args map[string]string) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		caller, err := s.Agent(self)
+		if err != nil {
+			return "", err
+		}
 		type entry struct {
 			ID       string `json:"id"`
 			Name     string `json:"name"`
@@ -146,6 +150,9 @@ func call(self, path, name string, args map[string]string) (string, error) {
 		}
 		var team []entry
 		for _, a := range s.Agents {
+			if a.TeamOf() != caller.TeamOf() {
+				continue
+			}
 			team = append(team, entry{a.ID, a.Name, a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
 		}
 		b, err := json.MarshalIndent(team, "", "  ")
@@ -161,10 +168,11 @@ func call(self, path, name string, args map[string]string) (string, error) {
 func sendMessage(self, path, to, text string) (string, error) {
 	var recipient store.Agent
 	err := store.Update(path, func(s *store.State) error {
-		if _, err := s.Agent(self); err != nil {
+		caller, err := s.Agent(self)
+		if err != nil {
 			return err
 		}
-		a, err := s.Agent(to)
+		a, err := s.TeamAgent(caller.TeamOf(), to)
 		if err != nil {
 			return err
 		}
@@ -225,7 +233,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		if err != nil {
 			return err
 		}
-		if _, err := s.Agent(name); err == nil {
+		if _, err := s.TeamAgent(orch.TeamOf(), name); err == nil {
 			return fmt.Errorf("an agent named %s already exists", name)
 		}
 		root = orch.Dir
@@ -240,7 +248,8 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		case s.NoGit:
 			return errors.New("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees")
 		default:
-			a.Dir, a.Branch = workspace.WorktreeDir(root, name), workspace.WorkerBranch(name)
+			workerName := a.TeamOf() + "/" + name
+			a.Dir, a.Branch = workspace.WorktreeDir(root, workerName), workspace.WorkerBranch(workerName)
 		}
 		s.Agents = append(s.Agents, a)
 		if args["message"] != "" {
@@ -252,8 +261,11 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		return "", err
 	}
 	worktreeCreated := false
-	if !tmux.HasSession(store.Workspace(path)) || !tmux.WorkspaceSession(store.Workspace(path), path) {
-		err = errors.New("the workspace is not running")
+	window, windowErr := tmux.FindWindow(store.Workspace(path), a.TeamOf(), path)
+	if windowErr != nil {
+		err = windowErr
+	} else if window == "" {
+		err = errors.New("the session is not running")
 	} else if a.Branch != "" {
 		err = workspace.AddWorktree(root, a.Dir, a.Branch)
 		worktreeCreated = err == nil
@@ -299,7 +311,7 @@ func removeAgent(self, path, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	a, err := s.Agent(id)
+	a, err := s.TeamAgent(orch.TeamOf(), id)
 	if err != nil {
 		return "", err
 	}

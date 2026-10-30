@@ -90,3 +90,35 @@ func TestRemoveDirWorker(t *testing.T) {
 		}
 	}
 }
+
+func TestSessionBoundaries(t *testing.T) {
+	t.Setenv("TMUX_TMPDIR", t.TempDir())
+	t.Setenv("TMUX", "")
+	path := team(t, false, t.TempDir(), t.TempDir())
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = append(s.Agents,
+			store.Agent{ID: "other-orch", Name: "orchestrator", Role: store.Orchestrator, Team: "other"},
+			store.Agent{ID: "other-worker", Name: "w1", Role: store.Worker, Team: "other"})
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"a", "b"} {
+		if _, err := sendMessage(id, path, "other-worker", "wrong session"); err == nil {
+			t.Fatal("message crossed session boundary")
+		}
+	}
+	if _, err := removeAgent("a", path, "other-worker"); err == nil {
+		t.Fatal("removed another session's worker")
+	}
+	if _, err := removeAgent("b", path, "w1"); err == nil {
+		t.Fatal("worker removed an agent")
+	}
+	if _, err := sendMessage("other-orch", path, "w1", "correct session"); err != nil {
+		t.Fatal(err)
+	}
+	s, err := store.Load(path)
+	if err != nil || len(s.Agents) != 4 || len(s.Messages) != 1 || s.Messages[0].To != "other-worker" {
+		t.Fatal(s, err)
+	}
+}

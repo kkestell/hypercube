@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -148,7 +149,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		}
 	}
 	t.Setenv("PATH", fake+":"+os.Getenv("PATH"))
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state with spaces"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_EXE", binary)
 	t.Setenv("HYPERCUBE_TEST_BINARY", testBinary)
@@ -178,6 +179,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	cli := func(args ...string) string {
 		t.Helper()
 		cmd := exec.Command(binary, args...)
+		cmd.Dir = root
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("hypercube %v: %v\n%s", args, err, out)
@@ -258,6 +260,146 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(worker.Dir, ".git")); err != nil {
 		t.Fatal("worker did not get a worktree", err)
 	}
+	// Independent teams share a tmux session, with names scoped to windows.
+	cli("new", "-d", "review")
+	until("second orchestrator waiter", func() bool {
+		s := state()
+		return len(s.Agents) == 3 && s.Agents[2].Waiter > 0
+	})
+	otherOrch := state().Agents[2]
+	call(otherOrch.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "second session brief"})
+	until("second session worker", func() bool {
+		s := state()
+		return len(s.Agents) == 4 && s.Agents[3].Waiter > 0 && strings.Contains(logOf(s.Agents[3].ID), "second session brief")
+	})
+	otherWorker := state().Agents[3]
+	if otherWorker.Dir == worker.Dir || otherWorker.Branch == worker.Branch {
+		t.Fatal("sessions share a worker worktree or branch")
+	}
+	windowOf := func(pane string) string {
+		return strings.TrimSpace(tmux("display-message", "-p", "-t", pane, "#{window_id}"))
+	}
+	firstWindow, otherWindow := windowOf(orch.Target), windowOf(otherOrch.Target)
+	if firstWindow == otherWindow || windowOf(worker.Target) != firstWindow || windowOf(otherWorker.Target) != otherWindow {
+		t.Fatal("team panes are not in separate windows")
+	}
+	if got := strings.Fields(tmux("list-sessions", "-F", "#{session_name}")); len(got) != 1 {
+		t.Fatalf("expected one workspace tmux session, got %v", got)
+	}
+	if got := strings.Fields(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")); !slices.Equal(got, []string{"default", "review"}) {
+		t.Fatalf("window switcher names: %v", got)
+	}
+	for _, pair := range [][2]store.Agent{{orch, otherWorker}, {otherOrch, worker}} {
+		if listed := call(pair[0].ID, "list_agents", nil); strings.Contains(listed, pair[1].ID) {
+			t.Fatal("list_agents exposed another session", listed)
+		}
+	}
+	// Send real prefix keys through an attached tmux client. No shell or text
+	// is sent into a harness pane.
+	attachClient := func() string {
+		client := exec.Command("tmux", "-C", "attach-session", "-t", "="+workspace.Name(root))
+		input, err := client.StdinPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		client.Stdout, client.Stderr = io.Discard, io.Discard
+		if err := client.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = input.Close(); _ = client.Process.Kill(); _ = client.Wait() })
+		name := ""
+		until("tmux client", func() bool {
+			name = strings.TrimSpace(tmux("list-clients", "-F", "#{client_name}"))
+			return name != ""
+		})
+		return name
+	}
+	clientName := attachClient()
+	tmux("select-window", "-t", otherWindow)
+	tmux("select-pane", "-t", otherWorker.Target)
+	tmux("send-keys", "-K", "-c", clientName, "C-b", "C")
+	until("new-session shortcut", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
+	shortcutOrch := state().Agents[4]
+	shortcutWindow := windowOf(shortcutOrch.Target)
+	if shortcutOrch.Dir != root || shortcutWindow == otherWindow {
+		t.Fatal("shortcut did not create a new session in the active workspace")
+	}
+	tmux("send-keys", "-K", "-c", clientName, "C-b", "X")
+	tmux("send-keys", "-K", "-c", clientName, "n")
+	if len(state().Agents) != 5 {
+		t.Fatal("cancelled deletion changed the team")
+	}
+	call(shortcutOrch.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker"})
+	until("shortcut session worker", func() bool { return len(state().Agents) == 6 && state().Agents[5].Waiter > 0 })
+	shortcutWorker := state().Agents[5]
+	dirty := filepath.Join(shortcutWorker.Dir, "unfinished")
+	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refuse := exec.Command(binary, "delete-session", shortcutOrch.TeamOf())
+	refuse.Dir = root
+	if out, err := refuse.CombinedOutput(); err == nil || !strings.Contains(string(out), "uncommitted changes") {
+		t.Fatalf("session deletion failed to protect dirty work: %v %s", err, out)
+	}
+	if windowOf(shortcutOrch.Target) != shortcutWindow || len(state().Agents) != 6 {
+		t.Fatal("refused deletion changed the team")
+	}
+	if err := os.Remove(dirty); err != nil {
+		t.Fatal(err)
+	}
+	tmux("send-keys", "-K", "-c", clientName, "C-b", "X")
+	tmux("send-keys", "-K", "-c", clientName, "y")
+	until("delete-session shortcut", func() bool { return len(state().Agents) == 4 })
+	if _, err := os.Stat(shortcutWorker.Dir); !os.IsNotExist(err) {
+		t.Fatal("deleted session's worktree remains", err)
+	}
+	if windowOf(worker.Target) != firstWindow || windowOf(otherWorker.Target) != otherWindow {
+		t.Fatal("delete shortcut affected another session")
+	}
+	cli("start", root)
+	if len(state().Agents) != 4 {
+		t.Fatal("deleted session returned after start")
+	}
+	call(otherOrch.ID, "send_message", map[string]string{"to": "worker", "text": "only second worker"})
+	until("session-local name delivery", func() bool { return strings.Contains(logOf(otherWorker.ID), "only second worker") })
+	if strings.Contains(logOf(worker.ID), "only second worker") {
+		t.Fatal("message crossed sessions")
+	}
+	// Selection, user renaming, and window indexes must not affect routing.
+	tmux("select-window", "-t", otherWindow)
+	tmux("rename-window", "-t", firstWindow, "renamed")
+	call(orch.ID, "create_agent", map[string]string{"name": "extra", "profile": "worker", "dir": "."})
+	until("extra worker", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
+	extra := state().Agents[4]
+	if windowOf(extra.Target) != firstWindow {
+		t.Fatal("worker creation used the selected window")
+	}
+	call(orch.ID, "remove_agent", map[string]string{"id": extra.ID})
+	cli("start", root)
+	if strings.Count(logOf(orch.ID), `"kind":"launch"`) != 1 || strings.Count(logOf(otherOrch.ID), `"kind":"launch"`) != 1 {
+		t.Fatal("reattach relaunched an existing session")
+	}
+	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", "="+workspace.Name(root)+":", "#{window_id}")); got != otherWindow {
+		t.Fatal("reattach changed the selected window", got)
+	}
+	// An unmarked running window must not get duplicate harnesses, even if its
+	// saved pane target is stale. Restore the fixture's markers afterward.
+	tmux("set-option", "-w", "-t", firstWindow, "-u", "@hypercube_team")
+	if err := store.Update(path, func(s *store.State) error { s.Agents[0].Target = otherWorker.Target; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	before := stateForDiagnostics(path)
+	cmd := exec.Command(binary, "start", root)
+	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "no session marker") {
+		t.Fatalf("unmarked running window was accepted: %v %s", err, out)
+	}
+	if stateForDiagnostics(path) != before {
+		t.Fatal("unmarked window refusal changed state")
+	}
+	tmux("set-option", "-w", "-t", firstWindow, "@hypercube_team", "default")
+	if err := store.Update(path, func(s *store.State) error { s.Agents[0].Target = orch.Target; return nil }); err != nil {
+		t.Fatal(err)
+	}
 	tmux("send-keys", "-t", worker.Target, "-l", "draft stays here")
 	call(orch.ID, "send_message", map[string]string{"to": worker.ID, "text": "wake while drafting"})
 	until("idle wake-up", func() bool { return strings.Contains(logOf(worker.ID), "wake while drafting") })
@@ -272,13 +414,16 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	until("mid-turn steering", func() bool { return strings.Contains(logOf(worker.ID), "change course during turn") })
 	tmux("send-keys", "-t", worker.Target, "fail", "Enter")
 	until("failure reaches orchestrator", func() bool { return strings.Contains(logOf(orch.ID), "test provider failure") })
+	if strings.Contains(logOf(otherOrch.ID), "test provider failure") {
+		t.Fatal("failure reached another session's orchestrator")
+	}
 	tmux("send-keys", "-t", worker.Target, "exit", "Enter")
 	until("resume after exit", func() bool { return strings.Count(logOf(worker.ID), `"kind":"launch"`) == 2 })
 	if state().Agents[1].Target != worker.Target || !strings.Contains(logOf(worker.ID), worker.ID+"-session") {
 		t.Fatal("relaunch lost the pane or session")
 	}
-	// A stale target must never kill a different pane.
-	stranger := strings.TrimSpace(tmux("split-window", "-d", "-P", "-F", "#{pane_id}", "-t", orch.Target, "/bin/sleep", "30"))
+	// A stale target in another team's window must not close its worker.
+	stranger := otherWorker.Target
 	if err := store.Update(path, func(s *store.State) error { s.Agents[1].Target = stranger; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -292,23 +437,51 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if _, err := os.Stat(worker.Dir); !os.IsNotExist(err) {
 		t.Fatal("worker worktree remains")
 	}
-	if len(state().Agents) != 1 {
+	if len(state().Agents) != 3 {
 		t.Fatal("removed worker remains")
+	}
+	// Closing one window and starting again resumes only that team's agents.
+	tmux("kill-window", "-t", otherWindow)
+	cli("start", root)
+	until("closed window resumed", func() bool {
+		return strings.Count(logOf(otherWorker.ID), `"kind":"launch"`) == 2
+	})
+	if strings.Count(logOf(orch.ID), `"kind":"launch"`) != 1 || !strings.Contains(logOf(otherWorker.ID), otherWorker.ID+"-session") {
+		t.Fatal("window resume restarted the wrong team or lost its session")
 	}
 	// Stop and restart retain the main conversation and its queued messages.
 	cli("stop", root)
 	if err := store.Update(path, func(s *store.State) error {
 		s.Messages = append(s.Messages, store.Message{From: "user", To: orch.ID, Text: "queued while stopped"})
+		s.Messages = append(s.Messages, store.Message{From: "user", To: otherWorker.ID, Text: "other queued while stopped"})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
 	cli("start", root)
 	until("stopped queue delivered after resume", func() bool { return strings.Contains(logOf(orch.ID), "queued while stopped") })
-	cli("stop", root)
-	cli("delete", root)
+	until("second stopped queue delivered after resume", func() bool { return strings.Contains(logOf(otherWorker.ID), "other queued while stopped") })
+	if strings.Contains(logOf(orch.ID), "other queued while stopped") || strings.Contains(logOf(otherWorker.ID), `Message from user:\nqueued while stopped`) {
+		t.Fatal("resumed queues crossed sessions")
+	}
+	// Deleting the final window must finish cleanup even as tmux exits.
+	cli("delete-session", otherOrch.TeamOf())
+	call(orch.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
+	until("last worker", func() bool { return len(state().Agents) == 2 && state().Agents[1].Waiter > 0 })
+	lastWorker := state().Agents[1]
+	clientName = attachClient()
+	tmux("send-keys", "-K", "-c", clientName, "C-b", "X")
+	tmux("send-keys", "-K", "-c", clientName, "y")
+	until("last session deleted", func() bool {
+		_, stateErr := os.Stat(path)
+		_, worktreeErr := os.Stat(lastWorker.Dir)
+		return os.IsNotExist(stateErr) && os.IsNotExist(worktreeErr)
+	})
 	if got := cli("status"); strings.Contains(got, root) {
 		t.Fatalf("deleted workspace listed: %s", got)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".hypercube")); !os.IsNotExist(err) {
+		t.Fatal("session worktree directories remain", err)
 	}
 }
 

@@ -131,9 +131,16 @@ func Format(s *store.State, messages []store.Message) string {
 func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
+	fmt.Fprintf(&b, "Your Hypercube session is %q. Messaging and worker tools apply only to this session.\n", a.TeamOf())
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
 	for _, t := range s.Agents {
+		if t.TeamOf() != a.TeamOf() {
+			continue
+		}
 		fmt.Fprintf(&b, "- %s (%s): %s, %s, %s%s\n", t.Name, t.ID, t.Role, t.Harness, t.Dir, onBranch(t.Branch))
+	}
+	if a.Role == store.Orchestrator {
+		b.WriteString("Other Hypercube sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate changes with the user; use worker worktrees for independent edits.\n")
 	}
 	b.WriteString(messageTools)
 	if s.NoGit {
