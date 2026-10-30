@@ -969,3 +969,75 @@ func TestReattachRedraws(t *testing.T) {
 	}
 	waitFrame(t, b, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m", "shown-two")
 }
+
+func TestScrollbackKeepsLines(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "seq 20000; exec sleep 60"}})
+
+	text := waitCapture(t, c, pane.Pane, "20000")
+	first, err := strconv.Atoi(strings.SplitN(text, "\n", 2)[0])
+	if err != nil || first < 9001 || first > 11000 {
+		t.Errorf("first line = %q, want a number from 9001 to 11000", strings.SplitN(text, "\n", 2)[0])
+	}
+}
+
+func TestWheelScrolls(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "seq 100; exec cat"}})
+	a := attachAt(t, pane.Session, 100, 30)
+
+	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m75")
+	sendInput(t, a, "\x1b[<64;10;10M")
+	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m72")
+	sendInput(t, a, "x")
+	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m75")
+}
+
+func TestMouseGoesToPane(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", `printf "\033[?1000h\033[?1006h"; echo ready; exec cat`}})
+	a := attachAt(t, pane.Session, 100, 30)
+	waitCapture(t, c, pane.Pane, "ready")
+
+	// Column 10 of terminal row 5 is row 2 of the pane's screen.
+	sendInput(t, a, "\x1b[<0;10;5M")
+	waitCapture(t, c, pane.Pane, "[<0;10;2M")
+}
+
+func TestDragCopies(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "echo hello world; exec sleep 60"}})
+	a := attachAt(t, pane.Session, 100, 30)
+
+	waitFrame(t, a, "hello world")
+	sendInput(t, a, "\x1b[<0;1;4M\x1b[<32;5;4M\x1b[<0;5;4m")
+	waitFrame(t, a, "\x1b]52;c;aGVsbG8=\x07")
+}
+
+func TestClickSelects(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, titled("one"))
+	two := titled("two")
+	two.Session = one.Session
+	second := spawnPane(t, c, two)
+	stacked := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: second.Window})
+	a := attachAt(t, one.Session, 100, 30)
+
+	sendInput(t, a, "\x1b[<0;10;2M\x1b[<0;10;2m")
+	waitFrame(t, a, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m")
+	sendInput(t, a, "\x1b[<0;60;10M\x1b[<0;60;10m")
+	waitFrame(t, a, "\x1b[3;42H\x1b[7m cat \x1b[0m")
+	sendInput(t, a, "typed\r")
+	waitCapture(t, c, stacked.Pane, "typed")
+}
+
+func TestClickSession(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, titled("one"))
+	spawnPane(t, c, titled("two"))
+	a := attachAt(t, one.Session, 100, 30)
+
+	sendInput(t, a, "\x1b[<0;8;1M\x1b[<0;8;1m")
+	waitFrame(t, a, "\x1b[1;1H one \x1b[7m two \x1b[0m")
+	checkSize(t, c, one.Pane, "24 80")
+}

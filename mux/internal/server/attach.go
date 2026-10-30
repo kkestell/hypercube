@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -16,13 +17,15 @@ import (
 
 // attachment is a client viewing a session. Its draw goroutine is the only
 // writer to the connection while the stream runs. The server's mutex guards
-// cols and rows.
+// session, cols, rows, drag, and clipboard.
 type attachment struct {
 	session    *session
 	cols, rows int // the client's terminal size
 	conn       net.Conn
 	wake       chan struct{} // buffer of one; a signal means "redraw"
 	prefix     bool          // the last key was the prefix
+	drag       *drag         // the mouse button held down, if any
+	clipboard  []byte        // text for the next frame to copy to the client's clipboard
 }
 
 // window is the window the client sees.
@@ -99,17 +102,9 @@ func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req
 		enc.Encode(client.Reply{Error: fmt.Sprintf("unknown session %q", req.Session)})
 		return
 	}
-	// A session has one client. Closing the earlier client's connection ends its
-	// stream, the same way kill ends an attachment.
-	for old := range s.attached {
-		if old.session == sess {
-			delete(s.attached, old)
-			old.conn.Close()
-		}
-	}
 	a := &attachment{session: sess, cols: req.Cols, rows: req.Rows, conn: conn, wake: make(chan struct{}, 1)}
 	s.attached[a] = struct{}{}
-	s.layoutSession(sess)
+	s.show(a, sess)
 	s.mu.Unlock()
 	enc.Encode(client.Reply{OK: true})
 
@@ -128,14 +123,35 @@ func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req
 	drawing.Wait()
 	s.mu.Lock()
 	delete(s.attached, a)
+	a.endDrag()
 	// A kill that ended the session has already removed it.
-	if slices.Contains(s.sessions, sess) {
-		s.layoutSession(sess)
+	if slices.Contains(s.sessions, a.session) {
+		s.layoutSession(a.session)
 	}
 	s.mu.Unlock()
 	if detached {
 		enc.Encode(client.Output{Detached: true})
 	}
+}
+
+// show makes sess the session the client sees. A session has one client, so
+// closing the earlier client's connection ends its stream, the same way kill
+// ends an attachment. The session the client left goes back to the default
+// size. It must be called with the mutex held.
+func (s *Server) show(a *attachment, sess *session) {
+	for old := range s.attached {
+		if old != a && old.session == sess {
+			delete(s.attached, old)
+			old.conn.Close()
+		}
+	}
+	left := a.session
+	a.session = sess
+	a.endDrag()
+	if left != sess {
+		s.layoutSession(left)
+	}
+	s.layoutSession(sess)
 }
 
 // stream handles input and resize requests. It reports whether the client
@@ -153,19 +169,36 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 			for data := req.Data; len(data) > 0; {
 				var pass []byte
 				var cmd rune
-				pass, cmd, data = a.filter(data)
+				var mouse *mouseEvent
+				pass, cmd, mouse, data = a.filter(data)
 				s.mu.Lock()
 				// A kill that ended the session closed the connection.
 				_, ok := s.attached[a]
 				var ptmx *os.File
 				if ok {
-					ptmx = a.focus().ptmx
+					p := a.focus()
+					ptmx = p.ptmx
+					// Typing returns a scrolled pane to the bottom, so the
+					// prompt shows.
+					if len(pass) > 0 {
+						active, err := p.term.ViewportActive()
+						if err != nil {
+							panic(err) // The terminal is broken; fail loudly.
+						}
+						if !active {
+							p.term.ScrollViewportBottom()
+							a.signal()
+						}
+					}
 				}
 				s.mu.Unlock()
 				if !ok {
 					return false
 				}
 				ptmx.Write(pass)
+				if mouse != nil {
+					s.mouse(a, *mouse)
+				}
 				if cmd != 0 && s.command(a, cmd) {
 					return true
 				}
@@ -228,10 +261,14 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 			return
 		}
 		frame, err := drawFrame(a, s.sessions)
-		s.mu.Unlock()
 		if err != nil {
 			panic(err) // The render state is broken; fail loudly.
 		}
+		if a.clipboard != nil {
+			frame = append(fmt.Appendf(nil, "\x1b]52;c;%s\x07", base64.StdEncoding.EncodeToString(a.clipboard)), frame...)
+			a.clipboard = nil
+		}
+		s.mu.Unlock()
 		if enc.Encode(client.Output{Frame: frame}) != nil {
 			return
 		}
@@ -263,16 +300,8 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 
 	// The chrome comes before the cells, and each item ends with a reset, so
 	// the cell loop's SGR tracking starts from a known state.
-	var labels []string
-	for _, sess := range sessions {
-		labels = append(labels, sess.label())
-	}
-	b = appendBar(b, 1, 1, a.cols, labels, slices.Index(sessions, a.session))
-	labels = labels[:0]
-	for i, w := range a.session.windows {
-		labels = append(labels, fmt.Sprintf("%d %s", i, w.label()))
-	}
-	b = appendBar(b, 2, 1, a.cols, labels, slices.Index(a.session.windows, a.window()))
+	b = appendBar(b, 1, 1, a.cols, sessionLabels(sessions), slices.Index(sessions, a.session))
+	b = appendBar(b, 2, 1, a.cols, windowLabels(a.session), slices.Index(a.session.windows, a.window()))
 	for i, r := range rects {
 		label := panes[i].label()
 		if !panes[i].alive {
@@ -322,7 +351,11 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 				if err != nil {
 					return nil, err
 				}
-				if sgr = appendSGR(sgr[:0], style); !bytes.Equal(sgr, prev) {
+				selected, err := cells.Selected()
+				if err != nil {
+					return nil, err
+				}
+				if sgr = appendSGR(sgr[:0], style, selected); !bytes.Equal(sgr, prev) {
 					b = append(b, sgr...)
 					prev = append(prev[:0], sgr...)
 				}
@@ -378,18 +411,19 @@ func appendBar(b []byte, row, col, width int, items []string, current int) []byt
 	return b
 }
 
-// appendSGR resets, then sets the cell's attributes. Palette colors stay
+// appendSGR resets, then sets the cell's attributes; a selected cell has
+// inverse video flipped. Palette colors stay
 // palette colors so the outer terminal's theme shows, and SGR 39 and 49 leave
 // its default colors in place. A palette the program changes with OSC 4 is not
 // shown.
-func appendSGR(b []byte, s *libghostty.Style) []byte {
+func appendSGR(b []byte, s *libghostty.Style, selected bool) []byte {
 	b = append(b, "\x1b[0"...)
 	for _, a := range []struct {
 		on   bool
 		code string
 	}{
 		{s.Bold(), ";1"}, {s.Faint(), ";2"}, {s.Italic(), ";3"},
-		{s.Underline() != libghostty.UnderlineNone, ";4"}, {s.Inverse(), ";7"}, {s.Strikethrough(), ";9"},
+		{s.Underline() != libghostty.UnderlineNone, ";4"}, {s.Inverse() != selected, ";7"}, {s.Strikethrough(), ";9"},
 	} {
 		if a.on {
 			b = append(b, a.code...)

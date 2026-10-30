@@ -92,19 +92,23 @@ func newKey(code, mods, event string) key {
 
 // filter takes the prefix key and the key after it out of input, which the
 // client sent in the focused pane's keyboard mode. It returns the bytes for the
-// pane, then the command the key after the prefix names and whatever input
-// follows it. With no command, cmd is 0 and rest is empty.
+// pane, then the command the key after the prefix names or the mouse report it
+// stopped at, and whatever input follows. With neither, cmd is 0, mouse is nil,
+// and rest is empty. A mouse report leaves a pending prefix pending.
 //
 // A key sequence split across two reads passes through undecoded, and a paste
 // containing the prefix byte starts the prefix. With kitty event types, the
 // release of a command key goes to the pane focused after the command, and with
 // all keys as escape codes the Ctrl press before the prefix reaches the pane.
 // Those are unlikely.
-func (a *attachment) filter(data []byte) (pass []byte, cmd rune, rest []byte) {
+func (a *attachment) filter(data []byte) (pass []byte, cmd rune, mouse *mouseEvent, rest []byte) {
 	for len(data) > 0 {
 		k, n := parseKey(data)
 		raw := data[:n]
 		data = data[n:]
+		if ev, ok := parseMouse(raw); ok {
+			return pass, 0, &ev, data
+		}
 		switch {
 		case !a.prefix:
 			if k.isPrefix() {
@@ -121,11 +125,11 @@ func (a *attachment) filter(data []byte) (pass []byte, cmd rune, rest []byte) {
 		default:
 			a.prefix = false
 			if k.mods == 0 && k.code != 0 {
-				return pass, rune(k.code), data
+				return pass, rune(k.code), nil, data
 			}
 		}
 	}
-	return pass, 0, nil
+	return pass, 0, nil, nil
 }
 
 // appendKeyboardModes appends the sequences that put the outer terminal in the

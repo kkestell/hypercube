@@ -67,6 +67,11 @@ func (s *Server) startPane(id, dir string, argv, env []string, cols, rows uint16
 		}),
 	)
 	if err == nil {
+		// The scrollback also has a byte limit that would keep far fewer lines
+		// than the line limit.
+		err = p.term.SetScrollbackMaxBytes(nil)
+	}
+	if err == nil {
 		p.rs, err = libghostty.NewRenderState()
 	}
 	if err != nil {
