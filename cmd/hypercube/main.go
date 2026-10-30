@@ -1,4 +1,4 @@
-// Command hypercube runs a team of coding agents in tmux.
+// Command hypercube runs a team of coding agents in the mux.
 package main
 
 import (
@@ -19,9 +19,9 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hook"
 	"github.com/kkestell/hypercube/internal/mcp"
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/statusline"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 	"github.com/kkestell/hypercube/internal/wait"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
@@ -37,12 +37,7 @@ func main() {
 		var root, name string
 		root, name, err = existingWorkspaceAt(".")
 		if err == nil {
-			err = deleteTeam(root, store.Path(name), os.Args[2], "")
-		}
-	case (len(os.Args) == 4 || len(os.Args) == 6) && os.Args[1] == "window":
-		err = windowAction(os.Args[2:])
-		if err != nil && len(os.Args) == 6 {
-			_ = exec.Command("tmux", "display-message", "-t", os.Args[5], strings.ReplaceAll(err.Error(), "#", "##")).Run()
+			err = deleteTeam(root, store.Path(name), os.Args[2])
 		}
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
 		err = stopOrDelete(os.Args[1], os.Args[2:])
@@ -153,7 +148,15 @@ func stopOrDelete(cmd string, args []string) error {
 	var targets []known
 	for _, k := range list {
 		// Only running sessions can be stopped.
-		if cmd == "delete" || tmux.HasSession(k.name) {
+		if cmd == "delete" {
+			targets = append(targets, k)
+			continue
+		}
+		session, err := mux.Workspace(k.state)
+		if err != nil {
+			return err
+		}
+		if session != "" {
 			targets = append(targets, k)
 		}
 	}
@@ -189,13 +192,18 @@ func stop(root, name string) error {
 		return err
 	}
 	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("refusing to stop a tmux session not owned by this workspace")
+	s, err := store.Load(path)
+	if err != nil {
+		return err
 	}
-	if !tmux.HasSession(name) {
+	session, err := mux.Workspace(s)
+	if err != nil {
+		return err
+	}
+	if session == "" {
 		return fmt.Errorf("no session for %s", workspace.Short(root))
 	}
-	return tmux.KillSession(name)
+	return mux.Kill(session)
 }
 
 // status prints every workspace with a state file: its directory, whether its
@@ -222,7 +230,11 @@ func status() error {
 		if k.root != "" {
 			r.dir = workspace.Short(k.root)
 		}
-		if tmux.HasSession(k.name) {
+		session, err := mux.Workspace(k.state)
+		if err != nil {
+			return err
+		}
+		if session != "" {
 			r.session = "running"
 		}
 		rows = append(rows, r)
@@ -257,36 +269,23 @@ func ago(t time.Time) string {
 // changes in its worktree or an unmerged branch. Workers without worktrees
 // have their directories left alone.
 func deleteWorkspace(root, name string) error {
-	return deleteTeam(root, store.Path(name), "", "")
+	return deleteTeam(root, store.Path(name), "")
 }
 
 // An empty team deletes the workspace. Otherwise only that window and its
 // team's resources are removed, with the same worktree safety checks.
-func deleteTeam(root, path, team, expectedWindow string) error {
-	name := store.Workspace(path)
+func deleteTeam(root, path, team string) error {
 	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("refusing to delete a tmux session not owned by this workspace")
-	}
 	s, err := store.Load(path)
 	if err != nil {
 		return err
 	}
-	if team != "" {
-		if s.TeamLead(team) == nil {
-			return fmt.Errorf("no session %q", team)
-		}
-		window, err := tmux.FindWindow(name, team, path)
-		if err != nil {
-			return err
-		}
-		if expectedWindow != "" && window != expectedWindow {
-			return errors.New("the window no longer belongs to this session")
-		}
+	if team != "" && s.TeamLead(team) == nil {
+		return fmt.Errorf("no session %q", team)
 	}
 	var workers []store.Agent
 	var problems []string
@@ -306,14 +305,17 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 		return fmt.Errorf("not deleting: problem worktrees:\n  %s", strings.Join(problems, "\n  "))
 	}
 
+	var running string
 	if team != "" {
-		if err := tmux.KillWindow(name, team, path); err != nil {
-			return err
-		}
-	} else if tmux.HasSession(name) {
-		if err := tmux.KillSession(name); err != nil {
-			return err
-		}
+		running, err = mux.Team(s, team)
+	} else {
+		running, err = mux.Workspace(s)
+	}
+	if err != nil {
+		return err
+	}
+	if err := mux.Kill(running); err != nil {
+		return err
 	}
 	// A worker can change its worktree before the session ends. Keep such a
 	// worker in the state so that delete can be run again after it is fixed.
@@ -373,8 +375,8 @@ func newSessionArgs(args []string) error {
 
 var sessionName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// A workspace owns one tmux session. Each Hypercube session is a team in its
-// own marked window; names and worker lifecycle are local to that team.
+// A workspace owns one mux session. Each Hypercube session is a team in its
+// own window; names and worker lifecycle are local to that team.
 func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 	if create && newName != "" && !sessionName.MatchString(newName) {
 		return errors.New("session names must be lowercase letters, digits, and hyphens")
@@ -389,9 +391,6 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		return err
 	}
 	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("a tmux session with this name belongs to something else")
-	}
 	s, err := store.Load(path)
 	if err != nil {
 		return err
@@ -409,19 +408,24 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 			}
 		}
 		if s.TeamLead(newName) != nil {
-			return fmt.Errorf("session %q already exists; select its window with Ctrl-b w", newName)
+			return fmt.Errorf("session %q already exists", newName)
 		}
 	}
+	session, err := mux.Workspace(s)
+	if err != nil {
+		return err
+	}
+	windows := map[string]string{}
 	missing := map[string]bool{}
 	for _, a := range s.Agents {
 		if a.Role != store.Lead {
 			continue
 		}
-		window, err := tmux.FindWindow(name, a.Team, path)
+		windows[a.Team], err = mux.Team(s, a.Team)
 		if err != nil {
 			return err
 		}
-		missing[a.Team] = window == ""
+		missing[a.Team] = windows[a.Team] == ""
 	}
 	if add {
 		missing[newName] = true
@@ -465,70 +469,48 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		return launch[i].Role == store.Lead && launch[j].Role != store.Lead
 	})
 	for _, a := range launch {
-		prompt := mcp.Nudge
+		prompt, launchSession, window := mcp.Nudge, "", windows[a.Team]
 		if a.Role == store.Lead {
-			prompt = ""
+			prompt, launchSession, window = "", session, ""
 		}
-		if _, err := harness.Launch(a, path, prompt); err != nil {
+		reply, err := harness.Launch(a, path, prompt, launchSession, window)
+		if a.Role == store.Lead {
+			// The reply names the window even when the launch fails after
+			// spawning, so the cleanup below closes it.
+			windows[a.Team] = reply.Window
+			if err == nil {
+				err = mux.Label(reply.Window, a.Team)
+			}
+			if err == nil && session == "" {
+				session = reply.Session
+				err = mux.Label(session, filepath.Base(root))
+			}
+		}
+		if err != nil {
 			// Keep healthy windows running and the failed team's state for retry.
-			if cleanup := tmux.KillWindow(name, a.Team, path); cleanup != nil {
+			if cleanup := mux.Kill(windows[a.Team]); cleanup != nil {
 				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
 			}
 			return fmt.Errorf("launching %s in session %s: %w", a.Name, a.Team, err)
 		}
 	}
-	if len(launch) > 0 {
-		if err := tmux.ConfigureSession(name, filepath.Base(root)); err != nil {
+	if create && selectNew {
+		if err := mux.Select(windows[newName]); err != nil {
 			return err
-		}
-	}
-	if create {
-		window, err := tmux.FindWindow(name, newName, path)
-		if err != nil {
-			return err
-		}
-		if window == "" {
-			return fmt.Errorf("session %q has no tmux window", newName)
-		}
-		if selectNew {
-			if err := tmux.SelectWindow(window); err != nil {
-				return err
-			}
 		}
 	}
 	lock.Close()
 	if attach {
-		return tmux.Attach(name)
+		return mux.Attach(session)
 	}
 	return nil
-}
-
-// These commands run from tmux bindings, using its workspace marker instead
-// of a worker's current directory.
-func windowAction(args []string) error {
-	s, err := store.Load(args[1])
-	if err != nil {
-		return err
-	}
-	for _, a := range s.Agents {
-		if a.Role != store.Lead {
-			continue
-		}
-		if args[0] == "new" && len(args) == 2 {
-			return openWorkspace(a.Dir, "", true, true, false)
-		}
-		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
-			return deleteTeam(a.Dir, args[1], args[2], args[3])
-		}
-	}
-	return errors.New("no matching Hypercube session")
 }
 
 // runAgent runs the harness as a child and relaunches it with its saved
 // conversation until it exits quickly three times in a row.
 func runAgent(prompt string) (int, error) {
-	id, path, pane := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE"), os.Getenv("TMUX_PANE")
-	if id == "" || path == "" || !tmux.Owns(store.Workspace(path), pane, id, path) {
+	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
+	if id == "" || path == "" {
 		return 0, errors.New("agent must run in its own Hypercube pane")
 	}
 	// Ctrl-C reaches the harness through the process group. Catch it here
@@ -542,7 +524,7 @@ func runAgent(prompt string) (int, error) {
 			if err != nil {
 				return err
 			}
-			a.Target, a.Attention = pane, false
+			a.Attention = false
 			a.Activity = store.Idle
 			if prompt != "" {
 				a.Activity = store.Busy
@@ -558,7 +540,7 @@ func runAgent(prompt string) (int, error) {
 			markExited(path, id)
 			return 0, err
 		}
-		tmux.Activity(store.Workspace(path), pane, id, path, agent.Activity, false)
+		mux.RefreshAttention(path, id)
 		cmd := exec.Command(argv[0], argv[1:]...)
 		for _, item := range os.Environ() {
 			key, _, _ := strings.Cut(item, "=")
@@ -583,7 +565,7 @@ func runAgent(prompt string) (int, error) {
 		}
 		if quickExits >= 3 {
 			markExited(path, id)
-			tmux.Activity(store.Workspace(path), pane, id, path, store.Exited, false)
+			mux.RefreshAttention(path, id)
 			return cmd.ProcessState.ExitCode(), nil
 		}
 	}
@@ -605,7 +587,11 @@ func running() error {
 		return err
 	}
 	for _, k := range list {
-		if tmux.WorkspaceSession(k.name, k.path) {
+		session, err := mux.Workspace(k.state)
+		if err != nil {
+			return err
+		}
+		if session != "" {
 			fmt.Println(k.root)
 		}
 	}

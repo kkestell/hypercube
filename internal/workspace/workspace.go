@@ -92,7 +92,7 @@ func Short(path string) string {
 var unsafe = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
 
 // Name names a workspace from its checkout path. It is used for the state
-// file and the tmux session.
+// file.
 func Name(root string) string {
 	sum := sha256.Sum256([]byte(root))
 	return unsafe.ReplaceAllString(filepath.Base(root), "-") + "-" + hex.EncodeToString(sum[:3])

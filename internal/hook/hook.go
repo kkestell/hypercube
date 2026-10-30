@@ -12,8 +12,8 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 type input struct {
@@ -109,7 +109,7 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		return json.NewEncoder(stdout).Encode(resp)
 	})
 	if err == nil {
-		tmux.RefreshActivity(path, id)
+		mux.RefreshAttention(path, id)
 	}
 	return err
 }

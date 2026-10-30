@@ -10,8 +10,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 func Run(limits bool, input io.Reader, out io.Writer) error {
@@ -26,7 +26,7 @@ func Run(limits bool, input io.Reader, out io.Writer) error {
 					}
 					return err
 				})
-				tmux.Activity(store.Workspace(path), a.Target, a.ID, path, a.Activity, false)
+				mux.RefreshAttention(path, id)
 			}
 		}
 	}

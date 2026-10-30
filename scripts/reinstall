@@ -1,7 +1,8 @@
 #!/bin/sh
-# Stop every running Hypercube workspace, install the build to
+# Stop every running Hypercube workspace, install the build and the mux to
 # $BINDIR, and start the stopped workspaces again in the background with the
-# installed binary. Run by `make reinstall` after building.
+# installed binary. Run by `make reinstall` after building. A running mux server
+# keeps the old mux until its last session ends.
 set -u
 
 BINDIR=${BINDIR:-$HOME/.local/bin}
@@ -33,7 +34,12 @@ for dir in $running; do
 done
 
 mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$BINDIR/hypercube" || exit 1
-echo "installed $BINDIR/hypercube"
+install -m 755 "$ROOT/bin/mux" "$BINDIR/mux" || exit 1
+echo "installed $BINDIR/hypercube and $BINDIR/mux"
+
+if "$ROOT/bin/mux" ls >/dev/null 2>&1; then
+	echo "reinstall: the mux server is still running other sessions; it keeps the old mux until they end"
+fi
 
 for dir in $stopped; do
 	if "$BINDIR/hypercube" start "$dir"; then

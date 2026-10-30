@@ -12,9 +12,10 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 	"github.com/kkestell/hypercube/internal/workspace"
+	"github.com/kkestell/hypercube/mux/client"
 )
 
 // Nudge is the initial prompt for a worker; later messages use harness wake-ups.
@@ -268,24 +269,19 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		return "", err
 	}
 	worktreeCreated := false
-	window, windowErr := tmux.FindWindow(store.Workspace(path), a.Team, path)
-	if windowErr != nil {
-		err = windowErr
-	} else if window == "" {
-		err = errors.New("the session is not running")
-	} else if a.Branch != "" {
+	var reply client.Reply
+	window, err := teamWindow(path, a.Team)
+	if err == nil && a.Branch != "" {
 		err = workspace.AddWorktree(root, a.Dir, a.Branch)
 		worktreeCreated = err == nil
 	}
 	if err == nil {
-		a.Target, err = harness.Launch(a, path, Nudge)
+		reply, err = harness.Launch(a, path, Nudge, "", window)
 	}
 	if err != nil {
 		cause := err
-		if a.Target != "" && tmux.Owns(store.Workspace(path), a.Target, a.ID, path) {
-			if closeErr := tmux.KillPane(store.Workspace(path), a.Target); closeErr != nil {
-				return "", fmt.Errorf("%w; closing the pane failed: %v; agent %s was kept for cleanup", cause, closeErr, a.Name)
-			}
+		if closeErr := mux.Kill(reply.Pane); closeErr != nil {
+			return "", fmt.Errorf("%w; closing the pane failed: %v; agent %s was kept for cleanup", cause, closeErr, a.Name)
 		}
 		if worktreeCreated {
 			if cleanup := workspace.RemoveWorktree(root, a.Dir, a.Branch); cleanup != nil {
@@ -302,6 +298,19 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		return fmt.Sprintf("Created %s in %s.", a.Address(), a.Dir), nil
 	}
 	return fmt.Sprintf("Created %s on branch %s in %s.", a.Address(), a.Branch, a.Dir), nil
+}
+
+// teamWindow returns the mux window of a running team.
+func teamWindow(path, team string) (string, error) {
+	s, err := store.Load(path)
+	if err != nil {
+		return "", err
+	}
+	window, err := mux.Team(s, team)
+	if err == nil && window == "" {
+		err = errors.New("the session is not running")
+	}
+	return window, err
 }
 
 func removeAgent(self, path, name string) (string, error) {
@@ -337,14 +346,8 @@ func removeAgent(self, path, name string) (string, error) {
 			return "", err
 		}
 	}
-	pane, err := tmux.FindPane(store.Workspace(path), a.ID, path)
-	if err != nil {
-		return "", err
-	}
-	if pane != "" {
-		if err := tmux.KillPane(store.Workspace(path), pane); err != nil {
-			return "", fmt.Errorf("closing %s: %w", a.Name, err)
-		}
+	if err := mux.Kill(a.Target); err != nil {
+		return "", fmt.Errorf("closing %s: %w", a.Name, err)
 	}
 	err = store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
 	return fmt.Sprintf("Removed %s.", a.Address()), err

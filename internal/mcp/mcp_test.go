@@ -33,6 +33,18 @@ func TestToolsFor(t *testing.T) {
 	}
 }
 
+// shortState points the mux socket at a state directory with no server, apart
+// from the user's. A socket path must stay under 104 bytes on macOS.
+func shortState(t *testing.T) {
+	t.Helper()
+	short, err := os.MkdirTemp("/tmp", "hc-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(short) })
+	t.Setenv("XDG_STATE_HOME", short)
+}
+
 // team returns the state path of a workspace, outside Git if noGit is set,
 // with a lead in leadDir and, if workerDir is set, a worker working
 // directly in it.
@@ -50,7 +62,7 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 		s.NoGit = noGit
 		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Dir: leadDir}}
 		if workerDir != "" {
-			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir, Target: "%999"})
+			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir, Target: "p1-0000"})
 		}
 		return nil
 	})
@@ -72,8 +84,7 @@ func TestCreateAgentNoGit(t *testing.T) {
 // TestRemoveDirWorker removes a worker without a worktree, outside Git and
 // in a Git workspace, and checks that its directory is left alone.
 func TestRemoveDirWorker(t *testing.T) {
-	t.Setenv("TMUX_TMPDIR", t.TempDir())
-	t.Setenv("TMUX", "")
+	shortState(t)
 	for _, noGit := range []bool{true, false} {
 		workerDir := t.TempDir()
 		file := filepath.Join(workerDir, "keep")
@@ -93,8 +104,7 @@ func TestRemoveDirWorker(t *testing.T) {
 }
 
 func TestSessionBoundaries(t *testing.T) {
-	t.Setenv("TMUX_TMPDIR", t.TempDir())
-	t.Setenv("TMUX", "")
+	shortState(t)
 	path := team(t, false, t.TempDir(), t.TempDir())
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = append(s.Agents,

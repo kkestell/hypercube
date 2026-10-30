@@ -153,8 +153,10 @@ These rules have no options:
   needs no exit events. The wrapper catches SIGINT rather than ignoring it,
   since an ignored signal stays ignored in the child.
 - `label` replaces the format strings, escaping, and stored style options.
-  Hooks, `wait`, and the status line set labels through the socket, and
-  `attention` marks agents that need the user.
+  Hypercube titles each pane with its agent's name, each window with its
+  team's name, and each session with its workspace's name; everything else on
+  screen is the mux's. Hooks, `wait`, and the status line set `attention`
+  through the socket for agents that need the user.
 - Hypercube's `c`, `W`, and `X` bindings and its error reporting through
   `display-message` go away; `hypercube new`, `hypercube` in another
   directory, and `hypercube delete-session` do the same from a shell.

@@ -2,7 +2,8 @@ Keep this document accurate and short.
 
 ## Purpose and scope
 
-Hypercube runs teams of local coding agents in tmux. Each agent is a native
+Hypercube runs teams of local coding agents in the mux, the terminal
+multiplexer in `mux/`. Each agent is a native
 harness (Claude Code or OpenCode) in its own pane; agents message each other
 through an MCP server and receive messages through harness hooks.
 
@@ -39,7 +40,8 @@ through an MCP server and receive messages through harness hooks.
 - `cmd/hypercube/` — the command line, workspace and session lifecycle, and
   relaunches.
 - `internal/` — one package per concern: `harness`, `hook`, `mcp`, `store`,
-  `statusline`, `tmux`, `wait`, `workspace`.
+  `statusline`, `mux`, `wait`, `workspace`.
+- `mux/` — the terminal multiplexer, its own Go module.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/reinstall` — stops, reinstalls, and restarts the installed
   workspaces.
@@ -52,8 +54,8 @@ through an MCP server and receive messages through harness hooks.
 - `make check` runs every check. Run it after changing code.
 - Use focused `go test -run` while working.
 - After changing only docs or comments, inspect the diff; run nothing.
-- Tests use isolated state, their own tmux server, and harness stand-ins.
-  Never stop the user's tmux server or workspaces, and never run
+- Tests use isolated state, their own mux server, and harness stand-ins.
+  Never stop the user's mux server or workspaces, and never run
   `make reinstall`.
 - Use `make dev` for a live smoke test, and clean up what you start.
 

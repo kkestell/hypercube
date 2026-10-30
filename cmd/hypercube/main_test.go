@@ -15,9 +15,7 @@ import (
 func TestDelete(t *testing.T) {
 	tmp, _ := os.MkdirTemp("/tmp", "hc")
 	defer os.RemoveAll(tmp)
-	t.Setenv("TMUX_TMPDIR", tmp)
-	t.Setenv("TMUX", "")
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", tmp)
 	root := t.TempDir()
 	git := func(dir string, args ...string) {
 		t.Helper()
@@ -76,9 +74,10 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteMissingCheckout(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	t.Setenv("TMUX_TMPDIR", t.TempDir())
-	t.Setenv("TMUX", "")
+	// A mux socket path must stay under 104 bytes on macOS.
+	short, _ := os.MkdirTemp("/tmp", "hc-")
+	defer os.RemoveAll(short)
+	t.Setenv("XDG_STATE_HOME", short)
 	root := filepath.Join(t.TempDir(), "gone")
 	path := store.Path(workspace.Name(root))
 	if err := store.Update(path, func(s *store.State) error {

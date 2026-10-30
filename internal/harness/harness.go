@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
-	"github.com/kkestell/hypercube/internal/workspace"
+	"github.com/kkestell/hypercube/mux/client"
 )
 
 var events = []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "StopFailure", "PermissionRequest", "PostToolUseFailure", "PermissionDenied"}
@@ -114,21 +114,36 @@ func jsonString(v any) string {
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
-// Launch starts a wrapper in a tmux pane. The wrapper runs the native harness
-// as a child and relaunches it when it exits.
-func Launch(a store.Agent, statePath, prompt string) (string, error) {
+// Launch starts a wrapper in a new window of session, or in the existing
+// window; both empty makes a new session. The wrapper runs the native harness
+// as a child and relaunches it when it exits. The pane ID is saved as the
+// agent's Target, since the wrapper cannot learn its own pane ID, and the pane
+// is labeled with the agent's name. The reply names the pane even when saving
+// fails.
+func Launch(a store.Agent, statePath, prompt, session, window string) (client.Reply, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return "", err
+		return client.Reply{}, err
 	}
-	label := fmt.Sprintf("%s · %s %s %s · %s", a.Name, a.Harness, a.Model, a.Effort, workspace.Short(a.Dir))
 	env := map[string]string{}
 	for _, item := range os.Environ() {
 		key, value, _ := strings.Cut(item, "=")
-		if key != "TMUX" && key != "TMUX_PANE" {
-			env[key] = value
-		}
+		env[key] = value
 	}
 	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
-	return tmux.NewPane(store.Workspace(statePath), a.Team, label, a.Dir, env, []string{exe, "agent", prompt})
+	reply, err := mux.Spawn(session, window, a.Dir, []string{exe, "agent", prompt}, env)
+	if err != nil {
+		return reply, err
+	}
+	err = store.Update(statePath, func(s *store.State) error {
+		agent, err := s.Agent(a.ID)
+		if err == nil {
+			agent.Target = reply.Pane
+		}
+		return err
+	})
+	if err != nil {
+		return reply, err
+	}
+	return reply, mux.Label(reply.Pane, a.Name)
 }

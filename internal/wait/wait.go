@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/hook"
+	"github.com/kkestell/hypercube/internal/mux"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 // Run returns true after writing messages. The CLI maps that to status 2.
@@ -89,7 +89,7 @@ func Wait(id, path string, out io.Writer) (bool, error) {
 			})
 			if err != nil || ready {
 				if err == nil {
-					tmux.RefreshActivity(path, id)
+					mux.RefreshAttention(path, id)
 				}
 				return ready, err
 			}

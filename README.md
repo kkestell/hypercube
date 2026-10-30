@@ -1,6 +1,6 @@
 # Hypercube
 
-Local coding-agent teams for macOS, built with Go and tmux.
+Local coding-agent teams for macOS, built with Go and its own terminal multiplexer.
 
 - [Installation](docs/installation.md): prerequisites, building, upgrades,
   and development sessions.

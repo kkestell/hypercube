@@ -5,8 +5,10 @@ BIN := bin/hypercube
 
 build:
 	go build -o $(BIN) ./cmd/hypercube
+	$(MAKE) -C mux build
+	install -m 755 mux/bin/mux bin/mux
 
-test:
+test: build
 	go test ./...
 
 check: build
@@ -18,6 +20,7 @@ check: build
 install: build
 	mkdir -p "$(BINDIR)"
 	install -m 755 $(BIN) "$(BINDIR)/hypercube"
+	install -m 755 bin/mux "$(BINDIR)/mux"
 
 reinstall: build
 	BINDIR="$(BINDIR)" scripts/reinstall

@@ -16,10 +16,10 @@ BIN=$ROOT/bin/hypercube
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
 
-# Run hypercube against the dev state and configuration. Run from inside tmux,
-# TMUX would otherwise point it at that server instead of the dev one.
+# Run hypercube against the dev state and configuration. The state directory
+# also holds the mux server's socket, so the dev session has its own server.
 dev() {
-	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
+	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
 }
 
 # Stop every workspace in the dev state.
@@ -31,7 +31,7 @@ stop() {
 case "${1:-up}" in
 up)
 	cd "$ROOT"
-	go build -o "$BIN" ./cmd/hypercube
+	make -C "$ROOT" build
 	stop
 
 	mkdir -p "$DEV/state" "$(dirname "$CONFIG")"
@@ -71,9 +71,7 @@ JSON
 	cat >"$DEV/run" <<RUN
 #!/bin/sh
 export PATH='$PATH'
-export TMUX_TMPDIR='$DEV'
 export XDG_STATE_HOME='$DEV/state' XDG_CONFIG_HOME='$DEV/config'
-unset TMUX TMUX_PANE
 # Claude Code saves no transcripts with the marker its own shells carry, so
 # dev agents started from inside Claude Code could not resume.
 unset CLAUDE_CODE_CHILD_SESSION

@@ -4,7 +4,7 @@ After creating your configuration, run `hypercube` from the directory you
 want to work in. In Git, the workspace root is the checkout's top level;
 outside Git, it is the current directory.
 
-A workspace owns one tmux session. Each Hypercube session is a team in its own
+A workspace owns one mux session. Each Hypercube session is a team in its own
 window, with a lead on the left and workers stacked on the right.
 Agents are addressed as `session/name`, such as `review/lead`; a bare name
 means an agent in the sender's own team. Workers message only their own team,
@@ -30,47 +30,28 @@ lowercase letters, digits, and hyphens. Stop and delete default to the current
 workspace; `--all` lists targets and asks for confirmation. They can also
 use a disappeared checkout's saved path.
 
-## Keyboard controls
+## Controls
 
-The top status line lists workspaces; click one to switch to it. Each
-Hypercube session is a tmux window, listed by number and name in the bottom
-status line. A session turns yellow when its lead finishes a reply while you are
-viewing another session or workspace, and returns to gray once you view it. A
-workspace is yellow while any of its sessions is. With tmux's default prefix,
-press Ctrl-b, then the listed key:
+Run `hypercube` from a shell outside the mux. The status bar lists the
+workspace's teams on the left and the workspaces on the right; click one to
+switch to it, or click a pane to focus it. Press Ctrl-b, then the listed key:
 
 | Key | Action |
 | --- | --- |
-| `c` | Create and select a Hypercube session. |
-| `n` / `p` | Switch to the next or previous Hypercube session. |
-| `0`–`9` | Switch to the Hypercube session with that number. |
-| `w` | Choose a Hypercube session from a list. |
-| `Shift-x` | Confirm deletion of the current Hypercube session. |
-| Arrow key | Select a pane. |
-| `z` | Zoom the current pane. |
 | `d` | Detach. |
-| `s` | Choose a workspace's tmux session. |
-| `?` | List key bindings, including Hypercube's. |
-| `Shift-w` | Open the workspace at a prompted path, creating it if needed. |
+| `n` / `p` | Switch to the next or previous team. |
+| `0`–`9` | Switch to the team with that number. |
+| `o` | Focus the next pane. |
+| Ctrl-b | Send Ctrl-b to the focused pane. |
 
-Clicking a Hypercube session's name in the bottom status line also switches to
-it.
-
-Hypercube installs the `c`, uppercase `W`, and uppercase `X` bindings in tmux's
-shared prefix table; they act only on windows marked as Hypercube teams.
-Elsewhere, `c` opens a plain tmux window and `W` and `X` do nothing. Other controls
-come from tmux and follow your tmux configuration.
-
-Pane titles identify the agent and its settings. A green dot means busy,
-gray means idle, and red requests approval attention. The status line also
-puts a red dot after a session's name for each of its agents awaiting
-approval. An exited pane shows its exit status. See [harness limitations](harness-support.md#known-limitations)
-when interpreting activity.
+A pane's title is the agent's name, with the progress its harness reports. A
+bell shows on a pane awaiting approval, and on its team and workspace in the
+status bar, until it is answered. An exited pane shows its exit status.
 
 ## Resume and cleanup
 
 Detaching or closing the terminal leaves agents running. Reattaching keeps
-the selected window and does not restart agents in existing windows. Starting
+the selected team and does not restart agents in existing windows. Starting
 recreates closed saved windows with their conversations and queues.
 
 A harness that exits is relaunched in its pane with its saved conversation.
