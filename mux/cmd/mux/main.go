@@ -24,7 +24,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attach <session>")
+		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attach [session]")
 	}
 	switch args[0] {
 	case "server":
@@ -39,10 +39,14 @@ func run(args []string) error {
 		}
 		return kill(args[1])
 	case "attach":
-		if len(args) != 2 {
-			return fmt.Errorf("usage: mux attach <session>")
+		if len(args) > 2 {
+			return fmt.Errorf("usage: mux attach [session]")
 		}
-		return attach(args[1])
+		session := ""
+		if len(args) == 2 {
+			session = args[1]
+		}
+		return attach(session)
 	}
 	return fmt.Errorf("unknown command %q", args[0])
 }

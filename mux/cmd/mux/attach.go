@@ -9,9 +9,10 @@ import (
 	"golang.org/x/term"
 )
 
-// attach shows the session's pane on the terminal until the server detaches it.
-// The server draws every frame; this only passes frames, input, and size
-// changes along.
+// attach shows the session on the terminal until the server detaches it. With
+// no session it attaches to the first one, or starts a shell in a new one. The
+// server draws every frame and puts the terminal in the focused pane's keyboard
+// mode; this only passes frames, input, and size changes along.
 func attach(session string) error {
 	fd := int(os.Stdin.Fd())
 	cols, rows, err := term.GetSize(fd)
@@ -23,6 +24,11 @@ func attach(session string) error {
 		return err
 	}
 	defer c.Close()
+	if session == "" {
+		if session, err = firstSession(c); err != nil {
+			return err
+		}
+	}
 	if _, err := c.Call(client.Request{Type: "attach", Session: session, Cols: cols, Rows: rows}); err != nil {
 		return err
 	}
@@ -33,7 +39,9 @@ func attach(session string) error {
 	}
 	os.Stdout.WriteString("\x1b[?1049h")
 	defer func() {
-		os.Stdout.WriteString("\x1b[?1049l\x1b[?25h\x1b[0m")
+		// Whatever keyboard mode the last frame set, the shell gets its keys back
+		// in the default one.
+		os.Stdout.WriteString("\x1b[=0;1u\x1b[>4;0m\x1b[?1l\x1b>\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
 		term.Restore(fd, saved)
 	}()
 
@@ -63,4 +71,22 @@ func attach(session string) error {
 		}
 		os.Stdout.Write(out.Frame)
 	}
+}
+
+// firstSession returns the first session's ID, spawning $SHELL in the working
+// directory when there is none.
+func firstSession(c *client.Conn) (string, error) {
+	reply, err := c.Call(client.Request{Type: "list"})
+	if err != nil {
+		return "", err
+	}
+	if len(reply.Sessions) > 0 {
+		return reply.Sessions[0].ID, nil
+	}
+	dir, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	reply, err = c.Call(client.Request{Type: "spawn", Dir: dir, Argv: []string{os.Getenv("SHELL")}, Env: os.Environ()})
+	return reply.Session, err
 }

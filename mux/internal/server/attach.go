@@ -14,8 +14,6 @@ import (
 	"go.mitchellh.com/libghostty"
 )
 
-const prefixKey = 0x02 // Ctrl-b
-
 // attachment is a client viewing a session. Its draw goroutine is the only
 // writer to the connection while the stream runs. The server's mutex guards
 // cols and rows.
@@ -24,15 +22,14 @@ type attachment struct {
 	cols, rows int // the client's terminal size
 	conn       net.Conn
 	wake       chan struct{} // buffer of one; a signal means "redraw"
-	prefix     bool          // the last input byte was the prefix key
+	prefix     bool          // the last key was the prefix
 }
 
-// window is the window the client sees. Task 7 adds window switching.
-func (a *attachment) window() *window { return a.session.windows[0] }
+// window is the window the client sees.
+func (a *attachment) window() *window { return a.session.active }
 
-// focus is the pane that receives input: the shown window's main pane. Task 7
-// adds a stored focus.
-func (a *attachment) focus() *pane { return a.window().panes[0] }
+// focus is the pane that receives input.
+func (a *attachment) focus() *pane { return a.window().active }
 
 // wake signals the attachments whose shown window contains p. It must be called
 // with the mutex held.
@@ -61,9 +58,7 @@ func (a *attachment) signal() {
 
 // layoutSession sizes the panes of every window in sess to the client attached
 // to it, or to the default size if none is, and redraws the client. Panes that
-// do not fit keep their size. It must be called with the mutex held. Two
-// clients attached to one session are not supported; the first one found sets
-// the layout, and task 7 detaches the earlier client.
+// do not fit keep their size. It must be called with the mutex held.
 func (s *Server) layoutSession(sess *session) {
 	var shown *attachment
 	for a := range s.attached {
@@ -103,6 +98,14 @@ func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req
 		s.mu.Unlock()
 		enc.Encode(client.Reply{Error: fmt.Sprintf("unknown session %q", req.Session)})
 		return
+	}
+	// A session has one client. Closing the earlier client's connection ends its
+	// stream, the same way kill ends an attachment.
+	for old := range s.attached {
+		if old.session == sess {
+			delete(s.attached, old)
+			old.conn.Close()
+		}
 	}
 	a := &attachment{session: sess, cols: req.Cols, rows: req.Rows, conn: conn, wake: make(chan struct{}, 1)}
 	s.attached[a] = struct{}{}
@@ -145,21 +148,27 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 		}
 		switch req.Type {
 		case "input":
-			pass, detach := a.filter(req.Data)
-			s.mu.Lock()
-			// A kill that ended the session closed the connection.
-			_, ok := s.attached[a]
-			var ptmx *os.File
-			if ok {
-				ptmx = a.focus().ptmx
-			}
-			s.mu.Unlock()
-			if !ok {
-				return false
-			}
-			ptmx.Write(pass)
-			if detach {
-				return true
+			// A command may move focus, so the rest of the input goes to the
+			// pane focused after it.
+			for data := req.Data; len(data) > 0; {
+				var pass []byte
+				var cmd rune
+				pass, cmd, data = a.filter(data)
+				s.mu.Lock()
+				// A kill that ended the session closed the connection.
+				_, ok := s.attached[a]
+				var ptmx *os.File
+				if ok {
+					ptmx = a.focus().ptmx
+				}
+				s.mu.Unlock()
+				if !ok {
+					return false
+				}
+				ptmx.Write(pass)
+				if cmd != 0 && s.command(a, cmd) {
+					return true
+				}
 			}
 		case "resize":
 			s.mu.Lock()
@@ -173,24 +182,35 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 	}
 }
 
-// filter takes the prefix key out of input, one byte at a time across reads. It
-// returns the bytes for the pane and whether the client asked to detach.
-func (a *attachment) filter(data []byte) (pass []byte, detach bool) {
-	for _, b := range data {
-		switch {
-		case a.prefix:
-			a.prefix = false
-			// Only d is bound in task 1; any other key is dropped.
-			if b == 'd' {
-				return pass, true
-			}
-		case b == prefixKey:
-			a.prefix = true
-		default:
-			pass = append(pass, b)
-		}
+// command runs the built-in key after the prefix. It reports whether the client
+// asked to detach. Switching windows needs no layout, because every window of
+// the session is already sized.
+func (s *Server) command(a *attachment, cmd rune) (detach bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// A kill that ended the session closed the connection.
+	if _, ok := s.attached[a]; !ok {
+		return false
 	}
-	return pass, false
+	sess, w := a.session, a.window()
+	switch {
+	case cmd == 'd':
+		return true
+	case cmd == 'n':
+		sess.active = sess.windows[(slices.Index(sess.windows, w)+1)%len(sess.windows)]
+	case cmd == 'p':
+		sess.active = sess.windows[(slices.Index(sess.windows, w)+len(sess.windows)-1)%len(sess.windows)]
+	case cmd >= '0' && cmd <= '9':
+		if i := int(cmd - '0'); i < len(sess.windows) {
+			sess.active = sess.windows[i]
+		}
+	case cmd == 'o':
+		// The next pane may not fit the terminal, so it is not drawn and the
+		// client types into a pane it cannot see; that is unlikely.
+		w.active = w.panes[(slices.Index(w.panes, w.active)+1)%len(w.panes)]
+	}
+	a.signal()
+	return false
 }
 
 // draw sends a full frame each time the attachment is woken. Output that
@@ -220,7 +240,8 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 
 // drawFrame renders the bars, the shown window, and each pane's title row as
 // one synchronized update. Clearing the screen first blanks any space nothing
-// uses. It must be called with the server's mutex held.
+// uses, and the focused pane's keyboard modes follow it so the cursor stays
+// last. It must be called with the server's mutex held.
 func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	rows, err := libghostty.NewRenderStateRowIterator()
 	if err != nil {
@@ -236,6 +257,9 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	panes := a.window().panes
 	rects := layout(len(panes), a.cols, a.rows)
 	b := []byte("\x1b[?2026h\x1b[0m\x1b[H\x1b[2J")
+	if b, err = appendKeyboardModes(b, a.focus()); err != nil {
+		return nil, err
+	}
 
 	// The chrome comes before the cells, and each item ends with a reset, so
 	// the cell loop's SGR tracking starts from a known state.
@@ -268,6 +292,7 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	var sgr, prev []byte
 	var graphemes []uint32
 	var cursor *libghostty.RenderStateCursor
+	var cursorRect rect
 	for i, r := range rects {
 		rs := panes[i].rs
 		if err := rs.Update(panes[i].term); err != nil {
@@ -312,7 +337,8 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 				}
 			}
 		}
-		if i == 0 {
+		if panes[i] == a.focus() {
+			cursorRect = r
 			if cursor, err = rs.Cursor(); err != nil {
 				return nil, err
 			}
@@ -321,7 +347,7 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 
 	b = append(b, "\x1b[0m"...)
 	if cursor != nil && cursor.Visible && cursor.ViewportHasValue {
-		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", rects[0].y+int(cursor.ViewportY)+1, rects[0].x+int(cursor.ViewportX)+1)...)
+		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", cursorRect.y+int(cursor.ViewportY)+1, cursorRect.x+int(cursor.ViewportX)+1)...)
 	} else {
 		b = append(b, "\x1b[?25l"...)
 	}

@@ -837,3 +837,135 @@ func TestErrors(t *testing.T) {
 		{ID: b.Session, Windows: []client.Window{{ID: b.Window, Panes: []client.Pane{alive(b.Pane)}}}},
 	})
 }
+
+func sendInput(t *testing.T, a *client.Conn, data string) {
+	t.Helper()
+	if err := a.Send(client.Request{Type: "input", Data: []byte(data)}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// titled spawns a pane that sets its title and then waits.
+func titled(title string) client.Request {
+	return client.Request{Argv: []string{"sh", "-c", setTitle + title + "; echo shown-" + title + "; exec sleep 60"}}
+}
+
+func TestWindowKeys(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, titled("one"))
+	two := titled("two")
+	two.Session = one.Session
+	spawnPane(t, c, two)
+	a := attachAt(t, one.Session, 100, 30)
+
+	const first = "\x1b[2;1H\x1b[7m 0 one \x1b[0m 1 two "
+	const second = "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m"
+	waitFrame(t, a, first)
+	sendInput(t, a, "\x02n")
+	waitFrame(t, a, second)
+	sendInput(t, a, "\x02n")
+	waitFrame(t, a, first)
+	sendInput(t, a, "\x02p")
+	waitFrame(t, a, second)
+	sendInput(t, a, "\x020")
+	waitFrame(t, a, first)
+	sendInput(t, a, "\x029") // no such window
+	sendInput(t, a, "\x02n")
+	waitFrame(t, a, second)
+}
+
+func TestNextPaneKey(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"cat"}})
+	other := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: main.Window})
+	a := attachAt(t, main.Session, 100, 30)
+
+	sendInput(t, a, "\x02o")
+	waitFrame(t, a, "\x1b[3;42H\x1b[7m cat \x1b[0m")
+	sendInput(t, a, "routed\r")
+	waitCapture(t, c, other.Pane, "routed")
+	reply, err := c.Call(client.Request{Type: "capture", Pane: main.Pane})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(reply.Text, "routed") {
+		t.Errorf("the main pane received the input:\n%s", reply.Text)
+	}
+
+	// Input after a command in the same read goes to the newly focused pane.
+	sendInput(t, a, "\x02oback\r")
+	waitCapture(t, c, main.Pane, "back")
+}
+
+func TestLiteralPrefix(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"cat", "-v"}})
+	a := attachAt(t, pane.Session, 100, 30)
+
+	sendInput(t, a, "\x02\x02\r")
+	waitCapture(t, c, pane.Pane, "^B")
+}
+
+func TestPrefixInKeyboardModes(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+
+	// kitty, with the release of the prefix between it and the command
+	a := attachAt(t, pane.Session, 100, 30)
+	sendInput(t, a, "\x1b[98;5u\x1b[98;5:3ud")
+	waitDetached(t, a)
+
+	// modifyOtherKeys
+	a = attachAt(t, pane.Session, 100, 30)
+	sendInput(t, a, "\x1b[27;5;98~d")
+	waitDetached(t, a)
+}
+
+func TestKeyboardModeFollowsFocus(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", `printf "\033[?1h\033=\033[?2004h\033[>1u\033[>4;2m"; exec sleep 60`}})
+	spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}, Window: main.Window})
+	a := attachAt(t, main.Session, 100, 30)
+
+	waitFrame(t, a, "\x1b[?1h\x1b=\x1b[?2004h\x1b[=1;1u\x1b[>4;2m")
+	sendInput(t, a, "\x02o")
+	waitFrame(t, a, "\x1b[?1l\x1b>\x1b[?2004l\x1b[=0;1u\x1b[>4;0m")
+}
+
+func TestSecondAttachDetachesFirst(t *testing.T) {
+	c := startServer(t)
+	pane := spawnPane(t, c, client.Request{Argv: []string{"cat"}})
+	first := attachAt(t, pane.Session, 100, 30)
+	second := attachAt(t, pane.Session, 100, 30)
+
+	for {
+		if _, err := first.ReadOutput(); err != nil {
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("first client's stream ended with %v, want EOF", err)
+			}
+			break
+		}
+	}
+	sendInput(t, second, "hello\r")
+	waitCapture(t, c, pane.Pane, "hello")
+}
+
+func TestReattachRedraws(t *testing.T) {
+	c := startServer(t)
+	one := spawnPane(t, c, titled("one"))
+	two := titled("two")
+	two.Session = one.Session
+	spawnPane(t, c, two)
+	a := attachAt(t, one.Session, 100, 30)
+
+	sendInput(t, a, "\x02n")
+	waitFrame(t, a, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m")
+	sendInput(t, a, "\x02d")
+	waitDetached(t, a)
+
+	b := dial(t)
+	if _, err := b.Call(client.Request{Type: "attach", Session: one.Session, Cols: 100, Rows: 30}); err != nil {
+		t.Fatal(err)
+	}
+	waitFrame(t, b, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m", "shown-two")
+}

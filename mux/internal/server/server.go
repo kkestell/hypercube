@@ -15,14 +15,19 @@ import (
 	"github.com/kkestell/hypercube/mux/client"
 )
 
+// A session's active window and a window's active pane are what the attached
+// client sees and types into. They stay with the session and window, so a
+// client that attaches again finds them as it left them.
 type session struct {
 	id      string
 	windows []*window
+	active  *window
 }
 
 type window struct {
-	id    string
-	panes []*pane
+	id     string
+	panes  []*pane
+	active *pane
 }
 
 // Server guards the session tree and every terminal with one mutex.
@@ -175,9 +180,9 @@ func (s *Server) spawn(req client.Request) (client.Reply, error) {
 	if w != nil {
 		w.panes = append(w.panes, p)
 	} else {
-		w = &window{id: s.nextID('w'), panes: []*pane{p}}
+		w = &window{id: s.nextID('w'), panes: []*pane{p}, active: p}
 		if sess == nil {
-			sess = &session{id: s.nextID('s')}
+			sess = &session{id: s.nextID('s'), active: w}
 			s.sessions = append(s.sessions, sess)
 		}
 		sess.windows = append(sess.windows, w)
@@ -255,6 +260,14 @@ func (s *Server) kill(req client.Request) error {
 			})
 		}
 		sess.windows = slices.DeleteFunc(sess.windows, func(w *window) bool { return len(w.panes) == 0 })
+		for _, w := range sess.windows {
+			if !slices.Contains(w.panes, w.active) {
+				w.active = w.panes[0]
+			}
+		}
+		if len(sess.windows) > 0 && !slices.Contains(sess.windows, sess.active) {
+			sess.active = sess.windows[0]
+		}
 	}
 	s.sessions = slices.DeleteFunc(s.sessions, func(sess *session) bool { return len(sess.windows) == 0 })
 	for a := range s.attached {
@@ -296,6 +309,9 @@ func (s *Server) respawn(req client.Request) error {
 		for _, w := range sess.windows {
 			if i := slices.Index(w.panes, old); i >= 0 {
 				w.panes[i] = p
+				if w.active == old {
+					w.active = p
+				}
 			}
 		}
 	}
