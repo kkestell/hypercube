@@ -305,6 +305,10 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 }
 
 func removeAgent(self, path, name string) (string, error) {
+	// A misnamed argument arrives as an empty name; failing lets the model retry.
+	if strings.TrimSpace(name) == "" {
+		return "", errors.New("name is required")
+	}
 	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return "", err

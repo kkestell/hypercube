@@ -16,9 +16,10 @@ BIN=$ROOT/bin/hypercube
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
 
-# Run hypercube against the dev state and configuration.
+# Run hypercube against the dev state and configuration. Run from inside tmux,
+# TMUX would otherwise point it at that server instead of the dev one.
 dev() {
-	TMUX_TMPDIR=$DEV XDG_STATE_HOME=$DEV/state XDG_CONFIG_HOME=$DEV/config "$BIN" "$@"
+	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
 }
 
 # Stop every workspace in the dev state.

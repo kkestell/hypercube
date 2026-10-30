@@ -34,7 +34,10 @@ use a disappeared checkout's saved path.
 
 The top status line lists workspaces; click one to switch to it. Each
 Hypercube session is a tmux window, listed by number and name in the bottom
-status line. With tmux's default prefix, press Ctrl-b, then the listed key:
+status line. A session turns yellow when its lead finishes a reply while you are
+viewing another session or workspace, and returns to gray once you view it. A
+workspace is yellow while any of its sessions is. With tmux's default prefix,
+press Ctrl-b, then the listed key:
 
 | Key | Action |
 | --- | --- |

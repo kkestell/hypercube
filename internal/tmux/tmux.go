@@ -76,8 +76,8 @@ func NewPane(session, team, label, dir string, env map[string]string, argv []str
 		"set-option", "-w", "-t", window, "automatic-rename", "off", ";",
 		"set-option", "-w", "-t", window, "allow-rename", "off", ";",
 		"set-option", "-w", "-t", window, "extended-keys", "always", ";",
-		"set-option", "-w", "-t", window, "window-status-format", " #I #W"+attention("black")+" ", ";",
-		"set-option", "-w", "-t", window, "window-status-current-format", "#[fg=green,bg=black,bold] #I #W"+attention("green")+" #[fg=black,bg=green,nobold]", ";",
+		"set-option", "-w", "-t", window, "window-status-format", "#{?@hypercube_replied,#[fg=yellow],} #I #W#[fg=colour245]"+attention("colour245")+" ", ";",
+		"set-option", "-w", "-t", window, "window-status-current-format", "#[fg=green,bold] #I #W"+attention("green")+" #[fg=colour245,nobold]", ";",
 		"set-option", "-w", "-t", window, "window-status-separator", "", ";",
 		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
 		"set-hook", "-w", "-t", window, "pane-died", died, ";",
@@ -155,12 +155,15 @@ func ConfigureSession(session, label string) error {
 	// The top line lists every workspace. Clicking one switches to it through
 	// tmux's default MouseDown1Status binding. Styles avoid commas because
 	// they would split the loop's two formats.
-	// A dark line keeps it distinct from the green window list below.
-	item := "#[range=session|#{session_id}] #{@hypercube_workspace} #[norange]"
+	// A workspace with an unseen reply in any of its windows shows in yellow;
+	// see markReply. The window list below uses the same colors on a darker
+	// line.
+	replied := "#{?#{W:#{?@hypercube_replied,1,}},#[fg=yellow],}"
+	item := "#[range=session|#{session_id}]" + replied + " #{@hypercube_workspace} #[fg=colour245]#[norange]"
 	current := "#[range=session|#{session_id}]#[fg=green]#[bold] #{@hypercube_workspace} #[fg=colour245]#[nobold]#[norange]"
 	workspaces := "#[fill=colour235]#[bg=colour235]#[fg=colour245]#{S:#{?@hypercube_state," + item + ",},#{?@hypercube_state," + current + ",}}"
 	_, err = run("set-option", "-t", "="+session+":", "mouse", "on", ";",
-		"set-option", "-t", "="+session+":", "status-style", "fg=black,bg=green", ";",
+		"set-option", "-t", "="+session+":", "status-style", "fg=colour245,bg=colour234", ";",
 		"set-option", "-t", "="+session+":", "status-left", "", ";",
 		"set-option", "-t", "="+session+":", "status-right", "", ";",
 		"set-option", "-t", "="+session+":", "status", "2", ";",
@@ -182,7 +185,12 @@ func ConfigureSession(session, label string) error {
 	// go to stdout so tmux shows them.
 	openCommand := `cd %1 2>&1 && #{q:@hypercube_exe} 2>&1`
 	owned := `#{&&:#{@hypercube_state},#{@hypercube_team}}`
+	// A window becomes visible when it is selected or when a client attaches or
+	// switches to this workspace; either clears its unseen reply.
+	seen := "set-option -w -u @hypercube_replied"
 	_, err = run("set-option", "-t", "="+session+":", "@hypercube_exe", exe, ";",
+		"set-hook", "-t", "="+session+":", "session-window-changed", seen, ";",
+		"set-hook", "-t", "="+session+":", "client-session-changed", seen, ";",
 		"bind-key", "-N", "Create a Hypercube session (or a tmux window elsewhere)", "c", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), "new-window", ";",
 		"bind-key", "-N", "Open or create a Hypercube workspace", "W", "if-shell", "-F", owned,
 		"command-prompt -p 'Workspace path:' "+quote("run-shell -b "+quote(openCommand)), ";",
@@ -209,8 +217,28 @@ func Activity(session, pane, id, state, activity string, attention bool) {
 	if attention {
 		flag = "1"
 	}
+	busy := ""
+	if activity == "busy" {
+		busy = "1"
+	}
 	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_activity", text, ";",
-		"set-option", "-p", "-t", pane, "@hypercube_attention", flag)
+		"set-option", "-p", "-t", pane, "@hypercube_attention", flag, ";",
+		"set-option", "-p", "-t", pane, "@hypercube_busy", busy)
+}
+
+// markReply flags the lead's window when the lead goes from busy to idle while
+// no client is viewing that window. It must decide at reply time: a reply
+// watched in place would otherwise appear unseen after the user switches away.
+// Run it before Activity replaces the pane's busy flag.
+func markReply(session, pane, id, state string) {
+	if !Owns(session, pane, id, state) {
+		return
+	}
+	got, err := run("display-message", "-p", "-t", pane, "#{@hypercube_busy} #{&&:#{session_attached},#{window_active}}")
+	if err != nil || got != "1 0" {
+		return
+	}
+	_, _ = run("set-option", "-w", "-t", pane, "@hypercube_replied", "1")
 }
 
 // attention marks a window name in the status line with a red dot for each of
@@ -317,7 +345,11 @@ func RefreshActivity(path, id string) {
 	if err != nil {
 		return
 	}
-	Activity(store.Workspace(path), a.Target, id, path, a.Activity, a.Attention)
+	session := store.Workspace(path)
+	if a.Role == store.Lead && a.Activity == store.Idle {
+		markReply(session, a.Target, id, path)
+	}
+	Activity(session, a.Target, id, path, a.Activity, a.Attention)
 }
 
 // Dead guards against a queued pane-died hook arriving after a later respawn.

@@ -1,81 +1,81 @@
-# Repository instructions
+Keep this document accurate and short.
 
-Kyle is the only user. Favor small implementations that are easy to understand
-and change. Use idiomatic Go, plain data, and direct functions. Avoid
-abstractions and configuration without a concrete need. Return clear errors
-for bad input. Comments explain why; tests check observable behavior.
+## Purpose and scope
 
-See [README](README.md) for the documentation index.
+Hypercube runs teams of local coding agents in tmux. Each agent is a native
+harness (Claude Code or OpenCode) in its own pane; agents message each other
+through an MCP server and receive messages through harness hooks.
 
-## Documentation
-
-- Every fact has one home. Edit its existing home and link to it elsewhere.
-  Do not repeat facts across guides, README, instructions, or reports.
-- Code owns implementation details. Document necessary usage, decisions, and
-  constraints; link to source instead of paraphrasing functions or schemas.
-- Add documentation only for a concrete need. Prefer a small edit or deletion
-  to a new file. Use short, plain statements; omit generic advice and filler.
-- Keep the relevant guide current with behavior changes. Verify claims against
-  the current implementation. Do not describe predecessor implementations.
-- Do not create plans, work logs, status files, review reports, explanations,
-  or research documents unless explicitly requested by the user.
-- Remove obsolete documents and unused artifacts as part of the change that
-  obsoletes them. Preserve still-relevant limitations in their existing guide.
-
-## Scope and invariants
-
-- Leave PTYs, rendering, input, scrollback, selection, resizing, and pane
-  lifetimes to tmux. Do not build a terminal emulator, proxy, or renderer.
-- Keep task registries, reporting protocols, workflow engines, and scheduled
-  tasks outside the current scope.
-- Start processes only for explicit starts, worker creation, or relaunch of an
-  exited harness. Stop and delete must close their targets explicitly.
+- There is one user. Target macOS.
+- Agents are trusted local processes running with the user's credentials.
 - Configure harnesses only through per-launch arguments, environment, and
-  overrides. Leave global and project settings, credentials, and HOME alone.
-- Deliver messages through hooks and native wake-ups. Never type a nudge into
-  a pane; it can corrupt the user's draft.
-- Keep native subagents from consuming or replacing their parent's messages,
-  session ID, activity, or waiter. Surface their approvals in the same pane.
-- Check live workspace and agent markers before closing or relaunching panes;
-  never trust a saved pane number as ownership.
-- Keep messages queued after failed writes and lifecycle records after failed
-  cleanup. Refuse dirty or unmerged worker worktrees.
-- Lock state writes and make them atomic; leave timestamps alone for unchanged
-  updates.
-- Target macOS and trusted local agents running with the user's credentials.
+  overrides. Leave the user's global and project settings, credentials, and
+  `HOME` alone.
+
+## Code style
+
+- Do less. Keep correct code simple, ordinary, and cheap to change.
+- Write idiomatic Go. Prefer plain data and direct functions.
+- Give each concern a clear boundary and each lifecycle one owner.
+- Let real needs earn abstractions, dependencies, and configuration.
+- Return clear errors for bad input. Test observable behavior; write comments
+  that explain why.
+
+## Edge cases
+
+- Be correct for what happens in normal use. Do not handle every case that
+  could occur.
+- For an unlikely edge case, leave a short comment naming it and add no code.
+  Handle it once it is observed or causes a real problem.
+- Do not write defensive or speculative code: redundant checks, fallbacks,
+  retries, or recovery for failures that have not happened. Trust internal
+  invariants and fail loudly when one breaks.
+- Do not add tests for hypothetical edge cases.
+- Code reviews report problems that affect normal use. An unlikely edge case
+  found in review gets a comment, not a fix.
+
+## Code
+
+- `cmd/hypercube/` — the command line, workspace and session lifecycle, and
+  relaunches.
+- `internal/` — one package per concern: `harness`, `hook`, `mcp`, `store`,
+  `statusline`, `tmux`, `wait`, `workspace`.
+- `scripts/dev` — the isolated development session (`make dev`).
+- `scripts/reinstall` — stops, reinstalls, and restarts the installed
+  workspaces.
+- `web/` — the Hypercube web page.
+- `docs/` — user documentation, indexed by `README.md`.
+- `agents/` — plans, reviews, and work logs.
 
 ## Validation
 
-Run `make check` once before committing behavior changes, or when explicitly
-requested. During routine editing, use focused checks as needed; do not run full
-suites or the tmux lifecycle integration test.
-For comments, documentation, and ordinary file renames, use focused searches
-and diff inspection; do not run full test, lint, build, or formatting suites.
+- `make check` runs every check. Run it after changing code.
+- Use focused `go test -run` while working.
+- After changing only docs or comments, inspect the diff; run nothing.
+- Tests use isolated state, their own tmux server, and harness stand-ins.
+  Never stop the user's tmux server or workspaces, and never run
+  `make reinstall`.
+- Use `make dev` for a live smoke test, and clean up what you start.
 
-Add tests only for concrete behavior or bugs that matter to Kyle. Assert
-observable outcomes; do not mirror implementation constants, generated
-structures, exact prompt prose, or internal call sequences. Harmless refactors
-and wording changes should not require test changes. Reuse existing coverage
-and delete redundant tests. Do not introduce test-only runtimes, dependencies,
-frameworks, or simulated third-party APIs without an explicit request.
+Report any check that fails or is skipped.
 
-Test user-visible message, ownership, and lifecycle behavior with isolated
-state and real tmux using local harness stand-ins. Keep test processes and
-resources uniquely owned and cleaned up. Never stop the user's tmux server
-or installed workspaces. Do not install browser tooling or spend model tokens
-on routine validation. Use the [development setup](docs/installation.md#development)
-when a live harness smoke test is needed, and clean up sessions you start.
-Do not run `make reinstall` yourself.
+## Documentation
 
-## Working and communication
+`README.md` indexes the user documentation in `docs/`. Update a guide only
+when the behavior it describes changes. `AGENTS.md` gives instructions to
+agents and should rarely change.
 
-Do not commit, create branches, change the task title, or offer to commit unless
-asked. Present review findings; do not automatically fix, stage, or commit them
-without an explicit request. Keep verification and tool use proportional.
+The code describes the implementation. A fact lives in one place. Correct or
+delete inaccurate text without expanding it. Do not create documents unless
+asked.
 
-A request to commit and push includes all working-tree changes.
+## Backwards compatibility
 
-Keep required skill notices to one brief sentence. Do not send opening
-acknowledgements, announcements of intent, or generic narration. Intermediate
-updates contain concrete findings, material risks, blockers, or necessary
-questions. Describe actions as complete only after tool results confirm them.
+Currently, there is none. Change the state format freely instead of adding
+migrations or versions.
+
+## Communication
+
+- Describe things directly, clearly, and plainly.
+- Put the big idea first; add detail after.
+- Never use jargon, invented terms, or shorthand.
