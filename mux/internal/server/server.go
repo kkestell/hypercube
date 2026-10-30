@@ -37,7 +37,7 @@ type window struct {
 // mutex guards it.
 type marks struct {
 	attention bool
-	spans     []client.Span // the label a client set; nil shows the default
+	spans     []client.Span // the label a client set; empty shows the default
 }
 
 // Server guards the session tree and every terminal with one mutex.

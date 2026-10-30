@@ -164,7 +164,6 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 			a.session.active = a.session.windows[i]
 			a.signal()
 		}
-	case ev.y == a.rows-1:
 	default:
 		for i, r := range rects {
 			if ev.x < r.x || ev.x >= r.x+r.cols {

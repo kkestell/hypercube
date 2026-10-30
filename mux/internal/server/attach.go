@@ -84,8 +84,9 @@ func (s *Server) layoutSession(sess *session) {
 			break
 		}
 	}
-	// The layout never gives a zero size, and a PTY master accepts a size after
-	// its process has exited, so a failure here is a bug.
+	// Resizes skip collapsed panes, the only zero size the layout gives, and a
+	// PTY master accepts a size after its process has exited, so a failure here
+	// is a bug.
 	resize := func(p *pane, cols, rows int) {
 		if err := p.resize(uint16(cols), uint16(rows)); err != nil {
 			panic(err)

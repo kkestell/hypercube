@@ -58,9 +58,10 @@ func fit(s string, width int) (string, int) {
 	return s, used
 }
 
-// text is the label a client set, and whether it set one.
+// text is the label a client set, and whether it set one. Empty spans restore
+// the default.
 func (m marks) text() (string, bool) {
-	if m.spans == nil {
+	if len(m.spans) == 0 {
 		return "", false
 	}
 	var b strings.Builder
