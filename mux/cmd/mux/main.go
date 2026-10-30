@@ -24,7 +24,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux attach <session>")
+		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attach <session>")
 	}
 	switch args[0] {
 	case "server":
@@ -33,6 +33,11 @@ func run(args []string) error {
 		return spawn(args[1:])
 	case "ls":
 		return ls()
+	case "kill":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: mux kill <id>")
+		}
+		return kill(args[1])
 	case "attach":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: mux attach <session>")
@@ -95,6 +100,28 @@ func ls() error {
 		}
 	}
 	return nil
+}
+
+// kill removes the pane, window, or session with the given ID.
+func kill(id string) error {
+	req := client.Request{Type: "kill"}
+	switch {
+	case strings.HasPrefix(id, "p"):
+		req.Pane = id
+	case strings.HasPrefix(id, "w"):
+		req.Window = id
+	case strings.HasPrefix(id, "s"):
+		req.Session = id
+	default:
+		return fmt.Errorf("unknown ID %q", id)
+	}
+	c, err := connect()
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	_, err = c.Call(req)
+	return err
 }
 
 // connect dials the server, starting it first if nothing is listening. Two

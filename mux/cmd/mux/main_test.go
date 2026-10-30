@@ -1,12 +1,15 @@
 package main
 
 import (
+	"errors"
+	"io"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -47,7 +50,7 @@ func newState(t *testing.T) {
 	}
 	t.Setenv("XDG_STATE_HOME", dir)
 	t.Cleanup(func() {
-		// The server has no exit path until task 3.
+		// Tests that leave sessions running stop the server here.
 		if pid, err := serverPID(client.SocketPath()); err == nil {
 			syscall.Kill(pid, syscall.SIGTERM)
 		}
@@ -175,6 +178,53 @@ func spawnPane(t *testing.T, c *client.Conn, req client.Request) client.Reply {
 	}
 	return reply
 }
+
+// panePID reads the PID that a pane started with killable prints.
+func panePID(t *testing.T, c *client.Conn, pane string) int {
+	t.Helper()
+	text := waitCapture(t, c, pane, "pid=")
+	pid, err := strconv.Atoi(regexp.MustCompile(`pid=(\d+)`).FindStringSubmatch(text)[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pid
+}
+
+// waitGone polls until no process has the PID. readPane reaps pane processes,
+// so none lingers as a zombie.
+func waitGone(t *testing.T, pid int) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if syscall.Kill(pid, 0) == syscall.ESRCH {
+			return
+		}
+	}
+	t.Fatalf("process %d never ended", pid)
+}
+
+// killable runs a process that the test can find and a kill must end.
+var killable = []string{"sh", "-c", "echo pid=$$; exec sleep 60"}
+
+func killTarget(t *testing.T, c *client.Conn, req client.Request) {
+	t.Helper()
+	req.Type = "kill"
+	if _, err := c.Call(req); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func checkList(t *testing.T, c *client.Conn, want []client.Session) {
+	t.Helper()
+	list, err := c.Call(client.Request{Type: "list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(list.Sessions, want) {
+		t.Errorf("list = %+v, want %+v", list.Sessions, want)
+	}
+}
+
+func alive(id string) client.Pane { return client.Pane{ID: id, Alive: true} }
 
 func TestSpawnCommandStartsServer(t *testing.T) {
 	newState(t)
@@ -362,6 +412,120 @@ func TestLsCommand(t *testing.T) {
 	t.Fatalf("mux ls printed %q, want %q", out, want)
 }
 
+func TestKillPane(t *testing.T) {
+	c := startServer(t)
+	first := spawnPane(t, c, client.Request{Argv: killable})
+	second := spawnPane(t, c, client.Request{Argv: killable, Window: first.Window})
+	done := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "exit 3"}, Window: first.Window})
+	pid := panePID(t, c, first.Pane)
+	waitExited(t, c, done.Pane)
+
+	killTarget(t, c, client.Request{Pane: first.Pane})
+	waitGone(t, pid)
+	checkList(t, c, []client.Session{{ID: first.Session, Windows: []client.Window{
+		{ID: first.Window, Panes: []client.Pane{alive(second.Pane), {ID: done.Pane, Status: 3}}},
+	}}})
+	if _, err := c.Call(client.Request{Type: "capture", Pane: first.Pane}); err == nil {
+		t.Error("capture of a killed pane succeeded")
+	}
+
+	killTarget(t, c, client.Request{Pane: done.Pane})
+	checkList(t, c, []client.Session{{ID: first.Session, Windows: []client.Window{
+		{ID: first.Window, Panes: []client.Pane{alive(second.Pane)}},
+	}}})
+}
+
+func TestKillWindow(t *testing.T) {
+	c := startServer(t)
+	w1 := spawnPane(t, c, client.Request{Argv: killable})
+	w2 := spawnPane(t, c, client.Request{Argv: killable, Session: w1.Session})
+	other := spawnPane(t, c, client.Request{Argv: killable})
+	pid1 := panePID(t, c, w1.Pane)
+	pid2 := panePID(t, c, w2.Pane)
+
+	killTarget(t, c, client.Request{Window: w1.Window})
+	waitGone(t, pid1)
+	checkList(t, c, []client.Session{
+		{ID: w1.Session, Windows: []client.Window{{ID: w2.Window, Panes: []client.Pane{alive(w2.Pane)}}}},
+		{ID: other.Session, Windows: []client.Window{{ID: other.Window, Panes: []client.Pane{alive(other.Pane)}}}},
+	})
+
+	killTarget(t, c, client.Request{Window: w2.Window})
+	waitGone(t, pid2)
+	checkList(t, c, []client.Session{
+		{ID: other.Session, Windows: []client.Window{{ID: other.Window, Panes: []client.Pane{alive(other.Pane)}}}},
+	})
+}
+
+func TestKillSessionAndNewIDs(t *testing.T) {
+	c := startServer(t)
+	w1 := spawnPane(t, c, client.Request{Argv: killable})
+	w2 := spawnPane(t, c, client.Request{Argv: killable, Session: w1.Session})
+	other := spawnPane(t, c, client.Request{Argv: killable})
+	pid1 := panePID(t, c, w1.Pane)
+	pid2 := panePID(t, c, w2.Pane)
+
+	killTarget(t, c, client.Request{Session: w1.Session})
+	waitGone(t, pid1)
+	waitGone(t, pid2)
+	checkList(t, c, []client.Session{
+		{ID: other.Session, Windows: []client.Window{{ID: other.Window, Panes: []client.Pane{alive(other.Pane)}}}},
+	})
+
+	fresh := spawnPane(t, c, client.Request{Argv: killable})
+	for _, id := range []string{w1.Session, w1.Window, w1.Pane, w2.Window, w2.Pane} {
+		if id == fresh.Session || id == fresh.Window || id == fresh.Pane {
+			t.Errorf("new IDs %+v reuse %s", fresh, id)
+		}
+	}
+}
+
+func TestKillEndsAttach(t *testing.T) {
+	c := startServer(t)
+	a := spawnPane(t, c, client.Request{Argv: killable})
+	spawnPane(t, c, client.Request{Argv: killable}) // keeps the server running
+
+	at := dial(t)
+	if _, err := at.Call(client.Request{Type: "attach", Session: a.Session, Cols: 80, Rows: 24}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := at.ReadOutput(); err != nil || len(out.Frame) == 0 {
+		t.Fatalf("first output = %+v, %v; want a frame", out, err)
+	}
+
+	killTarget(t, c, client.Request{Session: a.Session})
+	for {
+		if _, err := at.ReadOutput(); err != nil {
+			// The server closed the connection; dial's timer would not give EOF.
+			if !errors.Is(err, io.EOF) {
+				t.Fatalf("stream ended with %v, want EOF", err)
+			}
+			return
+		}
+	}
+}
+
+func TestKillCommandStopsServer(t *testing.T) {
+	newState(t)
+	session := strings.Fields(runMux(t, "spawn", "sleep", "60"))[0]
+	pid, err := serverPID(client.SocketPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if out := runMux(t, "kill", session); out != "" {
+		t.Fatalf("mux kill printed %q", out)
+	}
+	if _, err := os.Stat(client.SocketPath()); !os.IsNotExist(err) {
+		t.Errorf("socket after the last kill: %v", err)
+	}
+	waitGone(t, pid)
+
+	if out := runMux(t, "spawn", "sleep", "60"); out != "s1 w1 p1\n" {
+		t.Errorf("spawn after the server exited printed %q, want a new server's s1 w1 p1", out)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	c := startServer(t)
 	a := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
@@ -376,6 +540,11 @@ func TestErrors(t *testing.T) {
 		"spawn into an unknown session":       {Type: "spawn", Session: "s99", Argv: sleep, Env: env},
 		"spawn into an unknown window":        {Type: "spawn", Window: "w99", Argv: sleep, Env: env},
 		"spawn into another session's window": {Type: "spawn", Session: a.Session, Window: b.Window, Argv: sleep, Env: env},
+		"kill with no target":                 {Type: "kill"},
+		"kill with two targets":               {Type: "kill", Pane: a.Pane, Window: a.Window},
+		"kill of an unknown pane":             {Type: "kill", Pane: "p99"},
+		"kill of an unknown window":           {Type: "kill", Window: "w99"},
+		"kill of an unknown session":          {Type: "kill", Session: "s99"},
 	} {
 		if _, err := c.Call(req); err == nil {
 			t.Errorf("%s: no error", name)

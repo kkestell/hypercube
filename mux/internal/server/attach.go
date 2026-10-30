@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"strconv"
 	"sync"
 	"unicode/utf8"
@@ -18,6 +19,7 @@ const prefixKey = 0x02 // Ctrl-b
 // only writer to the connection while the stream runs.
 type attachment struct {
 	pane   *pane
+	conn   net.Conn
 	wake   chan struct{} // buffer of one; a signal means "redraw"
 	prefix bool          // the last input byte was the prefix key
 }
@@ -39,7 +41,7 @@ func (a *attachment) signal() {
 }
 
 // attach runs a client's stream until it detaches or the connection ends.
-func (s *Server) attach(dec *json.Decoder, enc *json.Encoder, req client.Request) {
+func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req client.Request) {
 	s.mu.Lock()
 	var p *pane
 	for _, sess := range s.sessions {
@@ -53,7 +55,7 @@ func (s *Server) attach(dec *json.Decoder, enc *json.Encoder, req client.Request
 		return
 	}
 	err := p.resize(uint16(req.Cols), uint16(req.Rows))
-	a := &attachment{pane: p, wake: make(chan struct{}, 1)}
+	a := &attachment{pane: p, conn: conn, wake: make(chan struct{}, 1)}
 	if err == nil {
 		s.attached[a] = struct{}{}
 	}
@@ -102,7 +104,10 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 			}
 		case "resize":
 			s.mu.Lock()
-			a.pane.resize(uint16(req.Cols), uint16(req.Rows))
+			// A killed pane's terminal is closed.
+			if _, ok := s.attached[a]; ok {
+				a.pane.resize(uint16(req.Cols), uint16(req.Rows))
+			}
 			s.mu.Unlock()
 			a.signal()
 		}
@@ -139,6 +144,10 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 		case <-a.wake:
 		}
 		s.mu.Lock()
+		if _, ok := s.attached[a]; !ok {
+			s.mu.Unlock()
+			return
+		}
 		frame, err := drawFrame(a.pane.term, a.pane.rs)
 		s.mu.Unlock()
 		if err != nil {

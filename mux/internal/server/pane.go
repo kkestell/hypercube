@@ -19,8 +19,8 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards alive, status, term, and rs; the terminal and render state are not
-// safe for concurrent use.
+// guards alive, status, killed, term, and rs; the terminal and render state are
+// not safe for concurrent use.
 type pane struct {
 	id     string
 	cmd    *exec.Cmd
@@ -28,7 +28,8 @@ type pane struct {
 	term   *libghostty.Terminal
 	rs     *libghostty.RenderState
 	alive  bool
-	status int // the exit status once alive is false
+	status int  // the exit status once alive is false
+	killed bool // the pane left the tree; free it once its process ends
 }
 
 // startPane runs argv with exactly env and starts a goroutine that feeds the
@@ -88,10 +89,37 @@ func (s *Server) readPane(p *pane) {
 			s.mu.Lock()
 			p.alive = false
 			p.status = exitStatus(p.cmd.ProcessState)
+			if p.killed {
+				p.free()
+			}
 			s.mu.Unlock()
 			return
 		}
 	}
+}
+
+// hangUp is called once, as the pane leaves the tree, with the server's mutex
+// held. It hangs up the pane's process group, which a shell passes on to its
+// jobs, and frees the pane once the process has ended. Closing the PTY master
+// would not hang up the process, because Close waits for readPane's pending
+// Read. A process that ignores SIGHUP keeps running with no pane; that is
+// unlikely.
+func (p *pane) hangUp() {
+	p.killed = true
+	if !p.alive {
+		p.free()
+		return
+	}
+	syscall.Kill(-p.cmd.Process.Pid, syscall.SIGHUP)
+}
+
+// free releases the pane's PTY, terminal, and render state. Exactly one of
+// hangUp and readPane calls it, with the server's mutex held, after the
+// process has ended and readPane has stopped reading.
+func (p *pane) free() {
+	p.ptmx.Close()
+	p.term.Close()
+	p.rs.Close()
 }
 
 // exitStatus returns the process's exit code, or 128 plus the signal number if

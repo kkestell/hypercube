@@ -4,10 +4,12 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/kkestell/hypercube/mux/client"
@@ -29,14 +31,23 @@ type Server struct {
 	counters map[byte]int // one per kind of ID: 's', 'w', 'p'
 	sessions []*session
 	attached map[*attachment]struct{}
+
+	path     string // the socket, which kill removes with the last session
+	listener net.Listener
+	exited   chan struct{} // closed once the last session's kill has been answered
 }
 
 func New() *Server {
-	return &Server{counters: map[byte]int{}, attached: map[*attachment]struct{}{}}
+	return &Server{
+		counters: map[byte]int{},
+		attached: map[*attachment]struct{}{},
+		exited:   make(chan struct{}),
+	}
 }
 
-// ListenAndServe serves the socket at path until the listener fails. It fails
-// if another server is already listening there.
+// ListenAndServe serves the socket at path until the listener fails, or until
+// kill removes the last session, which returns nil. It fails if another server
+// is already listening there.
 func (s *Server) ListenAndServe(path string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
@@ -51,8 +62,13 @@ func (s *Server) ListenAndServe(path string) error {
 		return err
 	}
 	defer l.Close()
+	s.path, s.listener = path, l
 	for {
 		conn, err := l.Accept()
+		if errors.Is(err, net.ErrClosed) {
+			<-s.exited
+			return nil
+		}
 		if err != nil {
 			return err
 		}
@@ -70,10 +86,21 @@ func (s *Server) serve(conn net.Conn) {
 			return
 		}
 		if req.Type == "attach" {
-			s.attach(dec, enc, req)
+			s.attach(conn, dec, enc, req)
 			return
 		}
-		if err := enc.Encode(s.handle(req)); err != nil {
+		reply := s.handle(req)
+		err := enc.Encode(reply)
+		// The server exits even if the reply could not be written. A client
+		// that connected before the listener closed could spawn between the
+		// kill and this check, and its pane would die with the server, or
+		// keep the server from exiting; that is unlikely. Two kills that
+		// finish at once and leave no session both see it empty and close
+		// exited twice, which panics; that is unlikely too.
+		if req.Type == "kill" && reply.OK && s.empty() {
+			close(s.exited)
+		}
+		if err != nil {
 			return
 		}
 	}
@@ -89,6 +116,8 @@ func (s *Server) handle(req client.Request) client.Reply {
 		reply, err = s.capture(req)
 	case "list":
 		reply = s.list()
+	case "kill":
+		err = s.kill(req)
 	default:
 		err = fmt.Errorf("unknown request type %q", req.Type)
 	}
@@ -97,6 +126,12 @@ func (s *Server) handle(req client.Request) client.Reply {
 	}
 	reply.OK = true
 	return reply
+}
+
+func (s *Server) empty() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.sessions) == 0
 }
 
 // nextID must be called with the mutex held.
@@ -175,6 +210,67 @@ func (s *Server) capture(req client.Request) (client.Reply, error) {
 	}
 	text, err := p.capture()
 	return client.Reply{Text: text}, err
+}
+
+// kill removes the one pane, window, or session req names, then any window or
+// session that has no panes left. When no session remains it removes the socket
+// and closes the listener before the reply, so no new client can connect.
+func (s *Server) kill(req client.Request) error {
+	targets := 0
+	for _, id := range []string{req.Pane, req.Window, req.Session} {
+		if id != "" {
+			targets++
+		}
+	}
+	if targets != 1 {
+		return fmt.Errorf("kill needs exactly one of pane, window, or session")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case req.Pane != "" && s.findPane(req.Pane) == nil:
+		return fmt.Errorf("unknown pane %q", req.Pane)
+	case req.Window != "":
+		if _, w := s.findWindow(req.Window); w == nil {
+			return fmt.Errorf("unknown window %q", req.Window)
+		}
+	case req.Session != "" && s.findSession(req.Session) == nil:
+		return fmt.Errorf("unknown session %q", req.Session)
+	}
+
+	// IDs are never empty, so the two fields req leaves empty match nothing.
+	for _, sess := range s.sessions {
+		for _, w := range sess.windows {
+			w.panes = slices.DeleteFunc(w.panes, func(p *pane) bool {
+				if sess.id != req.Session && w.id != req.Window && p.id != req.Pane {
+					return false
+				}
+				s.removePane(p)
+				return true
+			})
+		}
+		sess.windows = slices.DeleteFunc(sess.windows, func(w *window) bool { return len(w.panes) == 0 })
+	}
+	s.sessions = slices.DeleteFunc(s.sessions, func(sess *session) bool { return len(sess.windows) == 0 })
+
+	if len(s.sessions) == 0 {
+		os.Remove(s.path)
+		s.listener.Close()
+	}
+	return nil
+}
+
+// removePane ends the attachments that show p and hangs up its process. It
+// must be called with the mutex held.
+func (s *Server) removePane(p *pane) {
+	for a := range s.attached {
+		if a.pane == p {
+			delete(s.attached, a)
+			a.conn.Close()
+		}
+	}
+	p.hangUp()
 }
 
 // findPane must be called with the mutex held.
