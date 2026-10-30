@@ -13,6 +13,7 @@ check: build
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
 	go test -race ./...
+	$(MAKE) -C mux check
 
 install: build
 	mkdir -p "$(BINDIR)"

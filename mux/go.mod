@@ -1,0 +1,10 @@
+module github.com/kkestell/hypercube/mux
+
+go 1.27.1
+
+require (
+	github.com/creack/pty v1.1.24
+	go.mitchellh.com/libghostty v0.0.0-20261021212106-df1957cbff56
+	golang.org/x/sys v0.49.0
+	golang.org/x/term v0.47.0
+)
