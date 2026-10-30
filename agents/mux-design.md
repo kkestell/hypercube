@@ -181,6 +181,57 @@ isolated tmux server.
    shells can be spawned, used, killed, detached from, and reattached to by
    hand, and the socket tests pass. Nothing in Hypercube changes.
 
+### Milestone 1 tasks
+
+Tasks 1 to 5 are checked by tests through the socket, using `capture` to read
+the screen. Tasks 6 to 8 are checked by hand.
+
+1. **Skeleton and minimal working path.** The `mux/` module with its own
+   `go.mod` and Makefile, which builds libghostty-vt and runs the tests; the
+   top-level `make check` runs it. The server listens on
+   `$XDG_STATE_HOME/mux/socket` and the command line starts it on first use.
+   `spawn` creates a session, window, and pane whose PTY feeds an 80 by 24
+   terminal with 10,000 lines of scrollback. `capture`, and `mux spawn
+   [command...]`, which prints the IDs. A bare `mux attach <session>` shows
+   the one pane full-screen and detaches on Ctrl-b d.
+   - Check: with `XDG_STATE_HOME` set, a test spawns `sh` with a given
+     directory and environment, writes `pwd; env`, and `capture` shows exactly
+     that directory and environment. By hand, `mux spawn` then `mux attach`
+     shows a working shell, and Ctrl-b d returns to the outer shell.
+2. **Exits and `list`.** Exited panes stay with `alive` false and their
+   status. `list`, `mux ls`, and spawning into an existing session or window.
+   - Check: `sh -c 'exit 3'` lists status 3; `sh -c 'kill -TERM $$'` lists
+     status 143; a second spawn appears under the same window; unknown IDs
+     return errors.
+3. **`kill` and server exit.** Kill a pane, window, or session; removing a
+   session's last window removes the session. The server exits after its last
+   session. IDs are never reused. `mux kill <id>`.
+   - Check: a test for each kind of target; an ID after a kill is new; killing
+     the last session removes the socket, and the next `mux spawn` starts a
+     new server.
+4. **`respawn`.**
+   - Check: respawn a dead pane and a live pane; `list` shows the same pane ID
+     alive, and `capture` no longer shows the old output.
+5. **Layout and resizing.** The main pane on the left at 40% and the rest
+   stacked on the right. The attached terminal's size sets the pane sizes,
+   which go back to 80 by 24 on detach. Panes that do not fit are skipped.
+   Focus, input routing, and cursor placement.
+   - Check: a test attaches at a given size and checks `stty size` in each
+     pane through `capture`.
+6. **Bars and default labels.**
+   - Check by hand: `printf '\033]0;hello\007'` changes the labels, and
+     `exit 3` shows the status in the pane's title.
+7. **Keys, keyboard mode, and attach rules.** `n`, `p`, `0`-`9`, and `o`;
+   Ctrl-b Ctrl-b sends a literal Ctrl-b; the keyboard mode follows the focused
+   pane; one client per session; `mux attach` with nothing running spawns
+   `$SHELL`; reattaching redraws.
+   - Check by hand.
+8. **Mouse, scrollback, and selection.**
+   - Check by hand: `seq 20000` keeps the last 10,000 lines; a drag copies
+     through OSC 52; vim with `mouse=a` gets the mouse; clicks switch sessions,
+     windows, and panes.
+9. **Acceptance.** The hand walkthrough plus `make check`.
+
 ## Decisions
 
 - The mux has its own Makefile, and the top-level `make check` runs it, so
