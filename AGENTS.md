@@ -73,7 +73,7 @@ asked.
 
 ## Backwards compatibility
 
-Currently, there is none. Change the state format freely instead of adding
+There is none. Change the state format freely instead of adding
 migrations or versions.
 
 ## Communication

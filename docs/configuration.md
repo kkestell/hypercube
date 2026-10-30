@@ -37,14 +37,11 @@ profile.
 `lead` selects the settings for new teams. `profiles` defines the
 choices offered to the lead when creating workers; descriptions
 should explain which work suits each profile. Existing agents keep their
-saved settings across restarts. Changes affect subsequently created agents,
-and the available profiles are reread when tools and startup context are
-requested.
+saved settings across restarts. Changes affect subsequently created agents.
 
 Model and effort values are interpreted by the selected harness. Claude Code
 receives them as its model and effort; OpenCode uses effort as the model's
-variant. Consult the harness for accepted values. Hypercube's exact schema
-and validation are maintained in [config.go](../internal/harness/config.go).
+variant. Consult the harness for accepted values.
 
 ## Files needed by worker worktrees
 
@@ -59,7 +56,6 @@ root using Git ignore patterns, for example:
 node_modules/
 ```
 
-Only paths also ignored by Git are copied. Copies are independent APFS
-clones, so workers can change them without modifying the originals. They are
-made when the worktree is created, not kept in sync. The implementation is
-in [workspace.go](../internal/workspace/workspace.go).
+Only paths also ignored by Git are copied. Copies are independent, so workers
+can change them without modifying the originals. They are made when the
+worktree is created, not kept in sync.

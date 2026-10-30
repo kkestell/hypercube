@@ -49,11 +49,11 @@ bell shows on a pane awaiting approval, and on its team and workspace in the
 status bar, until it is answered, and rings the terminal's bell. An exited
 pane shows its exit status.
 
-The mouse wheel scrolls a pane's scrollback unless the pane's program uses the
-mouse. Dragging selects text within one pane and copies it to the clipboard
-through the terminal (OSC 52) on release. Click a worker's title to collapse
-or open it, and drag the divider to resize the lead's side. The icons need a
-Nerd Font in the terminal.
+When a pane's program does not use the mouse, the wheel scrolls its scrollback
+and dragging selects text within that pane, copying it to the clipboard
+through the terminal on release. Click a worker's title to collapse or open
+it, and drag the divider to resize the lead's side. The icons need a Nerd Font
+in the terminal.
 
 One terminal attaches to a workspace at a time; attaching from another
 detaches the first. Panes that do not fit the terminal are not drawn until it
@@ -75,8 +75,7 @@ branches only after checking for uncommitted work and commits not merged into
 the original checkout's HEAD. Existing directories supplied to workers are
 left alone. Failed cleanup stays recorded so deletion can be retried.
 
-The cleanup check currently follows Git's display settings: hiding untracked
+The cleanup check follows Git's display settings: hiding untracked
 files or ignoring submodule changes can make a dirty worktree pass. Keep
 those settings at their normal visibility and inspect worker work before
-removal. The check is in
-[workspace.go](../internal/workspace/workspace.go).
+removal.
