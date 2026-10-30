@@ -42,8 +42,8 @@ Upgrading Hypercube never touches running panes. Only a mux upgrade does.
 ## Model
 
 One mux server per user, listening on `$XDG_STATE_HOME/mux/socket` (default
-`~/.local/state/mux/socket`) and started on first use. It exits when its last
-session is removed. It holds sessions, each session holds windows, and each
+`~/.local/state/mux/socket`) and started by the first request that creates a
+session. It exits when its last session is removed. It holds sessions, each session holds windows, and each
 window holds panes.
 
 | Mux | Hypercube |
@@ -52,15 +52,16 @@ window holds panes.
 | window | Hypercube session (team) |
 | pane | agent |
 
-IDs are assigned by the server and never reused while it runs. Each server
-also has an instance ID, returned in replies, so together they prove
-ownership: a saved ID from an earlier server never names a new pane. Names
-do not exist; whatever a user sees is a label set by the client.
+IDs are assigned by the server and never reused while it runs. Each ID
+includes a random part chosen when the server starts, so a saved ID from an
+earlier server names nothing and returns an "unknown" error. A saved ID
+therefore proves ownership. Names do not exist; whatever a user sees is a
+label set by the client.
 
 ## Interface
 
 JSON lines over the socket. Each request gets one reply, `{"ok":true,...}` or
-`{"error":"..."}`. A connection that sends `subscribe` receives events instead.
+`{"error":"..."}`.
 
 ### Requests
 
@@ -69,26 +70,12 @@ JSON lines over the socket. Each request gets one reply, `{"ok":true,...}` or
 | `spawn {session, window, dir, argv, env}` | `{session, window, pane}` | Creates the session and window if `session` or `window` is empty. The process gets exactly `env`, nothing inherited. |
 | `respawn {pane, dir, argv, env}` | | Kills the pane's process if it is alive and starts the new one in the same pane with a fresh screen. |
 | `kill {pane \| window \| session}` | | Hangs up the processes and removes the target. Removing a session's last window removes the session. |
-| `attention {pane \| window \| session, on}` | | Marks the target as needing attention with a bell icon before its label, or clears the mark. |
+| `attention {pane, on}` | | Marks the pane as needing attention with a bell icon before its label, or clears the mark. A window or session shows the bell while any of its panes is marked. |
 | `collapse {pane, on}` | | Collapses a stacked pane to its title row, or opens it. The main pane cannot collapse. |
-| `label {pane \| window \| session, spans}` | | Sets the text shown for the target, or restores the default when `spans` is empty. A span is `{text}`; `fg` (a palette name) and `bold` come later. |
+| `label {pane \| window \| session, spans}` | | Sets the text shown for the target, or restores the default when `spans` is empty. A span is `{text}`. |
 | `select {window \| pane}` | | Makes the window its session's current window, or the pane its window's focused pane, and that window current. |
-| `bind {key, name}` | | Pressing Prefix then `key` emits a `key` event with `name`. |
-| `prompt {client, text}` | | Asks for a line of text on that client's bar and emits `answer`. |
-| `confirm {client, text}` | | Asks for y/n and emits `answer`. |
-| `message {client, text}` | | Shows a message on that client's bar for a few seconds. |
-| `list` | sessions, windows, and panes with `alive` and `status` | Lets a client reconcile after missing events. A signal death's status is 128 plus the signal number. |
+| `list` | sessions, windows, and panes with `alive` and `status` | A signal death's status is 128 plus the signal number. |
 | `capture {pane}` | `{text}` | Returns the pane's screen as plain text. |
-
-### Events
-
-| Event | When |
-| --- | --- |
-| `exited {pane, status}` | A pane's process ended. |
-| `key {name, client, session, window, pane}` | A bound key was pressed. |
-| `answer {client, text}` | A prompt or confirm was answered or cancelled (`text` null). |
-| `viewing {client, session, window, pane, focused}` | What a client shows changed, including terminal focus. |
-| `attached {client, session}`, `detached {client}` | A client attached or detached. |
 
 ### Command line
 
@@ -99,7 +86,7 @@ requests, so the mux works by hand with plain shells and no Hypercube:
 | --- | --- |
 | `mux spawn [-s session] [-w window] [-c dir] [command...]` | `spawn`, running `$SHELL` when no command is given; prints the IDs |
 | `mux kill <id>` | `kill` |
-| `mux attention <id> on\|off` | `attention` |
+| `mux attention <pane> on\|off` | `attention` |
 | `mux collapse <pane> on\|off` | `collapse` |
 | `mux label <id> [text...]` | `label`, with the text as one span; no text restores the default |
 | `mux ls` | `list` |
@@ -109,8 +96,7 @@ requests, so the mux works by hand with plain shells and no Hypercube:
 detaches on Prefix d. With no session and none running, it spawns a shell in a
 new session first. The server holds every screen and draws the frames; the
 client only passes frames to the terminal and input, size, and focus changes
-to the server. Hypercube runs it in place of `tmux attach-session` and
-`switch-client`.
+to the server. Hypercube runs it in place of `tmux attach-session`.
 
 ## Fixed behavior
 
@@ -137,9 +123,9 @@ These rules have no options:
 - **Default labels:** until a client sets a label, a pane shows the title its
   program sets, or else its command name. A window shows its first pane's
   label, and a session shows its first window's label.
-- **Keys:** the prefix is Ctrl-b. Built-in keys are `d` detach, `n` and `p`
+- **Keys:** the prefix is Ctrl-b. The keys are `d` detach, `n` and `p`
   next and previous window, `0`-`9` window by number, `o` next pane, and
-  Ctrl-b to send a literal Ctrl-b. Every other key comes from `bind`.
+  Ctrl-b to send a literal Ctrl-b.
 - **Input:** keys go to the focused pane as typed. The client sets the outer
   terminal's keyboard mode to the one the focused pane requested.
 - **Sizes:** with no client attached, a pane is 80 by 24.
@@ -151,21 +137,27 @@ These rules have no options:
 ## Hypercube on the mux
 
 - `spawn` replaces the placeholder pane, the environment copying, and
-  `respawn-pane -k`.
-- Saved pane IDs replace the `@hypercube_*` markers, `Owns`, `FindPane`, and
-  `WorkspaceSession`.
-- A long-lived `hypercube watch` process subscribes to events. It replaces the
-  `pane-died` hook, `hypercube exited`, the `Dead()` check, and the extra
-  lock. On start it calls `list` to catch exits it missed. Relaunch policy
-  (`QuickExits`) stays in Hypercube.
+  `respawn-pane -k`. Hypercube saves the pane ID from the reply as the
+  agent's `Target`.
+- Saved pane IDs replace the `@hypercube_*` markers, `Owns`, `FindPane`,
+  `FindWindow`, and `WorkspaceSession`. Only the pane ID is saved: a team's
+  window is the one holding its lead's pane, and a workspace's session is the
+  one holding its panes, both found through `list`. An "unknown" error means
+  the saved ID is stale.
+- `hypercube agent` runs the harness as a child process instead of replacing
+  itself with it. When the harness exits, the wrapper relaunches it with the
+  saved conversation and applies `QuickExits`; after the last quick exit the
+  wrapper exits and the pane shows the status. This replaces the `pane-died`
+  hook, `hypercube exited`, `Restart`, `Dead`, and the extra lock, and the mux
+  needs no exit events. The wrapper catches SIGINT rather than ignoring it,
+  since an ignored signal stays ignored in the child.
 - `label` replaces the format strings, escaping, and stored style options.
-  Activity dots and unseen replies are labels; `attention` marks agents that
-  need the user.
-- `viewing` events replace `markReply`'s inference and the two session hooks.
-  Hypercube decides what "seen" means.
-- `bind`, `key`, `prompt`, `confirm`, and `answer` replace the global
-  bindings, `if-shell` guards, `command-prompt`, `confirm-before`, and `nohup`.
-  `message` replaces error reporting through `display-message`.
+  Hooks, `wait`, and the status line set labels through the socket, and
+  `attention` marks agents that need the user.
+- Hypercube's `c`, `W`, and `X` bindings and its error reporting through
+  `display-message` go away; `hypercube new`, `hypercube` in another
+  directory, and `hypercube delete-session` do the same from a shell.
+  Unseen-reply marks go away with `markReply` and the two session hooks.
 
 ## Non-goals
 
@@ -188,7 +180,7 @@ These are documented, not handled in code:
 ## Testing
 
 Tests talk to the socket only: spawn `sh` or a stand-in in a pane, write to
-it, and assert on events, `list`, and screen text. Hypercube's tests run
+it, and assert on `list` and screen text. Hypercube's tests run
 against a real mux server with isolated state, as they now run against an
 isolated tmux server.
 
@@ -199,8 +191,8 @@ isolated tmux server.
    default labels, built-in keys, mouse, scrollback, and selection. Done when
    shells can be spawned, used, killed, detached from, and reattached to by
    hand, and the socket tests pass. Nothing in Hypercube changes.
-2. **Hypercube on the mux.** The requests and events Hypercube depends on,
-   then Hypercube's switch from tmux to the mux. Done when Hypercube runs its
+2. **Hypercube on the mux.** The few mux changes Hypercube depends on, then
+   Hypercube's switch from tmux to the mux. Done when Hypercube runs its
    teams on the mux, its tests drive the mux through the socket, and nothing
    in Hypercube calls tmux.
 
@@ -257,34 +249,47 @@ the screen. Tasks 6 to 8 are checked by hand.
 
 ### Milestone 2 pieces
 
-In order. Each piece is checked by socket tests.
+In order.
 
-1. **Exit events and ownership.** `subscribe` and the `exited` event, and the
-   server instance ID in `spawn` and `list` replies. A server with no sessions
-   exits, including one started by `mux ls` or `mux attach` with nothing to
-   attach to.
-2. **Selection and clients.** A `select {window | pane}` request; client IDs;
-   the `viewing`, `attached`, and `detached` events.
-3. **Keys and prompts.** `bind` and the `key` event; `prompt`, `confirm`, and
-   the `answer` event; `message`. These replace Hypercube's `c`, `W`, and `X`
-   bindings and its error reporting through `display-message`.
-4. **Colored labels.** Spans with `fg` and `bold`, for Hypercube's activity,
-   attention, and unseen-reply dots.
-5. **Switching and identity.** Moving an attached client to another session,
-   so `hypercube` run inside a pane switches instead of nesting a second
-   client. Each pane's process gets environment variables naming the socket
-   and its own pane ID, set before it starts, in place of `TMUX` and
-   `TMUX_PANE`.
-6. **Frame pacing.** At most about 60 frames a second, so several busy panes
-   do not redraw the whole screen on every write.
-7. **Crash logging.** The server writes a log under `$XDG_STATE_HOME/mux/`, so
-   a panic leaves a trace. Review which panics must end every pane.
-8. **Hypercube's switch.** A mux client package in place of `internal/tmux`;
-   `hypercube watch`; saved session, window, and pane IDs with the server
-   instance ID in the store; `scripts/dev`, `make install`, and
-   `scripts/reinstall` build and run the mux; the integration tests attach
-   through the socket, send input, select, and wait for events instead of
-   using `send-keys` and control mode.
+1. **Relaunch check.** Before anything else, check by hand in `make dev`
+   that Claude Code and OpenCode behave when `hypercube agent` runs them as
+   child processes: Ctrl-C, exit, and relaunch. If they do not, stop and
+   redesign how Hypercube learns of exits.
+2. **Mux changes.** IDs with the per-server random part; `select {window |
+   pane}`; only `spawn` and a bare `mux attach` start a server, so `mux ls`
+   and other requests leave none behind; `attention` on panes only, rolled
+   up to windows and sessions. Checked by socket tests.
+3. **Relaunch in the wrapper.** `hypercube agent` runs the harness as a child
+   and relaunches it, still on tmux. Delete `hypercube exited`, `Restart`,
+   `Dead`, and the `pane-died` hook. Checked by Hypercube's tests.
+4. **Hypercube's switch.** A small mux client package in place of
+   `internal/tmux`: spawn with the full environment and labels; kill, label,
+   attention, and select; lookups through `list` from saved pane IDs; attach
+   by running `mux attach`. Remove the `c`, `W`, and `X` bindings and the
+   `display-message` path. `scripts/dev`, `make install`, and
+   `scripts/reinstall` build and run the mux. The integration tests attach
+   through the socket, select, and send input instead of using `send-keys`
+   and control mode, and the corrupted-marker test goes away.
+
+### Later
+
+Each is its own change after the switch, made when it is needed.
+
+- **Keys and prompts.** If `c`, `W`, or `X` come back, Hypercube runs the
+  attach client in its own process. The attach request carries the keys to
+  bind, key presses and answers come back on the attach connection, and
+  prompts, confirms, messages, and switching to another session go up it.
+  This needs no client IDs, global key table, or event subscription.
+- **Unseen replies.** One request that marks a pane unless a client shows its
+  window and clears the mark when one does. The server already knows what
+  each client shows.
+- **Switching.** Running `hypercube` inside a pane moves the attached client
+  instead of nesting a second one.
+- **Colored labels.** Spans with `fg` and `bold`.
+- **Frame pacing.** At most about 60 frames a second, if a smoke test with
+  several busy agents shows full redraws are a problem.
+- **Crash logging.** A server log under `$XDG_STATE_HOME/mux/`, so a panic
+  leaves a trace.
 
 ## Decisions
 
