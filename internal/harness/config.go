@@ -14,8 +14,8 @@ type Spec struct {
 	Effort  string `json:"effort"`
 }
 
-// Profile is a named spec the orchestrator can give a worker. The
-// description tells the orchestrator when to use it.
+// Profile is a named spec the lead can give a worker. The
+// description tells the lead when to use it.
 type Profile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -23,8 +23,8 @@ type Profile struct {
 }
 
 type Config struct {
-	Orchestrator Spec      `json:"orchestrator"`
-	Profiles     []Profile `json:"profiles"`
+	Lead     Spec      `json:"lead"`
+	Profiles []Profile `json:"profiles"`
 }
 
 func configPath() string {
@@ -47,8 +47,8 @@ func LoadConfig() (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := c.Orchestrator.check(); err != nil {
-		return c, fmt.Errorf("%s: orchestrator: %w", path, err)
+	if err := c.Lead.check(); err != nil {
+		return c, fmt.Errorf("%s: lead: %w", path, err)
 	}
 	if len(c.Profiles) == 0 {
 		return c, fmt.Errorf("%s: missing profiles", path)

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="butt" stroke-linejoin="miter">
+  <style>@media (prefers-color-scheme: dark) { svg { color: #fff; } }</style>
+  <g stroke-width="1.5">
+    <path vector-effect="non-scaling-stroke" d="M2 7h15v15H2z M7 2h15v15H7z M2 7l5-5 M17 7l5-5 M17 22l5-5 M2 22l5-5"/>
+    <path vector-effect="non-scaling-stroke" d="M8 10h6v6H8z M10 8h6v6h-6z M8 10l2-2 M14 10l2-2 M14 16l2-2 M8 16l2-2"/>
+  </g>
+  <path stroke-width="1" stroke-opacity="0.5" vector-effect="non-scaling-stroke" d="M2 7l6 3 M17 7l-3 3 M17 22l-3-6 M2 22l6-6 M7 2l3 6 M22 2l-6 6 M22 17l-6-3 M7 17l3-3"/>
+</svg>

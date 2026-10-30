@@ -21,7 +21,7 @@ func TestWaiterReplacementAndDelivery(t *testing.T) {
 		}
 	}
 	update(func(s *store.State) {
-		s.Agents = []store.Agent{{ID: "o", Name: "orchestrator"}, {ID: "w", Name: "worker", Activity: store.Busy}}
+		s.Agents = []store.Agent{{ID: "o", Name: "lead"}, {ID: "w", Name: "worker", Activity: store.Busy}}
 		s.Messages = []store.Message{{From: "o", To: "w", Text: "first"}, {From: "w", To: "o", Text: "other"}, {From: "o", To: "w", Text: "second"}}
 	})
 	done := []chan bool{make(chan bool, 1), make(chan bool, 1)}
@@ -63,7 +63,7 @@ func TestWaiterReplacementAndDelivery(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("delivery timed out")
 	}
-	if output[1].String() != "Message from orchestrator (o):\nfirst\n\nMessage from orchestrator (o):\nsecond\n" {
+	if output[1].String() != "Message from default/lead:\nfirst\n\nMessage from default/lead:\nsecond\n" {
 		t.Fatal(output[1].String())
 	}
 	s, _ := store.Load(path)

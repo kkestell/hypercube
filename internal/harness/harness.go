@@ -40,7 +40,7 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 			hooks[event] = []any{map[string]any{"hooks": commands}}
 		}
 		statusline := shellQuote(exe) + " statusline"
-		if a.Role == store.Orchestrator {
+		if a.Role == store.Lead {
 			statusline += " --limits"
 		}
 		argv = []string{"claude", "--mcp-config", jsonString(map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": exe, "args": []string{"mcp"}, "env": env}}}),

@@ -38,7 +38,7 @@ func TestDelete(t *testing.T) {
 	path := store.Path(name)
 	store.Update(path, func(s *store.State) error {
 		s.Agents = []store.Agent{
-			{ID: "a", Name: "orchestrator", Role: store.Orchestrator, Dir: root},
+			{ID: "a", Name: "lead", Role: store.Lead, Dir: root},
 			{ID: "b", Name: "w1", Role: store.Worker, Dir: dir, Branch: branch},
 			{ID: "c", Name: "w2", Role: store.Worker, Dir: other},
 		}
@@ -82,7 +82,7 @@ func TestDeleteMissingCheckout(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "gone")
 	path := store.Path(workspace.Name(root))
 	if err := store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "o", Role: store.Orchestrator, Dir: root}, {ID: "w", Role: store.Worker, Dir: filepath.Join(root, ".hypercube/w"), Branch: "hypercube/w"}}
+		s.Agents = []store.Agent{{ID: "o", Role: store.Lead, Dir: root}, {ID: "w", Role: store.Worker, Dir: filepath.Join(root, ".hypercube/w"), Branch: "hypercube/w"}}
 		return nil
 	}); err != nil {
 		t.Fatal(err)

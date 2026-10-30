@@ -15,12 +15,12 @@ import (
 )
 
 const (
-	Orchestrator = "orchestrator"
-	Worker       = "worker"
-	Busy         = "busy"
-	Idle         = "idle"
-	Exited       = "exited"
-	DefaultTeam  = "default"
+	Lead        = "lead"
+	Worker      = "worker"
+	Busy        = "busy"
+	Idle        = "idle"
+	Exited      = "exited"
+	DefaultTeam = "default"
 )
 
 type Agent struct {
@@ -178,50 +178,47 @@ func Update(path string, fn func(*State) error) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *State) TeamOrchestrator(team string) *Agent {
+func (s *State) TeamLead(team string) *Agent {
 	for i := range s.Agents {
 		a := &s.Agents[i]
-		if a.Role == Orchestrator && a.Team == team {
+		if a.Role == Lead && a.Team == team {
 			return a
 		}
 	}
 	return nil
 }
 
-// Agent returns the agent with the given ID or name.
-func (s *State) Agent(idOrName string) (*Agent, error) {
+// Agent returns the agent with the given ID.
+func (s *State) Agent(id string) (*Agent, error) {
 	for i := range s.Agents {
-		if s.Agents[i].ID == idOrName {
+		if s.Agents[i].ID == id {
 			return &s.Agents[i], nil
 		}
 	}
-	for i := range s.Agents {
-		if s.Agents[i].Name == idOrName {
-			return &s.Agents[i], nil
-		}
-	}
-	return nil, fmt.Errorf("no agent %q", idOrName)
+	return nil, fmt.Errorf("no agent %q", id)
 }
 
-// TeamAgent resolves names within one session. IDs from another session are
-// refused too, so knowing an ID cannot cross the session boundary.
-func (s *State) TeamAgent(team, idOrName string) (*Agent, error) {
-	for i := range s.Agents {
-		a := &s.Agents[i]
-		if a.ID == idOrName {
-			if a.Team == team {
-				return a, nil
-			}
-			return nil, fmt.Errorf("no agent %q in session %q", idOrName, team)
-		}
+// Address names an agent across the workspace. Session and agent names
+// cannot contain a slash, so the address is unambiguous.
+func (a Agent) Address() string {
+	return a.Team + "/" + a.Name
+}
+
+// Find resolves an address, or a bare name within the given session.
+func (s *State) Find(team, address string) (*Agent, error) {
+	t, name, qualified := strings.Cut(address, "/")
+	if qualified {
+		team = t
+	} else {
+		name = address
 	}
 	for i := range s.Agents {
 		a := &s.Agents[i]
-		if a.Team == team && a.Name == idOrName {
+		if a.Team == team && a.Name == name {
 			return a, nil
 		}
 	}
-	return nil, fmt.Errorf("no agent %q in session %q", idOrName, team)
+	return nil, fmt.Errorf("no agent %q", address)
 }
 
 // Take removes and returns the messages queued for an agent.

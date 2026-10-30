@@ -18,7 +18,7 @@ start a native turn. Neither path types into the pane, so a user's unsent
 draft stays in its editor.
 
 A failed worker turn preserves its queued messages and sends its team's
-orchestrator a bounded error summary. The orchestrator's own failures remain
+lead a bounded error summary. The lead's own failures remain
 in its pane.
 
 Native subagents are separate from the Hypercube agent's main conversation.
@@ -34,7 +34,7 @@ allow still open an approval dialog. Hypercube flags these through the
 permission hook and clears attention through the native status line when the
 dialog is answered, including denials.
 
-The status line shows model, thinking effort, and context usage; orchestrators
+The status line shows model, thinking effort, and context usage; leads
 also get usage-limit bars. Folder trust remains Claude's own decision.
 
 ## OpenCode

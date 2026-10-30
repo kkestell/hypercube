@@ -20,8 +20,10 @@ numbers, window indexes, and editable display names cannot establish it:
 tmux can reuse numbers, and users can rename or reorder windows.
 
 Agents are trusted local processes with the user's credentials. Team scoping
-in MCP prevents accidental cross-team operations; it does not isolate agents
-from the filesystem or from tools they can invoke through a shell.
+in MCP prevents accidental cross-team operations, with lead-to-lead messages
+as the one exception so that leads sharing a checkout can coordinate. It does
+not isolate agents from the filesystem or from tools they can invoke through
+a shell.
 
 ## Persistence and concurrency
 

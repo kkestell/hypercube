@@ -32,7 +32,7 @@ func TestDelivery(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}, {ID: "b", Name: "w1", Role: store.Worker}}
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker}}
 		return nil
 	})
 	queue := func(text string) {
@@ -46,7 +46,7 @@ func TestDelivery(t *testing.T) {
 		return s
 	}
 
-	if r := run(t, "SessionStart"); !strings.Contains(r.HookSpecificOutput.AdditionalContext, "You are w1 (b)") {
+	if r := run(t, "SessionStart"); !strings.Contains(r.HookSpecificOutput.AdditionalContext, "You are default/w1") {
 		t.Errorf("SessionStart context = %q", r.HookSpecificOutput.AdditionalContext)
 	}
 	if s := load(); s.Agents[1].SessionID != "" {
@@ -55,7 +55,7 @@ func TestDelivery(t *testing.T) {
 
 	queue("hello")
 	r := run(t, "UserPromptSubmit")
-	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from orchestrator (a):\nhello" {
+	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from default/lead:\nhello" {
 		t.Errorf("UserPromptSubmit context = %q", got)
 	}
 	if s := load(); s.Agents[1].Activity != store.Busy || len(s.Messages) != 0 || s.Agents[1].SessionID != "s1" {
@@ -82,12 +82,12 @@ func TestPostToolUseDelivers(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}, {ID: "b", Name: "w1", Role: store.Worker, Activity: store.Busy}}
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker, Activity: store.Busy}}
 		s.Messages = []store.Message{{From: "a", To: "b", Text: "mid-turn"}, {From: "a", To: "a", Text: "other"}}
 		return nil
 	})
 	r := run(t, "PostToolUse")
-	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from orchestrator (a):\nmid-turn" {
+	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from default/lead:\nmid-turn" {
 		t.Errorf("PostToolUse context = %q", got)
 	}
 	if s, _ := store.Load(path); len(s.Messages) != 1 || s.Messages[0].To != "a" {
@@ -107,7 +107,7 @@ func TestFailedResponseKeepsMessages(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "b")
 	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}, {ID: "b", Name: "w1", Role: store.Worker}}
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead}, {ID: "b", Name: "w1", Role: store.Worker}}
 		s.Messages = []store.Message{{From: "a", To: "b", Text: "hello"}}
 		return nil
 	})
@@ -124,7 +124,7 @@ func TestNativeSubagentsAndTurnFailures(t *testing.T) {
 	t.Setenv("HYPERCUBE_STATE", path)
 	t.Setenv("HYPERCUBE_AGENT_ID", "w")
 	if err := store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "o", Name: "orchestrator", Role: store.Orchestrator}, {ID: "w", Name: "worker", Role: store.Worker, Activity: store.Busy, SessionID: "main"}}
+		s.Agents = []store.Agent{{ID: "o", Name: "lead", Role: store.Lead}, {ID: "w", Name: "worker", Role: store.Worker, Activity: store.Busy, SessionID: "main"}}
 		s.Messages = []store.Message{{From: "o", To: "w", Text: "main only"}}
 		return nil
 	}); err != nil {
@@ -166,9 +166,9 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 	t.Setenv("HYPERCUBE_AGENT_ID", "other-worker")
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = []store.Agent{
-			{ID: "o", Name: "orchestrator", Role: store.Orchestrator},
+			{ID: "o", Name: "lead", Role: store.Lead},
 			{ID: "w", Name: "worker", Role: store.Worker},
-			{ID: "other-orch", Name: "orchestrator", Role: store.Orchestrator, Team: "other"},
+			{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other"},
 			{ID: "other-worker", Name: "worker", Role: store.Worker, Team: "other"},
 		}
 		return nil
@@ -176,14 +176,14 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
-	if strings.Contains(got, "orchestrator (o)") || strings.Contains(got, "worker (w)") || !strings.Contains(got, "orchestrator (other-orch)") {
+	if strings.Contains(got, "default/") || !strings.Contains(got, "other/lead") {
 		t.Fatal("session context exposed the wrong team", got)
 	}
 	if err := Run("StopFailure", strings.NewReader(`{"error":"failure in other session"}`), io.Discard); err != nil {
 		t.Fatal(err)
 	}
 	s, err := store.Load(path)
-	if err != nil || len(s.Messages) != 1 || s.Messages[0].To != "other-orch" {
+	if err != nil || len(s.Messages) != 1 || s.Messages[0].To != "other-lead" {
 		t.Fatal(s, err)
 	}
 }

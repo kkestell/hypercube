@@ -44,7 +44,7 @@ func TestUpdateErrorWritesNothing(t *testing.T) {
 
 func TestTakeAndRemove(t *testing.T) {
 	s := State{
-		Agents:   []Agent{{ID: "a", Name: "one"}, {ID: "b", Name: "two"}},
+		Agents:   []Agent{{ID: "a", Name: "one", Team: "x"}, {ID: "b", Name: "two", Team: "x"}},
 		Messages: []Message{{Text: "1", To: "a"}, {Text: "2", To: "b"}, {Text: "3", To: "a"}},
 	}
 	if got := s.Take("a"); len(got) != 2 || len(s.Messages) != 1 || s.Messages[0].To != "b" {
@@ -55,8 +55,13 @@ func TestTakeAndRemove(t *testing.T) {
 	if len(s.Agents) != 1 || s.Agents[0].ID != "a" || len(s.Messages) != 0 {
 		t.Errorf("after Remove(b): %+v %+v", s.Agents, s.Messages)
 	}
-	if a, err := s.Agent("one"); err != nil || a.ID != "a" {
-		t.Errorf("Agent(one) = %+v, %v", a, err)
+	for _, team := range []string{"x", "y"} {
+		if a, err := s.Find(team, "x/one"); err != nil || a.ID != "a" {
+			t.Errorf("Find(%s, x/one) = %+v, %v", team, a, err)
+		}
+	}
+	if a, err := s.Find("y", "one"); err == nil {
+		t.Errorf("Find(y, one) = %+v", a)
 	}
 }
 

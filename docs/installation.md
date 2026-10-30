@@ -23,9 +23,12 @@ want to work in. In Git, the workspace root is the checkout's top level;
 outside Git, it is the current directory.
 
 A workspace owns one tmux session. Each Hypercube session is a team in its own
-window, with an orchestrator on the left and workers stacked on the right.
-Messaging, agent names, and worker lifecycle are scoped to that team.
-Orchestrators share the original directory, including its files, Git index,
+window, with a lead on the left and workers stacked on the right.
+Agents are addressed as `session/name`, such as `review/lead`; a bare name
+means an agent in the sender's own team. Workers message only their own team,
+and leads can also message other teams' leads. Worker lifecycle is scoped to the
+team.
+Leads share the original directory, including its files, Git index,
 and branch. Use worker worktrees for independent edits.
 
 | Command | Use |

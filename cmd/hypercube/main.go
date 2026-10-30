@@ -94,7 +94,7 @@ func workspaceAt(dir string) (root, name string, err error) {
 	return root, workspace.Name(root), nil
 }
 
-// known is a workspace with a state file. Its root is the orchestrator's
+// known is a workspace with a state file. Its root is the lead's
 // directory.
 type known struct {
 	root, name, path string
@@ -115,7 +115,7 @@ func workspaces() ([]known, error) {
 		}
 		k := known{name: store.Workspace(path), path: path, state: s}
 		for _, a := range s.Agents {
-			if a.Role == store.Orchestrator {
+			if a.Role == store.Lead {
 				k.root = a.Dir
 			}
 		}
@@ -275,7 +275,7 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 		return err
 	}
 	if team != "" {
-		if s.TeamOrchestrator(team) == nil {
+		if s.TeamLead(team) == nil {
 			return fmt.Errorf("no session %q", team)
 		}
 		window, err := tmux.FindWindow(name, team, path)
@@ -401,18 +401,18 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		} else if newName == "" {
 			for n := 1; ; n++ {
 				newName = fmt.Sprintf("session-%d", n)
-				if s.TeamOrchestrator(newName) == nil {
+				if s.TeamLead(newName) == nil {
 					break
 				}
 			}
 		}
-		if s.TeamOrchestrator(newName) != nil {
+		if s.TeamLead(newName) != nil {
 			return fmt.Errorf("session %q already exists; select its window with Ctrl-b w", newName)
 		}
 	}
 	missing := map[string]bool{}
 	for _, a := range s.Agents {
-		if a.Role != store.Orchestrator {
+		if a.Role != store.Lead {
 			continue
 		}
 		window, err := tmux.FindWindow(name, a.Team, path)
@@ -438,8 +438,8 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		err = store.Update(path, func(s *store.State) error {
 			s.NoGit = branchErr != nil
 			if add {
-				o := cfg.Orchestrator
-				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "orchestrator", Role: store.Orchestrator,
+				o := cfg.Lead
+				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
 					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: newName})
 			}
 			for i := range s.Agents {
@@ -448,7 +448,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 					continue
 				}
 				a.Target, a.QuickExits, a.Attention = "", 0, false
-				if a.Role == store.Orchestrator {
+				if a.Role == store.Lead {
 					a.Branch = branch
 				}
 				launch = append(launch, *a)
@@ -460,11 +460,11 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		}
 	}
 	sort.SliceStable(launch, func(i, j int) bool {
-		return launch[i].Role == store.Orchestrator && launch[j].Role != store.Orchestrator
+		return launch[i].Role == store.Lead && launch[j].Role != store.Lead
 	})
 	for _, a := range launch {
 		prompt := mcp.Nudge
-		if a.Role == store.Orchestrator {
+		if a.Role == store.Lead {
 			prompt = ""
 		}
 		if _, err := harness.Launch(a, path, prompt); err != nil {
@@ -509,7 +509,7 @@ func windowAction(args []string) error {
 		return err
 	}
 	for _, a := range s.Agents {
-		if a.Role != store.Orchestrator {
+		if a.Role != store.Lead {
 			continue
 		}
 		if args[0] == "new" && len(args) == 2 {

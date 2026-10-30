@@ -14,7 +14,7 @@ func TestConfigProfiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	valid := `{"orchestrator":{"harness":"claude","model":"opus","effort":"high"},"profiles":[{"name":"fast","description":"Small jobs","harness":"opencode","model":"p/m","effort":"low"}]}`
+	valid := `{"lead":{"harness":"claude","model":"opus","effort":"high"},"profiles":[{"name":"fast","description":"Small jobs","harness":"opencode","model":"p/m","effort":"low"}]}`
 	for _, source := range []string{valid, strings.Replace(valid, `"opencode"`, `"pi"`, 1), strings.Replace(valid, `"Small jobs"`, `""`, 1), strings.Replace(valid, `"opus"`, `""`, 1), `{`} {
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)

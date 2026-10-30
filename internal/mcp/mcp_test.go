@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -33,21 +34,21 @@ func TestToolsFor(t *testing.T) {
 }
 
 // team returns the state path of a workspace, outside Git if noGit is set,
-// with an orchestrator in orchDir and, if workerDir is set, a worker working
+// with a lead in leadDir and, if workerDir is set, a worker working
 // directly in it.
-func team(t *testing.T, noGit bool, orchDir, workerDir string) string {
+func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
 	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
+  "lead": {"harness": "claude", "model": "opus", "effort": "high"},
   "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
 }`), 0o644)
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {
 		s.NoGit = noGit
-		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator, Dir: orchDir}}
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Dir: leadDir}}
 		if workerDir != "" {
 			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir, Target: "%999"})
 		}
@@ -97,28 +98,36 @@ func TestSessionBoundaries(t *testing.T) {
 	path := team(t, false, t.TempDir(), t.TempDir())
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = append(s.Agents,
-			store.Agent{ID: "other-orch", Name: "orchestrator", Role: store.Orchestrator, Team: "other"},
+			store.Agent{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other"},
 			store.Agent{ID: "other-worker", Name: "w1", Role: store.Worker, Team: "other"})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"a", "b"} {
-		if _, err := sendMessage(id, path, "other-worker", "wrong session"); err == nil {
-			t.Fatal("message crossed session boundary")
+	for _, send := range [][2]string{{"a", "other/w1"}, {"b", "other/w1"}, {"b", "other/lead"}} {
+		if _, err := sendMessage(send[0], path, send[1], "wrong session"); err == nil {
+			t.Fatalf("%s reached %s across sessions", send[0], send[1])
 		}
 	}
-	if _, err := removeAgent("a", path, "other-worker"); err == nil {
+	if _, err := removeAgent("a", path, "other/w1"); err == nil {
 		t.Fatal("removed another session's worker")
 	}
 	if _, err := removeAgent("b", path, "w1"); err == nil {
 		t.Fatal("worker removed an agent")
 	}
-	if _, err := sendMessage("other-orch", path, "w1", "correct session"); err != nil {
-		t.Fatal(err)
+	for _, send := range [][2]string{{"other-lead", "w1"}, {"a", "other/lead"}, {"other-lead", "default/lead"}} {
+		if _, err := sendMessage(send[0], path, send[1], "allowed"); err != nil {
+			t.Fatal(err)
+		}
 	}
 	s, err := store.Load(path)
-	if err != nil || len(s.Agents) != 4 || len(s.Messages) != 1 || s.Messages[0].To != "other-worker" {
+	if err != nil || len(s.Agents) != 4 || len(s.Messages) != 3 || s.Messages[0].To != "other-worker" || s.Messages[1].To != "other-lead" || s.Messages[2].To != "a" {
 		t.Fatal(s, err)
+	}
+	if listed, _ := call("a", path, "list_agents", nil); !strings.Contains(listed, "other/lead") || strings.Contains(listed, "other/w1") {
+		t.Fatal("lead's list_agents", listed)
+	}
+	if listed, _ := call("b", path, "list_agents", nil); strings.Contains(listed, "other/") {
+		t.Fatal("worker's list_agents", listed)
 	}
 }

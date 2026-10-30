@@ -39,7 +39,7 @@ func schema(required []string, props ...string) map[string]any {
 	return map[string]any{"type": "object", "properties": p, "required": required}
 }
 
-const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's directory, the worker works directly in it"
+const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the lead's directory, the worker works directly in it"
 
 const profileArg = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts."
 
@@ -47,13 +47,13 @@ const profileArg = "The profile sets the worker's harness, model, and effort. An
 // profiles. Outside Git, workers cannot have worktrees, so create_agent
 // requires dir.
 func toolsFor(s store.State, profiles []harness.Profile) []tool {
-	create := tool{"create_agent", "Orchestrator only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg,
+	create := tool{"create_agent", "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg,
 		schema([]string{"name", "profile"}, "name", "profile", "dir", "message")}
-	remove := tool{"remove_agent", "Orchestrator only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"id"}, "id")}
+	remove := tool{"remove_agent", "Lead only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"name"}, "name")}
 	if s.NoGit {
-		create = tool{create.Name, "Orchestrator only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg,
+		create = tool{create.Name, "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg,
 			schema([]string{"name", "profile", "dir"}, "name", "profile", "dir", "message")}
-		remove.Description = "Orchestrator only. Close a worker's pane and remove it from the team. Its directory is left as it is."
+		remove.Description = "Lead only. Close a worker's pane and remove it from the team. Its directory is left as it is."
 	}
 	if len(profiles) > 0 {
 		var names []string
@@ -63,8 +63,8 @@ func toolsFor(s store.State, profiles []harness.Profile) []tool {
 		create.InputSchema["properties"].(map[string]any)["profile"] = map[string]any{"type": "string", "enum": names}
 	}
 	return []tool{
-		{"send_message", "Send a message to another agent by ID or name.", schema([]string{"to", "text"}, "to", "text")},
-		{"list_agents", "List the team: id, name, role, harness, activity, directory, and branch.", schema([]string{})},
+		{"send_message", "Send a message to an agent in your session, by name or session/name address. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
+		{"list_agents", "List your session's agents and, for a lead, other sessions' leads: address, role, harness, activity, directory, and branch.", schema([]string{})},
 		create,
 		remove,
 	}
@@ -140,27 +140,26 @@ func call(self, path, name string, args map[string]string) (string, error) {
 			return "", err
 		}
 		type entry struct {
-			ID       string `json:"id"`
-			Name     string `json:"name"`
+			Address  string `json:"address"`
 			Role     string `json:"role"`
 			Harness  string `json:"harness"`
 			Activity string `json:"activity"`
 			Dir      string `json:"directory"`
 			Branch   string `json:"branch"`
 		}
-		var team []entry
+		var listed []entry
 		for _, a := range s.Agents {
-			if a.Team != caller.Team {
+			if a.Team != caller.Team && !(caller.Role == store.Lead && a.Role == store.Lead) {
 				continue
 			}
-			team = append(team, entry{a.ID, a.Name, a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
+			listed = append(listed, entry{a.Address(), a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
 		}
-		b, err := json.MarshalIndent(team, "", "  ")
+		b, err := json.MarshalIndent(listed, "", "  ")
 		return string(b), err
 	case "create_agent":
 		return createAgent(self, path, args)
 	case "remove_agent":
-		return removeAgent(self, path, args["id"])
+		return removeAgent(self, path, args["name"])
 	}
 	return "", fmt.Errorf("unknown tool %q", name)
 }
@@ -172,12 +171,15 @@ func sendMessage(self, path, to, text string) (string, error) {
 		if err != nil {
 			return err
 		}
-		a, err := s.TeamAgent(caller.Team, to)
+		a, err := s.Find(caller.Team, to)
 		if err != nil {
 			return err
 		}
 		if a.ID == self {
 			return errors.New("cannot send a message to yourself")
+		}
+		if a.Team != caller.Team && (caller.Role != store.Lead || a.Role != store.Lead) {
+			return errors.New("across sessions, only leads can message each other")
 		}
 		recipient = *a
 		s.Messages = append(s.Messages, store.Message{From: self, To: a.ID, Text: text})
@@ -186,7 +188,7 @@ func sendMessage(self, path, to, text string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	reply := fmt.Sprintf("Message queued for %s (%s).", recipient.Name, recipient.ID)
+	reply := fmt.Sprintf("Message queued for %s.", recipient.Address())
 	if recipient.Activity == store.Exited {
 		reply += " It is not running; the message will be delivered when the workspace starts again."
 	}
@@ -195,10 +197,10 @@ func sendMessage(self, path, to, text string) (string, error) {
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-func orchestrator(s *store.State, self string) (*store.Agent, error) {
+func requireLead(s *store.State, self string) (*store.Agent, error) {
 	a, err := s.Agent(self)
-	if err == nil && a.Role != store.Orchestrator {
-		err = errors.New("only the orchestrator can do this")
+	if err == nil && a.Role != store.Lead {
+		err = errors.New("only the lead can do this")
 	}
 	return a, err
 }
@@ -229,15 +231,15 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		Activity: store.Busy,
 	}
 	err = store.Update(path, func(s *store.State) error {
-		orch, err := orchestrator(s, self)
+		lead, err := requireLead(s, self)
 		if err != nil {
 			return err
 		}
-		if _, err := s.TeamAgent(orch.Team, name); err == nil {
+		if _, err := s.Find(lead.Team, name); err == nil {
 			return fmt.Errorf("an agent named %s already exists", name)
 		}
-		root = orch.Dir
-		a.Team = orch.Team
+		root = lead.Dir
+		a.Team = lead.Team
 		switch {
 		case args["dir"] != "":
 			dir, err := workspace.Resolve(root, args["dir"])
@@ -292,12 +294,12 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	}
 
 	if a.Branch == "" {
-		return fmt.Sprintf("Created %s (%s) in %s.", a.Name, a.ID, a.Dir), nil
+		return fmt.Sprintf("Created %s in %s.", a.Address(), a.Dir), nil
 	}
-	return fmt.Sprintf("Created %s (%s) on branch %s in %s.", a.Name, a.ID, a.Branch, a.Dir), nil
+	return fmt.Sprintf("Created %s on branch %s in %s.", a.Address(), a.Branch, a.Dir), nil
 }
 
-func removeAgent(self, path, id string) (string, error) {
+func removeAgent(self, path, name string) (string, error) {
 	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return "", err
@@ -307,19 +309,22 @@ func removeAgent(self, path, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	orch, err := orchestrator(&s, self)
+	lead, err := requireLead(&s, self)
 	if err != nil {
 		return "", err
 	}
-	a, err := s.TeamAgent(orch.Team, id)
+	a, err := s.Find(lead.Team, name)
 	if err != nil {
 		return "", err
+	}
+	if a.Team != lead.Team {
+		return "", errors.New("only workers in your session can be removed")
 	}
 	if a.Role != store.Worker {
 		return "", errors.New("only workers can be removed")
 	}
 	if a.Branch != "" {
-		if err := workspace.RemoveWorktree(orch.Dir, a.Dir, a.Branch); err != nil {
+		if err := workspace.RemoveWorktree(lead.Dir, a.Dir, a.Branch); err != nil {
 			return "", err
 		}
 	}
@@ -333,5 +338,5 @@ func removeAgent(self, path, id string) (string, error) {
 		}
 	}
 	err = store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
-	return fmt.Sprintf("Removed %s (%s).", a.Name, a.ID), err
+	return fmt.Sprintf("Removed %s.", a.Address()), err
 }
