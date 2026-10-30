@@ -52,12 +52,21 @@ Code and current docs stand alone without referring to predecessor code.
 
 ## Build and validation
 
-Use `make` to build `bin/hypercube`. Before reporting behavior changes done,
-run `make check`: Go build, vet, formatting check, and race-enabled tests.
+Use `make` to build `bin/hypercube`. Run `make check` once before committing
+behavior changes, or when explicitly requested. During routine editing, use
+focused checks as needed; do not run full suites or the tmux lifecycle
+integration test.
+
+Add tests only for concrete behavior or bugs that matter to Kyle. Assert
+observable outcomes; do not mirror implementation constants, generated
+structures, exact prompt prose, or internal call sequences. Harmless refactors
+and wording changes should not require test changes. Reuse existing coverage
+and delete redundant tests. Do not introduce test-only runtimes, dependencies,
+frameworks, or simulated third-party APIs without an explicit request.
+
 Tests force user-visible message, ownership, and lifecycle behavior, using
-isolated state and real tmux with local harness stand-ins. Bun runs the
-OpenCode plugin test; do not install browser tooling or spend tokens on agents
-for routine validation. Test processes and resources must be uniquely owned
+isolated state and real tmux with local harness stand-ins. Do not install
+browser tooling or spend tokens on agents for routine validation. Test processes and resources must be uniquely owned
 and cleaned up. Never stop the user's tmux server or installed workspaces.
 
 For documentation-only changes, use focused searches and diff inspection.

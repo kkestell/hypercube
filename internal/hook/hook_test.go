@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -75,107 +74,6 @@ func TestDelivery(t *testing.T) {
 	}
 	if s := load(); s.Agents[1].Activity != store.Idle {
 		t.Errorf("Stop left agent %s", s.Agents[1].Activity)
-	}
-}
-
-func TestOrchestratorProfiles(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "w.json")
-	t.Setenv("HYPERCUBE_STATE", path)
-	t.Setenv("HYPERCUBE_AGENT_ID", "a")
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
-	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
-}`), 0o644)
-	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{{ID: "a", Name: "orchestrator", Role: store.Orchestrator}}
-		return nil
-	})
-
-	got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
-	if !strings.Contains(got, "\n- sol (opencode, gpt-6.1-sol, medium): coding.\n") {
-		t.Errorf("SessionStart context = %q", got)
-	}
-}
-
-func TestNoGitFacts(t *testing.T) {
-	dir := t.TempDir()
-	orchDir, workerDir := t.TempDir(), t.TempDir()
-	path := filepath.Join(dir, "w.json")
-	t.Setenv("HYPERCUBE_STATE", path)
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
-	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
-}`), 0o644)
-	store.Update(path, func(s *store.State) error {
-		s.NoGit = true
-		s.Agents = []store.Agent{
-			{ID: "a", Name: "orchestrator", Role: store.Orchestrator, Dir: orchDir},
-			{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir},
-		}
-		return nil
-	})
-
-	t.Setenv("HYPERCUBE_AGENT_ID", "a")
-	got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
-	for _, want := range []string{"create_agent(name, profile, dir,", "Tell each worker how to handle branches and commits in its directory."} {
-		if !strings.Contains(got, want) {
-			t.Errorf("orchestrator context lacks %q:\n%s", want, got)
-		}
-	}
-	for _, unwanted := range []string{"on branch", "Merge its branch"} {
-		if strings.Contains(got, unwanted) {
-			t.Errorf("orchestrator context contains %q:\n%s", unwanted, got)
-		}
-	}
-
-	t.Setenv("HYPERCUBE_AGENT_ID", "b")
-	got = run(t, "SessionStart").HookSpecificOutput.AdditionalContext
-	for _, want := range []string{"Your working directory is " + workerDir + ".", "Handle branches and commits as the orchestrator tells you"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("worker context lacks %q:\n%s", want, got)
-		}
-	}
-	if strings.Contains(got, "on branch") {
-		t.Errorf("worker context contains \"on branch\":\n%s", got)
-	}
-}
-
-func TestGitFacts(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "w.json")
-	t.Setenv("HYPERCUBE_STATE", path)
-	t.Setenv("XDG_CONFIG_HOME", dir)
-	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
-	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "orchestrator": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
-}`), 0o644)
-	store.Update(path, func(s *store.State) error {
-		s.Agents = []store.Agent{
-			{ID: "a", Name: "orchestrator", Role: store.Orchestrator, Dir: "/r", Branch: "main"},
-			{ID: "b", Name: "w1", Role: store.Worker, Dir: "/r/.hypercube/w1", Branch: "hypercube/w1"},
-			{ID: "c", Name: "w2", Role: store.Worker, Harness: "opencode", Dir: "/r"},
-		}
-		return nil
-	})
-
-	for id, want := range map[string][]string{
-		"a": {"create_agent(name, profile, dir?,", "Merge its branch into your branch", `pass dir "."`, "- w2 (c): worker, opencode, /r\n"},
-		"b": {"Your working directory is /r/.hypercube/w1 on branch hypercube/w1.", "Commit your work on your branch."},
-		"c": {"Your working directory is /r.\n", "Handle branches and commits as the orchestrator tells you."},
-	} {
-		t.Setenv("HYPERCUBE_AGENT_ID", id)
-		got := run(t, "SessionStart").HookSpecificOutput.AdditionalContext
-		for _, w := range want {
-			if !strings.Contains(got, w) {
-				t.Errorf("context of %s lacks %q:\n%s", id, w, got)
-			}
-		}
 	}
 }
 

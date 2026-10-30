@@ -14,8 +14,7 @@ make check
 The executable is `bin/hypercube`. The build uses the Go standard library,
 with no external Go modules. `make check` builds, runs `go vet`, checks Go
 formatting, and runs the tests with the race detector. The integration tests
-use an isolated tmux server and local harness stand-ins. Bun is needed to
-run the OpenCode plugin's JavaScript test; that test skips if Bun is absent.
+use an isolated tmux server and local harness stand-ins.
 
 ## Configure and run
 
