@@ -463,10 +463,10 @@ func TestCursorAndOffsets(t *testing.T) {
 		if !bytes.Contains(frame, []byte("abc")) || !bytes.Contains(frame, []byte("STACK")) {
 			continue
 		}
-		if !bytes.Contains(frame, []byte("\x1b[4;42H")) {
-			t.Errorf("frame does not start the stacked pane at row 4, column 42: %q", frame)
+		if !bytes.Contains(frame, []byte("\x1b[3;42H")) {
+			t.Errorf("frame does not start the stacked pane at row 3, column 42: %q", frame)
 		}
-		if !bytes.HasSuffix(frame, []byte("\x1b[4;4H\x1b[?25h\x1b[?2026l")) {
+		if !bytes.HasSuffix(frame, []byte("\x1b[3;4H\x1b[?25h\x1b[?2026l")) {
 			t.Errorf("frame does not end with the main pane's cursor: %q", frame)
 		}
 		return
@@ -499,9 +499,9 @@ func TestTitleLabels(t *testing.T) {
 	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", setTitle + "hello; exec sleep 60"}})
 	a := attachAt(t, pane.Session, 100, 30)
 	waitFrame(t, a,
-		"\x1b[1;1H\x1b[7m hello \x1b[0m",
-		"\x1b[2;1H\x1b[7m 0 hello \x1b[0m",
-		"\x1b[3;1H\x1b[7m hello \x1b[0m")
+		"\x1b[30;1H\x1b[7m hello \x1b[0m",
+		"\x1b[1;1H\x1b[7m 0 hello \x1b[0m",
+		"\x1b[2;1H─\x1b[7m hello \x1b[0m─")
 }
 
 func TestCommandNameLabels(t *testing.T) {
@@ -511,15 +511,15 @@ func TestCommandNameLabels(t *testing.T) {
 	spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}, Window: one.Window})
 	a := attachAt(t, one.Session, 100, 30)
 	waitFrame(t, a,
-		"\x1b[1;1H\x1b[7m sleep \x1b[0m other ",
-		"\x1b[3;42H sleep ")
+		"\x1b[30;1H\x1b[7m sleep \x1b[0m other ",
+		"\x1b[2;42H─ sleep ─")
 }
 
 func TestExitedTitle(t *testing.T) {
 	c := startServer(t)
 	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "exit 3"}})
 	a := attachAt(t, pane.Session, 100, 30)
-	waitFrame(t, a, "\x1b[3;1H\x1b[7m sh (exited 3) \x1b[0m")
+	waitFrame(t, a, "\x1b[2;1H─\x1b[7m sh (exited 3) \x1b[0m─")
 }
 
 // Palette colors reach the outer terminal as palette colors, so its theme
@@ -858,8 +858,8 @@ func TestWindowKeys(t *testing.T) {
 	spawnPane(t, c, two)
 	a := attachAt(t, one.Session, 100, 30)
 
-	const first = "\x1b[2;1H\x1b[7m 0 one \x1b[0m 1 two "
-	const second = "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m"
+	const first = "\x1b[1;1H\x1b[7m 0 one \x1b[0m 1 two "
+	const second = "\x1b[1;1H 0 one \x1b[7m 1 two \x1b[0m"
 	waitFrame(t, a, first)
 	sendInput(t, a, "\x02n")
 	waitFrame(t, a, second)
@@ -881,7 +881,7 @@ func TestNextPaneKey(t *testing.T) {
 	a := attachAt(t, main.Session, 100, 30)
 
 	sendInput(t, a, "\x02o")
-	waitFrame(t, a, "\x1b[3;42H\x1b[7m cat \x1b[0m")
+	waitFrame(t, a, "\x1b[2;42H─\x1b[7m cat \x1b[0m─")
 	sendInput(t, a, "routed\r")
 	waitCapture(t, c, other.Pane, "routed")
 	reply, err := c.Call(client.Request{Type: "capture", Pane: main.Pane})
@@ -959,7 +959,7 @@ func TestReattachRedraws(t *testing.T) {
 	a := attachAt(t, one.Session, 100, 30)
 
 	sendInput(t, a, "\x02n")
-	waitFrame(t, a, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m")
+	waitFrame(t, a, "\x1b[1;1H 0 one \x1b[7m 1 two \x1b[0m")
 	sendInput(t, a, "\x02d")
 	waitDetached(t, a)
 
@@ -967,7 +967,7 @@ func TestReattachRedraws(t *testing.T) {
 	if _, err := b.Call(client.Request{Type: "attach", Session: one.Session, Cols: 100, Rows: 30}); err != nil {
 		t.Fatal(err)
 	}
-	waitFrame(t, b, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m", "shown-two")
+	waitFrame(t, b, "\x1b[1;1H 0 one \x1b[7m 1 two \x1b[0m", "shown-two")
 }
 
 func TestScrollbackKeepsLines(t *testing.T) {
@@ -986,11 +986,11 @@ func TestWheelScrolls(t *testing.T) {
 	pane := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "seq 100; exec cat"}})
 	a := attachAt(t, pane.Session, 100, 30)
 
-	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m75")
+	waitFrame(t, a, "\x1b[3;1H\x1b[0;39;49m75")
 	sendInput(t, a, "\x1b[<64;10;10M")
-	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m72")
+	waitFrame(t, a, "\x1b[3;1H\x1b[0;39;49m72")
 	sendInput(t, a, "x")
-	waitFrame(t, a, "\x1b[4;1H\x1b[0;39;49m75")
+	waitFrame(t, a, "\x1b[3;1H\x1b[0;39;49m75")
 }
 
 func TestMouseGoesToPane(t *testing.T) {
@@ -999,8 +999,8 @@ func TestMouseGoesToPane(t *testing.T) {
 	a := attachAt(t, pane.Session, 100, 30)
 	waitCapture(t, c, pane.Pane, "ready")
 
-	// Column 10 of terminal row 5 is row 2 of the pane's screen.
-	sendInput(t, a, "\x1b[<0;10;5M")
+	// Column 10 of terminal row 4 is row 2 of the pane's screen.
+	sendInput(t, a, "\x1b[<0;10;4M")
 	waitCapture(t, c, pane.Pane, "[<0;10;2M")
 }
 
@@ -1010,7 +1010,7 @@ func TestDragCopies(t *testing.T) {
 	a := attachAt(t, pane.Session, 100, 30)
 
 	waitFrame(t, a, "hello world")
-	sendInput(t, a, "\x1b[<0;1;4M\x1b[<32;5;4M\x1b[<0;5;4m")
+	sendInput(t, a, "\x1b[<0;1;3M\x1b[<32;5;3M\x1b[<0;5;3m")
 	waitFrame(t, a, "\x1b]52;c;aGVsbG8=\x07")
 }
 
@@ -1023,12 +1023,38 @@ func TestClickSelects(t *testing.T) {
 	stacked := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: second.Window})
 	a := attachAt(t, one.Session, 100, 30)
 
-	sendInput(t, a, "\x1b[<0;10;2M\x1b[<0;10;2m")
-	waitFrame(t, a, "\x1b[2;1H 0 one \x1b[7m 1 two \x1b[0m")
+	sendInput(t, a, "\x1b[<0;10;1M\x1b[<0;10;1m")
+	waitFrame(t, a, "\x1b[1;1H 0 one \x1b[7m 1 two \x1b[0m")
 	sendInput(t, a, "\x1b[<0;60;10M\x1b[<0;60;10m")
-	waitFrame(t, a, "\x1b[3;42H\x1b[7m cat \x1b[0m")
+	waitFrame(t, a, "\x1b[2;42H─\x1b[7m cat \x1b[0m─")
 	sendInput(t, a, "typed\r")
 	waitCapture(t, c, stacked.Pane, "typed")
+}
+
+func TestClickCollapses(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+	first := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: main.Window})
+	second := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: main.Window})
+	a := attachAt(t, main.Session, 100, 30)
+	checkSize(t, c, second.Pane, "13 59")
+
+	// The first stacked pane's title is on row 2; collapsing it gives its
+	// screen to the second pane, whose title moves up to row 3.
+	sendInput(t, a, "\x1b[<0;60;2M\x1b[<0;60;2m")
+	waitFrame(t, a, "\x1b[3;42H─ sh ─") // checkSize respawned it as sh
+	checkSize(t, c, second.Pane, "26 59")
+
+	// Ctrl-b o skips the collapsed pane.
+	sendInput(t, a, "\x02o")
+	sendInput(t, a, "typed\r")
+	waitCapture(t, c, second.Pane, "typed")
+
+	// Opening it again restores both sizes and focuses it.
+	sendInput(t, a, "\x1b[<0;60;2M\x1b[<0;60;2m")
+	waitFrame(t, a, "\x1b[2;42H─\x1b[7m cat \x1b[0m─")
+	checkSize(t, c, first.Pane, "13 59")
+	checkSize(t, c, second.Pane, "13 59")
 }
 
 func TestClickSession(t *testing.T) {
@@ -1037,7 +1063,7 @@ func TestClickSession(t *testing.T) {
 	spawnPane(t, c, titled("two"))
 	a := attachAt(t, one.Session, 100, 30)
 
-	sendInput(t, a, "\x1b[<0;8;1M\x1b[<0;8;1m")
-	waitFrame(t, a, "\x1b[1;1H one \x1b[7m two \x1b[0m")
+	sendInput(t, a, "\x1b[<0;8;30M\x1b[<0;8;30m")
+	waitFrame(t, a, "\x1b[30;1H one \x1b[7m two \x1b[0m")
 	checkSize(t, c, one.Pane, "24 80")
 }

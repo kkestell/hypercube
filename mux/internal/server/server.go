@@ -188,7 +188,7 @@ func (s *Server) spawn(req client.Request) (client.Reply, error) {
 		sess.windows = append(sess.windows, w)
 	}
 	s.layoutSession(sess)
-	s.signalAll() // every top bar lists the session's label
+	s.signalAll() // every session bar lists the session's label
 	return client.Reply{Session: sess.id, Window: w.id, Pane: p.id}, nil
 }
 
@@ -264,6 +264,7 @@ func (s *Server) kill(req client.Request) error {
 			if !slices.Contains(w.panes, w.active) {
 				w.active = w.panes[0]
 			}
+			w.panes[0].collapsed = false // a stacked pane may have become the main pane
 		}
 		if len(sess.windows) > 0 && !slices.Contains(sess.windows, sess.active) {
 			sess.active = sess.windows[0]
@@ -278,7 +279,7 @@ func (s *Server) kill(req client.Request) error {
 			a.conn.Close()
 		}
 	}
-	s.signalAll() // every top bar lists the labels
+	s.signalAll() // every session bar lists the labels
 
 	if len(s.sessions) == 0 {
 		os.Remove(s.path)
@@ -305,6 +306,7 @@ func (s *Server) respawn(req client.Request) error {
 	if err != nil {
 		return err
 	}
+	p.collapsed = old.collapsed
 	for _, sess := range s.sessions {
 		for _, w := range sess.windows {
 			if i := slices.Index(w.panes, old); i >= 0 {

@@ -19,7 +19,7 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards alive, status, killed, cols, rows, term, and rs; the terminal and
+// guards alive, status, killed, cols, rows, collapsed, term, and rs; the terminal and
 // render state are not safe for concurrent use.
 type pane struct {
 	id     string
@@ -33,6 +33,10 @@ type pane struct {
 	killed bool // the pane left the tree; free it once its process ends
 	cols   uint16
 	rows   uint16
+
+	// collapsed shows only a stacked pane's title row. The main pane is never
+	// collapsed.
+	collapsed bool
 }
 
 // startPane runs argv with exactly env and starts a goroutine that feeds the

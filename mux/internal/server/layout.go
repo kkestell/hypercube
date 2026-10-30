@@ -1,23 +1,27 @@
 package server
 
 const (
-	barRows   = 2 // rows at the top of the terminal: the session bar and the window bar
-	titleRows = 1 // the row above each pane
+	topRows    = 1 // the window bar, at the top of the terminal
+	bottomRows = 1 // the session bar, at the bottom
+	titleRows  = 1 // the row above each pane
 )
 
 // rect is a pane's screen in terminal cells, 0-based. Its title row is y-1.
 type rect struct{ x, y, cols, rows int }
 
-// layout places the first panes of a window of n panes that fit a terminal of
-// cols by rows. The first pane is the main pane, on the left; the others stack
-// on the right in equal heights, and one column between them is a divider.
-// The result may be shorter than n.
-func layout(n, cols, rows int) []rect {
-	area := rows - barRows
+// layout places the first of a window's panes that fit a terminal of cols by
+// rows. The first pane is the main pane, on the left; the others stack on the
+// right, and one column between them is a divider. A collapsed stacked pane
+// gets only its title row, and the others share the rest in equal heights.
+// The result may be shorter than panes. It must be called with the server's
+// mutex held.
+func layout(panes []*pane, cols, rows int) []rect {
+	n := len(panes)
+	area := rows - topRows - bottomRows
 	if cols < 1 || area < 2 {
 		return nil
 	}
-	main := rect{x: 0, y: barRows + titleRows, cols: cols, rows: area - titleRows}
+	main := rect{x: 0, y: topRows + titleRows, cols: cols, rows: area - titleRows}
 	// A terminal under three columns has no room for a stack; that is unlikely.
 	if n == 1 || cols < 3 {
 		return []rect{main}
@@ -25,15 +29,36 @@ func layout(n, cols, rows int) []rect {
 	main.cols = cols * 40 / 100
 	rects := []rect{main}
 	x := main.cols + 1
-	y := barRows
-	shown := min(n-1, area/2) // each stacked pane needs a title row and a screen row
-	for i := range shown {
-		h := area / shown
-		if i < area%shown {
+	// Show stacked panes in order while each fits: a collapsed pane needs its
+	// title row, and an open one a screen row too.
+	stack := panes[1:]
+	need, shown, open := 0, 0, 0
+	for _, p := range stack {
+		h := titleRows
+		if !p.collapsed {
 			h++
 		}
-		rects = append(rects, rect{x: x, y: y + titleRows, cols: cols - x, rows: h - titleRows})
-		y += h
+		if need+h > area {
+			break
+		}
+		need, shown = need+h, shown+1
+		if !p.collapsed {
+			open++
+		}
+	}
+	extra := area - need
+	y, j := topRows, 0
+	for _, p := range stack[:shown] {
+		h := 0
+		if !p.collapsed {
+			h = 1 + extra/open
+			if j < extra%open {
+				h++
+			}
+			j++
+		}
+		rects = append(rects, rect{x: x, y: y + titleRows, cols: cols - x, rows: h})
+		y += titleRows + h
 	}
 	return rects
 }

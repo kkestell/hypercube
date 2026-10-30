@@ -114,7 +114,7 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 		return
 	}
 	panes := a.window().panes
-	rects := layout(len(panes), a.cols, a.rows)
+	rects := layout(panes, a.cols, a.rows)
 
 	if a.drag != nil {
 		// The pane may have been killed, respawned, hidden by another window, or
@@ -136,13 +136,13 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 	left := ev.button == libghostty.MouseButtonLeft
 	switch {
 	case ev.y == 0:
-		if i := barItem(sessionLabels(s.sessions), a.cols, ev.x); left && i >= 0 {
-			s.show(a, s.sessions[i])
-		}
-	case ev.y == 1:
 		if i := barItem(windowLabels(a.session), a.cols, ev.x); left && i >= 0 {
 			a.session.active = a.session.windows[i]
 			a.signal()
+		}
+	case ev.y == a.rows-1:
+		if i := barItem(sessionLabels(s.sessions), a.cols, ev.x); left && i >= 0 {
+			s.show(a, s.sessions[i])
 		}
 	default:
 		for i, r := range rects {
@@ -150,11 +150,20 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 				continue
 			}
 			switch {
-			case ev.y == r.y-titleRows:
-				if left {
-					a.window().active = panes[i]
-					a.signal()
+			case ev.y == r.y-titleRows && left && i == 0:
+				a.window().active = panes[i]
+				a.signal()
+			case ev.y == r.y-titleRows && left:
+				// A stacked pane's title toggles it. An opened pane takes the
+				// focus, and a collapsed one gives it to the main pane.
+				p := panes[i]
+				p.collapsed = !p.collapsed
+				if !p.collapsed {
+					a.window().active = p
+				} else if a.window().active == p {
+					a.window().active = panes[0]
 				}
+				s.layoutSession(a.session)
 			case ev.y >= r.y && ev.y < r.y+r.rows:
 				if ev.isWheel() {
 					s.toPane(a, panes[i], r, ev)

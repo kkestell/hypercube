@@ -110,11 +110,12 @@ to the server. Hypercube runs it in place of `tmux attach-session` and
 These rules have no options:
 
 - **Layout:** the first pane in a window is the main pane, on the left at 40%
-  of the width. Other panes stack on the right in equal heights.
+  of the width. Other panes stack on the right in equal heights. Clicking a
+  stacked pane's title collapses it to that title row or opens it again.
 - **Exited panes:** a pane stays after its process exits, showing the exit
   status in its title, until it is respawned or killed.
-- **Screen chrome:** the top bar lists sessions, the second bar lists the
-  current session's windows, and each pane has a title row. Clicking a
+- **Screen chrome:** the top bar lists the current session's windows, the
+  bottom bar lists sessions, and each pane has a title row. Clicking a
   session, window, or pane selects it.
 - **Default labels:** until a client sets a label, a pane shows the title its
   program sets, or else its command name. A window shows its first pane's
@@ -151,7 +152,7 @@ These rules have no options:
 ## Non-goals
 
 The mux has no configuration file, format language, hooks, `run-shell`,
-general splits or layout commands, zoom, collapse, drag-resize, copy mode,
+general splits or layout commands, zoom, drag-resize, copy mode,
 `send-keys`, scripting, plugins, splash screen, or restore after its own
 restart.
 

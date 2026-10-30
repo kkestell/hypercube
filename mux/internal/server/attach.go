@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"unicode/utf8"
 
@@ -45,7 +46,7 @@ func (s *Server) wake(p *pane) {
 }
 
 // signalAll redraws every attachment. A label change in one session shows in
-// every client's top bar. It must be called with the mutex held.
+// every client's session bar. It must be called with the mutex held.
 func (s *Server) signalAll() {
 	for a := range s.attached {
 		a.signal()
@@ -84,8 +85,10 @@ func (s *Server) layoutSession(sess *session) {
 			}
 			continue
 		}
-		for i, r := range layout(len(w.panes), shown.cols, shown.rows) {
-			resize(w.panes[i], r.cols, r.rows)
+		for i, r := range layout(w.panes, shown.cols, shown.rows) {
+			if r.rows > 0 { // a collapsed pane keeps its size
+				resize(w.panes[i], r.cols, r.rows)
+			}
 		}
 	}
 	if shown != nil {
@@ -240,7 +243,14 @@ func (s *Server) command(a *attachment, cmd rune) (detach bool) {
 	case cmd == 'o':
 		// The next pane may not fit the terminal, so it is not drawn and the
 		// client types into a pane it cannot see; that is unlikely.
-		w.active = w.panes[(slices.Index(w.panes, w.active)+1)%len(w.panes)]
+		i := slices.Index(w.panes, w.active)
+		for {
+			i = (i + 1) % len(w.panes)
+			if !w.panes[i].collapsed {
+				break
+			}
+		}
+		w.active = w.panes[i]
 	}
 	a.signal()
 	return false
@@ -292,7 +302,7 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	defer cells.Close()
 
 	panes := a.window().panes
-	rects := layout(len(panes), a.cols, a.rows)
+	rects := layout(panes, a.cols, a.rows)
 	b := []byte("\x1b[?2026h\x1b[0m\x1b[H\x1b[2J")
 	if b, err = appendKeyboardModes(b, a.focus()); err != nil {
 		return nil, err
@@ -300,22 +310,26 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 
 	// The chrome comes before the cells, and each item ends with a reset, so
 	// the cell loop's SGR tracking starts from a known state.
-	b = appendBar(b, 1, 1, a.cols, sessionLabels(sessions), slices.Index(sessions, a.session))
-	b = appendBar(b, 2, 1, a.cols, windowLabels(a.session), slices.Index(a.session.windows, a.window()))
+	b = appendBar(b, 1, 1, a.cols, windowLabels(a.session), slices.Index(a.session.windows, a.window()))
+	b = appendBar(b, a.rows, 1, a.cols, sessionLabels(sessions), slices.Index(sessions, a.session))
 	for i, r := range rects {
 		label := panes[i].label()
 		if !panes[i].alive {
 			label = fmt.Sprintf("%s (exited %d)", label, panes[i].status)
 		}
-		current := -1
-		if panes[i] == a.focus() {
-			current = 0
-		}
-		b = appendBar(b, r.y, r.x+1, r.cols, []string{label}, current)
+		b = appendTitle(b, r.y, r.x+1, r.cols, label, panes[i] == a.focus())
 	}
 	if len(rects) > 1 {
-		for y := barRows; y < a.rows; y++ {
-			b = append(b, fmt.Sprintf("\x1b[%d;%dH│", y+1, rects[0].cols+1)...)
+		// The divider joins the title lines: ┬ where the main pane's and the
+		// first stacked pane's titles meet, ├ at each other stacked title.
+		for y := topRows; y < a.rows-bottomRows; y++ {
+			c := "│"
+			if y == topRows {
+				c = "┬"
+			} else if slices.ContainsFunc(rects[2:], func(r rect) bool { return r.y-1 == y }) {
+				c = "├"
+			}
+			b = append(b, fmt.Sprintf("\x1b[%d;%dH%s", y+1, rects[0].cols+1, c)...)
 		}
 	}
 	var sgr, prev []byte
@@ -323,6 +337,9 @@ func drawFrame(a *attachment, sessions []*session) ([]byte, error) {
 	var cursor *libghostty.RenderStateCursor
 	var cursorRect rect
 	for i, r := range rects {
+		if r.rows == 0 {
+			continue // collapsed
+		}
 		rs := panes[i].rs
 		if err := rs.Update(panes[i].term); err != nil {
 			return nil, err
@@ -409,6 +426,27 @@ func appendBar(b []byte, row, col, width int, items []string, current int) []byt
 		}
 	}
 	return b
+}
+
+// appendTitle moves to row and col (both 1-based) and writes a pane's title
+// row as a line, "─ label ───", filled out to width columns. The label is in
+// inverse video when the pane is focused. Width is counted in runes, as in
+// appendBar.
+func appendTitle(b []byte, row, col, width int, label string, focused bool) []byte {
+	b = fmt.Appendf(b, "\x1b[%d;%dH", row, col)
+	text := []rune(" " + label + " ")
+	text = text[:min(len(text), max(width-1, 0))]
+	if width > 0 {
+		b = append(b, "─"...)
+	}
+	if focused {
+		b = append(b, "\x1b[7m"...)
+	}
+	b = append(b, string(text)...)
+	if focused {
+		b = append(b, "\x1b[0m"...)
+	}
+	return append(b, strings.Repeat("─", max(width-1-len(text), 0))...)
 }
 
 // appendSGR resets, then sets the cell's attributes; a selected cell has
