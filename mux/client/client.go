@@ -24,6 +24,13 @@ type Request struct {
 	Cols    int      `json:"cols,omitempty"`
 	Rows    int      `json:"rows,omitempty"`
 	Data    []byte   `json:"data,omitempty"`
+	On      bool     `json:"on,omitempty"`
+	Spans   []Span   `json:"spans,omitempty"`
+}
+
+// Span is a run of label text. Color and bold come later.
+type Span struct {
+	Text string `json:"text"`
 }
 
 // Reply answers one request.

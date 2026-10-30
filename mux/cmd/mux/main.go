@@ -24,7 +24,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attach [session]")
+		return fmt.Errorf("usage: mux spawn [-s session] [-w window] [-c dir] [command...] | mux ls | mux kill <id> | mux attention <id> on|off | mux collapse <pane> on|off | mux label <id> [text...] | mux attach [session]")
 	}
 	switch args[0] {
 	case "server":
@@ -38,6 +38,25 @@ func run(args []string) error {
 			return fmt.Errorf("usage: mux kill <id>")
 		}
 		return kill(args[1])
+	case "attention":
+		if len(args) != 3 || (args[2] != "on" && args[2] != "off") {
+			return fmt.Errorf("usage: mux attention <id> on|off")
+		}
+		return attention(args[1], args[2] == "on")
+	case "label":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: mux label <id> [text...]")
+		}
+		req := client.Request{Type: "label"}
+		if text := strings.Join(args[2:], " "); text != "" {
+			req.Spans = []client.Span{{Text: text}}
+		}
+		return call(req, args[1])
+	case "collapse":
+		if len(args) != 3 || (args[2] != "on" && args[2] != "off") {
+			return fmt.Errorf("usage: mux collapse <pane> on|off")
+		}
+		return call(client.Request{Type: "collapse", On: args[2] == "on"}, args[1])
 	case "attach":
 		if len(args) > 2 {
 			return fmt.Errorf("usage: mux attach [session]")
@@ -108,7 +127,18 @@ func ls() error {
 
 // kill removes the pane, window, or session with the given ID.
 func kill(id string) error {
-	req := client.Request{Type: "kill"}
+	return call(client.Request{Type: "kill"}, id)
+}
+
+// attention marks the pane, window, or session with the given ID as needing
+// attention, or clears the mark.
+func attention(id string, on bool) error {
+	return call(client.Request{Type: "attention", On: on}, id)
+}
+
+// call sends req aimed at the pane, window, or session with the given ID; the
+// ID's first letter gives its kind.
+func call(req client.Request, id string) error {
 	switch {
 	case strings.HasPrefix(id, "p"):
 		req.Pane = id

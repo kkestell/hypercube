@@ -68,7 +68,9 @@ JSON lines over the socket. Each request gets one reply, `{"ok":true,...}` or
 | `spawn {session, window, dir, argv, env}` | `{session, window, pane}` | Creates the session and window if `session` or `window` is empty. The process gets exactly `env`, nothing inherited. |
 | `respawn {pane, dir, argv, env}` | | Kills the pane's process if it is alive and starts the new one in the same pane with a fresh screen. |
 | `kill {pane \| window \| session}` | | Hangs up the processes and removes the target. Removing a session's last window removes the session. |
-| `label {pane \| window \| session, spans}` | | Sets the text shown for the target. A span is `{text, fg, bold}`; `fg` is a palette name. |
+| `attention {pane \| window \| session, on}` | | Marks the target as needing attention with a bell icon before its label, or clears the mark. |
+| `collapse {pane, on}` | | Collapses a stacked pane to its title row, or opens it. The main pane cannot collapse. |
+| `label {pane \| window \| session, spans}` | | Sets the text shown for the target, or restores the default when `spans` is empty. A span is `{text}`; `fg` (a palette name) and `bold` come later. |
 | `bind {key, name}` | | Pressing Prefix then `key` emits a `key` event with `name`. |
 | `prompt {client, text}` | | Asks for a line of text on that client's bar and emits `answer`. |
 | `confirm {client, text}` | | Asks for y/n and emits `answer`. |
@@ -95,6 +97,9 @@ requests, so the mux works by hand with plain shells and no Hypercube:
 | --- | --- |
 | `mux spawn [-s session] [-w window] [-c dir] [command...]` | `spawn`, running `$SHELL` when no command is given; prints the IDs |
 | `mux kill <id>` | `kill` |
+| `mux attention <id> on\|off` | `attention` |
+| `mux collapse <pane> on\|off` | `collapse` |
+| `mux label <id> [text...]` | `label`, with the text as one span; no text restores the default |
 | `mux ls` | `list` |
 | `mux attach [session]` | attach |
 
@@ -110,13 +115,23 @@ to the server. Hypercube runs it in place of `tmux attach-session` and
 These rules have no options:
 
 - **Layout:** the first pane in a window is the main pane, on the left at 40%
-  of the width. Other panes stack on the right in equal heights. Clicking a
+  of the width. Dragging the divider changes that window's split. Other panes stack on the right in equal heights. Clicking a
   stacked pane's title collapses it to that title row or opens it again.
 - **Exited panes:** a pane stays after its process exits, showing the exit
   status in its title, until it is respawned or killed.
-- **Screen chrome:** the top bar lists the current session's windows, the
-  bottom bar lists sessions, and each pane has a title row. Clicking a
+- **Screen chrome:** a status bar on the bottom row lists the current
+  session's windows on the left and the sessions on the right, and each pane
+  has a title row. Clicking a
   session, window, or pane selects it.
+- **Progress:** a pane whose program reports progress with OSC 9;4 shows it
+  in its title: a circle filled in eighths and the percentage, or an icon for
+  indeterminate, error, or paused. The progress clears when the program exits.
+- **Bell and window title:** a pane's bell, or an `attention` mark turning on,
+  rings the attached terminal's bell. The terminal's window title is
+  "session | window | pane" for what the client shows, and detaching restores
+  the previous title.
+- **Icons:** the bell and progress icons are Nerd Font symbols, so they show
+  only if the attached terminal's font has them.
 - **Default labels:** until a client sets a label, a pane shows the title its
   program sets, or else its command name. A window shows its first pane's
   label, and a session shows its first window's label.
@@ -142,7 +157,8 @@ These rules have no options:
   lock. On start it calls `list` to catch exits it missed. Relaunch policy
   (`QuickExits`) stays in Hypercube.
 - `label` replaces the format strings, escaping, and stored style options.
-  Activity dots, attention, and unseen replies are labels.
+  Activity dots and unseen replies are labels; `attention` marks agents that
+  need the user.
 - `viewing` events replace `markReply`'s inference and the two session hooks.
   Hypercube decides what "seen" means.
 - `bind`, `key`, `prompt`, `confirm`, and `answer` replace the global
@@ -152,7 +168,7 @@ These rules have no options:
 ## Non-goals
 
 The mux has no configuration file, format language, hooks, `run-shell`,
-general splits or layout commands, zoom, drag-resize, copy mode,
+general splits or layout commands, zoom, copy mode,
 `send-keys`, scripting, plugins, splash screen, or restore after its own
 restart.
 

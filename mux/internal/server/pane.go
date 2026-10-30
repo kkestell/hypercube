@@ -19,7 +19,8 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards alive, status, killed, cols, rows, collapsed, term, and rs; the terminal and
+// guards alive, status, killed, cols, rows, collapsed, marks, progress,
+// term, and rs; the terminal and
 // render state are not safe for concurrent use.
 type pane struct {
 	id     string
@@ -37,6 +38,8 @@ type pane struct {
 	// collapsed shows only a stacked pane's title row. The main pane is never
 	// collapsed.
 	collapsed bool
+	marks
+	progress libghostty.TerminalProgressReport // the last OSC 9;4 report
 }
 
 // startPane runs argv with exactly env and starts a goroutine that feeds the
@@ -67,6 +70,13 @@ func (s *Server) startPane(id, dir string, argv, env []string, cols, rows uint16
 			ptmx.Write(data)
 		}),
 		libghostty.WithTitleChanged(func(*libghostty.Terminal) {
+			s.signalAll()
+		}),
+		libghostty.WithBell(func(*libghostty.Terminal) {
+			s.ring()
+		}),
+		libghostty.WithProgressReport(func(_ *libghostty.Terminal, r libghostty.TerminalProgressReport) {
+			p.progress = r
 			s.signalAll()
 		}),
 	)
@@ -106,6 +116,7 @@ func (s *Server) readPane(p *pane) {
 			s.mu.Lock()
 			p.alive = false
 			p.status = exitStatus(p.cmd.ProcessState)
+			p.progress = libghostty.TerminalProgressReport{} // a program that exits mid-task never removes it
 			if p.killed {
 				p.free()
 			}

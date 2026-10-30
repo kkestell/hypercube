@@ -4,7 +4,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	"go.mitchellh.com/libghostty"
 )
@@ -113,8 +112,27 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 	if _, ok := s.attached[a]; !ok {
 		return
 	}
-	panes := a.window().panes
-	rects := layout(panes, a.cols, a.rows)
+	w := a.window()
+	panes := w.panes
+	rects := layout(panes, w.split, a.cols, a.rows)
+
+	// Dragging the divider sets the main pane's share of the width. Each
+	// motion resizes the panes, so their programs redraw as it moves.
+	if a.resizing {
+		if ev.action == libghostty.MouseActionRelease {
+			a.resizing = false
+		} else {
+			w.split = float64(ev.x) / float64(a.cols)
+			s.layoutSession(a.session)
+		}
+		return
+	}
+	if ev.action == libghostty.MouseActionPress && ev.button == libghostty.MouseButtonLeft &&
+		len(rects) > 1 && ev.x == rects[0].cols && ev.y < a.rows-barRows {
+		a.endDrag()
+		a.resizing = true
+		return
+	}
 
 	if a.drag != nil {
 		// The pane may have been killed, respawned, hidden by another window, or
@@ -135,15 +153,18 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 
 	left := ev.button == libghostty.MouseButtonLeft
 	switch {
-	case ev.y == 0:
-		if i := barItem(windowLabels(a.session), a.cols, ev.x); left && i >= 0 {
+	case ev.y == a.rows-1 && left:
+		labels := sessionLabels(s.sessions)
+		at := sessionsAt(a.cols, labels)
+		if ev.x >= at {
+			if i := barItem(labels, a.cols-at, ev.x-at); i >= 0 {
+				s.show(a, s.sessions[i])
+			}
+		} else if i := barItem(windowLabels(a.session), at, ev.x); i >= 0 {
 			a.session.active = a.session.windows[i]
 			a.signal()
 		}
 	case ev.y == a.rows-1:
-		if i := barItem(sessionLabels(s.sessions), a.cols, ev.x); left && i >= 0 {
-			s.show(a, s.sessions[i])
-		}
 	default:
 		for i, r := range rects {
 			if ev.x < r.x || ev.x >= r.x+r.cols {
@@ -154,14 +175,12 @@ func (s *Server) mouse(a *attachment, ev mouseEvent) {
 				a.window().active = panes[i]
 				a.signal()
 			case ev.y == r.y-titleRows && left:
-				// A stacked pane's title toggles it. An opened pane takes the
-				// focus, and a collapsed one gives it to the main pane.
+				// A stacked pane's title toggles it, and an opened pane takes
+				// the focus.
 				p := panes[i]
-				p.collapsed = !p.collapsed
+				a.window().setCollapsed(p, !p.collapsed)
 				if !p.collapsed {
 					a.window().active = p
-				} else if a.window().active == p {
-					a.window().active = panes[0]
 				}
 				s.layoutSession(a.session)
 			case ev.y >= r.y && ev.y < r.y+r.rows:
@@ -280,7 +299,7 @@ func encodeMouse(p *pane, r rect, ev mouseEvent, x, y int, dragging bool) ([]byt
 func barItem(items []string, width, x int) int {
 	start := 0
 	for i, item := range items {
-		w := min(utf8.RuneCountInString(item)+2, width-start)
+		_, w := fit(" "+item+" ", width-start)
 		if w <= 0 {
 			break
 		}

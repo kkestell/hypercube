@@ -40,11 +40,12 @@ func attach(session string) error {
 	// The terminal reports button events with motion while a button is held, in
 	// SGR format. A pane that asks for motion with no button held (mode 1003)
 	// gets motion only during drags.
-	os.Stdout.WriteString("\x1b[?1049h\x1b[?1002h\x1b[?1006h")
+	// The window title is pushed so that detaching restores it.
+	os.Stdout.WriteString("\x1b[22;0t\x1b[?1049h\x1b[?1002h\x1b[?1006h")
 	defer func() {
 		// Whatever keyboard mode the last frame set, the shell gets its keys back
 		// in the default one, and no mouse reports.
-		os.Stdout.WriteString("\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[>4;0m\x1b[?1l\x1b>\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m")
+		os.Stdout.WriteString("\x1b[?1002l\x1b[?1006l\x1b[=0;1u\x1b[>4;0m\x1b[?1l\x1b>\x1b[?2004l\x1b[?1049l\x1b[?25h\x1b[0m\x1b[23;0t")
 		term.Restore(fd, saved)
 	}()
 
