@@ -1,30 +1,28 @@
 /**
  * The workspace/session/agent model, owned by the server and pushed whole to
- * every browser. Shared by both sides.
+ * every browser. Shared by both sides. A child names its parent (`workspaceId`,
+ * `sessionId`) and nothing lists its children; they are in insertion order, so
+ * a session's agents are its lead first, then its workers as they were started.
  */
 
 export type Workspace = {
   id: string;
-  name: string;
   /** GitHub repository, normalized to owner/name. */
   repo: string;
   /** The next session's "Untitled N". Counts up, never reused. */
   nextSessionNumber: number;
-  sessionIds: string[];
 };
 
 export type Session = {
   id: string;
   workspaceId: string;
   name: string;
-  agentIds: string[];
-  createdAt: number;
   environment: "local" | "docker";
   clonePath: string;
-  /** stopped: ready, but its agents' processes are stopped. Start resumes them. */
-  status: "cloning" | "ready" | "failed" | "stopped";
+  /** stopped: ready, but its agents' processes are stopped. Start resumes them. deleting: its agents and clone are being removed. */
+  status: "cloning" | "ready" | "failed" | "stopped" | "deleting";
   error?: string;
-  /** The session has a running shell. Not stored: a restart has no terminals. */
+  /** The session has a running shell. Set when the model is sent, from the terminal registry; never stored. */
   terminal?: true;
 };
 
@@ -126,8 +124,9 @@ export type ConfigOption = {
 export type Command = { name: string; description: string; hint?: string };
 
 /**
- * What an agent's panel shows besides its transcript. Each field is replaced
- * whole when the agent sends an update; absent until it has.
+ * What an agent's panel shows besides its transcript. A field is absent until
+ * the agent has sent it. The server sends the whole of it each time, and the
+ * browser replaces its copy; a new process starts with none.
  */
 export type AgentInfo = {
   plan?: PlanEntry[];
@@ -137,10 +136,9 @@ export type AgentInfo = {
 };
 
 export type Model = {
-  version: number;
   workspaces: Workspace[];
   sessions: Record<string, Session>;
   agents: Record<string, Agent>;
 };
 
-export const emptyModel = (): Model => ({ version: 0, workspaces: [], sessions: {}, agents: {} });
+export const emptyModel = (): Model => ({ workspaces: [], sessions: {}, agents: {} });

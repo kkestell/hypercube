@@ -1,5 +1,5 @@
 import type { Agent, Session } from "./model";
-import { useModel } from "./modelStore";
+import { agentsOf, useModel } from "./modelStore";
 
 const statusLabels = {
   starting: ["Starting", "text-neutral-400"],
@@ -16,8 +16,8 @@ function counts(agent: Agent) {
 
 /** The session's agents with their status. Selecting one shows its tab. */
 export function AgentsPanel({ session, onSelect }: { session: Session | null; onSelect: (agentId: string) => void }) {
-  const { agents } = useModel();
-  const rows = (session?.agentIds ?? []).map(id => agents[id]).filter((agent): agent is Agent => agent !== undefined);
+  const model = useModel();
+  const rows = session ? agentsOf(model, session.id) : [];
   if (rows.length === 0) return <div className="px-4 py-2 text-neutral-500">No agents</div>;
 
   return (

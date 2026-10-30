@@ -16,15 +16,15 @@ function usageText({ used, size, cost }: Usage) {
   return `${context} · ${new Intl.NumberFormat(undefined, { style: "currency", currency: cost.currency, maximumFractionDigits: 4 }).format(cost.amount)}`;
 }
 
-function ConfigSelect({ option, value, disabled, onChange }: { option: ConfigOption; value: string; disabled: boolean; onChange: (value: string) => void }) {
+function ConfigSelect({ option, disabled, onChange }: { option: ConfigOption; disabled: boolean; onChange: (value: string) => void }) {
   return (
     <label className="flex items-center gap-1 text-neutral-400">
       {option.name}
       <select
-        value={value}
+        value={option.currentValue}
         disabled={disabled}
         onChange={event => onChange(event.target.value)}
-        title={option.options.find(choice => choice.value === value)?.description}
+        title={option.options.find(choice => choice.value === option.currentValue)?.description}
         className="max-w-56 rounded border border-neutral-600 bg-[#252526] px-1 py-0.5 text-neutral-200 disabled:opacity-50"
       >
         {option.options.map(choice => (
@@ -68,8 +68,6 @@ export function AgentPanel({ params }: IDockviewPanelProps<{ agentId: string }>)
   const session = agent && sessions[agent.sessionId];
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  /** Config values chosen but not yet confirmed by the agent. */
-  const [chosen, setChosen] = useState<Record<string, string>>({});
   const [highlighted, setHighlighted] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
   const following = useRef(true);
@@ -90,12 +88,13 @@ export function AgentPanel({ params }: IDockviewPanelProps<{ agentId: string }>)
   const send = (queue = false) => {
     const prompt = text.trim();
     if (!prompt) return;
-    setText("");
     setError(null);
     following.current = true;
+    // Cleared at once, so a second Enter can't send it again; a rejected prompt comes back unless something new was typed.
+    setText("");
     request({ t: "prompt", agentId: agent.id, text: prompt, queue }).catch((reason: Error) => {
-      setText(prompt);
       setError(reason.message);
+      setText(current => current || text);
     });
   };
   const submit = (event: FormEvent) => {
@@ -129,10 +128,7 @@ export function AgentPanel({ params }: IDockviewPanelProps<{ agentId: string }>)
   };
   const setConfig = (configId: string, value: string) => {
     setError(null);
-    setChosen(before => ({ ...before, [configId]: value }));
-    request({ t: "setConfigOption", agentId: agent.id, configId, value })
-      .catch((reason: Error) => setError(reason.message))
-      .finally(() => setChosen(({ [configId]: _, ...rest }) => rest));
+    request({ t: "setConfigOption", agentId: agent.id, configId, value }).catch((reason: Error) => setError(reason.message));
   };
 
   const canPrompt = session.status === "ready" && agent.status !== "exited";
@@ -144,7 +140,7 @@ export function AgentPanel({ params }: IDockviewPanelProps<{ agentId: string }>)
       {(configOptions?.length || usage) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-700 px-3 py-1.5 text-xs">
           {configOptions?.map(option => (
-            <ConfigSelect key={option.id} option={option} value={chosen[option.id] ?? option.currentValue} disabled={agent.status === "exited"} onChange={value => setConfig(option.id, value)} />
+            <ConfigSelect key={option.id} option={option} disabled={agent.status === "exited"} onChange={value => setConfig(option.id, value)} />
           ))}
           {usage && <span className="ml-auto text-neutral-400">{usageText(usage)}</span>}
         </div>

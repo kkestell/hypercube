@@ -25,15 +25,14 @@ afterAll(() => {
 const model = () => getModel();
 
 describe("workspaces", () => {
-  test("adds a GitHub repo by its normalized name, named after it", async () => {
+  test.serial("adds a GitHub repo by its normalized name, normalized", async () => {
     const id = await addWorkspace(" https://github.com/owner/repo.git/ ");
     const ws = model().workspaces.find(ws => ws.id === id)!;
     expect(ws.repo).toBe("owner/repo");
-    expect(ws.name).toBe("owner/repo");
     expect(run).toHaveBeenCalledWith(["gh", "repo", "view", "owner/repo", "--json", "nameWithOwner"]);
   });
 
-  test("accepts an SSH GitHub URL and rejects invalid or unavailable repos", async () => {
+  test.serial("accepts an SSH GitHub URL and rejects invalid or unavailable repos", async () => {
     await expect(addWorkspace("~/projects/repo")).rejects.toThrow("GitHub repository");
     await expect(addWorkspace("https://example.com/owner/repo")).rejects.toThrow("GitHub repository");
     run.mockRejectedValueOnce(new Error("Could not resolve to a Repository"));
@@ -43,7 +42,7 @@ describe("workspaces", () => {
     expect(model().workspaces.find(ws => ws.id === id)!.repo).toBe("owner/repo");
   });
 
-  test("rejects a repo that is already open by name or URL", async () => {
+  test.serial("rejects a repo that is already open by name or URL", async () => {
     await addWorkspace("owner/repo");
     await expect(addWorkspace("git@github.com:owner/repo.git")).rejects.toThrow("already open");
     await expect(addWorkspace("https://github.com/owner/repo/")).rejects.toThrow("already open");
@@ -52,10 +51,10 @@ describe("workspaces", () => {
 });
 
 describe("sessions", () => {
-  test("a session is Untitled N, counting up per workspace, with a lead agent", async () => {
+  test.serial("a session is Untitled N, counting up per workspace, with a lead agent", async () => {
     const first = await addWorkspace("owner/first");
     const second = await addWorkspace("owner/second");
-    const names = (workspaceId: string) => model().workspaces.find(ws => ws.id === workspaceId)!.sessionIds.map(id => model().sessions[id]!.name);
+    const names = (workspaceId: string) => Object.values(model().sessions).filter(session => session.workspaceId === workspaceId).map(session => session.name);
 
     createSession(first, "local");
     createSession(first, "local");
@@ -63,14 +62,15 @@ describe("sessions", () => {
     expect(names(first)).toEqual(["Untitled 1", "Untitled 2"]);
     expect(names(second)).toEqual(["Untitled 1"]);
 
-    const session = model().sessions[model().workspaces[0]!.sessionIds[0]!]!;
+    const session = Object.values(model().sessions)[0]!;
     expect(session).toMatchObject({ environment: "local", clonePath: localClonePath(session.id), status: "cloning" });
     expect(setup).toHaveBeenCalledWith("owner/first", session.clonePath);
-    expect(session.agentIds).toHaveLength(1);
-    expect(model().agents[session.agentIds[0]!]).toMatchObject({ role: "lead", name: "Lead", sessionId: session.id });
+    const agents = Object.values(model().agents).filter(agent => agent.sessionId === session.id);
+    expect(agents).toHaveLength(1);
+    expect(agents[0]).toMatchObject({ role: "lead", name: "Lead" });
   });
 
-  test("a session in a workspace that doesn't exist is refused", () => {
+  test.serial("a session in a workspace that doesn't exist is refused", () => {
     expect(() => createSession("nope", "local")).toThrow("No such workspace");
     expect(model().sessions).toEqual({});
   });

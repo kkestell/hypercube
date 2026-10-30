@@ -1,7 +1,7 @@
 import type { UnsavedWork } from "./model";
 import { FRAME_OUTPUT, FRAME_SNAPSHOT, decodeFrame, type ClientMessage, type ModelRequest, type ServerMessage, type TerminalMessage } from "./protocol";
 import { applyModel } from "./modelStore";
-import { clearTranscripts, mergeInfo, setTranscript, upsertItem } from "./transcriptStore";
+import { clearTranscripts, setInfo, setTranscript, upsertItem } from "./transcriptStore";
 
 /**
  * The tab's single WebSocket to the server: the model and transcripts it pushes,
@@ -26,8 +26,8 @@ export class RequestError extends Error {
   }
 }
 
-/** Views showing each terminal. */
-const channels = new Map<string, Set<TerminalChannel>>();
+/** The view showing each terminal. */
+const channels = new Map<string, TerminalChannel>();
 const pending = new Map<number, { resolve: (id: string | undefined) => void; reject: (error: Error) => void }>();
 let nextRequest = 1;
 /** The tab's one socket, open or connecting. */
@@ -51,17 +51,16 @@ export function connect() {
     reconnectDelay = RECONNECT_MIN_MS;
     // The server sends every transcript again.
     clearTranscripts();
-    for (const set of channels.values()) for (const channel of set) channel.onOpen();
+    for (const channel of channels.values()) channel.onOpen();
   };
 
   ws.onmessage = event => {
     if (socket !== ws) return;
     if (typeof event.data !== "string") {
       const { kind, id, payload } = decodeFrame(event.data);
-      for (const channel of channels.get(id) ?? []) {
-        if (kind === FRAME_SNAPSHOT) channel.onSnapshot(payload);
-        else if (kind === FRAME_OUTPUT) channel.onOutput(payload);
-      }
+      const channel = channels.get(id);
+      if (kind === FRAME_SNAPSHOT) channel?.onSnapshot(payload);
+      else if (kind === FRAME_OUTPUT) channel?.onOutput(payload);
       return;
     }
     const message: ServerMessage = JSON.parse(event.data);
@@ -76,7 +75,7 @@ export function connect() {
         upsertItem(message.agentId, message.item);
         break;
       case "info":
-        mergeInfo(message.agentId, message.info);
+        setInfo(message.agentId, message.info);
         break;
       case "result": {
         const request = pending.get(message.req);
@@ -118,16 +117,21 @@ export function request(message: ModelRequest): Promise<string | undefined> {
 }
 
 export function registerChannel(id: string, channel: TerminalChannel) {
-  let set = channels.get(id);
-  if (!set) channels.set(id, (set = new Set()));
-  set.add(channel);
+  channels.set(id, channel);
   if (isSocketOpen()) channel.onOpen();
 }
 
-/** Stops showing a terminal. The tab detaches once no view shows it. */
+/** Stops showing a terminal, and detaches from it. */
 export function unregisterChannel(id: string, channel: TerminalChannel) {
-  const set = channels.get(id);
-  if (!set?.delete(channel) || set.size > 0) return;
+  if (channels.get(id) !== channel) return;
   channels.delete(id);
   sendTerminal({ t: "detach", id });
 }
+
+// A hot reload re-evaluates this module and loses its state, so close the socket and timer it leaves behind.
+import.meta.hot?.dispose(() => {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  const old = socket;
+  socket = null;
+  old?.close();
+});

@@ -2,8 +2,8 @@ import type { Server, ServerWebSocket, WebSocketHandler } from "bun";
 import { FRAME_OUTPUT, FRAME_SNAPSHOT, encodeFrame, type ClientMessage, type ModelRequest, type ServerMessage } from "../protocol";
 import { answerPermission, bindAgents, cancelAgent, getInfos, getTranscripts, interruptAgent, promptAgent, setConfigOption } from "./agents";
 import { ModelError, UnsavedWorkError } from "./errors";
-import { addWorkspace, bindModel, closeSessionTerminal, createSession, deleteSession, flushModelChange, getModel, removeWorker, restartAgent, startSession, startTerminal, stopSession } from "./sessions";
-import { attachTerminal, getTerminal, resizeTerminal, setHooks, writeInput, type TerminalEntry } from "./terminals";
+import { addWorkspace, bindModel, changed, createSession, deleteSession, flushModelChange, getPushedModel, removeWorker, restartAgent, startSession, startTerminal, stopSession } from "./sessions";
+import { attachTerminal, closeTerminal, getTerminal, resizeTerminal, setHooks, writeInput, type TerminalEntry } from "./terminals";
 
 /**
  * The browser's WebSocket: one per tab. It pushes the model to every client
@@ -84,6 +84,8 @@ export function bindServer(server: Server<SocketData>, mcpUrl: string) {
         ws.unsubscribe(topicOf(id));
         ws.data.attached.delete(id);
       }
+      // Whether a session has a terminal is in the model sent to browsers.
+      changed();
     },
   });
   bindModel({
@@ -105,7 +107,7 @@ const modelRequests: { [K in ModelRequest["t"]]: (request: Extract<ModelRequest,
   restartAgent: ({ agentId }) => restartAgent(String(agentId)),
   removeWorker: ({ agentId }) => removeWorker(String(agentId)),
   startTerminal: ({ sessionId }) => startTerminal(String(sessionId)),
-  closeTerminal: ({ sessionId }) => closeSessionTerminal(String(sessionId)),
+  closeTerminal: async ({ sessionId }) => void (await closeTerminal(String(sessionId))),
   prompt: ({ agentId, text, queue }) => promptAgent(String(agentId), String(text), undefined, queue === true ? "queue" : "steer"),
   interrupt: ({ agentId }) => interruptAgent(String(agentId)),
   cancel: ({ agentId }) => cancelAgent(String(agentId)),
@@ -181,7 +183,7 @@ export const socket: WebSocketHandler<SocketData> = {
     sockets.add(ws);
     ws.subscribe(MODEL_TOPIC);
     ws.subscribe(ITEMS_TOPIC);
-    sendJson(ws, { t: "model", model: getModel() });
+    sendJson(ws, { t: "model", model: getPushedModel() });
     for (const { agentId, items } of getTranscripts()) sendJson(ws, { t: "transcript", agentId, items });
     for (const { agentId, info } of getInfos()) sendJson(ws, { t: "info", agentId, info });
   },

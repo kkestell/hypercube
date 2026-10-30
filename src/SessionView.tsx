@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { DockviewDefaultTab, DockviewReact, themeDark, type DockviewApi, type IDockviewPanelHeaderProps } from "dockview-react";
 import "dockview-react/dist/styles/dockview.css";
 import type { Session } from "./model";
-import { useModel } from "./modelStore";
+import { agentsOf, useModel } from "./modelStore";
 import { AgentPanel } from "./AgentPanel";
 import { request } from "./socket";
 
@@ -32,21 +32,20 @@ const Tab = (props: IDockviewPanelHeaderProps) => {
 /** A session's agents, arranged in tabs and splits. `onApi` gets the layout, so the workspace can show an agent's tab. */
 export function SessionView({ session, onApi }: { session: Session; onApi: (api: DockviewApi) => void }) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const { agents } = useModel();
+  const model = useModel();
 
   // Adds a tab for each agent the session gained (all of them the first time) and drops the tabs of removed workers.
   const syncPanels = () => {
     const api = apiRef.current;
     if (!api) return;
-    for (const panel of [...api.panels]) if (!session.agentIds.includes(panel.id)) api.removePanel(panel);
-    for (const agentId of session.agentIds) {
-      const agent = agents[agentId];
-      if (!agent || api.getPanel(agentId)) continue;
-      api.addPanel({ id: agentId, component: "agent", title: agent.name, params: { agentId } });
+    const sessionAgents = agentsOf(model, session.id);
+    for (const panel of [...api.panels]) if (!sessionAgents.some(agent => agent.id === panel.id)) api.removePanel(panel);
+    for (const agent of sessionAgents) {
+      if (!api.getPanel(agent.id)) api.addPanel({ id: agent.id, component: "agent", title: agent.name, params: { agentId: agent.id } });
     }
   };
 
-  useEffect(syncPanels, [session.agentIds, agents]);
+  useEffect(syncPanels, [model.agents]);
 
   return (
     <DockviewReact

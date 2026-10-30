@@ -1,3 +1,7 @@
 [serve.static]
 plugins = ["bun-plugin-tailwind"]
 env = "BUN_PUBLIC_*"
+
+[test]
+# Every test runs concurrently. Tests that share module state (the model on globalThis, spies) are test.serial.
+concurrentTestGlob = "**/*.test.ts"

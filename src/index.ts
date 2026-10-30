@@ -1,8 +1,10 @@
 import { serve, type Server } from "bun";
 import index from "./index.html";
+import { stopAllAgents, stopAllAgentsNow } from "./server/agents";
 import { handleMcp } from "./server/mcp";
 import { restoreModel } from "./server/sessions";
 import { bindServer, socket, upgradeSocket, type SocketData } from "./server/socket";
+import { shutdownTerminals, stopTerminalsNow } from "./server/terminals";
 
 /*
  * Two listeners, because Docker Desktop lets a process in a container connect to
@@ -47,5 +49,26 @@ const mcpUrl = new URL("/mcp", mcpServer.url).href;
 bindServer(server, mcpUrl);
 // Agents resumed here reach the MCP server through the URL bound above.
 restoreModel();
+
+/*
+ * Shutdown is owned here. A signal stops every agent and terminal gracefully and
+ * waits, since stopping what runs in a Docker container takes a command to the
+ * container, which a process that is exiting can't wait for. `exit` kills
+ * whatever is left, synchronously. The handlers are installed once and call the
+ * latest code, so a `bun --hot` reload neither stacks them nor leaves old ones.
+ */
+const globals = globalThis as typeof globalThis & { __hypercubeShutdown?: { stop(): Promise<unknown>; stopNow(): void } };
+const installed = globals.__hypercubeShutdown !== undefined;
+globals.__hypercubeShutdown = {
+  stop: () => Promise.all([shutdownTerminals(), stopAllAgents()]),
+  stopNow() {
+    stopTerminalsNow();
+    stopAllAgentsNow();
+  },
+};
+if (!installed) {
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => void globals.__hypercubeShutdown!.stop().finally(() => process.exit()));
+  process.on("exit", () => globals.__hypercubeShutdown!.stopNow());
+}
 
 console.log(`🚀 Server running at ${server.url}, agents' MCP server at ${mcpUrl}`);

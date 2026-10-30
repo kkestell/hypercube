@@ -118,10 +118,6 @@ async function listProfiles() {
   return JSON.stringify(profiles.map(({ name, description, model, effort }) => ({ name, description, model, effort })));
 }
 
-function requireLead(from: Agent) {
-  if (from.role !== "lead") throw new ModelError("Only the lead can do that");
-}
-
 function stringArg(args: Record<string, unknown> | undefined, key: string) {
   const value = args?.[key];
   if (typeof value !== "string") throw new ModelError(`\`${key}\` must be a string`);
@@ -129,7 +125,6 @@ function stringArg(args: Record<string, unknown> | undefined, key: string) {
 }
 
 async function startWorkerTool(from: Agent, args: Record<string, unknown> | undefined) {
-  requireLead(from);
   const [name, profileName, dir] = [stringArg(args, "name"), stringArg(args, "profile"), stringArg(args, "dir")];
   const message = args?.message === undefined ? undefined : stringArg(args, "message");
   const { profiles } = await loadConfig();
@@ -142,7 +137,6 @@ async function startWorkerTool(from: Agent, args: Record<string, unknown> | unde
 }
 
 async function stopWorkerTool(from: Agent, args: Record<string, unknown> | undefined) {
-  requireLead(from);
   const wanted = stringArg(args, "id").trim();
   const { agents } = getModel();
   const workers = Object.values(agents).filter(agent => agent.role === "worker" && agent.sessionId === from.sessionId);
@@ -161,9 +155,11 @@ async function callTool(from: Agent, params: RpcMessage["params"]) {
     start_worker: () => startWorkerTool(from, args),
     stop_worker: () => stopWorkerTool(from, args),
   };
-  const tool = typeof params?.name === "string" && Object.hasOwn(tools, params.name) ? tools[params.name] : undefined;
-  if (!tool) return { code: -32602, message: `Unknown tool: ${String(params?.name)}` };
+  const name = params?.name;
+  const tool = typeof name === "string" && Object.hasOwn(tools, name) ? tools[name] : undefined;
+  if (!tool) return { code: -32602, message: `Unknown tool: ${String(name)}` };
   try {
+    if (LEAD_ONLY_TOOLS.has(name as string) && from.role !== "lead") throw new ModelError("Only the lead can do that");
     return { result: { content: [{ type: "text", text: await tool() }] } };
   } catch (error) {
     // A failure the agent can act on goes back as the tool's result, not as a protocol error.

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { collect, localEnvironment, requireInside, type Environment } from "./environment";
+import { collect, localEnvironment, type Environment } from "./environment";
 import { spawnLocalPty } from "./localPty";
 
 /**
@@ -26,13 +26,6 @@ export const DOCKER_CLONE_PATH = "/workspace";
 
 /** How an agent in a container reaches the host. Docker Desktop provides the name. */
 export const CONTAINER_HOST = "host.docker.internal";
-
-/** `url`, a URL of this server, as a process in a container reaches it. */
-export function containerUrl(url: string) {
-  const reachable = new URL(url);
-  reachable.hostname = CONTAINER_HOST;
-  return reachable.href;
-}
 
 const DOCKERFILE = join(import.meta.dir, "../../docker/Dockerfile");
 /** Where each process in a container records its pid. */
@@ -159,6 +152,7 @@ export function dockerEnvironment(sessionId: string): Environment {
     spawn(cmd, cwd, env = {}) {
       const id = crypto.randomUUID();
       let done = false;
+      let stopping: Promise<void> | undefined;
       const cli = localEnvironment.spawn(
         exec(["-i", ...envFlags(env)], cwd, ["sh", "-c", `mkdir -p ${PIDS} && exec setsid --wait sh -c '${RECORD_PID}; exec "$@"' "$0" "$@"`, id, ...cmd]),
         process.cwd(),
@@ -167,15 +161,12 @@ export function dockerEnvironment(sessionId: string): Environment {
       void cli.exited.then(() => (done = true));
       return {
         ...cli,
-        kill() {
-          if (done) return;
-          // If the container can't be reached the CLI is stopped here, which ends the process's stdin and with it, normally, the process.
-          void stopIn(id).finally(() => done || cli.kill());
-        },
-        killNow() {
+        // If the container can't be reached the CLI is stopped instead, which ends the process's stdin and with it, normally, the process.
+        stop: () => (stopping ??= (done ? Promise.resolve() : stopIn(id)).then(cli.stop)),
+        stopNow() {
           if (done) return;
           stopInNow(id);
-          cli.kill();
+          cli.stopNow();
         },
       };
     },
@@ -191,15 +182,13 @@ export function dockerEnvironment(sessionId: string): Environment {
         options,
         { TERM: "xterm-256color", COLORTERM: "truecolor" },
       );
+      let stopping: Promise<void> | undefined;
       return {
         ...local,
-        async reap() {
-          await stopIn(id);
-          await local.reap();
-        },
-        killNow() {
+        stop: () => (stopping ??= stopIn(id).then(local.stop)),
+        stopNow() {
           stopInNow(id);
-          local.killNow();
+          local.stopNow();
         },
       };
     },
@@ -211,17 +200,10 @@ export function dockerEnvironment(sessionId: string): Environment {
       await localEnvironment.run(docker("rm", "--force", "--volumes", container));
     },
 
-    async resolveDir(clonePath, dir) {
-      // Real paths, so a symlink in the clone can't lead out of it.
-      let root: string;
-      let target: string;
-      try {
-        [root, target] = (await environment.run(["sh", "-c", 'cd "$0" && pwd -P && cd "$1" && pwd -P', clonePath, dir], clonePath)).stdout.trim().split("\n") as [string, string];
-      } catch {
-        throw new Error(`"${dir}" is not a directory that exists`);
-      }
-      requireInside(root, target, dir);
-      return target;
+    hostUrl(url) {
+      const reachable = new URL(url);
+      reachable.hostname = CONTAINER_HOST;
+      return reachable.href;
     },
   };
   return environment;

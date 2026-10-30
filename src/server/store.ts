@@ -46,8 +46,6 @@ export function openStore() {
 export function loadStore() {
   const db = globals.__hypercubeDb!;
   const all = <T>(table: string) => (db.query(`SELECT data FROM ${table} ORDER BY seq`).all() as { data: string }[]).map(row => JSON.parse(row.data) as T);
-  // Left behind only if the server died between removing an agent and its transcript.
-  db.exec("DELETE FROM items WHERE agent_id NOT IN (SELECT id FROM agents)");
   const items = new Map<string, TranscriptItem[]>();
   for (const row of db.query("SELECT agent_id, data FROM items ORDER BY seq").all() as { agent_id: string; data: string }[]) {
     const list = items.get(row.agent_id);
@@ -69,13 +67,14 @@ export function saveModel(model: Model) {
   if (!db) return;
   db.transaction(() => {
     sync(db, "workspaces", model.workspaces);
-    // A session's terminal belongs to a running server, like an agent's status.
-    sync(db, "sessions", Object.values(model.sessions).map(({ terminal: _terminal, ...stored }): Session => stored));
+    sync(db, "sessions", Object.values(model.sessions));
     sync(
       db,
       "agents",
       Object.values(model.agents).map(({ status: _status, error: _error, queue: _queue, steer: _steer, ...stored }): StoredAgent => stored),
     );
+    // A removed agent's transcript goes with the write that removes the agent.
+    db.query("DELETE FROM items WHERE agent_id NOT IN (SELECT value FROM json_each(?))").run(JSON.stringify(Object.keys(model.agents)));
   })();
 }
 
@@ -84,13 +83,4 @@ export function saveItem(agentId: string, item: TranscriptItem) {
   globals.__hypercubeDb
     ?.query("INSERT INTO items (agent_id, id, data) VALUES (?, ?, ?) ON CONFLICT (agent_id, id) DO UPDATE SET data = excluded.data")
     .run(agentId, item.id, JSON.stringify(item));
-}
-
-export function dropItems(agentIds: string[]) {
-  const db = globals.__hypercubeDb;
-  if (!db) return;
-  const drop = db.query("DELETE FROM items WHERE agent_id = ?");
-  db.transaction(() => {
-    for (const agentId of agentIds) drop.run(agentId);
-  })();
 }

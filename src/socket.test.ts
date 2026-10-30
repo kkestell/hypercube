@@ -71,85 +71,78 @@ afterAll(() => {
   if (realGlobals.location === undefined) delete (globalThis as { location?: unknown }).location;
 });
 
-// The module holds one socket for the tab, so these run in order against the same state.
-describe("the tab's single socket", () => {
+// The module holds one socket for the tab, and the tests below share it, so they are serial.
+test.serial("the tab has one socket: connecting twice opens one, stale sockets are ignored, and a drop is replaced by exactly one", async () => {
   const a = channel();
   const b = channel();
 
-  test("connecting twice opens one socket, and a channel is told each time it opens", () => {
-    socketModule.connect();
-    socketModule.connect();
-    socketModule.registerChannel("a", a);
-    socketModule.registerChannel("b", b);
-    expect(sockets).toHaveLength(1);
-    expect(sockets[0]!.url.pathname).toBe("/ws");
+  // Connecting twice opens one socket, and a channel is told each time it opens.
+  socketModule.connect();
+  socketModule.connect();
+  socketModule.registerChannel("a", a);
+  socketModule.registerChannel("b", b);
+  expect(sockets).toHaveLength(1);
+  expect(sockets[0]!.url.pathname).toBe("/ws");
 
-    sockets[0]!.open();
-    expect(a.opened).toBe(1);
-    expect(b.opened).toBe(1);
+  sockets[0]!.open();
+  expect(a.opened).toBe(1);
+  expect(b.opened).toBe(1);
 
-    // Connecting during the reconnect delay connects once, and the pending timer doesn't open a second socket.
-    sockets[0]!.drop();
-    socketModule.connect();
-    expect(sockets).toHaveLength(2);
-    jest.advanceTimersByTime(5000);
-    expect(sockets).toHaveLength(2);
-    expect(open()).toEqual([sockets[1]!]);
-  });
+  // Connecting during the reconnect delay connects once, and the pending timer doesn't open a second socket.
+  sockets[0]!.drop();
+  socketModule.connect();
+  expect(sockets).toHaveLength(2);
+  jest.advanceTimersByTime(5000);
+  expect(sockets).toHaveLength(2);
+  expect(open()).toEqual([sockets[1]!]);
 
-  test("messages go to the one open socket, and a stale socket's events are ignored", () => {
-    sockets[1]!.open();
-    expect(a.opened).toBe(2);
+  // Messages go to the one open socket, and a stale socket's events are ignored.
+  sockets[1]!.open();
+  expect(a.opened).toBe(2);
+  socketModule.sendTerminal({ t: "input", id: "a", data: "x" });
+  expect(sockets[1]!.sent).toEqual([JSON.stringify({ t: "input", id: "a", data: "x" })]);
+  expect(sockets[0]!.sent).toEqual([]);
 
-    socketModule.sendTerminal({ t: "input", id: "a", data: "x" });
-    expect(sockets[1]!.sent).toEqual([JSON.stringify({ t: "input", id: "a", data: "x" })]);
-    expect(sockets[0]!.sent).toEqual([]);
+  const stale = sockets[0]!;
+  stale.onopen?.();
+  expect(a.opened).toBe(2);
+  stale.onmessage?.({ data: encodeFrame(FRAME_OUTPUT, "a", new TextEncoder().encode("stale")).buffer });
+  expect(a.output).toHaveLength(0);
+  // A stale close must not tear down or reschedule the live socket.
+  stale.onclose?.();
+  expect(open()).toEqual([sockets[1]!]);
 
-    const stale = sockets[0]!;
-    stale.onopen?.();
-    expect(a.opened).toBe(2);
-    stale.onmessage?.({ data: encodeFrame(FRAME_OUTPUT, "a", new TextEncoder().encode("stale")).buffer });
-    expect(a.output).toHaveLength(0);
-    // A stale close must not tear down or reschedule the live socket.
-    stale.onclose?.();
-    expect(open()).toEqual([sockets[1]!]);
+  sockets[1]!.onmessage?.({ data: encodeFrame(FRAME_OUTPUT, "a", new TextEncoder().encode("live")).buffer });
+  expect(a.output.map(chunk => new TextDecoder().decode(chunk))).toEqual(["live"]);
 
-    sockets[1]!.onmessage?.({ data: encodeFrame(FRAME_OUTPUT, "a", new TextEncoder().encode("live")).buffer });
-    expect(a.output.map(chunk => new TextDecoder().decode(chunk))).toEqual(["live"]);
-  });
+  // A socket that drops, even while connecting, is replaced by exactly one.
+  sockets[1]!.drop();
+  jest.advanceTimersByTime(250);
+  expect(sockets).toHaveLength(3);
+  // Dropped before it opened: the next attempt comes after a longer delay and is still one socket.
+  sockets[2]!.drop();
+  jest.advanceTimersByTime(499);
+  expect(sockets).toHaveLength(3);
+  jest.advanceTimersByTime(1);
+  expect(sockets).toHaveLength(4);
+  expect(open()).toEqual([sockets[3]!]);
+  const live = sockets[3]!;
+  live.open();
 
-  test("a socket that drops, even while connecting, is replaced by exactly one", () => {
-    sockets[1]!.drop();
-    jest.advanceTimersByTime(250);
-    expect(sockets).toHaveLength(3);
-    // Dropped before it opened: the next attempt comes after a longer delay and is still one socket.
-    sockets[2]!.drop();
-    jest.advanceTimersByTime(499);
-    expect(sockets).toHaveLength(3);
-    jest.advanceTimersByTime(1);
-    expect(sockets).toHaveLength(4);
-    expect(open()).toEqual([sockets[3]!]);
-    sockets[3]!.open();
-  });
+  // A request resolves with its result, and fails if the socket drops first.
+  const created = socketModule.request({ t: "startTerminal", sessionId: "s" });
+  const sent = JSON.parse(live.sent.at(-1)!);
+  expect(sent).toMatchObject({ t: "startTerminal", sessionId: "s" });
+  live.onmessage?.({ data: JSON.stringify({ t: "result", req: sent.req, ok: true }) });
+  await created;
 
-  test("a request resolves with its result, and fails if the socket drops first", async () => {
-    const live = sockets[3]!;
-    const created = socketModule.request({ t: "startTerminal", sessionId: "s" });
-    const sent = JSON.parse(live.sent.at(-1)!);
-    expect(sent).toMatchObject({ t: "startTerminal", sessionId: "s" });
-    live.onmessage?.({ data: JSON.stringify({ t: "result", req: sent.req, ok: true }) });
-    await created;
-
-    const lost = socketModule.request({ t: "closeTerminal", sessionId: "s" });
-    live.drop();
-    await expect(lost).rejects.toThrow("Lost the connection");
-  });
+  const lost = socketModule.request({ t: "closeTerminal", sessionId: "s" });
+  live.drop();
+  await expect(lost).rejects.toThrow("Lost the connection");
 });
 
 describe("a terminal view", () => {
   let terminals: typeof import("./terminals");
-  const sentTo = (ws: FakeWebSocket) => ws.sent.map(data => JSON.parse(data) as ClientMessage);
-  const sentOf = (ws: FakeWebSocket, t: string) => sentTo(ws).filter(m => m.t === t);
 
   beforeAll(async () => {
     class FakeTerminal {
@@ -175,10 +168,15 @@ describe("a terminal view", () => {
     delete (globalThis as { document?: unknown }).document;
   });
 
-  test("a view attaches to the terminal it is given at its size, follows a switch, and never creates or closes one", () => {
+  test.serial("a view attaches to the terminal it is given at its size, follows a switch, and never creates or closes one", () => {
+    socketModule.connect();
     jest.advanceTimersByTime(5000);
     const live = open()[0]!;
     live.open();
+    // Whatever an earlier test sent on this socket doesn't count.
+    const sentBefore = live.sent.length;
+    const sentTo = (ws: FakeWebSocket) => ws.sent.slice(sentBefore).map(data => JSON.parse(data) as ClientMessage);
+    const sentOf = (ws: FakeWebSocket, t: string) => sentTo(ws).filter(m => m.t === t);
     const view = terminals.getOrCreateView("workspace-1");
     view.fit();
     expect(sentOf(live, "attach")).toEqual([]);

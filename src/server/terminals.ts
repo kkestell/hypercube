@@ -15,9 +15,10 @@ import type { PtyProcess } from "./localPty";
  * out in the order it is parsed. Snapshots and resizes are queued the same
  * way, which puts each of them at an exact point in the output stream.
  *
- * Registry state lives on globalThis, and everything a process or the server
- * process triggers goes through `registry.ops`, so a `bun --hot` reload keeps
- * the running processes and routes them to the reloaded code.
+ * Registry state lives on globalThis, and everything a PTY triggers goes
+ * through `registry.ops`, so a `bun --hot` reload keeps the running processes
+ * and routes them to the reloaded code. Shutdown is `src/index.ts`'s: it calls
+ * `shutdownTerminals` and `stopTerminalsNow`.
  */
 
 const FLUSH_INTERVAL_MS = 16;
@@ -55,18 +56,9 @@ export type Hooks = {
   removed(id: string): void;
 };
 
-/** Where the registry reports to whatever owns the terminals (the session model). */
-export type OwnerHooks = {
-  /** A terminal's shell exited by itself, its output has been published and nothing it started is left. It is forgotten. */
-  ended(id: string): void;
-};
-
 type Ops = {
   onData(entry: TerminalEntry, data: Uint8Array): void;
   onExit(entry: TerminalEntry): void;
-  shutdown(): Promise<void>;
-  /** Synchronous last resort when the server process exits. */
-  killAllNow(): void;
 };
 
 type Registry = {
@@ -74,9 +66,7 @@ type Registry = {
   /** Terminals that are no longer registered but whose processes are still being stopped. */
   closing: Set<TerminalEntry>;
   hooks: Hooks;
-  owner: OwnerHooks;
   ops: Ops;
-  processHandlersInstalled: boolean;
 };
 
 const noop = () => {};
@@ -85,17 +75,11 @@ const registry: Registry = (globals.__hypercubeTerminals ??= {
   terminals: new Map(),
   closing: new Set(),
   hooks: { output: noop, removed: noop },
-  owner: { ended: noop },
   ops: undefined as unknown as Ops,
-  processHandlersInstalled: false,
 });
 
 export function setHooks(hooks: Hooks) {
   registry.hooks = hooks;
-}
-
-export function setOwnerHooks(owner: OwnerHooks) {
-  registry.owner = owner;
 }
 
 export function getTerminal(id: string) {
@@ -237,7 +221,7 @@ registry.ops = {
     if (entry.state === "exited") return;
     entry.state = "exited";
     // Whatever the shell left behind goes now, while its session still has members and so can't be reused.
-    const reaping = (entry.reaping ??= entry.pty.reap());
+    const reaping = (entry.reaping ??= entry.pty.stop());
     if (!isLive(entry)) return;
     flush(entry);
     // The terminal is forgotten only after its last output has gone out and nothing it started is left running.
@@ -245,15 +229,6 @@ registry.ops = {
       if (!isLive(entry)) return;
       void reaping.then(() => forget(entry));
     });
-  },
-
-  async shutdown() {
-    const closes = listTerminals().map(entry => closeTerminal(entry.id));
-    await Promise.all([...closes, ...[...registry.closing].map(entry => entry.reaping)]);
-  },
-
-  killAllNow() {
-    for (const entry of [...registry.terminals.values(), ...registry.closing]) entry.pty.killNow();
   },
 };
 
@@ -264,7 +239,6 @@ function forget(entry: TerminalEntry) {
   registry.terminals.delete(entry.id);
   registry.hooks.removed(entry.id);
   entry.headless.dispose();
-  registry.owner.ended(entry.id);
 }
 
 /** Kills a terminal's processes and forgets it. Resolves once everything is gone. */
@@ -280,7 +254,7 @@ export async function closeTerminal(id: string) {
   entry.pending = [];
 
   entry.pty.hangup();
-  entry.reaping ??= entry.pty.reap();
+  entry.reaping ??= entry.pty.stop();
   await entry.reaping;
   await entry.pty.exited;
   entry.headless.dispose();
@@ -288,13 +262,13 @@ export async function closeTerminal(id: string) {
   return true;
 }
 
-/** Kills every terminal. Used on SIGINT/SIGTERM; one made after this is caught by the exit handler below. */
-export function shutdownTerminals() {
-  return registry.ops.shutdown();
+/** Closes every terminal, including ones mid-close, and resolves once their processes are gone. For server shutdown. */
+export async function shutdownTerminals() {
+  const closes = listTerminals().map(entry => closeTerminal(entry.id));
+  await Promise.all([...closes, ...[...registry.closing].map(entry => entry.reaping)]);
 }
 
-if (!registry.processHandlersInstalled) {
-  registry.processHandlersInstalled = true;
-  // Last resort if the server dies without a clean shutdown, including terminals mid-close.
-  process.on("exit", () => registry.ops.killAllNow());
+/** Kills every terminal's processes without waiting, for when the server process is exiting. */
+export function stopTerminalsNow() {
+  for (const entry of [...registry.terminals.values(), ...registry.closing]) entry.pty.stopNow();
 }

@@ -26,9 +26,9 @@ export function upsertItem(agentId: string, item: TranscriptItem) {
   notify();
 }
 
-/** Replaces the fields the server sent. */
-export function mergeInfo(agentId: string, info: AgentInfo) {
-  infos.set(agentId, { ...infos.get(agentId), ...info });
+/** The server sends an agent's whole info, so this replaces it. */
+export function setInfo(agentId: string, info: AgentInfo) {
+  infos.set(agentId, info);
   notify();
 }
 

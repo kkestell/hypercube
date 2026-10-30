@@ -94,3 +94,10 @@ User feedback after phase 4:
 2. The composer and Send button look wrong. Chat composers are a solved UX problem; follow the usual pattern.
 3. The model, effort and mode selects sit above the transcript. Rethink where they go.
 4. The transcript looks generally awful and needs a proper design pass.
+
+## Simplification fixes (review of 2026-10-29)
+
+- `saveModel` runs `DELETE FROM items WHERE agent_id NOT IN (…)` on every flush, scanning the transcript table on every status change. Run it only when an agent was removed if it ever shows up as slow.
+- A ready Docker session whose container is gone now stays "Ready" and each agent exits with "container no longer exists" (it used to fail the session). Delete still works and asks first.
+- The browser socket's HMR dispose path isn't checked in a browser: reconnecting depends on Fast Refresh re-running `App`'s `useEffect(connect)`.
+- No schema bump for the dropped fields: old rows load with stale `sessionIds`/`agentIds`/`createdAt`, which are ignored.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Session, UnsavedWork } from "./model";
-import { useModel } from "./modelStore";
+import { agentsOf, useModel } from "./modelStore";
 import { activity } from "./status";
 import { request, RequestError } from "./socket";
 
@@ -38,6 +38,8 @@ function NewSession({ workspaceId, onCreated }: { workspaceId: string; onCreated
   );
 }
 
+const statusLabels = { cloning: "Cloning…", deleting: "Deleting…", failed: "Failed", stopped: "Stopped", ready: "Ready" };
+
 const SHOWN = 8;
 
 /** What a refused delete would lose, as the text of the confirmation. */
@@ -54,8 +56,8 @@ function describeUnsaved(unsaved: UnsavedWork[]) {
 }
 
 function SessionRow({ session, active, onSelect }: { session: Session; active: boolean; onSelect: () => void }) {
-  const { agents } = useModel();
-  const { busy: working, waiting } = activity(session.agentIds.map(id => agents[id]));
+  const model = useModel();
+  const { busy: working, waiting } = activity(agentsOf(model, session.id));
   const names = (list: typeof working) => list.map(agent => agent.name).join(", ");
   const [busy, setBusy] = useState<"deleting" | "stopping" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,8 +97,8 @@ function SessionRow({ session, active, onSelect }: { session: Session; active: b
           {working.length > 0 && <span className="block truncate text-xs text-sky-300">Busy: {names(working)}</span>}
           {waiting.length === 0 && working.length === 0 && (
             <span className="flex items-center gap-1.5 text-xs text-neutral-400">
-              {session.status === "cloning" && <span aria-hidden="true" className="size-3 animate-spin rounded-full border-2 border-neutral-500 border-t-sky-400 motion-reduce:animate-none" />}
-              {session.status === "cloning" ? "Cloning…" : session.status === "failed" ? "Failed" : session.status === "stopped" ? "Stopped" : "Ready"}
+              {(session.status === "cloning" || session.status === "deleting") && <span aria-hidden="true" className="size-3 animate-spin rounded-full border-2 border-neutral-500 border-t-sky-400 motion-reduce:animate-none" />}
+              {statusLabels[session.status]}
             </span>
           )}
         </button>
@@ -127,11 +129,11 @@ function SessionRow({ session, active, onSelect }: { session: Session; active: b
           type="button"
           aria-label={`Delete ${session.name}`}
           title={session.status === "cloning" ? "Wait for cloning to finish" : "Delete session and clone"}
-          disabled={busy !== null || session.status === "cloning"}
+          disabled={busy !== null || session.status === "cloning" || session.status === "deleting"}
           onClick={remove}
           className="rounded px-1.5 py-1 text-xs text-neutral-400 hover:bg-neutral-600 hover:text-red-200 disabled:opacity-40"
         >
-          {busy === "deleting" ? "Deleting…" : "Delete"}
+          {busy === "deleting" || session.status === "deleting" ? "Deleting…" : "Delete"}
         </button>
       </div>
       {(session.error || error) && <div className="px-4 pb-2 text-xs break-words whitespace-pre-wrap text-red-300">{error || session.error}</div>}

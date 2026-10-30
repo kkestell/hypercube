@@ -12,6 +12,7 @@ import { isSocketOpen, registerChannel, sendTerminal, unregisterChannel, type Te
 export type TerminalView = {
   /** Element the terminal renders into; moved between containers. */
   element: HTMLDivElement;
+  /** Fits to the element's size; attaches if that was holding it back. */
   fit: () => void;
   focus: () => void;
   /** Shows this terminal (a session's id), or nothing. */
@@ -39,13 +40,19 @@ export function getOrCreateView(viewId: string): TerminalView {
   terminal.open(element);
 
   let terminalId: string | null = null;
-  /** The element has been fitted, so the server can be given the terminal's real size. */
-  let sized = false;
   /** This connection has sent `attach` for the current terminal. */
   let attached = false;
 
+  /** Fits the terminal to its element, if the element has a size to fit to. A detached or hidden one has none. */
+  const fitNow = () => {
+    if (!element.isConnected || element.clientWidth === 0 || element.clientHeight === 0) return false;
+    fitAddon.fit();
+    return true;
+  };
+
+  // The server is told the size the terminal has at that moment, so attach fits first.
   const attach = () => {
-    if (!sized || !terminalId || attached || !isSocketOpen()) return;
+    if (!terminalId || attached || !isSocketOpen() || !fitNow()) return;
     attached = true;
     sendTerminal({ t: "attach", id: terminalId, cols: terminal.cols, rows: terminal.rows });
   };
@@ -72,14 +79,7 @@ export function getOrCreateView(viewId: string): TerminalView {
 
   const view: TerminalView = {
     element,
-    fit: () => {
-      // A detached or hidden element has no size to fit to.
-      if (element.isConnected && element.clientWidth > 0 && element.clientHeight > 0) {
-        fitAddon.fit();
-        sized = true;
-        attach();
-      }
-    },
+    fit: () => (attached ? fitNow() : attach()),
     focus: () => terminal.focus(),
     setTerminal: next => {
       if (next === terminalId) return;

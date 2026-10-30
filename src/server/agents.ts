@@ -14,10 +14,9 @@ import type {
 import { createPatch } from "diff";
 import type { Agent, AgentInfo, AgentStatus, ConfigOption, QueuedPrompt, Session, ToolContent, TranscriptItem } from "../model";
 import { loadConfig, type Profile, type Settings } from "./config";
-import { containerUrl } from "./docker";
 import { environmentFor, type EnvironmentProcess } from "./environment";
 import { ModelError } from "./errors";
-import { dropItems, saveItem } from "./store";
+import { saveItem } from "./store";
 
 /**
  * Agent processes: each runs `opencode acp` in its session's clone, with
@@ -81,10 +80,14 @@ type Runtime = {
   stopped: boolean;
   /** `session/cancel` is sent and the prompt it cancels hasn't returned yet. */
   cancelling: boolean;
+  /** Set when the agent is stopped: the process is being stopped. The runtime is owned, and stays in `state.runtimes`, until this settles. */
+  stopping?: Promise<void>;
+  /** The agent's previous runtime while it is still stopping: replaced in `state.runtimes`, but still owned through this one. */
+  previous?: Runtime;
 };
 
 type State = {
-  /** The agents that have a process or had one since they were last stopped. */
+  /** The agents that have a process or had one since they were last stopped. A stopped agent stays until its process is gone. */
   runtimes: Map<string, Runtime>;
   /** Every agent's transcript. A runtime's `items` is the same array. */
   transcripts: Map<string, TranscriptItem[]>;
@@ -94,7 +97,7 @@ type State = {
   onInfo: (agentId: string, info: AgentInfo) => void;
 };
 
-const globals = globalThis as typeof globalThis & { __hypercubeAgents?: State; __hypercubeShutdownHooks?: true };
+const globals = globalThis as typeof globalThis & { __hypercubeAgents?: State };
 const state: State = (globals.__hypercubeAgents ??= { runtimes: new Map(), transcripts: new Map(), mcpUrl: "", onItem: () => {}, onInfo: () => {} });
 
 /** Where to send transcript and panel info changes. */
@@ -120,26 +123,25 @@ function transcriptOf(agentId: string) {
   return items;
 }
 
-/** Drops the agents' transcripts, for agents that are gone for good. */
+/** Drops the agents' transcripts from memory, for agents that are gone for good. The store drops its rows when the model is saved without them. */
 export function forgetAgents(agentIds: string[]) {
   for (const agentId of agentIds) state.transcripts.delete(agentId);
-  dropItems(agentIds);
 }
 
 /** Every agent's panel info that has something in it. */
 export function getInfos() {
-  return [...state.runtimes.values()].filter(rt => rt.info && Object.keys(rt.info).length > 0).map(rt => ({ agentId: rt.agent.id, info: rt.info }));
+  return [...state.runtimes.values()].filter(rt => !rt.stopped && Object.keys(rt.info).length > 0).map(rt => ({ agentId: rt.agent.id, info: rt.info }));
 }
 
-/** The agent a Hypercube MCP token belongs to. */
+/** The agent a Hypercube MCP token belongs to. A stopped agent's token no longer works. */
 export function agentForToken(token: string | undefined) {
   if (!token) return undefined;
-  for (const rt of state.runtimes.values()) if (rt.token === token) return rt.agent;
+  for (const rt of state.runtimes.values()) if (rt.token === token && !rt.stopped) return rt.agent;
 }
 
 function runtime(agentId: string) {
   const rt = state.runtimes.get(agentId);
-  if (!rt) throw new ModelError("This agent is not running");
+  if (!rt || rt.stopped) throw new ModelError("This agent is not running");
   return rt;
 }
 
@@ -158,11 +160,11 @@ function upsert(rt: Runtime, item: TranscriptItem) {
   state.onItem(rt.agent.id, item);
 }
 
-/** Replaces the given fields of the panel info and sends just those. */
+/** Replaces the given fields of the panel info and sends the whole of it. */
 function setInfo(rt: Runtime, patch: AgentInfo) {
   if (rt.stopped) return;
   rt.info = { ...rt.info, ...patch };
-  state.onInfo(rt.agent.id, patch);
+  state.onInfo(rt.agent.id, rt.info);
 }
 
 function find(rt: Runtime, id: string) {
@@ -190,12 +192,15 @@ async function settingsFor(agent: Agent, profile: Profile | undefined) {
 /**
  * Starts the agent's process and ACP session. An agent that has a session
  * resumes it, and gets a new one with a notice if it can't. Failures leave the
- * agent exited with the error. `lead` is the session's lead (the agent itself,
- * for a lead); `profile` is the worker's, when it was just chosen.
+ * agent exited with the error. Registers the agent's runtime first, so it is
+ * owned from here on, then waits for the previous process (if any) to be gone
+ * and for the session's environment to be up. `lead` is the session's lead (the
+ * agent itself, for a lead); `profile` is the worker's, when it was just chosen.
  */
 export async function startAgent(agent: Agent, session: Session, repo: string, changed: () => void, { lead, profile }: { lead: Agent; profile?: Profile }) {
   const items = transcriptOf(agent.id);
   const preamble = agent.role === "worker" ? workerPreamble(repo, session, agent, agent.cwd, lead) : leadPreamble(repo, session);
+  const old = state.runtimes.get(agent.id);
   const rt: Runtime = {
     agent,
     session,
@@ -209,15 +214,23 @@ export async function startAgent(agent: Agent, session: Session, repo: string, c
     replaying: false,
     stopped: false,
     cancelling: false,
+    previous: old,
   };
   state.runtimes.set(agent.id, rt);
+  // A new process starts with no panel info; the browser still has the old one.
+  state.onInfo(agent.id, {});
   try {
+    if (old) await stopRuntime(old);
+    rt.previous = undefined;
     // Whatever the previous process was doing is lost.
     abandonTurn(rt);
     // Read now, so an edit to the config applies to the next agent and a bad file stops this one with its error.
     const settings = await settingsFor(agent, profile);
+    // A Docker container may be stopped (Docker restarted) or gone; a prompt sent meanwhile is queued, since the agent is `starting`.
+    const environment = environmentFor(session);
+    await environment.ensureRunning();
     if (rt.stopped) return;
-    const proc = environmentFor(session).spawn(["opencode", "acp"], agent.cwd);
+    const proc = environment.spawn(["opencode", "acp"], agent.cwd);
     rt.process = proc;
     void proc.exited.then(code => exited(rt, `opencode exited with code ${code}`));
     void logStderr(agent, proc.stderr);
@@ -245,8 +258,7 @@ export async function startAgent(agent: Agent, session: Session, repo: string, c
       clientInfo: { name: "hypercube", version: "0.0.0" },
     });
     // A fresh token each time: the old process is gone and its token with it.
-    const mcpUrl = session.environment === "docker" ? containerUrl(state.mcpUrl) : state.mcpUrl;
-    const mcpServers: McpServer[] = [{ type: "http", name: "hypercube", url: mcpUrl, headers: [{ name: "Authorization", value: `Bearer ${rt.token}` }] }];
+    const mcpServers: McpServer[] = [{ type: "http", name: "hypercube", url: environment.hostUrl(state.mcpUrl), headers: [{ name: "Authorization", value: `Bearer ${rt.token}` }] }];
     const resumed = agent.acpSessionId ? await resumeSession(rt, agentCapabilities, { cwd: agent.cwd, mcpServers }) : undefined;
     if (rt.stopped) return;
     let configOptions: SessionConfigOption[];
@@ -268,7 +280,7 @@ export async function startAgent(agent: Agent, session: Session, repo: string, c
     setStatus(rt, "idle");
     sendNext(rt);
   } catch (error) {
-    rt.process?.kill();
+    void rt.process?.stop();
     // A ModelError is the config's fault and already says so.
     exited(rt, error instanceof ModelError ? error.message : `Could not start opencode: ${errorMessage(error)}`);
   }
@@ -439,7 +451,11 @@ function toolContent(content: ToolCallContent[]): ToolContent[] {
   });
 }
 
-function requestPermission(rt: Runtime, params: RequestPermissionRequest) {
+const cancelled: RequestPermissionResponse = { outcome: { outcome: "cancelled" } };
+
+async function requestPermission(rt: Runtime, params: RequestPermissionRequest) {
+  // A turn that is being cut short has nobody to answer, and a request that reopened `waiting` would hold the steer until someone did.
+  if (rt.cancelling || rt.agent.steer) return cancelled;
   const requestId = crypto.randomUUID();
   upsert(rt, {
     id: `permission-${requestId}`,
@@ -458,7 +474,7 @@ function requestPermission(rt: Runtime, params: RequestPermissionRequest) {
  * died are closed too.
  */
 function closePermissions(rt: Runtime) {
-  for (const resolve of rt.permissions.values()) resolve({ outcome: { outcome: "cancelled" } });
+  for (const resolve of rt.permissions.values()) resolve(cancelled);
   rt.permissions.clear();
   for (const item of rt.items) if (item.kind === "permission" && !item.answer) upsert(rt, { ...item, answer: "cancelled" });
 }
@@ -642,37 +658,36 @@ export function answerPermission(agentId: string, requestId: string, optionId: s
   if (rt.permissions.size === 0) setStatus(rt, "busy");
 }
 
-/** Whether the agent is still ours to talk to: it has not been stopped or deleted. */
-export function isRunning(agentId: string) {
-  return state.runtimes.has(agentId);
-}
-
-/** Kills the agents' process groups and waits for them to go. */
-export async function stopAgents(agentIds: string[]) {
-  const stopping = agentIds.flatMap(id => state.runtimes.get(id) ?? []);
-  for (const rt of stopping) {
+/**
+ * Stops the agent's process (and what it owns) and waits for it to be gone. The
+ * runtime is ours until then, so a shutdown meanwhile waits for it too.
+ */
+function stopRuntime(rt: Runtime): Promise<void> {
+  if (!rt.stopping) {
     abandonTurn(rt);
     rt.stopped = true;
-    state.runtimes.delete(rt.agent.id);
-    rt.process?.kill();
     rt.connection?.close();
+    const previous = rt.previous ? stopRuntime(rt.previous) : undefined;
+    rt.stopping = Promise.all([rt.process?.stop(), previous]).then(() => {}).finally(() => {
+      if (state.runtimes.get(rt.agent.id) === rt) state.runtimes.delete(rt.agent.id);
+    });
   }
-  await Promise.all(stopping.map(rt => rt.process && Promise.race([rt.process.exited, Bun.sleep(5000)])));
+  return rt.stopping;
 }
 
-/** Stops every agent, and everything each started in its environment, and waits for them to go. For server shutdown. */
+/** Stops the agents' processes and waits for them to go. */
+export async function stopAgents(agentIds: string[]) {
+  await Promise.all(agentIds.flatMap(id => state.runtimes.get(id) ?? []).map(stopRuntime));
+}
+
+/** Stops every agent, including ones already being stopped, and waits for them to go. For server shutdown. */
 export function stopAllAgents() {
   return stopAgents([...state.runtimes.keys()]);
 }
 
-/** Synchronous last resort when the server process exits without a clean shutdown. */
-function killAllAgents() {
-  for (const rt of state.runtimes.values()) rt.process?.killNow();
-}
-
-// The signals that end the server are handled in sessions.ts, which awaits `stopAllAgents` and the terminals before exiting;
-// this catches an exit that skipped that. Registered once, not on each hot reload.
-if (!globals.__hypercubeShutdownHooks) {
-  globals.__hypercubeShutdownHooks = true;
-  process.on("exit", killAllAgents);
+/** Kills every agent's processes without waiting, for when the server process is exiting. */
+export function stopAllAgentsNow() {
+  for (const rt of state.runtimes.values()) {
+    for (let current: Runtime | undefined = rt; current; current = current.previous) current.process?.stopNow();
+  }
 }

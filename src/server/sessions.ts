@@ -1,10 +1,10 @@
 import { emptyModel, type Agent, type Model, type Session, type Workspace } from "../model";
-import { forgetAgents, isRunning, restoreTranscripts, startAgent, stopAgents, stopAllAgents } from "./agents";
+import { forgetAgents, restoreTranscripts, startAgent, stopAgents } from "./agents";
 import type { Profile } from "./config";
-import { clonePathFor, environmentFor, localEnvironment } from "./environment";
+import { clonePathFor, environmentFor, localEnvironment, resolveDir } from "./environment";
 import { ModelError, UnsavedWorkError } from "./errors";
 import { loadStore, openStore, saveModel } from "./store";
-import { closeTerminal, createTerminal, setOwnerHooks, shutdownTerminals } from "./terminals";
+import { closeTerminal, createTerminal, getTerminal } from "./terminals";
 import { findUnsavedWork } from "./unsaved";
 
 /**
@@ -22,32 +22,22 @@ type State = {
   restored: boolean;
 };
 
-const globals = globalThis as typeof globalThis & { __hypercubeModel?: State; __hypercubeSignalHooks?: boolean };
+const globals = globalThis as typeof globalThis & { __hypercubeModel?: State };
 const state: State = (globals.__hypercubeModel ??= { model: emptyModel(), onChange: () => {}, changeScheduled: false, restored: false });
-
-/** Sessions whose delete is in progress. A shell started meanwhile would outlive the session. */
-const deleting = new Set<string>();
-
-// A shell that exits by itself is gone from the model too.
-setOwnerHooks({
-  ended(sessionId) {
-    const session = state.model.sessions[sessionId];
-    if (!session?.terminal) return;
-    session.terminal = undefined;
-    changed();
-  },
-});
-
-// Server shutdown stops the terminals and the agents, with their grace periods, before the process goes. Stopping what runs in a
-// Docker container takes a command to the container, which a process that is exiting can't wait for.
-// Registered once, not on each hot reload.
-if (!globals.__hypercubeSignalHooks) {
-  globals.__hypercubeSignalHooks = true;
-  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) process.on(signal, () => void Promise.all([shutdownTerminals(), stopAllAgents()]).finally(() => process.exit()));
-}
 
 export function getModel() {
   return state.model;
+}
+
+/** The model as browsers get it: each session's `terminal` comes from the terminal registry. */
+export function getPushedModel(): Model {
+  const sessions = Object.entries(state.model.sessions).map(([id, session]) => [id, getTerminal(id) ? { ...session, terminal: true as const } : session]);
+  return { ...state.model, sessions: Object.fromEntries(sessions) };
+}
+
+/** The agents of a session, its lead first and then its workers in the order they were started. */
+export function agentsOf(session: Session) {
+  return Object.values(state.model.agents).filter(agent => agent.sessionId === session.id);
 }
 
 /** Where to push the model after changes. */
@@ -56,8 +46,7 @@ export function bindModel(options: { onChange: (model: Model) => void }) {
 }
 
 /** Pushes the model once, after the current handler. */
-function changed() {
-  state.model.version += 1;
+export function changed() {
   if (state.changeScheduled) return;
   state.changeScheduled = true;
   queueMicrotask(flushModelChange);
@@ -73,7 +62,7 @@ export function flushModelChange() {
     // The server keeps working; the change is stored by the next flush that can.
     console.error("Could not save the model:", error);
   }
-  state.onChange(state.model);
+  state.onChange(getPushedModel());
 }
 
 /**
@@ -94,41 +83,17 @@ export function restoreModel() {
   restoreTranscripts(saved.items);
 
   for (const session of saved.sessions) {
-    if (session.status === "cloning") {
+    if (session.status === "cloning" || session.status === "deleting") {
+      session.error = `Hypercube stopped while this session was ${session.status === "cloning" ? "cloning" : "being deleted"}`;
       session.status = "failed";
-      session.error = "Hypercube stopped while this session was cloning";
     }
-    for (const agent of session.agentIds.flatMap(id => model.agents[id] ?? [])) {
+    // A ready session's agents are resumed once its environment is up; `startAgent` waits for that.
+    for (const agent of agentsOf(session)) {
       if (session.status === "failed") agent.error = session.error;
-      else if (session.status === "ready") agent.status = "starting";
+      else if (session.status === "ready") start(agent);
     }
-    if (session.status === "ready") void launchAgents(session);
   }
   changed();
-}
-
-/**
- * Starts the agents of a session that is ready, once its environment is up. If
- * it can't be (a Docker container that is gone), the session fails with that.
- */
-async function launchAgents(session: Session) {
-  try {
-    await environmentFor(session).ensureRunning();
-  } catch (error) {
-    // Stopped or deleted while we waited: nothing is left to fail.
-    if (state.model.sessions[session.id] !== session || session.status !== "ready") return;
-    session.status = "failed";
-    session.error = error instanceof Error ? error.message : String(error);
-    for (const agent of session.agentIds.flatMap(id => state.model.agents[id] ?? [])) {
-      agent.status = "exited";
-      agent.error = session.error;
-    }
-    changed();
-    return;
-  }
-  if (state.model.sessions[session.id] !== session || session.status !== "ready") return;
-  // A stop and start while we waited has started them already.
-  for (const agent of session.agentIds.flatMap(id => state.model.agents[id] ?? [])) if (!isRunning(agent.id)) launch(agent);
 }
 
 function workspace(id: string) {
@@ -159,7 +124,7 @@ export async function addWorkspace(input: string) {
   // Another request may have added the repo while gh was running.
   checkDuplicate();
 
-  const ws: Workspace = { id: crypto.randomUUID(), name: repo, repo, nextSessionNumber: 1, sessionIds: [] };
+  const ws: Workspace = { id: crypto.randomUUID(), repo, nextSessionNumber: 1 };
   state.model.workspaces.push(ws);
   changed();
   return ws.id;
@@ -176,24 +141,23 @@ export function createSession(workspaceId: string, environment: Session["environ
     id: sessionId,
     workspaceId,
     name: `Untitled ${ws.nextSessionNumber++}`,
-    agentIds: [lead.id],
-    createdAt: Date.now(),
     environment,
     clonePath,
     status: "cloning",
   };
   state.model.sessions[sessionId] = created;
   state.model.agents[lead.id] = lead;
-  ws.sessionIds.push(sessionId);
   changed();
   void setupSession(created);
   return sessionId;
 }
 
 /** Starts the agent's process in the background: a new session for a new agent, a resumed one for an agent that has one. */
-function launch(agent: Agent, profile?: Profile) {
+function start(agent: Agent, profile?: Profile) {
+  agent.status = "starting";
+  agent.error = undefined;
   const session = state.model.sessions[agent.sessionId]!;
-  const lead = state.model.agents[session.agentIds[0]!]!;
+  const lead = agentsOf(session).find(candidate => candidate.role === "lead")!;
   void startAgent(agent, session, workspace(session.workspaceId).repo, changed, { lead, profile });
 }
 
@@ -206,10 +170,9 @@ async function setupSession(session: Session) {
     session.error = error instanceof Error ? error.message : String(error);
   }
   if (state.model.sessions[session.id] !== session) return;
-  for (const agentId of session.agentIds) {
-    const agent = state.model.agents[agentId]!;
+  for (const agent of agentsOf(session)) {
     if (session.status === "ready") {
-      launch(agent);
+      start(agent);
     } else {
       agent.status = "exited";
       agent.error = session.error;
@@ -228,23 +191,22 @@ export async function startWorker(lead: Agent, name: string, profile: Profile, d
   if (!session || lead.role !== "lead") throw new ModelError("Only a lead can start workers");
   name = name.trim();
   if (!name) throw new ModelError("A worker needs a name");
-  const taken = () => session.agentIds.some(id => state.model.agents[id]?.name.toLowerCase() === name.toLowerCase());
+  const taken = () => agentsOf(session).some(agent => agent.name.toLowerCase() === name.toLowerCase());
   if (taken()) throw new ModelError(`This session already has an agent named "${name}"`);
   let cwd: string;
   try {
-    cwd = await environmentFor(session).resolveDir(session.clonePath, dir);
+    cwd = await resolveDir(environmentFor(session), session.clonePath, dir);
   } catch (error) {
     throw new ModelError(error instanceof Error ? error.message : String(error));
   }
   // The session may have been deleted, or another worker named, while we looked at the directory.
-  if (state.model.sessions[session.id] !== session || !isRunning(lead.id)) throw new ModelError("This session is going away");
+  if (state.model.sessions[session.id] !== session || session.status !== "ready") throw new ModelError("This session is going away");
   if (taken()) throw new ModelError(`This session already has an agent named "${name}"`);
 
   const worker: Agent = { id: crypto.randomUUID(), sessionId: session.id, role: "worker", name, profile: profile.name, cwd, status: "starting", queue: [] };
   state.model.agents[worker.id] = worker;
-  session.agentIds.push(worker.id);
   changed();
-  launch(worker, profile);
+  start(worker, profile);
   return worker;
 }
 
@@ -252,8 +214,6 @@ export async function startWorker(lead: Agent, name: string, profile: Profile, d
 export async function removeWorker(agentId: string) {
   const worker = state.model.agents[agentId];
   if (worker?.role !== "worker") throw new ModelError("No such worker");
-  const session = state.model.sessions[worker.sessionId]!;
-  session.agentIds = session.agentIds.filter(id => id !== agentId);
   delete state.model.agents[agentId];
   changed();
   await stopAgents([agentId]);
@@ -264,26 +224,28 @@ export async function removeWorker(agentId: string) {
 export function startTerminal(sessionId: string) {
   const session = state.model.sessions[sessionId];
   if (!session) throw new ModelError("No such session");
-  if (session.status !== "ready" || deleting.has(sessionId)) throw new ModelError("The session isn't running");
-  if (session.terminal) throw new ModelError("This session already has a terminal");
+  if (session.status !== "ready") throw new ModelError("The session isn't running");
+  if (getTerminal(sessionId)) throw new ModelError("This session already has a terminal");
   const environment = environmentFor(session);
   try {
     createTerminal(session.id, 80, 24, onData => environment.spawnPty(environment.loginShell(), session.clonePath, { cols: 80, rows: 24, onData }));
   } catch (error) {
     throw new ModelError(`Could not start the terminal: ${error instanceof Error ? error.message : String(error)}`);
   }
-  session.terminal = true;
   changed();
 }
 
-/** Kills the session's shell and everything it started. Nothing happens if there is none. */
-export async function closeSessionTerminal(sessionId: string) {
-  const session = state.model.sessions[sessionId];
-  if (session?.terminal) {
-    session.terminal = undefined;
-    changed();
+/** Marks the session's agents exited and stops them, workers included, and its shell. Their records and transcripts stay. */
+async function halt(session: Session) {
+  const agents = agentsOf(session);
+  for (const agent of agents) {
+    agent.status = "exited";
+    agent.error = undefined;
+    agent.queue = [];
+    agent.steer = undefined;
   }
-  await closeTerminal(sessionId);
+  changed();
+  await Promise.all([closeTerminal(session.id), stopAgents(agents.map(agent => agent.id))]);
 }
 
 /** Stops the session's agents, workers included. Their records and transcripts stay, so Start can resume them. */
@@ -292,14 +254,7 @@ export async function stopSession(sessionId: string) {
   if (!session) throw new ModelError("No such session");
   if (session.status !== "ready") throw new ModelError("Only a running session can be stopped");
   session.status = "stopped";
-  for (const agent of session.agentIds.flatMap(id => state.model.agents[id] ?? [])) {
-    agent.status = "exited";
-    agent.error = undefined;
-    agent.queue = [];
-    agent.steer = undefined;
-  }
-  changed();
-  await Promise.all([closeSessionTerminal(sessionId), stopAgents(session.agentIds)]);
+  await halt(session);
 }
 
 /** Starts a stopped session's agents again, each resuming its ACP session. */
@@ -308,25 +263,18 @@ export function startSession(sessionId: string) {
   if (!session) throw new ModelError("No such session");
   if (session.status !== "stopped") throw new ModelError("This session is not stopped");
   session.status = "ready";
-  for (const agent of session.agentIds.flatMap(id => state.model.agents[id] ?? [])) agent.status = "starting";
+  for (const agent of agentsOf(session)) start(agent);
   changed();
-  void launchAgents(session);
 }
 
 /** Starts an exited agent's process again, resuming its ACP session. */
-export async function restartAgent(agentId: string) {
+export function restartAgent(agentId: string) {
   const agent = state.model.agents[agentId];
   if (!agent) throw new ModelError("No such agent");
-  const session = state.model.sessions[agent.sessionId]!;
-  if (session.status !== "ready") throw new ModelError("Start the session first");
+  if (state.model.sessions[agent.sessionId]!.status !== "ready") throw new ModelError("Start the session first");
   if (agent.status !== "exited") throw new ModelError("This agent is running");
-  // Not exited any more, so a second restart is refused while this one waits for the old process.
-  agent.status = "starting";
-  agent.error = undefined;
+  start(agent);
   changed();
-  await stopAgents([agentId]);
-  if (state.model.agents[agentId] !== agent || session.status !== "ready") return;
-  launch(agent);
 }
 
 /**
@@ -338,21 +286,26 @@ export async function deleteSession(sessionId: string, confirmed = false) {
   const session = state.model.sessions[sessionId];
   if (!session) throw new ModelError("No such session");
   if (session.status === "cloning") throw new ModelError("Wait for cloning to finish before deleting this session");
+  if (session.status === "deleting") throw new ModelError("This session is already being deleted");
   if (!confirmed && session.status !== "failed") {
     const unsaved = await findUnsavedWork(environmentFor(session), session.clonePath);
     if (unsaved.length > 0) throw new UnsavedWorkError(unsaved);
   }
-  deleting.add(sessionId);
+  const before = session.status;
+  // Nothing can start in it from here on: the guards on `ready` and `stopped` refuse.
+  session.status = "deleting";
+  const agents = agentsOf(session);
   try {
-    await Promise.all([closeSessionTerminal(sessionId), stopAgents(session.agentIds)]);
+    await halt(session);
     await environmentFor(session).teardown(session.clonePath);
-  } finally {
-    deleting.delete(sessionId);
+  } catch (error) {
+    // Its agents are stopped, and so is it.
+    session.status = before === "failed" ? before : "stopped";
+    changed();
+    throw error;
   }
-  forgetAgents(session.agentIds);
-  const ws = workspace(session.workspaceId);
-  ws.sessionIds = ws.sessionIds.filter(id => id !== sessionId);
-  for (const agentId of session.agentIds) delete state.model.agents[agentId];
+  forgetAgents(agents.map(agent => agent.id));
+  for (const agent of agents) delete state.model.agents[agent.id];
   delete state.model.sessions[sessionId];
   changed();
 }

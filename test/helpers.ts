@@ -25,6 +25,14 @@ export function rawHttp(port: number, lines: string[], body = "") {
   });
 }
 
-/** How many live processes' command lines match the pattern. */
+let sleeps = 0;
+
+/**
+ * A duration for `sleep` that no other test, run or process uses (the pid is
+ * in it), so `aliveCount("^sleep <it>$")` counts this test's processes only.
+ */
+export const uniqueSleep = () => `${3000 + sleeps++}.${process.pid}`;
+
+/** How many live processes' command lines match the regular expression. */
 export const aliveCount = (pattern: string) =>
   Bun.spawnSync(["pgrep", "-f", pattern]).stdout.toString().trim().split("\n").filter(Boolean).length;

@@ -1,4 +1,5 @@
 import { dlopen, FFIType } from "bun:ffi";
+import type { Stoppable } from "./environment";
 
 /**
  * A PTY on this machine, and what it owns. The terminal registry
@@ -6,7 +7,7 @@ import { dlopen, FFIType } from "bun:ffi";
  * made, so another environment can provide its own.
  */
 
-export type PtyProcess = {
+export type PtyProcess = Stoppable & {
   /** The PTY's session id, which is the shell's pid. Every process the terminal started is in this session. */
   sid: number;
   write(data: string | Uint8Array): void;
@@ -15,10 +16,6 @@ export type PtyProcess = {
   hangup(): void;
   /** Resolves when the shell has exited. */
   exited: Promise<void>;
-  /** Stops everything the terminal started and resolves once it is gone. Calling it again is harmless. */
-  reap(): Promise<void>;
-  /** The same, synchronously and with SIGKILL, for when the server process is exiting. */
-  killNow(): void;
 };
 
 export type PtyOptions = {
@@ -26,6 +23,8 @@ export type PtyOptions = {
   rows: number;
   /** Output from the PTY. The buffer is not reused. */
   onData(data: Uint8Array): void;
+  /** How long `stop` waits after SIGTERM before it sends SIGKILL. Tests shorten it. */
+  killGraceMs?: number;
 };
 
 const KILL_GRACE_MS = 2000;
@@ -57,7 +56,7 @@ function terminalEnv(extra: Record<string, string> | undefined) {
 }
 
 /** Spawns `cmd` on a new PTY in `cwd`. Throws if it can't be started (missing binary, missing cwd). */
-export function spawnLocalPty(cmd: string[], cwd: string, { cols, rows, onData }: PtyOptions, env?: Record<string, string>): PtyProcess {
+export function spawnLocalPty(cmd: string[], cwd: string, { cols, rows, onData, killGraceMs = KILL_GRACE_MS }: PtyOptions, env?: Record<string, string>): PtyProcess {
   const proc = Bun.spawn(cmd, {
     cwd,
     env: terminalEnv(env),
@@ -66,7 +65,7 @@ export function spawnLocalPty(cmd: string[], cwd: string, { cols, rows, onData }
   });
   /** The session was found empty. Its id may now belong to someone else, so it is never looked up again. */
   let reaped = false;
-  let reaping: Promise<void> | null = null;
+  let stopping: Promise<void> | undefined;
 
   /**
    * Live processes in the terminal's session, wherever they were reparented to,
@@ -110,7 +109,7 @@ export function spawnLocalPty(cmd: string[], cwd: string, { cols, rows, onData }
    */
   const reap = async () => {
     if (!(await signalMembers("SIGTERM", "SIGHUP"))) return;
-    const deadline = Date.now() + KILL_GRACE_MS;
+    const deadline = Date.now() + killGraceMs;
     while (Date.now() < deadline && (await scanMembers())?.length !== 0) await Bun.sleep(KILL_POLL_MS);
     for (let attempts = 0; attempts < 50; attempts++) {
       const left = await signalMembers("SIGKILL");
@@ -125,8 +124,8 @@ export function spawnLocalPty(cmd: string[], cwd: string, { cols, rows, onData }
     resize: (cols, rows) => proc.terminal?.resize(cols, rows),
     hangup: () => proc.terminal?.close(),
     exited: proc.exited.then(() => {}),
-    reap: () => (reaping ??= reap()),
-    killNow() {
+    stop: () => (stopping ??= reap()),
+    stopNow() {
       if (reaped) return;
       for (const pid of membersOf(parsePids(Bun.spawnSync(PS).stdout.toString()))) signalPid(pid, "SIGKILL");
     },

@@ -24,8 +24,6 @@ beforeAll(() => {
   bindServer(server, "http://127.0.0.1:0/mcp");
 });
 
-beforeEach(resetModelForTests);
-
 afterAll(async () => {
   await server.stop(true);
   run.mockRestore();
@@ -99,7 +97,7 @@ describe("connection", () => {
 });
 
 describe("model", () => {
-  class Client {
+    class Client {
     messages: ServerMessage[] = [];
     private constructor(readonly ws: WebSocket) {
       ws.onmessage = event => this.messages.push(JSON.parse(event.data));
@@ -117,38 +115,29 @@ describe("model", () => {
     }
   }
 
-  test("a client gets the model on connect, and a change's model before the change's result", async () => {
-    const client = await Client.connect();
-    await waitFor(() => client.models().length > 0);
+  test.serial("clients get the model on connect, a change's model before its result, and every change", async () => {
+    const [a, b] = await Promise.all([Client.connect(), Client.connect()]);
+    await waitFor(() => a.models().length > 0 && b.models().length > 0);
 
-    client.send({ t: "addWorkspace", req: 7, repo: "owner/repo" });
-    await waitFor(() => client.messages.some(m => m.t === "result"));
-    const result = client.messages.findIndex(m => m.t === "result");
-    const withWorkspace = client.messages.findIndex(m => m.t === "model" && m.model.workspaces.length === 1);
+    a.send({ t: "addWorkspace", req: 7, repo: "owner/repo" });
+    await waitFor(() => a.messages.some(m => m.t === "result"));
+    const result = a.messages.findIndex(m => m.t === "result");
+    const withWorkspace = a.messages.findIndex(m => m.t === "model" && m.model.workspaces.length === 1);
     expect(withWorkspace).toBeGreaterThan(-1);
     expect(withWorkspace).toBeLessThan(result);
-    expect(client.messages[result]).toMatchObject({ t: "result", req: 7, ok: true, id: getModel().workspaces[0]!.id });
-
-    client.send({ t: "addWorkspace", req: 8, repo: "owner/repo" });
-    await waitFor(() => client.messages.some(m => m.t === "result" && m.req === 8));
-    expect(client.messages.find(m => m.t === "result" && m.req === 8)).toMatchObject({ ok: false, error: expect.stringContaining("already open") });
-
-    const again = await Client.connect();
-    await waitFor(() => again.models().some(m => m.model.workspaces.length === 1));
-    client.ws.close();
-    again.ws.close();
-  });
-
-  test("a change reaches every connected client", async () => {
-    const [a, b] = await Promise.all([Client.connect(), Client.connect()]);
-    a.send({ t: "addWorkspace", req: 1, repo: "owner/repo" });
-    await waitFor(() => a.messages.some(m => m.t === "result"));
     const workspaceId = getModel().workspaces[0]!.id;
+    expect(a.messages[result]).toMatchObject({ t: "result", req: 7, ok: true, id: workspaceId });
 
-    a.send({ t: "createSession", req: 2, workspaceId, environment: "local" });
+    a.send({ t: "addWorkspace", req: 8, repo: "owner/repo" });
+    await waitFor(() => a.messages.some(m => m.t === "result" && m.req === 8));
+    expect(a.messages.find(m => m.t === "result" && m.req === 8)).toMatchObject({ ok: false, error: expect.stringContaining("already open") });
+
+    // The other client, and one that connects later, see the changes too.
+    a.send({ t: "createSession", req: 9, workspaceId, environment: "local" });
     await waitFor(() => Object.keys(b.models().at(-1)!.model.sessions).length === 1);
     expect(Object.values(b.models().at(-1)!.model.sessions)[0]!.name).toBe("Untitled 1");
-    a.ws.close();
-    b.ws.close();
+    const late = await Client.connect();
+    await waitFor(() => late.models().some(m => m.model.workspaces.length === 1));
+    for (const client of [a, b, late]) client.ws.close();
   });
 });

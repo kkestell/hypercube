@@ -52,7 +52,7 @@ export type ServerMessage =
   | { t: "transcript"; agentId: string; items: TranscriptItem[] }
   /** One item added to or replaced in an agent's transcript. */
   | { t: "item"; agentId: string; item: TranscriptItem }
-  /** The fields of an agent's panel info that changed; the browser replaces those. Sent whole on connect. */
+  /** An agent's whole panel info; the browser replaces its copy. Sent on connect, after each change, and as `{}` when a new process starts. */
   | { t: "info"; agentId: string; info: AgentInfo }
   | { t: "result"; req: number; ok: true; id?: string }
   /** `unsaved` is set when a delete was refused because the session holds work that would be lost. */

@@ -4,7 +4,7 @@ import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from
 import { AgentsPanel } from "./AgentsPanel";
 import { SessionList } from "./SessionList";
 import type { Workspace } from "./model";
-import { useModel } from "./modelStore";
+import { sessionsOf, useModel } from "./modelStore";
 import { SessionView } from "./SessionView";
 import { TerminalPanel } from "./TerminalPanel";
 
@@ -81,7 +81,7 @@ type WorkspaceViewProps = {
 /** A workspace: its sessions, the active session's agents, and the side panels. */
 export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps) {
   const model = useModel();
-  const sessions = workspace.sessionIds.map(id => model.sessions[id]!).filter(Boolean);
+  const sessions = sessionsOf(model, workspace.id);
   const leftRef = usePanelRef();
   const bottomRef = usePanelRef();
   const rightRef = usePanelRef();
@@ -93,7 +93,8 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
     rightRef.current?.collapse();
   }, []);
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(sessions[0]?.id ?? null);
-  const activeSessionId = sessions.find(session => session.id === selectedSessionId)?.id ?? sessions[0]?.id ?? null;
+  const activeSession = sessions.find(session => session.id === selectedSessionId) ?? sessions[0] ?? null;
+  const activeSessionId = activeSession?.id ?? null;
   // Sessions mount on first visit and stay mounted, so their views keep their layouts.
   const [openedSessionIds, setOpenedSessionIds] = useState(() => new Set(activeSessionId ? [activeSessionId] : []));
 
@@ -122,7 +123,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
           <OverviewIcon />
           {anyWaiting && <span title="An agent is waiting on you" className="absolute top-0.5 right-0.5 size-2 rounded-full bg-amber-400" />}
         </button>
-        <span className="ml-1 flex-1 truncate text-neutral-400">{workspace.name}</span>
+        <span className="ml-1 flex-1 truncate text-neutral-400">{workspace.repo}</span>
         <ToggleButton side="left" open={open.left} onClick={() => togglePanel(leftRef)} />
         <ToggleButton side="bottom" open={open.bottom} onClick={() => togglePanel(bottomRef)} />
         <ToggleButton side="right" open={open.right} onClick={() => togglePanel(rightRef)} />
@@ -177,7 +178,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
               groupResizeBehavior="preserve-pixel-size"
               onResize={trackOpen("bottom")}
             >
-              <TerminalPanel viewId={workspace.id} session={sessions.find(session => session.id === activeSessionId) ?? null} />
+              <TerminalPanel viewId={workspace.id} session={activeSession} />
             </Panel>
           </Group>
         </Panel>
@@ -194,7 +195,7 @@ export function WorkspaceView({ workspace, onShowOverview }: WorkspaceViewProps)
           onResize={trackOpen("right")}
         >
           <SidePanel title="Agents">
-            <AgentsPanel session={sessions.find(session => session.id === activeSessionId) ?? null} onSelect={showAgent} />
+            <AgentsPanel session={activeSession} onSelect={showAgent} />
           </SidePanel>
         </Panel>
       </Group>

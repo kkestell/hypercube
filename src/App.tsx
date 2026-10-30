@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { Workspace } from "./model";
-import { useModel } from "./modelStore";
+import { agentsOf, sessionsOf, useModel } from "./modelStore";
 import { layoutCards, type CardPlacement, type Size } from "./overviewLayout";
 import { connect, request } from "./socket";
 import { activity } from "./status";
@@ -40,7 +40,7 @@ function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, o
   const fullscreen = active && !overview;
   const shown = active || overview;
   const model = useModel();
-  const { busy, waiting } = activity(workspace.sessionIds.flatMap(id => model.sessions[id]?.agentIds ?? []).map(id => model.agents[id]));
+  const { busy, waiting } = activity(sessionsOf(model, workspace.id).flatMap(session => agentsOf(model, session.id)));
   const transform = fullscreen
     ? "translate(0px, 0px) scale(1)"
     : `translate(${card.x}px, ${card.y}px) scale(${card.scale})`;
@@ -86,7 +86,7 @@ function WorkspaceFrame({ workspace, card, viewport, active, overview, opened, o
         }}
       >
         <span className="flex flex-col items-center" style={{ gap: 10 / card.scale }}>
-          <span>{workspace.name}</span>
+          <span>{workspace.repo}</span>
           {(waiting.length > 0 || busy.length > 0) && (
             <span className="flex" style={{ fontSize: 14 / card.scale, gap: 14 / card.scale }}>
               {waiting.length > 0 && <span className="text-amber-300">{waiting.length} waiting on you</span>}

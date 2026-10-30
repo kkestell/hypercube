@@ -1,28 +1,25 @@
 import { relative } from "node:path";
 import type { UnsavedWork } from "../model";
-import type { Environment } from "./environment";
+import { resolveDir, type Environment } from "./environment";
 
 /**
  * What deleting a session's clone would lose: in the clone and in each git
  * worktree inside it, changes `git status` shows and commits that are on no
- * remote branch. Stashes and ignored files aren't looked at.
+ * remote branch. Stashes and ignored files aren't looked at. A clone that
+ * can't be reached (gone, or its container is stopped) is not the same as one
+ * with nothing to lose: it comes back as an entry with `error`, so the user is asked.
  */
 export async function findUnsavedWork(env: Environment, clonePath: string): Promise<UnsavedWork[]> {
-  let root: string;
-  try {
-    root = await env.resolveDir(clonePath, ".");
-  } catch {
-    return []; // The clone is already gone.
-  }
   const git = async (cwd: string, ...args: string[]) => (await env.run(["git", "--no-optional-locks", ...args], cwd)).stdout.split("\n").filter(Boolean);
 
   try {
+    const root = await resolveDir(env, clonePath, ".");
     // The first worktree listed is the clone itself. Worktrees outside the clone aren't removed with it.
     const listed = (await git(clonePath, "worktree", "list", "--porcelain")).filter(line => line.startsWith("worktree ")).map(line => line.slice("worktree ".length));
     const dirs = [{ path: ".", dir: clonePath }];
     for (const listedPath of listed.slice(1)) {
       try {
-        dirs.push({ path: relative(root, await env.resolveDir(clonePath, listedPath)), dir: listedPath });
+        dirs.push({ path: relative(root, await resolveDir(env, clonePath, listedPath)), dir: listedPath });
       } catch {
         // Outside the clone, or gone.
       }

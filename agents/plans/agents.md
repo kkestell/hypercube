@@ -143,8 +143,7 @@ The second environment, chosen when creating a session.
 - A base image with OpenCode (and `git`, `gh`) built by Hypercube from a Dockerfile in the repo. A workspace can name its own image built `FROM` it.
 - Docker environment: `setup` creates and starts a container for the session and clones inside it; `spawn` is `docker exec -i`; `teardown` removes the container. GitHub token from `gh auth token` and OpenCode's credentials passed as environment variables at container start. Nothing from the home directory is mounted.
 - Create-session UI gets a Local/Docker choice.
-- **Open question, verify before building:** how an agent in the container reaches `/mcp` when the server binds loopback only, and how the Host/Origin check treats it. Options include a per-session forwarder or a second listener; decide after testing what Docker on this machine actually allows.
-- **Open question:** how OpenCode's ChatGPT subscription credentials get into the container as environment variables.
+- **Settled:** containers reach `/mcp` through `host.docker.internal` on its own `127.0.0.1` listener, while the app listens on `[::1]`, which containers can't reach. OpenCode's OpenAI login goes in through `opencode auth export` piped to `opencode auth import`.
 
 **You can test:** create a Docker session, chat with its lead, have it start workers, check with `docker ps` that everything runs in the container, delete the session and see the container go.
 
