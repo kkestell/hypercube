@@ -118,6 +118,8 @@ func (s *Server) handle(req client.Request) client.Reply {
 		reply = s.list()
 	case "kill":
 		err = s.kill(req)
+	case "respawn":
+		err = s.respawn(req)
 	default:
 		err = fmt.Errorf("unknown request type %q", req.Type)
 	}
@@ -166,7 +168,7 @@ func (s *Server) spawn(req client.Request) (client.Reply, error) {
 		}
 	}
 
-	p, err := s.startPane(s.nextID('p'), req.Dir, req.Argv, req.Env)
+	p, err := s.startPane(s.nextID('p'), req.Dir, req.Argv, req.Env, defaultCols, defaultRows)
 	if err != nil {
 		return client.Reply{}, err
 	}
@@ -258,6 +260,41 @@ func (s *Server) kill(req client.Request) error {
 		os.Remove(s.path)
 		s.listener.Close()
 	}
+	return nil
+}
+
+// respawn replaces the pane's process with a new one of the same size, keeping
+// the pane's ID and place in its window. If the new process cannot start, the
+// pane keeps the old one.
+func (s *Server) respawn(req client.Request) error {
+	if len(req.Argv) == 0 {
+		return fmt.Errorf("respawn needs a command")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := s.findPane(req.Pane)
+	if old == nil {
+		return fmt.Errorf("unknown pane %q", req.Pane)
+	}
+	p, err := s.startPane(old.id, req.Dir, req.Argv, req.Env, old.cols, old.rows)
+	if err != nil {
+		return err
+	}
+	for _, sess := range s.sessions {
+		for _, w := range sess.windows {
+			if i := slices.Index(w.panes, old); i >= 0 {
+				w.panes[i] = p
+			}
+		}
+	}
+	for a := range s.attached {
+		if a.pane == old {
+			a.pane = p
+			a.signal()
+		}
+	}
+	old.hangUp()
 	return nil
 }
 

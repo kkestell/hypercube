@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net"
@@ -177,6 +178,14 @@ func spawnPane(t *testing.T, c *client.Conn, req client.Request) client.Reply {
 		t.Fatal(err)
 	}
 	return reply
+}
+
+func respawnPane(t *testing.T, c *client.Conn, pane string, argv []string) {
+	t.Helper()
+	_, err := c.Call(client.Request{Type: "respawn", Pane: pane, Argv: argv, Env: []string{"PATH=/usr/bin:/bin"}})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 // panePID reads the PID that a pane started with killable prints.
@@ -526,6 +535,61 @@ func TestKillCommandStopsServer(t *testing.T) {
 	}
 }
 
+func TestRespawnDeadPane(t *testing.T) {
+	c := startServer(t)
+	a := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "echo old; exit 3"}})
+	b := spawnPane(t, c, client.Request{Window: a.Window, Argv: []string{"sleep", "60"}})
+	waitExited(t, c, a.Pane)
+
+	respawnPane(t, c, a.Pane, []string{"sh", "-c", "echo new; exec sleep 60"})
+	if text := waitCapture(t, c, a.Pane, "new"); strings.Contains(text, "old") {
+		t.Errorf("screen after respawn still has the old output:\n%s", text)
+	}
+	checkList(t, c, []client.Session{{ID: a.Session, Windows: []client.Window{
+		{ID: a.Window, Panes: []client.Pane{alive(a.Pane), alive(b.Pane)}},
+	}}})
+}
+
+func TestRespawnLivePane(t *testing.T) {
+	c := startServer(t)
+	a := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "echo pid=$$; echo old; exec sleep 60"}})
+	pid := panePID(t, c, a.Pane)
+
+	respawnPane(t, c, a.Pane, []string{"sh", "-c", "echo new; exec sleep 60"})
+	waitGone(t, pid)
+	text := waitCapture(t, c, a.Pane, "new")
+	if strings.Contains(text, "old") || strings.Contains(text, strconv.Itoa(pid)) {
+		t.Errorf("screen after respawn still has the old output:\n%s", text)
+	}
+	checkList(t, c, []client.Session{{ID: a.Session, Windows: []client.Window{
+		{ID: a.Window, Panes: []client.Pane{alive(a.Pane)}},
+	}}})
+}
+
+func TestRespawnAttached(t *testing.T) {
+	c := startServer(t)
+	a := spawnPane(t, c, client.Request{Argv: killable})
+
+	at := dial(t)
+	if _, err := at.Call(client.Request{Type: "attach", Session: a.Session, Cols: 100, Rows: 30}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := at.ReadOutput(); err != nil || len(out.Frame) == 0 {
+		t.Fatalf("first output = %+v, %v; want a frame", out, err)
+	}
+
+	respawnPane(t, c, a.Pane, []string{"sh", "-c", "stty size; exec sleep 60"})
+	for {
+		out, err := at.ReadOutput()
+		if err != nil {
+			t.Fatalf("stream ended before the new pane's screen: %v", err)
+		}
+		if bytes.Contains(out.Frame, []byte("30 100")) {
+			return
+		}
+	}
+}
+
 func TestErrors(t *testing.T) {
 	c := startServer(t)
 	a := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
@@ -545,9 +609,20 @@ func TestErrors(t *testing.T) {
 		"kill of an unknown pane":             {Type: "kill", Pane: "p99"},
 		"kill of an unknown window":           {Type: "kill", Window: "w99"},
 		"kill of an unknown session":          {Type: "kill", Session: "s99"},
+		"respawn with no command":             {Type: "respawn", Pane: a.Pane, Env: env},
+		"respawn of an unknown pane":          {Type: "respawn", Pane: "p99", Argv: sleep, Env: env},
+		"respawn with a command not in PATH":  {Type: "respawn", Pane: a.Pane, Argv: []string{"no-such-command"}, Env: env},
 	} {
 		if _, err := c.Call(req); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
+	// The failed respawn left the pane's old process in place.
+	if _, err := c.Call(client.Request{Type: "capture", Pane: a.Pane}); err != nil {
+		t.Errorf("capture after the failed respawn: %v", err)
+	}
+	checkList(t, c, []client.Session{
+		{ID: a.Session, Windows: []client.Window{{ID: a.Window, Panes: []client.Pane{alive(a.Pane)}}}},
+		{ID: b.Session, Windows: []client.Window{{ID: b.Window, Panes: []client.Pane{alive(b.Pane)}}}},
+	})
 }

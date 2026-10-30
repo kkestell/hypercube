@@ -19,8 +19,8 @@ const (
 )
 
 // pane is a process on a PTY whose output feeds a terminal. The server's mutex
-// guards alive, status, killed, term, and rs; the terminal and render state are
-// not safe for concurrent use.
+// guards alive, status, killed, cols, rows, term, and rs; the terminal and
+// render state are not safe for concurrent use.
 type pane struct {
 	id     string
 	cmd    *exec.Cmd
@@ -30,11 +30,13 @@ type pane struct {
 	alive  bool
 	status int  // the exit status once alive is false
 	killed bool // the pane left the tree; free it once its process ends
+	cols   uint16
+	rows   uint16
 }
 
 // startPane runs argv with exactly env and starts a goroutine that feeds the
 // process's output to the pane's terminal.
-func (s *Server) startPane(id, dir string, argv, env []string) (*pane, error) {
+func (s *Server) startPane(id, dir string, argv, env []string, cols, rows uint16) (*pane, error) {
 	path, err := lookPath(argv[0], env)
 	if err != nil {
 		return nil, err
@@ -43,16 +45,16 @@ func (s *Server) startPane(id, dir string, argv, env []string) (*pane, error) {
 	cmd.Dir = dir
 	// A nil Env would inherit the server's environment.
 	cmd.Env = append([]string{}, env...)
-	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: defaultRows, Cols: defaultCols})
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: rows, Cols: cols})
 	if err != nil {
 		return nil, err
 	}
 
-	p := &pane{id: id, cmd: cmd, ptmx: ptmx, alive: true}
+	p := &pane{id: id, cmd: cmd, ptmx: ptmx, alive: true, cols: cols, rows: rows}
 	// The callback runs with the server's mutex held. A full PTY input buffer
 	// could block it; that is unlikely.
 	p.term, err = libghostty.NewTerminal(
-		libghostty.WithSize(defaultCols, defaultRows),
+		libghostty.WithSize(cols, rows),
 		libghostty.WithMaxScrollbackLines(scrollback),
 		libghostty.WithWritePty(func(_ *libghostty.Terminal, data []byte) {
 			ptmx.Write(data)
@@ -137,7 +139,11 @@ func (p *pane) resize(cols, rows uint16) error {
 	if err := p.term.Resize(cols, rows, 0, 0); err != nil {
 		return err
 	}
-	return pty.Setsize(p.ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+	if err := pty.Setsize(p.ptmx, &pty.Winsize{Rows: rows, Cols: cols}); err != nil {
+		return err
+	}
+	p.cols, p.rows = cols, rows
+	return nil
 }
 
 // capture must be called with the server's mutex held.

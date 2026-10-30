@@ -98,7 +98,10 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 		switch req.Type {
 		case "input":
 			pass, detach := a.filter(req.Data)
-			a.pane.ptmx.Write(pass)
+			s.mu.Lock()
+			ptmx := a.pane.ptmx
+			s.mu.Unlock()
+			ptmx.Write(pass)
 			if detach {
 				return true
 			}
