@@ -336,7 +336,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	refuse := exec.Command(binary, "delete-session", shortcutOrch.TeamOf())
+	refuse := exec.Command(binary, "delete-session", shortcutOrch.Team)
 	refuse.Dir = root
 	if out, err := refuse.CombinedOutput(); err == nil || !strings.Contains(string(out), "uncommitted changes") {
 		t.Fatalf("session deletion failed to protect dirty work: %v %s", err, out)
@@ -381,24 +381,6 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", "="+workspace.Name(root)+":", "#{window_id}")); got != otherWindow {
 		t.Fatal("reattach changed the selected window", got)
-	}
-	// An unmarked running window must not get duplicate harnesses, even if its
-	// saved pane target is stale. Restore the fixture's markers afterward.
-	tmux("set-option", "-w", "-t", firstWindow, "-u", "@hypercube_team")
-	if err := store.Update(path, func(s *store.State) error { s.Agents[0].Target = otherWorker.Target; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	before := stateForDiagnostics(path)
-	cmd := exec.Command(binary, "start", root)
-	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "no session marker") {
-		t.Fatalf("unmarked running window was accepted: %v %s", err, out)
-	}
-	if stateForDiagnostics(path) != before {
-		t.Fatal("unmarked window refusal changed state")
-	}
-	tmux("set-option", "-w", "-t", firstWindow, "@hypercube_team", "default")
-	if err := store.Update(path, func(s *store.State) error { s.Agents[0].Target = orch.Target; return nil }); err != nil {
-		t.Fatal(err)
 	}
 	tmux("send-keys", "-t", worker.Target, "-l", "draft stays here")
 	call(orch.ID, "send_message", map[string]string{"to": worker.ID, "text": "wake while drafting"})
@@ -465,7 +447,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		t.Fatal("resumed queues crossed sessions")
 	}
 	// Deleting the final window must finish cleanup even as tmux exits.
-	cli("delete-session", otherOrch.TeamOf())
+	cli("delete-session", otherOrch.Team)
 	call(orch.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
 	until("last worker", func() bool { return len(state().Agents) == 2 && state().Agents[1].Waiter > 0 })
 	lastWorker := state().Agents[1]

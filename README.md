@@ -13,6 +13,3 @@ Local coding-agent teams for macOS, built with Go and tmux.
 - [Contributor instructions](AGENTS.md): scope, implementation constraints,
   and required validation.
 
-User-facing procedures belong in these guides. Internal command wiring, tool
-schemas, hook payloads, validation edge cases, and algorithms belong in the
-source; link to them instead of maintaining a second specification.

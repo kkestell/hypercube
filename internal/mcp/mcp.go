@@ -150,7 +150,7 @@ func call(self, path, name string, args map[string]string) (string, error) {
 		}
 		var team []entry
 		for _, a := range s.Agents {
-			if a.TeamOf() != caller.TeamOf() {
+			if a.Team != caller.Team {
 				continue
 			}
 			team = append(team, entry{a.ID, a.Name, a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
@@ -172,7 +172,7 @@ func sendMessage(self, path, to, text string) (string, error) {
 		if err != nil {
 			return err
 		}
-		a, err := s.TeamAgent(caller.TeamOf(), to)
+		a, err := s.TeamAgent(caller.Team, to)
 		if err != nil {
 			return err
 		}
@@ -204,7 +204,7 @@ func orchestrator(s *store.State, self string) (*store.Agent, error) {
 }
 
 func createAgent(self, path string, args map[string]string) (string, error) {
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return "", err
 	}
@@ -233,11 +233,11 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		if err != nil {
 			return err
 		}
-		if _, err := s.TeamAgent(orch.TeamOf(), name); err == nil {
+		if _, err := s.TeamAgent(orch.Team, name); err == nil {
 			return fmt.Errorf("an agent named %s already exists", name)
 		}
 		root = orch.Dir
-		a.Team = orch.TeamOf()
+		a.Team = orch.Team
 		switch {
 		case args["dir"] != "":
 			dir, err := workspace.Resolve(root, args["dir"])
@@ -248,7 +248,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		case s.NoGit:
 			return errors.New("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees")
 		default:
-			workerName := a.TeamOf() + "/" + name
+			workerName := a.Team + "/" + name
 			a.Dir, a.Branch = workspace.WorktreeDir(root, workerName), workspace.WorkerBranch(workerName)
 		}
 		s.Agents = append(s.Agents, a)
@@ -261,7 +261,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 		return "", err
 	}
 	worktreeCreated := false
-	window, windowErr := tmux.FindWindow(store.Workspace(path), a.TeamOf(), path)
+	window, windowErr := tmux.FindWindow(store.Workspace(path), a.Team, path)
 	if windowErr != nil {
 		err = windowErr
 	} else if window == "" {
@@ -298,7 +298,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 }
 
 func removeAgent(self, path, id string) (string, error) {
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return "", err
 	}
@@ -311,7 +311,7 @@ func removeAgent(self, path, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	a, err := s.TeamAgent(orch.TeamOf(), id)
+	a, err := s.TeamAgent(orch.Team, id)
 	if err != nil {
 		return "", err
 	}

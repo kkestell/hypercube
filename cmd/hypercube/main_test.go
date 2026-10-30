@@ -4,7 +4,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/store"
@@ -66,54 +65,13 @@ func TestDelete(t *testing.T) {
 	if err := deleteWorkspace(root, name); err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{path, filepath.Join(store.Dir(), name+".lock"), dir} {
+	for _, p := range []string{path, dir} {
 		if _, err := os.Stat(p); err == nil {
 			t.Errorf("%s remains", p)
 		}
 	}
 	if _, err := os.Stat(other); err != nil {
 		t.Errorf("delete touched a worker's own directory: %v", err)
-	}
-}
-
-// Saved teams keep their sessions and queue; unsupported state and a running
-// previous host are refused.
-func TestSavedStateCompatibility(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "w.json")
-	for _, source := range []string{
-		`{"agents":[{"id":"o","role":"orchestrator","session_id":"saved"}],"messages":[{"from":"user","to":"o","text":"kept"}],"tasks":null}`,
-		`{"agents":[{"id":"o","role":"orchestrator"},{"id":"other","role":"orchestrator","team":"docs"}],"messages":[],"tasks":[]}`,
-		`{"agents":[{"id":"o","role":"orchestrator"},{"id":"other","role":"orchestrator"}],"messages":[],"tasks":[]}`,
-		`{"agents":[{"id":"o","role":"orchestrator"}],"tasks":[{"name":"nightly","schedule":"0 3 * * *","prompt":"check"}]}`,
-	} {
-		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		s, err := store.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = validSessions(&s)
-		if strings.Contains(source, `"session_id"`) || strings.Contains(source, `"team":"docs"`) {
-			if err != nil {
-				t.Fatal(s, err)
-			}
-			if strings.Contains(source, `"session_id"`) && (s.Agents[0].SessionID != "saved" || len(s.Messages) != 1) {
-				t.Fatal(s)
-			}
-		} else if err == nil {
-			t.Fatal("unsupported saved state accepted")
-		}
-	}
-	hostPath := strings.TrimSuffix(path, ".json") + ".host.lock"
-	lock, err := store.LockFile(hostPath, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Close()
-	if err := legacyStopped(path); err == nil {
-		t.Fatal("a running previous host was accepted")
 	}
 }
 

@@ -182,14 +182,11 @@ func stopOrDelete(cmd string, args []string) error {
 // stop kills the workspace's session, which ends its agents.
 func stop(root, name string) error {
 	path := store.Path(name)
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := legacyStopped(path); err != nil {
-		return err
-	}
 	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
 		return errors.New("refusing to stop a tmux session not owned by this workspace")
 	}
@@ -200,15 +197,14 @@ func stop(root, name string) error {
 }
 
 // status prints every workspace with a state file: its directory, whether its
-// session is running, its number of agents, when it was created, and when it
-// was last active. The lock file is created with the state and never written,
-// so its modification time is the creation time. Every hook writes the state,
-// so the state file's modification time is the last activity.
+// session is running, its number of agents, and when it was last active.
+// Every hook writes the state, so the state file's modification time is the
+// last activity.
 func status() error {
 	type row struct {
-		dir, session      string
-		agents            int
-		created, modified time.Time
+		dir, session string
+		agents       int
+		modified     time.Time
 	}
 	list, err := workspaces()
 	if err != nil {
@@ -220,10 +216,7 @@ func status() error {
 		if err != nil {
 			return err
 		}
-		r := row{dir: k.name, session: "stopped", agents: len(k.state.Agents), created: info.ModTime(), modified: info.ModTime()}
-		if lock, err := os.Stat(strings.TrimSuffix(k.path, ".json") + ".lock"); err == nil {
-			r.created = lock.ModTime()
-		}
+		r := row{dir: k.name, session: "stopped", agents: len(k.state.Agents), modified: info.ModTime()}
 		if k.root != "" {
 			r.dir = workspace.Short(k.root)
 		}
@@ -235,9 +228,9 @@ func status() error {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].modified.After(rows[j].modified) })
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKSPACE\tSESSION\tAGENTS\tCREATED\tACTIVE")
+	fmt.Fprintln(w, "WORKSPACE\tSESSION\tAGENTS\tACTIVE")
 	for _, r := range rows {
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n", r.dir, r.session, r.agents, ago(r.created), ago(r.modified))
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", r.dir, r.session, r.agents, ago(r.modified))
 	}
 	return w.Flush()
 }
@@ -269,14 +262,11 @@ func deleteWorkspace(root, name string) error {
 // team's resources are removed, with the same worktree safety checks.
 func deleteTeam(root, path, team, expectedWindow string) error {
 	name := store.Workspace(path)
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := legacyStopped(path); err != nil {
-		return err
-	}
 	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
 		return errors.New("refusing to delete a tmux session not owned by this workspace")
 	}
@@ -299,7 +289,7 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 	var workers []store.Agent
 	var problems []string
 	for _, a := range s.Agents {
-		if a.Role != store.Worker || a.Branch == "" || team != "" && a.TeamOf() != team {
+		if a.Role != store.Worker || a.Branch == "" || team != "" && a.Team != team {
 			continue
 		}
 		workers = append(workers, a)
@@ -341,7 +331,7 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 		if err := store.Update(path, func(s *store.State) error {
 			var remove []string
 			for _, a := range s.Agents {
-				if a.TeamOf() == team {
+				if a.Team == team {
 					remove = append(remove, a.ID)
 				}
 			}
@@ -392,22 +382,16 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		return err
 	}
 	path := store.Path(name)
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	if err := legacyStopped(path); err != nil {
-		return err
-	}
 	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
 		return errors.New("a tmux session with this name belongs to something else")
 	}
 	s, err := store.Load(path)
 	if err != nil {
-		return err
-	}
-	if err := validSessions(&s); err != nil {
 		return err
 	}
 	add := create || len(s.Agents) == 0
@@ -431,25 +415,11 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		if a.Role != store.Orchestrator {
 			continue
 		}
-		window, err := tmux.FindWindow(name, a.TeamOf(), path)
+		window, err := tmux.FindWindow(name, a.Team, path)
 		if err != nil {
 			return err
 		}
-		missing[a.TeamOf()] = window == ""
-	}
-	// Older running builds have no window identity. Require a restart instead
-	// of launching a second copy against their agents' queues and sessions.
-	for _, a := range s.Agents {
-		if !missing[a.TeamOf()] {
-			continue
-		}
-		pane, err := tmux.FindPane(name, a.ID, path)
-		if err != nil {
-			return err
-		}
-		if pane != "" {
-			return errors.New("a running Hypercube window has no session marker; stop and restart the workspace before using this build")
-		}
+		missing[a.Team] = window == ""
 	}
 	if add {
 		missing[newName] = true
@@ -474,7 +444,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 			}
 			for i := range s.Agents {
 				a := &s.Agents[i]
-				if !missing[a.TeamOf()] {
+				if !missing[a.Team] {
 					continue
 				}
 				a.Target, a.QuickExits, a.Attention = "", 0, false
@@ -499,10 +469,10 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		}
 		if _, err := harness.Launch(a, path, prompt); err != nil {
 			// Keep healthy windows running and the failed team's state for retry.
-			if cleanup := tmux.KillWindow(name, a.TeamOf(), path); cleanup != nil {
+			if cleanup := tmux.KillWindow(name, a.Team, path); cleanup != nil {
 				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
 			}
-			return fmt.Errorf("launching %s in session %s: %w", a.Name, a.TeamOf(), err)
+			return fmt.Errorf("launching %s in session %s: %w", a.Name, a.Team, err)
 		}
 	}
 	if len(launch) > 0 {
@@ -531,38 +501,6 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 	return nil
 }
 
-func validSessions(s *store.State) error {
-	if len(s.Tasks) != 0 {
-		return errors.New("this workspace has scheduled tasks, which are unsupported; its saved state was left unchanged")
-	}
-	leads := map[string]int{}
-	names := map[string]bool{}
-	ids := map[string]bool{}
-	for _, a := range s.Agents {
-		team := a.TeamOf()
-		if !sessionName.MatchString(team) {
-			return fmt.Errorf("invalid saved session name %q; its saved state was left unchanged", team)
-		}
-		if _, ok := leads[team]; !ok {
-			leads[team] = 0
-		}
-		if a.Role == store.Orchestrator {
-			leads[team]++
-		}
-		key := team + "/" + a.Name
-		if names[key] || ids[a.ID] {
-			return fmt.Errorf("duplicate agent name or ID in session %q", team)
-		}
-		names[key], ids[a.ID] = true, true
-	}
-	for team, n := range leads {
-		if n != 1 {
-			return fmt.Errorf("session %q must have exactly one orchestrator", team)
-		}
-	}
-	return nil
-}
-
 // These commands run from tmux bindings, using its workspace marker instead
 // of a worker's current directory.
 func windowAction(args []string) error {
@@ -577,29 +515,11 @@ func windowAction(args []string) error {
 		if args[0] == "new" && len(args) == 2 {
 			return openWorkspace(a.Dir, "", true, true, false)
 		}
-		if args[0] == "delete" && len(args) == 4 && a.TeamOf() == args[2] {
+		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])
 		}
 	}
 	return errors.New("no matching Hypercube session")
-}
-
-// Avoid running two implementations against the same live workspace state.
-func legacyStopped(path string) error {
-	hostLock := strings.TrimSuffix(path, ".json") + ".host.lock"
-	if _, err := os.Stat(hostLock); errors.Is(err, os.ErrNotExist) {
-		return nil
-	} else if err != nil {
-		return err
-	}
-	lock, err := store.LockFile(hostLock, false)
-	if err != nil {
-		return err
-	}
-	if lock == nil {
-		return errors.New("the workspace's previous host is still running; stop it with the installed binary before starting this version")
-	}
-	return lock.Close()
 }
 
 // runAgent replaces the wrapper with the harness. tmux owns its PTY and process
@@ -659,7 +579,7 @@ func exited(path, pane, status string) error {
 	if _, err := strconv.Atoi(status); err != nil {
 		return err
 	}
-	lock, err := store.LockFile(path+".session.lock", true)
+	lock, err := store.LockFile(path + ".session.lock")
 	if err != nil {
 		return err
 	}

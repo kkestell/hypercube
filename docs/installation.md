@@ -101,11 +101,6 @@ Each agent's hooks, MCP server, and wake-ups use the executable path that
 launched it. Replacing a binary alone does not update those launch arguments;
 restart workspaces when switching executable paths.
 
-State containing scheduled tasks is refused without modification. A running
-window without team markers requires a stop/start. A previous host that still
-holds the workspace lock must be stopped with its own binary before this
-build can use the state.
-
 ## Development
 
 `make dev` builds this checkout and opens Ghostty with isolated state,

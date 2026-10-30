@@ -79,7 +79,7 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 			a.Attention = true
 		case "StopFailure":
 			if a.Role == store.Worker {
-				if orch := s.TeamOrchestrator(a.TeamOf()); orch != nil {
+				if orch := s.TeamOrchestrator(a.Team); orch != nil {
 					s.Messages = append(s.Messages, store.Message{From: id, To: orch.ID, Text: failure(in)})
 				}
 			}
@@ -131,26 +131,16 @@ func Format(s *store.State, messages []store.Message) string {
 func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s (%s), the %s in a Hypercube team of coding agents.\n", a.Name, a.ID, a.Role)
-	fmt.Fprintf(&b, "Your Hypercube session is %q. Messaging and worker tools apply only to this session.\n", a.TeamOf())
+	fmt.Fprintf(&b, "Your Hypercube session is %q. Messaging and worker tools apply only to this session.\n", a.Team)
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
 	for _, t := range s.Agents {
-		if t.TeamOf() != a.TeamOf() {
+		if t.Team != a.Team {
 			continue
 		}
 		fmt.Fprintf(&b, "- %s (%s): %s, %s, %s%s\n", t.Name, t.ID, t.Role, t.Harness, t.Dir, onBranch(t.Branch))
 	}
 	if a.Role == store.Orchestrator {
 		b.WriteString("Other Hypercube sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate changes with the user; use worker worktrees for independent edits.\n")
-	}
-	b.WriteString(messageTools)
-	if s.NoGit {
-		b.WriteString(`- create_agent(name, profile, dir, message?) creates a worker that works directly in dir, ` + dirArg + ` Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
-- remove_agent(id) closes a worker's pane and removes it from the team. Its directory is left as it is. Orchestrator only.
-`)
-	} else {
-		b.WriteString(`- create_agent(name, profile, dir?, message?) creates a worker. Without dir, the worker gets its own branch and worktree from the orchestrator's HEAD, with submodules checked out and copies of the gitignored paths the checkout's .worktreeinclude lists. With dir, ` + dirArg + ` the worker works directly in it, and Hypercube creates no branch or worktree. Its profile is one of the worker profiles below. The optional message is delivered on the worker's first turn. Orchestrator only.
-- remove_agent(id) closes a worker's pane and removes it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is. Orchestrator only.
-`)
 	}
 	switch {
 	case a.Role == store.Orchestrator && s.NoGit:
@@ -180,15 +170,7 @@ func onBranch(branch string) string {
 	return " on branch " + branch
 }
 
-const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the orchestrator's working directory,"
-
 const reportBack = ` When you finish, or need something, send the orchestrator a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
-`
-
-const messageTools = `
-Hypercube MCP tools:
-- send_message(to, text) sends a message to an agent by ID or name. Messages arrive in your context as "Message from <name> (<id>):".
-- list_agents() returns the team with each agent's activity.
 `
 
 // writeTeamwork writes the orchestrator's guidance on parallel work and the

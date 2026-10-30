@@ -42,13 +42,6 @@ type Agent struct {
 	QuickExits int    `json:"quick_exits,omitempty"`
 }
 
-type Task struct {
-	Name     string `json:"name"`
-	Schedule string `json:"schedule"`
-	Prompt   string `json:"prompt"`
-	LastRun  int64  `json:"last_run"`
-}
-
 type Message struct {
 	From string `json:"from"`
 	To   string `json:"to"`
@@ -58,8 +51,6 @@ type Message struct {
 type State struct {
 	Agents   []Agent   `json:"agents"`
 	Messages []Message `json:"messages"`
-	Tasks    []Task    `json:"tasks"`
-	Accent   uint64    `json:"accent,omitempty"`
 	// NoGit is set for a workspace whose directory is not a Git checkout.
 	// Its workers work directly in existing directories, without branches
 	// or worktrees.
@@ -107,6 +98,7 @@ func Load(path string) (State, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return s, fmt.Errorf("%s: %w", path, err)
 	}
+	// Agents saved before sessions existed belong to the default session.
 	for i := range s.Agents {
 		if s.Agents[i].Team == "" {
 			s.Agents[i].Team = DefaultTeam
@@ -115,18 +107,16 @@ func Load(path string) (State, error) {
 	return s, nil
 }
 
-// Delete removes the state file and its lock. It waits for any update in
-// progress.
+// Delete removes the state file. It waits for any update in progress. The
+// lock file stays so that a waiting update keeps locking the same file.
 func Delete(path string) error {
 	lock, err := lockFile(path)
 	if err != nil {
 		return err
 	}
 	defer lock.Close()
-	for _, p := range []string{path, strings.TrimSuffix(path, ".json") + ".lock"} {
-		if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	return nil
 }
@@ -134,46 +124,23 @@ func Delete(path string) error {
 // lockFile opens the state file's lock and holds it exclusively until the
 // file is closed.
 func lockFile(path string) (*os.File, error) {
-	return LockFile(strings.TrimSuffix(path, ".json")+".lock", true)
+	return LockFile(strings.TrimSuffix(path, ".json") + ".lock")
 }
 
-// LockFile holds an exclusive lock until the file is closed. A nonblocking
-// attempt returns nil when another process owns the lock. Retry a lock whose
-// file was unlinked while we waited, so updates cannot use different inodes.
-func LockFile(path string, wait bool) (*os.File, error) {
+// LockFile holds an exclusive lock until the file is closed.
+func LockFile(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	for {
-		lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-		if err != nil {
-			return nil, err
-		}
-		mode := syscall.LOCK_EX
-		if !wait {
-			mode |= syscall.LOCK_NB
-		}
-		if err := syscall.Flock(int(lock.Fd()), mode); err != nil {
-			lock.Close()
-			if !wait && errors.Is(err, syscall.EWOULDBLOCK) {
-				return nil, nil
-			}
-			return nil, err
-		}
-		held, err := lock.Stat()
-		if err != nil {
-			lock.Close()
-			return nil, err
-		}
-		current, err := os.Stat(path)
-		if err == nil && os.SameFile(held, current) {
-			return lock, nil
-		}
-		lock.Close()
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return nil, err
-		}
+	lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	if err != nil {
+		return nil, err
 	}
+	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
+		lock.Close()
+		return nil, err
+	}
+	return lock, nil
 }
 
 // Update applies fn to the state under an exclusive lock and writes the
@@ -188,7 +155,7 @@ func Update(path string, fn func(*State) error) error {
 	if err != nil {
 		return err
 	}
-	before, err := json.Marshal(s)
+	before, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -199,11 +166,7 @@ func Update(path string, fn func(*State) error) error {
 	if err != nil {
 		return err
 	}
-	after, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	if bytes.Equal(before, after) {
+	if bytes.Equal(before, data) {
 		if _, err := os.Stat(path); err == nil {
 			return nil
 		}
@@ -215,18 +178,10 @@ func Update(path string, fn func(*State) error) error {
 	return os.Rename(tmp, path)
 }
 
-// TeamOf also accepts records created before teams existed.
-func (a Agent) TeamOf() string {
-	if a.Team == "" {
-		return DefaultTeam
-	}
-	return a.Team
-}
-
 func (s *State) TeamOrchestrator(team string) *Agent {
 	for i := range s.Agents {
 		a := &s.Agents[i]
-		if a.Role == Orchestrator && a.TeamOf() == team {
+		if a.Role == Orchestrator && a.Team == team {
 			return a
 		}
 	}
@@ -254,7 +209,7 @@ func (s *State) TeamAgent(team, idOrName string) (*Agent, error) {
 	for i := range s.Agents {
 		a := &s.Agents[i]
 		if a.ID == idOrName {
-			if a.TeamOf() == team {
+			if a.Team == team {
 				return a, nil
 			}
 			return nil, fmt.Errorf("no agent %q in session %q", idOrName, team)
@@ -262,7 +217,7 @@ func (s *State) TeamAgent(team, idOrName string) (*Agent, error) {
 	}
 	for i := range s.Agents {
 		a := &s.Agents[i]
-		if a.TeamOf() == team && a.Name == idOrName {
+		if a.Team == team && a.Name == idOrName {
 			return a, nil
 		}
 	}

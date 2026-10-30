@@ -27,10 +27,6 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 	if err != nil {
 		return nil, nil, err
 	}
-	return command(exe, a, statePath, prompt)
-}
-
-func command(exe string, a store.Agent, statePath, prompt string) ([]string, map[string]string, error) {
 	env := map[string]string{"HYPERCUBE_AGENT_ID": a.ID, "HYPERCUBE_STATE": statePath}
 	var argv []string
 	switch a.Harness {
@@ -134,5 +130,5 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 		}
 	}
 	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
-	return tmux.NewPane(store.Workspace(statePath), a.TeamOf(), label, a.Dir, env, []string{exe, "agent", prompt})
+	return tmux.NewPane(store.Workspace(statePath), a.Team, label, a.Dir, env, []string{exe, "agent", prompt})
 }
