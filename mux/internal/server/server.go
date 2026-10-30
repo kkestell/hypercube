@@ -182,6 +182,7 @@ func (s *Server) spawn(req client.Request) (client.Reply, error) {
 		}
 		sess.windows = append(sess.windows, w)
 	}
+	s.layoutSession(sess)
 	return client.Reply{Session: sess.id, Window: w.id, Pane: p.id}, nil
 }
 
@@ -248,13 +249,21 @@ func (s *Server) kill(req client.Request) error {
 				if sess.id != req.Session && w.id != req.Window && p.id != req.Pane {
 					return false
 				}
-				s.removePane(p)
+				p.hangUp()
 				return true
 			})
 		}
 		sess.windows = slices.DeleteFunc(sess.windows, func(w *window) bool { return len(w.panes) == 0 })
 	}
 	s.sessions = slices.DeleteFunc(s.sessions, func(sess *session) bool { return len(sess.windows) == 0 })
+	for a := range s.attached {
+		if slices.Contains(s.sessions, a.session) {
+			s.layoutSession(a.session) // the window may have lost panes
+		} else {
+			delete(s.attached, a)
+			a.conn.Close()
+		}
+	}
 
 	if len(s.sessions) == 0 {
 		os.Remove(s.path)
@@ -288,26 +297,9 @@ func (s *Server) respawn(req client.Request) error {
 			}
 		}
 	}
-	for a := range s.attached {
-		if a.pane == old {
-			a.pane = p
-			a.signal()
-		}
-	}
+	s.wake(p)
 	old.hangUp()
 	return nil
-}
-
-// removePane ends the attachments that show p and hangs up its process. It
-// must be called with the mutex held.
-func (s *Server) removePane(p *pane) {
-	for a := range s.attached {
-		if a.pane == p {
-			delete(s.attached, a)
-			a.conn.Close()
-		}
-	}
-	p.hangUp()
 }
 
 // findPane must be called with the mutex held.

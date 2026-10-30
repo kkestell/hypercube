@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -222,6 +223,49 @@ func killTarget(t *testing.T, c *client.Conn, req client.Request) {
 	}
 }
 
+// attachAt attaches a new client to the session and reads its first frame.
+func attachAt(t *testing.T, session string, cols, rows int) *client.Conn {
+	t.Helper()
+	a := dial(t)
+	if _, err := a.Call(client.Request{Type: "attach", Session: session, Cols: cols, Rows: rows}); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := a.ReadOutput(); err != nil || len(out.Frame) == 0 {
+		t.Fatalf("first output = %+v, %v; want a frame", out, err)
+	}
+	return a
+}
+
+// checkSize reads the pane's size by respawning it, which keeps its size, and
+// repeats until the size is want. A resize request has no reply, so the size
+// may take a few tries to arrive.
+func checkSize(t *testing.T, c *client.Conn, pane, want string) {
+	t.Helper()
+	var text string
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		respawnPane(t, c, pane, []string{"sh", "-c", "echo size=$(stty size); exec sleep 60"})
+		text = waitCapture(t, c, pane, "size=")
+		if slices.Contains(strings.Split(text, "\n"), "size="+want) {
+			return
+		}
+	}
+	t.Fatalf("pane %s size never became %s:\n%s", pane, want, text)
+}
+
+// waitDetached reads output until the server reports the detach.
+func waitDetached(t *testing.T, a *client.Conn) {
+	t.Helper()
+	for {
+		out, err := a.ReadOutput()
+		if err != nil {
+			t.Fatalf("stream ended before detached: %v", err)
+		}
+		if out.Detached {
+			return
+		}
+	}
+}
+
 func checkList(t *testing.T, c *client.Conn, want []client.Session) {
 	t.Helper()
 	list, err := c.Call(client.Request{Type: "list"})
@@ -292,7 +336,7 @@ func TestAttachSizeAndDetach(t *testing.T) {
 	if err := a.Send(client.Request{Type: "input", Data: []byte("stty size\r")}); err != nil {
 		t.Fatal(err)
 	}
-	waitCapture(t, c, reply.Pane, "30 100")
+	waitCapture(t, c, reply.Pane, "27 100")
 
 	if err := a.Send(client.Request{Type: "input", Data: []byte("\x02d")}); err != nil {
 		t.Fatal(err)
@@ -311,6 +355,124 @@ func TestAttachSizeAndDetach(t *testing.T) {
 	}
 }
 
+func TestLayoutSizes(t *testing.T) {
+	c := startServer(t)
+	sleep := client.Request{Argv: []string{"sleep", "60"}}
+	main := spawnPane(t, c, sleep)
+	sleep.Window = main.Window
+	stack := []string{
+		spawnPane(t, c, sleep).Pane,
+		spawnPane(t, c, sleep).Pane,
+		spawnPane(t, c, sleep).Pane,
+	}
+	sleep.Window = ""
+	sleep.Session = main.Session
+	second := spawnPane(t, c, sleep)
+
+	a := attachAt(t, main.Session, 100, 30)
+	checkSize(t, c, main.Pane, "27 40")
+	checkSize(t, c, stack[0], "9 59")
+	checkSize(t, c, stack[1], "8 59")
+	checkSize(t, c, stack[2], "8 59")
+	checkSize(t, c, second.Pane, "27 100")
+
+	if err := a.Send(client.Request{Type: "resize", Cols: 120, Rows: 40}); err != nil {
+		t.Fatal(err)
+	}
+	checkSize(t, c, main.Pane, "37 48")
+	checkSize(t, c, stack[2], "11 71")
+
+	if err := a.Send(client.Request{Type: "input", Data: []byte("\x02d")}); err != nil {
+		t.Fatal(err)
+	}
+	waitDetached(t, a)
+	checkSize(t, c, main.Pane, "24 80")
+	checkSize(t, c, stack[2], "24 80")
+	checkSize(t, c, second.Pane, "24 80")
+}
+
+func TestLayoutSkipsPanes(t *testing.T) {
+	c := startServer(t)
+	sleep := client.Request{Argv: []string{"sleep", "60"}}
+	main := spawnPane(t, c, sleep)
+	sleep.Window = main.Window
+	stack := []string{
+		spawnPane(t, c, sleep).Pane,
+		spawnPane(t, c, sleep).Pane,
+		spawnPane(t, c, sleep).Pane,
+	}
+
+	attachAt(t, main.Session, 100, 7)
+	checkSize(t, c, main.Pane, "4 40")
+	checkSize(t, c, stack[0], "2 59")
+	checkSize(t, c, stack[1], "1 59")
+	checkSize(t, c, stack[2], "24 80")
+}
+
+func TestLayoutFollowsSpawnAndKill(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}})
+	attachAt(t, main.Session, 100, 30)
+	checkSize(t, c, main.Pane, "27 100")
+
+	added := spawnPane(t, c, client.Request{Argv: []string{"sleep", "60"}, Window: main.Window})
+	checkSize(t, c, main.Pane, "27 40")
+	checkSize(t, c, added.Pane, "27 59")
+
+	killTarget(t, c, client.Request{Pane: added.Pane})
+	checkSize(t, c, main.Pane, "27 100")
+}
+
+func TestInputGoesToMainPane(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"cat"}})
+	other := spawnPane(t, c, client.Request{Argv: []string{"cat"}, Window: main.Window})
+	a := attachAt(t, main.Session, 100, 30)
+
+	if err := a.Send(client.Request{Type: "input", Data: []byte("routed\r")}); err != nil {
+		t.Fatal(err)
+	}
+	waitCapture(t, c, main.Pane, "routed")
+	reply, err := c.Call(client.Request{Type: "capture", Pane: other.Pane})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(reply.Text, "routed") {
+		t.Errorf("the other pane received the input:\n%s", reply.Text)
+	}
+
+	killTarget(t, c, client.Request{Pane: main.Pane})
+	if err := a.Send(client.Request{Type: "input", Data: []byte("second\r")}); err != nil {
+		t.Fatal(err)
+	}
+	waitCapture(t, c, other.Pane, "second")
+}
+
+func TestCursorAndOffsets(t *testing.T) {
+	c := startServer(t)
+	main := spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "printf abc; exec sleep 60"}})
+	spawnPane(t, c, client.Request{Argv: []string{"sh", "-c", "printf STACK; exec sleep 60"}, Window: main.Window})
+	a := attachAt(t, main.Session, 100, 30)
+
+	for {
+		out, err := a.ReadOutput()
+		if err != nil {
+			t.Fatalf("stream ended before both panes showed: %v", err)
+		}
+		frame := out.Frame
+		if !bytes.Contains(frame, []byte("abc")) || !bytes.Contains(frame, []byte("STACK")) {
+			continue
+		}
+		if !bytes.Contains(frame, []byte("\x1b[4;42H")) {
+			t.Errorf("frame does not start the stacked pane at row 4, column 42: %q", frame)
+		}
+		if !bytes.HasSuffix(frame, []byte("\x1b[4;4H\x1b[?25h\x1b[?2026l")) {
+			t.Errorf("frame does not end with the main pane's cursor: %q", frame)
+		}
+		return
+	}
+}
+
 // Palette colors reach the outer terminal as palette colors, so its theme
 // shows.
 func TestAttachKeepsPaletteColors(t *testing.T) {
@@ -326,7 +488,7 @@ func TestAttachKeepsPaletteColors(t *testing.T) {
 	waitCapture(t, c, reply.Pane, "RED")
 
 	a := dial(t)
-	if _, err := a.Call(client.Request{Type: "attach", Session: reply.Session, Cols: 20, Rows: 3}); err != nil {
+	if _, err := a.Call(client.Request{Type: "attach", Session: reply.Session, Cols: 20, Rows: 5}); err != nil {
 		t.Fatal(err)
 	}
 	out, err := a.ReadOutput()
@@ -584,7 +746,7 @@ func TestRespawnAttached(t *testing.T) {
 		if err != nil {
 			t.Fatalf("stream ended before the new pane's screen: %v", err)
 		}
-		if bytes.Contains(out.Frame, []byte("30 100")) {
+		if bytes.Contains(out.Frame, []byte("27 100")) {
 			return
 		}
 	}

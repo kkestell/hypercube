@@ -136,6 +136,9 @@ func exitStatus(state *os.ProcessState) int {
 
 // resize must be called with the server's mutex held.
 func (p *pane) resize(cols, rows uint16) error {
+	if p.cols == cols && p.rows == rows {
+		return nil
+	}
 	if err := p.term.Resize(cols, rows, 0, 0); err != nil {
 		return err
 	}

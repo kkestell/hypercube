@@ -5,7 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"strconv"
+	"os"
+	"slices"
 	"sync"
 	"unicode/utf8"
 
@@ -15,19 +16,29 @@ import (
 
 const prefixKey = 0x02 // Ctrl-b
 
-// attachment is a client viewing a session's pane. Its draw goroutine is the
-// only writer to the connection while the stream runs.
+// attachment is a client viewing a session. Its draw goroutine is the only
+// writer to the connection while the stream runs. The server's mutex guards
+// cols and rows.
 type attachment struct {
-	pane   *pane
-	conn   net.Conn
-	wake   chan struct{} // buffer of one; a signal means "redraw"
-	prefix bool          // the last input byte was the prefix key
+	session    *session
+	cols, rows int // the client's terminal size
+	conn       net.Conn
+	wake       chan struct{} // buffer of one; a signal means "redraw"
+	prefix     bool          // the last input byte was the prefix key
 }
 
-// wake must be called with the mutex held.
+// window is the window the client sees. Task 7 adds window switching.
+func (a *attachment) window() *window { return a.session.windows[0] }
+
+// focus is the pane that receives input: the shown window's main pane. Task 7
+// adds a stored focus.
+func (a *attachment) focus() *pane { return a.window().panes[0] }
+
+// wake signals the attachments whose shown window contains p. It must be called
+// with the mutex held.
 func (s *Server) wake(p *pane) {
 	for a := range s.attached {
-		if a.pane == p {
+		if slices.Contains(a.window().panes, p) {
 			a.signal()
 		}
 	}
@@ -40,30 +51,55 @@ func (a *attachment) signal() {
 	}
 }
 
+// layoutSession sizes the panes of every window in sess to the client attached
+// to it, or to the default size if none is, and redraws the client. Panes that
+// do not fit keep their size. It must be called with the mutex held. Two
+// clients attached to one session are not supported; the first one found sets
+// the layout, and task 7 detaches the earlier client.
+func (s *Server) layoutSession(sess *session) {
+	var shown *attachment
+	for a := range s.attached {
+		if a.session == sess {
+			shown = a
+			break
+		}
+	}
+	// The layout never gives a zero size, and a PTY master accepts a size after
+	// its process has exited, so a failure here is a bug.
+	resize := func(p *pane, cols, rows int) {
+		if err := p.resize(uint16(cols), uint16(rows)); err != nil {
+			panic(err)
+		}
+	}
+	for _, w := range sess.windows {
+		if shown == nil {
+			for _, p := range w.panes {
+				resize(p, defaultCols, defaultRows)
+			}
+			continue
+		}
+		for i, r := range layout(len(w.panes), shown.cols, shown.rows) {
+			resize(w.panes[i], r.cols, r.rows)
+		}
+	}
+	if shown != nil {
+		shown.signal()
+	}
+}
+
 // attach runs a client's stream until it detaches or the connection ends.
 func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req client.Request) {
 	s.mu.Lock()
-	var p *pane
-	for _, sess := range s.sessions {
-		if sess.id == req.Session {
-			p = sess.windows[0].panes[0]
-		}
-	}
-	if p == nil {
+	sess := s.findSession(req.Session)
+	if sess == nil {
 		s.mu.Unlock()
 		enc.Encode(client.Reply{Error: fmt.Sprintf("unknown session %q", req.Session)})
 		return
 	}
-	err := p.resize(uint16(req.Cols), uint16(req.Rows))
-	a := &attachment{pane: p, conn: conn, wake: make(chan struct{}, 1)}
-	if err == nil {
-		s.attached[a] = struct{}{}
-	}
+	a := &attachment{session: sess, cols: req.Cols, rows: req.Rows, conn: conn, wake: make(chan struct{}, 1)}
+	s.attached[a] = struct{}{}
+	s.layoutSession(sess)
 	s.mu.Unlock()
-	if err != nil {
-		enc.Encode(client.Reply{Error: err.Error()})
-		return
-	}
 	enc.Encode(client.Reply{OK: true})
 
 	done := make(chan struct{})
@@ -81,6 +117,10 @@ func (s *Server) attach(conn net.Conn, dec *json.Decoder, enc *json.Encoder, req
 	drawing.Wait()
 	s.mu.Lock()
 	delete(s.attached, a)
+	// A kill that ended the session has already removed it.
+	if slices.Contains(s.sessions, sess) {
+		s.layoutSession(sess)
+	}
 	s.mu.Unlock()
 	if detached {
 		enc.Encode(client.Output{Detached: true})
@@ -99,20 +139,28 @@ func (s *Server) stream(dec *json.Decoder, a *attachment) bool {
 		case "input":
 			pass, detach := a.filter(req.Data)
 			s.mu.Lock()
-			ptmx := a.pane.ptmx
+			// A kill that ended the session closed the connection.
+			_, ok := s.attached[a]
+			var ptmx *os.File
+			if ok {
+				ptmx = a.focus().ptmx
+			}
 			s.mu.Unlock()
+			if !ok {
+				return false
+			}
 			ptmx.Write(pass)
 			if detach {
 				return true
 			}
 		case "resize":
 			s.mu.Lock()
-			// A killed pane's terminal is closed.
+			// A kill that ended the session closed the connection.
 			if _, ok := s.attached[a]; ok {
-				a.pane.resize(uint16(req.Cols), uint16(req.Rows))
+				a.cols, a.rows = req.Cols, req.Rows
+				s.layoutSession(a.session)
 			}
 			s.mu.Unlock()
-			a.signal()
 		}
 	}
 }
@@ -151,7 +199,7 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 			s.mu.Unlock()
 			return
 		}
-		frame, err := drawFrame(a.pane.term, a.pane.rs)
+		frame, err := drawFrame(a)
 		s.mu.Unlock()
 		if err != nil {
 			panic(err) // The render state is broken; fail loudly.
@@ -162,12 +210,10 @@ func (s *Server) draw(a *attachment, enc *json.Encoder, done <-chan struct{}) {
 	}
 }
 
-// drawFrame renders the terminal's screen as one synchronized update. It must
+// drawFrame renders the shown window as one synchronized update. Clearing the
+// screen first blanks the bars, title rows, and any space no pane uses. It must
 // be called with the server's mutex held.
-func drawFrame(term *libghostty.Terminal, rs *libghostty.RenderState) ([]byte, error) {
-	if err := rs.Update(term); err != nil {
-		return nil, err
-	}
+func drawFrame(a *attachment) ([]byte, error) {
 	rows, err := libghostty.NewRenderStateRowIterator()
 	if err != nil {
 		return nil, err
@@ -178,57 +224,72 @@ func drawFrame(term *libghostty.Terminal, rs *libghostty.RenderState) ([]byte, e
 		return nil, err
 	}
 	defer cells.Close()
-	if err := rs.RowIterator(rows); err != nil {
-		return nil, err
-	}
 
-	b := []byte("\x1b[?2026h")
+	panes := a.window().panes
+	rects := layout(len(panes), a.cols, a.rows)
+	b := []byte("\x1b[?2026h\x1b[0m\x1b[H\x1b[2J")
+	if len(rects) > 1 {
+		for y := barRows; y < a.rows; y++ {
+			b = append(b, fmt.Sprintf("\x1b[%d;%dH│", y+1, rects[0].cols+1)...)
+		}
+	}
 	var sgr, prev []byte
 	var graphemes []uint32
-	for y := 1; rows.Next(); y++ {
-		if err := rows.Cells(cells); err != nil {
+	var cursor *libghostty.RenderStateCursor
+	for i, r := range rects {
+		rs := panes[i].rs
+		if err := rs.Update(panes[i].term); err != nil {
 			return nil, err
 		}
-		b = append(b, "\x1b["+strconv.Itoa(y)+";1H"...)
-		for cells.Next() {
-			raw, err := cells.Raw()
-			if err != nil {
+		if err := rs.RowIterator(rows); err != nil {
+			return nil, err
+		}
+		for y := r.y + 1; rows.Next(); y++ {
+			if err := rows.Cells(cells); err != nil {
 				return nil, err
 			}
-			wide, err := raw.Wide()
-			if err != nil {
+			b = append(b, fmt.Sprintf("\x1b[%d;%dH", y, r.x+1)...)
+			for cells.Next() {
+				raw, err := cells.Raw()
+				if err != nil {
+					return nil, err
+				}
+				wide, err := raw.Wide()
+				if err != nil {
+					return nil, err
+				}
+				if wide == libghostty.CellWideSpacerTail {
+					continue
+				}
+				style, err := cells.Style()
+				if err != nil {
+					return nil, err
+				}
+				if sgr = appendSGR(sgr[:0], style); !bytes.Equal(sgr, prev) {
+					b = append(b, sgr...)
+					prev = append(prev[:0], sgr...)
+				}
+				if graphemes, err = cells.GraphemesInto(graphemes[:0]); err != nil {
+					return nil, err
+				}
+				if len(graphemes) == 0 {
+					b = append(b, ' ')
+				}
+				for _, g := range graphemes {
+					b = utf8.AppendRune(b, rune(g))
+				}
+			}
+		}
+		if i == 0 {
+			if cursor, err = rs.Cursor(); err != nil {
 				return nil, err
-			}
-			if wide == libghostty.CellWideSpacerTail {
-				continue
-			}
-			style, err := cells.Style()
-			if err != nil {
-				return nil, err
-			}
-			if sgr = appendSGR(sgr[:0], style); !bytes.Equal(sgr, prev) {
-				b = append(b, sgr...)
-				prev = append(prev[:0], sgr...)
-			}
-			if graphemes, err = cells.GraphemesInto(graphemes[:0]); err != nil {
-				return nil, err
-			}
-			if len(graphemes) == 0 {
-				b = append(b, ' ')
-			}
-			for _, r := range graphemes {
-				b = utf8.AppendRune(b, rune(r))
 			}
 		}
 	}
 
-	cursor, err := rs.Cursor()
-	if err != nil {
-		return nil, err
-	}
 	b = append(b, "\x1b[0m"...)
-	if cursor.Visible && cursor.ViewportHasValue {
-		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", cursor.ViewportY+1, cursor.ViewportX+1)...)
+	if cursor != nil && cursor.Visible && cursor.ViewportHasValue {
+		b = append(b, fmt.Sprintf("\x1b[%d;%dH\x1b[?25h", rects[0].y+int(cursor.ViewportY)+1, rects[0].x+int(cursor.ViewportX)+1)...)
 	} else {
 		b = append(b, "\x1b[?25l"...)
 	}
