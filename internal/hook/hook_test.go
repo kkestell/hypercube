@@ -55,7 +55,7 @@ func TestDelivery(t *testing.T) {
 
 	queue("hello")
 	r := run(t, "UserPromptSubmit")
-	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from default/lead:\nhello" {
+	if got := r.HookSpecificOutput.AdditionalContext; !strings.HasPrefix(got, "Message from default/lead:\nhello\n") {
 		t.Errorf("UserPromptSubmit context = %q", got)
 	}
 	if s := load(); s.Agents[1].Activity != store.Busy || len(s.Messages) != 0 || s.Agents[1].SessionID != "s1" {
@@ -87,7 +87,7 @@ func TestPostToolUseDelivers(t *testing.T) {
 		return nil
 	})
 	r := run(t, "PostToolUse")
-	if got := r.HookSpecificOutput.AdditionalContext; got != "Message from default/lead:\nmid-turn" {
+	if got := r.HookSpecificOutput.AdditionalContext; !strings.HasPrefix(got, "Message from default/lead:\nmid-turn\n") {
 		t.Errorf("PostToolUse context = %q", got)
 	}
 	if s, _ := store.Load(path); len(s.Messages) != 1 || s.Messages[0].To != "a" {

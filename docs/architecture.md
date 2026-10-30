@@ -1,7 +1,7 @@
 # Architecture
 
 Hypercube supplies coordination around native coding harnesses. The
-[user guide](installation.md#workspaces-and-sessions) defines the workspace
+[user guide](usage.md) defines the workspace
 and team model; this document explains the ownership decisions behind it.
 
 ## Ownership

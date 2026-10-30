@@ -75,8 +75,10 @@ func NewPane(session, team, label, dir string, env map[string]string, argv []str
 		"set-option", "-w", "-t", window, "@hypercube_team", team, ";",
 		"set-option", "-w", "-t", window, "automatic-rename", "off", ";",
 		"set-option", "-w", "-t", window, "allow-rename", "off", ";",
-		"set-option", "-w", "-t", window, "allow-passthrough", "on", ";",
 		"set-option", "-w", "-t", window, "extended-keys", "always", ";",
+		"set-option", "-w", "-t", window, "window-status-format", " #I #W"+attention("black")+" ", ";",
+		"set-option", "-w", "-t", window, "window-status-current-format", "#[fg=green,bg=black,bold] #I #W"+attention("green")+" #[fg=black,bg=green,nobold]", ";",
+		"set-option", "-w", "-t", window, "window-status-separator", "", ";",
 		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
 		"set-hook", "-w", "-t", window, "pane-died", died, ";",
 		"select-layout", "-t", window, "main-vertical")
@@ -146,7 +148,8 @@ func KillPane(session, target string) error {
 
 func ConfigureSession(session, left string) error {
 	_, err := run("set-option", "-t", "="+session+":", "mouse", "on", ";",
-		"set-option", "-t", "="+session+":", "status-left", " "+strings.ReplaceAll(left, "#", "##")+" ", ";",
+		"set-option", "-t", "="+session+":", "status-style", "fg=black,bg=green", ";",
+		"set-option", "-t", "="+session+":", "status-left", "#[bold] "+strings.ReplaceAll(left, "#", "##")+" #[nobold]", ";",
 		"set-option", "-t", "="+session+":", "status-left-length", "100", ";",
 		"set-option", "-t", "="+session+":", "status-right", "")
 	if err != nil {
@@ -157,11 +160,12 @@ func ConfigureSession(session, left string) error {
 		return err
 	}
 	newCommand := `#{q:@hypercube_exe} window new #{q:@hypercube_state}`
+	// c replaces tmux's new-window only in Hypercube windows.
 	// Cleanup must survive tmux exiting when its last window is removed.
 	deleteCommand := `nohup #{q:@hypercube_exe} window delete #{q:@hypercube_state} #{@hypercube_team} #{window_id} >/dev/null 2>&1 &`
 	owned := `#{&&:#{@hypercube_state},#{@hypercube_team}}`
 	_, err = run("set-option", "-t", "="+session+":", "@hypercube_exe", exe, ";",
-		"bind-key", "C", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), ";",
+		"bind-key", "c", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), "new-window", ";",
 		"bind-key", "X", "if-shell", "-F", owned,
 		"confirm-before -p 'Delete current Hypercube session? (y/n)' "+quote("run-shell -b "+quote(deleteCommand)))
 	return err
@@ -181,7 +185,19 @@ func Activity(session, pane, id, state, activity string, attention bool) {
 	if attention {
 		text += " #[fg=red]●#[default]"
 	}
-	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_activity", text)
+	flag := ""
+	if attention {
+		flag = "1"
+	}
+	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_activity", text, ";",
+		"set-option", "-p", "-t", pane, "@hypercube_attention", flag)
+}
+
+// attention marks a window name in the status line with a red dot for each of
+// its panes awaiting approval, then restores the given foreground. The window
+// formats name their colors because #[default] leaves the status line's.
+func attention(fg string) string {
+	return "#{P:#{?@hypercube_attention, #[fg=red]●#[fg=" + fg + "],}}"
 }
 
 func KillSession(session string) error { _, err := run("kill-session", "-t", "="+session); return err }

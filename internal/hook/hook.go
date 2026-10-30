@@ -114,11 +114,12 @@ func context(event, text string) *response {
 }
 
 // format renders messages as the model sees them.
+// Senders cannot see the recipient's chat, so agent messages say how to reply.
 func Format(s *store.State, messages []store.Message) string {
 	var parts []string
 	for _, m := range messages {
 		if a, err := s.Agent(m.From); err == nil {
-			parts = append(parts, fmt.Sprintf("Message from %s:\n%s", a.Address(), m.Text))
+			parts = append(parts, fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use send_message to %s.", a.Address(), m.Text, a.Address(), a.Address()))
 		} else {
 			parts = append(parts, fmt.Sprintf("Message from %s:\n%s", m.From, m.Text))
 		}

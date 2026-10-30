@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -165,6 +166,10 @@ func call(self, path, name string, args map[string]string) (string, error) {
 }
 
 func sendMessage(self, path, to, text string) (string, error) {
+	// A misnamed argument arrives as empty text; failing lets the model retry.
+	if strings.TrimSpace(text) == "" {
+		return "", errors.New("text is required")
+	}
 	var recipient store.Agent
 	err := store.Update(path, func(s *store.State) error {
 		caller, err := s.Agent(self)

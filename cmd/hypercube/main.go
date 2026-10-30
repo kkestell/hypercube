@@ -476,7 +476,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		}
 	}
 	if len(launch) > 0 {
-		if err := tmux.ConfigureSession(name, workspace.Short(root)); err != nil {
+		if err := tmux.ConfigureSession(name, filepath.Base(root)); err != nil {
 			return err
 		}
 	}

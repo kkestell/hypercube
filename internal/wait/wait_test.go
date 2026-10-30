@@ -63,7 +63,7 @@ func TestWaiterReplacementAndDelivery(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("delivery timed out")
 	}
-	if output[1].String() != "Message from default/lead:\nfirst\n\nMessage from default/lead:\nsecond\n" {
+	if got := output[1].String(); !strings.Contains(got, "Message from default/lead:\nfirst\n") || !strings.Contains(got, "Message from default/lead:\nsecond\n") {
 		t.Fatal(output[1].String())
 	}
 	s, _ := store.Load(path)

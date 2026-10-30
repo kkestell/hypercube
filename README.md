@@ -2,8 +2,10 @@
 
 Local coding-agent teams for macOS, built with Go and tmux.
 
-- [Installation and use](docs/installation.md): prerequisites, commands,
-  keyboard controls, upgrades, and development sessions.
+- [Installation](docs/installation.md): prerequisites, building, upgrades,
+  and development sessions.
+- [Usage](docs/usage.md): workspaces, sessions, commands, keyboard controls,
+  resume, and cleanup.
 - [Configuration](docs/configuration.md): lead settings, worker
   profiles, and worktree setup.
 - [Architecture](docs/architecture.md): ownership, persistence, and design

@@ -317,7 +317,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	clientName := attachClient()
 	tmux("select-window", "-t", otherWindow)
 	tmux("select-pane", "-t", otherWorker.Target)
-	tmux("send-keys", "-K", "-c", clientName, "C-b", "C")
+	tmux("send-keys", "-K", "-c", clientName, "C-b", "c")
 	until("new-session shortcut", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
 	shortcutLead := state().Agents[4]
 	shortcutWindow := windowOf(shortcutLead.Target)
