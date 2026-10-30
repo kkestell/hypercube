@@ -2,7 +2,7 @@
 
 `config.json` lives at `~/.config/hypercube/config.json`. A non-empty
 `XDG_CONFIG_HOME` selects `$XDG_CONFIG_HOME/hypercube/config.json` instead.
-`config::load` reads and validates it. The orchestrator's harness, model, and
+`harness.LoadConfig` reads and validates it. The orchestrator's harness, model, and
 effort and every profile field shown below are required.
 
 ```json
@@ -34,25 +34,21 @@ effort and every profile field shown below are required.
 ## Orchestrator
 
 `orchestrator` sets the harness, model, and effort of the orchestrator agent
-and of each team's orchestrator other than a scheduled task's. When a
-workspace has no saved agents, `hypercube` creates the orchestrator from these
+in the workspace's single team. When a workspace has no saved agents, `hypercube` creates the orchestrator from these
 settings. Existing agents retain the harness, model, and effort
 saved in the workspace state file when a session restarts.
 
 ## Profiles
 
-`profiles` lists the combinations the orchestrators can give workers, and
-the default team's orchestrator can give a scheduled task's orchestrator.
-Each has:
+`profiles` lists the combinations the orchestrator can give workers. Each has:
 
-- `name`: unique within the file. `create_agent` and `create_task` take it as
-  `profile`.
+- `name`: unique within the file. `create_agent` takes it as `profile`.
 - `description`: when to use the profile. The orchestrator reads it, together
   with the harness, model, and effort, in its SessionStart facts.
 - `harness`, `model`, `effort`: the agent's settings, used exactly as given.
 
-At least one profile is required. Worker and task creation read the current
-file and save the chosen profile's settings on the new agent, which keeps
+At least one profile is required. Worker creation reads the current
+file and saves the chosen profile's settings on the new agent, which keeps
 them for its life. The MCP tool list and
 the orchestrator's SessionStart facts also read profiles from the current
 file.

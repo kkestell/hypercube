@@ -1,50 +1,37 @@
 # Installation
 
-Hypercube is a Rust crate built with Cargo. It runs on macOS.
+Hypercube is a Go command for macOS. It needs Go 1.27.1 or later, Git, tmux,
+and the harnesses selected in `config.json`: `claude` for Claude Code and
+`opencode` for OpenCode 2.x. Each harness uses its own configured credentials.
 
-## Prerequisites
-
-- macOS on Apple silicon. The build uses an arm64 Zig toolchain.
-- Rust 1.90 or later with Cargo. The crate uses the Rust 2024 edition.
-- Git, and the Xcode Command Line Tools, which provide `make` and the linker.
-- Network access for the first build. `make` downloads Zig and checks its
-  SHA-256. The Ghostty submodule comes from GitHub, and Cargo fetches
-  `libghostty-rs` from GitHub.
-- A Nerd Font in the terminal, such as Fira Code Nerd Font, for the icons in
-  the chrome.
-- The harnesses selected in `config.json` on `PATH`: `claude` for Claude
-  Code, `opencode` for OpenCode 2.x. Each harness uses its own configured
-  credentials. See
-  [Harness support](harness-support.md) for launch details.
-
-## Build
-
-From a checkout of the repository:
+## Build and check
 
 ```sh
 make
+make check
 ```
 
-`make` downloads Zig 0.17.0 into `.toolchain/zig-aarch64-macos-0.17.0` when
-its executable is missing and verifies the archive's SHA-256. It runs
-`git submodule update --init vendor/ghostty` when
-`vendor/ghostty/build.zig` is missing, then runs `cargo build`. The binary is
-`target/debug/hypercube`.
+The executable is `bin/hypercube`. The build uses the Go standard library,
+with no external Go modules. `make check` builds, runs `go vet`, checks Go
+formatting, and runs the tests with the race detector. The integration tests
+use an isolated tmux server and local harness stand-ins. Bun is needed to
+run the OpenCode plugin's JavaScript test; that test skips if Bun is absent.
 
-`.cargo/config.toml` points the libghostty-vt build at that Zig executable
-and the vendored Ghostty source, with `ReleaseSafe` optimization. Ghostty's
-submodule commit matches the revision pinned by the `libghostty-vt`
-dependency in `Cargo.toml`. Once Zig and Ghostty are in place, Cargo commands
-work directly.
+## Configure and run
 
-`make test` runs `cargo test`. `make check` runs the full validation sequence:
+Create `~/.config/hypercube/config.json`, or
+`$XDG_CONFIG_HOME/hypercube/config.json`, following
+[Configuration](configuration.md). Then run from your checkout:
 
 ```sh
-cargo build
-cargo clippy --all-targets -- -D warnings
-cargo fmt --check
-cargo test
+/path/to/hypercube/bin/hypercube
 ```
+
+Hypercube creates one tmux session per workspace and one pane per agent.
+Detach with Ctrl-b d; run `hypercube` in the checkout to attach again.
+`hypercube start <dir>` starts a team without attaching. `stop [dir]` ends
+its panes but keeps conversation IDs and queued messages; `delete [dir]`
+also removes its state and merged, clean worker worktrees.
 
 ## Install
 
@@ -52,24 +39,29 @@ cargo test
 make install
 ```
 
-This prepares Zig and Ghostty, runs `cargo build --release --bin hypercube`,
-and installs the executable as `~/.local/bin/hypercube` with mode `755`.
-`make install BINDIR=<dir>` selects another destination. The destination
-directory belongs on `PATH` for running `hypercube` by name.
+This installs to `~/.local/bin/hypercube`; `BINDIR=<dir>` selects another
+destination. Put that directory on PATH.
 
-Each agent runs the `hypercube` executable that started its session, as its MCP
-server and hook command. A running host keeps the executable it started with
-until it is stopped. `make reinstall` puts every running workspace on a new
-build: it builds the release executable, stops every running workspace, installs
-the executable, and starts the stopped workspaces again in the background, in
-the bar's order, with the installed executable. Each workspace's agents launch
-when a terminal attaches to it, so run `hypercube` again afterwards. Run it
-outside Hypercube: it refuses inside an agent's pane, whose workspace it would
-stop. `BINDIR=<dir>` selects the destination as for `make install`.
+To replace an installed build while retaining its saved sessions:
 
-## Configuration
+```sh
+make reinstall
+```
 
-Hypercube reads `config.json` when a session starts, so the file must exist
-before the first `hypercube` run. It is `~/.config/hypercube/config.json`, or
-`$XDG_CONFIG_HOME/hypercube/config.json` when `XDG_CONFIG_HOME` is non-empty.
-Its format is described in [Configuration](configuration.md).
+Run this outside Hypercube. It uses the currently installed binary to stop
+running workspaces, installs the new binary, and starts those workspaces
+again detached. A running turn ends when its workspace stops. Run
+`hypercube` in its checkout to attach afterward. Existing state with multiple
+teams or scheduled tasks is refused on startup and left unchanged.
+
+Each agent uses the executable path that launched it for MCP, hooks, and
+wake-ups. Stop and restart a workspace to put all of its agents on a new
+build; replacing the binary alone does not update their launch arguments.
+
+## Development
+
+`make dev` builds this checkout and opens a team in Ghostty with isolated
+state, configuration, tmux server, and a scratch repository under
+`~/projects/hypercube-dev` (`HYPERCUBE_DEV_DIR` overrides it).
+`make dev-stop` stops it; `make dev-clean` removes its disposable state,
+repository, and harness transcripts. The installed workspaces are separate.

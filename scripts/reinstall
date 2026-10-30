@@ -1,13 +1,14 @@
 #!/bin/sh
-# Stop every running Hypercube workspace, install the release build to
+# Stop every running Hypercube workspace, install the build to
 # $BINDIR, and start the stopped workspaces again in the background with the
-# installed binary. Each workspace's agents launch when a terminal attaches
-# to it. Run by `make reinstall` after the release build.
+# installed binary. Run by `make reinstall` after building.
 set -u
 
 BINDIR=${BINDIR:-$HOME/.local/bin}
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-BUILT=$ROOT/target/release/hypercube
+BUILT=$ROOT/bin/hypercube
+CURRENT=$BINDIR/hypercube
+[ -x "$CURRENT" ] || CURRENT=$BUILT
 
 # Stopping the workspace this runs in would end this script with it.
 if [ -n "${HYPERCUBE_AGENT_ID:-}" ]; then
@@ -15,14 +16,14 @@ if [ -n "${HYPERCUBE_AGENT_ID:-}" ]; then
 	exit 1
 fi
 
-running=$("$BUILT" running) || exit 1
+running=$("$CURRENT" running) || exit 1
 failed=0
 stopped=
 set -f
 IFS='
 '
 for dir in $running; do
-	if "$BUILT" stop "$dir"; then
+	if "$CURRENT" stop "$dir"; then
 		echo "stopped $dir"
 		stopped="$stopped$dir
 "

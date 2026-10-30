@@ -1,12 +1,10 @@
 # Harness support
 
-`harness::command(exe, agent, state_path, prompt)` builds a `Launch`: the
-`argv`, the `env` the host adds to its own, and the `cwd` (the agent's
-directory). `exe` is the `hypercube` executable, which each harness runs as its
-MCP server and hook command. The harness inherits the host's environment,
-including `HOME` and any credential environment variables, with the launch's
-`env` entries added. The pty sets `TERM=xterm-256color` and
-`COLORTERM=truecolor`.
+`harness.Command(agent, statePath, prompt)` builds the command and
+environment for an agent. Each harness runs the same `hypercube` executable
+as its MCP server, hook command, and waiter. It runs in the agent's directory
+in a tmux pane, inheriting the launch environment, including `HOME` and any
+credential variables. tmux owns its PTY and renders the native harness UI.
 
 A non-empty `prompt` starts the first turn. Workers launch with
 `Check your Hypercube messages.`; the orchestrator opens ready for user
@@ -41,7 +39,7 @@ queued message.
   orchestrator, stating that its turn failed and including the error text,
   trimmed to 2,000 characters. An orchestrator's failure queues no message.
 - `PermissionRequest` sets the agent's attention flag, which puts a red dot
-  on its workspace's tab in the bar, and writes nothing, so the user decides.
+  in its pane title, and writes nothing, so the user decides.
 
 Each harness runs `hypercube wait` in the background when a session starts
 and after each turn's stop. When the agent is idle with messages queued, the
