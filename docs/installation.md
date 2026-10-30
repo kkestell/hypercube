@@ -38,5 +38,4 @@ configuration, mux server, and a scratch repository under
 and harness transcripts. Details belong to [scripts/dev](../scripts/dev).
 
 Automated tests use local harness stand-ins. Live model behavior requires a
-separate smoke test; the latest recorded result is in
-[Harness support](harness-support.md#live-verification).
+separate smoke test.

@@ -11,6 +11,14 @@ that starts them. A launch wrapper runs the harness as a child and relaunches
 it when it exits. There is no persistent Hypercube server between the harness
 and its terminal.
 
+The mux in `mux/` is a general-purpose multiplexer that works on its own with
+plain shells and knows nothing about agents, harnesses, or Hypercube's state.
+It is a separate Go module, and Hypercube reaches it only through its socket
+client in `mux/client`. Its behavior is fixed: it has no configuration file,
+format language, hooks, scripting, general layouts, copy mode, or restore
+after its own restart. A mux restart ends every pane's process, and Hypercube
+resumes agents from their saved conversations.
+
 Worker worktrees live inside the checkout so harnesses can inherit its folder
 trust. Team names qualify new worker paths and branches to avoid collisions
 between teams.

@@ -46,7 +46,18 @@ switch to it, or click a pane to focus it. Press Ctrl-b, then the listed key:
 
 A pane's title is the agent's name, with the progress its harness reports. A
 bell shows on a pane awaiting approval, and on its team and workspace in the
-status bar, until it is answered. An exited pane shows its exit status.
+status bar, until it is answered, and rings the terminal's bell. An exited
+pane shows its exit status.
+
+The mouse wheel scrolls a pane's scrollback unless the pane's program uses the
+mouse. Dragging selects text within one pane and copies it to the clipboard
+through the terminal (OSC 52) on release. Click a worker's title to collapse
+or open it, and drag the divider to resize the lead's side. The icons need a
+Nerd Font in the terminal.
+
+One terminal attaches to a workspace at a time; attaching from another
+detaches the first. Panes that do not fit the terminal are not drawn until it
+grows.
 
 ## Resume and cleanup
 
