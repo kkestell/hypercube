@@ -73,7 +73,11 @@ export default {
     })
 
     await ctx.tool.hook("execute.after", async (event) => {
-      if (event.status !== "completed" || !(await isAgentSession(event.sessionID))) return
+      if (event.status === "error") {
+        await hook("PostToolUseFailure", event.sessionID, { tool_name: event.tool, tool_input: event.input, error: event.error.message })
+        return
+      }
+      if (!(await isAgentSession(event.sessionID))) return
       const text = context(await hook("PostToolUse", event.sessionID))
       if (!text) return
       const content = event.result.content

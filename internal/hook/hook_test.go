@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -185,5 +186,52 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 	s, err := store.Load(path)
 	if err != nil || len(s.Messages) != 1 || s.Messages[0].To != "other-lead" {
 		t.Fatal(s, err)
+	}
+}
+
+func TestToolLog(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "w")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{{ID: "w", Name: "worker", Role: store.Worker, Team: "t", Harness: "claude", Model: "sonnet"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for event, in := range map[string]string{
+		"PostToolUseFailure": `{"session_id":"c1","tool_name":"mcp__hypercube__send_message","tool_input":{"to":"lead"},"error":"no agent named lead"}`,
+		"PermissionDenied":   `{"session_id":"c1","agent_id":"native","tool_name":"Bash","tool_input":{"command":"rm -rf /tmp/x"},"reason":"[Irreversible Local Destruction]"}`,
+	} {
+		if err := Run(event, strings.NewReader(in), io.Discard); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := Run("PostToolUseFailure", strings.NewReader(`{"tool_name":"Bash","error":"Exit code 1"}`), io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "tools.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("logged %d lines:\n%s", len(lines), data)
+	}
+	got := map[string]map[string]any{}
+	for _, line := range lines {
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Fatal(err)
+		}
+		got[entry["msg"].(string)] = entry
+	}
+	failed, denied := got["tool failed"], got["tool denied"]
+	if failed["workspace"] != "w" || failed["session"] != "t" || failed["agent"] != "worker" || failed["model"] != "sonnet" || failed["error"] != "no agent named lead" || failed["input"].(map[string]any)["to"] != "lead" {
+		t.Errorf("failure entry = %v", failed)
+	}
+	if denied["tool"] != "Bash" || denied["reason"] != "[Irreversible Local Destruction]" || denied["input"].(map[string]any)["command"] != "rm -rf /tmp/x" {
+		t.Errorf("denial entry = %v", denied)
 	}
 }

@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -15,11 +17,14 @@ import (
 )
 
 type input struct {
-	SessionID            string  `json:"session_id"`
-	AgentID              *string `json:"agent_id"`
-	Error                string  `json:"error"`
-	ErrorDetails         string  `json:"error_details"`
-	LastAssistantMessage string  `json:"last_assistant_message"`
+	SessionID            string          `json:"session_id"`
+	AgentID              *string         `json:"agent_id"`
+	Error                string          `json:"error"`
+	ErrorDetails         string          `json:"error_details"`
+	LastAssistantMessage string          `json:"last_assistant_message"`
+	ToolName             string          `json:"tool_name"`
+	ToolInput            json.RawMessage `json:"tool_input"`
+	Reason               string          `json:"reason"`
 }
 
 type specific struct {
@@ -44,6 +49,9 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 
+	if event == "PostToolUseFailure" || event == "PermissionDenied" {
+		return logTool(event, path, id, in)
+	}
 	if in.AgentID != nil && event != "PermissionRequest" {
 		return nil
 	}
@@ -104,6 +112,44 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		tmux.RefreshActivity(path, id)
 	}
 	return err
+}
+
+// logTool appends failed Hypercube tool calls and auto mode denials of any
+// tool to tools.log beside the state file, as JSON lines for tuning tool
+// descriptions and allow rules. Native subagents' calls are logged too.
+func logTool(event, path, id string, in input) error {
+	if event == "PostToolUseFailure" && !hypercubeTool(in.ToolName) {
+		return nil
+	}
+	s, err := store.Load(path)
+	if err != nil {
+		return err
+	}
+	a, err := s.Agent(id)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(path), "tools.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	msg, detail := "tool failed", slog.String("error", in.Error)
+	if event == "PermissionDenied" {
+		msg, detail = "tool denied", slog.String("reason", in.Reason)
+	}
+	slog.New(slog.NewJSONHandler(f, nil)).Info(msg,
+		"workspace", store.Workspace(path), "session", a.Team, "agent", a.Name,
+		"harness", a.Harness, "model", a.Model, "conversation", in.SessionID, "dir", a.Dir,
+		"tool", in.ToolName, "input", in.ToolInput, detail)
+	return f.Close()
+}
+
+// hypercubeTool reports whether a harness tool name is one of Hypercube's MCP
+// tools: mcp__hypercube__send_message in Claude Code, hypercube_send_message
+// in OpenCode.
+func hypercubeTool(name string) bool {
+	return strings.HasPrefix(name, "mcp__hypercube__") || strings.HasPrefix(name, "hypercube_")
 }
 
 func context(event, text string) *response {

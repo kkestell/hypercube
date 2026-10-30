@@ -30,7 +30,9 @@ a shell.
 Workspace state lives under `$XDG_STATE_HOME/hypercube`, defaulting to
 `~/.local/state/hypercube`. Workspace names derive from their absolute paths,
 so equal directory basenames do not collide. The naming algorithm belongs to
-[workspace.go](../internal/workspace/workspace.go).
+[workspace.go](../internal/workspace/workspace.go). Failed Hypercube tool
+calls and Claude Code auto mode denials are appended there to `tools.log` as
+JSON lines.
 
 State keeps harness conversation IDs and queued messages across launches;
 tmux targets and launch bookkeeping are replaceable. Lifecycle operations

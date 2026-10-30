@@ -16,7 +16,7 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-var events = []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "StopFailure", "PermissionRequest"}
+var events = []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "StopFailure", "PermissionRequest", "PostToolUseFailure", "PermissionDenied"}
 
 //go:embed opencode.js
 var opencodePlugin string
