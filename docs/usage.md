@@ -32,7 +32,8 @@ use a disappeared checkout's saved path.
 
 ## Keyboard controls
 
-Each Hypercube session is a tmux window, listed by number and name in the
+The top status line lists workspaces; click one to switch to it. Each
+Hypercube session is a tmux window, listed by number and name in the bottom
 status line. With tmux's default prefix, press Ctrl-b, then the listed key:
 
 | Key | Action |
@@ -46,12 +47,15 @@ status line. With tmux's default prefix, press Ctrl-b, then the listed key:
 | `z` | Zoom the current pane. |
 | `d` | Detach. |
 | `s` | Choose a workspace's tmux session. |
+| `?` | List key bindings, including Hypercube's. |
+| `Shift-w` | Open the workspace at a prompted path, creating it if needed. |
 
-Clicking a Hypercube session's name in the status line also switches to it.
+Clicking a Hypercube session's name in the bottom status line also switches to
+it.
 
-Hypercube installs the `c` and uppercase `X` bindings in tmux's shared prefix
-table; they act only on windows marked as Hypercube teams. Elsewhere, `c`
-opens a plain tmux window and `X` does nothing. Other controls
+Hypercube installs the `c`, uppercase `W`, and uppercase `X` bindings in tmux's
+shared prefix table; they act only on windows marked as Hypercube teams.
+Elsewhere, `c` opens a plain tmux window and `W` and `X` do nothing. Other controls
 come from tmux and follow your tmux configuration.
 
 Pane titles identify the agent and its settings. A green dot means busy,

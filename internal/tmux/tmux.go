@@ -146,12 +146,27 @@ func KillPane(session, target string) error {
 	return nil
 }
 
-func ConfigureSession(session, left string) error {
-	_, err := run("set-option", "-t", "="+session+":", "mouse", "on", ";",
+func ConfigureSession(session, label string) error {
+	// The bottom line keeps tmux's usual window list for this workspace.
+	windows, err := run("show-options", "-gv", "status-format[0]")
+	if err != nil {
+		return err
+	}
+	// The top line lists every workspace. Clicking one switches to it through
+	// tmux's default MouseDown1Status binding. Styles avoid commas because
+	// they would split the loop's two formats.
+	// A dark line keeps it distinct from the green window list below.
+	item := "#[range=session|#{session_id}] #{@hypercube_workspace} #[norange]"
+	current := "#[range=session|#{session_id}]#[fg=green]#[bold] #{@hypercube_workspace} #[fg=colour245]#[nobold]#[norange]"
+	workspaces := "#[fill=colour235]#[bg=colour235]#[fg=colour245]#{S:#{?@hypercube_state," + item + ",},#{?@hypercube_state," + current + ",}}"
+	_, err = run("set-option", "-t", "="+session+":", "mouse", "on", ";",
 		"set-option", "-t", "="+session+":", "status-style", "fg=black,bg=green", ";",
-		"set-option", "-t", "="+session+":", "status-left", "#[bold] "+strings.ReplaceAll(left, "#", "##")+" #[nobold]", ";",
-		"set-option", "-t", "="+session+":", "status-left-length", "100", ";",
-		"set-option", "-t", "="+session+":", "status-right", "")
+		"set-option", "-t", "="+session+":", "status-left", "", ";",
+		"set-option", "-t", "="+session+":", "status-right", "", ";",
+		"set-option", "-t", "="+session+":", "status", "2", ";",
+		"set-option", "-t", "="+session+":", "@hypercube_workspace", label, ";",
+		"set-option", "-t", "="+session+":", "status-format[0]", workspaces, ";",
+		"set-option", "-t", "="+session+":", "status-format[1]", windows)
 	if err != nil {
 		return err
 	}
@@ -163,10 +178,15 @@ func ConfigureSession(session, left string) error {
 	// c replaces tmux's new-window only in Hypercube windows.
 	// Cleanup must survive tmux exiting when its last window is removed.
 	deleteCommand := `nohup #{q:@hypercube_exe} window delete #{q:@hypercube_state} #{@hypercube_team} #{window_id} >/dev/null 2>&1 &`
+	// Opening a workspace from a tmux job switches this client to it. Errors
+	// go to stdout so tmux shows them.
+	openCommand := `cd %1 2>&1 && #{q:@hypercube_exe} 2>&1`
 	owned := `#{&&:#{@hypercube_state},#{@hypercube_team}}`
 	_, err = run("set-option", "-t", "="+session+":", "@hypercube_exe", exe, ";",
-		"bind-key", "c", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), "new-window", ";",
-		"bind-key", "X", "if-shell", "-F", owned,
+		"bind-key", "-N", "Create a Hypercube session (or a tmux window elsewhere)", "c", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), "new-window", ";",
+		"bind-key", "-N", "Open or create a Hypercube workspace", "W", "if-shell", "-F", owned,
+		"command-prompt -p 'Workspace path:' "+quote("run-shell -b "+quote(openCommand)), ";",
+		"bind-key", "-N", "Delete the current Hypercube session", "X", "if-shell", "-F", owned,
 		"confirm-before -p 'Delete current Hypercube session? (y/n)' "+quote("run-shell -b "+quote(deleteCommand)))
 	return err
 }
