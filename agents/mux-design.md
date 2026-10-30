@@ -52,9 +52,10 @@ window holds panes.
 | window | Hypercube session (team) |
 | pane | agent |
 
-IDs are assigned by the server and never reused while it runs, so a saved ID
-proves ownership. Names do not exist; whatever a user sees is a label set by
-the client.
+IDs are assigned by the server and never reused while it runs. Each server
+also has an instance ID, returned in replies, so together they prove
+ownership: a saved ID from an earlier server never names a new pane. Names
+do not exist; whatever a user sees is a label set by the client.
 
 ## Interface
 
@@ -71,6 +72,7 @@ JSON lines over the socket. Each request gets one reply, `{"ok":true,...}` or
 | `attention {pane \| window \| session, on}` | | Marks the target as needing attention with a bell icon before its label, or clears the mark. |
 | `collapse {pane, on}` | | Collapses a stacked pane to its title row, or opens it. The main pane cannot collapse. |
 | `label {pane \| window \| session, spans}` | | Sets the text shown for the target, or restores the default when `spans` is empty. A span is `{text}`; `fg` (a palette name) and `bold` come later. |
+| `select {window \| pane}` | | Makes the window its session's current window, or the pane its window's focused pane, and that window current. |
 | `bind {key, name}` | | Pressing Prefix then `key` emits a `key` event with `name`. |
 | `prompt {client, text}` | | Asks for a line of text on that client's bar and emits `answer`. |
 | `confirm {client, text}` | | Asks for y/n and emits `answer`. |
@@ -197,6 +199,10 @@ isolated tmux server.
    default labels, built-in keys, mouse, scrollback, and selection. Done when
    shells can be spawned, used, killed, detached from, and reattached to by
    hand, and the socket tests pass. Nothing in Hypercube changes.
+2. **Hypercube on the mux.** The requests and events Hypercube depends on,
+   then Hypercube's switch from tmux to the mux. Done when Hypercube runs its
+   teams on the mux, its tests drive the mux through the socket, and nothing
+   in Hypercube calls tmux.
 
 ### Milestone 1 tasks
 
@@ -248,6 +254,37 @@ the screen. Tasks 6 to 8 are checked by hand.
      through OSC 52; vim with `mouse=a` gets the mouse; clicks switch sessions,
      windows, and panes.
 9. **Acceptance.** The hand walkthrough plus `make check`.
+
+### Milestone 2 pieces
+
+In order. Each piece is checked by socket tests.
+
+1. **Exit events and ownership.** `subscribe` and the `exited` event, and the
+   server instance ID in `spawn` and `list` replies. A server with no sessions
+   exits, including one started by `mux ls` or `mux attach` with nothing to
+   attach to.
+2. **Selection and clients.** A `select {window | pane}` request; client IDs;
+   the `viewing`, `attached`, and `detached` events.
+3. **Keys and prompts.** `bind` and the `key` event; `prompt`, `confirm`, and
+   the `answer` event; `message`. These replace Hypercube's `c`, `W`, and `X`
+   bindings and its error reporting through `display-message`.
+4. **Colored labels.** Spans with `fg` and `bold`, for Hypercube's activity,
+   attention, and unseen-reply dots.
+5. **Switching and identity.** Moving an attached client to another session,
+   so `hypercube` run inside a pane switches instead of nesting a second
+   client. Each pane's process gets environment variables naming the socket
+   and its own pane ID, set before it starts, in place of `TMUX` and
+   `TMUX_PANE`.
+6. **Frame pacing.** At most about 60 frames a second, so several busy panes
+   do not redraw the whole screen on every write.
+7. **Crash logging.** The server writes a log under `$XDG_STATE_HOME/mux/`, so
+   a panic leaves a trace. Review which panics must end every pane.
+8. **Hypercube's switch.** A mux client package in place of `internal/tmux`;
+   `hypercube watch`; saved session, window, and pane IDs with the server
+   instance ID in the store; `scripts/dev`, `make install`, and
+   `scripts/reinstall` build and run the mux; the integration tests attach
+   through the socket, send input, select, and wait for events instead of
+   using `send-keys` and control mode.
 
 ## Decisions
 
