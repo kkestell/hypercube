@@ -55,7 +55,7 @@ type State struct {
 	NoGit bool `json:"no_git,omitempty"`
 }
 
-// Dir is the directory that holds state files and worktrees.
+// Dir is the directory that holds state files.
 func Dir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {

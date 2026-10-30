@@ -35,7 +35,7 @@ type Request struct {
 	Spans   []Span   `json:"spans,omitempty"`
 }
 
-// Span is a run of label text. Color and bold come later.
+// Span is a run of label text.
 type Span struct {
 	Text string `json:"text"`
 }

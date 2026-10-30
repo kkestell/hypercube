@@ -208,8 +208,8 @@ func stop(root, name string) error {
 
 // status prints every workspace with a state file: its directory, whether its
 // session is running, its number of agents, and when it was last active.
-// Every hook writes the state, so the state file's modification time is the
-// last activity.
+// The last activity is the state file's modification time, the last time the
+// state changed.
 func status() error {
 	type row struct {
 		dir, session string
