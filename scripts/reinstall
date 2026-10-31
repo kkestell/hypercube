@@ -32,8 +32,10 @@ for dir in $running; do
 	fi
 done
 
-mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$BINDIR/hypercube" || exit 1
-echo "installed $BINDIR/hypercube"
+set +f
+mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$ROOT"/bin/hypercube-harness-* "$BINDIR" || exit 1
+set -f
+echo "installed hypercube and its harness plugins in $BINDIR"
 
 for dir in $stopped; do
 	if "$BINDIR/hypercube" start "$dir"; then

@@ -57,10 +57,9 @@ the implementation rather than copied here.
 | [cmd/hypercube](../cmd/hypercube/main.go) | CLI and workspace, team, and relaunch lifecycle. |
 | [store](../internal/store/store.go) | State schema, locks, atomic updates, and queues. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
-| [harness](../internal/harness/harness.go) | Per-launch commands and native settings. |
-| [OpenCode plugin](../internal/harness/opencode.js) | OpenCode event adaptation and wake-ups. |
+| [harness](../internal/harness/harness.go) | Configuration and launches through harness plugins. |
 | [tmux](../internal/tmux/tmux.go) | Live ownership checks, panes, windows, titles, and bindings. |
 | [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations. |
-| [hook](../internal/hook/hook.go) | Context, teamwork guidance, steering, and turn events. |
+| [report](../internal/report/report.go) | Context, teamwork guidance, steering, and turn events reported by plugins. |
 | [wait](../internal/wait/wait.go) | Idle delivery and waiter replacement. |
-| [statusline](../internal/statusline/statusline.go) | Claude's native status line and approval clearing. |
+| [plugins](../plugins) | The Claude Code and OpenCode harness plugins. |

@@ -11,10 +11,11 @@ Use the Go version required by [go.mod](../go.mod). Build and install with:
 make install
 ```
 
-The executable goes to `~/.local/bin/hypercube`; add that directory to PATH.
-Set `BINDIR=<dir>` to install elsewhere. For a local build without installing,
-run `make` and use `bin/hypercube`. Build and validation targets are defined
-in the [Makefile](../Makefile). See [Usage](usage.md) to start working.
+`hypercube` and its harness plugins go to `~/.local/bin`; add that directory
+to PATH. Set `BINDIR=<dir>` to install elsewhere. For a local build without
+installing, run `make` and use `bin/hypercube`, which uses the plugins beside
+it. Build and validation targets are defined in the [Makefile](../Makefile).
+See [Usage](usage.md) to start working.
 
 ## Upgrades
 

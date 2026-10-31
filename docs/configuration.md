@@ -41,7 +41,8 @@ saved settings across restarts. Changes affect subsequently created agents,
 and the available profiles are reread when tools and startup context are
 requested.
 
-Model and effort values are interpreted by the selected harness. Claude Code
+`harness` names an installed [harness plugin](harness-support.md). Model
+and effort values are interpreted by the selected harness. Claude Code
 receives them as its model and effort; OpenCode uses effort as the model's
 variant. Consult the harness for accepted values. Hypercube's exact schema
 and validation are maintained in [config.go](../internal/harness/config.go).

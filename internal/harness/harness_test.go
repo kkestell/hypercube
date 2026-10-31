@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kkestell/hypercube/internal/store"
 )
 
 func TestConfigProfiles(t *testing.T) {
@@ -14,8 +16,8 @@ func TestConfigProfiles(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	valid := `{"lead":{"harness":"claude","model":"opus","effort":"high"},"profiles":[{"name":"fast","description":"Small jobs","harness":"opencode","model":"p/m","effort":"low"}]}`
-	for _, source := range []string{valid, strings.Replace(valid, `"opencode"`, `"pi"`, 1), strings.Replace(valid, `"Small jobs"`, `""`, 1), strings.Replace(valid, `"opus"`, `""`, 1), `{`} {
+	valid := `{"lead":{"harness":"one","model":"opus","effort":"high"},"profiles":[{"name":"fast","description":"Small jobs","harness":"two","model":"p/m","effort":"low"}]}`
+	for _, source := range []string{valid, strings.Replace(valid, `"two"`, `""`, 1), strings.Replace(valid, `"Small jobs"`, `""`, 1), strings.Replace(valid, `"opus"`, `""`, 1), `{`} {
 		if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -33,5 +35,12 @@ func TestConfigProfiles(t *testing.T) {
 		} else if err == nil {
 			t.Fatalf("invalid config accepted: %s", source)
 		}
+	}
+}
+
+func TestLaunchNeedsPlugin(t *testing.T) {
+	_, err := Launch(store.Agent{Name: "w", Harness: "pi"}, filepath.Join(t.TempDir(), "w.json"), "")
+	if err == nil || !strings.Contains(err.Error(), "hypercube-harness-pi") {
+		t.Fatal(err)
 	}
 }

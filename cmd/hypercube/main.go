@@ -18,9 +18,8 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/internal/hook"
 	"github.com/kkestell/hypercube/internal/mcp"
-	"github.com/kkestell/hypercube/internal/statusline"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
 	"github.com/kkestell/hypercube/internal/wait"
@@ -53,11 +52,9 @@ func main() {
 		err = startWorkspace(os.Args[2], false)
 	case len(os.Args) == 2 && os.Args[1] == "running":
 		err = running()
-	case (len(os.Args) == 2 || len(os.Args) == 3 && os.Args[2] == "--limits") && os.Args[1] == "statusline":
-		err = statusline.Run(len(os.Args) == 3, os.Stdin, os.Stdout)
 	case len(os.Args) == 2 && os.Args[1] == "wait":
 		var delivered bool
-		delivered, err = wait.Run(os.Stdin, os.Stderr)
+		delivered, err = wait.Run(os.Stdout)
 		if err == nil && delivered {
 			os.Exit(2)
 		}
@@ -67,10 +64,10 @@ func main() {
 		err = exited(os.Args[2], os.Args[3], os.Args[4])
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
 		err = mcp.Serve(os.Stdin, os.Stdout)
-	case len(os.Args) == 3 && os.Args[1] == "hook":
-		err = hook.Run(os.Args[2], os.Stdin, os.Stdout)
+	case len(os.Args) == 3 && os.Args[1] == "report":
+		err = report.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | hook <event> | wait | statusline [--limits]]")
+		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | report <event> | wait]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -198,7 +195,7 @@ func stop(root, name string) error {
 
 // status prints every workspace with a state file: its directory, whether its
 // session is running, its number of agents, and when it was last active.
-// Every hook writes the state, so the state file's modification time is the
+// Every report writes the state, so the state file's modification time is the
 // last activity.
 func status() error {
 	type row struct {

@@ -4,18 +4,17 @@ import { execFile } from "node:child_process"
 
 const exe = HYPERCUBE_EXE
 
-async function hook(event, sessionID, extra = {}) {
+// `hypercube report` answers with text for the model to read now.
+async function report(event, body = {}) {
   const out = await new Promise((resolve, reject) => {
-    const proc = execFile(exe, ["hook", event], (err, stdout) => {
+    const proc = execFile(exe, ["report", event], (err, stdout) => {
       if (err) reject(err)
       else resolve(stdout)
     })
-    proc.stdin.end(JSON.stringify({ session_id: sessionID, ...extra }))
+    proc.stdin.end(JSON.stringify(body))
   })
-  return out.trim() ? JSON.parse(out) : {}
+  return JSON.parse(out).context ?? ""
 }
-
-const context = (response) => response.hookSpecificOutput?.additionalContext ?? ""
 
 // A turn ends when its execution succeeds, fails, or is interrupted.
 const ends = new Set(["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])
@@ -35,15 +34,15 @@ export default {
       return !parents.get(sessionID)
     }
 
-    // `hypercube wait` exits with status 2 after writing the messages of an
-    // idle agent to stderr, and they start a turn in the session. Starting a
-    // waiter replaces the one before it.
+    // `hypercube wait` exits with status 2 after printing the messages of an
+    // idle agent, and they start a turn in the session. Starting a waiter
+    // replaces the one before it.
     let waiter
     function wait(sessionID) {
-      const proc = execFile(exe, ["wait"], (err, _stdout, stderr) => {
+      const proc = execFile(exe, ["wait"], (err, stdout) => {
         if (waiter === proc) waiter = undefined
         if (err?.code !== 2) return
-        ctx.session.prompt({ sessionID, text: stderr.trim() }).catch(() => {})
+        ctx.session.prompt({ sessionID, text: stdout.trim() }).catch(() => {})
       })
       proc.stdin.end()
       waiter = proc
@@ -65,16 +64,16 @@ export default {
           throw new Error(`OpenCode selected ${selectedModel} instead of requested ${requestedModel}. Use a full provider/model ID from opencode models (for example, openrouter/owner/model).`)
         }
         started.add(event.sessionID)
-        texts.push(context(await hook("SessionStart", event.sessionID)))
+        texts.push(await report("start"))
       }
-      texts.push(context(await hook("UserPromptSubmit", event.sessionID)))
+      texts.push(await report("prompt", { session: event.sessionID }))
       const text = texts.filter(Boolean).join("\n\n")
       if (text) event.prompt.text += "\n\n" + text
     })
 
     await ctx.tool.hook("execute.after", async (event) => {
       if (event.status !== "completed" || !(await isAgentSession(event.sessionID))) return
-      const text = context(await hook("PostToolUse", event.sessionID))
+      const text = await report("tool")
       if (!text) return
       const content = event.result.content
       const before = typeof content === "string" ? [{ type: "text", text: content }] : (content ?? [])
@@ -89,12 +88,12 @@ export default {
     async function stopped(event) {
       const { sessionID, error } = event.data
       if (event.type === "session.execution.failed") {
-        await hook("StopFailure", sessionID, { error: error?.type, error_details: error?.message })
+        await report("failed", { error: error?.message || error?.type })
         wait(sessionID)
         return
       }
-      const response = await hook("Stop", sessionID)
-      if (response.reason) ctx.session.prompt({ sessionID, text: response.reason }).catch(() => {})
+      const text = await report("stop")
+      if (text) ctx.session.prompt({ sessionID, text }).catch(() => {})
       else wait(sessionID)
     }
     void (async () => {

@@ -31,7 +31,7 @@ stop() {
 case "${1:-up}" in
 up)
 	cd "$ROOT"
-	go build -o "$BIN" ./cmd/hypercube
+	make build
 	stop
 
 	mkdir -p "$DEV/state" "$(dirname "$CONFIG")"

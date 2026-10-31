@@ -1,6 +1,6 @@
-// Package hook handles harness hook events. Claude Code and
-// the OpenCode plugin share the response format.
-package hook
+// Package report handles reports from a harness plugin about its agent's
+// conversation, and answers with text for the model.
+package report
 
 import (
 	"encoding/json"
@@ -15,47 +15,47 @@ import (
 )
 
 type input struct {
-	SessionID            string  `json:"session_id"`
-	AgentID              *string `json:"agent_id"`
-	Error                string  `json:"error"`
-	ErrorDetails         string  `json:"error_details"`
-	LastAssistantMessage string  `json:"last_assistant_message"`
+	Session string `json:"session"`
+	Error   string `json:"error"`
 }
 
-type specific struct {
-	HookEventName     string `json:"hookEventName"`
-	AdditionalContext string `json:"additionalContext"`
-}
-
+// response holds text for the model to read now. At stop, it continues the
+// turn.
 type response struct {
-	Decision           string    `json:"decision,omitempty"`
-	Reason             string    `json:"reason,omitempty"`
-	HookSpecificOutput *specific `json:"hookSpecificOutput,omitempty"`
+	Context string `json:"context,omitempty"`
 }
 
-// Run handles one hook event. Processes outside a Hypercube agent do nothing.
+// Run handles one report. Reports from outside a Hypercube agent get an empty
+// response and change nothing.
 func Run(event string, stdin io.Reader, stdout io.Writer) error {
 	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
 	if id == "" || path == "" {
-		return nil
+		return json.NewEncoder(stdout).Encode(response{})
 	}
 	var in input
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
-
-	if in.AgentID != nil && event != "PermissionRequest" {
-		return nil
+	// The status line reports answered on every redraw, so skip the lock when
+	// there is nothing to clear.
+	if event == "answered" {
+		s, err := store.Load(path)
+		if err != nil {
+			return err
+		}
+		if a, err := s.Agent(id); err != nil || !a.Attention {
+			return json.NewEncoder(stdout).Encode(response{})
+		}
 	}
 
-	var resp *response
 	err := store.Update(path, func(s *store.State) error {
 		a, err := s.Agent(id)
 		if err != nil {
 			return err
 		}
+		var resp response
 		switch event {
-		case "SessionStart":
+		case "start":
 			var profiles []harness.Profile
 			if a.Role == store.Lead {
 				cfg, err := harness.LoadConfig()
@@ -64,40 +64,40 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 				}
 				profiles = cfg.Profiles
 			}
-			resp = context(event, facts(s, a, profiles))
-		case "UserPromptSubmit":
-			// Claude Code saves no conversation until the first prompt, so a
-			// session ID recorded earlier may not be resumable.
-			if in.SessionID != "" {
-				a.SessionID = in.SessionID
+			resp.Context = facts(s, a, profiles)
+		case "prompt":
+			// A harness may save no conversation until the first prompt, so
+			// a session ID seen earlier may not be resumable.
+			if in.Session != "" {
+				a.SessionID = in.Session
 			}
 			a.Activity = store.Busy
-			resp = context(event, Format(s, s.Take(id)))
-		case "PostToolUse":
-			resp = context(event, Format(s, s.Take(id)))
-		case "PermissionRequest":
-			a.Attention = true
-		case "StopFailure":
+			resp.Context = Format(s, s.Take(id))
+		case "tool":
+			resp.Context = Format(s, s.Take(id))
+		case "stop":
+			resp.Context = Format(s, s.Take(id))
+			if resp.Context == "" {
+				a.Activity = store.Idle
+			}
+		case "failed":
 			if a.Role == store.Worker {
 				if lead := s.TeamLead(a.Team); lead != nil {
-					s.Messages = append(s.Messages, store.Message{From: id, To: lead.ID, Text: failure(in)})
+					s.Messages = append(s.Messages, store.Message{From: id, To: lead.ID, Text: failure(in.Error)})
 				}
 			}
 			a.Activity = store.Idle
-		case "Stop":
-			if text := Format(s, s.Take(id)); text != "" {
-				resp = &response{Decision: "block", Reason: text}
-			} else {
-				a.Activity = store.Idle
-			}
+		case "approval":
+			// An empty response leaves the decision to the harness's own
+			// dialog.
+			a.Attention = true
+		case "answered":
+			a.Attention = false
 		default:
-			return fmt.Errorf("unknown hook event %q", event)
+			return fmt.Errorf("unknown report %q", event)
 		}
 		// Writing the response inside the update keeps taken messages queued
-		// if the harness cannot read them.
-		if resp == nil {
-			return nil
-		}
+		// if the plugin cannot read them.
 		return json.NewEncoder(stdout).Encode(resp)
 	})
 	if err == nil {
@@ -106,14 +106,7 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 	return err
 }
 
-func context(event, text string) *response {
-	if text == "" {
-		return nil
-	}
-	return &response{HookSpecificOutput: &specific{HookEventName: event, AdditionalContext: text}}
-}
-
-// format renders messages as the model sees them.
+// Format renders messages as the model sees them.
 // Senders cannot see the recipient's chat, so agent messages say how to reply.
 func Format(s *store.State, messages []store.Message) string {
 	var parts []string
@@ -203,14 +196,8 @@ Worker profiles. Pass the name of the one that fits the task to create_agent as 
 	}
 }
 
-func failure(in input) string {
-	detail := ""
-	for _, text := range []string{in.ErrorDetails, in.LastAssistantMessage, in.Error} {
-		if text = strings.TrimSpace(text); text != "" {
-			detail = text
-			break
-		}
-	}
+func failure(detail string) string {
+	detail = strings.TrimSpace(detail)
 	if detail == "" {
 		return "My turn failed."
 	}

@@ -42,8 +42,8 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
 	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "lead": {"harness": "claude", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "opencode", "model": "gpt-6.1-sol", "effort": "medium"}]
+  "lead": {"harness": "one", "model": "opus", "effort": "high"},
+  "profiles": [{"name": "sol", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}]
 }`), 0o644)
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {

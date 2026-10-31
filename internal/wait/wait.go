@@ -1,30 +1,23 @@
-// Package wait delivers queued messages through the harness's own wake-up
-// mechanism. It never types into the pane or changes the user's draft prompt.
+// Package wait hands an idle agent's queued messages to its harness plugin,
+// which starts a turn through the harness's own wake-up mechanism. Nothing is
+// typed into the pane, so the user's draft prompt stays.
 package wait
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"time"
 
-	"github.com/kkestell/hypercube/internal/hook"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 // Run returns true after writing messages. The CLI maps that to status 2.
-func Run(stdin io.Reader, out io.Writer) (bool, error) {
+func Run(out io.Writer) (bool, error) {
 	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
 	if id == "" || path == "" {
-		return false, nil
-	}
-	var in struct {
-		AgentID *string `json:"agent_id"`
-	}
-	_ = json.NewDecoder(stdin).Decode(&in)
-	if in.AgentID != nil {
 		return false, nil
 	}
 	return Wait(id, path, out)
@@ -79,7 +72,7 @@ func Wait(id, path string, out io.Writer) (bool, error) {
 				if len(messages) == 0 {
 					return nil
 				}
-				text := hook.Format(s, messages) + "\n"
+				text := report.Format(s, messages) + "\n"
 				if _, err := fmt.Fprint(out, text); err != nil {
 					return fmt.Errorf("write messages: %w", err)
 				}

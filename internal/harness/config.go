@@ -83,8 +83,8 @@ func (c Config) Profile(name string) (Profile, error) {
 
 func (s Spec) check() error {
 	switch {
-	case s.Harness != "claude" && s.Harness != "opencode":
-		return fmt.Errorf("harness must be claude or opencode, not %q", s.Harness)
+	case s.Harness == "":
+		return fmt.Errorf("missing harness")
 	case s.Model == "":
 		return fmt.Errorf("missing model")
 	case s.Effort == "":

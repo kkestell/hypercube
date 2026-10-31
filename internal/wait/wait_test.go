@@ -3,7 +3,6 @@ package wait
 import (
 	"bytes"
 	"errors"
-	"io"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,7 +75,7 @@ type brokenWriter struct{}
 
 func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }
 
-func TestSubagentsAndFailedWritesKeepMessages(t *testing.T) {
+func TestFailedWritesKeepMessages(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = []store.Agent{{ID: "w", Activity: store.Idle}}
@@ -84,11 +83,6 @@ func TestSubagentsAndFailedWritesKeepMessages(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
-	}
-	t.Setenv("HYPERCUBE_AGENT_ID", "w")
-	t.Setenv("HYPERCUBE_STATE", path)
-	if ok, err := Run(strings.NewReader(`{"agent_id":"native"}`), io.Discard); ok || err != nil {
-		t.Fatal(ok, err)
 	}
 	if ok, err := Wait("w", path, brokenWriter{}); ok || err == nil {
 		t.Fatal(ok, err)

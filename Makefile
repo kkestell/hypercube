@@ -5,18 +5,20 @@ BIN := bin/hypercube
 
 build:
 	go build -o $(BIN) ./cmd/hypercube
+	go build -o bin/hypercube-harness-claude ./plugins/claude
+	go build -o bin/hypercube-harness-opencode ./plugins/opencode
 
 test:
 	go test ./...
 
 check: build
 	go vet ./...
-	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
+	@test -z "$$(gofmt -l cmd internal plugins)" || { gofmt -l cmd internal plugins; exit 1; }
 	go test -race ./...
 
 install: build
 	mkdir -p "$(BINDIR)"
-	install -m 755 $(BIN) "$(BINDIR)/hypercube"
+	install -m 755 $(BIN) bin/hypercube-harness-* "$(BINDIR)"
 
 reinstall: build
 	BINDIR="$(BINDIR)" scripts/reinstall

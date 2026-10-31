@@ -13,12 +13,35 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// This process stands in for either native harness. Messages arrive through
-// real hypercube hooks and waiters, while terminal input remains in its editor.
+// This process stands in for a harness plugin's launch. It starts the
+// stand-in harness below, resuming the saved session.
+func TestHarnessPlugin(t *testing.T) {
+	if os.Getenv("HYPERCUBE_TEST_PLUGIN") != "1" {
+		return
+	}
+	var in harness.LaunchInput
+	if err := json.NewDecoder(os.Stdin).Decode(&in); err != nil {
+		os.Exit(93)
+	}
+	argv := []string{os.Getenv("HYPERCUBE_TEST_BINARY"), "-test.run", "^TestNativeHarness$", "--"}
+	if in.Session != "" {
+		argv = append(argv, "--resume", in.Session)
+	}
+	if in.Prompt != "" {
+		argv = append(argv, in.Prompt)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(harness.LaunchOutput{Argv: argv, Env: map[string]string{"HYPERCUBE_TEST_NATIVE": "1"}})
+	os.Exit(0)
+}
+
+// This process stands in for a native harness and its plugin. Messages arrive
+// through real hypercube reports and waiters, while terminal input remains in
+// its editor.
 func TestNativeHarness(t *testing.T) {
 	if os.Getenv("HYPERCUBE_TEST_NATIVE") != "1" {
 		return
@@ -38,13 +61,9 @@ func TestNativeHarness(t *testing.T) {
 		_, _ = f.Write(append(b, '\n'))
 		_ = f.Close()
 	}
-	hook := func(event string, extra map[string]string) {
-		input := map[string]string{"session_id": id + "-session"}
-		for k, v := range extra {
-			input[k] = v
-		}
+	report := func(event string, input map[string]string) {
 		b, _ := json.Marshal(input)
-		cmd := exec.Command(binary, "hook", event)
+		cmd := exec.Command(binary, "report", event)
 		cmd.Stdin = bytes.NewReader(b)
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -57,7 +76,7 @@ func TestNativeHarness(t *testing.T) {
 	startWaiter := func() {
 		cmd := exec.Command(binary, "wait")
 		var out bytes.Buffer
-		cmd.Stderr = &out
+		cmd.Stdout = &out
 		if err := cmd.Start(); err != nil {
 			os.Exit(92)
 		}
@@ -68,12 +87,13 @@ func TestNativeHarness(t *testing.T) {
 			}
 		}()
 	}
+	prompt := map[string]string{"session": id + "-session"}
 	log("launch", "")
-	hook("SessionStart", nil)
+	report("start", nil)
 	// A worker's initial turn consumes the queued brief; the lead waits.
 	if slices.Contains(os.Args, "Check your Hypercube messages.") {
-		hook("UserPromptSubmit", nil)
-		hook("Stop", nil)
+		report("prompt", prompt)
+		report("stop", nil)
 	}
 	startWaiter()
 	input := make(chan string)
@@ -87,8 +107,8 @@ func TestNativeHarness(t *testing.T) {
 		select {
 		case text := <-wake:
 			log("wake", text)
-			hook("UserPromptSubmit", nil)
-			hook("Stop", nil)
+			report("prompt", prompt)
+			report("stop", nil)
 			startWaiter()
 		case text := <-input:
 			log("input", text)
@@ -96,19 +116,19 @@ func TestNativeHarness(t *testing.T) {
 			case "exit":
 				os.Exit(0)
 			case "work":
-				hook("UserPromptSubmit", nil)
+				report("prompt", prompt)
 				log("working", "")
 			case "tool":
-				hook("PostToolUse", nil)
+				report("tool", nil)
 			case "finish":
-				hook("Stop", nil)
+				report("stop", nil)
 				startWaiter()
 			case "fail":
-				hook("StopFailure", map[string]string{"error_details": "test provider failure"})
+				report("failed", map[string]string{"error": "test provider failure"})
 				startWaiter()
 			default:
-				hook("UserPromptSubmit", nil)
-				hook("Stop", nil)
+				report("prompt", prompt)
+				report("stop", nil)
 				startWaiter()
 			}
 			log("handled", text)
@@ -135,26 +155,22 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	testBinary, _ := os.Executable()
-	fake := filepath.Join(dir, "bin")
 	logs := filepath.Join(dir, "logs")
-	for _, d := range []string{fake, logs, filepath.Join(dir, "config/hypercube")} {
+	for _, d := range []string{logs, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, kind := range []string{"claude", "opencode"} {
-		script := "#!/bin/sh\nexport HYPERCUBE_TEST_NATIVE=1\nexec \"$HYPERCUBE_TEST_BINARY\" -test.run '^TestNativeHarness$' -- \"$@\"\n"
-		if err := os.WriteFile(filepath.Join(fake, kind), []byte(script), 0o755); err != nil {
-			t.Fatal(err)
-		}
+	script := "#!/bin/sh\nexport HYPERCUBE_TEST_PLUGIN=1\nexec \"$HYPERCUBE_TEST_BINARY\" -test.run '^TestHarnessPlugin$' -- \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "hypercube-harness-test"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", fake+":"+os.Getenv("PATH"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state with spaces"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_EXE", binary)
 	t.Setenv("HYPERCUBE_TEST_BINARY", testBinary)
 	t.Setenv("HYPERCUBE_TEST_LOGS", logs)
-	config := `{"lead":{"harness":"claude","model":"haiku","effort":"low"},"profiles":[{"name":"worker","description":"test","harness":"opencode","model":"p/m","effort":"high"}]}`
+	config := `{"lead":{"harness":"test","model":"haiku","effort":"low"},"profiles":[{"name":"worker","description":"test","harness":"test","model":"p/m","effort":"high"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
