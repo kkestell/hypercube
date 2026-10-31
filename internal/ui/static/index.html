@@ -196,8 +196,8 @@ function refresh() {
   // Labels of the window's panes with an option set, each followed by |.
   const labels = option => `#{P:#{?${option},#{@hypercube_label}|,}}`;
   let sessions, wins;
-  send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{?@hypercube_replied,1,}}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
-    lines => sessions = rows(lines, ['id', 'state', 'replied', 'attention', 'busy', 'name']).filter(s => s.state));
+  send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
+    lines => sessions = rows(lines, ['id', 'state', 'attention', 'busy', 'name']).filter(s => s.state));
   send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
     lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
   send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_status_at}\t#{@hypercube_usage}\t#{@hypercube_status}\t#{@hypercube_label}'`,
@@ -244,7 +244,7 @@ function render(sessions, wins, list) {
     else p.open = toggled.get(p.id);
   }
   if (win?.id !== shown?.window) leadWidth = null;
-  shown = {window: win?.id, leader, stacked, state: current?.state, layout: win?.layout.slice(5)};
+  shown = {window: win?.id, leader, stacked, layout: win?.layout.slice(5)};
 
   // Each pane's terminal matches the pane's size and sits in the lead's panel
   // or its worker's card.
@@ -584,6 +584,15 @@ function keys(id, bytes) {
   }
 }
 
+// post sends an action to the server and returns its response text, or null
+// if the server refused, after showing why.
+async function post(action) {
+  const res = await fetch(action, {method: 'POST'});
+  const text = await res.text();
+  if (!res.ok) alert(text);
+  return res.ok ? text : null;
+}
+
 // Clicking a session sends its tmux command. Clicking an action asks its
 // question, if any, then posts it to the server, which runs Hypercube's own
 // command, and shows why it refused.
@@ -592,8 +601,7 @@ document.body.addEventListener('click', async e => {
   const command = e.target.closest('[data-command]');
   if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
-    const res = await fetch(action.dataset.action, {method: 'POST'});
-    if (!res.ok) alert(await res.text());
+    post(action.dataset.action);
   } else if (command) {
     send(command.dataset.command);
   }
@@ -601,16 +609,9 @@ document.body.addEventListener('click', async e => {
 
 // A new workspace opens once it starts.
 $('add-workspace').onclick = async () => {
-  const res = await fetch('workspace?action=new', {method: 'POST'});
-  const text = await res.text();
-  if (!res.ok) alert(text);
-  else if (text) send(`switch-client -t '=${text}'`);
+  const text = await post('workspace?action=new');
+  if (text) send(`switch-client -t '=${text}'`);
 };
-
-async function post(action) {
-  const res = await fetch(action, {method: 'POST'});
-  if (!res.ok) alert(await res.text());
-}
 
 $('toggle-sidebar').onclick = () => {
   const open = sidebar.hidden;

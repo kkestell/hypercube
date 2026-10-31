@@ -55,8 +55,9 @@ restart workspaces when switching executable paths.
 http://localhost:4281/ with isolated state, configuration, tmux server, and a
 scratch repository under `~/projects/hypercube-dev`. Set `HYPERCUBE_DEV_DIR` to
 use another location.
-`make dev-stop` stops it; `make dev-clean` removes its disposable resources
-and harness transcripts. Details belong to [scripts/dev](../scripts/dev).
+`make dev-stop` stops it; `make dev-clean` removes its disposable resources, the
+dev agents' OpenCode sessions, and their Claude Code transcripts. Details belong
+to [scripts/dev](../scripts/dev).
 
 Automated tests use local harness stand-ins. Live model behavior requires a
 separate smoke test; the latest recorded result is in

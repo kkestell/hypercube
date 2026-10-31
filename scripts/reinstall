@@ -8,6 +8,7 @@ set -u
 
 BINDIR=${BINDIR:-$HOME/.local/bin}
 : "${SERVICE:?SERVICE is required}"
+: "${PORT:?PORT is required}"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BUILT=$ROOT/bin/hypercube
 CURRENT=$BINDIR/hypercube
@@ -69,8 +70,8 @@ echo "restarted $SERVICE"
 set -f
 for dir in $stopped; do
 	if curl --silent --show-error --fail-with-body --retry 30 --retry-delay 1 --retry-connrefused \
-		-X POST -H 'Origin: http://localhost:4280' --url-query "dir=$dir" \
-		'http://localhost:4280/workspace?action=start'; then
+		-X POST -H "Origin: http://localhost:$PORT" --url-query "dir=$dir" \
+		"http://localhost:$PORT/workspace?action=start"; then
 		echo "started $dir"
 	else
 		failed=1
