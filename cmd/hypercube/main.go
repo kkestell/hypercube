@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -352,10 +351,12 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 	return store.Delete(path)
 }
 
-// renameTeam renames a session: its agents' addresses and its window.
-func renameTeam(path, team, expectedWindow, newName string) error {
-	if !sessionName.MatchString(newName) {
-		return errors.New("session names must be lowercase letters, digits, and hyphens")
+// retitle changes a session's title. Its ID, and so its agents' addresses,
+// stay the same.
+func retitle(path, team, expectedWindow, title string) error {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return errors.New("a session needs a title")
 	}
 	name := store.Workspace(path)
 	lock, err := store.LockFile(path + ".session.lock")
@@ -371,23 +372,17 @@ func renameTeam(path, team, expectedWindow, newName string) error {
 		return errors.New("the window no longer belongs to this session")
 	}
 	err = store.Update(path, func(s *store.State) error {
-		if s.TeamLead(team) == nil {
+		lead := s.TeamLead(team)
+		if lead == nil {
 			return fmt.Errorf("no session %q", team)
 		}
-		if s.TeamLead(newName) != nil {
-			return fmt.Errorf("session %q already exists", newName)
-		}
-		for i := range s.Agents {
-			if s.Agents[i].Team == team {
-				s.Agents[i].Team = newName
-			}
-		}
+		lead.Title = title
 		return nil
 	})
 	if err != nil {
 		return err
 	}
-	return tmux.RenameWindow(window, newName)
+	return tmux.RenameWindow(window, title)
 }
 
 // start attaches to the workspace, starting its saved sessions when necessary.
@@ -404,19 +399,14 @@ func newSessionArgs(args []string) error {
 		return err
 	}
 	if flags.NArg() > 1 {
-		return errors.New("usage: hypercube new [-d] [name]")
+		return errors.New("usage: hypercube new [-d] [title]")
 	}
 	return openWorkspace(".", flags.Arg(0), true, !*detached, !*detached)
 }
 
-var sessionName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
 // A workspace owns one tmux session. Each Hypercube session is a team in its
 // own marked window; names and worker lifecycle are local to that team.
-func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
-	if create && newName != "" && !sessionName.MatchString(newName) {
-		return errors.New("session names must be lowercase letters, digits, and hyphens")
-	}
+func openWorkspace(dir, title string, create, selectNew, attach bool) error {
 	root, name, err := workspaceAt(dir)
 	if err != nil {
 		return err
@@ -435,17 +425,18 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		return err
 	}
 	add := create || len(s.Agents) == 0
+	// A new session gets a random ID and, unless given one, the first unused
+	// "Session N" title.
+	var team string
 	if add {
-		if newName == "" {
-			for n := 1; ; n++ {
-				newName = fmt.Sprintf("session-%d", n)
-				if s.TeamLead(newName) == nil {
-					break
+		team = store.NewID()
+		for n := 1; title == ""; n++ {
+			title = fmt.Sprintf("Session %d", n)
+			for _, a := range s.Agents {
+				if a.Role == store.Lead && a.Title == title {
+					title = ""
 				}
 			}
-		}
-		if s.TeamLead(newName) != nil {
-			return fmt.Errorf("session %q already exists; select its window with Ctrl-b w", newName)
 		}
 	}
 	missing := map[string]bool{}
@@ -460,7 +451,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		missing[a.Team] = window == ""
 	}
 	if add {
-		missing[newName] = true
+		missing[team] = true
 	}
 	var launch []store.Agent
 	needsLaunch := false
@@ -478,7 +469,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 			if add {
 				o := cfg.Lead
 				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
-					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: newName})
+					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team, Title: title})
 			}
 			for i := range s.Agents {
 				a := &s.Agents[i]
@@ -519,12 +510,12 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 		}
 	}
 	if create {
-		window, err := tmux.FindWindow(name, newName, path)
+		window, err := tmux.FindWindow(name, team, path)
 		if err != nil {
 			return err
 		}
 		if window == "" {
-			return fmt.Errorf("session %q has no tmux window", newName)
+			return fmt.Errorf("session %q has no tmux window", title)
 		}
 		if selectNew {
 			if err := tmux.SelectWindow(window); err != nil {
@@ -557,7 +548,7 @@ func windowAction(args []string) error {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])
 		}
 		if args[0] == "rename" && len(args) == 5 && a.Team == args[2] {
-			return renameTeam(args[1], args[2], args[3], args[4])
+			return retitle(args[1], args[2], args[3], args[4])
 		}
 	}
 	return errors.New("no matching Hypercube session")

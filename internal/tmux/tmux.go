@@ -26,7 +26,7 @@ func HasSession(name string) bool {
 // NewPane allocates the pane before launching its harness, so even an immediate
 // launch failure remains visible. The caller serializes workspace lifecycle
 // operations. The temporary sleep is replaced after the pane is configured.
-func NewPane(session, team, label, dir string, env map[string]string, argv []string) (pane string, err error) {
+func NewPane(session, team, title, label, dir string, env map[string]string, argv []string) (pane string, err error) {
 	first := !HasSession(session)
 	window, err := FindWindow(session, team, env["HYPERCUBE_STATE"])
 	if err != nil {
@@ -35,9 +35,9 @@ func NewPane(session, team, label, dir string, env map[string]string, argv []str
 	newWindow := window == ""
 	var args []string
 	if first {
-		args = []string{"new-session", "-d", "-s", session, "-n", team}
+		args = []string{"new-session", "-d", "-s", session, "-n", literal(title)}
 	} else if newWindow {
-		args = []string{"new-window", "-d", "-t", "=" + session + ":", "-n", team}
+		args = []string{"new-window", "-d", "-t", "=" + session + ":", "-n", literal(title)}
 	} else {
 		panes, err := run("list-panes", "-t", window, "-F", "#{pane_id}")
 		if err != nil {
@@ -309,10 +309,20 @@ func SelectWindow(window string) error {
 	return err
 }
 
-// RenameWindow gives a session's window its team's new name.
-func RenameWindow(window, team string) error {
-	_, err := run("set-option", "-w", "-t", window, "@hypercube_team", team, ";", "rename-window", "-t", window, team)
+// RenameWindow shows a session's new title.
+func RenameWindow(window, title string) error {
+	_, err := run("rename-window", "-t", window, "--", literal(title))
 	return err
+}
+
+// literal keeps a window name as typed: tmux expands formats in window names
+// and reads an argument's trailing semicolon as a command separator.
+func literal(name string) string {
+	name = strings.ReplaceAll(name, "#", "##")
+	if strings.HasSuffix(name, ";") {
+		name = strings.TrimSuffix(name, ";") + `\;`
+	}
+	return name
 }
 
 func KillWindow(session, team, state string) error {

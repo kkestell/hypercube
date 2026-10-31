@@ -66,7 +66,7 @@ func toolsFor(s store.State, profiles []harness.Profile) []tool {
 	}
 	return []tool{
 		{"send_message", "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
-		{"list_agents", "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, role, harness, activity, directory, and branch.", schema([]string{})},
+		{"list_agents", "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, session title, role, harness, activity, directory, and branch.", schema([]string{})},
 		{"set_status", "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.", schema([]string{"text"}, "text")},
 		create,
 		remove,
@@ -144,6 +144,7 @@ func call(self, path, name string, args map[string]string) (string, error) {
 		}
 		type entry struct {
 			Address  string `json:"address"`
+			Title    string `json:"session_title"`
 			Role     string `json:"role"`
 			Harness  string `json:"harness"`
 			Activity string `json:"activity"`
@@ -155,7 +156,7 @@ func call(self, path, name string, args map[string]string) (string, error) {
 			if a.Team != caller.Team && !(caller.Role == store.Lead && a.Role == store.Lead) {
 				continue
 			}
-			listed = append(listed, entry{a.Address(), a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
+			listed = append(listed, entry{a.Address(), s.Title(a.Team), a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
 		}
 		b, err := json.MarshalIndent(listed, "", "  ")
 		return string(b), err

@@ -6,6 +6,7 @@ package harness
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -107,5 +108,6 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 		}
 	}
 	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
-	return tmux.NewPane(store.Workspace(statePath), a.Team, label, a.Dir, env, []string{exe, "agent", prompt})
+	// The lead launches first and creates its session's window.
+	return tmux.NewPane(store.Workspace(statePath), a.Team, cmp.Or(a.Title, a.Team), label, a.Dir, env, []string{exe, "agent", prompt})
 }

@@ -122,7 +122,7 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 		s.Agents = []store.Agent{
 			{ID: "o", Name: "lead", Role: store.Lead, Team: "session-1"},
 			{ID: "w", Name: "worker", Role: store.Worker, Team: "session-1"},
-			{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other"},
+			{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other", Title: "Fix the parser"},
 			{ID: "other-worker", Name: "worker", Role: store.Worker, Team: "other", Activity: store.Busy},
 		}
 		s.Messages = []store.Message{{From: "o", To: "other-worker", Text: "kept"}}
@@ -131,7 +131,7 @@ func TestSessionContextAndFailureRouting(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := run(t, "start", `{}`).Context
-	if strings.Contains(got, "session-1/") || !strings.Contains(got, "other/lead") {
+	if strings.Contains(got, "session-1/") || !strings.Contains(got, "other/lead") || !strings.Contains(got, `"other", titled "Fix the parser"`) {
 		t.Fatal("session context exposed the wrong team", got)
 	}
 	run(t, "failed", `{"error":" rate limited "}`)

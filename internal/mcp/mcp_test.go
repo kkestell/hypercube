@@ -98,7 +98,7 @@ func TestSessionBoundaries(t *testing.T) {
 	path := team(t, false, t.TempDir(), t.TempDir())
 	if err := store.Update(path, func(s *store.State) error {
 		s.Agents = append(s.Agents,
-			store.Agent{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other"},
+			store.Agent{ID: "other-lead", Name: "lead", Role: store.Lead, Team: "other", Title: "Fix the parser"},
 			store.Agent{ID: "other-worker", Name: "w1", Role: store.Worker, Team: "other"})
 		return nil
 	}); err != nil {
@@ -124,7 +124,7 @@ func TestSessionBoundaries(t *testing.T) {
 	if err != nil || len(s.Agents) != 4 || len(s.Messages) != 3 || s.Messages[0].To != "other-worker" || s.Messages[1].To != "other-lead" || s.Messages[2].To != "a" {
 		t.Fatal(s, err)
 	}
-	if listed, _ := call("a", path, "list_agents", nil); !strings.Contains(listed, "other/lead") || strings.Contains(listed, "other/w1") {
+	if listed, _ := call("a", path, "list_agents", nil); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") {
 		t.Fatal("lead's list_agents", listed)
 	}
 	if listed, _ := call("b", path, "list_agents", nil); strings.Contains(listed, "other/") {

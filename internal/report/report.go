@@ -167,7 +167,7 @@ func Format(s *store.State, messages []store.Message) string {
 func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s, the %s in a Hypercube team of coding agents.\n", a.Address(), a.Role)
-	fmt.Fprintf(&b, "Your Hypercube session is %q. Agents are addressed as session/name; a bare name means an agent in your session.\n", a.Team)
+	fmt.Fprintf(&b, "Your Hypercube session is %q, titled %q. Agents are addressed as session/name, where session is the session's ID; a bare name means an agent in your session.\n", a.Team, s.Title(a.Team))
 	if a.Role == store.Lead {
 		b.WriteString("Worker tools apply only to this session. You can also message the leads of other sessions.\n")
 	} else {
@@ -180,7 +180,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 		if t.Team == a.Team {
 			fmt.Fprintf(&b, "- %s: %s, %s, %s%s\n", t.Address(), t.Role, t.Harness, t.Dir, onBranch(t.Branch))
 		} else if t.Role == store.Lead {
-			leads = append(leads, t.Address())
+			leads = append(leads, fmt.Sprintf("%s (%s)", t.Address(), s.Title(t.Team)))
 		}
 	}
 	if a.Role == store.Lead {

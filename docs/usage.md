@@ -6,8 +6,10 @@ outside Git, it is the current directory.
 
 A workspace owns one tmux session. Each Hypercube session is a team in its own
 window, with a lead on the left and workers stacked on the right.
-Agents are addressed as `session/name`, such as `review/lead`; a bare name
-means an agent in the sender's own team. Workers message only their own team,
+Each session has a random ID, such as `k3f9a2c1`, and a title you can change.
+Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
+means an agent in the sender's own team. Agents see each session's title beside
+its ID. Workers message only their own team,
 and leads can also message other teams' leads. Worker lifecycle is scoped to the
 team.
 Leads share the original directory, including its files, Git index,
@@ -15,26 +17,25 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube` | Start missing saved windows and attach; a new workspace starts with `session-1`. |
-| `hypercube new [name]` | Create and select another team. Omit the name for the first unused `session-N`. |
-| `hypercube new -d [name]` | Create a team without attaching or changing the selected window. |
+| `hypercube` | Start missing saved windows and attach; a new workspace starts with `Session 1`. |
+| `hypercube new [title]` | Create and select another team. Omit the title for the first unused `Session N`. |
+| `hypercube new -d [title]` | Create a team without attaching or changing the selected window. |
 | `hypercube start <dir>` | Start saved teams detached. |
-| `hypercube delete-session <name>` | Delete one team and its resources from the current workspace. |
+| `hypercube delete-session <id>` | Delete one team and its resources from the current workspace. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |
 | `hypercube running` | Print running workspace paths for scripts. |
 | `hypercube ui` | Serve the browser view at http://localhost:4280/. |
 
-Session names start with a lowercase letter or digit and contain only
-lowercase letters, digits, and hyphens. Stop and delete default to the current
+Stop and delete default to the current
 workspace; `--all` lists targets and asks for confirmation. They can also
 use a disappeared checkout's saved path.
 
 ## Keyboard controls
 
 The top status line lists workspaces; click one to switch to it. Each
-Hypercube session is a tmux window, listed by number and name in the bottom
+Hypercube session is a tmux window, listed by number and title in the bottom
 status line. A session turns yellow when its lead finishes a reply while you are
 viewing another session or workspace, and returns to gray once you view it. A
 workspace is yellow while any of its sessions is. With tmux's default prefix,
@@ -78,7 +79,7 @@ workspace.
 
 The sidebar lists every running workspace's sessions under a row for the
 workspace; click the row to collapse or expand them. Click a session to switch
-to it, double-click it to rename it and its agents' addresses, click `+` to
+to it, double-click it to change its title, click `+` to
 create one in the open workspace, or hover over one and click the trash icon to
 delete it. A
 session shows a spinner while any of its agents is busy, an amber dot while any

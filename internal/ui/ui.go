@@ -145,7 +145,7 @@ func window(w http.ResponseWriter, r *http.Request) {
 	case "delete":
 		args = append(args, q.Get("team"), q.Get("window"))
 	case "rename":
-		args = append(args, q.Get("team"), q.Get("window"), q.Get("name"))
+		args = append(args, q.Get("team"), q.Get("window"), q.Get("title"))
 	default:
 		http.Error(w, "unknown window action", http.StatusBadRequest)
 		return

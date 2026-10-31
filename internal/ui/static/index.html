@@ -331,9 +331,8 @@ sessionList.addEventListener('click', e => {
   renderSidebar();
 });
 
-// Double-clicking a session replaces it with a field for its new name, which
-// also renames its agents' addresses. Enter or leaving the field saves the
-// name, and Escape cancels.
+// Double-clicking a session replaces it with a field for its new title. Enter
+// or leaving the field saves the title, and Escape cancels.
 sessionList.addEventListener('dblclick', e => {
   const row = e.target.closest('[data-rename]');
   const w = windows.find(w => w.id === row?.dataset.rename);
@@ -349,10 +348,10 @@ sessionList.addEventListener('dblclick', e => {
   const finish = save => {
     if (!renaming) return;
     renaming = false;
-    const name = input.value.trim();
-    if (save && name && name !== w.name) {
-      post('window?' + new URLSearchParams({action: 'rename', state: workspace.state, team: w.team, window: w.id, name}));
-      w.name = name;
+    const title = input.value.trim();
+    if (save && title && title !== w.name) {
+      post('window?' + new URLSearchParams({action: 'rename', state: workspace.state, team: w.team, window: w.id, title}));
+      w.name = title;
     }
     sessionList.replaceChildren();
     renderSidebar();

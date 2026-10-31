@@ -23,18 +23,21 @@ const (
 )
 
 type Agent struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Harness    string `json:"harness"`
-	Model      string `json:"model"`
-	Effort     string `json:"effort"`
-	Dir        string `json:"dir"`
-	Branch     string `json:"branch"`
-	SessionID  string `json:"session_id,omitempty"`
-	Target     string `json:"target,omitempty"`
-	Activity   string `json:"activity"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	Harness   string `json:"harness"`
+	Model     string `json:"model"`
+	Effort    string `json:"effort"`
+	Dir       string `json:"dir"`
+	Branch    string `json:"branch"`
+	SessionID string `json:"session_id,omitempty"`
+	Target    string `json:"target,omitempty"`
+	Activity  string `json:"activity"`
+	// Team is the session's stable ID, which addresses use. A lead's Title
+	// is the session's name for the user, who can change it.
 	Team       string `json:"team"`
+	Title      string `json:"title,omitempty"`
 	Waiter     uint64 `json:"waiter,omitempty"`
 	Attention  bool   `json:"attention,omitempty"`
 	Launched   int64  `json:"launched,omitempty"`
@@ -183,6 +186,14 @@ func Update(path string, fn func(*State) error) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// Title returns the session's title, or its ID when it has none.
+func (s *State) Title(team string) string {
+	if lead := s.TeamLead(team); lead != nil && lead.Title != "" {
+		return lead.Title
+	}
+	return team
 }
 
 func (s *State) TeamLead(team string) *Agent {
