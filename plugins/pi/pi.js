@@ -50,6 +50,8 @@ export default function (pi) {
   // A resumed conversation can be woken at once. A new one exists from its
   // first prompt, and the end of that turn starts a waiter.
   pi.on("session_start", async (_event, ctx) => {
+    // A new or switched session needs its start context again.
+    started = false
     if (ctx.sessionManager.getEntries().some((entry) => entry.type === "message")) wait()
   })
 
