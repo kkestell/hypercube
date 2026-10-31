@@ -21,9 +21,10 @@ CONFIG=$DEV/config/hypercube/config.json
 # Run hypercube against the dev state and configuration, with only the
 # environment a fresh terminal gives it. Agents started by the dev session must
 # not inherit the environment of the agent running this script.
+DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
+	TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
 dev() {
-	env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}" \
-		TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
+	"${DEV_ENV[@]}" "$BIN" "$@"
 }
 
 # Stop the dev view and every workspace in the dev state.
@@ -93,12 +94,10 @@ JSON
 	fi
 
 	dev start "$REPO"
-	# The view ignores a hangup so it outlives the shell that started it.
-	(
-		trap '' HUP
-		dev ui "$PORT" >"$DEV/ui.log" 2>&1 </dev/null &
-		echo $! >"$DEV/ui.pid"
-	)
+	# The view ignores a hangup so it outlives the shell that started it. The
+	# subshell execs hypercube, so the saved process ID is the view's own.
+	(trap '' HUP; exec "${DEV_ENV[@]}" "$BIN" ui "$PORT") >"$DEV/ui.log" 2>&1 </dev/null &
+	echo $! >"$DEV/ui.pid"
 	for _ in $(seq 25); do
 		curl -fs -o /dev/null "http://localhost:$PORT/" && break
 		sleep 0.2
