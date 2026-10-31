@@ -157,11 +157,9 @@ function received(bytes) {
 let pendingLayout = null;
 function resizeTerminals() {
   if (!pendingLayout) return;
-  for (const [, w, h, y, id] of pendingLayout.matchAll(/(\d+)x(\d+),\d+,(\d+),(\d+)/g)) {
-    // A pane's cell includes the title row above it, except below another
-    // pane, where the title row is the border between them.
-    const term = terms.get('%' + id), rows = +h - (+y === 0 ? 1 : 0);
-    if (term && (term.cols !== +w || term.rows !== rows)) term.resize(+w, rows);
+  for (const [, w, h, id] of pendingLayout.matchAll(/(\d+)x(\d+),\d+,\d+,(\d+)/g)) {
+    const term = terms.get('%' + id);
+    if (term && (term.cols !== +w || term.rows !== +h)) term.resize(+w, +h);
   }
   pendingLayout = null;
 }
@@ -477,12 +475,12 @@ function desired() {
   const {leader, stacked} = shown, n = stacked.length;
   const gutter = n ? workers.offsetWidth - workers.clientWidth : 0;
   const cols = Math.max(n ? 42 : 1, Math.floor((center.clientWidth - leadX - (n ? 1 + workerX + gutter : 0)) / cell.width) + (n ? 1 : 0));
-  const rows = Math.max(2 * n, 2, Math.floor((center.clientHeight - leadY) / cell.height) + 1);
+  const rows = Math.max(2 * n, 2, Math.floor((center.clientHeight - leadY) / cell.height));
   const id = p => p.id.slice(1);
   if (!n) return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0,${id(leader)}`};
 
   const leadCols = Math.max(20, Math.min(cols - 21, leadWidth ?? leader.width));
-  const x = leadCols + 1, w = cols - x, free = rows - n;
+  const x = leadCols + 1, w = cols - x, free = rows - (n - 1);
   const open = stacked.filter(p => p.open);
   let heights;
   if (open.length === n) {
@@ -500,7 +498,7 @@ function desired() {
   }
   let y = 0;
   const cells = stacked.map((p, i) => {
-    const cell = `${w}x${heights[i] + (i ? 0 : 1)},${x},${y},${id(p)}`;
+    const cell = `${w}x${heights[i]},${x},${y},${id(p)}`;
     y += heights[i] + 1;
     return cell;
   });

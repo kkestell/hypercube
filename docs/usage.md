@@ -1,8 +1,9 @@
 # Usage
 
-After creating your configuration, run `hypercube` from the directory you
-want to work in. In Git, the workspace root is the checkout's top level;
-outside Git, it is the current directory.
+After creating your configuration, run `hypercube ui`, open
+http://localhost:4280/, and choose the directory you want to work in, or run
+`hypercube start <dir>`. In Git, the workspace root is the checkout's top
+level; outside Git, it is the directory itself.
 
 A workspace owns one tmux session. Each Hypercube session is a team in its own
 window, with a lead on the left and workers stacked on the right.
@@ -17,62 +18,21 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube` | Start missing saved windows and attach; a new workspace starts with `Session 1`. |
-| `hypercube new [title]` | Create and select another team. Omit the title for the first unused `Session N`. |
-| `hypercube new -d [title]` | Create a team without attaching or changing the selected window. |
-| `hypercube start <dir>` | Start saved teams detached. |
-| `hypercube delete-session <id>` | Delete one team and its resources from the current workspace. |
+| `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. |
+| `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with `Session 1`. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |
 | `hypercube running` | Print running workspace paths for scripts. |
-| `hypercube ui` | Serve the browser view at http://localhost:4280/. |
 
 Stop and delete default to the current
 workspace; `--all` lists targets and asks for confirmation. They can also
 use a disappeared checkout's saved path.
 
-## Keyboard controls
-
-The top status line lists workspaces; click one to switch to it. Each
-Hypercube session is a tmux window, listed by number and title in the bottom
-status line. A session turns yellow when its lead finishes a reply while you are
-viewing another session or workspace, and returns to gray once you view it. A
-workspace is yellow while any of its sessions is. With tmux's default prefix,
-press Ctrl-b, then the listed key:
-
-| Key | Action |
-| --- | --- |
-| `c` | Create and select a Hypercube session. |
-| `n` / `p` | Switch to the next or previous Hypercube session. |
-| `0`–`9` | Switch to the Hypercube session with that number. |
-| `w` | Choose a Hypercube session from a list. |
-| `Shift-x` | Confirm deletion of the current Hypercube session. |
-| Arrow key | Select a pane. |
-| `z` | Zoom the current pane. |
-| `d` | Detach. |
-| `s` | Choose a workspace's tmux session. |
-| `?` | List key bindings, including Hypercube's. |
-| `Shift-w` | Open the workspace at a prompted path, creating it if needed. |
-
-Clicking a Hypercube session's name in the bottom status line also switches to
-it.
-
-Hypercube installs the `c`, uppercase `W`, and uppercase `X` bindings in tmux's
-shared prefix table; they act only on windows marked as Hypercube teams.
-Elsewhere, `c` opens a plain tmux window and `W` and `X` do nothing. Other controls
-come from tmux and follow your tmux configuration.
-
-Pane titles identify the agent and its settings. A green dot means busy,
-gray means idle, and red requests approval attention. The status line also
-puts a red dot after a session's name for each of its agents awaiting
-approval. An exited pane shows its exit status. See [harness limitations](harness-support.md#known-limitations)
-when interpreting activity.
-
 ## Browser view
 
-`hypercube ui` shows the running workspaces in a browser, on the same tmux
-sessions as the terminal.
+The browser view is Hypercube's interface. It shows the running workspaces
+and talks to their tmux sessions.
 
 The sidebar lists every running workspace's sessions under a row for the
 workspace; click the row to collapse or expand them. Click `+` at the top of the
@@ -83,7 +43,9 @@ to change its title, or hover over one and click the trash icon to delete it. A
 workspace or session shows a spinner while any of its agents is busy. A session
 shows an amber dot while any of its agents awaits your approval, and a blue dot
 after its lead finishes a reply you have not seen. A worker's card shows a spinner while it is busy, an amber dot while
-it awaits approval, and a red dot after it exits.
+it awaits approval, and a red dot after it exits. See
+[harness limitations](harness-support.md#known-limitations) when interpreting
+activity.
 
 The lead's terminal fills the left side, and each worker is a card on the
 right. Click a card, or its terminal button, to show
@@ -94,13 +56,13 @@ cost. Drag the dividers to resize the sidebar and the lead's side.
 
 ## Resume and cleanup
 
-Detaching or closing the terminal leaves agents running. Reattaching keeps
-the selected window and does not restart agents in existing windows. Starting
-recreates closed saved windows with their conversations and queues.
+Closing the browser leaves agents running. Starting a workspace recreates its
+closed saved windows with their conversations and queues, and does not restart
+agents in existing windows.
 
 A harness that exits is relaunched in its pane with its saved conversation.
 Repeated quick exits stop automatic retries, and launch errors stay visible.
-A plain attach does not retry an exited agent in an existing window; stop
+Starting a workspace does not retry an exited agent in an existing window; stop
 and start the workspace to retry after correcting the error.
 
 Deleting a team or workspace removes its workers' managed worktrees and

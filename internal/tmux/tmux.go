@@ -68,17 +68,12 @@ func NewPane(session, team, title, label, dir string, env map[string]string, arg
 	_, err = run("set-option", "-p", "-t", pane, "@hypercube_id", env["HYPERCUBE_AGENT_ID"], ";",
 		"set-option", "-p", "-t", pane, "@hypercube_label", strings.ReplaceAll(label, "#", "##"), ";",
 		"set-option", "-w", "-t", window, "remain-on-exit", "on", ";",
-		"set-option", "-w", "-t", window, "pane-border-status", "top", ";",
-		"set-option", "-w", "-t", window, "pane-border-format", " #{?pane_active,#[bold],}#{@hypercube_label} #{@hypercube_activity}#{?pane_dead, · exited #{pane_dead_status},} #[default]", ";",
 		"set-option", "-w", "-t", window, "main-pane-width", "40%", ";",
 		"set-option", "-w", "-t", window, "@hypercube_state", env["HYPERCUBE_STATE"], ";",
 		"set-option", "-w", "-t", window, "@hypercube_team", team, ";",
 		"set-option", "-w", "-t", window, "automatic-rename", "off", ";",
 		"set-option", "-w", "-t", window, "allow-rename", "off", ";",
 		"set-option", "-w", "-t", window, "extended-keys", "always", ";",
-		"set-option", "-w", "-t", window, "window-status-format", "#{?@hypercube_replied,#[fg=yellow],} #I #W#[fg=colour245]"+attention("colour245")+" ", ";",
-		"set-option", "-w", "-t", window, "window-status-current-format", "#[fg=green,bold] #I #W"+attention("green")+" #[fg=colour245,nobold]", ";",
-		"set-option", "-w", "-t", window, "window-status-separator", "", ";",
 		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
 		"set-hook", "-w", "-t", window, "pane-died", died, ";",
 		"select-layout", "-t", window, "main-vertical")
@@ -146,74 +141,24 @@ func KillPane(session, target string) error {
 	return nil
 }
 
+// ConfigureSession names the workspace and clears a session's unseen reply
+// when the view switches to it.
 func ConfigureSession(session, label string) error {
-	// The bottom line keeps tmux's usual window list for this workspace.
-	windows, err := run("show-options", "-gv", "status-format[0]")
-	if err != nil {
-		return err
-	}
-	// The top line lists every workspace. Clicking one switches to it through
-	// tmux's default MouseDown1Status binding. Styles avoid commas because
-	// they would split the loop's two formats.
-	// A workspace with an unseen reply in any of its windows shows in yellow;
-	// see markReply. The window list below uses the same colors on a darker
-	// line.
-	replied := "#{?#{W:#{?@hypercube_replied,1,}},#[fg=yellow],}"
-	item := "#[range=session|#{session_id}]" + replied + " #{@hypercube_workspace} #[fg=colour245]#[norange]"
-	current := "#[range=session|#{session_id}]#[fg=green]#[bold] #{@hypercube_workspace} #[fg=colour245]#[nobold]#[norange]"
-	workspaces := "#[fill=colour235]#[bg=colour235]#[fg=colour245]#{S:#{?@hypercube_state," + item + ",},#{?@hypercube_state," + current + ",}}"
-	_, err = run("set-option", "-t", "="+session+":", "mouse", "on", ";",
-		"set-option", "-t", "="+session+":", "status-style", "fg=colour245,bg=colour234", ";",
-		"set-option", "-t", "="+session+":", "status-left", "", ";",
-		"set-option", "-t", "="+session+":", "status-right", "", ";",
-		"set-option", "-t", "="+session+":", "status", "2", ";",
-		"set-option", "-t", "="+session+":", "@hypercube_workspace", label, ";",
-		"set-option", "-t", "="+session+":", "status-format[0]", workspaces, ";",
-		"set-option", "-t", "="+session+":", "status-format[1]", windows)
-	if err != nil {
-		return err
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return err
-	}
-	newCommand := `#{q:@hypercube_exe} window new #{q:@hypercube_state}`
-	// c replaces tmux's new-window only in Hypercube windows.
-	// Cleanup must survive tmux exiting when its last window is removed.
-	deleteCommand := `nohup #{q:@hypercube_exe} window delete #{q:@hypercube_state} #{@hypercube_team} #{window_id} >/dev/null 2>&1 &`
-	// Opening a workspace from a tmux job switches this client to it. Errors
-	// go to stdout so tmux shows them.
-	openCommand := `cd %1 2>&1 && #{q:@hypercube_exe} 2>&1`
-	owned := `#{&&:#{@hypercube_state},#{@hypercube_team}}`
+	target := "=" + session + ":"
 	// A window becomes visible when it is selected or when a client attaches or
 	// switches to this workspace; either clears its unseen reply.
 	seen := "set-option -w -u @hypercube_replied"
-	_, err = run("set-option", "-t", "="+session+":", "@hypercube_exe", exe, ";",
-		"set-hook", "-t", "="+session+":", "session-window-changed", seen, ";",
-		"set-hook", "-t", "="+session+":", "client-session-changed", seen, ";",
-		"bind-key", "-N", "Create a Hypercube session (or a tmux window elsewhere)", "c", "if-shell", "-F", owned, "run-shell -b "+quote(newCommand), "new-window", ";",
-		"bind-key", "-N", "Open or create a Hypercube workspace", "W", "if-shell", "-F", owned,
-		"command-prompt -p 'Workspace path:' "+quote("run-shell -b "+quote(openCommand)), ";",
-		"bind-key", "-N", "Delete the current Hypercube session", "X", "if-shell", "-F", owned,
-		"confirm-before -p 'Delete current Hypercube session? (y/n)' "+quote("run-shell -b "+quote(deleteCommand)))
+	_, err := run("set-option", "-t", target, "@hypercube_workspace", label, ";",
+		"set-hook", "-t", target, "session-window-changed", seen, ";",
+		"set-hook", "-t", target, "client-session-changed", seen)
 	return err
 }
 
-// Activity shows the agent's activity in its pane's border and gives the
-// browser view its activity, status, and usage as pane options.
+// Activity gives the browser view the agent's activity, status, and usage as
+// pane options.
 func Activity(session, pane, state string, a store.Agent) {
 	if !Owns(session, pane, a.ID, state) {
 		return
-	}
-	text := "#[fg=colour244]●#[default]"
-	if a.Activity == store.Busy {
-		text = "#[fg=green]●#[default]"
-	}
-	if a.Activity == store.Exited {
-		text = ""
-	}
-	if a.Attention {
-		text += " #[fg=red]●#[default]"
 	}
 	flag := ""
 	if a.Attention {
@@ -227,8 +172,7 @@ func Activity(session, pane, state string, a store.Agent) {
 	if a.Usage != (store.Usage{}) {
 		usage = fmt.Sprintf("%d %d %g", a.Usage.Context, a.Usage.Window, a.Usage.Cost)
 	}
-	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_activity", text, ";",
-		"set-option", "-p", "-t", pane, "@hypercube_attention", flag, ";",
+	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_attention", flag, ";",
 		"set-option", "-p", "-t", pane, "@hypercube_busy", busy, ";",
 		"set-option", "-p", "-t", pane, "@hypercube_status", a.Status, ";",
 		"set-option", "-p", "-t", pane, "@hypercube_status_at", fmt.Sprint(a.StatusAt), ";",
@@ -250,24 +194,7 @@ func markReply(session, pane, id, state string) {
 	_, _ = run("set-option", "-w", "-t", pane, "@hypercube_replied", "1")
 }
 
-// attention marks a window name in the status line with a red dot for each of
-// its panes awaiting approval, then restores the given foreground. The window
-// formats name their colors because #[default] leaves the status line's.
-func attention(fg string) string {
-	return "#{P:#{?@hypercube_attention, #[fg=red]●#[fg=" + fg + "],}}"
-}
-
 func KillSession(session string) error { _, err := run("kill-session", "-t", "="+session); return err }
-
-func Attach(session string) error {
-	verb := "attach-session"
-	if os.Getenv("TMUX") != "" {
-		verb = "switch-client"
-	}
-	cmd := exec.Command("tmux", verb, "-t", "="+session)
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	return cmd.Run()
-}
 
 func quote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 

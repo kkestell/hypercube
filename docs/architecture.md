@@ -60,7 +60,7 @@ the implementation rather than copied here.
 | [store](../internal/store/store.go) | State schema, locks, atomic updates, and queues. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
 | [harness](../internal/harness/harness.go) | Configuration and launches through harness plugins. |
-| [tmux](../internal/tmux/tmux.go) | Live ownership checks, panes, windows, titles, and bindings. |
+| [tmux](../internal/tmux/tmux.go) | Live ownership checks, panes, windows, and titles. |
 | [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations. |
 | [report](../internal/report/report.go) | Context, teamwork guidance, steering, and turn events reported by plugins. |
 | [wait](../internal/wait/wait.go) | Idle delivery and waiter replacement. |

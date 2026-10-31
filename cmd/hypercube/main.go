@@ -4,7 +4,6 @@ package main
 import (
 	"bufio"
 	"errors"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -27,35 +26,25 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
+const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | running | ui [port] | mcp | report <event> | wait"
+
 func main() {
 	var err error
 	switch {
 	case len(os.Args) == 1:
-		err = start()
-	case len(os.Args) >= 2 && os.Args[1] == "new":
-		err = newSessionArgs(os.Args[2:])
-	case len(os.Args) == 3 && os.Args[1] == "delete-session":
-		var root, name string
-		root, name, err = existingWorkspaceAt(".")
-		if err == nil {
-			err = deleteTeam(root, store.Path(name), os.Args[2], "")
-		}
+		err = errors.New(usage)
 	case (len(os.Args) == 4 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
 		err = windowAction(os.Args[2:])
-		if err != nil && len(os.Args) >= 6 {
-			_ = exec.Command("tmux", "display-message", "-t", os.Args[5], strings.ReplaceAll(err.Error(), "#", "##")).Run()
-		}
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
 		err = stopOrDelete(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
 		err = status()
 	case len(os.Args) == 3 && os.Args[1] == "start":
-		err = startWorkspace(os.Args[2], false)
+		err = openWorkspace(os.Args[2], false)
 	case len(os.Args) == 2 && os.Args[1] == "running":
 		err = running()
-	case len(os.Args) == 2 && os.Args[1] == "ui":
-		fmt.Println("Serving the Hypercube UI at http://localhost:4280/")
-		err = http.ListenAndServe("127.0.0.1:4280", ui.Handler())
+	case (len(os.Args) == 2 || len(os.Args) == 3) && os.Args[1] == "ui":
+		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "wait":
 		var delivered bool
 		delivered, err = wait.Run(os.Stdout)
@@ -71,7 +60,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "report":
 		err = report.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | ui | mcp | report <event> | wait]")
+		err = errors.New(usage)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -379,28 +368,23 @@ func retitle(path, team, expectedWindow, title string) error {
 	return tmux.RenameWindow(window, title)
 }
 
-// start attaches to the workspace, starting its saved sessions when necessary.
-func start() error { return startWorkspace(".", true) }
-
-func startWorkspace(dir string, attach bool) error {
-	return openWorkspace(dir, "", false, false, attach)
-}
-
-func newSessionArgs(args []string) error {
-	flags := flag.NewFlagSet("new", flag.ContinueOnError)
-	detached := flags.Bool("d", false, "create the session without attaching")
-	if err := flags.Parse(args); err != nil {
-		return err
+// serveUI serves the browser view on the optional port, default 4280.
+func serveUI(args []string) error {
+	port := "4280"
+	if len(args) == 1 {
+		n, err := strconv.Atoi(args[0])
+		if err != nil || n < 1 || n > 65535 {
+			return fmt.Errorf("invalid port %q", args[0])
+		}
+		port = args[0]
 	}
-	if flags.NArg() > 1 {
-		return errors.New("usage: hypercube new [-d] [title]")
-	}
-	return openWorkspace(".", flags.Arg(0), true, !*detached, !*detached)
+	fmt.Printf("Serving the Hypercube UI at http://localhost:%s/\n", port)
+	return http.ListenAndServe("127.0.0.1:"+port, ui.Handler())
 }
 
 // A workspace owns one tmux session. Each Hypercube session is a team in its
 // own marked window; names and worker lifecycle are local to that team.
-func openWorkspace(dir, title string, create, selectNew, attach bool) error {
+func openWorkspace(dir string, create bool) error {
 	root, name, err := workspaceAt(dir)
 	if err != nil {
 		return err
@@ -419,9 +403,8 @@ func openWorkspace(dir, title string, create, selectNew, attach bool) error {
 		return err
 	}
 	add := create || len(s.Agents) == 0
-	// A new session gets a random ID and, unless given one, the first unused
-	// "Session N" title.
-	var team string
+	// A new session gets a random ID and the first unused "Session N" title.
+	var team, title string
 	if add {
 		team = store.NewID()
 		for n := 1; title == ""; n++ {
@@ -511,21 +494,13 @@ func openWorkspace(dir, title string, create, selectNew, attach bool) error {
 		if window == "" {
 			return fmt.Errorf("session %q has no tmux window", title)
 		}
-		if selectNew {
-			if err := tmux.SelectWindow(window); err != nil {
-				return err
-			}
-		}
-	}
-	lock.Close()
-	if attach {
-		return tmux.Attach(name)
+		return tmux.SelectWindow(window)
 	}
 	return nil
 }
 
-// These commands run from tmux bindings, using its workspace marker instead
-// of a worker's current directory.
+// These commands serve the browser view, using the workspace marker instead of
+// a worker's current directory.
 func windowAction(args []string) error {
 	s, err := store.Load(args[1])
 	if err != nil {
@@ -536,7 +511,7 @@ func windowAction(args []string) error {
 			continue
 		}
 		if args[0] == "new" && len(args) == 2 {
-			return openWorkspace(a.Dir, "", true, true, false)
+			return openWorkspace(a.Dir, true)
 		}
 		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])

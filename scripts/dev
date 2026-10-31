@@ -1,29 +1,40 @@
 #!/usr/bin/env bash
-# Run this checkout's hypercube in an isolated dev session in a new Ghostty
-# window. The session has its own state, configuration, and scratch repository
-# under $DEV, so it never touches the installed hypercube's workspaces.
+# Run this checkout's hypercube in an isolated dev session, served by its own
+# browser view on port 4281. The session has its own state, configuration, and
+# scratch repository under $DEV, so it never touches the installed hypercube's
+# workspaces.
 #
-#   scripts/dev [up]   build, restart the dev session on the new binary, and
-#                      open it in a Ghostty window
-#   scripts/dev stop   stop every dev workspace; their state stays, so `up`
-#                      resumes it
+#   scripts/dev [up]   build, restart the dev session and its view on the new
+#                      binary, and open the view in the browser
+#   scripts/dev stop   stop the view and every dev workspace; their state
+#                      stays, so `up` resumes it
 #   scripts/dev clean  stop it and delete everything it left
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
 BIN=$ROOT/bin/hypercube
+PORT=4281
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
 
-# Run hypercube against the dev state and configuration. Run from inside tmux,
-# TMUX would otherwise point it at that server instead of the dev one.
+# Run hypercube against the dev state and configuration, with only the
+# environment a fresh terminal gives it. Agents started by the dev session must
+# not inherit the environment of the agent running this script.
 dev() {
-	env -u TMUX -u TMUX_PANE TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
+	env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}" \
+		TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" "$BIN" "$@"
 }
 
-# Stop every workspace in the dev state.
+# Stop the dev view and every workspace in the dev state.
 stop() {
+	if [ -f "$DEV/ui.pid" ]; then
+		pid=$(cat "$DEV/ui.pid")
+		if ps -p "$pid" -o command= | grep -q 'hypercube ui'; then
+			kill "$pid" || true
+		fi
+		rm -f "$DEV/ui.pid"
+	fi
 	[ -x "$BIN" ] && [ -d "$DEV/state" ] || return 0
 	echo y | dev stop --all >/dev/null 2>&1 || true
 }
@@ -81,22 +92,19 @@ up)
 JSON
 	fi
 
-	# Ghostty starts the command without this shell's environment.
-	cat >"$DEV/run" <<RUN
-#!/bin/sh
-export PATH='$PATH'
-export TMUX_TMPDIR='$DEV'
-export XDG_STATE_HOME='$DEV/state' XDG_CONFIG_HOME='$DEV/config'
-unset TMUX TMUX_PANE
-# Claude Code saves no transcripts with the marker its own shells carry, so
-# dev agents started from inside Claude Code could not resume.
-unset CLAUDE_CODE_CHILD_SESSION
-cd '$REPO'
-'$BIN' || { echo "hypercube exited with \$?; press Enter to close"; read -r _; }
-RUN
-	chmod +x "$DEV/run"
-	open -na Ghostty --args --quit-after-last-window-closed=true -e "$DEV/run"
-	echo "Dev session: $REPO (config $CONFIG)"
+	dev start "$REPO"
+	# The view ignores a hangup so it outlives the shell that started it.
+	(
+		trap '' HUP
+		dev ui "$PORT" >"$DEV/ui.log" 2>&1 </dev/null &
+		echo $! >"$DEV/ui.pid"
+	)
+	for _ in $(seq 25); do
+		curl -fs -o /dev/null "http://localhost:$PORT/" && break
+		sleep 0.2
+	done
+	open "http://localhost:$PORT/"
+	echo "Dev session: $REPO (config $CONFIG, view http://localhost:$PORT/)"
 	;;
 stop)
 	stop
