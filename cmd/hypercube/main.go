@@ -403,18 +403,10 @@ func openWorkspace(dir string, create bool) error {
 		return err
 	}
 	add := create || len(s.Agents) == 0
-	// A new session gets a random ID and the first unused "Session N" title.
-	var team, title string
+	// A new session gets a random ID and no title.
+	var team string
 	if add {
 		team = store.NewID()
-		for n := 1; title == ""; n++ {
-			title = fmt.Sprintf("Session %d", n)
-			for _, a := range s.Agents {
-				if a.Role == store.Lead && a.Title == title {
-					title = ""
-				}
-			}
-		}
 	}
 	missing := map[string]bool{}
 	for _, a := range s.Agents {
@@ -446,7 +438,7 @@ func openWorkspace(dir string, create bool) error {
 			if add {
 				o := cfg.Lead
 				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
-					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team, Title: title})
+					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team})
 			}
 			for i := range s.Agents {
 				a := &s.Agents[i]
@@ -492,7 +484,7 @@ func openWorkspace(dir string, create bool) error {
 			return err
 		}
 		if window == "" {
-			return fmt.Errorf("session %q has no tmux window", title)
+			return fmt.Errorf("session %q has no tmux window", team)
 		}
 		return tmux.SelectWindow(window)
 	}
