@@ -155,8 +155,9 @@ func window(w http.ResponseWriter, r *http.Request) {
 }
 
 // workspace starts a workspace in a folder the user picks and returns its tmux
-// session's name, or deletes the workspace of a state file, and reports why the
-// command refused.
+// session's name, starts the workspace of a given folder, or deletes the
+// workspace of a state file, and reports why the command refused. The view
+// starts workspaces so their agents get the view's environment.
 func workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
@@ -180,6 +181,13 @@ func workspaceAction(w http.ResponseWriter, r *http.Request) {
 		if hypercube(w, "start", dir) {
 			fmt.Fprint(w, name)
 		}
+	case "start":
+		dir := q.Get("dir")
+		if dir == "" {
+			http.Error(w, "missing dir", http.StatusBadRequest)
+			return
+		}
+		hypercube(w, "start", dir)
 	case "delete":
 		s, err := store.Load(q.Get("state"))
 		if err != nil {

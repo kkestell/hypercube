@@ -1,20 +1,43 @@
 #!/bin/sh
-# Stop every running Hypercube workspace, install the build to
-# $BINDIR, and start the stopped workspaces again in the background with the
-# installed binary. Run by `make reinstall` after building.
+# Wait until no agent is busy, stop every running Hypercube workspace, install
+# the build to $BINDIR, restart the browser view service, and start the stopped
+# workspaces again through the view so their agents get the service's
+# environment. SERVICE names the launchd user agent that `make install-service`
+# loaded. Run by `make reinstall` after building.
 set -u
 
 BINDIR=${BINDIR:-$HOME/.local/bin}
+: "${SERVICE:?SERVICE is required}"
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BUILT=$ROOT/bin/hypercube
 CURRENT=$BINDIR/hypercube
 [ -x "$CURRENT" ] || CURRENT=$BUILT
+TARGET=gui/$(id -u)/$SERVICE
 
 # Stopping the workspace this runs in would end this script with it.
 if [ -n "${HYPERCUBE_AGENT_ID:-}" ]; then
 	echo "reinstall: run this outside Hypercube; it stops every workspace" >&2
 	exit 1
 fi
+
+if ! launchctl print "$TARGET" >/dev/null 2>&1; then
+	echo "reinstall: the view service is not loaded; run make install-service" >&2
+	exit 1
+fi
+
+# An agent mid-turn, including one waiting for approval, loses its work when
+# its workspace stops.
+shown=
+while :; do
+	busy=$(tmux list-panes -a -f '#{@hypercube_busy}' -F '#{window_name}: #{@hypercube_label}' 2>/dev/null)
+	[ -z "$busy" ] && break
+	if [ "$busy" != "$shown" ]; then
+		echo "waiting for busy agents:"
+		echo "$busy"
+		shown=$busy
+	fi
+	sleep 2
+done
 
 running=$("$CURRENT" running) || exit 1
 failed=0
@@ -34,11 +57,15 @@ done
 
 set +f
 mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$ROOT"/bin/hypercube-harness-* "$BINDIR" || exit 1
-set -f
 echo "installed hypercube and its harness plugins in $BINDIR"
+launchctl kickstart -k "$TARGET" || exit 1
+echo "restarted $SERVICE"
 
+set -f
 for dir in $stopped; do
-	if "$BINDIR/hypercube" start "$dir"; then
+	if curl --silent --show-error --fail-with-body --retry 30 --retry-delay 1 --retry-connrefused \
+		-X POST -H 'Origin: http://localhost:4280' --url-query "dir=$dir" \
+		'http://localhost:4280/workspace?action=start'; then
 		echo "started $dir"
 	else
 		failed=1

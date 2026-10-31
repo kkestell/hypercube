@@ -18,7 +18,7 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. |
+| `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. The service from `make install-service` runs it. |
 | `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with `Session 1`. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |

@@ -1,0 +1,52 @@
+#!/bin/sh
+# Run the browser view as a launchd user agent. The agent starts the view
+# through the user's interactive login shell, so the view and the agents it
+# launches get the user's login environment. Run by `make install-service`
+# after installing the build; SERVICE is the agent's label.
+set -eu
+
+BINDIR=${BINDIR:-$HOME/.local/bin}
+: "${SERVICE:?SERVICE is required}"
+PORT=4280
+PLIST=$HOME/Library/LaunchAgents/$SERVICE.plist
+LOG=$HOME/Library/Logs/hypercube-ui.log
+DOMAIN=gui/$(id -u)
+
+mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
+cat >"$PLIST" <<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>$SERVICE</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>${SHELL:-/bin/zsh}</string>
+		<string>-lic</string>
+		<string>exec "$BINDIR/hypercube" ui</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>$LOG</string>
+	<key>StandardErrorPath</key>
+	<string>$LOG</string>
+</dict>
+</plist>
+XML
+
+# A loaded copy holds the port, so unload it before checking the port.
+launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null || true
+
+pid=$(lsof -nP -iTCP:$PORT -sTCP:LISTEN -t 2>/dev/null | head -n 1)
+if [ -n "$pid" ]; then
+	echo "install-service: port $PORT is in use by $(ps -p "$pid" -o command=)" >&2
+	echo "install-service: stop it with: kill $pid" >&2
+	exit 1
+fi
+
+launchctl bootstrap "$DOMAIN" "$PLIST"
+echo "started $SERVICE; log: $LOG"
