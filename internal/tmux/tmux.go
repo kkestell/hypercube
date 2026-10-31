@@ -199,31 +199,40 @@ func ConfigureSession(session, label string) error {
 	return err
 }
 
-func Activity(session, pane, id, state, activity string, attention bool) {
-	if !Owns(session, pane, id, state) {
+// Activity shows the agent's activity in its pane's border and gives the
+// browser view its activity, status, and usage as pane options.
+func Activity(session, pane, state string, a store.Agent) {
+	if !Owns(session, pane, a.ID, state) {
 		return
 	}
 	text := "#[fg=colour244]●#[default]"
-	if activity == "busy" {
+	if a.Activity == store.Busy {
 		text = "#[fg=green]●#[default]"
 	}
-	if activity == "exited" {
+	if a.Activity == store.Exited {
 		text = ""
 	}
-	if attention {
+	if a.Attention {
 		text += " #[fg=red]●#[default]"
 	}
 	flag := ""
-	if attention {
+	if a.Attention {
 		flag = "1"
 	}
 	busy := ""
-	if activity == "busy" {
+	if a.Activity == store.Busy {
 		busy = "1"
+	}
+	usage := ""
+	if a.Usage != (store.Usage{}) {
+		usage = fmt.Sprintf("%d %d %g", a.Usage.Context, a.Usage.Window, a.Usage.Cost)
 	}
 	_, _ = run("set-option", "-p", "-t", pane, "@hypercube_activity", text, ";",
 		"set-option", "-p", "-t", pane, "@hypercube_attention", flag, ";",
-		"set-option", "-p", "-t", pane, "@hypercube_busy", busy)
+		"set-option", "-p", "-t", pane, "@hypercube_busy", busy, ";",
+		"set-option", "-p", "-t", pane, "@hypercube_status", a.Status, ";",
+		"set-option", "-p", "-t", pane, "@hypercube_status_at", fmt.Sprint(a.StatusAt), ";",
+		"set-option", "-p", "-t", pane, "@hypercube_usage", usage)
 }
 
 // markReply flags the lead's window when the lead goes from busy to idle while
@@ -355,7 +364,7 @@ func RefreshActivity(path, id string) {
 	if a.Role == store.Lead && a.Activity == store.Idle {
 		markReply(session, a.Target, id, path)
 	}
-	Activity(session, a.Target, id, path, a.Activity, a.Attention)
+	Activity(session, a.Target, path, *a)
 }
 
 // Dead guards against a queued pane-died hook arriving after a later respawn.

@@ -144,8 +144,9 @@ func hookHash(event, command string) string {
 }
 
 type hookInput struct {
-	SessionID string  `json:"session_id"`
-	AgentID   *string `json:"agent_id"`
+	SessionID      string  `json:"session_id"`
+	AgentID        *string `json:"agent_id"`
+	TranscriptPath string  `json:"transcript_path"`
 }
 
 type response struct {
@@ -172,6 +173,11 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	if in.AgentID != nil {
 		return nil
 	}
+	// Usage only feeds the user's view, so failing to read it must not stop
+	// the hook from delivering messages.
+	if (event == "PostToolUse" || event == "Stop") && in.TranscriptPath != "" {
+		_ = usage(hypercube, in.TranscriptPath)
+	}
 	body := map[string]string{}
 	if event == "UserPromptSubmit" {
 		body["session"] = in.SessionID
@@ -189,7 +195,45 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	return json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": r.Context}})
 }
 
-func report(hypercube, event string, body map[string]string, r *response) error {
+// usage reports the context use in the newest token count of the session's
+// transcript. Codex records no cost. Token counts follow each model response,
+// so the newest is near the end.
+func usage(hypercube, transcript string) error {
+	f, err := os.Open(transcript)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	data, err := io.ReadAll(io.NewSectionReader(f, max(0, info.Size()-1<<20), info.Size()))
+	if err != nil {
+		return err
+	}
+	lines := bytes.Split(data, []byte("\n"))
+	for i := len(lines) - 1; i >= 0; i-- {
+		var entry struct {
+			Payload struct {
+				Type string `json:"type"`
+				Info *struct {
+					Last struct {
+						Input int `json:"input_tokens"`
+					} `json:"last_token_usage"`
+					Window int `json:"model_context_window"`
+				} `json:"info"`
+			} `json:"payload"`
+		}
+		if !bytes.Contains(lines[i], []byte(`"token_count"`)) || json.Unmarshal(lines[i], &entry) != nil || entry.Payload.Type != "token_count" || entry.Payload.Info == nil {
+			continue
+		}
+		return report(hypercube, "usage", map[string]int{"context": entry.Payload.Info.Last.Input, "window": entry.Payload.Info.Window}, &response{})
+	}
+	return nil
+}
+
+func report(hypercube, event string, body any, r *response) error {
 	cmd := exec.Command(hypercube, "report", event)
 	cmd.Stdin, cmd.Stderr = strings.NewReader(jsonString(body)), os.Stderr
 	out, err := cmd.Output()

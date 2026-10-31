@@ -98,12 +98,20 @@ func TestHook(t *testing.T) {
 }
 
 func TestStatusline(t *testing.T) {
-	source := `{"model":{"display_name":"Opus"},"thinking":{"enabled":true},"effort":{"level":"high"},"context_window":{"total_input_tokens":45300,"context_window_size":200000,"used_percentage":22.6},"rate_limits":{"five_hour":{"used_percentage":34},"seven_day":{"used_percentage":71.5}}}`
+	dir := t.TempDir()
+	hypercube := filepath.Join(dir, "hypercube")
+	if err := os.WriteFile(hypercube, []byte("#!/bin/sh\ncat >\""+dir+"/$2\"\necho '{}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := `{"model":{"display_name":"Opus"},"thinking":{"enabled":true},"effort":{"level":"high"},"context_window":{"total_input_tokens":45300,"context_window_size":200000,"used_percentage":22.6},"cost":{"total_cost_usd":0.31},"rate_limits":{"five_hour":{"used_percentage":34},"seven_day":{"used_percentage":71.5}}}`
 	ansi := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	for _, showLimits := range []bool{false, true} {
 		var out bytes.Buffer
-		if err := statusline(showLimits, strings.NewReader(source), &out); err != nil {
+		if err := statusline(hypercube, showLimits, strings.NewReader(source), &out); err != nil {
 			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(filepath.Join(dir, "usage")); string(b) != `{"context":45200,"cost":0.31,"window":200000}` {
+			t.Errorf("usage report = %s", b)
 		}
 		want := "✳︎ Opus :: high 45.3k/200k (22%)"
 		if showLimits {
@@ -115,7 +123,7 @@ func TestStatusline(t *testing.T) {
 	}
 	for _, source := range []string{`null`, `{}`, `{"model":null,"thinking":null}`, `malformed`} {
 		var out bytes.Buffer
-		if err := statusline(false, strings.NewReader(source), &out); err != nil {
+		if err := statusline(hypercube, false, strings.NewReader(source), &out); err != nil {
 			t.Fatal(err)
 		}
 		if got := ansi.ReplaceAllString(out.String(), ""); got != "✳︎  ::  0/0 (0%)" {

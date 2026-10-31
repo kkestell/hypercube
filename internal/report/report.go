@@ -22,6 +22,7 @@ type input struct {
 	Tool    string          `json:"tool"`
 	Input   json.RawMessage `json:"input"`
 	Reason  string          `json:"reason"`
+	store.Usage
 }
 
 // response holds text for the model to read now. At stop, it continues the
@@ -47,14 +48,14 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		}
 		return json.NewEncoder(stdout).Encode(response{})
 	}
-	// The status line reports answered on every redraw, so skip the lock when
-	// there is nothing to clear.
-	if event == "answered" {
+	// The status line reports answered and usage on every redraw, so skip the
+	// lock when nothing changes.
+	if event == "answered" || event == "usage" {
 		s, err := store.Load(path)
 		if err != nil {
 			return err
 		}
-		if a, err := s.Agent(id); err != nil || !a.Attention {
+		if a, err := s.Agent(id); err != nil || event == "answered" && !a.Attention || event == "usage" && a.Usage == in.Usage {
 			return json.NewEncoder(stdout).Encode(response{})
 		}
 	}
@@ -104,6 +105,8 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 			a.Attention = true
 		case "answered":
 			a.Attention = false
+		case "usage":
+			a.Usage = in.Usage
 		default:
 			return fmt.Errorf("unknown report %q", event)
 		}
@@ -214,7 +217,7 @@ func onBranch(branch string) string {
 	return " on branch " + branch
 }
 
-const reportBack = ` When you finish, or need something, send the lead a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
+const reportBack = ` Use the hypercube set_status tool often to keep the user up to date: when you start, when you move to a new step, and when you find something that changes the plan, say in a sentence or two what you are doing now. When you finish, or need something, send the lead a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
 `
 
 // writeTeamwork writes the lead's guidance on parallel work and the

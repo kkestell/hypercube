@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -66,6 +67,7 @@ func toolsFor(s store.State, profiles []harness.Profile) []tool {
 	return []tool{
 		{"send_message", "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
 		{"list_agents", "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, role, harness, activity, directory, and branch.", schema([]string{})},
+		{"set_status", "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.", schema([]string{"text"}, "text")},
 		create,
 		remove,
 	}
@@ -157,6 +159,8 @@ func call(self, path, name string, args map[string]string) (string, error) {
 		}
 		b, err := json.MarshalIndent(listed, "", "  ")
 		return string(b), err
+	case "set_status":
+		return setStatus(self, path, args["text"])
 	case "create_agent":
 		return createAgent(self, path, args)
 	case "remove_agent":
@@ -198,6 +202,31 @@ func sendMessage(self, path, to, text string) (string, error) {
 		reply += " It is not running; the message will be delivered when the workspace starts again."
 	}
 	return reply, nil
+}
+
+// setStatus records a worker's status on one line, since the view lists it
+// with tmux formats.
+func setStatus(self, path, text string) (string, error) {
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return "", errors.New("text is required")
+	}
+	err := store.Update(path, func(s *store.State) error {
+		a, err := s.Agent(self)
+		if err != nil {
+			return err
+		}
+		if a.Role != store.Worker {
+			return errors.New("only workers have a status")
+		}
+		a.Status, a.StatusAt = text, time.Now().UnixMilli()
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	tmux.RefreshActivity(path, self)
+	return "Status set.", nil
 }
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)

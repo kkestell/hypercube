@@ -131,3 +131,20 @@ func TestSessionBoundaries(t *testing.T) {
 		t.Fatal("worker's list_agents", listed)
 	}
 }
+
+func TestSetStatus(t *testing.T) {
+	path := team(t, false, t.TempDir(), t.TempDir())
+	if _, err := call("b", path, "set_status", map[string]string{"text": "  Reading\nthe card view. "}); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := store.Load(path)
+	if a := s.Agents[1]; a.Status != "Reading the card view." || a.StatusAt == 0 {
+		t.Errorf("worker = %+v", a)
+	}
+	if _, err := call("a", path, "set_status", map[string]string{"text": "Planning."}); err == nil {
+		t.Error("the lead set a status")
+	}
+	if _, err := call("b", path, "set_status", map[string]string{"text": " "}); err == nil {
+		t.Error("an empty status was accepted")
+	}
+}

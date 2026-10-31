@@ -54,24 +54,31 @@ Create `~/.config/hypercube/config.json`, or
       "effort": "default"
     },
     {
+      "name": "openrouter-free",
+      "description": "OpenRouter's free router on Pi, which picks a free model for each request, for basic utility tasks: lookups, file searches, and simple mechanical edits. Free and rate limited; quality varies with the model it picks.",
+      "harness": "pi",
+      "model": "openrouter/openrouter/free",
+      "effort": "medium"
+    },
+    {
       "name": "gpt-luna",
       "description": "GPT Luna 6 at medium effort only for trivial tasks such as lookups and quick checks. Weak at coding. Cheap and fast. Artificial Analysis: Terminal-Bench 4.0 2.5%, FrontierCode 2.0 12.8%, $0.04 per task.",
-      "harness": "opencode",
-      "model": "openai/gpt-6-luna",
+      "harness": "codex",
+      "model": "gpt-6-luna",
       "effort": "medium"
     },
     {
       "name": "gpt-medium",
       "description": "GPT Sol at high effort, only for code review and for implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Artificial Analysis: Terminal-Bench 4.0 51.5%, FrontierCode 2.0 36.7%, $0.59 per task.",
-      "harness": "opencode",
-      "model": "openai/gpt-6.1-sol",
+      "harness": "codex",
+      "model": "gpt-6.1-sol",
       "effort": "high"
     },
     {
       "name": "gpt-large",
       "description": "GPT Sol at extra high effort, only for hard code review and for hard implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Slower and costlier. Artificial Analysis: Terminal-Bench 4.0 54.0%, FrontierCode 2.0 38.5%, $0.76 per task.",
-      "harness": "opencode",
-      "model": "openai/gpt-6.1-sol",
+      "harness": "codex",
+      "model": "gpt-6.1-sol",
       "effort": "xhigh"
     },
     {

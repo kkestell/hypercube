@@ -99,6 +99,17 @@ export default function (pi) {
     if (context) return { content: [...event.content, { type: "text", text: context }] }
   })
 
+  // Usage follows each model response. Usage only feeds the user's view.
+  pi.on("turn_end", async (_event, ctx) => {
+    if (!started) return
+    const context = ctx.getContextUsage()
+    let cost = 0
+    for (const entry of ctx.sessionManager.getEntries()) {
+      if (entry.type === "message") cost += entry.message.usage?.cost?.total ?? 0
+    }
+    await report("usage", { context: context?.tokens ?? 0, window: context?.contextWindow ?? 0, cost }).catch(() => {})
+  })
+
   pi.on("message_end", async (event) => {
     if (event.message.role === "assistant") lastAssistant = event.message
   })

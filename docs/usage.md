@@ -90,8 +90,9 @@ after it exits.
 The lead's terminal fills the left side, and each worker is a card on the
 right. Click a card, or its terminal button, to show
 the worker's terminal in the card; click the button again to return to the
-summary. A card's report and context use are placeholders. Drag the dividers to
-resize the sidebar and the lead's side.
+summary. The summary shows the worker's latest report of what it is doing and
+how long ago it made it, its context use, and its cost so far. Codex reports no
+cost. Drag the dividers to resize the sidebar and the lead's side.
 
 ## Resume and cleanup
 

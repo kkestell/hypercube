@@ -592,7 +592,7 @@ func runAgent(prompt string) error {
 		var binary string
 		binary, err = exec.LookPath(argv[0])
 		if err == nil {
-			tmux.Activity(store.Workspace(path), pane, id, path, agent.Activity, false)
+			tmux.Activity(store.Workspace(path), pane, path, agent)
 			var inherited []string
 			for _, item := range os.Environ() {
 				key, _, _ := strings.Cut(item, "=")
@@ -669,7 +669,7 @@ func exited(path, pane, status string) error {
 			return err
 		}
 	} else if agent.ID != "" {
-		tmux.Activity(store.Workspace(path), pane, agent.ID, path, store.Exited, false)
+		tmux.Activity(store.Workspace(path), pane, path, agent)
 	}
 	return nil
 }

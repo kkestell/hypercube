@@ -27,7 +27,7 @@ func main() {
 		err = wait(args[1], os.Stdin)
 	case (len(args) == 2 || len(args) == 3 && args[2] == "--limits") && args[0] == "statusline":
 		_ = report(args[1], "answered", map[string]string{}, &response{})
-		err = statusline(len(args) == 3, os.Stdin, os.Stdout)
+		err = statusline(args[1], len(args) == 3, os.Stdin, os.Stdout)
 	default:
 		err = fmt.Errorf("usage: hypercube-harness-claude [launch | hook <hypercube> <event> | wait <hypercube> | statusline <hypercube> [--limits]]")
 	}
@@ -189,10 +189,10 @@ func wait(hypercube string, stdin io.Reader) error {
 	return syscall.Exec(hypercube, []string{hypercube, "wait"}, os.Environ())
 }
 
-// statusline renders Claude's status line from the JSON Claude sends. Claude
-// redraws it after an approval dialog closes, which is when main reports the
-// approval answered.
-func statusline(limits bool, input io.Reader, out io.Writer) error {
+// statusline renders Claude's status line from the JSON Claude sends, and
+// reports its usage. Claude redraws it after each message and after an
+// approval dialog closes, which is when main reports the approval answered.
+func statusline(hypercube string, limits bool, input io.Reader, out io.Writer) error {
 	var status map[string]any
 	_ = json.NewDecoder(input).Decode(&status)
 	value := func(parts ...string) any {
@@ -205,6 +205,12 @@ func statusline(limits bool, input io.Reader, out io.Writer) error {
 	}
 	text := func(v any) string { s, _ := v.(string); return s }
 	number := func(v any) float64 { n, _ := v.(float64); return n }
+	window := number(value("context_window", "context_window_size"))
+	_ = report(hypercube, "usage", map[string]any{
+		"context": int(number(value("context_window", "used_percentage")) / 100 * window),
+		"window":  int(window),
+		"cost":    number(value("cost", "total_cost_usd")),
+	}, &response{})
 	paint := func(color, text string) string { return "\x1b[" + color + "m" + text + "\x1b[0m" }
 	line := paint("38;2;218;96;0", "✳︎ ") + paint("38;2;218;96;0", text(value("model", "display_name"))) + paint("38;2;255;255;255", " :: ")
 	if value("thinking", "enabled") == true {

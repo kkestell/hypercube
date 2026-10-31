@@ -39,6 +39,20 @@ type Agent struct {
 	Attention  bool   `json:"attention,omitempty"`
 	Launched   int64  `json:"launched,omitempty"`
 	QuickExits int    `json:"quick_exits,omitempty"`
+	// Status is the worker's own account of what it is doing, reported at
+	// StatusAt in Unix milliseconds.
+	Status   string `json:"status,omitempty"`
+	StatusAt int64  `json:"status_at,omitempty"`
+	Usage    Usage  `json:"usage,omitzero"`
+}
+
+// Usage is what the agent's conversation has used: the tokens of its latest
+// request, its model's context window, and its cost in US dollars. A harness
+// that reports no cost leaves Cost zero.
+type Usage struct {
+	Context int     `json:"context,omitempty"`
+	Window  int     `json:"window,omitempty"`
+	Cost    float64 `json:"cost,omitempty"`
 }
 
 type Message struct {

@@ -108,6 +108,19 @@ func TestHook(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "tool")); err == nil {
 		t.Error("a native subagent's tool use was reported")
 	}
+	transcript := filepath.Join(dir, "rollout.jsonl")
+	lines := `{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":1000},"model_context_window":258400}}}
+{"type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":58089,"output_tokens":198},"model_context_window":258400}}}
+{"type":"event_msg","payload":{"type":"token_count","info":null}}
+{"type":"response_item","payload":{"type":"message"}}
+`
+	if err := os.WriteFile(transcript, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("PostToolUse", `{"transcript_path":"`+transcript+`"}`)
+	if b, _ := os.ReadFile(filepath.Join(dir, "usage")); string(b) != `{"context":58089,"window":258400}` {
+		t.Errorf("usage report = %s", b)
+	}
 }
 
 func TestWaitLoop(t *testing.T) {

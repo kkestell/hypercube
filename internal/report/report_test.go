@@ -86,6 +86,11 @@ func TestDelivery(t *testing.T) {
 	if s := load(); s.Agents[1].Attention {
 		t.Error("answered approval is still flagged")
 	}
+
+	run(t, "usage", `{"context":45200,"window":200000,"cost":0.31}`)
+	if u := load().Agents[1].Usage; u != (store.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
+		t.Errorf("usage = %+v", u)
+	}
 }
 
 type failingWriter struct{}

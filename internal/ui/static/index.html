@@ -223,10 +223,10 @@ function refresh() {
     lines => sessions = rows(lines, ['id', 'state', 'replied', 'attention', 'busy', 'name']).filter(s => s.state));
   send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
     lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
-  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_label}'`,
+  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_status_at}\t#{@hypercube_usage}\t#{@hypercube_status}\t#{@hypercube_label}'`,
     (lines, error) => {
       refreshing = false;
-      if (!error && sessions && wins) render(sessions, wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'busy', 'attention', 'open', 'label']));
+      if (!error && sessions && wins) render(sessions, wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'busy', 'attention', 'open', 'reportedAt', 'usage', 'report', 'label']));
       if (again) { again = false; refresh(); }
     });
 }
@@ -467,8 +467,38 @@ function renderOverview(instant) {
 }
 addEventListener('resize', () => renderOverview(true));
 
-// Mocked until Hypercube reports workers' progress and context use.
-const mock = {report: 'Reading the session view and wiring the worker cards to their tmux panes.', used: 0.42, usage: '84k / 200k · $0.31', age: '3m'};
+// Token counts read as 845, 84k, 1.2M.
+function tokens(n) {
+  if (n < 1000) return String(n);
+  const [scale, unit] = n < 1e6 ? [1e3, 'k'] : [1e6, 'M'];
+  return (n < 10 * scale ? Math.floor(n / scale * 10) / 10 : Math.floor(n / scale)) + unit;
+}
+
+// A report's age reads as now, 3m, 2h, 1d.
+function age(ms) {
+  const minutes = Math.floor((Date.now() - ms) / 60000);
+  if (minutes < 1) return 'now';
+  if (minutes < 60) return minutes + 'm';
+  return minutes < 1440 ? Math.floor(minutes / 60) + 'h' : Math.floor(minutes / 1440) + 'd';
+}
+
+// The summary is the worker's report of what it is doing and a footer with its
+// context use, cost, and the report's age. Each part shows once it is known.
+function summary(p) {
+  const [context, window, cost] = p.usage.split(' ').map(Number);
+  const radius = 6, circumference = 2 * Math.PI * radius;
+  const ring = window ? `<svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
+        <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-700"/>
+        <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-sky-400"
+          stroke-dasharray="${circumference}" stroke-dashoffset="${(circumference * (1 - Math.min(1, context / window))).toFixed(2)}"/>
+      </svg>` : '';
+  const usage = [window ? `${tokens(context)} / ${tokens(window)}` : '', cost ? (cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`) : ''].filter(Boolean).join(' · ');
+  const footer = usage || p.report ? `<footer class="flex items-center gap-2 text-neutral-500">
+      <span class="flex items-center gap-1.5 whitespace-nowrap">${ring}${usage}</span>
+      ${p.report ? `<span class="ml-auto shrink-0">${age(+p.reportedAt)}</span>` : ''}
+    </footer>` : '';
+  return (p.report ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(p.report)}</p>` : '') + footer;
+}
 
 // A worker's card shows its name, status, and summary, or its name, status,
 // and terminal. Cards persist so their terminals stay attached.
@@ -479,7 +509,6 @@ function card(p) {
   if (!c) {
     const element = document.createElement('article');
     element.dataset.pane = p.id;
-    const radius = 6, circumference = 2 * Math.PI * radius;
     element.innerHTML = `<header class="flex items-center gap-2">
         <span class="name min-w-0 truncate text-left text-sm text-neutral-100"></span>
         <span class="status ml-auto shrink-0"></span>
@@ -487,20 +516,7 @@ function card(p) {
           <span class="icon icon-terminal size-3.5"></span>
         </button>
       </header>
-      <div class="summary flex flex-col gap-2">
-        <p class="line-clamp-4 break-words text-neutral-300">${mock.report}</p>
-        <footer class="flex items-center gap-2 text-neutral-500">
-          <span class="flex items-center gap-1.5 whitespace-nowrap">
-            <svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
-              <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-700"/>
-              <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-sky-400"
-                stroke-dasharray="${circumference}" stroke-dashoffset="${circumference * (1 - mock.used)}"/>
-            </svg>
-            ${mock.usage}
-          </span>
-          <span class="ml-auto shrink-0">${mock.age}</span>
-        </footer>
-      </div>
+      <div class="summary flex flex-col gap-2"></div>
       <div class="slot -mx-3 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-b-md border-t border-neutral-700 bg-[#1e1e1e] px-2 py-1"></div>`;
     const q = name => element.querySelector('.' + name);
     c = {element, name: q('name'), status: q('status'), toggle: q('toggle'), summary: q('summary'), slot: q('slot')};
@@ -518,7 +534,9 @@ function card(p) {
   update(c.status, status);
   c.toggle.setAttribute('aria-pressed', open);
   c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
-  c.summary.hidden = open;
+  const html = summary(p);
+  update(c.summary, html);
+  c.summary.hidden = open || !html;
   c.slot.hidden = !open;
   return c;
 }

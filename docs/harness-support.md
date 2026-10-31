@@ -22,8 +22,10 @@ A plugin talks to Hypercube in three ways, all as JSON:
 - **Reports.** The harness runs `hypercube report <event>` with a JSON object
   on stdin and reads `{"context": "…"}`: text for the model to read now. The
   events are `start`, `prompt` (with `session`, the conversation ID to resume
-  later), `tool`, `stop`, `failed` (with `error`), `approval`, and `answered`.
-  Context at `stop` continues the turn. Their effects are in
+  later), `tool`, `stop`, `failed` (with `error`), `approval`, `answered`, and
+  `usage` (with `context`, the tokens of the latest request, `window`, the
+  model's context window, and `cost`, in US dollars). Context at `stop`
+  continues the turn. Their effects are in
   [report.go](../internal/report/report.go).
 - **Waiting messages.** While the agent is idle, the harness runs
   `hypercube wait`. When messages arrive, it prints them and exits with

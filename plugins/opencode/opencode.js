@@ -88,10 +88,21 @@ export default {
       event.result = { ...event.result, content: [...before, { type: "text", text }] }
     })
 
+    // Usage follows each step of a turn: the step's tokens, the session's
+    // cost so far, and the context limit of the session's model. Usage only
+    // feeds the user's view.
+    async function usage({ sessionID, tokens }) {
+      const { model, cost } = await ctx.session.get({ sessionID })
+      const info = (await ctx.model.list()).data.find((m) => m.providerID === model?.providerID && m.id === model?.id)
+      const context = tokens.input + tokens.cache.read + tokens.cache.write
+      await report("usage", { context, window: info?.limit?.context ?? 0, cost })
+    }
+
     // The event stream fails when its consumer falls behind, so the loop
-    // asks only for the ends of turns, doesn't wait for the turn a blocked
-    // stop starts, and subscribes again a second after the stream ends. A
-    // loop that ended would leave the agent busy and never woken.
+    // asks only for the ends of steps and turns, doesn't wait for usage or
+    // for the turn a blocked stop starts, and subscribes again a second after
+    // the stream ends. A loop that ended would leave the agent busy and never
+    // woken.
     const controller = new AbortController()
     async function stopped(event) {
       const { sessionID, error } = event.data
@@ -107,8 +118,10 @@ export default {
     void (async () => {
       while (!controller.signal.aborted) {
         try {
-          for await (const event of ctx.event.subscribe({ types: [...ends], signal: controller.signal })) {
-            if (!ends.has(event.type) || !started.has(event.data.sessionID)) continue
+          for await (const event of ctx.event.subscribe({ types: [...ends, "session.step.ended"], signal: controller.signal })) {
+            if (!started.has(event.data.sessionID)) continue
+            if (event.type === "session.step.ended") void usage(event.data).catch(() => {})
+            if (!ends.has(event.type)) continue
             await stopped(event).catch(() => {})
           }
         } catch {}
