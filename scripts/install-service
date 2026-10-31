@@ -7,7 +7,7 @@ set -eu
 
 BINDIR=${BINDIR:-$HOME/.local/bin}
 : "${SERVICE:?SERVICE is required}"
-PORT=4280
+: "${PORT:?PORT is required}"
 PLIST=$HOME/Library/LaunchAgents/$SERVICE.plist
 LOG=$HOME/Library/Logs/hypercube-ui.log
 DOMAIN=gui/$(id -u)
@@ -24,7 +24,7 @@ cat >"$PLIST" <<XML
 	<array>
 		<string>${SHELL:-/bin/zsh}</string>
 		<string>-lic</string>
-		<string>exec "$BINDIR/hypercube" ui</string>
+		<string>exec "$BINDIR/hypercube" ui $PORT</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

@@ -39,7 +39,6 @@ each other through an MCP server and receive messages through harness plugins.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/reinstall` — stops, reinstalls, and restarts the installed
   workspaces.
-- `web/` — the Hypercube web page.
 - `docs/` — user documentation, indexed by `README.md`.
 - `agents/` — plans, reviews, and work logs.
 
