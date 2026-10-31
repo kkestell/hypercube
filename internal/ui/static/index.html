@@ -21,7 +21,7 @@
   <aside id="sidebar" class="flex w-[260px] shrink-0 flex-col bg-[#252526]">
     <div class="flex h-[35px] shrink-0 items-center justify-between pr-2 pl-4 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
       Workspaces
-      <button type="button" title="New Workspace" data-action="workspace?action=new" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
+      <button type="button" id="add-workspace" title="New Workspace" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
     </div>
     <ul id="sessions" class="min-h-0 flex-1 overflow-auto"></ul>
   </aside>
@@ -288,18 +288,24 @@ function render(sessions, wins, list) {
 let windows = [], renaming = false;
 const collapsed = new Set();
 
+// Spinners sit in a column just left of the rows' buttons, which take the
+// same width in every row.
+const spinner = title => `<span class="flex size-[22px] shrink-0 items-center justify-center">${
+  title ? `<span role="img" title="${escape(title)}" class="icon icon-loading size-3.5 text-neutral-400"></span>` : ''}</span>`;
+
 function renderSidebar() {
   if (renaming) return;
   update(sessionList, workspaces.map(s => {
     const open = !collapsed.has(s.id);
     const action = name => escape(new URLSearchParams({action: name, state: s.state}).toString());
     return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]">
-        <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
+        <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
           <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(s.name)}</span>
         </button>
+        ${spinner(s.busy && 'Busy')}
         <button type="button" title="Delete Workspace" class="invisible flex size-[22px] items-center justify-center rounded text-neutral-300 group-hover:visible group-focus-within:visible hover:bg-[#5a5d5e50]"
           data-action="workspace?${action('delete')}" data-question="Delete workspace ${escape(s.name)}?"><span class="icon icon-trash size-4"></span></button>
-        <button type="button" title="New Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
+        <button type="button" title="New Session" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
           data-action="window?${action('new')}"><span class="icon icon-add size-4"></span></button>
       </li>` +
       (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
@@ -354,16 +360,16 @@ function sessionRow(w, workspace) {
       <button type="button" data-command="switch-client -t '${w.id}'" data-rename="${w.id}" class="min-w-0 flex-1 py-1.5 pl-10 text-left">
         <span class="flex items-center gap-1.5">
           <span class="truncate">${escape(w.name)}</span>
-          ${busy ? `<span role="img" title="Busy: ${escape(busy)}" class="icon icon-loading size-3.5 text-neutral-400"></span>` : ''}
           ${waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : ''}
           ${w.replied && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
         </span>
       </button>
-      ${w.team ? `<div class="flex items-center ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}">
-        <button type="button" title="Delete Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
+      ${spinner(busy && 'Busy: ' + busy)}
+      <div class="flex w-[48px] shrink-0 justify-end ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}">
+        ${w.team ? `<button type="button" title="Delete Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
           data-action="window?${escape(new URLSearchParams({action: 'delete', state: workspace.state, team: w.team, window: w.id}).toString())}"
-          data-question="Delete session ${escape(w.name)}?"><span class="icon icon-trash size-4"></span></button>
-      </div>` : ''}
+          data-question="Delete session ${escape(w.name)}?"><span class="icon icon-trash size-4"></span></button>` : ''}
+      </div>
     </div>
   </li>`;
 }
@@ -559,10 +565,12 @@ function open(id, cols, rows) {
 }
 
 // editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
-// which xterm.js leaves to the browser.
+// which xterm.js leaves to the browser, and for Shift+Enter, which xterm.js
+// sends as Enter. Every harness reads that CSI u sequence as a new line.
 function editing(e) {
   const mods = (e.metaKey ? 'cmd+' : '') + (e.altKey ? 'alt+' : '') + (e.ctrlKey ? 'ctrl+' : '') + (e.shiftKey ? 'shift+' : '');
   return {
+    'shift+Enter': '\x1b[13;2u',
     'cmd+Backspace': '\x15',
     'cmd+ArrowLeft': '\x01',
     'cmd+ArrowRight': '\x05',
@@ -592,6 +600,14 @@ document.body.addEventListener('click', async e => {
     send(command.dataset.command);
   }
 });
+
+// A new workspace opens once it starts.
+$('add-workspace').onclick = async () => {
+  const res = await fetch('workspace?action=new', {method: 'POST'});
+  const text = await res.text();
+  if (!res.ok) alert(text);
+  else if (text) send(`switch-client -t '=${text}'`);
+};
 
 async function post(action) {
   const res = await fetch(action, {method: 'POST'});

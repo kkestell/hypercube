@@ -58,6 +58,19 @@ func Spell(base, dir string) (string, error) {
 	return filepath.Clean(dir), nil
 }
 
+// At returns the workspace root for dir, the top level of its checkout or dir
+// itself outside Git, and the workspace's name. A relative dir is relative to
+// base.
+func At(base, dir string) (root, name string, err error) {
+	if root, err = Resolve(base, dir); err != nil {
+		return "", "", err
+	}
+	if top, err := Root(root); err == nil {
+		root = top
+	}
+	return root, Name(root), nil
+}
+
 // Root returns the top level of the checkout containing dir.
 func Root(dir string) (string, error) {
 	return git(dir, "rev-parse", "--show-toplevel")

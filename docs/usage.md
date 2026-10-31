@@ -76,13 +76,13 @@ sessions as the terminal.
 
 The sidebar lists every running workspace's sessions under a row for the
 workspace; click the row to collapse or expand them. Click `+` at the top of the
-sidebar to choose a folder and start a workspace in it. On a workspace's row,
-click `+` to create a session in it, or hover over the row and click the trash
-icon to delete the workspace. Click a session to switch to it, double-click it
+sidebar to choose a folder and start a workspace in it. Hover over a
+workspace's row and click `+` to create a session in it, or click the trash icon
+to delete the workspace. Click a session to switch to it, double-click it
 to change its title, or hover over one and click the trash icon to delete it. A
-session shows a spinner while any of its agents is busy, an amber dot while any
-awaits your approval, and a blue dot after its lead finishes a reply you have
-not seen. A worker's card shows a spinner while it is busy, an amber dot while
+workspace or session shows a spinner while any of its agents is busy. A session
+shows an amber dot while any of its agents awaits your approval, and a blue dot
+after its lead finishes a reply you have not seen. A worker's card shows a spinner while it is busy, an amber dot while
 it awaits approval, and a red dot after it exits.
 
 The lead's terminal fills the left side, and each worker is a card on the

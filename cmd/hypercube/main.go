@@ -86,13 +86,7 @@ func workspaceAt(dir string) (root, name string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	if root, err = workspace.Resolve(wd, dir); err != nil {
-		return "", "", err
-	}
-	if top, err := workspace.Root(root); err == nil {
-		root = top
-	}
-	return root, workspace.Name(root), nil
+	return workspace.At(wd, dir)
 }
 
 // known is a workspace with a state file. Its root is the lead's

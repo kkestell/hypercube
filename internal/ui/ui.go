@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 //go:embed static
@@ -40,7 +41,7 @@ func Handler() http.Handler {
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("POST /send", s.send)
 	mux.HandleFunc("POST /window", window)
-	mux.HandleFunc("POST /workspace", workspace)
+	mux.HandleFunc("POST /workspace", workspaceAction)
 	return localOnly(mux)
 }
 
@@ -153,9 +154,10 @@ func window(w http.ResponseWriter, r *http.Request) {
 	hypercube(w, args...)
 }
 
-// workspace starts a workspace in a folder the user picks, or deletes the
-// workspace of a state file, and reports why the command refused.
-func workspace(w http.ResponseWriter, r *http.Request) {
+// workspace starts a workspace in a folder the user picks and returns its tmux
+// session's name, or deletes the workspace of a state file, and reports why the
+// command refused.
+func workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
 	case "new":
@@ -169,7 +171,15 @@ func workspace(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		hypercube(w, "start", strings.TrimSpace(string(out)))
+		dir := strings.TrimSpace(string(out))
+		_, name, err := workspace.At("/", dir)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if hypercube(w, "start", dir) {
+			fmt.Fprint(w, name)
+		}
 	case "delete":
 		s, err := store.Load(q.Get("state"))
 		if err != nil {
@@ -188,16 +198,19 @@ func workspace(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// hypercube runs Hypercube's own command and reports why it refused.
-func hypercube(w http.ResponseWriter, args ...string) {
+// hypercube runs Hypercube's own command, reports why it refused, and returns
+// whether it succeeded.
+func hypercube(w http.ResponseWriter, args ...string) bool {
 	exe, err := os.Executable()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return false
 	}
 	if out, err := exec.Command(exe, args...).CombinedOutput(); err != nil {
 		http.Error(w, strings.TrimPrefix(strings.TrimSpace(string(out)), "hypercube: "), http.StatusConflict)
+		return false
 	}
+	return true
 }
 
 // pick returns the wanted workspace session if it is running, or else the
