@@ -4,15 +4,16 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"math"
 	"os"
-	"os/exec"
 	"strings"
 	"syscall"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
 func main() {
@@ -26,7 +27,7 @@ func main() {
 	case len(args) == 2 && args[0] == "wait":
 		err = wait(args[1], os.Stdin)
 	case (len(args) == 2 || len(args) == 3 && args[2] == "--limits") && args[0] == "statusline":
-		_ = report(args[1], "answered", map[string]string{}, &response{})
+		_ = plugin.Report(args[1], "answered", map[string]string{}, &plugin.Response{})
 		err = statusline(args[1], len(args) == 3, os.Stdin, os.Stdout)
 	default:
 		err = fmt.Errorf("usage: hypercube-harness-claude [launch | hook <hypercube> <event> | wait <hypercube> | statusline <hypercube> [--limits]]")
@@ -35,16 +36,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-claude:", err)
 		os.Exit(1)
 	}
-}
-
-type launchInput struct {
-	Hypercube string            `json:"hypercube"`
-	Env       map[string]string `json:"env"`
-	Role      string            `json:"role"`
-	Model     string            `json:"model"`
-	Effort    string            `json:"effort"`
-	Session   string            `json:"session"`
-	Prompt    string            `json:"prompt"`
 }
 
 // Claude hook events and the Hypercube reports they make.
@@ -60,7 +51,7 @@ var reports = map[string]string{
 }
 
 func launch(stdin io.Reader, stdout io.Writer) error {
-	var in launchInput
+	var in harness.LaunchInput
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
@@ -69,9 +60,9 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	command := func(args ...string) string {
-		quoted := []string{shellQuote(self)}
+		quoted := []string{plugin.ShellQuote(self)}
 		for _, arg := range args {
-			quoted = append(quoted, shellQuote(arg))
+			quoted = append(quoted, plugin.ShellQuote(arg))
 		}
 		return strings.Join(quoted, " ")
 	}
@@ -89,8 +80,8 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		status = append(status, "--limits")
 	}
 	argv := []string{"claude",
-		"--mcp-config", jsonString(map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env}}}),
-		"--settings", jsonString(map[string]any{"hooks": hooks, "statusLine": map[string]any{"type": "command", "command": command(status...)}}),
+		"--mcp-config", plugin.JSONString(map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env}}}),
+		"--settings", plugin.JSONString(map[string]any{"hooks": hooks, "statusLine": map[string]any{"type": "command", "command": command(status...)}}),
 		"--model", in.Model, "--effort", in.Effort, "--permission-mode", "auto"}
 	if in.Session != "" {
 		argv = append(argv, "--resume", in.Session)
@@ -113,10 +104,6 @@ type hookInput struct {
 	Prompt               string          `json:"prompt"`
 }
 
-type response struct {
-	Context string `json:"context"`
-}
-
 // hook reports a Claude hook event and answers Claude with the context
 // Hypercube returns.
 func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
@@ -134,7 +121,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 		if event == "PostToolUseFailure" && !strings.HasPrefix(in.ToolName, "mcp__hypercube__") {
 			return nil
 		}
-		return report(hypercube, name, map[string]any{"tool": in.ToolName, "input": in.ToolInput, "error": in.Error, "reason": in.Reason}, &response{})
+		return plugin.Report(hypercube, name, map[string]any{"tool": in.ToolName, "input": in.ToolInput, "error": in.Error, "reason": in.Reason}, &plugin.Response{})
 	}
 	// Native subagents have their own conversations. Only their approvals
 	// concern the agent.
@@ -154,24 +141,14 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 			}
 		}
 	}
-	var r response
-	if err := report(hypercube, name, body, &r); err != nil || r.Context == "" {
+	var r plugin.Response
+	if err := plugin.Report(hypercube, name, body, &r); err != nil || r.Context == "" {
 		return err
 	}
 	if event == "Stop" {
 		return json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": r.Context})
 	}
 	return json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": r.Context}})
-}
-
-func report(hypercube, event string, body any, r *response) error {
-	cmd := exec.Command(hypercube, "report", event)
-	cmd.Stdin, cmd.Stderr = strings.NewReader(jsonString(body)), os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("hypercube report %s: %w", event, err)
-	}
-	return json.Unmarshal(bytes.TrimSpace(out), r)
 }
 
 // wait becomes `hypercube wait` with its stdout on stderr: asyncRewake starts
@@ -208,11 +185,11 @@ func statusline(hypercube string, limits bool, input io.Reader, out io.Writer) e
 	text := func(v any) string { s, _ := v.(string); return s }
 	number := func(v any) float64 { n, _ := v.(float64); return n }
 	window := number(value("context_window", "context_window_size"))
-	_ = report(hypercube, "usage", map[string]any{
+	_ = plugin.Report(hypercube, "usage", map[string]any{
 		"context": int(number(value("context_window", "used_percentage")) / 100 * window),
 		"window":  int(window),
 		"cost":    number(value("cost", "total_cost_usd")),
-	}, &response{})
+	}, &plugin.Response{})
 	paint := func(color, text string) string { return "\x1b[" + color + "m" + text + "\x1b[0m" }
 	line := paint("38;2;218;96;0", "✳︎ ") + paint("38;2;218;96;0", text(value("model", "display_name"))) + paint("38;2;255;255;255", " :: ")
 	if value("thinking", "enabled") == true {
@@ -248,13 +225,3 @@ func bar(percent float64) string {
 	filled := (int(math.Max(0, math.Min(100, percent)))*10 + 50) / 100
 	return strings.Repeat("▪", filled) + strings.Repeat("·", 10-filled)
 }
-
-func jsonString(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
-}
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

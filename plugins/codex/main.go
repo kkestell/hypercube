@@ -19,6 +19,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
 func main() {
@@ -40,17 +43,6 @@ func main() {
 	}
 }
 
-type launchInput struct {
-	Hypercube string            `json:"hypercube"`
-	Env       map[string]string `json:"env"`
-	Agent     string            `json:"agent"`
-	Model     string            `json:"model"`
-	Effort    string            `json:"effort"`
-	Session   string            `json:"session"`
-	Prompt    string            `json:"prompt"`
-	StateDir  string            `json:"state_dir"`
-}
-
 // sessionVar names the file that holds the ID of the agent's Codex session.
 // Codex saves a new session from its first prompt.
 const sessionVar = "HYPERCUBE_CODEX_SESSION"
@@ -65,7 +57,7 @@ var events = []struct{ name, report, key string }{
 }
 
 func launch(stdin io.Reader, stdout io.Writer) error {
-	var in launchInput
+	var in harness.LaunchInput
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
@@ -74,37 +66,37 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		return err
 	}
 	command := func(args ...string) string {
-		quoted := []string{shellQuote(self)}
+		quoted := []string{plugin.ShellQuote(self)}
 		for _, arg := range args {
-			quoted = append(quoted, shellQuote(arg))
+			quoted = append(quoted, plugin.ShellQuote(arg))
 		}
 		return strings.Join(quoted, " ")
 	}
 	var hooks, trust []string
 	for _, e := range events {
 		cmd := command("hook", in.Hypercube, e.name)
-		hooks = append(hooks, fmt.Sprintf("%s=[{hooks=[{type=\"command\",command=%s}]}]", e.name, tomlString(cmd)))
+		hooks = append(hooks, fmt.Sprintf("%s=[{hooks=[{type=\"command\",command=%s}]}]", e.name, jsonString(cmd)))
 		key := fmt.Sprintf("/<session-flags>/config.toml:%s:0:0", e.key)
-		trust = append(trust, fmt.Sprintf("%s={trusted_hash=%s}", tomlString(key), tomlString(hookHash(e.key, cmd))))
+		trust = append(trust, fmt.Sprintf("%s={trusted_hash=%s}", jsonString(key), jsonString(hookHash(e.key, cmd))))
 	}
 	var env, inherited []string
 	for k, v := range in.Env {
-		env = append(env, tomlString(k)+"="+tomlString(v))
+		env = append(env, jsonString(k)+"="+jsonString(v))
 	}
 	// Codex starts MCP servers with a few variables of its own environment;
 	// hypercube mcp needs the rest, such as its configuration and tmux paths.
 	for _, item := range os.Environ() {
 		if k, _, _ := strings.Cut(item, "="); k != "" {
-			inherited = append(inherited, tomlString(k))
+			inherited = append(inherited, jsonString(k))
 		}
 	}
 	argv := []string{self, "run", in.Hypercube, "codex"}
 	if in.Session != "" {
 		argv = append(argv, "resume")
 	}
-	argv = append(argv, "--model", in.Model, "-c", "model_reasoning_effort="+tomlString(in.Effort),
+	argv = append(argv, "--model", in.Model, "-c", "model_reasoning_effort="+jsonString(in.Effort),
 		"--approve-for-me", "-c", "sandbox_workspace_write.network_access=true",
-		"-c", fmt.Sprintf("mcp_servers.hypercube={command=%s,args=[\"mcp\"],env={%s},env_vars=[%s],default_tools_approval_mode=\"approve\"}", tomlString(in.Hypercube), strings.Join(env, ","), strings.Join(inherited, ",")),
+		"-c", fmt.Sprintf("mcp_servers.hypercube={command=%s,args=[\"mcp\"],env={%s},env_vars=[%s],default_tools_approval_mode=\"approve\"}", jsonString(in.Hypercube), strings.Join(env, ","), strings.Join(inherited, ",")),
 		"-c", fmt.Sprintf("hooks={%s,state={%s}}", strings.Join(hooks, ","), strings.Join(trust, ",")))
 	// The sandbox keeps Git metadata read-only unless it is a writable root
 	// itself. A worktree's metadata is in its own Git directory and in its
@@ -150,10 +142,6 @@ type hookInput struct {
 	Prompt         string  `json:"prompt"`
 }
 
-type response struct {
-	Context string `json:"context"`
-}
-
 // hook reports a Codex hook event and answers Codex with the context
 // Hypercube returns.
 func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
@@ -187,8 +175,8 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 			return err
 		}
 	}
-	var r response
-	if err := report(hypercube, name, body, &r); err != nil || r.Context == "" {
+	var r plugin.Response
+	if err := plugin.Report(hypercube, name, body, &r); err != nil || r.Context == "" {
 		return err
 	}
 	if event == "Stop" {
@@ -230,19 +218,9 @@ func usage(hypercube, transcript string) error {
 		if !bytes.Contains(lines[i], []byte(`"token_count"`)) || json.Unmarshal(lines[i], &entry) != nil || entry.Payload.Type != "token_count" || entry.Payload.Info == nil {
 			continue
 		}
-		return report(hypercube, "usage", map[string]int{"context": entry.Payload.Info.Last.Input, "window": entry.Payload.Info.Window}, &response{})
+		return plugin.Report(hypercube, "usage", map[string]int{"context": entry.Payload.Info.Last.Input, "window": entry.Payload.Info.Window}, &plugin.Response{})
 	}
 	return nil
-}
-
-func report(hypercube, event string, body any, r *response) error {
-	cmd := exec.Command(hypercube, "report", event)
-	cmd.Stdin, cmd.Stderr = strings.NewReader(jsonString(body)), os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("hypercube report %s: %w", event, err)
-	}
-	return json.Unmarshal(bytes.TrimSpace(out), r)
 }
 
 // run runs Codex and, while it runs, waits for messages for the agent. When
@@ -313,8 +291,6 @@ func queue(session, text string) error {
 	return nil
 }
 
-func tomlString(s string) string { return jsonString(s) }
-
 // jsonString marshals as Codex does: object keys sorted, HTML characters
 // unescaped.
 func jsonString(v any) string {
@@ -326,5 +302,3 @@ func jsonString(v any) string {
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
