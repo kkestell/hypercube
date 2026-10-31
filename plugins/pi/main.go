@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
 //go:embed pi.js
@@ -30,19 +32,8 @@ func main() {
 	}
 }
 
-type launchInput struct {
-	Hypercube string            `json:"hypercube"`
-	Env       map[string]string `json:"env"`
-	Agent     string            `json:"agent"`
-	Model     string            `json:"model"`
-	Effort    string            `json:"effort"`
-	Session   string            `json:"session"`
-	Prompt    string            `json:"prompt"`
-	StateDir  string            `json:"state_dir"`
-}
-
 func launch(stdin io.Reader, stdout io.Writer) error {
-	var in launchInput
+	var in harness.LaunchInput
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
@@ -60,7 +51,7 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 	}
 	env := map[string]string{
 		"HYPERCUBE_MODEL": in.Model,
-		"HYPERCUBE_MCP":   jsonString(map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env, "exposure": "direct"}),
+		"HYPERCUBE_MCP":   plugin.JSONString(map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env, "exposure": "direct"}),
 	}
 	argv := []string{"pi", "--provider", provider, "--model", id, "-e", extension, "--session-id", session}
 	if in.Effort != "" {
@@ -72,38 +63,8 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 	return json.NewEncoder(stdout).Encode(map[string]any{"argv": argv, "env": env})
 }
 
-// writeExtension writes pi.js for this hypercube executable. Running Pi
-// processes may be reading it, so it is replaced only when it changes, through
-// a rename.
+// writeExtension writes pi.js for this hypercube executable.
 func writeExtension(exe, stateDir string) (string, error) {
-	dir := filepath.Join(stateDir, "pi-extension")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, "index.js")
-	text := []byte(strings.ReplaceAll(source, "HYPERCUBE_EXE", jsonString(exe)))
-	if before, err := os.ReadFile(path); err == nil && bytes.Equal(before, text) {
-		return path, nil
-	}
-	file, err := os.CreateTemp(dir, "index-*.tmp")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(file.Name())
-	if _, err := file.Write(text); err != nil {
-		file.Close()
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	return path, os.Rename(file.Name(), path)
-}
-
-func jsonString(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
+	text := []byte(strings.ReplaceAll(source, "HYPERCUBE_EXE", plugin.JSONString(exe)))
+	return plugin.WriteFile(filepath.Join(stateDir, "pi-extension"), "index.js", text)
 }

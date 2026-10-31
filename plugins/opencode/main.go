@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
 //go:embed opencode.js
@@ -30,23 +32,12 @@ func main() {
 	}
 }
 
-type launchInput struct {
-	Hypercube string            `json:"hypercube"`
-	Env       map[string]string `json:"env"`
-	Agent     string            `json:"agent"`
-	Model     string            `json:"model"`
-	Effort    string            `json:"effort"`
-	Session   string            `json:"session"`
-	Prompt    string            `json:"prompt"`
-	StateDir  string            `json:"state_dir"`
-}
-
 func launch(stdin io.Reader, stdout io.Writer) error {
-	var in launchInput
+	var in harness.LaunchInput
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
-	plugin, err := writePlugin(in.Hypercube, in.StateDir)
+	pluginPath, err := writePlugin(in.Hypercube, in.StateDir)
 	if err != nil {
 		return err
 	}
@@ -55,11 +46,11 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		session = "ses_hypercube_" + in.Agent
 	}
 	env := map[string]string{
-		"OPENCODE_CONFIG_CONTENT": jsonString(map[string]any{
+		"OPENCODE_CONFIG_CONTENT": plugin.JSONString(map[string]any{
 			"model":   in.Model,
 			"agents":  map[string]any{"build": map[string]any{"model": in.Model + "#" + in.Effort}},
 			"mcp":     map[string]any{"servers": map[string]any{"hypercube": map[string]any{"type": "local", "command": []string{in.Hypercube, "mcp"}, "environment": in.Env, "codemode": false}}},
-			"plugins": []string{plugin},
+			"plugins": []string{pluginPath},
 		}),
 		"OPENCODE_CLI_CONFIG_CONTENT": `{"tabs":{"mode":"off"}}`,
 		"HYPERCUBE_SESSION_ID":        session,
@@ -71,38 +62,13 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 	return json.NewEncoder(stdout).Encode(map[string]any{"argv": argv, "env": env})
 }
 
-// writePlugin writes opencode.js for this hypercube executable. Running
-// OpenCode processes may be reading it, so it is replaced only when it
-// changes, through a rename.
+// writePlugin writes opencode.js for this hypercube executable and returns the
+// directory OpenCode loads it from.
 func writePlugin(exe, stateDir string) (string, error) {
-	dir := filepath.Join(stateDir, "opencode-plugin")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	path := filepath.Join(dir, "index.js")
-	text := []byte(strings.ReplaceAll(source, "HYPERCUBE_EXE", jsonString(exe)))
-	if before, err := os.ReadFile(path); err == nil && bytes.Equal(before, text) {
-		return dir, nil
-	}
-	file, err := os.CreateTemp(dir, "index-*.tmp")
+	text := []byte(strings.ReplaceAll(source, "HYPERCUBE_EXE", plugin.JSONString(exe)))
+	path, err := plugin.WriteFile(filepath.Join(stateDir, "opencode-plugin"), "index.js", text)
 	if err != nil {
 		return "", err
 	}
-	defer os.Remove(file.Name())
-	if _, err := file.Write(text); err != nil {
-		file.Close()
-		return "", err
-	}
-	if err := file.Close(); err != nil {
-		return "", err
-	}
-	return dir, os.Rename(file.Name(), path)
-}
-
-func jsonString(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
+	return filepath.Dir(path), nil
 }
