@@ -72,21 +72,18 @@ when interpreting activity.
 ## Browser view
 
 `hypercube ui` shows the running workspaces in a browser, on the same tmux
-sessions as the terminal. The overview shows a card for each workspace; click
-one to open it, click `+ Workspace` to choose a folder and start a workspace in
-it, or hover over a card and click `×` to delete it. Escape returns to the open
-workspace.
+sessions as the terminal.
 
 The sidebar lists every running workspace's sessions under a row for the
-workspace; click the row to collapse or expand them. Click a session to switch
-to it, double-click it to change its title, click `+` to
-create one in the open workspace, or hover over one and click the trash icon to
-delete it. A
+workspace; click the row to collapse or expand them. Click `+` at the top of the
+sidebar to choose a folder and start a workspace in it. On a workspace's row,
+click `+` to create a session in it, or hover over the row and click the trash
+icon to delete the workspace. Click a session to switch to it, double-click it
+to change its title, or hover over one and click the trash icon to delete it. A
 session shows a spinner while any of its agents is busy, an amber dot while any
 awaits your approval, and a blue dot after its lead finishes a reply you have
-not seen. Workspace cards show the same marks, and a worker's card shows a
-spinner while it is busy, an amber dot while it awaits approval, and a red dot
-after it exits.
+not seen. A worker's card shows a spinner while it is busy, an amber dot while
+it awaits approval, and a red dot after it exits.
 
 The lead's terminal fills the left side, and each worker is a card on the
 right. Click a card, or its terminal button, to show

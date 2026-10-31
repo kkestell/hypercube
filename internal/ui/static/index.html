@@ -6,21 +6,10 @@
 <link rel="stylesheet" href="xterm.css">
 <link rel="stylesheet" href="ui.css">
 </head>
-<body class="relative h-full overflow-hidden bg-[#141414] text-sm text-neutral-300">
-<div id="frame" class="absolute inset-0 z-[1] origin-top-left overflow-hidden bg-[#1e1e1e] transition-[transform,border-radius,opacity] duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none">
-<div id="view" class="flex h-full flex-col transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none">
+<body class="h-full overflow-hidden bg-[#1e1e1e] text-sm text-neutral-300">
+<div class="flex h-full flex-col">
 <header class="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-700 bg-[#323233] px-2">
-  <button type="button" id="show-overview" title="Show Overview" class="relative rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1">
-      <rect x="1.5" y="2.5" width="5.5" height="4.5" rx="0.5"/>
-      <rect x="9" y="2.5" width="5.5" height="4.5" rx="0.5"/>
-      <rect x="1.5" y="9" width="5.5" height="4.5" rx="0.5"/>
-      <rect x="9" y="9" width="5.5" height="4.5" rx="0.5"/>
-    </svg>
-    <span id="any-waiting" title="An agent is waiting on you" class="absolute top-0.5 right-0.5 hidden size-2 rounded-full bg-amber-400"></span>
-  </button>
-  <span id="workspace" class="ml-1 flex-1 truncate text-neutral-400"></span>
-  <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+  <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="ml-auto rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1">
       <rect x="1.5" y="2.5" width="13" height="11" rx="1"/>
       <rect id="sidebar-fill" x="1.5" y="2.5" width="4.5" height="11" fill="currentColor"/>
@@ -31,8 +20,8 @@
 <div class="flex min-h-0 flex-1">
   <aside id="sidebar" class="flex w-[260px] shrink-0 flex-col bg-[#252526]">
     <div class="flex h-[35px] shrink-0 items-center justify-between pr-2 pl-4 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
-      Sessions
-      <button type="button" id="new-session" title="New Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
+      Workspaces
+      <button type="button" title="New Workspace" data-action="workspace?action=new" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
     </div>
     <ul id="sessions" class="min-h-0 flex-1 overflow-auto"></ul>
   </aside>
@@ -44,15 +33,6 @@
   </div>
 </div>
 </div>
-<div id="frame-card" class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[#252526] text-neutral-200 transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"></div>
-</div>
-
-<div id="cards" class="absolute inset-0 z-[2] transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"></div>
-<div id="add" class="absolute inset-x-0 bottom-6 z-[3] flex justify-center">
-  <button type="button" id="add-workspace" class="flex items-center gap-1.5 rounded bg-neutral-800 py-1.5 pr-4 pl-3 text-neutral-200 hover:bg-neutral-700">
-    <span class="icon icon-add size-4"></span>Workspace
-  </button>
-</div>
 
 <div id="probe" class="invisible absolute"></div>
 <script src="xterm.js"></script>
@@ -60,11 +40,10 @@
 <script>
 // The page is a tmux control-mode client for one workspace at a time. The
 // sidebar lists every workspace's sessions, which are tmux windows, under a
-// row naming the workspace. The current
-// window's lead fills the left, and its workers are cards on the right, each
-// showing either a summary or its terminal. tmux sizes the panes; the page
-// asks for the sizes its layout has room for. The overview shows every
-// running workspace.
+// row naming the workspace. The current window's lead fills the left, and its
+// workers are cards on the right, each showing either a summary or its
+// terminal. tmux sizes the panes; the page asks for the sizes its layout has
+// room for.
 
 const fontFamily = 'Menlo, Monaco, "Courier New", monospace', fontSize = 13;
 const theme = {background: '#1e1e1e'};
@@ -84,15 +63,14 @@ const cell = probe._core._renderService.dimensions.css.cell;
 
 const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
-const sessionList = $('sessions'), sidebar = $('sidebar'), frame = $('frame'), view = $('view'), frameCard = $('frame-card'), cards = $('cards');
+const sessionList = $('sessions'), sidebar = $('sidebar');
 
 // Pixels around the terminals: the lead's left and top padding, and the
 // workers panel's padding, a card's border, and its terminal's padding.
 const leadX = 8, leadY = 4, workerX = 24 + 2 + 16;
 
 let source, client, session, outbox, sending, callbacks, block, terms, shown, activePane;
-// A page opened on a workspace shows it; otherwise it starts in the overview.
-let overview = location.hash.length <= 1, workspaces = [], opening = null;
+let workspaces = [];
 
 function connect() {
   outbox = []; sending = false; callbacks = []; block = null; size = ''; refreshing = again = false; activePane = null;
@@ -106,8 +84,9 @@ function connect() {
   source.onmessage = e => received(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)));
   source.onerror = () => {
     source.close(); client = null;
-    // With no workspace running, the overview offers to start one.
-    if (!session) showOverview(true);
+    // The sidebar empties when the last workspace stops.
+    workspaces = [];
+    renderSidebar();
     setTimeout(connect, 1000);
   };
 }
@@ -250,15 +229,12 @@ function render(sessions, wins, list) {
   const current = sessions.find(s => s.id === session);
   const win = wins.find(w => w.session === session && w.active === '1');
   const waiting = sessions.reduce((n, s) => n + s.attention.length, 0);
-  $('any-waiting').classList.toggle('hidden', !waiting);
-  $('workspace').textContent = current?.name ?? '';
   document.title = (waiting ? `(${waiting}) ` : '') +
-    [...(overview ? [] : [win?.name, current?.name]), 'Hypercube'].filter(Boolean).join(' — ');
+    [win?.name, current?.name, 'Hypercube'].filter(Boolean).join(' — ');
 
   workspaces = sessions;
   windows = wins;
   renderSidebar();
-  renderOverview();
 
   for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
   const [leader] = list.filter(p => p.left === 0);
@@ -281,7 +257,7 @@ function render(sessions, wins, list) {
     const parent = p === leader ? lead : card(p).slot;
     if (term.box.parentElement !== parent) parent.append(term.box);
     // The terminal takes the focus when tmux selects another pane.
-    if (p.active === '1' && p.id !== activePane && !overview && (p === leader || p.open)) { activePane = p.id; term.focus(); }
+    if (p.active === '1' && p.id !== activePane && (p === leader || p.open)) { activePane = p.id; term.focus(); }
   }
   for (const [id, term] of terms) {
     if (!list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
@@ -316,9 +292,16 @@ function renderSidebar() {
   if (renaming) return;
   update(sessionList, workspaces.map(s => {
     const open = !collapsed.has(s.id);
-    return `<li><button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex w-full items-center gap-2 py-1.5 pr-2 pl-4 text-left hover:bg-[#2a2d2e]">
-        <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(s.name)}</span>
-      </button></li>` +
+    const action = name => escape(new URLSearchParams({action: name, state: s.state}).toString());
+    return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]">
+        <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
+          <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(s.name)}</span>
+        </button>
+        <button type="button" title="Delete Workspace" class="invisible flex size-[22px] items-center justify-center rounded text-neutral-300 group-hover:visible group-focus-within:visible hover:bg-[#5a5d5e50]"
+          data-action="workspace?${action('delete')}" data-question="Delete workspace ${escape(s.name)}?"><span class="icon icon-trash size-4"></span></button>
+        <button type="button" title="New Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
+          data-action="window?${action('new')}"><span class="icon icon-add size-4"></span></button>
+      </li>` +
       (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
   }).join(''));
 }
@@ -384,87 +367,6 @@ function sessionRow(w, workspace) {
     </div>
   </li>`;
 }
-
-// Workspace cards keep the window's shape and are as large as fit, in
-// centered rows above the button that adds a workspace.
-function placeCards(count) {
-  const width = innerWidth, height = innerHeight, available = height - 48, pad = 48, gap = 32;
-  let columns = 1, scale = 0;
-  for (let c = 1; c <= count; c++) {
-    const r = Math.ceil(count / c);
-    const s = Math.min((width - 2 * pad - (c - 1) * gap) / c / width, (available - 2 * pad - (r - 1) * gap) / r / height);
-    if (s > scale) { columns = c; scale = s; }
-  }
-  scale = Math.max(scale, 0.05);
-  const rows = Math.ceil(count / columns), w = width * scale, h = height * scale;
-  const top = (available - (rows * h + (rows - 1) * gap)) / 2;
-  return Array.from({length: count}, (_, i) => {
-    const row = Math.floor(i / columns), inRow = Math.min(columns, count - row * columns);
-    const left = (width - (inRow * w + (inRow - 1) * gap)) / 2;
-    return {x: left + (i % columns) * (w + gap), y: top + row * (h + gap), w, h, scale};
-  });
-}
-
-const ring = (s, width) => `inset 0 0 0 ${width}px var(${s.attention ? '--color-amber-400' : s.id === session ? '--color-sky-500' : '--ring, transparent'})`;
-
-function counts(s) {
-  return [
-    s.attention && '<span title="Waiting on you" class="size-[0.6em] self-center rounded-full bg-amber-400"></span>',
-    s.busy && '<span role="img" title="Busy" class="icon icon-loading size-[1em] self-center text-neutral-400"></span>',
-    s.replied && s.id !== session && '<span title="New reply" class="size-[0.6em] self-center rounded-full bg-sky-400"></span>',
-  ].filter(Boolean).join('');
-}
-
-// The workspace view is the current workspace's card at the window's size. The
-// overview scales it down into its card and cross-fades it to the card's
-// summary; leaving the overview reverses that. The other workspaces' cards
-// fade in around it. Clicks on every card, the current one included, land on
-// the cards layer, which also holds each card's delete button.
-function renderOverview(instant) {
-  const places = placeCards(Math.max(workspaces.length, 1));
-  const index = workspaces.findIndex(s => s.id === session);
-  const place = places[index], current = workspaces[index];
-  if (instant) frame.style.transition = 'none';
-  frame.style.opacity = place ? 1 : 0;
-  frame.style.transform = overview && place ? `translate(${place.x}px, ${place.y}px) scale(${place.scale})` : '';
-  frame.style.borderRadius = overview && place ? 10 / place.scale + 'px' : '';
-  if (instant) { frame.offsetWidth; frame.style.transition = ''; }
-  view.style.opacity = overview ? 0 : 1;
-  view.inert = overview;
-  frameCard.style.opacity = overview ? 1 : 0;
-  if (place) {
-    const k = 1 / place.scale;
-    frameCard.style.boxShadow = ring(current, 2 * k);
-    update(frameCard, `<span class="flex flex-col items-center" style="gap: ${10 * k}px; font-size: ${18 * k}px">
-      <span>${escape(current.name)}</span>
-      ${counts(current) ? `<span class="flex" style="gap: ${14 * k}px; font-size: ${14 * k}px">${counts(current)}</span>` : ''}
-    </span>`);
-  }
-
-  Object.assign(cards.style, {opacity: overview ? 1 : 0, pointerEvents: overview ? '' : 'none'});
-  cards.inert = !overview;
-  $('add').hidden = !overview;
-  update(cards, workspaces.map((s, i) => {
-    const {x, y, w, h} = places[i], mine = s.id === session;
-    return `<div class="group absolute" style="left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px">
-      <button type="button" data-workspace="${s.id}" class="absolute inset-0 flex flex-col items-center justify-center gap-2.5 rounded-[10px] text-lg text-neutral-200 ${mine ? '' : 'bg-[#252526] hover:[--ring:var(--color-neutral-500)]'}"
-        style="box-shadow: ${mine ? 'none' : ring(s, 2)}">
-        ${mine ? '' : `<span>${escape(s.name)}</span>${counts(s) ? `<span class="flex gap-3.5 text-sm">${counts(s)}</span>` : ''}`}
-      </button>
-      <button type="button" title="Delete Workspace" class="invisible absolute top-2 right-2 flex size-[22px] items-center justify-center rounded text-neutral-400 group-hover:visible hover:bg-neutral-700 hover:text-neutral-100"
-        data-action="workspace?${escape(new URLSearchParams({action: 'delete', state: s.state}).toString())}"
-        data-question="Delete workspace ${escape(s.name)}?"><span class="icon icon-close size-3.5"></span></button>
-    </div>`;
-  }).join(''));
-
-  // A workspace opened from the overview grows from its own card once tmux
-  // has switched to it.
-  if (opening && opening === session) {
-    opening = null;
-    showOverview(false);
-  }
-}
-addEventListener('resize', () => renderOverview(true));
 
 // Token counts read as 845, 84k, 1.2M.
 function tokens(n) {
@@ -676,9 +578,9 @@ function keys(id, bytes) {
   }
 }
 
-// Clicking a session or workspace sends its tmux command. Clicking an action
-// asks its question, if any, then posts it to the server, which runs
-// Hypercube's own command, and shows why it refused.
+// Clicking a session sends its tmux command. Clicking an action asks its
+// question, if any, then posts it to the server, which runs Hypercube's own
+// command, and shows why it refused.
 document.body.addEventListener('click', async e => {
   const action = e.target.closest('[data-action]');
   const command = e.target.closest('[data-command]');
@@ -691,41 +593,10 @@ document.body.addEventListener('click', async e => {
   }
 });
 
-// Opening the current workspace leaves the overview at once; opening another
-// waits for tmux to switch to it.
-cards.addEventListener('click', e => {
-  const card = e.target.closest('[data-workspace]');
-  if (e.target === cards) showOverview(false);
-  if (!card) return;
-  if (card.dataset.workspace === session) { showOverview(false); return; }
-  opening = card.dataset.workspace;
-  send(`switch-client -t '${opening}'`);
-});
-
-$('new-session').onclick = () => {
-  if (shown?.state) post('window?' + new URLSearchParams({action: 'new', state: shown.state}));
-};
-$('add-workspace').onclick = () => post('workspace?action=new');
-
 async function post(action) {
   const res = await fetch(action, {method: 'POST'});
   if (!res.ok) alert(await res.text());
 }
-
-function showOverview(show) {
-  if (!show && !session) return;
-  overview = show;
-  // Leaving the overview returns the focus to the active terminal.
-  if (show) document.activeElement?.blur();
-  else activePane = null;
-  renderOverview();
-  refresh();
-}
-$('show-overview').onclick = () => showOverview(true);
-// Escape leaves the overview before a terminal can see it.
-addEventListener('keydown', e => {
-  if (e.key === 'Escape' && overview) { e.stopPropagation(); showOverview(false); }
-}, true);
 
 $('toggle-sidebar').onclick = () => {
   const open = sidebar.hidden;
@@ -767,7 +638,6 @@ drag(split, e => {
   if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
 });
 
-renderOverview(true);
 connect();
 </script>
 </body>
