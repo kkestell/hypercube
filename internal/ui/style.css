@@ -30,9 +30,6 @@
 @utility icon-folder-opened {
   mask-image: url(folder-opened.svg);
 }
-@utility icon-trash {
-  mask-image: url(trash.svg);
-}
 @utility icon-terminal {
   mask-image: url(terminal.svg);
 }
