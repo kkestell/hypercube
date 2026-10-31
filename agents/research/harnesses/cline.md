@@ -1,0 +1,91 @@
+# Cline CLI
+
+## 1. Overview
+
+- **[verified]** Research 2026-10-30; `cline` absent from PATH. No installed version/no model calls/no installs.
+- **[docs]** Cline Bot Inc., Apache-2.0. `npm install -g cline`, nightly `cline@nightly`; compiled platform binaries macOS/Linux/Windows arm64/x64; embedded runtime, no separate Node/Bun required to execute compiled binary. GitHub latest-release API `v4.1.26` (2026-10-26) is repository release, **not established CLI package version**. Current main docs used. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://api.github.com/repos/cline/cline/releases/latest
+- **[docs]** Selected extra harness by highest repository stars among examined candidates: Cline 71,082, Continue 36,379, Crush 28,890; rejected Qwen Code 28,840, Kilo 27,807, legacy archived Kimi CLI 11,422. Stars measure project popularity including IDE users, not terminal-only usage. No comparable public Factory Droid metric established; ranking is a transparent proxy, not a proven global usage ranking. https://api.github.com/repos/cline/cline https://api.github.com/repos/continuedev/continue https://api.github.com/repos/charmbracelet/crush https://api.github.com/repos/QwenLM/qwen-code https://api.github.com/repos/Kilo-Org/kilocode https://api.github.com/repos/MoonshotAI/kimi-cli
+- Release cadence and CLI-only adoption unknown. Kimi API says Python CLI archived/replaced by https://github.com/MoonshotAI/kimi-code ; old Kimi stars must not be conflated with replacement.
+
+## 2. Interactive terminal interface
+
+- **[docs]** OpenTUI full terminal UI with mouse, Markdown, highlighted diffs, scrollable chat; `cline`/`-i/--tui` interactive, positional prompt one-shot, `--json` NDJSON. `--zen` background dispatch exits immediately, not ordinary headless wait. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- Alternate-screen control, resize semantics, titles/OSC 9/9;4/7501/bell unknown; no PTY capture. CLI docs expose Ctrl+O experimental local/cloud toggle with `CLINE_CLOUD_SESSIONS=1`, not a generic standard keybinding across versions. **[docs]** https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 3. Launch and configuration
+
+- **[docs]** Launch flags: `-V/--version`, `-p/--plan` (**not print**), `--json`, `--auto-approve BOOLEAN`, `-c/--cwd PATH`, `--thinking [none|low|medium|high|xhigh]` (bare medium), `--compaction agentic|basic|off` (agentic), `-i/--tui`, `--id SESSION_ID`, `-P/--provider ID` (cline), `-k/--key KEY`, `-m/--model ID`, `-s/--system TEXT`, `-z/--zen`, `--retries COUNT` (3), `-t/--timeout SECONDS` (0 unlimited), `--acp`, `--config DIR`, `--data-dir DIR`, `--hooks-dir DIR`, `--worktree`, `--update`, `--kanban`, `-v/--verbose`, help. README additionally documents `-y/--yolo`, `--team-name`. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- **[docs]** `--key` **saves** provider key, not ephemeral despite “for this run”; precedence over env. `--data-dir` automatically enables isolated-state sandbox mode and conflicts zen; this term is not proof of OS shell sandboxing. Home `--config`/`CLINE_DIR`, data `CLINE_DATA_DIR`, sandbox overrides `CLINE_SANDBOX`,`CLINE_SANDBOX_DATA_DIR`; hooks `CLINE_HOOKS_DIR`; teams `CLINE_TEAM_DATA_DIR`; `CLINE_MCP_SETTINGS_PATH`. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- **[docs]** Other env: `CLINE_HUB_PORT` 25463, `CLINE_HUB_ADDRESS`, `CLINE_SESSION_BACKEND_MODE=local|hub|remote|auto`, `CLINE_BUILD_ENV=development`, `CLINE_DEBUG_HOST` 127.0.0.1, `CLINE_DEBUG_PORT_BASE`, `CLINE_LOG_ENABLED=0|false`, `CLINE_LOG_LEVEL=trace|debug|info|warn|error|fatal|silent` default info, `CLINE_LOG_PATH`, `CLINE_LOG_NAME`, `CLINE_DEBUG`, `CLINE_CLOUD_SESSIONS`. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- **[docs]** `~/.cline/data/settings/providers.json`, `global-settings.json`, `cline_mcp_settings.json`; `data/sessions/`, `data/db/sessions.db`, `data/logs/cline.log`, `hub-daemon.log`, `data/teams/`. Home/project `.cline/` roots hold rules/skills/hooks/agents/plugins; installed plugins `_installed/`. `cline config workflows|rules|skills|agents|plugins|hooks|mcp|tools --json` inspects contributions. Exact settings precedence beyond plugin conventions unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+
+## 4. Models and reasoning
+
+- **[docs]** Provider/model flags above; bare model reuses previous provider. Thinking omitted uses last `/model` choice/provider default, unlike bare flag medium. Main README examples and generated help have different default model statements: pin explicit provider/model rather than rely on default `anthropic/claude-sonnet-4.6` example. Unknown model rejection timing and standalone model-list subcommand unknown. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** Providers include Cline OAuth, ChatGPT `openai-codex`, OCA, Anthropic, OpenAI, Gemini, OpenRouter, Bedrock, Vertex, Cerebras, Groq and OpenAI-compatible endpoints; `auth --baseurl`, `--azure-api-version`. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+
+## 5. Conversations
+
+- **[docs]** `--id ID` resumes; `history --json --limit N` default 50, `history export ID -o FILE` standalone HTML, `history delete --session-id ID`, `history update --session-id ID --title|--prompt|--metadata JSON`. Session folder + SQLite index above. Caller-chosen create ID, fork and concurrent resume semantics unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** `--compaction agentic|basic|off`; `/undo` rewinds checkpoints/workspace, not just chat history. `--worktree` detached Git worktree in `~/.cline/worktrees/`. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 6. Transcript and structured output
+
+- **[docs]** Run `--json` NDJSON every line `{type,ts:ISO8601,...}`: `agent_event` embeds `event`, whose types `content_start`,`content_update`,`content_end`,`iteration_start`,`iteration_end`,`usage`,`notice`,`done`,`error`; `hook_event` `{hookEventName,agentId,taskId}`; `team_event` embeds event; `run_result` `{finishReason,iterations,usage,durationMs,model,text}`; `run_aborted` follows stopped result `{reason,message}`; verbose may add `run_start`. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** Aborted run finishReason `aborted`; errors and timeout errors stderr `{"type":"error","message":...}`. Ignore unknown types. `--json` requires prompt or piped stdin and is noninteractive. Exact live disk transcript schema/flush and diff/todo JSON unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 7. Hooks and events
+
+- **[docs]** File hook events `TaskStart`,`TaskResume`,`TaskCancel`,`TaskComplete`,`UserPromptSubmit`,`PreToolUse`,`PostToolUse`,`PreCompact`. Runtime injected `--hooks-dir`/`CLINE_HOOKS_DIR`; modern `.cline/hooks/`, older shared docs also describe `.clinerules/hooks/` and `~/Documents/Cline/Hooks/`. Hooks exact event filenames without extension, executable on Unix. Confirm installed CLI discovery precedence; old IDE locations are not assumed CLI equivalents. https://raw.githubusercontent.com/cline/cline/main/.clinerules/hooks/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** Base input `clineVersion,hookName,timestamp,taskId,workspaceRoots,userId`; `taskStart.taskMetadata:{taskId,ulid,initialTask}`, resume metadata + `previousState:{lastMessageTs,messageCount,conversationHistoryDeleted}`, cancel metadata completionStatus, complete metadata taskId/ulid; prompt `{prompt,attachments}`; pre `{toolName,parameters}`; post `{toolName,parameters,result,success,executionTimeMs}`; compact `{contextSize,messagesToCompact,compactionStrategy}`. Output `{cancel:boolean,contextModification?:string,errorMessage?:string}`. https://raw.githubusercontent.com/cline/cline/main/.clinerules/hooks/README.md
+- **[docs]** CLI/SDK timeout 120 sec vs extension 30 sec; extension override `HOOK_EXECUTION_TIMEOUT_MS`. Context max 50 KB (`MAX_CONTEXT_MODIFICATION_SIZE`). Tool hooks blocking; CLI/SDK run-start hooks fire-and-forget unless host opts blocking; detached children need independent stdio because pipes close shortly after parent exits. Expected filesystem errors silent, unexpected propagate. General stop-loop cap/input rewrite/permission-decision contract beyond cancel unknown. https://raw.githubusercontent.com/cline/cline/main/.clinerules/hooks/README.md
+- **[docs]** Plugin lifecycle seven callbacks: `beforeRun`, `afterRun`, `beforeModel`, `afterModel`, `beforeTool`, `afterTool`, `onEvent`. beforeTool `{toolCall,input}` can `{stop:true,reason}`; afterTool can replace result; beforeModel can mutate request; afterRun runs completed/aborted/failed; onEvent observes all AgentRuntimeEvent. https://raw.githubusercontent.com/cline/cline/main/.agents/skills/cline-sdk/references/plugins/REFERENCE.md
+
+## 8. Plugins and extensions
+
+- **[docs]** TypeScript default plugin `{name,manifest:{capabilities:[...]},setup(api,ctx),hooks?}`. Capabilities: `tools`,`commands`,`rules`,`messageBuilders`,`providers`,`automationEvents`,`hooks`; matching methods `registerTool`, `registerCommand`, `registerRule`, `registerMessageBuilder`, `registerProvider`, `registerAutomationEventType`. Hooks require declared capability and handlers; nonempty capabilities mandatory. Resolve→validate→setup→activate then registry frozen, no dynamic register/unregister. https://raw.githubusercontent.com/cline/cline/main/.agents/skills/cline-sdk/references/plugins/REFERENCE.md
+- **[docs]** `ctx.session?.sessionId`, `ctx.client?.name`, `ctx.user`, `ctx.workspaceInfo` rootPath/hint/Git branch/hash/remotes, optional `ctx.automation.ingestEvent`, logger, process-local telemetry. Workspace root from ctx, not process.cwd; module state shared across concurrent sessions, key by ID. Message builders run registration order before builtin safety builder. https://raw.githubusercontent.com/cline/cline/main/.agents/skills/cline-sdk/references/plugins/REFERENCE.md
+- **[docs]** Auto-discovery workspace/home `.cline/plugins/` `.ts/.js`; packages ES modules `package.json` `cline.plugins:[{paths,capabilities}]`, optional peer `@cline/core`; SDK `extensions:[plugin]` or `pluginPaths:[DIR]`. `cline plugin install SOURCE [--npm|--git] [--force] [--json] [--cwd PATH]`; source local/npm/Git/URL. Validation/setup error prints and continues without plugin. Asset conventional overrides bundled→global→project, name-last-wins. No generic arbitrary UI registration API established. https://raw.githubusercontent.com/cline/cline/main/.agents/skills/cline-sdk/references/plugins/REFERENCE.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+
+## 9. Tools, permissions, and approvals
+
+- **[docs]** Normal CLI **auto-approves by default**; ACP default false. `--auto-approve false` TTY asks `Approve tool "NAME" with input PREVIEW? [y/N]`; y/yes allows, anything else denies; no TTY denies required approval. `--yolo` also enables submit_and_exit and disables spawn/team by default; not merely same as normal default true. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** Desktop file IPC: `CLINE_TOOL_APPROVAL_MODE=desktop`, `CLINE_TOOL_APPROVAL_DIR=PATH`; writes request JSON and awaits matching decision JSON. Exact field/file schema unknown. No shell command allow/deny lists; block `run_commands` in PreToolUse. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- State-isolation “sandbox” is not established OS containment. Structured agent question response and native shell sandbox unknown.
+
+## 10. Subagents and delegation
+
+- **[docs]** Native spawn, agent teams and persistent `--team-name`; one-shot default includes spawn/teams, yolo and zen disable by default. `CLINE_TEAM_DATA_DIR` redirects team persistence. Fine-grained tool restriction via plugins/config tool inventory; hard delegate count/budget flags unknown. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 11. MCP
+
+- **[docs]** `cline mcp` interactive management, config `cline_mcp_settings.json` / `CLINE_MCP_SETTINGS_PATH`. Stdio `mcp add NAME --yes -- COMMAND ARGS`; HTTP URL `--transport http --header 'Authorization: Bearer TOKEN' --yes`; SSE also supported. Authorize/enable/disable/remove via wizard. README says add/install requires TTY while newer reference documents `--yes`; preserve version sensitivity rather than assert all releases support noninteractive adds. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- Resources/prompts/elicitation/push and process-only inline MCP JSON unknown.
+
+## 12. Control from outside
+
+- **[docs]** `--acp` editor integration; SDK `ClineCore.create({backendMode:'local'})`, `host.start({config:{providerId,modelId,apiKey,cwd,enableTools,systemPrompt,extensions,extensionContext},prompt,interactive:false})`, `host.dispose()`. These are known public embedding entry points, not an invented terminal protocol. https://raw.githubusercontent.com/cline/cline/main/.agents/skills/cline-sdk/references/plugins/REFERENCE.md
+- **[docs]** Shared background hub `cline hub status|ensure|start|stop|drain [--off]|upgrade|dashboard`; ensure prints URL; stop terminates hub sessions; upgrade drains/restarts but does not await zen/scheduled tasks. Dashboard drives sessions/messages/restarts over HTTP/WebSocket, default 127.0.0.1:8787, `--host`,`--port`,`--public-url`,`--room-secret`,`--no-open`,`--cwd`,`--config`,`--data-dir`; nonlocal binding requires room secret. Raw hub RPC method inventory and current-turn steer semantics unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** `--zen` daemon task exits launcher, fully autoapproved and no live UI absent menubar; incompatible isolated data-dir and tui. Connectors Telegram/Slack/Discord/GChat/WhatsApp/Linear bridge chat→RPC; slash `/new`,`/clear`,`/cwd`,`/abort`,`/exit`,`/tools`,`/yolo`,`/whereami`,`/schedule`; connector stop/restart flags placed **before** channel. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+
+## 13. Status from outside
+
+- **[docs]** NDJSON usage/done/error/run_result, hook_event and team_event; `hub status` daemon-level; desktop approval files permission-level; menubar subscribes `ui.notify` completion. Live full session status enum and question-waiting event schema unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 14. Usage, cost, and limits
+
+- **[docs]** Run result usage/iterations/durationMs/model, usage agent events, `-v` elapsed/tokens/estimated cost where available. Retry limit consecutive mistakes default3; timeout seconds 0 unlimited; compaction modes above. Exact token/cost usage nested keys and provider rate-limit surfaces unknown. https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 15. Authentication
+
+- **[docs]** Explicit `cline auth PROVIDER`; auth options `-p/--provider`,`-k/--apikey`,`-m/--modelid`,`-b/--baseurl`,`--azure-api-version`. Startup does not secretly browser-login OAuth; missing OAuth credentials fail fast in noninteractive mode. Env `ANTHROPIC_API_KEY`,`CLINE_API_KEY`,`OPENAI_API_KEY`,`OPENROUTER_API_KEY`,`AI_GATEWAY_API_KEY`,`V0_API_KEY`; provider settings contain saved keys. Offline credential-expiry verification unknown. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+- **[docs]** Wrapper harvests OS CA store into `~/.cline/cli-node-extra-ca-certs.pem`; user NODE_EXTRA_CA_CERTS merged rather than replaces; normal startup can write this file. `CLINE_DEBUG=1` reports CA diagnostics. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+
+## 16. Running many instances
+
+- **[docs]** Shared hub default25463 and dashboard8787; isolate `--config`, `--data-dir`, team state and worktree as needed; local data-dir backend ends with process. Plugin module globals shared, so key session data. Credential flag writes and CA regeneration make “one-shot” non-read-only. Lock/RAM/shared-account quotas unknown. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md https://raw.githubusercontent.com/cline/cline/main/docs/cli/cli-reference.mdx
+
+## 17. Anything else a program driving this harness should know
+
+- **[docs]** `cline doctor fix` kills Cline processes, so do not use as a benign health probe. `kanban` may install its external app; `skill` proxies `npx skills`; do not run discovery helpers indiscriminately under a no-install constraint. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
+- **[docs]** Scheduling supports cron/event-driven: create `--cron`,`--prompt`,`--workspace`,`--timeout`,`--tags`, provider/model defaults last-configured; list/get/trigger/history `--limit`/export YAML/import; delivery `--delivery-adapter`,`--delivery-bot`,`--delivery-thread`. Compiled binary embeds plugin bootstrap/SDK/dashboard without disk runtime extraction; `--plugin-sandbox` internal subprocess flag, not user command. https://raw.githubusercontent.com/cline/cline/main/apps/cli/README.md
