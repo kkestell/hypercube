@@ -49,12 +49,15 @@ const profileArg = "The profile sets the worker's harness, model, and effort. An
 // profiles. Outside Git, workers cannot have worktrees, so create_agent
 // requires dir.
 func toolsFor(s store.State, profiles []harness.Profile) []tool {
-	create := tool{"create_agent", "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg,
-		schema([]string{"name", "profile"}, "name", "profile", "dir", "message")}
+	description := "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
+	required := []string{"name", "profile"}
+	if s.NoGit {
+		description = "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg
+		required = append(required, "dir")
+	}
+	create := tool{"create_agent", description, schema(required, "name", "profile", "dir", "message")}
 	remove := tool{"remove_agent", "Lead only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"name"}, "name")}
 	if s.NoGit {
-		create = tool{create.Name, "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg,
-			schema([]string{"name", "profile", "dir"}, "name", "profile", "dir", "message")}
 		remove.Description = "Lead only. Close a worker's pane and remove it from the team. Its directory is left as it is."
 	}
 	if len(profiles) > 0 {
@@ -241,7 +244,7 @@ func requireLead(s *store.State, self string) (*store.Agent, error) {
 }
 
 func createAgent(self, path string, args map[string]string) (string, error) {
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return "", err
 	}
@@ -339,7 +342,7 @@ func removeAgent(self, path, name string) (string, error) {
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("name is required")
 	}
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return "", err
 	}

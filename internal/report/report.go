@@ -167,7 +167,6 @@ func logTool(event, path, id string, in input) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	msg, detail := "tool failed", slog.String("error", in.Error)
 	if event == "denied" {
 		msg, detail = "tool denied", slog.String("reason", in.Reason)
@@ -204,7 +203,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	} else {
 		b.WriteString("Messaging applies only to this session.\n")
 	}
-	b.WriteString("Reach Hypercube agents only with the hypercube tools: send_message, list_agents, create_agent, and remove_agent. Any other agent tools you have manage only your own subagents. Messages from Hypercube agents arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
+	b.WriteString("Reach Hypercube agents only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube agents arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
 	var leads []string
 	for _, t := range s.Agents {

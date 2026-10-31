@@ -135,11 +135,17 @@ func Delete(path string) error {
 // lockFile opens the state file's lock and holds it exclusively until the
 // file is closed.
 func lockFile(path string) (*os.File, error) {
-	return LockFile(strings.TrimSuffix(path, ".json") + ".lock")
+	return lock(strings.TrimSuffix(path, ".json") + ".lock")
 }
 
-// LockFile holds an exclusive lock until the file is closed.
-func LockFile(path string) (*os.File, error) {
+// SessionLock opens the workspace lifecycle lock for the state file at path
+// and holds it exclusively until the file is closed.
+func SessionLock(path string) (*os.File, error) {
+	return lock(path + ".session.lock")
+}
+
+// lock opens path and holds it exclusively until the file is closed.
+func lock(path string) (*os.File, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
