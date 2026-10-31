@@ -136,7 +136,7 @@ func (s *server) send(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// window creates or deletes a Hypercube session, as the tmux bindings do.
+// window creates, renames, or deletes a Hypercube session.
 func window(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	args := []string{"window", q.Get("action"), q.Get("state")}
@@ -144,6 +144,8 @@ func window(w http.ResponseWriter, r *http.Request) {
 	case "new":
 	case "delete":
 		args = append(args, q.Get("team"), q.Get("window"))
+	case "rename":
+		args = append(args, q.Get("team"), q.Get("window"), q.Get("name"))
 	default:
 		http.Error(w, "unknown window action", http.StatusBadRequest)
 		return

@@ -52,10 +52,16 @@ each other through an MCP server and receive messages through harness plugins.
   Never stop the user's tmux server or workspaces, and never run
   `make reinstall`.
 - Use `make dev` for a live smoke test, and clean up what you start.
+- The binary embeds the browser view. After changing `internal/ui/`, run
+  `make build` and restart a running `hypercube ui`:
+  `pkill -f 'hypercube ui'; nohup ./bin/hypercube ui >/tmp/hypercube-ui.log 2>&1 &`
 
 Report any check that fails or is skipped.
 
 ## Documentation
+
+The example in `docs/configuration.md` is the user's
+`~/.config/hypercube/config.json`. Change both together so they stay the same.
 
 `README.md` indexes the user documentation in `docs/`. Update a guide only
 when the behavior it describes changes. `AGENTS.md` gives instructions to

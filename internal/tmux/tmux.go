@@ -300,6 +300,12 @@ func SelectWindow(window string) error {
 	return err
 }
 
+// RenameWindow gives a session's window its team's new name.
+func RenameWindow(window, team string) error {
+	_, err := run("set-option", "-w", "-t", window, "@hypercube_team", team, ";", "rename-window", "-t", window, team)
+	return err
+}
+
 func KillWindow(session, team, state string) error {
 	window, err := FindWindow(session, team, state)
 	if err != nil || window == "" {

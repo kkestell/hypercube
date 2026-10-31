@@ -76,14 +76,19 @@ one to open it, click `+ Workspace` to choose a folder and start a workspace in
 it, or hover over a card and click `×` to delete it. Escape returns to the open
 workspace.
 
-A workspace's sidebar lists its sessions. Click one to switch to it, click `+`
-to create one, or hover over one and click the trash icon to delete it. A
-session shows a spinner while any of its agents is busy, the agents awaiting
-your approval in amber, and a blue dot after its lead finishes a reply you have
-not seen.
+The sidebar lists every running workspace's sessions under a row for the
+workspace; click the row to collapse or expand them. Click a session to switch
+to it, double-click it to rename it and its agents' addresses, click `+` to
+create one in the open workspace, or hover over one and click the trash icon to
+delete it. A
+session shows a spinner while any of its agents is busy, an amber dot while any
+awaits your approval, and a blue dot after its lead finishes a reply you have
+not seen. Workspace cards show the same marks, and a worker's card shows a
+spinner while it is busy, an amber dot while it awaits approval, and a red dot
+after it exits.
 
 The lead's terminal fills the left side, and each worker is a card on the
-right with its name and status. Click a card, or its terminal button, to show
+right. Click a card, or its terminal button, to show
 the worker's terminal in the card; click the button again to return to the
 summary. A card's report and context use are placeholders. Drag the dividers to
 resize the sidebar and the lead's side.

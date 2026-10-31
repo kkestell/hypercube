@@ -464,8 +464,30 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if strings.Contains(logOf(lead.ID), "other queued while stopped") || strings.Contains(logOf(otherWorker.ID), `Message from user:\nqueued while stopped`) {
 		t.Fatal("resumed queues crossed sessions")
 	}
+	// Renaming a session renames its agents' addresses and its window.
+	before := state()
+	renamedLead, err := before.Agent(otherLead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli("window", "rename", path, otherLead.Team, windowOf(renamedLead.Target), "triage")
+	for i, a := range state().Agents {
+		want := before.Agents[i].Team
+		if want == otherLead.Team {
+			want = "triage"
+		}
+		if a.Team != want {
+			t.Fatalf("%s is in team %s, want %s", a.Name, a.Team, want)
+		}
+	}
+	if got := strings.Fields(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name} #{@hypercube_team}")); !slices.Contains(got, "triage") || slices.Contains(got, otherLead.Team) {
+		t.Fatalf("renamed window: %v", got)
+	}
+	if listed := call(lead.ID, "list_agents", nil); !strings.Contains(listed, "triage/lead") {
+		t.Fatal("list_agents missed the renamed lead", listed)
+	}
 	// Deleting the final window must finish cleanup even as tmux exits.
-	cli("delete-session", otherLead.Team)
+	cli("delete-session", "triage")
 	call(lead.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
 	until("last worker", func() bool { return len(state().Agents) == 2 && state().Agents[1].Waiter > 0 })
 	lastWorker := state().Agents[1]

@@ -41,9 +41,9 @@ func main() {
 		if err == nil {
 			err = deleteTeam(root, store.Path(name), os.Args[2], "")
 		}
-	case (len(os.Args) == 4 || len(os.Args) == 6) && os.Args[1] == "window":
+	case (len(os.Args) == 4 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
 		err = windowAction(os.Args[2:])
-		if err != nil && len(os.Args) == 6 {
+		if err != nil && len(os.Args) >= 6 {
 			_ = exec.Command("tmux", "display-message", "-t", os.Args[5], strings.ReplaceAll(err.Error(), "#", "##")).Run()
 		}
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
@@ -352,6 +352,44 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 	return store.Delete(path)
 }
 
+// renameTeam renames a session: its agents' addresses and its window.
+func renameTeam(path, team, expectedWindow, newName string) error {
+	if !sessionName.MatchString(newName) {
+		return errors.New("session names must be lowercase letters, digits, and hyphens")
+	}
+	name := store.Workspace(path)
+	lock, err := store.LockFile(path + ".session.lock")
+	if err != nil {
+		return err
+	}
+	defer lock.Close()
+	window, err := tmux.FindWindow(name, team, path)
+	if err != nil {
+		return err
+	}
+	if window != expectedWindow {
+		return errors.New("the window no longer belongs to this session")
+	}
+	err = store.Update(path, func(s *store.State) error {
+		if s.TeamLead(team) == nil {
+			return fmt.Errorf("no session %q", team)
+		}
+		if s.TeamLead(newName) != nil {
+			return fmt.Errorf("session %q already exists", newName)
+		}
+		for i := range s.Agents {
+			if s.Agents[i].Team == team {
+				s.Agents[i].Team = newName
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	return tmux.RenameWindow(window, newName)
+}
+
 // start attaches to the workspace, starting its saved sessions when necessary.
 func start() error { return startWorkspace(".", true) }
 
@@ -517,6 +555,9 @@ func windowAction(args []string) error {
 		}
 		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])
+		}
+		if args[0] == "rename" && len(args) == 5 && a.Team == args[2] {
+			return renameTeam(args[1], args[2], args[3], args[4])
 		}
 	}
 	return errors.New("no matching Hypercube session")

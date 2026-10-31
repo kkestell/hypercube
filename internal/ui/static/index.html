@@ -59,7 +59,8 @@
 <script src="addon-webgl.js"></script>
 <script>
 // The page is a tmux control-mode client for one workspace at a time. The
-// sidebar lists the workspace's sessions, which are tmux windows. The current
+// sidebar lists every workspace's sessions, which are tmux windows, under a
+// row naming the workspace. The current
 // window's lead fills the left, and its workers are cards on the right, each
 // showing either a summary or its terminal. tmux sizes the panes; the page
 // asks for the sizes its layout has room for. The overview shows every
@@ -220,8 +221,8 @@ function refresh() {
   let sessions, wins;
   send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{?@hypercube_replied,1,}}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
     lines => sessions = rows(lines, ['id', 'state', 'replied', 'attention', 'busy', 'name']).filter(s => s.state));
-  send(`list-windows -F '#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
-    lines => wins = rows(lines, ['id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
+  send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
+    lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
   send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_label}'`,
     (lines, error) => {
       refreshing = false;
@@ -247,20 +248,27 @@ function update(parent, html) {
 
 function render(sessions, wins, list) {
   const current = sessions.find(s => s.id === session);
-  const win = wins.find(w => w.active === '1');
+  const win = wins.find(w => w.session === session && w.active === '1');
   const waiting = sessions.reduce((n, s) => n + s.attention.length, 0);
   $('any-waiting').classList.toggle('hidden', !waiting);
   $('workspace').textContent = current?.name ?? '';
   document.title = (waiting ? `(${waiting}) ` : '') +
     [...(overview ? [] : [win?.name, current?.name]), 'Hypercube'].filter(Boolean).join(' — ');
 
-  update(sessionList, wins.map(w => sessionRow(w, current)).join(''));
   workspaces = sessions;
+  windows = wins;
+  renderSidebar();
   renderOverview();
 
   for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
   const [leader] = list.filter(p => p.left === 0);
   const stacked = list.filter(p => p.left > 0).sort((a, b) => a.top - b.top);
+  // A refresh sent before a card was switched still reports its old state.
+  for (const p of stacked) {
+    if (!toggled.has(p.id)) continue;
+    if (toggled.get(p.id) === p.open) toggled.delete(p.id);
+    else p.open = toggled.get(p.id);
+  }
   if (win?.id !== shown?.window) leadWidth = null;
   shown = {window: win?.id, leader, stacked, state: current?.state, layout: win?.layout.slice(5)};
 
@@ -299,25 +307,79 @@ function render(sessions, wins, list) {
   apply();
 }
 
-function sessionRow(w, current) {
-  const active = w.active === '1';
+// The sidebar lists each workspace's sessions below a row that collapses
+// them. It stays as it is while a session is being renamed.
+let windows = [], renaming = false;
+const collapsed = new Set();
+
+function renderSidebar() {
+  if (renaming) return;
+  update(sessionList, workspaces.map(s => {
+    const open = !collapsed.has(s.id);
+    return `<li><button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex w-full items-center gap-2 py-1.5 pr-2 pl-4 text-left hover:bg-[#2a2d2e]">
+        <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(s.name)}</span>
+      </button></li>` +
+      (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
+  }).join(''));
+}
+
+sessionList.addEventListener('click', e => {
+  const header = e.target.closest('[data-collapse]');
+  if (!header) return;
+  const id = header.dataset.collapse;
+  if (!collapsed.delete(id)) collapsed.add(id);
+  renderSidebar();
+});
+
+// Double-clicking a session replaces it with a field for its new name, which
+// also renames its agents' addresses. Enter or leaving the field saves the
+// name, and Escape cancels.
+sessionList.addEventListener('dblclick', e => {
+  const row = e.target.closest('[data-rename]');
+  const w = windows.find(w => w.id === row?.dataset.rename);
+  const workspace = workspaces.find(s => s.id === w?.session);
+  if (!w?.team || !workspace) return;
+  renaming = true;
+  const input = document.createElement('input');
+  input.value = w.name;
+  input.className = 'my-1 mr-1 ml-9 min-w-0 flex-1 border border-sky-500 bg-[#3c3c3c] px-1 py-0.5 text-neutral-100 outline-none';
+  row.replaceWith(input);
+  input.focus();
+  input.select();
+  const finish = save => {
+    if (!renaming) return;
+    renaming = false;
+    const name = input.value.trim();
+    if (save && name && name !== w.name) {
+      post('window?' + new URLSearchParams({action: 'rename', state: workspace.state, team: w.team, window: w.id, name}));
+      w.name = name;
+    }
+    sessionList.replaceChildren();
+    renderSidebar();
+  };
+  input.onkeydown = e => {
+    if (e.key === 'Enter') finish(true);
+    else if (e.key === 'Escape') finish(false);
+  };
+  input.onblur = () => finish(true);
+});
+
+function sessionRow(w, workspace) {
+  const active = w.session === session && w.active === '1';
   const busy = names(w.busy), waiting = names(w.attention);
   return `<li class="group ${active ? 'bg-[#37373d] text-neutral-100' : 'hover:bg-[#2a2d2e]'}">
     <div class="flex items-center gap-1 pr-2">
-      <button type="button" data-command="select-window -t '${w.id}'" class="min-w-0 flex-1 py-1.5 pl-4 text-left">
+      <button type="button" data-command="switch-client -t '${w.id}'" data-rename="${w.id}" class="min-w-0 flex-1 py-1.5 pl-10 text-left">
         <span class="flex items-center gap-1.5">
           <span class="truncate">${escape(w.name)}</span>
           ${busy ? `<span role="img" title="Busy: ${escape(busy)}" class="icon icon-loading size-3.5 text-neutral-400"></span>` : ''}
+          ${waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : ''}
           ${w.replied && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
         </span>
-        ${waiting ? `<span class="flex items-center gap-1.5 text-xs text-amber-300">
-          <span class="size-2 shrink-0 rounded-full bg-amber-400"></span>
-          <span class="truncate">Waiting on you: ${escape(waiting)}</span>
-        </span>` : ''}
       </button>
       ${w.team ? `<div class="flex items-center ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}">
         <button type="button" title="Delete Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
-          data-action="window?${escape(new URLSearchParams({action: 'delete', state: current?.state ?? '', team: w.team, window: w.id}).toString())}"
+          data-action="window?${escape(new URLSearchParams({action: 'delete', state: workspace.state, team: w.team, window: w.id}).toString())}"
           data-question="Delete session ${escape(w.name)}?"><span class="icon icon-trash size-4"></span></button>
       </div>` : ''}
     </div>
@@ -348,9 +410,9 @@ const ring = (s, width) => `inset 0 0 0 ${width}px var(${s.attention ? '--color-
 
 function counts(s) {
   return [
-    s.attention && `<span class="text-amber-300">${s.attention.length} waiting on you</span>`,
+    s.attention && '<span title="Waiting on you" class="size-[0.6em] self-center rounded-full bg-amber-400"></span>',
     s.busy && '<span role="img" title="Busy" class="icon icon-loading size-[1em] self-center text-neutral-400"></span>',
-    s.replied && s.id !== session && '<span class="text-neutral-200">New reply</span>',
+    s.replied && s.id !== session && '<span title="New reply" class="size-[0.6em] self-center rounded-full bg-sky-400"></span>',
   ].filter(Boolean).join('');
 }
 
@@ -444,23 +506,25 @@ function card(p) {
     c = {element, name: q('name'), status: q('status'), toggle: q('toggle'), summary: q('summary'), slot: q('slot')};
     workerCards.set(p.id, c);
   }
-  const status = p.dead === '1' ? '<span class="text-red-300">Exited</span>'
-    : p.attention ? '<span class="text-amber-300">Waiting on you</span>'
+  const status = p.dead === '1' ? `<span title="Exited with status ${escape(p.status)}" class="block size-2 rounded-full bg-red-400"></span>`
+    : p.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
     : p.busy ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
-    : '<span class="text-neutral-400">Idle</span>';
+    : '';
   const open = !!p.open;
   const className = `relative flex flex-col gap-2 rounded-md border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0 cursor-pointer'} ${
     p.attention ? 'border-amber-400' : 'border-neutral-700 hover:border-neutral-500'}`;
   if (c.element.className !== className) c.element.className = className;
   if (c.name.textContent !== agentName(p.label)) c.name.textContent = agentName(p.label);
   update(c.status, status);
-  c.status.title = p.dead === '1' ? `Exit status ${p.status}` : '';
   c.toggle.setAttribute('aria-pressed', open);
   c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
   c.summary.hidden = open;
   c.slot.hidden = !open;
   return c;
 }
+
+// Cards switched here that tmux has not reported yet.
+const toggled = new Map();
 
 // Clicking a card in summary shows its terminal; its terminal button switches
 // back and forth.
@@ -469,6 +533,7 @@ workers.onclick = e => {
   const p = shown?.stacked.find(p => p.id === element?.dataset.pane);
   if (!p || p.open && !e.target.closest('.toggle')) return;
   p.open = p.open ? '' : '1';
+  toggled.set(p.id, p.open);
   send(p.open ? `set-option -p -t '${p.id}' @hypercube_open 1` : `set-option -p -u -t '${p.id}' @hypercube_open`);
   card(p);
   apply();
@@ -554,6 +619,13 @@ function open(id, cols, rows) {
   term.box = box;
   term.loading = true;
   terms.set(id, term);
+  term.attachCustomKeyEventHandler(e => {
+    const text = e.type === 'keydown' && editing(e);
+    if (!text) return true;
+    e.preventDefault();
+    keys(id, new TextEncoder().encode(text));
+    return false;
+  });
   term.onData(data => keys(id, new TextEncoder().encode(data)));
   term.onBinary(data => keys(id, Uint8Array.from(data, c => c.charCodeAt(0))));
   term.textarea.addEventListener('focus', () => send(`select-pane -t '${id}'`));
@@ -565,6 +637,19 @@ function open(id, cols, rows) {
     term.loading = false;
   });
   return term;
+}
+
+// editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
+// which xterm.js leaves to the browser.
+function editing(e) {
+  const mods = (e.metaKey ? 'cmd+' : '') + (e.altKey ? 'alt+' : '') + (e.ctrlKey ? 'ctrl+' : '') + (e.shiftKey ? 'shift+' : '');
+  return {
+    'cmd+Backspace': '\x15',
+    'cmd+ArrowLeft': '\x01',
+    'cmd+ArrowRight': '\x05',
+    'alt+ArrowLeft': '\x1bb',
+    'alt+ArrowRight': '\x1bf',
+  }[mods + e.key];
 }
 
 function keys(id, bytes) {

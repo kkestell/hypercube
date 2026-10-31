@@ -27,6 +27,12 @@
 @utility icon-close {
   mask-image: url(close.svg);
 }
+@utility icon-folder {
+  mask-image: url(folder.svg);
+}
+@utility icon-folder-opened {
+  mask-image: url(folder-opened.svg);
+}
 @utility icon-trash {
   mask-image: url(trash.svg);
 }
