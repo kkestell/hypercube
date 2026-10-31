@@ -33,7 +33,7 @@
       <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
-    <div id="panel" class="h-[240px] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
+    <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
   </div>
 </div>
 </div>
@@ -312,7 +312,7 @@ function renderSidebar() {
     return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]"
         data-delete="workspace?${action('delete')}" data-label="Delete Workspace" data-question="Delete workspace ${escape(s.name)}?">
         <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
-          <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(s.name)}</span>
+          ${s.busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(s.name)}</span>
         </button>
         <button type="button" title="New Session" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
           data-action="window?${action('new')}"><span class="icon icon-add size-4"></span></button>
@@ -649,6 +649,10 @@ $('add-workspace').onclick = async () => {
 let panelOpen = false, shell = null, creating = false;
 
 function renderPanel(terminal) {
+  // A refresh that lists no marked terminal, such as one that ran before the
+  // option took effect, must not start a second shell, so creating ends only
+  // here rather than in the new-window callback.
+  if (terminal) creating = false;
   if (shell && shell.window !== terminal?.id) {
     const term = terms.get(shell.pane);
     term.box.remove(); term.dispose(); terms.delete(shell.pane);
@@ -675,8 +679,12 @@ function renderPanel(terminal) {
 function createTerminal() {
   creating = true;
   send(`new-window -d -t '${session}:' -c '#{session_path}' -P -F '#{window_id}'`, ([id], error) => {
-    creating = false;
-    if (error) return;
+    if (error) {
+      // Only a failed new-window ends creation here; seeing the marked
+      // terminal does, in renderPanel.
+      creating = false;
+      return;
+    }
     send(`set-option -w -t '${id}' remain-on-exit off`);
     send(`set-option -w -t '${id}' @hypercube_terminal 1`);
     refresh();
