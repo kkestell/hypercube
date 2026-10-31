@@ -649,9 +649,8 @@ $('add-workspace').onclick = async () => {
 let panelOpen = false, shell = null, creating = false;
 
 function renderPanel(terminal) {
-  // A refresh that lists no marked terminal, such as one that ran before the
-  // option took effect, must not start a second shell, so creating ends only
-  // here rather than in the new-window callback.
+  // The window exists before it is marked, so creating lasts until a refresh
+  // lists the marked terminal.
   if (terminal) creating = false;
   if (shell && shell.window !== terminal?.id) {
     const term = terms.get(shell.pane);
@@ -679,12 +678,7 @@ function renderPanel(terminal) {
 function createTerminal() {
   creating = true;
   send(`new-window -d -t '${session}:' -c '#{session_path}' -P -F '#{window_id}'`, ([id], error) => {
-    if (error) {
-      // Only a failed new-window ends creation here; seeing the marked
-      // terminal does, in renderPanel.
-      creating = false;
-      return;
-    }
+    if (error) { creating = false; return; }
     send(`set-option -w -t '${id}' remain-on-exit off`);
     send(`set-option -w -t '${id}' @hypercube_terminal 1`);
     refresh();
