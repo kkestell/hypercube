@@ -86,9 +86,10 @@ func TestNativeHarness(t *testing.T) {
 			}
 		}()
 	}
-	// Typed input reports its text; a turn that delivered messages has none.
+	// Like the real harnesses, every prompt report carries the prompt's text,
+	// including a wake-up's delivered messages.
 	prompt := map[string]string{"session": id + "-session"}
-	typed := func(text string) map[string]string {
+	withText := func(text string) map[string]string {
 		return map[string]string{"session": id + "-session", "text": text}
 	}
 	log("launch", "")
@@ -110,7 +111,7 @@ func TestNativeHarness(t *testing.T) {
 		select {
 		case text := <-wake:
 			log("wake", text)
-			report("prompt", prompt)
+			report("prompt", withText(text))
 			report("stop", nil)
 			startWaiter()
 		case text := <-input:
@@ -119,7 +120,7 @@ func TestNativeHarness(t *testing.T) {
 			case "exit":
 				os.Exit(0)
 			case "work":
-				report("prompt", typed(text))
+				report("prompt", withText(text))
 				log("working", "")
 			case "tool":
 				report("tool", nil)
@@ -130,7 +131,7 @@ func TestNativeHarness(t *testing.T) {
 				report("failed", map[string]string{"error": "test provider failure"})
 				startWaiter()
 			default:
-				report("prompt", typed(text))
+				report("prompt", withText(text))
 				report("stop", nil)
 				startWaiter()
 			}
