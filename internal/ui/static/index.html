@@ -287,9 +287,9 @@ function render(sessions, wins, list) {
 let windows = [], renaming = false;
 const collapsed = new Set();
 
-// Spinners sit in a column at the right edge of every row.
-const spinner = title => `<span class="flex size-[22px] shrink-0 items-center justify-center">${
-  title ? `<span role="img" title="${escape(title)}" class="icon icon-loading size-3.5 text-neutral-400"></span>` : ''}</span>`;
+// Only a busy row has a spinner, at its right edge.
+const spinner = title => title ? `<span class="flex size-[22px] shrink-0 items-center justify-center">
+  <span role="img" title="${escape(title)}" class="icon icon-loading size-3.5 text-neutral-400"></span></span>` : '';
 
 function renderSidebar() {
   if (renaming) return;
