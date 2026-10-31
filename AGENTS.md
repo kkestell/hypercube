@@ -23,16 +23,10 @@ through an MCP server and receive messages through harness plugins.
 
 ## Edge cases
 
-- Be correct for what happens in normal use. Do not handle every case that
-  could occur.
-- For an unlikely edge case, leave a short comment naming it and add no code.
-  Handle it once it is observed or causes a real problem.
-- Do not write defensive or speculative code: redundant checks, fallbacks,
-  retries, or recovery for failures that have not happened. Trust internal
-  invariants and fail loudly when one breaks.
-- Do not add tests for hypothetical edge cases.
-- Code reviews report problems that affect normal use. An unlikely edge case
-  found in review gets a comment, not a fix.
+- Handle required behavior, normal use, and evidenced failures. Additional
+  handling must justify its complexity. Validate external input; trust internal
+  invariants and fail clearly when they break.
+- Tests and reviews should address observable behavior and meaningful failures.
 
 ## Code
 
