@@ -52,8 +52,9 @@ each other through an MCP server and receive messages through harness plugins.
   Never stop the user's tmux server or workspaces, and never run
   `make reinstall`.
 - Use `make dev` for a live smoke test, and clean up what you start.
-- The binary embeds the browser view. After changing only `internal/ui/`, run
-  `make reinstall-ui`.
+- The binary embeds the browser view. After a change to only `internal/ui/` is
+  merged, run `make reinstall-ui` from the original checkout to load it in the
+  running view.
 
 Report any check that fails or is skipped.
 

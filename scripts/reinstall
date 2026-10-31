@@ -58,7 +58,12 @@ done
 set +f
 mkdir -p "$BINDIR" && install -m 755 "$BUILT" "$ROOT"/bin/hypercube-harness-* "$BINDIR" || exit 1
 echo "installed hypercube and its harness plugins in $BINDIR"
-launchctl kickstart -k "$TARGET" || exit 1
+if ! launchctl kickstart -k "$TARGET"; then
+	echo "reinstall: the view did not restart; start the stopped workspaces with:" >&2
+	set -f
+	for dir in $stopped; do echo "hypercube start $dir" >&2; done
+	exit 1
+fi
 echo "restarted $SERVICE"
 
 set -f

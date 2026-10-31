@@ -25,10 +25,12 @@ make install-service
 
 The view runs as a launchd user agent through your interactive login shell, so
 it and the agents it launches get your login environment. Its log is
-`~/Library/Logs/hypercube-ui.log`. Remove the service with:
+`~/Library/Logs/hypercube-ui.log`. Remove the service by unloading it and
+deleting its property list:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.github.kkestell.hypercube
+rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 ```
 
 ## Upgrades
