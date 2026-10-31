@@ -9,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -104,6 +105,9 @@ type hookInput struct {
 	Prompt               string          `json:"prompt"`
 }
 
+// Claude wraps pasted text in these tags, which are not part of the user's text.
+var pasteTag = regexp.MustCompile(`</?pasted_content id="[^"]+">`)
+
 // hook reports a Claude hook event and answers Claude with the context
 // Hypercube returns.
 func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
@@ -132,7 +136,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	switch event {
 	case "UserPromptSubmit":
 		body["session"] = in.SessionID
-		body["text"] = in.Prompt
+		body["text"] = pasteTag.ReplaceAllString(in.Prompt, "")
 	case "StopFailure":
 		for _, text := range []string{in.ErrorDetails, in.LastAssistantMessage, in.Error} {
 			if strings.TrimSpace(text) != "" {

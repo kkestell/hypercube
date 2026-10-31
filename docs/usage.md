@@ -9,7 +9,7 @@ A workspace owns one tmux session. Each Hypercube session is a team in its own
 window, with a lead on the left and workers stacked on the right.
 Each session has a random ID, such as `k3f9a2c1`, and a title. A new session
 shows as "New Session" until the first prompt you type to its lead titles it
-with that prompt's first line, cut to 40 characters. You can change the title
+with that prompt's first line, cut to 200 characters. You can change the title
 at any time; later prompts leave it alone.
 Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
 means an agent in the sender's own team. Agents see each session's title beside
@@ -43,7 +43,8 @@ sidebar to choose a folder and start a workspace in it. Hover over a
 workspace's row and click `+` to create a session in it, or click the trash icon
 to delete the workspace. Click a session to switch to it, double-click it
 to change its title, or hover over one and click the trash icon to delete it. A
-workspace or session shows a spinner while any of its agents is busy. A session
+workspace's folder icon becomes a spinner while any of its agents is busy, and
+a session shows one in the same place. A session
 shows an amber dot while any of its agents awaits your approval, and a blue dot
 after its lead finishes a reply you have not seen. A worker's card shows a spinner while it is busy, an amber dot while
 it awaits approval, and a red dot after it exits. See
@@ -56,6 +57,11 @@ the worker's terminal in the card; click the button again to return to the
 summary. The summary shows the worker's latest report of what it is doing and
 how long ago it made it, its context use, and its cost so far. Codex reports no
 cost. Drag the dividers to resize the sidebar and the lead's side.
+
+The panel button in the header shows or hides a terminal below the agents. It
+runs your shell in the workspace's folder, one per workspace, and keeps running
+while the panel is hidden or the browser is closed, until the shell exits or the
+workspace stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 

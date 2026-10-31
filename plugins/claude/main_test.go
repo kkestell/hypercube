@@ -67,6 +67,26 @@ func TestHook(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"session":"s1","text":"fix it"}` {
 		t.Errorf("prompt report = %s", b)
 	}
+	for _, c := range []struct{ prompt, want string }{
+		{"<pasted_content id=\"5c59\">\nFix the parser\nand the lexer\n</pasted_content id=\"5c59\">", "\nFix the parser\nand the lexer\n"},
+		{"<pasted_content id=\"5c59\">Fix the parser</pasted_content id=\"5c59\">", "Fix the parser"},
+		{"Review <pasted_content id=\"a\">one</pasted_content id=\"a\"> and <pasted_content id=\"b\">two</pasted_content id=\"b\">", "Review one and two"},
+		{"Fix <div> rendering", "Fix <div> rendering"},
+	} {
+		input, _ := json.Marshal(map[string]string{"session_id": "s1", "prompt": c.prompt})
+		run("UserPromptSubmit", string(input))
+		b, err := os.ReadFile(filepath.Join(dir, "prompt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var report struct{ Session, Text string }
+		if err := json.Unmarshal(b, &report); err != nil {
+			t.Fatal(err)
+		}
+		if report.Session != "s1" || report.Text != c.want {
+			t.Errorf("prompt %q: report = %+v, want text %q", c.prompt, report, c.want)
+		}
+	}
 	run("StopFailure", `{"error":"provider","error_details":" "}`)
 	if b, _ := os.ReadFile(filepath.Join(dir, "failed")); string(b) != `{"error":"provider"}` {
 		t.Errorf("failed report = %s", b)

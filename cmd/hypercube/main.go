@@ -330,6 +330,12 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 		if !empty {
 			return nil
 		}
+		// The browser view's terminal window would otherwise keep the session.
+		if tmux.WorkspaceSession(name, path) {
+			if err := tmux.KillSession(name); err != nil {
+				return err
+			}
+		}
 	}
 	return store.Delete(path)
 }

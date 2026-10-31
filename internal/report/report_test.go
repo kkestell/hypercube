@@ -199,13 +199,13 @@ func TestPromptTitlesIdleUntitledLead(t *testing.T) {
 		}
 		return s.Agents[0].Title
 	}
-	long := strings.Repeat("a", 60)
+	long := strings.Repeat("a", 250)
 	for _, c := range []struct{ name, text, want string }{
 		{"first line", "Fix the parser\nand the lexer", "Fix the parser"},
 		{"blank lines and spacing", "\n  \n  Fix \t the   parser  \nmore", "Fix the parser"},
-		{"long line", long, strings.Repeat("a", 39) + "…"},
-		{"exactly 40", long[:40], long[:40]},
-		{"non-ASCII", strings.Repeat("é", 50), strings.Repeat("é", 39) + "…"},
+		{"long line", long, strings.Repeat("a", 199) + "…"},
+		{"exactly 200", long[:200], long[:200]},
+		{"non-ASCII", strings.Repeat("é", 250), strings.Repeat("é", 199) + "…"},
 		{"only whitespace", " \n\t ", ""},
 		{"no text", "", ""},
 	} {

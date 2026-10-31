@@ -133,7 +133,7 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 }
 
 // maxTitle is the longest session title, in characters.
-const maxTitle = 40
+const maxTitle = 200
 
 // title makes a session title from a prompt: its first line with text, with
 // runs of whitespace collapsed and cut to maxTitle characters.

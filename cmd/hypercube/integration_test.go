@@ -501,12 +501,17 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	call(lead.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
 	until("last worker", func() bool { return len(state().Agents) == 2 && state().Agents[1].Waiter > 0 })
 	lastWorker := state().Agents[1]
+	// The browser view's terminal is a window outside every team.
+	tmux("new-window", "-d", "-t", "="+workspace.Name(root)+":")
 	cli("window", "delete", path, lead.Team, windowOf(state().Agents[0].Target))
 	until("last session deleted", func() bool {
 		_, stateErr := os.Stat(path)
 		_, worktreeErr := os.Stat(lastWorker.Dir)
 		return os.IsNotExist(stateErr) && os.IsNotExist(worktreeErr)
 	})
+	if exec.Command("tmux", "has-session", "-t", "="+workspace.Name(root)).Run() == nil {
+		t.Fatal("the terminal window kept the deleted workspace's session")
+	}
 	if got := cli("status"); strings.Contains(got, root) {
 		t.Fatalf("deleted workspace listed: %s", got)
 	}

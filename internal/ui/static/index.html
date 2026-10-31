@@ -9,11 +9,11 @@
 <body class="h-full overflow-hidden bg-[#1e1e1e] text-sm text-neutral-300">
 <div class="flex h-full flex-col">
 <header class="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-700 bg-[#323233] px-2">
-  <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="ml-auto rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1">
-      <rect x="1.5" y="2.5" width="13" height="11" rx="1"/>
-      <rect id="sidebar-fill" x="1.5" y="2.5" width="4.5" height="11" fill="currentColor"/>
-    </svg>
+  <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="ml-auto flex rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+    <span class="icon icon-layout-sidebar-left size-4"></span>
+  </button>
+  <button type="button" id="toggle-panel" title="Show Panel" aria-pressed="false" class="flex rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+    <span class="icon icon-layout-panel-off size-4"></span>
   </button>
 </header>
 
@@ -26,10 +26,14 @@
     <ul id="sessions" class="min-h-0 flex-1 overflow-auto"></ul>
   </aside>
   <div id="sidebar-sash" class="sash"></div>
-  <div id="center" class="flex min-w-0 flex-1">
-    <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
-    <div id="split" class="sash" hidden></div>
-    <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
+  <div class="flex min-w-0 flex-1 flex-col">
+    <div id="center" class="flex min-h-0 flex-1">
+      <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
+      <div id="split" class="sash" hidden></div>
+      <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
+    </div>
+    <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
+    <div id="panel" class="h-[240px] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
   </div>
 </div>
 </div>
@@ -64,7 +68,7 @@ const cell = probe._core._renderService.dimensions.css.cell;
 
 const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
-const sessionList = $('sessions'), sidebar = $('sidebar');
+const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
 // Pixels around the terminals: the lead's left and top padding, and the
 // workers panel's padding, a card's border, and its terminal's padding.
@@ -75,10 +79,11 @@ let workspaces = [];
 
 function connect() {
   outbox = []; sending = false; callbacks = []; block = null; size = ''; refreshing = again = false; activePane = null;
-  applying = reapply = false; pendingLayout = null;
+  applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false;
   terms = new Map();
   lead.replaceChildren();
   workers.replaceChildren();
+  panel.replaceChildren();
   workerCards.clear();
   source = new EventSource('events?session=' + encodeURIComponent(location.hash.slice(1)));
   source.addEventListener('id', e => { client = e.data; refresh(); });
@@ -144,8 +149,8 @@ function received(bytes) {
     refresh();
   } else if (structural.test(text)) {
     const change = text.match(/^%layout-change (\S+) (\S+)/);
-    if (change && change[1] === shown?.window) {
-      pendingLayout = change[2];
+    if (change) {
+      pendingLayouts.set(change[1], change[2]);
       requestAnimationFrame(resizeTerminals);
     }
     refresh();
@@ -154,15 +159,17 @@ function received(bytes) {
 
 // A pane's program redraws for its new size as soon as tmux resizes it, so
 // its terminal takes the size tmux announced before writing more output.
-// Commands sent together can announce several layouts; only the last counts.
-let pendingLayout = null;
+// Commands sent together can announce several layouts for a window; only the
+// last counts.
+const pendingLayouts = new Map();
 function resizeTerminals() {
-  if (!pendingLayout) return;
-  for (const [, w, h, id] of pendingLayout.matchAll(/(\d+)x(\d+),\d+,\d+,(\d+)/g)) {
-    const term = terms.get('%' + id);
-    if (term && (term.cols !== +w || term.rows !== +h)) term.resize(+w, +h);
+  for (const layout of pendingLayouts.values()) {
+    for (const [, w, h, id] of layout.matchAll(/(\d+)x(\d+),\d+,\d+,(\d+)/g)) {
+      const term = terms.get('%' + id);
+      if (term && (term.cols !== +w || term.rows !== +h)) term.resize(+w, +h);
+    }
   }
-  pendingLayout = null;
+  pendingLayouts.clear();
 }
 
 // tmux escapes control characters and backslashes in pane output as \ooo.
@@ -199,8 +206,8 @@ function refresh() {
   let sessions, wins;
   send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
     lines => sessions = rows(lines, ['id', 'state', 'attention', 'busy', 'name']).filter(s => s.state));
-  send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
-    lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
+  send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{@hypercube_terminal}\t#{pane_id}\t#{window_name}'`,
+    lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'terminal', 'pane', 'name']));
   send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_status_at}\t#{@hypercube_usage}\t#{@hypercube_status}\t#{@hypercube_label}'`,
     (lines, error) => {
       refreshing = false;
@@ -232,8 +239,15 @@ function render(sessions, wins, list) {
     [win?.name, current?.name, 'Hypercube'].filter(Boolean).join(' — ');
 
   workspaces = sessions;
-  windows = wins;
+  windows = wins.filter(w => !w.terminal);
   renderSidebar();
+  renderPanel(wins.find(w => w.session === session && w.terminal));
+  // tmux can select the terminal's window when it closes the current one.
+  if (win?.terminal) {
+    const other = windows.find(w => w.session === session);
+    if (other) send(`select-window -t '${other.id}'`);
+    return;
+  }
 
   for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
   const [leader] = list.filter(p => p.left === 0);
@@ -259,7 +273,7 @@ function render(sessions, wins, list) {
     if (p.active === '1' && p.id !== activePane && (p === leader || p.open)) { activePane = p.id; term.focus(); }
   }
   for (const [id, term] of terms) {
-    if (!list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
+    if (id !== shell?.pane && !list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
   }
   for (const [id, c] of workerCards) {
     if (!stacked.some(p => p.id === id)) { c.element.remove(); workerCards.delete(id); }
@@ -287,9 +301,8 @@ function render(sessions, wins, list) {
 let windows = [], renaming = false;
 const collapsed = new Set();
 
-// Only a busy row has a spinner, at its right edge.
-const spinner = title => title ? `<span class="flex size-[22px] shrink-0 items-center justify-center">
-  <span role="img" title="${escape(title)}" class="icon icon-loading size-3.5 text-neutral-400"></span></span>` : '';
+// A busy session shows a spinner in the column of the workspace's folder icon.
+const spinner = title => `<span role="img" title="${escape(title)}" class="icon icon-loading size-4 text-neutral-400"></span>`;
 
 function renderSidebar() {
   if (renaming) return;
@@ -303,7 +316,6 @@ function renderSidebar() {
         </button>
         <button type="button" title="New Session" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
           data-action="window?${action('new')}"><span class="icon icon-add size-4"></span></button>
-        ${spinner(s.busy && 'Busy')}
       </li>` +
       (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
   }).join(''));
@@ -356,14 +368,14 @@ function sessionRow(w, workspace) {
     data-label="Delete Session" data-question="Delete session ${escape(w.name)}?"` : '';
   return `<li class="${active ? 'bg-[#37373d] text-neutral-100' : 'hover:bg-[#2a2d2e]'}" ${remove}>
     <div class="flex items-center gap-1 pr-2">
-      <button type="button" data-command="switch-client -t '${w.id}'" data-rename="${w.id}" class="min-w-0 flex-1 py-1.5 pl-10 text-left">
-        <span class="flex items-center gap-1.5">
+      <button type="button" data-command="switch-client -t '${w.id}'" data-rename="${w.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
+        ${busy ? spinner('Busy: ' + busy) : '<span class="size-4 shrink-0"></span>'}
+        <span class="flex min-w-0 items-center gap-1.5">
           <span class="truncate">${escape(w.name)}</span>
           ${waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : ''}
           ${w.replied && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
         </span>
       </button>
-      ${spinner(busy && 'Busy: ' + busy)}
     </div>
   </li>`;
 }
@@ -631,12 +643,75 @@ $('add-workspace').onclick = async () => {
   if (text) send(`switch-client -t '=${text}'`);
 };
 
+// The panel shows a shell in the workspace's terminal window, a tmux window
+// outside every team that the sidebar leaves out. The window opens when the
+// panel first shows and lasts until its shell exits or the workspace stops.
+let panelOpen = false, shell = null, creating = false;
+
+function renderPanel(terminal) {
+  if (shell && shell.window !== terminal?.id) {
+    const term = terms.get(shell.pane);
+    term.box.remove(); term.dispose(); terms.delete(shell.pane);
+    // As in VS Code, the panel closes when its terminal exits.
+    const exited = shell.session === session && !terminal;
+    shell = null;
+    if (exited) setPanel(false);
+  }
+  if (!panelOpen) return;
+  if (!terminal) {
+    if (!creating) createTerminal();
+    return;
+  }
+  if (!shell) {
+    const [, cols, rows] = terminal.layout.match(/,(\d+)x(\d+),/);
+    shell = {session, window: terminal.id, pane: terminal.pane, size: cols + 'x' + rows};
+    const term = open(terminal.pane, +cols, +rows);
+    panel.append(term.box);
+    term.focus();
+  }
+  fitPanel();
+}
+
+function createTerminal() {
+  creating = true;
+  send(`new-window -d -t '${session}:' -c '#{session_path}' -P -F '#{window_id}'`, ([id], error) => {
+    creating = false;
+    if (error) return;
+    send(`set-option -w -t '${id}' remain-on-exit off`);
+    send(`set-option -w -t '${id}' @hypercube_terminal 1`);
+    refresh();
+  });
+}
+
+// The terminal's window fills the panel.
+function fitPanel() {
+  if (!shell || panel.hidden) return;
+  const cols = Math.max(2, Math.floor((panel.clientWidth - 8) / cell.width));
+  const rows = Math.max(1, Math.floor((panel.clientHeight - 4) / cell.height));
+  if (shell.size === cols + 'x' + rows) return;
+  shell.size = cols + 'x' + rows;
+  send(`resize-window -t '${shell.window}' -x ${cols} -y ${rows}`);
+}
+new ResizeObserver(fitPanel).observe(panel);
+
+function setPanel(open) {
+  panelOpen = open;
+  panel.hidden = $('panel-sash').hidden = !open;
+  const button = $('toggle-panel');
+  button.setAttribute('aria-pressed', open);
+  button.title = open ? 'Hide Panel' : 'Show Panel';
+  button.firstElementChild.className = `icon ${open ? 'icon-layout-panel' : 'icon-layout-panel-off'} size-4`;
+  terms.get(open ? shell?.pane : activePane)?.focus();
+  if (open) refresh();
+}
+$('toggle-panel').onclick = () => setPanel(!panelOpen);
+
 $('toggle-sidebar').onclick = () => {
   const open = sidebar.hidden;
   sidebar.hidden = $('sidebar-sash').hidden = !open;
   $('toggle-sidebar').setAttribute('aria-pressed', open);
   $('toggle-sidebar').title = open ? 'Hide Left Panel' : 'Show Left Panel';
-  $('sidebar-fill').setAttribute('fill', open ? 'currentColor' : 'none');
+  $('toggle-sidebar').firstElementChild.className = `icon ${open ? 'icon-layout-sidebar-left' : 'icon-layout-sidebar-left-off'} size-4`;
 };
 
 // drag follows the pointer from a sash until release.
@@ -658,6 +733,7 @@ function drag(sash, move, release) {
   };
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
+drag($('panel-sash'), e => panel.style.height = Math.max(2 * cell.height + 4, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
 // Dragging the divider sets the lead's columns. tmux's main-pane-width keeps
 // them when Hypercube lays the window out again for a new worker.
 let leadWidth = null;

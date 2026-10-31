@@ -30,6 +30,18 @@
 @utility icon-folder-opened {
   mask-image: url(folder-opened.svg);
 }
+@utility icon-layout-panel {
+  mask-image: url(layout-panel.svg);
+}
+@utility icon-layout-panel-off {
+  mask-image: url(layout-panel-off.svg);
+}
+@utility icon-layout-sidebar-left {
+  mask-image: url(layout-sidebar-left.svg);
+}
+@utility icon-layout-sidebar-left-off {
+  mask-image: url(layout-sidebar-left-off.svg);
+}
 @utility icon-terminal {
   mask-image: url(terminal.svg);
 }
@@ -44,7 +56,8 @@
   animation: codicon-spin 1.5s steps(30) infinite;
 }
 
-/* A 1px divider with a wider grip, highlighted while hovered or dragged. */
+/* A 1px divider with a wider grip, highlighted while hovered or dragged. It
+   divides columns, or rows when its orientation is horizontal. */
 @utility sash {
   position: relative;
   z-index: 10;
@@ -62,5 +75,14 @@
   &:hover,
   &.dragging {
     background-color: var(--color-sky-500);
+  }
+  &[aria-orientation="horizontal"] {
+    width: auto;
+    height: 1px;
+    cursor: row-resize;
+
+    &::after {
+      inset: -3px 0;
+    }
   }
 }
