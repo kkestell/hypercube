@@ -147,6 +147,7 @@ type hookInput struct {
 	SessionID      string  `json:"session_id"`
 	AgentID        *string `json:"agent_id"`
 	TranscriptPath string  `json:"transcript_path"`
+	Prompt         string  `json:"prompt"`
 }
 
 type response struct {
@@ -181,6 +182,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	body := map[string]string{}
 	if event == "UserPromptSubmit" {
 		body["session"] = in.SessionID
+		body["text"] = in.Prompt
 		if err := os.WriteFile(os.Getenv(sessionVar), []byte(in.SessionID), 0o644); err != nil {
 			return err
 		}

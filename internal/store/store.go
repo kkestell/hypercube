@@ -3,6 +3,7 @@ package store
 
 import (
 	"bytes"
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -188,10 +189,14 @@ func Update(path string, fn func(*State) error) error {
 	return os.Rename(tmp, path)
 }
 
-// Title returns the session's title, or its ID when it has none.
+// Untitled is what a session shows until its first prompt titles it.
+const Untitled = "New Session"
+
+// Title returns the session's title, Untitled when its lead has none, or the
+// session's ID when it has no lead.
 func (s *State) Title(team string) string {
-	if lead := s.TeamLead(team); lead != nil && lead.Title != "" {
-		return lead.Title
+	if lead := s.TeamLead(team); lead != nil {
+		return cmp.Or(lead.Title, Untitled)
 	}
 	return team
 }

@@ -173,3 +173,64 @@ func TestToolLog(t *testing.T) {
 		t.Errorf("denied = %v", denied)
 	}
 }
+
+func TestPromptTitlesIdleUntitledLead(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	agents := func(lead store.Agent) {
+		t.Helper()
+		lead.ID, lead.Name, lead.Role, lead.Team = "l", "lead", store.Lead, "t"
+		err := store.Update(path, func(s *store.State) error {
+			s.Agents = []store.Agent{lead, {ID: "w", Name: "worker", Role: store.Worker, Team: "t"}}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	prompt := func(id, text string) string {
+		t.Helper()
+		t.Setenv("HYPERCUBE_AGENT_ID", id)
+		b, _ := json.Marshal(map[string]string{"text": text})
+		run(t, "prompt", string(b))
+		s, err := store.Load(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return s.Agents[0].Title
+	}
+	long := strings.Repeat("a", 60)
+	for _, c := range []struct{ name, text, want string }{
+		{"first line", "Fix the parser\nand the lexer", "Fix the parser"},
+		{"blank lines and spacing", "\n  \n  Fix \t the   parser  \nmore", "Fix the parser"},
+		{"long line", long, strings.Repeat("a", 39) + "…"},
+		{"exactly 40", long[:40], long[:40]},
+		{"non-ASCII", strings.Repeat("é", 50), strings.Repeat("é", 39) + "…"},
+		{"only whitespace", " \n\t ", ""},
+		{"no text", "", ""},
+	} {
+		agents(store.Agent{})
+		if got := prompt("l", c.text); got != c.want {
+			t.Errorf("%s: title = %q, want %q", c.name, got, c.want)
+		}
+	}
+
+	agents(store.Agent{})
+	prompt("l", "first")
+	if got := prompt("l", "second"); got != "first" {
+		t.Errorf("a later prompt changed the title to %q", got)
+	}
+	agents(store.Agent{Activity: store.Busy})
+	if got := prompt("l", "busy"); got != "" {
+		t.Errorf("a busy lead's prompt set title %q", got)
+	}
+	agents(store.Agent{Title: "Mine"})
+	if got := prompt("l", "other"); got != "Mine" {
+		t.Errorf("a titled lead's title became %q", got)
+	}
+	agents(store.Agent{})
+	prompt("w", "worker prompt")
+	if s, _ := store.Load(path); s.Agents[0].Title != "" || s.Agents[1].Title != "" {
+		t.Errorf("a worker's prompt set a title: %+v", s.Agents)
+	}
+}

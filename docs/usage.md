@@ -7,7 +7,10 @@ level; outside Git, it is the directory itself.
 
 A workspace owns one tmux session. Each Hypercube session is a team in its own
 window, with a lead on the left and workers stacked on the right.
-Each session has a random ID, such as `k3f9a2c1`, and a title you can change.
+Each session has a random ID, such as `k3f9a2c1`, and a title. A new session
+shows as "New Session" until the first prompt you type to its lead titles it
+with that prompt's first line, cut to 40 characters. You can change the title
+at any time; later prompts leave it alone.
 Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
 means an agent in the sender's own team. Agents see each session's title beside
 its ID. Workers message only their own team,
@@ -19,7 +22,7 @@ and branch. Use worker worktrees for independent edits.
 | Command | Use |
 | --- | --- |
 | `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. |
-| `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with `Session 1`. |
+| `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with one new session. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |

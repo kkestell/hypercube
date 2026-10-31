@@ -61,10 +61,10 @@ func TestHook(t *testing.T) {
 	if got := run("Stop", `{}`); !strings.Contains(got, `"decision":"block","reason":"queued"`) {
 		t.Error(got)
 	}
-	if got := run("UserPromptSubmit", `{"session_id":"s1"}`); !strings.Contains(got, `"additionalContext":"queued"`) {
+	if got := run("UserPromptSubmit", `{"session_id":"s1","prompt":"fix it"}`); !strings.Contains(got, `"additionalContext":"queued"`) {
 		t.Error(got)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"session":"s1"}` {
+	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"session":"s1","text":"fix it"}` {
 		t.Errorf("prompt report = %s", b)
 	}
 	run("StopFailure", `{"error":"provider","error_details":" "}`)

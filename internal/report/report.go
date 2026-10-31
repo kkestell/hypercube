@@ -22,6 +22,7 @@ type input struct {
 	Tool    string          `json:"tool"`
 	Input   json.RawMessage `json:"input"`
 	Reason  string          `json:"reason"`
+	Text    string          `json:"text"`
 	store.Usage
 }
 
@@ -83,6 +84,17 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 			if in.Session != "" {
 				a.SessionID = in.Session
 			}
+			// A turn that delivered messages starts after Wait has marked the
+			// agent busy, so only a prompt typed while idle titles the session.
+			if a.Role == store.Lead && a.Title == "" && a.Activity != store.Busy {
+				if title := title(in.Text); title != "" {
+					a.Title = title
+					// The window name is cosmetic; the saved title is what counts.
+					if window, err := tmux.FindWindow(store.Workspace(path), a.Team, path); err == nil && window != "" {
+						_ = tmux.RenameWindow(window, title)
+					}
+				}
+			}
 			a.Activity = store.Busy
 			resp.Context = Format(s, s.Take(id))
 		case "tool":
@@ -118,6 +130,25 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		tmux.RefreshActivity(path, id)
 	}
 	return err
+}
+
+// maxTitle is the longest session title, in characters.
+const maxTitle = 40
+
+// title makes a session title from a prompt: its first line with text, with
+// runs of whitespace collapsed and cut to maxTitle characters.
+func title(prompt string) string {
+	for _, line := range strings.Split(prompt, "\n") {
+		line = strings.Join(strings.Fields(line), " ")
+		if line == "" {
+			continue
+		}
+		if chars := []rune(line); len(chars) > maxTitle {
+			line = string(chars[:maxTitle-1]) + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 // logTool appends a failed Hypercube tool call or an auto mode denial to

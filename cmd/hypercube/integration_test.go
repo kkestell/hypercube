@@ -86,7 +86,11 @@ func TestNativeHarness(t *testing.T) {
 			}
 		}()
 	}
+	// Typed input reports its text; a turn that delivered messages has none.
 	prompt := map[string]string{"session": id + "-session"}
+	typed := func(text string) map[string]string {
+		return map[string]string{"session": id + "-session", "text": text}
+	}
 	log("launch", "")
 	report("start", nil)
 	// A worker's initial turn consumes the queued brief; the lead waits.
@@ -115,7 +119,7 @@ func TestNativeHarness(t *testing.T) {
 			case "exit":
 				os.Exit(0)
 			case "work":
-				report("prompt", prompt)
+				report("prompt", typed(text))
 				log("working", "")
 			case "tool":
 				report("tool", nil)
@@ -126,7 +130,7 @@ func TestNativeHarness(t *testing.T) {
 				report("failed", map[string]string{"error": "test provider failure"})
 				startWaiter()
 			default:
-				report("prompt", prompt)
+				report("prompt", typed(text))
 				report("stop", nil)
 				startWaiter()
 			}
@@ -304,7 +308,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if got := strings.Fields(tmux("list-sessions", "-F", "#{session_name}")); len(got) != 1 {
 		t.Fatalf("expected one workspace tmux session, got %v", got)
 	}
-	if got := strings.Split(strings.TrimSpace(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")), "\n"); !slices.Equal(got, []string{"Session 1", "Session 2"}) {
+	if got := strings.Split(strings.TrimSpace(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")), "\n"); !slices.Equal(got, []string{store.Untitled, store.Untitled}) {
 		t.Fatalf("window switcher names: %v", got)
 	}
 	for _, pair := range [][2]store.Agent{{lead, otherWorker}, {otherLead, worker}} {
@@ -372,6 +376,24 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	call(otherLead.ID, "send_message", map[string]string{"to": lead.Address(), "text": "from the other lead"})
 	until("lead-to-lead delivery", func() bool { return strings.Contains(logOf(lead.ID), "from the other lead") })
+	// A turn that delivered messages leaves a session untitled. The first
+	// prompt typed while idle titles it, and later prompts leave the title.
+	until("lead idle after wake-up", func() bool { return state().Agents[0].Activity == store.Idle })
+	if state().Agents[0].Title != "" || strings.TrimSpace(tmux("display-message", "-p", "-t", lead.Target, "#{window_name}")) != store.Untitled {
+		t.Fatal("a wake-up titled the session")
+	}
+	tmux("send-keys", "-t", lead.Target, "-l", "Fix the parser")
+	tmux("send-keys", "-t", lead.Target, "Enter")
+	until("first prompt titles the session", func() bool { return state().Agents[0].Title == "Fix the parser" })
+	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", lead.Target, "#{window_name}")); got != "Fix the parser" {
+		t.Fatalf("titled window: %q", got)
+	}
+	tmux("send-keys", "-t", lead.Target, "-l", "Something else")
+	tmux("send-keys", "-t", lead.Target, "Enter")
+	until("second prompt handled", func() bool { return strings.Contains(logOf(lead.ID), `"kind":"handled","text":"Something else"`) })
+	if state().Agents[0].Title != "Fix the parser" {
+		t.Fatal("a later prompt changed the title")
+	}
 	// Selection, user renaming, and window indexes must not affect routing.
 	tmux("select-window", "-t", otherWindow)
 	tmux("rename-window", "-t", firstWindow, "renamed")
@@ -465,6 +487,13 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	if listed := call(lead.ID, "list_agents", nil); !strings.Contains(listed, otherLead.Address()) || !strings.Contains(listed, "#{session_name} -triage;") {
 		t.Fatal("list_agents missed the new title", listed)
+	}
+	// A title the user set stays after the next prompt.
+	tmux("send-keys", "-t", renamedLead.Target, "-l", "Another line")
+	tmux("send-keys", "-t", renamedLead.Target, "Enter")
+	until("prompt after rename", func() bool { return strings.Contains(logOf(otherLead.ID), `"kind":"handled","text":"Another line"`) })
+	if got, err := store.Load(path); err != nil || got.Title(otherLead.Team) != "#{session_name} -triage;" {
+		t.Fatalf("a prompt replaced the user's title: %v", err)
 	}
 	// Deleting the final window must finish cleanup even as tmux exits.
 	cli("window", "delete", path, otherLead.Team, windowOf(renamedLead.Target))

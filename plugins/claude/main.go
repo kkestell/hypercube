@@ -110,6 +110,7 @@ type hookInput struct {
 	ToolName             string          `json:"tool_name"`
 	ToolInput            json.RawMessage `json:"tool_input"`
 	Reason               string          `json:"reason"`
+	Prompt               string          `json:"prompt"`
 }
 
 type response struct {
@@ -144,6 +145,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	switch event {
 	case "UserPromptSubmit":
 		body["session"] = in.SessionID
+		body["text"] = in.Prompt
 	case "StopFailure":
 		for _, text := range []string{in.ErrorDetails, in.LastAssistantMessage, in.Error} {
 			if strings.TrimSpace(text) != "" {

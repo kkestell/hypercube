@@ -80,7 +80,7 @@ export default function (pi) {
       started = true
       texts.push(await report("start"))
     }
-    texts.push(await report("prompt", { session: ctx.sessionManager.getSessionId() }))
+    texts.push(await report("prompt", { session: ctx.sessionManager.getSessionId(), text: event.prompt }))
     const context = texts.filter(Boolean).join("\n\n")
     if (context) return { message: { customType: "hypercube", content: context, display: false } }
   })
