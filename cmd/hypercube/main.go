@@ -53,8 +53,8 @@ func main() {
 		}
 	case len(os.Args) == 3 && os.Args[1] == "agent":
 		err = runAgent(os.Args[2])
-	case len(os.Args) == 5 && os.Args[1] == "exited":
-		err = exited(os.Args[2], os.Args[3], os.Args[4])
+	case len(os.Args) == 4 && os.Args[1] == "exited":
+		err = exited(os.Args[2], os.Args[3])
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
 		err = mcp.Serve(os.Stdin, os.Stdout)
 	case len(os.Args) == 3 && os.Args[1] == "report":
@@ -135,7 +135,7 @@ func stopOrDelete(cmd string, args []string) error {
 	var targets []known
 	for _, k := range list {
 		// Only running sessions can be stopped.
-		if cmd == "delete" || tmux.HasSession(k.name) {
+		if cmd == "delete" || tmux.WorkspaceSession(k.name, k.path) {
 			targets = append(targets, k)
 		}
 	}
@@ -166,7 +166,7 @@ func stopOrDelete(cmd string, args []string) error {
 // stop kills the workspace's session, which ends its agents.
 func stop(root, name string) error {
 	path := store.Path(name)
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return err
 	}
@@ -181,9 +181,9 @@ func stop(root, name string) error {
 }
 
 // status prints every workspace with a state file: its directory, whether its
-// session is running, its number of agents, and when it was last active.
-// Every report writes the state, so the state file's modification time is the
-// last activity.
+// session is running, its number of agents, and when its state last changed.
+// store.Update skips unchanged writes, so the state file's modification time
+// is the last state change.
 func status() error {
 	type row struct {
 		dir, session string
@@ -204,7 +204,7 @@ func status() error {
 		if k.root != "" {
 			r.dir = workspace.Short(k.root)
 		}
-		if tmux.HasSession(k.name) {
+		if tmux.WorkspaceSession(k.name, k.path) {
 			r.session = "running"
 		}
 		rows = append(rows, r)
@@ -246,7 +246,7 @@ func deleteWorkspace(root, name string) error {
 // team's resources are removed, with the same worktree safety checks.
 func deleteTeam(root, path, team, expectedWindow string) error {
 	name := store.Workspace(path)
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return err
 	}
@@ -292,7 +292,7 @@ func deleteTeam(root, path, team, expectedWindow string) error {
 		if err := tmux.KillWindow(name, team, path); err != nil {
 			return err
 		}
-	} else if tmux.HasSession(name) {
+	} else if tmux.WorkspaceSession(name, path) {
 		if err := tmux.KillSession(name); err != nil {
 			return err
 		}
@@ -342,7 +342,7 @@ func retitle(path, team, expectedWindow, title string) error {
 		return errors.New("a session needs a title")
 	}
 	name := store.Workspace(path)
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return err
 	}
@@ -390,7 +390,7 @@ func openWorkspace(dir string, create bool) error {
 		return err
 	}
 	path := store.Path(name)
-	lock, err := store.LockFile(path + ".session.lock")
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return err
 	}
@@ -428,9 +428,12 @@ func openWorkspace(dir string, create bool) error {
 		needsLaunch = needsLaunch || absent
 	}
 	if needsLaunch {
-		cfg, err := harness.LoadConfig()
-		if err != nil {
-			return err
+		var cfg harness.Config
+		if add {
+			cfg, err = harness.LoadConfig()
+			if err != nil {
+				return err
+			}
 		}
 		branch, branchErr := workspace.Branch(root)
 		err = store.Update(path, func(s *store.State) error {
@@ -568,11 +571,8 @@ func runAgent(prompt string) error {
 	return err
 }
 
-func exited(path, pane, status string) error {
-	if _, err := strconv.Atoi(status); err != nil {
-		return err
-	}
-	lock, err := store.LockFile(path + ".session.lock")
+func exited(path, pane string) error {
+	lock, err := store.SessionLock(path)
 	if err != nil {
 		return err
 	}

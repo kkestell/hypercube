@@ -24,8 +24,9 @@ A plugin talks to Hypercube in three ways, all as JSON:
   events are `start`, `prompt` (with `session`, the conversation ID to resume
   later), `tool`, `stop`, `failed` (with `error`), `approval`, `answered`, and
   `usage` (with `context`, the tokens of the latest request, `window`, the
-  model's context window, and `cost`, in US dollars). Context at `stop`
-  continues the turn. Their effects are in
+  model's context window, and `cost`, in US dollars). `toolfailed` (with
+  `error`) and `denied` (with `reason`) append to `tools.log`. Context at
+  `stop` continues the turn. Their effects are in
   [report.go](../internal/report/report.go).
 - **Waiting messages.** While the agent is idle, the harness runs
   `hypercube wait`. When messages arrive, it prints them and exits with
@@ -105,7 +106,7 @@ the failure.
   substitute.
 - **Claude worker resumption:** the live test below found that a resumed
   worker can remember its conversation but refuse Hypercube tool calls. The
-  native `/mcp` menu reports all four tools connected while the resumed API
+  native `/mcp` menu reports the tools connected while the resumed API
   request marks them unavailable. An explicit request to use ToolSearch
   restored calls in the test. Startup discovery guidance, per-server
   `alwaysLoad`, and `MCP_CONNECTION_NONBLOCKING=0` did not fix the first queued

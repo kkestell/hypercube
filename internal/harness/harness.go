@@ -109,5 +109,5 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 	}
 	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
 	// The lead launches first and creates its session's window.
-	return tmux.NewPane(store.Workspace(statePath), a.Team, cmp.Or(a.Title, store.Untitled), label, a.Dir, env, []string{exe, "agent", prompt})
+	return tmux.NewPane(statePath, a.Team, cmp.Or(a.Title, store.Untitled), label, a.Dir, env, []string{exe, "agent", prompt})
 }

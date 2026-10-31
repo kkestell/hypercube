@@ -76,12 +76,6 @@ func Root(dir string) (string, error) {
 	return git(dir, "rev-parse", "--show-toplevel")
 }
 
-// MainRoot returns the top level of the main checkout, also from a worktree.
-func MainRoot(dir string) (string, error) {
-	common, err := git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	return filepath.Dir(common), err
-}
-
 // Branch returns the branch checked out in dir.
 func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")

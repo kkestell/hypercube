@@ -26,9 +26,10 @@ func HasSession(name string) bool {
 // NewPane allocates the pane before launching its harness, so even an immediate
 // launch failure remains visible. The caller serializes workspace lifecycle
 // operations. The temporary sleep is replaced after the pane is configured.
-func NewPane(session, team, title, label, dir string, env map[string]string, argv []string) (pane string, err error) {
+func NewPane(state, team, title, label, dir string, env map[string]string, argv []string) (pane string, err error) {
+	session := store.Workspace(state)
 	first := !HasSession(session)
-	window, err := FindWindow(session, team, env["HYPERCUBE_STATE"])
+	window, err := FindWindow(session, team, state)
 	if err != nil {
 		return "", err
 	}
@@ -64,17 +65,17 @@ func NewPane(session, team, title, label, dir string, env map[string]string, arg
 	if err != nil {
 		return pane, err
 	}
-	died := "run-shell -b " + quote(quote(exe)+" exited "+quote(env["HYPERCUBE_STATE"])+" '#{pane_id}' '#{pane_dead_status}'")
+	died := "run-shell -b " + quote(quote(exe)+" exited "+quote(state)+" '#{pane_id}'")
 	_, err = run("set-option", "-p", "-t", pane, "@hypercube_id", env["HYPERCUBE_AGENT_ID"], ";",
 		"set-option", "-p", "-t", pane, "@hypercube_label", strings.ReplaceAll(label, "#", "##"), ";",
 		"set-option", "-w", "-t", window, "remain-on-exit", "on", ";",
 		"set-option", "-w", "-t", window, "main-pane-width", "40%", ";",
-		"set-option", "-w", "-t", window, "@hypercube_state", env["HYPERCUBE_STATE"], ";",
+		"set-option", "-w", "-t", window, "@hypercube_state", state, ";",
 		"set-option", "-w", "-t", window, "@hypercube_team", team, ";",
 		"set-option", "-w", "-t", window, "automatic-rename", "off", ";",
 		"set-option", "-w", "-t", window, "allow-rename", "off", ";",
 		"set-option", "-w", "-t", window, "extended-keys", "always", ";",
-		"set-option", "-t", "="+session+":", "@hypercube_state", env["HYPERCUBE_STATE"], ";",
+		"set-option", "-t", "="+session+":", "@hypercube_state", state, ";",
 		"set-hook", "-w", "-t", window, "pane-died", died, ";",
 		"select-layout", "-t", window, "main-vertical")
 	if err != nil {
