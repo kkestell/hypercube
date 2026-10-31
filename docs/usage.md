@@ -15,7 +15,7 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube` | Start missing saved windows and attach; a new workspace starts with `default`. |
+| `hypercube` | Start missing saved windows and attach; a new workspace starts with `session-1`. |
 | `hypercube new [name]` | Create and select another team. Omit the name for the first unused `session-N`. |
 | `hypercube new -d [name]` | Create a team without attaching or changing the selected window. |
 | `hypercube start <dir>` | Start saved teams detached. |
@@ -24,6 +24,7 @@ and branch. Use worker worktrees for independent edits.
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |
 | `hypercube running` | Print running workspace paths for scripts. |
+| `hypercube ui` | Serve the browser view at http://localhost:4280/. |
 
 Session names start with a lowercase letter or digit and contain only
 lowercase letters, digits, and hyphens. Stop and delete default to the current
@@ -66,6 +67,26 @@ gray means idle, and red requests approval attention. The status line also
 puts a red dot after a session's name for each of its agents awaiting
 approval. An exited pane shows its exit status. See [harness limitations](harness-support.md#known-limitations)
 when interpreting activity.
+
+## Browser view
+
+`hypercube ui` shows the running workspaces in a browser, on the same tmux
+sessions as the terminal. The overview shows a card for each workspace; click
+one to open it, click `+ Workspace` to choose a folder and start a workspace in
+it, or hover over a card and click `×` to delete it. Escape returns to the open
+workspace.
+
+A workspace's sidebar lists its sessions. Click one to switch to it, click `+`
+to create one, or hover over one and click the trash icon to delete it. A
+session shows a spinner while any of its agents is busy, the agents awaiting
+your approval in amber, and a blue dot after its lead finishes a reply you have
+not seen.
+
+The lead's terminal fills the left side, and each worker is a card on the
+right with its name and status. Click a card, or its terminal button, to show
+the worker's terminal in the card; click the button again to return to the
+summary. A card's report and context use are placeholders. Drag the dividers to
+resize the sidebar and the lead's side.
 
 ## Resume and cleanup
 

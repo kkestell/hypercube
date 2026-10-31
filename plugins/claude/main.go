@@ -49,12 +49,14 @@ type launchInput struct {
 
 // Claude hook events and the Hypercube reports they make.
 var reports = map[string]string{
-	"SessionStart":      "start",
-	"UserPromptSubmit":  "prompt",
-	"PostToolUse":       "tool",
-	"Stop":              "stop",
-	"StopFailure":       "failed",
-	"PermissionRequest": "approval",
+	"SessionStart":       "start",
+	"UserPromptSubmit":   "prompt",
+	"PostToolUse":        "tool",
+	"Stop":               "stop",
+	"StopFailure":        "failed",
+	"PermissionRequest":  "approval",
+	"PostToolUseFailure": "toolfailed",
+	"PermissionDenied":   "denied",
 }
 
 func launch(stdin io.Reader, stdout io.Writer) error {
@@ -100,11 +102,14 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 }
 
 type hookInput struct {
-	SessionID            string  `json:"session_id"`
-	AgentID              *string `json:"agent_id"`
-	Error                string  `json:"error"`
-	ErrorDetails         string  `json:"error_details"`
-	LastAssistantMessage string  `json:"last_assistant_message"`
+	SessionID            string          `json:"session_id"`
+	AgentID              *string         `json:"agent_id"`
+	Error                string          `json:"error"`
+	ErrorDetails         string          `json:"error_details"`
+	LastAssistantMessage string          `json:"last_assistant_message"`
+	ToolName             string          `json:"tool_name"`
+	ToolInput            json.RawMessage `json:"tool_input"`
+	Reason               string          `json:"reason"`
 }
 
 type response struct {
@@ -122,12 +127,20 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
+	// Hypercube logs failed calls of its own tools and auto mode denials of
+	// any tool, native subagents' included.
+	if event == "PostToolUseFailure" || event == "PermissionDenied" {
+		if event == "PostToolUseFailure" && !strings.HasPrefix(in.ToolName, "mcp__hypercube__") {
+			return nil
+		}
+		return report(hypercube, name, map[string]any{"tool": in.ToolName, "input": in.ToolInput, "error": in.Error, "reason": in.Reason}, &response{})
+	}
 	// Native subagents have their own conversations. Only their approvals
 	// concern the agent.
 	if in.AgentID != nil && event != "PermissionRequest" {
 		return nil
 	}
-	body := map[string]string{}
+	body := map[string]any{}
 	switch event {
 	case "UserPromptSubmit":
 		body["session"] = in.SessionID
@@ -149,7 +162,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	return json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": r.Context}})
 }
 
-func report(hypercube, event string, body map[string]string, r *response) error {
+func report(hypercube, event string, body any, r *response) error {
 	cmd := exec.Command(hypercube, "report", event)
 	cmd.Stdin, cmd.Stderr = strings.NewReader(jsonString(body)), os.Stderr
 	out, err := cmd.Output()

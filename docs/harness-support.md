@@ -3,8 +3,8 @@
 Each harness is supported by a plugin: an executable named
 `hypercube-harness-<name>` installed beside `hypercube`. The `harness` value in
 the [configuration](configuration.md) is that name. `make install` installs
-the plugins for Claude Code (`claude`) and OpenCode (`opencode`). Both keep
-their native UI, conversations, transcripts, credentials, and delegation; the
+the plugins for Claude Code (`claude`), OpenCode (`opencode`), Codex
+(`codex`), and Pi (`pi`). All keep their native UI, conversations, transcripts, credentials, and delegation; the
 plugins configure each launch without rewriting user or project settings or
 changing HOME.
 
@@ -30,14 +30,15 @@ A plugin talks to Hypercube in three ways, all as JSON:
   status 2; the plugin starts a turn with them. It exits 0 without output
   when a newer waiter replaces it or its parent process ends.
 
-Plugins for Claude Code and OpenCode are in [plugins](../plugins).
+The plugins are in [plugins](../plugins).
 
 ## Messages and native subagents
 
 Reports deliver messages at prompts, tool completion, and turn end. Pending
 messages can continue a turn. For an idle conversation, a background waiter
-uses Claude's `asyncRewake` mechanism or OpenCode's session prompt API to
-start a native turn. Neither path types into the pane, so a user's unsent
+uses Claude's `asyncRewake` mechanism, OpenCode's session prompt API,
+`codex queue`, or Pi's `sendUserMessage` to start a native turn. None of these
+types into the pane, so a user's unsent
 draft stays in its editor.
 
 A failed worker turn preserves its queued messages and sends its team's
@@ -47,8 +48,8 @@ in its pane.
 Native subagents are separate from the Hypercube agent's main conversation.
 Plugins report only the main conversation, so a subagent never takes the
 parent's messages or changes its saved session, activity, or waiter. Claude
-identifies subagents through hook input; OpenCode identifies child sessions
-through their parent. A native subagent's Claude approval still needs
+and Codex identify subagents through hook input; OpenCode identifies child
+sessions through their parent. Pi has no native subagents. A native subagent's Claude approval still needs
 attention in the parent's pane.
 
 ## Claude Code
@@ -72,6 +73,27 @@ OpenCode may fall back to a recent model when a requested ID is unavailable.
 The plugin rejects the first prompt it observes on a different model, making
 a configuration mistake visible instead of silently using that fallback.
 
+## Codex
+
+The plugin runs the Codex CLI with Approve for me: an automatic reviewer
+answers approval requests inside a workspace-write sandbox with network
+access. The agent's Git directories are writable, so a worker can commit in
+its worktree. Each launch trusts its own hooks, so no user settings change.
+Codex fires no hooks while idle, so the pane runs the plugin, which starts
+Codex and adds waiting messages to its session with `codex queue`. Folder trust
+remains Codex's own prompt.
+
+## Pi
+
+Pi 1.4 or later is required. The plugin loads an extension with `-e` that
+registers the Hypercube MCP server and reports each run. A conversation
+resumes by its Pi session ID. Pi has no approvals. The model is
+`provider/id`, and effort is Pi's thinking level.
+
+Pi resolves a partial model ID to another model. The extension rejects the
+first prompt when the selected model is not the requested one, and reports
+the failure.
+
 ## Known limitations
 
 - **Claude activity after interruption:** the integration has no reliable
@@ -86,6 +108,16 @@ a configuration mistake visible instead of silently using that fallback.
   restored calls in the test. Startup discovery guidance, per-server
   `alwaysLoad`, and `MCP_CONNECTION_NONBLOCKING=0` did not fix the first queued
   turn; those experiments are absent from the implementation.
+
+- **Codex failures and interruptions:** Codex has no failure or interruption
+  hook. A failed or interrupted turn leaves the agent busy until its next
+  prompt, and a failed worker turn does not notify the lead.
+- **Codex tool choice:** Codex's native multi-agent tools stay available. In
+  live tests with gpt-6-luna, agents occasionally used Codex's own
+  `wait_agent` instead of ending the turn to receive Hypercube messages.
+- **Lost wake messages:** OpenCode and Pi start an idle turn through an API
+  that does not report a rejected prompt, such as during a manual compaction.
+  The messages taken for that turn are then lost and the agent stays busy.
 
 ## Live verification
 

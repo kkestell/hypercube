@@ -1,0 +1,672 @@
+<!doctype html>
+<html lang="en" class="h-full">
+<head>
+<meta charset="utf-8">
+<title>Hypercube</title>
+<link rel="stylesheet" href="xterm.css">
+<link rel="stylesheet" href="ui.css">
+</head>
+<body class="relative h-full overflow-hidden bg-[#141414] text-sm text-neutral-300">
+<div id="frame" class="absolute inset-0 z-[1] origin-top-left overflow-hidden bg-[#1e1e1e] transition-[transform,border-radius,opacity] duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none">
+<div id="view" class="flex h-full flex-col transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none">
+<header class="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-700 bg-[#323233] px-2">
+  <button type="button" id="show-overview" title="Show Overview" class="relative rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1">
+      <rect x="1.5" y="2.5" width="5.5" height="4.5" rx="0.5"/>
+      <rect x="9" y="2.5" width="5.5" height="4.5" rx="0.5"/>
+      <rect x="1.5" y="9" width="5.5" height="4.5" rx="0.5"/>
+      <rect x="9" y="9" width="5.5" height="4.5" rx="0.5"/>
+    </svg>
+    <span id="any-waiting" title="An agent is waiting on you" class="absolute top-0.5 right-0.5 hidden size-2 rounded-full bg-amber-400"></span>
+  </button>
+  <span id="workspace" class="ml-1 flex-1 truncate text-neutral-400"></span>
+  <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1">
+      <rect x="1.5" y="2.5" width="13" height="11" rx="1"/>
+      <rect id="sidebar-fill" x="1.5" y="2.5" width="4.5" height="11" fill="currentColor"/>
+    </svg>
+  </button>
+</header>
+
+<div class="flex min-h-0 flex-1">
+  <aside id="sidebar" class="flex w-[260px] shrink-0 flex-col bg-[#252526]">
+    <div class="flex h-[35px] shrink-0 items-center justify-between pr-2 pl-4 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
+      Sessions
+      <button type="button" id="new-session" title="New Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
+    </div>
+    <ul id="sessions" class="min-h-0 flex-1 overflow-auto"></ul>
+  </aside>
+  <div id="sidebar-sash" class="sash"></div>
+  <div id="center" class="flex min-w-0 flex-1">
+    <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
+    <div id="split" class="sash" hidden></div>
+    <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
+  </div>
+</div>
+</div>
+<div id="frame-card" class="pointer-events-none absolute inset-0 flex items-center justify-center rounded-[inherit] bg-[#252526] text-neutral-200 transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"></div>
+</div>
+
+<div id="cards" class="absolute inset-0 z-[2] transition-opacity duration-350 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none"></div>
+<div id="add" class="absolute inset-x-0 bottom-6 z-[3] flex justify-center">
+  <button type="button" id="add-workspace" class="flex items-center gap-1.5 rounded bg-neutral-800 py-1.5 pr-4 pl-3 text-neutral-200 hover:bg-neutral-700">
+    <span class="icon icon-add size-4"></span>Workspace
+  </button>
+</div>
+
+<div id="probe" class="invisible absolute"></div>
+<script src="xterm.js"></script>
+<script src="addon-webgl.js"></script>
+<script>
+// The page is a tmux control-mode client for one workspace at a time. The
+// sidebar lists the workspace's sessions, which are tmux windows. The current
+// window's lead fills the left, and its workers are cards on the right, each
+// showing either a summary or its terminal. tmux sizes the panes; the page
+// asks for the sizes its layout has room for. The overview shows every
+// running workspace.
+
+const fontFamily = 'Menlo, Monaco, "Courier New", monospace', fontSize = 13;
+const theme = {background: '#1e1e1e'};
+// The WebGL renderer draws box and block characters to fill their cells
+// exactly, as terminals do. The probe uses it too, since it sizes cells to
+// whole device pixels.
+function webgl(term) {
+  const addon = new WebglAddon.WebglAddon();
+  addon.onContextLoss(() => addon.dispose());
+  term.loadAddon(addon);
+}
+
+const probe = new Terminal({fontFamily, fontSize});
+probe.open(document.getElementById('probe'));
+webgl(probe);
+const cell = probe._core._renderService.dimensions.css.cell;
+
+const $ = id => document.getElementById(id);
+const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
+const sessionList = $('sessions'), sidebar = $('sidebar'), frame = $('frame'), view = $('view'), frameCard = $('frame-card'), cards = $('cards');
+
+// Pixels around the terminals: the lead's left and top padding, and the
+// workers panel's padding, a card's border, and its terminal's padding.
+const leadX = 8, leadY = 4, workerX = 24 + 2 + 16;
+
+let source, client, session, outbox, sending, callbacks, block, terms, shown, activePane;
+// A page opened on a workspace shows it; otherwise it starts in the overview.
+let overview = location.hash.length <= 1, workspaces = [], opening = null;
+
+function connect() {
+  outbox = []; sending = false; callbacks = []; block = null; size = ''; refreshing = again = false; activePane = null;
+  applying = reapply = false; pendingLayout = null;
+  terms = new Map();
+  lead.replaceChildren();
+  workers.replaceChildren();
+  workerCards.clear();
+  source = new EventSource('events?session=' + encodeURIComponent(location.hash.slice(1)));
+  source.addEventListener('id', e => { client = e.data; refresh(); });
+  source.onmessage = e => received(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)));
+  source.onerror = () => {
+    source.close(); client = null;
+    // With no workspace running, the overview offers to start one.
+    if (!session) showOverview(true);
+    setTimeout(connect, 1000);
+  };
+}
+
+// Commands go out in order, batched while a request is in flight. Commands
+// sent together reach tmux together, so it resizes each pane once for all of
+// them. Each command's reply block comes back in the same order.
+function send(command, callback) {
+  callbacks.push(callback);
+  outbox.push(command);
+  queueMicrotask(flush);
+}
+
+async function flush() {
+  if (sending || !outbox.length || !client) return;
+  sending = true;
+  const body = outbox.join('\n');
+  outbox = [];
+  try { await fetch('send?id=' + client, {method: 'POST', body}); } catch {}
+  sending = false;
+  flush();
+}
+
+const decoder = new TextDecoder();
+const structural = /^%(layout-change|window-add|window-close|window-renamed|unlinked-window-(add|close|renamed)|session-window-changed|sessions-changed|session-renamed|window-pane-changed)( |$)/;
+
+function received(bytes) {
+  if (block) {
+    const text = decoder.decode(bytes);
+    if (text === '%end ' + block.id || text === '%error ' + block.id) {
+      const callback = block.own && callbacks.shift();
+      if (callback) callback(block.lines, text.startsWith('%error'));
+      block = null;
+    } else {
+      block.lines.push(text);
+    }
+    return;
+  }
+  if (bytes.length > 8 && decoder.decode(bytes.subarray(0, 8)) === '%output ') {
+    const space = bytes.indexOf(32, 8);
+    const term = terms.get(decoder.decode(bytes.subarray(8, space)));
+    resizeTerminals();
+    if (term && !term.loading) term.write(unescape(bytes.subarray(space + 1)));
+    return;
+  }
+  const text = decoder.decode(bytes);
+  if (text.startsWith('%begin ')) {
+    const id = text.slice(7);
+    block = {id, own: id.endsWith(' 1'), lines: []};
+  } else if (text.startsWith('%session-changed ')) {
+    const [, id, name] = text.match(/^%session-changed (\S+) (.*)$/);
+    session = id;
+    history.replaceState(null, '', '#' + encodeURIComponent(name));
+    refresh();
+  } else if (structural.test(text)) {
+    const change = text.match(/^%layout-change (\S+) (\S+)/);
+    if (change && change[1] === shown?.window) {
+      pendingLayout = change[2];
+      requestAnimationFrame(resizeTerminals);
+    }
+    refresh();
+  }
+}
+
+// A pane's program redraws for its new size as soon as tmux resizes it, so
+// its terminal takes the size tmux announced before writing more output.
+// Commands sent together can announce several layouts; only the last counts.
+let pendingLayout = null;
+function resizeTerminals() {
+  if (!pendingLayout) return;
+  for (const [, w, h, y, id] of pendingLayout.matchAll(/(\d+)x(\d+),\d+,(\d+),(\d+)/g)) {
+    // A pane's cell includes the title row above it, except below another
+    // pane, where the title row is the border between them.
+    const term = terms.get('%' + id), rows = +h - (+y === 0 ? 1 : 0);
+    if (term && (term.cols !== +w || term.rows !== rows)) term.resize(+w, rows);
+  }
+  pendingLayout = null;
+}
+
+// tmux escapes control characters and backslashes in pane output as \ooo.
+function unescape(bytes) {
+  const out = new Uint8Array(bytes.length);
+  let n = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    if (bytes[i] === 92 && i + 3 < bytes.length) {
+      out[n++] = (bytes[i + 1] - 48) * 64 + (bytes[i + 2] - 48) * 8 + (bytes[i + 3] - 48);
+      i += 3;
+    } else {
+      out[n++] = bytes[i];
+    }
+  }
+  return out.subarray(0, n);
+}
+
+// One refresh at a time; notifications during one schedule another. Option
+// changes send no notification, so a timer catches them.
+let refreshing = false, again = false;
+setInterval(refresh, 1000);
+
+function refresh() {
+  if (!client) return;
+  if (refreshing) { again = true; return; }
+  refreshing = true;
+  const rows = (lines, keys) => lines.map(line => {
+    const values = line.split('\t'), row = {};
+    keys.forEach((key, i) => row[key] = i === keys.length - 1 ? values.slice(i).join('\t') : values[i]);
+    return row;
+  });
+  // Labels of the window's panes with an option set, each followed by |.
+  const labels = option => `#{P:#{?${option},#{@hypercube_label}|,}}`;
+  let sessions, wins;
+  send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{?@hypercube_replied,1,}}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
+    lines => sessions = rows(lines, ['id', 'state', 'replied', 'attention', 'busy', 'name']).filter(s => s.state));
+  send(`list-windows -F '#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{window_name}'`,
+    lines => wins = rows(lines, ['id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'name']));
+  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_label}'`,
+    (lines, error) => {
+      refreshing = false;
+      if (!error && sessions && wins) render(sessions, wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'busy', 'attention', 'open', 'label']));
+      if (again) { again = false; refresh(); }
+    });
+}
+
+// An agent's label is "name · harness model effort · directory".
+const agentName = label => label.replaceAll('##', '#').split(' · ')[0];
+const names = list => list.split('|').filter(Boolean).map(agentName).join(', ');
+
+const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+// update replaces an element's children only when they change. A click is lost
+// when the element under the pointer is replaced between press and release.
+// Parsing the new HTML first compares it as the page would serialize it.
+function update(parent, html) {
+  const next = document.createElement('template');
+  next.innerHTML = html;
+  if (parent.innerHTML !== next.innerHTML) parent.replaceChildren(next.content);
+}
+
+function render(sessions, wins, list) {
+  const current = sessions.find(s => s.id === session);
+  const win = wins.find(w => w.active === '1');
+  const waiting = sessions.reduce((n, s) => n + s.attention.length, 0);
+  $('any-waiting').classList.toggle('hidden', !waiting);
+  $('workspace').textContent = current?.name ?? '';
+  document.title = (waiting ? `(${waiting}) ` : '') +
+    [...(overview ? [] : [win?.name, current?.name]), 'Hypercube'].filter(Boolean).join(' — ');
+
+  update(sessionList, wins.map(w => sessionRow(w, current)).join(''));
+  workspaces = sessions;
+  renderOverview();
+
+  for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
+  const [leader] = list.filter(p => p.left === 0);
+  const stacked = list.filter(p => p.left > 0).sort((a, b) => a.top - b.top);
+  if (win?.id !== shown?.window) leadWidth = null;
+  shown = {window: win?.id, leader, stacked, state: current?.state, layout: win?.layout.slice(5)};
+
+  // Each pane's terminal matches the pane's size and sits in the lead's panel
+  // or its worker's card.
+  for (const p of list) {
+    let term = terms.get(p.id);
+    if (!term) term = open(p.id, p.width, p.height);
+    else if (term.cols !== p.width || term.rows !== p.height) term.resize(p.width, p.height);
+    const parent = p === leader ? lead : card(p).slot;
+    if (term.box.parentElement !== parent) parent.append(term.box);
+    // The terminal takes the focus when tmux selects another pane.
+    if (p.active === '1' && p.id !== activePane && !overview && (p === leader || p.open)) { activePane = p.id; term.focus(); }
+  }
+  for (const [id, term] of terms) {
+    if (!list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
+  }
+  for (const [id, c] of workerCards) {
+    if (!stacked.some(p => p.id === id)) { c.element.remove(); workerCards.delete(id); }
+  }
+  // Moving a card that is already in place would blur its terminal.
+  stacked.forEach((p, i) => {
+    const element = card(p).element;
+    if (workers.children[i] !== element) workers.insertBefore(element, workers.children[i] ?? null);
+  });
+
+  const any = stacked.length > 0;
+  split.hidden = workers.hidden = !any;
+  lead.classList.toggle('flex-1', !any);
+  lead.classList.toggle('shrink-0', any);
+  // The lead keeps a width being dragged until tmux has applied it.
+  if (leadWidth === leader?.width && !dragging) leadWidth = null;
+  lead.style.width = any && leader ? (leadWidth ?? leader.width) * cell.width + leadX + 'px' : '';
+
+  // A layout tmux reapplied, such as for a new worker, is replaced.
+  apply();
+}
+
+function sessionRow(w, current) {
+  const active = w.active === '1';
+  const busy = names(w.busy), waiting = names(w.attention);
+  return `<li class="group ${active ? 'bg-[#37373d] text-neutral-100' : 'hover:bg-[#2a2d2e]'}">
+    <div class="flex items-center gap-1 pr-2">
+      <button type="button" data-command="select-window -t '${w.id}'" class="min-w-0 flex-1 py-1.5 pl-4 text-left">
+        <span class="flex items-center gap-1.5">
+          <span class="truncate">${escape(w.name)}</span>
+          ${busy ? `<span role="img" title="Busy: ${escape(busy)}" class="icon icon-loading size-3.5 text-neutral-400"></span>` : ''}
+          ${w.replied && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
+        </span>
+        ${waiting ? `<span class="flex items-center gap-1.5 text-xs text-amber-300">
+          <span class="size-2 shrink-0 rounded-full bg-amber-400"></span>
+          <span class="truncate">Waiting on you: ${escape(waiting)}</span>
+        </span>` : ''}
+      </button>
+      ${w.team ? `<div class="flex items-center ${active ? '' : 'invisible group-hover:visible group-focus-within:visible'}">
+        <button type="button" title="Delete Session" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
+          data-action="window?${escape(new URLSearchParams({action: 'delete', state: current?.state ?? '', team: w.team, window: w.id}).toString())}"
+          data-question="Delete session ${escape(w.name)}?"><span class="icon icon-trash size-4"></span></button>
+      </div>` : ''}
+    </div>
+  </li>`;
+}
+
+// Workspace cards keep the window's shape and are as large as fit, in
+// centered rows above the button that adds a workspace.
+function placeCards(count) {
+  const width = innerWidth, height = innerHeight, available = height - 48, pad = 48, gap = 32;
+  let columns = 1, scale = 0;
+  for (let c = 1; c <= count; c++) {
+    const r = Math.ceil(count / c);
+    const s = Math.min((width - 2 * pad - (c - 1) * gap) / c / width, (available - 2 * pad - (r - 1) * gap) / r / height);
+    if (s > scale) { columns = c; scale = s; }
+  }
+  scale = Math.max(scale, 0.05);
+  const rows = Math.ceil(count / columns), w = width * scale, h = height * scale;
+  const top = (available - (rows * h + (rows - 1) * gap)) / 2;
+  return Array.from({length: count}, (_, i) => {
+    const row = Math.floor(i / columns), inRow = Math.min(columns, count - row * columns);
+    const left = (width - (inRow * w + (inRow - 1) * gap)) / 2;
+    return {x: left + (i % columns) * (w + gap), y: top + row * (h + gap), w, h, scale};
+  });
+}
+
+const ring = (s, width) => `inset 0 0 0 ${width}px var(${s.attention ? '--color-amber-400' : s.id === session ? '--color-sky-500' : '--ring, transparent'})`;
+
+function counts(s) {
+  return [
+    s.attention && `<span class="text-amber-300">${s.attention.length} waiting on you</span>`,
+    s.busy && '<span role="img" title="Busy" class="icon icon-loading size-[1em] self-center text-neutral-400"></span>',
+    s.replied && s.id !== session && '<span class="text-neutral-200">New reply</span>',
+  ].filter(Boolean).join('');
+}
+
+// The workspace view is the current workspace's card at the window's size. The
+// overview scales it down into its card and cross-fades it to the card's
+// summary; leaving the overview reverses that. The other workspaces' cards
+// fade in around it. Clicks on every card, the current one included, land on
+// the cards layer, which also holds each card's delete button.
+function renderOverview(instant) {
+  const places = placeCards(Math.max(workspaces.length, 1));
+  const index = workspaces.findIndex(s => s.id === session);
+  const place = places[index], current = workspaces[index];
+  if (instant) frame.style.transition = 'none';
+  frame.style.opacity = place ? 1 : 0;
+  frame.style.transform = overview && place ? `translate(${place.x}px, ${place.y}px) scale(${place.scale})` : '';
+  frame.style.borderRadius = overview && place ? 10 / place.scale + 'px' : '';
+  if (instant) { frame.offsetWidth; frame.style.transition = ''; }
+  view.style.opacity = overview ? 0 : 1;
+  view.inert = overview;
+  frameCard.style.opacity = overview ? 1 : 0;
+  if (place) {
+    const k = 1 / place.scale;
+    frameCard.style.boxShadow = ring(current, 2 * k);
+    update(frameCard, `<span class="flex flex-col items-center" style="gap: ${10 * k}px; font-size: ${18 * k}px">
+      <span>${escape(current.name)}</span>
+      ${counts(current) ? `<span class="flex" style="gap: ${14 * k}px; font-size: ${14 * k}px">${counts(current)}</span>` : ''}
+    </span>`);
+  }
+
+  Object.assign(cards.style, {opacity: overview ? 1 : 0, pointerEvents: overview ? '' : 'none'});
+  cards.inert = !overview;
+  $('add').hidden = !overview;
+  update(cards, workspaces.map((s, i) => {
+    const {x, y, w, h} = places[i], mine = s.id === session;
+    return `<div class="group absolute" style="left: ${x}px; top: ${y}px; width: ${w}px; height: ${h}px">
+      <button type="button" data-workspace="${s.id}" class="absolute inset-0 flex flex-col items-center justify-center gap-2.5 rounded-[10px] text-lg text-neutral-200 ${mine ? '' : 'bg-[#252526] hover:[--ring:var(--color-neutral-500)]'}"
+        style="box-shadow: ${mine ? 'none' : ring(s, 2)}">
+        ${mine ? '' : `<span>${escape(s.name)}</span>${counts(s) ? `<span class="flex gap-3.5 text-sm">${counts(s)}</span>` : ''}`}
+      </button>
+      <button type="button" title="Delete Workspace" class="invisible absolute top-2 right-2 flex size-[22px] items-center justify-center rounded text-neutral-400 group-hover:visible hover:bg-neutral-700 hover:text-neutral-100"
+        data-action="workspace?${escape(new URLSearchParams({action: 'delete', state: s.state}).toString())}"
+        data-question="Delete workspace ${escape(s.name)}?"><span class="icon icon-close size-3.5"></span></button>
+    </div>`;
+  }).join(''));
+
+  // A workspace opened from the overview grows from its own card once tmux
+  // has switched to it.
+  if (opening && opening === session) {
+    opening = null;
+    showOverview(false);
+  }
+}
+addEventListener('resize', () => renderOverview(true));
+
+// Mocked until Hypercube reports workers' progress and context use.
+const mock = {report: 'Reading the session view and wiring the worker cards to their tmux panes.', used: 0.42, usage: '84k / 200k · $0.31', age: '3m'};
+
+// A worker's card shows its name, status, and summary, or its name, status,
+// and terminal. Cards persist so their terminals stay attached.
+const workerCards = new Map();
+
+function card(p) {
+  let c = workerCards.get(p.id);
+  if (!c) {
+    const element = document.createElement('article');
+    element.dataset.pane = p.id;
+    const radius = 6, circumference = 2 * Math.PI * radius;
+    element.innerHTML = `<header class="flex items-center gap-2">
+        <span class="name min-w-0 truncate text-left text-sm text-neutral-100"></span>
+        <span class="status ml-auto shrink-0"></span>
+        <button type="button" class="toggle flex rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 aria-pressed:bg-neutral-700 aria-pressed:text-neutral-100">
+          <span class="icon icon-terminal size-3.5"></span>
+        </button>
+      </header>
+      <div class="summary flex flex-col gap-2">
+        <p class="line-clamp-4 break-words text-neutral-300">${mock.report}</p>
+        <footer class="flex items-center gap-2 text-neutral-500">
+          <span class="flex items-center gap-1.5 whitespace-nowrap">
+            <svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
+              <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-700"/>
+              <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-sky-400"
+                stroke-dasharray="${circumference}" stroke-dashoffset="${circumference * (1 - mock.used)}"/>
+            </svg>
+            ${mock.usage}
+          </span>
+          <span class="ml-auto shrink-0">${mock.age}</span>
+        </footer>
+      </div>
+      <div class="slot -mx-3 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-b-md border-t border-neutral-700 bg-[#1e1e1e] px-2 py-1"></div>`;
+    const q = name => element.querySelector('.' + name);
+    c = {element, name: q('name'), status: q('status'), toggle: q('toggle'), summary: q('summary'), slot: q('slot')};
+    workerCards.set(p.id, c);
+  }
+  const status = p.dead === '1' ? '<span class="text-red-300">Exited</span>'
+    : p.attention ? '<span class="text-amber-300">Waiting on you</span>'
+    : p.busy ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
+    : '<span class="text-neutral-400">Idle</span>';
+  const open = !!p.open;
+  const className = `relative flex flex-col gap-2 rounded-md border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0 cursor-pointer'} ${
+    p.attention ? 'border-amber-400' : 'border-neutral-700 hover:border-neutral-500'}`;
+  if (c.element.className !== className) c.element.className = className;
+  if (c.name.textContent !== agentName(p.label)) c.name.textContent = agentName(p.label);
+  update(c.status, status);
+  c.status.title = p.dead === '1' ? `Exit status ${p.status}` : '';
+  c.toggle.setAttribute('aria-pressed', open);
+  c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
+  c.summary.hidden = open;
+  c.slot.hidden = !open;
+  return c;
+}
+
+// Clicking a card in summary shows its terminal; its terminal button switches
+// back and forth.
+workers.onclick = e => {
+  const element = e.target.closest('[data-pane]');
+  const p = shown?.stacked.find(p => p.id === element?.dataset.pane);
+  if (!p || p.open && !e.target.closest('.toggle')) return;
+  p.open = p.open ? '' : '1';
+  send(p.open ? `set-option -p -t '${p.id}' @hypercube_open 1` : `set-option -p -u -t '${p.id}' @hypercube_open`);
+  card(p);
+  apply();
+  if (p.open) terms.get(p.id).focus();
+};
+
+// The page lays out its panels, then gives tmux the window and pane sizes
+// whose terminals fit them, in one layout. The lead fills the window's
+// height. Its width is the lead's columns, tmux's one-column divider, and the
+// workers' columns, which fit the workers panel less its gutter, padding, and
+// card borders. A worker in summary gets one row, and the last in summary
+// takes the rest. Open terminals get the rows their cards have room for; with
+// every card open, they share all the rows, and each card shows the bottom of
+// its terminal.
+function desired() {
+  const {leader, stacked} = shown, n = stacked.length;
+  const gutter = n ? workers.offsetWidth - workers.clientWidth : 0;
+  const cols = Math.max(n ? 42 : 1, Math.floor((center.clientWidth - leadX - (n ? 1 + workerX + gutter : 0)) / cell.width) + (n ? 1 : 0));
+  const rows = Math.max(2 * n, 2, Math.floor((center.clientHeight - leadY) / cell.height) + 1);
+  const id = p => p.id.slice(1);
+  if (!n) return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0,${id(leader)}`};
+
+  const leadCols = Math.max(20, Math.min(cols - 21, leadWidth ?? leader.width));
+  const x = leadCols + 1, w = cols - x, free = rows - n;
+  const open = stacked.filter(p => p.open);
+  let heights;
+  if (open.length === n) {
+    const share = Math.floor(free / n);
+    heights = stacked.map((p, i) => i === n - 1 ? free - share * (n - 1) : share);
+  } else {
+    const fit = p => Math.max(1, Math.floor((workerCards.get(p.id).slot.clientHeight - 8) / cell.height));
+    heights = stacked.map(p => p.open ? fit(p) : 1);
+    // Open terminals give up rows when the summaries have none left.
+    const shrinkable = () => heights.some((h, i) => stacked[i].open && h > 1);
+    for (let over = heights.reduce((a, b) => a + b, 0) - free, i = 0; over > 0 && shrinkable(); i = (i + 1) % n) {
+      if (stacked[i].open && heights[i] > 1) { heights[i]--; over--; }
+    }
+    heights[stacked.findLastIndex(p => !p.open)] += free - heights.reduce((a, b) => a + b, 0);
+  }
+  let y = 0;
+  const cells = stacked.map((p, i) => {
+    const cell = `${w}x${heights[i] + (i ? 0 : 1)},${x},${y},${id(p)}`;
+    y += heights[i] + 1;
+    return cell;
+  });
+  const column = n === 1 ? cells[0] : `${w}x${rows},${x},0[${cells.join(',')}]`;
+  return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0{${leadCols}x${rows},0,0,${id(leader)},${column}}`};
+}
+
+// tmux checks a layout against its checksum.
+function checksum(layout) {
+  let sum = 0;
+  for (const c of layout) sum = ((sum >> 1) + ((sum & 1) << 15) + c.charCodeAt(0)) & 0xffff;
+  return sum.toString(16).padStart(4, '0');
+}
+
+// apply sends the desired layout when it differs from tmux's, one at a time.
+let applying = false, reapply = false, size = '';
+function apply() {
+  if (!client || !shown?.window || !shown.leader) return;
+  if (applying) { reapply = true; return; }
+  const want = desired();
+  if (want.layout === shown.layout && want.size === size) return;
+  applying = true;
+  if (want.size !== size) { size = want.size; send(`refresh-client -C ${size}`); }
+  send(`select-layout -t '${shown.window}' '${checksum(want.layout)},${want.layout}'`, (lines, error) => {
+    if (!error) shown.layout = want.layout;
+    applying = false;
+    if (reapply) { reapply = false; apply(); }
+  });
+}
+new ResizeObserver(() => apply()).observe(center);
+
+// A new terminal shows the pane's history and screen, then its live output.
+// Output that arrives before the capture is already part of it.
+function open(id, cols, rows) {
+  const box = document.createElement('div');
+  const term = new Terminal({fontFamily, fontSize, cols, rows, theme, cursorInactiveStyle: 'none'});
+  // The terminal renders its first frame once its box is in the page.
+  lead.append(box);
+  term.open(box);
+  webgl(term);
+  term.box = box;
+  term.loading = true;
+  terms.set(id, term);
+  term.onData(data => keys(id, new TextEncoder().encode(data)));
+  term.onBinary(data => keys(id, Uint8Array.from(data, c => c.charCodeAt(0))));
+  term.textarea.addEventListener('focus', () => send(`select-pane -t '${id}'`));
+  let cursor;
+  send(`display-message -p -t '${id}' '#{cursor_x} #{cursor_y} #{alternate_on}'`, lines => cursor = (lines[0] || '0 0 0').split(' '));
+  send(`capture-pane -p -e -S - -t '${id}'`, lines => {
+    const [cx, cy, alternate] = cursor;
+    term.write((alternate === '1' ? '\x1b[?1049h\x1b[H' : '') + lines.join('\r\n') + `\x1b[${+cy + 1};${+cx + 1}H`);
+    term.loading = false;
+  });
+  return term;
+}
+
+function keys(id, bytes) {
+  for (let i = 0; i < bytes.length; i += 256) {
+    const hex = Array.from(bytes.subarray(i, i + 256), b => b.toString(16).padStart(2, '0')).join(' ');
+    send(`send-keys -t '${id}' -H ${hex}`);
+  }
+}
+
+// Clicking a session or workspace sends its tmux command. Clicking an action
+// asks its question, if any, then posts it to the server, which runs
+// Hypercube's own command, and shows why it refused.
+document.body.addEventListener('click', async e => {
+  const action = e.target.closest('[data-action]');
+  const command = e.target.closest('[data-command]');
+  if (action) {
+    if (action.dataset.question && !confirm(action.dataset.question)) return;
+    const res = await fetch(action.dataset.action, {method: 'POST'});
+    if (!res.ok) alert(await res.text());
+  } else if (command) {
+    send(command.dataset.command);
+  }
+});
+
+// Opening the current workspace leaves the overview at once; opening another
+// waits for tmux to switch to it.
+cards.addEventListener('click', e => {
+  const card = e.target.closest('[data-workspace]');
+  if (e.target === cards) showOverview(false);
+  if (!card) return;
+  if (card.dataset.workspace === session) { showOverview(false); return; }
+  opening = card.dataset.workspace;
+  send(`switch-client -t '${opening}'`);
+});
+
+$('new-session').onclick = () => {
+  if (shown?.state) post('window?' + new URLSearchParams({action: 'new', state: shown.state}));
+};
+$('add-workspace').onclick = () => post('workspace?action=new');
+
+async function post(action) {
+  const res = await fetch(action, {method: 'POST'});
+  if (!res.ok) alert(await res.text());
+}
+
+function showOverview(show) {
+  if (!show && !session) return;
+  overview = show;
+  // Leaving the overview returns the focus to the active terminal.
+  if (show) document.activeElement?.blur();
+  else activePane = null;
+  renderOverview();
+  refresh();
+}
+$('show-overview').onclick = () => showOverview(true);
+// Escape leaves the overview before a terminal can see it.
+addEventListener('keydown', e => {
+  if (e.key === 'Escape' && overview) { e.stopPropagation(); showOverview(false); }
+}, true);
+
+$('toggle-sidebar').onclick = () => {
+  const open = sidebar.hidden;
+  sidebar.hidden = $('sidebar-sash').hidden = !open;
+  $('toggle-sidebar').setAttribute('aria-pressed', open);
+  $('toggle-sidebar').title = open ? 'Hide Left Panel' : 'Show Left Panel';
+  $('sidebar-fill').setAttribute('fill', open ? 'currentColor' : 'none');
+};
+
+// drag follows the pointer from a sash until release.
+let dragging = false;
+function drag(sash, move, release) {
+  sash.onpointerdown = e => {
+    e.preventDefault();
+    dragging = true;
+    sash.classList.add('dragging');
+    const up = () => {
+      dragging = false;
+      sash.classList.remove('dragging');
+      removeEventListener('pointermove', move, true);
+      removeEventListener('pointerup', up, true);
+      release?.();
+    };
+    addEventListener('pointermove', move, true);
+    addEventListener('pointerup', up, true);
+  };
+}
+drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
+// Dragging the divider sets the lead's columns. tmux's main-pane-width keeps
+// them when Hypercube lays the window out again for a new worker.
+let leadWidth = null;
+drag(split, e => {
+  if (!size) return;
+  const column = Math.round((e.clientX - center.getBoundingClientRect().left - leadX) / cell.width);
+  leadWidth = Math.max(20, Math.min(+size.split('x')[0] - 21, column));
+  lead.style.width = leadWidth * cell.width + leadX + 'px';
+  apply();
+}, () => {
+  if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
+});
+
+renderOverview(true);
+connect();
+</script>
+</body>
+</html>

@@ -81,6 +81,20 @@ func TestHook(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "approval")); err != nil {
 		t.Error("a native subagent's approval was not reported")
 	}
+	run("PostToolUseFailure", `{"tool_name":"Bash","error":"exit 1"}`)
+	if _, err := os.Stat(filepath.Join(dir, "toolfailed")); err == nil {
+		t.Error("another tool's failure was reported")
+	}
+	if got := run("PostToolUseFailure", `{"agent_id":"native","tool_name":"mcp__hypercube__send_message","tool_input":{"to":"x"},"error":"no agent"}`); got != "" {
+		t.Error(got)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "toolfailed")); !strings.Contains(string(b), `"input":{"to":"x"}`) || !strings.Contains(string(b), `"tool":"mcp__hypercube__send_message"`) {
+		t.Errorf("toolfailed report = %s", b)
+	}
+	run("PermissionDenied", `{"tool_name":"Bash","tool_input":{"command":"rm"},"reason":"destructive"}`)
+	if b, _ := os.ReadFile(filepath.Join(dir, "denied")); !strings.Contains(string(b), `"reason":"destructive"`) {
+		t.Errorf("denied report = %s", b)
+	}
 }
 
 func TestStatusline(t *testing.T) {

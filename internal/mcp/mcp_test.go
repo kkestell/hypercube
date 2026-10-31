@@ -48,9 +48,9 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {
 		s.NoGit = noGit
-		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Dir: leadDir}}
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Team: "session-1", Dir: leadDir}}
 		if workerDir != "" {
-			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Dir: workerDir, Target: "%999"})
+			s.Agents = append(s.Agents, store.Agent{ID: "b", Name: "w1", Role: store.Worker, Team: "session-1", Dir: workerDir, Target: "%999"})
 		}
 		return nil
 	})
@@ -115,7 +115,7 @@ func TestSessionBoundaries(t *testing.T) {
 	if _, err := removeAgent("b", path, "w1"); err == nil {
 		t.Fatal("worker removed an agent")
 	}
-	for _, send := range [][2]string{{"other-lead", "w1"}, {"a", "other/lead"}, {"other-lead", "default/lead"}} {
+	for _, send := range [][2]string{{"other-lead", "w1"}, {"a", "other/lead"}, {"other-lead", "session-1/lead"}} {
 		if _, err := sendMessage(send[0], path, send[1], "allowed"); err != nil {
 			t.Fatal(err)
 		}

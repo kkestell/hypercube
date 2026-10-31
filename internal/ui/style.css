@@ -1,0 +1,66 @@
+/* The source of static/ui.css. Run `make ui` after changing it or the classes
+   in static/index.html. */
+@import "tailwindcss" source(none);
+@source "./static/index.html";
+
+@layer base {
+  /* VS Code's dark scrollbars: a thin translucent thumb on no track. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(121 121 121 / 0.4) transparent;
+  }
+}
+
+/* A VS Code codicon in the current text color. */
+@utility icon {
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask-position: center;
+  mask-size: contain;
+  mask-repeat: no-repeat;
+}
+
+@utility icon-add {
+  mask-image: url(add.svg);
+}
+@utility icon-close {
+  mask-image: url(close.svg);
+}
+@utility icon-trash {
+  mask-image: url(trash.svg);
+}
+@utility icon-terminal {
+  mask-image: url(terminal.svg);
+}
+/* Turns as VS Code turns its loading codicon. */
+@keyframes codicon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@utility icon-loading {
+  mask-image: url(loading.svg);
+  animation: codicon-spin 1.5s steps(30) infinite;
+}
+
+/* A 1px divider with a wider grip, highlighted while hovered or dragged. */
+@utility sash {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+  width: 1px;
+  cursor: col-resize;
+  background-color: var(--color-neutral-700);
+  transition: background-color 150ms;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0 -3px;
+  }
+  &:hover,
+  &.dragging {
+    background-color: var(--color-sky-500);
+  }
+}

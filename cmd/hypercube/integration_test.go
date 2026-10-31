@@ -302,7 +302,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if got := strings.Fields(tmux("list-sessions", "-F", "#{session_name}")); len(got) != 1 {
 		t.Fatalf("expected one workspace tmux session, got %v", got)
 	}
-	if got := strings.Fields(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")); !slices.Equal(got, []string{"default", "review"}) {
+	if got := strings.Fields(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")); !slices.Equal(got, []string{"session-1", "review"}) {
 		t.Fatalf("window switcher names: %v", got)
 	}
 	for _, pair := range [][2]store.Agent{{lead, otherWorker}, {otherLead, worker}} {

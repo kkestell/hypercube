@@ -30,7 +30,9 @@ a shell.
 Workspace state lives under `$XDG_STATE_HOME/hypercube`, defaulting to
 `~/.local/state/hypercube`. Workspace names derive from their absolute paths,
 so equal directory basenames do not collide. The naming algorithm belongs to
-[workspace.go](../internal/workspace/workspace.go).
+[workspace.go](../internal/workspace/workspace.go). Failed Hypercube tool
+calls and Claude Code auto mode denials are appended there to `tools.log` as
+JSON lines.
 
 State keeps harness conversation IDs and queued messages across launches;
 tmux targets and launch bookkeeping are replaceable. Lifecycle operations
@@ -62,4 +64,5 @@ the implementation rather than copied here.
 | [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations. |
 | [report](../internal/report/report.go) | Context, teamwork guidance, steering, and turn events reported by plugins. |
 | [wait](../internal/wait/wait.go) | Idle delivery and waiter replacement. |
-| [plugins](../plugins) | The Claude Code and OpenCode harness plugins. |
+| [ui](../internal/ui/ui.go) | The browser view, which drives a tmux control-mode client per page. |
+| [plugins](../plugins) | The Claude Code, OpenCode, Codex, and Pi harness plugins. |

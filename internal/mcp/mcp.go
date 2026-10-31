@@ -64,8 +64,8 @@ func toolsFor(s store.State, profiles []harness.Profile) []tool {
 		create.InputSchema["properties"].(map[string]any)["profile"] = map[string]any{"type": "string", "enum": names}
 	}
 	return []tool{
-		{"send_message", "Send a message to an agent in your session, by name or session/name address. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
-		{"list_agents", "List your session's agents and, for a lead, other sessions' leads: address, role, harness, activity, directory, and branch.", schema([]string{})},
+		{"send_message", "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
+		{"list_agents", "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, role, harness, activity, directory, and branch.", schema([]string{})},
 		create,
 		remove,
 	}

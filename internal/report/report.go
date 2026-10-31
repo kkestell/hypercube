@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -15,8 +17,11 @@ import (
 )
 
 type input struct {
-	Session string `json:"session"`
-	Error   string `json:"error"`
+	Session string          `json:"session"`
+	Error   string          `json:"error"`
+	Tool    string          `json:"tool"`
+	Input   json.RawMessage `json:"input"`
+	Reason  string          `json:"reason"`
 }
 
 // response holds text for the model to read now. At stop, it continues the
@@ -35,6 +40,12 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 	var in input
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
+	}
+	if event == "toolfailed" || event == "denied" {
+		if err := logTool(event, path, id, in); err != nil {
+			return err
+		}
+		return json.NewEncoder(stdout).Encode(response{})
 	}
 	// The status line reports answered on every redraw, so skip the lock when
 	// there is nothing to clear.
@@ -106,13 +117,41 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 	return err
 }
 
+// logTool appends a failed Hypercube tool call or an auto mode denial to
+// tools.log beside the state file, as a JSON line for tuning tool descriptions
+// and allow rules.
+func logTool(event, path, id string, in input) error {
+	s, err := store.Load(path)
+	if err != nil {
+		return err
+	}
+	a, err := s.Agent(id)
+	if err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(path), "tools.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	msg, detail := "tool failed", slog.String("error", in.Error)
+	if event == "denied" {
+		msg, detail = "tool denied", slog.String("reason", in.Reason)
+	}
+	slog.New(slog.NewJSONHandler(f, nil)).Info(msg,
+		"workspace", store.Workspace(path), "session", a.Team, "agent", a.Name,
+		"harness", a.Harness, "model", a.Model, "conversation", a.SessionID, "dir", a.Dir,
+		"tool", in.Tool, "input", in.Input, detail)
+	return f.Close()
+}
+
 // Format renders messages as the model sees them.
 // Senders cannot see the recipient's chat, so agent messages say how to reply.
 func Format(s *store.State, messages []store.Message) string {
 	var parts []string
 	for _, m := range messages {
 		if a, err := s.Agent(m.From); err == nil {
-			parts = append(parts, fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use send_message to %s.", a.Address(), m.Text, a.Address(), a.Address()))
+			parts = append(parts, fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", a.Address(), m.Text, a.Address(), a.Address()))
 		} else {
 			parts = append(parts, fmt.Sprintf("Message from %s:\n%s", m.From, m.Text))
 		}
@@ -131,6 +170,7 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	} else {
 		b.WriteString("Messaging applies only to this session.\n")
 	}
+	b.WriteString("Reach Hypercube agents only with the hypercube tools: send_message, list_agents, create_agent, and remove_agent. Any other agent tools you have manage only your own subagents. Messages from Hypercube agents arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
 	var leads []string
 	for _, t := range s.Agents {

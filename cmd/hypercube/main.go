@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
+	"github.com/kkestell/hypercube/internal/ui"
 	"github.com/kkestell/hypercube/internal/wait"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
@@ -52,6 +54,9 @@ func main() {
 		err = startWorkspace(os.Args[2], false)
 	case len(os.Args) == 2 && os.Args[1] == "running":
 		err = running()
+	case len(os.Args) == 2 && os.Args[1] == "ui":
+		fmt.Println("Serving the Hypercube UI at http://localhost:4280/")
+		err = http.ListenAndServe("127.0.0.1:4280", ui.Handler())
 	case len(os.Args) == 2 && os.Args[1] == "wait":
 		var delivered bool
 		delivered, err = wait.Run(os.Stdout)
@@ -67,7 +72,7 @@ func main() {
 	case len(os.Args) == 3 && os.Args[1] == "report":
 		err = report.Run(os.Args[2], os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | mcp | report <event> | wait]")
+		err = fmt.Errorf("usage: hypercube [new [-d] [name] | delete-session name | start dir | stop [dir | --all] | delete [dir | --all] | status | running | ui | mcp | report <event> | wait]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
@@ -393,9 +398,7 @@ func openWorkspace(dir, newName string, create, selectNew, attach bool) error {
 	}
 	add := create || len(s.Agents) == 0
 	if add {
-		if !create {
-			newName = store.DefaultTeam
-		} else if newName == "" {
+		if newName == "" {
 			for n := 1; ; n++ {
 				newName = fmt.Sprintf("session-%d", n)
 				if s.TeamLead(newName) == nil {

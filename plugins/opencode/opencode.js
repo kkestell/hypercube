@@ -72,6 +72,14 @@ export default {
     })
 
     await ctx.tool.hook("execute.after", async (event) => {
+      // Hypercube logs failed calls of its own tools, subagents' included.
+      // Logging never changes the call's result.
+      if (event.status === "error") {
+        if (event.tool.startsWith("hypercube_")) {
+          await report("toolfailed", { tool: event.tool, input: event.input, error: event.error?.message }).catch(() => {})
+        }
+        return
+      }
       if (event.status !== "completed" || !(await isAgentSession(event.sessionID))) return
       const text = await report("tool")
       if (!text) return

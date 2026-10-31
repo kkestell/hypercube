@@ -1,8 +1,8 @@
 # Installation
 
 Hypercube needs macOS, Git, tmux, and the harness executables selected in
-[Configuration](configuration.md): `claude` or `opencode`. Configure
-credentials through each harness before starting. See
+[Configuration](configuration.md): `claude`, `opencode`, `codex`, or `pi`.
+Configure credentials through each harness before starting. See
 [Harness support](harness-support.md) for compatibility and limitations.
 
 Use the Go version required by [go.mod](../go.mod). Build and install with:

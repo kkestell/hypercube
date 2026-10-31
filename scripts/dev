@@ -61,6 +61,20 @@ up)
       "harness": "opencode",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
       "effort": "high"
+    },
+    {
+      "name": "codex",
+      "description": "Codex Luna, for smoke tests.",
+      "harness": "codex",
+      "model": "gpt-6-luna",
+      "effort": "low"
+    },
+    {
+      "name": "pi",
+      "description": "Pi with DeepSeek Flash, for smoke tests.",
+      "harness": "pi",
+      "model": "openrouter/~deepseek/deepseek-flash-latest",
+      "effort": "low"
     }
   ]
 }

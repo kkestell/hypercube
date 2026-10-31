@@ -3,8 +3,8 @@ Keep this document accurate and short.
 ## Purpose and scope
 
 Hypercube runs teams of local coding agents in tmux. Each agent is a native
-harness (Claude Code or OpenCode) in its own pane; agents message each other
-through an MCP server and receive messages through harness plugins.
+harness (Claude Code, OpenCode, Codex, or Pi) in its own pane; agents message
+each other through an MCP server and receive messages through harness plugins.
 
 - There is one user. Target macOS.
 - Agents are trusted local processes running with the user's credentials.
@@ -33,9 +33,9 @@ through an MCP server and receive messages through harness plugins.
 - `cmd/hypercube/` — the command line, workspace and session lifecycle, and
   relaunches.
 - `internal/` — one package per concern: `harness`, `mcp`, `report`, `store`,
-  `tmux`, `wait`, `workspace`.
-- `plugins/` — the Claude Code and OpenCode harness plugins. The core names no
-  harness.
+  `tmux`, `ui`, `wait`, `workspace`.
+- `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
+  core names no harness.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/reinstall` — stops, reinstalls, and restarts the installed
   workspaces.
