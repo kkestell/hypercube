@@ -9,7 +9,7 @@
 </head>
 <body class="h-full overflow-hidden bg-[#1e1e1e] text-sm text-neutral-300">
 <div class="flex h-full flex-col">
-<header class="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-700 bg-[#323233] px-2">
+<header class="flex h-9 shrink-0 items-center gap-1 border-b border-[#2b2b2b] bg-[#323233] px-2">
   <button type="button" id="toggle-sidebar" title="Hide Left Panel" aria-pressed="true" class="ml-auto flex rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
     <span class="icon icon-layout-sidebar-left size-4"></span>
   </button>
@@ -20,7 +20,7 @@
 
 <div class="flex min-h-0 flex-1">
   <aside id="sidebar" class="flex w-[260px] shrink-0 flex-col bg-[#252526]">
-    <div class="flex h-[35px] shrink-0 items-center justify-between pr-2 pl-4 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
+    <div class="flex h-[38px] shrink-0 items-center justify-between px-2 text-[11px] font-semibold tracking-wide text-neutral-400 uppercase">
       Workspaces
       <button type="button" id="add-workspace" title="New Workspace" class="flex size-[22px] items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-add size-4"></span></button>
     </div>
@@ -28,10 +28,10 @@
   </aside>
   <div id="sidebar-sash" class="sash"></div>
   <div class="flex min-w-0 flex-1 flex-col">
-    <div id="center" class="flex min-h-0 flex-1">
-      <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
+    <div id="center" class="flex min-h-0 flex-1 bg-[#181818]">
+      <div id="lead" class="flex min-w-0 flex-1 flex-col overflow-hidden p-3"></div>
       <div id="split" class="sash" hidden></div>
-      <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
+      <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3" hidden></div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
@@ -75,16 +75,17 @@ const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
 const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
-// Pixels around the terminals: the lead's left and top padding, and the
-// workers panel's padding, a card's border, and its terminal's padding.
-const leadX = 8, leadY = 4, workerX = 24 + 2 + 16;
+// Pixels beside a terminal: its panel's padding, its card's border, and its own
+// padding.
+const cardX = 24 + 2 + 16;
 
 let source, client, session, outbox, sending, callbacks, block, terms = new Map(), shown, activePane;
 // data is the app's latest snapshot, selected is the selected session's ID,
 // and attached is the running session the terminals belong to.
 // dead is a session marked running whose terminals could not be reached, as
 // after a failed start; it can be started again. generation counts attachments.
-let data = [], selected = decodeURIComponent(location.hash.slice(1)), attached = null, dead = null, generation = 0;
+// pending is a session to select once the data lists it.
+let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null, dead = null, generation = 0;
 
 const sessions = () => data.flatMap(w => w.sessions);
 const current = () => sessions().find(s => s.id === selected);
@@ -99,6 +100,7 @@ function watch() {
 // attaching to its terminals when it runs.
 function changed() {
   const all = sessions();
+  if (pending && all.some(s => s.id === pending)) { selected = pending; pending = null; }
   if (!current()) selected = (all.find(s => s.running) ?? all[0])?.id ?? '';
   if (decodeURIComponent(location.hash.slice(1)) !== selected) history.replaceState(null, '', selected ? '#' + encodeURIComponent(selected) : location.pathname);
   const s = current();
@@ -113,8 +115,11 @@ function changed() {
 }
 document.addEventListener('visibilitychange', changed);
 
-// Selecting a stopped session starts it.
+// Selecting a stopped session starts it. A new session's ID can arrive before
+// the state that lists it, so the selection waits for that state.
 function select(id) {
+  if (!sessions().some(s => s.id === id)) { pending = id; return; }
+  pending = null;
   selected = id;
   changed();
   const s = current();
@@ -126,14 +131,14 @@ function attach(id) {
   source = client = null;
   attached = id;
   generation++;
-  outbox = []; sending = false; callbacks = []; block = null; size = ''; refreshing = again = false; activePane = null;
+  outbox = []; sending = false; callbacks = []; block = null; size = sent = ''; refreshing = again = false; activePane = null;
   applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false; shown = null;
   for (const term of terms.values()) term.dispose();
   terms = new Map();
   lead.replaceChildren();
   workers.replaceChildren();
   panel.replaceChildren();
-  workerCards.clear();
+  cards.clear();
   split.hidden = workers.hidden = true;
   if (!id) return;
   source = new EventSource('events?session=' + encodeURIComponent(id));
@@ -304,24 +309,26 @@ function render(wins, list) {
   if (win?.id !== shown?.window) leadWidth = null;
   shown = {window: win?.id, leader, stacked, layout: win?.layout.slice(5)};
 
-  // Each pane's terminal matches the pane's size and sits in the lead's panel
-  // or its worker's card.
+  // Each pane's terminal matches the pane's size and sits in its agent's card.
+  // The lead's card always shows its terminal.
+  if (leader) leader.open = true;
   for (const p of list) {
     let term = terms.get(p.id);
     if (!term) term = open(p.id, p.width, p.height);
     else if (term.cols !== p.width || term.rows !== p.height) term.resize(p.width, p.height);
-    const parent = p === leader ? lead : card(p).slot;
+    const parent = card(p).slot;
     if (term.box.parentElement !== parent) parent.append(term.box);
     // The terminal takes the focus when tmux selects another pane.
-    if (p.active === '1' && p.id !== activePane && (p === leader || p.open)) { activePane = p.id; term.focus(); }
+    if (p.active === '1' && p.id !== activePane && p.open) { activePane = p.id; term.focus(); }
   }
   for (const [id, term] of terms) {
     if (id !== shell?.pane && !list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
   }
-  for (const [id, c] of workerCards) {
-    if (!stacked.some(p => p.id === id)) { c.element.remove(); workerCards.delete(id); }
+  for (const [id, c] of cards) {
+    if (!list.some(p => p.id === id)) { c.element.remove(); cards.delete(id); }
   }
   // Moving a card that is already in place would blur its terminal.
+  if (leader && card(leader).element.parentElement !== lead) lead.append(card(leader).element);
   stacked.forEach((p, i) => {
     const element = card(p).element;
     if (workers.children[i] !== element) workers.insertBefore(element, workers.children[i] ?? null);
@@ -333,9 +340,9 @@ function render(wins, list) {
   lead.classList.toggle('shrink-0', any);
   // The lead keeps a width being dragged until tmux has applied it.
   if (leadWidth === leader?.width && !dragging) leadWidth = null;
-  lead.style.width = any && leader ? (leadWidth ?? leader.width) * cell.width + leadX + 'px' : '';
+  lead.style.width = any && leader ? (leadWidth ?? leader.width) * cell.width + cardX + 'px' : '';
 
-  // A layout tmux reapplied, such as for a new worker, is replaced.
+  // A new or removed worker changes the desired layout.
   apply();
 }
 
@@ -354,7 +361,7 @@ function renderSidebar() {
     const open = !collapsed.has(w.id);
     const busy = w.sessions.some(s => s.running && s.agents.some(a => a.activity === 'busy'));
     return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]" data-workspace="${w.id}" title="${escape(w.path)}">
-        <button type="button" data-collapse="${w.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
+        <button type="button" data-collapse="${w.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left text-neutral-400">
           ${busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(w.name)}</span>
         </button>
         <button type="button" title="New Session" aria-haspopup="menu" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
@@ -381,7 +388,7 @@ sessionList.addEventListener('dblclick', e => {
   renaming = true;
   const input = document.createElement('input');
   input.value = s.title;
-  input.className = 'my-1 mr-1 ml-9 min-w-0 flex-1 border border-sky-500 bg-[#3c3c3c] px-1 py-0.5 text-neutral-100 outline-none';
+  input.className = 'my-1 mr-1 ml-7 min-w-0 flex-1 border border-sky-500 bg-[#3c3c3c] px-1 py-0.5 text-neutral-100 outline-none';
   row.replaceWith(input);
   input.focus();
   input.select();
@@ -412,7 +419,7 @@ function sessionRow(s) {
   const text = !s.running ? 'text-neutral-500' : active ? 'text-neutral-100' : '';
   return `<li class="${active ? 'bg-[#37373d]' : 'hover:bg-[#2a2d2e]'} ${text}" data-session="${s.id}">
     <div class="flex items-center gap-1 pr-2">
-      <button type="button" data-select="${s.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
+      <button type="button" data-select="${s.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left">
         ${busy ? spinner('Busy: ' + busy) : '<span class="size-4 shrink-0"></span>'}
         <span class="flex min-w-0 items-center gap-1.5">
           <span class="truncate">${escape(s.title)}</span>
@@ -458,12 +465,13 @@ function summary(a) {
   return (a.status ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(a.status)}</p>` : '') + footer;
 }
 
-// A worker's card shows its name, status, and summary, or its name, status,
-// and terminal. Cards persist so their terminals stay attached.
-const workerCards = new Map();
+// An agent's card shows its name, status, and summary, or its name, status,
+// and terminal. The lead's card has no summary. Cards persist so their
+// terminals stay attached.
+const cards = new Map();
 
 function card(p) {
-  let c = workerCards.get(p.id);
+  let c = cards.get(p.id);
   if (!c) {
     const element = document.createElement('article');
     element.dataset.pane = p.id;
@@ -475,10 +483,10 @@ function card(p) {
         </button>
       </header>
       <div class="summary flex flex-col gap-2"></div>
-      <div class="slot -mx-3 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-b-md border-t border-neutral-700 bg-[#1e1e1e] px-2 py-1"></div>`;
+      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-b-md border-t border-[#2b2b2b] bg-[#1e1e1e] px-2 py-1"></div>`;
     const q = name => element.querySelector('.' + name);
     c = {element, name: q('name'), status: q('status'), toggle: q('toggle'), summary: q('summary'), slot: q('slot')};
-    workerCards.set(p.id, c);
+    cards.set(p.id, c);
   }
   const status = p.dead === '1' ? `<span title="Exited with status ${escape(p.status)}" class="block size-2 rounded-full bg-red-400"></span>`
     : p.agent.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
@@ -486,10 +494,11 @@ function card(p) {
     : '';
   const open = p.open;
   const className = `relative flex flex-col gap-2 rounded-md border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0 cursor-pointer'} ${
-    p.agent.attention ? 'border-amber-400' : 'border-neutral-700 hover:border-neutral-500'}`;
+    p.agent.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
   if (c.name.textContent !== p.agent.name) c.name.textContent = p.agent.name;
   update(c.status, status);
+  c.toggle.hidden = p === shown.leader;
   c.toggle.setAttribute('aria-pressed', open);
   c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
   const html = summary(p.agent);
@@ -524,8 +533,8 @@ workers.onclick = e => {
 function desired() {
   const {leader, stacked} = shown, n = stacked.length;
   const gutter = n ? workers.offsetWidth - workers.clientWidth : 0;
-  const cols = Math.max(n ? 42 : 1, Math.floor((center.clientWidth - leadX - (n ? 1 + workerX + gutter : 0)) / cell.width) + (n ? 1 : 0));
-  const rows = Math.max(2 * n, 2, Math.floor((center.clientHeight - leadY) / cell.height));
+  const cols = Math.max(n ? 42 : 1, Math.floor((center.clientWidth - cardX - (n ? 1 + cardX + gutter : 0)) / cell.width) + (n ? 1 : 0));
+  const rows = Math.max(2 * n, 2, Math.floor((cards.get(leader.id).slot.clientHeight - 8) / cell.height));
   const id = p => p.id.slice(1);
   if (!n) return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0,${id(leader)}`};
 
@@ -537,7 +546,7 @@ function desired() {
     const share = Math.floor(free / n);
     heights = stacked.map((p, i) => i === n - 1 ? free - share * (n - 1) : share);
   } else {
-    const fit = p => Math.max(1, Math.floor((workerCards.get(p.id).slot.clientHeight - 8) / cell.height));
+    const fit = p => Math.max(1, Math.floor((cards.get(p.id).slot.clientHeight - 8) / cell.height));
     heights = stacked.map(p => p.open ? fit(p) : 1);
     // Open terminals give up rows when the summaries have none left.
     const shrinkable = () => heights.some((h, i) => stacked[i].open && h > 1);
@@ -563,22 +572,33 @@ function checksum(layout) {
   return sum.toString(16).padStart(4, '0');
 }
 
-// apply sends the desired layout when it differs from tmux's, one at a time.
-let applying = false, reapply = false, size = '';
+// apply sends the desired window size and layout when they change, one at a
+// time. Every view of a session shares its window, so a view sends only its
+// own changes and leaves another view's layout in place; otherwise two views
+// of different sizes would replace each other's layouts without end. The view
+// the user focuses sends its layout again.
+let applying = false, reapply = false, size = '', sent = '';
 function apply() {
   if (!client || !shown?.window || !shown.leader) return;
   if (applying) { reapply = true; return; }
   const want = desired();
-  if (want.layout === shown.layout && want.size === size) return;
+  const key = shown.window + ' ' + want.layout;
+  if (key === sent) return;
   applying = true;
-  if (want.size !== size) { size = want.size; send(`refresh-client -C ${size}`); }
-  send(`select-layout -t '${shown.window}' '${checksum(want.layout)},${want.layout}'`, (lines, error) => {
-    if (!error) shown.layout = want.layout;
+  sent = key;
+  size = want.size;
+  const [cols, rows] = size.split('x');
+  send(`resize-window -t '${shown.window}' -x ${cols} -y ${rows}`);
+  send(`select-layout -t '${shown.window}' '${checksum(want.layout)},${want.layout}'`, () => {
     applying = false;
     if (reapply) { reapply = false; apply(); }
   });
 }
-new ResizeObserver(() => apply()).observe(center);
+window.addEventListener('focus', () => { sent = ''; apply(); });
+// The workers panel narrows when its scrollbar appears.
+const resized = new ResizeObserver(() => apply());
+resized.observe(center);
+resized.observe(workers);
 
 // A new terminal shows the pane's history and screen, then its live output.
 // Output that arrives before the capture is already part of it.
@@ -841,9 +861,9 @@ drag($('panel-sash'), e => panel.style.height = Math.max(2 * cell.height + 4, Ma
 let leadWidth = null;
 drag(split, e => {
   if (!size) return;
-  const column = Math.round((e.clientX - center.getBoundingClientRect().left - leadX) / cell.width);
+  const column = Math.round((e.clientX - center.getBoundingClientRect().left - cardX) / cell.width);
   leadWidth = Math.max(20, Math.min(+size.split('x')[0] - 21, column));
-  lead.style.width = leadWidth * cell.width + leadX + 'px';
+  lead.style.width = leadWidth * cell.width + cardX + 'px';
   apply();
 }, () => {
   if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
