@@ -544,6 +544,38 @@ func TestEndOfTurnFinishesOpenItems(t *testing.T) {
 	if err := h.answer("form:0/0", "Red", ""); err == nil {
 		t.Fatal("answered a request of a finished turn")
 	}
+	// The form's handler returns with a cancellation while the connection
+	// stays open.
+	var r []map[string]any
+	eventually(t, "the form's answer", func() bool { r = h.acp.responses(); return len(r) == 1 })
+	if r[0]["result"].(map[string]any)["action"] != "cancel" {
+		t.Fatal(r)
+	}
+	select {
+	case <-h.conn.Done():
+		t.Fatal("the connection closed")
+	default:
+	}
+}
+
+// A message the connection drops does not hold back the messages after it,
+// or the end of opencode's output.
+func TestDroppedMessageDoesNotBlock(t *testing.T) {
+	h := connected(t)
+	h.session = "ses_1"
+	h.feed(t, `{"jsonrpc":1,"id":7,"method":"session/request_permission","params":{}}`,
+		`{"jsonrpc":"2.0","id":8,"method":"session/request_permission","params":{"sessionId":"ses_1","toolCall":{"toolCallId":"c"},"options":[{"optionId":"once","name":"Allow","kind":"allow_once"}]}}`)
+	var r []map[string]any
+	eventually(t, "the approval", func() bool { r = h.acp.responses(); return len(r) == 1 })
+	if r[0]["id"] != float64(8) {
+		t.Fatal(r)
+	}
+	h.acp.out.(io.Closer).Close()
+	select {
+	case <-h.conn.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the connection did not see the end of the output")
+	}
 }
 
 func defaultHandlers(h *agentUnderTest, effort bool) {

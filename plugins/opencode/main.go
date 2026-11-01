@@ -205,10 +205,15 @@ func (o *inOrder) Read(p []byte) (int, error) {
 			return 0, o.err
 		}
 		// The connection gives the agent every request and notification but
-		// its own request cancellations.
+		// its own request cancellations. It decodes a message as this
+		// envelope, and drops one that does not decode.
 		var m struct {
-			ID     *json.RawMessage `json:"id"`
-			Method string           `json:"method"`
+			JSONRPC string            `json:"jsonrpc"`
+			ID      *json.RawMessage  `json:"id"`
+			Method  string            `json:"method"`
+			Params  json.RawMessage   `json:"params"`
+			Result  json.RawMessage   `json:"result"`
+			Error   *acp.RequestError `json:"error"`
 		}
 		o.waiting = json.Unmarshal(o.line, &m) == nil && m.Method != "" && (m.ID != nil || m.Method != "$/cancel_request")
 	}
@@ -458,25 +463,22 @@ func (ag *agent) interrupt() error {
 	if !ag.busy {
 		return nil
 	}
-	// OpenCode waits for the answers of forms it has sent.
-	answered := map[*request]bool{}
-	for _, r := range ag.requests {
-		if !answered[r] {
-			answered[r] = true
-			r.reply <- acp.UnstableCreateElicitationResponse{Cancel: &acp.UnstableCreateElicitationCancel{Action: "cancel"}}
-		}
-	}
 	if items := ag.closeRequests(); len(items) > 0 {
 		ag.emit(harness.Event{Items: items})
 	}
 	return ag.conn.SendNotification(ag.ctx, acp.AgentMethodSessionCancel, acp.CancelNotification{SessionId: acp.SessionId(ag.session)})
 }
 
-// closeRequests finishes the items of requests that nobody will answer.
-// OpenCode no longer waits for them, so their requests stay unanswered.
+// closeRequests finishes the items of requests that nobody will answer, and
+// cancels each request once.
 func (ag *agent) closeRequests() []harness.Item {
 	var items []harness.Item
+	cancelled := map[*request]bool{}
 	for id, r := range ag.requests {
+		if !cancelled[r] {
+			cancelled[r] = true
+			r.reply <- acp.UnstableCreateElicitationResponse{Cancel: &acp.UnstableCreateElicitationCancel{Action: "cancel"}}
+		}
 		for _, it := range r.items {
 			if it.ID == id {
 				it.Done = true
