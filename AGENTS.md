@@ -53,8 +53,6 @@ browser shows each agent's transcript.
 - After a change is merged, the user runs `make install-service` from the
   original checkout to load it.
 
-Report any check that fails or is skipped.
-
 ## Documentation
 
 The example in `docs/configuration.md` is the user's
