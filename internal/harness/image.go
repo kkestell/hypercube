@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // MaxImageBytes is the most image data, decoded, that one prompt carries.
@@ -21,7 +22,8 @@ func CheckImages(images []Image) error {
 		default:
 			return fmt.Errorf("image %d: unsupported type %q; use PNG, JPEG, GIF, or WebP", i+1, img.MIMEType)
 		}
-		if total += base64.StdEncoding.DecodedLen(len(img.Data)); total > MaxImageBytes {
+		// The decoded size is exact once the padding is not counted.
+		if total += base64.StdEncoding.DecodedLen(len(img.Data)) - strings.Count(img.Data[max(0, len(img.Data)-2):], "="); total > MaxImageBytes {
 			return errors.New("images are larger than 10 MiB in all")
 		}
 		data, err := base64.StdEncoding.DecodeString(img.Data)
