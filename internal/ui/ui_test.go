@@ -214,8 +214,10 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 			t.Errorf("%s: status %d", name, got)
 		}
 	}
-	// The agents' own bridge sends its own address as the origin.
-	if got := send("POST", "127.0.0.1:4280", "http://127.0.0.1:4280", "/mcp"); got != http.StatusOK {
+	// The agents' own bridge sends its own address as the origin. The origin
+	// check lets the request through to the MCP handler, which refuses this
+	// stand-in for lacking a content type.
+	if got := send("POST", "127.0.0.1:4280", "http://127.0.0.1:4280", "/mcp"); got == http.StatusForbidden {
 		t.Errorf("the bridge: status %d", got)
 	}
 	// Another page cannot open the data or terminal sockets.

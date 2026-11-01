@@ -22,6 +22,7 @@ import (
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
+	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestStandIn(t *testing.T) { harnesstest.Run() }
@@ -187,28 +188,37 @@ func (c client) act(values map[string]string) string {
 	return body
 }
 
-// tool calls an MCP tool as the agent through the app's route.
+// asAgent adds the agent's identity and the app's origin to every request.
+type asAgent struct{ agent, origin string }
+
+func (a asAgent) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set(mcp.AgentHeader, a.agent)
+	r.Header.Set("Origin", a.origin)
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// tool calls an MCP tool as the agent through the app's route and returns its text.
 func (c client) tool(agent, name string, args map[string]string) string {
 	c.t.Helper()
-	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}})
-	req, _ := http.NewRequest("POST", c.base+"/mcp", bytes.NewReader(body))
-	req.Header.Set(mcp.AgentHeader, agent)
-	req.Header.Set("Origin", c.base)
-	res, err := http.DefaultClient.Do(req)
+	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(c.t.Context(), &sdk.StreamableClientTransport{
+		Endpoint:             c.base + "/mcp",
+		HTTPClient:           &http.Client{Transport: asAgent{agent, c.base}},
+		DisableStandaloneSSE: true,
+	}, nil)
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	defer res.Body.Close()
-	out, _ := io.ReadAll(res.Body)
-	var response struct {
-		Result struct {
-			IsError bool `json:"isError"`
-		} `json:"result"`
+	defer session.Close()
+	res, err := session.CallTool(c.t.Context(), &sdk.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		c.t.Fatalf("MCP %s: %v", name, err)
 	}
-	if err := json.Unmarshal(out, &response); err != nil || res.StatusCode != http.StatusOK || response.Result.IsError {
-		c.t.Fatalf("MCP %s: %d %s (%v)", name, res.StatusCode, out, err)
+	text := res.Content[0].(*sdk.TextContent).Text
+	if res.IsError {
+		c.t.Fatalf("MCP %s: %s", name, text)
 	}
-	return string(out)
+	return text
 }
 
 func (c client) snapshot() []store.ShownWorkspace {
