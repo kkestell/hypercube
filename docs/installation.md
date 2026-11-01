@@ -24,7 +24,8 @@ make install-service
 ```
 
 The view runs as a launchd user agent through your interactive login shell, so
-it and the agents it launches get your login environment. Its log is
+it and the agents it launches get your login environment. When the view starts,
+it restarts all saved workspaces that are stopped. Its log is
 `~/Library/Logs/hypercube-ui.log`. Remove the service by unloading it and
 deleting its property list:
 

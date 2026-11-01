@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -470,7 +472,18 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	cli("start", root)
+	// Starting the browser view restores the stopped workspace and its queues.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	view := exec.Command(binary, "ui", fmt.Sprint(port))
+	if err := view.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = view.Process.Kill(); _ = view.Wait() }()
 	until("stopped queue delivered after resume", func() bool { return strings.Contains(logOf(lead.ID), "queued while stopped") })
 	until("second stopped queue delivered after resume", func() bool { return strings.Contains(logOf(otherWorker.ID), "other queued while stopped") })
 	if strings.Contains(logOf(lead.ID), "other queued while stopped") || strings.Contains(logOf(otherWorker.ID), `Message from user:\nqueued while stopped`) {

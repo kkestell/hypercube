@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -384,8 +385,32 @@ func serveUI(args []string) error {
 		}
 		port = args[0]
 	}
+	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	restoreWorkspaces()
 	fmt.Printf("Serving the Hypercube UI at http://localhost:%s/\n", port)
-	return http.ListenAndServe("127.0.0.1:"+port, ui.Handler())
+	return http.Serve(listener, ui.Handler())
+}
+
+// Restore saved workspaces once at UI startup; one failure must not prevent
+// the view or the other workspaces from starting.
+func restoreWorkspaces() {
+	list, err := workspaces()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "restore workspaces:", err)
+		return
+	}
+	for _, k := range list {
+		if k.root == "" || tmux.WorkspaceSession(k.name, k.path) {
+			continue
+		}
+		if err := openWorkspace(k.root, false); err != nil {
+			fmt.Fprintf(os.Stderr, "restore workspace %s: %v\n", k.root, err)
+		}
+	}
 }
 
 // A workspace owns one tmux session. Each Hypercube session is a team in its
