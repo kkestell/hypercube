@@ -39,11 +39,6 @@
 </div>
 </div>
 
-<div id="quick-pick" hidden class="fixed top-[44px] left-1/2 z-50 w-[600px] max-w-[calc(100%-20px)] -translate-x-1/2 rounded-[6px] bg-[#252526] p-[6px] text-[13px] text-[#cccccc] shadow-[0_0_8px_2px_rgba(0,0,0,0.36)]">
-  <input id="quick-input" role="combobox" aria-controls="quick-list" autocomplete="off" spellcheck="false"
-    class="w-full rounded-[2px] border border-[#007fd4] bg-[#3c3c3c] px-[6px] py-[3px] text-[#cccccc] outline-none placeholder:text-[#989898]">
-  <ul id="quick-list" role="listbox" class="mt-[6px] max-h-[440px] overflow-y-auto"></ul>
-</div>
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
 <div id="probe" class="invisible absolute"></div>
 <script src="xterm.js"></script>
@@ -655,7 +650,7 @@ document.body.addEventListener('click', async e => {
   const action = e.target.closest('[data-action]');
   const row = e.target.closest('[data-select]');
   if (leadButton) {
-    await pickLead(leadButton.dataset.leads);
+    await pickLead(leadButton);
   } else if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
     post(action.dataset.action);
@@ -669,8 +664,12 @@ document.body.addEventListener('click', async e => {
 const menu = $('menu');
 const menuItemClass = 'mx-1 block w-[calc(100%-8px)] rounded-[3px] px-6 py-1 text-left text-neutral-300 outline-none hover:bg-[#04395e] hover:text-white focus-visible:bg-[#04395e] focus-visible:text-white';
 
+let menuRequest = 0;
+
 function closeMenu() {
   menu.hidden = true;
+  menu.onclick = null;
+  menuRequest++;
 }
 
 function placeMenu(x, y) {
@@ -679,87 +678,38 @@ function placeMenu(x, y) {
   menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
-// The lead picker is a quick pick, as in VS Code: a filter field over a list
-// of profiles, each with its harness, model, and effort, and its description.
-// Arrow keys move, Enter or a click picks, and Escape or leaving it closes it.
-const quick = $('quick-pick'), quickInput = $('quick-input'), quickList = $('quick-list');
-let quickItems = [], quickShown = [], quickActive = 0, quickPicked = null;
-
-async function pickLead(workspace) {
+// The lead picker is a menu under the workspace's + button. Each lead shows
+// its harness, model, and effort, and its description. Picking one creates a
+// session with it and selects the session.
+async function pickLead(button) {
+  const request = ++menuRequest, workspace = button.dataset.leads;
+  const rect = button.getBoundingClientRect();
   const res = await fetch('leads');
   if (!res.ok) { alert(await res.text()); return; }
   const leads = await res.json();
-  openQuickPick('Select a lead for the new session', leads.map(p => ({
-    label: p.name, description: `${p.harness} · ${p.model} · ${p.effort}`, detail: p.description,
-  })), async item => {
-    const id = await post('session?' + new URLSearchParams({action: 'new', workspace, lead: item.label}));
+  if (request !== menuRequest) return;
+  menu.innerHTML = leads.map(p => `<button type="button" role="menuitem" data-lead="${escape(p.name)}" class="${menuItemClass} max-w-[360px]">
+      <span class="flex items-baseline gap-2"><span>${escape(p.name)}</span><span class="truncate text-[12px] opacity-70">${escape(`${p.harness} · ${p.model} · ${p.effort}`)}</span></span>
+      <span class="block truncate text-[12px] opacity-70">${escape(p.description)}</span>
+    </button>`).join('');
+  menu.onclick = async e => {
+    const item = e.target.closest('[data-lead]');
+    if (!item) return;
+    closeMenu();
+    const id = await post('session?' + new URLSearchParams({action: 'new', workspace, lead: item.dataset.lead}));
     if (id) select(id);
-  });
+  };
+  placeMenu(rect.left, rect.bottom);
+  menu.querySelector('[role="menuitem"]')?.focus();
 }
 
-function openQuickPick(placeholder, items, picked) {
-  closeMenu();
-  quickItems = items; quickPicked = picked;
-  quickInput.value = '';
-  quickInput.placeholder = placeholder;
-  quick.hidden = false;
-  filterQuickPick();
-  quickInput.focus();
-}
-
-function closeQuickPick() {
-  if (quick.hidden) return;
-  quick.hidden = true;
-  terms.get(activePane)?.focus();
-}
-
-// Matching text in a label is highlighted, as VS Code does.
-function highlight(text, query) {
-  const i = query ? text.toLowerCase().indexOf(query) : -1;
-  if (i < 0) return escape(text);
-  return escape(text.slice(0, i)) + `<span class="font-bold text-[#2aaaff]">${escape(text.slice(i, i + query.length))}</span>` + escape(text.slice(i + query.length));
-}
-
-function filterQuickPick() {
-  const query = quickInput.value.trim().toLowerCase();
-  quickShown = quickItems.filter(item => [item.label, item.description, item.detail].some(t => t.toLowerCase().includes(query)));
-  quickActive = 0;
-  renderQuickPick(query);
-}
-
-function renderQuickPick(query = quickInput.value.trim().toLowerCase()) {
-  quickList.innerHTML = quickShown.length ? quickShown.map((item, i) => `<li role="option" data-quick="${i}" aria-selected="${i === quickActive}"
-      class="flex h-[44px] cursor-pointer flex-col justify-center rounded-[3px] px-[11px] ${i === quickActive ? 'bg-[#04395e] text-white' : 'hover:bg-[#2a2d2e]'}">
-      <div class="flex min-w-0 items-baseline gap-[6px]"><span class="shrink-0">${highlight(item.label, query)}</span><span class="truncate text-[12px] opacity-70">${escape(item.description)}</span></div>
-      <div class="truncate text-[12px] opacity-70">${escape(item.detail)}</div>
-    </li>`).join('') : '<li class="flex h-[22px] items-center px-[11px]">No matching results</li>';
-  quickList.querySelector('[aria-selected="true"]')?.scrollIntoView({block: 'nearest'});
-}
-
-function pickQuick(i) {
-  const item = quickShown[i];
-  if (!item) return;
-  closeQuickPick();
-  quickPicked(item);
-}
-
-quickInput.addEventListener('input', () => filterQuickPick());
-quickInput.addEventListener('keydown', e => {
-  const n = quickShown.length;
-  if (e.key === 'ArrowDown' && n) quickActive = (quickActive + 1) % n;
-  else if (e.key === 'ArrowUp' && n) quickActive = (quickActive - 1 + n) % n;
-  else if (e.key === 'Enter') { e.preventDefault(); pickQuick(quickActive); return; }
-  else if (e.key === 'Escape') { e.preventDefault(); closeQuickPick(); return; }
-  else return;
+// Arrow keys move between a menu's items.
+menu.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
   e.preventDefault();
-  renderQuickPick();
-});
-quickInput.addEventListener('blur', closeQuickPick);
-// Pressing a row keeps the focus in the field, so the click picks the row.
-quickList.addEventListener('pointerdown', e => e.preventDefault());
-quickList.addEventListener('click', e => {
-  const row = e.target.closest('[data-quick]');
-  if (row) pickQuick(+row.dataset.quick);
+  const items = [...menu.querySelectorAll('[role="menuitem"]')];
+  const i = items.indexOf(document.activeElement);
+  items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length]?.focus();
 });
 
 // A session's menu starts or stops it and deletes it; a workspace's deletes it.
