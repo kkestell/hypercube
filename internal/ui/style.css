@@ -1,6 +1,7 @@
 /* The source of static/ui.css. Run `make ui` after changing it or the classes
    in static/index.html and static/transcript.js. */
 @import "tailwindcss" source(none);
+@import "@xterm/xterm/css/xterm.css";
 @source "./static/index.html";
 @source "./static/transcript.js";
 

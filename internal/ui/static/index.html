@@ -4,7 +4,6 @@
 <meta charset="utf-8">
 <title>Hypercube</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="xterm.css">
 <link rel="stylesheet" href="ui.css">
 </head>
 <body class="h-full overflow-hidden bg-[#1e1e1e] text-sm text-neutral-300">
@@ -41,12 +40,10 @@
 </div>
 
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
-<div id="probe" class="invisible absolute"></div>
-<script src="xterm.js"></script>
-<script src="addon-webgl.js"></script>
 <script src="hypercube.js"></script>
 <script type="module">
 import {Transcript, submitsOnKey} from './transcript.js';
+import {createTerminal} from './terminal.js';
 
 // The page shows Hypercube's data, streamed from the app, and the transcript
 // of the selected session's agents. The sidebar lists each workspace's
@@ -55,34 +52,6 @@ import {Transcript, submitsOnKey} from './transcript.js';
 // summary or its transcript. Every transcript has a composer. The panel below
 // holds a shell, an xterm.js terminal connected to the session's shell in the
 // app.
-
-const fontFamily = 'Menlo, Monaco, "Courier New", monospace', fontSize = 13;
-const theme = {background: '#1e1e1e'};
-// The WebGL renderer draws box and block characters to fill their cells
-// exactly, as terminals do. The probe uses it too, since it sizes cells to
-// whole device pixels.
-function webgl(term) {
-  const addon = new WebglAddon.WebglAddon();
-  addon.onContextLoss(() => addon.dispose());
-  term.loadAddon(addon);
-  // The bundled renderer clears its canvas both on terminal resize and in
-  // its device-pixel ResizeObserver. That observer can run after animation
-  // callbacks, too late for xterm's scheduled repaint to reach this frame.
-  // Repaint the buffer synchronously after either path clears the canvas.
-  const renderer = addon._renderer;
-  for (const method of ['handleResize', '_setCanvasDevicePixelDimensions']) {
-    const resize = renderer[method];
-    renderer[method] = function(...args) {
-      resize.apply(this, args);
-      this.renderRows(0, term.rows - 1);
-    };
-  }
-}
-
-const probe = new Terminal({fontFamily, fontSize});
-probe.open(document.getElementById('probe'));
-webgl(probe);
-const cell = probe._core._renderService.dimensions.css.cell;
 
 const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
@@ -669,23 +638,14 @@ function editing(e) {
   }[mods + e.key];
 }
 
-// panelSize is the terminal size the panel has room for.
-function panelSize() {
-  return {
-    cols: Math.max(2, Math.floor((panel.clientWidth - 8) / cell.width)),
-    rows: Math.max(1, Math.floor((panel.clientHeight - 4) / cell.height)),
-  };
-}
-
 function connectShell() {
   if (!attached || shell || panel.hidden) return;
-  const {cols, rows} = panelSize();
   const box = document.createElement('div');
+  box.className = 'h-full';
   panel.append(box);
-  const term = new Terminal({fontFamily, fontSize, cols, rows, theme, cursorInactiveStyle: 'none'});
-  term.open(box);
-  webgl(term);
-  const mine = shell = {session: attached, term, box, socket: null, size: cols + 'x' + rows, connected: false, exited: false};
+  const {term, fit} = createTerminal(box);
+  fit.fit();
+  const mine = shell = {session: attached, term, fit, box, socket: null, connected: false, exited: false};
   const send = bytes => { if (mine.socket?.readyState === WebSocket.OPEN) mine.socket.send(bytes); };
   term.attachCustomKeyEventHandler(e => {
     const text = e.type === 'keydown' && editing(e);
@@ -696,6 +656,7 @@ function connectShell() {
   });
   term.onData(data => send(new TextEncoder().encode(data)));
   term.onBinary(data => send(Uint8Array.from(data, c => c.charCodeAt(0))));
+  term.onResize(({cols, rows}) => { if (mine.socket?.readyState === WebSocket.OPEN) mine.socket.send(JSON.stringify({cols, rows})); });
   openShellSocket(mine);
   term.focus();
 }
@@ -736,11 +697,7 @@ function closeShell() {
 // The shell's terminal fills the panel.
 function fitPanel() {
   if (!shell || panel.hidden) return;
-  const {cols, rows} = panelSize();
-  if (shell.size === cols + 'x' + rows) return;
-  shell.size = cols + 'x' + rows;
-  shell.term.resize(cols, rows);
-  if (shell.socket.readyState === WebSocket.OPEN) shell.socket.send(JSON.stringify({cols, rows}));
+  shell.fit.fit();
 }
 new ResizeObserver(fitPanel).observe(panel);
 
@@ -789,7 +746,7 @@ function drag(sash, move, release, start) {
   };
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
-drag($('panel-sash'), e => panel.style.height = Math.max(2 * cell.height + 4, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
+drag($('panel-sash'), e => panel.style.height = Math.max(40, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
 // Dragging the divider sets the lead's width.
 drag(split, e => {
   const rect = center.getBoundingClientRect();

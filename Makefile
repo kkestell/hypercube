@@ -27,12 +27,14 @@ install-service: install
 	BINDIR="$(BINDIR)" SERVICE="$(SERVICE)" PORT="$(PORT)" scripts/install-service
 
 # ui regenerates the browser view's stylesheet from its Tailwind classes and
-# bundles its transcript renderer with its npm dependencies.
+# bundles its transcript renderer and terminal with their npm dependencies.
 ui:
 	cd internal/ui && bun install --frozen-lockfile && \
 		bun x tailwindcss -i style.css -o static/ui.css --minify && \
 		bun build transcript.js --outfile static/transcript.js --format esm --minify \
-			--banner '/*! Includes marked, MIT License, https://github.com/markedjs/marked */'
+			--banner '/*! Includes marked, MIT License, https://github.com/markedjs/marked */' && \
+		bun build terminal.js --outfile static/terminal.js --format esm --minify \
+			--banner '/*! Includes xterm.js, MIT License, https://github.com/xtermjs/xterm.js */'
 
 dev:
 	scripts/dev up
