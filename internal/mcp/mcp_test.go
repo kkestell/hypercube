@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,32 +12,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-func TestToolsFor(t *testing.T) {
-	create := func(list []tool) tool {
-		for _, tl := range list {
-			if tl.Name == "create_agent" {
-				return tl
-			}
-		}
-		return tool{}
-	}
-	profiles := []harness.Profile{{Name: "sol"}, {Name: "haiku"}}
-	git := create(toolsFor(false, profiles)).InputSchema
-	if req := git["required"].([]string); !slices.Equal(req, []string{"name", "profile"}) {
-		t.Errorf("in Git, create_agent requires %q", req)
-	}
-	if enum := git["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]string), []string{"sol", "haiku"}) {
-		t.Errorf("profile enum = %v", enum)
-	}
-	if req := create(toolsFor(true, profiles)).InputSchema["required"].([]string); !slices.Equal(req, []string{"name", "profile", "dir"}) {
-		t.Errorf("outside Git, create_agent requires %q", req)
-	}
-}
 
 // team returns a database holding a workspace, outside Git if noGit is set,
 // with session session-1, whose lead "a" works in leadDir and, if workerDir is
@@ -87,33 +66,132 @@ func agents(t *testing.T, db *store.DB, session string) (list []store.Agent) {
 func post(handler http.Handler, agent, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "http://localhost/mcp", strings.NewReader(body))
 	req.Header.Set(AgentHeader, agent)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
 	res := httptest.NewRecorder()
 	handler.ServeHTTP(res, req)
 	return res
 }
 
-func TestToolsListWorkers(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), "")
-	res := post(Handler(db, rt), "a", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
-	var response struct {
-		Result struct {
-			Tools []tool `json:"tools"`
-		} `json:"result"`
-	}
-	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+// withAgent adds the agent's identity to every request.
+type withAgent string
+
+func (a withAgent) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set(AgentHeader, string(a))
+	return http.DefaultTransport.RoundTrip(r)
+}
+
+// connect returns an SDK client session with the app's /mcp route as the agent.
+func connect(t *testing.T, url, agent string) *mcp.ClientSession {
+	t.Helper()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	s, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint:             url,
+		HTTPClient:           &http.Client{Transport: withAgent(agent)},
+		DisableStandaloneSSE: true,
+	}, nil)
+	if err != nil {
 		t.Fatal(err)
 	}
-	for _, tl := range response.Result.Tools {
-		if tl.Name != "create_agent" {
-			continue
-		}
-		enum := tl.InputSchema["properties"].(map[string]any)["profile"].(map[string]any)["enum"].([]any)
-		if len(enum) != 1 || enum[0] != "sol" {
-			t.Fatalf("worker profile enum = %v", enum)
-		}
-		return
+	t.Cleanup(func() { s.Close() })
+	return s
+}
+
+// callTool runs a tool and returns its text and whether it failed.
+func callTool(t *testing.T, s *mcp.ClientSession, name string, args map[string]any) (string, bool) {
+	t.Helper()
+	res, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("create_agent missing")
+	return res.Content[0].(*mcp.TextContent).Text, res.IsError
+}
+
+func tools(t *testing.T, s *mcp.ClientSession) map[string]*mcp.Tool {
+	t.Helper()
+	res, err := s.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byName := map[string]*mcp.Tool{}
+	for _, tl := range res.Tools {
+		byName[tl.Name] = tl
+	}
+	return byName
+}
+
+// schemaOf returns a tool's input schema as decoded JSON.
+func schemaOf(t *testing.T, tl *mcp.Tool) map[string]any {
+	t.Helper()
+	b, err := json.Marshal(tl.InputSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(b, &schema); err != nil {
+		t.Fatal(err)
+	}
+	return schema
+}
+
+func TestTools(t *testing.T) {
+	for _, noGit := range []bool{false, true} {
+		db, rt := team(t, noGit, t.TempDir(), "")
+		server := httptest.NewServer(Handler(db, rt))
+		list := tools(t, connect(t, server.URL, "a"))
+		server.Close()
+		for _, name := range []string{"send_message", "list_agents", "set_status", "create_agent", "remove_agent"} {
+			if list[name] == nil {
+				t.Errorf("noGit=%v: %s missing", noGit, name)
+			}
+		}
+		create := schemaOf(t, list["create_agent"])
+		want := []any{"name", "profile"}
+		if noGit {
+			want = append(want, "dir")
+		}
+		if got := create["required"]; !slices.Equal(got.([]any), want) {
+			t.Errorf("noGit=%v: create_agent requires %v", noGit, got)
+		}
+		// Only worker profiles are offered.
+		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"sol"}) {
+			t.Errorf("noGit=%v: profile enum = %v", noGit, enum)
+		}
+	}
+}
+
+func TestProtocol(t *testing.T) {
+	db, rt := team(t, false, t.TempDir(), "")
+	server := httptest.NewServer(Handler(db, rt))
+	defer server.Close()
+	s := connect(t, server.URL, "a")
+	if v := s.InitializeResult().ProtocolVersion; v == "" || v == "unknown" {
+		t.Errorf("negotiated protocol version %q", v)
+	}
+	if name := s.InitializeResult().ServerInfo.Name; name != "hypercube" {
+		t.Errorf("server name %q", name)
+	}
+	// A client asking for an unsupported version gets a supported one.
+	res := post(Handler(db, rt), "a", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
+	if !strings.Contains(res.Body.String(), `"id":7`) || strings.Contains(res.Body.String(), "1999-01-01") {
+		t.Errorf("initialize = %s", res.Body)
+	}
+	// Unknown methods are refused, not answered with an empty success.
+	res = post(Handler(db, rt), "a", `{"jsonrpc":"2.0","id":8,"method":"no/such"}`)
+	if res.Code != http.StatusBadRequest {
+		t.Errorf("unknown method = %d %s", res.Code, res.Body)
+	}
+	if _, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: "no_such_tool"}); err == nil {
+		t.Error("an unknown tool succeeded")
+	}
+	// Tool failures are results marked as errors.
+	if text, failed := callTool(t, s, "set_status", map[string]any{"text": 5}); !failed {
+		t.Errorf("a number for a string argument = %q", text)
+	}
+	if text, failed := callTool(t, s, "set_status", map[string]any{"text": "Planning."}); !failed || !strings.Contains(text, "only workers") {
+		t.Errorf("the lead set a status: %q %v", text, failed)
+	}
 }
 
 func TestHandlerChecksTheAgent(t *testing.T) {
@@ -123,16 +201,6 @@ func TestHandlerChecksTheAgent(t *testing.T) {
 		if res := post(handler, agent, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); res.Code != http.StatusForbidden {
 			t.Errorf("agent %q: status %d", agent, res.Code)
 		}
-	}
-	if res := post(handler, "a", `{`); res.Code != http.StatusBadRequest {
-		t.Errorf("bad JSON: status %d", res.Code)
-	}
-	if res := post(handler, "a", `{"jsonrpc":"2.0","method":"notifications/initialized"}`); res.Code != http.StatusNoContent {
-		t.Errorf("notification: status %d", res.Code)
-	}
-	res := post(handler, "a", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
-	if !strings.Contains(res.Body.String(), `"protocolVersion":"2025-06-18"`) || !strings.Contains(res.Body.String(), `"id":7`) {
-		t.Errorf("initialize = %s", res.Body)
 	}
 }
 
@@ -150,10 +218,10 @@ func TestBridge(t *testing.T) {
 		t.Helper()
 		t.Setenv("HYPERCUBE_AGENT_ID", agent)
 		t.Setenv("HYPERCUBE_URL", url)
-		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"v"}}
-not json
+		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
 {"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"set_status","arguments":{"text":"Reading"}}}
+{"jsonrpc":"2.0","id":3,"method":"no/such"}
 `
 		var out bytes.Buffer
 		if err := Bridge(strings.NewReader(in), &out); err != nil {
@@ -170,18 +238,21 @@ not json
 		return answers
 	}
 	answers := run("b", server.URL)
-	if len(answers) != 2 || answers[0]["id"] != 1.0 || answers[1]["id"] != 2.0 || answers[1]["result"].(map[string]any)["isError"] != false {
+	if len(answers) != 3 || answers[0]["id"] != 1.0 || answers[1]["id"] != 2.0 || answers[1]["result"].(map[string]any)["isError"] == true || answers[2]["id"] != 3.0 || answers[2]["error"] == nil {
 		t.Fatalf("answers = %v", answers)
 	}
 	if a := agents(t, db, "session-1")[1]; a.Status != "Reading" {
 		t.Errorf("the tool did not run for the agent: %+v", a)
 	}
-	if len(origins) != 2 || origins[0] != server.URL {
-		t.Errorf("origins = %v", origins)
+	for _, o := range origins {
+		if o != server.URL {
+			t.Errorf("origins = %v", origins)
+			break
+		}
 	}
 	// A refused or unreachable app answers each request with an error.
 	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "no app": run("b", "http://127.0.0.1:1")} {
-		if len(got) != 2 || got[0]["error"] == nil || got[0]["id"] != 1.0 {
+		if len(got) != 3 || got[0]["error"] == nil || got[0]["id"] != 1.0 || got[1]["error"] == nil {
 			t.Errorf("%s: answers = %v", name, got)
 		}
 	}
@@ -195,7 +266,7 @@ not json
 // adding no agent.
 func TestCreateAgentRefusals(t *testing.T) {
 	db, rt := team(t, true, t.TempDir(), "")
-	for _, args := range []map[string]string{{"name": "w1", "profile": "sol"}, {"name": "w1", "profile": "sol", "dir": "missing"}, {"name": "w1", "dir": "."}, {"name": "w1", "profile": "nope", "dir": "."}, {"name": "w1", "profile": "opus", "dir": "."}, {"name": "w1", "profile": "sol", "dir": "."}} {
+	for _, args := range []createAgentArgs{{Name: "w1", Profile: "sol"}, {Name: "w1", Profile: "sol", Dir: "missing"}, {Name: "w1", Dir: "."}, {Name: "w1", Profile: "nope", Dir: "."}, {Name: "w1", Profile: "opus", Dir: "."}, {Name: "w1", Profile: "sol", Dir: "."}} {
 		if _, err := createAgent(rt, "a", args); err == nil {
 			t.Errorf("createAgent(%v) succeeded", args)
 		}
@@ -256,26 +327,26 @@ func TestSessionBoundaries(t *testing.T) {
 		}
 		return nil
 	})
-	if listed, _ := call(db, rt, "a", "list_agents", nil); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") || strings.Contains(listed, "far/") {
+	if listed, _ := listAgents(db, "a"); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") || strings.Contains(listed, "far/") {
 		t.Fatal("lead's list_agents", listed)
 	}
-	if listed, _ := call(db, rt, "b", "list_agents", nil); strings.Contains(listed, "other/") {
+	if listed, _ := listAgents(db, "b"); strings.Contains(listed, "other/") {
 		t.Fatal("worker's list_agents", listed)
 	}
 }
 
 func TestSetStatus(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), t.TempDir())
-	if _, err := call(db, rt, "b", "set_status", map[string]string{"text": "  Reading\nthe card view. "}); err != nil {
+	db, _ := team(t, false, t.TempDir(), t.TempDir())
+	if _, err := setStatus(db, "b", "  Reading\nthe card view. "); err != nil {
 		t.Fatal(err)
 	}
 	if a := agents(t, db, "session-1")[1]; a.Status != "Reading the card view." || a.StatusAt == 0 {
 		t.Errorf("worker = %+v", a)
 	}
-	if _, err := call(db, rt, "a", "set_status", map[string]string{"text": "Planning."}); err == nil {
+	if _, err := setStatus(db, "a", "Planning."); err == nil {
 		t.Error("the lead set a status")
 	}
-	if _, err := call(db, rt, "b", "set_status", map[string]string{"text": " "}); err == nil {
+	if _, err := setStatus(db, "b", " "); err == nil {
 		t.Error("an empty status was accepted")
 	}
 }

@@ -5,8 +5,7 @@
 package mcp
 
 import (
-	"bufio"
-	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,178 +16,190 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-type request struct {
-	ID     json.RawMessage `json:"id,omitempty"`
-	Method string          `json:"method"`
-	Params json.RawMessage `json:"params"`
-}
-
-type tool struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	InputSchema map[string]any `json:"inputSchema"`
-}
-
-func schema(required []string, props ...string) map[string]any {
-	p := map[string]any{}
-	for _, name := range props {
-		p[name] = map[string]any{"type": "string"}
-	}
-	return map[string]any{"type": "object", "properties": p, "required": required}
-}
 
 const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the lead's directory, the worker works directly in it"
 
 const profileArg = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts."
 
-// toolsFor returns the tools for the workspace's mode and the configured
-// profiles. Outside Git, workers cannot have worktrees, so create_agent
-// requires dir.
-func toolsFor(noGit bool, profiles []harness.Profile) []tool {
-	description := "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
-	required := []string{"name", "profile"}
-	if noGit {
-		description = "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg
-		required = append(required, "dir")
-	}
-	create := tool{"create_agent", description, schema(required, "name", "profile", "dir", "message")}
-	remove := tool{"remove_agent", "Lead only. End a worker and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"name"}, "name")}
-	if noGit {
-		remove.Description = "Lead only. End a worker and remove it from the team. Its directory is left as it is."
-	}
-	if len(profiles) > 0 {
-		var names []string
-		for _, p := range profiles {
-			names = append(names, p.Name)
+type sendMessageArgs struct {
+	To   string `json:"to"`
+	Text string `json:"text"`
+}
+
+type setStatusArgs struct {
+	Text string `json:"text"`
+}
+
+type createAgentArgs struct {
+	Name    string `json:"name"`
+	Profile string `json:"profile"`
+	Dir     string `json:"dir,omitempty"`
+	Message string `json:"message,omitempty"`
+}
+
+type removeAgentArgs struct {
+	Name string `json:"name"`
+}
+
+// result wraps a tool's text; an error becomes an error result the model sees.
+func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
+	return func(_ context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
+		text, err := run(in)
+		if err != nil {
+			return nil, nil, err
 		}
-		create.InputSchema["properties"].(map[string]any)["profile"] = map[string]any{"type": "string", "enum": names}
-	}
-	return []tool{
-		{"send_message", "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.", schema([]string{"to", "text"}, "to", "text")},
-		{"list_agents", "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, session title, role, harness, activity, directory, and branch.", schema([]string{})},
-		{"set_status", "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.", schema([]string{"text"}, "text")},
-		create,
-		remove,
+		return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
 	}
 }
 
-// AgentHeader names the agent a forwarded request comes from.
+// newServer returns the server for one agent. Outside Git, workers cannot
+// have worktrees, so create_agent requires dir. Profiles restrict profile to
+// the configured worker profiles.
+func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
+	// An unreadable database or configuration fails the tool calls that need
+	// it, so it needs no separate error here.
+	w, _ := workspaceOf(db, self)
+	cfg, _ := harness.LoadConfig()
+	profiles := cfg.Workers()
+
+	createSchema, err := jsonschema.For[createAgentArgs](nil)
+	if err != nil {
+		panic(err)
+	}
+	createDescription := "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
+	removeDescription := "Lead only. End a worker and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is."
+	if w.NoGit {
+		createDescription = "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg
+		removeDescription = "Lead only. End a worker and remove it from the team. Its directory is left as it is."
+		createSchema.Required = append(createSchema.Required, "dir")
+	}
+	if len(profiles) > 0 {
+		for _, p := range profiles {
+			createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
+		}
+	}
+
+	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "send_message",
+		Description: "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.",
+	}, result(func(a sendMessageArgs) (string, error) { return sendMessage(db, rt, self, a.To, a.Text) }))
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_agents",
+		Description: "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, session title, role, harness, activity, directory, and branch.",
+	}, result(func(struct{}) (string, error) { return listAgents(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "set_status",
+		Description: "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.",
+	}, result(func(a setStatusArgs) (string, error) { return setStatus(db, self, a.Text) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "create_agent", Description: createDescription, InputSchema: createSchema},
+		result(func(a createAgentArgs) (string, error) { return createAgent(rt, self, a) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "remove_agent", Description: removeDescription},
+		result(func(a removeAgentArgs) (string, error) { return removeAgent(rt, self, a.Name) }))
+	return server
+}
+
+// AgentHeader names the agent a request comes from.
 const AgentHeader = "X-Hypercube-Agent"
 
 // Bridge answers MCP requests on stdin until it closes, by forwarding each to
 // the app. HYPERCUBE_URL is the app's address and HYPERCUBE_AGENT_ID the agent.
+// The SDK has no stdio-to-HTTP forwarder, so Bridge moves messages between the
+// SDK's stdio and streamable HTTP transports itself, one request at a time.
 func Bridge(stdin io.Reader, stdout io.Writer) error {
 	id, base := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_URL")
 	if id == "" || base == "" {
 		return errors.New("HYPERCUBE_AGENT_ID and HYPERCUBE_URL must be set")
 	}
-	out := json.NewEncoder(stdout)
-	scanner := bufio.NewScanner(stdin)
-	scanner.Buffer(make([]byte, 1<<20), 64<<20)
-	for scanner.Scan() {
-		var req request
-		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil || req.ID == nil {
-			continue
-		}
-		answer, err := forward(base, id, scanner.Bytes())
+	ctx := context.Background()
+	agent, err := (&mcp.StreamableClientTransport{
+		Endpoint:             base + "/mcp",
+		HTTPClient:           &http.Client{Transport: identity{id, base}},
+		DisableStandaloneSSE: true,
+	}).Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer agent.Close()
+	stdio, err := (&mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopCloser{stdout}}).Connect(ctx)
+	if err != nil {
+		return err
+	}
+	defer stdio.Close()
+	for {
+		msg, err := stdio.Read(ctx)
 		if err != nil {
-			answer, _ = json.Marshal(map[string]any{"jsonrpc": "2.0", "id": req.ID,
-				"error": map[string]any{"code": -32603, "message": err.Error()}})
-		}
-		if err := out.Encode(json.RawMessage(answer)); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
 			return err
 		}
+		req, isRequest := msg.(*jsonrpc.Request)
+		if err := agent.Write(ctx, msg); err != nil {
+			if !isRequest || !req.IsCall() {
+				continue
+			}
+			failure := &jsonrpc.Response{ID: req.ID, Error: &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}}
+			if err := stdio.Write(ctx, failure); err != nil {
+				return err
+			}
+			continue
+		}
+		if !isRequest || !req.IsCall() {
+			continue
+		}
+		for {
+			answer, err := agent.Read(ctx)
+			if err != nil {
+				return err
+			}
+			if err := stdio.Write(ctx, answer); err != nil {
+				return err
+			}
+			if r, ok := answer.(*jsonrpc.Response); ok && r.ID == req.ID {
+				break
+			}
+		}
 	}
-	return scanner.Err()
 }
 
-// forward posts one request to the app. The app accepts only requests whose
-// Origin is its own address.
-func forward(base, id string, body []byte) ([]byte, error) {
-	req, err := http.NewRequest("POST", base+"/mcp", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set(AgentHeader, id)
-	req.Header.Set("Origin", base)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("Hypercube is not reachable: %w", err)
-	}
-	defer res.Body.Close()
-	answer, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Hypercube refused the request: %s", strings.TrimSpace(string(answer)))
-	}
-	return answer, nil
+// identity adds the agent and origin that the app's /mcp route requires. The
+// app accepts only requests whose Origin is its own address.
+type identity struct{ agent, origin string }
+
+func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set(AgentHeader, i.agent)
+	r.Header.Set("Origin", i.origin)
+	return http.DefaultTransport.RoundTrip(r)
 }
 
-// Handler is the app's /mcp route: it runs one forwarded request for the agent
-// named in AgentHeader and answers with the JSON-RPC response.
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
+
+// Handler is the app's /mcp route: it serves the tools to the agent named in
+// AgentHeader. Each request is answered on its own, so the tools follow the
+// current workspace and configuration.
 func Handler(db *store.DB, rt *session.Runtime) http.Handler {
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return newServer(db, rt, r.Header.Get(AgentHeader))
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get(AgentHeader)
-		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Agent(id); return err }); err != nil {
+		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Agent(r.Header.Get(AgentHeader)); return err }); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
-		var req request
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<20)).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if req.ID == nil {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req.ID, "result": handle(db, rt, id, req)})
+		mcpHandler.ServeHTTP(w, r)
 	})
-}
-
-func handle(db *store.DB, rt *session.Runtime, id string, req request) any {
-	switch req.Method {
-	case "initialize":
-		var p struct {
-			ProtocolVersion string `json:"protocolVersion"`
-		}
-		json.Unmarshal(req.Params, &p)
-		return map[string]any{
-			"protocolVersion": p.ProtocolVersion,
-			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "hypercube", "version": "0.1.0"},
-		}
-	case "tools/list":
-		// An unreadable database or configuration fails the tool calls that
-		// need it, so it needs no separate error here.
-		w, _ := workspaceOf(db, id)
-		cfg, _ := harness.LoadConfig()
-		return map[string]any{"tools": toolsFor(w.NoGit, cfg.Workers())}
-	case "tools/call":
-		var p struct {
-			Name      string            `json:"name"`
-			Arguments map[string]string `json:"arguments"`
-		}
-		err := json.Unmarshal(req.Params, &p)
-		var text string
-		if err == nil {
-			text, err = call(db, rt, id, p.Name, p.Arguments)
-		}
-		if err != nil {
-			text = err.Error()
-		}
-		return map[string]any{"content": []any{map[string]any{"type": "text", "text": text}}, "isError": err != nil}
-	}
-	return map[string]any{}
 }
 
 func workspaceOf(db *store.DB, id string) (store.Workspace, error) {
@@ -206,22 +217,6 @@ func workspaceOf(db *store.DB, id string) (store.Workspace, error) {
 		return err
 	})
 	return w, err
-}
-
-func call(db *store.DB, rt *session.Runtime, self, name string, args map[string]string) (string, error) {
-	switch name {
-	case "send_message":
-		return sendMessage(db, rt, self, args["to"], args["text"])
-	case "list_agents":
-		return listAgents(db, self)
-	case "set_status":
-		return setStatus(db, self, args["text"])
-	case "create_agent":
-		return createAgent(rt, self, args)
-	case "remove_agent":
-		return removeAgent(rt, self, args["name"])
-	}
-	return "", fmt.Errorf("unknown tool %q", name)
 }
 
 // listAgents lists the caller's session and, for a lead, the other leads in
@@ -270,7 +265,6 @@ func listAgents(db *store.DB, self string) (string, error) {
 }
 
 func sendMessage(db *store.DB, rt *session.Runtime, self, to, text string) (string, error) {
-	// A misnamed argument arrives as empty text; failing lets the model retry.
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("text is required")
 	}
@@ -338,8 +332,8 @@ func setStatus(db *store.DB, self, text string) (string, error) {
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-func createAgent(rt *session.Runtime, self string, args map[string]string) (string, error) {
-	name := args["name"]
+func createAgent(rt *session.Runtime, self string, args createAgentArgs) (string, error) {
+	name := args.Name
 	if !validName.MatchString(name) {
 		return "", errors.New("name must be lowercase letters, digits, and hyphens")
 	}
@@ -347,11 +341,11 @@ func createAgent(rt *session.Runtime, self string, args map[string]string) (stri
 	if err != nil {
 		return "", err
 	}
-	profile, err := cfg.Worker(args["profile"])
+	profile, err := cfg.Worker(args.Profile)
 	if err != nil {
 		return "", err
 	}
-	a, err := rt.AddWorker(self, name, profile, args["dir"], args["message"])
+	a, err := rt.AddWorker(self, name, profile, args.Dir, args.Message)
 	if err != nil {
 		return "", err
 	}
@@ -362,7 +356,6 @@ func createAgent(rt *session.Runtime, self string, args map[string]string) (stri
 }
 
 func removeAgent(rt *session.Runtime, self, name string) (string, error) {
-	// A misnamed argument arrives as an empty name; failing lets the model retry.
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("name is required")
 	}
