@@ -77,6 +77,11 @@ func AddPane(session, dir string, env map[string]string, argv []string) (string,
 	return pane, nil
 }
 
+// style is the browser view's terminal colors. tmux answers a program's
+// queries for the terminal's colors (OSC 10 and 11) from it, since no real
+// terminal is attached; Codex picks its colors from those answers.
+const style = "fg=#ffffff,bg=#1e1e1e"
+
 // start marks and configures a placeholder pane, so even an immediate launch
 // failure remains visible, then replaces its sleep with the agent.
 func start(pane, dir string, env map[string]string, argv []string) error {
@@ -89,6 +94,7 @@ func start(pane, dir string, env map[string]string, argv []string) error {
 		"set-option", "-w", "-t", pane, "remain-on-exit", "on", ";",
 		"set-option", "-w", "-t", pane, "extended-keys", "always", ";",
 		"set-option", "-w", "-t", pane, "main-pane-width", "40%", ";",
+		"set-option", "-w", "-t", pane, "window-style", style, ";",
 		"set-hook", "-w", "-t", pane, "pane-died", died, ";",
 		"select-layout", "-t", pane, "main-vertical")
 	if err != nil {
