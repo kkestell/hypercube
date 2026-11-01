@@ -5,34 +5,9 @@ package plugin
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 )
-
-// ErrUnsupported is what a plugin's `serve` answers until the plugin speaks the
-// serve protocol.
-var ErrUnsupported = errors.New("unsupported harness: this plugin does not serve yet")
-
-// Response is the context Hypercube returns for a report.
-type Response struct {
-	Context string `json:"context"`
-}
-
-// Report runs `hypercube report` for event with body and decodes the answer
-// into r.
-func Report(hypercube, event string, body any, r *Response) error {
-	cmd := exec.Command(hypercube, "report", event)
-	cmd.Stdin, cmd.Stderr = strings.NewReader(JSONString(body)), os.Stderr
-	out, err := cmd.Output()
-	if err != nil {
-		return fmt.Errorf("hypercube report %s: %w", event, err)
-	}
-	return json.Unmarshal(bytes.TrimSpace(out), r)
-}
 
 // JSONString marshals v as compact JSON.
 func JSONString(v any) string {
@@ -42,9 +17,6 @@ func JSONString(v any) string {
 	}
 	return string(b)
 }
-
-// ShellQuote quotes s for the POSIX shell.
-func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
 // WriteFile writes text to name in dir and returns the file's path. Running
 // harness processes may be reading the file, so it is replaced only when it

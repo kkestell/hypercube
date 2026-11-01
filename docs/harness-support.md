@@ -144,6 +144,28 @@ instructions on every launch, and a saved conversation resumes with
 
 ## Pi
 
-Pi 1.4 or later is required. A conversation resumes by its Pi session ID. Pi
-has no approvals. The model is `provider/id`, and effort is Pi's thinking
-level.
+Pi 1.4 or later is required. The plugin keeps one `pi --mode rpc` process
+running per agent and speaks its JSON Lines protocol to it. A small extension
+loaded with the process registers the `hypercube mcp` server, and the runtime
+instructions are appended to Pi's system prompt on every launch.
+
+The model is a `provider/id` from `pi --list-models`, and effort is Pi's
+thinking level. Pi replaces a partial model ID with another model; a launch
+whose model Pi did not select fails and names both. Pi saves a conversation from
+its first message, and a saved conversation resumes by its Pi session ID. A
+conversation without a saved Pi session fails the launch.
+
+- **Text and tools.** Text and reasoning stream into the transcript as Pi writes
+  them. Tool calls appear with their output.
+- **Dialogs.** An extension's select, confirm, input, and editor dialogs become
+  attention requests: a select's options are the choices, a confirm offers Yes
+  and No, and input and editor take text. A dialog that Pi gives up on after its
+  timeout ends. An extension's error notification appears as an error.
+- **Messages and interrupts.** A message sent during a run steers it, and Pi
+  reads it after the current step's tool calls, before its next model request; a
+  message sent when Pi is idle starts a run. Interrupt gives up open dialogs and
+  aborts the run, and the stopped run stays in the transcript.
+- **State and usage.** The agent is working from the start of a run until Pi
+  settles, with no retry, compaction, or queued message left. Context is the
+  tokens of the latest request, the context window comes from the model, and
+  cost is the session's total, including its cost before a resume.

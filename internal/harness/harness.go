@@ -23,23 +23,6 @@ import (
 	"time"
 )
 
-// LaunchInput is what `<plugin> launch` reads on stdin.
-type LaunchInput struct {
-	// Hypercube is the executable the harness runs for `mcp`.
-	Hypercube string `json:"hypercube"`
-	// Env is the environment for Hypercube processes the harness starts.
-	Env    map[string]string `json:"env"`
-	Agent  string            `json:"agent"`
-	Role   string            `json:"role"`
-	Model  string            `json:"model"`
-	Effort string            `json:"effort"`
-	// Conversation is the harness's saved conversation to resume, if any.
-	Conversation string `json:"conversation"`
-	Prompt       string `json:"prompt"`
-	// StateDir is Hypercube's state directory, where a plugin may keep files.
-	StateDir string `json:"state_dir"`
-}
-
 // Find returns the path of the harness's plugin in dir, or beside the running
 // executable when dir is empty.
 func Find(dir, name string) (string, error) {
@@ -247,9 +230,6 @@ func (c *Client) Kill() {
 func (c *Client) killGroup() {
 	_ = syscall.Kill(-c.cmd.Process.Pid, syscall.SIGKILL)
 }
-
-// Done is closed after the plugin has ended and its last event was delivered.
-func (c *Client) Done() <-chan struct{} { return c.done }
 
 // tailBuffer keeps the end of the plugin's diagnostics for error messages.
 type tailBuffer struct {

@@ -104,11 +104,6 @@ func (p *acp) serve(r io.Reader) {
 	}
 }
 
-// send writes a line to the agent, as opencode would.
-func (p *acp) send(line string) {
-	_, _ = io.WriteString(p.out, line+"\n")
-}
-
 // sent returns what the agent has written so far with the given method.
 func (p *acp) sent(method string) []map[string]any {
 	p.mu.Lock()
