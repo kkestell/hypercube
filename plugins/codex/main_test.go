@@ -53,6 +53,11 @@ func TestLaunch(t *testing.T) {
 	if mcp := config(argv, "mcp_servers.hypercube="); !strings.Contains(mcp, `command="/bin/hc",args=["mcp"],env={"HYPERCUBE_AGENT_ID"="a"}`) {
 		t.Error(mcp)
 	}
+	wd, _ := os.Getwd()
+	wd, _ = filepath.EvalSymlinks(wd)
+	if got := config(argv, "projects="); got != `projects={"`+wd+`"={trust_level="trusted"}}` {
+		t.Error(got)
+	}
 	hooks := config(argv, "hooks=")
 	for _, want := range []string{`'hook' '/bin/hc' 'SessionStart'"`, `"/<session-flags>/config.toml:stop:0:0"={trusted_hash="sha256:`} {
 		if !strings.Contains(hooks, want) {

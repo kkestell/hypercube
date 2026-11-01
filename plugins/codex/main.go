@@ -90,12 +90,23 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 			inherited = append(inherited, jsonString(k))
 		}
 	}
+	// Codex asks whether to trust a folder it has not seen. The agent works in
+	// the launch directory, which Codex names by its resolved path. Codex
+	// splits a dotted key on every dot, so the path goes in an inline table.
+	wd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	if wd, err = filepath.EvalSymlinks(wd); err != nil {
+		return err
+	}
 	argv := []string{self, "run", in.Hypercube, "codex"}
 	if in.Conversation != "" {
 		argv = append(argv, "resume")
 	}
 	argv = append(argv, "--model", in.Model, "-c", "model_reasoning_effort="+jsonString(in.Effort),
 		"--approve-for-me", "-c", "sandbox_workspace_write.network_access=true",
+		"-c", fmt.Sprintf("projects={%s={trust_level=\"trusted\"}}", jsonString(wd)),
 		"-c", fmt.Sprintf("mcp_servers.hypercube={command=%s,args=[\"mcp\"],env={%s},env_vars=[%s],default_tools_approval_mode=\"approve\"}", jsonString(in.Hypercube), strings.Join(env, ","), strings.Join(inherited, ",")),
 		"-c", fmt.Sprintf("hooks={%s,state={%s}}", strings.Join(hooks, ","), strings.Join(trust, ",")))
 	// The sandbox keeps Git metadata read-only unless it is a writable root
