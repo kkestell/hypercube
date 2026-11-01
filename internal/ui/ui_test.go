@@ -259,8 +259,7 @@ func TestActions(t *testing.T) {
 	}
 	post("/session?action=rm&id=s", http.StatusBadRequest)
 	post("/agent?action=rm&id=a", http.StatusBadRequest)
-	post("/agent?action=input&id=a", http.StatusConflict)
-	post("/agent?action=input&id=missing", http.StatusConflict)
+	post("/agent?action=input&id=a", http.StatusBadRequest)
 	post("/agent?action=interrupt&id=a", http.StatusConflict)
 	post("/agent?action=answer&id=a&request=q&choice=yes", http.StatusConflict)
 	post("/workspace?action=rm", http.StatusBadRequest)
@@ -435,6 +434,29 @@ func (p *page) find(agent string, match func(harness.Item) bool) (harness.Item, 
 	return harness.Item{}, false
 }
 
+// input posts the user's text to the lead as an input action.
+func (a *app) input(text string, want int) {
+	a.t.Helper()
+	body, _ := json.Marshal(map[string]any{"text": text})
+	a.post("/agent?action=input&id="+a.lead.ID, string(body), want)
+}
+
+func TestImageInput(t *testing.T) {
+	a := newApp(t)
+	p := a.page()
+	p.send(`{"select":"` + a.session.ID + `"}`)
+	path := "/agent?action=input&id=" + a.lead.ID
+	a.post(path, "not json", http.StatusBadRequest)
+	a.post(path, `{"images":[{"mime_type":"image/png","data":"bm90IGEgcG5n"}]}`, http.StatusConflict)
+	a.post(path, `{"images":[{"mime_type":"image/svg+xml","data":"PHN2Zy8+"}]}`, http.StatusConflict)
+	a.post(path, `{"text":" "}`, http.StatusConflict)
+	a.post(path, `{"images":[{"mime_type":"image/png","data":"iVBORw0KGgo="}]}`, http.StatusOK)
+	p.until("the image prompt", func() bool {
+		it, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser })
+		return ok && len(it.Images) == 1 && it.Images[0].Data == "iVBORw0KGgo="
+	})
+}
+
 func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	a := newApp(t)
 	p := a.page()
@@ -442,7 +464,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	p.send(`{"select":"` + a.session.ID + `"}`)
 	p.until("the first snapshot", func() bool { return p.resets == 1 })
 
-	a.post("/agent?action=input&id="+a.lead.ID, "!stream", http.StatusOK)
+	a.input("!stream", http.StatusOK)
 	// The streamed text replaces itself in place instead of repeating, and the
 	// tool call nests under it.
 	p.until("the streamed turn", func() bool {
@@ -468,7 +490,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 
 	// Selecting nothing stops the transcripts.
 	p.send(`{"select":""}`)
-	a.post("/agent?action=input&id="+a.lead.ID, "again", http.StatusOK)
+	a.input("again", http.StatusOK)
 	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 5 })
 	if len(p.items[a.lead.ID]) != 3 {
 		t.Fatalf("an unselected page received items: %d", len(p.items[a.lead.ID]))
@@ -479,7 +501,7 @@ func TestAnswerAndInterruptRoutes(t *testing.T) {
 	a := newApp(t)
 	p := a.page()
 	p.send(`{"select":"` + a.session.ID + `"}`)
-	a.post("/agent?action=input&id="+a.lead.ID, "!ask", http.StatusOK)
+	a.input("!ask", http.StatusOK)
 	var request harness.Item
 	p.until("the request", func() bool {
 		var ok bool
@@ -498,8 +520,8 @@ func TestAnswerAndInterruptRoutes(t *testing.T) {
 	// A finished request cannot be answered again.
 	a.post("/agent?action=answer&id="+a.lead.ID+"&request="+url.QueryEscape(request.ID)+"&choice=no", "", http.StatusConflict)
 
-	a.post("/agent?action=input&id="+a.lead.ID, "!work", http.StatusOK)
-	a.post("/agent?action=input&id="+a.lead.ID, "  ", http.StatusConflict)
+	a.input("!work", http.StatusOK)
+	a.input("  ", http.StatusConflict)
 	a.post("/agent?action=interrupt&id="+a.lead.ID, "", http.StatusOK)
 }
 

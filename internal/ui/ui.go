@@ -54,6 +54,9 @@ type server struct {
 // streamed text becomes one update.
 const coalesce = 50 * time.Millisecond
 
+// maxInput is the largest input body: 10 MiB of images in base64, and text.
+const maxInput = 16 << 20
+
 // Handler serves the page, its data socket, its actions, and the agents' tools.
 // It watches the database until ctx ends.
 func Handler(ctx context.Context, db *store.DB, rt *session.Runtime) http.Handler {
@@ -365,19 +368,31 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 }
 
 // agentAction sends the user's input to an agent, interrupts its turn, or
-// answers one of its attention requests. The body holds the text of an input,
-// or of an answer's typed reply.
+// answers one of its attention requests. An input's body is JSON with its text
+// and images; an answer's body is its typed reply.
 func (s *server) agentAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+	limit := int64(4 << 20)
+	if q.Get("action") == "input" {
+		limit = maxInput
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 		return
 	}
 	switch q.Get("action") {
 	case "input":
-		err = s.rt.Input(id, string(body))
+		var in struct {
+			Text   string          `json:"text"`
+			Images []harness.Image `json:"images"`
+		}
+		if err := json.Unmarshal(body, &in); err != nil {
+			http.Error(w, "malformed input: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+		err = s.rt.Input(id, in.Text, in.Images...)
 	case "interrupt":
 		err = s.rt.Interrupt(id)
 	case "answer":
