@@ -30,8 +30,8 @@ Use worker worktrees for independent edits.
 The sidebar lists every workspace's sessions under a row for the workspace;
 click the row to collapse or expand them. Click `+` at the top of the sidebar
 to choose a folder and add it as a workspace. Hover over a workspace's row and
-click `+` to list its lead profiles, each with its harness, model, effort, and
-description; choose one to create a session with it.
+click `+` to list its lead profiles with their descriptions; choose one to
+create a session with it.
 Right-click a workspace to delete it.
 
 Click a session to show it, and double-click it to change its title.

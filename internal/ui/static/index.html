@@ -449,9 +449,10 @@ function summary(a) {
         <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-sky-400"
           stroke-dasharray="${circumference}" stroke-dashoffset="${(circumference * (1 - Math.min(1, context / window))).toFixed(2)}"/>
       </svg>` : '';
-  const usage = [window ? `${tokens(context)} / ${tokens(window)}` : '', cost ? (cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`) : ''].filter(Boolean).join(' · ');
-  const footer = usage || a.status ? `<footer class="flex items-center gap-2 text-neutral-500">
-      <span class="flex items-center gap-1.5 whitespace-nowrap">${ring}${usage}</span>
+  const contextUse = window ? `<span class="flex items-center gap-1.5 whitespace-nowrap">${ring}${tokens(context)} / ${tokens(window)}</span>` : '';
+  const spent = cost ? `<span class="whitespace-nowrap">${cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`}</span>` : '';
+  const footer = contextUse || spent || a.status ? `<footer class="flex items-center gap-3 text-neutral-500">
+      ${contextUse}${spent}
       ${a.status ? `<span class="ml-auto shrink-0">${age(a.statusAt)}</span>` : ''}
     </footer>` : '';
   return (a.status ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(a.status)}</p>` : '') + footer;
@@ -679,7 +680,7 @@ function placeMenu(x, y) {
 }
 
 // The lead picker is a menu under the workspace's + button. Each lead shows
-// its harness, model, and effort, and its description. Picking one creates a
+// its name and description. Picking one creates a
 // session with it and selects the session.
 async function pickLead(button) {
   const request = ++menuRequest, workspace = button.dataset.leads;
@@ -689,7 +690,7 @@ async function pickLead(button) {
   const leads = await res.json();
   if (request !== menuRequest) return;
   menu.innerHTML = leads.map(p => `<button type="button" role="menuitem" data-lead="${escape(p.name)}" class="${menuItemClass} max-w-[360px]">
-      <span class="flex items-baseline gap-2"><span>${escape(p.name)}</span><span class="truncate text-[12px] opacity-70">${escape(`${p.harness} · ${p.model} · ${p.effort}`)}</span></span>
+      <span class="block">${escape(p.name)}</span>
       <span class="block truncate text-[12px] opacity-70">${escape(p.description)}</span>
     </button>`).join('');
   menu.onclick = async e => {
