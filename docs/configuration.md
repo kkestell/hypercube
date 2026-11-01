@@ -9,7 +9,7 @@ Create `~/.config/hypercube/config.json`, or
     {
       "name": "opus",
       "role": "lead",
-      "description": "Opus at high effort in Claude Code.",
+      "description": "Opus at high effort in Claude Code",
       "harness": "claude",
       "model": "opus",
       "effort": "high"
@@ -17,7 +17,7 @@ Create `~/.config/hypercube/config.json`, or
     {
       "name": "sol",
       "role": "lead",
-      "description": "GPT Sol at high effort in Codex.",
+      "description": "GPT Sol at high effort in Codex",
       "harness": "codex",
       "model": "gpt-6.1-sol",
       "effort": "high"
@@ -150,8 +150,8 @@ All fields shown are required, including each profile's role. Provide at least
 one `lead` profile and one worker profile, with unique names across all
 profiles. Remove the profiles for harnesses and models you don't use.
 
-The workspace's `+` menu offers the `lead` profiles. The first lead profile
-is used when starting a session without a choice, including a new workspace.
+The workspace's `+` menu lists the `lead` profiles by their descriptions, so a
+lead's description is a short label.
 Profiles with role `plan`, `work`, or `review` are offered to leads for workers;
 the role says which kind of work a profile suits, and the description explains
 when to use it. Existing agents keep their saved settings across restarts.

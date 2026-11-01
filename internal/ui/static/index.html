@@ -679,8 +679,8 @@ function placeMenu(x, y) {
   menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
-// The lead picker is a menu under the workspace's + button. Each lead shows
-// its name and description. Picking one creates a
+// The lead picker is a menu under the workspace's + button, listing each lead
+// by its description. Picking one creates a
 // session with it and selects the session.
 async function pickLead(button) {
   const request = ++menuRequest, workspace = button.dataset.leads;
@@ -689,10 +689,7 @@ async function pickLead(button) {
   if (!res.ok) { alert(await res.text()); return; }
   const leads = await res.json();
   if (request !== menuRequest) return;
-  menu.innerHTML = leads.map(p => `<button type="button" role="menuitem" data-lead="${escape(p.name)}" class="${menuItemClass} max-w-[360px]">
-      <span class="block">${escape(p.name)}</span>
-      <span class="block truncate text-[12px] opacity-70">${escape(p.description)}</span>
-    </button>`).join('');
+  menu.innerHTML = leads.map(p => `<button type="button" role="menuitem" data-lead="${escape(p.name)}" class="${menuItemClass} whitespace-nowrap">${escape(p.description)}</button>`).join('');
   menu.onclick = async e => {
     const item = e.target.closest('[data-lead]');
     if (!item) return;
