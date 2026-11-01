@@ -9,7 +9,7 @@ BINDIR=${BINDIR:-$HOME/.local/bin}
 : "${SERVICE:?SERVICE is required}"
 : "${PORT:?PORT is required}"
 PLIST=$HOME/Library/LaunchAgents/$SERVICE.plist
-LOG=$HOME/Library/Logs/hypercube-ui.log
+LOG=${XDG_STATE_HOME:-$HOME/.local/state}/hypercube/ui.log
 DOMAIN=gui/$(id -u)
 
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"

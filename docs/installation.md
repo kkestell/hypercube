@@ -31,7 +31,7 @@ delivers no queued message until you type a prompt into it. Hypercube keeps its
 data in `~/.local/state/hypercube/hypercube.db`. **Quit
 Hypercube** ends the agents, the panel shells, the icon, and the view until the
 next login; the sessions stay marked running and start again then. Its log is
-`~/Library/Logs/hypercube-ui.log`. Remove the service by unloading it and
+`~/.local/state/hypercube/ui.log`. Remove the service by unloading it and
 deleting its property list:
 
 ```sh
