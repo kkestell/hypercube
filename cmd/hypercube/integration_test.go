@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -346,17 +348,17 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	snapshot := func() []store.ShownWorkspace {
 		t.Helper()
-		res, err := http.Get(base + "/state")
+		conn, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(base, "http")+"/state", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
-		line, err := bufio.NewReader(res.Body).ReadString('\n')
+		defer conn.CloseNow()
+		_, data, err := conn.Read(t.Context())
 		if err != nil {
 			t.Fatal(err)
 		}
 		var list []store.ShownWorkspace
-		if err := json.Unmarshal([]byte(strings.TrimPrefix(strings.TrimSpace(line), "data: ")), &list); err != nil {
+		if err := json.Unmarshal(data, &list); err != nil {
 			t.Fatal(err)
 		}
 		return list
@@ -566,8 +568,8 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if code, _ := post("/session", map[string]string{"action": "bogus", "id": second}); code != http.StatusBadRequest {
 		t.Fatal("an unknown action was accepted")
 	}
-	if res, err := http.Get(base + "/events?session=" + second); err != nil || res.StatusCode != http.StatusConflict {
-		t.Fatalf("events for a stopped session: %v %v", res.Status, err)
+	if _, res, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(base, "http")+"/tmux?session="+second, nil); err == nil || res == nil || res.StatusCode != http.StatusConflict {
+		t.Fatalf("terminals for a stopped session: %v %v", res, err)
 	}
 	queue(otherLead.ID, "queued while stopped")
 	queue(otherWorker.ID, "other queued while stopped")

@@ -1,9 +1,8 @@
 package ui
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/base64"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,8 +14,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
+
 	"github.com/kkestell/hypercube/internal/store"
 )
+
+// dial opens one of the server's sockets with the page's origin.
+func dial(t *testing.T, server *httptest.Server, path string) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+	return websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+path, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {server.URL}},
+	})
+}
 
 // open returns a database in a temporary state directory, with an isolated
 // tmux server.
@@ -106,27 +117,22 @@ func TestStateStreamsSnapshots(t *testing.T) {
 	change(t, db, func(tx *store.Tx) error { return tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"}) })
 	server := httptest.NewServer(Handler(db))
 	defer server.Close()
-	res, err := http.Get(server.URL + "/state")
+	conn, _, err := dial(t, server, "/state")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
-	events := bufio.NewReader(res.Body)
+	defer conn.CloseNow()
 	next := func() []store.ShownWorkspace {
 		t.Helper()
-		for {
-			line, err := events.ReadString('\n')
-			if err != nil {
-				t.Fatal(err)
-			}
-			if data, ok := strings.CutPrefix(strings.TrimSpace(line), "data: "); ok {
-				var list []store.ShownWorkspace
-				if err := json.Unmarshal([]byte(data), &list); err != nil {
-					t.Fatal(err)
-				}
-				return list
-			}
+		_, data, err := conn.Read(t.Context())
+		if err != nil {
+			t.Fatal(err)
 		}
+		var list []store.ShownWorkspace
+		if err := json.Unmarshal(data, &list); err != nil {
+			t.Fatal(err)
+		}
+		return list
 	}
 	if list := next(); len(list) != 1 || list[0].Name != "repo" || len(list[0].Sessions) != 0 {
 		t.Fatalf("first snapshot = %+v", list)
@@ -162,59 +168,36 @@ func TestPageDrivesControlClient(t *testing.T) {
 	// A stopped session, and a tmux session Hypercube did not mark, have no
 	// terminals to attach to.
 	for _, id := range []string{"s2", "missing"} {
-		if res, err := http.Get(server.URL + "/events?session=" + id); err != nil || res.StatusCode != http.StatusConflict {
-			t.Fatalf("events for %s: %v %v", id, res.Status, err)
+		if _, res, err := dial(t, server, "/tmux?session="+id); err == nil || res == nil || res.StatusCode != http.StatusConflict {
+			t.Fatalf("terminals for %s: %v %v", id, res, err)
 		}
 	}
+	// Another page cannot connect to the terminals.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/tmux?session=s1", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {"http://example.com"}},
+	}); err == nil || res == nil || res.StatusCode != http.StatusForbidden {
+		t.Fatalf("foreign origin: %v %v", res, err)
+	}
 
-	res, err := http.Get(server.URL + "/events?session=s1")
+	conn, _, err := dial(t, server, "/tmux?session=s1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
-	events := bufio.NewReader(res.Body)
-	if line, _ := events.ReadString('\n'); line != "event: id\n" {
-		t.Fatalf("first event: %q", line)
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte("display-message -p '#{session_name}'")); err != nil {
+		t.Fatal(err)
 	}
-	data, _ := events.ReadString('\n')
-	id := strings.TrimSpace(strings.TrimPrefix(data, "data: "))
-
-	post := func(origin string) int {
-		req, _ := http.NewRequest("POST", server.URL+"/send?id="+id, strings.NewReader("display-message -p '#{session_name}'"))
-		req.Header.Set("Origin", origin)
-		res, err := http.DefaultClient.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		res.Body.Close()
-		return res.StatusCode
-	}
-	if code := post("http://example.com"); code != http.StatusForbidden {
-		t.Fatalf("foreign origin: %d", code)
-	}
-	if code := post(server.URL); code != http.StatusOK {
-		t.Fatalf("send: %d", code)
-	}
-
 	// The client attached to the session's tmux session and answered.
-	got := make(chan bool)
-	go func() {
-		for {
-			line, err := events.ReadString('\n')
-			if err != nil {
-				return
-			}
-			text, _ := base64.StdEncoding.DecodeString(strings.TrimPrefix(strings.TrimSpace(line), "data: "))
-			if string(text) == "hypercube-s1" {
-				got <- true
-				return
-			}
+	for {
+		_, line, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatal("no reply from the control client:", err)
 		}
-	}()
-	select {
-	case <-got:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no reply from the control client")
+		if string(line) == "hypercube-s1" {
+			break
+		}
 	}
 }
 

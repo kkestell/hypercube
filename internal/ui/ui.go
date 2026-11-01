@@ -1,20 +1,19 @@
-// Package ui serves the browser view. Each page has two connections: a stream
-// of Hypercube's data from the database, and a tmux control-mode client for
-// the selected session's terminals, whose output the server streams to the
-// page and whose commands the page sends through the server.
+// Package ui serves the browser view. Each page has two WebSockets: one
+// carries Hypercube's data from the database, and one connects a tmux
+// control-mode client for the selected session's terminals, carrying its
+// output lines to the page and the page's commands to it. Browsers cap a
+// host's HTTP connections at six; WebSockets are outside that cap, so open
+// pages never stall each other's requests.
 package ui
 
 import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/rand"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -23,6 +22,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/coder/websocket"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -39,18 +39,17 @@ func Icon() []byte {
 }
 
 type server struct {
-	db      *store.DB
-	mu      sync.Mutex
-	clients map[string]io.Writer
+	db *store.DB
+	mu sync.Mutex
 	// snapshot is the latest view data, and changed is closed and replaced
 	// when it changes.
 	snapshot []byte
 	changed  chan struct{}
 }
 
-// Handler serves the page, its data and terminal streams, and its actions.
+// Handler serves the page, its data and terminal sockets, and its actions.
 func Handler(db *store.DB) http.Handler {
-	s := &server{db: db, clients: map[string]io.Writer{}, changed: make(chan struct{})}
+	s := &server{db: db, changed: make(chan struct{})}
 	go func() {
 		if err := db.Watch(context.Background(), s.refresh); err != nil {
 			fmt.Fprintln(os.Stderr, "hypercube: watching the database:", err)
@@ -60,8 +59,7 @@ func Handler(db *store.DB) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(files))
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /events", s.events)
-	mux.HandleFunc("POST /send", s.send)
+	mux.HandleFunc("GET /tmux", terminals)
 	mux.HandleFunc("GET /leads", leads)
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
@@ -87,26 +85,29 @@ func (s *server) refresh() {
 	s.changed = make(chan struct{})
 }
 
-// state streams the view data: the current snapshot on connect, then each
-// new one.
+// state sends the view data: the current snapshot on connect, then each new
+// one.
 func (s *server) state(w http.ResponseWriter, r *http.Request) {
-	flusher := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "text/event-stream")
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.CloseNow()
+	ctx := conn.CloseRead(r.Context())
 	var sent []byte
 	for {
 		s.mu.Lock()
 		data, changed := s.snapshot, s.changed
 		s.mu.Unlock()
 		if data != nil && !bytes.Equal(data, sent) {
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			if flusher.Flush() != nil {
+			if conn.Write(ctx, websocket.MessageText, data) != nil {
 				return
 			}
 			sent = data
 		}
 		select {
 		case <-changed:
-		case <-r.Context().Done():
+		case <-ctx.Done():
 			return
 		}
 	}
@@ -132,7 +133,8 @@ func leads(w http.ResponseWriter, r *http.Request) {
 }
 
 // localOnly refuses other hosts' names, so a rebound DNS name cannot reach the
-// server, and other origins' commands, so another page cannot type into a pane.
+// server, and other origins' actions. websocket.Accept refuses other origins'
+// sockets, so another page cannot type into a pane.
 func localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)
@@ -148,77 +150,64 @@ func localOnly(next http.Handler) http.Handler {
 	})
 }
 
-// events attaches a control-mode client to the session's tmux session and
-// streams its output lines. Lines are base64 encoded because pane output can
-// split a UTF-8 sequence. The first event names the client for send.
-func (s *server) events(w http.ResponseWriter, r *http.Request) {
+// terminals connects a control-mode client attached to the session's tmux
+// session. Each binary message to the page is one of the client's output
+// lines; each message from the page is one or more commands, one per line.
+func terminals(w http.ResponseWriter, r *http.Request) {
 	session := r.URL.Query().Get("session")
 	if session == "" || !tmux.Running(session) {
 		http.Error(w, "the session is not running", http.StatusConflict)
 		return
 	}
-	cmd := exec.CommandContext(r.Context(), "tmux", "-C", "attach-session", "-t", "="+tmux.Name(session))
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.CloseNow()
+	// A paste arrives as one command.
+	conn.SetReadLimit(16 << 20)
+	// Closing either end stops the other: the socket's end cancels the
+	// context, which kills tmux.
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "tmux", "-C", "attach-session", "-t", "="+tmux.Name(session))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	if err := cmd.Start(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	id := rand.Text()
-	s.mu.Lock()
-	s.clients[id] = stdin
-	s.mu.Unlock()
 	defer func() {
-		s.mu.Lock()
-		delete(s.clients, id)
-		s.mu.Unlock()
-		_ = stdin.Close()
+		cancel()
 		_ = cmd.Wait()
 	}()
 
-	flusher := http.NewResponseController(w)
-	w.Header().Set("Content-Type", "text/event-stream")
-	fmt.Fprintf(w, "event: id\ndata: %s\n\n", id)
-	if flusher.Flush() != nil {
-		return
-	}
+	go func() {
+		defer cancel()
+		for {
+			_, commands, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+			if _, err := stdin.Write(append(bytes.TrimSuffix(commands, []byte("\n")), '\n')); err != nil {
+				return
+			}
+		}
+	}()
 	lines := bufio.NewReader(stdout)
 	for {
 		line, err := lines.ReadBytes('\n')
 		if err != nil {
 			return
 		}
-		fmt.Fprintf(w, "data: %s\n\n", base64.StdEncoding.EncodeToString(bytes.TrimSuffix(line, []byte("\n"))))
-		if lines.Buffered() == 0 && flusher.Flush() != nil {
+		if conn.Write(ctx, websocket.MessageBinary, bytes.TrimSuffix(line, []byte("\n"))) != nil {
 			return
 		}
-	}
-}
-
-// send writes the body's tmux commands, one per line, to the named client.
-func (s *server) send(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	client := s.clients[r.URL.Query().Get("id")]
-	if client == nil {
-		http.Error(w, "no such client", http.StatusNotFound)
-		return
-	}
-	if _, err := client.Write(append(bytes.TrimSuffix(body, []byte("\n")), '\n')); err != nil {
-		http.Error(w, err.Error(), http.StatusGone)
 	}
 }
 

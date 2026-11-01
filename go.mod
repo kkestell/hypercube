@@ -2,7 +2,10 @@ module github.com/kkestell/hypercube
 
 go 1.27.1
 
-require modernc.org/sqlite v1.61.1
+require (
+	github.com/coder/websocket v1.8.15
+	modernc.org/sqlite v1.61.1
+)
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect

@@ -79,21 +79,23 @@ const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 // padding.
 const cardX = 24 + 2 + 16;
 
-let source, client, session, outbox, sending, callbacks, block, terms = new Map(), shown, activePane;
+let source, client, session, outbox, callbacks, block, terms = new Map(), shown, activePane;
 // data is the app's latest snapshot, selected is the selected session's ID,
 // and attached is the running session the terminals belong to.
 // dead is a session marked running whose terminals could not be reached, as
-// after a failed start; it can be started again. generation counts attachments.
+// after a failed start; it can be started again.
 // pending is a session to select once the data lists it.
-let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null, dead = null, generation = 0;
+let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null, dead = null;
 
 const sessions = () => data.flatMap(w => w.sessions);
 const current = () => sessions().find(s => s.id === selected);
 
+const socket = path => new WebSocket(new URL(path, location.href.replace(/^http/, 'ws')));
+
 function watch() {
-  const stream = new EventSource('state');
-  stream.onmessage = e => { data = JSON.parse(e.data); changed(); };
-  stream.onerror = () => { stream.close(); setTimeout(watch, 1000); };
+  const state = socket('state');
+  state.onmessage = e => { data = JSON.parse(e.data); changed(); };
+  state.onclose = () => setTimeout(watch, 1000);
 }
 
 // changed shows new data: the title, the sidebar, and the selected session,
@@ -130,8 +132,7 @@ function attach(id) {
   source?.close();
   source = client = null;
   attached = id;
-  generation++;
-  outbox = []; sending = false; callbacks = []; block = null; size = sent = ''; refreshing = again = false; activePane = null;
+  outbox = []; callbacks = []; block = null; size = sent = ''; refreshing = again = false; activePane = null;
   applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false; shown = null;
   for (const term of terms.values()) term.dispose();
   terms = new Map();
@@ -141,41 +142,38 @@ function attach(id) {
   cards.clear();
   split.hidden = workers.hidden = true;
   if (!id) return;
-  source = new EventSource('events?session=' + encodeURIComponent(id));
-  let reached = false;
-  source.addEventListener('id', e => {
-    client = e.data; reached = true;
+  // client is the socket once it opens. A socket that never opens means the
+  // session's terminals could not be reached.
+  const mine = source = socket('tmux?session=' + encodeURIComponent(id));
+  mine.binaryType = 'arraybuffer';
+  mine.onopen = () => {
+    client = mine;
     if (dead === id) dead = null;
     refresh();
-  });
-  source.onmessage = e => received(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)));
-  source.onerror = () => {
-    source.close(); client = null;
-    if (!reached) dead = id;
-    setTimeout(() => { if (attached === id) attach(id); }, 1000);
+    flush();
+  };
+  mine.onmessage = e => received(new Uint8Array(e.data));
+  mine.onclose = () => {
+    if (source !== mine) return;
+    if (client !== mine) dead = id;
+    client = null;
+    setTimeout(() => { if (source === mine) attach(id); }, 1000);
   };
 }
 
-// Commands go out in order, batched while a request is in flight. Commands
-// sent together reach tmux together, so it resizes each pane once for all of
-// them. Each command's reply block comes back in the same order.
+// Commands go out in order, batched until the page's current task ends.
+// Commands sent together reach tmux together, so it resizes each pane once for
+// all of them. Each command's reply block comes back in the same order.
 function send(command, callback) {
   callbacks.push(callback);
   outbox.push(command);
   queueMicrotask(flush);
 }
 
-async function flush() {
-  if (sending || !outbox.length || !client) return;
-  sending = true;
-  const mine = generation;
-  const body = outbox.join('\n');
+function flush() {
+  if (!outbox.length || !client) return;
+  client.send(outbox.join('\n'));
   outbox = [];
-  try { await fetch('send?id=' + client, {method: 'POST', body}); } catch {}
-  // A new attachment has reset the queue and may already be sending.
-  if (mine !== generation) return;
-  sending = false;
-  flush();
 }
 
 const decoder = new TextDecoder();
