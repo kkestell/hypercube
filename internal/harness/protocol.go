@@ -21,7 +21,7 @@ const (
 )
 
 // Item kinds. Plugins send every kind but User, which Hypercube writes for the
-// text it delivers.
+// text and images it delivers.
 const (
 	KindUser      = "user"
 	KindText      = "text"
@@ -38,15 +38,24 @@ const (
 )
 
 // Command is one request to the plugin. The plugin answers each with a Reply
-// carrying the same ID. Start is set for CmdStart, Text for CmdInput, and
-// Request, Choice, and Text for CmdAnswer.
+// carrying the same ID. Start is set for CmdStart, Text and Images for
+// CmdInput, and Request, Choice, and Text for CmdAnswer. An input has text,
+// images, or both.
 type Command struct {
 	ID      string     `json:"id"`
 	Command string     `json:"command"`
 	Start   *StartArgs `json:"start,omitempty"`
 	Text    string     `json:"text,omitempty"`
+	Images  []Image    `json:"images,omitempty"`
 	Request string     `json:"request,omitempty"`
 	Choice  string     `json:"choice,omitempty"`
+}
+
+// Image is a picture in a prompt or in the transcript: its MIME type and its
+// bytes in base64, without a data URL prefix.
+type Image struct {
+	MIMEType string `json:"mime_type"`
+	Data     string `json:"data"`
 }
 
 // StartArgs tells the plugin which harness to start. The plugin replies once
@@ -111,6 +120,9 @@ type Usage struct {
 // and Free allows typed text. It stays open until an event sets Done, with the
 // Answer when there is one.
 //
+// An item's Images are shown with its text: the pictures a user sent, or the
+// pictures a model or tool produced. An item may have images and no text.
+//
 // A tool item from an MCP server names the Server, and Tool is the server's
 // own name for the tool. A user item that delivers another agent's message
 // names that agent's address in From, and Text is the message alone.
@@ -130,6 +142,7 @@ type Item struct {
 	Free    bool            `json:"free,omitempty"`
 	Answer  string          `json:"answer,omitempty"`
 	From    string          `json:"from,omitempty"`
+	Images  []Image         `json:"images,omitempty"`
 }
 
 func jsonLine(v any) ([]byte, error) {

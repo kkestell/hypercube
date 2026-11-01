@@ -15,7 +15,7 @@ import (
 // Agent is a started harness, as the serve loop drives it. Idle reports the
 // harness as waiting for input once start has replied; Stop ends it.
 type Agent struct {
-	Input     func(text string) error
+	Input     func(text string, images []harness.Image) error
 	Interrupt func() error
 	Answer    func(request, choice, text string) error
 	Idle      func()
@@ -122,7 +122,7 @@ func (s *server) handle(cmd harness.Command, start Start) error {
 	}
 	switch cmd.Command {
 	case harness.CmdInput:
-		return s.agent.Input(cmd.Text)
+		return s.agent.Input(cmd.Text, cmd.Images)
 	case harness.CmdInterrupt:
 		return s.agent.Interrupt()
 	case harness.CmdAnswer:
