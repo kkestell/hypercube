@@ -21,10 +21,13 @@ var source string
 
 func main() {
 	var err error
-	if len(os.Args) == 2 && os.Args[1] == "launch" {
+	switch {
+	case len(os.Args) == 2 && os.Args[1] == "serve":
+		err = plugin.ErrUnsupported
+	case len(os.Args) == 2 && os.Args[1] == "launch":
 		err = launch(os.Stdin, os.Stdout)
-	} else {
-		err = fmt.Errorf("usage: hypercube-harness-pi launch")
+	default:
+		err = fmt.Errorf("usage: hypercube-harness-pi [serve | launch]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-pi:", err)

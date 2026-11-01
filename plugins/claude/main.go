@@ -21,6 +21,8 @@ func main() {
 	args := os.Args[1:]
 	var err error
 	switch {
+	case len(args) == 1 && args[0] == "serve":
+		err = plugin.ErrUnsupported
 	case len(args) == 1 && args[0] == "launch":
 		err = launch(os.Stdin, os.Stdout)
 	case len(args) == 3 && args[0] == "hook":
@@ -31,7 +33,7 @@ func main() {
 		_ = plugin.Report(args[1], "answered", map[string]string{}, &plugin.Response{})
 		err = statusline(args[1], len(args) == 3, os.Stdin, os.Stdout)
 	default:
-		err = fmt.Errorf("usage: hypercube-harness-claude [launch | hook <hypercube> <event> | wait <hypercube> | statusline <hypercube> [--limits]]")
+		err = fmt.Errorf("usage: hypercube-harness-claude [serve | launch | hook <hypercube> <event> | wait <hypercube> | statusline <hypercube> [--limits]]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-claude:", err)

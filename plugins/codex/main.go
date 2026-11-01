@@ -28,6 +28,8 @@ func main() {
 	args := os.Args[1:]
 	var err error
 	switch {
+	case len(args) == 1 && args[0] == "serve":
+		err = plugin.ErrUnsupported
 	case len(args) == 1 && args[0] == "launch":
 		err = launch(os.Stdin, os.Stdout)
 	case len(args) == 3 && args[0] == "hook":
@@ -35,7 +37,7 @@ func main() {
 	case len(args) > 2 && args[0] == "run":
 		err = run(args[1], args[2:])
 	default:
-		err = fmt.Errorf("usage: hypercube-harness-codex [launch | hook <hypercube> <event> | run <hypercube> <codex argv>]")
+		err = fmt.Errorf("usage: hypercube-harness-codex [serve | launch | hook <hypercube> <event> | run <hypercube> <codex argv>]")
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-codex:", err)

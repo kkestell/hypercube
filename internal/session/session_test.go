@@ -10,22 +10,15 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-func open(t *testing.T) *store.DB {
+func open(t *testing.T) (*store.DB, *Runtime) {
 	t.Helper()
-	tmp, err := os.MkdirTemp("/tmp", "hc")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(tmp) })
-	t.Setenv("TMUX_TMPDIR", tmp)
-	t.Setenv("TMUX", "")
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	db, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return db
+	return db, New(db, "")
 }
 
 // seed adds a stopped session at root with a lead and the given workers.
@@ -57,7 +50,7 @@ func count(t *testing.T, db *store.DB) (n int) {
 // Delete refuses, changing nothing, while a worker's branch is unmerged or its
 // worktree is dirty, and otherwise removes worktrees, branches, and the session.
 func TestDelete(t *testing.T) {
-	db := open(t)
+	db, rt := open(t)
 	root := t.TempDir()
 	git := func(dir string, args ...string) {
 		t.Helper()
@@ -77,12 +70,12 @@ func TestDelete(t *testing.T) {
 	seed(t, db, root, store.Agent{ID: "b", Name: "w1", Dir: dir, Branch: branch}, store.Agent{ID: "c", Name: "w2", Dir: other})
 
 	git(dir, "commit", "-q", "--allow-empty", "-m", "work")
-	if err := Delete(db, "s"); err == nil {
+	if err := rt.Delete("s"); err == nil {
 		t.Fatal("delete deleted an unmerged branch")
 	}
 	git(root, "merge", "-q", branch)
 	os.WriteFile(filepath.Join(dir, "scratch"), nil, 0o644)
-	if err := Delete(db, "s"); err == nil {
+	if err := rt.Delete("s"); err == nil {
 		t.Fatal("delete deleted a dirty worktree")
 	}
 	if n := count(t, db); n != 3 {
@@ -93,7 +86,7 @@ func TestDelete(t *testing.T) {
 	}
 
 	os.Remove(filepath.Join(dir, "scratch"))
-	if err := Delete(db, "s"); err != nil {
+	if err := rt.Delete("s"); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(t, db); n != 0 {
@@ -108,10 +101,10 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteMissingCheckout(t *testing.T) {
-	db := open(t)
+	db, rt := open(t)
 	root := filepath.Join(t.TempDir(), "gone")
 	seed(t, db, root, store.Agent{ID: "b", Name: "w", Dir: filepath.Join(root, ".hypercube/s/w"), Branch: "hypercube/s/w"})
-	if err := DeleteWorkspace(db, "w"); err != nil {
+	if err := rt.DeleteWorkspace("w"); err != nil {
 		t.Fatal(err)
 	}
 	db.Read(func(tx *store.Tx) error {

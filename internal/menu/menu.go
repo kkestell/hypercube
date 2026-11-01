@@ -18,7 +18,8 @@ func init() {
 	runtime.LockOSThread()
 }
 
-// Run shows the menu bar icon and runs the application until the user quits.
+// Run shows the menu bar icon and runs the application until the user chooses
+// Quit, then returns.
 func Run(url string, icon []byte) {
 	cURL := C.CString(url)
 	defer C.free(unsafe.Pointer(cURL))

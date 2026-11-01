@@ -1,162 +1,58 @@
-// Package report handles reports from a harness plugin about its agent's
-// conversation, and answers with text for the model.
+// Package report writes the text agents and the user read: the instructions
+// that start an agent, attribution of queued messages, session titles, and
+// failure reports. It applies protocol events to the stored agent.
 package report
 
 import (
 	"cmp"
-	"encoding/json"
 	"fmt"
-	"io"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-type input struct {
-	Conversation string          `json:"conversation"`
-	Error        string          `json:"error"`
-	Tool         string          `json:"tool"`
-	Input        json.RawMessage `json:"input"`
-	Reason       string          `json:"reason"`
-	Text         string          `json:"text"`
-	store.Usage
+// Apply records an event's conversation, work state, and usage. A lead that
+// finishes a turn has a reply for the user to see.
+func Apply(a *store.Agent, s *store.Session, ev harness.Event) {
+	if ev.Conversation != "" {
+		a.Conversation = ev.Conversation
+	}
+	switch ev.State {
+	case harness.Working:
+		a.Activity = store.Busy
+	case harness.Idle:
+		if a.Activity == store.Busy && a.Role == store.Lead {
+			s.Unseen = true
+		}
+		a.Activity = store.Idle
+	}
+	if ev.Usage != nil {
+		a.Usage = store.Usage(*ev.Usage)
+	}
 }
 
-// response holds text for the model to read now. At stop, it continues the
-// turn.
-type response struct {
-	Context string `json:"context,omitempty"`
+// Prompt records the user's prompt to an agent: it releases the session's
+// queued messages, and it titles an untitled session when the prompt is the
+// lead's first, typed while the lead was idle. a is the agent as it was before
+// the prompt.
+func Prompt(a store.Agent, s *store.Session, text string) {
+	s.AwaitingUser = false
+	if a.Role == store.Lead && s.Title == "" && a.Activity != store.Busy {
+		s.Title = title(text)
+	}
 }
 
-// Run handles one report. Reports from outside a Hypercube agent get an empty
-// response and change nothing.
-func Run(event string, stdin io.Reader, stdout io.Writer) error {
-	id := os.Getenv("HYPERCUBE_AGENT_ID")
-	if id == "" {
-		return json.NewEncoder(stdout).Encode(response{})
+// Failure tells the lead that a worker's turn failed.
+func Failure(tx *store.Tx, worker store.Agent, detail string) error {
+	if worker.Role != store.Worker {
+		return nil
 	}
-	var in input
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return err
-	}
-	db, err := store.Open()
+	lead, err := tx.Lead(worker.Session)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-	if event == "toolfailed" || event == "denied" {
-		if err := logTool(db, event, id, in); err != nil {
-			return err
-		}
-		return json.NewEncoder(stdout).Encode(response{})
-	}
-	// The status line reports answered and usage on every redraw, so skip the
-	// write lock when nothing changes.
-	if event == "answered" || event == "usage" {
-		var a store.Agent
-		err := db.Read(func(tx *store.Tx) error {
-			var err error
-			a, err = tx.Agent(id)
-			return err
-		})
-		if err != nil || event == "answered" && !a.Attention || event == "usage" && a.Usage == in.Usage {
-			return json.NewEncoder(stdout).Encode(response{})
-		}
-	}
-
-	return db.Tx(func(tx *store.Tx) error {
-		a, err := tx.Agent(id)
-		if err != nil {
-			return err
-		}
-		s, err := tx.Session(a.Session)
-		if err != nil {
-			return err
-		}
-		take := func() (string, error) {
-			messages, err := tx.Take(id)
-			if err != nil {
-				return "", err
-			}
-			return Format(tx, messages), nil
-		}
-		var resp response
-		switch event {
-		case "start":
-			var profiles []harness.Profile
-			if a.Role == store.Lead {
-				cfg, err := harness.LoadConfig()
-				if err != nil {
-					return err
-				}
-				profiles = cfg.Workers()
-			}
-			if resp.Context, err = facts(tx, a, profiles); err != nil {
-				return err
-			}
-		case "prompt":
-			s.AwaitingUser = false
-			// A harness may save no conversation until the first prompt, so
-			// a conversation seen earlier may not be resumable.
-			if in.Conversation != "" {
-				a.Conversation = in.Conversation
-			}
-			// A turn that delivered messages starts after Wait has marked the
-			// agent busy, so only a prompt typed while idle titles the session.
-			if a.Role == store.Lead && s.Title == "" && a.Activity != store.Busy {
-				s.Title = title(in.Text)
-			}
-			a.Activity = store.Busy
-			resp.Context, err = take()
-		case "tool":
-			resp.Context, err = take()
-		case "stop":
-			resp.Context, err = take()
-			if err == nil && resp.Context == "" {
-				a.Activity = store.Idle
-				if a.Role == store.Lead {
-					s.Unseen = true
-				}
-			}
-		case "failed":
-			if a.Role == store.Worker {
-				lead, err := tx.Lead(a.Session)
-				if err != nil {
-					return err
-				}
-				if err := tx.Queue(store.Message{From: id, To: lead.ID, Text: failure(in.Error)}); err != nil {
-					return err
-				}
-			}
-			a.Activity = store.Idle
-		case "approval":
-			// An empty response leaves the decision to the harness's own
-			// dialog.
-			a.Attention = true
-		case "answered":
-			a.Attention = false
-		case "usage":
-			a.Usage = in.Usage
-		default:
-			return fmt.Errorf("unknown report %q", event)
-		}
-		if err != nil {
-			return err
-		}
-		if err := tx.SaveAgent(a); err != nil {
-			return err
-		}
-		if err := tx.SaveSession(s); err != nil {
-			return err
-		}
-		// Writing the response inside the transaction keeps taken messages
-		// queued if the plugin cannot read them.
-		return json.NewEncoder(stdout).Encode(resp)
-	})
+	return tx.Queue(store.Message{From: worker.ID, To: lead.ID, Text: failure(detail)})
 }
 
 // maxTitle is the longest session title, in characters.
@@ -176,42 +72,6 @@ func title(prompt string) string {
 		return line
 	}
 	return ""
-}
-
-// logTool appends a failed Hypercube tool call or an auto mode denial to
-// tools.log beside the database, as a JSON line for tuning tool descriptions
-// and allow rules.
-func logTool(db *store.DB, event, id string, in input) error {
-	var a store.Agent
-	var w store.Workspace
-	err := db.Read(func(tx *store.Tx) error {
-		var err error
-		if a, err = tx.Agent(id); err != nil {
-			return err
-		}
-		s, err := tx.Session(a.Session)
-		if err != nil {
-			return err
-		}
-		w, err = tx.Workspace(s.Workspace)
-		return err
-	})
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(store.Dir(), "tools.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	msg, detail := "tool failed", slog.String("error", in.Error)
-	if event == "denied" {
-		msg, detail = "tool denied", slog.String("reason", in.Reason)
-	}
-	slog.New(slog.NewJSONHandler(f, nil)).Info(msg,
-		"workspace", w.Path, "session", a.Session, "agent", a.Name,
-		"harness", a.Harness, "model", a.Model, "conversation", a.Conversation, "dir", a.Dir,
-		"tool", in.Tool, "input", in.Input, detail)
-	return f.Close()
 }
 
 // Format renders messages as the model sees them.
@@ -251,9 +111,9 @@ func Leads(tx *store.Tx, workspace, except string) ([]store.Agent, map[string]st
 	return leads, titles, nil
 }
 
-// facts describes the agent's place in the team. The lead also gets
+// Instructions describe the agent's place in the team. The lead also gets
 // the configured worker profiles.
-func facts(tx *store.Tx, a store.Agent, profiles []harness.Profile) (string, error) {
+func Instructions(tx *store.Tx, a store.Agent, profiles []harness.Profile) (string, error) {
 	s, err := tx.Session(a.Session)
 	if err != nil {
 		return "", err

@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"github.com/kkestell/hypercube/internal/store"
 )
 
 func TestLoadConfig(t *testing.T) {
@@ -90,12 +88,5 @@ func TestLoadConfig(t *testing.T) {
 	}
 	if !slices.Equal(names, []string{"plan", "work", "review"}) {
 		t.Errorf("worker order = %v", names)
-	}
-}
-
-func TestLaunchNeedsPlugin(t *testing.T) {
-	_, err := Launch(store.Agent{Name: "w", Harness: "pi"}, "")
-	if err == nil || !strings.Contains(err.Error(), "hypercube-harness-pi") {
-		t.Fatal(err)
 	}
 }

@@ -1,5 +1,5 @@
-// Package store keeps workspaces, sessions, agents, and queued messages in one
-// SQLite database that every Hypercube process opens.
+// Package store keeps workspaces, sessions, agents, queued messages, and
+// transcripts in one SQLite database that the app process owns.
 package store
 
 import (
@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -65,12 +64,8 @@ type Agent struct {
 	Dir          string
 	Branch       string
 	Conversation string
-	Pane         string
 	Activity     string
 	Attention    bool
-	Waiter       int64
-	Launched     int64
-	QuickExits   int
 	// Status is the worker's own account of what it is doing, reported at
 	// StatusAt in Unix milliseconds.
 	Status   string
@@ -101,7 +96,7 @@ func (a Agent) Address() string {
 	return a.Session + "/" + a.Name
 }
 
-// Dir is the directory that holds the database, locks, and plugin files.
+// Dir is the directory that holds the database and plugin files.
 func Dir() string {
 	base := os.Getenv("XDG_STATE_HOME")
 	if base == "" {
@@ -141,9 +136,7 @@ CREATE TABLE IF NOT EXISTS agents (
   name TEXT NOT NULL, role TEXT NOT NULL, harness TEXT NOT NULL,
   model TEXT NOT NULL, effort TEXT NOT NULL, dir TEXT NOT NULL,
   branch TEXT NOT NULL DEFAULT '', conversation TEXT NOT NULL DEFAULT '',
-  pane TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL,
-  attention INTEGER NOT NULL DEFAULT 0, waiter INTEGER NOT NULL DEFAULT 0,
-  launched INTEGER NOT NULL DEFAULT 0, quick_exits INTEGER NOT NULL DEFAULT 0,
+  activity TEXT NOT NULL, attention INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT '', status_at INTEGER NOT NULL DEFAULT 0,
   context INTEGER NOT NULL DEFAULT 0, window INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
@@ -153,6 +146,10 @@ CREATE TABLE IF NOT EXISTS messages (
   sender TEXT NOT NULL,
   recipient TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
   text TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS transcript (
+  agent TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL, item TEXT NOT NULL, data TEXT NOT NULL,
+  PRIMARY KEY (agent, seq), UNIQUE (agent, item));
 `
 
 // DB is the open database.
@@ -160,11 +157,14 @@ type DB struct{ sql *sql.DB }
 
 // Open opens the database at Path, creating it and its tables if they are
 // missing. Writes take the database lock when they begin and wait up to five
-// seconds for it, so concurrent hooks wait instead of failing.
+// seconds for it.
 func Open() (*DB, error) {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return nil, err
 	}
+	// Earlier builds left session lock files and a tool log here.
+	_ = os.RemoveAll(filepath.Join(Dir(), "locks"))
+	_ = os.Remove(filepath.Join(Dir(), "tools.log"))
 	params := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)"}, "_txlock": {"immediate"}}
 	db, err := sql.Open("sqlite", Path()+"?"+params.Encode())
 	if err != nil {
@@ -228,25 +228,6 @@ func (d *DB) Watch(ctx context.Context, changed func()) error {
 		case <-tick.C:
 		}
 	}
-}
-
-// Lock holds the session's lifecycle lock until the file is closed. Lifecycle
-// operations hold it instead of a database transaction, so a slow launch never
-// keeps hooks waiting.
-func Lock(session string) (*os.File, error) {
-	path := filepath.Join(Dir(), "locks", session+".lock")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
-	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
-		return nil, err
-	}
-	return f, nil
 }
 
 // Tx reads and writes within one transaction.
@@ -330,31 +311,29 @@ func (t *Tx) DeleteSession(id string) error {
 	return t.exec(`DELETE FROM sessions WHERE id = ?`, id)
 }
 
-const agentColumns = `id, session, name, role, harness, model, effort, dir, branch, conversation, pane,
-  activity, attention, waiter, launched, quick_exits, status, status_at, context, window, cost, created`
+const agentColumns = `id, session, name, role, harness, model, effort, dir, branch, conversation,
+  activity, attention, status, status_at, context, window, cost, created`
 
 func scanAgent(row interface{ Scan(...any) error }) (Agent, error) {
 	var a Agent
 	err := row.Scan(&a.ID, &a.Session, &a.Name, &a.Role, &a.Harness, &a.Model, &a.Effort, &a.Dir, &a.Branch,
-		&a.Conversation, &a.Pane, &a.Activity, &a.Attention, &a.Waiter, &a.Launched, &a.QuickExits,
-		&a.Status, &a.StatusAt, &a.Usage.Context, &a.Usage.Window, &a.Usage.Cost, &a.Created)
+		&a.Conversation, &a.Activity, &a.Attention, &a.Status, &a.StatusAt, &a.Usage.Context, &a.Usage.Window, &a.Usage.Cost, &a.Created)
 	return a, err
 }
 
 func (t *Tx) AddAgent(a Agent) error {
-	return t.exec(`INSERT INTO agents (`+agentColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.Session, a.Name, a.Role, a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation, a.Pane,
-		a.Activity, a.Attention, a.Waiter, a.Launched, a.QuickExits, a.Status, a.StatusAt,
+	return t.exec(`INSERT INTO agents (`+agentColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		a.ID, a.Session, a.Name, a.Role, a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation,
+		a.Activity, a.Attention, a.Status, a.StatusAt,
 		a.Usage.Context, a.Usage.Window, a.Usage.Cost, cmp.Or(a.Created, now()))
 }
 
 // SaveAgent writes every field but the agent's identity and session.
 func (t *Tx) SaveAgent(a Agent) error {
 	return t.exec(`UPDATE agents SET harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
-  pane = ?, activity = ?, attention = ?, waiter = ?, launched = ?, quick_exits = ?, status = ?, status_at = ?,
-  context = ?, window = ?, cost = ? WHERE id = ?`,
-		a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation, a.Pane, a.Activity, a.Attention, a.Waiter,
-		a.Launched, a.QuickExits, a.Status, a.StatusAt, a.Usage.Context, a.Usage.Window, a.Usage.Cost, a.ID)
+  activity = ?, attention = ?, status = ?, status_at = ?, context = ?, window = ?, cost = ? WHERE id = ?`,
+		a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation, a.Activity, a.Attention,
+		a.Status, a.StatusAt, a.Usage.Context, a.Usage.Window, a.Usage.Cost, a.ID)
 }
 
 func (t *Tx) Agent(id string) (Agent, error) {
@@ -416,13 +395,46 @@ func (t *Tx) Queued(id string) ([]Message, error) {
 	})
 }
 
-// Take removes and returns the messages queued for an agent.
-func (t *Tx) Take(id string) ([]Message, error) {
-	messages, err := t.Queued(id)
-	if err != nil || len(messages) == 0 {
+// Dequeue removes a delivered message.
+func (t *Tx) Dequeue(id int64) error {
+	return t.exec(`DELETE FROM messages WHERE id = ?`, id)
+}
+
+// Entry is one item of an agent's transcript: its position, the item's ID, and
+// the item as JSON.
+type Entry struct {
+	Seq  int64
+	Item string
+	Data []byte
+}
+
+// PutEntry saves a completed transcript item. An item with the same ID as an
+// earlier one replaces its data and keeps its position.
+func (t *Tx) PutEntry(agent string, e Entry) error {
+	return t.exec(`INSERT INTO transcript (agent, seq, item, data) VALUES (?, ?, ?, ?)
+  ON CONFLICT (agent, item) DO UPDATE SET data = excluded.data`, agent, e.Seq, e.Item, string(e.Data))
+}
+
+// Transcript returns the agent's saved items in order.
+func (t *Tx) Transcript(agent string) ([]Entry, error) {
+	rows, err := t.tx.Query(`SELECT seq, item, data FROM transcript WHERE agent = ? ORDER BY seq`, agent)
+	if err != nil {
 		return nil, err
 	}
-	return messages, t.exec(`DELETE FROM messages WHERE recipient = ? AND id <= ?`, id, messages[len(messages)-1].ID)
+	return collect(rows, func(r interface{ Scan(...any) error }) (Entry, error) {
+		var e Entry
+		var data string
+		err := r.Scan(&e.Seq, &e.Item, &data)
+		e.Data = []byte(data)
+		return e, err
+	})
+}
+
+// LastSeq returns the position of the agent's last saved item, or zero.
+func (t *Tx) LastSeq(agent string) (int64, error) {
+	var seq int64
+	err := t.tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM transcript WHERE agent = ?`, agent).Scan(&seq)
+	return seq, err
 }
 
 func collect[T any](rows *sql.Rows, scan func(interface{ Scan(...any) error }) (T, error)) ([]T, error) {

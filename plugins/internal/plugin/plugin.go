@@ -5,12 +5,17 @@ package plugin
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 )
+
+// ErrUnsupported is what a plugin's `serve` answers until the plugin speaks the
+// serve protocol.
+var ErrUnsupported = errors.New("unsupported harness: this plugin does not serve yet")
 
 // Response is the context Hypercube returns for a report.
 type Response struct {

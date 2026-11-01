@@ -1,13 +1,10 @@
-// Package ui serves the browser view. Each page has two WebSockets: one
-// carries Hypercube's data from the database, and one connects a tmux
-// control-mode client for the selected session's terminals, carrying its
-// output lines to the page and the page's commands to it. Browsers cap a
-// host's HTTP connections at six; WebSockets are outside that cap, so open
-// pages never stall each other's requests.
+// Package ui serves the browser view and the app's routes. The page's data
+// WebSocket carries Hypercube's data from the database. Browsers cap a host's
+// HTTP connections at six; WebSockets are outside that cap, so open pages never
+// stall each other's requests. Agents reach the tools through /mcp.
 package ui
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"embed"
@@ -24,9 +21,9 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 //go:embed static
@@ -40,6 +37,7 @@ func Icon() []byte {
 
 type server struct {
 	db *store.DB
+	rt *session.Runtime
 	mu sync.Mutex
 	// snapshot is the latest view data, and changed is closed and replaced
 	// when it changes.
@@ -47,11 +45,12 @@ type server struct {
 	changed  chan struct{}
 }
 
-// Handler serves the page, its data and terminal sockets, and its actions.
-func Handler(db *store.DB) http.Handler {
-	s := &server{db: db, changed: make(chan struct{})}
+// Handler serves the page, its data socket, its actions, and the agents' tools.
+// It watches the database until ctx ends.
+func Handler(ctx context.Context, db *store.DB, rt *session.Runtime) http.Handler {
+	s := &server{db: db, rt: rt, changed: make(chan struct{})}
 	go func() {
-		if err := db.Watch(context.Background(), s.refresh); err != nil {
+		if err := db.Watch(ctx, s.refresh); err != nil {
 			fmt.Fprintln(os.Stderr, "hypercube: watching the database:", err)
 		}
 	}()
@@ -62,8 +61,8 @@ func Handler(db *store.DB) http.Handler {
 		devReload(mux, revision)
 	}
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /tmux", terminals)
 	mux.HandleFunc("GET /leads", leads)
+	mux.Handle("POST /mcp", mcp.Handler(db, rt))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
 	return localOnly(mux)
@@ -161,7 +160,7 @@ func leads(w http.ResponseWriter, r *http.Request) {
 
 // localOnly refuses other hosts' names, so a rebound DNS name cannot reach the
 // server, and other origins' actions. websocket.Accept refuses other origins'
-// sockets, so another page cannot type into a pane.
+// sockets, so another page cannot reach the app's routes.
 func localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)
@@ -175,67 +174,6 @@ func localOnly(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// terminals connects a control-mode client attached to the session's tmux
-// session. Each binary message to the page is one of the client's output
-// lines; each message from the page is one or more commands, one per line.
-func terminals(w http.ResponseWriter, r *http.Request) {
-	session := r.URL.Query().Get("session")
-	if session == "" || !tmux.Running(session) {
-		http.Error(w, "the session is not running", http.StatusConflict)
-		return
-	}
-	conn, err := websocket.Accept(w, r, nil)
-	if err != nil {
-		return
-	}
-	defer conn.CloseNow()
-	// A paste arrives as one command.
-	conn.SetReadLimit(16 << 20)
-	// Closing either end stops the other: the socket's end cancels the
-	// context, which kills tmux.
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "tmux", "-C", "attach-session", "-t", "="+tmux.Name(session))
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return
-	}
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return
-	}
-	if err := cmd.Start(); err != nil {
-		return
-	}
-	defer func() {
-		cancel()
-		_ = cmd.Wait()
-	}()
-
-	go func() {
-		defer cancel()
-		for {
-			_, commands, err := conn.Read(ctx)
-			if err != nil {
-				return
-			}
-			if _, err := stdin.Write(append(bytes.TrimSuffix(commands, []byte("\n")), '\n')); err != nil {
-				return
-			}
-		}
-	}()
-	lines := bufio.NewReader(stdout)
-	for {
-		line, err := lines.ReadBytes('\n')
-		if err != nil {
-			return
-		}
-		if conn.Write(ctx, websocket.MessageBinary, bytes.TrimSuffix(line, []byte("\n"))) != nil {
-			return
-		}
-	}
 }
 
 // workspaceAction adds a workspace in a folder the user picks and returns its
@@ -260,7 +198,7 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 		}
 		fmt.Fprint(w, added.ID)
 	case "delete":
-		refused(w, session.DeleteWorkspace(s.db, q.Get("id")))
+		refused(w, s.rt.DeleteWorkspace(q.Get("id")))
 	default:
 		http.Error(w, "unknown workspace action", http.StatusBadRequest)
 	}
@@ -275,17 +213,17 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 	switch q.Get("action") {
 	case "new":
 		var created store.Session
-		created, err = session.Create(s.db, q.Get("workspace"), q.Get("lead"))
+		created, err = s.rt.Create(q.Get("workspace"), q.Get("lead"))
 		if !refused(w, err) {
 			fmt.Fprint(w, created.ID)
 		}
 		return
 	case "start":
-		err = session.Start(s.db, id)
+		err = s.rt.Start(id)
 	case "stop":
-		err = session.Stop(s.db, id)
+		err = s.rt.Stop(id)
 	case "delete":
-		err = session.Delete(s.db, id)
+		err = s.rt.Delete(id)
 	case "rename":
 		err = session.Rename(s.db, id, q.Get("title"))
 	case "seen":

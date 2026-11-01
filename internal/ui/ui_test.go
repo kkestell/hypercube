@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -29,18 +29,9 @@ func dial(t *testing.T, server *httptest.Server, path string) (*websocket.Conn, 
 	})
 }
 
-// open returns a database in a temporary state directory, with an isolated
-// tmux server.
+// open returns a database in a temporary state directory.
 func open(t *testing.T) *store.DB {
 	t.Helper()
-	socket, err := os.MkdirTemp("/tmp", "hc-ui-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(socket) })
-	t.Setenv("TMUX_TMPDIR", socket)
-	t.Setenv("TMUX", "")
-	t.Cleanup(func() { _ = exec.Command("tmux", "kill-server").Run() })
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
 	db, err := store.Open()
 	if err != nil {
@@ -48,6 +39,13 @@ func open(t *testing.T) *store.DB {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+// handler returns the view's handler over a runtime whose agents are never
+// started.
+func handler(t *testing.T, db *store.DB) http.Handler {
+	t.Helper()
+	return Handler(t.Context(), db, session.New(db, ""))
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -72,7 +70,7 @@ func TestLeads(t *testing.T) {
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	handler := Handler(open(t))
+	handler := handler(t, open(t))
 	get := func() *httptest.ResponseRecorder {
 		t.Helper()
 		res := httptest.NewRecorder()
@@ -103,7 +101,7 @@ func TestLeads(t *testing.T) {
 
 func TestIcon(t *testing.T) {
 	res := httptest.NewRecorder()
-	Handler(open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
+	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("favicon response = %d, %v", res.Code, res.Header())
 	}
@@ -116,7 +114,7 @@ func TestDevReload(t *testing.T) {
 	for _, revision := range []string{"", "build-1", "build-2"} {
 		t.Run("revision="+revision, func(t *testing.T) {
 			t.Setenv("HYPERCUBE_DEV_RELOAD", revision)
-			handler := Handler(open(t))
+			handler := handler(t, open(t))
 			page := httptest.NewRecorder()
 			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4281/", nil))
 			if page.Code != http.StatusOK {
@@ -147,7 +145,7 @@ func TestDevReload(t *testing.T) {
 func TestStateStreamsSnapshots(t *testing.T) {
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error { return tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"}) })
-	server := httptest.NewServer(Handler(db))
+	server := httptest.NewServer(handler(t, db))
 	defer server.Close()
 	conn, _, err := dial(t, server, "/state")
 	if err != nil {
@@ -177,59 +175,47 @@ func TestStateStreamsSnapshots(t *testing.T) {
 	}
 }
 
-func TestPageDrivesControlClient(t *testing.T) {
+func TestRoutesRefuseOtherSites(t *testing.T) {
 	db := open(t)
-	for _, args := range [][]string{
-		{"-f", "/dev/null", "new-session", "-d", "-s", "plain"},
-		{"new-session", "-d", "-s", "hypercube-s1"},
-		{"set-option", "-t", "hypercube-s1", "@hypercube_session", "s1"},
-		{"new-session", "-d", "-s", "hypercube-s2"},
+	change(t, db, func(tx *store.Tx) error {
+		tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"})
+		tx.AddSession(store.Session{ID: "s", Workspace: "w"})
+		return tx.AddAgent(store.Agent{ID: "a", Session: "s", Name: "lead", Role: store.Lead, Activity: store.Idle})
+	})
+	h := handler(t, db)
+	send := func(method, host, origin, path string) int {
+		req := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
+		req.Header.Set("X-Hypercube-Agent", "a")
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, req)
+		return res.Code
+	}
+	for name, got := range map[string]int{
+		"foreign host":   send("GET", "example.com", "", "/leads"),
+		"rebound host":   send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
+		"foreign origin": send("POST", "localhost:4280", "http://example.com", "/mcp"),
+		"no origin":      send("POST", "localhost:4280", "", "/mcp"),
 	} {
-		if out, err := exec.Command("tmux", args...).CombinedOutput(); err != nil {
-			t.Fatalf("tmux %v: %v\n%s", args, err, out)
+		if got != http.StatusForbidden {
+			t.Errorf("%s: status %d", name, got)
 		}
 	}
-	server := httptest.NewServer(Handler(db))
+	// The agents' own bridge sends its own address as the origin.
+	if got := send("POST", "127.0.0.1:4280", "http://127.0.0.1:4280", "/mcp"); got != http.StatusOK {
+		t.Errorf("the bridge: status %d", got)
+	}
+	// Another page cannot open the data socket.
+	server := httptest.NewServer(h)
 	defer server.Close()
-
-	foreign, _ := http.NewRequest("GET", server.URL, nil)
-	foreign.Host = "example.com"
-	if res, err := http.DefaultClient.Do(foreign); err != nil || res.StatusCode != http.StatusForbidden {
-		t.Fatalf("foreign host: %v %v", res.Status, err)
-	}
-	// A stopped session, and a tmux session Hypercube did not mark, have no
-	// terminals to attach to.
-	for _, id := range []string{"s2", "missing"} {
-		if _, res, err := dial(t, server, "/tmux?session="+id); err == nil || res == nil || res.StatusCode != http.StatusConflict {
-			t.Fatalf("terminals for %s: %v %v", id, res, err)
-		}
-	}
-	// Another page cannot connect to the terminals.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/tmux?session=s1", &websocket.DialOptions{
+	if _, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/state", &websocket.DialOptions{
 		HTTPHeader: http.Header{"Origin": {"http://example.com"}},
 	}); err == nil || res == nil || res.StatusCode != http.StatusForbidden {
 		t.Fatalf("foreign origin: %v %v", res, err)
-	}
-
-	conn, _, err := dial(t, server, "/tmux?session=s1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.CloseNow()
-	if err := conn.Write(ctx, websocket.MessageText, []byte("display-message -p '#{session_name}'")); err != nil {
-		t.Fatal(err)
-	}
-	// The client attached to the session's tmux session and answered.
-	for {
-		_, line, err := conn.Read(ctx)
-		if err != nil {
-			t.Fatal("no reply from the control client:", err)
-		}
-		if string(line) == "hypercube-s1" {
-			break
-		}
 	}
 }
 
@@ -241,7 +227,7 @@ func TestActions(t *testing.T) {
 		tx.AddSession(store.Session{ID: "t", Workspace: "w"})
 		return tx.AddAgent(store.Agent{ID: "a", Session: "t", Name: "lead", Role: store.Lead, Activity: store.Exited})
 	})
-	server := httptest.NewServer(Handler(db))
+	server := httptest.NewServer(handler(t, db))
 	defer server.Close()
 	post := func(path string, want int) {
 		t.Helper()

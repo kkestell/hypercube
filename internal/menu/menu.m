@@ -2,11 +2,21 @@
 
 @interface HypercubeMenu : NSObject
 - (void)showHypercube:(NSMenuItem *)sender;
+- (void)quit:(NSMenuItem *)sender;
 @end
 
 @implementation HypercubeMenu
 - (void)showHypercube:(NSMenuItem *)sender {
     [[NSWorkspace sharedWorkspace] openURL:[sender representedObject]];
+}
+
+// Quit ends the application loop, so hypercubeMenuRun returns and the app shuts
+// down its agents.
+- (void)quit:(NSMenuItem *)sender {
+    [NSApp stop:nil];
+    NSEvent *wake = [NSEvent otherEventWithType:NSEventTypeApplicationDefined location:NSZeroPoint modifierFlags:0
+                                      timestamp:0 windowNumber:0 context:nil subtype:0 data1:0 data2:0];
+    [NSApp postEvent:wake atStart:YES];
 }
 @end
 
@@ -29,8 +39,8 @@ void hypercubeMenuRun(const char *url, const void *icon, size_t iconLen) {
         [show setTarget:controller];
         [show setRepresentedObject:[NSURL URLWithString:[NSString stringWithUTF8String:url]]];
         [menu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *quit = [menu addItemWithTitle:@"Quit Hypercube" action:@selector(terminate:) keyEquivalent:@"q"];
-        [quit setTarget:app];
+        NSMenuItem *quit = [menu addItemWithTitle:@"Quit Hypercube" action:@selector(quit:) keyEquivalent:@"q"];
+        [quit setTarget:controller];
         [item setMenu:menu];
         [menu release];
 
