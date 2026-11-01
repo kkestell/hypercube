@@ -26,15 +26,18 @@ install: build
 install-service: install
 	BINDIR="$(BINDIR)" SERVICE="$(SERVICE)" PORT="$(PORT)" scripts/install-service
 
-# ui regenerates the browser view's stylesheet from its Tailwind classes and
-# bundles its transcript renderer and terminal with their npm dependencies.
+# ui regenerates the browser view's stylesheet from its Tailwind classes,
+# bundles its transcript renderer and terminal with their npm dependencies, and
+# copies those packages' licenses next to the bundles.
 ui:
 	cd internal/ui && bun install --frozen-lockfile && \
 		bun x tailwindcss -i style.css -o static/ui.css --minify && \
-		bun build transcript.js --outfile static/transcript.js --format esm --minify \
-			--banner '/*! Includes marked, MIT License, https://github.com/markedjs/marked */' && \
-		bun build terminal.js --outfile static/terminal.js --format esm --minify \
-			--banner '/*! Includes xterm.js, MIT License, https://github.com/xtermjs/xterm.js */'
+		bun build transcript.js --outfile static/transcript.js --format esm --minify && \
+		bun build terminal.js --outfile static/terminal.js --format esm --minify && \
+		cp node_modules/marked/LICENSE static/marked-LICENSE && \
+		cp node_modules/@xterm/xterm/LICENSE static/xterm-LICENSE && \
+		cp node_modules/@xterm/addon-webgl/LICENSE static/xterm-addon-webgl-LICENSE && \
+		cp node_modules/@xterm/addon-fit/LICENSE static/xterm-addon-fit-LICENSE
 
 dev:
 	scripts/dev up
