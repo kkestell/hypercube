@@ -39,9 +39,10 @@ and talks to their tmux sessions.
 The sidebar lists every running workspace's sessions under a row for the
 workspace; click the row to collapse or expand them. Click `+` at the top of the
 sidebar to choose a folder and start a workspace in it. Hover over a
-workspace's row and click `+` to create a session in it, or click the trash icon
-to delete the workspace. Click a session to switch to it, double-click it
-to change its title, or hover over one and click the trash icon to delete it. A
+workspace's row and click `+` to list its lead profiles; choose one to create a
+session with it. Click the trash icon to delete the workspace. Click a session
+to switch to it, double-click it to change its title, or hover over one and
+click the trash icon to delete it. A
 workspace's folder icon becomes a spinner while any of its agents is busy, and
 a session shows one in the same place. A session
 shows an amber dot while any of its agents awaits your approval, and a blue dot

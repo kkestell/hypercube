@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -42,8 +44,10 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
 	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
-  "lead": {"harness": "one", "model": "opus", "effort": "high"},
-  "profiles": [{"name": "sol", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}]
+  "profiles": [
+    {"name": "opus", "role": "lead", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
+    {"name": "sol", "role": "work", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
+  ]
 }`), 0o644)
 	path := filepath.Join(dir, "w.json")
 	store.Update(path, func(s *store.State) error {
@@ -57,9 +61,38 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) string {
 	return path
 }
 
+func TestToolsListWorkers(t *testing.T) {
+	path := team(t, false, t.TempDir(), "")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "a")
+	var out bytes.Buffer
+	if err := Serve(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`+"\n"), &out); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Result struct {
+			Tools []tool `json:"tools"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	for _, tl := range response.Result.Tools {
+		if tl.Name != "create_agent" {
+			continue
+		}
+		enum := tl.InputSchema["properties"].(map[string]any)["profile"].(map[string]any)["enum"].([]any)
+		if len(enum) != 1 || enum[0] != "sol" {
+			t.Fatalf("worker profile enum = %v", enum)
+		}
+		return
+	}
+	t.Fatal("create_agent missing")
+}
+
 func TestCreateAgentNoGit(t *testing.T) {
 	path := team(t, true, t.TempDir(), "")
-	for _, args := range []map[string]string{{"name": "w1", "profile": "sol"}, {"name": "w1", "profile": "sol", "dir": "missing"}, {"name": "w1", "dir": "."}, {"name": "w1", "profile": "nope", "dir": "."}} {
+	for _, args := range []map[string]string{{"name": "w1", "profile": "sol"}, {"name": "w1", "profile": "sol", "dir": "missing"}, {"name": "w1", "dir": "."}, {"name": "w1", "profile": "nope", "dir": "."}, {"name": "w1", "profile": "opus", "dir": "."}} {
 		if _, err := createAgent("a", path, args); err == nil {
 			t.Errorf("createAgent(%v) succeeded", args)
 		}

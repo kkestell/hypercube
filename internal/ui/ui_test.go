@@ -2,15 +2,74 @@ package ui
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestLeads(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "hypercube/config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := `{"profiles":[
+		{"name":"first","role":"lead","description":"First lead","harness":"claude","model":"opus","effort":"high"},
+		{"name":"worker","role":"work","description":"Worker","harness":"codex","model":"sol","effort":"high"},
+		{"name":"second","role":"lead","description":"Second lead","harness":"codex","model":"sol","effort":"high"}
+	]}`
+	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	handler := Handler()
+	get := func() *httptest.ResponseRecorder {
+		t.Helper()
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/leads", nil))
+		return res
+	}
+	res := get()
+	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("leads response = %d %s", res.Code, res.Body)
+	}
+	type lead struct{ Name, Description string }
+	var got []lead
+	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []lead{{"first", "First lead"}, {"second", "Second lead"}}) {
+		t.Fatalf("leads = %+v", got)
+	}
+	// The same handler reads config edits instead of keeping a cached list.
+	if err := os.WriteFile(path, []byte(`{`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res = get()
+	if res.Code != http.StatusInternalServerError || !strings.Contains(res.Body.String(), path+": unexpected end of JSON input") {
+		t.Fatalf("broken config response = %d %s", res.Code, res.Body)
+	}
+}
+
+func TestIcon(t *testing.T) {
+	res := httptest.NewRecorder()
+	Handler().ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
+	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
+		t.Fatalf("favicon response = %d, %v", res.Code, res.Header())
+	}
+	if len(Icon()) == 0 || !bytes.Equal(res.Body.Bytes(), Icon()) {
+		t.Fatal("favicon differs from the menu bar icon")
+	}
+}
 
 func TestPageDrivesControlClient(t *testing.T) {
 	socket, err := os.MkdirTemp("/tmp", "hc-ui-")

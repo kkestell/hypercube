@@ -35,14 +35,14 @@ func main() {
 	switch {
 	case len(os.Args) == 1:
 		err = errors.New(usage)
-	case (len(os.Args) == 4 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
+	case (len(os.Args) == 5 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
 		err = windowAction(os.Args[2:])
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
 		err = stopOrDelete(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
 		err = status()
 	case len(os.Args) == 3 && os.Args[1] == "start":
-		err = openWorkspace(os.Args[2], false)
+		err = openWorkspace(os.Args[2], false, "")
 	case len(os.Args) <= 4 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "wait":
@@ -415,7 +415,7 @@ func serveUI(args []string) error {
 				os.Exit(1)
 			}
 		}()
-		menu.Run(url)
+		menu.Run(url, ui.Icon())
 		return nil
 	}
 	return http.Serve(listener, ui.Handler())
@@ -433,7 +433,7 @@ func restoreWorkspaces() {
 		if k.root == "" || tmux.WorkspaceSession(k.name, k.path) {
 			continue
 		}
-		if err := openWorkspace(k.root, false); err != nil {
+		if err := openWorkspace(k.root, false, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "restore workspace %s: %v\n", k.root, err)
 		}
 	}
@@ -441,7 +441,7 @@ func restoreWorkspaces() {
 
 // A workspace owns one tmux session. Each Hypercube session is a team in its
 // own marked window; names and worker lifecycle are local to that team.
-func openWorkspace(dir string, create bool) error {
+func openWorkspace(dir string, create bool, lead string) error {
 	root, name, err := workspaceAt(dir)
 	if err != nil {
 		return err
@@ -485,9 +485,13 @@ func openWorkspace(dir string, create bool) error {
 		needsLaunch = needsLaunch || absent
 	}
 	if needsLaunch {
-		var cfg harness.Config
+		var o harness.Profile
 		if add {
-			cfg, err = harness.LoadConfig()
+			cfg, err := harness.LoadConfig()
+			if err != nil {
+				return err
+			}
+			o, err = cfg.Lead(lead)
 			if err != nil {
 				return err
 			}
@@ -496,7 +500,6 @@ func openWorkspace(dir string, create bool) error {
 		err = store.Update(path, func(s *store.State) error {
 			s.NoGit = branchErr != nil
 			if add {
-				o := cfg.Lead
 				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
 					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team})
 			}
@@ -559,8 +562,8 @@ func windowAction(args []string) error {
 		if a.Role != store.Lead {
 			continue
 		}
-		if args[0] == "new" && len(args) == 2 {
-			return openWorkspace(a.Dir, true)
+		if args[0] == "new" && len(args) == 3 {
+			return openWorkspace(a.Dir, true, args[2])
 		}
 		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])

@@ -177,7 +177,11 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	t.Setenv("HYPERCUBE_TEST_EXE", binary)
 	t.Setenv("HYPERCUBE_TEST_BINARY", testBinary)
 	t.Setenv("HYPERCUBE_TEST_LOGS", logs)
-	config := `{"lead":{"harness":"test","model":"haiku","effort":"low"},"profiles":[{"name":"worker","description":"test","harness":"test","model":"p/m","effort":"high"}]}`
+	config := `{"profiles":[
+		{"name":"first","role":"lead","description":"First lead","harness":"test","model":"haiku","effort":"low"},
+		{"name":"second","role":"lead","description":"Second lead","harness":"test","model":"sol","effort":"high"},
+		{"name":"worker","role":"work","description":"test","harness":"test","model":"p/m","effort":"high"}
+	]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -277,6 +281,15 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		return len(s.Agents) == 1 && s.Agents[0].Waiter > 0 && s.Agents[0].Target != ""
 	})
 	lead := state().Agents[0]
+	if lead.Model != "haiku" {
+		t.Fatalf("default lead model = %q", lead.Model)
+	}
+	if out, err := exec.Command(binary, "window", "new", path, "missing").CombinedOutput(); err == nil || !strings.Contains(string(out), `no lead profile named "missing"`) {
+		t.Fatalf("unknown lead: %v %s", err, out)
+	}
+	if len(state().Agents) != 1 {
+		t.Fatal("an unknown lead created a session")
+	}
 	if lead.AwaitingUser {
 		t.Fatal("a new session awaits user input before delivering messages")
 	}
@@ -290,12 +303,15 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		t.Fatal("worker did not get a worktree", err)
 	}
 	// Independent teams share a tmux session, with names scoped to windows.
-	cli("window", "new", path)
+	cli("window", "new", path, "second")
 	until("second lead waiter", func() bool {
 		s := state()
 		return len(s.Agents) == 3 && s.Agents[2].Waiter > 0
 	})
 	otherLead := state().Agents[2]
+	if otherLead.Model != "sol" {
+		t.Fatalf("chosen lead model = %q", otherLead.Model)
+	}
 	call(otherLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "second session brief"})
 	until("second session worker", func() bool {
 		s := state()
@@ -335,7 +351,7 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	tmux("select-window", "-t", otherWindow)
 	tmux("select-pane", "-t", otherWorker.Target)
-	cli("window", "new", path)
+	cli("window", "new", path, "first")
 	until("new session", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
 	shortcutLead := state().Agents[4]
 	shortcutWindow := windowOf(shortcutLead.Target)

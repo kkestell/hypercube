@@ -25,6 +25,46 @@ func run(t *testing.T, event, input string) response {
 	return r
 }
 
+func TestStartListsWorkerRoles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := `{"profiles":[
+		{"name":"opus","role":"lead","description":"leading","harness":"claude","model":"opus","effort":"high"},
+		{"name":"planner","role":"plan","description":"designing","harness":"claude","model":"opus","effort":"high"},
+		{"name":"builder","role":"work","description":"building","harness":"codex","model":"sol","effort":"high"},
+		{"name":"reviewer","role":"review","description":"reviewing","harness":"claude","model":"sonnet","effort":"high"}
+	]}`
+	if err := os.WriteFile(filepath.Join(dir, "hypercube/config.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "a")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Team: "session-1"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	context := run(t, "start", `{}`).Context
+	for _, want := range []string{
+		"role says which work each profile suits: plan, work, or review",
+		"- planner (plan; claude, opus, high): designing",
+		"- builder (work; codex, sol, high): building",
+		"- reviewer (review; claude, sonnet, high): reviewing",
+	} {
+		if !strings.Contains(context, want) {
+			t.Errorf("context missing %q: %s", want, context)
+		}
+	}
+	if strings.Contains(context, "- opus (") {
+		t.Fatalf("lead profile listed as worker: %s", context)
+	}
+}
+
 func TestDelivery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "w.json")
 	t.Setenv("HYPERCUBE_STATE", path)

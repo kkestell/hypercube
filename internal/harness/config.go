@@ -14,16 +14,23 @@ type Spec struct {
 	Effort  string `json:"effort"`
 }
 
-// Profile is a named spec the lead can give a worker. The
-// description tells the lead when to use it.
+const (
+	RoleLead   = "lead"
+	RolePlan   = "plan"
+	RoleWork   = "work"
+	RoleReview = "review"
+)
+
+// Profile is a named spec. Its role and description tell the user or lead
+// when to use it.
 type Profile struct {
 	Name        string `json:"name"`
+	Role        string `json:"role"`
 	Description string `json:"description"`
 	Spec
 }
 
 type Config struct {
-	Lead     Spec      `json:"lead"`
 	Profiles []Profile `json:"profiles"`
 }
 
@@ -47,13 +54,8 @@ func LoadConfig() (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := c.Lead.check(); err != nil {
-		return c, fmt.Errorf("%s: lead: %w", path, err)
-	}
-	if len(c.Profiles) == 0 {
-		return c, fmt.Errorf("%s: missing profiles", path)
-	}
 	seen := map[string]bool{}
+	var leads, workers int
 	for i, p := range c.Profiles {
 		switch {
 		case p.Name == "":
@@ -63,22 +65,68 @@ func LoadConfig() (Config, error) {
 		case p.Description == "":
 			return c, fmt.Errorf("%s: profile %q: missing description", path, p.Name)
 		}
+		switch p.Role {
+		case RoleLead:
+			leads++
+		case RolePlan, RoleWork, RoleReview:
+			workers++
+		default:
+			return c, fmt.Errorf("%s: profile %q: invalid role %q (want lead, plan, work, or review)", path, p.Name, p.Role)
+		}
 		if err := p.check(); err != nil {
 			return c, fmt.Errorf("%s: profile %q: %w", path, p.Name, err)
 		}
 		seen[p.Name] = true
 	}
+	if leads == 0 {
+		return c, fmt.Errorf("%s: at least one lead profile is required", path)
+	}
+	if workers == 0 {
+		return c, fmt.Errorf("%s: at least one worker profile is required", path)
+	}
 	return c, nil
 }
 
-// Profile returns the profile with the given name.
-func (c Config) Profile(name string) (Profile, error) {
+// Leads returns lead profiles in file order.
+func (c Config) Leads() []Profile {
+	var profiles []Profile
 	for _, p := range c.Profiles {
-		if p.Name == name {
+		if p.Role == RoleLead {
+			profiles = append(profiles, p)
+		}
+	}
+	return profiles
+}
+
+// Workers returns worker profiles in file order.
+func (c Config) Workers() []Profile {
+	var profiles []Profile
+	for _, p := range c.Profiles {
+		if p.Role != RoleLead {
+			profiles = append(profiles, p)
+		}
+	}
+	return profiles
+}
+
+// Lead returns the named lead profile, or the first lead when name is empty.
+func (c Config) Lead(name string) (Profile, error) {
+	for _, p := range c.Profiles {
+		if p.Role == RoleLead && (name == "" || p.Name == name) {
 			return p, nil
 		}
 	}
-	return Profile{}, fmt.Errorf("no profile named %q", name)
+	return Profile{}, fmt.Errorf("no lead profile named %q", name)
+}
+
+// Worker returns the worker profile with the given name.
+func (c Config) Worker(name string) (Profile, error) {
+	for _, p := range c.Profiles {
+		if p.Role != RoleLead && p.Name == name {
+			return p, nil
+		}
+	}
+	return Profile{}, fmt.Errorf("no worker profile named %q", name)
 }
 
 func (s Spec) check() error {

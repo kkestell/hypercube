@@ -10,16 +10,18 @@
 }
 @end
 
-void hypercubeMenuRun(const char *url) {
+void hypercubeMenuRun(const char *url, const void *icon, size_t iconLen) {
     @autoreleasepool {
         NSApplication *app = [NSApplication sharedApplication];
         [app setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
         NSStatusItem *item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
-        NSImage *image = [NSImage imageWithSystemSymbolName:@"cube" accessibilityDescription:@"Hypercube"];
+        NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:icon length:iconLen]];
         [image setTemplate:YES];
         [image setSize:NSMakeSize(18, 18)];
         [[item button] setImage:image];
+        [[item button] setAccessibilityLabel:@"Hypercube"];
+        [image release];
 
         HypercubeMenu *controller = [[HypercubeMenu alloc] init];
         NSMenu *menu = [[NSMenu alloc] init];
