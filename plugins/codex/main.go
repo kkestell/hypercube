@@ -1,317 +1,335 @@
-// Command hypercube-harness-codex runs the Codex CLI as a Hypercube agent.
-// Hypercube runs `launch`, which prints a `run` command. `run` starts Codex
-// and waits for messages while Codex is idle; Codex runs `hook` through the
-// hooks that launch configures.
+// Command hypercube-harness-codex runs Codex as a Hypercube agent. `serve`
+// keeps one `codex app-server` process alive across turns, speaks its
+// JSON-RPC protocol, and translates its notifications into protocol events.
 package main
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strings"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
+const (
+	startTimeout = 60 * time.Second
+	callTimeout  = 30 * time.Second
+	stopTimeout  = 3 * time.Second
+)
+
 func main() {
-	args := os.Args[1:]
-	var err error
-	switch {
-	case len(args) == 1 && args[0] == "serve":
-		err = plugin.ErrUnsupported
-	case len(args) == 1 && args[0] == "launch":
-		err = launch(os.Stdin, os.Stdout)
-	case len(args) == 3 && args[0] == "hook":
-		err = hook(args[1], args[2], os.Stdin, os.Stdout)
-	case len(args) > 2 && args[0] == "run":
-		err = run(args[1], args[2:])
-	default:
-		err = fmt.Errorf("usage: hypercube-harness-codex [serve | launch | hook <hypercube> <event> | run <hypercube> <codex argv>]")
+	if len(os.Args) != 2 || os.Args[1] != "serve" {
+		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-codex serve")
+		os.Exit(1)
 	}
-	if err != nil {
+	if err := serve(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-codex:", err)
 		os.Exit(1)
 	}
 }
 
-// sessionVar names the file that holds the ID of the agent's Codex session.
-// Codex saves a new session from its first prompt.
-const sessionVar = "HYPERCUBE_CODEX_SESSION"
-
-// Codex hook events, the Hypercube reports they make, and the keys Codex uses
-// for them in hook trust.
-var events = []struct{ name, report, key string }{
-	{"SessionStart", "start", "session_start"},
-	{"UserPromptSubmit", "prompt", "user_prompt_submit"},
-	{"PostToolUse", "tool", "post_tool_use"},
-	{"Stop", "stop", "stop"},
+func serve(in io.Reader, out io.Writer) error {
+	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (plugin.Agent, error) {
+		ag, err := startAgent(a, emit, exited)
+		if err != nil {
+			return plugin.Agent{}, err
+		}
+		return plugin.Agent{Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Idle: ag.idle, Stop: ag.stop}, nil
+	})
 }
 
-func launch(stdin io.Reader, stdout io.Writer) error {
-	var in harness.LaunchInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
+// agent is a running `codex app-server` process and what its notifications
+// have told us.
+type agent struct {
+	cmd    *exec.Cmd
+	stdin  io.Closer
+	rpc    *plugin.RPC
+	emit   func(harness.Event)
+	done   chan struct{} // closed when the process has ended
+	ctx    context.Context
+	cancel context.CancelFunc
+	stderr plugin.Tail
+
+	// mu guards the state below. Events are emitted with it held, so they keep
+	// the order of the notifications and of answers.
+	mu       sync.Mutex
+	thread   string
+	turn     string                  // the main turn in progress
+	ended    string                  // the last main turn that completed
+	finished map[string]bool         // items that have completed
+	open     map[string]harness.Item // streamed items that have not completed
+	running  map[string]harness.Item // tool items that have not completed
+	children map[string]string       // subagent thread to the item that started it
+	requests map[string]*request     // open attention items, by item ID
+	errors   int
+}
+
+// request is a server request waiting for the user, with one attention item
+// per question. parse converts an answer for the question at its index, if
+// set. reply turns the converted answers into the response once every
+// question has one; refuse is the response that gives up.
+type request struct {
+	id     json.RawMessage
+	items  []harness.Item
+	parse  []func(string) (any, error)
+	values []any
+	given  int
+	reply  func(values []any) any
+	refuse any
+}
+
+func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (*agent, error) {
+	path, err := exec.LookPath("codex")
+	if err != nil {
+		return nil, errors.New("Codex is missing: install codex")
+	}
+	cmd := exec.Command(path, "app-server")
+	cmd.Dir = a.Dir
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	ag := &agent{
+		cmd: cmd, stdin: stdin, emit: emit, done: make(chan struct{}), finished: map[string]bool{},
+		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]string{}, requests: map[string]*request{},
+	}
+	ag.ctx, ag.cancel = context.WithCancel(context.Background())
+	cmd.Stderr = io.MultiWriter(os.Stderr, &ag.stderr)
+	// Codex's children may keep its stderr open after it ends.
+	cmd.WaitDelay = time.Second
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("start codex: %w", err)
+	}
+	ag.rpc = plugin.NewRPC(stdout, stdin, ag.handle)
+	died := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		ag.cancel()
+		close(ag.done)
+		reason := "codex exited"
+		if err != nil {
+			reason = fmt.Sprintf("codex exited: %v", err)
+		}
+		if detail := ag.stderr.Last(); detail != "" {
+			reason += ": " + detail
+		}
+		died <- errors.New(reason)
+	}()
+	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
+	defer cancel()
+	if err := ag.connect(ctx, a); err != nil {
+		ag.stop()
+		return nil, err
+	}
+	go func() { exited <- <-died }()
+	return ag, nil
+}
+
+// connect initializes the connection and starts or resumes the thread. The
+// thread runs with an automatic approval reviewer in a workspace-write sandbox
+// with network access, in a trusted folder, and with its Git directories
+// writable so that a worker can commit.
+func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
+	// Experimental methods include the questions Codex asks the user.
+	if err := ag.call(ctx, "initialize", map[string]any{
+		"clientInfo":   map[string]any{"name": "hypercube", "version": "1"},
+		"capabilities": map[string]any{"experimentalApi": true},
+	}, nil); err != nil {
+		return fmt.Errorf("incompatible Codex app-server; update Codex: %w", err)
+	}
+	if err := ag.rpc.Notify("initialized", map[string]any{}); err != nil {
 		return err
 	}
-	self, err := os.Executable()
+	// Codex names a folder by its resolved path when it asks whether to trust it.
+	wd, err := filepath.EvalSymlinks(a.Dir)
 	if err != nil {
 		return err
 	}
-	command := func(args ...string) string {
-		quoted := []string{plugin.ShellQuote(self)}
-		for _, arg := range args {
-			quoted = append(quoted, plugin.ShellQuote(arg))
+	sandbox := map[string]any{"network_access": true}
+	if roots := gitDirs(a.Dir); len(roots) > 0 {
+		sandbox["writable_roots"] = roots
+	}
+	params := map[string]any{
+		"cwd": a.Dir, "model": a.Model, "approvalPolicy": "on-request", "approvalsReviewer": "auto_review", "sandbox": "workspace-write",
+		"developerInstructions": a.Instructions,
+		"config": map[string]any{
+			"model_reasoning_effort":  a.Effort,
+			"sandbox_workspace_write": sandbox,
+			"projects":                map[string]any{wd: map[string]any{"trust_level": "trusted"}},
+			"mcp_servers": map[string]any{"hypercube": map[string]any{
+				"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "default_tools_approval_mode": "approve",
+			}},
+		},
+	}
+	method := "thread/start"
+	if a.Conversation != "" {
+		method = "thread/resume"
+		params["threadId"] = a.Conversation
+		params["excludeTurns"] = true
+	}
+	var opened struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+	}
+	if err := ag.call(ctx, method, params, &opened); err != nil {
+		if a.Conversation != "" {
+			return fmt.Errorf("Codex could not resume thread %s: %w", a.Conversation, err)
 		}
-		return strings.Join(quoted, " ")
+		return err
 	}
-	var hooks, trust []string
-	for _, e := range events {
-		cmd := command("hook", in.Hypercube, e.name)
-		hooks = append(hooks, fmt.Sprintf("%s=[{hooks=[{type=\"command\",command=%s}]}]", e.name, jsonString(cmd)))
-		key := fmt.Sprintf("/<session-flags>/config.toml:%s:0:0", e.key)
-		trust = append(trust, fmt.Sprintf("%s={trusted_hash=%s}", jsonString(key), jsonString(hookHash(e.key, cmd))))
+	if opened.Thread.ID == "" {
+		return errors.New("Codex returned no thread")
 	}
-	var env, inherited []string
-	for k, v := range in.Env {
-		env = append(env, jsonString(k)+"="+jsonString(v))
-	}
-	// Codex starts MCP servers with a few variables of its own environment;
-	// hypercube mcp needs the rest, such as its configuration and tmux paths.
-	for _, item := range os.Environ() {
-		if k, _, _ := strings.Cut(item, "="); k != "" {
-			inherited = append(inherited, jsonString(k))
-		}
-	}
-	// Codex asks whether to trust a folder it has not seen. The agent works in
-	// the launch directory, which Codex names by its resolved path. Codex
-	// splits a dotted key on every dot, so the path goes in an inline table.
-	wd, err := os.Getwd()
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.thread = opened.Thread.ID
+	ag.emit(harness.Event{Conversation: ag.thread})
+	return nil
+}
+
+// gitDirs returns the Git directories of the repository that holds dir: the
+// sandbox keeps Git metadata read-only unless it is a writable root itself. A
+// worktree's metadata is in its own Git directory and in its parent
+// checkout's.
+func gitDirs(dir string) []string {
+	cmd := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-dir")
+	cmd.Dir = dir
+	out, err := cmd.Output()
 	if err != nil {
-		return err
-	}
-	if wd, err = filepath.EvalSymlinks(wd); err != nil {
-		return err
-	}
-	argv := []string{self, "run", in.Hypercube, "codex"}
-	if in.Conversation != "" {
-		argv = append(argv, "resume")
-	}
-	argv = append(argv, "--model", in.Model, "-c", "model_reasoning_effort="+jsonString(in.Effort),
-		"--approve-for-me", "-c", "sandbox_workspace_write.network_access=true",
-		"-c", fmt.Sprintf("projects={%s={trust_level=\"trusted\"}}", jsonString(wd)),
-		"-c", fmt.Sprintf("mcp_servers.hypercube={command=%s,args=[\"mcp\"],env={%s},env_vars=[%s],default_tools_approval_mode=\"approve\"}", jsonString(in.Hypercube), strings.Join(env, ","), strings.Join(inherited, ",")),
-		"-c", fmt.Sprintf("hooks={%s,state={%s}}", strings.Join(hooks, ","), strings.Join(trust, ",")))
-	// The sandbox keeps Git metadata read-only unless it is a writable root
-	// itself. A worktree's metadata is in its own Git directory and in its
-	// parent checkout's.
-	if out, err := exec.Command("git", "rev-parse", "--path-format=absolute", "--git-common-dir", "--git-dir").Output(); err == nil {
-		dirs := strings.Split(strings.TrimSpace(string(out)), "\n")
-		for i, dir := range dirs {
-			if i == 0 || dir != dirs[0] {
-				argv = append(argv, "--add-dir", dir)
-			}
-		}
-	}
-	argv = append(argv, "--")
-	if in.Conversation != "" {
-		argv = append(argv, in.Conversation)
-	}
-	if in.Prompt != "" {
-		argv = append(argv, in.Prompt)
-	}
-	session := filepath.Join(in.StateDir, "codex", in.Agent+".session")
-	if err := os.MkdirAll(filepath.Dir(session), 0o755); err != nil {
-		return err
-	}
-	if err := os.WriteFile(session, []byte(in.Conversation), 0o644); err != nil {
-		return err
-	}
-	return json.NewEncoder(stdout).Encode(map[string]any{"argv": argv, "env": map[string]string{sessionVar: session}})
-}
-
-// hookHash is the hash Codex records when a user trusts a command hook with
-// default settings in a matcher group of its own, so the hooks launch
-// configures run without a trust prompt or an edit to the user's settings.
-func hookHash(event, command string) string {
-	identity := map[string]any{"event_name": event, "hooks": []any{map[string]any{"type": "command", "command": command, "async": false, "timeout": 600}}}
-	sum := sha256.Sum256([]byte(jsonString(identity)))
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-type hookInput struct {
-	SessionID      string  `json:"session_id"`
-	AgentID        *string `json:"agent_id"`
-	TranscriptPath string  `json:"transcript_path"`
-	Prompt         string  `json:"prompt"`
-}
-
-// hook reports a Codex hook event and answers Codex with the context
-// Hypercube returns.
-func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
-	name := ""
-	for _, e := range events {
-		if e.name == event {
-			name = e.report
-		}
-	}
-	if name == "" {
-		return fmt.Errorf("unknown hook event %q", event)
-	}
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return err
-	}
-	// Native subagents have their own conversations.
-	if in.AgentID != nil {
 		return nil
 	}
-	// Usage only feeds the user's view, so failing to read it must not stop
-	// the hook from delivering messages.
-	if (event == "PostToolUse" || event == "Stop") && in.TranscriptPath != "" {
-		_ = usage(hypercube, in.TranscriptPath)
+	dirs := strings.Split(strings.TrimSpace(string(out)), "\n")
+	roots := dirs[:1]
+	if len(dirs) > 1 && dirs[1] != dirs[0] {
+		roots = append(roots, dirs[1])
 	}
-	body := map[string]string{}
-	if event == "UserPromptSubmit" {
-		body["conversation"] = in.SessionID
-		body["text"] = in.Prompt
-		if err := os.WriteFile(os.Getenv(sessionVar), []byte(in.SessionID), 0o644); err != nil {
+	return roots
+}
+
+// call makes a request and decodes its result. A connection that has ended is
+// explained by the end of Codex's diagnostics.
+func (ag *agent) call(ctx context.Context, method string, params, result any) error {
+	raw, err := ag.rpc.Call(ctx, method, params)
+	if err != nil {
+		select {
+		case <-ag.rpc.Done():
+			select {
+			case <-ag.done:
+			case <-time.After(stopTimeout):
+			}
+			if detail := ag.stderr.Last(); detail != "" {
+				err = fmt.Errorf("%w: %s", err, detail)
+			}
+		default:
+		}
+		return fmt.Errorf("%s: %w", method, err)
+	}
+	if result == nil {
+		return nil
+	}
+	return json.Unmarshal(raw, result)
+}
+
+// idle reports the started agent as waiting for input.
+func (ag *agent) idle() {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.emit(harness.Event{Conversation: ag.thread, State: harness.Idle})
+}
+
+// stop ends codex: closing its input lets it finish, and it is killed if it
+// does not. Its children share the plugin's process group, which Hypercube
+// kills.
+func (ag *agent) stop() {
+	ag.cancel()
+	_ = ag.stdin.Close()
+	select {
+	case <-ag.done:
+	case <-time.After(stopTimeout):
+		_ = ag.cmd.Process.Kill()
+	}
+}
+
+func textInput(text string) []map[string]any {
+	return []map[string]any{{"type": "text", "text": text}}
+}
+
+// input steers the turn in progress, or starts a turn. Codex refuses a steer
+// once the turn has ended, which can happen before its completion reaches us;
+// the text then starts a turn.
+func (ag *agent) input(text string) error {
+	select {
+	case <-ag.done:
+		return errors.New("codex is not running")
+	default:
+	}
+	ag.mu.Lock()
+	thread, turn := ag.thread, ag.turn
+	ag.mu.Unlock()
+	if turn != "" {
+		ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
+		err := ag.call(ctx, "turn/steer", map[string]any{"threadId": thread, "expectedTurnId": turn, "input": textInput(text)}, nil)
+		cancel()
+		if err == nil {
+			return nil
+		}
+		ag.mu.Lock()
+		ended := ag.turn != turn || strings.Contains(err.Error(), "no active turn")
+		ag.mu.Unlock()
+		if !ended {
 			return err
 		}
 	}
-	var r plugin.Response
-	if err := plugin.Report(hypercube, name, body, &r); err != nil || r.Context == "" {
+	var started struct {
+		Turn struct {
+			ID string `json:"id"`
+		} `json:"turn"`
+	}
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
+	defer cancel()
+	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": textInput(text)}, &started); err != nil {
 		return err
 	}
-	if event == "Stop" {
-		return json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": r.Context})
-	}
-	return json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": r.Context}})
-}
-
-// usage reports the context use in the newest token count of the session's
-// transcript. Codex records no cost. Token counts follow each model response,
-// so the newest is near the end.
-func usage(hypercube, transcript string) error {
-	f, err := os.Open(transcript)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return err
-	}
-	data, err := io.ReadAll(io.NewSectionReader(f, max(0, info.Size()-1<<20), info.Size()))
-	if err != nil {
-		return err
-	}
-	lines := bytes.Split(data, []byte("\n"))
-	for i := len(lines) - 1; i >= 0; i-- {
-		var entry struct {
-			Payload struct {
-				Type string `json:"type"`
-				Info *struct {
-					Last struct {
-						Input int `json:"input_tokens"`
-					} `json:"last_token_usage"`
-					Window int `json:"model_context_window"`
-				} `json:"info"`
-			} `json:"payload"`
-		}
-		if !bytes.Contains(lines[i], []byte(`"token_count"`)) || json.Unmarshal(lines[i], &entry) != nil || entry.Payload.Type != "token_count" || entry.Payload.Info == nil {
-			continue
-		}
-		return plugin.Report(hypercube, "usage", map[string]int{"context": entry.Payload.Info.Last.Input, "window": entry.Payload.Info.Window}, &plugin.Response{})
-	}
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	var ev harness.Event
+	ag.startTurn(&ev, started.Turn.ID)
+	ag.send(ev)
 	return nil
 }
 
-// run runs Codex and, while it runs, waits for messages for the agent. When
-// `hypercube wait` prints messages for the idle agent, run queues them in the
-// session, which starts a turn. Codex fires no hooks while it is idle, even
-// after resuming a session, so the waiter is a child of this process, and ends
-// with it.
-func run(hypercube string, argv []string) error {
-	codex := exec.Command(argv[0], argv[1:]...)
-	codex.Stdin, codex.Stdout, codex.Stderr = os.Stdin, os.Stdout, os.Stderr
-	// Codex handles the terminal's signals itself. Ignoring them through a
-	// handler leaves Codex's own handling unchanged.
-	signal.Notify(make(chan os.Signal, 1), syscall.SIGINT, syscall.SIGQUIT)
-	if err := codex.Start(); err != nil {
-		return err
-	}
-	go func() {
-		if err := waitLoop(hypercube); err != nil {
-			fmt.Fprintln(os.Stderr, "hypercube-harness-codex:", err)
-		}
-	}()
-	err := codex.Wait()
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		os.Exit(exit.ExitCode())
-	}
-	return err
-}
-
-// waitLoop delivers messages until a newer waiter replaces it. A new session
-// waits for its first prompt.
-func waitLoop(hypercube string) error {
-	for {
-		session, err := os.ReadFile(os.Getenv(sessionVar))
-		if err != nil {
-			return err
-		}
-		if len(session) == 0 {
-			time.Sleep(time.Second)
-			continue
-		}
-		var out bytes.Buffer
-		cmd := exec.Command(hypercube, "wait")
-		cmd.Stdout, cmd.Stderr = &out, io.Discard
-		err = cmd.Run()
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || exit.ExitCode() != 2 {
-			return err
-		}
-		// A new session may have replaced the one the waiter started in.
-		if session, err = os.ReadFile(os.Getenv(sessionVar)); err != nil {
-			return err
-		}
-		if err := queue(string(session), strings.TrimSpace(out.String())); err != nil {
-			return err
-		}
+func (ag *agent) send(ev harness.Event) {
+	if len(ev.Items) > 0 || ev.State != "" || ev.Usage != nil {
+		ag.emit(ev)
 	}
 }
 
-// queue adds a message to a Codex session, which starts a turn when the
-// session is idle and follows the current turn otherwise.
-func queue(session, text string) error {
-	cmd := exec.Command("codex", "queue", "--thread", session, "--message", text)
-	cmd.Stdout, cmd.Stderr = io.Discard, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("codex queue: %w", err)
+func (ag *agent) interrupt() error {
+	ag.mu.Lock()
+	thread, turn := ag.thread, ag.turn
+	var ev harness.Event
+	// Codex waits for the answers of requests it has sent.
+	ev.Items = ag.closeRequests(func(*request) bool { return true }, true)
+	ag.send(ev)
+	ag.mu.Unlock()
+	if turn == "" {
+		return nil
 	}
-	return nil
-}
-
-// jsonString marshals as Codex does: object keys sorted, HTML characters
-// unescaped.
-func jsonString(v any) string {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
-		panic(err)
-	}
-	return strings.TrimSuffix(b.String(), "\n")
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
+	defer cancel()
+	return ag.call(ctx, "turn/interrupt", map[string]any{"threadId": thread, "turnId": turn}, nil)
 }

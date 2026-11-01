@@ -113,10 +113,34 @@ levels); a launch with any other value fails and names it.
 
 ## Codex
 
-The plugin runs the Codex CLI with Approve for me: an automatic reviewer
-answers approval requests inside a workspace-write sandbox with network
-access. The agent's Git directories are writable, so a worker can commit in
-its worktree.
+The plugin keeps one `codex app-server` process running per agent and speaks
+its JSON-RPC protocol to it. The agent's thread runs with an automatic reviewer
+answering approval requests, in a workspace-write sandbox with network access,
+in a trusted folder, with the `hypercube mcp` server as an MCP server whose
+tools need no approval. The agent's Git directories are writable, so a worker
+can commit in its worktree. The runtime instructions are the thread's developer
+instructions on every launch, and a saved conversation resumes with
+`thread/resume`. A conversation Codex cannot resume fails the launch.
+
+- **Text and tools.** Text and reasoning summaries stream into the transcript
+  as Codex writes them. Commands, file changes, MCP and other tool calls, and
+  web searches appear as tool calls. A native subagent's items appear nested
+  under the call that started it.
+- **Approvals and questions.** A request the automatic reviewer does not settle
+  becomes an attention request. A command, file change, or permission request
+  offers Allow, Deny, and Allow for this session when Codex accepts it; Codex
+  cancels the turn on Deny when it offers no decline. Codex's questions become
+  one attention request per question, with the options as choices and free text
+  where Codex allows it; Codex receives the answers once every question has one.
+  An MCP server's request is Accept or Decline, or one attention request per
+  field of its form.
+- **Messages and interrupts.** A message sent during a turn steers it, and
+  Codex reads it before its next step; a message sent when no turn is running
+  starts one. Interrupt stops the turn and gives up any open request, and the
+  stopped turn stays in the transcript.
+- **State and usage.** The agent is working from the start of a turn until it
+  ends. Context is the tokens of the latest request, and the context window
+  comes from the model.
 
 ## Pi
 

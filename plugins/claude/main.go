@@ -37,107 +37,14 @@ func main() {
 	}
 }
 
-// server holds the connection to Hypercube and the claude process.
-type server struct {
-	outMu sync.Mutex
-	enc   *json.Encoder
-
-	claude *claude // set by start
-	exited chan error
-}
-
 func serve(in io.Reader, out io.Writer) error {
-	s := &server{enc: json.NewEncoder(out), exited: make(chan error, 1)}
-	defer func() {
-		if s.claude != nil {
-			s.claude.stop()
-		}
-	}()
-	commands := make(chan harness.Command)
-	failed := make(chan error, 1)
-	go func() {
-		defer close(commands)
-		scanner := bufio.NewScanner(in)
-		scanner.Buffer(make([]byte, 1<<20), 64<<20)
-		for scanner.Scan() {
-			var cmd harness.Command
-			if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
-				failed <- fmt.Errorf("malformed command: %w", err)
-				return
-			}
-			commands <- cmd
-		}
-		if err := scanner.Err(); err != nil {
-			failed <- err
-		}
-	}()
-	for {
-		select {
-		case cmd, ok := <-commands:
-			if !ok {
-				select {
-				case err := <-failed:
-					return err
-				default:
-					return nil
-				}
-			}
-			if cmd.Command == harness.CmdShutdown {
-				s.reply(cmd.ID, nil)
-				return nil
-			}
-			err := s.handle(cmd)
-			s.reply(cmd.ID, err)
-			if err == nil && cmd.Command == harness.CmdStart {
-				s.claude.idle()
-			}
-		case err := <-s.exited:
-			return err
-		}
-	}
-}
-
-func (s *server) write(r harness.Record) {
-	s.outMu.Lock()
-	defer s.outMu.Unlock()
-	_ = s.enc.Encode(r)
-}
-
-func (s *server) reply(id string, err error) {
-	r := harness.Reply{ID: id}
-	if err != nil {
-		r.Error = err.Error()
-	}
-	s.write(harness.Record{Reply: &r})
-}
-
-func (s *server) handle(cmd harness.Command) error {
-	if cmd.Command == harness.CmdStart {
-		if s.claude != nil {
-			return errors.New("already started")
-		}
-		if cmd.Start == nil {
-			return errors.New("start without arguments")
-		}
-		c, err := startClaude(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) }, s.exited)
+	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (plugin.Agent, error) {
+		c, err := startClaude(a, emit, exited)
 		if err != nil {
-			return err
+			return plugin.Agent{}, err
 		}
-		s.claude = c
-		return nil
-	}
-	if s.claude == nil {
-		return errors.New("not started")
-	}
-	switch cmd.Command {
-	case harness.CmdInput:
-		return s.claude.input(cmd.Text)
-	case harness.CmdInterrupt:
-		return s.claude.interrupt()
-	case harness.CmdAnswer:
-		return s.claude.answer(cmd.Request, cmd.Choice, cmd.Text)
-	}
-	return fmt.Errorf("unknown command %q", cmd.Command)
+		return plugin.Agent{Input: c.input, Interrupt: c.interrupt, Answer: c.answer, Idle: c.idle, Stop: c.stop}, nil
+	})
 }
 
 // claude is a running `claude -p` process and what its stream has told us.
@@ -206,7 +113,7 @@ func startClaude(a harness.StartArgs, emit func(harness.Event), exited chan<- er
 	if err != nil {
 		return nil, err
 	}
-	var stderr tail
+	var stderr plugin.Tail
 	cmd.Stdout = pipe
 	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
 	cmd.WaitDelay = time.Second
@@ -246,7 +153,7 @@ func startClaude(a harness.StartArgs, emit func(harness.Event), exited chan<- er
 		if err != nil {
 			reason = fmt.Sprintf("claude exited: %v", err)
 		}
-		if detail := stderr.last(); detail != "" {
+		if detail := stderr.Last(); detail != "" {
 			reason += ": " + detail
 		}
 		died <- errors.New(reason)
@@ -741,26 +648,4 @@ func (c *claude) result(ev *harness.Event, m message) {
 	c.usage.Cost = m.Cost
 	usage := c.usage
 	ev.Usage = &usage
-}
-
-// tail keeps the end of claude's diagnostics for error messages.
-type tail struct {
-	mu  sync.Mutex
-	buf []byte
-}
-
-func (t *tail) Write(p []byte) (int, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.buf = append(t.buf, p...)
-	if len(t.buf) > 2048 {
-		t.buf = t.buf[len(t.buf)-2048:]
-	}
-	return len(p), nil
-}
-
-func (t *tail) last() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return strings.TrimSpace(string(t.buf))
 }
