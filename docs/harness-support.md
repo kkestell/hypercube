@@ -60,8 +60,27 @@ the parent's messages or change its saved conversation or work state.
 
 ## Claude Code
 
-The plugin runs the Claude Code CLI, which works on a Claude Team login, in
-auto permission mode.
+The plugin keeps one `claude -p` process running per agent, with stream-JSON
+input and output, and works on a Claude Team login. The process runs in auto
+permission mode, with the model and effort from the agent's profile and the
+`hypercube mcp` server in its MCP configuration. The runtime instructions are
+appended to the system prompt on every launch, and a saved conversation resumes
+with `--resume`. A conversation Claude Code cannot resume fails the launch.
+
+- **Text.** Assistant text and reasoning stream into the transcript as Claude
+  writes them. Native subagents' tool calls appear nested under the call that
+  started them.
+- **Permissions and questions.** A tool permission request becomes an attention
+  request with the choices Allow and Deny; typed text without a choice denies the
+  tool and tells Claude the text. An `AskUserQuestion` call becomes one attention
+  request per question, with the options as choices and free text for another
+  answer; Claude receives the answers once every question has one.
+- **Messages and interrupts.** Messages sent during a turn go to Claude at once,
+  and it reads them before its next step. Interrupt stops the turn the way Esc
+  does, and the stopped turn stays in the transcript.
+- **State and usage.** Claude reports when it starts working and when it is
+  idle. Context is the tokens of the latest request; the context window and cost
+  come from each turn's result.
 
 ## OpenCode
 

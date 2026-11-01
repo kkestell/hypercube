@@ -1,233 +1,766 @@
-// Command hypercube-harness-claude runs Claude Code CLI as a Hypercube agent.
-// Hypercube runs `launch`; Claude runs `hook`, `wait`, and `statusline`
-// through the hooks and status line that launch configures.
+// Command hypercube-harness-claude runs Claude Code as a Hypercube agent.
+// `serve` keeps one `claude -p` process with stream-JSON input and output
+// alive across turns, and translates its stream into protocol events.
 package main
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"math"
+	"maps"
 	"os"
-	"regexp"
+	"os/exec"
 	"strings"
-	"syscall"
+	"sync"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
+const (
+	startTimeout = 60 * time.Second
+	stopTimeout  = 3 * time.Second
+)
+
 func main() {
-	args := os.Args[1:]
-	var err error
-	switch {
-	case len(args) == 1 && args[0] == "serve":
-		err = plugin.ErrUnsupported
-	case len(args) == 1 && args[0] == "launch":
-		err = launch(os.Stdin, os.Stdout)
-	case len(args) == 3 && args[0] == "hook":
-		err = hook(args[1], args[2], os.Stdin, os.Stdout)
-	case len(args) == 2 && args[0] == "wait":
-		err = wait(args[1], os.Stdin)
-	case (len(args) == 2 || len(args) == 3 && args[2] == "--limits") && args[0] == "statusline":
-		_ = plugin.Report(args[1], "answered", map[string]string{}, &plugin.Response{})
-		err = statusline(args[1], len(args) == 3, os.Stdin, os.Stdout)
-	default:
-		err = fmt.Errorf("usage: hypercube-harness-claude [serve | launch | hook <hypercube> <event> | wait <hypercube> | statusline <hypercube> [--limits]]")
+	if len(os.Args) != 2 || os.Args[1] != "serve" {
+		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-claude serve")
+		os.Exit(1)
 	}
-	if err != nil {
+	if err := serve(os.Stdin, os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-claude:", err)
 		os.Exit(1)
 	}
 }
 
-// Claude hook events and the Hypercube reports they make.
-var reports = map[string]string{
-	"SessionStart":       "start",
-	"UserPromptSubmit":   "prompt",
-	"PostToolUse":        "tool",
-	"Stop":               "stop",
-	"StopFailure":        "failed",
-	"PermissionRequest":  "approval",
-	"PostToolUseFailure": "toolfailed",
-	"PermissionDenied":   "denied",
+// server holds the connection to Hypercube and the claude process.
+type server struct {
+	outMu sync.Mutex
+	enc   *json.Encoder
+
+	claude *claude // set by start
+	exited chan error
 }
 
-func launch(stdin io.Reader, stdout io.Writer) error {
-	var in harness.LaunchInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return err
+func serve(in io.Reader, out io.Writer) error {
+	s := &server{enc: json.NewEncoder(out), exited: make(chan error, 1)}
+	defer func() {
+		if s.claude != nil {
+			s.claude.stop()
+		}
+	}()
+	commands := make(chan harness.Command)
+	failed := make(chan error, 1)
+	go func() {
+		defer close(commands)
+		scanner := bufio.NewScanner(in)
+		scanner.Buffer(make([]byte, 1<<20), 64<<20)
+		for scanner.Scan() {
+			var cmd harness.Command
+			if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
+				failed <- fmt.Errorf("malformed command: %w", err)
+				return
+			}
+			commands <- cmd
+		}
+		if err := scanner.Err(); err != nil {
+			failed <- err
+		}
+	}()
+	for {
+		select {
+		case cmd, ok := <-commands:
+			if !ok {
+				select {
+				case err := <-failed:
+					return err
+				default:
+					return nil
+				}
+			}
+			if cmd.Command == harness.CmdShutdown {
+				s.reply(cmd.ID, nil)
+				return nil
+			}
+			err := s.handle(cmd)
+			s.reply(cmd.ID, err)
+			if err == nil && cmd.Command == harness.CmdStart {
+				s.claude.idle()
+			}
+		case err := <-s.exited:
+			return err
+		}
 	}
-	self, err := os.Executable()
+}
+
+func (s *server) write(r harness.Record) {
+	s.outMu.Lock()
+	defer s.outMu.Unlock()
+	_ = s.enc.Encode(r)
+}
+
+func (s *server) reply(id string, err error) {
+	r := harness.Reply{ID: id}
+	if err != nil {
+		r.Error = err.Error()
+	}
+	s.write(harness.Record{Reply: &r})
+}
+
+func (s *server) handle(cmd harness.Command) error {
+	if cmd.Command == harness.CmdStart {
+		if s.claude != nil {
+			return errors.New("already started")
+		}
+		if cmd.Start == nil {
+			return errors.New("start without arguments")
+		}
+		c, err := startClaude(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) }, s.exited)
+		if err != nil {
+			return err
+		}
+		s.claude = c
+		return nil
+	}
+	if s.claude == nil {
+		return errors.New("not started")
+	}
+	switch cmd.Command {
+	case harness.CmdInput:
+		return s.claude.input(cmd.Text)
+	case harness.CmdInterrupt:
+		return s.claude.interrupt()
+	case harness.CmdAnswer:
+		return s.claude.answer(cmd.Request, cmd.Choice, cmd.Text)
+	}
+	return fmt.Errorf("unknown command %q", cmd.Command)
+}
+
+// claude is a running `claude -p` process and what its stream has told us.
+type claude struct {
+	cmd   *exec.Cmd
+	stdin io.WriteCloser
+	emit  func(harness.Event)
+	done  chan struct{} // closed when the process has ended
+
+	writing sync.Mutex // serializes writes to stdin
+	counter int        // control request IDs; guarded by writing
+
+	// mu guards the translation state below. Events are emitted with it held,
+	// so they keep the order of the stream and of answers.
+	mu           sync.Mutex
+	ready        chan struct{} // closed by the response to initialize
+	initError    string        // why initialize failed
+	resultText   string        // text of an error result before ready
+	conversation string
+	model        string
+	blocks       map[string]int          // content blocks seen per assistant message
+	open         map[string]harness.Item // streamed items that no complete block has finished
+	tools        map[string]harness.Item // tool items, by tool use ID
+	requests     map[string]*request     // open permission requests, by item ID
+	errors       int
+	usage        harness.Usage
+}
+
+// request is a can_use_tool control request waiting for the user: a tool
+// permission, or the questions of AskUserQuestion.
+type request struct {
+	id        string // the control request's ID
+	input     map[string]any
+	items     []harness.Item // one per question, or the one permission prompt
+	questions []string
+	answers   map[string]string
+}
+
+func startClaude(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (*claude, error) {
+	path, err := exec.LookPath("claude")
+	if err != nil {
+		return nil, errors.New("Claude Code is missing: install claude")
+	}
+	mcp := map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env}}}
+	// The prompt snapshot would freeze the instructions of the first launch.
+	argv := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+		"--permission-prompt-tool", "stdio", "--permission-mode", "auto", "--system-prompt-snapshot", "off",
+		"--mcp-config", plugin.JSONString(mcp), "--model", a.Model, "--effort", a.Effort}
+	if a.Instructions != "" {
+		argv = append(argv, "--append-system-prompt", a.Instructions)
+	}
+	if a.Conversation != "" {
+		argv = append(argv, "--resume", a.Conversation)
+	}
+	cmd := exec.Command(path, argv...)
+	cmd.Dir = a.Dir
+	// Claude reports idle and working states only to a host that asks for them.
+	cmd.Env = append(os.Environ(), "CLAUDE_CODE_SDK_READS_SESSION_STATE=1")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	// Claude's children may keep its pipes open after it ends, so the reader
+	// owns the read end and gives up shortly after claude exits.
+	stdout, pipe, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	var stderr tail
+	cmd.Stdout = pipe
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+	cmd.WaitDelay = time.Second
+	c := &claude{
+		cmd: cmd, stdin: stdin, emit: emit, done: make(chan struct{}), ready: make(chan struct{}), conversation: a.Conversation,
+		blocks: map[string]int{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{},
+		requests: map[string]*request{},
+	}
+	if err := cmd.Start(); err != nil {
+		stdout.Close()
+		pipe.Close()
+		return nil, fmt.Errorf("start claude: %w", err)
+	}
+	pipe.Close()
+	read := make(chan struct{})
+	go func() {
+		defer close(read)
+		reader := bufio.NewReaderSize(stdout, 1<<20)
+		for {
+			line, err := reader.ReadBytes('\n')
+			if len(bytes.TrimSpace(line)) > 0 {
+				c.line(line)
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	died := make(chan error, 1)
+	go func() {
+		err := cmd.Wait()
+		_ = stdout.SetReadDeadline(time.Now().Add(time.Second))
+		<-read
+		stdout.Close()
+		close(c.done)
+		reason := "claude exited"
+		if err != nil {
+			reason = fmt.Sprintf("claude exited: %v", err)
+		}
+		if detail := stderr.last(); detail != "" {
+			reason += ": " + detail
+		}
+		died <- errors.New(reason)
+	}()
+	if err := c.send(map[string]any{"type": "control_request", "request_id": "initialize", "request": map[string]any{"subtype": "initialize"}}); err != nil {
+		c.stop()
+		return nil, err
+	}
+	select {
+	case <-c.ready:
+		if reason := c.failure(); reason != "" {
+			c.stop()
+			return nil, errors.New(reason)
+		}
+	case err := <-died:
+		if text := c.failure(); text != "" {
+			err = errors.New(text)
+		}
+		return nil, err
+	case <-time.After(startTimeout):
+		c.stop()
+		return nil, errors.New("claude did not become ready")
+	}
+	go func() { exited <- <-died }()
+	return c, nil
+}
+
+// idle reports the started harness as waiting for input.
+func (c *claude) idle() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.emit(harness.Event{Conversation: c.conversation, State: harness.Idle})
+}
+
+func (c *claude) failure() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.initError != "" {
+		return c.initError
+	}
+	return c.resultText
+}
+
+// stop ends claude: closing its input lets it finish, and it is killed if it
+// does not. Its children share the plugin's process group, which Hypercube
+// kills.
+func (c *claude) stop() {
+	c.writing.Lock()
+	_ = c.stdin.Close()
+	c.writing.Unlock()
+	select {
+	case <-c.done:
+	case <-time.After(stopTimeout):
+		_ = c.cmd.Process.Kill()
+	}
+}
+
+func (c *claude) send(v any) error {
+	c.writing.Lock()
+	defer c.writing.Unlock()
+	line, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	command := func(args ...string) string {
-		quoted := []string{plugin.ShellQuote(self)}
-		for _, arg := range args {
-			quoted = append(quoted, plugin.ShellQuote(arg))
-		}
-		return strings.Join(quoted, " ")
+	if _, err := c.stdin.Write(append(line, '\n')); err != nil {
+		return fmt.Errorf("claude is not running: %w", err)
 	}
-	hooks := map[string]any{}
-	for event := range reports {
-		commands := []any{map[string]any{"type": "command", "command": command("hook", in.Hypercube, event)}}
-		// The waiter starts a turn in the idle session when messages arrive.
-		if event == "SessionStart" || event == "Stop" || event == "StopFailure" {
-			commands = append(commands, map[string]any{"type": "command", "command": command("wait", in.Hypercube), "asyncRewake": true, "timeout": 20 * 24 * 60 * 60})
-		}
-		hooks[event] = []any{map[string]any{"hooks": commands}}
-	}
-	status := []string{"statusline", in.Hypercube}
-	if in.Role == "lead" {
-		status = append(status, "--limits")
-	}
-	argv := []string{"claude",
-		"--mcp-config", plugin.JSONString(map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env}}}),
-		"--settings", plugin.JSONString(map[string]any{"hooks": hooks, "statusLine": map[string]any{"type": "command", "command": command(status...)}}),
-		"--model", in.Model, "--effort", in.Effort, "--permission-mode", "auto"}
-	if in.Conversation != "" {
-		argv = append(argv, "--resume", in.Conversation)
-	}
-	if in.Prompt != "" {
-		argv = append(argv, in.Prompt)
-	}
-	return json.NewEncoder(stdout).Encode(map[string]any{"argv": argv, "env": map[string]string{}})
+	return nil
 }
 
-type hookInput struct {
-	SessionID            string          `json:"session_id"`
-	AgentID              *string         `json:"agent_id"`
-	Error                string          `json:"error"`
-	ErrorDetails         string          `json:"error_details"`
-	LastAssistantMessage string          `json:"last_assistant_message"`
-	ToolName             string          `json:"tool_name"`
-	ToolInput            json.RawMessage `json:"tool_input"`
-	Reason               string          `json:"reason"`
-	Prompt               string          `json:"prompt"`
+func (c *claude) input(text string) error {
+	return c.send(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}})
 }
 
-// Claude wraps pasted text in these tags, which are not part of the user's text.
-var pasteTag = regexp.MustCompile(`</?pasted_content id="[^"]+">`)
+func (c *claude) interrupt() error {
+	c.writing.Lock()
+	c.counter++
+	id := fmt.Sprintf("interrupt-%d", c.counter)
+	c.writing.Unlock()
+	return c.send(map[string]any{"type": "control_request", "request_id": id, "request": map[string]any{"subtype": "interrupt"}})
+}
 
-// hook reports a Claude hook event and answers Claude with the context
-// Hypercube returns.
-func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
-	name, ok := reports[event]
-	if !ok {
-		return fmt.Errorf("unknown hook event %q", event)
+const (
+	allow = "Allow"
+	deny  = "Deny"
+)
+
+// answer replies to an open request: the choice or text of a question, or
+// Allow or Deny, with a reason as text, for a tool permission.
+func (c *claude) answer(item, choice, text string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r := c.requests[item]
+	if r == nil {
+		return fmt.Errorf("request %s is not open", item)
 	}
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return err
-	}
-	// Hypercube logs failed calls of its own tools and auto mode denials of
-	// any tool, native subagents' included.
-	if event == "PostToolUseFailure" || event == "PermissionDenied" {
-		if event == "PostToolUseFailure" && !strings.HasPrefix(in.ToolName, "mcp__hypercube__") {
-			return nil
+	var response map[string]any
+	var result string
+	if r.questions == nil {
+		switch {
+		case choice == allow:
+			response = map[string]any{"behavior": "allow", "updatedInput": r.input}
+			result = allow
+		case choice == deny || choice == "" && text != "":
+			message := text
+			if message == "" {
+				message = "The user denied this tool use."
+			}
+			response = map[string]any{"behavior": "deny", "message": message}
+			result = deny
+			if text != "" {
+				result += ": " + text
+			}
+		case choice == "":
+			return errors.New("the answer is empty")
+		default:
+			return fmt.Errorf("unknown choice %q", choice)
 		}
-		return plugin.Report(hypercube, name, map[string]any{"tool": in.ToolName, "input": in.ToolInput, "error": in.Error, "reason": in.Reason}, &plugin.Response{})
+	} else {
+		result = choice
+		if result == "" {
+			result = text
+		}
+		if result == "" {
+			return errors.New("the answer is empty")
+		}
 	}
-	// Native subagents have their own conversations. Only their approvals
-	// concern the agent.
-	if in.AgentID != nil && event != "PermissionRequest" {
-		return nil
+	// The question's index is the item's position within the request.
+	index := 0
+	for i, it := range r.items {
+		if it.ID == item {
+			index = i
+		}
 	}
-	body := map[string]any{}
-	switch event {
-	case "UserPromptSubmit":
-		body["conversation"] = in.SessionID
-		body["text"] = pasteTag.ReplaceAllString(in.Prompt, "")
-	case "StopFailure":
-		for _, text := range []string{in.ErrorDetails, in.LastAssistantMessage, in.Error} {
-			if strings.TrimSpace(text) != "" {
-				body["error"] = text
-				break
+	if r.questions != nil {
+		r.answers[r.questions[index]] = result
+		if len(r.answers) == len(r.questions) {
+			input := maps.Clone(r.input)
+			input["answers"] = r.answers
+			response = map[string]any{"behavior": "allow", "updatedInput": input}
+		}
+	}
+	if response != nil {
+		if err := c.respond(r.id, response); err != nil {
+			return err
+		}
+	}
+	done := r.items[index]
+	done.Done, done.Answer = true, result
+	delete(c.requests, item)
+	c.emit(harness.Event{Items: []harness.Item{done}})
+	return nil
+}
+
+func (c *claude) respond(id string, response any) error {
+	return c.send(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": id, "response": response}})
+}
+
+// closeRequests finishes the items of requests claude no longer waits on.
+func (c *claude) closeRequests(match func(*request) bool) []harness.Item {
+	var items []harness.Item
+	for id, r := range c.requests {
+		if !match(r) {
+			continue
+		}
+		for _, it := range r.items {
+			if it.ID == id {
+				it.Done = true
+				items = append(items, it)
 			}
 		}
+		delete(c.requests, id)
 	}
-	var r plugin.Response
-	if err := plugin.Report(hypercube, name, body, &r); err != nil || r.Context == "" {
-		return err
-	}
-	if event == "Stop" {
-		return json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": r.Context})
-	}
-	return json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": r.Context}})
+	return items
 }
 
-// wait becomes `hypercube wait` with its stdout on stderr: asyncRewake starts
-// a turn with stderr when the hook exits with status 2. Replacing this process
-// keeps Claude as the waiter's parent, so the waiter ends with Claude.
-func wait(hypercube string, stdin io.Reader) error {
-	var in hookInput
-	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
-		return err
-	}
-	if in.AgentID != nil {
-		return nil
-	}
-	if err := syscall.Dup2(2, 1); err != nil {
-		return err
-	}
-	return syscall.Exec(hypercube, []string{hypercube, "wait"}, os.Environ())
+// message is the part of a stream line the translation reads.
+type message struct {
+	Type      string          `json:"type"`
+	Subtype   string          `json:"subtype"`
+	State     string          `json:"state"`
+	SessionID string          `json:"session_id"`
+	Parent    string          `json:"parent_tool_use_id"`
+	Model     string          `json:"model"`
+	APIID     string          `json:"api_message_id"`
+	Event     json.RawMessage `json:"event"`
+	Message   struct {
+		ID      string          `json:"id"`
+		Content json.RawMessage `json:"content"`
+		Usage   struct {
+			Input         int `json:"input_tokens"`
+			CacheRead     int `json:"cache_read_input_tokens"`
+			CacheCreation int `json:"cache_creation_input_tokens"`
+		} `json:"usage"`
+	} `json:"message"`
+	RequestID string          `json:"request_id"`
+	Request   json.RawMessage `json:"request"`
+	Response  struct {
+		Subtype   string `json:"subtype"`
+		RequestID string `json:"request_id"`
+		Error     string `json:"error"`
+	} `json:"response"`
+	IsError        bool    `json:"is_error"`
+	Result         string  `json:"result"`
+	Errors         []any   `json:"errors"`
+	TerminalReason string  `json:"terminal_reason"`
+	Cost           float64 `json:"total_cost_usd"`
+	ModelUsage     map[string]struct {
+		ContextWindow int `json:"contextWindow"`
+	} `json:"modelUsage"`
 }
 
-// statusline renders Claude's status line from the JSON Claude sends, and
-// reports its usage. Claude redraws it after each message and after an
-// approval dialog closes, which is when main reports the approval answered.
-func statusline(hypercube string, limits bool, input io.Reader, out io.Writer) error {
-	var status map[string]any
-	_ = json.NewDecoder(input).Decode(&status)
-	value := func(parts ...string) any {
-		var v any = status
-		for _, part := range parts {
-			obj, _ := v.(map[string]any)
-			v = obj[part]
+// block is a content block of an assistant or user message.
+type block struct {
+	Type      string          `json:"type"`
+	Text      string          `json:"text"`
+	Thinking  string          `json:"thinking"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Input     json.RawMessage `json:"input"`
+	ToolUseID string          `json:"tool_use_id"`
+	Content   json.RawMessage `json:"content"`
+	IsError   bool            `json:"is_error"`
+}
+
+// line translates one line of claude's output.
+func (c *claude) line(line []byte) {
+	var m message
+	if err := json.Unmarshal(line, &m); err != nil {
+		fmt.Fprintf(os.Stderr, "hypercube-harness-claude: unreadable claude output: %v\n", err)
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var ev harness.Event
+	switch m.Type {
+	case "system":
+		if m.SessionID != "" && m.SessionID != c.conversation {
+			c.conversation = m.SessionID
+			ev.Conversation = m.SessionID
 		}
-		return v
+		switch m.Subtype {
+		case "init":
+			c.model = m.Model
+		case "session_state_changed":
+			switch m.State {
+			case "running":
+				ev.State = harness.Working
+			case "idle":
+				ev.State = harness.Idle
+			}
+		}
+	case "stream_event":
+		if m.Parent == "" {
+			c.stream(&ev, m)
+		}
+	case "assistant":
+		c.assistant(&ev, m)
+	case "user":
+		c.toolResults(&ev, m)
+	case "control_request":
+		c.control(&ev, m)
+	case "control_cancel_request":
+		ev.Items = append(ev.Items, c.closeRequests(func(r *request) bool { return r.id == m.RequestID })...)
+	case "control_response":
+		if m.Response.RequestID == "initialize" {
+			if m.Response.Subtype == "error" {
+				c.initError = m.Response.Error
+			}
+			close(c.ready)
+		}
+	case "result":
+		c.result(&ev, m)
 	}
-	text := func(v any) string { s, _ := v.(string); return s }
-	number := func(v any) float64 { n, _ := v.(float64); return n }
-	window := number(value("context_window", "context_window_size"))
-	_ = plugin.Report(hypercube, "usage", map[string]any{
-		"context": int(number(value("context_window", "used_percentage")) / 100 * window),
-		"window":  int(window),
-		"cost":    number(value("cost", "total_cost_usd")),
-	}, &plugin.Response{})
-	paint := func(color, text string) string { return "\x1b[" + color + "m" + text + "\x1b[0m" }
-	line := paint("38;2;218;96;0", "✳︎ ") + paint("38;2;218;96;0", text(value("model", "display_name"))) + paint("38;2;255;255;255", " :: ")
-	if value("thinking", "enabled") == true {
-		line += paint("38;2;255;151;69", text(value("effort", "level")))
+	if ev.Conversation != "" || ev.State != "" || len(ev.Items) > 0 || ev.Usage != nil {
+		c.emit(ev)
 	}
-	line += fmt.Sprintf(" %s/%s (%d%%)", tokens(number(value("context_window", "total_input_tokens"))), tokens(number(value("context_window", "context_window_size"))), int(number(value("context_window", "used_percentage"))))
-	if limits {
-		line += fmt.Sprintf(" | 5h %s | 7d %s", bar(number(value("rate_limits", "five_hour", "used_percentage"))), bar(number(value("rate_limits", "seven_day", "used_percentage"))))
-	}
-	_, err := fmt.Fprint(out, line)
-	return err
 }
 
-func tokens(n float64) string {
-	if n < 0 {
-		n = 0
+// stream shows text and reasoning as they arrive. Claude's complete blocks
+// follow and finish the items.
+func (c *claude) stream(ev *harness.Event, m message) {
+	var e struct {
+		Type  string `json:"type"`
+		Index int    `json:"index"`
+		Delta struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Thinking string `json:"thinking"`
+		} `json:"delta"`
 	}
-	whole := int64(n)
-	if whole < 1000 {
-		return fmt.Sprint(whole)
+	if json.Unmarshal(m.Event, &e) != nil || e.Type != "content_block_delta" || m.APIID == "" {
+		return
 	}
-	unit, scale := "k", int64(1000)
-	if whole >= 1000000 {
-		unit, scale = "M", 1000000
+	item := harness.Item{ID: fmt.Sprintf("%s:%d", m.APIID, e.Index), Append: true}
+	switch e.Delta.Type {
+	case "text_delta":
+		item.Kind, item.Text = harness.KindText, e.Delta.Text
+	case "thinking_delta":
+		item.Kind, item.Text = harness.KindReasoning, e.Delta.Thinking
 	}
-	if tenth := whole % scale / (scale / 10); tenth != 0 {
-		return fmt.Sprintf("%d.%d%s", whole/scale, tenth, unit)
+	if item.Text == "" {
+		return
 	}
-	return fmt.Sprintf("%d%s", whole/scale, unit)
+	c.open[item.ID] = harness.Item{ID: item.ID, Kind: item.Kind}
+	ev.Items = append(ev.Items, item)
 }
 
-func bar(percent float64) string {
-	filled := (int(math.Max(0, math.Min(100, percent)))*10 + 50) / 100
-	return strings.Repeat("▪", filled) + strings.Repeat("·", 10-filled)
+func (c *claude) assistant(ev *harness.Event, m message) {
+	var blocks []block
+	if json.Unmarshal(m.Message.Content, &blocks) != nil {
+		return
+	}
+	for _, b := range blocks {
+		id := fmt.Sprintf("%s:%d", m.Message.ID, c.blocks[m.Message.ID])
+		c.blocks[m.Message.ID]++
+		_, streamed := c.open[id]
+		delete(c.open, id)
+		switch b.Type {
+		case "text":
+			if streamed || strings.TrimSpace(b.Text) != "" {
+				ev.Items = append(ev.Items, harness.Item{ID: id, Parent: m.Parent, Kind: harness.KindText, Text: b.Text, Done: true})
+			}
+		case "thinking":
+			if streamed || strings.TrimSpace(b.Thinking) != "" {
+				ev.Items = append(ev.Items, harness.Item{ID: id, Parent: m.Parent, Kind: harness.KindReasoning, Text: b.Thinking, Done: true})
+			}
+		case "tool_use":
+			// AskUserQuestion is shown as its attention requests.
+			if b.Name == "AskUserQuestion" {
+				continue
+			}
+			item := harness.Item{ID: b.ID, Parent: m.Parent, Kind: harness.KindTool, Tool: b.Name, Input: b.Input}
+			c.tools[b.ID] = item
+			ev.Items = append(ev.Items, item)
+		}
+	}
+	// A native subagent's requests do not count toward the agent's context.
+	if u := m.Message.Usage; m.Parent == "" && u.Input+u.CacheRead+u.CacheCreation > 0 {
+		c.usage.Context = u.Input + u.CacheRead + u.CacheCreation
+		usage := c.usage
+		ev.Usage = &usage
+	}
+}
+
+func (c *claude) toolResults(ev *harness.Event, m message) {
+	var blocks []block
+	if json.Unmarshal(m.Message.Content, &blocks) != nil {
+		return // a prompt, which Hypercube already shows
+	}
+	for _, b := range blocks {
+		if b.Type != "tool_result" {
+			continue
+		}
+		item, ok := c.tools[b.ToolUseID]
+		if !ok {
+			continue
+		}
+		delete(c.tools, b.ToolUseID)
+		item.Output, item.Failed, item.Done = resultText(b.Content), b.IsError, true
+		ev.Items = append(ev.Items, item)
+	}
+}
+
+// resultText is the text of a tool result, which claude sends as a string or
+// as blocks.
+func resultText(raw json.RawMessage) string {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return s
+	}
+	var blocks []block
+	if json.Unmarshal(raw, &blocks) != nil {
+		return string(raw)
+	}
+	var parts []string
+	for _, b := range blocks {
+		if b.Type == "text" {
+			parts = append(parts, b.Text)
+		} else {
+			parts = append(parts, "["+b.Type+"]")
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+// control turns a permission request into attention items.
+func (c *claude) control(ev *harness.Event, m message) {
+	var req struct {
+		Subtype     string         `json:"subtype"`
+		Tool        string         `json:"tool_name"`
+		DisplayName string         `json:"display_name"`
+		Title       string         `json:"title"`
+		Description string         `json:"description"`
+		Input       map[string]any `json:"input"`
+	}
+	if err := json.Unmarshal(m.Request, &req); err != nil || req.Subtype != "can_use_tool" {
+		_ = c.send(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": m.RequestID, "error": "unsupported request"}})
+		return
+	}
+	r := &request{id: m.RequestID, input: req.Input}
+	if req.Tool == "AskUserQuestion" {
+		r.questions, r.answers = []string{}, map[string]string{}
+		var in struct {
+			Questions []struct {
+				Question string `json:"question"`
+				Options  []struct {
+					Label       string `json:"label"`
+					Description string `json:"description"`
+				} `json:"options"`
+			} `json:"questions"`
+		}
+		raw, _ := json.Marshal(req.Input)
+		_ = json.Unmarshal(raw, &in)
+		for i, q := range in.Questions {
+			item := harness.Item{ID: fmt.Sprintf("%s/%d", m.RequestID, i), Kind: harness.KindAttention, Text: q.Question, Free: true}
+			var notes []string
+			for _, o := range q.Options {
+				item.Choices = append(item.Choices, o.Label)
+				if o.Description != "" {
+					notes = append(notes, fmt.Sprintf("- %s: %s", o.Label, o.Description))
+				}
+			}
+			if len(notes) > 0 {
+				item.Text += "\n\n" + strings.Join(notes, "\n")
+			}
+			r.items = append(r.items, item)
+			r.questions = append(r.questions, q.Question)
+		}
+		if len(r.items) == 0 {
+			_ = c.respond(m.RequestID, map[string]any{"behavior": "deny", "message": "The question had no content."})
+			return
+		}
+	} else {
+		name := req.DisplayName
+		if name == "" {
+			name = req.Tool
+		}
+		text := req.Title
+		if text == "" {
+			text = "Allow " + name + "?"
+		}
+		if req.Description != "" {
+			text += "\n\n" + req.Description
+		}
+		r.items = []harness.Item{{ID: m.RequestID, Kind: harness.KindAttention, Text: text, Choices: []string{allow, deny}, Free: true}}
+	}
+	for _, it := range r.items {
+		c.requests[it.ID] = r
+	}
+	ev.Items = append(ev.Items, r.items...)
+}
+
+// result ends a turn: nothing is left streaming or waiting, and the turn's
+// usage is final.
+func (c *claude) result(ev *harness.Event, m message) {
+	text := m.Result
+	if text == "" && len(m.Errors) > 0 {
+		text = fmt.Sprint(m.Errors...)
+	}
+	if text == "" {
+		text = m.Subtype
+	}
+	select {
+	case <-c.ready:
+	default:
+		// A failed start, such as a conversation that cannot be resumed, is
+		// reported by the reply to start.
+		c.resultText = text
+		return
+	}
+	for id, it := range c.open {
+		it.Append, it.Done = true, true
+		ev.Items = append(ev.Items, it)
+		delete(c.open, id)
+	}
+	ev.Items = append(ev.Items, c.closeRequests(func(*request) bool { return true })...)
+	// An interrupted turn is the user's own doing.
+	if m.IsError && !strings.HasPrefix(m.TerminalReason, "aborted") {
+		c.errors++
+		ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", c.errors), Kind: harness.KindError, Text: text, Done: true})
+	}
+	window := m.ModelUsage[c.model].ContextWindow
+	if len(m.ModelUsage) == 1 {
+		for _, u := range m.ModelUsage {
+			window = u.ContextWindow
+		}
+	}
+	if window > 0 {
+		c.usage.Window = window
+	}
+	c.usage.Cost = m.Cost
+	usage := c.usage
+	ev.Usage = &usage
+}
+
+// tail keeps the end of claude's diagnostics for error messages.
+type tail struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (t *tail) Write(p []byte) (int, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.buf = append(t.buf, p...)
+	if len(t.buf) > 2048 {
+		t.buf = t.buf[len(t.buf)-2048:]
+	}
+	return len(p), nil
+}
+
+func (t *tail) last() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return strings.TrimSpace(string(t.buf))
 }

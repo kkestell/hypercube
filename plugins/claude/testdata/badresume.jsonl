@@ -1,0 +1,1 @@
+{"type":"result","subtype":"error_during_execution","is_error":true,"session_id":"11111111-1111-4111-8111-111111111111","total_cost_usd":0,"modelUsage":{},"errors":["No conversation found with session ID: 11111111-1111-4111-8111-111111111111"]}
