@@ -57,7 +57,7 @@ func Wait(id, path string, out io.Writer) (bool, error) {
 				break
 			}
 		}
-		if a.Activity == store.Idle && queued {
+		if a.Activity == store.Idle && !s.AwaitingUser(a.Team) && queued {
 			ready, replaced := false, false
 			err := store.Update(path, func(s *store.State) error {
 				a, err := s.Agent(id)
@@ -65,7 +65,7 @@ func Wait(id, path string, out io.Writer) (bool, error) {
 					replaced = true
 					return nil
 				}
-				if a.Activity != store.Idle {
+				if a.Activity != store.Idle || s.AwaitingUser(a.Team) {
 					return nil
 				}
 				messages := s.Take(id)

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/mcp"
+	"github.com/kkestell/hypercube/internal/menu"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
@@ -26,7 +28,7 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | running | ui [port] | mcp | report <event> | wait"
+const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | ui [port] [--menu] | mcp | report <event> | wait"
 
 func main() {
 	var err error
@@ -41,9 +43,7 @@ func main() {
 		err = status()
 	case len(os.Args) == 3 && os.Args[1] == "start":
 		err = openWorkspace(os.Args[2], false)
-	case len(os.Args) == 2 && os.Args[1] == "running":
-		err = running()
-	case (len(os.Args) == 2 || len(os.Args) == 3) && os.Args[1] == "ui":
+	case len(os.Args) <= 4 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "wait":
 		var delivered bool
@@ -374,18 +374,69 @@ func retitle(path, team, expectedWindow, title string) error {
 	return tmux.RenameWindow(window, title)
 }
 
+func parseUIArgs(args []string) (port string, withMenu bool, err error) {
+	port = "4280"
+	havePort := false
+	for _, arg := range args {
+		if arg == "--menu" {
+			withMenu = true
+			continue
+		}
+		if havePort {
+			return "", false, errors.New("ui accepts only one port")
+		}
+		n, err := strconv.Atoi(arg)
+		if err != nil || n < 1 || n > 65535 {
+			return "", false, fmt.Errorf("invalid port %q", arg)
+		}
+		port, havePort = arg, true
+	}
+	return port, withMenu, nil
+}
+
 // serveUI serves the browser view on the optional port, default 4280.
 func serveUI(args []string) error {
-	port := "4280"
-	if len(args) == 1 {
-		n, err := strconv.Atoi(args[0])
-		if err != nil || n < 1 || n > 65535 {
-			return fmt.Errorf("invalid port %q", args[0])
-		}
-		port = args[0]
+	port, withMenu, err := parseUIArgs(args)
+	if err != nil {
+		return err
 	}
-	fmt.Printf("Serving the Hypercube UI at http://localhost:%s/\n", port)
-	return http.ListenAndServe("127.0.0.1:"+port, ui.Handler())
+	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	restoreWorkspaces()
+	url := "http://localhost:" + port + "/"
+	fmt.Printf("Serving the Hypercube UI at %s\n", url)
+	if withMenu {
+		go func() {
+			if err := http.Serve(listener, ui.Handler()); err != nil {
+				fmt.Fprintln(os.Stderr, "hypercube:", err)
+				os.Exit(1)
+			}
+		}()
+		menu.Run(url)
+		return nil
+	}
+	return http.Serve(listener, ui.Handler())
+}
+
+// Restore saved workspaces once at UI startup; one failure must not prevent
+// the view or the other workspaces from starting.
+func restoreWorkspaces() {
+	list, err := workspaces()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "restore workspaces:", err)
+		return
+	}
+	for _, k := range list {
+		if k.root == "" || tmux.WorkspaceSession(k.name, k.path) {
+			continue
+		}
+		if err := openWorkspace(k.root, false); err != nil {
+			fmt.Fprintf(os.Stderr, "restore workspace %s: %v\n", k.root, err)
+		}
+	}
 }
 
 // A workspace owns one tmux session. Each Hypercube session is a team in its
@@ -457,6 +508,7 @@ func openWorkspace(dir string, create bool) error {
 				a.Target, a.QuickExits, a.Attention = "", 0, false
 				if a.Role == store.Lead {
 					a.Branch = branch
+					a.AwaitingUser = a.Team != team
 				}
 				launch = append(launch, *a)
 			}
@@ -470,11 +522,7 @@ func openWorkspace(dir string, create bool) error {
 		return launch[i].Role == store.Lead && launch[j].Role != store.Lead
 	})
 	for _, a := range launch {
-		prompt := mcp.Nudge
-		if a.Role == store.Lead {
-			prompt = ""
-		}
-		if _, err := harness.Launch(a, path, prompt); err != nil {
+		if _, err := harness.Launch(a, path, ""); err != nil {
 			// Keep healthy windows running and the failed team's state for retry.
 			if cleanup := tmux.KillWindow(name, a.Team, path); cleanup != nil {
 				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
@@ -628,19 +676,6 @@ func exited(path, pane string) error {
 		}
 	} else if agent.ID != "" {
 		tmux.Activity(store.Workspace(path), pane, path, agent)
-	}
-	return nil
-}
-
-func running() error {
-	list, err := workspaces()
-	if err != nil {
-		return err
-	}
-	for _, k := range list {
-		if tmux.WorkspaceSession(k.name, k.path) {
-			fmt.Println(k.root)
-		}
 	}
 	return nil
 }

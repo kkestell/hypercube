@@ -96,7 +96,6 @@ func TestActionsRejectBadRequests(t *testing.T) {
 	for path, want := range map[string]int{
 		"/window?action=rm":                              http.StatusBadRequest,
 		"/workspace?action=rm":                           http.StatusBadRequest,
-		"/workspace?action=start":                        http.StatusBadRequest,
 		"/workspace?action=delete&state=/missing/x.json": http.StatusNotFound,
 	} {
 		req, _ := http.NewRequest("POST", server.URL+path, nil)

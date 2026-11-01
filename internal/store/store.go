@@ -37,12 +37,14 @@ type Agent struct {
 	Activity  string `json:"activity"`
 	// Team is the session's stable ID, which addresses use. A lead's Title
 	// is the session's name for the user, who can change it.
-	Team       string `json:"team"`
-	Title      string `json:"title,omitempty"`
-	Waiter     uint64 `json:"waiter,omitempty"`
-	Attention  bool   `json:"attention,omitempty"`
-	Launched   int64  `json:"launched,omitempty"`
-	QuickExits int    `json:"quick_exits,omitempty"`
+	Team  string `json:"team"`
+	Title string `json:"title,omitempty"`
+	// AwaitingUser is set on a restored session's lead until the user prompts it.
+	AwaitingUser bool   `json:"awaiting_user,omitempty"`
+	Waiter       uint64 `json:"waiter,omitempty"`
+	Attention    bool   `json:"attention,omitempty"`
+	Launched     int64  `json:"launched,omitempty"`
+	QuickExits   int    `json:"quick_exits,omitempty"`
 	// Status is the worker's own account of what it is doing, reported at
 	// StatusAt in Unix milliseconds.
 	Status   string `json:"status,omitempty"`
@@ -215,6 +217,11 @@ func (s *State) TeamLead(team string) *Agent {
 		}
 	}
 	return nil
+}
+
+func (s *State) AwaitingUser(team string) bool {
+	lead := s.TeamLead(team)
+	return lead != nil && lead.AwaitingUser
 }
 
 // Agent returns the agent with the given ID.

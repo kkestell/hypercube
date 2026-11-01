@@ -21,12 +21,11 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. The service from `make install-service` runs it. |
+| `hypercube ui [port] [--menu]` | Serve the browser view at http://localhost:4280/, or on the given port. `--menu` adds a menu bar icon; the service from `make install-service` uses it. |
 | `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with one new session. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |
-| `hypercube running` | Print running workspace paths for scripts. |
 
 Stop and delete default to the current
 workspace; `--all` lists targets and asks for confirmation. They can also
@@ -67,7 +66,8 @@ workspace stops. Drag the divider above it to change its height.
 
 Closing the browser leaves agents running. Starting a workspace recreates its
 closed saved windows with their conversations and queues, and does not restart
-agents in existing windows.
+agents in existing windows. A relaunched session starts no turn and delivers
+no queued message until you type a prompt into any of its agents.
 
 A harness that exits is relaunched in its pane with its saved conversation.
 Repeated quick exits stop automatic retries, and launch errors stay visible.

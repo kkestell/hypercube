@@ -79,6 +79,9 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 			}
 			resp.Context = facts(s, a, profiles)
 		case "prompt":
+			if lead := s.TeamLead(a.Team); lead != nil {
+				lead.AwaitingUser = false
+			}
 			// A harness may save no conversation until the first prompt, so
 			// a session ID seen earlier may not be resumable.
 			if in.Session != "" {

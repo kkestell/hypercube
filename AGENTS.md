@@ -37,8 +37,6 @@ each other through an MCP server and receive messages through harness plugins.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness.
 - `scripts/dev` — the isolated development session (`make dev`).
-- `scripts/reinstall` — stops, reinstalls, and restarts the installed
-  workspaces.
 - `docs/` — user documentation, indexed by `README.md`.
 - `agents/` — plans, reviews, and work logs.
 
@@ -49,11 +47,10 @@ each other through an MCP server and receive messages through harness plugins.
 - After changing only docs or comments, inspect the diff; run nothing.
 - Tests use isolated state, their own tmux server, and harness stand-ins.
   Never stop the user's tmux server or workspaces, and never run
-  `make reinstall`.
+  `make install-service`.
 - Use `make dev` for a live smoke test, and clean up what you start.
-- The binary embeds the browser view. After a change to only `internal/ui/` is
-  merged, run `make reinstall-ui` from the original checkout to load it in the
-  running view.
+- After a change is merged, the user runs `make install-service` from the
+  original checkout to load it.
 
 Report any check that fails or is skipped.
 

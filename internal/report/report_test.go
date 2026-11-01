@@ -93,6 +93,33 @@ func TestDelivery(t *testing.T) {
 	}
 }
 
+func TestWorkerPromptReleasesOnlyItsSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "w")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{
+			{ID: "l", Role: store.Lead, Team: "t", AwaitingUser: true},
+			{ID: "w", Role: store.Worker, Team: "t"},
+			{ID: "other", Role: store.Lead, Team: "other", AwaitingUser: true},
+		}
+		s.Messages = []store.Message{{From: "user", To: "w", Text: "queued"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, "prompt", `{"text":"continue"}`).Context; !strings.Contains(got, "queued") {
+		t.Fatalf("prompt context = %q", got)
+	}
+	s, err := store.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AwaitingUser("t") || !s.AwaitingUser("other") || len(s.Messages) != 0 {
+		t.Fatalf("state after worker prompt: %+v", s)
+	}
+}
+
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }

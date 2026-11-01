@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
@@ -95,7 +98,7 @@ func TestNativeHarness(t *testing.T) {
 	log("launch", "")
 	report("start", nil)
 	// A worker's initial turn consumes the queued brief; the lead waits.
-	if slices.Contains(os.Args, "Check your Hypercube messages.") {
+	if slices.Contains(os.Args, mcp.Nudge) {
 		report("prompt", prompt)
 		report("stop", nil)
 	}
@@ -274,6 +277,9 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		return len(s.Agents) == 1 && s.Agents[0].Waiter > 0 && s.Agents[0].Target != ""
 	})
 	lead := state().Agents[0]
+	if lead.AwaitingUser {
+		t.Fatal("a new session awaits user input before delivering messages")
+	}
 	call(lead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "first brief"})
 	until("worker's first brief", func() bool {
 		s := state()
@@ -470,9 +476,71 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	cli("start", root)
-	until("stopped queue delivered after resume", func() bool { return strings.Contains(logOf(lead.ID), "queued while stopped") })
-	until("second stopped queue delivered after resume", func() bool { return strings.Contains(logOf(otherWorker.ID), "other queued while stopped") })
+	// Starting the browser view restores the stopped workspace and its queues.
+	beforeRestore := state()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+	view := exec.Command(binary, "ui", fmt.Sprint(port))
+	if err := view.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = view.Process.Kill(); _ = view.Wait() }()
+	until("restored agents waiting", func() bool {
+		s := state()
+		for _, before := range beforeRestore.Agents {
+			a, err := s.Agent(before.ID)
+			if err != nil || a.Target == "" || a.Waiter <= before.Waiter {
+				return false
+			}
+		}
+		return true
+	})
+	restored := state()
+	if !restored.AwaitingUser(lead.Team) || !restored.AwaitingUser(otherLead.Team) {
+		t.Fatal("restored sessions did not await the user")
+	}
+	for _, a := range restored.Agents {
+		var lastLaunch []string
+		for _, line := range strings.Split(logOf(a.ID), "\n") {
+			var entry struct {
+				Kind string
+				Argv []string
+			}
+			if json.Unmarshal([]byte(line), &entry) == nil && entry.Kind == "launch" {
+				lastLaunch = entry.Argv
+			}
+		}
+		if len(lastLaunch) == 0 || slices.Contains(lastLaunch, mcp.Nudge) {
+			t.Fatalf("restored launch for %s: %v", a.ID, lastLaunch)
+		}
+	}
+	time.Sleep(time.Second)
+	if strings.Contains(logOf(lead.ID), "queued while stopped") || strings.Contains(logOf(otherWorker.ID), "other queued while stopped") || len(state().Messages) != 2 {
+		t.Fatal("restored sessions delivered messages before a user prompt")
+	}
+	resumedLead, _ := restored.Agent(lead.ID)
+	tmux("send-keys", "-t", resumedLead.Target, "continue", "Enter")
+	until("first session released", func() bool {
+		for _, line := range strings.Split(logOf(lead.ID), "\n") {
+			var entry struct{ Kind, Text string }
+			if json.Unmarshal([]byte(line), &entry) == nil && entry.Kind == "prompt" && strings.Contains(entry.Text, "queued while stopped") {
+				return true
+			}
+		}
+		return false
+	})
+	if s := state(); s.AwaitingUser(lead.Team) || !s.AwaitingUser(otherLead.Team) || len(s.Messages) != 1 || s.Messages[0].To != otherWorker.ID || s.Messages[0].Text != "other queued while stopped" {
+		t.Fatal("prompting one session released another or lost its queue", s)
+	}
+	resumedOtherLead, _ := restored.Agent(otherLead.ID)
+	tmux("send-keys", "-t", resumedOtherLead.Target, "continue", "Enter")
+	until("second session released", func() bool {
+		return strings.Contains(logOf(otherWorker.ID), "other queued while stopped")
+	})
 	if strings.Contains(logOf(lead.ID), "other queued while stopped") || strings.Contains(logOf(otherWorker.ID), `Message from user:\nqueued while stopped`) {
 		t.Fatal("resumed queues crossed sessions")
 	}
