@@ -158,7 +158,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 func (r *Runtime) Stop(id string) error {
 	lives := r.detach(id, true)
 	stopClients(lives)
-	return r.db.Tx(func(tx *store.Tx) error {
+	err := r.db.Tx(func(tx *store.Tx) error {
 		s, err := tx.Session(id)
 		if err != nil {
 			return err
@@ -166,6 +166,8 @@ func (r *Runtime) Stop(id string) error {
 		s.Running = false
 		return tx.SaveSession(s)
 	})
+	r.Terminals.Stop(id)
+	return err
 }
 
 // Delete stops the session and deletes it with its workers' worktrees and
@@ -224,7 +226,10 @@ func (r *Runtime) Delete(id string) error {
 			return err
 		}
 	}
-	return r.db.Tx(func(tx *store.Tx) error { return tx.DeleteSession(id) })
+	err = r.db.Tx(func(tx *store.Tx) error { return tx.DeleteSession(id) })
+	// The session is gone, so its shell cannot restart.
+	r.Terminals.Stop(id)
+	return err
 }
 
 // DeleteWorkspace deletes each of the workspace's sessions, then the

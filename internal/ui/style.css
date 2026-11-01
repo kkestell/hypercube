@@ -1,7 +1,8 @@
 /* The source of static/ui.css. Run `make ui` after changing it or the classes
-   in static/index.html. */
+   in static/index.html and static/transcript.js. */
 @import "tailwindcss" source(none);
 @source "./static/index.html";
+@source "./static/transcript.js";
 
 @layer base {
   /* VS Code's dark scrollbars: a thin translucent thumb on no track. */
@@ -24,6 +25,9 @@
 @utility icon-add {
   mask-image: url(add.svg);
 }
+@utility icon-chevron-right {
+  mask-image: url(chevron-right.svg);
+}
 @utility icon-folder {
   mask-image: url(folder.svg);
 }
@@ -41,6 +45,12 @@
 }
 @utility icon-layout-sidebar-left-off {
   mask-image: url(layout-sidebar-left-off.svg);
+}
+@utility icon-send {
+  mask-image: url(send.svg);
+}
+@utility icon-stop-circle {
+  mask-image: url(stop-circle.svg);
 }
 @utility icon-terminal {
   mask-image: url(terminal.svg);
@@ -92,5 +102,75 @@
     &::after {
       inset: -3px 0;
     }
+  }
+}
+
+/* Markdown in a transcript, as built by static/transcript.js. */
+.md {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+
+  & > * + * {
+    margin-top: 0.5rem;
+  }
+  & h1,
+  & h2,
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
+    font-weight: 600;
+    color: var(--color-neutral-100);
+  }
+  & h1 {
+    font-size: 1.25em;
+  }
+  & h2 {
+    font-size: 1.15em;
+  }
+  & h3 {
+    font-size: 1.05em;
+  }
+  & ul,
+  & ol {
+    padding-left: 1.25rem;
+  }
+  & ul {
+    list-style: disc;
+  }
+  & ol {
+    list-style: decimal;
+  }
+  & li > * + * {
+    margin-top: 0.25rem;
+  }
+  & blockquote {
+    border-left: 2px solid var(--color-neutral-600);
+    padding-left: 0.75rem;
+    color: var(--color-neutral-400);
+  }
+  & a {
+    color: var(--color-sky-400);
+    text-decoration: underline;
+  }
+  & code {
+    border-radius: 0.25rem;
+    background-color: rgb(255 255 255 / 0.08);
+    padding: 0 0.25rem;
+    font-family: Menlo, Monaco, "Courier New", monospace;
+    font-size: 0.9em;
+  }
+  & pre {
+    overflow-x: auto;
+    border: 1px solid var(--color-neutral-800);
+    background-color: #1e1e1e;
+    padding: 0.5rem;
+    font-size: 12px;
+    white-space: pre;
+  }
+  & pre code {
+    background: none;
+    padding: 0;
+    font-size: inherit;
   }
 }

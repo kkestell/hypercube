@@ -45,20 +45,19 @@
 <script src="xterm.js"></script>
 <script src="addon-webgl.js"></script>
 <script src="hypercube.js"></script>
-<script>
-// The page shows Hypercube's data, streamed from the app, and the selected
-// session's terminals, through a tmux control-mode client attached to that
-// session's tmux session. The sidebar lists each workspace's sessions under a
-// row naming the workspace. The selected session's lead fills the left, and
-// its workers are cards on the right, each showing either a summary or its
-// terminal. tmux sizes the panes; the page asks for the sizes its layout has
-// room for.
+<script type="module">
+import {Transcript, submitsOnKey} from './transcript.js';
+
+// The page shows Hypercube's data, streamed from the app, and the transcript
+// of the selected session's agents. The sidebar lists each workspace's
+// sessions under a row naming the workspace. The selected session's lead fills
+// the left, and its workers are cards on the right, each showing either a
+// summary or its transcript. Every transcript has a composer. The panel below
+// holds a shell, an xterm.js terminal connected to the session's shell in the
+// app.
 
 const fontFamily = 'Menlo, Monaco, "Courier New", monospace', fontSize = 13;
 const theme = {background: '#1e1e1e'};
-// tmux answers programs' color queries with these, as style in tmux.go does
-// for agents' windows.
-const terminalStyle = 'fg=#ffffff,bg=#1e1e1e';
 // The WebGL renderer draws box and block characters to fill their cells
 // exactly, as terminals do. The probe uses it too, since it sizes cells to
 // whole device pixels.
@@ -89,30 +88,63 @@ const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
 const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
-// Pixels beside a terminal: its card's border and its own padding.
-const cardX = 2 + 16;
-
-let source, client, session, outbox, callbacks, block, terms = new Map(), shown, activePane;
 // data is the app's latest snapshot, selected is the selected session's ID,
-// or null once the selected session stops, and attached is the running session the terminals belong to.
-// dead is a session marked running whose terminals could not be reached, as
-// after a failed start; it can be started again.
-// pending is a session to select once the data lists it.
-let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null, dead = null;
+// or null once the selected session stops, and attached is the running session
+// whose agents are shown. pending is a session to select once the data lists
+// it.
+let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null;
+// shown is the attached session's lead and workers. leadWidth is the lead's
+// width in pixels once the user drags the divider.
+let shown = null, leadWidth = null;
+// Each agent's unsent text outlives its card, and each agent has one
+// transcript and one card while its session is attached.
+const drafts = new Map(), views = new Map(), cards = new Map();
 
 const sessions = () => data.flatMap(w => w.sessions);
 const current = () => sessions().find(s => s.id === selected);
+// A running session whose lead has exited, as after a failed start, can be
+// started again.
+const failed = s => s.running && s.agents.some(a => a.role === 'lead' && a.activity === 'exited');
 
-const socket = path => new WebSocket(new URL(path, location.href.replace(/^http/, 'ws')));
+const connect = path => new WebSocket(new URL(path, location.href.replace(/^http/, 'ws')));
+
+// The data socket tells the app which session's transcripts to send; after a
+// reconnect the app sends them whole again.
+let state = null;
+function announce() {
+  if (state?.readyState === WebSocket.OPEN) state.send(JSON.stringify({select: attached ?? ''}));
+}
 
 function watch() {
-  const state = socket('state');
-  state.onmessage = e => { data = JSON.parse(e.data); changed(); };
-  state.onclose = () => setTimeout(watch, 1000);
+  const socket = state = connect('state');
+  socket.onopen = announce;
+  socket.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'state') { data = msg.workspaces; changed(); }
+    else if (msg.type === 'transcript') received(msg);
+  };
+  socket.onclose = () => { state = null; setTimeout(watch, 1000); };
+}
+
+function view(agent) {
+  let v = views.get(agent);
+  if (!v) {
+    const answer = (item, choice, text) => post('agent?' + new URLSearchParams({action: 'answer', id: agent, request: item.id, choice}), text);
+    v = new Transcript(document, {answer: async (...args) => await answer(...args) !== null});
+    views.set(agent, v);
+  }
+  return v;
+}
+
+// received adds items to an agent's transcript, if its session is shown.
+function received(msg) {
+  if (!sessions().some(s => s.id === attached && s.agents.some(a => a.id === msg.agent))) return;
+  const v = view(msg.agent);
+  if (msg.reset) v.reset(msg.items); else v.update(msg.items);
 }
 
 // changed shows new data: the title, the sidebar, and the selected session,
-// attaching to its terminals when it runs.
+// attaching to its agents when it runs.
 function changed() {
   const all = sessions();
   if (pending && all.some(s => s.id === pending)) { selected = pending; pending = null; }
@@ -131,7 +163,7 @@ function changed() {
   $('hypercube').hidden = !!s;
   const want = s?.running ? s.id : null;
   if (want !== attached) attach(want);
-  else refresh();
+  else render();
   if (s?.unseen && document.visibilityState === 'visible') fetch('session?' + new URLSearchParams({action: 'seen', id: s.id}), {method: 'POST'});
 }
 document.addEventListener('visibilitychange', changed);
@@ -144,150 +176,23 @@ function select(id) {
   selected = id;
   changed();
   const s = current();
-  if (s && (!s.running || dead === s.id)) post('session?' + new URLSearchParams({action: 'start', id}));
+  if (s && (!s.running || failed(s))) post('session?' + new URLSearchParams({action: 'start', id}));
 }
 
 function attach(id) {
-  source?.close();
-  source = client = null;
   attached = id;
-  outbox = []; callbacks = []; block = null; size = sent = ''; refreshing = again = false; activePane = null;
-  applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false; shown = null;
-  for (const term of terms.values()) term.dispose();
-  terms = new Map();
+  views.clear();
+  cards.clear();
+  shown = null;
   lead.replaceChildren();
   workers.replaceChildren();
-  panel.replaceChildren();
-  cards.clear();
   split.hidden = workers.hidden = true;
+  closeShell();
+  announce();
   if (!id) return;
-  // client is the socket once it opens. A socket that never opens means the
-  // session's terminals could not be reached.
-  const mine = source = socket('tmux?session=' + encodeURIComponent(id));
-  mine.binaryType = 'arraybuffer';
-  mine.onopen = () => {
-    client = mine;
-    if (dead === id) dead = null;
-    refresh();
-    flush();
-  };
-  mine.onmessage = e => received(new Uint8Array(e.data));
-  mine.onclose = () => {
-    if (source !== mine) return;
-    if (client !== mine) dead = id;
-    client = null;
-    setTimeout(() => { if (source === mine) attach(id); }, 1000);
-  };
-}
-
-// Commands go out in order, batched until the page's current task ends.
-// Commands sent together reach tmux together, so it resizes each pane once for
-// all of them. Each command's reply block comes back in the same order.
-function send(command, callback) {
-  callbacks.push(callback);
-  outbox.push(command);
-  queueMicrotask(flush);
-}
-
-function flush() {
-  if (!outbox.length || !client) return;
-  client.send(outbox.join('\n'));
-  outbox = [];
-}
-
-const decoder = new TextDecoder();
-const structural = /^%(layout-change|window-add|window-close|unlinked-window-(add|close)|session-window-changed|window-pane-changed)( |$)/;
-
-function received(bytes) {
-  if (block) {
-    const text = decoder.decode(bytes);
-    if (text === '%end ' + block.id || text === '%error ' + block.id) {
-      const callback = block.own && callbacks.shift();
-      if (callback) callback(block.lines, text.startsWith('%error'));
-      block = null;
-    } else {
-      block.lines.push(text);
-    }
-    return;
-  }
-  if (bytes.length > 8 && decoder.decode(bytes.subarray(0, 8)) === '%output ') {
-    const space = bytes.indexOf(32, 8);
-    const term = terms.get(decoder.decode(bytes.subarray(8, space)));
-    resizeTerminals();
-    if (term && !term.loading) term.write(unescape(bytes.subarray(space + 1)));
-    return;
-  }
-  const text = decoder.decode(bytes);
-  if (text.startsWith('%begin ')) {
-    const id = text.slice(7);
-    block = {id, own: id.endsWith(' 1'), lines: []};
-  } else if (text.startsWith('%session-changed ')) {
-    session = text.split(' ')[1];
-    refresh();
-  } else if (structural.test(text)) {
-    const change = text.match(/^%layout-change (\S+) (\S+)/);
-    if (change) {
-      pendingLayouts.set(change[1], change[2]);
-      // Resize before animation callbacks so xterm can repaint this frame.
-      queueMicrotask(resizeTerminals);
-    }
-    refresh();
-  }
-}
-
-// A pane's program redraws for its new size as soon as tmux resizes it, so
-// its terminal takes the size tmux announced before writing more output.
-// Commands sent together can announce several layouts for a window; only the
-// last counts.
-const pendingLayouts = new Map();
-function resizeTerminals() {
-  for (const layout of pendingLayouts.values()) {
-    for (const [, w, h, id] of layout.matchAll(/(\d+)x(\d+),\d+,\d+,(\d+)/g)) {
-      const term = terms.get('%' + id);
-      if (term && (term.cols !== +w || term.rows !== +h)) term.resize(+w, +h);
-    }
-  }
-  pendingLayouts.clear();
-}
-
-// tmux escapes control characters and backslashes in pane output as \ooo.
-function unescape(bytes) {
-  const out = new Uint8Array(bytes.length);
-  let n = 0;
-  for (let i = 0; i < bytes.length; i++) {
-    if (bytes[i] === 92 && i + 3 < bytes.length) {
-      out[n++] = (bytes[i + 1] - 48) * 64 + (bytes[i + 2] - 48) * 8 + (bytes[i + 3] - 48);
-      i += 3;
-    } else {
-      out[n++] = bytes[i];
-    }
-  }
-  return out.subarray(0, n);
-}
-
-// One refresh at a time; notifications during one schedule another. A pane's
-// death sends no notification, so a timer catches it.
-let refreshing = false, again = false;
-setInterval(refresh, 1000);
-
-function refresh() {
-  if (!client) return;
-  if (refreshing) { again = true; return; }
-  refreshing = true;
-  const rows = (lines, keys) => lines.map(line => {
-    const values = line.split('\t'), row = {};
-    keys.forEach((key, i) => row[key] = values[i]);
-    return row;
-  });
-  let wins;
-  send(`list-windows -F '#{window_id}\t#{window_active}\t#{window_layout}\t#{@hypercube_terminal}\t#{pane_id}'`,
-    lines => wins = rows(lines, ['id', 'active', 'layout', 'terminal', 'pane']));
-  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_agent}'`,
-    (lines, error) => {
-      refreshing = false;
-      if (!error && wins) render(wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'agent']));
-      if (again) { again = false; refresh(); }
-    });
+  render();
+  if (panelOpen) connectShell();
+  cards.get(shown.leader?.id)?.field.focus();
 }
 
 const names = agents => agents.map(a => a.name).join(', ');
@@ -306,54 +211,27 @@ function update(parent, html) {
   if (parent.innerHTML !== next.innerHTML) parent.replaceChildren(next.content);
 }
 
-function render(wins, list) {
-  const win = wins.find(w => w.active === '1');
-  renderPanel(wins.find(w => w.terminal));
-  // tmux can select the terminal's window when a client attaches.
-  if (win?.terminal) {
-    const other = wins.find(w => !w.terminal);
-    if (other) send(`select-window -t '${other.id}'`);
-    return;
-  }
-
-  const agents = new Map((current()?.agents ?? []).map(a => [a.id, a]));
-  for (const p of list) {
-    p.agent = agents.get(p.agent) ?? {id: p.agent, name: ''};
-    p.open = localStorage.getItem(openKey(p.agent.id)) === '1';
-  }
-  for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
-  const [leader] = list.filter(p => p.left === 0);
-  const stacked = list.filter(p => p.left > 0).sort((a, b) => a.top - b.top);
-  if (win?.id !== shown?.window) leadWidth = null;
-  shown = {window: win?.id, leader, stacked, layout: win?.layout.slice(5)};
-
-  // Each pane's terminal matches the pane's size and sits in its agent's card.
-  // The lead's card always shows its terminal.
-  if (leader) leader.open = true;
-  for (const p of list) {
-    let term = terms.get(p.id);
-    if (!term) term = open(p.id, p.width, p.height);
-    else if (term.cols !== p.width || term.rows !== p.height) term.resize(p.width, p.height);
-    const parent = card(p).slot;
-    if (term.box.parentElement !== parent) parent.append(term.box);
-    // The terminal takes the focus when tmux selects another pane.
-    if (p.active === '1' && p.id !== activePane && p.open) { activePane = p.id; term.focus(); }
-  }
-  for (const [id, term] of terms) {
-    if (id !== shell?.pane && !list.some(p => p.id === id)) { term.box.remove(); term.dispose(); terms.delete(id); }
-  }
+// render shows the attached session's agents: the lead in the left column and
+// the workers as cards in the right.
+function render() {
+  const s = current();
+  const agents = attached && s?.running ? s.agents : [];
+  const leader = agents.find(a => a.role === 'lead');
+  const stacked = agents.filter(a => a !== leader);
+  shown = {leader, stacked};
+  agents.forEach(card);
   for (const [id, c] of cards) {
-    if (!list.some(p => p.id === id)) { c.element.remove(); cards.delete(id); }
+    if (!agents.some(a => a.id === id)) { c.element.remove(); cards.delete(id); views.delete(id); }
   }
-  // Moving a card that is already in place would blur its terminal.
-  if (leader && card(leader).element.parentElement !== lead) lead.append(card(leader).element);
+  // Moving a card that is already in place would blur its composer.
+  if (leader && cards.get(leader.id).element.parentElement !== lead) lead.append(cards.get(leader.id).element);
   const children = [];
-  stacked.forEach((p, i) => {
-    const c = card(p);
+  stacked.forEach((a, i) => {
+    const c = cards.get(a.id);
     children.push(c.element);
     if (i === stacked.length - 1) return;
-    if (!c.sash) c.sash = workerSplitter(p.id);
-    c.sash.setAttribute('aria-disabled', !workerPair(p.id));
+    if (!c.sash) c.sash = workerSplitter(a.id);
+    c.sash.setAttribute('aria-disabled', !workerPair(a.id));
     children.push(c.sash);
   });
   for (const child of [...workers.children]) {
@@ -362,17 +240,17 @@ function render(wins, list) {
   children.forEach((child, i) => {
     if (workers.children[i] !== child) workers.insertBefore(child, workers.children[i] ?? null);
   });
+  split.hidden = workers.hidden = stacked.length === 0;
+  layoutLead();
+}
 
-  const any = stacked.length > 0;
-  split.hidden = workers.hidden = !any;
-  lead.classList.toggle('flex-1', !any);
-  lead.classList.toggle('shrink-0', any);
-  // The lead keeps a width being dragged until tmux has applied it.
-  if (leadWidth === leader?.width && !dragging) leadWidth = null;
-  lead.style.width = any && leader ? (leadWidth ?? leader.width) * cell.width + cardX + 'px' : '';
-
-  // A new or removed worker changes the desired layout.
-  apply();
+// The lead and the workers share the width until the user drags the divider.
+function layoutLead() {
+  const dragged = shown && shown.stacked.length > 0 && leadWidth !== null;
+  lead.classList.toggle('flex-1', !dragged);
+  lead.classList.toggle('flex-none', dragged);
+  lead.style.width = dragged ? leadWidth + 'px' : '';
+  lead.style.maxWidth = shown?.stacked.length ? 'calc(100% - 280px)' : '';
 }
 
 // The sidebar lists each workspace's sessions below a row that collapses
@@ -475,7 +353,7 @@ function age(ms) {
   return minutes < 1440 ? Math.floor(minutes / 60) + 'h' : Math.floor(minutes / 1440) + 'd';
 }
 
-// Usage stays in the header for both previews and terminals.
+// Usage stays in the header for both previews and transcripts.
 function usage(a) {
   const {context = 0, window = 0, cost = 0} = a.usage ?? {};
   const radius = 6, circumference = 2 * Math.PI * radius;
@@ -495,74 +373,113 @@ function summary(a) {
 }
 
 // An agent's card shows its name, status, and summary, or its name, status,
-// and terminal. The lead's card has no summary. Cards persist so their
-// terminals stay attached.
-const cards = new Map();
-
-function card(p) {
-  let c = cards.get(p.id);
+// and transcript with a composer. The lead's card always shows its transcript.
+// Cards persist so a draft stays in its composer.
+function card(a) {
+  let c = cards.get(a.id);
   if (!c) {
     const element = document.createElement('article');
-    element.dataset.pane = p.id;
+    element.dataset.agent = a.id;
     element.innerHTML = `<header class="flex items-center gap-2">
         <span class="name min-w-0 truncate text-left text-sm text-neutral-100"></span>
         <span class="usage ml-auto flex shrink-0 items-center gap-3 text-neutral-500"></span>
         <span class="status shrink-0"></span>
       </header>
       <div class="summary flex flex-col gap-2"></div>
-      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e] px-2 py-1"></div>`;
+      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-[120px] min-w-0 flex-1 flex-col overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e]">
+        <form class="flex shrink-0 items-end gap-1 border-t border-[#2b2b2b] p-2">
+          <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 flex-1 resize-none border border-[#3c3c3c] bg-[#3c3c3c] px-2 py-1 text-[13px] text-neutral-100 outline-none focus:border-sky-500"></textarea>
+          <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
+          <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
+        </form>
+      </div>`;
     const q = name => element.querySelector('.' + name);
-    c = {element, weight: 1, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'), summary: q('summary'), slot: q('slot')};
-    cards.set(p.id, c);
+    c = {element, weight: 1, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'),
+      summary: q('summary'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send')};
+    c.slot.prepend(view(a.id).root);
+    c.field.value = drafts.get(a.id) ?? '';
+    c.field.oninput = () => {
+      if (c.field.value) drafts.set(a.id, c.field.value); else drafts.delete(a.id);
+      c.send.disabled = !c.field.value.trim();
+    };
+    c.field.onkeydown = e => {
+      if (!submitsOnKey(e)) return;
+      e.preventDefault();
+      submit(a.id, c);
+    };
+    c.form.onsubmit = e => { e.preventDefault(); submit(a.id, c); };
+    c.stop.onclick = () => post('agent?' + new URLSearchParams({action: 'interrupt', id: a.id}));
+    cards.set(a.id, c);
   }
-  const status = p.dead === '1' ? `<span title="Exited with status ${escape(p.status)}" class="block size-2 rounded-full bg-red-400"></span>`
-    : p.agent.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
-    : p.agent.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
+  const worker = a.role !== 'lead';
+  const open = !worker || localStorage.getItem(openKey(a.id)) === '1';
+  c.open = open;
+  const status = a.activity === 'exited' ? '<span title="Exited" class="block size-2 rounded-full bg-red-400"></span>'
+    : a.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
+    : a.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
     : '';
-  const open = p.open;
   const className = `relative flex flex-col gap-2 border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0'} ${
-    p.agent.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
+    a.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
-  c.element.style.flexGrow = open ? c.weight : '';
-  if (c.name.textContent !== p.agent.name) c.name.textContent = p.agent.name;
+  c.element.style.flexGrow = open && worker ? c.weight : '';
+  if (c.name.textContent !== a.name) c.name.textContent = a.name;
   update(c.status, status);
-  update(c.usage, usage(p.agent));
-  const worker = p !== shown.leader;
+  update(c.usage, usage(a));
   c.header.classList.toggle('cursor-pointer', worker);
   if (worker) {
     c.header.setAttribute('role', 'button');
     c.header.tabIndex = 0;
     c.header.setAttribute('aria-expanded', open);
-    c.header.title = open ? 'Show Preview' : 'Show Terminal';
+    c.header.title = open ? 'Show Preview' : 'Show Transcript';
   } else {
     c.header.removeAttribute('role');
     c.header.removeAttribute('tabindex');
     c.header.removeAttribute('aria-expanded');
     c.header.removeAttribute('title');
   }
-  const html = summary(p.agent);
+  const html = summary(a);
   update(c.summary, html);
   c.summary.hidden = open || !html;
   c.slot.hidden = !open;
+  c.stop.hidden = a.activity !== 'busy';
+  c.send.disabled = !c.field.value.trim() || a.activity === 'exited';
   return c;
 }
 
-// Worker headers toggle the preview and terminal with a click or keyboard.
+// submit sends a card's text to its agent. A refused message returns to the
+// composer unless the user has started another.
+async function submit(agent, c) {
+  const text = c.field.value;
+  if (!text.trim() || c.send.disabled) return;
+  c.field.value = '';
+  drafts.delete(agent);
+  c.send.disabled = true;
+  const sent = await post('agent?' + new URLSearchParams({action: 'input', id: agent}), text);
+  if (sent === null && !c.field.value) {
+    c.field.value = text;
+    drafts.set(agent, text);
+    c.send.disabled = false;
+  }
+}
+
+// Worker headers toggle the preview and transcript with a click or keyboard.
 function toggleWorker(e) {
   const header = e.target.closest('header');
   if (!header) return;
-  const element = header.closest('[data-pane]');
-  const p = shown?.stacked.find(p => p.id === element?.dataset.pane);
-  if (!p) return;
-  p.open = !p.open;
-  if (p.open) localStorage.setItem(openKey(p.agent.id), '1');
-  else localStorage.removeItem(openKey(p.agent.id));
-  card(p);
-  for (const [id, c] of cards) {
-    if (c.sash) c.sash.setAttribute('aria-disabled', !workerPair(id));
+  const id = header.closest('[data-agent]')?.dataset.agent;
+  const a = shown?.stacked.find(a => a.id === id);
+  if (!a) return;
+  if (localStorage.getItem(openKey(id)) === '1') localStorage.removeItem(openKey(id));
+  else localStorage.setItem(openKey(id), '1');
+  const c = card(a);
+  for (const [other, oc] of cards) {
+    if (oc.sash) oc.sash.setAttribute('aria-disabled', !workerPair(other));
   }
-  apply();
-  if (p.open) terms.get(p.id).focus();
+  if (c.open) {
+    // A hidden element forgets where it was scrolled.
+    views.get(id).root.scrollTop = views.get(id).root.scrollHeight;
+    c.field.focus();
+  }
 }
 workers.onclick = toggleWorker;
 workers.onkeydown = e => {
@@ -576,12 +493,16 @@ workers.onkeydown = e => {
 // side. Collapsed cards keep their natural height, even between those workers.
 function workerPair(id) {
   const stacked = shown.stacked;
-  const i = stacked.findIndex(p => p.id === id);
+  const i = stacked.findIndex(a => a.id === id);
   if (i < 0) return null;
-  const above = stacked.slice(0, i + 1).findLast(p => p.open);
-  const below = stacked.slice(i + 1).find(p => p.open);
+  const open = a => cards.get(a.id).open;
+  const above = stacked.slice(0, i + 1).findLast(open);
+  const below = stacked.slice(i + 1).find(open);
   return above && below ? [cards.get(above.id), cards.get(below.id)] : null;
 }
+
+// An expanded card keeps this much room for its transcript and composer.
+const minSlot = 120;
 
 function workerSplitter(id) {
   const sash = document.createElement('div');
@@ -594,16 +515,15 @@ function workerSplitter(id) {
     pair[0].weight = above + delta;
     pair[1].weight = below - delta;
     for (const c of pair) c.element.style.flexGrow = c.weight;
-    apply();
   }, null, e => {
     pair = workerPair(id);
     if (!pair) return false;
-    const measurements = shown.stacked.filter(p => p.open).map(p => {
-      const c = cards.get(p.id), style = getComputedStyle(c.element);
+    const measurements = shown.stacked.filter(a => cards.get(a.id).open).map(a => {
+      const c = cards.get(a.id), style = getComputedStyle(c.element);
       const height = c.element.getBoundingClientRect().height;
       const weight = height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
         - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth);
-      return {c, weight, minimum: weight - c.slot.getBoundingClientRect().height + cell.height + 8};
+      return {c, weight, minimum: weight - c.slot.getBoundingClientRect().height + minSlot};
     });
     const first = measurements.find(m => m.c === pair[0]);
     const second = measurements.find(m => m.c === pair[1]);
@@ -622,148 +542,11 @@ function workerSplitter(id) {
   return sash;
 }
 
-// The page lays out its panels, then gives tmux the window and pane sizes
-// whose terminals fit them, in one layout. The lead fills the window's
-// height. Its width is the lead's columns, tmux's one-column divider, and the
-// workers' columns, which fit the workers panel less its gutter, padding, and
-// card borders. A worker in summary gets one row, and the last in summary
-// takes the rest. Open terminals get the rows their cards have room for; with
-// every card open, they share all the rows in their chosen proportions. Each
-// card shows the bottom of its terminal.
-function desired() {
-  const {leader, stacked} = shown, n = stacked.length;
-  const gutter = n ? workers.offsetWidth - workers.clientWidth : 0;
-  const cols = Math.max(n ? 42 : 1, Math.floor((center.clientWidth - cardX - (n ? 1 + cardX + gutter : 0)) / cell.width) + (n ? 1 : 0));
-  const rows = Math.max(2 * n, 2, Math.floor((cards.get(leader.id).slot.clientHeight - 8) / cell.height));
-  const id = p => p.id.slice(1);
-  if (!n) return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0,${id(leader)}`};
 
-  // The first layout after attaching keeps the lead's share of the window's
-  // width, since tmux starts a session at its own default size.
-  const windowCols = +shown.layout.split('x')[0];
-  const scaled = !size && windowCols ? Math.round(leader.width * cols / windowCols) : leader.width;
-  const leadCols = Math.max(20, Math.min(cols - 21, leadWidth ?? scaled));
-  const x = leadCols + 1, w = cols - x, free = rows - (n - 1);
-  const open = stacked.filter(p => p.open);
-  let heights;
-  if (open.length === n) {
-    const weights = stacked.map(p => cards.get(p.id).weight);
-    const total = weights.reduce((a, b) => a + b, 0);
-    heights = weights.map(weight => 1 + Math.floor((free - n) * weight / total));
-    heights[n - 1] += free - heights.reduce((a, b) => a + b, 0);
-  } else {
-    const fit = p => Math.max(1, Math.floor((cards.get(p.id).slot.clientHeight - 8) / cell.height));
-    heights = stacked.map(p => p.open ? fit(p) : 1);
-    // Open terminals give up rows when the summaries have none left.
-    const shrinkable = () => heights.some((h, i) => stacked[i].open && h > 1);
-    for (let over = heights.reduce((a, b) => a + b, 0) - free, i = 0; over > 0 && shrinkable(); i = (i + 1) % n) {
-      if (stacked[i].open && heights[i] > 1) { heights[i]--; over--; }
-    }
-    heights[stacked.findLastIndex(p => !p.open)] += free - heights.reduce((a, b) => a + b, 0);
-  }
-  let y = 0;
-  const cells = stacked.map((p, i) => {
-    const cell = `${w}x${heights[i]},${x},${y},${id(p)}`;
-    y += heights[i] + 1;
-    return cell;
-  });
-  const column = n === 1 ? cells[0] : `${w}x${rows},${x},0[${cells.join(',')}]`;
-  return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0{${leadCols}x${rows},0,0,${id(leader)},${column}}`};
-}
-
-// tmux checks a layout against its checksum.
-function checksum(layout) {
-  let sum = 0;
-  for (const c of layout) sum = ((sum >> 1) + ((sum & 1) << 15) + c.charCodeAt(0)) & 0xffff;
-  return sum.toString(16).padStart(4, '0');
-}
-
-// apply sends the desired window size and layout when they change, one at a
-// time. Every view of a session shares its window, so a view sends only its
-// own changes and leaves another view's layout in place; otherwise two views
-// of different sizes would replace each other's layouts without end. The view
-// the user focuses sends its layout again.
-let applying = false, reapply = false, size = '', sent = '';
-function apply() {
-  if (!client || !shown?.window || !shown.leader) return;
-  if (applying) { reapply = true; return; }
-  const want = desired();
-  const key = shown.window + ' ' + want.layout;
-  if (key === sent) return;
-  applying = true;
-  sent = key;
-  size = want.size;
-  const [cols, rows] = size.split('x');
-  send(`resize-window -t '${shown.window}' -x ${cols} -y ${rows}`);
-  send(`select-layout -t '${shown.window}' '${checksum(want.layout)},${want.layout}'`, () => {
-    applying = false;
-    if (reapply) { reapply = false; apply(); }
-  });
-}
-window.addEventListener('focus', () => { sent = ''; apply(); });
-// The workers panel narrows when its scrollbar appears.
-const resized = new ResizeObserver(() => apply());
-resized.observe(center);
-resized.observe(workers);
-
-// A new terminal shows the pane's history and screen, then its live output.
-// Output that arrives before the capture is already part of it.
-function open(id, cols, rows) {
-  const box = document.createElement('div');
-  const term = new Terminal({fontFamily, fontSize, cols, rows, theme, cursorInactiveStyle: 'none'});
-  // The terminal renders its first frame once its box is in the page.
-  lead.append(box);
-  term.open(box);
-  webgl(term);
-  term.box = box;
-  term.loading = true;
-  terms.set(id, term);
-  term.attachCustomKeyEventHandler(e => {
-    const text = e.type === 'keydown' && editing(e);
-    if (!text) return true;
-    e.preventDefault();
-    keys(id, new TextEncoder().encode(text));
-    return false;
-  });
-  term.onData(data => keys(id, new TextEncoder().encode(data)));
-  term.onBinary(data => keys(id, Uint8Array.from(data, c => c.charCodeAt(0))));
-  term.textarea.addEventListener('focus', () => send(`select-pane -t '${id}'`));
-  let cursor;
-  send(`display-message -p -t '${id}' '#{cursor_x} #{cursor_y} #{alternate_on}'`, lines => cursor = (lines[0] || '0 0 0').split(' '));
-  send(`capture-pane -p -e -S - -t '${id}'`, lines => {
-    const [cx, cy, alternate] = cursor;
-    term.write((alternate === '1' ? '\x1b[?1049h\x1b[H' : '') + lines.join('\r\n') + `\x1b[${+cy + 1};${+cx + 1}H`);
-    term.loading = false;
-  });
-  return term;
-}
-
-// editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
-// which xterm.js leaves to the browser, and for Shift+Enter, which xterm.js
-// sends as Enter. Every harness reads that CSI u sequence as a new line.
-function editing(e) {
-  const mods = (e.metaKey ? 'cmd+' : '') + (e.altKey ? 'alt+' : '') + (e.ctrlKey ? 'ctrl+' : '') + (e.shiftKey ? 'shift+' : '');
-  return {
-    'shift+Enter': '\x1b[13;2u',
-    'cmd+Backspace': '\x15',
-    'cmd+ArrowLeft': '\x01',
-    'cmd+ArrowRight': '\x05',
-    'alt+ArrowLeft': '\x1bb',
-    'alt+ArrowRight': '\x1bf',
-  }[mods + e.key];
-}
-
-function keys(id, bytes) {
-  for (let i = 0; i < bytes.length; i += 256) {
-    const hex = Array.from(bytes.subarray(i, i + 256), b => b.toString(16).padStart(2, '0')).join(' ');
-    send(`send-keys -t '${id}' -H ${hex}`);
-  }
-}
-
-// post sends an action to the server and returns its response text, or null
-// if the server refused, after showing why.
-async function post(action) {
-  const res = await fetch(action, {method: 'POST'});
+// post sends an action to the server, with an optional body, and returns its
+// response text, or null if the server refused, after showing why.
+async function post(action, body) {
+  const res = await fetch(action, {method: 'POST', body});
   const text = await res.text();
   if (!res.ok) alert(text);
   return res.ok ? text : null;
@@ -845,7 +628,7 @@ document.addEventListener('contextmenu', e => {
   let items;
   if (s) {
     const action = name => 'session?' + new URLSearchParams({action: name, id: s.id});
-    const live = s.running && dead !== s.id;
+    const live = s.running && !failed(s);
     items = [live ? {label: 'Stop Session', action: action('stop')} : {label: 'Start Session', action: action('start')},
       {label: 'Delete Session', action: action('delete'), question: `Delete session ${s.title}?`}];
   } else if (w) {
@@ -868,57 +651,96 @@ addEventListener('blur', closeMenu);
 
 $('add-workspace').onclick = () => post('workspace?action=new');
 
-// The panel shows a shell in the session's terminal window, a second tmux
-// window beside its agents'. The window opens when the panel first shows and
-// lasts until its shell exits or the session stops.
-let panelOpen = false, shell = null, creating = false;
+// The panel shows the session's shell, which the app starts when the panel
+// first shows and keeps running until the shell exits or the session stops.
+// Closing the panel leaves it running.
+let panelOpen = false, shell = null;
 
-function renderPanel(terminal) {
-  // The window exists before it is marked, so creating lasts until a refresh
-  // lists the marked terminal.
-  if (terminal) creating = false;
-  if (shell && shell.window !== terminal?.id) {
-    const term = terms.get(shell.pane);
-    term.box.remove(); term.dispose(); terms.delete(shell.pane);
-    // As in VS Code, the panel closes when its terminal exits.
-    const exited = !terminal;
-    shell = null;
-    if (exited) setPanel(false);
-  }
-  if (!panelOpen || !client) return;
-  if (!terminal) {
-    if (!creating) createTerminal();
-    return;
-  }
-  if (!shell) {
-    const [, cols, rows] = terminal.layout.match(/,(\d+)x(\d+),/);
-    shell = {window: terminal.id, pane: terminal.pane, size: cols + 'x' + rows};
-    const term = open(terminal.pane, +cols, +rows);
-    panel.append(term.box);
-    term.focus();
-  }
-  fitPanel();
+// editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
+// which xterm.js leaves to the browser.
+function editing(e) {
+  const mods = (e.metaKey ? 'cmd+' : '') + (e.altKey ? 'alt+' : '') + (e.ctrlKey ? 'ctrl+' : '') + (e.shiftKey ? 'shift+' : '');
+  return {
+    'cmd+Backspace': '\x15',
+    'cmd+ArrowLeft': '\x01',
+    'cmd+ArrowRight': '\x05',
+    'alt+ArrowLeft': '\x1bb',
+    'alt+ArrowRight': '\x1bf',
+  }[mods + e.key];
 }
 
-function createTerminal() {
-  creating = true;
-  send(`new-window -d -t '${session}:' -c '#{session_path}' -P -F '#{window_id}'`, ([id], error) => {
-    if (error) { creating = false; return; }
-    send(`set-option -w -t '${id}' remain-on-exit off`);
-    send(`set-option -w -t '${id}' window-style '${terminalStyle}'`);
-    send(`set-option -w -t '${id}' @hypercube_terminal 1`);
-    refresh();
+// panelSize is the terminal size the panel has room for.
+function panelSize() {
+  return {
+    cols: Math.max(2, Math.floor((panel.clientWidth - 8) / cell.width)),
+    rows: Math.max(1, Math.floor((panel.clientHeight - 4) / cell.height)),
+  };
+}
+
+function connectShell() {
+  if (!attached || shell || panel.hidden) return;
+  const {cols, rows} = panelSize();
+  const box = document.createElement('div');
+  panel.append(box);
+  const term = new Terminal({fontFamily, fontSize, cols, rows, theme, cursorInactiveStyle: 'none'});
+  term.open(box);
+  webgl(term);
+  const mine = shell = {session: attached, term, box, socket: null, size: cols + 'x' + rows, connected: false, exited: false};
+  const send = bytes => { if (mine.socket?.readyState === WebSocket.OPEN) mine.socket.send(bytes); };
+  term.attachCustomKeyEventHandler(e => {
+    const text = e.type === 'keydown' && editing(e);
+    if (!text) return true;
+    e.preventDefault();
+    send(new TextEncoder().encode(text));
+    return false;
   });
+  term.onData(data => send(new TextEncoder().encode(data)));
+  term.onBinary(data => send(Uint8Array.from(data, c => c.charCodeAt(0))));
+  openShellSocket(mine);
+  term.focus();
 }
 
-// The terminal's window fills the panel.
+// The app replays the shell's recent output on every connection, so a
+// reconnect starts the terminal over.
+function openShellSocket(mine) {
+  const {cols, rows} = mine.term;
+  const socket = mine.socket = connect('terminal?' + new URLSearchParams({session: mine.session, cols, rows}));
+  socket.binaryType = 'arraybuffer';
+  socket.onopen = () => { mine.connected = true; mine.term.reset(); };
+  socket.onmessage = e => {
+    if (typeof e.data === 'string') mine.exited = true;
+    else mine.term.write(new Uint8Array(e.data));
+  };
+  socket.onclose = () => {
+    if (shell !== mine) return;
+    if (mine.exited || !mine.connected) {
+      // As in VS Code, the panel closes when its terminal exits.
+      closeShell();
+      setPanel(false);
+    } else {
+      setTimeout(() => { if (shell === mine) openShellSocket(mine); }, 1000);
+    }
+  };
+}
+
+// closeShell drops the page's connection; the shell itself keeps running.
+function closeShell() {
+  if (!shell) return;
+  const mine = shell;
+  shell = null;
+  mine.socket.close();
+  mine.term.dispose();
+  mine.box.remove();
+}
+
+// The shell's terminal fills the panel.
 function fitPanel() {
   if (!shell || panel.hidden) return;
-  const cols = Math.max(2, Math.floor((panel.clientWidth - 8) / cell.width));
-  const rows = Math.max(1, Math.floor((panel.clientHeight - 4) / cell.height));
+  const {cols, rows} = panelSize();
   if (shell.size === cols + 'x' + rows) return;
   shell.size = cols + 'x' + rows;
-  send(`resize-window -t '${shell.window}' -x ${cols} -y ${rows}`);
+  shell.term.resize(cols, rows);
+  if (shell.socket.readyState === WebSocket.OPEN) shell.socket.send(JSON.stringify({cols, rows}));
 }
 new ResizeObserver(fitPanel).observe(panel);
 
@@ -929,8 +751,11 @@ function setPanel(open) {
   button.setAttribute('aria-pressed', open);
   button.title = open ? 'Hide Panel' : 'Show Panel';
   button.firstElementChild.className = `icon ${open ? 'icon-layout-panel' : 'icon-layout-panel-off'} size-4`;
-  terms.get(open ? shell?.pane : activePane)?.focus();
-  if (open) refresh();
+  if (open) {
+    connectShell();
+    fitPanel();
+    shell?.term.focus();
+  }
 }
 $('toggle-panel').onclick = () => setPanel(!panelOpen);
 
@@ -965,17 +790,11 @@ function drag(sash, move, release, start) {
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
 drag($('panel-sash'), e => panel.style.height = Math.max(2 * cell.height + 4, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
-// Dragging the divider sets the lead's columns. tmux's main-pane-width keeps
-// them when Hypercube lays the window out again for a new worker.
-let leadWidth = null;
+// Dragging the divider sets the lead's width.
 drag(split, e => {
-  if (!size) return;
-  const column = Math.round((e.clientX - center.getBoundingClientRect().left - cardX) / cell.width);
-  leadWidth = Math.max(20, Math.min(+size.split('x')[0] - 21, column));
-  lead.style.width = leadWidth * cell.width + cardX + 'px';
-  apply();
-}, () => {
-  if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
+  const rect = center.getBoundingClientRect();
+  leadWidth = Math.max(280, Math.min(e.clientX - rect.left, rect.width - 280));
+  layoutLead();
 });
 
 hypercube($('hypercube'));

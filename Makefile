@@ -13,6 +13,7 @@ build:
 	go build -o bin/hypercube-harness-pi ./plugins/pi
 
 check: build
+	cd internal/ui && bun test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal plugins)" || { gofmt -l cmd internal plugins; exit 1; }
 	go test -race ./...

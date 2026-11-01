@@ -15,6 +15,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/terminal"
 )
 
 const (
@@ -47,6 +48,9 @@ type Runtime struct {
 	// PluginDir holds the harness plugins. Empty means beside the running
 	// executable.
 	PluginDir string
+	// Terminals holds each running session's shell. Stop, Delete, and Shutdown
+	// end them.
+	Terminals terminal.Set
 
 	db  *store.DB
 	url string
@@ -58,6 +62,8 @@ type Runtime struct {
 	seqs    map[string]int64
 	gen     int64
 	closing bool
+	// changed is closed and replaced whenever an agent's transcript changes.
+	changed chan struct{}
 }
 
 // live is one launch of an agent's plugin. Events and exits from a launch that
@@ -90,7 +96,23 @@ type pendingItem struct {
 
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
-	return &Runtime{db: db, url: url, live: map[string]*live{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli()}
+	return &Runtime{db: db, url: url, live: map[string]*live{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli(),
+		changed: make(chan struct{})}
+}
+
+// Changes returns a channel that closes the next time an agent's transcript
+// changes, including items still streaming. Callers read the transcripts after
+// getting the channel, so no change is missed.
+func (r *Runtime) Changes() <-chan struct{} {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.changed
+}
+
+// touchLocked wakes the watchers of Changes. The caller holds mu.
+func (r *Runtime) touchLocked() {
+	close(r.changed)
+	r.changed = make(chan struct{})
 }
 
 func logf(format string, args ...any) {
@@ -351,6 +373,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	if !r.current(l) {
 		return
 	}
+	defer r.touchLocked()
 	var write []store.Entry
 	var failures []string
 	for _, it := range ev.Items {
@@ -617,6 +640,28 @@ func (r *Runtime) Answer(agent, requestID, choice, text string) error {
 	return request(client, harness.Command{Command: harness.CmdAnswer, Request: native, Choice: choice, Text: text})
 }
 
+// Shell returns the running session's shell, starting it in the workspace
+// folder with the given size if the session has none.
+func (r *Runtime) Shell(session string, cols, rows int) (*terminal.Shell, error) {
+	var dir string
+	err := r.db.Read(func(tx *store.Tx) error {
+		s, err := tx.Session(session)
+		if err != nil {
+			return err
+		}
+		if !s.Running {
+			return errors.New("the session is not running")
+		}
+		w, err := tx.Workspace(s.Workspace)
+		dir = w.Path
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.Terminals.Open(session, dir, cols, rows)
+}
+
 // Transcript returns the agent's items in order: those saved, then those still
 // streaming.
 func (r *Runtime) Transcript(agent string) ([]harness.Item, error) {
@@ -703,5 +748,6 @@ func (r *Runtime) Shutdown() {
 	r.closing = true
 	lives := r.detachLocked(func(*live) bool { return true }, true)
 	r.mu.Unlock()
+	r.Terminals.Close()
 	stopClients(lives)
 }

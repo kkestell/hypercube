@@ -6,27 +6,38 @@ the ownership decisions behind them.
 
 ## Ownership
 
-The app process, `hypercube ui`, is the only process that adds or deletes
-workspaces and creates, starts, stops, or deletes sessions. Each operation on a
-session holds that session's lock. At startup the app starts every session the
-user left running whose tmux session is missing.
+The app process, `hypercube ui`, owns every agent and every panel shell, and is
+the only process that writes the database. It adds and deletes workspaces and
+creates, starts, stops, and deletes sessions.
 
-tmux owns processes and terminals so agents can outlive the app. Each running
-session has its own tmux session, named `hypercube-<session ID>`: its first
-window holds the agents' panes, and a second window holds the browser view's
-terminal panel. A short-lived launch wrapper installs identity and launch state
-before replacing itself with the harness.
+Each agent is a harness plugin process, started in its own process group, that
+keeps its native harness alive across turns. The plugin speaks the
+[serve protocol](harness-support.md#plugin-protocol) over its standard input
+and output. Closing the browser changes nothing.
 
-The browser view reads Hypercube's data from the app and only terminals from
-tmux, through a control-mode client attached to the selected session's tmux
-session.
+Menu Quit, SIGINT, and SIGTERM, which a service restart or a development
+rebuild sends, all stop the app the same way: it sends each plugin `shutdown`,
+waits briefly, then kills the plugin's process group, and ends the panel
+shells. A session keeps the running mark the user last chose, so at startup the
+app starts every running session and resumes its agents' saved conversations.
+It delivers no queued message until the user sends a prompt to the session.
+Stopping a session clears its running mark.
+
+An agent whose plugin exits is started again with its saved conversation,
+unless it has exited three times within ten seconds of starting. A resume that
+fails is an error in the agent's transcript; the app never replaces the
+conversation with a new one. Each start has a generation number, and events
+from an earlier generation are ignored.
+
+The browser view reads everything from the app: Hypercube's data and the
+selected session's transcripts. Agents reach Hypercube's tools through
+`hypercube mcp`, the stdio server each plugin's harness runs. It forwards each
+request, with the agent's ID, to a route in the app, which runs the tool. MCP
+and the browser's actions share one owner of session state.
 
 Worker worktrees live inside the checkout so harnesses can inherit its folder
 trust. Session IDs qualify worker paths and branches to avoid collisions
 between sessions.
-
-Live tmux markers establish ownership at the point of use. A saved pane number
-cannot establish it, since tmux can reuse numbers.
 
 Agents are trusted local processes with the user's credentials. Session scoping
 in MCP prevents accidental cross-session operations, with messages between the
@@ -38,44 +49,49 @@ they can invoke through a shell.
 
 Everything Hypercube knows lives in one SQLite database,
 `$XDG_STATE_HOME/hypercube/hypercube.db`, defaulting to
-`~/.local/state/hypercube/hypercube.db`: workspaces, sessions, agents, and
-queued messages. Every Hypercube process opens it. Failed Hypercube tool calls
-and Claude Code auto mode denials are appended beside it to `tools.log` as JSON
-lines.
+`~/.local/state/hypercube/hypercube.db`: workspaces, sessions, agents, queued
+messages, and each agent's transcript. The app serializes its own operations;
+the app never holds that lock while waiting on a plugin, since a native request
+can call back into a tool.
 
-The database keeps harness conversation IDs and queued messages across
-launches; panes and launch bookkeeping are replaceable. Writes wait for the
-database lock instead of failing. Session lifecycle operations hold a separate
-lock file per session, so a multi-step launch or cleanup does not block hooks
-from delivering messages.
+A transcript is an ordered list of items: the user's messages, text,
+reasoning, tool calls and results, errors, and attention requests. Completed
+items are written to the database. Items still streaming stay in memory and are
+published as they change. A later item with the same ID replaces the earlier
+one in its place.
 
-Queue delivery writes its response before committing removal, so a failed
-output write leaves the messages available for retry. This protects the write
-boundary; it is not an acknowledgement that the harness or model processed the
-message.
+The database keeps harness conversation IDs, queued messages, and transcripts
+across launches. The app sends one queued message at a time and removes it
+after the plugin accepts it; a refused message stays queued. Acceptance means
+the native harness took the text, not that the model processed it.
 
-Waiter generations let a newly started waiter retire earlier ones without a
-daemon. Waiters also exit when their parent ends. Each idle waiter polls its
-agent's row four times a second.
+The state WebSocket sends the view a new snapshot of its data when the data
+changes. It also sends the transcripts of the session the page selected: all of
+them on connecting and on selecting, then the items that are new or changed. A
+reconnecting page takes new snapshots.
 
-The app watches the database for changes and sends the view a new snapshot of
-its data when one differs from the last.
+## Panel shell
+
+`internal/terminal` owns one shell on a pseudo-terminal per session. It starts
+on demand in the workspace's folder, keeps a bounded buffer of its recent output,
+and replays that buffer to each browser connection. The shell survives hiding
+the panel and closing the browser, and ends when it exits, when its session
+stops or is deleted, or when the app shuts down.
 
 ## Source ownership
 
-Internal commands, data fields, hook payloads, and algorithms are documented by
-the implementation rather than copied here.
+Internal commands, data fields, protocol messages, and algorithms are
+documented by the implementation rather than copied here.
 
 | Source | Responsibility |
 | --- | --- |
 | [cmd/hypercube](../cmd/hypercube/main.go) | The command line and the app process. |
-| [session](../internal/session/session.go) | Workspace, session, and worker lifecycle, and relaunches. |
-| [store](../internal/store/store.go) | The database schema, transactions, locks, and queues. |
+| [session](../internal/session/session.go) | Workspace, session, and worker lifecycle, and the [runtime](../internal/session/runtime.go) that runs agents: delivery, events, relaunch, restore, and shutdown. |
+| [store](../internal/store/store.go) | The database schema, transactions, queues, and transcripts. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
-| [harness](../internal/harness/harness.go) | Configuration and launches through harness plugins. |
-| [tmux](../internal/tmux/tmux.go) | Live ownership checks, tmux sessions, and panes. |
-| [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations. |
-| [report](../internal/report/report.go) | Context, teamwork guidance, steering, and turn events reported by plugins. |
-| [wait](../internal/wait/wait.go) | Idle delivery and waiter replacement. |
-| [ui](../internal/ui/ui.go) | The browser view: its data stream, actions, and a tmux control-mode client per page. |
+| [harness](../internal/harness/harness.go) | Configuration, plugin discovery, and the [serve protocol](../internal/harness/protocol.go) client. |
+| [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations, and the bridge to the app. |
+| [report](../internal/report/report.go) | Instructions, message attribution, titles, and failure reports. |
+| [terminal](../internal/terminal/terminal.go) | Panel shells. |
+| [ui](../internal/ui/ui.go) | The browser view: its data stream, transcripts, actions, and panel terminal. |
 | [plugins](../plugins) | The Claude Code, OpenCode, Codex, and Pi harness plugins. |

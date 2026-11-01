@@ -2,9 +2,10 @@ Keep this document accurate and short.
 
 ## Purpose and scope
 
-Hypercube runs teams of local coding agents in tmux. Each agent is a native
-harness (Claude Code, OpenCode, Codex, or Pi) in its own pane; agents message
-each other through an MCP server and receive messages through harness plugins.
+Hypercube runs teams of local coding agents. Each agent is a native harness
+(Claude Code, OpenCode, Codex, or Pi) that the app drives through an
+executable plugin; agents message each other through an MCP server, and the
+browser shows each agent's transcript.
 
 - There is one user. Target macOS.
 - Agents are trusted local processes running with the user's credentials.
@@ -32,7 +33,7 @@ each other through an MCP server and receive messages through harness plugins.
 
 - `cmd/hypercube/` — the command line and the app process.
 - `internal/` — one package per concern: `harness`, `mcp`, `menu`, `report`,
-  `session`, `store`, `tmux`, `ui`, `wait`, `workspace`.
+  `session`, `store`, `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness.
 - `scripts/dev` — the isolated development session (`make dev`).
@@ -42,11 +43,10 @@ each other through an MCP server and receive messages through harness plugins.
 ## Validation
 
 - `make check` runs every check. Run it after changing code.
-- Use focused `go test -run` while working.
+- Use focused `go test -run`, or `bun test` in `internal/ui`, while working.
 - After changing only docs or comments, inspect the diff; run nothing.
-- Tests use isolated state, their own tmux server, and harness stand-ins.
-  Never stop the user's tmux server or workspaces, and never run
-  `make install-service`.
+- Tests use isolated state, harness stand-ins, and their own shells. Never stop
+  the user's workspaces, and never run `make install-service`.
 - Use `make dev` for a live smoke test, and clean up what you start.
 - The user judges how the browser view looks. Leave rendering, screenshots,
   and visual checks of it to them.

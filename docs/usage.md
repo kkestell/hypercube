@@ -40,16 +40,25 @@ spinner while any of its agents is busy, and a session shows one in the same
 place. A session shows an amber dot while any
 of its agents awaits your approval, and a blue dot after its lead finishes a
 reply you have not seen. A worker's card shows a spinner while it is busy, an
-amber dot while it awaits approval, and a red dot after it exits. See
-[harness limitations](harness-support.md#known-limitations) when interpreting
-activity.
+amber dot while it awaits you, and a red dot after it exits.
 
-The lead's terminal fills the left side, and each worker is a card on the
-right. Click a worker's header to toggle between its preview and terminal.
-The preview shows the worker's latest report and how long ago it made it.
+The lead's chat fills the left side, and each worker is a card on the right.
+A chat shows the agent's messages, reasoning, and tool calls in order, with a
+box below it for your next message. Press Enter to send it and Shift+Enter to
+start a new line. A message goes to the agent at once, even while it works. The
+stop button next to the send button appears while the agent works and
+interrupts its current turn; the turn stays in the chat. A tool call shows its
+name and its main argument; click it to see its input, its output, and the
+calls a native subagent made inside it. When an agent asks you a question or
+for approval, its chat shows the request with its choices and a field for typed
+text; answer there. Each agent's unsent text stays in its box when you switch
+sessions or messages arrive.
+
+Click a worker's header to toggle between its preview and its chat. The
+preview shows the worker's latest report and how long ago it made it.
 The lead and worker headers show context use and cost so far. Codex reports no
 cost. Drag the dividers to resize the sidebar and the lead's side. Dividers
-between workers resize expanded terminals; collapsed previews keep their height.
+between workers resize expanded chats; collapsed previews keep their height.
 
 The panel button in the header shows or hides a terminal below the agents. It
 runs your shell in the workspace's folder, one per session, and keeps running
@@ -58,15 +67,16 @@ session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-Closing the browser leaves agents running. Stopping a session keeps its
-conversations and queued messages. Starting it resumes each agent's
+Closing the browser leaves agents running. Quitting Hypercube ends them, and
+the sessions that were running start again at the next start. Stopping a session
+keeps its conversations, chats, and queued messages. Starting it resumes each agent's
 conversation, and at login Hypercube starts the sessions that were running when
 it last exited. A started session starts no turn and delivers no queued
 message until you type a prompt into any of its agents.
 
-A harness that exits is relaunched in its pane with its saved conversation.
-Repeated quick exits stop automatic retries, and launch errors stay visible.
-Stop and start the session to retry after correcting the error.
+A harness that exits is relaunched with its saved conversation. Repeated quick
+exits stop automatic retries, and launch errors stay in the agent's chat. Click
+the session, or stop and start it, to retry after correcting the error.
 
 Deleting a session or workspace removes its workers' managed worktrees and
 branches only after checking for uncommitted work and commits not merged into

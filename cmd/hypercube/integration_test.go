@@ -222,11 +222,11 @@ func (c client) snapshot() []store.ShownWorkspace {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	var list []store.ShownWorkspace
-	if err := json.Unmarshal(data, &list); err != nil {
+	var msg struct{ Workspaces []store.ShownWorkspace }
+	if err := json.Unmarshal(data, &msg); err != nil {
 		c.t.Fatal(err)
 	}
-	return list
+	return msg.Workspaces
 }
 
 // listen returns a free local address.

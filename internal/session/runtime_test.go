@@ -675,3 +675,59 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 		t.Fatal("the worktree remains")
 	}
 }
+
+func TestChangesFiresForStreamingItems(t *testing.T) {
+	f := newFixture(t)
+	_, lead := f.session()
+	changes := f.rt.Changes()
+	f.input(lead.ID, "!work")
+	select {
+	case <-changes:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no change for a streaming item")
+	}
+	if f.rt.Changes() == changes {
+		t.Fatal("the channel was not replaced")
+	}
+}
+
+func TestShellsEndWithTheirSession(t *testing.T) {
+	f := newFixture(t)
+	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
+	s, _ := f.session()
+	open := func() interface{ Done() <-chan struct{} } {
+		sh, err := f.rt.Shell(s.ID, 80, 24)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sh
+	}
+	ended := func(sh interface{ Done() <-chan struct{} }) bool {
+		select {
+		case <-sh.Done():
+			return true
+		default:
+			return false
+		}
+	}
+	sh := open()
+	if err := f.rt.Stop(s.ID); err != nil || !ended(sh) {
+		t.Fatalf("Stop left the shell running: %v", err)
+	}
+	if _, err := f.rt.Shell(s.ID, 80, 24); err == nil {
+		t.Fatal("a stopped session opened a shell")
+	}
+	if err := f.rt.Start(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	sh = open()
+	if err := f.rt.Delete(s.ID); err != nil || !ended(sh) {
+		t.Fatalf("Delete left the shell running: %v", err)
+	}
+	s, _ = f.session()
+	sh = open()
+	f.rt.Shutdown()
+	if !ended(sh) {
+		t.Fatal("Shutdown left the shell running")
+	}
+}
