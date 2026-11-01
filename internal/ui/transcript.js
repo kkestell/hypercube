@@ -180,6 +180,32 @@ export class Transcript {
     this.list = create(doc, 'div', 'flex flex-col gap-3 p-3');
     this.root = create(doc, 'div', 'min-h-0 flex-1 overflow-y-auto text-[13px]', this.list);
     this.rows = new Map();
+    // The view follows the end until the user scrolls up, and follows again
+    // once they scroll back to the end. Growing content leaves scrollTop alone,
+    // so only a scroll upward stops following. The end allows for fractional
+    // scroll positions; content that shrinks clamps the view to the end.
+    this.following = true;
+    this.top = 0;
+    this.root.onscroll = () => {
+      const {scrollTop, clientHeight, scrollHeight} = this.root;
+      if (scrollHeight - scrollTop - clientHeight < 2) this.following = true;
+      else if (scrollTop < this.top) this.following = false;
+      this.top = scrollTop;
+    };
+    // Any change in size keeps a following view at the end: new and replaced
+    // items, opened details, a resized card, and a view shown after it was
+    // hidden or not yet in the page.
+    const Observer = doc.defaultView?.ResizeObserver;
+    if (Observer) {
+      const observer = new Observer(() => { if (this.following) this.end(); });
+      observer.observe(this.root);
+      observer.observe(this.list);
+    }
+  }
+
+  end() {
+    this.root.scrollTop = this.root.scrollHeight;
+    this.top = this.root.scrollTop;
   }
 
   // reset replaces every item and shows the end.
@@ -187,15 +213,14 @@ export class Transcript {
     this.list.replaceChildren();
     this.rows.clear();
     this.apply(items);
-    this.root.scrollTop = this.root.scrollHeight;
+    this.following = true;
+    this.end();
   }
 
-  // update adds or replaces items. A view at the end stays at the end.
+  // update adds or replaces items.
   update(items) {
-    const {scrollTop, clientHeight, scrollHeight} = this.root;
-    const atEnd = scrollHeight - scrollTop - clientHeight < 40;
     this.apply(items);
-    if (atEnd) this.root.scrollTop = this.root.scrollHeight;
+    if (this.following) this.end();
   }
 
   apply(items) {

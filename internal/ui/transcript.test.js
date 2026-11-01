@@ -250,7 +250,7 @@ test('a request inside a collapsed tool opens it', () => {
   expect(inner.open).toBe(true);
 });
 
-test('the view follows new items only from the end', () => {
+test('the view follows the end until the user scrolls up', () => {
   const t = transcript();
   t.root.scrollHeight = 1000;
   t.root.clientHeight = 300;
@@ -261,10 +261,40 @@ test('the view follows new items only from the end', () => {
   t.update([{id: '2', kind: 'text', text: 'b'}]);
   expect(t.root.scrollTop).toBe(1200);
 
-  t.root.scrollTop = 100;
+  // A reset while hidden scrolls nowhere; the view still follows once shown.
+  t.root.scrollTop = 0;
+  t.root.scrollHeight = 0;
+  t.root.clientHeight = 0;
+  t.reset([{id: '1', kind: 'text', text: 'a'}]);
   t.root.scrollHeight = 1500;
+  t.root.clientHeight = 300;
+  t.update([{id: '2', kind: 'text', text: 'b'}]);
+  expect(t.root.scrollTop).toBe(1500);
+
+  t.root.scrollTop = 100;
+  t.root.onscroll();
+  t.root.scrollHeight = 1800;
   t.update([{id: '3', kind: 'text', text: 'c'}]);
   expect(t.root.scrollTop).toBe(100);
+
+  t.root.scrollTop = 1500;
+  t.root.onscroll();
+  t.root.scrollHeight = 2000;
+  t.update([{id: '4', kind: 'text', text: 'd'}]);
+  expect(t.root.scrollTop).toBe(2000);
+
+  // A small scroll up near the end stops following too.
+  t.root.scrollTop = 1690;
+  t.root.onscroll();
+  t.root.scrollHeight = 2100;
+  t.update([{id: '5', kind: 'text', text: 'e'}]);
+  expect(t.root.scrollTop).toBe(1690);
+
+  t.root.scrollTop = 1800;
+  t.root.onscroll();
+  t.root.scrollHeight = 2000;
+  t.update([{id: '4', kind: 'text', text: 'd'}]);
+  expect(t.root.scrollTop).toBe(2000);
 });
 
 test('toolTitle says what Hypercube tools do and names other servers', () => {

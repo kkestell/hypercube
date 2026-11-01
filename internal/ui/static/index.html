@@ -446,7 +446,9 @@ function toggleWorker(e) {
   }
   if (c.open) {
     // A hidden element forgets where it was scrolled.
-    views.get(id).root.scrollTop = views.get(id).root.scrollHeight;
+    const v = views.get(id);
+    v.following = true;
+    v.end();
     c.field.focus();
   }
 }
