@@ -4,12 +4,14 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	acp "github.com/coder/acp-go-sdk"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
@@ -53,7 +57,8 @@ func serve(in io.Reader, out io.Writer) error {
 type agent struct {
 	cmd    *exec.Cmd
 	stdin  io.Closer
-	rpc    *plugin.RPC
+	conn   *acp.Connection
+	taken  chan struct{} // the handler has taken the message it was given
 	emit   func(harness.Event)
 	done   chan struct{} // closed when the process has ended
 	ctx    context.Context
@@ -73,6 +78,7 @@ type agent struct {
 	tools    map[string]*tool        // by tool call ID
 	children map[string]string       // child session ID to the tool item that started it
 	requests map[string]*request     // open attention items, by item ID
+	forms    int
 	errors   int
 	usage    harness.Usage
 }
@@ -86,8 +92,8 @@ type tool struct {
 // request is a form waiting for the user, which is how OpenCode asks the
 // questions of its question tool.
 type request struct {
-	id      json.RawMessage // the JSON-RPC request's ID
-	items   []harness.Item  // one per form field
+	reply   chan acp.UnstableCreateElicitationResponse // receives the form's one answer
+	items   []harness.Item                             // one per form field
 	fields  []field
 	content map[string]any
 	answers int
@@ -125,18 +131,15 @@ func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- err
 	if err != nil {
 		return nil, err
 	}
-	ag := &agent{
-		cmd: cmd, stdin: stdin, emit: emit, done: make(chan struct{}), dir: a.Dir, model: a.Model, session: a.Conversation,
-		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{}, requests: map[string]*request{},
-	}
-	ag.ctx, ag.cancel = context.WithCancel(context.Background())
+	ag := newAgent(a, emit)
+	ag.cmd, ag.stdin = cmd, stdin
 	cmd.Stderr = io.MultiWriter(os.Stderr, &ag.stderr)
 	// OpenCode's children may keep its stderr open after it ends.
 	cmd.WaitDelay = time.Second
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("start opencode: %w", err)
 	}
-	ag.rpc = plugin.NewRPC(stdout, stdin, ag.handle)
+	ag.connect(stdout, stdin)
 	died := make(chan error, 1)
 	go func() {
 		err := cmd.Wait()
@@ -161,53 +164,96 @@ func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- err
 	return ag, nil
 }
 
+func newAgent(a harness.StartArgs, emit func(harness.Event)) *agent {
+	ag := &agent{
+		emit: emit, done: make(chan struct{}), taken: make(chan struct{}, 1), dir: a.Dir, model: a.Model, session: a.Conversation,
+		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{}, requests: map[string]*request{},
+	}
+	ag.ctx, ag.cancel = context.WithCancel(context.Background())
+	return ag
+}
+
+// connect speaks ACP to opencode over its output and input.
+func (ag *agent) connect(out io.Reader, in io.Writer) {
+	ag.conn = acp.NewConnection(ag.handle, in, &inOrder{r: bufio.NewReaderSize(out, 1<<20), taken: ag.taken})
+	// The connection's errors, such as a line that is not JSON, go to stderr.
+	ag.conn.SetLogger(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError})))
+}
+
+// inOrder passes opencode's messages to the connection one at a time. The
+// connection runs each request on a goroutine of its own, so a message waits
+// until the agent has taken the request or notification before it. Updates,
+// requests, and the events they make keep the order opencode sent them in.
+type inOrder struct {
+	r       *bufio.Reader
+	taken   <-chan struct{}
+	waiting bool // the agent has not yet taken the last message
+	line    []byte
+	err     error
+}
+
+func (o *inOrder) Read(p []byte) (int, error) {
+	if len(o.line) == 0 {
+		if o.err != nil {
+			return 0, o.err
+		}
+		if o.waiting {
+			<-o.taken
+		}
+		o.line, o.err = o.r.ReadBytes('\n')
+		if len(o.line) == 0 {
+			return 0, o.err
+		}
+		// The connection gives the agent every request and notification but
+		// its own request cancellations.
+		var m struct {
+			ID     *json.RawMessage `json:"id"`
+			Method string           `json:"method"`
+		}
+		o.waiting = json.Unmarshal(o.line, &m) == nil && m.Method != "" && (m.ID != nil || m.Method != "$/cancel_request")
+	}
+	n := copy(p, o.line)
+	o.line = o.line[n:]
+	return n, nil
+}
+
 // begin starts or resumes the session and selects the model and effort.
 func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
-	var init struct {
-		ProtocolVersion   int `json:"protocolVersion"`
-		AgentCapabilities struct {
-			SessionCapabilities struct {
-				Resume *json.RawMessage `json:"resume"`
-			} `json:"sessionCapabilities"`
-		} `json:"agentCapabilities"`
-	}
-	if err := ag.call(ctx, "initialize", map[string]any{
-		"protocolVersion": 1,
-		"clientInfo":      map[string]any{"name": "hypercube", "version": "1"},
+	init, err := call[acp.InitializeResponse](ctx, ag, acp.AgentMethodInitialize, acp.InitializeRequest{
+		ProtocolVersion: acp.ProtocolVersionNumber,
+		ClientInfo:      &acp.Implementation{Name: "hypercube", Version: "1"},
 		// A form request is how OpenCode asks the user a question.
-		"clientCapabilities": map[string]any{"elicitation": map[string]any{"form": map[string]any{}}},
-	}, &init); err != nil {
+		ClientCapabilities: acp.ClientCapabilities{Elicitation: &acp.ElicitationCapabilities{Form: &acp.ElicitationFormCapabilities{}}},
+	})
+	if err != nil {
 		return err
 	}
-	if init.ProtocolVersion != 1 || a.Conversation != "" && init.AgentCapabilities.SessionCapabilities.Resume == nil {
+	if init.ProtocolVersion != acp.ProtocolVersionNumber || a.Conversation != "" && init.AgentCapabilities.SessionCapabilities.Resume == nil {
 		return errors.New("this OpenCode does not support ACP 1 with session resume: OpenCode 2.x is required")
 	}
-	env := []map[string]string{}
+	env := []acp.EnvVariable{}
 	for _, k := range sortedKeys(a.Env) {
-		env = append(env, map[string]string{"name": k, "value": a.Env[k]})
+		env = append(env, acp.EnvVariable{Name: k, Value: a.Env[k]})
 	}
-	params := map[string]any{"cwd": a.Dir, "mcpServers": []any{map[string]any{"name": "hypercube", "command": a.Hypercube, "args": []string{"mcp"}, "env": env}}}
-	var opened struct {
-		SessionID     string         `json:"sessionId"`
-		ConfigOptions []configOption `json:"configOptions"`
-	}
-	method := "session/new"
+	servers := []acp.McpServer{{Stdio: &acp.McpServerStdio{Name: "hypercube", Command: a.Hypercube, Args: []string{"mcp"}, Env: env}}}
+	var options []acp.SessionConfigOption
 	if a.Conversation != "" {
-		method = "session/resume"
-		params["sessionId"] = a.Conversation
-	}
-	if err := ag.call(ctx, method, params, &opened); err != nil {
-		if a.Conversation != "" {
+		resumed, err := call[acp.ResumeSessionResponse](ctx, ag, acp.AgentMethodSessionResume, acp.ResumeSessionRequest{SessionId: acp.SessionId(a.Conversation), Cwd: a.Dir, McpServers: servers})
+		if err != nil {
 			return fmt.Errorf("OpenCode could not resume session %s: %w", a.Conversation, err)
 		}
-		return err
-	}
-	if a.Conversation == "" {
+		options = resumed.ConfigOptions
+	} else {
+		opened, err := call[acp.NewSessionResponse](ctx, ag, acp.AgentMethodSessionNew, acp.NewSessionRequest{Cwd: a.Dir, McpServers: servers})
+		if err != nil {
+			return err
+		}
+		options = opened.ConfigOptions
 		ag.mu.Lock()
-		ag.session = opened.SessionID
+		ag.session = string(opened.SessionId)
 		ag.mu.Unlock()
 	}
-	options, err := ag.choose(ctx, opened.ConfigOptions, "model", a.Model)
+	options, err = ag.choose(ctx, options, "model", a.Model)
 	if err != nil {
 		return err
 	}
@@ -223,35 +269,30 @@ func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
 	return nil
 }
 
-// configOption is a session setting with a list of values. A value is either
-// listed directly or inside a group.
-type configOption struct {
-	ID      string `json:"id"`
-	Options []struct {
-		Value   string `json:"value"`
-		Options []struct {
-			Value string `json:"value"`
-		} `json:"options"`
-	} `json:"options"`
-}
-
-func findOption(options []configOption, id string) *configOption {
-	for i := range options {
-		if options[i].ID == id {
-			return &options[i]
+// findOption returns the session setting with a list of values that has the
+// given ID.
+func findOption(options []acp.SessionConfigOption, id string) *acp.SessionConfigOptionSelect {
+	for _, o := range options {
+		if o.Select != nil && string(o.Select.Id) == id {
+			return o.Select
 		}
 	}
 	return nil
 }
 
-func (o configOption) values() []string {
+// values lists a setting's values, whether listed directly or in groups.
+func values(o *acp.SessionConfigOptionSelect) []string {
 	var values []string
-	for _, v := range o.Options {
-		if v.Value != "" {
-			values = append(values, v.Value)
+	if o.Options.Ungrouped != nil {
+		for _, v := range *o.Options.Ungrouped {
+			values = append(values, string(v.Value))
 		}
-		for _, g := range v.Options {
-			values = append(values, g.Value)
+	}
+	if o.Options.Grouped != nil {
+		for _, g := range *o.Options.Grouped {
+			for _, v := range g.Options {
+				values = append(values, string(v.Value))
+			}
 		}
 	}
 	return values
@@ -259,47 +300,48 @@ func (o configOption) values() []string {
 
 // choose sets a session option to a value OpenCode offers and returns the
 // options that follow, which depend on the model.
-func (ag *agent) choose(ctx context.Context, options []configOption, id, value string) ([]configOption, error) {
+func (ag *agent) choose(ctx context.Context, options []acp.SessionConfigOption, id, value string) ([]acp.SessionConfigOption, error) {
 	o := findOption(options, id)
 	if o == nil {
 		return nil, fmt.Errorf("OpenCode offers no %s setting", id)
 	}
-	if !slices.Contains(o.values(), value) {
+	if !slices.Contains(values(o), value) {
 		hint := ""
 		if id == "model" {
 			hint = "; use a provider/model ID from `opencode models`"
 		}
 		return nil, fmt.Errorf("OpenCode does not offer %s %q%s", id, value, hint)
 	}
-	var result struct {
-		ConfigOptions []configOption `json:"configOptions"`
-	}
-	err := ag.call(ctx, "session/set_config_option", map[string]any{"sessionId": ag.session, "configId": id, "value": value}, &result)
+	result, err := call[acp.SetSessionConfigOptionResponse](ctx, ag, acp.AgentMethodSessionSetConfigOption, acp.SetSessionConfigOptionRequest{
+		ValueId: &acp.SetSessionConfigOptionValueId{SessionId: acp.SessionId(ag.session), ConfigId: acp.SessionConfigId(id), Value: acp.SessionConfigValueId(value)},
+	})
 	return result.ConfigOptions, err
 }
 
-// call makes an ACP request and decodes its result. A connection that has
+// call makes an ACP request and returns its result. A connection that has
 // ended is explained by the end of opencode's diagnostics.
-func (ag *agent) call(ctx context.Context, method string, params, result any) error {
-	raw, err := ag.rpc.Call(ctx, method, params)
-	if err != nil {
+func call[T any](ctx context.Context, ag *agent, method string, params any) (T, error) {
+	result, err := acp.SendRequest[T](ag.conn, ctx, method, params)
+	if err == nil {
+		return result, nil
+	}
+	select {
+	case <-ag.conn.Done():
+		err = errors.New("connection closed")
 		select {
-		case <-ag.rpc.Done():
-			select {
-			case <-ag.done:
-			case <-time.After(stopTimeout):
-			}
-			if detail := ag.stderr.Last(); detail != "" {
-				err = fmt.Errorf("%w: %s", err, detail)
-			}
-		default:
+		case <-ag.done:
+		case <-time.After(stopTimeout):
 		}
-		return fmt.Errorf("%s: %w", method, err)
+		if detail := ag.stderr.Last(); detail != "" {
+			err = fmt.Errorf("%w: %s", err, detail)
+		}
+	default:
+		var re *acp.RequestError
+		if errors.As(err, &re) {
+			err = fmt.Errorf("%s (code %d)", re.Message, re.Code)
+		}
 	}
-	if result == nil {
-		return nil
-	}
-	return json.Unmarshal(raw, result)
+	return result, fmt.Errorf("%s: %w", method, err)
 }
 
 func sortedKeys(m map[string]string) []string {
@@ -355,23 +397,20 @@ func (ag *agent) input(text string) error {
 // prompt sends one turn made of texts. ag.mu is held.
 func (ag *agent) prompt(texts []string) {
 	ag.turn++
-	blocks := []map[string]string{}
+	blocks := []acp.ContentBlock{}
 	for _, t := range texts {
-		blocks = append(blocks, map[string]string{"type": "text", "text": t})
+		blocks = append(blocks, acp.TextBlock(t))
 	}
-	session := ag.session
+	session := acp.SessionId(ag.session)
 	go func() {
-		var res struct {
-			StopReason string `json:"stopReason"`
-		}
-		err := ag.call(ag.ctx, "session/prompt", map[string]any{"sessionId": session, "prompt": blocks}, &res)
+		res, err := call[acp.PromptResponse](ag.ctx, ag, acp.AgentMethodSessionPrompt, acp.PromptRequest{SessionId: session, Prompt: blocks})
 		ag.ended(res.StopReason, err)
 	}()
 }
 
 // ended finishes a turn: nothing is left streaming or waiting. The agent is
 // idle once no prompt is in flight and no input waits.
-func (ag *agent) ended(stopReason string, err error) {
+func (ag *agent) ended(stopReason acp.StopReason, err error) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	var ev harness.Event
@@ -388,14 +427,13 @@ func (ag *agent) ended(stopReason string, err error) {
 		// The agent is stopping.
 	case err != nil:
 		text = err.Error()
-	case stopReason == "max_tokens":
+	case stopReason == acp.StopReasonMaxTokens:
 		text = "The model stopped at its output limit."
-	case stopReason == "refusal":
+	case stopReason == acp.StopReasonRefusal:
 		text = "The model refused the request."
 	}
 	if text != "" {
-		ag.errors++
-		ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: text, Done: true})
+		ev.Items = append(ev.Items, ag.errorItem(text))
 	}
 	if len(ag.queued) > 0 {
 		texts := ag.queued
@@ -406,6 +444,12 @@ func (ag *agent) ended(stopReason string, err error) {
 		ev.State = harness.Idle
 	}
 	ag.emit(ev)
+}
+
+// errorItem is a finished error item. ag.mu is held.
+func (ag *agent) errorItem(text string) harness.Item {
+	ag.errors++
+	return harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: text, Done: true}
 }
 
 func (ag *agent) interrupt() error {
@@ -419,16 +463,17 @@ func (ag *agent) interrupt() error {
 	for _, r := range ag.requests {
 		if !answered[r] {
 			answered[r] = true
-			_ = ag.rpc.Respond(r.id, map[string]any{"action": "cancel"})
+			r.reply <- acp.UnstableCreateElicitationResponse{Cancel: &acp.UnstableCreateElicitationCancel{Action: "cancel"}}
 		}
 	}
 	if items := ag.closeRequests(); len(items) > 0 {
 		ag.emit(harness.Event{Items: items})
 	}
-	return ag.rpc.Notify("session/cancel", map[string]any{"sessionId": ag.session})
+	return ag.conn.SendNotification(ag.ctx, acp.AgentMethodSessionCancel, acp.CancelNotification{SessionId: acp.SessionId(ag.session)})
 }
 
 // closeRequests finishes the items of requests that nobody will answer.
+// OpenCode no longer waits for them, so their requests stay unanswered.
 func (ag *agent) closeRequests() []harness.Item {
 	var items []harness.Item
 	for id, r := range ag.requests {
@@ -444,139 +489,165 @@ func (ag *agent) closeRequests() []harness.Item {
 }
 
 // handle takes what opencode sends: updates, permission requests, and questions
-// for the user.
-func (ag *agent) handle(m plugin.Message) {
+// for the user. A form's answer is returned once the user has given it.
+func (ag *agent) handle(ctx context.Context, method string, params json.RawMessage) (any, *acp.RequestError) {
+	reply, result, err := ag.take(method, params)
+	select {
+	case ag.taken <- struct{}{}:
+	default: // the reader waits for one message at a time
+	}
+	if reply == nil {
+		return result, err
+	}
+	select {
+	case r := <-reply:
+		return r, nil
+	case <-ctx.Done():
+		return nil, acp.NewInternalError(map[string]any{"error": "the form was not answered"})
+	}
+}
+
+// take handles a message as far as it can without waiting for the user. It
+// returns the channel that receives a form's answer, or the message's result.
+func (ag *agent) take(method string, params json.RawMessage) (<-chan acp.UnstableCreateElicitationResponse, any, *acp.RequestError) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	var ev harness.Event
-	switch m.Method {
-	case "session/update":
-		ag.update(&ev, m.Params)
-	case "session/request_permission":
-		ag.permission(m)
-	case "elicitation/create":
-		ag.form(&ev, m)
+	var reply <-chan acp.UnstableCreateElicitationResponse
+	var result any
+	var err *acp.RequestError
+	switch method {
+	case acp.ClientMethodSessionUpdate:
+		ag.update(&ev, params)
+	case acp.ClientMethodSessionRequestPermission:
+		result, err = permission(params)
+	case acp.ClientMethodElicitationCreate:
+		reply, result, err = ag.form(&ev, params)
 	default:
-		if len(m.ID) > 0 {
-			_ = ag.rpc.RespondError(m.ID, -32601, "method not found")
-		}
+		err = acp.NewMethodNotFound(method)
 	}
 	if len(ev.Items) > 0 || ev.Usage != nil {
 		ag.emit(ev)
 	}
+	return reply, result, err
 }
 
-// update is the part of a session update the translation reads.
-type update struct {
-	Kind       string          `json:"sessionUpdate"`
-	MessageID  string          `json:"messageId"`
-	Content    json.RawMessage `json:"content"`
-	ToolCallID string          `json:"toolCallId"`
-	Name       string          `json:"name"`
-	Status     string          `json:"status"`
-	RawInput   json.RawMessage `json:"rawInput"`
-	Used       int             `json:"used"`
-	Size       int             `json:"size"`
-	Cost       struct {
-		Amount float64 `json:"amount"`
-	} `json:"cost"`
-	Meta struct {
-		Child *struct {
-			ID       string `json:"id"`
-			ParentID string `json:"parentID"`
-			Title    string `json:"title"`
-		} `json:"opencode/child-session"`
-	} `json:"_meta"`
+// childSession is OpenCode's note on an update from a native subagent's
+// session.
+type childSession struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentID"`
+	Title    string `json:"title"`
 }
 
-// contentBlock is a block of message or tool content. Tool content wraps its
-// block, and shows an edit as a diff, which has no text.
-type contentBlock struct {
-	Type    string `json:"type"`
-	Text    string `json:"text"`
-	Content *struct {
-		Text string `json:"text"`
-	} `json:"content"`
+// child reads the child session from an update's _meta.
+func child(meta map[string]any) *childSession {
+	v, ok := meta["opencode/child-session"]
+	if !ok {
+		return nil
+	}
+	raw, err := json.Marshal(v)
+	var c childSession
+	if err != nil || json.Unmarshal(raw, &c) != nil {
+		return nil
+	}
+	return &c
 }
 
 func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
-	var p struct {
-		SessionID string `json:"sessionId"`
-		Update    update `json:"update"`
-	}
-	if json.Unmarshal(params, &p) != nil || p.SessionID != ag.session {
+	var p acp.SessionNotification
+	if json.Unmarshal(params, &p) != nil || string(p.SessionId) != ag.session {
 		return
 	}
 	u := p.Update
-	switch u.Kind {
-	case "agent_message_chunk", "agent_thought_chunk":
-		var c contentBlock
-		if json.Unmarshal(u.Content, &c) != nil || c.Type != "text" || c.Text == "" {
-			return
-		}
-		kind := harness.KindText
-		if u.Kind == "agent_thought_chunk" {
-			kind = harness.KindReasoning
-		}
-		id := u.MessageID
-		if id == "" {
-			id = fmt.Sprintf("%s:%d", kind, ag.turn)
-		}
-		item := harness.Item{ID: id, Parent: ag.parent(u), Kind: kind, Text: c.Text, Append: true}
-		ag.open[id] = harness.Item{ID: id, Parent: item.Parent, Kind: kind}
-		ev.Items = append(ev.Items, item)
-	case "tool_call", "tool_call_update":
-		if u.ToolCallID == "" {
-			return
-		}
-		t := ag.tools[u.ToolCallID]
-		if t == nil {
-			t = &tool{item: harness.Item{ID: u.ToolCallID, Parent: ag.parent(u), Kind: harness.KindTool}}
-			if u.Meta.Child != nil {
-				t.session = u.Meta.Child.ID
-			} else {
-				t.session = ag.session
-			}
-			ag.tools[u.ToolCallID] = t
-		}
-		if t.item.Done {
-			return
-		}
-		if u.Name != "" {
-			t.item.Tool = u.Name
-		}
-		if len(u.RawInput) > 0 {
-			t.item.Input = u.RawInput
-		}
-		if u.Status == "completed" || u.Status == "failed" {
-			t.item.Done, t.item.Failed = true, u.Status == "failed"
-			t.item.Output = toolOutput(u.Content)
-		}
-		ev.Items = append(ev.Items, t.item)
-	case "usage_update":
+	switch {
+	case u.AgentMessageChunk != nil:
+		c := u.AgentMessageChunk
+		ag.chunk(ev, harness.KindText, c.MessageId, c.Content, c.Meta)
+	case u.AgentThoughtChunk != nil:
+		c := u.AgentThoughtChunk
+		ag.chunk(ev, harness.KindReasoning, c.MessageId, c.Content, c.Meta)
+	case u.ToolCall != nil:
+		c := u.ToolCall
+		status := c.Status
+		ag.toolCall(ev, params, string(c.ToolCallId), &status, c.Content, c.Meta)
+	case u.ToolCallUpdate != nil:
+		c := u.ToolCallUpdate
+		ag.toolCall(ev, params, string(c.ToolCallId), c.Status, c.Content, c.Meta)
+	case u.UsageUpdate != nil:
+		c := u.UsageUpdate
 		// A native subagent's requests do not count toward the agent's context.
-		if u.Meta.Child != nil || u.Used == 0 {
+		if child(c.Meta) != nil || c.Used == 0 {
 			return
 		}
-		ag.usage = harness.Usage{Context: u.Used, Window: u.Size, Cost: u.Cost.Amount}
+		ag.usage = harness.Usage{Context: c.Used, Window: c.Size}
+		if c.Cost != nil {
+			ag.usage.Cost = c.Cost.Amount
+		}
 		usage := ag.usage
 		ev.Usage = &usage
 	}
 }
 
-// toolOutput is the text of a tool's result.
-func toolOutput(raw json.RawMessage) string {
-	var blocks []contentBlock
-	if json.Unmarshal(raw, &blocks) != nil {
-		return ""
+// chunk extends a streamed message or reasoning item.
+func (ag *agent) chunk(ev *harness.Event, kind string, messageID *string, content acp.ContentBlock, meta map[string]any) {
+	if content.Text == nil || content.Text.Text == "" {
+		return
 	}
+	id := fmt.Sprintf("%s:%d", kind, ag.turn)
+	if messageID != nil && *messageID != "" {
+		id = *messageID
+	}
+	parent := ag.parent(child(meta))
+	ev.Items = append(ev.Items, harness.Item{ID: id, Parent: parent, Kind: kind, Text: content.Text.Text, Append: true})
+	ag.open[id] = harness.Item{ID: id, Parent: parent, Kind: kind}
+}
+
+// toolCall reports a tool call or an update to it. OpenCode names the tool in
+// a field of its own, and its input is kept as OpenCode wrote it.
+func (ag *agent) toolCall(ev *harness.Event, params json.RawMessage, id string, status *acp.ToolCallStatus, content []acp.ToolCallContent, meta map[string]any) {
+	if id == "" {
+		return
+	}
+	var raw struct {
+		Update struct {
+			Name     string          `json:"name"`
+			RawInput json.RawMessage `json:"rawInput"`
+		} `json:"update"`
+	}
+	_ = json.Unmarshal(params, &raw)
+	c := child(meta)
+	t := ag.tools[id]
+	if t == nil {
+		t = &tool{item: harness.Item{ID: id, Parent: ag.parent(c), Kind: harness.KindTool}, session: ag.session}
+		if c != nil {
+			t.session = c.ID
+		}
+		ag.tools[id] = t
+	}
+	if t.item.Done {
+		return
+	}
+	if raw.Update.Name != "" {
+		t.item.Tool = raw.Update.Name
+	}
+	if len(raw.Update.RawInput) > 0 {
+		t.item.Input = raw.Update.RawInput
+	}
+	if status != nil && (*status == acp.ToolCallStatusCompleted || *status == acp.ToolCallStatusFailed) {
+		t.item.Done, t.item.Failed = true, *status == acp.ToolCallStatusFailed
+		t.item.Output = toolOutput(content)
+	}
+	ev.Items = append(ev.Items, t.item)
+}
+
+// toolOutput is the text of a tool's result. An edit is shown as a diff, which
+// has no text.
+func toolOutput(content []acp.ToolCallContent) string {
 	var parts []string
-	for _, b := range blocks {
-		switch {
-		case b.Type == "content" && b.Content != nil:
-			parts = append(parts, b.Content.Text)
-		case b.Type == "text":
-			parts = append(parts, b.Text)
+	for _, c := range content {
+		if c.Content != nil && c.Content.Content.Text != nil {
+			parts = append(parts, c.Content.Content.Text.Text)
 		}
 	}
 	return strings.Join(parts, "\n")
@@ -585,8 +656,7 @@ func toolOutput(raw json.RawMessage) string {
 // parent is the tool item that started the subagent session an update came
 // from. A subagent session is named after its tool call's description, and
 // the call is still running when the session starts.
-func (ag *agent) parent(u update) string {
-	c := u.Meta.Child
+func (ag *agent) parent(c *childSession) string {
 	if c == nil {
 		return ""
 	}
@@ -608,21 +678,17 @@ func (ag *agent) parent(u update) string {
 
 // permission approves a permission request once, as `opencode --auto` does.
 // Permissions that OpenCode's configuration denies are never requested.
-func (ag *agent) permission(m plugin.Message) {
-	var p struct {
-		Options []struct {
-			ID   string `json:"optionId"`
-			Kind string `json:"kind"`
-		} `json:"options"`
-	}
-	_ = json.Unmarshal(m.Params, &p)
+func permission(params json.RawMessage) (any, *acp.RequestError) {
+	var p acp.RequestPermissionRequest
+	_ = json.Unmarshal(params, &p)
 	for _, o := range p.Options {
-		if o.Kind == "allow_once" {
-			_ = ag.rpc.Respond(m.ID, map[string]any{"outcome": map[string]any{"outcome": "selected", "optionId": o.ID}})
-			return
+		if o.Kind == acp.PermissionOptionKindAllowOnce {
+			return acp.RequestPermissionResponse{Outcome: acp.RequestPermissionOutcome{
+				Selected: &acp.RequestPermissionOutcomeSelected{Outcome: "selected", OptionId: o.OptionId},
+			}}, nil
 		}
 	}
-	_ = ag.rpc.RespondError(m.ID, -32602, "permission request without an allow-once option")
+	return nil, &acp.RequestError{Code: -32602, Message: "permission request without an allow-once option"}
 }
 
 // formField is a property of a form's schema.
@@ -642,15 +708,30 @@ type formOption struct {
 }
 
 // form turns the form of OpenCode's question tool into one attention item per
-// question. A question's typed answer has a companion field named
-// <key>_custom.
-func (ag *agent) form(ev *harness.Event, m plugin.Message) {
-	keys, props, err := parseForm(m.Params)
-	if err != nil {
-		_ = ag.rpc.RespondError(m.ID, -32602, err.Error())
-		return
+// question, and returns the channel that receives the form's answer. A
+// question's typed answer has a companion field named <key>_custom.
+func (ag *agent) form(ev *harness.Event, params json.RawMessage) (<-chan acp.UnstableCreateElicitationResponse, any, *acp.RequestError) {
+	var req acp.UnstableCreateElicitationRequest
+	if json.Unmarshal(params, &req) != nil || req.Form == nil {
+		return nil, nil, &acp.RequestError{Code: -32602, Message: "unsupported request"}
 	}
-	r := &request{id: m.ID, content: map[string]any{}}
+	props := map[string]formField{}
+	for key, v := range req.Form.RequestedSchema.Properties {
+		raw, err := json.Marshal(v)
+		var f formField
+		if err == nil {
+			err = json.Unmarshal(raw, &f)
+		}
+		if err != nil {
+			return nil, nil, &acp.RequestError{Code: -32602, Message: err.Error()}
+		}
+		props[key] = f
+	}
+	keys, err := fieldOrder(params)
+	if err != nil || len(keys) != len(props) {
+		return nil, nil, &acp.RequestError{Code: -32602, Message: "form without fields"}
+	}
+	r := &request{reply: make(chan acp.UnstableCreateElicitationResponse, 1), content: map[string]any{}}
 	for _, key := range keys {
 		f := props[key]
 		if base, ok := strings.CutSuffix(key, "_custom"); ok && props[base].Type != "" {
@@ -662,10 +743,8 @@ func (ag *agent) form(ev *harness.Event, m plugin.Message) {
 		}
 		if f.Type != "string" && f.Type != "array" {
 			// OpenCode ends the turn when a form is cancelled.
-			_ = ag.rpc.Respond(m.ID, map[string]any{"action": "cancel"})
-			ag.errors++
-			ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: fmt.Sprintf("OpenCode asked for a %s value, which Hypercube cannot show.", f.Type), Done: true})
-			return
+			ev.Items = append(ev.Items, ag.errorItem(fmt.Sprintf("OpenCode asked for a %s value, which Hypercube cannot show.", f.Type)))
+			return nil, acp.UnstableCreateElicitationResponse{Cancel: &acp.UnstableCreateElicitationCancel{Action: "cancel"}}, nil
 		}
 		text := f.Description
 		if text == "" {
@@ -675,7 +754,7 @@ func (ag *agent) form(ev *harness.Event, m plugin.Message) {
 		if _, ok := props[key+"_custom"]; ok {
 			fld.custom = key + "_custom"
 		}
-		item := harness.Item{ID: fmt.Sprintf("form:%s/%d", m.ID, len(r.items)), Kind: harness.KindAttention, Free: !fld.options || fld.custom != ""}
+		item := harness.Item{ID: fmt.Sprintf("form:%d/%d", ag.forms, len(r.items)), Kind: harness.KindAttention, Free: !fld.options || fld.custom != ""}
 		var notes []string
 		for _, o := range options {
 			item.Choices = append(item.Choices, o.Const)
@@ -690,47 +769,45 @@ func (ag *agent) form(ev *harness.Event, m plugin.Message) {
 		r.items = append(r.items, item)
 		r.fields = append(r.fields, fld)
 	}
+	ag.forms++
 	if len(r.items) == 0 {
-		_ = ag.rpc.Respond(m.ID, map[string]any{"action": "accept", "content": map[string]any{}})
-		return
+		return nil, acp.UnstableCreateElicitationResponse{Accept: &acp.UnstableCreateElicitationAccept{Action: "accept", Content: map[string]any{}}}, nil
 	}
 	for _, it := range r.items {
 		ag.requests[it.ID] = r
 	}
 	ev.Items = append(ev.Items, r.items...)
+	return r.reply, nil, nil
 }
 
-// parseForm reads a form request and returns its properties in the order the
-// schema lists them.
-func parseForm(params json.RawMessage) ([]string, map[string]formField, error) {
+// fieldOrder returns the keys of a form's properties in the order the schema
+// lists them, which is the order of the questions.
+func fieldOrder(params json.RawMessage) ([]string, error) {
 	var p struct {
-		Mode   string `json:"mode"`
 		Schema struct {
 			Properties json.RawMessage `json:"properties"`
 		} `json:"requestedSchema"`
 	}
-	if err := json.Unmarshal(params, &p); err != nil || p.Mode != "form" {
-		return nil, nil, errors.New("unsupported request")
+	if err := json.Unmarshal(params, &p); err != nil {
+		return nil, err
 	}
 	dec := json.NewDecoder(bytes.NewReader(p.Schema.Properties))
 	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return nil, nil, errors.New("form without fields")
+		return nil, errors.New("form without fields")
 	}
 	var keys []string
-	props := map[string]formField{}
 	for dec.More() {
 		key, err := dec.Token()
 		if err != nil {
-			return nil, nil, err
-		}
-		var f formField
-		if err := dec.Decode(&f); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		keys = append(keys, key.(string))
-		props[key.(string)] = f
+		var skip json.RawMessage
+		if err := dec.Decode(&skip); err != nil {
+			return nil, err
+		}
 	}
-	return keys, props, nil
+	return keys, nil
 }
 
 // answer replies to an open question with a choice or text.
@@ -770,9 +847,7 @@ func (ag *agent) answer(item, choice, text string) error {
 	}
 	r.answers++
 	if r.answers == len(r.fields) {
-		if err := ag.rpc.Respond(r.id, map[string]any{"action": "accept", "content": r.content}); err != nil {
-			return err
-		}
+		r.reply <- acp.UnstableCreateElicitationResponse{Accept: &acp.UnstableCreateElicitationAccept{Action: "accept", Content: r.content}}
 	}
 	done := r.items[index]
 	done.Done, done.Answer = true, result

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	acp "github.com/coder/acp-go-sdk"
+
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
@@ -32,10 +34,11 @@ func fixture(t *testing.T, name string) []string {
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
 }
 
-// acp stands in for opencode: it answers the agent's requests from handlers
-// and records everything the agent writes.
-type acp struct {
+// standIn stands in for opencode: it answers the agent's requests from
+// handlers and records everything the agent writes.
+type standIn struct {
 	t        *testing.T
+	wmu      sync.Mutex
 	out      io.Writer // to the agent
 	mu       sync.Mutex
 	wrote    []map[string]any
@@ -46,34 +49,37 @@ type acp struct {
 // process.
 type agentUnderTest struct {
 	*agent
-	acp *acp
+	acp *standIn
 
 	evMu   sync.Mutex
 	events []harness.Event
 }
 
-func newAgent(t *testing.T) *agentUnderTest {
+func connected(t *testing.T) *agentUnderTest {
 	t.Helper()
 	agentIn, peerOut := io.Pipe()
 	peerIn, agentOut := io.Pipe()
-	h := &agentUnderTest{acp: &acp{t: t, out: peerOut, handlers: map[string]func(map[string]any) (any, *plugin.RPCError){}}}
-	h.agent = &agent{
-		done: make(chan struct{}), open: map[string]harness.Item{}, tools: map[string]*tool{},
-		children: map[string]string{}, requests: map[string]*request{},
-	}
-	h.ctx, h.cancel = context.WithCancel(context.Background())
-	h.emit = func(ev harness.Event) {
+	h := &agentUnderTest{acp: &standIn{t: t, out: peerOut, handlers: map[string]func(map[string]any) (any, *plugin.RPCError){
+		"test/sync": func(map[string]any) (any, *plugin.RPCError) { return map[string]any{}, nil },
+	}}}
+	h.agent = newAgent(harness.StartArgs{}, func(ev harness.Event) {
 		h.evMu.Lock()
 		defer h.evMu.Unlock()
 		h.events = append(h.events, ev)
-	}
-	h.rpc = plugin.NewRPC(agentIn, agentOut, h.handle)
+	})
+	h.connect(agentIn, agentOut)
 	go h.acp.serve(peerIn)
 	t.Cleanup(func() { h.cancel(); peerOut.Close(); peerIn.Close() })
 	return h
 }
 
-func (p *acp) serve(r io.Reader) {
+func (p *standIn) write(line []byte) {
+	p.wmu.Lock()
+	defer p.wmu.Unlock()
+	_, _ = p.out.Write(append(line, '\n'))
+}
+
+func (p *standIn) serve(r io.Reader) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 1<<20), 1<<20)
 	for scanner.Scan() {
@@ -100,12 +106,12 @@ func (p *acp) serve(r io.Reader) {
 			reply["result"] = result
 		}
 		line, _ := json.Marshal(reply)
-		_, _ = p.out.Write(append(line, '\n'))
+		p.write(line)
 	}
 }
 
 // sent returns what the agent has written so far with the given method.
-func (p *acp) sent(method string) []map[string]any {
+func (p *standIn) sent(method string) []map[string]any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out []map[string]any
@@ -118,7 +124,7 @@ func (p *acp) sent(method string) []map[string]any {
 }
 
 // responses returns the results and errors the agent wrote to requests.
-func (p *acp) responses() []map[string]any {
+func (p *standIn) responses() []map[string]any {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	var out []map[string]any
@@ -140,27 +146,37 @@ func eventually(t *testing.T, what string, ok func() bool) {
 	t.Fatalf("timed out waiting for %s", what)
 }
 
-// feed handles recorded lines directly: updates and requests as opencode
-// sends them, and a prompt's response as the end of its turn.
+// feed sends recorded lines to the agent as opencode sends them, and takes a
+// prompt's response as the end of its turn. It returns once the agent has
+// handled them.
 func (h *agentUnderTest) feed(t *testing.T, lines ...string) {
 	t.Helper()
 	for _, line := range lines {
 		var m struct {
-			ID     json.RawMessage `json:"id"`
-			Method string          `json:"method"`
-			Params json.RawMessage `json:"params"`
+			Method string `json:"method"`
 			Result struct {
-				StopReason string `json:"stopReason"`
+				StopReason acp.StopReason `json:"stopReason"`
 			} `json:"result"`
 		}
 		if err := json.Unmarshal([]byte(line), &m); err != nil {
 			t.Fatal(err)
 		}
 		if m.Method != "" {
-			h.handle(plugin.Message{ID: m.ID, Method: m.Method, Params: m.Params})
+			h.acp.write([]byte(line))
 		} else {
+			h.sync(t)
 			h.ended(m.Result.StopReason, nil)
 		}
+	}
+	h.sync(t)
+}
+
+// sync waits until the agent has handled what was sent before: the response
+// to a request comes after it.
+func (h *agentUnderTest) sync(t *testing.T) {
+	t.Helper()
+	if _, err := call[json.RawMessage](context.Background(), h.agent, "test/sync", nil); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -235,7 +251,7 @@ func kinds(items []harness.Item) []string {
 }
 
 func TestText(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "text")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -258,7 +274,7 @@ func TestText(t *testing.T) {
 }
 
 func TestStreamedChunksExtendOneItem(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "tool")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -274,7 +290,7 @@ func TestStreamedChunksExtendOneItem(t *testing.T) {
 }
 
 func TestTool(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "tool")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -298,7 +314,7 @@ func TestTool(t *testing.T) {
 
 // A call that completed stays completed when a stale update follows.
 func TestFinishedToolIgnoresLaterUpdates(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "tool")
 	h.adopt(t, lines)
 	h.feed(t, lines[:len(lines)-3]...) // up to the completed update
@@ -310,7 +326,7 @@ func TestFinishedToolIgnoresLaterUpdates(t *testing.T) {
 }
 
 func TestNestedToolsNameTheirSubagentCall(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "nested")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -332,7 +348,7 @@ func TestNestedToolsNameTheirSubagentCall(t *testing.T) {
 			t.Fatalf("%+v is not under %s", c, parent.ID)
 		}
 	}
-	if children[0].Kind != harness.KindTool || children[0].Output != "child\n" || children[1].Kind != harness.KindText {
+	if children[0].Kind != harness.KindTool || children[0].Tool != "shell" || children[0].Output != "child\n" || children[1].Kind != harness.KindText {
 		t.Fatalf("%+v", children)
 	}
 	// The subagent's usage is not the agent's context.
@@ -345,7 +361,7 @@ func TestNestedToolsNameTheirSubagentCall(t *testing.T) {
 
 // A permission request is approved once without asking the user.
 func TestPermissionRequestIsApprovedOnce(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "permission")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -363,7 +379,7 @@ func TestPermissionRequestIsApprovedOnce(t *testing.T) {
 }
 
 func TestQuestionForm(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "question")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -371,6 +387,10 @@ func TestQuestionForm(t *testing.T) {
 	if color.Kind != harness.KindAttention || !strings.HasPrefix(color.Text, "Which color do you prefer?") || !strings.Contains(color.Text, "- Red: Go with red.") ||
 		!slices.Equal(color.Choices, []string{"Red", "Blue"}) || !color.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) {
 		t.Fatalf("%+v %+v", color, size)
+	}
+	// The questions follow the call of the question tool that asked them.
+	if got := kinds(h.transcript()); !slices.Equal(got[len(got)-3:], []string{"tool", "attention", "attention"}) {
+		t.Fatal(got)
 	}
 	// The form is answered once every question has an answer.
 	if err := h.answer("form:0/1", "Large", ""); err != nil {
@@ -400,22 +420,22 @@ func TestQuestionForm(t *testing.T) {
 }
 
 func TestFormWithMultipleChoiceAndPlainText(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	h.session = "ses_1"
 	h.feed(t, `{"jsonrpc":"2.0","id":5,"method":"elicitation/create","params":{"mode":"form","sessionId":"ses_1","requestedSchema":{"type":"object","properties":{`+
 		`"tags":{"type":"array","title":"Tags","items":{"anyOf":[{"const":"a","title":"a"},{"const":"b","title":"b"}]}},`+
 		`"note":{"type":"string","title":"A note"}}}}}`)
-	tags, note := h.item(t, "form:5/0"), h.item(t, "form:5/1")
+	tags, note := h.item(t, "form:0/0"), h.item(t, "form:0/1")
 	if tags.Text != "Tags" || tags.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || note.Text != "A note" || !note.Free || len(note.Choices) != 0 {
 		t.Fatalf("%+v %+v", tags, note)
 	}
-	if err := h.answer("form:5/0", "", "x"); err == nil {
+	if err := h.answer("form:0/0", "", "x"); err == nil {
 		t.Fatal("typed text answered a question that lists its choices only")
 	}
-	if err := h.answer("form:5/0", "b", ""); err != nil {
+	if err := h.answer("form:0/0", "b", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.answer("form:5/1", "", "hello"); err != nil {
+	if err := h.answer("form:0/1", "", "hello"); err != nil {
 		t.Fatal(err)
 	}
 	var r []map[string]any
@@ -427,7 +447,7 @@ func TestFormWithMultipleChoiceAndPlainText(t *testing.T) {
 }
 
 func TestUnshowableFormIsCancelledWithAnError(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	h.session = "ses_1"
 	h.feed(t, `{"jsonrpc":"2.0","id":3,"method":"elicitation/create","params":{"mode":"form","requestedSchema":{"properties":{"n":{"type":"integer","title":"Count"}}}}}`)
 	var r []map[string]any
@@ -442,7 +462,7 @@ func TestUnshowableFormIsCancelledWithAnError(t *testing.T) {
 }
 
 func TestUnknownRequestsAreRefused(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	h.session = "ses_1"
 	h.feed(t, `{"jsonrpc":"2.0","id":4,"method":"fs/read_text_file","params":{}}`, `{"jsonrpc":"2.0","method":"opencode/unknown","params":{}}`)
 	var r []map[string]any
@@ -454,7 +474,7 @@ func TestUnknownRequestsAreRefused(t *testing.T) {
 
 // The cancelled prompt is the user's own doing, and it ends the turn.
 func TestInterruptedTurn(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "interrupt")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -472,28 +492,34 @@ func TestInterruptedTurn(t *testing.T) {
 func TestPromptFailures(t *testing.T) {
 	for name, tc := range map[string]struct {
 		reason string
-		err    error
+		err    *plugin.RPCError
 		want   string
 	}{
-		"rejected":   {err: &plugin.RPCError{Code: -32603, Message: "provider.auth: sign in"}, want: "provider.auth: sign in"},
+		"rejected":   {err: &plugin.RPCError{Code: -32603, Message: "provider.auth: sign in"}, want: "session/prompt: provider.auth: sign in (code -32603)"},
 		"max tokens": {reason: "max_tokens", want: "output limit"},
 		"refusal":    {reason: "refusal", want: "refused"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			h := newAgent(t)
-			h.busy = true
-			h.ended(tc.reason, tc.err)
+			h := connected(t)
+			h.session = "ses_1"
+			h.acp.handlers["session/prompt"] = func(map[string]any) (any, *plugin.RPCError) {
+				if tc.err != nil {
+					return nil, tc.err
+				}
+				return map[string]any{"stopReason": tc.reason}, nil
+			}
+			if err := h.input("hello"); err != nil {
+				t.Fatal(err)
+			}
+			eventually(t, "the end of the turn", func() bool { return slices.Equal(h.states(), []string{harness.Working, harness.Idle}) })
 			items := h.transcript()
 			if len(items) != 1 || items[0].Kind != harness.KindError || !strings.Contains(items[0].Text, tc.want) {
 				t.Fatalf("%+v", items)
 			}
-			if got := h.states(); !slices.Equal(got, []string{harness.Idle}) {
-				t.Fatal(got)
-			}
 		})
 	}
 	t.Run("stopping", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		h.cancel()
 		h.ended("", context.Canceled)
 		if len(h.transcript()) != 0 {
@@ -504,7 +530,7 @@ func TestPromptFailures(t *testing.T) {
 
 // A turn that ends finishes what was still streaming or waiting.
 func TestEndOfTurnFinishesOpenItems(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "question")
 	h.adopt(t, lines)
 	h.feed(t, lines...)
@@ -522,12 +548,13 @@ func TestEndOfTurnFinishesOpenItems(t *testing.T) {
 
 func defaultHandlers(h *agentUnderTest, effort bool) {
 	options := func(model, effortValue string) []any {
-		opts := []any{map[string]any{"id": "model", "currentValue": model, "options": []any{
-			map[string]any{"value": "p/m"},
-			map[string]any{"group": "g", "options": []any{map[string]any{"value": "p/grouped"}}},
+		opts := []any{map[string]any{"id": "model", "type": "select", "name": "Model", "currentValue": model, "options": []any{
+			map[string]any{"value": "p/m", "name": "m"},
 		}}}
 		if effort {
-			opts = append(opts, map[string]any{"id": "effort", "currentValue": effortValue, "options": []any{map[string]any{"value": "default"}, map[string]any{"value": "high"}}})
+			opts = append(opts, map[string]any{"id": "effort", "type": "select", "name": "Effort", "currentValue": effortValue, "options": []any{
+				map[string]any{"value": "default", "name": "Default"}, map[string]any{"value": "high", "name": "High"},
+			}})
 		}
 		return opts
 	}
@@ -551,7 +578,7 @@ func defaultHandlers(h *agentUnderTest, effort bool) {
 func TestBegin(t *testing.T) {
 	args := harness.StartArgs{Hypercube: "/bin/hc", Env: map[string]string{"B": "2", "A": "1"}, Model: "p/m", Effort: "high", Dir: "/work"}
 	t.Run("new session", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		if err := h.begin(context.Background(), args); err != nil {
 			t.Fatal(err)
@@ -577,7 +604,7 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("resumed session", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		h.session = "ses_saved"
 		a := args
@@ -595,7 +622,7 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("a session that cannot be resumed", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		h.session = "ses_gone"
 		a := args
@@ -609,8 +636,13 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("grouped models", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
+		h.acp.handlers["session/new"] = func(map[string]any) (any, *plugin.RPCError) {
+			return map[string]any{"sessionId": "ses_new", "configOptions": []any{map[string]any{"id": "model", "type": "select", "name": "Model", "currentValue": "p/m", "options": []any{
+				map[string]any{"group": "g", "name": "G", "options": []any{map[string]any{"value": "p/m", "name": "m"}, map[string]any{"value": "p/grouped", "name": "grouped"}}},
+			}}}}, nil
+		}
 		a := args
 		a.Model = "p/grouped"
 		if err := h.begin(context.Background(), a); err != nil {
@@ -618,7 +650,7 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("a model that is not offered", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		a := args
 		a.Model = "p/unknown"
@@ -631,7 +663,7 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("an effort that is not offered", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		a := args
 		a.Effort = "max"
@@ -641,7 +673,7 @@ func TestBegin(t *testing.T) {
 		}
 	})
 	t.Run("a model without effort levels", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, false)
 		a := args
 		a.Effort = "default"
@@ -651,14 +683,14 @@ func TestBegin(t *testing.T) {
 		if set := h.acp.sent("session/set_config_option"); len(set) != 1 {
 			t.Fatal(set)
 		}
-		h = newAgent(t)
+		h = connected(t)
 		defaultHandlers(h, false)
 		if err := h.begin(context.Background(), args); err == nil || !strings.Contains(err.Error(), "no effort setting") {
 			t.Fatal(err)
 		}
 	})
 	t.Run("an old OpenCode", func(t *testing.T) {
-		h := newAgent(t)
+		h := connected(t)
 		defaultHandlers(h, true)
 		h.acp.handlers["initialize"] = func(map[string]any) (any, *plugin.RPCError) {
 			return map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{}}, nil
@@ -674,7 +706,7 @@ func TestBegin(t *testing.T) {
 // OpenCode refuses a prompt while one runs, so input during a turn waits for
 // the turn to end. The agent is idle only when nothing is in flight or waiting.
 func TestInputDuringATurnWaits(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	h.session = "ses_1"
 	release := make(chan struct{})
 	h.acp.handlers["session/prompt"] = func(p map[string]any) (any, *plugin.RPCError) {
@@ -731,7 +763,7 @@ func TestInputDuringATurnWaits(t *testing.T) {
 }
 
 func TestInterruptCancelsAForm(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	lines := fixture(t, "question")
 	h.adopt(t, lines)
 	h.busy = true
@@ -741,8 +773,10 @@ func TestInterruptCancelsAForm(t *testing.T) {
 	}
 	eventually(t, "the cancel", func() bool { return len(h.acp.sent("session/cancel")) == 1 })
 	// One answer for the whole form, though it has two questions.
-	r := h.acp.responses()
-	if len(r) != 1 || r[0]["result"].(map[string]any)["action"] != "cancel" {
+	var r []map[string]any
+	eventually(t, "the form's answer", func() bool { r = h.acp.responses(); return len(r) == 1 })
+	time.Sleep(20 * time.Millisecond)
+	if r = h.acp.responses(); len(r) != 1 || r[0]["result"].(map[string]any)["action"] != "cancel" {
 		t.Fatal(r)
 	}
 	if got := h.acp.sent("session/cancel")[0]["sessionId"]; got != h.session {
@@ -760,7 +794,7 @@ func TestInterruptCancelsAForm(t *testing.T) {
 }
 
 func TestInputWhenNotRunning(t *testing.T) {
-	h := newAgent(t)
+	h := connected(t)
 	close(h.done)
 	if err := h.input("hello"); err == nil {
 		t.Fatal("input to a process that has ended")
