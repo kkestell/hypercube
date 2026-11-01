@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {Transcript, blocks, inline, renderMarkdown, safeHref, submitsOnKey, toolSummary} from './static/transcript.js';
+import {Transcript, renderMarkdown, safeHref, submitsOnKey, toolSummary} from './transcript.js';
 
 // A minimal document: the renderer builds nodes and never parses HTML.
 class Text {
@@ -43,60 +43,36 @@ const elements = node => node instanceof El ? [node, ...node.children.flatMap(el
 const tags = node => elements(node).map(e => e.tag);
 const find = (node, tag) => elements(node).filter(e => e.tag === tag);
 
-test('blocks: paragraphs, headings, quotes, code', () => {
-  const parsed = blocks('# Title\n\nFirst line\nsecond line\n\n> quoted\n> text\n\n```js\nlet a = 1;\n\nlet b = 2;\n```\n\nafter');
-  expect(parsed.map(b => b.type)).toEqual(['heading', 'paragraph', 'quote', 'code', 'paragraph']);
-  expect(parsed[0].level).toBe(1);
-  expect(parsed[1].children.map(n => n.type)).toEqual(['text', 'break', 'text']);
-  expect(parsed[2].children[0].type).toBe('paragraph');
-  expect(parsed[3]).toEqual({type: 'code', lang: 'js', text: 'let a = 1;\n\nlet b = 2;'});
+const markdown = text => {
+  const root = new El('div');
+  root.append(...renderMarkdown(doc, text));
+  return root;
+};
+
+test('markdown: blocks and inline marks', () => {
+  const root = markdown('# Title\n\nFirst **bold** *it* ~~gone~~ `code`\n\n> quoted\n\n---\n\n```js\nlet a = 1;\n```');
+  expect(tags(root)).toEqual(['div', 'h1', 'p', 'strong', 'em', 'del', 'code', 'blockquote', 'p', 'hr', 'pre', 'code']);
+  expect(find(root, 'pre')[0].textContent).toBe('let a = 1;');
 });
 
-test('blocks: a code block still being streamed runs to the end', () => {
-  expect(blocks('Look:\n```\nx = 1\ny')).toEqual([
-    {type: 'paragraph', children: [{type: 'text', text: 'Look:'}]},
-    {type: 'code', lang: '', text: 'x = 1\ny'},
-  ]);
-  // A shorter fence inside a longer one is code.
-  expect(blocks('````\n```\n````')[0].text).toBe('```');
+test('markdown: a code block still being streamed runs to the end', () => {
+  expect(find(markdown('Look:\n```\nx = 1\ny'), 'pre')[0].textContent).toBe('x = 1\ny');
 });
 
-test('blocks: lists nest, continue past blank lines, and keep their start', () => {
-  const [list] = blocks('- a\n  - inner\n  - inner two\n- b\n\n- c');
-  expect(list.type).toBe('ul');
-  expect(list.items.length).toBe(3);
-  expect(list.items[0].map(b => b.type)).toEqual(['paragraph', 'ul']);
-  expect(list.items[0][1].items.length).toBe(2);
-
-  const [ordered, after] = blocks('3. three\n4. four\ntext');
-  expect(ordered).toMatchObject({type: 'ol', start: 3});
-  // A line with no marker continues the last item.
-  expect(after).toBeUndefined();
-  expect(ordered.items[1][0].children.map(n => n.text ?? n.type)).toEqual(['four', 'break', 'text']);
-
-  expect(blocks('- a\n1. b').map(b => b.type)).toEqual(['ul', 'ol']);
+test('markdown: lists nest, keep their start, and show tasks', () => {
+  const root = markdown('3. three\n   - inner\n4. four\n\n- [x] done\n- [ ] open');
+  const [ordered, inner, tasks] = find(root, 'ol').concat(find(root, 'ul'));
+  expect(ordered.attributes.start).toBe('3');
+  expect(inner.children.length).toBe(1);
+  expect(find(tasks, 'input').map(b => b.checked)).toEqual([true, false]);
 });
 
-test('inline: code, emphasis, escapes, and plain asterisks and underscores', () => {
-  expect(inline('use `a*b` and **bold** and *it* and _it_')).toEqual([
-    {type: 'text', text: 'use '}, {type: 'code', text: 'a*b'},
-    {type: 'text', text: ' and '}, {type: 'strong', children: [{type: 'text', text: 'bold'}]},
-    {type: 'text', text: ' and '}, {type: 'em', children: [{type: 'text', text: 'it'}]},
-    {type: 'text', text: ' and '}, {type: 'em', children: [{type: 'text', text: 'it'}]},
-  ]);
-  expect(inline('2 * 3 * 4 and snake_case_name')).toEqual([{type: 'text', text: '2 * 3 * 4 and snake_case_name'}]);
-  expect(inline('\\*not\\* emphasis')).toEqual([{type: 'text', text: '*not* emphasis'}]);
-  expect(inline('``a ` b``')).toEqual([{type: 'code', text: 'a ` b'}]);
-  expect(inline('unclosed `code and **bold')).toEqual([{type: 'text', text: 'unclosed `code and **bold'}]);
-});
-
-test('inline: links and bare addresses', () => {
-  expect(inline('[docs](https://example.com/a) and https://example.org/b.')).toEqual([
-    {type: 'link', href: 'https://example.com/a', children: [{type: 'text', text: 'docs'}]},
-    {type: 'text', text: ' and '},
-    {type: 'link', href: 'https://example.org/b', children: [{type: 'text', text: 'https://example.org/b'}]},
-    {type: 'text', text: '.'},
-  ]);
+test('markdown: tables keep their alignment', () => {
+  const root = markdown('| Time | Event |\n|---|:-:|\n| 06:18 | **restart** |');
+  expect(find(root, 'th').map(c => c.textContent)).toEqual(['Time', 'Event']);
+  const cells = find(root, 'td');
+  expect(cells.map(c => c.textContent)).toEqual(['06:18', 'restart']);
+  expect(cells[1].attributes.style).toBe('text-align: center');
 });
 
 test('safeHref allows only web and mail addresses', () => {
@@ -110,8 +86,7 @@ test('safeHref allows only web and mail addresses', () => {
 
 test('markdown from a model never becomes HTML', () => {
   const hostile = '<img src=x onerror=alert(1)> <script>alert(2)</script> **bold** [click](javascript:alert(3)) [ok](https://example.com/?q=<b>)\n\n```\n<iframe></iframe>\n```\n\n# <h1>';
-  const root = new El('div');
-  root.append(...renderMarkdown(doc, hostile));
+  const root = markdown(hostile);
   const allowed = new Set(['div', 'p', 'strong', 'em', 'span', 'a', 'br', 'code', 'pre', 'h1', 'blockquote', 'ul', 'ol', 'li']);
   expect(tags(root).filter(t => !allowed.has(t))).toEqual([]);
   expect(root.textContent).toContain('<img src=x onerror=alert(1)> <script>alert(2)</script>');
