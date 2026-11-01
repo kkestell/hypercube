@@ -29,9 +29,7 @@
   <div class="flex min-w-0 flex-1 flex-col">
     <div id="center" class="relative flex min-h-0 flex-1 bg-[#181818]">
       <canvas id="hypercube" class="pointer-events-none absolute inset-0 size-full opacity-0 transition-opacity duration-1000" hidden></canvas>
-      <div id="lead" class="flex min-w-0 flex-1 flex-col overflow-hidden"></div>
-      <div id="split" class="sash" hidden></div>
-      <div id="workers" class="flex min-w-0 flex-1 flex-col overflow-y-auto" hidden></div>
+      <div id="transcripts" class="flex min-h-0 min-w-0 flex-1 overflow-hidden"></div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
@@ -40,21 +38,21 @@
 </div>
 
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
+<div id="worker-previews" popover="auto" aria-label="Workers" class="fixed inset-auto m-0 max-h-[min(560px,80vh)] w-[360px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-[#454545] bg-[#252526] p-3 text-xs text-neutral-300 shadow-xl">
+  <h2 class="mb-3 text-sm font-medium text-neutral-100">Workers</h2>
+  <div id="worker-cards" class="flex flex-col gap-2"></div>
+</div>
 <script src="hypercube.js"></script>
 <script type="module">
 import {Transcript, submitsOnKey} from './transcript.js';
 import {createTerminal} from './terminal.js';
+import {TabLayout, TabContainer} from './tabs.js';
 
-// The page shows Hypercube's data, streamed from the app, and the transcript
-// of the selected session's agents. The sidebar lists each workspace's
-// sessions under a row naming the workspace. The selected session's lead fills
-// the left, and its workers are cards on the right, each showing either a
-// summary or its transcript. Every transcript has a composer. The panel below
-// holds a shell, an xterm.js terminal connected to the session's shell in the
-// app.
-
+// Each open agent transcript lives in a tab. Panes can be split by dragging
+// tabs to their edges; worker previews live in a popover on the lead's header.
 const $ = id => document.getElementById(id);
-const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
+const transcripts = $('transcripts');
+const workerPreviews = $('worker-previews'), workerCards = $('worker-cards');
 const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
 // data is the app's latest snapshot, selected is the selected session's ID,
@@ -62,9 +60,8 @@ const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 // whose agents are shown. pending is a session to select once the data lists
 // it.
 let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null;
-// shown is the attached session's lead and workers. leadWidth is the lead's
-// width in pixels once the user drags the divider.
-let shown = null, leadWidth = null;
+// The layout belongs to the currently attached session.
+let shown = null, tabLayout = null, tabContainer = null;
 // Each agent's unsent text outlives its card, and each agent has one
 // transcript and one card while its session is attached.
 const drafts = new Map(), views = new Map(), cards = new Map();
@@ -153,9 +150,11 @@ function attach(id) {
   views.clear();
   cards.clear();
   shown = null;
-  lead.replaceChildren();
-  workers.replaceChildren();
-  split.hidden = workers.hidden = true;
+  transcripts.replaceChildren();
+  workerPreviews.hidePopover();
+  workerCards.replaceChildren();
+  tabLayout = tabContainer = null;
+  scrolls.clear();
   closeShell();
   announce();
   if (!id) return;
@@ -168,9 +167,6 @@ const names = agents => agents.map(a => a.name).join(', ');
 
 const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
-// A worker card's open state is kept per agent.
-const openKey = agent => 'hypercube-open:' + agent;
-
 // update replaces an element's children only when they change. A click is lost
 // when the element under the pointer is replaced between press and release.
 // Parsing the new HTML first compares it as the page would serialize it.
@@ -180,8 +176,7 @@ function update(parent, html) {
   if (parent.innerHTML !== next.innerHTML) parent.replaceChildren(next.content);
 }
 
-// render shows the attached session's agents: the lead in the left column and
-// the workers as cards in the right.
+// State updates change transcript content and previews without rebuilding panes.
 function render() {
   const s = current();
   const agents = attached && s?.running ? s.agents : [];
@@ -190,37 +185,67 @@ function render() {
   shown = {leader, stacked};
   agents.forEach(card);
   for (const [id, c] of cards) {
-    if (!agents.some(a => a.id === id)) { c.element.remove(); cards.delete(id); views.delete(id); }
+    if (!agents.some(a => a.id === id)) {
+      tabLayout?.close(id);
+      c.element.remove();
+      cards.delete(id);
+      views.delete(id);
+      scrolls.delete(id);
+    }
   }
-  // Moving a card that is already in place would blur its composer.
-  if (leader && cards.get(leader.id).element.parentElement !== lead) lead.append(cards.get(leader.id).element);
-  const children = [];
-  stacked.forEach((a, i) => {
-    const c = cards.get(a.id);
-    children.push(c.element);
-    if (i === stacked.length - 1) return;
-    if (!c.sash) c.sash = workerSplitter(a.id);
-    c.sash.setAttribute('aria-disabled', !workerPair(a.id));
-    children.push(c.sash);
-  });
-  for (const child of [...workers.children]) {
-    if (!children.includes(child)) child.remove();
+  if (leader && !tabLayout) {
+    tabLayout = new TabLayout(leader.id);
+    tabContainer = new TabContainer(transcripts, tabLayout, renderTabs);
   }
-  children.forEach((child, i) => {
-    if (workers.children[i] !== child) workers.insertBefore(child, workers.children[i] ?? null);
-  });
-  split.hidden = workers.hidden = stacked.length === 0;
-  layoutLead();
+  renderTabs();
+  update(workerCards, stacked.map(a => `<article class="rounded border ${a.attention ? 'border-amber-400' : 'border-[#454545]'} bg-[#1e1e1e] p-3">
+    <header class="mb-2 flex items-center gap-2">
+      <span class="min-w-0 flex-1 truncate text-sm text-neutral-100">${escape(a.name)}</span>
+      ${agentStatus(a)}
+      <button type="button" data-open-worker="${escape(a.id)}" title="Open Transcript" class="flex size-6 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-layout-sidebar-left size-4"></span></button>
+    </header>
+    ${summary(a) || '<p class="text-neutral-500">No update yet.</p>'}
+  </article>`).join('') || '<p class="py-3 text-neutral-500">No workers yet.</p>');
 }
 
-// The lead and the workers share the width until the user drags the divider.
-function layoutLead() {
-  const dragged = shown && shown.stacked.length > 0 && leadWidth !== null;
-  lead.classList.toggle('flex-1', !dragged);
-  lead.classList.toggle('flex-none', dragged);
-  lead.style.width = dragged ? leadWidth + 'px' : '';
-  lead.style.maxWidth = shown?.stacked.length ? 'calc(100% - 280px)' : '';
+// Remember a scrolled-up transcript when its tab is hidden or moved.
+const scrolls = new Map();
+function renderTabs() {
+  if (!tabContainer) return;
+  for (const [id, v] of views) {
+    if (v.root.clientHeight) scrolls.set(id, {top: v.root.scrollTop, following: v.following});
+  }
+  tabContainer.render([...cards].map(([id, c]) => ({id, label: c.name.textContent, element: c.element})));
+  for (const [id, v] of views) {
+    if (!v.root.clientHeight) continue;
+    const saved = scrolls.get(id);
+    v.following = saved?.following ?? true;
+    if (v.following) v.end();
+    else { v.root.scrollTop = saved.top; v.top = v.root.scrollTop; }
+  }
 }
+
+workerCards.onclick = e => {
+  const button = e.target.closest('[data-open-worker]');
+  if (!button) return;
+  const id = button.dataset.openWorker;
+  tabLayout.open(id);
+  renderTabs();
+  workerPreviews.hidePopover();
+  cards.get(id).field.focus();
+};
+
+function showWorkers(button) {
+  const rect = button.getBoundingClientRect();
+  workerPreviews.style.left = Math.max(8, Math.min(rect.right - 360, innerWidth - 368)) + 'px';
+  workerPreviews.style.top = Math.min(rect.bottom + 6, innerHeight - 100) + 'px';
+  workerPreviews.style.maxHeight = Math.max(80, innerHeight - rect.bottom - 14) + 'px';
+}
+
+workerPreviews.addEventListener('toggle', e => {
+  const button = cards.get(shown?.leader?.id)?.workerButton;
+  button?.setAttribute('aria-expanded', e.newState === 'open');
+});
 
 // The sidebar lists each workspace's sessions below a row that collapses
 // them. It stays as it is while a session is being renamed.
@@ -322,7 +347,7 @@ function age(ms) {
   return minutes < 1440 ? Math.floor(minutes / 60) + 'h' : Math.floor(minutes / 1440) + 'd';
 }
 
-// Usage stays in the header for both previews and transcripts.
+// Usage appears below the message input.
 function usage(a) {
   const {context = 0, window = 0, cost = 0} = a.usage ?? {};
   const radius = 6, circumference = 2 * Math.PI * radius;
@@ -341,30 +366,35 @@ function summary(a) {
     <footer class="flex justify-end text-neutral-500">${age(a.statusAt)}</footer>` : '';
 }
 
-// An agent's card shows its name, status, and summary, or its name, status,
-// and transcript with a composer. The lead's card always shows its transcript.
-// Cards persist so a draft stays in its composer.
+// Transcript cards persist across tab moves and closes so drafts survive.
 function card(a) {
   let c = cards.get(a.id);
   if (!c) {
     const element = document.createElement('article');
     element.dataset.agent = a.id;
-    element.innerHTML = `<header class="flex items-center gap-2">
-        <span class="name min-w-0 truncate text-left text-sm text-neutral-100"></span>
-        <span class="usage ml-auto flex shrink-0 items-center gap-3 text-neutral-500"></span>
-        <span class="status shrink-0"></span>
+    element.innerHTML = `<header class="flex h-5 shrink-0 items-center gap-2">
+        <span class="name min-w-0 truncate text-left text-[13px] text-neutral-100"></span>
+        <span class="status ml-auto shrink-0"></span>
+        <button type="button" title="Workers" aria-label="Workers" aria-expanded="false" popovertarget="worker-previews" class="worker-button flex size-5 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-workers size-4"></span></button>
       </header>
-      <div class="summary flex flex-col gap-2"></div>
       <div class="slot -mx-3 mt-1 -mb-3 flex min-h-[120px] min-w-0 flex-1 flex-col overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e]">
-        <form class="flex shrink-0 items-end gap-1 border-t border-[#2b2b2b] p-2">
-          <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 flex-1 resize-none border border-[#3c3c3c] bg-[#3c3c3c] px-2 py-1 text-[13px] text-neutral-100 outline-none focus:border-sky-500"></textarea>
-          <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
-          <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
+        <form class="flex shrink-0 flex-col gap-2 border-t border-[#2b2b2b] p-2">
+          <div class="flex items-end gap-1">
+            <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 flex-1 resize-none border border-[#3c3c3c] bg-[#3c3c3c] px-2 py-1 text-[13px] text-neutral-100 outline-none focus:border-sky-500"></textarea>
+            <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
+            <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
+          </div>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+            <span class="config min-w-0 truncate"></span>
+            <span class="usage ml-auto flex shrink-0 items-center gap-3"></span>
+          </div>
         </form>
       </div>`;
     const q = name => element.querySelector('.' + name);
-    c = {element, weight: 1, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'),
-      summary: q('summary'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send')};
+    c = {element, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'),
+      config: q('config'), workerButton: q('worker-button'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send')};
+    c.workerButton.hidden = a.role !== 'lead';
+    c.workerButton.onclick = () => showWorkers(c.workerButton);
     c.slot.prepend(view(a.id).root);
     c.field.value = drafts.get(a.id) ?? '';
     c.field.oninput = () => {
@@ -380,36 +410,14 @@ function card(a) {
     c.stop.onclick = () => post('agent?' + new URLSearchParams({action: 'interrupt', id: a.id}));
     cards.set(a.id, c);
   }
-  const worker = a.role !== 'lead';
-  const open = !worker || localStorage.getItem(openKey(a.id)) === '1';
-  c.open = open;
-  const status = a.activity === 'exited' ? '<span title="Exited" class="block size-2 rounded-full bg-red-400"></span>'
-    : a.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
-    : a.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
-    : '';
-  const className = `relative flex flex-col gap-2 border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0'} ${
+  const className = `relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 border bg-[#252526] p-3 text-xs ${
     a.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
-  c.element.style.flexGrow = open && worker ? c.weight : '';
   if (c.name.textContent !== a.name) c.name.textContent = a.name;
-  update(c.status, status);
+  update(c.status, agentStatus(a));
   update(c.usage, usage(a));
-  c.header.classList.toggle('cursor-pointer', worker);
-  if (worker) {
-    c.header.setAttribute('role', 'button');
-    c.header.tabIndex = 0;
-    c.header.setAttribute('aria-expanded', open);
-    c.header.title = open ? 'Show Preview' : 'Show Transcript';
-  } else {
-    c.header.removeAttribute('role');
-    c.header.removeAttribute('tabindex');
-    c.header.removeAttribute('aria-expanded');
-    c.header.removeAttribute('title');
-  }
-  const html = summary(a);
-  update(c.summary, html);
-  c.summary.hidden = open || !html;
-  c.slot.hidden = !open;
+  const config = [a.harness, a.model, a.effort].filter(Boolean).join(' · ');
+  if (c.config.textContent !== config) c.config.textContent = config;
   c.stop.hidden = a.activity !== 'busy';
   c.send.disabled = !c.field.value.trim() || a.activity === 'exited';
   return c;
@@ -431,88 +439,13 @@ async function submit(agent, c) {
   }
 }
 
-// Worker headers toggle the preview and transcript with a click or keyboard.
-function toggleWorker(e) {
-  const header = e.target.closest('header');
-  if (!header) return;
-  const id = header.closest('[data-agent]')?.dataset.agent;
-  const a = shown?.stacked.find(a => a.id === id);
-  if (!a) return;
-  if (localStorage.getItem(openKey(id)) === '1') localStorage.removeItem(openKey(id));
-  else localStorage.setItem(openKey(id), '1');
-  const c = card(a);
-  for (const [other, oc] of cards) {
-    if (oc.sash) oc.sash.setAttribute('aria-disabled', !workerPair(other));
-  }
-  if (c.open) {
-    // A hidden element forgets where it was scrolled.
-    const v = views.get(id);
-    v.following = true;
-    v.end();
-    c.field.focus();
-  }
+// The same activity indicator appears in transcripts and worker previews.
+function agentStatus(a) {
+  return a.activity === 'exited' ? '<span title="Exited" class="block size-2 shrink-0 rounded-full bg-red-400"></span>'
+    : a.attention ? '<span title="Waiting on you" class="block size-2 shrink-0 rounded-full bg-amber-400"></span>'
+    : a.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
+    : '';
 }
-workers.onclick = toggleWorker;
-workers.onkeydown = e => {
-  if (e.target.matches('header') && (e.key === 'Enter' || e.key === ' ')) {
-    e.preventDefault();
-    toggleWorker(e);
-  }
-};
-
-// A divider transfers space between the nearest expanded workers on either
-// side. Collapsed cards keep their natural height, even between those workers.
-function workerPair(id) {
-  const stacked = shown.stacked;
-  const i = stacked.findIndex(a => a.id === id);
-  if (i < 0) return null;
-  const open = a => cards.get(a.id).open;
-  const above = stacked.slice(0, i + 1).findLast(open);
-  const below = stacked.slice(i + 1).find(open);
-  return above && below ? [cards.get(above.id), cards.get(below.id)] : null;
-}
-
-// An expanded card keeps this much room for its transcript and composer.
-const minSlot = 120;
-
-function workerSplitter(id) {
-  const sash = document.createElement('div');
-  sash.className = 'sash';
-  sash.setAttribute('role', 'separator');
-  sash.setAttribute('aria-orientation', 'horizontal');
-  let pair, startY, above, below, aboveMin, belowMin;
-  drag(sash, e => {
-    const delta = Math.max(aboveMin - above, Math.min(below - belowMin, e.clientY - startY));
-    pair[0].weight = above + delta;
-    pair[1].weight = below - delta;
-    for (const c of pair) c.element.style.flexGrow = c.weight;
-  }, null, e => {
-    pair = workerPair(id);
-    if (!pair) return false;
-    const measurements = shown.stacked.filter(a => cards.get(a.id).open).map(a => {
-      const c = cards.get(a.id), style = getComputedStyle(c.element);
-      const height = c.element.getBoundingClientRect().height;
-      const weight = height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
-        - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth);
-      return {c, weight, minimum: weight - c.slot.getBoundingClientRect().height + minSlot};
-    });
-    const first = measurements.find(m => m.c === pair[0]);
-    const second = measurements.find(m => m.c === pair[1]);
-    above = first.weight;
-    below = second.weight;
-    aboveMin = first.minimum;
-    belowMin = second.minimum;
-    if (above + below < aboveMin + belowMin) return false;
-    // Freeze the current proportions before changing just the selected pair.
-    for (const {c, weight} of measurements) {
-      c.weight = weight;
-      c.element.style.flexGrow = weight;
-    }
-    startY = e.clientY;
-  });
-  return sash;
-}
-
 
 // post sends an action to the server, with an optional body, and returns its
 // response text, or null if the server refused, after showing why.
@@ -749,13 +682,6 @@ function drag(sash, move, release, start) {
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
 drag($('panel-sash'), e => panel.style.height = Math.max(40, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
-// Dragging the divider sets the lead's width.
-drag(split, e => {
-  const rect = center.getBoundingClientRect();
-  leadWidth = Math.max(280, Math.min(e.clientX - rect.left, rect.width - 280));
-  layoutLead();
-});
-
 hypercube($('hypercube'));
 watch();
 </script>

@@ -5,7 +5,7 @@ http://localhost:4280/. The browser view is Hypercube's interface.
 
 A workspace is a folder that holds sessions. In Git, its folder is the
 checkout's top level; outside Git, it is the folder itself. A session is a lead
-and its workers, with the lead on the left and workers stacked on the right.
+and its workers, with their chats displayed in tabs.
 You create, start, stop, rename, and delete sessions; a stopped session has no
 running agents and stays listed until you start it.
 
@@ -42,7 +42,13 @@ of its agents awaits your approval, and a blue dot after its lead finishes a
 reply you have not seen. A worker's card shows a spinner while it is busy, an
 amber dot while it awaits you, and a red dot after it exits.
 
-The lead's chat fills the left side, and each worker is a card on the right.
+The lead's chat opens in a tab that cannot be closed. Click Workers in its
+header to see preview cards with each worker's latest report and its age.
+Click a card's Open Transcript icon to open that worker in a tab. The first
+worker opens in a new pane to the right; later workers reuse that pane. With
+other splits, new workers use the first pane without the lead, ordered from
+left to right and top to bottom. Closing a worker's tab leaves it running.
+
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
 start a new line. A message goes to the agent at once, even while it works. The
@@ -54,11 +60,10 @@ for approval, its chat shows the request with its choices and a field for typed
 text; answer there. Each agent's unsent text stays in its box when you switch
 sessions or messages arrive.
 
-Click a worker's header to toggle between its preview and its chat. The
-preview shows the worker's latest report and how long ago it made it.
-The lead and worker headers show context use and cost so far. Codex reports no
-cost. Drag the dividers to resize the sidebar and the lead's side. Dividers
-between workers resize expanded chats; collapsed previews keep their height.
+Below each message box, the harness, model, and effort appear on the left,
+with context use and cost on the right. Codex reports no cost. Drag a tab to
+another pane's tab bar to move it there, or to a pane's left, right, top, or
+bottom edge to split it. Drag dividers to resize panes and the sidebar.
 
 The panel button in the header shows or hides a terminal below the agents. It
 runs your shell in the workspace's folder, one per session, and keeps running
