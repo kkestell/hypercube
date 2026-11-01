@@ -26,7 +26,8 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   images, or both for the harness; each image is a PNG, JPEG, GIF, or WebP with
   its `mime_type` and base64 `data`, 10 MiB decoded at most in all. Its reply
   means the harness accepted the input, including into its own queue, and an
-  error means it did not. `interrupt` stops the current turn. `answer` replies to an attention request. `shutdown` ends the plugin.
+  error means it did not. `interrupt` stops the current turn. `answer` replies
+  to an attention request. `shutdown` ends the plugin.
 - **Events.** The plugin reports the native conversation ID to resume later,
   the main agent's work state (`working` or `idle`), transcript items, and
   usage: `context`, the tokens of the latest request, `window`, the model's

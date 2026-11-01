@@ -455,9 +455,10 @@ function card(a) {
 // totalling at most 10 MiB, which the server checks again.
 const imageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const maxImageBytes = 10 << 20;
-const hasContent = (agent, c) => !!c.field.value.trim() || !!attachments.get(agent)?.length;
+// A prompt waits for images still being read.
+const hasContent = (agent, c) => !c.pending && (!!c.field.value.trim() || !!attachments.get(agent)?.length);
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
-const imageBytes = images => images.reduce((n, i) => n + i.data.length * 3 / 4, 0);
+const imageBytes = images => images.reduce((n, i) => n + i.data.length * 3 / 4 - (i.data.match(/=*$/)[0].length), 0);
 
 function readImage(file) {
   return new Promise((resolve, reject) => {
@@ -473,6 +474,8 @@ async function attachImages(agent, c, files) {
   if (!files.length) return;
   const images = files.filter(f => imageTypes.includes(f.type));
   if (images.length < files.length) alert('Attach PNG, JPEG, GIF, or WebP images.');
+  c.pending = (c.pending ?? 0) + 1;
+  c.send.disabled = true;
   try {
     const added = await Promise.all(images.map(readImage));
     const all = [...(attachments.get(agent) ?? []), ...added];
@@ -480,10 +483,12 @@ async function attachImages(agent, c, files) {
       alert('Images can total at most 10 MiB.');
     } else if (added.length) {
       attachments.set(agent, all);
-      showAttachments(agent, c);
     }
   } catch (err) {
     alert('Reading the image failed: ' + err.message);
+  } finally {
+    c.pending--;
+    showAttachments(agent, c);
   }
 }
 

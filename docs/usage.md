@@ -53,15 +53,15 @@ A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
 start a new line. A message goes to the agent at once, even while it works.
 Attach PNG, JPEG, GIF, or WebP images with the paperclip button or by dropping
-files anywhere on the chat; they total at most 10 MiB, appear as thumbnails
-with a remove button, and can be sent without text. Images from the agent or
-its tools appear in the transcript. The stop button next to the send button appears while the agent works and
-interrupts its current turn; the turn stays in the chat. A tool call shows its
-name and its main argument; click it to see its input, its output, and the
-calls a native subagent made inside it. When an agent asks you a question or
-for approval, its chat shows the request with its choices and a field for typed
-text; answer there. Each agent's unsent text stays in its box when you switch
-sessions or messages arrive.
+files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
+a remove button, and can be sent without text. Images from the agent or its
+tools appear in the transcript. The stop button next to the send button appears
+while the agent works and interrupts its current turn; the turn stays in the
+chat. A tool call shows its name and its main argument; click it to see its
+input, its output, and the calls a native subagent made inside it. When an agent
+asks you a question or for approval, its chat shows the request with its choices
+and a field for typed text; answer there. Each agent's unsent text stays in its
+box when you switch sessions or messages arrive.
 
 Below each message box, the harness, model, and effort appear on the left,
 with context use and cost on the right. Codex reports no cost. Drag a tab to
