@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -466,7 +468,7 @@ func TestInputStartsATurnThenSteersIt(t *testing.T) {
 	h.thread = "t1"
 	turnStart(h, "u1")
 	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) { return map[string]any{"turnId": "u1"}, nil })
-	if err := h.input("first"); err != nil {
+	if err := h.input("first", nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.states(); !slices.Equal(got, []string{harness.Working}) {
@@ -474,7 +476,7 @@ func TestInputStartsATurnThenSteersIt(t *testing.T) {
 	}
 	// The turn's own notification changes nothing.
 	h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1","status":"inProgress"}}}`)
-	if err := h.input("second"); err != nil {
+	if err := h.input("second", nil); err != nil {
 		t.Fatal(err)
 	}
 	starts, steers := h.server.sent("turn/start"), h.server.sent("turn/steer")
@@ -496,7 +498,7 @@ func TestSteerRejectedAfterTheTurnEnded(t *testing.T) {
 		return nil, &plugin.RPCError{Code: -32600, Message: "no active turn to steer"}
 	})
 	h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1","status":"inProgress"}}}`)
-	if err := h.input("late"); err != nil {
+	if err := h.input("late", nil); err != nil {
 		t.Fatal(err)
 	}
 	if starts := h.server.sent("turn/start"); len(starts) != 1 || inputText(starts[0]) != "late" {
@@ -513,7 +515,7 @@ func TestSteerRejectedAfterTheTurnEnded(t *testing.T) {
 	}
 	// With the turn already complete, input starts a turn without a steer.
 	turnStart(h, "u3")
-	if err := h.input("again"); err != nil {
+	if err := h.input("again", nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.server.sent("turn/steer")) != 1 || len(h.server.sent("turn/start")) != 2 {
@@ -528,7 +530,7 @@ func TestSteerFailureOnALiveTurnIsReturned(t *testing.T) {
 		return nil, &plugin.RPCError{Code: -32600, Message: "cannot steer a compaction turn"}
 	})
 	h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1","status":"inProgress"}}}`)
-	if err := h.input("x"); err == nil || !strings.Contains(err.Error(), "cannot steer") {
+	if err := h.input("x", nil); err == nil || !strings.Contains(err.Error(), "cannot steer") {
 		t.Fatal(err)
 	}
 	if len(h.server.sent("turn/start")) != 0 {
@@ -542,7 +544,7 @@ func TestStartFailureIsReturned(t *testing.T) {
 	h.server.handle("turn/start", func(map[string]any) (any, *plugin.RPCError) {
 		return nil, &plugin.RPCError{Code: -32000, Message: "not signed in"}
 	})
-	if err := h.input("x"); err == nil || !strings.Contains(err.Error(), "not signed in") {
+	if err := h.input("x", nil); err == nil || !strings.Contains(err.Error(), "not signed in") {
 		t.Fatal(err)
 	}
 	if len(h.states()) != 0 {
@@ -553,7 +555,7 @@ func TestStartFailureIsReturned(t *testing.T) {
 func TestInputWhenNotRunning(t *testing.T) {
 	h := newAgent(t)
 	close(h.done)
-	if err := h.input("hello"); err == nil {
+	if err := h.input("hello", nil); err == nil {
 		t.Fatal("input to a process that has ended")
 	}
 }
@@ -1013,5 +1015,93 @@ func TestErrorsExplainADeadConnection(t *testing.T) {
 	err := h.call(context.Background(), "initialize", nil, nil)
 	if err == nil || !strings.Contains(err.Error(), "cannot load config") {
 		t.Fatal(err)
+	}
+}
+
+func TestInputSendsImagesAsDataURLs(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	turnStart(h, "u1")
+	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) { return map[string]any{"turnId": "u1"}, nil })
+	png := harness.Image{MIMEType: "image/png", Data: "AAAA"}
+	// An image alone starts the turn without an empty text element, and the
+	// next input steers it with its images.
+	if err := h.input("", []harness.Image{png}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.input("more", []harness.Image{png}); err != nil {
+		t.Fatal(err)
+	}
+	image := map[string]any{"type": "image", "url": "data:image/png;base64,AAAA"}
+	start, steer := h.server.sent("turn/start")[0]["input"], h.server.sent("turn/steer")[0]["input"]
+	if !reflect.DeepEqual(start, []any{image}) || !reflect.DeepEqual(steer, []any{map[string]any{"type": "text", "text": "more"}, image}) {
+		t.Errorf("%v %v", start, steer)
+	}
+}
+
+func TestImageOutputs(t *testing.T) {
+	// A 1x1 PNG.
+	const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=="
+	raw, err := base64.StdEncoding.DecodeString(png)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := filepath.Join(t.TempDir(), "generated.png")
+	if err := os.WriteFile(saved, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	notImage := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(notImage, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := newAgent(t)
+	h.thread = "t1"
+	done := func(item string) string {
+		return `{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":` + item + `}}`
+	}
+	h.feed(t,
+		done(`{"type":"imageGeneration","id":"g1","status":"completed","savedPath":"`+saved+`","result":""}`),
+		done(`{"type":"imageGeneration","id":"g2","status":"completed","savedPath":null,"result":"`+png+`"}`),
+		done(`{"type":"imageGeneration","id":"g3","status":"completed","fileId":"file_1","result":""}`),
+		done(`{"type":"imageGeneration","id":"g4","status":"failed","failure":{"type":"usageLimitExceeded","limitId":"x"}}`),
+		done(`{"type":"mcpToolCall","id":"m1","server":"s","tool":"t","status":"completed","arguments":{},"result":{"content":[{"type":"text","text":"shot"},{"type":"image","data":"`+png+`","mimeType":"image/png"},{"type":"image","data":"x","mimeType":"image/svg+xml"}]},"error":null}`),
+		done(`{"type":"dynamicToolCall","id":"d1","tool":"t","status":"completed","arguments":{},"contentItems":[{"type":"inputImage","imageUrl":"data:image/jpeg;base64,/9j/"},{"type":"inputImage","imageUrl":"https://x/y.png"}],"success":true}`),
+		done(`{"type":"imageView","id":"v1","path":"`+saved+`"}`),
+		done(`{"type":"imageView","id":"v2","path":"`+notImage+`"}`))
+	want := []harness.Image{{MIMEType: "image/png", Data: png}}
+	for _, id := range []string{"g1", "g2"} {
+		if it := h.item(t, id); it.Kind != harness.KindText || !it.Done || it.Text != "" || !slices.Equal(it.Images, want) {
+			t.Errorf("%s: %+v", id, it)
+		}
+	}
+	if m := h.item(t, "m1"); m.Output != "shot" || !slices.Equal(m.Images, want) {
+		t.Errorf("%+v", m)
+	}
+	if d := h.item(t, "d1"); !slices.Equal(d.Images, []harness.Image{{MIMEType: "image/jpeg", Data: "/9j/"}}) {
+		t.Errorf("%+v", d)
+	}
+	if v := h.item(t, "v1"); v.Tool != "view_image" || !slices.Equal(v.Images, want) {
+		t.Errorf("%+v", v)
+	}
+	if v := h.item(t, "v2"); len(v.Images) != 0 {
+		t.Errorf("%+v", v)
+	}
+	// A generation without an image shows nothing, and a failed one an error.
+	var errs []string
+	for _, it := range h.transcript() {
+		switch {
+		case it.ID == "g3":
+			t.Errorf("shown: %+v", it)
+		case it.Kind == harness.KindError:
+			errs = append(errs, it.Text)
+		}
+	}
+	if len(errs) != 1 {
+		t.Errorf("errors %v", errs)
+	}
+	// The completion is reported once.
+	h.feed(t, done(`{"type":"imageGeneration","id":"g1","status":"completed","savedPath":null,"result":""}`))
+	if it := h.item(t, "g1"); len(it.Images) != 1 {
+		t.Errorf("%+v", it)
 	}
 }

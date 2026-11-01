@@ -317,12 +317,20 @@ func (ag *agent) call(ctx context.Context, command string, params map[string]any
 	}
 }
 
-// input sends the text as a prompt. Pi starts a turn, or, during one, queues
-// the text to steer it: Pi reads it before its next model request.
-func (ag *agent) input(text string) error {
+// input sends the text and images as a prompt. Pi starts a turn, or, during
+// one, queues them to steer it: Pi reads them before its next model request.
+func (ag *agent) input(text string, images []harness.Image) error {
 	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
 	defer cancel()
-	return ag.call(ctx, "prompt", map[string]any{"message": text, "streamingBehavior": "steer"}, nil)
+	params := map[string]any{"message": text, "streamingBehavior": "steer"}
+	if len(images) > 0 {
+		blocks := make([]map[string]string, len(images))
+		for i, im := range images {
+			blocks[i] = map[string]string{"type": "image", "data": im.Data, "mimeType": im.MIMEType}
+		}
+		params["images"] = blocks
+	}
+	return ag.call(ctx, "prompt", params, nil)
 }
 
 // interrupt gives up the open dialogs, which Pi would wait on, and aborts the
@@ -628,8 +636,10 @@ func (ag *agent) toolEnd(ev *harness.Event, line []byte) {
 		ID     string `json:"toolCallId"`
 		Result struct {
 			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
+				Type     string `json:"type"`
+				Text     string `json:"text"`
+				Data     string `json:"data"`
+				MimeType string `json:"mimeType"`
 			} `json:"content"`
 		} `json:"result"`
 		IsError bool `json:"isError"`
@@ -644,9 +654,12 @@ func (ag *agent) toolEnd(ev *harness.Event, line []byte) {
 	delete(ag.tools, m.ID)
 	var parts []string
 	for _, c := range m.Result.Content {
-		if c.Type == "text" {
+		switch c.Type {
+		case "text":
 			parts = append(parts, c.Text)
-		} else {
+		case "image":
+			item.Images = append(item.Images, harness.Image{MIMEType: c.MimeType, Data: c.Data})
+		default:
 			parts = append(parts, "["+c.Type+"]")
 		}
 	}

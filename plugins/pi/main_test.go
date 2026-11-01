@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -448,7 +449,7 @@ func TestInterruptGivesUpDialogsAndAborts(t *testing.T) {
 
 func TestInputPromptsAndSteers(t *testing.T) {
 	p := newPi()
-	if err := p.input("hello"); err != nil {
+	if err := p.input("hello", nil); err != nil {
 		t.Fatal(err)
 	}
 	c := p.commands("prompt")
@@ -458,10 +459,43 @@ func TestInputPromptsAndSteers(t *testing.T) {
 	}
 }
 
+func TestInputSendsImages(t *testing.T) {
+	p := newPi()
+	if err := p.input("", []harness.Image{{MIMEType: "image/png", Data: "AAAA"}}); err != nil {
+		t.Fatal(err)
+	}
+	c := p.commands("prompt")
+	if len(c) != 1 || c[0]["message"] != "" || c[0]["streamingBehavior"] != "steer" {
+		t.Fatalf("sent %v", c)
+	}
+	want := []any{map[string]any{"type": "image", "data": "AAAA", "mimeType": "image/png"}}
+	if !reflect.DeepEqual(c[0]["images"], want) {
+		t.Errorf("images %v", c[0]["images"])
+	}
+	if err := p.input("hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := p.commands("prompt")[1]["images"]; ok {
+		t.Error("sent images for a text input")
+	}
+}
+
+func TestToolResultImages(t *testing.T) {
+	p := newPi()
+	p.feed(
+		`{"type":"tool_execution_start","toolCallId":"t1","toolName":"read","args":{}}`,
+		`{"type":"tool_execution_end","toolCallId":"t1","toolName":"read","result":{"content":[{"type":"text","text":"shown"},{"type":"image","data":"AAAA","mimeType":"image/png"}]},"isError":false}`,
+	)
+	tool := p.item(t, harness.KindTool)
+	if tool.Output != "shown" || !tool.Done || len(tool.Images) != 1 || tool.Images[0] != (harness.Image{MIMEType: "image/png", Data: "AAAA"}) {
+		t.Errorf("tool %+v", tool)
+	}
+}
+
 func TestRejectedInputIsAnError(t *testing.T) {
 	p := newPi()
 	p.fail["prompt"] = "No API key found"
-	if err := p.input("hello"); err == nil || !strings.Contains(err.Error(), "No API key found") {
+	if err := p.input("hello", nil); err == nil || !strings.Contains(err.Error(), "No API key found") {
 		t.Errorf("error %v", err)
 	}
 }
@@ -479,7 +513,7 @@ func TestInputWhenNotRunning(t *testing.T) {
 	close(p.done)
 	p.reason = "pi exited: exit status 1: it broke"
 	p.stdin = failingStdin{}
-	if err := p.input("hello"); err == nil || !strings.Contains(err.Error(), "it broke") {
+	if err := p.input("hello", nil); err == nil || !strings.Contains(err.Error(), "it broke") {
 		t.Errorf("error %v", err)
 	}
 }

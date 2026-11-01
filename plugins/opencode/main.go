@@ -71,8 +71,8 @@ type agent struct {
 	// the order of the updates and of answers.
 	mu       sync.Mutex
 	session  string
-	busy     bool     // a prompt is in flight
-	queued   []string // input that arrived during the prompt
+	busy     bool               // a prompt is in flight
+	queued   []acp.ContentBlock // input that arrived during the prompt
 	turn     int
 	open     map[string]harness.Item // streamed items that the turn's end has not finished
 	tools    map[string]*tool        // by tool call ID
@@ -381,7 +381,7 @@ func (ag *agent) stop() {
 // input starts a turn. OpenCode refuses a prompt while one is running, so
 // input that arrives during a turn waits and starts the next turn when the
 // current one ends.
-func (ag *agent) input(text string) error {
+func (ag *agent) input(text string, images []harness.Image) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	select {
@@ -390,22 +390,30 @@ func (ag *agent) input(text string) error {
 	default:
 	}
 	if ag.busy {
-		ag.queued = append(ag.queued, text)
+		ag.queued = append(ag.queued, blocks(text, images)...)
 		return nil
 	}
 	ag.busy = true
 	ag.emit(harness.Event{State: harness.Working})
-	ag.prompt([]string{text})
+	ag.prompt(blocks(text, images))
 	return nil
 }
 
-// prompt sends one turn made of texts. ag.mu is held.
-func (ag *agent) prompt(texts []string) {
-	ag.turn++
-	blocks := []acp.ContentBlock{}
-	for _, t := range texts {
-		blocks = append(blocks, acp.TextBlock(t))
+// blocks is a message as prompt content: its text, then its images.
+func blocks(text string, images []harness.Image) []acp.ContentBlock {
+	var out []acp.ContentBlock
+	if text != "" || len(images) == 0 {
+		out = append(out, acp.TextBlock(text))
 	}
+	for _, im := range images {
+		out = append(out, acp.ImageBlock(im.Data, im.MIMEType))
+	}
+	return out
+}
+
+// prompt sends one turn made of content blocks. ag.mu is held.
+func (ag *agent) prompt(blocks []acp.ContentBlock) {
+	ag.turn++
 	session := acp.SessionId(ag.session)
 	go func() {
 		res, err := call[acp.PromptResponse](ag.ctx, ag, acp.AgentMethodSessionPrompt, acp.PromptRequest{SessionId: session, Prompt: blocks})
@@ -441,9 +449,9 @@ func (ag *agent) ended(stopReason acp.StopReason, err error) {
 		ev.Items = append(ev.Items, ag.errorItem(text))
 	}
 	if len(ag.queued) > 0 {
-		texts := ag.queued
+		blocks := ag.queued
 		ag.queued = nil
-		ag.prompt(texts)
+		ag.prompt(blocks)
 	} else {
 		ag.busy = false
 		ev.State = harness.Idle
@@ -643,21 +651,27 @@ func (ag *agent) toolCall(ev *harness.Event, params json.RawMessage, id string, 
 	}
 	if status != nil && (*status == acp.ToolCallStatusCompleted || *status == acp.ToolCallStatusFailed) {
 		t.item.Done, t.item.Failed = true, *status == acp.ToolCallStatusFailed
-		t.item.Output = toolOutput(content)
+		t.item.Output, t.item.Images = toolOutput(content)
 	}
 	ev.Items = append(ev.Items, t.item)
 }
 
-// toolOutput is the text of a tool's result. An edit is shown as a diff, which
-// has no text.
-func toolOutput(content []acp.ToolCallContent) string {
+// toolOutput is the text and images of a tool's result. An edit is shown as a
+// diff, which has neither.
+func toolOutput(content []acp.ToolCallContent) (string, []harness.Image) {
 	var parts []string
+	var images []harness.Image
 	for _, c := range content {
-		if c.Content != nil && c.Content.Content.Text != nil {
-			parts = append(parts, c.Content.Content.Text.Text)
+		if c.Content == nil {
+			continue
+		}
+		if b := c.Content.Content; b.Text != nil {
+			parts = append(parts, b.Text.Text)
+		} else if b.Image != nil {
+			images = append(images, harness.Image{MIMEType: b.Image.MimeType, Data: b.Image.Data})
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n"), images
 }
 
 // parent is the tool item that started the subagent session an update came

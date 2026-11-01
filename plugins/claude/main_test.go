@@ -703,3 +703,40 @@ func TestMCPToolNamesItsServer(t *testing.T) {
 		t.Fatalf("%+v", items)
 	}
 }
+
+func TestInputSendsImagesAsContentBlocks(t *testing.T) {
+	h := newClaude()
+	images := []harness.Image{{MIMEType: "image/png", Data: "AAAA"}, {MIMEType: "image/jpeg", Data: "BBBB"}}
+	if err := h.input("look", images); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.input("", images[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.input("plain", nil); err != nil {
+		t.Fatal(err)
+	}
+	var got []any
+	for _, f := range h.sentFrames(t) {
+		got = append(got, f["message"].(map[string]any)["content"])
+	}
+	want := `[[{"text":"look","type":"text"},{"source":{"data":"AAAA","media_type":"image/png","type":"base64"},"type":"image"},{"source":{"data":"BBBB","media_type":"image/jpeg","type":"base64"},"type":"image"}],` +
+		`[{"source":{"data":"AAAA","media_type":"image/png","type":"base64"},"type":"image"}],"plain"]`
+	if b, _ := json.Marshal(got); string(b) != want {
+		t.Errorf("%s", b)
+	}
+}
+
+func TestToolResultImagesAreExtracted(t *testing.T) {
+	h := newClaude()
+	h.feed(
+		`{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/a.png"}}]}}`,
+		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"a picture"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"AAAA"}},{"type":"image","source":{"type":"url","url":"http://x/y.png"}}]}]}}`)
+	items := h.transcript()
+	if len(items) != 1 {
+		t.Fatalf("%+v", items)
+	}
+	if it := items[0]; it.Output != "a picture\n[image]" || !slices.Equal(it.Images, []harness.Image{{MIMEType: "image/png", Data: "AAAA"}}) || !it.Done {
+		t.Errorf("%+v", it)
+	}
+}
