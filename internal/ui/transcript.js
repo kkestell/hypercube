@@ -157,7 +157,7 @@ const row = {
   message: 'flex justify-start',
   text: 'md text-neutral-200',
   reasoning: 'text-neutral-500',
-  tool: 'group min-w-0 border border-[#2b2b2b] bg-[#1e1e1e]',
+  tool: 'group min-w-0 bg-[#1e1e1e]',
   error: 'border border-red-500/50 bg-red-500/10 px-2 py-1.5 whitespace-pre-wrap break-words text-red-300',
   attention: 'border border-amber-400 bg-amber-400/10 px-2 py-1.5',
 };
@@ -278,9 +278,9 @@ export class Transcript {
       case 'tool':
         r.head = create(doc, 'span', 'min-w-0 flex-1 truncate');
         r.status = create(doc, 'span', 'flex shrink-0');
-        r.input = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-[#2b2b2b] px-2 py-1 font-mono text-xs text-neutral-400');
-        r.output = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-[#2b2b2b] px-2 py-1 font-mono text-xs text-neutral-300');
-        r.kids = create(doc, 'div', 'flex flex-col gap-3 border-t border-[#2b2b2b] p-2');
+        r.input = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-400');
+        r.output = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-300');
+        r.kids = create(doc, 'div', 'flex flex-col gap-3 p-2');
         r.element = create(doc, 'details', row.tool,
           create(doc, 'summary', summaryClass, create(doc, 'span', chevron), r.head, r.status), r.input, r.output, r.kids);
         break;
