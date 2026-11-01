@@ -508,7 +508,7 @@ func TestPromptFailures(t *testing.T) {
 				}
 				return map[string]any{"stopReason": tc.reason}, nil
 			}
-			if err := h.input("hello"); err != nil {
+			if err := h.input("hello", nil); err != nil {
 				t.Fatal(err)
 			}
 			eventually(t, "the end of the turn", func() bool { return slices.Equal(h.states(), []string{harness.Working, harness.Idle}) })
@@ -756,14 +756,14 @@ func TestInputDuringATurnWaits(t *testing.T) {
 		}
 		return out
 	}
-	if err := h.input("first"); err != nil {
+	if err := h.input("first", nil); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "the first prompt", func() bool { return len(prompts()) == 1 })
-	if err := h.input("second"); err != nil {
+	if err := h.input("second", nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.input("third"); err != nil {
+	if err := h.input("third", nil); err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(20 * time.Millisecond)
@@ -785,7 +785,7 @@ func TestInputDuringATurnWaits(t *testing.T) {
 	eventually(t, "idle", func() bool { return slices.Equal(h.states(), []string{harness.Working, harness.Idle}) })
 	// The next input starts a turn of its own.
 	go func() { release <- struct{}{} }()
-	if err := h.input("fourth"); err != nil {
+	if err := h.input("fourth", nil); err != nil {
 		t.Fatal(err)
 	}
 	eventually(t, "the fourth prompt", func() bool { return len(prompts()) == 3 })
@@ -828,7 +828,7 @@ func TestInterruptCancelsAForm(t *testing.T) {
 func TestInputWhenNotRunning(t *testing.T) {
 	h := connected(t)
 	close(h.done)
-	if err := h.input("hello"); err == nil {
+	if err := h.input("hello", nil); err == nil {
 		t.Fatal("input to a process that has ended")
 	}
 }
@@ -897,5 +897,63 @@ func TestHypercubeToolNamesItsServer(t *testing.T) {
 	items := h.transcript()
 	if len(items) != 2 || items[0].Server != "hypercube" || items[0].Tool != "create_agent" || items[1].Server != "" || items[1].Tool != "shell" {
 		t.Fatalf("%+v", items)
+	}
+}
+
+func TestInputImagesFollowTextInOrderAndQueue(t *testing.T) {
+	h := connected(t)
+	h.session = "ses_1"
+	release := make(chan struct{})
+	h.acp.handlers["session/prompt"] = func(map[string]any) (any, *plugin.RPCError) {
+		<-release
+		return map[string]any{"stopReason": "end_turn"}, nil
+	}
+	png := harness.Image{MIMEType: "image/png", Data: "AAAA"}
+	jpg := harness.Image{MIMEType: "image/jpeg", Data: "BBBB"}
+	blocks := func(i int) []string {
+		var out []string
+		for _, b := range h.acp.sent("session/prompt")[i]["prompt"].([]any) {
+			m := b.(map[string]any)
+			if m["type"] == "image" {
+				out = append(out, m["mimeType"].(string)+":"+m["data"].(string))
+			} else {
+				out = append(out, "text:"+m["text"].(string))
+			}
+		}
+		return out
+	}
+	if err := h.input("look", []harness.Image{png}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the first prompt", func() bool { return len(h.acp.sent("session/prompt")) == 1 })
+	if err := h.input("", []harness.Image{jpg}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.input("and this", []harness.Image{png}); err != nil {
+		t.Fatal(err)
+	}
+	release <- struct{}{}
+	eventually(t, "the queued prompt", func() bool { return len(h.acp.sent("session/prompt")) == 2 })
+	if got := blocks(0); !slices.Equal(got, []string{"text:look", "image/png:AAAA"}) {
+		t.Fatal(got)
+	}
+	if got := blocks(1); !slices.Equal(got, []string{"image/jpeg:BBBB", "text:and this", "image/png:AAAA"}) {
+		t.Fatal(got)
+	}
+	release <- struct{}{}
+}
+
+func TestToolResultImages(t *testing.T) {
+	h := connected(t)
+	h.session = "ses_1"
+	h.feed(t,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"tool_call","toolCallId":"c1","name":"read","status":"pending","rawInput":{}}}}`,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"in_progress"}}}`,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","content":[{"type":"content","content":{"type":"text","text":"shown"}},{"type":"content","content":{"type":"image","mimeType":"image/png","data":"AAAA"}}]}}}`,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_1","update":{"sessionUpdate":"tool_call_update","toolCallId":"c1","status":"completed","content":[{"type":"content","content":{"type":"image","mimeType":"image/png","data":"AAAA"}}]}}}`,
+	)
+	it := h.item(t, "c1")
+	if it.Output != "shown" || !it.Done || len(it.Images) != 1 || it.Images[0] != (harness.Image{MIMEType: "image/png", Data: "AAAA"}) {
+		t.Fatalf("%+v", it)
 	}
 }
