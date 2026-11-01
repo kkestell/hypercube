@@ -75,10 +75,13 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 				if err != nil {
 					return err
 				}
-				profiles = cfg.Profiles
+				profiles = cfg.Workers()
 			}
 			resp.Context = facts(s, a, profiles)
 		case "prompt":
+			if lead := s.TeamLead(a.Team); lead != nil {
+				lead.AwaitingUser = false
+			}
 			// A harness may save no conversation until the first prompt, so
 			// a session ID seen earlier may not be resumable.
 			if in.Session != "" {
@@ -262,10 +265,10 @@ Teamwork:
 - Before you merge a change, run the build and tests. A non-trivial change also needs a review by a worker that did not write it. A trivial change needs none.
 - Ask workers for conclusions, not transcripts, to keep your context for coordination.
 
-Worker profiles. Pass the name of the one that fits the task to create_agent as profile:
+Worker profiles. The role says which work each profile suits: plan, work, or review. Pass the name of the one that fits the task to create_agent as profile:
 `)
 	for _, p := range profiles {
-		fmt.Fprintf(b, "- %s (%s, %s, %s): %s\n", p.Name, p.Harness, p.Model, p.Effort, p.Description)
+		fmt.Fprintf(b, "- %s (%s; %s, %s, %s): %s\n", p.Name, p.Role, p.Harness, p.Model, p.Effort, p.Description)
 	}
 }
 

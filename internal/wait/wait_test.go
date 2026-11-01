@@ -71,6 +71,56 @@ func TestWaiterReplacementAndDelivery(t *testing.T) {
 	}
 }
 
+func TestAwaitingUserKeepsMessagesQueued(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{
+			{ID: "l", Role: store.Lead, Team: "t", AwaitingUser: true},
+			{ID: "w", Role: store.Worker, Team: "t", Activity: store.Idle},
+		}
+		s.Messages = []store.Message{{From: "user", To: "w", Text: "queued"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	done := make(chan bool, 1)
+	go func() {
+		ok, err := Wait("w", path, &out)
+		if err != nil {
+			t.Error(err)
+		}
+		done <- ok
+	}()
+	select {
+	case <-done:
+		t.Fatal("session awaiting the user delivered messages")
+	case <-time.After(500 * time.Millisecond):
+	}
+	s, err := store.Load(path)
+	if err != nil || len(s.Messages) != 1 || s.Agents[1].Waiter != 1 || s.Agents[1].Activity != store.Idle {
+		t.Fatalf("waiting state: %+v, %v", s, err)
+	}
+	if err := store.Update(path, func(s *store.State) error {
+		s.TeamLead("t").AwaitingUser = false
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ok := <-done:
+		if !ok || !strings.Contains(out.String(), "queued") {
+			t.Fatalf("released waiter: delivered=%v, output=%q", ok, out.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("released session did not deliver messages")
+	}
+	s, err = store.Load(path)
+	if err != nil || len(s.Messages) != 0 || s.Agents[1].Activity != store.Busy {
+		t.Fatalf("released state: %+v, %v", s, err)
+	}
+}
+
 type brokenWriter struct{}
 
 func (brokenWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }

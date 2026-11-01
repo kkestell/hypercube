@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,12 +21,19 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 //go:embed static
 var static embed.FS
+
+// Icon returns the Hypercube SVG shared by the browser and menu bar.
+func Icon() []byte {
+	icon, _ := static.ReadFile("static/favicon.svg")
+	return icon
+}
 
 type server struct {
 	mu      sync.Mutex
@@ -40,9 +48,29 @@ func Handler() http.Handler {
 	mux.Handle("GET /", http.FileServerFS(files))
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("POST /send", s.send)
+	mux.HandleFunc("GET /leads", leads)
 	mux.HandleFunc("POST /window", window)
 	mux.HandleFunc("POST /workspace", workspaceAction)
 	return localOnly(mux)
+}
+
+// leads rereads the profiles so config edits appear in the next session menu.
+func leads(w http.ResponseWriter, r *http.Request) {
+	cfg, err := harness.LoadConfig()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type lead struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	var list []lead
+	for _, p := range cfg.Leads() {
+		list = append(list, lead{p.Name, p.Description})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(list)
 }
 
 // localOnly refuses other hosts' names, so a rebound DNS name cannot reach the
@@ -143,6 +171,7 @@ func window(w http.ResponseWriter, r *http.Request) {
 	args := []string{"window", q.Get("action"), q.Get("state")}
 	switch q.Get("action") {
 	case "new":
+		args = append(args, q.Get("lead"))
 	case "delete":
 		args = append(args, q.Get("team"), q.Get("window"))
 	case "rename":
@@ -155,9 +184,8 @@ func window(w http.ResponseWriter, r *http.Request) {
 }
 
 // workspace starts a workspace in a folder the user picks and returns its tmux
-// session's name, starts the workspace of a given folder, or deletes the
-// workspace of a state file, and reports why the command refused. The view
-// starts workspaces so their agents get the view's environment.
+// session's name, or deletes the workspace of a state file, and reports why
+// the command refused.
 func workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
@@ -181,13 +209,6 @@ func workspaceAction(w http.ResponseWriter, r *http.Request) {
 		if hypercube(w, "start", dir) {
 			fmt.Fprint(w, name)
 		}
-	case "start":
-		dir := q.Get("dir")
-		if dir == "" {
-			http.Error(w, "missing dir", http.StatusBadRequest)
-			return
-		}
-		hypercube(w, "start", dir)
 	case "delete":
 		s, err := store.Load(q.Get("state"))
 		if err != nil {

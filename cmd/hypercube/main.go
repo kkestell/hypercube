@@ -19,6 +19,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/mcp"
+	"github.com/kkestell/hypercube/internal/menu"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
@@ -27,24 +28,22 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | running | ui [port] | mcp | report <event> | wait"
+const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | ui [port] [--menu] | mcp | report <event> | wait"
 
 func main() {
 	var err error
 	switch {
 	case len(os.Args) == 1:
 		err = errors.New(usage)
-	case (len(os.Args) == 4 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
+	case (len(os.Args) == 5 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
 		err = windowAction(os.Args[2:])
 	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
 		err = stopOrDelete(os.Args[1], os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "status":
 		err = status()
 	case len(os.Args) == 3 && os.Args[1] == "start":
-		err = openWorkspace(os.Args[2], false)
-	case len(os.Args) == 2 && os.Args[1] == "running":
-		err = running()
-	case (len(os.Args) == 2 || len(os.Args) == 3) && os.Args[1] == "ui":
+		err = openWorkspace(os.Args[2], false, "")
+	case len(os.Args) <= 4 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "wait":
 		var delivered bool
@@ -375,15 +374,31 @@ func retitle(path, team, expectedWindow, title string) error {
 	return tmux.RenameWindow(window, title)
 }
 
+func parseUIArgs(args []string) (port string, withMenu bool, err error) {
+	port = "4280"
+	havePort := false
+	for _, arg := range args {
+		if arg == "--menu" {
+			withMenu = true
+			continue
+		}
+		if havePort {
+			return "", false, errors.New("ui accepts only one port")
+		}
+		n, err := strconv.Atoi(arg)
+		if err != nil || n < 1 || n > 65535 {
+			return "", false, fmt.Errorf("invalid port %q", arg)
+		}
+		port, havePort = arg, true
+	}
+	return port, withMenu, nil
+}
+
 // serveUI serves the browser view on the optional port, default 4280.
 func serveUI(args []string) error {
-	port := "4280"
-	if len(args) == 1 {
-		n, err := strconv.Atoi(args[0])
-		if err != nil || n < 1 || n > 65535 {
-			return fmt.Errorf("invalid port %q", args[0])
-		}
-		port = args[0]
+	port, withMenu, err := parseUIArgs(args)
+	if err != nil {
+		return err
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
 	if err != nil {
@@ -391,7 +406,18 @@ func serveUI(args []string) error {
 	}
 	defer listener.Close()
 	restoreWorkspaces()
-	fmt.Printf("Serving the Hypercube UI at http://localhost:%s/\n", port)
+	url := "http://localhost:" + port + "/"
+	fmt.Printf("Serving the Hypercube UI at %s\n", url)
+	if withMenu {
+		go func() {
+			if err := http.Serve(listener, ui.Handler()); err != nil {
+				fmt.Fprintln(os.Stderr, "hypercube:", err)
+				os.Exit(1)
+			}
+		}()
+		menu.Run(url, ui.Icon())
+		return nil
+	}
 	return http.Serve(listener, ui.Handler())
 }
 
@@ -407,7 +433,7 @@ func restoreWorkspaces() {
 		if k.root == "" || tmux.WorkspaceSession(k.name, k.path) {
 			continue
 		}
-		if err := openWorkspace(k.root, false); err != nil {
+		if err := openWorkspace(k.root, false, ""); err != nil {
 			fmt.Fprintf(os.Stderr, "restore workspace %s: %v\n", k.root, err)
 		}
 	}
@@ -415,7 +441,7 @@ func restoreWorkspaces() {
 
 // A workspace owns one tmux session. Each Hypercube session is a team in its
 // own marked window; names and worker lifecycle are local to that team.
-func openWorkspace(dir string, create bool) error {
+func openWorkspace(dir string, create bool, lead string) error {
 	root, name, err := workspaceAt(dir)
 	if err != nil {
 		return err
@@ -459,9 +485,13 @@ func openWorkspace(dir string, create bool) error {
 		needsLaunch = needsLaunch || absent
 	}
 	if needsLaunch {
-		var cfg harness.Config
+		var o harness.Profile
 		if add {
-			cfg, err = harness.LoadConfig()
+			cfg, err := harness.LoadConfig()
+			if err != nil {
+				return err
+			}
+			o, err = cfg.Lead(lead)
 			if err != nil {
 				return err
 			}
@@ -470,7 +500,6 @@ func openWorkspace(dir string, create bool) error {
 		err = store.Update(path, func(s *store.State) error {
 			s.NoGit = branchErr != nil
 			if add {
-				o := cfg.Lead
 				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
 					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team})
 			}
@@ -482,6 +511,7 @@ func openWorkspace(dir string, create bool) error {
 				a.Target, a.QuickExits, a.Attention = "", 0, false
 				if a.Role == store.Lead {
 					a.Branch = branch
+					a.AwaitingUser = a.Team != team
 				}
 				launch = append(launch, *a)
 			}
@@ -495,11 +525,7 @@ func openWorkspace(dir string, create bool) error {
 		return launch[i].Role == store.Lead && launch[j].Role != store.Lead
 	})
 	for _, a := range launch {
-		prompt := mcp.Nudge
-		if a.Role == store.Lead {
-			prompt = ""
-		}
-		if _, err := harness.Launch(a, path, prompt); err != nil {
+		if _, err := harness.Launch(a, path, ""); err != nil {
 			// Keep healthy windows running and the failed team's state for retry.
 			if cleanup := tmux.KillWindow(name, a.Team, path); cleanup != nil {
 				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
@@ -536,8 +562,8 @@ func windowAction(args []string) error {
 		if a.Role != store.Lead {
 			continue
 		}
-		if args[0] == "new" && len(args) == 2 {
-			return openWorkspace(a.Dir, true)
+		if args[0] == "new" && len(args) == 3 {
+			return openWorkspace(a.Dir, true, args[2])
 		}
 		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
 			return deleteTeam(a.Dir, args[1], args[2], args[3])
@@ -653,19 +679,6 @@ func exited(path, pane string) error {
 		}
 	} else if agent.ID != "" {
 		tmux.Activity(store.Workspace(path), pane, path, agent)
-	}
-	return nil
-}
-
-func running() error {
-	list, err := workspaces()
-	if err != nil {
-		return err
-	}
-	for _, k := range list {
-		if tmux.WorkspaceSession(k.name, k.path) {
-			fmt.Println(k.root)
-		}
 	}
 	return nil
 }

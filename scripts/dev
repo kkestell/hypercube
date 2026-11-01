@@ -58,10 +58,26 @@ up)
 	if [ ! -f "$CONFIG" ]; then
 		cat >"$CONFIG" <<'JSON'
 {
-  "lead": { "harness": "claude", "model": "haiku", "effort": "low" },
   "profiles": [
     {
+      "name": "claude-lead",
+      "role": "lead",
+      "description": "Claude Code haiku, for smoke tests.",
+      "harness": "claude",
+      "model": "haiku",
+      "effort": "low"
+    },
+    {
+      "name": "codex-lead",
+      "role": "lead",
+      "description": "Codex Luna, for smoke tests.",
+      "harness": "codex",
+      "model": "gpt-6-luna",
+      "effort": "low"
+    },
+    {
       "name": "claude",
+      "role": "work",
       "description": "Claude Code haiku, for smoke tests.",
       "harness": "claude",
       "model": "haiku",
@@ -69,6 +85,7 @@ up)
     },
     {
       "name": "opencode",
+      "role": "work",
       "description": "OpenCode with DeepSeek Flash, for smoke tests.",
       "harness": "opencode",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
@@ -76,6 +93,7 @@ up)
     },
     {
       "name": "codex",
+      "role": "work",
       "description": "Codex Luna, for smoke tests.",
       "harness": "codex",
       "model": "gpt-6-luna",
@@ -83,6 +101,7 @@ up)
     },
     {
       "name": "pi",
+      "role": "work",
       "description": "Pi with DeepSeek Flash, for smoke tests.",
       "harness": "pi",
       "model": "openrouter/~deepseek/deepseek-flash-latest",

@@ -25,6 +25,46 @@ func run(t *testing.T, event, input string) response {
 	return r
 }
 
+func TestStartListsWorkerRoles(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	if err := os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := `{"profiles":[
+		{"name":"opus","role":"lead","description":"leading","harness":"claude","model":"opus","effort":"high"},
+		{"name":"planner","role":"plan","description":"designing","harness":"claude","model":"opus","effort":"high"},
+		{"name":"builder","role":"work","description":"building","harness":"codex","model":"sol","effort":"high"},
+		{"name":"reviewer","role":"review","description":"reviewing","harness":"claude","model":"sonnet","effort":"high"}
+	]}`
+	if err := os.WriteFile(filepath.Join(dir, "hypercube/config.json"), []byte(config), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "w.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "a")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{{ID: "a", Name: "lead", Role: store.Lead, Team: "session-1"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	context := run(t, "start", `{}`).Context
+	for _, want := range []string{
+		"role says which work each profile suits: plan, work, or review",
+		"- planner (plan; claude, opus, high): designing",
+		"- builder (work; codex, sol, high): building",
+		"- reviewer (review; claude, sonnet, high): reviewing",
+	} {
+		if !strings.Contains(context, want) {
+			t.Errorf("context missing %q: %s", want, context)
+		}
+	}
+	if strings.Contains(context, "- opus (") {
+		t.Fatalf("lead profile listed as worker: %s", context)
+	}
+}
+
 func TestDelivery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "w.json")
 	t.Setenv("HYPERCUBE_STATE", path)
@@ -90,6 +130,33 @@ func TestDelivery(t *testing.T) {
 	run(t, "usage", `{"context":45200,"window":200000,"cost":0.31}`)
 	if u := load().Agents[1].Usage; u != (store.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
 		t.Errorf("usage = %+v", u)
+	}
+}
+
+func TestWorkerPromptReleasesOnlyItsSession(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("HYPERCUBE_STATE", path)
+	t.Setenv("HYPERCUBE_AGENT_ID", "w")
+	if err := store.Update(path, func(s *store.State) error {
+		s.Agents = []store.Agent{
+			{ID: "l", Role: store.Lead, Team: "t", AwaitingUser: true},
+			{ID: "w", Role: store.Worker, Team: "t"},
+			{ID: "other", Role: store.Lead, Team: "other", AwaitingUser: true},
+		}
+		s.Messages = []store.Message{{From: "user", To: "w", Text: "queued"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := run(t, "prompt", `{"text":"continue"}`).Context; !strings.Contains(got, "queued") {
+		t.Fatalf("prompt context = %q", got)
+	}
+	s, err := store.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.AwaitingUser("t") || !s.AwaitingUser("other") || len(s.Messages) != 0 {
+		t.Fatalf("state after worker prompt: %+v", s)
 	}
 }
 

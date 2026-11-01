@@ -107,7 +107,7 @@ func Serve(stdin io.Reader, stdout io.Writer) error {
 			// need it, so it needs no separate error here.
 			s, _ := store.Load(path)
 			cfg, _ := harness.LoadConfig()
-			result = map[string]any{"tools": toolsFor(s, cfg.Profiles)}
+			result = map[string]any{"tools": toolsFor(s, cfg.Workers())}
 		case "tools/call":
 			var p struct {
 				Name      string            `json:"name"`
@@ -257,7 +257,7 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	profile, err := cfg.Profile(args["profile"])
+	profile, err := cfg.Worker(args["profile"])
 	if err != nil {
 		return "", err
 	}

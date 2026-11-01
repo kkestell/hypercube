@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Hypercube</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="xterm.css">
 <link rel="stylesheet" href="ui.css">
 </head>
@@ -38,7 +39,7 @@
 </div>
 </div>
 
-<div id="menu" role="menu" hidden class="fixed z-50 min-w-[160px] rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
+<div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
 <div id="probe" class="invisible absolute"></div>
 <script src="xterm.js"></script>
 <script src="addon-webgl.js"></script>
@@ -314,8 +315,8 @@ function renderSidebar() {
         <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
           ${s.busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(s.name)}</span>
         </button>
-        <button type="button" title="New Session" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
-          data-action="window?${action('new')}"><span class="icon icon-add size-4"></span></button>
+        <button type="button" title="New Session" aria-haspopup="menu" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
+          data-leads="${escape(s.state)}"><span class="icon icon-add size-4"></span></button>
       </li>` +
       (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
   }).join(''));
@@ -605,10 +606,13 @@ async function post(action) {
 // question, if any, then posts it to the server, which runs Hypercube's own
 // command, and shows why it refused.
 document.body.addEventListener('click', async e => {
-  menu.hidden = true;
+  closeMenu();
+  const leadButton = e.target.closest('[data-leads]');
   const action = e.target.closest('[data-action]');
   const command = e.target.closest('[data-command]');
-  if (action) {
+  if (leadButton) {
+    await leadMenu(leadButton);
+  } else if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
     post(action.dataset.action);
   } else if (command) {
@@ -619,23 +623,54 @@ document.body.addEventListener('click', async e => {
 // Right-clicking a workspace or session opens its context menu at the pointer.
 // A click, Escape, or leaving the page closes it.
 const menu = $('menu');
+let menuRequest = 0;
+const menuItemClass = 'mx-1 block w-[calc(100%-8px)] rounded-[3px] px-6 py-1 text-left text-neutral-300 outline-none hover:bg-[#04395e] hover:text-white focus-visible:bg-[#04395e] focus-visible:text-white';
+
+function closeMenu() {
+  menu.hidden = true;
+  menuRequest++;
+}
+
+function placeMenu(x, y) {
+  menu.hidden = false;
+  menu.style.left = Math.max(0, Math.min(x, innerWidth - menu.offsetWidth)) + 'px';
+  menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
+}
+
+async function leadMenu(button) {
+  const request = menuRequest, state = button.dataset.leads;
+  const rect = button.getBoundingClientRect();
+  try {
+    const res = await fetch('leads');
+    if (!res.ok) throw new Error(await res.text());
+    const leads = await res.json();
+    if (request !== menuRequest) return;
+    menu.innerHTML = leads.map(p => {
+      const action = 'window?' + new URLSearchParams({action: 'new', state, lead: p.name});
+      return `<button type="button" role="menuitem" data-action="${escape(action)}" title="${escape(p.description)}" class="${menuItemClass}">${escape(p.name)}</button>`;
+    }).join('');
+    placeMenu(rect.left, rect.bottom);
+  } catch (err) {
+    if (request === menuRequest) alert(err.message);
+  }
+}
+
 document.addEventListener('contextmenu', e => {
+  closeMenu();
   const row = e.target.closest('[data-delete]');
-  menu.hidden = !row;
   if (!row) return;
   e.preventDefault();
   menu.innerHTML = `<button type="button" role="menuitem" data-action="${escape(row.dataset.delete)}" data-question="${escape(row.dataset.question)}"
-    class="mx-1 block w-[calc(100%-8px)] rounded-[3px] px-6 py-1 text-left text-neutral-300 outline-none hover:bg-[#04395e] hover:text-white focus-visible:bg-[#04395e] focus-visible:text-white">${escape(row.dataset.label)}</button>`;
-  menu.style.left = Math.min(e.clientX, innerWidth - menu.offsetWidth) + 'px';
-  menu.style.top = Math.min(e.clientY, innerHeight - menu.offsetHeight) + 'px';
+    class="${menuItemClass}">${escape(row.dataset.label)}</button>`;
+  placeMenu(e.clientX, e.clientY);
 });
 addEventListener('pointerdown', e => {
-  if (!menu.contains(e.target)) menu.hidden = true;
+  if (!menu.contains(e.target)) closeMenu();
 }, true);
 addEventListener('keydown', e => {
-  if (e.key === 'Escape') menu.hidden = true;
+  if (e.key === 'Escape') closeMenu();
 });
-addEventListener('blur', () => menu.hidden = true);
+addEventListener('blur', closeMenu);
 
 // A new workspace opens once it starts.
 $('add-workspace').onclick = async () => {

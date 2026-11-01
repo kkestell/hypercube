@@ -17,17 +17,20 @@ installing, run `make` and use `bin/hypercube`, which uses the plugins beside
 it. Build and validation targets are defined in the [Makefile](../Makefile).
 See [Usage](usage.md) to start working.
 
-To keep the browser view running at login, run:
+To start Hypercube at login, run:
 
 ```sh
 make install-service
 ```
 
-The view runs as a launchd user agent through your interactive login shell, so
-it and the agents it launches get your login environment. When the view starts,
-it restarts all saved workspaces that are stopped. Its log is
-`~/Library/Logs/hypercube-ui.log`. Remove the service by unloading it and
-deleting its property list:
+Hypercube starts at login with a menu bar icon. **Show Hypercube** opens the
+browser view. It runs as a launchd user agent through your interactive login
+shell, so it and the agents it launches get your login environment. It starts
+every saved workspace that is not running; each restored session starts no turn
+and delivers no queued message until you type a prompt into it. **Quit
+Hypercube** stops the icon and view until the next login, while agents keep
+running. Its log is `~/Library/Logs/hypercube-ui.log`. Remove the service by
+unloading it and deleting its property list:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.github.kkestell.hypercube
@@ -36,19 +39,11 @@ rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 
 ## Upgrades
 
-Run `make reinstall-ui` to install the build and restart only the browser
-view. Running sessions keep running, and their hooks, MCP server, and wake-ups
-use the new build at once. Use it for changes that leave those and the state
-format unchanged.
-
-Run `make reinstall` **outside Hypercube** for any other change. It requires the
-service from `make install-service`, waits until no agent is busy, stops running
-workspaces, installs the build, restarts the view, and has the view start the
-workspaces again.
-
-Each agent's hooks, MCP server, and wake-ups use the executable path that
-launched it. Replacing a binary alone does not update those launch arguments;
-restart workspaces when switching executable paths.
+Run `make install-service` to install the build and restart the menu bar icon
+and browser view without stopping agents. Running agents use the new build for
+new hook and tool calls at once, and for launch arguments when they next
+launch. Their existing MCP server and waiter processes keep running until
+their next launch.
 
 ## Development
 

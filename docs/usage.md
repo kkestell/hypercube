@@ -21,12 +21,11 @@ and branch. Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube ui [port]` | Serve the browser view at http://localhost:4280/, or on the given port. The service from `make install-service` runs it. |
+| `hypercube ui [port] [--menu]` | Serve the browser view at http://localhost:4280/, or on the given port. `--menu` adds a menu bar icon; the service from `make install-service` uses it. |
 | `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with one new session. |
 | `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
 | `hypercube delete [dir]` | Delete a workspace and its managed resources. |
 | `hypercube status` | Show known workspaces and their status. |
-| `hypercube running` | Print running workspace paths for scripts. |
 
 Stop and delete default to the current
 workspace; `--all` lists targets and asks for confirmation. They can also
@@ -40,9 +39,10 @@ and talks to their tmux sessions.
 The sidebar lists every running workspace's sessions under a row for the
 workspace; click the row to collapse or expand them. Click `+` at the top of the
 sidebar to choose a folder and start a workspace in it. Hover over a
-workspace's row and click `+` to create a session in it, or click the trash icon
-to delete the workspace. Click a session to switch to it, double-click it
-to change its title, or hover over one and click the trash icon to delete it. A
+workspace's row and click `+` to list its lead profiles; choose one to create a
+session with it. Click the trash icon to delete the workspace. Click a session
+to switch to it, double-click it to change its title, or hover over one and
+click the trash icon to delete it. A
 workspace's folder icon becomes a spinner while any of its agents is busy, and
 a session shows one in the same place. A session
 shows an amber dot while any of its agents awaits your approval, and a blue dot
@@ -67,7 +67,8 @@ workspace stops. Drag the divider above it to change its height.
 
 Closing the browser leaves agents running. Starting a workspace recreates its
 closed saved windows with their conversations and queues, and does not restart
-agents in existing windows.
+agents in existing windows. A relaunched session starts no turn and delivers
+no queued message until you type a prompt into any of its agents.
 
 A harness that exits is relaunched in its pane with its saved conversation.
 Repeated quick exits stop automatic retries, and launch errors stay visible.
