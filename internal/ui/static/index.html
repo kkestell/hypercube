@@ -32,9 +32,6 @@
       <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
       <div id="split" class="sash" hidden></div>
       <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
-      <div id="stopped" class="flex flex-1 items-center justify-center" hidden>
-        <button type="button" id="start-session" class="rounded-sm bg-[#0e639c] px-3 py-1 text-[13px] text-white hover:bg-[#1177bb]">Start Session</button>
-      </div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
@@ -106,9 +103,6 @@ function changed() {
   const workspace = data.find(w => w.sessions.includes(s));
   document.title = (waiting ? `(${waiting}) ` : '') + [s?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
   renderSidebar();
-  const stopped = !!s && (!s.running || dead === s.id);
-  $('stopped').hidden = !stopped;
-  lead.hidden = stopped;
   const want = s?.running ? s.id : null;
   if (want !== attached) attach(want);
   else refresh();
@@ -116,9 +110,12 @@ function changed() {
 }
 document.addEventListener('visibilitychange', changed);
 
+// Selecting a stopped session starts it.
 function select(id) {
   selected = id;
   changed();
+  const s = current();
+  if (s && (!s.running || dead === s.id)) post('session?' + new URLSearchParams({action: 'start', id}));
 }
 
 function attach(id) {
@@ -140,13 +137,13 @@ function attach(id) {
   let reached = false;
   source.addEventListener('id', e => {
     client = e.data; reached = true;
-    if (dead === id) { dead = null; changed(); }
+    if (dead === id) dead = null;
     refresh();
   });
   source.onmessage = e => received(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)));
   source.onerror = () => {
     source.close(); client = null;
-    if (!reached && dead !== id) { dead = id; changed(); }
+    if (!reached) dead = id;
     setTimeout(() => { if (attached === id) attach(id); }, 1000);
   };
 }
@@ -660,8 +657,6 @@ document.body.addEventListener('click', async e => {
     select(row.dataset.select);
   }
 });
-
-$('start-session').onclick = () => post('session?' + new URLSearchParams({action: 'start', id: selected}));
 
 // Right-clicking a workspace or session opens its context menu at the pointer.
 // A click, Escape, or leaving the page closes it.

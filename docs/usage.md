@@ -35,9 +35,9 @@ Right-click a workspace to delete it.
 
 Click a session to show it, and double-click it to change its title.
 Right-click a session to start or stop it, or to delete it. A stopped session's
-row is dimmed; selecting it shows **Start Session**, which starts it. A
-workspace's folder icon becomes a spinner while any of its agents is busy, and
-a session shows one in the same place. A session shows an amber dot while any
+row is dimmed; clicking it starts it. A workspace's folder icon becomes a
+spinner while any of its agents is busy, and a session shows one in the same
+place. A session shows an amber dot while any
 of its agents awaits your approval, and a blue dot after its lead finishes a
 reply you have not seen. A worker's card shows a spinner while it is busy, an
 amber dot while it awaits approval, and a red dot after it exits. See
