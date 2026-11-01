@@ -264,14 +264,22 @@ func (ag *agent) stop() {
 	}
 }
 
-func textInput(text string) []map[string]any {
-	return []map[string]any{{"type": "text", "text": text}}
+// userInput is a prompt's text, when it has any, and its images as data URLs.
+func userInput(text string, images []harness.Image) []map[string]any {
+	var input []map[string]any
+	if text != "" || len(images) == 0 {
+		input = append(input, map[string]any{"type": "text", "text": text})
+	}
+	for _, img := range images {
+		input = append(input, map[string]any{"type": "image", "url": "data:" + img.MIMEType + ";base64," + img.Data})
+	}
+	return input
 }
 
 // input steers the turn in progress, or starts a turn. Codex refuses a steer
 // once the turn has ended, which can happen before its completion reaches us;
-// the text then starts a turn.
-func (ag *agent) input(text string) error {
+// the input then starts a turn.
+func (ag *agent) input(text string, images []harness.Image) error {
 	select {
 	case <-ag.done:
 		return errors.New("codex is not running")
@@ -282,7 +290,7 @@ func (ag *agent) input(text string) error {
 	ag.mu.Unlock()
 	if turn != "" {
 		ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
-		err := ag.call(ctx, "turn/steer", map[string]any{"threadId": thread, "expectedTurnId": turn, "input": textInput(text)}, nil)
+		err := ag.call(ctx, "turn/steer", map[string]any{"threadId": thread, "expectedTurnId": turn, "input": userInput(text, images)}, nil)
 		cancel()
 		if err == nil {
 			return nil
@@ -301,7 +309,7 @@ func (ag *agent) input(text string) error {
 	}
 	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
 	defer cancel()
-	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": textInput(text)}, &started); err != nil {
+	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": userInput(text, images)}, &started); err != nil {
 		return err
 	}
 	ag.mu.Lock()

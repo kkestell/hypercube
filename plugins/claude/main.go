@@ -224,8 +224,20 @@ func (c *claude) send(v any) error {
 	return nil
 }
 
-func (c *claude) input(text string) error {
-	return c.send(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": text}})
+// input sends a prompt: plain text, or content blocks when it has images.
+func (c *claude) input(text string, images []harness.Image) error {
+	var content any = text
+	if len(images) > 0 {
+		blocks := make([]map[string]any, 0, len(images)+1)
+		if text != "" {
+			blocks = append(blocks, map[string]any{"type": "text", "text": text})
+		}
+		for _, img := range images {
+			blocks = append(blocks, map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": img.MIMEType, "data": img.Data}})
+		}
+		content = blocks
+	}
+	return c.send(map[string]any{"type": "user", "message": map[string]any{"role": "user", "content": content}})
 }
 
 func (c *claude) interrupt() error {
@@ -377,6 +389,19 @@ type block struct {
 	ToolUseID string          `json:"tool_use_id"`
 	Content   json.RawMessage `json:"content"`
 	IsError   bool            `json:"is_error"`
+	Source    struct {
+		Type      string `json:"type"`
+		MediaType string `json:"media_type"`
+		Data      string `json:"data"`
+	} `json:"source"`
+}
+
+// image is the picture of an image block, if it is an inline one.
+func (b block) image() (harness.Image, bool) {
+	if b.Type != "image" || b.Source.Type != "base64" || b.Source.Data == "" || !strings.HasPrefix(b.Source.MediaType, "image/") {
+		return harness.Image{}, false
+	}
+	return harness.Image{MIMEType: b.Source.MediaType, Data: b.Source.Data}, true
 }
 
 // line translates one line of claude's output.
@@ -517,31 +542,35 @@ func (c *claude) toolResults(ev *harness.Event, m message) {
 			continue
 		}
 		delete(c.tools, b.ToolUseID)
-		item.Output, item.Failed, item.Done = resultText(b.Content), b.IsError, true
+		item.Output, item.Images = resultText(b.Content)
+		item.Failed, item.Done = b.IsError, true
 		ev.Items = append(ev.Items, item)
 	}
 }
 
-// resultText is the text of a tool result, which claude sends as a string or
-// as blocks.
-func resultText(raw json.RawMessage) string {
+// resultText is the text and the images of a tool result, which claude sends
+// as a string or as blocks.
+func resultText(raw json.RawMessage) (string, []harness.Image) {
 	var s string
 	if json.Unmarshal(raw, &s) == nil {
-		return s
+		return s, nil
 	}
 	var blocks []block
 	if json.Unmarshal(raw, &blocks) != nil {
-		return string(raw)
+		return string(raw), nil
 	}
 	var parts []string
+	var images []harness.Image
 	for _, b := range blocks {
-		if b.Type == "text" {
+		if img, ok := b.image(); ok {
+			images = append(images, img)
+		} else if b.Type == "text" {
 			parts = append(parts, b.Text)
 		} else {
 			parts = append(parts, "["+b.Type+"]")
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n"), images
 }
 
 // control turns a permission request into attention items.
