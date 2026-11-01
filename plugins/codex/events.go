@@ -410,8 +410,10 @@ func (ag *agent) tool(ev *harness.Event, parent string, it threadItem, completed
 		item.Tool, input = "web_search", map[string]any{"query": it.Query}
 	case "imageView":
 		item.Tool, input = "view_image", map[string]any{"path": it.Path}
-		if img, ok := fileImage(it.Path); ok && completed {
-			item.Images = []harness.Image{img}
+		if completed {
+			if img, ok := fileImage(it.Path); ok {
+				item.Images = []harness.Image{img}
+			}
 		}
 	case "subAgentActivity":
 		item.Tool, input = "subagent", map[string]any{"agent": it.AgentPath, "model": it.Model}
