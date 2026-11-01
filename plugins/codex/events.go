@@ -279,7 +279,7 @@ func (ag *agent) tool(ev *harness.Event, parent string, it threadItem, completed
 		item.Tool, input = "apply_patch", map[string]any{"path": strings.Join(paths, ", "), "changes": it.Changes}
 		item.Failed = it.Status == "failed" || it.Status == "declined"
 	case "mcpToolCall":
-		item.Tool = "mcp__" + it.Server + "__" + it.Tool
+		item.Server, item.Tool = it.Server, it.Tool
 		item.Input = it.Arguments
 		item.Failed = it.Status == "failed" || it.Error != nil
 		switch {

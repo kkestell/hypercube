@@ -799,3 +799,12 @@ func TestServeRejectsCommandsBeforeStart(t *testing.T) {
 		t.Error("input before start succeeded")
 	}
 }
+
+func TestMCPToolNamesItsServer(t *testing.T) {
+	p := newPi()
+	p.feed(`{"type":"tool_execution_start","toolCallId":"c1","toolName":"mcp__hypercube__remove_agent","args":{"name":"auditor"}}`)
+	tool := p.item(t, harness.KindTool)
+	if tool.Server != "hypercube" || tool.Tool != "remove_agent" {
+		t.Fatalf("%+v", tool)
+	}
+}

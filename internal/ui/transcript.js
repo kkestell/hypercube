@@ -104,6 +104,35 @@ export function toolSummary(input) {
   return text.length > 120 ? text.slice(0, 119) + '…' : text;
 }
 
+// Hypercube's own tools, as what each call does and the input that tells
+// calls apart. send_message shows as a message instead.
+const hypercubeTools = {
+  create_agent: input => ['Create agent', input.name],
+  remove_agent: input => ['Remove agent', input.name],
+  list_agents: () => ['List agents', ''],
+  set_status: input => ['Set status', input.text],
+};
+
+// toolTitle is a tool call's name and summary.
+export function toolTitle(item) {
+  const input = item.input && typeof item.input === 'object' ? item.input : {};
+  const named = item.server === 'hypercube' && hypercubeTools[item.tool];
+  if (named) {
+    const [name, detail] = named(input);
+    return [name, toolSummary(typeof detail === 'string' ? detail : '')];
+  }
+  const name = item.server ? item.server + ' - ' + item.tool : item.tool ?? 'tool';
+  return [name, toolSummary(item.input)];
+}
+
+// isMessage reports whether an item is a call that sends a message to an agent.
+const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
+
+// A message between agents longer than this many lines, or about as many lines
+// of text, shows its first lines until it is expanded.
+const clampLines = 6;
+export const isLong = text => text.split('\n').length > clampLines || text.length > clampLines * 100;
+
 // A tool's input and output show this many characters.
 const shownLimit = 20000;
 const clip = text => text.length > shownLimit ? text.slice(0, shownLimit) + '\n… (' + (text.length - shownLimit) + ' more characters)' : text;
@@ -121,8 +150,11 @@ export function submitsOnKey(e) {
 
 const kinds = new Set(['user', 'reasoning', 'tool', 'error', 'attention']);
 
+const kindOf = item => isMessage(item) ? 'message' : kinds.has(item.kind) ? item.kind : 'text';
+
 const row = {
   user: 'flex justify-end',
+  message: 'flex justify-start',
   text: 'md text-neutral-200',
   reasoning: 'text-neutral-500',
   tool: 'group min-w-0 border border-[#2b2b2b] bg-[#1e1e1e]',
@@ -132,6 +164,8 @@ const row = {
 
 const summaryClass = 'flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-neutral-400 hover:text-neutral-200 [&::-webkit-details-marker]:hidden';
 const chevron = 'icon icon-chevron-right size-4 transition-transform group-open:rotate-90';
+const bubble = 'flex max-w-[85%] min-w-0 flex-col gap-0.5 rounded bg-[#37373d] px-3 py-1.5 text-neutral-100';
+const messageText = 'whitespace-pre-wrap break-words';
 const button = 'rounded border border-[#454545] bg-[#2d2d30] px-2 py-1 text-neutral-200 hover:bg-[#37373d] disabled:opacity-50';
 
 // Transcript is one agent's items in a scrolling element. Items arrive whole,
@@ -167,7 +201,7 @@ export class Transcript {
   apply(items) {
     for (const item of items) {
       const json = JSON.stringify(item);
-      const kind = kinds.has(item.kind) ? item.kind : 'text';
+      const kind = kindOf(item);
       let r = this.rows.get(item.id);
       if (r?.json === json) continue;
       if (!r || r.kind !== kind) {
@@ -198,8 +232,17 @@ export class Transcript {
     const r = {kind, element: null, body: null, kids: null};
     switch (kind) {
       case 'user':
-        r.body = create(doc, 'div', 'max-w-[85%] whitespace-pre-wrap break-words rounded bg-[#37373d] px-3 py-1.5 text-neutral-100');
-        r.element = create(doc, 'div', row.user, r.body);
+      case 'message':
+        r.head = create(doc, 'div', 'flex items-center gap-1.5 text-xs text-neutral-400');
+        r.body = create(doc, 'div', messageText);
+        r.more = create(doc, 'button', 'self-start text-xs text-neutral-400 hover:text-neutral-200 hover:underline');
+        r.more.type = 'button';
+        r.more.onclick = () => {
+          r.expanded = !r.expanded;
+          this.fill(r, r.item);
+        };
+        r.error = create(doc, 'div', 'whitespace-pre-wrap break-words text-red-300');
+        r.element = create(doc, 'div', row[kind], create(doc, 'div', bubble, r.head, r.body, r.more, r.error));
         break;
       case 'reasoning':
         r.body = create(doc, 'div', 'mt-1 whitespace-pre-wrap break-words');
@@ -234,13 +277,23 @@ export class Transcript {
     r.item = item;
     switch (r.kind) {
       case 'user':
-        r.body.textContent = item.text ?? '';
+        this.message(r, item.from ? 'From ' + item.from : '', item.text ?? '', !!item.from);
+        r.error.hidden = true;
         break;
+      case 'message': {
+        const input = item.input && typeof item.input === 'object' ? item.input : {};
+        this.message(r, 'To ' + (input.to ?? ''), typeof input.text === 'string' ? input.text : '', true);
+        if (!item.done) r.head.append(spinner(doc));
+        r.error.textContent = item.failed ? item.output ?? '' : '';
+        r.error.hidden = !r.error.textContent;
+        break;
+      }
       case 'reasoning':
         r.body.textContent = item.text ?? '';
         break;
       case 'tool': {
-        r.head.replaceChildren(create(doc, 'span', 'font-medium text-neutral-200', item.tool ?? 'tool'), ' ', toolSummary(item.input));
+        const [name, summary] = toolTitle(item);
+        r.head.replaceChildren(create(doc, 'span', 'font-medium text-neutral-200', name), ' ', summary);
         r.status.replaceChildren(...(!item.done ? [spinner(doc)] : item.failed ? [dot(doc, 'Failed', 'bg-red-400')] : []));
         const input = inputText(item.input), output = clip(item.output ?? '');
         r.input.textContent = input;
@@ -259,6 +312,18 @@ export class Transcript {
         r.body.replaceChildren(...renderMarkdown(doc, item.text ?? ''));
     }
     if (r.kids) r.kids.hidden = r.kids.children.length === 0;
+  }
+
+  // message fills a message's heading and text. A long message between agents
+  // shows its first lines and a control that expands and collapses it.
+  message(r, heading, text, clamps) {
+    r.head.replaceChildren(heading);
+    r.head.hidden = !heading;
+    const long = clamps && isLong(text);
+    r.body.textContent = text;
+    r.body.className = messageText + (long && !r.expanded ? ' line-clamp-6' : '');
+    r.more.textContent = long ? (r.expanded ? 'Show less' : 'Show more') : '';
+    r.more.hidden = !long;
   }
 
   // form is an attention request: its prompt, then its choices and typed

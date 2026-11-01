@@ -821,3 +821,15 @@ func TestStartRunsOpenCodeAcp(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHypercubeToolNamesItsServer(t *testing.T) {
+	h := newAgent(t)
+	h.agent.session = "s1"
+	h.feed(t,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"c1","name":"hypercube_create_agent","status":"pending","rawInput":{"name":"auditor"}}}}`,
+		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call","toolCallId":"c2","name":"shell","status":"pending","rawInput":{}}}}`)
+	items := h.transcript()
+	if len(items) != 2 || items[0].Server != "hypercube" || items[0].Tool != "create_agent" || items[1].Server != "" || items[1].Tool != "shell" {
+		t.Fatalf("%+v", items)
+	}
+}

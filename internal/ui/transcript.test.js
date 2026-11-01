@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {Transcript, renderMarkdown, safeHref, submitsOnKey, toolSummary} from './transcript.js';
+import {Transcript, isLong, renderMarkdown, safeHref, submitsOnKey, toolSummary, toolTitle} from './transcript.js';
 
 // A minimal document: the renderer builds nodes and never parses HTML.
 class Text {
@@ -182,7 +182,7 @@ test('tool and error text is shown as text', () => {
     {id: 'r', kind: 'reasoning', text: '<i>thinking</i>'},
     {id: 'u', kind: 'user', text: '<a href=x>me</a>'},
   ]);
-  const allowed = new Set(['div', 'details', 'summary', 'span', 'pre']);
+  const allowed = new Set(['div', 'details', 'summary', 'span', 'pre', 'button']);
   expect(tags(t.root).filter(tag => !allowed.has(tag))).toEqual([]);
   expect(t.root.textContent).toContain('<b>tool</b>');
   expect(t.root.textContent).toContain('<img src=x onerror=1>');
@@ -265,4 +265,75 @@ test('the view follows new items only from the end', () => {
   t.root.scrollHeight = 1500;
   t.update([{id: '3', kind: 'text', text: 'c'}]);
   expect(t.root.scrollTop).toBe(100);
+});
+
+test('toolTitle says what Hypercube tools do and names other servers', () => {
+  expect(toolTitle({server: 'hypercube', tool: 'remove_agent', input: {name: 'auditor'}})).toEqual(['Remove agent', 'auditor']);
+  expect(toolTitle({server: 'hypercube', tool: 'create_agent', input: {name: 'w1', profile: 'claude', message: 'the brief'}})).toEqual(['Create agent', 'w1']);
+  expect(toolTitle({server: 'hypercube', tool: 'list_agents', input: {}})).toEqual(['List agents', '']);
+  expect(toolTitle({server: 'hypercube', tool: 'set_status', input: {text: 'Reading\n the code'}})).toEqual(['Set status', 'Reading the code']);
+  expect(toolTitle({server: 'hypercube', tool: 'remove_agent'})).toEqual(['Remove agent', '']);
+  expect(toolTitle({server: 'context7', tool: 'query-docs', input: {query: 'go'}})).toEqual(['context7 - query-docs', 'go']);
+  expect(toolTitle({tool: 'bash', input: {command: 'ls'}})).toEqual(['bash', 'ls']);
+});
+
+const longText = Array.from({length: 10}, (_, i) => 'line ' + i).join('\n');
+const clamped = body => body.className.includes('line-clamp');
+
+test('a message an agent sends shows its recipient and text', () => {
+  const t = transcript();
+  t.reset([{id: 's', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: 'Done.'}}]);
+  const [row] = t.list.children;
+  expect(row.textContent).toBe('To c1/leadDone.');
+  expect(find(row, 'span').some(s => s.className.includes('icon-loading'))).toBe(true);
+  expect(find(row, 'button')[0].hidden).toBe(true);
+
+  t.update([{id: 's', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: 'Done.'}, output: 'no such agent', done: true, failed: true}]);
+  expect(t.list.children[0]).toBe(row);
+  expect(find(row, 'span').some(s => s.className.includes('icon-loading'))).toBe(false);
+  expect(row.textContent).toContain('no such agent');
+});
+
+test('a long message between agents expands and collapses', () => {
+  const t = transcript();
+  t.reset([
+    {id: 'in', kind: 'user', from: 'c1/lead', text: longText, done: true},
+    {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: longText}},
+  ]);
+  for (const row of t.list.children) {
+    const [bubble] = row.children;
+    const [, body, more] = bubble.children;
+    expect(body.textContent).toBe(longText);
+    expect(clamped(body)).toBe(true);
+    expect(more.hidden).toBe(false);
+    expect(more.textContent).toBe('Show more');
+    more.onclick();
+    expect(clamped(body)).toBe(false);
+    expect(more.textContent).toBe('Show less');
+    more.onclick();
+    expect(clamped(body)).toBe(true);
+  }
+  expect(t.list.children[0].textContent).toStartWith('From c1/lead');
+
+  // An expanded message stays expanded when its call finishes.
+  const out = t.list.children[1];
+  const [, body, more] = out.children[0].children;
+  more.onclick();
+  t.update([{id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: longText}, done: true}]);
+  expect(clamped(body)).toBe(false);
+});
+
+test('the user\'s own prompts are shown whole', () => {
+  const t = transcript();
+  t.reset([{id: 'u', kind: 'user', text: longText}]);
+  const [, body, more] = t.list.children[0].children[0].children;
+  expect(clamped(body)).toBe(false);
+  expect(more.hidden).toBe(true);
+  expect(t.list.children[0].textContent).toBe(longText);
+});
+
+test('isLong counts lines and length', () => {
+  expect(isLong('a\nb')).toBe(false);
+  expect(isLong(longText)).toBe(true);
+  expect(isLong('x'.repeat(601))).toBe(true);
 });

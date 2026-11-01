@@ -486,7 +486,8 @@ func (c *claude) assistant(ev *harness.Event, m message) {
 			if b.Name == "AskUserQuestion" {
 				continue
 			}
-			item := harness.Item{ID: b.ID, Parent: m.Parent, Kind: harness.KindTool, Tool: b.Name, Input: b.Input}
+			item := harness.Item{ID: b.ID, Parent: m.Parent, Kind: harness.KindTool, Input: b.Input}
+			item.Server, item.Tool = plugin.MCPTool(b.Name)
 			c.tools[b.ID] = item
 			ev.Items = append(ev.Items, item)
 		}

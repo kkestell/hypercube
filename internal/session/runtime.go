@@ -487,7 +487,7 @@ func (r *Runtime) kickLocked(id string) {
 func (r *Runtime) deliver(l *live, client *harness.Client) {
 	for {
 		r.mu.Lock()
-		m, text, seq, ok := r.next(l)
+		m, text, from, seq, ok := r.next(l)
 		if !ok {
 			l.delivering = false
 			r.mu.Unlock()
@@ -506,7 +506,11 @@ func (r *Runtime) deliver(l *live, client *harness.Client) {
 				if err := tx.Dequeue(m.ID); err != nil {
 					return err
 				}
-				return tx.PutEntry(l.id, entry(seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Done: true}))
+				item := harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Done: true}
+				if from != "" {
+					item.Text, item.From = m.Text, from
+				}
+				return tx.PutEntry(l.id, entry(seq, item))
 			})
 		}
 		if err != nil {
@@ -521,11 +525,12 @@ func (r *Runtime) deliver(l *live, client *harness.Client) {
 	}
 }
 
-// next returns l's oldest queued message, its text as the model sees it, and a
-// transcript position for it. It reports false when there is nothing to send.
-func (r *Runtime) next(l *live) (m store.Message, text string, seq int64, ok bool) {
+// next returns l's oldest queued message, its text as the model sees it, the
+// address of the agent that sent it if an agent did, and a transcript position
+// for it. It reports false when there is nothing to send.
+func (r *Runtime) next(l *live) (m store.Message, text, from string, seq int64, ok bool) {
 	if !r.current(l) {
-		return m, "", 0, false
+		return m, "", "", 0, false
 	}
 	err := r.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Session(l.session)
@@ -538,16 +543,19 @@ func (r *Runtime) next(l *live) (m store.Message, text string, seq int64, ok boo
 		}
 		m, ok = queued[0], true
 		text = report.Format(tx, queued[:1])
+		if a, err := tx.Agent(m.From); err == nil {
+			from = a.Address()
+		}
 		return nil
 	})
 	if err != nil {
 		logf("reading messages for %s: %v", l.id, err)
-		return m, "", 0, false
+		return m, "", "", 0, false
 	}
 	if ok {
 		seq = r.nextSeq(l.id)
 	}
-	return m, text, seq, ok
+	return m, text, from, seq, ok
 }
 
 func request(client *harness.Client, cmd harness.Command) error {

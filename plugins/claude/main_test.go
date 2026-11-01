@@ -693,3 +693,12 @@ func TestServeRejectsCommandsBeforeStart(t *testing.T) {
 		t.Error("input before start succeeded")
 	}
 }
+
+func TestMCPToolNamesItsServer(t *testing.T) {
+	h := newClaude()
+	h.feed(`{"type":"assistant","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"mcp__hypercube__send_message","input":{"to":"lead","text":"done"}}]}}`)
+	items := h.transcript()
+	if len(items) != 1 || items[0].Server != "hypercube" || items[0].Tool != "send_message" {
+		t.Fatalf("%+v", items)
+	}
+}

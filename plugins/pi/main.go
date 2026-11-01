@@ -617,7 +617,8 @@ func (ag *agent) toolStart(ev *harness.Event, line []byte) {
 	if json.Unmarshal(line, &m) != nil {
 		return
 	}
-	item := harness.Item{ID: m.ID, Kind: harness.KindTool, Tool: m.Name, Input: m.Args}
+	item := harness.Item{ID: m.ID, Kind: harness.KindTool, Input: m.Args}
+	item.Server, item.Tool = plugin.MCPTool(m.Name)
 	ag.tools[m.ID] = item
 	ev.Items = append(ev.Items, item)
 }

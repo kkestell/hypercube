@@ -110,6 +110,10 @@ type Usage struct {
 // An attention item asks the user: Text is the prompt, Choices are the options,
 // and Free allows typed text. It stays open until an event sets Done, with the
 // Answer when there is one.
+//
+// A tool item from an MCP server names the Server, and Tool is the server's
+// own name for the tool. A user item that delivers another agent's message
+// names that agent's address in From, and Text is the message alone.
 type Item struct {
 	ID      string          `json:"id"`
 	Parent  string          `json:"parent,omitempty"`
@@ -117,6 +121,7 @@ type Item struct {
 	Done    bool            `json:"done,omitempty"`
 	Append  bool            `json:"append,omitempty"`
 	Text    string          `json:"text,omitempty"`
+	Server  string          `json:"server,omitempty"`
 	Tool    string          `json:"tool,omitempty"`
 	Input   json.RawMessage `json:"input,omitempty"`
 	Output  string          `json:"output,omitempty"`
@@ -124,6 +129,7 @@ type Item struct {
 	Choices []string        `json:"choices,omitempty"`
 	Free    bool            `json:"free,omitempty"`
 	Answer  string          `json:"answer,omitempty"`
+	From    string          `json:"from,omitempty"`
 }
 
 func jsonLine(v any) ([]byte, error) {

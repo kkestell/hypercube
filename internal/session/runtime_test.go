@@ -477,6 +477,10 @@ func TestWorkerLifecycle(t *testing.T) {
 	if got := f.inputs(worker.ID)[0]; !strings.Contains(got, "the brief") || !strings.Contains(got, lead.Address()) {
 		t.Fatalf("brief = %q", got)
 	}
+	// The transcript shows the brief as a message from the lead.
+	if items := f.transcript(worker.ID); len(items) == 0 || items[0].From != lead.Address() || items[0].Text != "the brief" {
+		t.Fatalf("brief item = %+v", items)
+	}
 	if start := f.log(worker.ID, "start"); start[0]["role"] != "worker" || start[0]["dir"] != worker.Dir {
 		t.Fatalf("worker start = %v", start)
 	}
