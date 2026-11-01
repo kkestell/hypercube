@@ -71,7 +71,8 @@ asked.
 ## Backwards compatibility
 
 Currently, there is none. Change the state format freely instead of adding
-migrations or versions.
+migrations or versions. Delete obsolete files when you find them, including
+leftovers from earlier builds and installs.
 
 ## Communication
 
