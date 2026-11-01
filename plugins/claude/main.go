@@ -389,12 +389,15 @@ func (c *claude) line(line []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	var ev harness.Event
+	// Claude names its session at startup but saves it only once a turn
+	// runs, so the conversation is reported from a turn's result; an agent
+	// that never took a turn has nothing to resume.
+	if m.Type == "result" && m.SessionID != "" && m.SessionID != c.conversation {
+		c.conversation = m.SessionID
+		ev.Conversation = m.SessionID
+	}
 	switch m.Type {
 	case "system":
-		if m.SessionID != "" && m.SessionID != c.conversation {
-			c.conversation = m.SessionID
-			ev.Conversation = m.SessionID
-		}
 		switch m.Subtype {
 		case "init":
 			c.model = m.Model
