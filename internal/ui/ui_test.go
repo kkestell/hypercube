@@ -246,7 +246,7 @@ func TestActions(t *testing.T) {
 	defer server.Close()
 	post := func(path string, want int) {
 		t.Helper()
-		req, _ := http.NewRequest("POST", server.URL+path, nil)
+		req, _ := http.NewRequest("POST", server.URL+path, strings.NewReader(`{"text":"hi"}`))
 		req.Header.Set("Origin", server.URL)
 		res, err := http.DefaultClient.Do(req)
 		if err != nil {
@@ -259,7 +259,8 @@ func TestActions(t *testing.T) {
 	}
 	post("/session?action=rm&id=s", http.StatusBadRequest)
 	post("/agent?action=rm&id=a", http.StatusBadRequest)
-	post("/agent?action=input&id=a", http.StatusBadRequest)
+	post("/agent?action=input&id=a", http.StatusConflict)
+	post("/agent?action=input&id=missing", http.StatusConflict)
 	post("/agent?action=interrupt&id=a", http.StatusConflict)
 	post("/agent?action=answer&id=a&request=q&choice=yes", http.StatusConflict)
 	post("/workspace?action=rm", http.StatusBadRequest)

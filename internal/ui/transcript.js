@@ -16,6 +16,14 @@ export function safeHref(href) {
   }
 }
 
+// imageSrc returns the data URL for an item's image, or null unless it is a
+// PNG, JPEG, GIF, or WebP in base64.
+export function imageSrc(image) {
+  const {mime_type: type, data} = image ?? {};
+  if (!['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(type)) return null;
+  return typeof data === 'string' && /^[A-Za-z0-9+/]+={0,2}$/.test(data) ? `data:${type};base64,${data}` : null;
+}
+
 const create = (doc, tag, className, ...children) => {
   const node = doc.createElement(tag);
   if (className) node.className = className;
@@ -87,6 +95,27 @@ export function renderMarkdown(doc, text) {
   return render(doc, lexer(text));
 }
 
+// pictures builds the images of an item, each no larger than a thumbnail of the
+// transcript's width, in a row of their own that is hidden when there are none.
+function pictures(doc, images, className) {
+  const row = create(doc, 'div', className);
+  fillPictures(doc, row, images);
+  return row;
+}
+
+function fillPictures(doc, row, images) {
+  const imgs = (images ?? []).flatMap(image => {
+    const src = imageSrc(image);
+    if (!src) return [];
+    const img = create(doc, 'img', 'max-h-64 max-w-full rounded object-contain');
+    img.setAttribute('src', src);
+    img.setAttribute('alt', 'Image');
+    return [img];
+  });
+  row.replaceChildren(...imgs);
+  row.hidden = imgs.length === 0;
+}
+
 // Tool input fields, in the order that best says what a call does.
 const summaryKeys = ['command', 'cmd', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
 
@@ -155,7 +184,7 @@ const kindOf = item => isMessage(item) ? 'message' : kinds.has(item.kind) ? item
 const row = {
   user: 'flex justify-end',
   message: 'flex justify-start',
-  text: 'md text-neutral-200',
+  text: 'text-neutral-200',
   reasoning: 'text-neutral-500',
   tool: 'group min-w-0 bg-[#1e1e1e]',
   error: 'border border-red-500/50 bg-red-500/10 px-2 py-1.5 whitespace-pre-wrap break-words text-red-300',
@@ -249,7 +278,7 @@ export class Transcript {
 
   // reveal opens the details around an item that needs the user.
   reveal(id) {
-    for (let r = this.rows.get(id); r; r = this.rows.get(r.item.parent)) r.element.open = true;
+    for (let r = this.rows.get(id); r; r = this.rows.get(r.item.parent)) (r.details ?? r.element).open = true;
   }
 
   build(kind) {
@@ -266,8 +295,9 @@ export class Transcript {
           r.expanded = !r.expanded;
           this.fill(r, r.item);
         };
+        r.pics = pictures(doc, [], 'flex flex-wrap gap-2');
         r.error = create(doc, 'div', 'whitespace-pre-wrap break-words text-red-300');
-        r.element = create(doc, 'div', row[kind], create(doc, 'div', bubble, r.head, r.body, r.more, r.error));
+        r.element = create(doc, 'div', row[kind], create(doc, 'div', bubble, r.head, r.body, r.more, r.error, r.pics));
         break;
       case 'reasoning':
         r.body = create(doc, 'div', 'mt-1 whitespace-pre-wrap break-words');
@@ -281,8 +311,10 @@ export class Transcript {
         r.input = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-400');
         r.output = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-300');
         r.kids = create(doc, 'div', 'flex flex-col gap-3 p-2');
-        r.element = create(doc, 'details', row.tool,
+        r.pics = pictures(doc, [], 'flex flex-wrap gap-2 px-2 py-1');
+        r.details = create(doc, 'details', row.tool,
           create(doc, 'summary', summaryClass, create(doc, 'span', chevron), r.head, r.status), r.input, r.output, r.kids);
+        r.element = create(doc, 'div', 'min-w-0', r.details, r.pics);
         break;
       case 'error':
         r.body = r.element = create(doc, 'div', row.error);
@@ -292,7 +324,9 @@ export class Transcript {
         r.element = create(doc, 'div', row.attention, r.body);
         break;
       default:
-        r.body = r.element = create(doc, 'div', row.text);
+        r.body = create(doc, 'div', 'md');
+        r.pics = pictures(doc, [], 'mt-2 flex flex-wrap gap-2');
+        r.element = create(doc, 'div', row.text, r.body, r.pics);
     }
     return r;
   }
@@ -303,6 +337,7 @@ export class Transcript {
     switch (r.kind) {
       case 'user':
         this.message(r, item.from ? 'From ' + item.from : '', item.text ?? '', !!item.from);
+        fillPictures(doc, r.pics, item.images);
         r.error.hidden = true;
         break;
       case 'message': {
@@ -325,6 +360,7 @@ export class Transcript {
         r.input.hidden = !input;
         r.output.textContent = output;
         r.output.hidden = !output;
+        fillPictures(doc, r.pics, item.images);
         break;
       }
       case 'error':
@@ -335,6 +371,8 @@ export class Transcript {
         break;
       default:
         r.body.replaceChildren(...renderMarkdown(doc, item.text ?? ''));
+        r.body.hidden = !item.text;
+        fillPictures(doc, r.pics, item.images);
     }
     if (r.kids) r.kids.hidden = r.kids.children.length === 0;
   }

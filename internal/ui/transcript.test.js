@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {Transcript, isLong, renderMarkdown, safeHref, submitsOnKey, toolSummary, toolTitle} from './transcript.js';
+import {Transcript, imageSrc, isLong, renderMarkdown, safeHref, submitsOnKey, toolSummary, toolTitle} from './transcript.js';
 
 // A minimal document: the renderer builds nodes and never parses HTML.
 class Text {
@@ -148,8 +148,7 @@ test('items replace themselves in place, and unchanged items are left alone', ()
 test('a tool call shows its summary, status, and nested items', () => {
   const t = transcript();
   t.reset([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
-  const [call] = t.list.children;
-  expect(call.tag).toBe('details');
+  const [call] = find(t.list.children[0], 'details');
   const [summary, input, output, kids] = call.children;
   expect(summary.textContent).toContain('bash');
   expect(summary.textContent).toContain('ls');
@@ -244,8 +243,7 @@ test('a request inside a collapsed tool opens it', () => {
     {id: 'b', parent: 'a', kind: 'tool', tool: 'inner'},
     {id: 'q', parent: 'b', kind: 'attention', text: 'Allow?', choices: ['ok']},
   ]);
-  const [outer] = t.list.children;
-  const inner = find(outer, 'details')[1];
+  const [outer, inner] = find(t.list.children[0], 'details');
   expect(outer.open).toBe(true);
   expect(inner.open).toBe(true);
 });
@@ -366,4 +364,48 @@ test('isLong counts lines and length', () => {
   expect(isLong('a\nb')).toBe(false);
   expect(isLong(longText)).toBe(true);
   expect(isLong('x'.repeat(601))).toBe(true);
+});
+
+const png = 'iVBORw0KGgo=';
+const imgs = node => find(node, 'img').map(i => i.attributes.src);
+
+test('imageSrc accepts only base64 PNG, JPEG, GIF, and WebP', () => {
+  expect(imageSrc({mime_type: 'image/png', data: png})).toBe('data:image/png;base64,' + png);
+  expect(imageSrc({mime_type: 'image/webp', data: 'AAAA'})).toBe('data:image/webp;base64,AAAA');
+  for (const bad of [
+    {mime_type: 'image/svg+xml', data: png},
+    {mime_type: 'text/html', data: png},
+    {mime_type: 'image/png;x=1', data: png},
+    {mime_type: 'image/png', data: 'a" onerror="x'},
+    {mime_type: 'image/png', data: 'data:image/png;base64,' + png},
+    {mime_type: 'image/png', data: ''},
+    {mime_type: 'image/png'},
+    null,
+  ]) expect(imageSrc(bad)).toBeNull();
+});
+
+test('user, assistant, and tool items show their images', () => {
+  const t = transcript();
+  t.reset([
+    {id: 'u', kind: 'user', text: 'look', images: [{mime_type: 'image/png', data: png}]},
+    {id: 'a', kind: 'text', images: [{mime_type: 'image/gif', data: 'R0lGODlh'}]},
+    {id: 'c', kind: 'tool', tool: 'screenshot', done: true, images: [{mime_type: 'image/png', data: png}, {mime_type: 'image/svg+xml', data: png}]},
+    {id: 'n', kind: 'text', text: 'plain'},
+  ]);
+  const [user, assistant, tool, plain] = t.list.children;
+  expect(imgs(user)).toEqual(['data:image/png;base64,' + png]);
+  expect(user.textContent).toBe('look');
+  expect(imgs(assistant)).toEqual(['data:image/gif;base64,R0lGODlh']);
+  expect(imgs(plain)).toEqual([]);
+  expect(plain.textContent).toBe('plain');
+  // A tool's images sit outside its details, so they show while it is closed,
+  // and an image the page cannot show is left out.
+  expect(imgs(tool)).toEqual(['data:image/png;base64,' + png]);
+  const [details] = find(tool, 'details');
+  expect(find(details, 'img')).toEqual([]);
+  expect(find(tool, 'img')[0].className).toContain('max-h-64');
+  expect(find(tool, 'img')[0].attributes.alt).toBe('Image');
+
+  t.update([{id: 'c', kind: 'tool', tool: 'screenshot', done: true}]);
+  expect(imgs(tool)).toEqual([]);
 });
