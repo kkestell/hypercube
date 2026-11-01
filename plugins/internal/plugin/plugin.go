@@ -7,7 +7,19 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// MCPTool splits a tool name of the form mcp__<server>__<tool>, which Claude
+// Code and Pi give the tools of MCP servers. Any other name is the tool's own.
+func MCPTool(name string) (server, tool string) {
+	if rest, ok := strings.CutPrefix(name, "mcp__"); ok {
+		if server, tool, ok := strings.Cut(rest, "__"); ok && server != "" && tool != "" {
+			return server, tool
+		}
+	}
+	return "", name
+}
 
 // JSONString marshals v as compact JSON.
 func JSONString(v any) string {

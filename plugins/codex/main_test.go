@@ -349,7 +349,7 @@ func TestOtherItemKinds(t *testing.T) {
 	if f := h.item(t, "f1"); f.Tool != "apply_patch" || f.Failed || !strings.Contains(string(f.Input), `"path":"/w/a.go, /w/b.go"`) {
 		t.Errorf("%+v", f)
 	}
-	if m := h.item(t, "m1"); m.Tool != "mcp__s__t" || m.Output != "found" || m.Failed || string(m.Input) != `{"q":1}` {
+	if m := h.item(t, "m1"); m.Server != "s" || m.Tool != "t" || m.Output != "found" || m.Failed || string(m.Input) != `{"q":1}` {
 		t.Errorf("%+v", m)
 	}
 	if m := h.item(t, "m2"); !m.Failed || m.Output != "boom" {

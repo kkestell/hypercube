@@ -544,6 +544,11 @@ func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
 		}
 		if u.Name != "" {
 			t.item.Tool = u.Name
+			// OpenCode names an MCP tool <server>_<tool>. Only the server this
+			// plugin configures has a known name to split at.
+			if tool, ok := strings.CutPrefix(u.Name, "hypercube_"); ok {
+				t.item.Server, t.item.Tool = "hypercube", tool
+			}
 		}
 		if len(u.RawInput) > 0 {
 			t.item.Input = u.RawInput
