@@ -22,10 +22,11 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   harness starts, the agent's ID, role, model, effort, saved conversation,
   working directory, runtime instructions, and the state directory. The
   plugin replies once the harness is ready for input, and the harness loads
-  `hypercube mcp` as an MCP server with that environment. `input` carries text
-  for the harness; its reply means the harness accepted the text, including into
-  its own queue, and an error means it did not. `interrupt` stops the current
-  turn. `answer` replies to an attention request. `shutdown` ends the plugin.
+  `hypercube mcp` as an MCP server with that environment. `input` carries text,
+  images, or both for the harness; each image is a PNG, JPEG, GIF, or WebP with
+  its `mime_type` and base64 `data`, 10 MiB decoded at most in all. Its reply
+  means the harness accepted the input, including into its own queue, and an
+  error means it did not. `interrupt` stops the current turn. `answer` replies to an attention request. `shutdown` ends the plugin.
 - **Events.** The plugin reports the native conversation ID to resume later,
   the main agent's work state (`working` or `idle`), transcript items, and
   usage: `context`, the tokens of the latest request, `window`, the model's
@@ -33,8 +34,9 @@ The types are in [protocol.go](../internal/harness/protocol.go).
 - **Items.** An item has an ID and a kind: text, reasoning, tool, error, or
   attention. A later event with the same item ID replaces the item, or extends
   its text when it sets `append`. A tool item carries the tool's name, input,
-  output, and whether it failed. A native subagent's items name the item that
-  started it as their parent.
+  output, and whether it failed. Any item can carry images in the same form,
+  which the browser shows with the item. A native subagent's items name the
+  item that started it as their parent.
 - **Attention requests.** An attention item is a prompt with optional choices
   and optional free text. The browser answers with the item's ID, and the plugin
   maps the answer to the native reply. An answer to a finished request is an

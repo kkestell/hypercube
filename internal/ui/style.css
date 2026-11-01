@@ -26,6 +26,12 @@
 @utility icon-add {
   mask-image: url(add.svg);
 }
+@utility icon-attach {
+  mask-image: url(attach.svg);
+}
+@utility icon-close {
+  mask-image: url(close.svg);
+}
 @utility icon-chevron-right {
   mask-image: url(chevron-right.svg);
 }

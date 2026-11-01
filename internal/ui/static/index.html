@@ -44,7 +44,7 @@
 </div>
 <script src="hypercube.js"></script>
 <script type="module">
-import {Transcript, submitsOnKey} from './transcript.js';
+import {Transcript, imageSrc, submitsOnKey} from './transcript.js';
 import {createTerminal} from './terminal.js';
 import {TabLayout, TabContainer} from './tabs.js';
 
@@ -62,9 +62,9 @@ const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null;
 // The layout belongs to the currently attached session.
 let shown = null, tabLayout = null, tabContainer = null;
-// Each agent's unsent text outlives its card, and each agent has one
+// Each agent's unsent text and images outlive its card, and each agent has one
 // transcript and one card while its session is attached.
-const drafts = new Map(), views = new Map(), cards = new Map();
+const drafts = new Map(), attachments = new Map(), views = new Map(), cards = new Map();
 
 const sessions = () => data.flatMap(w => w.sessions);
 const current = () => sessions().find(s => s.id === selected);
@@ -379,7 +379,10 @@ function card(a) {
       </header>
       <div class="slot -mx-3 mt-1 -mb-3 flex min-h-[120px] min-w-0 flex-1 flex-col overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e]">
         <form class="flex shrink-0 flex-col gap-2 border-t border-[#2b2b2b] p-2">
+          <div class="previews flex flex-wrap gap-2" hidden></div>
           <div class="flex items-end gap-1">
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+            <button type="button" title="Attach Image" aria-label="Attach Image" class="attach flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-attach size-4"></span></button>
             <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 flex-1 resize-none border border-[#3c3c3c] bg-[#3c3c3c] px-2 py-1 text-[13px] text-neutral-100 outline-none focus:border-sky-500"></textarea>
             <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
             <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
@@ -392,15 +395,40 @@ function card(a) {
       </div>`;
     const q = name => element.querySelector('.' + name);
     c = {element, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'),
-      config: q('config'), workerButton: q('worker-button'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send')};
+      config: q('config'), workerButton: q('worker-button'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send'),
+      previews: q('previews'), attach: q('attach'), file: element.querySelector('input[type=file]')};
     c.workerButton.hidden = a.role !== 'lead';
     c.workerButton.onclick = () => showWorkers(c.workerButton);
     c.slot.prepend(view(a.id).root);
     c.field.value = drafts.get(a.id) ?? '';
     c.field.oninput = () => {
       if (c.field.value) drafts.set(a.id, c.field.value); else drafts.delete(a.id);
-      c.send.disabled = !c.field.value.trim();
+      c.send.disabled = !hasContent(a.id, c);
     };
+    c.attach.onclick = () => c.file.click();
+    c.file.onchange = () => {
+      const files = [...c.file.files];
+      c.file.value = '';
+      attachImages(a.id, c, files);
+    };
+    // Images dropped anywhere on the pane attach to its agent. Drags of tabs
+    // carry no files and pass through.
+    c.element.ondragover = e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      c.element.dataset.dropping = '';
+    };
+    c.element.ondragleave = e => {
+      if (!c.element.contains(e.relatedTarget)) delete c.element.dataset.dropping;
+    };
+    c.element.ondrop = e => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      delete c.element.dataset.dropping;
+      attachImages(a.id, c, [...e.dataTransfer.files]);
+    };
+    showAttachments(a.id, c);
     c.field.onkeydown = e => {
       if (!submitsOnKey(e)) return;
       e.preventDefault();
@@ -410,7 +438,7 @@ function card(a) {
     c.stop.onclick = () => post('agent?' + new URLSearchParams({action: 'interrupt', id: a.id}));
     cards.set(a.id, c);
   }
-  const className = `relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 border bg-[#252526] p-3 text-xs ${
+  const className = `relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 border bg-[#252526] p-3 text-xs data-dropping:outline-2 data-dropping:-outline-offset-2 data-dropping:outline-sky-500 ${
     a.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
   if (c.name.textContent !== a.name) c.name.textContent = a.name;
@@ -419,24 +447,93 @@ function card(a) {
   const config = [a.harness, a.model, a.effort].filter(Boolean).join(' · ');
   if (c.config.textContent !== config) c.config.textContent = config;
   c.stop.hidden = a.activity !== 'busy';
-  c.send.disabled = !c.field.value.trim() || a.activity === 'exited';
+  c.send.disabled = !hasContent(a.id, c) || a.activity === 'exited';
   return c;
 }
 
-// submit sends a card's text to its agent. A refused message returns to the
-// composer unless the user has started another.
+// A prompt has text, images, or both. Images are PNG, JPEG, GIF, or WebP
+// totalling at most 10 MiB, which the server checks again.
+const imageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const maxImageBytes = 10 << 20;
+const hasContent = (agent, c) => !!c.field.value.trim() || !!attachments.get(agent)?.length;
+const hasFiles = e => e.dataTransfer?.types.includes('Files');
+const imageBytes = images => images.reduce((n, i) => n + i.data.length * 3 / 4, 0);
+
+function readImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({mime_type: file.type, data: reader.result.slice(reader.result.indexOf(',') + 1)});
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+// attachImages adds the image files to the agent's unsent prompt.
+async function attachImages(agent, c, files) {
+  if (!files.length) return;
+  const images = files.filter(f => imageTypes.includes(f.type));
+  if (images.length < files.length) alert('Attach PNG, JPEG, GIF, or WebP images.');
+  try {
+    const added = await Promise.all(images.map(readImage));
+    const all = [...(attachments.get(agent) ?? []), ...added];
+    if (imageBytes(all) > maxImageBytes) {
+      alert('Images can total at most 10 MiB.');
+    } else if (added.length) {
+      attachments.set(agent, all);
+      showAttachments(agent, c);
+    }
+  } catch (err) {
+    alert('Reading the image failed: ' + err.message);
+  }
+}
+
+// showAttachments draws the agent's unsent images above its message field,
+// each with a button that removes it.
+function showAttachments(agent, c) {
+  const images = attachments.get(agent) ?? [];
+  c.previews.replaceChildren(...images.map(image => {
+    const img = document.createElement('img');
+    img.className = 'size-14 rounded object-cover';
+    img.alt = 'Attached image';
+    img.src = imageSrc(image);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.title = 'Remove Image';
+    remove.setAttribute('aria-label', 'Remove Image');
+    remove.className = 'absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-[#37373d] text-neutral-200 hover:bg-neutral-600';
+    remove.innerHTML = '<span class="icon icon-close size-3"></span>';
+    remove.onclick = () => {
+      const rest = (attachments.get(agent) ?? []).filter(i => i !== image);
+      if (rest.length) attachments.set(agent, rest); else attachments.delete(agent);
+      showAttachments(agent, c);
+    };
+    const box = document.createElement('div');
+    box.className = 'relative';
+    box.append(img, remove);
+    return box;
+  }));
+  c.previews.hidden = !images.length;
+  c.send.disabled = !hasContent(agent, c);
+}
+
+// submit sends a card's text and images to its agent. A refused prompt returns
+// to the composer unless the user has started another.
 async function submit(agent, c) {
-  const text = c.field.value;
-  if (!text.trim() || c.send.disabled) return;
+  const text = c.field.value, images = attachments.get(agent) ?? [];
+  if (!hasContent(agent, c) || c.send.disabled) return;
   c.field.value = '';
   drafts.delete(agent);
+  attachments.delete(agent);
+  showAttachments(agent, c);
   c.send.disabled = true;
-  const sent = await post('agent?' + new URLSearchParams({action: 'input', id: agent}), text);
-  if (sent === null && !c.field.value) {
+  const sent = await post('agent?' + new URLSearchParams({action: 'input', id: agent}), JSON.stringify({text, images}));
+  if (sent !== null) return;
+  if (!c.field.value) {
     c.field.value = text;
-    drafts.set(agent, text);
-    c.send.disabled = false;
+    if (text) drafts.set(agent, text);
   }
+  if (!attachments.has(agent) && images.length) attachments.set(agent, images);
+  showAttachments(agent, c);
 }
 
 // The same activity indicator appears in transcripts and worker previews.
@@ -682,6 +779,15 @@ function drag(sash, move, release, start) {
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
 drag($('panel-sash'), e => panel.style.height = Math.max(40, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
+// A file dropped outside a pane would open in the browser, so such drops are
+// refused.
+for (const type of ['dragover', 'drop']) {
+  addEventListener(type, e => {
+    if (!hasFiles(e) || e.defaultPrevented) return;
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+  });
+}
 hypercube($('hypercube'));
 watch();
 </script>
