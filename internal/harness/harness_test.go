@@ -94,7 +94,7 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestLaunchNeedsPlugin(t *testing.T) {
-	_, err := Launch(store.Agent{Name: "w", Harness: "pi"}, filepath.Join(t.TempDir(), "w.json"), "")
+	_, err := Launch(store.Agent{Name: "w", Harness: "pi"}, "")
 	if err == nil || !strings.Contains(err.Error(), "hypercube-harness-pi") {
 		t.Fatal(err)
 	}

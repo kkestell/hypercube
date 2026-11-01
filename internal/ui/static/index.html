@@ -32,6 +32,9 @@
       <div id="lead" class="min-w-0 flex-1 overflow-hidden pt-1 pl-2"></div>
       <div id="split" class="sash" hidden></div>
       <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3 [scrollbar-gutter:stable]" hidden></div>
+      <div id="stopped" class="flex flex-1 items-center justify-center" hidden>
+        <button type="button" id="start-session" class="rounded-sm bg-[#0e639c] px-3 py-1 text-[13px] text-white hover:bg-[#1177bb]">Start Session</button>
+      </div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
@@ -44,10 +47,11 @@
 <script src="xterm.js"></script>
 <script src="addon-webgl.js"></script>
 <script>
-// The page is a tmux control-mode client for one workspace at a time. The
-// sidebar lists every workspace's sessions, which are tmux windows, under a
-// row naming the workspace. The current window's lead fills the left, and its
-// workers are cards on the right, each showing either a summary or its
+// The page shows Hypercube's data, streamed from the app, and the selected
+// session's terminals, through a tmux control-mode client attached to that
+// session's tmux session. The sidebar lists each workspace's sessions under a
+// row naming the workspace. The selected session's lead fills the left, and
+// its workers are cards on the right, each showing either a summary or its
 // terminal. tmux sizes the panes; the page asks for the sizes its layout has
 // room for.
 
@@ -75,26 +79,75 @@ const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 // workers panel's padding, a card's border, and its terminal's padding.
 const leadX = 8, leadY = 4, workerX = 24 + 2 + 16;
 
-let source, client, session, outbox, sending, callbacks, block, terms, shown, activePane;
-let workspaces = [];
+let source, client, session, outbox, sending, callbacks, block, terms = new Map(), shown, activePane;
+// data is the app's latest snapshot, selected is the selected session's ID,
+// and attached is the running session the terminals belong to.
+// dead is a session marked running whose terminals could not be reached, as
+// after a failed start; it can be started again. generation counts attachments.
+let data = [], selected = decodeURIComponent(location.hash.slice(1)), attached = null, dead = null, generation = 0;
 
-function connect() {
+const sessions = () => data.flatMap(w => w.sessions);
+const current = () => sessions().find(s => s.id === selected);
+
+function watch() {
+  const stream = new EventSource('state');
+  stream.onmessage = e => { data = JSON.parse(e.data); changed(); };
+  stream.onerror = () => { stream.close(); setTimeout(watch, 1000); };
+}
+
+// changed shows new data: the title, the sidebar, and the selected session,
+// attaching to its terminals when it runs.
+function changed() {
+  const all = sessions();
+  if (!current()) selected = (all.find(s => s.running) ?? all[0])?.id ?? '';
+  if (decodeURIComponent(location.hash.slice(1)) !== selected) history.replaceState(null, '', selected ? '#' + encodeURIComponent(selected) : location.pathname);
+  const s = current();
+  const waiting = all.filter(s => s.running).reduce((n, s) => n + s.agents.filter(a => a.attention).length, 0);
+  const workspace = data.find(w => w.sessions.includes(s));
+  document.title = (waiting ? `(${waiting}) ` : '') + [s?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
+  renderSidebar();
+  const stopped = !!s && (!s.running || dead === s.id);
+  $('stopped').hidden = !stopped;
+  lead.hidden = stopped;
+  const want = s?.running ? s.id : null;
+  if (want !== attached) attach(want);
+  else refresh();
+  if (s?.unseen && document.visibilityState === 'visible') fetch('session?' + new URLSearchParams({action: 'seen', id: s.id}), {method: 'POST'});
+}
+document.addEventListener('visibilitychange', changed);
+
+function select(id) {
+  selected = id;
+  changed();
+}
+
+function attach(id) {
+  source?.close();
+  source = client = null;
+  attached = id;
+  generation++;
   outbox = []; sending = false; callbacks = []; block = null; size = ''; refreshing = again = false; activePane = null;
-  applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false;
+  applying = reapply = false; pendingLayouts.clear(); shell = null; creating = false; shown = null;
+  for (const term of terms.values()) term.dispose();
   terms = new Map();
   lead.replaceChildren();
   workers.replaceChildren();
   panel.replaceChildren();
   workerCards.clear();
-  source = new EventSource('events?session=' + encodeURIComponent(location.hash.slice(1)));
-  source.addEventListener('id', e => { client = e.data; refresh(); });
+  split.hidden = workers.hidden = true;
+  if (!id) return;
+  source = new EventSource('events?session=' + encodeURIComponent(id));
+  let reached = false;
+  source.addEventListener('id', e => {
+    client = e.data; reached = true;
+    if (dead === id) { dead = null; changed(); }
+    refresh();
+  });
   source.onmessage = e => received(Uint8Array.from(atob(e.data), c => c.charCodeAt(0)));
   source.onerror = () => {
     source.close(); client = null;
-    // The sidebar empties when the last workspace stops.
-    workspaces = [];
-    renderSidebar();
-    setTimeout(connect, 1000);
+    if (!reached && dead !== id) { dead = id; changed(); }
+    setTimeout(() => { if (attached === id) attach(id); }, 1000);
   };
 }
 
@@ -110,15 +163,18 @@ function send(command, callback) {
 async function flush() {
   if (sending || !outbox.length || !client) return;
   sending = true;
+  const mine = generation;
   const body = outbox.join('\n');
   outbox = [];
   try { await fetch('send?id=' + client, {method: 'POST', body}); } catch {}
+  // A new attachment has reset the queue and may already be sending.
+  if (mine !== generation) return;
   sending = false;
   flush();
 }
 
 const decoder = new TextDecoder();
-const structural = /^%(layout-change|window-add|window-close|window-renamed|unlinked-window-(add|close|renamed)|session-window-changed|sessions-changed|session-renamed|window-pane-changed)( |$)/;
+const structural = /^%(layout-change|window-add|window-close|unlinked-window-(add|close)|session-window-changed|window-pane-changed)( |$)/;
 
 function received(bytes) {
   if (block) {
@@ -144,9 +200,7 @@ function received(bytes) {
     const id = text.slice(7);
     block = {id, own: id.endsWith(' 1'), lines: []};
   } else if (text.startsWith('%session-changed ')) {
-    const [, id, name] = text.match(/^%session-changed (\S+) (.*)$/);
-    session = id;
-    history.replaceState(null, '', '#' + encodeURIComponent(name));
+    session = text.split(' ')[1];
     refresh();
   } else if (structural.test(text)) {
     const change = text.match(/^%layout-change (\S+) (\S+)/);
@@ -188,8 +242,8 @@ function unescape(bytes) {
   return out.subarray(0, n);
 }
 
-// One refresh at a time; notifications during one schedule another. Option
-// changes send no notification, so a timer catches them.
+// One refresh at a time; notifications during one schedule another. A pane's
+// death sends no notification, so a timer catches it.
 let refreshing = false, again = false;
 setInterval(refresh, 1000);
 
@@ -199,29 +253,26 @@ function refresh() {
   refreshing = true;
   const rows = (lines, keys) => lines.map(line => {
     const values = line.split('\t'), row = {};
-    keys.forEach((key, i) => row[key] = i === keys.length - 1 ? values.slice(i).join('\t') : values[i]);
+    keys.forEach((key, i) => row[key] = values[i]);
     return row;
   });
-  // Labels of the window's panes with an option set, each followed by |.
-  const labels = option => `#{P:#{?${option},#{@hypercube_label}|,}}`;
-  let sessions, wins;
-  send(`list-sessions -F '#{session_id}\t#{@hypercube_state}\t#{W:#{P:#{?@hypercube_attention,1,}}}\t#{W:#{P:#{?@hypercube_busy,1,}}}\t#{@hypercube_workspace}'`,
-    lines => sessions = rows(lines, ['id', 'state', 'attention', 'busy', 'name']).filter(s => s.state));
-  send(`list-windows -a -F '#{session_id}\t#{window_id}\t#{window_active}\t#{@hypercube_replied}\t#{@hypercube_team}\t${labels('@hypercube_attention')}\t${labels('@hypercube_busy')}\t#{window_layout}\t#{@hypercube_terminal}\t#{pane_id}\t#{window_name}'`,
-    lines => wins = rows(lines, ['session', 'id', 'active', 'replied', 'team', 'attention', 'busy', 'layout', 'terminal', 'pane', 'name']));
-  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_busy}\t#{@hypercube_attention}\t#{@hypercube_open}\t#{@hypercube_status_at}\t#{@hypercube_usage}\t#{@hypercube_status}\t#{@hypercube_label}'`,
+  let wins;
+  send(`list-windows -F '#{window_id}\t#{window_active}\t#{window_layout}\t#{@hypercube_terminal}\t#{pane_id}'`,
+    lines => wins = rows(lines, ['id', 'active', 'layout', 'terminal', 'pane']));
+  send(`list-panes -F '#{pane_id}\t#{pane_left}\t#{pane_top}\t#{pane_width}\t#{pane_height}\t#{pane_active}\t#{pane_dead}\t#{pane_dead_status}\t#{@hypercube_agent}'`,
     (lines, error) => {
       refreshing = false;
-      if (!error && sessions && wins) render(sessions, wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'busy', 'attention', 'open', 'reportedAt', 'usage', 'report', 'label']));
+      if (!error && wins) render(wins, rows(lines, ['id', 'left', 'top', 'width', 'height', 'active', 'dead', 'status', 'agent']));
       if (again) { again = false; refresh(); }
     });
 }
 
-// An agent's label is "name · harness model effort · directory".
-const agentName = label => label.replaceAll('##', '#').split(' · ')[0];
-const names = list => list.split('|').filter(Boolean).map(agentName).join(', ');
+const names = agents => agents.map(a => a.name).join(', ');
 
 const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+
+// A worker card's open state is kept per agent.
+const openKey = agent => 'hypercube-open:' + agent;
 
 // update replaces an element's children only when they change. A click is lost
 // when the element under the pointer is replaced between press and release.
@@ -232,33 +283,24 @@ function update(parent, html) {
   if (parent.innerHTML !== next.innerHTML) parent.replaceChildren(next.content);
 }
 
-function render(sessions, wins, list) {
-  const current = sessions.find(s => s.id === session);
-  const win = wins.find(w => w.session === session && w.active === '1');
-  const waiting = sessions.reduce((n, s) => n + s.attention.length, 0);
-  document.title = (waiting ? `(${waiting}) ` : '') +
-    [win?.name, current?.name, 'Hypercube'].filter(Boolean).join(' — ');
-
-  workspaces = sessions;
-  windows = wins.filter(w => !w.terminal);
-  renderSidebar();
-  renderPanel(wins.find(w => w.session === session && w.terminal));
-  // tmux can select the terminal's window when it closes the current one.
+function render(wins, list) {
+  const win = wins.find(w => w.active === '1');
+  renderPanel(wins.find(w => w.terminal));
+  // tmux can select the terminal's window when a client attaches.
   if (win?.terminal) {
-    const other = windows.find(w => w.session === session);
+    const other = wins.find(w => !w.terminal);
     if (other) send(`select-window -t '${other.id}'`);
     return;
   }
 
+  const agents = new Map((current()?.agents ?? []).map(a => [a.id, a]));
+  for (const p of list) {
+    p.agent = agents.get(p.agent) ?? {id: p.agent, name: ''};
+    p.open = localStorage.getItem(openKey(p.agent.id)) === '1';
+  }
   for (const p of list) for (const key of ['left', 'top', 'width', 'height']) p[key] = +p[key];
   const [leader] = list.filter(p => p.left === 0);
   const stacked = list.filter(p => p.left > 0).sort((a, b) => a.top - b.top);
-  // A refresh sent before a card was switched still reports its old state.
-  for (const p of stacked) {
-    if (!toggled.has(p.id)) continue;
-    if (toggled.get(p.id) === p.open) toggled.delete(p.id);
-    else p.open = toggled.get(p.id);
-  }
   if (win?.id !== shown?.window) leadWidth = null;
   shown = {window: win?.id, leader, stacked, layout: win?.layout.slice(5)};
 
@@ -299,26 +341,26 @@ function render(sessions, wins, list) {
 
 // The sidebar lists each workspace's sessions below a row that collapses
 // them. It stays as it is while a session is being renamed.
-let windows = [], renaming = false;
+let renaming = false;
 const collapsed = new Set();
 
-// A busy session shows a spinner in the column of the workspace's folder icon.
+// A busy workspace shows a spinner in place of its folder icon, and a busy
+// session in the same column.
 const spinner = title => `<span role="img" title="${escape(title)}" class="icon icon-loading size-4 text-neutral-400"></span>`;
 
 function renderSidebar() {
   if (renaming) return;
-  update(sessionList, workspaces.map(s => {
-    const open = !collapsed.has(s.id);
-    const action = name => escape(new URLSearchParams({action: name, state: s.state}).toString());
-    return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]"
-        data-delete="workspace?${action('delete')}" data-label="Delete Workspace" data-question="Delete workspace ${escape(s.name)}?">
-        <button type="button" data-collapse="${s.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
-          ${s.busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(s.name)}</span>
+  update(sessionList, data.map(w => {
+    const open = !collapsed.has(w.id);
+    const busy = w.sessions.some(s => s.running && s.agents.some(a => a.activity === 'busy'));
+    return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]" data-workspace="${w.id}" title="${escape(w.path)}">
+        <button type="button" data-collapse="${w.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left text-neutral-400">
+          ${busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(w.name)}</span>
         </button>
         <button type="button" title="New Session" aria-haspopup="menu" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
-          data-leads="${escape(s.state)}"><span class="icon icon-add size-4"></span></button>
+          data-leads="${w.id}"><span class="icon icon-add size-4"></span></button>
       </li>` +
-      (open ? windows.filter(w => w.session === s.id).map(w => sessionRow(w, s)).join('') : '');
+      (open ? w.sessions.map(sessionRow).join('') : '');
   }).join(''));
 }
 
@@ -333,13 +375,12 @@ sessionList.addEventListener('click', e => {
 // Double-clicking a session replaces it with a field for its new title. Enter
 // or leaving the field saves the title, and Escape cancels.
 sessionList.addEventListener('dblclick', e => {
-  const row = e.target.closest('[data-rename]');
-  const w = windows.find(w => w.id === row?.dataset.rename);
-  const workspace = workspaces.find(s => s.id === w?.session);
-  if (!w?.team || !workspace) return;
+  const row = e.target.closest('[data-session]');
+  const s = sessions().find(s => s.id === row?.dataset.session);
+  if (!s) return;
   renaming = true;
   const input = document.createElement('input');
-  input.value = w.name;
+  input.value = s.title;
   input.className = 'my-1 mr-1 ml-9 min-w-0 flex-1 border border-sky-500 bg-[#3c3c3c] px-1 py-0.5 text-neutral-100 outline-none';
   row.replaceWith(input);
   input.focus();
@@ -348,9 +389,9 @@ sessionList.addEventListener('dblclick', e => {
     if (!renaming) return;
     renaming = false;
     const title = input.value.trim();
-    if (save && title && title !== w.name) {
-      post('window?' + new URLSearchParams({action: 'rename', state: workspace.state, team: w.team, window: w.id, title}));
-      w.name = title;
+    if (save && title && title !== s.title) {
+      post('session?' + new URLSearchParams({action: 'rename', id: s.id, title}));
+      s.title = title;
     }
     sessionList.replaceChildren();
     renderSidebar();
@@ -362,19 +403,21 @@ sessionList.addEventListener('dblclick', e => {
   input.onblur = () => finish(true);
 });
 
-function sessionRow(w, workspace) {
-  const active = w.session === session && w.active === '1';
-  const busy = names(w.busy), waiting = names(w.attention);
-  const remove = w.team ? `data-delete="window?${escape(new URLSearchParams({action: 'delete', state: workspace.state, team: w.team, window: w.id}).toString())}"
-    data-label="Delete Session" data-question="Delete session ${escape(w.name)}?"` : '';
-  return `<li class="${active ? 'bg-[#37373d] text-neutral-100' : 'hover:bg-[#2a2d2e]'}" ${remove}>
+// A stopped session's row is dimmed. Busy and waiting agents show only while
+// the session runs.
+function sessionRow(s) {
+  const active = s.id === selected;
+  const busy = s.running ? names(s.agents.filter(a => a.activity === 'busy')) : '';
+  const waiting = s.running ? names(s.agents.filter(a => a.attention)) : '';
+  const text = !s.running ? 'text-neutral-500' : active ? 'text-neutral-100' : '';
+  return `<li class="${active ? 'bg-[#37373d]' : 'hover:bg-[#2a2d2e]'} ${text}" data-session="${s.id}">
     <div class="flex items-center gap-1 pr-2">
-      <button type="button" data-command="switch-client -t '${w.id}'" data-rename="${w.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
+      <button type="button" data-select="${s.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-4 text-left">
         ${busy ? spinner('Busy: ' + busy) : '<span class="size-4 shrink-0"></span>'}
         <span class="flex min-w-0 items-center gap-1.5">
-          <span class="truncate">${escape(w.name)}</span>
+          <span class="truncate">${escape(s.title)}</span>
           ${waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : ''}
-          ${w.replied && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
+          ${s.unseen && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
         </span>
       </button>
     </div>
@@ -398,8 +441,8 @@ function age(ms) {
 
 // The summary is the worker's report of what it is doing and a footer with its
 // context use, cost, and the report's age. Each part shows once it is known.
-function summary(p) {
-  const [context, window, cost] = p.usage.split(' ').map(Number);
+function summary(a) {
+  const {context = 0, window = 0, cost = 0} = a.usage ?? {};
   const radius = 6, circumference = 2 * Math.PI * radius;
   const ring = window ? `<svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
         <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-700"/>
@@ -407,11 +450,11 @@ function summary(p) {
           stroke-dasharray="${circumference}" stroke-dashoffset="${(circumference * (1 - Math.min(1, context / window))).toFixed(2)}"/>
       </svg>` : '';
   const usage = [window ? `${tokens(context)} / ${tokens(window)}` : '', cost ? (cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`) : ''].filter(Boolean).join(' · ');
-  const footer = usage || p.report ? `<footer class="flex items-center gap-2 text-neutral-500">
+  const footer = usage || a.status ? `<footer class="flex items-center gap-2 text-neutral-500">
       <span class="flex items-center gap-1.5 whitespace-nowrap">${ring}${usage}</span>
-      ${p.report ? `<span class="ml-auto shrink-0">${age(+p.reportedAt)}</span>` : ''}
+      ${a.status ? `<span class="ml-auto shrink-0">${age(a.statusAt)}</span>` : ''}
     </footer>` : '';
-  return (p.report ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(p.report)}</p>` : '') + footer;
+  return (a.status ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(a.status)}</p>` : '') + footer;
 }
 
 // A worker's card shows its name, status, and summary, or its name, status,
@@ -437,26 +480,23 @@ function card(p) {
     workerCards.set(p.id, c);
   }
   const status = p.dead === '1' ? `<span title="Exited with status ${escape(p.status)}" class="block size-2 rounded-full bg-red-400"></span>`
-    : p.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
-    : p.busy ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
+    : p.agent.attention ? '<span title="Waiting on you" class="block size-2 rounded-full bg-amber-400"></span>'
+    : p.agent.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
     : '';
-  const open = !!p.open;
+  const open = p.open;
   const className = `relative flex flex-col gap-2 rounded-md border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0 cursor-pointer'} ${
-    p.attention ? 'border-amber-400' : 'border-neutral-700 hover:border-neutral-500'}`;
+    p.agent.attention ? 'border-amber-400' : 'border-neutral-700 hover:border-neutral-500'}`;
   if (c.element.className !== className) c.element.className = className;
-  if (c.name.textContent !== agentName(p.label)) c.name.textContent = agentName(p.label);
+  if (c.name.textContent !== p.agent.name) c.name.textContent = p.agent.name;
   update(c.status, status);
   c.toggle.setAttribute('aria-pressed', open);
   c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
-  const html = summary(p);
+  const html = summary(p.agent);
   update(c.summary, html);
   c.summary.hidden = open || !html;
   c.slot.hidden = !open;
   return c;
 }
-
-// Cards switched here that tmux has not reported yet.
-const toggled = new Map();
 
 // Clicking a card in summary shows its terminal; its terminal button switches
 // back and forth.
@@ -464,9 +504,9 @@ workers.onclick = e => {
   const element = e.target.closest('[data-pane]');
   const p = shown?.stacked.find(p => p.id === element?.dataset.pane);
   if (!p || p.open && !e.target.closest('.toggle')) return;
-  p.open = p.open ? '' : '1';
-  toggled.set(p.id, p.open);
-  send(p.open ? `set-option -p -t '${p.id}' @hypercube_open 1` : `set-option -p -u -t '${p.id}' @hypercube_open`);
+  p.open = !p.open;
+  if (p.open) localStorage.setItem(openKey(p.agent.id), '1');
+  else localStorage.removeItem(openKey(p.agent.id));
   card(p);
   apply();
   if (p.open) terms.get(p.id).focus();
@@ -602,23 +642,26 @@ async function post(action) {
   return res.ok ? text : null;
 }
 
-// Clicking a session sends its tmux command. Clicking an action asks its
-// question, if any, then posts it to the server, which runs Hypercube's own
-// command, and shows why it refused.
+// Clicking a session selects it. Clicking an action asks its question, if
+// any, then posts it to the server and shows why it refused; a new session is
+// selected once it exists.
 document.body.addEventListener('click', async e => {
   closeMenu();
   const leadButton = e.target.closest('[data-leads]');
   const action = e.target.closest('[data-action]');
-  const command = e.target.closest('[data-command]');
+  const row = e.target.closest('[data-select]');
   if (leadButton) {
     await leadMenu(leadButton);
   } else if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
-    post(action.dataset.action);
-  } else if (command) {
-    send(command.dataset.command);
+    const text = await post(action.dataset.action);
+    if (text && action.dataset.selects) select(text);
+  } else if (row) {
+    select(row.dataset.select);
   }
 });
+
+$('start-session').onclick = () => post('session?' + new URLSearchParams({action: 'start', id: selected}));
 
 // Right-clicking a workspace or session opens its context menu at the pointer.
 // A click, Escape, or leaving the page closes it.
@@ -638,7 +681,7 @@ function placeMenu(x, y) {
 }
 
 async function leadMenu(button) {
-  const request = menuRequest, state = button.dataset.leads;
+  const request = menuRequest, workspace = button.dataset.leads;
   const rect = button.getBoundingClientRect();
   try {
     const res = await fetch('leads');
@@ -646,8 +689,8 @@ async function leadMenu(button) {
     const leads = await res.json();
     if (request !== menuRequest) return;
     menu.innerHTML = leads.map(p => {
-      const action = 'window?' + new URLSearchParams({action: 'new', state, lead: p.name});
-      return `<button type="button" role="menuitem" data-action="${escape(action)}" title="${escape(p.description)}" class="${menuItemClass}">${escape(p.name)}</button>`;
+      const action = 'session?' + new URLSearchParams({action: 'new', workspace, lead: p.name});
+      return `<button type="button" role="menuitem" data-action="${escape(action)}" data-selects="1" title="${escape(p.description)}" class="${menuItemClass}">${escape(p.name)}</button>`;
     }).join('');
     placeMenu(rect.left, rect.bottom);
   } catch (err) {
@@ -655,13 +698,26 @@ async function leadMenu(button) {
   }
 }
 
+// A session's menu starts or stops it and deletes it; a workspace's deletes it.
 document.addEventListener('contextmenu', e => {
   closeMenu();
-  const row = e.target.closest('[data-delete]');
-  if (!row) return;
+  const row = e.target.closest('[data-session]'), header = e.target.closest('[data-workspace]');
+  const s = sessions().find(s => s.id === row?.dataset.session);
+  const w = data.find(w => w.id === header?.dataset.workspace);
+  let items;
+  if (s) {
+    const action = name => 'session?' + new URLSearchParams({action: name, id: s.id});
+    const live = s.running && dead !== s.id;
+    items = [live ? {label: 'Stop Session', action: action('stop')} : {label: 'Start Session', action: action('start')},
+      {label: 'Delete Session', action: action('delete'), question: `Delete session ${s.title}?`}];
+  } else if (w) {
+    items = [{label: 'Delete Workspace', action: 'workspace?' + new URLSearchParams({action: 'delete', id: w.id}), question: `Delete workspace ${w.name}?`}];
+  } else {
+    return;
+  }
   e.preventDefault();
-  menu.innerHTML = `<button type="button" role="menuitem" data-action="${escape(row.dataset.delete)}" data-question="${escape(row.dataset.question)}"
-    class="${menuItemClass}">${escape(row.dataset.label)}</button>`;
+  menu.innerHTML = items.map(i => `<button type="button" role="menuitem" data-action="${escape(i.action)}" ${i.question ? `data-question="${escape(i.question)}"` : ''}
+    class="${menuItemClass}">${escape(i.label)}</button>`).join('');
   placeMenu(e.clientX, e.clientY);
 });
 addEventListener('pointerdown', e => {
@@ -672,15 +728,11 @@ addEventListener('keydown', e => {
 });
 addEventListener('blur', closeMenu);
 
-// A new workspace opens once it starts.
-$('add-workspace').onclick = async () => {
-  const text = await post('workspace?action=new');
-  if (text) send(`switch-client -t '=${text}'`);
-};
+$('add-workspace').onclick = () => post('workspace?action=new');
 
-// The panel shows a shell in the workspace's terminal window, a tmux window
-// outside every team that the sidebar leaves out. The window opens when the
-// panel first shows and lasts until its shell exits or the workspace stops.
+// The panel shows a shell in the session's terminal window, a second tmux
+// window beside its agents'. The window opens when the panel first shows and
+// lasts until its shell exits or the session stops.
 let panelOpen = false, shell = null, creating = false;
 
 function renderPanel(terminal) {
@@ -691,18 +743,18 @@ function renderPanel(terminal) {
     const term = terms.get(shell.pane);
     term.box.remove(); term.dispose(); terms.delete(shell.pane);
     // As in VS Code, the panel closes when its terminal exits.
-    const exited = shell.session === session && !terminal;
+    const exited = !terminal;
     shell = null;
     if (exited) setPanel(false);
   }
-  if (!panelOpen) return;
+  if (!panelOpen || !client) return;
   if (!terminal) {
     if (!creating) createTerminal();
     return;
   }
   if (!shell) {
     const [, cols, rows] = terminal.layout.match(/,(\d+)x(\d+),/);
-    shell = {session, window: terminal.id, pane: terminal.pane, size: cols + 'x' + rows};
+    shell = {window: terminal.id, pane: terminal.pane, size: cols + 'x' + rows};
     const term = open(terminal.pane, +cols, +rows);
     panel.append(term.box);
     term.focus();
@@ -784,7 +836,7 @@ drag(split, e => {
   if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
 });
 
-connect();
+watch();
 </script>
 </body>
 </html>

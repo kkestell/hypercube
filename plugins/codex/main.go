@@ -91,7 +91,7 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		}
 	}
 	argv := []string{self, "run", in.Hypercube, "codex"}
-	if in.Session != "" {
+	if in.Conversation != "" {
 		argv = append(argv, "resume")
 	}
 	argv = append(argv, "--model", in.Model, "-c", "model_reasoning_effort="+jsonString(in.Effort),
@@ -110,8 +110,8 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		}
 	}
 	argv = append(argv, "--")
-	if in.Session != "" {
-		argv = append(argv, in.Session)
+	if in.Conversation != "" {
+		argv = append(argv, in.Conversation)
 	}
 	if in.Prompt != "" {
 		argv = append(argv, in.Prompt)
@@ -120,7 +120,7 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(session), 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(session, []byte(in.Session), 0o644); err != nil {
+	if err := os.WriteFile(session, []byte(in.Conversation), 0o644); err != nil {
 		return err
 	}
 	return json.NewEncoder(stdout).Encode(map[string]any{"argv": argv, "env": map[string]string{sessionVar: session}})
@@ -169,7 +169,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	}
 	body := map[string]string{}
 	if event == "UserPromptSubmit" {
-		body["session"] = in.SessionID
+		body["conversation"] = in.SessionID
 		body["text"] = in.Prompt
 		if err := os.WriteFile(os.Getenv(sessionVar), []byte(in.SessionID), 0o644); err != nil {
 			return err

@@ -13,13 +13,10 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/report"
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
-	"github.com/kkestell/hypercube/internal/workspace"
 )
-
-// Nudge is the initial prompt for a worker; later messages use harness wake-ups.
-const Nudge = "Check your Hypercube messages."
 
 type request struct {
 	ID     json.RawMessage `json:"id,omitempty"`
@@ -48,16 +45,16 @@ const profileArg = "The profile sets the worker's harness, model, and effort. An
 // toolsFor returns the tools for the workspace's mode and the configured
 // profiles. Outside Git, workers cannot have worktrees, so create_agent
 // requires dir.
-func toolsFor(s store.State, profiles []harness.Profile) []tool {
+func toolsFor(noGit bool, profiles []harness.Profile) []tool {
 	description := "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
 	required := []string{"name", "profile"}
-	if s.NoGit {
+	if noGit {
 		description = "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg
 		required = append(required, "dir")
 	}
 	create := tool{"create_agent", description, schema(required, "name", "profile", "dir", "message")}
 	remove := tool{"remove_agent", "Lead only. Close a worker's pane and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is.", schema([]string{"name"}, "name")}
-	if s.NoGit {
+	if noGit {
 		remove.Description = "Lead only. Close a worker's pane and remove it from the team. Its directory is left as it is."
 	}
 	if len(profiles) > 0 {
@@ -78,10 +75,15 @@ func toolsFor(s store.State, profiles []harness.Profile) []tool {
 
 // Serve answers MCP requests on stdin until it closes.
 func Serve(stdin io.Reader, stdout io.Writer) error {
-	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
-	if id == "" || path == "" {
-		return errors.New("HYPERCUBE_AGENT_ID and HYPERCUBE_STATE must be set")
+	id := os.Getenv("HYPERCUBE_AGENT_ID")
+	if id == "" {
+		return errors.New("HYPERCUBE_AGENT_ID must be set")
 	}
+	db, err := store.Open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 	out := json.NewEncoder(stdout)
 	scanner := bufio.NewScanner(stdin)
 	scanner.Buffer(make([]byte, 1<<20), 64<<20)
@@ -103,11 +105,11 @@ func Serve(stdin io.Reader, stdout io.Writer) error {
 				"serverInfo":      map[string]any{"name": "hypercube", "version": "0.1.0"},
 			}
 		case "tools/list":
-			// An unreadable state or configuration fails the tool calls that
-			// need it, so it needs no separate error here.
-			s, _ := store.Load(path)
+			// An unreadable database or configuration fails the tool calls
+			// that need it, so it needs no separate error here.
+			w, _ := workspaceOf(db, id)
 			cfg, _ := harness.LoadConfig()
-			result = map[string]any{"tools": toolsFor(s, cfg.Workers())}
+			result = map[string]any{"tools": toolsFor(w.NoGit, cfg.Workers())}
 		case "tools/call":
 			var p struct {
 				Name      string            `json:"name"`
@@ -116,7 +118,7 @@ func Serve(stdin io.Reader, stdout io.Writer) error {
 			err := json.Unmarshal(req.Params, &p)
 			var text string
 			if err == nil {
-				text, err = call(id, path, p.Name, p.Arguments)
+				text, err = call(db, id, p.Name, p.Arguments)
 			}
 			if err != nil {
 				text = err.Error()
@@ -132,91 +134,135 @@ func Serve(stdin io.Reader, stdout io.Writer) error {
 	return scanner.Err()
 }
 
-func call(self, path, name string, args map[string]string) (string, error) {
+func workspaceOf(db *store.DB, id string) (store.Workspace, error) {
+	var w store.Workspace
+	err := db.Read(func(tx *store.Tx) error {
+		a, err := tx.Agent(id)
+		if err != nil {
+			return err
+		}
+		s, err := tx.Session(a.Session)
+		if err != nil {
+			return err
+		}
+		w, err = tx.Workspace(s.Workspace)
+		return err
+	})
+	return w, err
+}
+
+func call(db *store.DB, self, name string, args map[string]string) (string, error) {
 	switch name {
 	case "send_message":
-		return sendMessage(self, path, args["to"], args["text"])
+		return sendMessage(db, self, args["to"], args["text"])
 	case "list_agents":
-		s, err := store.Load(path)
-		if err != nil {
-			return "", err
-		}
-		caller, err := s.Agent(self)
-		if err != nil {
-			return "", err
-		}
-		type entry struct {
-			Address  string `json:"address"`
-			Title    string `json:"session_title"`
-			Role     string `json:"role"`
-			Harness  string `json:"harness"`
-			Activity string `json:"activity"`
-			Dir      string `json:"directory"`
-			Branch   string `json:"branch"`
-		}
-		var listed []entry
-		for _, a := range s.Agents {
-			if a.Team != caller.Team && !(caller.Role == store.Lead && a.Role == store.Lead) {
-				continue
-			}
-			listed = append(listed, entry{a.Address(), s.Title(a.Team), a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
-		}
-		b, err := json.MarshalIndent(listed, "", "  ")
-		return string(b), err
+		return listAgents(db, self)
 	case "set_status":
-		return setStatus(self, path, args["text"])
+		return setStatus(db, self, args["text"])
 	case "create_agent":
-		return createAgent(self, path, args)
+		return createAgent(db, self, args)
 	case "remove_agent":
-		return removeAgent(self, path, args["name"])
+		return removeAgent(db, self, args["name"])
 	}
 	return "", fmt.Errorf("unknown tool %q", name)
 }
 
-func sendMessage(self, path, to, text string) (string, error) {
+// listAgents lists the caller's session and, for a lead, the other leads in
+// its workspace.
+func listAgents(db *store.DB, self string) (string, error) {
+	type entry struct {
+		Address  string `json:"address"`
+		Title    string `json:"session_title"`
+		Role     string `json:"role"`
+		Harness  string `json:"harness"`
+		Activity string `json:"activity"`
+		Dir      string `json:"directory"`
+		Branch   string `json:"branch"`
+	}
+	var listed []entry
+	err := db.Read(func(tx *store.Tx) error {
+		caller, err := tx.Agent(self)
+		if err != nil {
+			return err
+		}
+		s, err := tx.Session(caller.Session)
+		if err != nil {
+			return err
+		}
+		agents, err := tx.Agents(caller.Session)
+		if err != nil {
+			return err
+		}
+		leads, titles, err := report.Leads(tx, s.Workspace, s.ID)
+		if err != nil {
+			return err
+		}
+		if caller.Role == store.Lead {
+			agents = append(agents, leads...)
+		}
+		for _, a := range agents {
+			listed = append(listed, entry{a.Address(), titles[a.Session], a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	b, err := json.MarshalIndent(listed, "", "  ")
+	return string(b), err
+}
+
+func sendMessage(db *store.DB, self, to, text string) (string, error) {
 	// A misnamed argument arrives as empty text; failing lets the model retry.
 	if strings.TrimSpace(text) == "" {
 		return "", errors.New("text is required")
 	}
 	var recipient store.Agent
-	err := store.Update(path, func(s *store.State) error {
-		caller, err := s.Agent(self)
+	running := false
+	err := db.Tx(func(tx *store.Tx) error {
+		caller, err := tx.Agent(self)
 		if err != nil {
 			return err
 		}
-		a, err := s.Find(caller.Team, to)
+		a, err := tx.Find(caller.Session, to)
 		if err != nil {
 			return err
 		}
 		if a.ID == self {
 			return errors.New("cannot send a message to yourself")
 		}
-		if a.Team != caller.Team && (caller.Role != store.Lead || a.Role != store.Lead) {
-			return errors.New("across sessions, only leads can message each other")
+		from, err := tx.Session(caller.Session)
+		if err != nil {
+			return err
 		}
-		recipient = *a
-		s.Messages = append(s.Messages, store.Message{From: self, To: a.ID, Text: text})
-		return nil
+		s, err := tx.Session(a.Session)
+		if err != nil {
+			return err
+		}
+		if a.Session != caller.Session && (caller.Role != store.Lead || a.Role != store.Lead || s.Workspace != from.Workspace) {
+			return errors.New("across sessions, only leads in the same workspace can message each other")
+		}
+		recipient, running = a, s.Running
+		return tx.Queue(store.Message{From: self, To: a.ID, Text: text})
 	})
 	if err != nil {
 		return "", err
 	}
 	reply := fmt.Sprintf("Message queued for %s.", recipient.Address())
-	if recipient.Activity == store.Exited {
-		reply += " It is not running; the message will be delivered when the workspace starts again."
+	if !running {
+		reply += " Its session is stopped; the message will be delivered when the session starts."
 	}
 	return reply, nil
 }
 
-// setStatus records a worker's status on one line, since the view lists it
-// with tmux formats.
-func setStatus(self, path, text string) (string, error) {
+// setStatus records a worker's status on one line.
+func setStatus(db *store.DB, self, text string) (string, error) {
 	text = strings.Join(strings.Fields(text), " ")
 	if text == "" {
 		return "", errors.New("text is required")
 	}
-	err := store.Update(path, func(s *store.State) error {
-		a, err := s.Agent(self)
+	err := db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(self)
 		if err != nil {
 			return err
 		}
@@ -224,31 +270,17 @@ func setStatus(self, path, text string) (string, error) {
 			return errors.New("only workers have a status")
 		}
 		a.Status, a.StatusAt = text, time.Now().UnixMilli()
-		return nil
+		return tx.SaveAgent(a)
 	})
 	if err != nil {
 		return "", err
 	}
-	tmux.RefreshActivity(path, self)
 	return "Status set.", nil
 }
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-func requireLead(s *store.State, self string) (*store.Agent, error) {
-	a, err := s.Agent(self)
-	if err == nil && a.Role != store.Lead {
-		err = errors.New("only the lead can do this")
-	}
-	return a, err
-}
-
-func createAgent(self, path string, args map[string]string) (string, error) {
-	lock, err := store.SessionLock(path)
-	if err != nil {
-		return "", err
-	}
-	defer lock.Close()
+func createAgent(db *store.DB, self string, args map[string]string) (string, error) {
 	name := args["name"]
 	if !validName.MatchString(name) {
 		return "", errors.New("name must be lowercase letters, digits, and hyphens")
@@ -261,124 +293,24 @@ func createAgent(self, path string, args map[string]string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-
-	var root string
-	a := store.Agent{
-		ID: store.NewID(), Name: name, Role: store.Worker,
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort,
-		Activity: store.Busy,
-	}
-	err = store.Update(path, func(s *store.State) error {
-		lead, err := requireLead(s, self)
-		if err != nil {
-			return err
-		}
-		if _, err := s.Find(lead.Team, name); err == nil {
-			return fmt.Errorf("an agent named %s already exists", name)
-		}
-		root = lead.Dir
-		a.Team = lead.Team
-		switch {
-		case args["dir"] != "":
-			dir, err := workspace.Resolve(root, args["dir"])
-			if err != nil {
-				return err
-			}
-			a.Dir = dir
-		case s.NoGit:
-			return errors.New("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees")
-		default:
-			workerName := a.Team + "/" + name
-			a.Dir, a.Branch = workspace.WorktreeDir(root, workerName), workspace.WorkerBranch(workerName)
-		}
-		s.Agents = append(s.Agents, a)
-		if args["message"] != "" {
-			s.Messages = append(s.Messages, store.Message{From: self, To: a.ID, Text: args["message"]})
-		}
-		return nil
-	})
+	a, err := session.AddWorker(db, self, name, profile, args["dir"], args["message"])
 	if err != nil {
 		return "", err
 	}
-	worktreeCreated := false
-	window, windowErr := tmux.FindWindow(store.Workspace(path), a.Team, path)
-	if windowErr != nil {
-		err = windowErr
-	} else if window == "" {
-		err = errors.New("the session is not running")
-	} else if a.Branch != "" {
-		err = workspace.AddWorktree(root, a.Dir, a.Branch)
-		worktreeCreated = err == nil
-	}
-	if err == nil {
-		a.Target, err = harness.Launch(a, path, Nudge)
-	}
-	if err != nil {
-		cause := err
-		if a.Target != "" && tmux.Owns(store.Workspace(path), a.Target, a.ID, path) {
-			if closeErr := tmux.KillPane(store.Workspace(path), a.Target); closeErr != nil {
-				return "", fmt.Errorf("%w; closing the pane failed: %v; agent %s was kept for cleanup", cause, closeErr, a.Name)
-			}
-		}
-		if worktreeCreated {
-			if cleanup := workspace.RemoveWorktree(root, a.Dir, a.Branch); cleanup != nil {
-				return "", fmt.Errorf("%w; worktree cleanup failed: %v; agent %s was kept for cleanup", cause, cleanup, a.Name)
-			}
-		}
-		if cleanup := store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil }); cleanup != nil {
-			return "", fmt.Errorf("%w; removing the agent failed: %v", cause, cleanup)
-		}
-		return "", cause
-	}
-
 	if a.Branch == "" {
 		return fmt.Sprintf("Created %s in %s.", a.Address(), a.Dir), nil
 	}
 	return fmt.Sprintf("Created %s on branch %s in %s.", a.Address(), a.Branch, a.Dir), nil
 }
 
-func removeAgent(self, path, name string) (string, error) {
+func removeAgent(db *store.DB, self, name string) (string, error) {
 	// A misnamed argument arrives as an empty name; failing lets the model retry.
 	if strings.TrimSpace(name) == "" {
 		return "", errors.New("name is required")
 	}
-	lock, err := store.SessionLock(path)
+	a, err := session.RemoveWorker(db, self, name)
 	if err != nil {
 		return "", err
 	}
-	defer lock.Close()
-	s, err := store.Load(path)
-	if err != nil {
-		return "", err
-	}
-	lead, err := requireLead(&s, self)
-	if err != nil {
-		return "", err
-	}
-	a, err := s.Find(lead.Team, name)
-	if err != nil {
-		return "", err
-	}
-	if a.Team != lead.Team {
-		return "", errors.New("only workers in your session can be removed")
-	}
-	if a.Role != store.Worker {
-		return "", errors.New("only workers can be removed")
-	}
-	if a.Branch != "" {
-		if err := workspace.RemoveWorktree(lead.Dir, a.Dir, a.Branch); err != nil {
-			return "", err
-		}
-	}
-	pane, err := tmux.FindPane(store.Workspace(path), a.ID, path)
-	if err != nil {
-		return "", err
-	}
-	if pane != "" {
-		if err := tmux.KillPane(store.Workspace(path), pane); err != nil {
-			return "", fmt.Errorf("closing %s: %w", a.Name, err)
-		}
-	}
-	err = store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
-	return fmt.Sprintf("Removed %s.", a.Address()), err
+	return fmt.Sprintf("Removed %s.", a.Address()), nil
 }

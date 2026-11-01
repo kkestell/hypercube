@@ -21,9 +21,9 @@ A plugin talks to Hypercube in three ways, all as JSON:
   harness should load `hypercube mcp` as an MCP server with that environment.
 - **Reports.** The harness runs `hypercube report <event>` with a JSON object
   on stdin and reads `{"context": "…"}`: text for the model to read now. The
-  events are `start`, `prompt` (with `session`, the conversation ID to resume
-  later), `tool`, `stop`, `failed` (with `error`), `approval`, `answered`, and
-  `usage` (with `context`, the tokens of the latest request, `window`, the
+  events are `start`, `prompt` (with `conversation`, the conversation ID to
+  resume later), `tool`, `stop`, `failed` (with `error`), `approval`,
+  `answered`, and `usage` (with `context`, the tokens of the latest request, `window`, the
   model's context window, and `cost`, in US dollars). `toolfailed` (with
   `error`) and `denied` (with `reason`) append to `tools.log`. Context at
   `stop` continues the turn. Their effects are in
@@ -44,7 +44,7 @@ uses Claude's `asyncRewake` mechanism, OpenCode's session prompt API,
 types into the pane, so a user's unsent
 draft stays in its editor.
 
-A failed worker turn preserves its queued messages and sends its team's
+A failed worker turn preserves its queued messages and sends its session's
 lead a bounded error summary. The lead's own failures remain
 in its pane.
 

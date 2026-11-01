@@ -30,10 +30,9 @@ each other through an MCP server and receive messages through harness plugins.
 
 ## Code
 
-- `cmd/hypercube/` — the command line, workspace and session lifecycle, and
-  relaunches.
-- `internal/` — one package per concern: `harness`, `mcp`, `report`, `store`,
-  `tmux`, `ui`, `wait`, `workspace`.
+- `cmd/hypercube/` — the command line and the app process.
+- `internal/` — one package per concern: `harness`, `mcp`, `menu`, `report`,
+  `session`, `store`, `tmux`, `ui`, `wait`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness.
 - `scripts/dev` — the isolated development session (`make dev`).

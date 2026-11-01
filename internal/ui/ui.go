@@ -1,11 +1,13 @@
-// Package ui serves a browser view of the running workspaces. Each page drives
-// its own tmux control-mode client: the server streams the client's output to
-// the page and writes the page's commands to the client.
+// Package ui serves the browser view. Each page has two connections: a stream
+// of Hypercube's data from the database, and a tmux control-mode client for
+// the selected session's terminals, whose output the server streams to the
+// page and whose commands the page sends through the server.
 package ui
 
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"embed"
 	"encoding/base64"
@@ -22,8 +24,9 @@ import (
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/workspace"
+	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 //go:embed static
@@ -36,22 +39,77 @@ func Icon() []byte {
 }
 
 type server struct {
+	db      *store.DB
 	mu      sync.Mutex
 	clients map[string]io.Writer
+	// snapshot is the latest view data, and changed is closed and replaced
+	// when it changes.
+	snapshot []byte
+	changed  chan struct{}
 }
 
-// Handler serves the page, its event stream, and its command endpoint.
-func Handler() http.Handler {
-	s := &server{clients: map[string]io.Writer{}}
+// Handler serves the page, its data and terminal streams, and its actions.
+func Handler(db *store.DB) http.Handler {
+	s := &server{db: db, clients: map[string]io.Writer{}, changed: make(chan struct{})}
+	go func() {
+		if err := db.Watch(context.Background(), s.refresh); err != nil {
+			fmt.Fprintln(os.Stderr, "hypercube: watching the database:", err)
+		}
+	}()
 	files, _ := fs.Sub(static, "static")
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(files))
+	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /events", s.events)
 	mux.HandleFunc("POST /send", s.send)
 	mux.HandleFunc("GET /leads", leads)
-	mux.HandleFunc("POST /window", window)
-	mux.HandleFunc("POST /workspace", workspaceAction)
+	mux.HandleFunc("POST /workspace", s.workspaceAction)
+	mux.HandleFunc("POST /session", s.sessionAction)
 	return localOnly(mux)
+}
+
+// refresh reads the view data after a database change and wakes the pages
+// when it differs from what they have.
+func (s *server) refresh() {
+	list, err := store.Snapshot(s.db)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hypercube: reading the view data:", err)
+		return
+	}
+	data, _ := json.Marshal(list)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if bytes.Equal(data, s.snapshot) {
+		return
+	}
+	s.snapshot = data
+	close(s.changed)
+	s.changed = make(chan struct{})
+}
+
+// state streams the view data: the current snapshot on connect, then each
+// new one.
+func (s *server) state(w http.ResponseWriter, r *http.Request) {
+	flusher := http.NewResponseController(w)
+	w.Header().Set("Content-Type", "text/event-stream")
+	var sent []byte
+	for {
+		s.mu.Lock()
+		data, changed := s.snapshot, s.changed
+		s.mu.Unlock()
+		if data != nil && !bytes.Equal(data, sent) {
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			if flusher.Flush() != nil {
+				return
+			}
+			sent = data
+		}
+		select {
+		case <-changed:
+		case <-r.Context().Done():
+			return
+		}
+	}
 }
 
 // leads rereads the profiles so config edits appear in the next session menu.
@@ -90,17 +148,16 @@ func localOnly(next http.Handler) http.Handler {
 	})
 }
 
-// events attaches a control-mode client to the requested workspace session, or
-// to the first one, and streams its output lines. Lines are base64 encoded
-// because pane output can split a UTF-8 sequence. The first event names the
-// client for send.
+// events attaches a control-mode client to the session's tmux session and
+// streams its output lines. Lines are base64 encoded because pane output can
+// split a UTF-8 sequence. The first event names the client for send.
 func (s *server) events(w http.ResponseWriter, r *http.Request) {
-	session, err := pick(r.URL.Query().Get("session"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+	session := r.URL.Query().Get("session")
+	if session == "" || !tmux.Running(session) {
+		http.Error(w, "the session is not running", http.StatusConflict)
 		return
 	}
-	cmd := exec.CommandContext(r.Context(), "tmux", "-C", "attach-session", "-t", "="+session)
+	cmd := exec.CommandContext(r.Context(), "tmux", "-C", "attach-session", "-t", "="+tmux.Name(session))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -165,28 +222,9 @@ func (s *server) send(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// window creates, renames, or deletes a Hypercube session.
-func window(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	args := []string{"window", q.Get("action"), q.Get("state")}
-	switch q.Get("action") {
-	case "new":
-		args = append(args, q.Get("lead"))
-	case "delete":
-		args = append(args, q.Get("team"), q.Get("window"))
-	case "rename":
-		args = append(args, q.Get("team"), q.Get("window"), q.Get("title"))
-	default:
-		http.Error(w, "unknown window action", http.StatusBadRequest)
-		return
-	}
-	hypercube(w, args...)
-}
-
-// workspace starts a workspace in a folder the user picks and returns its tmux
-// session's name, or deletes the workspace of a state file, and reports why
-// the command refused.
-func workspaceAction(w http.ResponseWriter, r *http.Request) {
+// workspaceAction adds a workspace in a folder the user picks and returns its
+// ID, or deletes a workspace.
+func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
 	case "new":
@@ -200,70 +238,53 @@ func workspaceAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		dir := strings.TrimSpace(string(out))
-		_, name, err := workspace.At("/", dir)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		added, err := session.AddWorkspace(s.db, strings.TrimSpace(string(out)))
+		if refused(w, err) {
 			return
 		}
-		if hypercube(w, "start", dir) {
-			fmt.Fprint(w, name)
-		}
+		fmt.Fprint(w, added.ID)
 	case "delete":
-		s, err := store.Load(q.Get("state"))
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		for _, a := range s.Agents {
-			if a.Role == store.Lead {
-				hypercube(w, "delete", a.Dir)
-				return
-			}
-		}
-		http.Error(w, "no such workspace", http.StatusNotFound)
+		refused(w, session.DeleteWorkspace(s.db, q.Get("id")))
 	default:
 		http.Error(w, "unknown workspace action", http.StatusBadRequest)
 	}
 }
 
-// hypercube runs Hypercube's own command, reports why it refused, and returns
-// whether it succeeded.
-func hypercube(w http.ResponseWriter, args ...string) bool {
-	exe, err := os.Executable()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return false
+// sessionAction creates a session in a workspace and returns its ID, or
+// starts, stops, deletes, renames, or marks seen a session.
+func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	id := q.Get("id")
+	var err error
+	switch q.Get("action") {
+	case "new":
+		var created store.Session
+		created, err = session.Create(s.db, q.Get("workspace"), q.Get("lead"))
+		if !refused(w, err) {
+			fmt.Fprint(w, created.ID)
+		}
+		return
+	case "start":
+		err = session.Start(s.db, id)
+	case "stop":
+		err = session.Stop(s.db, id)
+	case "delete":
+		err = session.Delete(s.db, id)
+	case "rename":
+		err = session.Rename(s.db, id, q.Get("title"))
+	case "seen":
+		err = session.Seen(s.db, id)
+	default:
+		http.Error(w, "unknown session action", http.StatusBadRequest)
+		return
 	}
-	if out, err := exec.Command(exe, args...).CombinedOutput(); err != nil {
-		http.Error(w, strings.TrimPrefix(strings.TrimSpace(string(out)), "hypercube: "), http.StatusConflict)
-		return false
-	}
-	return true
+	refused(w, err)
 }
 
-// pick returns the wanted workspace session if it is running, or else the
-// first running one.
-func pick(want string) (string, error) {
-	out, err := exec.Command("tmux", "list-sessions", "-F", "#{session_name}\t#{@hypercube_state}").Output()
+// refused answers with the reason an action failed, and reports whether it did.
+func refused(w http.ResponseWriter, err error) bool {
 	if err != nil {
-		return "", errors.New("no running workspaces")
+		http.Error(w, err.Error(), http.StatusConflict)
 	}
-	var first string
-	for row := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
-		name, state, _ := strings.Cut(row, "\t")
-		if state == "" {
-			continue
-		}
-		if name == want {
-			return name, nil
-		}
-		if first == "" {
-			first = name
-		}
-	}
-	if first == "" {
-		return "", errors.New("no running workspaces")
-	}
-	return first, nil
+	return err != nil
 }

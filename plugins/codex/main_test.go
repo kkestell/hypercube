@@ -60,7 +60,7 @@ func TestLaunch(t *testing.T) {
 		}
 	}
 
-	argv = run(`{"hypercube":"/bin/hc","agent":"a","model":"m","effort":"low","session":"s1","state_dir":"` + dir + `"}`)
+	argv = run(`{"hypercube":"/bin/hc","agent":"a","model":"m","effort":"low","conversation":"s1","state_dir":"` + dir + `"}`)
 	if b, _ := os.ReadFile(env[sessionVar]); argv[4] != "resume" || string(b) != "s1" || !slices.Equal(argv[len(argv)-2:], []string{"--", "s1"}) {
 		t.Fatal(argv)
 	}
@@ -96,7 +96,7 @@ func TestHook(t *testing.T) {
 	if got := run("UserPromptSubmit", `{"session_id":"s1","prompt":"fix it"}`); !strings.Contains(got, `"additionalContext":"queued"`) {
 		t.Error(got)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"session":"s1","text":"fix it"}` {
+	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"conversation":"s1","text":"fix it"}` {
 		t.Errorf("prompt report = %s", b)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "session")); string(b) != "s1" {

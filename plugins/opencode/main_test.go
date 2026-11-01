@@ -38,7 +38,7 @@ func TestLaunch(t *testing.T) {
 	if err != nil || !strings.Contains(string(plugin), `const exe = "/bin/hc"`) {
 		t.Fatal(err, string(plugin))
 	}
-	if argv, env := run(`{"hypercube":"/bin/hc","agent":"a1","session":"ses_saved","state_dir":"` + dir + `"}`); !slices.Equal(argv, []string{"opencode", "--standalone", "--auto", "--session", "ses_saved"}) || env["HYPERCUBE_SESSION_ID"] != "ses_saved" {
+	if argv, env := run(`{"hypercube":"/bin/hc","agent":"a1","conversation":"ses_saved","state_dir":"` + dir + `"}`); !slices.Equal(argv, []string{"opencode", "--standalone", "--auto", "--session", "ses_saved"}) || env["HYPERCUBE_SESSION_ID"] != "ses_saved" {
 		t.Fatal(argv, env)
 	}
 }

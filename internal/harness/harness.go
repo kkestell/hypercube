@@ -6,7 +6,6 @@ package harness
 
 import (
 	"bytes"
-	"cmp"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,7 +15,6 @@ import (
 
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
-	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 // LaunchInput is what `<plugin> launch` reads on stdin.
@@ -25,13 +23,14 @@ type LaunchInput struct {
 	// `wait`.
 	Hypercube string `json:"hypercube"`
 	// Env is the environment for Hypercube processes the harness starts.
-	Env     map[string]string `json:"env"`
-	Agent   string            `json:"agent"`
-	Role    string            `json:"role"`
-	Model   string            `json:"model"`
-	Effort  string            `json:"effort"`
-	Session string            `json:"session"`
-	Prompt  string            `json:"prompt"`
+	Env    map[string]string `json:"env"`
+	Agent  string            `json:"agent"`
+	Role   string            `json:"role"`
+	Model  string            `json:"model"`
+	Effort string            `json:"effort"`
+	// Conversation is the harness's saved conversation to resume, if any.
+	Conversation string `json:"conversation"`
+	Prompt       string `json:"prompt"`
 	// StateDir is Hypercube's state directory, where a plugin may keep files.
 	StateDir string `json:"state_dir"`
 }
@@ -56,7 +55,7 @@ func plugin(name string) (string, error) {
 }
 
 // Command runs the agent's plugin to get the harness command and environment.
-func Command(a store.Agent, statePath, prompt string) ([]string, map[string]string, error) {
+func Command(a store.Agent, prompt string) ([]string, map[string]string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return nil, nil, err
@@ -66,9 +65,9 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 		return nil, nil, err
 	}
 	in, err := json.Marshal(LaunchInput{
-		Hypercube: exe, Env: map[string]string{"HYPERCUBE_AGENT_ID": a.ID, "HYPERCUBE_STATE": statePath},
-		Agent: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, Session: a.SessionID, Prompt: prompt,
-		StateDir: filepath.Dir(statePath),
+		Hypercube: exe, Env: map[string]string{"HYPERCUBE_AGENT_ID": a.ID},
+		Agent: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, Conversation: a.Conversation, Prompt: prompt,
+		StateDir: store.Dir(),
 	})
 	if err != nil {
 		return nil, nil, err
@@ -91,7 +90,8 @@ func Command(a store.Agent, statePath, prompt string) ([]string, map[string]stri
 
 // Launch starts a short-lived wrapper in a tmux pane. The wrapper records the
 // pane and current launch state, then replaces itself with the native harness.
-func Launch(a store.Agent, statePath, prompt string) (string, error) {
+// The session's first agent, its lead, creates the session's tmux session.
+func Launch(a store.Agent, prompt string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -99,7 +99,6 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 	if _, err := plugin(a.Harness); err != nil {
 		return "", err
 	}
-	label := fmt.Sprintf("%s · %s %s %s · %s", a.Name, a.Harness, a.Model, a.Effort, workspace.Short(a.Dir))
 	env := map[string]string{}
 	for _, item := range os.Environ() {
 		key, value, _ := strings.Cut(item, "=")
@@ -107,7 +106,10 @@ func Launch(a store.Agent, statePath, prompt string) (string, error) {
 			env[key] = value
 		}
 	}
-	env["HYPERCUBE_AGENT_ID"], env["HYPERCUBE_STATE"] = a.ID, statePath
-	// The lead launches first and creates its session's window.
-	return tmux.NewPane(statePath, a.Team, cmp.Or(a.Title, store.Untitled), label, a.Dir, env, []string{exe, "agent", prompt})
+	env["HYPERCUBE_AGENT_ID"] = a.ID
+	argv := []string{exe, "agent", prompt}
+	if !tmux.Running(a.Session) {
+		return tmux.NewSession(a.Session, a.Dir, env, argv)
+	}
+	return tmux.AddPane(a.Session, a.Dir, env, argv)
 }

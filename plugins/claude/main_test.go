@@ -37,7 +37,7 @@ func TestLaunch(t *testing.T) {
 	if mcp := lead[slices.Index(lead, "--mcp-config")+1]; !strings.Contains(mcp, `"command":"/bin/hc","env":{"HYPERCUBE_AGENT_ID":"a"}`) {
 		t.Error(mcp)
 	}
-	worker := run(`{"hypercube":"/bin/hc","role":"worker","model":"haiku","effort":"low","session":"s1"}`)
+	worker := run(`{"hypercube":"/bin/hc","role":"worker","model":"haiku","effort":"low","conversation":"s1"}`)
 	if i := slices.Index(worker, "--resume"); i < 0 || worker[i+1] != "s1" || strings.Contains(worker[slices.Index(worker, "--settings")+1], "--limits") {
 		t.Fatal(worker)
 	}
@@ -64,7 +64,7 @@ func TestHook(t *testing.T) {
 	if got := run("UserPromptSubmit", `{"session_id":"s1","prompt":"fix it"}`); !strings.Contains(got, `"additionalContext":"queued"`) {
 		t.Error(got)
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"session":"s1","text":"fix it"}` {
+	if b, _ := os.ReadFile(filepath.Join(dir, "prompt")); string(b) != `{"conversation":"s1","text":"fix it"}` {
 		t.Errorf("prompt report = %s", b)
 	}
 	for _, c := range []struct{ prompt, want string }{
@@ -79,11 +79,11 @@ func TestHook(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var report struct{ Session, Text string }
+		var report struct{ Conversation, Text string }
 		if err := json.Unmarshal(b, &report); err != nil {
 			t.Fatal(err)
 		}
-		if report.Session != "s1" || report.Text != c.want {
+		if report.Conversation != "s1" || report.Text != c.want {
 			t.Errorf("prompt %q: report = %+v, want text %q", c.prompt, report, c.want)
 		}
 	}

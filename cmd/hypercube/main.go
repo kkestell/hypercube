@@ -1,48 +1,37 @@
-// Command hypercube runs a team of coding agents in tmux.
+// Command hypercube runs teams of coding agents in tmux. `hypercube ui` is
+// the app process; the other commands run inside agents' panes and harnesses.
 package main
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
-	"text/tabwriter"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/menu"
 	"github.com/kkestell/hypercube/internal/report"
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/tmux"
 	"github.com/kkestell/hypercube/internal/ui"
 	"github.com/kkestell/hypercube/internal/wait"
-	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-const usage = "usage: hypercube start dir | stop [dir | --all] | delete [dir | --all] | status | ui [port] [--menu] | mcp | report <event> | wait"
+const usage = "usage: hypercube ui [port] [--menu]"
 
 func main() {
 	var err error
 	switch {
 	case len(os.Args) == 1:
 		err = errors.New(usage)
-	case (len(os.Args) == 5 || len(os.Args) == 6 || len(os.Args) == 7) && os.Args[1] == "window":
-		err = windowAction(os.Args[2:])
-	case len(os.Args) <= 3 && (os.Args[1] == "stop" || os.Args[1] == "delete"):
-		err = stopOrDelete(os.Args[1], os.Args[2:])
-	case len(os.Args) == 2 && os.Args[1] == "status":
-		err = status()
-	case len(os.Args) == 3 && os.Args[1] == "start":
-		err = openWorkspace(os.Args[2], false, "")
 	case len(os.Args) <= 4 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "wait":
@@ -66,312 +55,6 @@ func main() {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
 		os.Exit(1)
 	}
-}
-
-// workspaceAt returns the root and name of the workspace containing dir. The
-// root is the top of the checkout, or dir itself outside Git.
-func workspaceAt(dir string) (root, name string, err error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", "", err
-	}
-	return workspace.At(wd, dir)
-}
-
-// known is a workspace with a state file. Its root is the lead's
-// directory.
-type known struct {
-	root, name, path string
-	state            store.State
-}
-
-// workspaces returns every workspace with a state file.
-func workspaces() ([]known, error) {
-	paths, err := filepath.Glob(filepath.Join(store.Dir(), "*.json"))
-	if err != nil {
-		return nil, err
-	}
-	var list []known
-	for _, path := range paths {
-		s, err := store.Load(path)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", path, err)
-		}
-		k := known{name: store.Workspace(path), path: path, state: s}
-		for _, a := range s.Agents {
-			if a.Role == store.Lead {
-				k.root = a.Dir
-			}
-		}
-		list = append(list, k)
-	}
-	return list, nil
-}
-
-// stopOrDelete runs stop or delete on the workspace containing the given
-// directory, by default the working directory. With --all, it runs on every
-// workspace it applies to, after the user confirms.
-func stopOrDelete(cmd string, args []string) error {
-	run := stop
-	if cmd == "delete" {
-		run = deleteWorkspace
-	}
-	if len(args) == 0 || args[0] != "--all" {
-		dir := "."
-		if len(args) == 1 {
-			dir = args[0]
-		}
-		root, name, err := existingWorkspaceAt(dir)
-		if err != nil {
-			return err
-		}
-		return run(root, name)
-	}
-
-	list, err := workspaces()
-	if err != nil {
-		return err
-	}
-	var targets []known
-	for _, k := range list {
-		// Only running sessions can be stopped.
-		if cmd == "delete" || tmux.WorkspaceSession(k.name, k.path) {
-			targets = append(targets, k)
-		}
-	}
-	if len(targets) == 0 {
-		fmt.Printf("No workspaces to %s.\n", cmd)
-		return nil
-	}
-	for _, k := range targets {
-		fmt.Println(workspace.Short(k.root))
-	}
-	fmt.Printf("%s all of these? [y/N] ", strings.ToUpper(cmd[:1])+cmd[1:])
-	answer, _ := bufio.NewReader(os.Stdin).ReadString('\n')
-	if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
-		return fmt.Errorf("%s cancelled", cmd)
-	}
-	var failed []string
-	for _, k := range targets {
-		if err := run(k.root, k.name); err != nil {
-			failed = append(failed, fmt.Sprintf("%s: %v", workspace.Short(k.root), err))
-		}
-	}
-	if len(failed) > 0 {
-		return fmt.Errorf("%s failed for:\n%s", cmd, strings.Join(failed, "\n"))
-	}
-	return nil
-}
-
-// stop kills the workspace's session, which ends its agents.
-func stop(root, name string) error {
-	path := store.Path(name)
-	lock, err := store.SessionLock(path)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("refusing to stop a tmux session not owned by this workspace")
-	}
-	if !tmux.HasSession(name) {
-		return fmt.Errorf("no session for %s", workspace.Short(root))
-	}
-	return tmux.KillSession(name)
-}
-
-// status prints every workspace with a state file: its directory, whether its
-// session is running, its number of agents, and when its state last changed.
-// store.Update skips unchanged writes, so the state file's modification time
-// is the last state change.
-func status() error {
-	type row struct {
-		dir, session string
-		agents       int
-		modified     time.Time
-	}
-	list, err := workspaces()
-	if err != nil {
-		return err
-	}
-	var rows []row
-	for _, k := range list {
-		info, err := os.Stat(k.path)
-		if err != nil {
-			return err
-		}
-		r := row{dir: k.name, session: "stopped", agents: len(k.state.Agents), modified: info.ModTime()}
-		if k.root != "" {
-			r.dir = workspace.Short(k.root)
-		}
-		if tmux.WorkspaceSession(k.name, k.path) {
-			r.session = "running"
-		}
-		rows = append(rows, r)
-	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].modified.After(rows[j].modified) })
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKSPACE\tSESSION\tAGENTS\tACTIVE")
-	for _, r := range rows {
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", r.dir, r.session, r.agents, ago(r.modified))
-	}
-	return w.Flush()
-}
-
-// ago describes how long before now t was.
-func ago(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%dm ago", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%dh ago", int(d.Hours()))
-	default:
-		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
-	}
-}
-
-// deleteWorkspace stops the workspace and deletes its state, worker worktrees, and
-// worker branches. It refuses, changing nothing, if a worker has uncommitted
-// changes in its worktree or an unmerged branch. Workers without worktrees
-// have their directories left alone.
-func deleteWorkspace(root, name string) error {
-	return deleteTeam(root, store.Path(name), "", "")
-}
-
-// An empty team deletes the workspace. Otherwise only that window and its
-// team's resources are removed, with the same worktree safety checks.
-func deleteTeam(root, path, team, expectedWindow string) error {
-	name := store.Workspace(path)
-	lock, err := store.SessionLock(path)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("refusing to delete a tmux session not owned by this workspace")
-	}
-	s, err := store.Load(path)
-	if err != nil {
-		return err
-	}
-	if team != "" {
-		if s.TeamLead(team) == nil {
-			return fmt.Errorf("no session %q", team)
-		}
-		window, err := tmux.FindWindow(name, team, path)
-		if err != nil {
-			return err
-		}
-		if expectedWindow != "" && window != expectedWindow {
-			return errors.New("the window no longer belongs to this session")
-		}
-	}
-	var workers []store.Agent
-	var problems []string
-	for _, a := range s.Agents {
-		if a.Role != store.Worker || a.Branch == "" || team != "" && a.Team != team {
-			continue
-		}
-		workers = append(workers, a)
-		if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
-			continue
-		}
-		if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
-		}
-	}
-	if len(problems) > 0 {
-		return fmt.Errorf("not deleting: problem worktrees:\n  %s", strings.Join(problems, "\n  "))
-	}
-
-	if team != "" {
-		if err := tmux.KillWindow(name, team, path); err != nil {
-			return err
-		}
-	} else if tmux.WorkspaceSession(name, path) {
-		if err := tmux.KillSession(name); err != nil {
-			return err
-		}
-	}
-	// A worker can change its worktree before the session ends. Keep such a
-	// worker in the state so that delete can be run again after it is fixed.
-	for _, a := range workers {
-		if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
-			if err := workspace.RemoveWorktree(root, a.Dir, a.Branch); err != nil {
-				return fmt.Errorf("%s: %w", a.Name, err)
-			}
-		}
-		err := store.Update(path, func(s *store.State) error { s.Remove(a.ID); return nil })
-		if err != nil {
-			return err
-		}
-	}
-	if team != "" {
-		empty := false
-		if err := store.Update(path, func(s *store.State) error {
-			var remove []string
-			for _, a := range s.Agents {
-				if a.Team == team {
-					remove = append(remove, a.ID)
-				}
-			}
-			for _, id := range remove {
-				s.Remove(id)
-			}
-			empty = len(s.Agents) == 0
-			return nil
-		}); err != nil {
-			return err
-		}
-		if !empty {
-			return nil
-		}
-		// The browser view's terminal window would otherwise keep the session.
-		if tmux.WorkspaceSession(name, path) {
-			if err := tmux.KillSession(name); err != nil {
-				return err
-			}
-		}
-	}
-	return store.Delete(path)
-}
-
-// retitle changes a session's title. Its ID, and so its agents' addresses,
-// stay the same.
-func retitle(path, team, expectedWindow, title string) error {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return errors.New("a session needs a title")
-	}
-	name := store.Workspace(path)
-	lock, err := store.SessionLock(path)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	window, err := tmux.FindWindow(name, team, path)
-	if err != nil {
-		return err
-	}
-	if window != expectedWindow {
-		return errors.New("the window no longer belongs to this session")
-	}
-	err = store.Update(path, func(s *store.State) error {
-		lead := s.TeamLead(team)
-		if lead == nil {
-			return fmt.Errorf("no session %q", team)
-		}
-		lead.Title = title
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	return tmux.RenameWindow(window, title)
 }
 
 func parseUIArgs(args []string) (port string, withMenu bool, err error) {
@@ -405,12 +88,18 @@ func serveUI(args []string) error {
 		return err
 	}
 	defer listener.Close()
-	restoreWorkspaces()
+	db, err := store.Open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	session.Restore(db)
+	handler := ui.Handler(db)
 	url := "http://localhost:" + port + "/"
 	fmt.Printf("Serving the Hypercube UI at %s\n", url)
 	if withMenu {
 		go func() {
-			if err := http.Serve(listener, ui.Handler()); err != nil {
+			if err := http.Serve(listener, handler); err != nil {
 				fmt.Fprintln(os.Stderr, "hypercube:", err)
 				os.Exit(1)
 			}
@@ -418,193 +107,43 @@ func serveUI(args []string) error {
 		menu.Run(url, ui.Icon())
 		return nil
 	}
-	return http.Serve(listener, ui.Handler())
-}
-
-// Restore saved workspaces once at UI startup; one failure must not prevent
-// the view or the other workspaces from starting.
-func restoreWorkspaces() {
-	list, err := workspaces()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "restore workspaces:", err)
-		return
-	}
-	for _, k := range list {
-		if k.root == "" || tmux.WorkspaceSession(k.name, k.path) {
-			continue
-		}
-		if err := openWorkspace(k.root, false, ""); err != nil {
-			fmt.Fprintf(os.Stderr, "restore workspace %s: %v\n", k.root, err)
-		}
-	}
-}
-
-// A workspace owns one tmux session. Each Hypercube session is a team in its
-// own marked window; names and worker lifecycle are local to that team.
-func openWorkspace(dir string, create bool, lead string) error {
-	root, name, err := workspaceAt(dir)
-	if err != nil {
-		return err
-	}
-	path := store.Path(name)
-	lock, err := store.SessionLock(path)
-	if err != nil {
-		return err
-	}
-	defer lock.Close()
-	if tmux.HasSession(name) && !tmux.WorkspaceSession(name, path) {
-		return errors.New("a tmux session with this name belongs to something else")
-	}
-	s, err := store.Load(path)
-	if err != nil {
-		return err
-	}
-	add := create || len(s.Agents) == 0
-	// A new session gets a random ID and no title.
-	var team string
-	if add {
-		team = store.NewID()
-	}
-	missing := map[string]bool{}
-	for _, a := range s.Agents {
-		if a.Role != store.Lead {
-			continue
-		}
-		window, err := tmux.FindWindow(name, a.Team, path)
-		if err != nil {
-			return err
-		}
-		missing[a.Team] = window == ""
-	}
-	if add {
-		missing[team] = true
-	}
-	var launch []store.Agent
-	needsLaunch := false
-	for _, absent := range missing {
-		needsLaunch = needsLaunch || absent
-	}
-	if needsLaunch {
-		var o harness.Profile
-		if add {
-			cfg, err := harness.LoadConfig()
-			if err != nil {
-				return err
-			}
-			o, err = cfg.Lead(lead)
-			if err != nil {
-				return err
-			}
-		}
-		branch, branchErr := workspace.Branch(root)
-		err = store.Update(path, func(s *store.State) error {
-			s.NoGit = branchErr != nil
-			if add {
-				s.Agents = append(s.Agents, store.Agent{ID: store.NewID(), Name: "lead", Role: store.Lead,
-					Harness: o.Harness, Model: o.Model, Effort: o.Effort, Dir: root, Team: team})
-			}
-			for i := range s.Agents {
-				a := &s.Agents[i]
-				if !missing[a.Team] {
-					continue
-				}
-				a.Target, a.QuickExits, a.Attention = "", 0, false
-				if a.Role == store.Lead {
-					a.Branch = branch
-					a.AwaitingUser = a.Team != team
-				}
-				launch = append(launch, *a)
-			}
-			return nil
-		})
-		if err != nil {
-			return err
-		}
-	}
-	sort.SliceStable(launch, func(i, j int) bool {
-		return launch[i].Role == store.Lead && launch[j].Role != store.Lead
-	})
-	for _, a := range launch {
-		if _, err := harness.Launch(a, path, ""); err != nil {
-			// Keep healthy windows running and the failed team's state for retry.
-			if cleanup := tmux.KillWindow(name, a.Team, path); cleanup != nil {
-				return fmt.Errorf("launching %s: %w; closing its window: %v", a.Name, err, cleanup)
-			}
-			return fmt.Errorf("launching %s in session %s: %w", a.Name, a.Team, err)
-		}
-	}
-	if len(launch) > 0 {
-		if err := tmux.ConfigureSession(name, filepath.Base(root)); err != nil {
-			return err
-		}
-	}
-	if create {
-		window, err := tmux.FindWindow(name, team, path)
-		if err != nil {
-			return err
-		}
-		if window == "" {
-			return fmt.Errorf("session %q has no tmux window", team)
-		}
-		return tmux.SelectWindow(window)
-	}
-	return nil
-}
-
-// These commands serve the browser view, using the workspace marker instead of
-// a worker's current directory.
-func windowAction(args []string) error {
-	s, err := store.Load(args[1])
-	if err != nil {
-		return err
-	}
-	for _, a := range s.Agents {
-		if a.Role != store.Lead {
-			continue
-		}
-		if args[0] == "new" && len(args) == 3 {
-			return openWorkspace(a.Dir, true, args[2])
-		}
-		if args[0] == "delete" && len(args) == 4 && a.Team == args[2] {
-			return deleteTeam(a.Dir, args[1], args[2], args[3])
-		}
-		if args[0] == "rename" && len(args) == 5 && a.Team == args[2] {
-			return retitle(args[1], args[2], args[3], args[4])
-		}
-	}
-	return errors.New("no matching Hypercube session")
+	return http.Serve(listener, handler)
 }
 
 // runAgent replaces the wrapper with the harness. tmux owns its PTY and process
 // lifetime; the pane-died hook handles relaunches using the saved conversation.
 func runAgent(prompt string) error {
-	id, path, pane := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE"), os.Getenv("TMUX_PANE")
-	if id == "" || path == "" || !tmux.Owns(store.Workspace(path), pane, id, path) {
+	id, pane := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("TMUX_PANE")
+	if id == "" || !tmux.Owns(pane, id) {
 		return errors.New("agent must run in its own Hypercube pane")
 	}
+	db, err := store.Open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 	var agent store.Agent
-	err := store.Update(path, func(s *store.State) error {
-		a, err := s.Agent(id)
+	err = db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(id)
 		if err != nil {
 			return err
 		}
-		a.Target, a.Launched, a.Attention = pane, time.Now().UnixMilli(), false
+		a.Pane, a.Launched, a.Attention = pane, time.Now().UnixMilli(), false
 		a.Activity = store.Idle
 		if prompt != "" {
 			a.Activity = store.Busy
 		}
-		agent = *a
-		return nil
+		agent = a
+		return tx.SaveAgent(a)
 	})
 	if err != nil {
 		return err
 	}
-	argv, env, err := harness.Command(agent, path, prompt)
+	argv, env, err := harness.Command(agent, prompt)
 	if err == nil {
 		var binary string
 		binary, err = exec.LookPath(argv[0])
 		if err == nil {
-			tmux.Activity(store.Workspace(path), pane, path, agent)
 			var inherited []string
 			for _, item := range os.Environ() {
 				key, _, _ := strings.Cut(item, "=")
@@ -618,93 +157,23 @@ func runAgent(prompt string) error {
 			err = syscall.Exec(binary, argv, inherited)
 		}
 	}
-	_ = store.Update(path, func(s *store.State) error {
-		a, e := s.Agent(id)
-		if e == nil {
-			a.Activity = store.Exited
+	_ = db.Tx(func(tx *store.Tx) error {
+		a, e := tx.Agent(id)
+		if e != nil {
+			return e
 		}
-		return e
+		a.Activity = store.Exited
+		return tx.SaveAgent(a)
 	})
 	return err
 }
 
-func exited(path, pane string) error {
-	lock, err := store.SessionLock(path)
+// exited runs from a pane-died hook.
+func exited(agent, pane string) error {
+	db, err := store.Open()
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
-	if !tmux.WorkspaceSession(store.Workspace(path), path) {
-		return nil
-	}
-	var agent store.Agent
-	restart := false
-	err = store.Update(path, func(s *store.State) error {
-		for i := range s.Agents {
-			a := &s.Agents[i]
-			if a.Target != pane || !tmux.Dead(store.Workspace(path), pane, a.ID, path) {
-				continue
-			}
-			if a.Activity == store.Exited {
-				return nil
-			}
-			a.QuickExits++
-			if time.Since(time.UnixMilli(a.Launched)) >= 10*time.Second {
-				a.QuickExits = 0
-			}
-			a.Attention = false
-			if a.QuickExits >= 3 {
-				a.Activity = store.Exited
-			} else {
-				restart = true
-			}
-			agent = *a
-			return nil
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	if restart {
-		if err := tmux.Restart(pane, agent.ID, path); err != nil {
-			_ = store.Update(path, func(s *store.State) error {
-				a, e := s.Agent(agent.ID)
-				if e == nil {
-					a.Activity = store.Exited
-				}
-				return e
-			})
-			return err
-		}
-	} else if agent.ID != "" {
-		tmux.Activity(store.Workspace(path), pane, path, agent)
-	}
-	return nil
-}
-
-// Existing workspaces can be stopped or forgotten after their checkout moves
-// or disappears; their recorded worktrees moved with that checkout.
-func existingWorkspaceAt(dir string) (string, string, error) {
-	root, name, err := workspaceAt(dir)
-	if err == nil {
-		return root, name, nil
-	}
-	original := err
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", "", err
-	}
-	root, err = workspace.Spell(wd, dir)
-	if err != nil {
-		return "", "", err
-	}
-	if _, err := os.Stat(root); !errors.Is(err, os.ErrNotExist) {
-		return "", "", original
-	}
-	name = workspace.Name(root)
-	if _, err := os.Stat(store.Path(name)); err != nil {
-		return "", "", original
-	}
-	return root, name, nil
+	defer db.Close()
+	return session.Exited(db, agent, pane)
 }

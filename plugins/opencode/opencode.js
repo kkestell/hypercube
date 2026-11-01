@@ -66,7 +66,7 @@ export default {
         started.add(event.sessionID)
         texts.push(await report("start"))
       }
-      texts.push(await report("prompt", { session: event.sessionID, text: event.prompt.text }))
+      texts.push(await report("prompt", { conversation: event.sessionID, text: event.prompt.text }))
       const text = texts.filter(Boolean).join("\n\n")
       if (text) event.prompt.text += "\n\n" + text
     })

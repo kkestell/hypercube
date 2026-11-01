@@ -3,14 +3,11 @@
 package workspace
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"syscall"
@@ -30,10 +27,16 @@ func git(dir string, args ...string) (string, error) {
 // directory, and a relative path is relative to base. dir must be an
 // existing directory.
 func Resolve(base, dir string) (string, error) {
-	dir, err := Spell(base, dir)
-	if err != nil {
-		return "", err
+	if rest, ok := strings.CutPrefix(dir, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		dir = filepath.Join(home, rest)
+	} else if !filepath.IsAbs(dir) {
+		dir = filepath.Join(base, dir)
 	}
+	dir = filepath.Clean(dir)
 	info, err := os.Stat(dir)
 	if err != nil {
 		return "", err
@@ -44,31 +47,17 @@ func Resolve(base, dir string) (string, error) {
 	return dir, nil
 }
 
-// Spell resolves the spelling of a path without requiring it to exist.
-func Spell(base, dir string) (string, error) {
-	if rest, ok := strings.CutPrefix(dir, "~/"); ok {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Join(home, rest)
-	} else if !filepath.IsAbs(dir) {
-		dir = filepath.Join(base, dir)
-	}
-	return filepath.Clean(dir), nil
-}
-
-// At returns the workspace root for dir, the top level of its checkout or dir
-// itself outside Git, and the workspace's name. A relative dir is relative to
-// base.
-func At(base, dir string) (root, name string, err error) {
-	if root, err = Resolve(base, dir); err != nil {
-		return "", "", err
+// At returns the workspace root for dir: the top level of its checkout, or
+// dir itself outside Git. A relative dir is relative to base.
+func At(base, dir string) (string, error) {
+	root, err := Resolve(base, dir)
+	if err != nil {
+		return "", err
 	}
 	if top, err := Root(root); err == nil {
 		root = top
 	}
-	return root, Name(root), nil
+	return root, nil
 }
 
 // Root returns the top level of the checkout containing dir.
@@ -79,30 +68,6 @@ func Root(dir string) (string, error) {
 // Branch returns the branch checked out in dir.
 func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")
-}
-
-// Short returns path with the home directory written as ~.
-func Short(path string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return path
-	}
-	if path == home {
-		return "~"
-	}
-	if rest, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
-		return "~/" + rest
-	}
-	return path
-}
-
-var unsafe = regexp.MustCompile(`[^A-Za-z0-9_-]+`)
-
-// Name names a workspace from its checkout path. It is used for the state
-// file and the tmux session.
-func Name(root string) string {
-	sum := sha256.Sum256([]byte(root))
-	return unsafe.ReplaceAllString(filepath.Base(root), "-") + "-" + hex.EncodeToString(sum[:3])
 }
 
 // WorkerBranch names a worker's branch.

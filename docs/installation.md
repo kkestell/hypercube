@@ -26,8 +26,9 @@ make install-service
 Hypercube starts at login with a menu bar icon. **Show Hypercube** opens the
 browser view. It runs as a launchd user agent through your interactive login
 shell, so it and the agents it launches get your login environment. It starts
-every saved workspace that is not running; each restored session starts no turn
-and delivers no queued message until you type a prompt into it. **Quit
+the sessions that were running when it last exited; each starts no turn and
+delivers no queued message until you type a prompt into it. Hypercube keeps its
+data in `~/.local/state/hypercube/hypercube.db`. **Quit
 Hypercube** stops the icon and view until the next login, while agents keep
 running. Its log is `~/Library/Logs/hypercube-ui.log`. Remove the service by
 unloading it and deleting its property list:
@@ -49,10 +50,10 @@ their next launch.
 
 `make dev` builds this checkout and opens its browser view at
 http://localhost:4281/ with isolated state, configuration, tmux server, and a
-scratch repository under `~/projects/hypercube-dev`. Set `HYPERCUBE_DEV_DIR` to
-use another location.
+scratch repository under `~/projects/hypercube-dev`, which you add as a
+workspace in the view. Set `HYPERCUBE_DEV_DIR` to use another location.
 `make dev-stop` stops it; `make dev-clean` removes its disposable resources, the
-dev agents' OpenCode sessions, and their Claude Code transcripts. Details belong
+dev agents' OpenCode conversations, and their Claude Code transcripts. Details belong
 to [scripts/dev](../scripts/dev).
 
 Automated tests use local harness stand-ins. Live model behavior requires a

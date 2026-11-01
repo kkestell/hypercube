@@ -11,83 +11,87 @@ import (
 
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 // Run returns true after writing messages. The CLI maps that to status 2.
 func Run(out io.Writer) (bool, error) {
-	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
-	if id == "" || path == "" {
+	id := os.Getenv("HYPERCUBE_AGENT_ID")
+	if id == "" {
 		return false, nil
 	}
-	return Wait(id, path, out)
+	db, err := store.Open()
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	return Wait(db, id, out)
 }
 
-// Wait replaces earlier waiters for this agent. Read without a lock while
-// nothing is ready, then recheck and deliver under the state lock. A failed
-// write leaves the messages queued and the agent idle.
-func Wait(id, path string, out io.Writer) (bool, error) {
+// Wait replaces earlier waiters for this agent. It reads without the write
+// lock while nothing is ready, then rechecks and delivers in one transaction.
+// A failed write leaves the messages queued and the agent idle.
+func Wait(db *store.DB, id string, out io.Writer) (bool, error) {
 	parent := os.Getppid()
-	var number uint64
-	err := store.Update(path, func(s *store.State) error {
-		a, err := s.Agent(id)
+	var number int64
+	err := db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(id)
 		if err != nil {
 			return err
 		}
 		a.Waiter++
 		number = a.Waiter
-		return nil
+		return tx.SaveAgent(a)
 	})
 	if err != nil {
 		return false, err
 	}
+	// ready reports whether the agent is idle with messages queued, its
+	// session is not awaiting the user, and this is still its newest waiter.
+	ready := func(tx *store.Tx) (current, ready bool, err error) {
+		a, err := tx.Agent(id)
+		if err != nil || a.Waiter != number {
+			return false, false, nil
+		}
+		s, err := tx.Session(a.Session)
+		if err != nil || a.Activity != store.Idle || s.AwaitingUser {
+			return true, false, err
+		}
+		queued, err := tx.Queued(id)
+		return true, len(queued) > 0, err
+	}
 	for os.Getppid() == parent {
-		s, err := store.Load(path)
-		if err != nil {
+		var current, deliver bool
+		err := db.Read(func(tx *store.Tx) error {
+			var err error
+			current, deliver, err = ready(tx)
+			return err
+		})
+		if err != nil || !current {
 			return false, err
 		}
-		a, err := s.Agent(id)
-		if err != nil || a.Waiter != number {
-			return false, nil
-		}
-		queued := false
-		for _, m := range s.Messages {
-			if m.To == id {
-				queued = true
-				break
-			}
-		}
-		if a.Activity == store.Idle && !s.AwaitingUser(a.Team) && queued {
-			ready, replaced := false, false
-			err := store.Update(path, func(s *store.State) error {
-				a, err := s.Agent(id)
-				if err != nil || a.Waiter != number {
-					replaced = true
-					return nil
+		if deliver {
+			delivered := false
+			err := db.Tx(func(tx *store.Tx) error {
+				if current, deliver, err = ready(tx); err != nil || !deliver {
+					return err
 				}
-				if a.Activity != store.Idle || s.AwaitingUser(a.Team) {
-					return nil
+				messages, err := tx.Take(id)
+				if err != nil {
+					return err
 				}
-				messages := s.Take(id)
-				if len(messages) == 0 {
-					return nil
-				}
-				text := report.Format(s, messages) + "\n"
-				if _, err := fmt.Fprint(out, text); err != nil {
+				if _, err := fmt.Fprint(out, report.Format(tx, messages)+"\n"); err != nil {
 					return fmt.Errorf("write messages: %w", err)
 				}
-				a.Activity = store.Busy
-				ready = true
-				return nil
-			})
-			if err != nil || ready {
-				if err == nil {
-					tmux.RefreshActivity(path, id)
+				a, err := tx.Agent(id)
+				if err != nil {
+					return err
 				}
-				return ready, err
-			}
-			if replaced {
-				return false, nil
+				a.Activity = store.Busy
+				delivered = true
+				return tx.SaveAgent(a)
+			})
+			if err != nil || delivered || !current {
+				return delivered, err
 			}
 		}
 		time.Sleep(250 * time.Millisecond)

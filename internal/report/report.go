@@ -3,6 +3,7 @@
 package report
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,16 +14,15 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/tmux"
 )
 
 type input struct {
-	Session string          `json:"session"`
-	Error   string          `json:"error"`
-	Tool    string          `json:"tool"`
-	Input   json.RawMessage `json:"input"`
-	Reason  string          `json:"reason"`
-	Text    string          `json:"text"`
+	Conversation string          `json:"conversation"`
+	Error        string          `json:"error"`
+	Tool         string          `json:"tool"`
+	Input        json.RawMessage `json:"input"`
+	Reason       string          `json:"reason"`
+	Text         string          `json:"text"`
 	store.Usage
 }
 
@@ -35,36 +35,54 @@ type response struct {
 // Run handles one report. Reports from outside a Hypercube agent get an empty
 // response and change nothing.
 func Run(event string, stdin io.Reader, stdout io.Writer) error {
-	id, path := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_STATE")
-	if id == "" || path == "" {
+	id := os.Getenv("HYPERCUBE_AGENT_ID")
+	if id == "" {
 		return json.NewEncoder(stdout).Encode(response{})
 	}
 	var in input
 	if err := json.NewDecoder(stdin).Decode(&in); err != nil {
 		return err
 	}
+	db, err := store.Open()
+	if err != nil {
+		return err
+	}
+	defer db.Close()
 	if event == "toolfailed" || event == "denied" {
-		if err := logTool(event, path, id, in); err != nil {
+		if err := logTool(db, event, id, in); err != nil {
 			return err
 		}
 		return json.NewEncoder(stdout).Encode(response{})
 	}
 	// The status line reports answered and usage on every redraw, so skip the
-	// lock when nothing changes.
+	// write lock when nothing changes.
 	if event == "answered" || event == "usage" {
-		s, err := store.Load(path)
-		if err != nil {
+		var a store.Agent
+		err := db.Read(func(tx *store.Tx) error {
+			var err error
+			a, err = tx.Agent(id)
 			return err
-		}
-		if a, err := s.Agent(id); err != nil || event == "answered" && !a.Attention || event == "usage" && a.Usage == in.Usage {
+		})
+		if err != nil || event == "answered" && !a.Attention || event == "usage" && a.Usage == in.Usage {
 			return json.NewEncoder(stdout).Encode(response{})
 		}
 	}
 
-	err := store.Update(path, func(s *store.State) error {
-		a, err := s.Agent(id)
+	return db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(id)
 		if err != nil {
 			return err
+		}
+		s, err := tx.Session(a.Session)
+		if err != nil {
+			return err
+		}
+		take := func() (string, error) {
+			messages, err := tx.Take(id)
+			if err != nil {
+				return "", err
+			}
+			return Format(tx, messages), nil
 		}
 		var resp response
 		switch event {
@@ -77,40 +95,41 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 				}
 				profiles = cfg.Workers()
 			}
-			resp.Context = facts(s, a, profiles)
-		case "prompt":
-			if lead := s.TeamLead(a.Team); lead != nil {
-				lead.AwaitingUser = false
+			if resp.Context, err = facts(tx, a, profiles); err != nil {
+				return err
 			}
+		case "prompt":
+			s.AwaitingUser = false
 			// A harness may save no conversation until the first prompt, so
-			// a session ID seen earlier may not be resumable.
-			if in.Session != "" {
-				a.SessionID = in.Session
+			// a conversation seen earlier may not be resumable.
+			if in.Conversation != "" {
+				a.Conversation = in.Conversation
 			}
 			// A turn that delivered messages starts after Wait has marked the
 			// agent busy, so only a prompt typed while idle titles the session.
-			if a.Role == store.Lead && a.Title == "" && a.Activity != store.Busy {
-				if title := title(in.Text); title != "" {
-					a.Title = title
-					// The window name is cosmetic; the saved title is what counts.
-					if window, err := tmux.FindWindow(store.Workspace(path), a.Team, path); err == nil && window != "" {
-						_ = tmux.RenameWindow(window, title)
-					}
-				}
+			if a.Role == store.Lead && s.Title == "" && a.Activity != store.Busy {
+				s.Title = title(in.Text)
 			}
 			a.Activity = store.Busy
-			resp.Context = Format(s, s.Take(id))
+			resp.Context, err = take()
 		case "tool":
-			resp.Context = Format(s, s.Take(id))
+			resp.Context, err = take()
 		case "stop":
-			resp.Context = Format(s, s.Take(id))
-			if resp.Context == "" {
+			resp.Context, err = take()
+			if err == nil && resp.Context == "" {
 				a.Activity = store.Idle
+				if a.Role == store.Lead {
+					s.Unseen = true
+				}
 			}
 		case "failed":
 			if a.Role == store.Worker {
-				if lead := s.TeamLead(a.Team); lead != nil {
-					s.Messages = append(s.Messages, store.Message{From: id, To: lead.ID, Text: failure(in.Error)})
+				lead, err := tx.Lead(a.Session)
+				if err != nil {
+					return err
+				}
+				if err := tx.Queue(store.Message{From: id, To: lead.ID, Text: failure(in.Error)}); err != nil {
+					return err
 				}
 			}
 			a.Activity = store.Idle
@@ -125,14 +144,19 @@ func Run(event string, stdin io.Reader, stdout io.Writer) error {
 		default:
 			return fmt.Errorf("unknown report %q", event)
 		}
-		// Writing the response inside the update keeps taken messages queued
-		// if the plugin cannot read them.
+		if err != nil {
+			return err
+		}
+		if err := tx.SaveAgent(a); err != nil {
+			return err
+		}
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		// Writing the response inside the transaction keeps taken messages
+		// queued if the plugin cannot read them.
 		return json.NewEncoder(stdout).Encode(resp)
 	})
-	if err == nil {
-		tmux.RefreshActivity(path, id)
-	}
-	return err
 }
 
 // maxTitle is the longest session title, in characters.
@@ -155,18 +179,27 @@ func title(prompt string) string {
 }
 
 // logTool appends a failed Hypercube tool call or an auto mode denial to
-// tools.log beside the state file, as a JSON line for tuning tool descriptions
+// tools.log beside the database, as a JSON line for tuning tool descriptions
 // and allow rules.
-func logTool(event, path, id string, in input) error {
-	s, err := store.Load(path)
+func logTool(db *store.DB, event, id string, in input) error {
+	var a store.Agent
+	var w store.Workspace
+	err := db.Read(func(tx *store.Tx) error {
+		var err error
+		if a, err = tx.Agent(id); err != nil {
+			return err
+		}
+		s, err := tx.Session(a.Session)
+		if err != nil {
+			return err
+		}
+		w, err = tx.Workspace(s.Workspace)
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	a, err := s.Agent(id)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(filepath.Dir(path), "tools.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(filepath.Join(store.Dir(), "tools.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
@@ -175,18 +208,18 @@ func logTool(event, path, id string, in input) error {
 		msg, detail = "tool denied", slog.String("reason", in.Reason)
 	}
 	slog.New(slog.NewJSONHandler(f, nil)).Info(msg,
-		"workspace", store.Workspace(path), "session", a.Team, "agent", a.Name,
-		"harness", a.Harness, "model", a.Model, "conversation", a.SessionID, "dir", a.Dir,
+		"workspace", w.Path, "session", a.Session, "agent", a.Name,
+		"harness", a.Harness, "model", a.Model, "conversation", a.Conversation, "dir", a.Dir,
 		"tool", in.Tool, "input", in.Input, detail)
 	return f.Close()
 }
 
 // Format renders messages as the model sees them.
 // Senders cannot see the recipient's chat, so agent messages say how to reply.
-func Format(s *store.State, messages []store.Message) string {
+func Format(tx *store.Tx, messages []store.Message) string {
 	var parts []string
 	for _, m := range messages {
-		if a, err := s.Agent(m.From); err == nil {
+		if a, err := tx.Agent(m.From); err == nil {
 			parts = append(parts, fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", a.Address(), m.Text, a.Address(), a.Address()))
 		} else {
 			parts = append(parts, fmt.Sprintf("Message from %s:\n%s", m.From, m.Text))
@@ -195,12 +228,51 @@ func Format(s *store.State, messages []store.Message) string {
 	return strings.Join(parts, "\n\n")
 }
 
+// Leads returns the leads of the workspace's sessions other than the given
+// one, which leads can message, with their sessions' titles.
+func Leads(tx *store.Tx, workspace, except string) ([]store.Agent, map[string]string, error) {
+	sessions, err := tx.Sessions(workspace)
+	if err != nil {
+		return nil, nil, err
+	}
+	var leads []store.Agent
+	titles := map[string]string{}
+	for _, s := range sessions {
+		titles[s.ID] = cmp.Or(s.Title, store.Untitled)
+		if s.ID == except {
+			continue
+		}
+		lead, err := tx.Lead(s.ID)
+		if err != nil {
+			return nil, nil, err
+		}
+		leads = append(leads, lead)
+	}
+	return leads, titles, nil
+}
+
 // facts describes the agent's place in the team. The lead also gets
 // the configured worker profiles.
-func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
+func facts(tx *store.Tx, a store.Agent, profiles []harness.Profile) (string, error) {
+	s, err := tx.Session(a.Session)
+	if err != nil {
+		return "", err
+	}
+	w, err := tx.Workspace(s.Workspace)
+	if err != nil {
+		return "", err
+	}
+	team, err := tx.Agents(a.Session)
+	if err != nil {
+		return "", err
+	}
+	others, titles, err := Leads(tx, s.Workspace, s.ID)
+	if err != nil {
+		return "", err
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "You are %s, the %s in a Hypercube team of coding agents.\n", a.Address(), a.Role)
-	fmt.Fprintf(&b, "Your Hypercube session is %q, titled %q. Agents are addressed as session/name, where session is the session's ID; a bare name means an agent in your session.\n", a.Team, s.Title(a.Team))
+	fmt.Fprintf(&b, "Your Hypercube session is %q, titled %q. Agents are addressed as session/name, where session is the session's ID; a bare name means an agent in your session.\n", a.Session, titles[a.Session])
 	if a.Role == store.Lead {
 		b.WriteString("Worker tools apply only to this session. You can also message the leads of other sessions.\n")
 	} else {
@@ -208,22 +280,21 @@ func facts(s *store.State, a *store.Agent, profiles []harness.Profile) string {
 	}
 	b.WriteString("Reach Hypercube agents only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube agents arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
-	var leads []string
-	for _, t := range s.Agents {
-		if t.Team == a.Team {
-			fmt.Fprintf(&b, "- %s: %s, %s, %s%s\n", t.Address(), t.Role, t.Harness, t.Dir, onBranch(t.Branch))
-		} else if t.Role == store.Lead {
-			leads = append(leads, fmt.Sprintf("%s (%s)", t.Address(), s.Title(t.Team)))
-		}
+	for _, t := range team {
+		fmt.Fprintf(&b, "- %s: %s, %s, %s%s\n", t.Address(), t.Role, t.Harness, t.Dir, onBranch(t.Branch))
 	}
 	if a.Role == store.Lead {
 		b.WriteString("\nOther Hypercube sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their leads and the user; use worker worktrees for independent edits. list_agents shows the current leads.\n")
+		var leads []string
+		for _, l := range others {
+			leads = append(leads, fmt.Sprintf("%s (%s)", l.Address(), titles[l.Session]))
+		}
 		if len(leads) > 0 {
 			fmt.Fprintf(&b, "Other leads: %s\n", strings.Join(leads, ", "))
 		}
 	}
 	switch {
-	case a.Role == store.Lead && s.NoGit:
+	case a.Role == store.Lead && w.NoGit:
 		b.WriteString(`
 Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
 `)
@@ -240,7 +311,7 @@ Commit your work on your branch. The lead merges it from its checkout.` + report
 		b.WriteString(`
 You work directly in your working directory. Handle branches and commits as the lead tells you.` + reportBack)
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 func onBranch(branch string) string {

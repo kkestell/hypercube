@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run this checkout's hypercube in an isolated dev session, served by its own
-# browser view on port 4281. The session has its own state, configuration, and
-# scratch repository under $DEV, so it never touches the installed hypercube's
-# workspaces.
+# browser view on port 4281. The session has its own state, configuration,
+# tmux server, and scratch repository under $DEV, so it never touches the
+# installed hypercube's workspaces. Add the scratch repository in the view.
 #
-#   scripts/dev [up]   build, restart the dev session and its view on the new
-#                      binary, and open the view in the browser
-#   scripts/dev stop   stop the view and every dev workspace; their state
-#                      stays, so `up` resumes it
+#   scripts/dev [up]   build, restart the dev view on the new binary, which
+#                      starts the dev sessions again, and open the view
+#   scripts/dev stop   stop the view and the dev tmux server; the sessions
+#                      stay marked running, so `up` resumes them
 #   scripts/dev clean  stop it and delete everything it left
 set -euo pipefail
 
@@ -23,11 +23,7 @@ CONFIG=$DEV/config/hypercube/config.json
 # not inherit the environment of the agent running this script.
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
 	TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
-dev() {
-	"${DEV_ENV[@]}" "$BIN" "$@"
-}
-
-# Stop the dev view and every workspace in the dev state.
+# Stop the dev view and every dev session.
 stop() {
 	if [ -f "$DEV/ui.pid" ]; then
 		pid=$(cat "$DEV/ui.pid")
@@ -36,8 +32,7 @@ stop() {
 		fi
 		rm -f "$DEV/ui.pid"
 	fi
-	[ -x "$BIN" ] && [ -d "$DEV/state" ] || return 0
-	echo y | dev stop --all >/dev/null 2>&1 || true
+	TMUX_TMPDIR="$DEV" tmux kill-server 2>/dev/null || true
 }
 
 case "${1:-up}" in
@@ -112,7 +107,6 @@ up)
 JSON
 	fi
 
-	dev start "$REPO"
 	# The view ignores a hangup so it outlives the shell that started it. The
 	# subshell execs hypercube, so the saved process ID is the view's own.
 	(trap '' HUP; exec "${DEV_ENV[@]}" "$BIN" ui "$PORT") >"$DEV/ui.log" 2>&1 </dev/null &
@@ -122,17 +116,17 @@ JSON
 		sleep 0.2
 	done
 	open "http://localhost:$PORT/"
-	echo "Dev session: $REPO (config $CONFIG, view http://localhost:$PORT/)"
+	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/)"
 	;;
 stop)
 	stop
 	;;
 clean)
 	stop
-	# OpenCode's sessions of the dev agents, with their subagents' sessions.
-	for session in $(cat "$DEV"/state/hypercube/*.json 2>/dev/null |
-		grep -o '"session_id": *"ses_[^"]*"' | sed 's/.*"\(ses_[^"]*\)"$/\1/'); do
-		opencode session delete "$session" >/dev/null 2>&1 || true
+	# OpenCode's conversations of the dev agents, with their subagents'.
+	for conversation in $(sqlite3 "$DEV/state/hypercube/hypercube.db" \
+		"SELECT conversation FROM agents WHERE harness = 'opencode' AND conversation != ''" 2>/dev/null); do
+		opencode session delete "$conversation" >/dev/null 2>&1 || true
 	done
 	[ -n "$DEV" ] && rm -rf "$DEV"
 	# Claude Code's transcripts of the dev agents; the trust entry for the

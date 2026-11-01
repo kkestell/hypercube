@@ -41,7 +41,7 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
-	session := in.Session
+	session := in.Conversation
 	if session == "" {
 		session = "ses_hypercube_" + in.Agent
 	}

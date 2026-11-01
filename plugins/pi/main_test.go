@@ -43,7 +43,7 @@ func TestLaunch(t *testing.T) {
 	if err != nil || !strings.Contains(string(text), `const exe = "/bin/hc"`) {
 		t.Fatal(err, string(text))
 	}
-	argv, _, err = run(`{"hypercube":"/bin/hc","agent":"a1","model":"p/m","session":"saved","state_dir":"` + dir + `"}`)
+	argv, _, err = run(`{"hypercube":"/bin/hc","agent":"a1","model":"p/m","conversation":"saved","state_dir":"` + dir + `"}`)
 	if want := []string{"pi", "--provider", "p", "--model", "m", "-e", extension, "--session-id", "saved"}; err != nil || !slices.Equal(argv, want) {
 		t.Fatal(err, argv)
 	}

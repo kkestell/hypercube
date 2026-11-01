@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,9 +18,8 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/internal/mcp"
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 // This process stands in for a harness plugin's launch. It starts the
@@ -31,8 +33,8 @@ func TestHarnessPlugin(t *testing.T) {
 		os.Exit(93)
 	}
 	argv := []string{os.Getenv("HYPERCUBE_TEST_BINARY"), "-test.run", "^TestNativeHarness$", "--"}
-	if in.Session != "" {
-		argv = append(argv, "--resume", in.Session)
+	if in.Conversation != "" {
+		argv = append(argv, "--resume", in.Conversation)
 	}
 	if in.Prompt != "" {
 		argv = append(argv, in.Prompt)
@@ -91,14 +93,14 @@ func TestNativeHarness(t *testing.T) {
 	}
 	// Like the real harnesses, every prompt report carries the prompt's text,
 	// including a wake-up's delivered messages.
-	prompt := map[string]string{"session": id + "-session"}
+	prompt := map[string]string{"conversation": id + "-conversation"}
 	withText := func(text string) map[string]string {
-		return map[string]string{"session": id + "-session", "text": text}
+		return map[string]string{"conversation": id + "-conversation", "text": text}
 	}
 	log("launch", "")
 	report("start", nil)
 	// A worker's initial turn consumes the queued brief; the lead waits.
-	if slices.Contains(os.Args, mcp.Nudge) {
+	if slices.Contains(os.Args, session.Nudge) {
 		report("prompt", prompt)
 		report("stop", nil)
 	}
@@ -202,24 +204,51 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := store.Path(workspace.Name(root))
-	cli := func(args ...string) string {
-		t.Helper()
-		cmd := exec.Command(binary, args...)
-		cmd.Dir = root
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("hypercube %v: %v\n%s", args, err, out)
-		}
-		return string(out)
+	db, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer db.Close()
+
 	tmux := func(args ...string) string {
 		t.Helper()
 		out, err := exec.Command("tmux", args...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("tmux %v: %v\n%s", args, err, out)
 		}
-		return string(out)
+		return strings.TrimSpace(string(out))
+	}
+	read := func(fn func(*store.Tx) error) {
+		t.Helper()
+		if err := db.Read(fn); err != nil {
+			t.Fatal(err)
+		}
+	}
+	agents := func(session string) (list []store.Agent) {
+		t.Helper()
+		read(func(tx *store.Tx) error { var err error; list, err = tx.Agents(session); return err })
+		return list
+	}
+	agent := func(id string) (a store.Agent) {
+		t.Helper()
+		read(func(tx *store.Tx) error { var err error; a, err = tx.Agent(id); return err })
+		return a
+	}
+	sessionOf := func(id string) (s store.Session) {
+		t.Helper()
+		read(func(tx *store.Tx) error { var err error; s, err = tx.Session(id); return err })
+		return s
+	}
+	queued := func(id string) (m []store.Message) {
+		t.Helper()
+		read(func(tx *store.Tx) error { var err error; m, err = tx.Queued(id); return err })
+		return m
+	}
+	queue := func(to, text string) {
+		t.Helper()
+		if err := db.Tx(func(tx *store.Tx) error { return tx.Queue(store.Message{From: "user", To: to, Text: text}) }); err != nil {
+			t.Fatal(err)
+		}
 	}
 	until := func(what string, check func() bool) {
 		t.Helper()
@@ -235,28 +264,21 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 			b, _ := os.ReadFile(filepath.Join(logs, entry.Name()))
 			t.Logf("%s:\n%s", entry.Name(), b)
 		}
-		for _, args := range [][]string{{"list-panes", "-a", "-F", "#{pane_id} #{pane_dead} #{pane_dead_status} #{@hypercube_id}"}, {"show-hooks", "-t", "=" + workspace.Name(root) + ":"}} {
-			out, _ := exec.Command("tmux", args...).CombinedOutput()
-			t.Logf("tmux %v: %s", args, out)
-		}
-		s := stateForDiagnostics(path)
-		t.Logf("state: %s", s)
+		out, _ := exec.Command("tmux", "list-panes", "-a", "-F", "#{session_name} #{pane_id} #{pane_dead} #{pane_dead_status} #{@hypercube_agent}").CombinedOutput()
+		t.Logf("tmux panes:\n%s", out)
+		list, _ := store.Snapshot(db)
+		b, _ := json.MarshalIndent(list, "", "  ")
+		t.Logf("database: %s", b)
 		t.Fatalf("timed out waiting for %s", what)
 	}
-	state := func() store.State {
-		s, err := store.Load(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return s
-	}
 	logOf := func(id string) string { b, _ := os.ReadFile(filepath.Join(logs, id+".log")); return string(b) }
+	launches := func(id string) int { return strings.Count(logOf(id), `"kind":"launch"`) }
 	call := func(id, name string, args map[string]string) string {
 		t.Helper()
 		request := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": name, "arguments": args}}
 		b, _ := json.Marshal(request)
 		cmd := exec.Command(binary, "mcp")
-		cmd.Env = append(os.Environ(), "HYPERCUBE_AGENT_ID="+id, "HYPERCUBE_STATE="+path)
+		cmd.Env = append(os.Environ(), "HYPERCUBE_AGENT_ID="+id)
 		cmd.Stdin = bytes.NewReader(append(b, '\n'))
 		out, err := cmd.CombinedOutput()
 		if err != nil {
@@ -272,67 +294,126 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 		}
 		return string(out)
 	}
+
+	// The view is the app process; the test drives it through its endpoints.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := fmt.Sprintf("http://localhost:%d", listener.Addr().(*net.TCPAddr).Port)
+	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
+	listener.Close()
+	var view *exec.Cmd
+	startView := func() {
+		t.Helper()
+		view = exec.Command(binary, "ui", port)
+		if err := view.Start(); err != nil {
+			t.Fatal(err)
+		}
+		until("view serving", func() bool {
+			res, err := http.Get(base + "/leads")
+			if err == nil {
+				res.Body.Close()
+			}
+			return err == nil
+		})
+	}
+	stopView := func() { _ = view.Process.Kill(); _ = view.Wait() }
+	defer func() { stopView() }()
+	post := func(path string, values map[string]string) (int, string) {
+		t.Helper()
+		q := url.Values{}
+		for k, v := range values {
+			q.Set(k, v)
+		}
+		req, _ := http.NewRequest("POST", base+path+"?"+q.Encode(), nil)
+		req.Header.Set("Origin", base)
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, strings.TrimSpace(string(b))
+	}
+	act := func(values map[string]string) string {
+		t.Helper()
+		code, body := post("/session", values)
+		if code != http.StatusOK {
+			t.Fatalf("session %v: %d %s", values, code, body)
+		}
+		return body
+	}
+	snapshot := func() []store.ShownWorkspace {
+		t.Helper()
+		res, err := http.Get(base + "/state")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		line, err := bufio.NewReader(res.Body).ReadString('\n')
+		if err != nil {
+			t.Fatal(err)
+		}
+		var list []store.ShownWorkspace
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(strings.TrimSpace(line), "data: ")), &list); err != nil {
+			t.Fatal(err)
+		}
+		return list
+	}
+	paneSession := func(pane string) string { return tmux("display-message", "-p", "-t", pane, "#{session_name}") }
+	ready := func(id string) func() bool {
+		return func() bool { a := agent(id); return a.Waiter > 0 && a.Pane != "" }
+	}
+
 	if out, err := exec.Command(binary).CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
 		t.Fatalf("no arguments should print the usage: %v %s", err, out)
 	}
-	cli("start", root)
-	until("lead waiter", func() bool {
-		s := state()
-		return len(s.Agents) == 1 && s.Agents[0].Waiter > 0 && s.Agents[0].Target != ""
-	})
-	lead := state().Agents[0]
-	if lead.Model != "haiku" {
-		t.Fatalf("default lead model = %q", lead.Model)
+	startView()
+	w, err := session.AddWorkspace(db, root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if out, err := exec.Command(binary, "window", "new", path, "missing").CombinedOutput(); err == nil || !strings.Contains(string(out), `no lead profile named "missing"`) {
-		t.Fatalf("unknown lead: %v %s", err, out)
+	if again, err := session.AddWorkspace(db, filepath.Join(root, ".")); err != nil || again.ID != w.ID {
+		t.Fatalf("adding the folder again: %+v, %v", again, err)
 	}
-	if len(state().Agents) != 1 {
-		t.Fatal("an unknown lead created a session")
+	if code, body := post("/session", map[string]string{"action": "new", "workspace": w.ID, "lead": "missing"}); code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
+		t.Fatalf("unknown lead: %d %s", code, body)
 	}
-	if lead.AwaitingUser {
-		t.Fatal("a new session awaits user input before delivering messages")
+	first := act(map[string]string{"action": "new", "workspace": w.ID, "lead": "first"})
+	lead := agents(first)[0]
+	until("lead waiter", ready(lead.ID))
+	lead = agent(lead.ID)
+	if lead.Model != "haiku" || sessionOf(first).AwaitingUser || paneSession(lead.Pane) != "hypercube-"+first {
+		t.Fatalf("first session: %+v %+v", lead, sessionOf(first))
 	}
 	call(lead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "first brief"})
 	until("worker's first brief", func() bool {
-		s := state()
-		return len(s.Agents) == 2 && strings.Contains(logOf(s.Agents[1].ID), "first brief") && s.Agents[1].Waiter > 0
+		list := agents(first)
+		return len(list) == 2 && strings.Contains(logOf(list[1].ID), "first brief") && list[1].Waiter > 0
 	})
-	worker := state().Agents[1]
+	worker := agents(first)[1]
 	if _, err := os.Stat(filepath.Join(worker.Dir, ".git")); err != nil {
 		t.Fatal("worker did not get a worktree", err)
 	}
-	// Independent teams share a tmux session, with names scoped to windows.
-	cli("window", "new", path, "second")
-	until("second lead waiter", func() bool {
-		s := state()
-		return len(s.Agents) == 3 && s.Agents[2].Waiter > 0
-	})
-	otherLead := state().Agents[2]
+	// Each session has its own tmux session; names are scoped to sessions.
+	second := act(map[string]string{"action": "new", "workspace": w.ID, "lead": "second"})
+	otherLead := agents(second)[0]
+	until("second lead waiter", ready(otherLead.ID))
 	if otherLead.Model != "sol" {
 		t.Fatalf("chosen lead model = %q", otherLead.Model)
 	}
 	call(otherLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "second session brief"})
 	until("second session worker", func() bool {
-		s := state()
-		return len(s.Agents) == 4 && s.Agents[3].Waiter > 0 && strings.Contains(logOf(s.Agents[3].ID), "second session brief")
+		list := agents(second)
+		return len(list) == 2 && list[1].Waiter > 0 && strings.Contains(logOf(list[1].ID), "second session brief")
 	})
-	otherWorker := state().Agents[3]
+	otherLead, otherWorker := agent(otherLead.ID), agents(second)[1]
 	if otherWorker.Dir == worker.Dir || otherWorker.Branch == worker.Branch {
 		t.Fatal("sessions share a worker worktree or branch")
 	}
-	windowOf := func(pane string) string {
-		return strings.TrimSpace(tmux("display-message", "-p", "-t", pane, "#{window_id}"))
-	}
-	firstWindow, otherWindow := windowOf(lead.Target), windowOf(otherLead.Target)
-	if firstWindow == otherWindow || windowOf(worker.Target) != firstWindow || windowOf(otherWorker.Target) != otherWindow {
-		t.Fatal("team panes are not in separate windows")
-	}
-	if got := strings.Fields(tmux("list-sessions", "-F", "#{session_name}")); len(got) != 1 {
-		t.Fatalf("expected one workspace tmux session, got %v", got)
-	}
-	if got := strings.Split(strings.TrimSpace(tmux("list-windows", "-t", "="+workspace.Name(root), "-F", "#{window_name}")), "\n"); !slices.Equal(got, []string{store.Untitled, store.Untitled}) {
-		t.Fatalf("window switcher names: %v", got)
+	if paneSession(worker.Pane) != "hypercube-"+first || paneSession(otherWorker.Pane) != "hypercube-"+second {
+		t.Fatal("team panes are not in their sessions' tmux sessions")
 	}
 	for _, pair := range [][2]store.Agent{{lead, otherWorker}, {otherLead, worker}} {
 		if listed := call(pair[0].ID, "list_agents", nil); strings.Contains(listed, pair[1].Address()) {
@@ -341,56 +422,48 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	}
 	// The terminal client's status lines, pane titles, and key bindings are not
 	// configured.
-	for _, args := range [][]string{{"show-options", "-t", "=" + workspace.Name(root) + ":"}, {"show-options", "-w", "-t", firstWindow}} {
+	for _, args := range [][]string{{"show-options", "-t", "=hypercube-" + first + ":"}, {"show-options", "-w", "-t", lead.Pane}} {
 		got := tmux(args...)
-		for _, option := range []string{"status", "mouse", "status-format", "@hypercube_exe", "pane-border-status", "pane-border-format", "window-status-format"} {
-			if strings.Contains(got, option) {
+		for _, option := range []string{"status", "mouse", "status-format", "pane-border-status", "pane-border-format", "window-status-format"} {
+			if strings.Contains(got, option+" ") {
 				t.Fatalf("%v sets %s:\n%s", args, option, got)
 			}
 		}
 	}
-	tmux("select-window", "-t", otherWindow)
-	tmux("select-pane", "-t", otherWorker.Target)
-	cli("window", "new", path, "first")
-	until("new session", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
-	shortcutLead := state().Agents[4]
-	shortcutWindow := windowOf(shortcutLead.Target)
-	if shortcutLead.Dir != root || shortcutWindow == otherWindow {
-		t.Fatal("window new did not create a new session in the workspace")
-	}
-	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", "="+workspace.Name(root)+":", "#{window_id}")); got != shortcutWindow {
-		t.Fatal("window new did not select the new session", got)
-	}
-	call(shortcutLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker"})
-	until("shortcut session worker", func() bool { return len(state().Agents) == 6 && state().Agents[5].Waiter > 0 })
-	shortcutWorker := state().Agents[5]
-	dirty := filepath.Join(shortcutWorker.Dir, "unfinished")
+	// Deleting a session protects a worker's dirty worktree.
+	third := act(map[string]string{"action": "new", "workspace": w.ID, "lead": "first"})
+	thirdLead := agents(third)[0]
+	until("third lead", ready(thirdLead.ID))
+	call(thirdLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker"})
+	until("third session worker", func() bool { list := agents(third); return len(list) == 2 && list[1].Waiter > 0 })
+	thirdWorker := agents(third)[1]
+	dirty := filepath.Join(thirdWorker.Dir, "unfinished")
 	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	refuse := exec.Command(binary, "window", "delete", path, shortcutLead.Team, shortcutWindow)
-	if out, err := refuse.CombinedOutput(); err == nil || !strings.Contains(string(out), "uncommitted changes") {
-		t.Fatalf("session deletion failed to protect dirty work: %v %s", err, out)
+	if code, body := post("/session", map[string]string{"action": "delete", "id": third}); code != http.StatusConflict || !strings.Contains(body, "uncommitted changes") {
+		t.Fatalf("session deletion failed to protect dirty work: %d %s", code, body)
 	}
-	if windowOf(shortcutLead.Target) != shortcutWindow || len(state().Agents) != 6 {
-		t.Fatal("refused deletion changed the team")
+	if len(agents(third)) != 2 || !tmuxRunning(third) {
+		t.Fatal("refused deletion changed the session")
 	}
 	if err := os.Remove(dirty); err != nil {
 		t.Fatal(err)
 	}
-	cli("window", "delete", path, shortcutLead.Team, shortcutWindow)
-	if len(state().Agents) != 4 {
-		t.Fatal("session deletion left its agents")
+	act(map[string]string{"action": "delete", "id": third})
+	if len(agents(third)) != 0 || tmuxRunning(third) {
+		t.Fatal("session deletion left its agents or tmux session")
 	}
-	if _, err := os.Stat(shortcutWorker.Dir); !os.IsNotExist(err) {
+	if _, err := os.Stat(thirdWorker.Dir); !os.IsNotExist(err) {
 		t.Fatal("deleted session's worktree remains", err)
 	}
-	if windowOf(worker.Target) != firstWindow || windowOf(otherWorker.Target) != otherWindow {
+	if paneSession(worker.Pane) != "hypercube-"+first || paneSession(otherWorker.Pane) != "hypercube-"+second {
 		t.Fatal("session deletion affected another session")
 	}
-	cli("start", root)
-	if len(state().Agents) != 4 {
-		t.Fatal("deleted session returned after start")
+	// Starting a running session changes nothing.
+	act(map[string]string{"action": "start", "id": first})
+	if launches(lead.ID) != 1 || launches(worker.ID) != 1 {
+		t.Fatal("start relaunched a running session")
 	}
 	call(otherLead.ID, "send_message", map[string]string{"to": "worker", "text": "only second worker"})
 	until("session-local name delivery", func() bool { return strings.Contains(logOf(otherWorker.ID), "only second worker") })
@@ -401,125 +474,119 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 	until("lead-to-lead delivery", func() bool { return strings.Contains(logOf(lead.ID), "from the other lead") })
 	// A turn that delivered messages leaves a session untitled. The first
 	// prompt typed while idle titles it, and later prompts leave the title.
-	until("lead idle after wake-up", func() bool { return state().Agents[0].Activity == store.Idle })
-	if state().Agents[0].Title != "" || strings.TrimSpace(tmux("display-message", "-p", "-t", lead.Target, "#{window_name}")) != store.Untitled {
+	until("lead idle after wake-up", func() bool { return agent(lead.ID).Activity == store.Idle })
+	if sessionOf(first).Title != "" {
 		t.Fatal("a wake-up titled the session")
 	}
-	tmux("send-keys", "-t", lead.Target, "-l", "Fix the parser")
-	tmux("send-keys", "-t", lead.Target, "Enter")
-	until("first prompt titles the session", func() bool { return state().Agents[0].Title == "Fix the parser" })
-	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", lead.Target, "#{window_name}")); got != "Fix the parser" {
-		t.Fatalf("titled window: %q", got)
-	}
-	tmux("send-keys", "-t", lead.Target, "-l", "Something else")
-	tmux("send-keys", "-t", lead.Target, "Enter")
+	tmux("send-keys", "-t", lead.Pane, "-l", "Fix the parser")
+	tmux("send-keys", "-t", lead.Pane, "Enter")
+	until("first prompt titles the session", func() bool { return sessionOf(first).Title == "Fix the parser" })
+	tmux("send-keys", "-t", lead.Pane, "-l", "Something else")
+	tmux("send-keys", "-t", lead.Pane, "Enter")
 	until("second prompt handled", func() bool { return strings.Contains(logOf(lead.ID), `"kind":"handled","text":"Something else"`) })
-	if state().Agents[0].Title != "Fix the parser" {
+	if sessionOf(first).Title != "Fix the parser" {
 		t.Fatal("a later prompt changed the title")
 	}
-	// Selection, user renaming, and window indexes must not affect routing.
-	tmux("select-window", "-t", otherWindow)
-	tmux("rename-window", "-t", firstWindow, "renamed")
+	until("lead's reply unseen", func() bool { return sessionOf(first).Unseen })
+	act(map[string]string{"action": "seen", "id": first})
+	if sessionOf(first).Unseen {
+		t.Fatal("seen left the reply unseen")
+	}
+	// The view's terminal window does not take new workers.
+	tmux("new-window", "-d", "-t", "=hypercube-"+first+":")
 	call(lead.ID, "create_agent", map[string]string{"name": "extra", "profile": "worker", "dir": "."})
-	until("extra worker", func() bool { return len(state().Agents) == 5 && state().Agents[4].Waiter > 0 })
-	extra := state().Agents[4]
-	if windowOf(extra.Target) != firstWindow {
-		t.Fatal("worker creation used the selected window")
+	until("extra worker", func() bool { list := agents(first); return len(list) == 3 && list[2].Waiter > 0 })
+	extra := agents(first)[2]
+	if tmux("display-message", "-p", "-t", extra.Pane, "#{window_id}") != tmux("display-message", "-p", "-t", lead.Pane, "#{window_id}") {
+		t.Fatal("worker creation used the terminal window")
 	}
 	call(lead.ID, "remove_agent", map[string]string{"name": extra.Name})
-	cli("start", root)
-	if strings.Count(logOf(lead.ID), `"kind":"launch"`) != 1 || strings.Count(logOf(otherLead.ID), `"kind":"launch"`) != 1 {
-		t.Fatal("reattach relaunched an existing session")
-	}
-	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", "="+workspace.Name(root)+":", "#{window_id}")); got != otherWindow {
-		t.Fatal("reattach changed the selected window", got)
-	}
-	tmux("send-keys", "-t", worker.Target, "-l", "draft stays here")
+	tmux("send-keys", "-t", worker.Pane, "-l", "draft stays here")
 	call(lead.ID, "send_message", map[string]string{"to": worker.Name, "text": "wake while drafting"})
 	until("idle wake-up", func() bool { return strings.Contains(logOf(worker.ID), "wake while drafting") })
-	tmux("send-keys", "-t", worker.Target, "Enter")
+	tmux("send-keys", "-t", worker.Pane, "Enter")
 	until("draft preserved", func() bool { return strings.Contains(logOf(worker.ID), `"kind":"handled","text":"draft stays here"`) })
-	tmux("send-keys", "-t", worker.Target, "work", "Enter")
+	tmux("send-keys", "-t", worker.Pane, "work", "Enter")
 	until("busy worker", func() bool {
-		return state().Agents[1].Activity == store.Busy && strings.Contains(logOf(worker.ID), `"kind":"working"`)
+		return agent(worker.ID).Activity == store.Busy && strings.Contains(logOf(worker.ID), `"kind":"working"`)
 	})
 	call(lead.ID, "send_message", map[string]string{"to": worker.Name, "text": "change course during turn"})
-	tmux("send-keys", "-t", worker.Target, "tool", "Enter")
+	tmux("send-keys", "-t", worker.Pane, "tool", "Enter")
 	until("mid-turn steering", func() bool { return strings.Contains(logOf(worker.ID), "change course during turn") })
-	tmux("send-keys", "-t", worker.Target, "fail", "Enter")
+	tmux("send-keys", "-t", worker.Pane, "fail", "Enter")
 	until("failure reaches lead", func() bool { return strings.Contains(logOf(lead.ID), "test provider failure") })
 	if strings.Contains(logOf(otherLead.ID), "test provider failure") {
 		t.Fatal("failure reached another session's lead")
 	}
-	tmux("send-keys", "-t", worker.Target, "exit", "Enter")
-	until("resume after exit", func() bool { return strings.Count(logOf(worker.ID), `"kind":"launch"`) == 2 })
-	if state().Agents[1].Target != worker.Target || !strings.Contains(logOf(worker.ID), worker.ID+"-session") {
-		t.Fatal("relaunch lost the pane or session")
+	tmux("send-keys", "-t", worker.Pane, "exit", "Enter")
+	until("resume after exit", func() bool { return launches(worker.ID) == 2 })
+	if agent(worker.ID).Pane != worker.Pane || !strings.Contains(logOf(worker.ID), worker.ID+"-conversation") {
+		t.Fatal("relaunch lost the pane or conversation")
 	}
-	// A stale target in another team's window must not close its worker.
-	stranger := otherWorker.Target
-	if err := store.Update(path, func(s *store.State) error { s.Agents[1].Target = stranger; return nil }); err != nil {
+	// A stale pane in another session must not close its worker.
+	stranger := otherWorker.Pane
+	if err := db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(worker.ID)
+		if err != nil {
+			return err
+		}
+		a.Pane = stranger
+		return tx.SaveAgent(a)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	call(lead.ID, "remove_agent", map[string]string{"name": worker.Name})
-	if got := strings.TrimSpace(tmux("display-message", "-p", "-t", stranger, "#{pane_id}")); got != stranger {
+	if got := tmux("display-message", "-p", "-t", stranger, "#{pane_id}"); got != stranger {
 		t.Fatalf("unrelated pane was closed: %q", got)
 	}
-	if out, err := exec.Command("tmux", "display-message", "-p", "-t", worker.Target, "#{pane_id}").CombinedOutput(); err == nil && strings.TrimSpace(string(out)) != "" {
+	if out, err := exec.Command("tmux", "display-message", "-p", "-t", worker.Pane, "#{pane_id}").CombinedOutput(); err == nil && strings.TrimSpace(string(out)) != "" {
 		t.Fatalf("removed agent's real pane remains: %s", out)
 	}
 	if _, err := os.Stat(worker.Dir); !os.IsNotExist(err) {
 		t.Fatal("worker worktree remains")
 	}
-	if len(state().Agents) != 3 {
+	if len(agents(first)) != 1 {
 		t.Fatal("removed worker remains")
 	}
-	// Closing one window and starting again resumes only that team's agents.
-	tmux("kill-window", "-t", otherWindow)
-	cli("start", root)
-	until("closed window resumed", func() bool {
-		return strings.Count(logOf(otherWorker.ID), `"kind":"launch"`) == 2
-	})
-	if strings.Count(logOf(lead.ID), `"kind":"launch"`) != 1 || !strings.Contains(logOf(otherWorker.ID), otherWorker.ID+"-session") {
-		t.Fatal("window resume restarted the wrong team or lost its session")
+
+	// A stopped session stays stopped when the view restarts, and keeps its
+	// conversations and queued messages.
+	act(map[string]string{"action": "stop", "id": second})
+	if tmuxRunning(second) || !tmuxRunning(first) {
+		t.Fatal("stop closed the wrong tmux session")
 	}
-	// Stop and restart retain the main conversation and its queued messages.
-	cli("stop", root)
-	if err := store.Update(path, func(s *store.State) error {
-		s.Messages = append(s.Messages, store.Message{From: "user", To: lead.ID, Text: "queued while stopped"})
-		s.Messages = append(s.Messages, store.Message{From: "user", To: otherWorker.ID, Text: "other queued while stopped"})
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// Starting the browser view restores the stopped workspace and its queues.
-	beforeRestore := state()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
-	view := exec.Command(binary, "ui", fmt.Sprint(port))
-	if err := view.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = view.Process.Kill(); _ = view.Wait() }()
-	until("restored agents waiting", func() bool {
-		s := state()
-		for _, before := range beforeRestore.Agents {
-			a, err := s.Agent(before.ID)
-			if err != nil || a.Target == "" || a.Waiter <= before.Waiter {
+	until("view lists the session stopped", func() bool {
+		for _, s := range snapshot()[0].Sessions {
+			if s.Running != (s.ID == first) {
 				return false
 			}
 		}
 		return true
 	})
-	restored := state()
-	if !restored.AwaitingUser(lead.Team) || !restored.AwaitingUser(otherLead.Team) {
-		t.Fatal("restored sessions did not await the user")
+	if code, _ := post("/session", map[string]string{"action": "bogus", "id": second}); code != http.StatusBadRequest {
+		t.Fatal("an unknown action was accepted")
 	}
-	for _, a := range restored.Agents {
+	if res, err := http.Get(base + "/events?session=" + second); err != nil || res.StatusCode != http.StatusConflict {
+		t.Fatalf("events for a stopped session: %v %v", res.Status, err)
+	}
+	queue(otherLead.ID, "queued while stopped")
+	queue(otherWorker.ID, "other queued while stopped")
+	stopView()
+	startView()
+	time.Sleep(500 * time.Millisecond)
+	if tmuxRunning(second) || launches(otherLead.ID) != 1 {
+		t.Fatal("restarting the view started a stopped session")
+	}
+	// Start resumes the conversations and waits for the user's prompt.
+	otherLead, otherWorker = agent(otherLead.ID), agent(otherWorker.ID)
+	act(map[string]string{"action": "start", "id": second})
+	until("started session waiting", func() bool {
+		return launches(otherWorker.ID) == 2 && agent(otherLead.ID).Waiter > otherLead.Waiter && agent(otherWorker.ID).Waiter > otherWorker.Waiter
+	})
+	if !sessionOf(second).AwaitingUser || !strings.Contains(logOf(otherWorker.ID), "--resume\",\""+otherWorker.ID+"-conversation") {
+		t.Fatal("started session did not resume and await the user")
+	}
+	for _, a := range agents(second) {
 		var lastLaunch []string
 		for _, line := range strings.Split(logOf(a.ID), "\n") {
 			var entry struct {
@@ -530,78 +597,86 @@ func TestTmuxNativeLifecycle(t *testing.T) {
 				lastLaunch = entry.Argv
 			}
 		}
-		if len(lastLaunch) == 0 || slices.Contains(lastLaunch, mcp.Nudge) {
-			t.Fatalf("restored launch for %s: %v", a.ID, lastLaunch)
+		if len(lastLaunch) == 0 || slices.Contains(lastLaunch, session.Nudge) {
+			t.Fatalf("restarted launch for %s: %v", a.ID, lastLaunch)
 		}
 	}
 	time.Sleep(time.Second)
-	if strings.Contains(logOf(lead.ID), "queued while stopped") || strings.Contains(logOf(otherWorker.ID), "other queued while stopped") || len(state().Messages) != 2 {
-		t.Fatal("restored sessions delivered messages before a user prompt")
+	if strings.Contains(logOf(otherLead.ID), "queued while stopped") || len(queued(otherLead.ID)) != 1 || len(queued(otherWorker.ID)) != 1 {
+		t.Fatal("a started session delivered messages before a user prompt")
 	}
-	resumedLead, _ := restored.Agent(lead.ID)
-	tmux("send-keys", "-t", resumedLead.Target, "continue", "Enter")
-	until("first session released", func() bool {
-		for _, line := range strings.Split(logOf(lead.ID), "\n") {
-			var entry struct{ Kind, Text string }
-			if json.Unmarshal([]byte(line), &entry) == nil && entry.Kind == "prompt" && strings.Contains(entry.Text, "queued while stopped") {
-				return true
-			}
-		}
-		return false
+	otherLead = agent(otherLead.ID)
+	tmux("send-keys", "-t", otherLead.Pane, "continue", "Enter")
+	until("started session released", func() bool {
+		return strings.Contains(logOf(otherLead.ID), "queued while stopped") && strings.Contains(logOf(otherWorker.ID), "other queued while stopped")
 	})
-	if s := state(); s.AwaitingUser(lead.Team) || !s.AwaitingUser(otherLead.Team) || len(s.Messages) != 1 || s.Messages[0].To != otherWorker.ID || s.Messages[0].Text != "other queued while stopped" {
-		t.Fatal("prompting one session released another or lost its queue", s)
+
+	// At logout the view and tmux end; at login only the sessions the user
+	// left running start again, waiting for the user.
+	act(map[string]string{"action": "stop", "id": second})
+	queue(lead.ID, "queued at logout")
+	lead = agent(lead.ID)
+	stopView()
+	tmux("kill-server")
+	startView()
+	until("running session restored", func() bool { return launches(lead.ID) == 2 && agent(lead.ID).Waiter > lead.Waiter })
+	if tmuxRunning(second) || !sessionOf(first).AwaitingUser {
+		t.Fatal("login restored the wrong sessions")
 	}
-	resumedOtherLead, _ := restored.Agent(otherLead.ID)
-	tmux("send-keys", "-t", resumedOtherLead.Target, "continue", "Enter")
-	until("second session released", func() bool {
-		return strings.Contains(logOf(otherWorker.ID), "other queued while stopped")
-	})
-	if strings.Contains(logOf(lead.ID), "other queued while stopped") || strings.Contains(logOf(otherWorker.ID), `Message from user:\nqueued while stopped`) {
-		t.Fatal("resumed queues crossed sessions")
+	time.Sleep(time.Second)
+	if strings.Contains(logOf(lead.ID), "queued at logout") {
+		t.Fatal("a restored session delivered messages before a user prompt")
 	}
-	// A new title shows in the window and to agents; the address stays.
-	current := state()
-	renamedLead, err := current.Agent(otherLead.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cli("window", "rename", path, otherLead.Team, windowOf(renamedLead.Target), "#{session_name} -triage;")
-	if got := tmux("display-message", "-p", "-t", renamedLead.Target, "#{window_name}"); strings.TrimSpace(got) != "#{session_name} -triage;" {
-		t.Fatalf("retitled window: %q", got)
-	}
-	if listed := call(lead.ID, "list_agents", nil); !strings.Contains(listed, otherLead.Address()) || !strings.Contains(listed, "#{session_name} -triage;") {
+	lead = agent(lead.ID)
+	tmux("send-keys", "-t", lead.Pane, "continue", "Enter")
+	until("restored session released", func() bool { return strings.Contains(logOf(lead.ID), "queued at logout") })
+
+	// A new title shows to agents; the address stays.
+	act(map[string]string{"action": "rename", "id": first, "title": "#{session_name} -triage;"})
+	act(map[string]string{"action": "start", "id": second})
+	until("second session running", func() bool { return tmuxRunning(second) && agent(otherLead.ID).Pane != "" })
+	if listed := call(otherLead.ID, "list_agents", nil); !strings.Contains(listed, lead.Address()) || !strings.Contains(listed, "#{session_name} -triage;") {
 		t.Fatal("list_agents missed the new title", listed)
 	}
-	// A title the user set stays after the next prompt.
-	tmux("send-keys", "-t", renamedLead.Target, "-l", "Another line")
-	tmux("send-keys", "-t", renamedLead.Target, "Enter")
-	until("prompt after rename", func() bool { return strings.Contains(logOf(otherLead.ID), `"kind":"handled","text":"Another line"`) })
-	if got, err := store.Load(path); err != nil || got.Title(otherLead.Team) != "#{session_name} -triage;" {
-		t.Fatalf("a prompt replaced the user's title: %v", err)
+	tmux("send-keys", "-t", lead.Pane, "-l", "Another line")
+	tmux("send-keys", "-t", lead.Pane, "Enter")
+	until("prompt after rename", func() bool { return strings.Contains(logOf(lead.ID), `"kind":"handled","text":"Another line"`) })
+	if got := sessionOf(first).Title; got != "#{session_name} -triage;" {
+		t.Fatalf("a prompt replaced the user's title: %q", got)
 	}
-	// Deleting the final window must finish cleanup even as tmux exits.
-	cli("window", "delete", path, otherLead.Team, windowOf(renamedLead.Target))
+	// Deleting the last session leaves the workspace; deleting the workspace
+	// removes it and its worktrees.
+	act(map[string]string{"action": "delete", "id": second})
 	call(lead.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
-	until("last worker", func() bool { return len(state().Agents) == 2 && state().Agents[1].Waiter > 0 })
-	lastWorker := state().Agents[1]
-	// The browser view's terminal is a window outside every team.
-	tmux("new-window", "-d", "-t", "="+workspace.Name(root)+":")
-	cli("window", "delete", path, lead.Team, windowOf(state().Agents[0].Target))
-	until("last session deleted", func() bool {
-		_, stateErr := os.Stat(path)
-		_, worktreeErr := os.Stat(lastWorker.Dir)
-		return os.IsNotExist(stateErr) && os.IsNotExist(worktreeErr)
-	})
-	if exec.Command("tmux", "has-session", "-t", "="+workspace.Name(root)).Run() == nil {
-		t.Fatal("the terminal window kept the deleted workspace's session")
+	until("last worker", func() bool { list := agents(first); return len(list) == 2 && list[1].Waiter > 0 })
+	lastWorker := agents(first)[1]
+	act(map[string]string{"action": "delete", "id": first})
+	until("workspace without sessions", func() bool { list := snapshot(); return len(list) == 1 && len(list[0].Sessions) == 0 })
+	if _, err := os.Stat(lastWorker.Dir); !os.IsNotExist(err) {
+		t.Fatal("deleted session's worktree remains", err)
 	}
-	if got := cli("status"); strings.Contains(got, root) {
-		t.Fatalf("deleted workspace listed: %s", got)
+	second = act(map[string]string{"action": "new", "workspace": w.ID, "lead": "first"})
+	secondLead := agents(second)[0]
+	until("new session lead", ready(secondLead.ID))
+	call(secondLead.ID, "create_agent", map[string]string{"name": "w", "profile": "worker"})
+	until("new session worker", func() bool { list := agents(second); return len(list) == 2 && list[1].Waiter > 0 })
+	finalWorker := agents(second)[1]
+	if code, body := post("/workspace", map[string]string{"action": "delete", "id": w.ID}); code != http.StatusOK {
+		t.Fatalf("deleting the workspace: %d %s", code, body)
+	}
+	until("no workspaces", func() bool { return len(snapshot()) == 0 })
+	if tmuxRunning(second) {
+		t.Fatal("the deleted workspace's session runs")
+	}
+	if _, err := os.Stat(finalWorker.Dir); !os.IsNotExist(err) {
+		t.Fatal("deleted workspace's worktree remains", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".hypercube")); !os.IsNotExist(err) {
 		t.Fatal("session worktree directories remain", err)
 	}
 }
 
-func stateForDiagnostics(path string) string { b, _ := os.ReadFile(path); return string(b) }
+// tmuxRunning reports whether the session's tmux session exists.
+func tmuxRunning(session string) bool {
+	return exec.Command("tmux", "has-session", "-t", "=hypercube-"+session).Run() == nil
+}

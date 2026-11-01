@@ -1,53 +1,46 @@
 # Usage
 
-After creating your configuration, run `hypercube ui`, open
-http://localhost:4280/, and choose the directory you want to work in, or run
-`hypercube start <dir>`. In Git, the workspace root is the checkout's top
-level; outside Git, it is the directory itself.
+After creating your configuration, run `hypercube ui` and open
+http://localhost:4280/. The browser view is Hypercube's interface.
 
-A workspace owns one tmux session. Each Hypercube session is a team in its own
-window, with a lead on the left and workers stacked on the right.
+A workspace is a folder that holds sessions. In Git, its folder is the
+checkout's top level; outside Git, it is the folder itself. A session is a lead
+and its workers, with the lead on the left and workers stacked on the right.
+You create, start, stop, rename, and delete sessions; a stopped session has no
+running agents and stays listed until you start it.
+
 Each session has a random ID, such as `k3f9a2c1`, and a title. A new session
 shows as "New Session" until the first prompt you type to its lead titles it
 with that prompt's first line, cut to 200 characters. You can change the title
 at any time; later prompts leave it alone.
 Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
-means an agent in the sender's own team. Agents see each session's title beside
-its ID. Workers message only their own team,
-and leads can also message other teams' leads. Worker lifecycle is scoped to the
-team.
-Leads share the original directory, including its files, Git index,
-and branch. Use worker worktrees for independent edits.
+means an agent in the sender's own session. Agents see each session's title
+beside its ID. Workers message only their own session, and leads can also
+message the leads of the workspace's other sessions. Worker lifecycle is scoped
+to the session.
+Leads share the workspace's folder, including its files, Git index, and branch.
+Use worker worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
 | `hypercube ui [port] [--menu]` | Serve the browser view at http://localhost:4280/, or on the given port. `--menu` adds a menu bar icon; the service from `make install-service` uses it. |
-| `hypercube start <dir>` | Start a workspace's saved sessions, or a new workspace with one new session. |
-| `hypercube stop [dir]` | End all windows in a workspace, keeping conversations and queued messages. |
-| `hypercube delete [dir]` | Delete a workspace and its managed resources. |
-| `hypercube status` | Show known workspaces and their status. |
-
-Stop and delete default to the current
-workspace; `--all` lists targets and asks for confirmation. They can also
-use a disappeared checkout's saved path.
 
 ## Browser view
 
-The browser view is Hypercube's interface. It shows the running workspaces
-and talks to their tmux sessions.
+The sidebar lists every workspace's sessions under a row for the workspace;
+click the row to collapse or expand them. Click `+` at the top of the sidebar
+to choose a folder and add it as a workspace. Hover over a workspace's row and
+click `+` to list its lead profiles; choose one to create a session with it.
+Right-click a workspace to delete it.
 
-The sidebar lists every running workspace's sessions under a row for the
-workspace; click the row to collapse or expand them. Click `+` at the top of the
-sidebar to choose a folder and start a workspace in it. Hover over a
-workspace's row and click `+` to list its lead profiles; choose one to create a
-session with it. Click the trash icon to delete the workspace. Click a session
-to switch to it, double-click it to change its title, or hover over one and
-click the trash icon to delete it. A
+Click a session to show it, and double-click it to change its title.
+Right-click a session to start or stop it, or to delete it. A stopped session's
+row is dimmed; selecting it shows **Start Session**, which starts it. A
 workspace's folder icon becomes a spinner while any of its agents is busy, and
-a session shows one in the same place. A session
-shows an amber dot while any of its agents awaits your approval, and a blue dot
-after its lead finishes a reply you have not seen. A worker's card shows a spinner while it is busy, an amber dot while
-it awaits approval, and a red dot after it exits. See
+a session shows one in the same place. A session shows an amber dot while any
+of its agents awaits your approval, and a blue dot after its lead finishes a
+reply you have not seen. A worker's card shows a spinner while it is busy, an
+amber dot while it awaits approval, and a red dot after it exits. See
 [harness limitations](harness-support.md#known-limitations) when interpreting
 activity.
 
@@ -59,23 +52,23 @@ how long ago it made it, its context use, and its cost so far. Codex reports no
 cost. Drag the dividers to resize the sidebar and the lead's side.
 
 The panel button in the header shows or hides a terminal below the agents. It
-runs your shell in the workspace's folder, one per workspace, and keeps running
+runs your shell in the workspace's folder, one per session, and keeps running
 while the panel is hidden or the browser is closed, until the shell exits or the
-workspace stops. Drag the divider above it to change its height.
+session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-Closing the browser leaves agents running. Starting a workspace recreates its
-closed saved windows with their conversations and queues, and does not restart
-agents in existing windows. A relaunched session starts no turn and delivers
-no queued message until you type a prompt into any of its agents.
+Closing the browser leaves agents running. Stopping a session keeps its
+conversations and queued messages. Starting it resumes each agent's
+conversation, and at login Hypercube starts the sessions that were running when
+it last exited. A started session starts no turn and delivers no queued
+message until you type a prompt into any of its agents.
 
 A harness that exits is relaunched in its pane with its saved conversation.
 Repeated quick exits stop automatic retries, and launch errors stay visible.
-Starting a workspace does not retry an exited agent in an existing window; stop
-and start the workspace to retry after correcting the error.
+Stop and start the session to retry after correcting the error.
 
-Deleting a team or workspace removes its workers' managed worktrees and
+Deleting a session or workspace removes its workers' managed worktrees and
 branches only after checking for uncommitted work and commits not merged into
 the original checkout's HEAD. Existing directories supplied to workers are
 left alone. Failed cleanup stays recorded so deletion can be retried.

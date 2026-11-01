@@ -84,8 +84,8 @@ func launch(stdin io.Reader, stdout io.Writer) error {
 		"--mcp-config", plugin.JSONString(map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": in.Hypercube, "args": []string{"mcp"}, "env": in.Env}}}),
 		"--settings", plugin.JSONString(map[string]any{"hooks": hooks, "statusLine": map[string]any{"type": "command", "command": command(status...)}}),
 		"--model", in.Model, "--effort", in.Effort, "--permission-mode", "auto"}
-	if in.Session != "" {
-		argv = append(argv, "--resume", in.Session)
+	if in.Conversation != "" {
+		argv = append(argv, "--resume", in.Conversation)
 	}
 	if in.Prompt != "" {
 		argv = append(argv, in.Prompt)
@@ -135,7 +135,7 @@ func hook(hypercube, event string, stdin io.Reader, stdout io.Writer) error {
 	body := map[string]any{}
 	switch event {
 	case "UserPromptSubmit":
-		body["session"] = in.SessionID
+		body["conversation"] = in.SessionID
 		body["text"] = pasteTag.ReplaceAllString(in.Prompt, "")
 	case "StopFailure":
 		for _, text := range []string{in.ErrorDetails, in.LastAssistantMessage, in.Error} {
