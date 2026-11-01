@@ -76,10 +76,18 @@
   &.dragging {
     background-color: var(--color-sky-500);
   }
+  &[aria-disabled="true"] {
+    cursor: default;
+    background-color: var(--color-neutral-700);
+  }
   &[aria-orientation="horizontal"] {
     width: auto;
     height: 1px;
     cursor: row-resize;
+
+    &[aria-disabled="true"] {
+      cursor: default;
+    }
 
     &::after {
       inset: -3px 0;

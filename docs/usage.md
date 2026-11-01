@@ -45,11 +45,11 @@ amber dot while it awaits approval, and a red dot after it exits. See
 activity.
 
 The lead's terminal fills the left side, and each worker is a card on the
-right. Click a card, or its terminal button, to show
-the worker's terminal in the card; click the button again to return to the
-summary. The summary shows the worker's latest report of what it is doing and
-how long ago it made it, its context use, and its cost so far. Codex reports no
-cost. Drag the dividers to resize the sidebar and the lead's side.
+right. Click a worker's header to toggle between its preview and terminal.
+The preview shows the worker's latest report and how long ago it made it.
+The lead and worker headers show context use and cost so far. Codex reports no
+cost. Drag the dividers to resize the sidebar and the lead's side. Dividers
+between workers resize expanded terminals; collapsed previews keep their height.
 
 The panel button in the header shows or hides a terminal below the agents. It
 runs your shell in the workspace's folder, one per session, and keeps running

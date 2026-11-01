@@ -4,8 +4,7 @@
 # tmux server, and scratch repository under $DEV, so it never touches the
 # installed hypercube's workspaces. Add the scratch repository in the view.
 #
-#   scripts/dev [up]   build, restart the dev view on the new binary, which
-#                      starts the dev sessions again, and open the view
+#   scripts/dev [up]   build, open the view, and watch sources until Ctrl-C
 #   scripts/dev stop   stop the view and the dev tmux server; the sessions
 #                      stay marked running, so `up` resumes them
 #   scripts/dev clean  stop it and delete everything it left
@@ -14,7 +13,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
 BIN=$ROOT/bin/hypercube
-PORT=4281
+PORT=${HYPERCUBE_DEV_PORT:-4281}
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
 
@@ -23,23 +22,31 @@ CONFIG=$DEV/config/hypercube/config.json
 # not inherit the environment of the agent running this script.
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
 	TMUX_TMPDIR="$DEV" XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
-# Stop the dev view and every dev session.
-stop() {
+# Stop only the view while rebuilding, so agent panes keep running.
+stop_view() {
 	if [ -f "$DEV/ui.pid" ]; then
 		pid=$(cat "$DEV/ui.pid")
 		if ps -p "$pid" -o command= | grep -q 'hypercube ui'; then
 			kill "$pid" || true
+			wait "$pid" 2>/dev/null || true
 		fi
 		rm -f "$DEV/ui.pid"
 	fi
+}
+
+# Stop the dev view and every dev session.
+stop() {
+	stop_view
 	TMUX_TMPDIR="$DEV" tmux kill-server 2>/dev/null || true
 }
 
 case "${1:-up}" in
 up)
 	cd "$ROOT"
-	make build
 	stop
+	trap stop EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
 
 	mkdir -p "$DEV/state" "$(dirname "$CONFIG")"
 	if [ ! -d "$REPO/.git" ]; then
@@ -107,16 +114,55 @@ up)
 JSON
 	fi
 
-	# The view ignores a hangup so it outlives the shell that started it. The
-	# subshell execs hypercube, so the saved process ID is the view's own.
-	(trap '' HUP; exec "${DEV_ENV[@]}" "$BIN" ui "$PORT") >"$DEV/ui.log" 2>&1 </dev/null &
-	echo $! >"$DEV/ui.pid"
-	for _ in $(seq 25); do
-		curl -fs -o /dev/null "http://localhost:$PORT/" && break
-		sleep 0.2
-	done
+	# Poll source contents rather than mtimes, including additions and deletions.
+	# Generated CSS and dependencies are excluded so builds do not trigger builds.
+	sources() {
+		{
+			find cmd internal plugins -type d -name node_modules -prune -o \
+				-type f ! -path internal/ui/static/ui.css -exec cksum {} +
+			cksum go.mod go.sum Makefile scripts/dev
+		} | LC_ALL=C sort | cksum
+	}
+	build() {
+		make ui && make build
+	}
+	start_view() {
+		"${DEV_ENV[@]}" HYPERCUBE_DEV_RELOAD="$revision" "$BIN" ui "$PORT" &
+		view_pid=$!
+		echo "$view_pid" >"$DEV/ui.pid"
+		for _ in $(seq 50); do
+			if ! kill -0 "$view_pid" 2>/dev/null; then
+				wait "$view_pid"
+				return 1
+			fi
+			if curl -fs --max-time 1 -o /dev/null "http://localhost:$PORT/" 2>/dev/null; then
+				return
+			fi
+			sleep 0.1
+		done
+		echo "Dev view did not start on port $PORT" >&2
+		return 1
+	}
+	revision=$(sources)
+	build
+	start_view
 	open "http://localhost:$PORT/"
 	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/)"
+	echo "Watching sources; Ctrl-C stops the dev view and sessions."
+	while kill -0 "$view_pid" 2>/dev/null; do
+		sleep 1
+		next=$(sources)
+		if [ "$next" = "$revision" ]; then continue; fi
+		revision=$next
+		echo "Sources changed; rebuilding..."
+		if build; then
+			stop_view
+			start_view
+		else
+			echo "Build failed; keeping the previous view. Waiting for changes." >&2
+		fi
+	done
+	wait "$view_pid"
 	;;
 stop)
 	stop

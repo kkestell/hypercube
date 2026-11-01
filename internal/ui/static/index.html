@@ -28,10 +28,11 @@
   </aside>
   <div id="sidebar-sash" class="sash"></div>
   <div class="flex min-w-0 flex-1 flex-col">
-    <div id="center" class="flex min-h-0 flex-1 bg-[#181818]">
-      <div id="lead" class="flex min-w-0 flex-1 flex-col overflow-hidden p-3"></div>
+    <div id="center" class="relative flex min-h-0 flex-1 bg-[#181818]">
+      <canvas id="hypercube" class="pointer-events-none absolute inset-0 size-full opacity-0 transition-opacity duration-1000" hidden></canvas>
+      <div id="lead" class="flex min-w-0 flex-1 flex-col overflow-hidden"></div>
       <div id="split" class="sash" hidden></div>
-      <div id="workers" class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-3" hidden></div>
+      <div id="workers" class="flex min-w-0 flex-1 flex-col overflow-y-auto" hidden></div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
@@ -43,6 +44,7 @@
 <div id="probe" class="invisible absolute"></div>
 <script src="xterm.js"></script>
 <script src="addon-webgl.js"></script>
+<script src="hypercube.js"></script>
 <script>
 // The page shows Hypercube's data, streamed from the app, and the selected
 // session's terminals, through a tmux control-mode client attached to that
@@ -64,6 +66,18 @@ function webgl(term) {
   const addon = new WebglAddon.WebglAddon();
   addon.onContextLoss(() => addon.dispose());
   term.loadAddon(addon);
+  // The bundled renderer clears its canvas both on terminal resize and in
+  // its device-pixel ResizeObserver. That observer can run after animation
+  // callbacks, too late for xterm's scheduled repaint to reach this frame.
+  // Repaint the buffer synchronously after either path clears the canvas.
+  const renderer = addon._renderer;
+  for (const method of ['handleResize', '_setCanvasDevicePixelDimensions']) {
+    const resize = renderer[method];
+    renderer[method] = function(...args) {
+      resize.apply(this, args);
+      this.renderRows(0, term.rows - 1);
+    };
+  }
 }
 
 const probe = new Terminal({fontFamily, fontSize});
@@ -75,13 +89,12 @@ const $ = id => document.getElementById(id);
 const center = $('center'), lead = $('lead'), split = $('split'), workers = $('workers');
 const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
-// Pixels beside a terminal: its panel's padding, its card's border, and its own
-// padding.
-const cardX = 24 + 2 + 16;
+// Pixels beside a terminal: its card's border and its own padding.
+const cardX = 2 + 16;
 
 let source, client, session, outbox, callbacks, block, terms = new Map(), shown, activePane;
 // data is the app's latest snapshot, selected is the selected session's ID,
-// and attached is the running session the terminals belong to.
+// or null once the selected session stops, and attached is the running session the terminals belong to.
 // dead is a session marked running whose terminals could not be reached, as
 // after a failed start; it can be started again.
 // pending is a session to select once the data lists it.
@@ -103,13 +116,19 @@ function watch() {
 function changed() {
   const all = sessions();
   if (pending && all.some(s => s.id === pending)) { selected = pending; pending = null; }
-  if (!current()) selected = (all.find(s => s.running) ?? all[0])?.id ?? '';
-  if (decodeURIComponent(location.hash.slice(1)) !== selected) history.replaceState(null, '', selected ? '#' + encodeURIComponent(selected) : location.pathname);
+  // A session that stops while shown is deselected, and nothing is selected
+  // in its place. Otherwise a selection naming no session moves to a running
+  // one, if any.
+  const chosen = current();
+  if (chosen && !chosen.running && attached === chosen.id) selected = null;
+  else if (selected !== null && !chosen) selected = all.find(s => s.running)?.id ?? '';
+  if (decodeURIComponent(location.hash.slice(1)) !== (selected ?? '')) history.replaceState(null, '', selected ? '#' + encodeURIComponent(selected) : location.pathname);
   const s = current();
   const waiting = all.filter(s => s.running).reduce((n, s) => n + s.agents.filter(a => a.attention).length, 0);
   const workspace = data.find(w => w.sessions.includes(s));
   document.title = (waiting ? `(${waiting}) ` : '') + [s?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
   renderSidebar();
+  $('hypercube').hidden = !!s;
   const want = s?.running ? s.id : null;
   if (want !== attached) attach(want);
   else refresh();
@@ -209,7 +228,8 @@ function received(bytes) {
     const change = text.match(/^%layout-change (\S+) (\S+)/);
     if (change) {
       pendingLayouts.set(change[1], change[2]);
-      requestAnimationFrame(resizeTerminals);
+      // Resize before animation callbacks so xterm can repaint this frame.
+      queueMicrotask(resizeTerminals);
     }
     refresh();
   }
@@ -327,9 +347,20 @@ function render(wins, list) {
   }
   // Moving a card that is already in place would blur its terminal.
   if (leader && card(leader).element.parentElement !== lead) lead.append(card(leader).element);
+  const children = [];
   stacked.forEach((p, i) => {
-    const element = card(p).element;
-    if (workers.children[i] !== element) workers.insertBefore(element, workers.children[i] ?? null);
+    const c = card(p);
+    children.push(c.element);
+    if (i === stacked.length - 1) return;
+    if (!c.sash) c.sash = workerSplitter(p.id);
+    c.sash.setAttribute('aria-disabled', !workerPair(p.id));
+    children.push(c.sash);
+  });
+  for (const child of [...workers.children]) {
+    if (!children.includes(child)) child.remove();
+  }
+  children.forEach((child, i) => {
+    if (workers.children[i] !== child) workers.insertBefore(child, workers.children[i] ?? null);
   });
 
   const any = stacked.length > 0;
@@ -444,9 +475,8 @@ function age(ms) {
   return minutes < 1440 ? Math.floor(minutes / 60) + 'h' : Math.floor(minutes / 1440) + 'd';
 }
 
-// The summary is the worker's report of what it is doing and a footer with its
-// context use, cost, and the report's age. Each part shows once it is known.
-function summary(a) {
+// Usage stays in the header for both previews and terminals.
+function usage(a) {
   const {context = 0, window = 0, cost = 0} = a.usage ?? {};
   const radius = 6, circumference = 2 * Math.PI * radius;
   const ring = window ? `<svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
@@ -456,11 +486,12 @@ function summary(a) {
       </svg>` : '';
   const contextUse = window ? `<span class="flex items-center gap-1.5 whitespace-nowrap">${ring}${tokens(context)} / ${tokens(window)}</span>` : '';
   const spent = cost ? `<span class="whitespace-nowrap">${cost < 0.01 ? '<$0.01' : `$${cost.toFixed(2)}`}</span>` : '';
-  const footer = contextUse || spent || a.status ? `<footer class="flex items-center gap-3 text-neutral-500">
-      ${contextUse}${spent}
-      ${a.status ? `<span class="ml-auto shrink-0">${age(a.statusAt)}</span>` : ''}
-    </footer>` : '';
-  return (a.status ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(a.status)}</p>` : '') + footer;
+  return contextUse + spent;
+}
+
+function summary(a) {
+  return a.status ? `<p class="line-clamp-4 break-words text-neutral-300">${escape(a.status)}</p>
+    <footer class="flex justify-end text-neutral-500">${age(a.statusAt)}</footer>` : '';
 }
 
 // An agent's card shows its name, status, and summary, or its name, status,
@@ -475,15 +506,13 @@ function card(p) {
     element.dataset.pane = p.id;
     element.innerHTML = `<header class="flex items-center gap-2">
         <span class="name min-w-0 truncate text-left text-sm text-neutral-100"></span>
-        <span class="status ml-auto shrink-0"></span>
-        <button type="button" class="toggle flex rounded p-0.5 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100 aria-pressed:bg-neutral-700 aria-pressed:text-neutral-100">
-          <span class="icon icon-terminal size-3.5"></span>
-        </button>
+        <span class="usage ml-auto flex shrink-0 items-center gap-3 text-neutral-500"></span>
+        <span class="status shrink-0"></span>
       </header>
       <div class="summary flex flex-col gap-2"></div>
-      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden rounded-b-md border-t border-[#2b2b2b] bg-[#1e1e1e] px-2 py-1"></div>`;
+      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-0 flex-1 flex-col justify-end overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e] px-2 py-1"></div>`;
     const q = name => element.querySelector('.' + name);
-    c = {element, name: q('name'), status: q('status'), toggle: q('toggle'), summary: q('summary'), slot: q('slot')};
+    c = {element, weight: 1, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'), summary: q('summary'), slot: q('slot')};
     cards.set(p.id, c);
   }
   const status = p.dead === '1' ? `<span title="Exited with status ${escape(p.status)}" class="block size-2 rounded-full bg-red-400"></span>`
@@ -491,14 +520,26 @@ function card(p) {
     : p.agent.activity === 'busy' ? '<span role="img" title="Busy" class="icon icon-loading block size-3.5 text-neutral-400"></span>'
     : '';
   const open = p.open;
-  const className = `relative flex flex-col gap-2 rounded-md border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0 cursor-pointer'} ${
+  const className = `relative flex flex-col gap-2 border bg-[#252526] p-3 text-xs ${open ? 'min-h-0 flex-1 basis-0' : 'shrink-0'} ${
     p.agent.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
+  c.element.style.flexGrow = open ? c.weight : '';
   if (c.name.textContent !== p.agent.name) c.name.textContent = p.agent.name;
   update(c.status, status);
-  c.toggle.hidden = p === shown.leader;
-  c.toggle.setAttribute('aria-pressed', open);
-  c.toggle.title = open ? 'Show Summary' : 'Show Terminal';
+  update(c.usage, usage(p.agent));
+  const worker = p !== shown.leader;
+  c.header.classList.toggle('cursor-pointer', worker);
+  if (worker) {
+    c.header.setAttribute('role', 'button');
+    c.header.tabIndex = 0;
+    c.header.setAttribute('aria-expanded', open);
+    c.header.title = open ? 'Show Preview' : 'Show Terminal';
+  } else {
+    c.header.removeAttribute('role');
+    c.header.removeAttribute('tabindex');
+    c.header.removeAttribute('aria-expanded');
+    c.header.removeAttribute('title');
+  }
   const html = summary(p.agent);
   update(c.summary, html);
   c.summary.hidden = open || !html;
@@ -506,19 +547,80 @@ function card(p) {
   return c;
 }
 
-// Clicking a card in summary shows its terminal; its terminal button switches
-// back and forth.
-workers.onclick = e => {
-  const element = e.target.closest('[data-pane]');
+// Worker headers toggle the preview and terminal with a click or keyboard.
+function toggleWorker(e) {
+  const header = e.target.closest('header');
+  if (!header) return;
+  const element = header.closest('[data-pane]');
   const p = shown?.stacked.find(p => p.id === element?.dataset.pane);
-  if (!p || p.open && !e.target.closest('.toggle')) return;
+  if (!p) return;
   p.open = !p.open;
   if (p.open) localStorage.setItem(openKey(p.agent.id), '1');
   else localStorage.removeItem(openKey(p.agent.id));
   card(p);
+  for (const [id, c] of cards) {
+    if (c.sash) c.sash.setAttribute('aria-disabled', !workerPair(id));
+  }
   apply();
   if (p.open) terms.get(p.id).focus();
+}
+workers.onclick = toggleWorker;
+workers.onkeydown = e => {
+  if (e.target.matches('header') && (e.key === 'Enter' || e.key === ' ')) {
+    e.preventDefault();
+    toggleWorker(e);
+  }
 };
+
+// A divider transfers space between the nearest expanded workers on either
+// side. Collapsed cards keep their natural height, even between those workers.
+function workerPair(id) {
+  const stacked = shown.stacked;
+  const i = stacked.findIndex(p => p.id === id);
+  if (i < 0) return null;
+  const above = stacked.slice(0, i + 1).findLast(p => p.open);
+  const below = stacked.slice(i + 1).find(p => p.open);
+  return above && below ? [cards.get(above.id), cards.get(below.id)] : null;
+}
+
+function workerSplitter(id) {
+  const sash = document.createElement('div');
+  sash.className = 'sash';
+  sash.setAttribute('role', 'separator');
+  sash.setAttribute('aria-orientation', 'horizontal');
+  let pair, startY, above, below, aboveMin, belowMin;
+  drag(sash, e => {
+    const delta = Math.max(aboveMin - above, Math.min(below - belowMin, e.clientY - startY));
+    pair[0].weight = above + delta;
+    pair[1].weight = below - delta;
+    for (const c of pair) c.element.style.flexGrow = c.weight;
+    apply();
+  }, null, e => {
+    pair = workerPair(id);
+    if (!pair) return false;
+    const measurements = shown.stacked.filter(p => p.open).map(p => {
+      const c = cards.get(p.id), style = getComputedStyle(c.element);
+      const height = c.element.getBoundingClientRect().height;
+      const weight = height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)
+        - parseFloat(style.borderTopWidth) - parseFloat(style.borderBottomWidth);
+      return {c, weight, minimum: weight - c.slot.getBoundingClientRect().height + cell.height + 8};
+    });
+    const first = measurements.find(m => m.c === pair[0]);
+    const second = measurements.find(m => m.c === pair[1]);
+    above = first.weight;
+    below = second.weight;
+    aboveMin = first.minimum;
+    belowMin = second.minimum;
+    if (above + below < aboveMin + belowMin) return false;
+    // Freeze the current proportions before changing just the selected pair.
+    for (const {c, weight} of measurements) {
+      c.weight = weight;
+      c.element.style.flexGrow = weight;
+    }
+    startY = e.clientY;
+  });
+  return sash;
+}
 
 // The page lays out its panels, then gives tmux the window and pane sizes
 // whose terminals fit them, in one layout. The lead fills the window's
@@ -526,8 +628,8 @@ workers.onclick = e => {
 // workers' columns, which fit the workers panel less its gutter, padding, and
 // card borders. A worker in summary gets one row, and the last in summary
 // takes the rest. Open terminals get the rows their cards have room for; with
-// every card open, they share all the rows, and each card shows the bottom of
-// its terminal.
+// every card open, they share all the rows in their chosen proportions. Each
+// card shows the bottom of its terminal.
 function desired() {
   const {leader, stacked} = shown, n = stacked.length;
   const gutter = n ? workers.offsetWidth - workers.clientWidth : 0;
@@ -536,13 +638,19 @@ function desired() {
   const id = p => p.id.slice(1);
   if (!n) return {size: cols + 'x' + rows, layout: `${cols}x${rows},0,0,${id(leader)}`};
 
-  const leadCols = Math.max(20, Math.min(cols - 21, leadWidth ?? leader.width));
+  // The first layout after attaching keeps the lead's share of the window's
+  // width, since tmux starts a session at its own default size.
+  const windowCols = +shown.layout.split('x')[0];
+  const scaled = !size && windowCols ? Math.round(leader.width * cols / windowCols) : leader.width;
+  const leadCols = Math.max(20, Math.min(cols - 21, leadWidth ?? scaled));
   const x = leadCols + 1, w = cols - x, free = rows - (n - 1);
   const open = stacked.filter(p => p.open);
   let heights;
   if (open.length === n) {
-    const share = Math.floor(free / n);
-    heights = stacked.map((p, i) => i === n - 1 ? free - share * (n - 1) : share);
+    const weights = stacked.map(p => cards.get(p.id).weight);
+    const total = weights.reduce((a, b) => a + b, 0);
+    heights = weights.map(weight => 1 + Math.floor((free - n) * weight / total));
+    heights[n - 1] += free - heights.reduce((a, b) => a + b, 0);
   } else {
     const fit = p => Math.max(1, Math.floor((cards.get(p.id).slot.clientHeight - 8) / cell.height));
     heights = stacked.map(p => p.open ? fit(p) : 1);
@@ -836,8 +944,9 @@ $('toggle-sidebar').onclick = () => {
 
 // drag follows the pointer from a sash until release.
 let dragging = false;
-function drag(sash, move, release) {
+function drag(sash, move, release, start) {
   sash.onpointerdown = e => {
+    if (e.button !== 0 || start?.(e) === false) return;
     e.preventDefault();
     dragging = true;
     sash.classList.add('dragging');
@@ -846,10 +955,12 @@ function drag(sash, move, release) {
       sash.classList.remove('dragging');
       removeEventListener('pointermove', move, true);
       removeEventListener('pointerup', up, true);
+      removeEventListener('pointercancel', up, true);
       release?.();
     };
     addEventListener('pointermove', move, true);
     addEventListener('pointerup', up, true);
+    addEventListener('pointercancel', up, true);
   };
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
@@ -867,6 +978,7 @@ drag(split, e => {
   if (leadWidth !== null && shown?.window) send(`set-option -w -t '${shown.window}' main-pane-width ${leadWidth}`);
 });
 
+hypercube($('hypercube'));
 watch();
 </script>
 </body>

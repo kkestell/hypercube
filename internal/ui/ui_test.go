@@ -112,6 +112,38 @@ func TestIcon(t *testing.T) {
 	}
 }
 
+func TestDevReload(t *testing.T) {
+	for _, revision := range []string{"", "build-1", "build-2"} {
+		t.Run("revision="+revision, func(t *testing.T) {
+			t.Setenv("HYPERCUBE_DEV_RELOAD", revision)
+			handler := Handler(open(t))
+			page := httptest.NewRecorder()
+			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4281/", nil))
+			if page.Code != http.StatusOK {
+				t.Fatalf("page status = %d", page.Code)
+			}
+			res := httptest.NewRecorder()
+			handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4281/dev-reload", nil))
+			if revision == "" {
+				if strings.Contains(page.Body.String(), "/dev-reload") || res.Code != http.StatusNotFound {
+					t.Fatal("production serves development reload")
+				}
+				return
+			}
+			encoded, _ := json.Marshal(revision)
+			if !strings.Contains(page.Body.String(), "await response.text() !== "+string(encoded)) {
+				t.Fatal("page does not check its source revision")
+			}
+			if res.Code != http.StatusOK || res.Body.String() != revision {
+				t.Fatalf("revision response = %d %q", res.Code, res.Body.String())
+			}
+			if res.Header().Get("Cache-Control") != "no-store" || page.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("development responses must not be cached")
+			}
+		})
+	}
+}
+
 func TestStateStreamsSnapshots(t *testing.T) {
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error { return tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"}) })

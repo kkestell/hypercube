@@ -51,10 +51,14 @@ their next launch.
 `make dev` builds this checkout and opens its browser view at
 http://localhost:4281/ with isolated state, configuration, tmux server, and a
 scratch repository under `~/projects/hypercube-dev`, which you add as a
-workspace in the view. Set `HYPERCUBE_DEV_DIR` to use another location.
-`make dev-stop` stops it; `make dev-clean` removes its disposable resources, the
-dev agents' OpenCode conversations, and their Claude Code transcripts. Details belong
-to [scripts/dev](../scripts/dev).
+workspace in the view. Set `HYPERCUBE_DEV_DIR` to use another location or
+`HYPERCUBE_DEV_PORT` to use another port.
+It stays in the foreground, rebuilds after source changes, and reloads the
+browser. Failed builds leave the previous view running. Ctrl-C stops the view
+and its dev sessions; rebuilding keeps those sessions running.
+`make dev-stop` can also stop it; `make dev-clean` removes its disposable
+resources, the dev agents' OpenCode conversations, and their Claude Code
+transcripts. Details belong to [scripts/dev](../scripts/dev).
 
 Automated tests use local harness stand-ins. Live model behavior requires a
 separate smoke test; the latest recorded result is in

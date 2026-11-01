@@ -58,12 +58,39 @@ func Handler(db *store.DB) http.Handler {
 	files, _ := fs.Sub(static, "static")
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(files))
+	if revision := os.Getenv("HYPERCUBE_DEV_RELOAD"); revision != "" {
+		devReload(mux, revision)
+	}
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /tmux", terminals)
 	mux.HandleFunc("GET /leads", leads)
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
 	return localOnly(mux)
+}
+
+// devReload is enabled only by scripts/dev. A rebuilt server publishes its
+// source revision; open pages wait through downtime and reload when it changes.
+func devReload(mux *http.ServeMux, revision string) {
+	mux.HandleFunc("GET /dev-reload", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		fmt.Fprint(w, revision)
+	})
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		page, _ := static.ReadFile("static/index.html")
+		encoded, _ := json.Marshal(revision)
+		reload := fmt.Sprintf(`<script>
+setInterval(async () => {
+  try {
+    const response = await fetch('/dev-reload', {cache: 'no-store'});
+    if (response.ok && await response.text() !== %s) location.reload();
+  } catch {}
+}, 1000);
+</script>`, encoded)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write(bytes.Replace(page, []byte("</body>"), []byte(reload+"</body>"), 1))
+	})
 }
 
 // refresh reads the view data after a database change and wakes the pages
