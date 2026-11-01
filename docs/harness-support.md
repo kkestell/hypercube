@@ -84,7 +84,32 @@ with `--resume`. A conversation Claude Code cannot resume fails the launch.
 
 ## OpenCode
 
-OpenCode 2.x is required.
+OpenCode 2.x is required. The plugin keeps one `opencode acp` process running
+per agent and speaks the Agent Client Protocol to it. The process runs in the
+agent's working directory with the `hypercube mcp` server as an MCP server of
+its session. The runtime instructions are loaded as an OpenCode instructions
+file on every launch, and a saved conversation resumes with `session/resume`.
+A conversation OpenCode cannot resume fails the launch. A permission that
+OpenCode asks about is allowed once, as with `opencode --auto`; a permission
+that OpenCode's configuration denies stays denied.
+
+The model must be a `provider/model` ID from `opencode models`, and the effort
+one of the levels OpenCode offers for that model (`default` for a model without
+levels); a launch with any other value fails and names it.
+
+- **Text and tools.** Text and reasoning stream into the transcript as OpenCode
+  writes them. A subagent's text and tool calls appear nested under the call
+  that started it.
+- **Questions.** OpenCode's question tool becomes one attention request per
+  question, with the options as choices and free text for another answer;
+  OpenCode receives the answers once every question has one.
+- **Messages and interrupts.** OpenCode runs one prompt at a time, so a message
+  sent during a turn waits in the plugin and starts the next turn when the
+  current one ends, together with any other waiting messages. Interrupt cancels
+  the turn and any open questions, and the stopped turn stays in the transcript.
+- **State and usage.** The agent is working from the start of a turn until its
+  last prompt has finished. Context and cost come from OpenCode's usage updates
+  for the main conversation, and the context window from the model.
 
 ## Codex
 

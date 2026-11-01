@@ -1,0 +1,3 @@
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_e6a75c2d2ffe2O7U7ozCguFD9b","update":{"sessionUpdate":"agent_message_chunk","messageId":"msg_1958a3d8c0010xJAaLEVpFLh3h","content":{"type":"text","text":"Hello there, good to meet you."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"ses_e6a75c2d2ffe2O7U7ozCguFD9b","update":{"sessionUpdate":"usage_update","used":9211,"size":1000000,"cost":{"amount":4.976399999999999e-05,"currency":"USD"}}}}
+{"jsonrpc":"2.0","id":4,"result":{"stopReason":"end_turn","usage":{"inputTokens":114,"outputTokens":9,"totalTokens":9211,"cachedReadTokens":9088},"_meta":{}}}
