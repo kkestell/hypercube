@@ -72,12 +72,12 @@ func TestLeads(t *testing.T) {
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("leads response = %d %s", res.Code, res.Body)
 	}
-	type lead struct{ Name, Description string }
+	type lead struct{ Name, Description, Harness, Model, Effort string }
 	var got []lead
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []lead{{"first", "First lead"}, {"second", "Second lead"}}) {
+	if !slices.Equal(got, []lead{{"first", "First lead", "claude", "opus", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
 		t.Fatalf("leads = %+v", got)
 	}
 	// The same handler reads config edits instead of keeping a cached list.

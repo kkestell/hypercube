@@ -48,6 +48,8 @@ each other through an MCP server and receive messages through harness plugins.
   Never stop the user's tmux server or workspaces, and never run
   `make install-service`.
 - Use `make dev` for a live smoke test, and clean up what you start.
+- The user judges how the browser view looks. Leave rendering, screenshots,
+  and visual checks of it to them.
 - After a change is merged, the user runs `make install-service` from the
   original checkout to load it.
 

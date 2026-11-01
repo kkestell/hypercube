@@ -39,6 +39,11 @@
 </div>
 </div>
 
+<div id="quick-pick" hidden class="fixed top-[44px] left-1/2 z-50 w-[600px] max-w-[calc(100%-20px)] -translate-x-1/2 rounded-[6px] bg-[#252526] p-[6px] text-[13px] text-[#cccccc] shadow-[0_0_8px_2px_rgba(0,0,0,0.36)]">
+  <input id="quick-input" role="combobox" aria-controls="quick-list" autocomplete="off" spellcheck="false"
+    class="w-full rounded-[2px] border border-[#007fd4] bg-[#3c3c3c] px-[6px] py-[3px] text-[#cccccc] outline-none placeholder:text-[#989898]">
+  <ul id="quick-list" role="listbox" class="mt-[6px] max-h-[440px] overflow-y-auto"></ul>
+</div>
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
 <div id="probe" class="invisible absolute"></div>
 <script src="xterm.js"></script>
@@ -54,6 +59,9 @@
 
 const fontFamily = 'Menlo, Monaco, "Courier New", monospace', fontSize = 13;
 const theme = {background: '#1e1e1e'};
+// tmux answers programs' color queries with these, as style in tmux.go does
+// for agents' windows.
+const terminalStyle = 'fg=#ffffff,bg=#1e1e1e';
 // The WebGL renderer draws box and block characters to fill their cells
 // exactly, as terminals do. The probe uses it too, since it sizes cells to
 // whole device pixels.
@@ -640,19 +648,17 @@ async function post(action) {
 }
 
 // Clicking a session selects it. Clicking an action asks its question, if
-// any, then posts it to the server and shows why it refused; a new session is
-// selected once it exists.
+// any, then posts it to the server and shows why it refused.
 document.body.addEventListener('click', async e => {
   closeMenu();
   const leadButton = e.target.closest('[data-leads]');
   const action = e.target.closest('[data-action]');
   const row = e.target.closest('[data-select]');
   if (leadButton) {
-    await leadMenu(leadButton);
+    await pickLead(leadButton.dataset.leads);
   } else if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
-    const text = await post(action.dataset.action);
-    if (text && action.dataset.selects) select(text);
+    post(action.dataset.action);
   } else if (row) {
     select(row.dataset.select);
   }
@@ -661,12 +667,10 @@ document.body.addEventListener('click', async e => {
 // Right-clicking a workspace or session opens its context menu at the pointer.
 // A click, Escape, or leaving the page closes it.
 const menu = $('menu');
-let menuRequest = 0;
 const menuItemClass = 'mx-1 block w-[calc(100%-8px)] rounded-[3px] px-6 py-1 text-left text-neutral-300 outline-none hover:bg-[#04395e] hover:text-white focus-visible:bg-[#04395e] focus-visible:text-white';
 
 function closeMenu() {
   menu.hidden = true;
-  menuRequest++;
 }
 
 function placeMenu(x, y) {
@@ -675,23 +679,88 @@ function placeMenu(x, y) {
   menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
-async function leadMenu(button) {
-  const request = menuRequest, workspace = button.dataset.leads;
-  const rect = button.getBoundingClientRect();
-  try {
-    const res = await fetch('leads');
-    if (!res.ok) throw new Error(await res.text());
-    const leads = await res.json();
-    if (request !== menuRequest) return;
-    menu.innerHTML = leads.map(p => {
-      const action = 'session?' + new URLSearchParams({action: 'new', workspace, lead: p.name});
-      return `<button type="button" role="menuitem" data-action="${escape(action)}" data-selects="1" title="${escape(p.description)}" class="${menuItemClass}">${escape(p.name)}</button>`;
-    }).join('');
-    placeMenu(rect.left, rect.bottom);
-  } catch (err) {
-    if (request === menuRequest) alert(err.message);
-  }
+// The lead picker is a quick pick, as in VS Code: a filter field over a list
+// of profiles, each with its harness, model, and effort, and its description.
+// Arrow keys move, Enter or a click picks, and Escape or leaving it closes it.
+const quick = $('quick-pick'), quickInput = $('quick-input'), quickList = $('quick-list');
+let quickItems = [], quickShown = [], quickActive = 0, quickPicked = null;
+
+async function pickLead(workspace) {
+  const res = await fetch('leads');
+  if (!res.ok) { alert(await res.text()); return; }
+  const leads = await res.json();
+  openQuickPick('Select a lead for the new session', leads.map(p => ({
+    label: p.name, description: `${p.harness} · ${p.model} · ${p.effort}`, detail: p.description,
+  })), async item => {
+    const id = await post('session?' + new URLSearchParams({action: 'new', workspace, lead: item.label}));
+    if (id) select(id);
+  });
 }
+
+function openQuickPick(placeholder, items, picked) {
+  closeMenu();
+  quickItems = items; quickPicked = picked;
+  quickInput.value = '';
+  quickInput.placeholder = placeholder;
+  quick.hidden = false;
+  filterQuickPick();
+  quickInput.focus();
+}
+
+function closeQuickPick() {
+  if (quick.hidden) return;
+  quick.hidden = true;
+  terms.get(activePane)?.focus();
+}
+
+// Matching text in a label is highlighted, as VS Code does.
+function highlight(text, query) {
+  const i = query ? text.toLowerCase().indexOf(query) : -1;
+  if (i < 0) return escape(text);
+  return escape(text.slice(0, i)) + `<span class="font-bold text-[#2aaaff]">${escape(text.slice(i, i + query.length))}</span>` + escape(text.slice(i + query.length));
+}
+
+function filterQuickPick() {
+  const query = quickInput.value.trim().toLowerCase();
+  quickShown = quickItems.filter(item => [item.label, item.description, item.detail].some(t => t.toLowerCase().includes(query)));
+  quickActive = 0;
+  renderQuickPick(query);
+}
+
+function renderQuickPick(query = quickInput.value.trim().toLowerCase()) {
+  quickList.innerHTML = quickShown.length ? quickShown.map((item, i) => `<li role="option" data-quick="${i}" aria-selected="${i === quickActive}"
+      class="flex h-[44px] cursor-pointer flex-col justify-center rounded-[3px] px-[11px] ${i === quickActive ? 'bg-[#04395e] text-white' : 'hover:bg-[#2a2d2e]'}">
+      <div class="flex min-w-0 items-baseline gap-[6px]"><span class="shrink-0">${highlight(item.label, query)}</span><span class="truncate text-[12px] opacity-70">${escape(item.description)}</span></div>
+      <div class="truncate text-[12px] opacity-70">${escape(item.detail)}</div>
+    </li>`).join('') : '<li class="flex h-[22px] items-center px-[11px]">No matching results</li>';
+  quickList.querySelector('[aria-selected="true"]')?.scrollIntoView({block: 'nearest'});
+}
+
+function pickQuick(i) {
+  const item = quickShown[i];
+  if (!item) return;
+  closeQuickPick();
+  quickPicked(item);
+}
+
+quickInput.addEventListener('input', () => filterQuickPick());
+quickInput.addEventListener('keydown', e => {
+  const n = quickShown.length;
+  if (e.key === 'ArrowDown' && n) quickActive = (quickActive + 1) % n;
+  else if (e.key === 'ArrowUp' && n) quickActive = (quickActive - 1 + n) % n;
+  else if (e.key === 'Enter') { e.preventDefault(); pickQuick(quickActive); return; }
+  else if (e.key === 'Escape') { e.preventDefault(); closeQuickPick(); return; }
+  else return;
+  e.preventDefault();
+  renderQuickPick();
+});
+quickInput.addEventListener('blur', closeQuickPick);
+// Pressing a row keeps the focus in the field, so the click picks the row.
+quickList.addEventListener('pointerdown', e => e.preventDefault());
+quickList.addEventListener('click', e => {
+  const row = e.target.closest('[data-quick]');
+  if (row) pickQuick(+row.dataset.quick);
+});
 
 // A session's menu starts or stops it and deletes it; a workspace's deletes it.
 document.addEventListener('contextmenu', e => {
@@ -762,6 +831,7 @@ function createTerminal() {
   send(`new-window -d -t '${session}:' -c '#{session_path}' -P -F '#{window_id}'`, ([id], error) => {
     if (error) { creating = false; return; }
     send(`set-option -w -t '${id}' remain-on-exit off`);
+    send(`set-option -w -t '${id}' window-style '${terminalStyle}'`);
     send(`set-option -w -t '${id}' @hypercube_terminal 1`);
     refresh();
   });

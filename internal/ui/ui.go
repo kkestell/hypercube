@@ -122,10 +122,13 @@ func leads(w http.ResponseWriter, r *http.Request) {
 	type lead struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
+		Harness     string `json:"harness"`
+		Model       string `json:"model"`
+		Effort      string `json:"effort"`
 	}
 	var list []lead
 	for _, p := range cfg.Leads() {
-		list = append(list, lead{p.Name, p.Description})
+		list = append(list, lead{p.Name, p.Description, p.Harness, p.Model, p.Effort})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
