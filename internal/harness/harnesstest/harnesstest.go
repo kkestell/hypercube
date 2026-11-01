@@ -18,6 +18,7 @@
 //	!ask       an attention request with the choices yes and no
 //	!usage     a usage event
 //	!fail      an error item
+//	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
 //	!crash     reply, then exit
 //	!malformed reply, then write a bad line
@@ -124,7 +125,7 @@ func serve(in io.Reader, out io.Writer) {
 			}
 		case harness.CmdInput:
 			body := cmd.Text
-			log("input", map[string]any{"text": body})
+			log("input", map[string]any{"text": body, "images": len(cmd.Images)})
 			turns++
 			id := fmt.Sprintf("t%d", turns)
 			has := func(word string) bool { return strings.Contains(body, "!"+word) }
@@ -159,6 +160,9 @@ func serve(in io.Reader, out io.Writer) {
 			case has("fail"):
 				reply(cmd.ID, "")
 				state(harness.Idle, harness.Item{ID: id, Kind: harness.KindError, Text: "test provider failure", Done: true})
+			case has("image"):
+				reply(cmd.ID, "")
+				state(harness.Idle, harness.Item{ID: id, Kind: harness.KindText, Images: []harness.Image{{MIMEType: "image/png", Data: "iVBORw0KGgo="}}, Done: true})
 			case has("child"):
 				child := exec.Command("sleep", "300")
 				if err := child.Start(); err != nil {

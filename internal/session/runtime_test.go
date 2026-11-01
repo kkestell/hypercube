@@ -735,3 +735,40 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 		t.Fatal("Shutdown left the shell running")
 	}
 }
+
+func TestImagePrompts(t *testing.T) {
+	f := newFixture(t)
+	s, lead := f.session()
+	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
+	if err := f.rt.Input(lead.ID, "", harness.Image{MIMEType: "image/png", Data: "bm90IGEgcG5n"}); err == nil {
+		t.Fatal("input accepted bytes that are not a PNG")
+	}
+	if err := f.rt.Input(lead.ID, "  "); err == nil {
+		t.Fatal("input accepted neither text nor an image")
+	}
+	// An image alone is a prompt: the plugin gets it, the session is titled
+	// generically, and the user's item holds it.
+	if err := f.rt.Input(lead.ID, "", png); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.session1(s.ID).Title; got != "Image" {
+		t.Errorf("title = %q", got)
+	}
+	if got := f.log(lead.ID, "input"); len(got) != 1 || got[0]["images"] != 1.0 {
+		t.Errorf("plugin inputs = %v", got)
+	}
+	f.until("the image prompt in the transcript", func() bool {
+		items := f.transcript(lead.ID)
+		return len(items) > 0 && items[0].Kind == harness.KindUser && len(items[0].Images) == 1 && items[0].Images[0] == png
+	})
+	// An image item from the plugin reaches the transcript whole.
+	f.input(lead.ID, "!image")
+	f.until("the assistant's image", func() bool {
+		for _, it := range f.transcript(lead.ID) {
+			if it.Kind == harness.KindText && it.Text == "" && len(it.Images) == 1 && it.Images[0] == png {
+				return true
+			}
+		}
+		return false
+	})
+}
