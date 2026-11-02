@@ -1,5 +1,5 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {fetchLeads, listFiles, post, readFile} from './api.js';
+import {fetchProfiles, listFiles, post, readFile} from './api.js';
 import {createStore} from './store.js';
 
 let fetchMock;
@@ -69,16 +69,23 @@ test('post shows a network failure and returns null', async () => {
   expect(errors(s)).toEqual(['Load failed']);
 });
 
-test('fetchLeads shows a network failure and returns null', async () => {
+test('fetchProfiles requests every configured profile', async () => {
+  const profiles = [{name: 'one'}, {name: 'two'}];
+  fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(profiles));
+  expect(await fetchProfiles(store())).toEqual(profiles);
+  expect(fetchMock.mock.calls[0][0]).toBe('profiles');
+});
+
+test('fetchProfiles shows a network failure and returns null', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
   const s = store();
-  expect(await fetchLeads(s)).toBeNull();
+  expect(await fetchProfiles(s)).toBeNull();
   expect(errors(s)).toEqual(['Load failed']);
 });
 
 for (const [name, request] of [
   ['post', s => post(s, 'session', {})],
-  ['fetchLeads', fetchLeads],
+  ['fetchProfiles', fetchProfiles],
 ]) {
   for (const status of [200, 409]) {
     test(`${name} shows a failed response body (${status}) and returns null`, async () => {

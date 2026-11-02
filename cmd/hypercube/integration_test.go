@@ -59,9 +59,9 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
 	config := `{"profiles":[
-		{"name":"first","role":"lead","description":"First lead","harness":"test","model":"haiku","effort":"low"},
-		{"name":"second","role":"lead","description":"Second lead","harness":"test","model":"sol","effort":"high"},
-		{"name":"worker","role":"general","description":"test","harness":"test","model":"p/m","effort":"high"}
+		{"name":"first","description":"First lead","harness":"test","model":"haiku","effort":"low"},
+		{"name":"second","description":"Second lead","harness":"test","model":"sol","effort":"high"},
+		{"name":"worker","description":"test","harness":"test","model":"p/m","effort":"high"}
 	]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func (c client) post(path string, values map[string]string, body string) (int, s
 // newSession starts a session with the named parent and returns its ID.
 func (c client) newSession(workspace, parent string) string {
 	c.t.Helper()
-	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "lead": parent}, `{"text":"start"}`)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "profile": parent}, `{"text":"start"}`)
 	if code != http.StatusOK {
 		c.t.Fatalf("new session: %d %s", code, body)
 	}
@@ -404,9 +404,9 @@ func TestRoutesRefuseBadRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`)
-	if code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
-		t.Fatalf("unknown lead profile: %d %s", code, body)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "profile": "missing"}, `{"text":"start"}`)
+	if code != http.StatusConflict || !strings.Contains(body, `no profile named "missing"`) {
+		t.Fatalf("unknown profile: %d %s", code, body)
 	}
 	if code, _ := c.post("/session", map[string]string{"action": "bogus", "id": "x"}, ""); code != http.StatusBadRequest {
 		t.Fatalf("unknown action: %d", code)
@@ -539,7 +539,7 @@ func TestAppProcess(t *testing.T) {
 		}
 		c = client{t, fmt.Sprintf("http://127.0.0.1:%d", port)}
 		w.until("the app serving", func() bool {
-			res, err := http.Get(c.base + "/leads")
+			res, err := http.Get(c.base + "/profiles")
 			if err == nil {
 				res.Body.Close()
 			}

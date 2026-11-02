@@ -20,10 +20,10 @@ export async function post(store, path, params, body) {
   }
 }
 
-// fetchLeads returns the lead profiles, or null after showing why it failed.
-export async function fetchLeads(store) {
+// fetchProfiles returns the profiles, or null after showing why it failed.
+export async function fetchProfiles(store) {
   try {
-    const response = await fetch('leads');
+    const response = await fetch('profiles');
     if (!response.ok) {
       showError(store, await response.text());
       return null;

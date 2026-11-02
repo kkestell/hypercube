@@ -36,7 +36,7 @@ func open(t *testing.T, sessions ...store.Session) *store.DB {
 
 func TestInstructions(t *testing.T) {
 	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "Build it", Harness: "test", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
-	profiles := []harness.Profile{{Name: "planner", Role: harness.RoleGeneral, Description: "design", Spec: harness.Spec{Harness: "test", Model: "m", Effort: "low"}}}
+	profiles := []harness.Profile{{Name: "planner", Description: "design", Spec: harness.Spec{Harness: "test", Model: "m", Effort: "low"}}}
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
 		child, _ := tx.Session("c")

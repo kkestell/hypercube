@@ -39,8 +39,8 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 	}
 	config := []byte(`{
   "profiles": [
-    {"name": "opus", "role": "lead", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
-    {"name": "sol", "role": "general", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
+    {"name": "opus", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
+    {"name": "sol", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
   ]
 }`)
 	if err := os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), config, 0o644); err != nil {
@@ -170,8 +170,8 @@ func TestTools(t *testing.T) {
 		if got := create["required"]; !slices.Equal(got.([]any), want) {
 			t.Errorf("noGit=%v: create_session requires %v", noGit, got)
 		}
-		// Only child profiles are offered.
-		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"sol"}) {
+		// Every profile is offered.
+		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"opus", "sol"}) {
 			t.Errorf("noGit=%v: profile enum = %v", noGit, enum)
 		}
 	}
@@ -263,7 +263,7 @@ func TestBridge(t *testing.T) {
 	}
 }
 
-// create_session refuses bad arguments, a lead profile, and a stopped session,
+// create_session refuses bad arguments and a stopped session,
 // adding no agent.
 func TestCreateSessionRefusals(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
@@ -273,7 +273,6 @@ func TestCreateSessionRefusals(t *testing.T) {
 		{"name": "w1", "title": "One", "dir": "."},
 		{"name": "W 1", "title": "One", "profile": "sol", "dir": "."},
 		{"name": "w1", "title": "One", "profile": "nope", "dir": "."},
-		{"name": "w1", "title": "One", "profile": "opus", "dir": "."},
 		{"name": "w1", "profile": "sol", "dir": "."},
 		{"name": "w1", "title": "  ", "profile": "sol", "dir": "."},
 		{"name": "w1", "title": "One", "profile": "sol", "dir": "."},

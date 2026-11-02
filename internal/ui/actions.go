@@ -82,7 +82,7 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		created, err := s.rt.Create(q.Get("workspace"), q.Get("lead"), in.Text, in.Images...)
+		created, err := s.rt.Create(q.Get("workspace"), q.Get("profile"), in.Text, in.Images...)
 		if refused(w, err) {
 			return
 		}

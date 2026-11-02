@@ -1,10 +1,10 @@
-// The sidebar's menus: a session's, a workspace's, and the lead picker of a
-// workspace's New Session button, which lists its lead profiles and opens an
+// The sidebar's menus: a session's, a workspace's, and the profile picker of a
+// workspace's New Session button, which lists its profiles and opens an
 // unsent session with the chosen one.
 import {useCallback, useEffect, useRef, useState} from 'preact/hooks';
-import {fetchLeads} from '../api.js';
+import {fetchProfiles} from '../api.js';
 import {deleteSession, deleteWorkspace, startSession, stopSession} from '../sessions/session-actions.js';
-import {failed, openUnsent} from '../sessions/selection.js';
+import {failed} from '../sessions/selection.js';
 
 const sessionItems = (store, session, showStopped, toggleStopped) => session.parent
   ? session.ended ? [{label: 'Delete Session', run: () => deleteSession(store, session)}] : []
@@ -20,11 +20,10 @@ const sessionItems = (store, session, showStopped, toggleStopped) => session.par
 
 const workspaceItems = (store, workspace) => [{label: 'Delete Workspace', run: () => deleteWorkspace(store, workspace)}];
 
-// useSidebarMenu holds the sidebar's open menu, {x, y, items} or null.
+// useSidebarMenu holds one context menu or profile picker, or null.
 // showStopped maps a parent's ID to whether it shows its stopped nested
-// sessions, and toggleStopped flips it. The
-// lead picker opens when its profiles arrive, unless another menu opened or
-// closed meanwhile.
+// sessions, and toggleStopped flips it. The profile picker opens when its
+// profiles arrive, unless another menu opened or closed meanwhile.
 export function useSidebarMenu(store, showStopped, toggleStopped) {
   const [menu, setMenu] = useState(null);
   const request = useRef(0);
@@ -50,11 +49,11 @@ export function useSidebarMenu(store, showStopped, toggleStopped) {
     request.current++;
     setMenu(null);
   }, []);
-  const showLeads = async (point, workspace) => {
+  const showProfiles = async (point, workspace) => {
     const asked = ++request.current;
-    const leads = await fetchLeads(store);
-    if (!leads || asked !== request.current) return;
-    show(point, leads.map(profile => ({label: profile.description, run: () => store.update(state => openUnsent(state, workspace.id, profile))})));
+    const profiles = await fetchProfiles(store);
+    if (!profiles || asked !== request.current) return;
+    setMenu({...point, profiles, workspace});
   };
   return {
     menu,
@@ -65,6 +64,6 @@ export function useSidebarMenu(store, showStopped, toggleStopped) {
     },
     hasSessionMenu: session => sessionItems(store, session, showStopped, toggleStopped).length > 0,
     showWorkspace: (point, workspace) => show(point, workspaceItems(store, workspace)),
-    showLeads,
+    showProfiles,
   };
 }

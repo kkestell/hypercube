@@ -66,7 +66,7 @@ func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
 
 // newServer returns the server for one session. Outside Git, child sessions cannot
 // have worktrees, so create_session requires dir. Profiles restrict profile to
-// the configured child session profiles.
+// the configured profiles.
 func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
@@ -116,7 +116,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		createDescription = "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Given dir, " + dirArg + ". " + profileArg
 		createSchema.Required = append(createSchema.Required, "dir")
 	}
-	for _, p := range cfg.ChildProfiles() {
+	for _, p := range cfg.Profiles {
 		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
 	}
 	mcp.AddTool(server, &mcp.Tool{Name: "create_session", Description: createDescription, InputSchema: createSchema}, result(func(a createSessionArgs) (string, error) {
@@ -314,7 +314,7 @@ func setStatus(rt *session.Runtime, self, text string) (string, error) {
 }
 
 func createSession(rt *session.Runtime, self string, cfg harness.Config, args createSessionArgs) (string, error) {
-	profile, err := cfg.ChildProfile(args.Profile)
+	profile, err := cfg.Profile(args.Profile)
 	if err != nil {
 		return "", err
 	}

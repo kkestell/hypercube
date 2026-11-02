@@ -46,6 +46,7 @@ test('the unsent session is discarded with its workspace', () => {
   expect(state.selected).toBeNull();
   expect(state.session).toBeNull();
   expect(state.unsent.harness).toBe('claude');
+  expect(state.unsent.profile).toBe('claude-lead');
   state = receivedWorkspaces(state, []);
   expect(state.unsent).toBeNull();
   expect(state.drafts).toEqual({});

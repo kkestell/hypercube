@@ -31,13 +31,29 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
 	})
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
-	s, err = f.rt.Create(f.workspace.ID, "lead", "", png)
+	s, err = f.rt.Create(f.workspace.ID, "worker", "", png)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := f.storedSession(s.ID).Title; got != "Image" {
 		t.Errorf("image-only title = %q", got)
 	}
+}
+
+func TestCreateRefusesAnUnknownProfile(t *testing.T) {
+	f := newFixture(t)
+	for _, name := range []string{"", "missing"} {
+		if _, err := f.rt.Create(f.workspace.ID, name, "start"); err == nil || !strings.Contains(err.Error(), "no profile named") {
+			t.Errorf("Create(%q) error = %v", name, err)
+		}
+	}
+	f.read(func(tx *store.Tx) error {
+		sessions, err := tx.Sessions(f.workspace.ID)
+		if len(sessions) != 0 {
+			t.Errorf("sessions = %v", sessions)
+		}
+		return err
+	})
 }
 
 func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {

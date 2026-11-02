@@ -61,7 +61,7 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 	}
 }
 
-func TestLeads(t *testing.T) {
+func TestProfiles(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "hypercube/config.json")
@@ -69,9 +69,9 @@ func TestLeads(t *testing.T) {
 		t.Fatal(err)
 	}
 	config := `{"profiles":[
-		{"name":"first","role":"lead","description":"First lead","harness":"claude","model":"opus","effort":"high"},
-		{"name":"worker","role":"general","description":"Worker","harness":"codex","model":"sol","effort":"high"},
-		{"name":"second","role":"lead","description":"Second lead","harness":"codex","model":"sol","effort":"high"}
+		{"name":"first","description":"First lead","harness":"claude","model":"opus","effort":"high"},
+		{"name":"worker","description":"Worker","harness":"codex","model":"sol","effort":"high"},
+		{"name":"second","description":"Second lead","harness":"codex","model":"sol","effort":"high"}
 	]}`
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
@@ -80,20 +80,20 @@ func TestLeads(t *testing.T) {
 	get := func() *httptest.ResponseRecorder {
 		t.Helper()
 		res := httptest.NewRecorder()
-		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/leads", nil))
+		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/profiles", nil))
 		return res
 	}
 	res := get()
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
-		t.Fatalf("leads response = %d %s", res.Code, res.Body)
+		t.Fatalf("profiles response = %d %s", res.Code, res.Body)
 	}
-	type parent struct{ Name, Description, Harness, Model, Effort string }
-	var got []parent
+	type profile struct{ Name, Description, Harness, Model, Effort string }
+	var got []profile
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []parent{{"first", "First lead", "claude", "opus", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
-		t.Fatalf("leads = %+v", got)
+	if !slices.Equal(got, []profile{{"first", "First lead", "claude", "opus", "high"}, {"worker", "Worker", "codex", "sol", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
+		t.Fatalf("profiles = %+v", got)
 	}
 	// The same handler reads config edits instead of keeping a cached list.
 	if err := os.WriteFile(path, []byte(`{`), 0o644); err != nil {
@@ -164,7 +164,7 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 		return res.Code
 	}
 	for name, got := range map[string]int{
-		"foreign host":          send("GET", "example.com", "", "/leads"),
+		"foreign host":          send("GET", "example.com", "", "/profiles"),
 		"rebound host":          send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
 		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/session?action=input&id=a"),
 		"input without origin":  send("POST", "localhost:4280", "", "/session?action=input&id=a"),
@@ -288,8 +288,8 @@ func newApp(t *testing.T) *app {
 	t.Setenv("HYPERCUBE_TEST_LOGS", logs)
 	harnesstest.Install(t, plugins, "test")
 	config := `{"profiles":[
-		{"name":"lead","role":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","role":"general","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
+		{"name":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
+		{"name":"worker","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -719,7 +719,7 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 		}
 		return n
 	}
-	path := "/session?action=new&workspace=" + a.session.Workspace + "&lead=lead"
+	path := "/session?action=new&workspace=" + a.session.Workspace + "&profile=lead"
 	a.post(path, `{`, http.StatusBadRequest)
 	a.post(path, `{"text":" "}`, http.StatusConflict)
 	if count() != 1 {

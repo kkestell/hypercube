@@ -42,8 +42,9 @@ test('text typed while the unsent session sends moves to the created session', a
   s.update(state => openUnsent(state, 'w', {name: 'claude-lead', harness: 'claude'}));
   s.update(state => typed(state, unsentKey, 'create it'));
   let release;
-  spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
+  const fetches = spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
   const sending = sendPrompt(s, {id: unsentKey, activity: 'idle'});
+  expect(Object.fromEntries(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams)).toEqual({action: 'new', workspace: 'w', profile: 'claude-lead'});
   expect(s.get().unsent.sending).toBe(true);
   s.update(state => typed(state, unsentKey, 'next'));
   release();

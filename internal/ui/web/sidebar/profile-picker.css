@@ -1,0 +1,48 @@
+.profile-picker {
+  position: fixed;
+  z-index: 50;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: calc(var(--size-space) * 40);
+  max-width: min(560px, 100vw);
+  max-height: 100vh;
+  overflow-y: auto;
+  padding: var(--size-space) 0;
+  border: 1px solid var(--vscode-menu-border);
+  border-radius: 5px;
+  background: var(--vscode-menu-background);
+  color: var(--vscode-menu-foreground);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+}
+
+.profile-picker button {
+  display: block;
+  width: 100%;
+  padding: var(--size-space) calc(var(--size-space) * 3);
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-picker button:hover,
+.profile-picker button:focus {
+  outline: none;
+  background: var(--vscode-menu-selectionBackground);
+  color: var(--vscode-menu-selectionForeground);
+}
+
+.profile-picker-settings,
+.profile-picker-description {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.profile-picker-description {
+  color: var(--vscode-descriptionForeground);
+}

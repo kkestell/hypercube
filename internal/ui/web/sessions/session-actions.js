@@ -36,8 +36,8 @@ export function chooseSession(store, id) {
 export async function createSession(store, prompt) {
   store.update(state => unsentSending(state, true));
   const unsent = store.get().unsent;
-  const {workspace, lead} = unsent;
-  const created = await post(store, 'session', {action: 'new', workspace, lead}, JSON.stringify(prompt));
+  const {workspace, profile} = unsent;
+  const created = await post(store, 'session', {action: 'new', workspace, profile}, JSON.stringify(prompt));
   // A completion must not change another unsent session or restore into it.
   if (store.get().unsent?.identity !== unsent.identity) return true;
   store.update(state => unsentSending(state, false));

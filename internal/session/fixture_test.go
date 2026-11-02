@@ -47,8 +47,8 @@ func newFixture(t *testing.T) *fixture {
 	t.Setenv("HYPERCUBE_TEST_LOGS", f.logs)
 	harnesstest.Install(t, f.plugins, "test")
 	config := `{"profiles":[
-		{"name":"lead","role":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","role":"general","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
+		{"name":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
+		{"name":"worker","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func (f *fixture) child(parent store.Session, name, message string) store.Sessio
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	profile, err := cfg.ChildProfile("worker")
+	profile, err := cfg.Profile("worker")
 	if err != nil {
 		f.t.Fatal(err)
 	}

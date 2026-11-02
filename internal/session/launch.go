@@ -197,7 +197,7 @@ func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartAr
 		if err != nil {
 			return args, err
 		}
-		profiles = cfg.ChildProfiles()
+		profiles = cfg.Profiles
 	}
 	instructions, err := report.Instructions(tx, s, profiles)
 	if err != nil {

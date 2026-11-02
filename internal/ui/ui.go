@@ -27,7 +27,7 @@ func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(assets()))
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /leads", leads)
+	mux.HandleFunc("GET /profiles", profiles)
 	mux.Handle("POST /mcp", mcp.Handler(db, rt))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
@@ -37,26 +37,15 @@ func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	return localOnly(mux)
 }
 
-// leads rereads the profiles so config edits appear in the next session menu.
-func leads(w http.ResponseWriter, r *http.Request) {
+// profiles rereads the profiles so config edits appear in the next session menu.
+func profiles(w http.ResponseWriter, r *http.Request) {
 	cfg, err := harness.LoadConfig()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	type lead struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Harness     string `json:"harness"`
-		Model       string `json:"model"`
-		Effort      string `json:"effort"`
-	}
-	var list []lead
-	for _, p := range cfg.Leads() {
-		list = append(list, lead{p.Name, p.Description, p.Harness, p.Model, p.Effort})
-	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(list)
+	_ = json.NewEncoder(w).Encode(cfg.Profiles)
 }
 
 // localOnly refuses other hosts' names, so a rebound DNS name cannot reach the

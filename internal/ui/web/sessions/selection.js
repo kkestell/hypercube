@@ -86,12 +86,12 @@ export function selectSession(state, id) {
   return attach({...next, selected: id, pending: null});
 }
 
-// openUnsent opens a new session in a workspace with a lead profile, in place
+// openUnsent opens a new session in a workspace with a profile, in place
 // of any other unsent session.
 export function openUnsent(state, workspace, profile) {
   const next = discardUnsent(state);
   // Identity survives immutable updates to the sending flag.
-  const unsent = {identity: {}, workspace, lead: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort, sending: false};
+  const unsent = {identity: {}, workspace, profile: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort, sending: false};
   return attach({...next, unsent, selected: null, pending: null});
 }
 

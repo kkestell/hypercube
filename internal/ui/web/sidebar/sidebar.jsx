@@ -7,10 +7,12 @@
 import {Fragment} from 'preact';
 import {useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
+import {openUnsent} from '../sessions/selection.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import '../shared/panel-tabs.css';
 import {useStore} from '../store.js';
 import {NestedSessions} from './nested-sessions.jsx';
+import {ProfilePicker} from './profile-picker.jsx';
 import {SessionItem} from './session-item.jsx';
 import {useSidebarMenu} from './sidebar-menus.js';
 import './sidebar.css';
@@ -72,7 +74,7 @@ export function Sidebar() {
                     <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => menus.showWorkspace(below(e.currentTarget), workspace)}>
                       <vscode-icon name="ellipsis" />
                     </button>
-                    <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={e => menus.showLeads(below(e.currentTarget), workspace)}>
+                    <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={e => menus.showProfiles(below(e.currentTarget), workspace)}>
                       <vscode-icon name="add" />
                     </button>
                   </div>
@@ -99,7 +101,9 @@ export function Sidebar() {
           </button>
         </vscode-tab-panel>
       </vscode-tabs>
-      {menus.menu && <ContextMenu {...menus.menu} onClose={menus.close} />}
+      {menus.menu && (menus.menu.profiles
+        ? <ProfilePicker {...menus.menu} onClose={menus.close} onChoose={profile => store.update(s => openUnsent(s, menus.menu.workspace.id, profile))} />
+        : <ContextMenu {...menus.menu} onClose={menus.close} />)}
     </div>
   );
 }

@@ -51,7 +51,7 @@ func (r *Runtime) Create(workspaceID, profileName, text string, images ...harnes
 	if err != nil {
 		return store.Session{}, err
 	}
-	profile, err := cfg.Lead(profileName)
+	profile, err := cfg.Profile(profileName)
 	if err != nil {
 		return store.Session{}, err
 	}

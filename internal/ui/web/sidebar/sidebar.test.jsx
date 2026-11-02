@@ -170,7 +170,7 @@ for (const cancel of [
   () => new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
   () => new Event('blur'),
 ]) {
-  test(`a pending lead picker is cancelled by ${cancel().type}`, async () => {
+  test(`a pending profile picker is cancelled by ${cancel().type}`, async () => {
     const {root, fetches} = setup([]);
     let answer;
     fetches.mockImplementation(() => new Promise(resolve => { answer = resolve; }));
@@ -180,23 +180,64 @@ for (const cancel of [
       answer(Response.json([{name: 'claude-lead', description: 'Claude'}]));
       await new Promise(resolve => setTimeout(resolve));
     });
-    expect(root.querySelector('vscode-context-menu')).toBeNull();
+    expect(root.querySelector('.profile-picker')).toBeNull();
   });
 }
 
-test('choosing a lead profile from the picker opens the unsent session', async () => {
-  const {store, root, fetches} = setup([session('a')]);
-  const profiles = [{name: 'claude-lead', description: 'Claude', harness: 'claude', model: 'opus', effort: 'high'}, {name: 'codex-lead', description: 'Codex', harness: 'codex'}];
+const profiles = [
+  {name: 'claude', description: 'Claude for hard tasks', harness: 'claude', model: 'opus', effort: 'high'},
+  {name: 'codex', description: 'Codex for ordinary tasks', harness: 'codex', model: 'sol', effort: 'medium'},
+];
+
+async function openPicker(root, fetches) {
   fetches.mockImplementation(async () => Response.json(profiles));
   await act(async () => {
     root.querySelector('[title="New Session"]').click();
     await new Promise(resolve => setTimeout(resolve));
   });
-  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '1'}})));
-  expect(store.get().unsent).toMatchObject({workspace: 'w', lead: 'codex-lead', harness: 'codex', sending: false});
+  return [...root.querySelectorAll('.profile-picker button')];
+}
+
+test('the picker shows each profile settings and description; choosing one opens the unsent session', async () => {
+  const {store, root, fetches} = setup([session('a')]);
+  const buttons = await openPicker(root, fetches);
+  expect(buttons.map(b => b.querySelector('.profile-picker-settings').textContent)).toEqual(['claude · opus · high', 'codex · sol · medium']);
+  expect(buttons.map(b => b.querySelector('.profile-picker-description').textContent)).toEqual(profiles.map(p => p.description));
+  expect(buttons.map(b => b.title)).toEqual(profiles.map(p => p.description));
+  expect(document.activeElement).toBe(buttons[0]);
+  click(buttons[1]);
+  expect(store.get().unsent).toMatchObject({workspace: 'w', profile: 'codex', harness: 'codex', model: 'sol', effort: 'medium', sending: false});
   expect(store.get().selected).toBeNull();
-  expect(root.querySelector('vscode-context-menu')).toBeNull();
+  expect(root.querySelector('.profile-picker')).toBeNull();
 });
+
+test('the picker moves focus with arrows and chooses with Enter', async () => {
+  const {store, root, fetches} = setup([]);
+  const buttons = await openPicker(root, fetches);
+  key(buttons[0], 'ArrowUp');
+  expect(document.activeElement).toBe(buttons[1]);
+  key(buttons[1], 'ArrowDown');
+  expect(document.activeElement).toBe(buttons[0]);
+  key(buttons[0], 'ArrowDown');
+  expect(document.activeElement).toBe(buttons[1]);
+  key(buttons[1], 'Enter');
+  expect(store.get().unsent.profile).toBe('codex');
+  expect(root.querySelector('.profile-picker')).toBeNull();
+});
+
+for (const cancel of [
+  () => new Event('pointerdown', {bubbles: true}),
+  () => new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
+  () => new Event('blur'),
+]) {
+  test(`an open profile picker closes on ${cancel().type}`, async () => {
+    const {store, root, fetches} = setup([]);
+    await openPicker(root, fetches);
+    act(() => dispatchEvent(cancel()));
+    expect(root.querySelector('.profile-picker')).toBeNull();
+    expect(store.get().unsent).toBeNull();
+  });
+}
 
 test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
