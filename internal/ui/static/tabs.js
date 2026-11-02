@@ -149,6 +149,7 @@ export class TabContainer {
           const selected = id === node.active;
           tab.classList.toggle('active', selected);
           tab.classList.toggle('preview', !!entry.preview);
+          tab.classList.toggle('deleted', !!entry.deleted);
           const select = tab.firstElementChild;
           tab.label.textContent = entry.label;
           if (tab.status !== entry.status) {

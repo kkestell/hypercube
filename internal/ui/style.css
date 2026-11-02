@@ -418,6 +418,14 @@
 }
 
 /* A file's tab: source as VS Code's editor shows it, or a Markdown preview. */
+.transcript-tab.deleted .tab-label {
+  text-decoration: line-through;
+}
+.file-message {
+  margin: auto;
+  padding: 24px;
+  text-align: center;
+}
 .file-view {
   display: flex;
   min-height: 0;

@@ -1,145 +1,28 @@
 // The read-only file browser: a tree of the session's working directory, as in
 // VS Code's Explorer, with VS Code's Seti file icons.
 
-// ---- Stub file API. The real API replaces this object. -------------------
-// list(dir) resolves to the entries of one directory, never .git, as
-// {name, dir}; read(path) resolves to a file's text. Paths are relative to the
-// working directory, which is ''.
-const sample = {
-  'go.mod': 'module example.com/hypercube\n\ngo 1.25\n\nrequire github.com/coder/websocket v1.8.13\n',
-  'Makefile': 'BIN ?= bin/hypercube\n\n.PHONY: build check\n\nbuild:\n\tgo build -o $(BIN) ./cmd/hypercube\n\ncheck: build\n\tgo vet ./...\n\tgo test ./...\n',
-  '.gitignore': 'bin/\nnode_modules/\n',
-  'README.md': `# Hypercube
-
-Hypercube runs teams of local coding agents.
-
-## Getting started
-
-1. Install the app.
-2. Add a workspace.
-3. Start a session and send the lead a prompt.
-
-- Agents run as native harnesses.
-- They message each other through an MCP server.
-  - Nested items work too.
-
-> Agents are trusted local processes.
-
-## Harnesses
-
-| Harness | Plugin | Status |
-| :--- | :--- | ---: |
-| Claude Code | \`plugins/claude\` | Ready |
-| Codex | \`plugins/codex\` | Ready |
-| OpenCode | \`plugins/opencode\` | Ready |
-
-### Configuration
-
-Edit \`~/.config/hypercube/config.json\`:
-
-\`\`\`json
-{"port": 8080, "leads": [{"name": "claude", "harness": "claude"}]}
-\`\`\`
-
-Start the app:
-
-\`\`\`sh
-make build && bin/hypercube serve --port 8080
-\`\`\`
-
----
-
-See [the docs](https://example.com/docs) for **more** _detail_.
-`,
-  'cmd/hypercube/main.go': `// Command hypercube runs the app.
-package main
-
-import (
-	"fmt"
-	"os"
-)
-
-// Version is set at build time.
-var Version = "dev"
-
-type server struct {
-	port  int
-	debug bool
-}
-
-func (s *server) run() error {
-	if s.port == 0 {
-		return fmt.Errorf("no port")
-	}
-	fmt.Printf("listening on :%d\\n", s.port)
-	return nil
-}
-
-func main() {
-	s := &server{port: 8080}
-	if err := s.run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-`,
-  'internal/ui/static/app.js': `// The browser view.
-import {TabLayout} from './tabs.js';
-
-const layout = new TabLayout();
-let count = 0;
-
-export async function load(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(\`load failed: \${res.status}\`);
-  return res.json();
-}
-
-document.addEventListener('click', e => {
-  const id = e.target.closest('[data-tab]')?.dataset.tab;
-  if (id) layout.open(id);
-  count++;
-});
-`,
-  'internal/ui/package.json': '{\n  "name": "hypercube-ui",\n  "private": true,\n  "dependencies": {\n    "marked": "18.1.2",\n    "shiki": "4.5.0"\n  }\n}\n',
-  '.github/workflows/check.yml': 'name: check\non:\n  push:\n    branches: [main]\njobs:\n  check:\n    runs-on: macos-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: make check # every check\n',
-  'scripts/dev': '#!/bin/sh\n# Runs an isolated development session.\nset -eu\n\nport=${PORT:-8090}\nif [ "$1" = up ]; then\n  echo "starting on $port"\n  exec bin/hypercube serve --port "$port"\nfi\n',
-  'docs/configuration.md': '# Configuration\n\nHypercube reads `~/.config/hypercube/config.json`.\n',
-  'internal/store/schema.go': schema(),
-};
-
-// schema is a long Go file of a few thousand lines.
-function schema() {
-  let text = '// Package store holds the generated schema.\npackage store\n';
-  for (let i = 1; i <= 400; i++) {
-    text += `
-// Table${i} is generated table number ${i}.
-type Table${i} struct {
-	ID   int64  \`json:"id"\`
-	Name string \`json:"name"\`
-}
-`;
-  }
-  return text;
-}
-
+// Paths are relative to the session's working directory, which is ''.
 export const files = {
-  async list(dir) {
-    const prefix = dir ? dir + '/' : '';
-    const entries = new Map();
-    for (const path of Object.keys(sample)) {
-      if (!path.startsWith(prefix)) continue;
-      const [name, ...rest] = path.slice(prefix.length).split('/');
-      entries.set(name, {name, dir: rest.length > 0});
+  async list(session, dir) {
+    const response = await fetch('/files?' + new URLSearchParams({session, path: dir}), {cache: 'no-store'});
+    if (!response.ok) {
+      const error = new Error(await response.text());
+      error.status = response.status;
+      throw error;
     }
-    return [...entries.values()];
+    return response.json();
   },
-  async read(path) {
-    if (!(path in sample)) throw new Error('No such file: ' + path);
-    return sample[path];
+  async read(session, path, etag) {
+    const headers = etag ? {'If-None-Match': etag} : {};
+    const response = await fetch('/file?' + new URLSearchParams({session, path}), {headers, cache: 'no-store'});
+    if (response.status === 304) return {unchanged: true};
+    if (response.status === 404) return {deleted: true};
+    if (response.status === 413) return {message: 'The file is not displayed in the text editor because it is very large.'};
+    if (response.status === 415) return {message: 'The file is not displayed in the text editor because it is either binary or uses an unsupported text encoding.'};
+    if (!response.ok) return {message: await response.text()};
+    return {text: await response.text(), etag: response.headers.get('ETag')};
   },
 };
-// ---- End of stub file API. ------------------------------------------------
 
 // language returns the VS Code language ID of a file name, or '' for plain text.
 const languageNames = {makefile: 'makefile', gnumakefile: 'makefile', dockerfile: 'dockerfile', containerfile: 'dockerfile',
@@ -184,7 +67,7 @@ const parent = path => path.slice(0, Math.max(0, path.lastIndexOf('/')));
 
 // FileTree lists folders first, then files, each by name. Folders expand on
 // click and keep the expansion of their subfolders while collapsed. It loads
-// each folder's entries once, when the folder first expands.
+// each folder's entries on first expand and refreshes visible folders on polling.
 export class FileTree {
   constructor(root, {list, open, keepOpen}) {
     this.list = list;
@@ -208,7 +91,8 @@ export class FileTree {
   }
 
   // reset forgets the tree and, when shown, lists the working directory.
-  async reset(shown) {
+  async reset(shown, list = this.list) {
+    this.list = list;
     const generation = this.generation = (this.generation ?? 0) + 1;
     this.children = new Map();
     this.expanded = new Set();
@@ -222,11 +106,39 @@ export class FileTree {
 
   async load(dir) {
     const generation = this.generation;
-    const entries = await this.list(dir);
-    if (generation !== this.generation) return;
-    entries.sort((a, b) => b.dir - a.dir || collator.compare(a.name, b.name));
-    this.children.set(dir, entries);
-    this.render();
+    try {
+      const entries = await this.list(dir);
+      if (generation !== this.generation) return;
+      entries.sort((a, b) => b.dir - a.dir || collator.compare(a.name, b.name));
+      this.children.set(dir, entries);
+      this.render();
+    } catch {
+      // An unreadable folder has no children on first expand.
+    }
+  }
+
+  async refresh() {
+    const generation = this.generation;
+    let changed = false;
+    const dirs = ['', ...this.rows.filter(row => row.dir && this.expanded.has(row.path)).map(row => row.path)];
+    for (const dir of dirs) {
+      try {
+        const entries = await this.list(dir);
+        if (generation !== this.generation) return;
+        entries.sort((a, b) => b.dir - a.dir || collator.compare(a.name, b.name));
+        if (JSON.stringify(entries) !== JSON.stringify(this.children.get(dir))) {
+          this.children.set(dir, entries);
+          changed = true;
+        }
+      } catch (error) {
+        if (generation !== this.generation) return;
+        if (error.status === 404) {
+          changed = this.children.delete(dir) || changed;
+          changed = this.expanded.delete(dir) || changed;
+        }
+      }
+    }
+    if (generation === this.generation && changed) this.render();
   }
 
   render() {

@@ -194,7 +194,7 @@ function attach(id) {
   scrolls.clear();
   fileTabs.clear();
   preview = null;
-  fileTree.reset(!!id);
+  fileTree.reset(!!id, dir => files.list(id, dir));
   closeShell();
   announce();
   if (!id && !unsent) return;
@@ -269,7 +269,7 @@ function renderTabs() {
   tabContainer.render([...shown.stacked.map(a => {
     const c = cards.get(a.id);
     return {id: a.id, label: c.label, status: c.status, element: c.element};
-  }), ...[...fileTabs].map(([id, f]) => ({id, label: f.name, title: f.path, icon: f.icon, element: f.element,
+  }), ...[...fileTabs].map(([id, f]) => ({id, label: f.name, title: f.path + (f.deleted ? ' (deleted)' : ''), deleted: f.deleted, icon: f.icon, element: f.element,
     preview: id === preview, keepOpen: () => keepOpen(id)}))]);
   for (const f of fileTabs.values()) {
     if (f.element.clientHeight && f.scroll) [f.element.scrollTop, f.element.scrollLeft] = f.scroll;
@@ -290,7 +290,7 @@ function renderTabs() {
 // keeps it open as a regular tab. A file already open selects its tab.
 const fileTabs = new Map();
 let preview = null;
-const fileTree = new FileTree($('files-panel'), {list: files.list, open: openFile,
+const fileTree = new FileTree($('files-panel'), {list: dir => files.list(attached, dir), open: openFile,
   keepOpen: path => keepOpen('file:' + encodeURIComponent(path))});
 
 function keepOpen(id) {
@@ -300,15 +300,17 @@ function keepOpen(id) {
 }
 
 async function openFile(path) {
+  const generation = fileTree.generation;
   const theme = await seti();
-  if (!tabLayout) return;
+  if (generation !== fileTree.generation || !tabLayout) return;
   const id = 'file:' + encodeURIComponent(path);
   if (!fileTabs.has(id)) {
     const name = path.slice(path.lastIndexOf('/') + 1);
     const element = document.createElement('div');
     element.className = 'file-view';
-    fileTabs.set(id, {path, name, element, icon: fileIcon(theme, name)});
-    showFile(path, name, element);
+    const file = {path, name, element, icon: fileIcon(theme, name), etag: null, deleted: false};
+    fileTabs.set(id, file);
+    showFile(file);
     if (tabLayout.find(preview)) tabLayout.replace(preview, id);
     preview = id;
   }
@@ -318,22 +320,75 @@ async function openFile(path) {
 
 // showFile fills a file's tab: Markdown as VS Code's preview shows it, and
 // other files as highlighted source with line numbers.
-async function showFile(path, name, element) {
-  const [text, {highlight}] = await Promise.all([files.read(path), import('./viewer.js')]);
-  const lang = language(name);
-  if (lang === 'markdown') {
-    const preview = document.createElement('div');
-    preview.className = 'markdown-preview';
-    preview.append(...renderMarkdown(document, text));
-    for (const code of preview.querySelectorAll('pre > code[data-lang]')) {
-      code.innerHTML = highlight(code.textContent, code.dataset.lang).join('\n');
+async function showFile(file, polling = false) {
+  const session = attached, generation = fileTree.generation;
+  const current = () => generation === fileTree.generation && [...fileTabs.values()].includes(file);
+  let result;
+  try {
+    result = await files.read(session, file.path, file.etag);
+  } catch (error) {
+    if (polling) return;
+    result = {message: error.message};
+  }
+  if (!current() || result.unchanged || (polling && result.message)) return;
+  if (result.deleted) {
+    file.etag = null;
+    if (!file.deleted) {
+      file.deleted = true;
+      renderTabs();
     }
-    element.replaceChildren(preview);
     return;
   }
-  const lines = highlight(text, lang);
-  element.innerHTML = `<div class="code-gutter" style="--digits:${Math.max(5, String(lines.length).length)}">${lines.map((_, i) => i + 1).join('\n')}</div><pre class="code-lines">${lines.join('\n')}</pre>`;
+  if (file.deleted) {
+    file.deleted = false;
+    renderTabs();
+  }
+  if (result.message && result.message === file.message) return;
+  const {element, name} = file;
+  const scroll = [element.scrollTop, element.scrollLeft];
+  if (result.message) {
+    const message = document.createElement('div');
+    message.className = 'file-message';
+    message.textContent = result.message;
+    element.replaceChildren(message);
+  } else {
+    const {highlight} = await import('./viewer.js');
+    if (!current()) return;
+    const lang = language(name), text = result.text;
+    if (lang === 'markdown') {
+      const preview = document.createElement('div');
+      preview.className = 'markdown-preview';
+      preview.append(...renderMarkdown(document, text));
+      for (const code of preview.querySelectorAll('pre > code[data-lang]')) {
+        code.innerHTML = highlight(code.textContent, code.dataset.lang).join('\n');
+      }
+      element.replaceChildren(preview);
+    } else {
+      const lines = highlight(text, lang);
+      element.innerHTML = `<div class="code-gutter" style="--digits:${Math.max(5, String(lines.length).length)}">${lines.map((_, i) => i + 1).join('\n')}</div><pre class="code-lines">${lines.join('\n')}</pre>`;
+    }
+  }
+  file.etag = result.etag ?? null;
+  file.message = result.message;
+  [element.scrollTop, element.scrollLeft] = scroll;
 }
+
+let polling = false;
+async function poll() {
+  if (document.hidden || !attached || polling) return;
+  polling = true;
+  const generation = fileTree.generation;
+  try {
+    if ($('files-panel').clientHeight) await fileTree.refresh();
+    for (const file of fileTabs.values()) {
+      if (generation !== fileTree.generation) return;
+      if (file.element.clientHeight) await showFile(file, true);
+    }
+  } finally {
+    polling = false;
+  }
+}
+setInterval(poll, 1000);
 
 workerCards.onclick = e => {
   const button = e.target.closest('[data-open-worker]');
