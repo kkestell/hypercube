@@ -20,10 +20,11 @@ const (
 	CmdShutdown  = "shutdown"
 )
 
-// Item kinds. Plugins send every kind but User, which Hypercube writes for the
+// Item kinds. Plugins send every kind but User and Status, which Hypercube writes for the
 // text and images it delivers.
 const (
 	KindUser      = "user"
+	KindStatus    = "status"
 	KindText      = "text"
 	KindReasoning = "reasoning"
 	KindTool      = "tool"
@@ -64,11 +65,10 @@ type StartArgs struct {
 	// Hypercube is the executable the harness runs for `mcp`.
 	Hypercube string `json:"hypercube"`
 	// Env is the environment for Hypercube processes the harness starts.
-	Env    map[string]string `json:"env"`
-	Agent  string            `json:"agent"`
-	Role   string            `json:"role"`
-	Model  string            `json:"model"`
-	Effort string            `json:"effort"`
+	Env     map[string]string `json:"env"`
+	Session string            `json:"session"`
+	Model   string            `json:"model"`
+	Effort  string            `json:"effort"`
 	// Conversation is the harness's saved conversation to resume, if any.
 	Conversation string `json:"conversation"`
 	// Dir is the agent's working directory.
@@ -125,7 +125,7 @@ type Usage struct {
 //
 // A tool item from an MCP server names the Server, and Tool is the server's
 // own name for the tool. A user item that delivers another agent's message
-// names that agent's address in From, and Text is the message alone.
+// names that session's ID in From, and Text is the message alone.
 type Item struct {
 	// At is when Hypercube first received the item, in Unix milliseconds.
 	At      int64           `json:"at,omitempty"`

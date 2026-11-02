@@ -35,10 +35,10 @@ export async function fetchLeads(store) {
   }
 }
 
-// answerRequest answers an agent's attention request and reports whether the
+// answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.
-export async function answerRequest(store, agent, request, choice, text) {
-  return await post(store, 'agent', {action: 'answer', id: agent, request, choice}, text) !== null;
+export async function answerRequest(store, session, request, choice, text) {
+  return await post(store, 'session', {action: 'answer', id: session, request, choice}, text) !== null;
 }
 
 // listFiles returns a folder's entries, relative to the session's working

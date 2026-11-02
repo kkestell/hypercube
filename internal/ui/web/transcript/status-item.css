@@ -1,0 +1,9 @@
+.status-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-space);
+  color: var(--vscode-descriptionForeground);
+}
+
+.status-item-source { font-weight: 600; }
+.status-item time { margin-left: auto; white-space: nowrap; }

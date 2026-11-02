@@ -58,7 +58,7 @@ func TestWorktreeRemoval(t *testing.T) {
 	run(root, "branch", "other")
 	exclude := filepath.Join(root, ".git/info/exclude")
 	write(t, exclude, "local-only")
-	dir, branch := WorktreeDir(root, "w1"), WorkerBranch("w1")
+	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
 	if err := AddWorktree(root, dir, branch); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestWorktreeSetUp(t *testing.T) {
 	run(root, "add", ".gitignore", ".worktreeinclude")
 	run(root, "commit", "-q", "-m", "setup")
 
-	dir, branch := WorktreeDir(root, "w1"), WorkerBranch("w1")
+	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
 	if err := AddWorktree(root, dir, branch); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestWorktreeSetUp(t *testing.T) {
 
 func TestRemoveMissingWorktree(t *testing.T) {
 	root, run := gitRepo(t)
-	dir, branch := WorktreeDir(root, "w1"), WorkerBranch("w1")
+	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
 	if err := AddWorktree(root, dir, branch); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
 	if err := os.Chmod(exclude, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddWorktree(root, WorktreeDir(root, "w1"), WorkerBranch("w1")); err == nil {
+	if err := AddWorktree(root, WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")); err == nil {
 		t.Error("AddWorktree ignored an unreadable exclude file")
 	}
 }

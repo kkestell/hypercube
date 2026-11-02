@@ -1,4 +1,4 @@
-// An agent's transcript in a scrolling list. The list follows its end until
+// A session's transcript in a scrolling list. The list follows its end until
 // the user scrolls up, and follows again once they scroll back to the end.
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions.
@@ -10,15 +10,15 @@ import {transcriptRows} from './transcript-tree.js';
 import {emptyTranscript, setExpanded} from './transcripts.js';
 import './transcript.css';
 
-export function Transcript({agent}) {
+export function Transcript({session}) {
   const [state, store] = useStore();
-  const transcript = state.session?.transcripts[agent] ?? emptyTranscript;
+  const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
   const setOpen = useCallback((key, open) => store.update(s => setExpanded(s, key, open)), [store]);
 
   const view = useRef(null), list = useRef(null);
-  const memory = useScrollMemory(view, agent);
+  const memory = useScrollMemory(view, session.id);
   const lastTop = useRef(memory.current.top);
 
   const followEnd = () => {
@@ -49,7 +49,7 @@ export function Transcript({agent}) {
   return (
     <div ref={view} class="transcript" onScroll={scrolled}>
       <div ref={list} class="transcript-list">
-        {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} agent={agent} expanded={expanded} setOpen={setOpen} />)}
+        {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
       </div>
     </div>
   );

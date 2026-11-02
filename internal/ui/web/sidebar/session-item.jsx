@@ -1,35 +1,55 @@
 // A session's row in the sidebar: its title, dimmed when it is stopped, and
-// indicators naming its busy and waiting agents while it runs, and its unseen
+// indicators naming its busy and waiting sessions while it runs, and its unseen
 // reply. Double-clicking the row renames the session in place.
 import {useEffect, useRef} from 'preact/hooks';
-import {renameSession} from '../sessions/session-actions.js';
+import {chooseSession, renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
 import {useStore} from '../store.js';
 import './session-item.css';
 
-const names = agents => agents.map(a => a.name).join(', ');
+export function SessionItem({session, selected, renaming, onRenaming, open, children}) {
+  const [, store] = useStore();
+  const row = useRef(null);
+  const branch = session.children.length > 0;
+  const busy = session.running && session.activity === 'busy';
+  const waiting = [session, ...session.children].filter(s => s.running && s.attention).map(s => s.title).join(', ');
+  const unseen = !session.parent && session.unseen && !selected;
 
-export function SessionItem({session, selected, renaming, onRenaming}) {
-  const busy = session.running ? names(session.agents.filter(a => a.activity === 'busy')) : '';
-  const waiting = session.running ? names(session.agents.filter(a => a.attention)) : '';
-  const unseen = session.unseen && !selected;
+  // vscode-tree toggles branches on every row click. Own parent clicks so
+  // only the chevron changes expansion; child rows retain their own behavior.
+  useEffect(() => {
+    if (!branch) return;
+    const element = row.current;
+    const clicked = event => {
+      const path = event.composedPath();
+      if (path.find(node => node.localName === 'vscode-tree-item') !== element) return;
+      event.stopPropagation();
+      if (renaming) return;
+      if (path.some(node => node.getAttribute?.('part')?.split(' ').includes('arrow-icon-container'))) element.toggleAttribute('open');
+      else chooseSession(store, session.id);
+    };
+    element.addEventListener('click', clicked, true);
+    return () => element.removeEventListener('click', clicked, true);
+  }, [branch, renaming, session.id, store]);
+
   return (
     <vscode-tree-item
-      data-session={session.id}
-      selected={selected}
+      ref={row} data-session={session.id} data-key={branch ? session.id : undefined}
+      branch={branch} open={branch && open} selected={selected}
       class={session.running ? 'session-item' : 'session-item session-item-stopped'}
-      ondblclick={() => onRenaming(true)}
+      ondblclick={e => { e.stopPropagation(); onRenaming(true); }}
     >
       {renaming
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
         : <span class="session-item-title">{session.title}</span>}
       {(busy || waiting || unseen) && (
         <span slot="decoration" class="session-item-indicators">
-          {busy && <vscode-icon name="loading" spin role="img" title={'Busy: ' + busy} />}
+          {busy && <vscode-icon name="loading" spin role="img" title={'Busy: ' + session.title} />}
           {waiting && <StatusDot kind="waiting" title={'Waiting on you: ' + waiting} />}
           {unseen && <StatusDot kind="unseen" title="New reply" />}
         </span>
       )}
+      {children}
     </vscode-tree-item>
   );
 }

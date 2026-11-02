@@ -104,7 +104,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 // connect initializes the connection and starts or resumes the thread. The
 // thread runs with an automatic approval reviewer in a workspace-write sandbox
 // with network access, in a trusted folder, and with its Git directories
-// writable so that a worker can commit.
+// writable so that a child session can commit.
 func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	// Experimental methods include the questions Codex asks the user.
 	if err := ag.call(ctx, "initialize", map[string]any{

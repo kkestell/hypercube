@@ -6,7 +6,9 @@ import {fetchLeads} from '../api.js';
 import {deleteSession, deleteWorkspace, startSession, stopSession} from '../sessions/session-actions.js';
 import {failed, openUnsent} from '../sessions/selection.js';
 
-const sessionItems = (store, session) => [
+const sessionItems = (store, session) => session.parent
+  ? session.ended ? [{label: 'Delete Session', run: () => deleteSession(store, session)}] : []
+  : [
   session.running && !failed(session)
     ? {label: 'Stop Session', run: () => stopSession(store, session.id)}
     : {label: 'Start Session', run: () => startSession(store, session.id)},
@@ -52,7 +54,10 @@ export function useSidebarMenu(store) {
   return {
     menu,
     close,
-    showSession: (point, session) => show(point, sessionItems(store, session)),
+    showSession: (point, session) => {
+      const items = sessionItems(store, session);
+      if (items.length) show(point, items);
+    },
     showWorkspace: (point, workspace) => show(point, workspaceItems(store, workspace)),
     showLeads,
   };

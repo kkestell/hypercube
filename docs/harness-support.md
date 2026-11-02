@@ -53,8 +53,8 @@ The plugins are in [plugins](../plugins).
 Hypercube sends each queued message as an `input` command, one at a time, and
 removes it when the plugin replies with success. Messages go out whether the
 agent is idle or working; the plugin steers or queues them with the native
-harness. A failed worker turn preserves its queued messages and sends its
-session's lead a bounded error summary. A lead's own failures stay in its
+harness. A failed child turn preserves its queued messages and sends its
+parent a bounded error summary. A top-level session's own failures stay in its
 chat.
 
 Native subagents are separate from the Hypercube agent's main conversation.
@@ -120,7 +120,7 @@ The plugin keeps one `codex app-server` process running per agent and speaks
 its JSON-RPC protocol to it. The agent's thread runs with an automatic reviewer
 answering approval requests, in a workspace-write sandbox with network access,
 in a trusted folder, with the `hypercube mcp` server as an MCP server whose
-tools need no approval. The agent's Git directories are writable, so a worker
+tools need no approval. The agent's Git directories are writable, so a child session
 can commit in its worktree. The runtime instructions are the thread's developer
 instructions on every launch, and a saved conversation resumes with
 `thread/resume`. A conversation Codex cannot resume fails the launch.

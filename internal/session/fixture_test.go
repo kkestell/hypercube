@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -80,35 +81,30 @@ func (f *fixture) git(dir string, args ...string) {
 	}
 }
 
-// session creates a session from the prompt "start", and returns it with its
-// lead once the lead has answered. The lead's transcript then reads
+// session creates a session from "start" and waits for its reply. Its transcript reads
 // "user:start|text:ack".
-func (f *fixture) session() (store.Session, store.Agent) {
+func (f *fixture) session() store.Session {
 	f.t.Helper()
-	s, lead, err := f.rt.Create(f.workspace.ID, "lead", "start")
+	s, err := f.rt.Create(f.workspace.ID, "lead", "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}
 	f.until("the lead idle after the first prompt", func() bool {
-		return f.summary(lead.ID) == "user:start|text:ack" && f.agent(lead.ID).Activity == store.Idle
+		return f.summary(s.ID) == "user:start|text:ack" && f.storedSession(s.ID).Activity == store.Idle
 	})
-	return s, lead
+	return s
 }
 
-// seed adds a stopped session "s" to the workspace with the lead "a" and the
-// given workers, none of them launched.
-func (f *fixture) seed(workers ...store.Agent) {
+// seed adds the stopped session "s" and its children, without launching them.
+func (f *fixture) seed(children ...store.Session) {
 	f.t.Helper()
 	err := f.db.Tx(func(tx *store.Tx) error {
-		if err := tx.AddSession(store.Session{ID: "s", Workspace: f.workspace.ID}); err != nil {
+		if err := tx.AddSession(store.Session{ID: "s", Workspace: f.workspace.ID, Dir: f.root, Activity: store.Exited}); err != nil {
 			return err
 		}
-		if err := tx.AddAgent(store.Agent{ID: "a", Session: "s", Name: "lead", Role: store.Lead, Dir: f.root, Activity: store.Exited}); err != nil {
-			return err
-		}
-		for _, a := range workers {
-			a.Session, a.Role, a.Activity = "s", store.Worker, store.Exited
-			if err := tx.AddAgent(a); err != nil {
+		for _, a := range children {
+			a.Parent, a.Workspace, a.Activity = "s", f.workspace.ID, store.Exited
+			if err := tx.AddSession(a); err != nil {
 				return err
 			}
 		}
@@ -119,17 +115,17 @@ func (f *fixture) seed(workers ...store.Agent) {
 	}
 }
 
-func (f *fixture) addWorker(lead store.Agent, name, message string) store.Agent {
+func (f *fixture) child(parent store.Session, name, message string) store.Session {
 	f.t.Helper()
 	cfg, err := harness.LoadConfig()
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	profile, err := cfg.Worker("worker")
+	profile, err := cfg.ChildProfile("worker")
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	w, err := f.rt.AddWorker(lead.ID, name, profile, "", message)
+	w, err := f.rt.CreateChild(parent.ID, name, profile, "", message)
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -143,16 +139,25 @@ func (f *fixture) read(fn func(*store.Tx) error) {
 	}
 }
 
-func (f *fixture) agents(session string) (list []store.Agent) {
+func (f *fixture) family(session string) (list []store.Session) {
 	f.t.Helper()
-	f.read(func(tx *store.Tx) error { var err error; list, err = tx.Agents(session); return err })
+	f.read(func(tx *store.Tx) error {
+		var err error
+		list, err = tx.Children(session)
+		if err != nil {
+			return err
+		}
+		root, err := tx.Session(session)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		list = append([]store.Session{root}, list...)
+		return nil
+	})
 	return list
-}
-
-func (f *fixture) agent(id string) (a store.Agent) {
-	f.t.Helper()
-	f.read(func(tx *store.Tx) error { var err error; a, err = tx.Agent(id); return err })
-	return a
 }
 
 func (f *fixture) storedSession(id string) (s store.Session) {

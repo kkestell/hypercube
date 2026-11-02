@@ -11,10 +11,10 @@ afterEach(() => {
 });
 
 const workspaces = [{id: 'w', name: 'repo', sessions: [
-  {id: 'a', title: 'Fix it', unseen: true, reply: 'Done.\nAll tests pass.', replySeq: 4, agents: [{id: 'a-lead', name: 'lead', role: 'lead'}]},
-  {id: 'b', title: 'Ask', unseen: false, agents: [{id: 'b-lead', name: 'lead', role: 'lead'}, {id: 'b-w', name: 'auditor', role: 'work'}]},
+  {id: 'a', title: 'Fix it', unseen: true, reply: 'Done.\nAll tests pass.', replySeq: 4, children: []},
+  {id: 'b', title: 'Ask', unseen: false, children: [{id: 'b-w', parent: 'b', title: 'auditor', children: []}]},
 ]}];
-const requests = [{agent: 'b-w', item: {id: 'q', kind: 'attention', text: 'Allow?', choices: ['Yes']}}];
+const requests = [{session: 'b-w', item: {id: 'q', kind: 'attention', text: 'Allow?', choices: ['Yes']}}];
 const state = {workspaces, requests, selected: '', pending: null, unsent: null, drafts: {}, dismissed: {}, errors: [], session: null};
 
 test('cards show their source and request answers', () => {

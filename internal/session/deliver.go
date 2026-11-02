@@ -16,11 +16,11 @@ func (r *Runtime) Deliver(id string) {
 	r.kickLocked(id)
 }
 
-// kickSessionLocked delivers to each of the session's agents. The caller holds
+// kickFamilyLocked delivers to every member of the family. The caller holds
 // mu.
-func (r *Runtime) kickSessionLocked(session string) {
+func (r *Runtime) kickFamilyLocked(session string) {
 	for id, l := range r.live {
-		if l.session == session {
+		if l.root == session {
 			r.kickLocked(id)
 		}
 	}
@@ -80,7 +80,7 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 		return out, false
 	}
 	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(l.session)
+		s, err := tx.Root(l.id)
 		if err != nil || s.AwaitingUser {
 			return err
 		}
@@ -89,11 +89,11 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 			return err
 		}
 		m := queued[0]
-		text, from := report.Format(tx, m)
+		text := report.Format(tx, m)
 		out = outgoing{message: m.ID, text: text, item: harness.Item{Kind: harness.KindUser, Text: text, Done: true}}
 		// The transcript shows an agent's message as written, with its sender.
-		if from != "" {
-			out.item.Text, out.item.From = m.Text, from
+		if m.From != "" {
+			out.item.Text, out.item.From = m.Text, m.From
 		}
 		ok = true
 		return nil
@@ -121,10 +121,10 @@ func (r *Runtime) delivered(l *live, out outgoing, sent error) bool {
 		if err := tx.Dequeue(out.message); err != nil {
 			return err
 		}
-		if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
+		if err := tx.TouchSession(l.root, time.Now().UnixMilli()); err != nil {
 			return err
 		}
-		return tx.putItem(l, out.seq, out.item)
+		return tx.putItem(l.id, out.seq, out.item)
 	})
 	if err != nil {
 		logf("delivering to %s: %v", l.id, err)

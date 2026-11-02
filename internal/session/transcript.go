@@ -17,8 +17,8 @@ type TranscriptItem struct {
 
 // Request is an agent's open attention item.
 type Request struct {
-	Agent string       `json:"agent"`
-	Item  harness.Item `json:"item"`
+	Session string       `json:"session"`
+	Item    harness.Item `json:"item"`
 }
 
 // Requests returns open attention items, newest first, across all live agents.
@@ -29,7 +29,7 @@ func (r *Runtime) Requests() []Request {
 	for _, l := range r.live {
 		for _, p := range l.pending {
 			if p.item.Kind == harness.KindAttention {
-				requests = append(requests, Request{Agent: l.id, Item: p.item})
+				requests = append(requests, Request{Session: l.id, Item: p.item})
 			}
 		}
 	}

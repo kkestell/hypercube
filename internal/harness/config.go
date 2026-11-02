@@ -82,7 +82,7 @@ func LoadConfig() (Config, error) {
 		return c, fmt.Errorf("%s: at least one lead profile is required", path)
 	}
 	if workers == 0 {
-		return c, fmt.Errorf("%s: at least one worker profile is required", path)
+		return c, fmt.Errorf("%s: at least one child profile is required", path)
 	}
 	return c, nil
 }
@@ -98,8 +98,8 @@ func (c Config) Leads() []Profile {
 	return profiles
 }
 
-// Workers returns worker profiles in file order.
-func (c Config) Workers() []Profile {
+// ChildProfiles returns child profiles in file order.
+func (c Config) ChildProfiles() []Profile {
 	var profiles []Profile
 	for _, p := range c.Profiles {
 		if p.Role != RoleLead {
@@ -119,14 +119,14 @@ func (c Config) Lead(name string) (Profile, error) {
 	return Profile{}, fmt.Errorf("no lead profile named %q", name)
 }
 
-// Worker returns the worker profile with the given name.
-func (c Config) Worker(name string) (Profile, error) {
+// ChildProfile returns the child profile with the given name.
+func (c Config) ChildProfile(name string) (Profile, error) {
 	for _, p := range c.Profiles {
 		if p.Role != RoleLead && p.Name == name {
 			return p, nil
 		}
 	}
-	return Profile{}, fmt.Errorf("no worker profile named %q", name)
+	return Profile{}, fmt.Errorf("no child profile (plan, work, or review) named %q", name)
 }
 
 func (s Spec) check() error {

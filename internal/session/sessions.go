@@ -42,45 +42,39 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 	return w, err
 }
 
-// Create adds a session to the workspace with a lead from the named lead
-// profile, or the first one, starts it, and sends the lead the first prompt,
-// which titles the session.
-func (r *Runtime) Create(workspaceID, lead, text string, images ...harness.Image) (store.Session, store.Agent, error) {
+// Create starts a top-level session with the first prompt.
+func (r *Runtime) Create(workspaceID, profileName, text string, images ...harness.Image) (store.Session, error) {
 	if err := checkPrompt(text, images); err != nil {
-		return store.Session{}, store.Agent{}, err
+		return store.Session{}, err
 	}
 	cfg, err := harness.LoadConfig()
 	if err != nil {
-		return store.Session{}, store.Agent{}, err
+		return store.Session{}, err
 	}
-	profile, err := cfg.Lead(lead)
+	profile, err := cfg.Lead(profileName)
 	if err != nil {
-		return store.Session{}, store.Agent{}, err
+		return store.Session{}, err
 	}
-	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true}
-	a := store.Agent{ID: store.NewID(), Session: s.ID, Name: "lead", Role: store.Lead,
+	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true,
 		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle}
 	err = r.save(func(tx *write) error {
 		w, err := tx.Workspace(workspaceID)
 		if err != nil {
 			return err
 		}
-		if err := tx.AddSession(s); err != nil {
-			return err
-		}
-		a.Dir = w.Path
-		return tx.AddAgent(a)
+		s.Dir = w.Path
+		return tx.AddSession(s)
 	})
 	if err != nil {
-		return s, a, err
+		return s, err
 	}
 	if err := r.start(s.ID, true); err != nil {
-		return s, a, err
+		return s, err
 	}
-	return s, a, r.Input(a.ID, text, images...)
+	return s, r.Input(s.ID, text, images...)
 }
 
-// Start launches a stopped session's agents, resuming their conversations.
+// Start launches a stopped family, resuming its conversations.
 // They deliver no queued messages until the user prompts the session.
 func (r *Runtime) Start(id string) error {
 	return r.start(id, false)
@@ -93,8 +87,10 @@ func (r *Runtime) start(id string, fresh bool) error {
 		if err != nil {
 			return err
 		}
-		w, err := tx.Workspace(s.Workspace)
-		root = w.Path
+		if s.Parent != "" {
+			return errors.New("a child session starts and stops with its parent")
+		}
+		root = s.Dir
 		return err
 	})
 	if err != nil {
@@ -117,41 +113,42 @@ func (r *Runtime) start(id string, fresh bool) error {
 		return nil
 	}
 	var lives []*live
-	var agents []store.Agent
+	var sessions []store.Session
 	err = r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
 			return err
 		}
-		s.Running, s.AwaitingUser = true, !fresh
+		s.Running, s.AwaitingUser, s.Branch = true, !fresh, branch
+		s.LastActive = time.Now().UnixMilli()
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}
-		if err := tx.TouchSession(id, time.Now().UnixMilli()); err != nil {
-			return err
-		}
-		agents, err = tx.Agents(id)
+		children, err := tx.Children(id)
 		if err != nil {
 			return err
 		}
-		for i := range agents {
-			a := &agents[i]
-			a.Activity, a.Attention = store.Exited, false
-			if a.Role == store.Lead {
-				a.Branch = branch
+		sessions = append([]store.Session{s}, children...)
+		active := sessions[:0]
+		for _, a := range sessions {
+			if a.Ended {
+				continue
 			}
-			if err := tx.SaveAgent(*a); err != nil {
+			a.Activity, a.Attention = store.Exited, false
+			if err := tx.SaveSession(a); err != nil {
 				return err
 			}
 			if err := r.loadSeq(tx.Tx, a.ID); err != nil {
 				return err
 			}
+			active = append(active, a)
 		}
+		sessions = active
 		return nil
 	})
 	if err == nil {
-		for _, a := range agents {
-			lives = append(lives, r.register(a, 0))
+		for _, a := range sessions {
+			lives = append(lives, r.register(a.ID, id, 0))
 		}
 	}
 	r.mu.Unlock()
@@ -163,7 +160,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 	for i, l := range lives {
 		wg.Go(func() {
 			if err := r.launch(l); err != nil && !errors.Is(err, errStopped) {
-				errs[i] = fmt.Errorf("launching %s: %w", agents[i].Name, err)
+				errs[i] = fmt.Errorf("launching %s: %w", sessions[i].ID, err)
 			}
 		})
 	}
@@ -171,14 +168,16 @@ func (r *Runtime) start(id string, fresh bool) error {
 	return errors.Join(errs...)
 }
 
-// Stop ends the session's agents. Their conversations and queued messages stay
+// Stop stops the family. Its conversations and queued messages stay
 // for the next Start.
 func (r *Runtime) Stop(id string) error {
 	r.mu.Lock()
 	lives, err := r.stopLocked(id)
 	r.mu.Unlock()
 	stopClients(lives)
-	r.Terminals.Stop(id)
+	if err == nil {
+		r.stopShells(id)
+	}
 	return err
 }
 
@@ -190,22 +189,25 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 		if err != nil {
 			return err
 		}
+		if s.Parent != "" {
+			return errors.New("a child session starts and stops with its parent")
+		}
 		s.Running = false
 		return tx.SaveSession(s)
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.detachLocked(func(l *live) bool { return l.session == id }, true), nil
+	return r.detachLocked(func(l *live) bool { return l.root == id }, true), nil
 }
 
-// Delete stops the session and deletes it with its workers' worktrees and
-// branches. It refuses, changing nothing, if a worker has uncommitted changes
-// in its worktree or an unmerged branch. Workers without worktrees have their
+// Delete stops the session and deletes it with its child sessions' worktrees and
+// branches. It refuses, changing nothing, if a child has uncommitted changes
+// in its worktree or an unmerged branch. Children without worktrees have their
 // directories left alone.
 func (r *Runtime) Delete(id string) error {
 	var root string
-	var workers []store.Agent
+	var children []store.Session
 	err := r.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -216,13 +218,19 @@ func (r *Runtime) Delete(id string) error {
 			return err
 		}
 		root = w.Path
-		agents, err := tx.Agents(id)
+		if s.Parent != "" {
+			if !s.Ended {
+				return errors.New("a child session must be ended before it can be deleted")
+			}
+			return nil
+		}
+		allChildren, err := tx.Children(id)
 		if err != nil {
 			return err
 		}
-		for _, a := range agents {
-			if a.Role == store.Worker && a.Branch != "" {
-				workers = append(workers, a)
+		for _, a := range allChildren {
+			if !a.Ended && a.Branch != "" {
+				children = append(children, a)
 			}
 		}
 		return nil
@@ -235,7 +243,7 @@ func (r *Runtime) Delete(id string) error {
 	present := !errors.Is(statErr, os.ErrNotExist)
 	var problems []string
 	if present {
-		for _, a := range workers {
+		for _, a := range children {
 			if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
 			}
@@ -248,7 +256,7 @@ func (r *Runtime) Delete(id string) error {
 	// resuming the session meanwhile.
 	r.mu.Lock()
 	r.deleting[id] = true
-	lives := r.detachLocked(func(l *live) bool { return l.session == id }, false)
+	lives := r.detachLocked(func(l *live) bool { return l.root == id }, false)
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
@@ -256,15 +264,15 @@ func (r *Runtime) Delete(id string) error {
 		r.mu.Unlock()
 	}()
 	stopClients(lives)
-	// A worker can change its worktree before the session ends. Such a worker
-	// stays, so that delete can run again after it is fixed.
-	for _, a := range workers {
+	r.stopShells(id)
+	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
+	for _, a := range children {
 		if present {
 			if err := workspace.RemoveWorktree(root, a.Dir, a.Branch); err != nil {
 				return fmt.Errorf("%s: %w", a.Name, err)
 			}
 		}
-		if err := r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) }); err != nil {
+		if err := r.save(func(tx *write) error { return tx.DeleteSession(a.ID) }); err != nil {
 			return err
 		}
 	}
@@ -294,8 +302,7 @@ func (r *Runtime) DeleteWorkspace(id string) error {
 	return r.save(func(tx *write) error { return tx.DeleteWorkspace(id) })
 }
 
-// Rename changes a session's title. Its ID, and so its agents' addresses,
-// stay the same.
+// Rename changes a session's title. Its ID stays the same.
 func (r *Runtime) Rename(id, title string) error {
 	title = strings.TrimSpace(title)
 	if title == "" {
@@ -343,32 +350,46 @@ func (r *Runtime) Restore() {
 	}
 }
 
-// Shell returns the running session's shell, starting it in the workspace
-// folder with the given size if the session has none.
-func (r *Runtime) Shell(session string, cols, rows int) (*terminal.Shell, error) {
+// Shell opens the running session's shell in its own directory.
+func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 	var dir string
 	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(session)
+		s, err := tx.Session(id)
 		if err != nil {
 			return err
 		}
-		if !s.Running {
+		running, err := tx.Running(s)
+		if err != nil {
+			return err
+		}
+		if !running {
 			return errors.New("the session is not running")
 		}
-		w, err := tx.Workspace(s.Workspace)
-		dir = w.Path
-		return err
+		dir = s.Dir
+		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return r.Terminals.Open(session, dir, cols, rows)
+	return r.Terminals.Open(id, dir, cols, rows)
+}
+
+// stopShells ends the root's shell and all its children's shells.
+func (r *Runtime) stopShells(id string) {
+	var children []store.Session
+	if err := r.db.Read(func(tx *store.Tx) error { var err error; children, err = tx.Children(id); return err }); err != nil {
+		logf("reading child shells: %v", err)
+	}
+	r.Terminals.Stop(id)
+	for _, c := range children {
+		r.Terminals.Stop(c.ID)
+	}
 }
 
 // detachLocked removes the matching running agents from the runtime, saving
-// their unfinished items, and returns them for stopClients. With ended set it
-// also marks the agents ended. The caller holds mu.
-func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
+// their unfinished items, and returns them for stopClients. With exited set it
+// also marks the agents exited. The caller holds mu.
+func (r *Runtime) detachLocked(match func(*live) bool, exited bool) []*live {
 	var lives []*live
 	for id, l := range r.live {
 		if match(l) {
@@ -379,12 +400,12 @@ func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
 	err := r.save(func(tx *write) error {
 		for _, l := range lives {
 			for _, e := range l.drain() {
-				if err := tx.putItem(l, e.seq, e.item); err != nil {
+				if err := tx.putItem(l.id, e.seq, e.item); err != nil {
 					return err
 				}
 			}
-			if ended {
-				if err := markEnded(tx, l.id); err != nil {
+			if exited {
+				if err := markExited(tx, l.id); err != nil {
 					return err
 				}
 			}

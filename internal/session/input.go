@@ -45,7 +45,7 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 		r.mu.Unlock()
 		return err
 	}
-	if err := r.recordActivity(l.session); err != nil {
+	if err := r.recordActivity(l.root); err != nil {
 		r.mu.Unlock()
 		return err
 	}
@@ -57,7 +57,7 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	err = r.save(func(tx *write) error {
-		s, err := tx.Session(l.session)
+		s, err := tx.Root(l.id)
 		if err != nil {
 			return err
 		}
@@ -65,12 +65,12 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}
-		return tx.putItem(l, seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true})
+		return tx.putItem(l.id, seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true})
 	})
 	if err != nil {
 		return err
 	}
-	r.kickSessionLocked(l.session)
+	r.kickFamilyLocked(l.root)
 	return nil
 }
 
@@ -83,7 +83,7 @@ func (r *Runtime) Interrupt(agent string) error {
 		r.mu.Unlock()
 		return err
 	}
-	if err := r.recordActivity(l.session); err != nil {
+	if err := r.recordActivity(l.root); err != nil {
 		r.mu.Unlock()
 		return err
 	}
@@ -96,17 +96,17 @@ func (r *Runtime) Interrupt(agent string) error {
 // or both. A request that has finished cannot be answered.
 func (r *Runtime) Answer(agent, requestID, choice, text string) error {
 	r.mu.Lock()
-	l, err := r.running(agent)
-	if err != nil {
+	l := r.live[agent]
+	if l == nil || l.starting {
 		r.mu.Unlock()
-		return err
+		return errors.New("the request is finished")
 	}
 	p := l.pending[requestID]
 	if p == nil || p.item.Kind != harness.KindAttention {
 		r.mu.Unlock()
 		return errors.New("the request is finished")
 	}
-	if err := r.recordActivity(l.session); err != nil {
+	if err := r.recordActivity(l.root); err != nil {
 		r.mu.Unlock()
 		return err
 	}

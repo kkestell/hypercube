@@ -17,11 +17,11 @@ test('toolSummary picks the telling text of a call', () => {
 });
 
 test('toolTitle says what Hypercube tools do and names other servers', () => {
-  expect(toolTitle({server: 'hypercube', tool: 'remove_agent', input: {name: 'auditor'}})).toEqual(['Remove agent', 'auditor']);
-  expect(toolTitle({server: 'hypercube', tool: 'create_agent', input: {name: 'w1', profile: 'claude', message: 'the brief'}})).toEqual(['Create agent', 'w1']);
-  expect(toolTitle({server: 'hypercube', tool: 'list_agents', input: {}})).toEqual(['List agents', '']);
+  expect(toolTitle({server: 'hypercube', tool: 'end_session', input: {name: 'auditor'}})).toEqual(['End session', 'auditor']);
+  expect(toolTitle({server: 'hypercube', tool: 'create_session', input: {name: 'w1', profile: 'claude', message: 'the brief'}})).toEqual(['Create session', 'w1']);
+  expect(toolTitle({server: 'hypercube', tool: 'list_sessions', input: {}})).toEqual(['List sessions', '']);
   expect(toolTitle({server: 'hypercube', tool: 'set_status', input: {text: 'Reading\n the code'}})).toEqual(['Set status', 'Reading the code']);
-  expect(toolTitle({server: 'hypercube', tool: 'remove_agent'})).toEqual(['Remove agent', '']);
+  expect(toolTitle({server: 'hypercube', tool: 'end_session'})).toEqual(['End session', '']);
   expect(toolTitle({server: 'context7', tool: 'query-docs', input: {query: 'go'}})).toEqual(['context7 - query-docs', 'go']);
   expect(toolTitle({tool: 'bash', input: {command: 'ls'}})).toEqual(['bash', 'ls']);
 });

@@ -23,12 +23,12 @@ function listed(state, sessionId, dir, entries) {
   });
 }
 
-// listingMissing forgets a folder that no longer exists, and its expansion.
+// listingMissing records a missing folder and forgets its expansion.
 function listingMissing(state, sessionId, dir) {
   return withFiles(state, sessionId, files => {
-    if (!(dir in files.listings) && !files.expanded[dir]) return files;
+    if (files.listings[dir] === null && !files.expanded[dir]) return files;
     const listings = {...files.listings}, expanded = {...files.expanded};
-    delete listings[dir];
+    listings[dir] = null;
     delete expanded[dir];
     return {...files, listings, expanded};
   });

@@ -15,18 +15,17 @@ afterEach(() => {
   unmountAll();
 });
 
-const lead = {id: 'lead', name: 'lead', role: 'lead', activity: 'idle'};
-const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, agents: [lead], ...extra});
+const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, children: [], activity: 'idle', ...extra});
 const store = (selected, sessions, visible = true) => createStore(receivedWorkspaces({
   workspaces: [], requests: [], selected, pending: null, unsent: null, visible, drafts: {}, errors: [], session: null,
 }, [{id: 'w', name: 'repo', path: '/repo', sessions}]));
 
-test('a selected session that is stopped shows the tesseract', () => {
+test('a selected stopped session attaches and shows its transcript', () => {
   const s = store('a', [session('a', {running: false})]);
   expect(s.get().selected).toBe('a');
   const root = mount(s, <SessionView />);
-  expect(root.querySelector('.tesseract')).not.toBeNull();
-  expect(root.querySelector('.agent-pane')).toBeNull();
+  expect(root.querySelector('.tesseract')).toBeNull();
+  expect(root.querySelector('.agent-pane')).not.toBeNull();
 });
 
 test('a running session shows its lead', () => {
@@ -62,36 +61,16 @@ test('a session with nothing unseen posts nothing', () => {
   expect(posted()).toEqual([]);
 });
 
-test('lead, workers, and files keep their order and independent column widths', () => {
-  const s = store('a', [session('a', {agents: [lead, {id: 'worker', name: 'worker', role: 'work'}]})]);
+test('the session and files share one split', () => {
+  const s = store('a', [session('a', {children: [session('child', {parent: 'a'})]})]);
   const root = mount(s, <SessionView />);
-  const [outer, inner] = root.querySelectorAll('vscode-split-layout');
-  const resize = (split, positionInPercentage) => act(() => split.dispatchEvent(new CustomEvent('vsc-split-layout-change', {detail: {positionInPercentage}})));
-  expect(outer.classList.contains('split-collapsed')).toBe(false);
-  expect(inner.classList.contains('split-collapsed')).toBe(true);
-  expect([...root.querySelectorAll('.composer, .workers-panel, .editor-area')].map(element => element.className)).toEqual(['composer', 'workers-panel', 'editor-area']);
+  const splits = root.querySelectorAll('vscode-split-layout');
+  expect(splits.length).toBe(1);
+  expect(root.querySelectorAll('.agent-pane').length).toBe(1);
+  const split = splits[0];
+  expect(split.classList.contains('split-collapsed')).toBe(true);
   s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: {id: 1, tabs: ['file:a.go'], active: 'file:a.go'}}}}));
-  expect(inner.classList.contains('split-collapsed')).toBe(false);
-  resize(outer, 40);
-  resize(inner, 60);
-  expect(outer.handlePosition).toBe('40%');
-  expect(inner.handlePosition).toBe('60%');
-  s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: null}}}));
-  expect(outer.classList.contains('split-collapsed')).toBe(false);
-  expect(inner.handlePosition).toBe('100%');
-  expect(root.querySelector('.workers-panel')).not.toBeNull();
-});
-
-test('absent workers collapse their column and session switches reset worker expansion', () => {
-  const worker = {id: 'worker', name: 'worker', role: 'work'};
-  const s = store('a', [session('a', {agents: [lead, worker]}), session('b', {agents: [lead, worker]})]);
-  const root = mount(s, <SessionView />);
-  act(() => root.querySelector('.workers-panel-header').click());
-  expect(root.querySelector('.workers-panel-header').getAttribute('aria-expanded')).toBe('true');
-  s.update(state => ({...state, selected: 'b', session: {...state.session, id: 'b'}}));
-  expect(root.querySelector('.workers-panel-header').getAttribute('aria-expanded')).toBe('false');
-  s.update(state => receivedWorkspaces(state, [{id: 'w', sessions: [session('b')]}]));
-  const [outer, inner] = root.querySelectorAll('vscode-split-layout');
-  expect(outer.handlePosition).toBe('100%');
-  expect(inner.handlePosition).toBe('0px');
+  expect(split.classList.contains('split-collapsed')).toBe(false);
+  act(() => split.dispatchEvent(new CustomEvent('vsc-split-layout-change', {detail: {positionInPercentage: 40}})));
+  expect(split.handlePosition).toBe('40%');
 });

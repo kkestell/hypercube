@@ -938,7 +938,7 @@ func TestStartRunsOpenCodeAcp(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	t.Setenv("FAKE_OUT", state)
-	_, err := startAgent(harness.StartArgs{Dir: dir, Agent: "a1", Instructions: "Be brief.", StateDir: state}, func(harness.Event) {})
+	_, err := startAgent(harness.StartArgs{Dir: dir, Session: "a1", Instructions: "Be brief.", StateDir: state}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "cannot start") {
 		t.Fatal(err)
 	}

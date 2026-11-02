@@ -1,3 +1,3 @@
-// focusComposer puts the focus in the text box of an agent's composer, if one
+// focusComposer puts the focus in the text box of a session's composer, if one
 // is drawn.
-export const focusComposer = agent => document.querySelector(`.composer[data-agent="${agent}"] textarea`)?.focus();
+export const focusComposer = session => document.querySelector(`.composer[data-session="${session}"] textarea`)?.focus();

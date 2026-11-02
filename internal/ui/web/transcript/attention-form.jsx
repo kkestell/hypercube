@@ -10,16 +10,16 @@ import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import './attention-form.css';
 
-export function AttentionForm({agent, item}) {
+export function AttentionForm({session, item}) {
   const [state, store] = useStore();
   const [sending, setSending] = useState(false);
-  const key = `${agent}/${item.id}`;
+  const key = `${session}/${item.id}`;
   const text = draftOf(state, key).text;
 
   const send = async choice => {
     if (sending) return;
     setSending(true);
-    if (await answerRequest(store, agent, item.id, choice, text)) store.update(s => typed(s, key, ''));
+    if (await answerRequest(store, session, item.id, choice, text)) store.update(s => typed(s, key, ''));
     else setSending(false);
   };
   const sendText = () => {

@@ -12,7 +12,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"regexp"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
@@ -23,9 +22,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to the lead's directory, the worker works directly in it"
+const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to your directory, the child session works directly in it"
 
-const profileArg = "The profile sets the worker's harness, model, and effort. An optional message is queued for the worker before it starts."
+const profileArg = "The profile sets the child session's harness, model, and effort. An optional message is queued for the child session before it starts."
 
 type sendMessageArgs struct {
 	To   string `json:"to"`
@@ -36,14 +35,14 @@ type setStatusArgs struct {
 	Text string `json:"text"`
 }
 
-type createAgentArgs struct {
+type createSessionArgs struct {
 	Name    string `json:"name"`
 	Profile string `json:"profile"`
 	Dir     string `json:"dir,omitempty"`
 	Message string `json:"message,omitempty"`
 }
 
-type removeAgentArgs struct {
+type endSessionArgs struct {
 	Name string `json:"name"`
 }
 
@@ -58,66 +57,76 @@ func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
 	}
 }
 
-// newServer returns the server for one agent. Outside Git, workers cannot
-// have worktrees, so create_agent requires dir. Profiles restrict profile to
-// the configured worker profiles.
+// newServer returns the server for one agent. Outside Git, child sessions cannot
+// have worktrees, so create_session requires dir. Profiles restrict profile to
+// the configured child session profiles.
 func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
-	w, _ := workspaceOf(db, self)
+	var caller store.Session
+	var w store.Workspace
+	_ = db.Read(func(tx *store.Tx) error {
+		var err error
+		caller, err = tx.Session(self)
+		if err != nil {
+			return err
+		}
+		w, err = tx.Workspace(caller.Workspace)
+		return err
+	})
+
+	sendDescription := "Send a message to one of your child sessions by its name, or to another top-level session in this workspace by its ID. This is the only way to reach other Hypercube sessions."
+	if caller.Parent != "" {
+		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only way to reach it.", caller.Parent)
+	}
+	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
+	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, activity, ended, directory, and branch."}, result(func(struct{}) (string, error) { return listSessions(db, self) }))
+	if caller.Parent != "" {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "set_status",
+			Description: "Tell the user in a sentence or two what you are doing now. It appears in your parent session's transcript for the user; your parent's agent does not see it.",
+		}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
+		return server
+	}
 	cfg, cfgErr := harness.LoadConfig()
 
-	createSchema, err := jsonschema.For[createAgentArgs](nil)
+	createSchema, err := jsonschema.For[createSessionArgs](nil)
 	if err != nil {
 		panic(err)
 	}
-	createDescription := "Lead only. Create a worker and launch it. Without dir, the worker gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
-	removeDescription := "Lead only. End a worker and remove it from the team. A worker with a worktree also has its worktree and branch removed, and Git refuses dirty worktrees and unmerged branches. A worker without one has its directory left as it is."
+	createDescription := "Create a child session and launch its agent. Without dir, the child session gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
 	if w.NoGit {
-		createDescription = "Lead only. Create a worker and launch it. Given dir, " + dirArg + ". " + profileArg
-		removeDescription = "Lead only. End a worker and remove it from the team. Its directory is left as it is."
+		createDescription = "Create a child session and launch its agent. Given dir, " + dirArg + ". " + profileArg
 		createSchema.Required = append(createSchema.Required, "dir")
 	}
-	for _, p := range cfg.Workers() {
+	for _, p := range cfg.ChildProfiles() {
 		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
 	}
-
-	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
+	mcp.AddTool(server, &mcp.Tool{Name: "create_session", Description: createDescription, InputSchema: createSchema}, result(func(a createSessionArgs) (string, error) {
+		if cfgErr != nil {
+			return "", cfgErr
+		}
+		return createSession(rt, self, cfg, a)
+	}))
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "send_message",
-		Description: "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.",
-	}, result(func(a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_agents",
-		Description: "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, session title, role, harness, activity, directory, and branch.",
-	}, result(func(struct{}) (string, error) { return listAgents(db, self) }))
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "set_status",
-		Description: "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.",
-	}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
-	mcp.AddTool(server, &mcp.Tool{Name: "create_agent", Description: createDescription, InputSchema: createSchema},
-		result(func(a createAgentArgs) (string, error) {
-			if cfgErr != nil {
-				return "", cfgErr
-			}
-			return createAgent(rt, self, cfg, a)
-		}))
-	mcp.AddTool(server, &mcp.Tool{Name: "remove_agent", Description: removeDescription},
-		result(func(a removeAgentArgs) (string, error) { return removeAgent(rt, self, a.Name) }))
+		Name:        "end_session",
+		Description: "End a child session: its agent stops for good, and a child with a worktree also has its worktree and branch removed; Git refuses dirty worktrees and unmerged branches. The ended child stays listed for the user and cannot be messaged.",
+	}, result(func(a endSessionArgs) (string, error) { return endSession(rt, self, a.Name) }))
 	return server
 }
 
-// AgentHeader names the agent a request comes from.
-const AgentHeader = "X-Hypercube-Agent"
+// SessionHeader names the session a request comes from.
+const SessionHeader = "X-Hypercube-Session"
 
 // Bridge answers MCP requests on stdin until it closes, by forwarding each to
-// the app. HYPERCUBE_URL is the app's address and HYPERCUBE_AGENT_ID the agent.
+// the app. HYPERCUBE_URL is the app's address and HYPERCUBE_SESSION_ID its session.
 // The SDK has no stdio-to-HTTP forwarder, so Bridge moves messages between the
 // SDK's stdio and streamable HTTP transports itself, one request at a time.
 func Bridge(stdin io.Reader, stdout io.Writer) error {
-	id, base := os.Getenv("HYPERCUBE_AGENT_ID"), os.Getenv("HYPERCUBE_URL")
+	id, base := os.Getenv("HYPERCUBE_SESSION_ID"), os.Getenv("HYPERCUBE_URL")
 	if id == "" || base == "" {
-		return errors.New("HYPERCUBE_AGENT_ID and HYPERCUBE_URL must be set")
+		return errors.New("HYPERCUBE_SESSION_ID and HYPERCUBE_URL must be set")
 	}
 	ctx := context.Background()
 	agent, err := (&mcp.StreamableClientTransport{
@@ -176,7 +185,7 @@ type identity string
 
 func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set(AgentHeader, string(i))
+	r.Header.Set(SessionHeader, string(i))
 	return http.DefaultTransport.RoundTrip(r)
 }
 
@@ -185,14 +194,14 @@ type nopCloser struct{ io.Writer }
 func (nopCloser) Close() error { return nil }
 
 // Handler is the app's /mcp route: it serves the tools to the agent named in
-// AgentHeader. Each request is answered on its own, so the tools follow the
+// SessionHeader. Each request is answered on its own, so the tools follow the
 // current workspace and configuration.
 func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return newServer(db, rt, r.Header.Get(AgentHeader))
+		return newServer(db, rt, r.Header.Get(SessionHeader))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Agent(r.Header.Get(AgentHeader)); return err }); err != nil {
+		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Session(r.Header.Get(SessionHeader)); return err }); err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
@@ -200,58 +209,47 @@ func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	})
 }
 
-func workspaceOf(db *store.DB, id string) (store.Workspace, error) {
-	var w store.Workspace
-	err := db.Read(func(tx *store.Tx) error {
-		a, err := tx.Agent(id)
-		if err != nil {
-			return err
-		}
-		s, err := tx.Session(a.Session)
-		if err != nil {
-			return err
-		}
-		w, err = tx.Workspace(s.Workspace)
-		return err
-	})
-	return w, err
-}
-
-// listAgents lists the caller's session and, for a lead, the other leads in
-// its workspace.
-func listAgents(db *store.DB, self string) (string, error) {
+// listSessions lists exactly the sessions in the caller's messaging scope.
+func listSessions(db *store.DB, self string) (string, error) {
 	type entry struct {
-		Address  string `json:"address"`
-		Title    string `json:"session_title"`
-		Role     string `json:"role"`
+		To       string `json:"to"`
+		Title    string `json:"title"`
 		Harness  string `json:"harness"`
 		Activity string `json:"activity"`
+		Ended    bool   `json:"ended"`
 		Dir      string `json:"directory"`
 		Branch   string `json:"branch"`
 	}
-	var listed []entry
+	listed := []entry{}
 	err := db.Read(func(tx *store.Tx) error {
-		caller, err := tx.Agent(self)
+		caller, err := tx.Session(self)
 		if err != nil {
 			return err
 		}
-		s, err := tx.Session(caller.Session)
-		if err != nil {
-			return err
+		var sessions []store.Session
+		if caller.Parent != "" {
+			parent, err := tx.Session(caller.Parent)
+			if err != nil {
+				return err
+			}
+			sessions = []store.Session{parent}
+		} else {
+			sessions, err = tx.Children(caller.ID)
+			if err != nil {
+				return err
+			}
+			peers, err := report.Peers(tx, caller.Workspace, caller.ID)
+			if err != nil {
+				return err
+			}
+			sessions = append(sessions, peers...)
 		}
-		agents, err := tx.Agents(caller.Session)
-		if err != nil {
-			return err
-		}
-		leads, titles, err := report.Leads(tx, s.Workspace, s.ID)
-		if err != nil {
-			return err
-		}
-		if caller.Role == store.Lead {
-			agents = append(agents, leads...)
-		}
-		for _, a := range agents {
-			listed = append(listed, entry{a.Address(), titles[a.Session], a.Role, a.Harness, a.Activity, a.Dir, a.Branch})
+		for _, s := range sessions {
+			to := s.ID
+			if s.Parent == caller.ID {
+				to = s.Name
+			}
+			listed = append(listed, entry{to, s.Title, s.Harness, s.Activity, s.Ended, s.Dir, s.Branch})
 		}
 		return nil
 	})
@@ -263,11 +261,11 @@ func listAgents(db *store.DB, self string) (string, error) {
 }
 
 func sendMessage(rt *session.Runtime, self, to, text string) (string, error) {
-	recipient, running, err := rt.SendMessage(self, to, text)
+	_, running, err := rt.SendMessage(self, to, text)
 	if err != nil {
 		return "", err
 	}
-	reply := fmt.Sprintf("Message queued for %s.", recipient.Address())
+	reply := fmt.Sprintf("Message queued for %s.", to)
 	if !running {
 		reply += " Its session is stopped; the message will be delivered when the session starts."
 	}
@@ -281,30 +279,25 @@ func setStatus(rt *session.Runtime, self, text string) (string, error) {
 	return "Status set.", nil
 }
 
-var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-
-func createAgent(rt *session.Runtime, self string, cfg harness.Config, args createAgentArgs) (string, error) {
-	if !validName.MatchString(args.Name) {
-		return "", errors.New("name must be lowercase letters, digits, and hyphens")
-	}
-	profile, err := cfg.Worker(args.Profile)
+func createSession(rt *session.Runtime, self string, cfg harness.Config, args createSessionArgs) (string, error) {
+	profile, err := cfg.ChildProfile(args.Profile)
 	if err != nil {
 		return "", err
 	}
-	a, err := rt.AddWorker(self, args.Name, profile, args.Dir, args.Message)
+	a, err := rt.CreateChild(self, args.Name, profile, args.Dir, args.Message)
 	if err != nil {
 		return "", err
 	}
 	if a.Branch == "" {
-		return fmt.Sprintf("Created %s in %s.", a.Address(), a.Dir), nil
+		return fmt.Sprintf("Created %s in %s.", a.Name, a.Dir), nil
 	}
-	return fmt.Sprintf("Created %s on branch %s in %s.", a.Address(), a.Branch, a.Dir), nil
+	return fmt.Sprintf("Created %s on branch %s in %s.", a.Name, a.Branch, a.Dir), nil
 }
 
-func removeAgent(rt *session.Runtime, self, name string) (string, error) {
-	a, err := rt.RemoveWorker(self, name)
+func endSession(rt *session.Runtime, self, name string) (string, error) {
+	a, err := rt.EndChild(self, name)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Removed %s.", a.Address()), nil
+	return fmt.Sprintf("Ended %s.", a.Name), nil
 }

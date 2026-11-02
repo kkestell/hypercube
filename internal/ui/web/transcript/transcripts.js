@@ -1,5 +1,5 @@
-// The attached session's transcripts, one per agent as {order, items}: one
-// item per ID, ordered by seq. The server sends each agent's items whole after
+// The attached session's transcript as {order, items}: one
+// item per ID, ordered by seq. The server sends the session's items whole after
 // the page selects a session, then each new or changed item.
 import {ancestorKeys} from './transcript-tree.js';
 
@@ -10,7 +10,7 @@ export const emptyTranscript = {order: [], items: {}};
 export function receivedTranscript(state, message) {
   const session = state.session;
   if (session?.id !== message.session) return state;
-  const old = message.reset ? emptyTranscript : session.transcripts[message.agent] ?? emptyTranscript;
+  const old = message.reset ? emptyTranscript : session.transcript;
   const items = {...old.items};
   for (const item of message.items) items[item.id] = item;
   const order = Object.keys(items).sort((a, b) => items[a].seq - items[b].seq);
@@ -20,7 +20,7 @@ export function receivedTranscript(state, message) {
     if (item.kind !== 'attention' || item.done) continue;
     for (const key of ancestorKeys(transcript, item.id)) expanded[key] = true;
   }
-  return {...state, session: {...session, transcripts: {...session.transcripts, [message.agent]: transcript}, expanded}};
+  return {...state, session: {...session, transcript, expanded}};
 }
 
 // setExpanded opens or closes a tool call, run, message, or Thinking item.

@@ -16,19 +16,18 @@ const confirmDelete = (store, name, detail, accept) =>
   askToConfirm(store, {message: `Are you sure you want to delete '${name}'?`, detail, primary: 'Delete', accept});
 
 export const deleteSession = (store, session) => confirmDelete(store, session.title,
-  'Its agents stop, and its chats and its workers\' worktrees and branches are deleted.',
+  session.ended ? "Its chat is deleted." : "Its agent stops, and its chat, children, and their worktrees and branches are deleted.",
   () => post(store, 'session', {action: 'delete', id: session.id}));
 
 export const deleteWorkspace = (store, workspace) => confirmDelete(store, workspace.name,
-  'Its sessions are deleted with their chats and their workers\' worktrees and branches.',
+  "Its sessions are deleted with their chats and their children's worktrees and branches.",
   () => post(store, 'workspace', {action: 'delete', id: workspace.id}));
 
-// chooseSession shows a session, starting it if it is stopped or its lead
-// failed to start.
+// chooseSession shows a session, starting it if it is stopped or failed to start.
 export function chooseSession(store, id) {
   store.update(state => selectSession(state, id));
   const session = allSessions(store.get()).find(s => s.id === id);
-  if (session && (!session.running || failed(session))) startSession(store, id);
+  if (session && !session.ended && (!session.running || failed(session))) startSession(store, session.parent || id);
 }
 
 // createSession sends the unsent session's first prompt, which creates the
@@ -44,20 +43,20 @@ export async function createSession(store, prompt) {
   store.update(state => unsentSending(state, false));
   if (created === null) return false;
   const ids = JSON.parse(created);
-  store.update(state => unsentCreated(state, ids.lead));
+  store.update(state => unsentCreated(state, ids.session));
   chooseSession(store, ids.session);
   return true;
 }
 
-// sendPrompt sends an agent's draft. The unsent session's first prompt
+// sendPrompt sends an session's draft. The unsent session's first prompt
 // creates the session. A refused prompt returns to its draft.
-export async function sendPrompt(store, agent) {
+export async function sendPrompt(store, session) {
   const state = store.get();
-  if (!canSend(state, agent)) return;
-  const {text, images} = draftOf(state, agent.id);
-  store.update(next => cleared(next, agent.id));
-  const accepted = agent.id === unsentKey
+  if (!canSend(state, session)) return;
+  const {text, images} = draftOf(state, session.id);
+  store.update(next => cleared(next, session.id));
+  const accepted = session.id === unsentKey
     ? await createSession(store, {text, images})
-    : await post(store, 'agent', {action: 'input', id: agent.id}, JSON.stringify({text, images})) !== null;
-  if (!accepted) store.update(next => restored(next, agent.id, {text, images}));
+    : await post(store, 'session', {action: 'input', id: session.id}, JSON.stringify({text, images})) !== null;
+  if (!accepted) store.update(next => restored(next, session.id, {text, images}));
 }

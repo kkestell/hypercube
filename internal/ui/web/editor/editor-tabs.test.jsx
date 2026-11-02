@@ -9,7 +9,6 @@ import {openTab} from './tab-layout.js';
 
 afterEach(unmountAll);
 
-const agents = [{id: 'lead', name: 'lead', role: 'lead', activity: 'idle'}];
 const frame = () => act(() => new Promise(resolve => requestAnimationFrame(resolve)));
 
 const openTestTab = (state, id) => ({...state, session: {...state.session, tabs: openTab(state.session.tabs, id)}});
@@ -17,10 +16,10 @@ const openTestTab = (state, id) => ({...state, session: {...state.session, tabs:
 function setup(change = state => openTestTab(openTestTab(state, 'file:one'), 'file:two')) {
   const lead = document.createElement('form');
   lead.className = 'composer';
-  lead.dataset.agent = 'lead';
+  lead.dataset.session = 's';
   lead.append(document.createElement('textarea'));
   document.body.append(lead);
-  const store = createStore(change({selected: 's', workspaces: [{sessions: [{id: 's', agents}]}], drafts: {}, unsent: null, session: emptySession('s')}));
+  const store = createStore(change({selected: 's', workspaces: [{sessions: [{id: 's', children: []}]}], drafts: {}, unsent: null, session: emptySession('s')}));
   const root = mount(store, <EditorArea />);
   const tabs = () => [...root.querySelectorAll('[role="tab"]')];
   return {store, root, tabs, leadField: lead.firstChild};

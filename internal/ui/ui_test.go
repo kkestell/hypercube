@@ -87,12 +87,12 @@ func TestLeads(t *testing.T) {
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("leads response = %d %s", res.Code, res.Body)
 	}
-	type lead struct{ Name, Description, Harness, Model, Effort string }
-	var got []lead
+	type parent struct{ Name, Description, Harness, Model, Effort string }
+	var got []parent
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []lead{{"first", "First lead", "claude", "opus", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
+	if !slices.Equal(got, []parent{{"first", "First lead", "claude", "opus", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
 		t.Fatalf("leads = %+v", got)
 	}
 	// The same handler reads config edits instead of keeping a cached list.
@@ -128,7 +128,7 @@ func TestStateStreamsSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.until("the new workspace", func() bool { return len(p.state.Workspaces) == 2 })
-	s, lead, err := a.rt.Create(w.ID, "lead", "Fix it")
+	s, err := a.rt.Create(w.ID, "lead", "Fix it")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestStateStreamsSnapshots(t *testing.T) {
 			}
 			return len(workspace.Sessions) == 1 && workspace.Sessions[0].ID == s.ID &&
 				workspace.Sessions[0].Title == "Fix it" && workspace.Sessions[0].Running &&
-				len(workspace.Sessions[0].Agents) == 1 && workspace.Sessions[0].Agents[0].ID == lead.ID
+				workspace.Sessions[0].Harness == "test"
 		}
 		return false
 	})
@@ -150,12 +150,12 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 	change(t, db, func(tx *store.Tx) error {
 		tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"})
 		tx.AddSession(store.Session{ID: "s", Workspace: "w"})
-		return tx.AddAgent(store.Agent{ID: "a", Session: "s", Name: "lead", Role: store.Lead, Activity: store.Idle})
+		return nil
 	})
 	h := handler(t, db)
 	send := func(method, host, origin, path string) int {
 		req := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
-		req.Header.Set("X-Hypercube-Agent", "a")
+		req.Header.Set("X-Hypercube-Session", "s")
 		if origin != "" {
 			req.Header.Set("Origin", origin)
 		}
@@ -166,8 +166,8 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 	for name, got := range map[string]int{
 		"foreign host":          send("GET", "example.com", "", "/leads"),
 		"rebound host":          send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
-		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/agent?action=input&id=a"),
-		"input without origin":  send("POST", "localhost:4280", "", "/agent?action=input&id=a"),
+		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/session?action=input&id=a"),
+		"input without origin":  send("POST", "localhost:4280", "", "/session?action=input&id=a"),
 		"terminal foreign host": send("GET", "example.com", "", "/terminal?session=s"),
 	} {
 		if got != http.StatusForbidden {
@@ -199,7 +199,7 @@ func TestActions(t *testing.T) {
 		tx.AddWorkspace(store.Workspace{ID: "w", Path: t.TempDir()})
 		tx.AddSession(store.Session{ID: "s", Workspace: "w", Unseen: true})
 		tx.AddSession(store.Session{ID: "t", Workspace: "w"})
-		return tx.AddAgent(store.Agent{ID: "a", Session: "t", Name: "lead", Role: store.Lead, Activity: store.Exited})
+		return nil
 	})
 	server := httptest.NewServer(handler(t, db))
 	defer server.Close()
@@ -217,11 +217,11 @@ func TestActions(t *testing.T) {
 		}
 	}
 	post("/session?action=rm&id=s", http.StatusBadRequest)
-	post("/agent?action=rm&id=a", http.StatusBadRequest)
-	post("/agent?action=input&id=a", http.StatusConflict)
-	post("/agent?action=input&id=missing", http.StatusConflict)
-	post("/agent?action=interrupt&id=a", http.StatusConflict)
-	post("/agent?action=answer&id=a&request=q&choice=yes", http.StatusConflict)
+	post("/session?action=rm&id=a", http.StatusBadRequest)
+	post("/session?action=input&id=a", http.StatusConflict)
+	post("/session?action=input&id=missing", http.StatusConflict)
+	post("/session?action=interrupt&id=a", http.StatusConflict)
+	post("/session?action=answer&id=a&request=q&choice=yes", http.StatusConflict)
 	post("/workspace?action=rm", http.StatusBadRequest)
 	post("/session?action=rename&id=s&title=%20", http.StatusConflict)
 	post("/session?action=rename&id=missing&title=x", http.StatusConflict)
@@ -245,7 +245,7 @@ func TestActions(t *testing.T) {
 		if list, _ := tx.Workspaces(); len(list) != 0 {
 			t.Errorf("workspaces after delete = %+v", list)
 		}
-		if _, err := tx.Agent("a"); err == nil {
+		if _, err := tx.Session("s"); err == nil {
 			t.Error("the deleted workspace's agent remains")
 		}
 		return nil
@@ -267,7 +267,6 @@ type app struct {
 	db      *store.DB
 	rt      *session.Runtime
 	session store.Session
-	lead    store.Agent
 }
 
 func newApp(t *testing.T) *app {
@@ -303,13 +302,13 @@ func newApp(t *testing.T) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, lead, err := rt.Create(w.ID, "lead", "start")
+	s, err := rt.Create(w.ID, "lead", "start")
 	if err != nil {
 		t.Fatal(err)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		items, err := rt.Transcript(lead.ID)
+		items, err := rt.Transcript(s.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -321,7 +320,7 @@ func newApp(t *testing.T) *app {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	a := &app{t: t, db: db, rt: rt, session: s, lead: lead}
+	a := &app{t: t, db: db, rt: rt, session: s}
 	a.server = httptest.NewServer(Handler(db, rt))
 	t.Cleanup(a.server.Close)
 	return a
@@ -407,18 +406,18 @@ func (p *page) until(what string, check func() bool) {
 		}
 		p.messages = append(p.messages, msg)
 		if msg.Reset {
-			p.items[msg.Agent] = nil
+			p.items[msg.Session] = nil
 			p.resets++
 		}
 		for _, it := range msg.Items {
-			i := slices.IndexFunc(p.items[msg.Agent], func(have session.TranscriptItem) bool { return have.ID == it.ID })
+			i := slices.IndexFunc(p.items[msg.Session], func(have session.TranscriptItem) bool { return have.ID == it.ID })
 			if i < 0 {
-				p.items[msg.Agent] = append(p.items[msg.Agent], it)
+				p.items[msg.Session] = append(p.items[msg.Session], it)
 			} else {
-				p.items[msg.Agent][i] = it
+				p.items[msg.Session][i] = it
 			}
 		}
-		slices.SortFunc(p.items[msg.Agent], func(a, b session.TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
+		slices.SortFunc(p.items[msg.Session], func(a, b session.TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
 	}
 }
 
@@ -435,32 +434,32 @@ func (p *page) find(agent string, match func(harness.Item) bool) (harness.Item, 
 func (a *app) input(text string, want int) {
 	a.t.Helper()
 	body, _ := json.Marshal(map[string]any{"text": text})
-	a.post("/agent?action=input&id="+a.lead.ID, string(body), want)
+	a.post("/session?action=input&id="+a.session.ID, string(body), want)
 }
 
 func TestImageInput(t *testing.T) {
 	a := newApp(t)
 	p := a.page()
 	p.send(`{"select":"` + a.session.ID + `"}`)
-	path := "/agent?action=input&id=" + a.lead.ID
+	path := "/session?action=input&id=" + a.session.ID
 	a.post(path, "not json", http.StatusBadRequest)
 	a.post(path, `{"images":[{"mime_type":"image/png","data":"bm90IGEgcG5n"}]}`, http.StatusConflict)
 	a.post(path, `{"images":[{"mime_type":"image/svg+xml","data":"PHN2Zy8+"}]}`, http.StatusConflict)
 	a.post(path, `{"text":" "}`, http.StatusConflict)
 	a.post(path, `{"images":[{"mime_type":"image/png","data":"iVBORw0KGgo="}]}`, http.StatusOK)
 	p.until("the image prompt", func() bool {
-		it, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser && len(it.Images) > 0 })
+		it, ok := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser && len(it.Images) > 0 })
 		return ok && len(it.Images) == 1 && it.Images[0].Data == "iVBORw0KGgo="
 	})
 }
 
 func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	a := newApp(t)
-	worker := a.worker("first")
+	child := a.child("first")
 	p := a.page()
 	p.send(`{"select":"` + a.session.ID + `"}`)
-	p.until("one reset per agent", func() bool { return p.resets == 2 })
-	if len(p.items[a.lead.ID]) != 2 || len(p.items[worker.ID]) != 0 {
+	p.until("one reset per agent", func() bool { return p.resets == 1 })
+	if len(p.items[a.session.ID]) != 2 || len(p.items[child.ID]) != 0 {
 		t.Fatalf("reset items = %+v", p.items)
 	}
 	for _, message := range p.messages {
@@ -472,19 +471,19 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 
 	a.input("!work", http.StatusOK)
 	p.until("streaming text", func() bool {
-		item, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Text == "working" })
+		item, ok := p.find(a.session.ID, func(it harness.Item) bool { return it.Text == "working" })
 		return ok && !item.Done
 	})
 	a.input("!finish", http.StatusOK)
 	p.until("replaced text", func() bool {
-		item, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Text == "finished" })
-		return ok && item.Done && len(p.items[a.lead.ID]) == 5
+		item, ok := p.find(a.session.ID, func(it harness.Item) bool { return it.Text == "finished" })
+		return ok && item.Done && len(p.items[a.session.ID]) == 5
 	})
 	a.input("!stream", http.StatusOK)
 	p.until("the streamed turn", func() bool {
-		text, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindText && it.Text == "Hello!" })
-		tool, found := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindTool })
-		return ok && found && text.Done && tool.Done && tool.Output == "ok" && tool.Parent == text.ID && len(p.items[a.lead.ID]) == 8
+		text, ok := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindText && it.Text == "Hello!" })
+		tool, found := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindTool })
+		return ok && found && text.Done && tool.Done && tool.Output == "ok" && tool.Parent == text.ID && len(p.items[a.session.ID]) == 8
 	})
 	for _, message := range p.messages {
 		if message.Reset || message.Session != a.session.ID {
@@ -497,47 +496,43 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 		}
 	}
 
-	// A later worker's items arrive without a reset.
-	later := a.worker("later")
+	// A child's transcript arrives only when it is selected.
+	later := a.child("later")
 	if err := a.rt.Input(later.ID, "!work"); err != nil {
 		t.Fatal(err)
-	}
-	p.until("the later worker", func() bool { return len(p.items[later.ID]) == 2 })
-	if p.resets != 2 {
-		t.Fatalf("resets after worker added = %d", p.resets)
 	}
 
 	q := a.page()
 	q.send(`{"select":"` + a.session.ID + `"}`)
-	q.until("the whole transcript", func() bool { return q.resets == 3 })
-	if len(q.items[a.lead.ID]) != 8 || len(q.items[later.ID]) != 2 {
+	q.until("the whole transcript", func() bool { return q.resets == 1 })
+	if len(q.items[a.session.ID]) != 8 || len(q.items[later.ID]) != 0 {
 		t.Fatalf("reconnected items = %+v", q.items)
 	}
-	first, _ := json.Marshal(p.items[a.lead.ID])
-	second, _ := json.Marshal(q.items[a.lead.ID])
+	first, _ := json.Marshal(p.items[a.session.ID])
+	second, _ := json.Marshal(q.items[a.session.ID])
 	if !bytes.Equal(first, second) {
 		t.Fatalf("reconnected transcript differs: %s / %s", first, second)
 	}
 
 	p.send(`{"select":""}`)
 	a.input("again", http.StatusOK)
-	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 10 })
+	q.until("the second turn", func() bool { return len(q.items[a.session.ID]) == 10 })
 	if err := a.rt.Rename(a.session.ID, "Unselected"); err != nil {
 		t.Fatal(err)
 	}
 	p.until("the state after deselection", func() bool { return p.session(a.session.ID).Title == "Unselected" })
-	if len(p.items[a.lead.ID]) != 8 {
-		t.Fatalf("unselected page received items: %d", len(p.items[a.lead.ID]))
+	if len(p.items[a.session.ID]) != 8 {
+		t.Fatalf("unselected page received items: %d", len(p.items[a.session.ID]))
 	}
 }
 
-func (a *app) worker(name string) store.Agent {
+func (a *app) child(name string) store.Session {
 	a.t.Helper()
-	worker, err := a.rt.AddWorker(a.lead.ID, name, harness.Profile{Harness: "test", Model: "m", Effort: "low"}, ".", "")
+	child, err := a.rt.CreateChild(a.session.ID, name, harness.Profile{Harness: "test", Model: "m", Effort: "low"}, ".", "")
 	if err != nil {
 		a.t.Fatal(err)
 	}
-	return worker
+	return child
 }
 
 func (p *page) session(id string) shownSession {
@@ -553,7 +548,7 @@ func (p *page) session(id string) shownSession {
 
 func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	a := newApp(t)
-	worker := a.worker("worker")
+	child := a.child("worker")
 	pages := []*page{a.page(), a.page()}
 	for _, p := range pages {
 		p.until("the lead's reply", func() bool {
@@ -565,7 +560,7 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	for _, p := range pages {
 		p.until("the reply to clear while the lead works", func() bool {
 			s := p.session(a.session.ID)
-			return s.Unseen && s.Reply == "" && s.ReplySeq == 0 && s.Agents[0].Activity == store.Busy
+			return s.Unseen && s.Reply == "" && s.ReplySeq == 0 && s.Activity == store.Busy
 		})
 	}
 	a.input("!finish", http.StatusOK)
@@ -576,17 +571,17 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 		})
 	}
 	a.input("!ask", http.StatusOK)
-	if err := a.rt.Input(worker.ID, "!ask"); err != nil {
+	if err := a.rt.Input(child.ID, "!ask"); err != nil {
 		t.Fatal(err)
 	}
 	for _, p := range pages {
 		p.until("requests from lead and worker", func() bool { return len(p.state.Requests) == 2 })
-		if p.state.Requests[0].Agent == p.state.Requests[1].Agent {
+		if p.state.Requests[0].Session == p.state.Requests[1].Session {
 			t.Fatalf("requests = %+v", p.state.Requests)
 		}
 	}
 	for _, request := range pages[0].state.Requests {
-		a.post("/agent?action=answer&id="+request.Agent+"&request="+url.QueryEscape(request.Item.ID)+"&choice=yes", "", http.StatusOK)
+		a.post("/session?action=answer&id="+request.Session+"&request="+url.QueryEscape(request.Item.ID)+"&choice=yes", "", http.StatusOK)
 	}
 	for _, p := range pages {
 		p.until("answered requests to clear", func() bool { return len(p.state.Requests) == 0 })
@@ -605,24 +600,24 @@ func TestAnswerAndInterruptRoutes(t *testing.T) {
 	var request harness.Item
 	p.until("the request", func() bool {
 		var ok bool
-		request, ok = p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
+		request, ok = p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
 		return ok
 	})
 	if request.Text != "Proceed?" || !slices.Equal(request.Choices, []string{"yes", "no"}) || request.Done {
 		t.Fatalf("request = %+v", request)
 	}
-	a.post("/agent?action=answer&id="+a.lead.ID+"&request=missing&choice=yes", "", http.StatusConflict)
-	a.post("/agent?action=answer&id="+a.lead.ID+"&request="+url.QueryEscape(request.ID)+"&choice=yes", " now", http.StatusOK)
+	a.post("/session?action=answer&id="+a.session.ID+"&request=missing&choice=yes", "", http.StatusConflict)
+	a.post("/session?action=answer&id="+a.session.ID+"&request="+url.QueryEscape(request.ID)+"&choice=yes", " now", http.StatusOK)
 	p.until("the answer", func() bool {
-		it, _ := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
+		it, _ := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
 		return it.Done && it.Answer == "yes now"
 	})
 	// A finished request cannot be answered again.
-	a.post("/agent?action=answer&id="+a.lead.ID+"&request="+url.QueryEscape(request.ID)+"&choice=no", "", http.StatusConflict)
+	a.post("/session?action=answer&id="+a.session.ID+"&request="+url.QueryEscape(request.ID)+"&choice=no", "", http.StatusConflict)
 
 	a.input("!work", http.StatusOK)
 	a.input("  ", http.StatusConflict)
-	a.post("/agent?action=interrupt&id="+a.lead.ID, "", http.StatusOK)
+	a.post("/session?action=interrupt&id="+a.session.ID, "", http.StatusOK)
 }
 
 func TestTerminalSocket(t *testing.T) {
@@ -716,7 +711,7 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 	if res.StatusCode != http.StatusOK || count() != 2 {
 		t.Fatalf("new session: status %d, %d sessions", res.StatusCode, count())
 	}
-	var created struct{ Session, Lead string }
+	var created struct{ Session string }
 	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
 		t.Fatal(err)
 	}
@@ -724,21 +719,19 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 		t.Fatalf("new session content type = %q", res.Header.Get("Content-Type"))
 	}
 	var title string
-	var lead store.Agent
+	var parent store.Session
 	if err := a.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Session(created.Session)
 		title = s.Title
 		if err == nil {
-			lead, err = tx.Lead(s.ID)
+			parent = s
 		}
 		return err
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if created.Lead != lead.ID {
-		t.Fatalf("new session lead = %q, want %q", created.Lead, lead.ID)
-	}
-	items, err := a.rt.Transcript(lead.ID)
+
+	items, err := a.rt.Transcript(parent.ID)
 	if err != nil || title != "Fix the parser" || len(items) == 0 || items[0].Text != "Fix the parser\nand the lexer" {
 		t.Fatalf("title %q, transcript %+v, %v", title, items, err)
 	}
@@ -778,7 +771,7 @@ func TestSnapshotOrder(t *testing.T) {
 		t.Fatalf("workspaces = %+v", list)
 	}
 	z := list[1].Sessions
-	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Agents) != 2 || z[0].Agents[0].Role != store.Lead {
+	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Children) != 1 || z[0].Children[0].Parent != "s3" {
 		t.Fatalf("sessions = %+v", z)
 	}
 }
@@ -794,12 +787,8 @@ func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, names 
 		if err := tx.AddSession(store.Session{ID: id, Workspace: workspace, Running: true}); err != nil {
 			return err
 		}
-		for i, name := range names {
-			role := store.Worker
-			if i == 0 {
-				role = store.Lead
-			}
-			if err := tx.AddAgent(store.Agent{ID: id + "-" + name, Session: id, Name: name, Role: role, Activity: store.Idle}); err != nil {
+		for _, name := range names[1:] {
+			if err := tx.AddSession(store.Session{ID: id + "-" + name, Workspace: workspace, Parent: id, Name: name, Activity: store.Idle}); err != nil {
 				return err
 			}
 		}

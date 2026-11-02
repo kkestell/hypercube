@@ -78,7 +78,7 @@ func (c *connection) input(text string) error {
 }
 
 func (c *connection) start() error {
-	return c.do(harness.Command{Command: harness.CmdStart, Start: &harness.StartArgs{Agent: "a", Role: "worker"}})
+	return c.do(harness.Command{Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}})
 }
 
 func TestFindNeedsPlugin(t *testing.T) {

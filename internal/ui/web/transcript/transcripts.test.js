@@ -4,7 +4,7 @@ import {receivedTranscript, setExpanded} from './transcripts.js';
 
 const state = () => ({session: emptySession('s')});
 const message = (items, reset = false, session = 's') => ({type: 'transcript', session, agent: 'a', reset, items});
-const shown = state => state.session.transcripts.a.order.map(id => state.session.transcripts.a.items[id].text);
+const shown = state => state.session.transcript.order.map(id => state.session.transcript.items[id].text);
 
 test('messages for another session are ignored', () => {
   const before = state();
@@ -14,10 +14,10 @@ test('messages for another session are ignored', () => {
 
 test('a reset replaces the items and an update upserts them by ID', () => {
   let next = receivedTranscript(state(), message([{id: '1', seq: 1, text: 'one'}, {id: '2', seq: 2, text: 'tw'}], true));
-  const one = next.session.transcripts.a.items['1'];
+  const one = next.session.transcript.items['1'];
   next = receivedTranscript(next, message([{id: '2', seq: 2, text: 'two'}, {id: '3', seq: 3, text: 'three'}]));
   expect(shown(next)).toEqual(['one', 'two', 'three']);
-  expect(next.session.transcripts.a.items['1']).toBe(one);
+  expect(next.session.transcript.items['1']).toBe(one);
   next = receivedTranscript(next, message([{id: '9', seq: 1, text: 'fresh'}], true));
   expect(shown(next)).toEqual(['fresh']);
 });

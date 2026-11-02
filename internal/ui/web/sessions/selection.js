@@ -1,51 +1,46 @@
 // Which session the page shows. The server's workspaces list the sessions;
-// selected names the chosen one, and the page attaches to it while it runs,
+// selected names the chosen one, and the page attaches to it,
 // which gives it a fresh session state for its transcripts, tabs, and files.
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
 import {unsentKey} from '../agent/drafts.js';
 
-export const allSessions = state => state.workspaces.flatMap(w => w.sessions);
+export const allSessions = state => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 
 export const currentSession = state => allSessions(state).find(s => s.id === state.selected);
 
-// sessionOfAgent finds an agent with its session and workspace.
-export function sessionOfAgent(state, id) {
+// sessionOf finds a session, its workspace, and its parent when it is a child.
+export function sessionOf(state, id) {
   for (const workspace of state.workspaces) {
-    for (const session of workspace.sessions) {
-      const agent = session.agents.find(a => a.id === id);
-      if (agent) return {workspace, session, agent};
+    for (const top of workspace.sessions) {
+      if (top.id === id) return {workspace, session: top, parent: null};
+      const child = top.children.find(s => s.id === id);
+      if (child) return {workspace, session: child, parent: top};
     }
   }
-  return undefined;
 }
 
-// A running session whose lead has exited, as after a failed start, can be
-// started again.
-export const failed = session => session.running && session.agents.some(a => a.role === 'lead' && a.activity === 'exited');
+export const failed = session => !session.parent && session.running && session.activity === 'exited';
 
-const unsentLead = unsent => ({
-  id: unsentKey, name: 'lead', role: 'lead', activity: unsent.sending ? 'busy' : 'idle',
-  harness: unsent.harness, model: unsent.model, effort: unsent.effort,
-});
-
-// shownAgents are the agents drawn in the center: the unsent session's lead,
-// or the attached session's agents.
-export function shownAgents(state) {
-  if (state.unsent) return [unsentLead(state.unsent)];
-  return state.session ? currentSession(state)?.agents ?? [] : [];
+// shownSession is the unsent placeholder or the attached session.
+export function shownSession(state) {
+  if (state.unsent) return {
+    id: unsentKey, activity: state.unsent.sending ? 'busy' : 'idle',
+    harness: state.unsent.harness, model: state.unsent.model, effort: state.unsent.effort,
+  };
+  return state.session ? currentSession(state) : null;
 }
 
 export function pageTitle(state) {
-  const waiting = allSessions(state).filter(s => s.running).reduce((n, s) => n + s.agents.filter(a => a.attention).length, 0);
+  const waiting = allSessions(state).filter(s => s.running && s.attention).length;
   const session = currentSession(state);
-  const workspace = state.unsent ? state.workspaces.find(w => w.id === state.unsent.workspace) : state.workspaces.find(w => w.sessions.includes(session));
+  const workspace = state.unsent ? state.workspaces.find(w => w.id === state.unsent.workspace) : sessionOf(state, session?.id)?.workspace;
   return (waiting ? `(${waiting}) ` : '') + [session?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
 }
 
 export const emptySession = id => ({
   id,
-  transcripts: {},
+  transcript: {order: [], items: {}},
   expanded: {},
   tabs: {root: null, preview: null, dragging: null, nextId: 1},
   scroll: {},
@@ -60,30 +55,12 @@ function discardUnsent(state) {
 }
 
 // attach replaces the session state when the shown session changes. The page
-// attaches to the selected session while it runs.
+// attaches to the selected session in any state.
 function attach(state) {
   const shown = currentSession(state);
-  const id = shown?.running ? shown.id : null;
+  const id = shown?.id ?? null;
   if (id === (state.session?.id ?? null)) return state;
   return {...state, session: id ? emptySession(id) : null};
-}
-
-// withoutDeparted drops the transcripts and scroll of agents that left
-// the attached session.
-function withoutDeparted(before, after) {
-  const session = after.session;
-  if (!session || session !== before.session) return after;
-  const present = new Set(currentSession(after).agents.map(a => a.id));
-  const gone = (currentSession(before)?.agents ?? []).map(a => a.id).filter(id => !present.has(id));
-  if (!gone.length) return after;
-  return {
-    ...after,
-    session: {
-      ...session,
-      transcripts: omit(session.transcripts, gone),
-      scroll: omit(session.scroll, gone),
-    },
-  };
 }
 
 // receivedWorkspaces applies a state message's workspaces.
@@ -95,9 +72,9 @@ export function receivedWorkspaces(state, workspaces) {
   // A session that stops while shown is deselected, and nothing takes its
   // place. Otherwise a selection naming no session moves to a running one.
   const chosen = currentSession(next);
-  if (chosen && !chosen.running && next.session?.id === chosen.id) next = {...next, selected: null};
+  if (chosen && !chosen.running && !chosen.ended && currentSession(state)?.running && next.session?.id === chosen.id) next = {...next, selected: null};
   else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => s.running)?.id ?? ''};
-  return withoutDeparted(state, attach(next));
+  return attach(next);
 }
 
 // selectSession shows a session. A new session's ID can arrive before the

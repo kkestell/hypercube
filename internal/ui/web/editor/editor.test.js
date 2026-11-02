@@ -57,22 +57,11 @@ test('a closed or replaced tab\'s scroll is forgotten, even when its view saves 
   expect(s.get().session.scroll).toEqual({});
 });
 
-test('the lead\'s scroll is kept, though the lead is not a tab', () => {
+test('scroll belongs to the attached session and its open files', () => {
   const scroll = {top: 5, left: 0, following: false};
-  const lead = {id: 'lead', role: 'lead'};
-  const s = createStore({selected: 's', workspaces: [{sessions: [{id: 's', agents: [lead]}]}], session: emptySession('s')});
-  s.update(state => rememberScroll(state, 's', 'lead', scroll));
-  expect(s.get().session.scroll).toEqual({lead: scroll});
-});
-
-test('scroll is kept only for agents in the attached session', () => {
-  const scroll = {top: 5, left: 0, following: false};
-  let state = {
-    selected: 's', session: emptySession('s'),
-    workspaces: [{sessions: [{id: 's', agents: [{id: 'worker', role: 'work'}]}, {id: 'other', agents: [{id: 'elsewhere', role: 'lead'}]}]}],
-  };
-  state = rememberScroll(state, 's', 'worker', scroll);
-  expect(state.session.scroll).toEqual({worker: scroll});
-  expect(rememberScroll(state, 's', 'elsewhere', scroll)).toBe(state);
-  expect(rememberScroll(state, 'other', 'worker', scroll)).toBe(state);
+  let state = {selected: 's', workspaces: [{sessions: [{id: 's', children: []}, {id: 'other', children: []}]}], session: emptySession('s')};
+  state = rememberScroll(state, 's', 's', scroll);
+  expect(state.session.scroll).toEqual({s: scroll});
+  expect(rememberScroll(state, 's', 'other', scroll)).toBe(state);
+  expect(rememberScroll(state, 'other', 's', scroll)).toBe(state);
 });

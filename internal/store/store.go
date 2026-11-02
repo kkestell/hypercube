@@ -1,4 +1,4 @@
-// Package store keeps workspaces, sessions, agents, queued messages, and
+// Package store keeps workspaces, sessions, queued messages, and
 // transcripts in one SQLite database that the app process owns.
 package store
 
@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -25,15 +24,13 @@ import (
 var ErrNotFound = errors.New("not found")
 
 const (
-	Lead   = "lead"
-	Worker = "worker"
 	Busy   = "busy"
 	Idle   = "idle"
 	Exited = "exited"
 )
 
 // Workspace is a folder that holds sessions. NoGit is set for a folder that is
-// not a Git checkout; its workers work directly in existing directories.
+// not a Git checkout; its child sessions work directly in existing directories.
 type Workspace struct {
 	ID      string
 	Path    string
@@ -41,25 +38,17 @@ type Workspace struct {
 	Created int64
 }
 
-// Session is a lead and its workers. Running means it has not been stopped.
-// AwaitingUser holds queued messages until the user prompts the session, and
-// Unseen marks a lead reply the user has not seen.
+// Session has one agent. Family state belongs only to a top-level session.
 type Session struct {
 	ID           string
 	Workspace    string
+	Parent       string
+	Name         string
 	Title        string
 	Running      bool
+	Ended        bool
 	AwaitingUser bool
 	Unseen       bool
-	Created      int64
-	LastActive   int64
-}
-
-type Agent struct {
-	ID           string
-	Session      string
-	Name         string
-	Role         string
 	Harness      string
 	Model        string
 	Effort       string
@@ -68,12 +57,9 @@ type Agent struct {
 	Conversation string
 	Activity     string
 	Attention    bool
-	// Status is the worker's own account of what it is doing, reported at
-	// StatusAt in Unix milliseconds.
-	Status   string
-	StatusAt int64
-	Usage    harness.Usage
-	Created  int64
+	Usage        harness.Usage
+	Created      int64
+	LastActive   int64
 }
 
 type Message struct {
@@ -81,12 +67,6 @@ type Message struct {
 	From string
 	To   string
 	Text string
-}
-
-// Address names an agent across sessions. Session IDs and agent names cannot
-// contain a slash, so the address is unambiguous.
-func (a Agent) Address() string {
-	return a.Session + "/" + a.Name
 }
 
 // Dir is the directory that holds the database and plugin files.
@@ -120,29 +100,26 @@ CREATE TABLE IF NOT EXISTS workspaces (
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   workspace TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-  title TEXT NOT NULL DEFAULT '', running INTEGER NOT NULL,
+  parent TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '',
+  running INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0,
   awaiting_user INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
-  created INTEGER NOT NULL, last_active INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS agents (
-  id TEXT PRIMARY KEY,
-  session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  name TEXT NOT NULL, role TEXT NOT NULL, harness TEXT NOT NULL,
-  model TEXT NOT NULL, effort TEXT NOT NULL, dir TEXT NOT NULL,
-  branch TEXT NOT NULL DEFAULT '', conversation TEXT NOT NULL DEFAULT '',
-  activity TEXT NOT NULL, attention INTEGER NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT '', status_at INTEGER NOT NULL DEFAULT 0,
+  harness TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL,
+  dir TEXT NOT NULL, branch TEXT NOT NULL DEFAULT '',
+  conversation TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL,
+  attention INTEGER NOT NULL DEFAULT 0,
   context INTEGER NOT NULL DEFAULT 0, window INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
-  UNIQUE (session, name));
+  last_active INTEGER NOT NULL, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY,
   sender TEXT NOT NULL,
-  recipient TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  recipient TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   text TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS transcript (
-  agent TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+  session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL, item TEXT NOT NULL, data TEXT NOT NULL,
-  PRIMARY KEY (agent, seq), UNIQUE (agent, item));
+  PRIMARY KEY (session, seq), UNIQUE (session, item));
 `
 
 // DB is the open database.
@@ -235,25 +212,45 @@ func (t *Tx) DeleteWorkspace(id string) error {
 
 func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
-	return t.exec(`INSERT INTO sessions (id, workspace, title, running, awaiting_user, unseen, created, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Workspace, s.Title, s.Running, s.AwaitingUser, s.Unseen, created, cmp.Or(s.LastActive, created))
+	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, running, ended,
+ awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
+ activity, attention, context, window, cost, created, last_active)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
+		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
+		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
+		s.Usage.Cost, created, cmp.Or(s.LastActive, created))
 }
 
+// SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
-	return t.exec(`UPDATE sessions SET title = ?, running = ?, awaiting_user = ?, unseen = ? WHERE id = ?`,
-		s.Title, s.Running, s.AwaitingUser, s.Unseen, s.ID)
+	return t.exec(`UPDATE sessions SET title = ?, running = ?, ended = ?, awaiting_user = ?, unseen = ?,
+ harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, last_active = ? WHERE id = ?`,
+		s.Title, s.Running, s.Ended, s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort,
+		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
+		s.Usage.Window, s.Usage.Cost, s.LastActive, s.ID)
 }
 
-// TouchSession records activity separately from session edits such as Seen.
+// TouchSession records activity on the family's root.
 func (t *Tx) TouchSession(id string, at int64) error {
-	return t.exec(`UPDATE sessions SET last_active = ? WHERE id = ?`, at, id)
+	root, err := t.Root(id)
+	if err != nil {
+		return err
+	}
+	return t.exec(`UPDATE sessions SET last_active = ? WHERE id = ?`, at, root.ID)
 }
 
-const sessionColumns = `id, workspace, title, running, awaiting_user, unseen, created, last_active`
+const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
+ awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
+ activity, attention, context, window, cost, created, last_active`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	err := row.Scan(&s.ID, &s.Workspace, &s.Title, &s.Running, &s.AwaitingUser, &s.Unseen, &s.Created, &s.LastActive)
+	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
+		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
+		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
+		&s.Usage.Cost, &s.Created, &s.LastActive)
 	return s, err
 }
 
@@ -265,84 +262,62 @@ func (t *Tx) Session(id string) (Session, error) {
 	return s, err
 }
 
-// Sessions returns the workspace's sessions in creation order, or every
-// session when workspace is empty.
+// Sessions returns top-level sessions in creation order, in every workspace
+// when workspace is empty.
 func (t *Tx) Sessions(workspace string) ([]Session, error) {
-	rows, err := t.tx.Query(`SELECT `+sessionColumns+` FROM sessions WHERE ? = '' OR workspace = ? ORDER BY created, rowid`, workspace, workspace)
+	rows, err := t.tx.Query(`SELECT `+sessionColumns+` FROM sessions WHERE parent IS NULL AND (? = '' OR workspace = ?) ORDER BY created, rowid`, workspace, workspace)
 	if err != nil {
 		return nil, err
 	}
 	return collect(rows, scanSession)
 }
 
-func (t *Tx) DeleteSession(id string) error {
-	return t.exec(`DELETE FROM sessions WHERE id = ?`, id)
-}
-
-const agentColumns = `id, session, name, role, harness, model, effort, dir, branch, conversation,
-  activity, attention, status, status_at, context, window, cost, created`
-
-func scanAgent(row interface{ Scan(...any) error }) (Agent, error) {
-	var a Agent
-	err := row.Scan(&a.ID, &a.Session, &a.Name, &a.Role, &a.Harness, &a.Model, &a.Effort, &a.Dir, &a.Branch,
-		&a.Conversation, &a.Activity, &a.Attention, &a.Status, &a.StatusAt, &a.Usage.Context, &a.Usage.Window, &a.Usage.Cost, &a.Created)
-	return a, err
-}
-
-func (t *Tx) AddAgent(a Agent) error {
-	return t.exec(`INSERT INTO agents (`+agentColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		a.ID, a.Session, a.Name, a.Role, a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation,
-		a.Activity, a.Attention, a.Status, a.StatusAt,
-		a.Usage.Context, a.Usage.Window, a.Usage.Cost, cmp.Or(a.Created, now()))
-}
-
-// SaveAgent writes every field but the agent's identity and session.
-func (t *Tx) SaveAgent(a Agent) error {
-	return t.exec(`UPDATE agents SET harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
-  activity = ?, attention = ?, status = ?, status_at = ?, context = ?, window = ?, cost = ? WHERE id = ?`,
-		a.Harness, a.Model, a.Effort, a.Dir, a.Branch, a.Conversation, a.Activity, a.Attention,
-		a.Status, a.StatusAt, a.Usage.Context, a.Usage.Window, a.Usage.Cost, a.ID)
-}
-
-func (t *Tx) Agent(id string) (Agent, error) {
-	a, err := scanAgent(t.tx.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE id = ?`, id))
-	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("agent %q: %w", id, ErrNotFound)
-	}
-	return a, err
-}
-
-// Agents returns the session's agents in creation order, the lead first.
-func (t *Tx) Agents(session string) ([]Agent, error) {
-	rows, err := t.tx.Query(`SELECT `+agentColumns+` FROM agents WHERE session = ? ORDER BY role != 'lead', created, rowid`, session)
+func (t *Tx) Children(parent string) ([]Session, error) {
+	rows, err := t.tx.Query(`SELECT `+sessionColumns+` FROM sessions WHERE parent = ? ORDER BY created, rowid`, parent)
 	if err != nil {
 		return nil, err
 	}
-	return collect(rows, scanAgent)
+	return collect(rows, scanSession)
 }
 
-// Lead returns the session's lead.
-func (t *Tx) Lead(session string) (Agent, error) {
-	return t.Find(session, Lead)
-}
-
-// Find resolves an address, or a bare name within the given session.
-func (t *Tx) Find(session, address string) (Agent, error) {
-	s, name, qualified := strings.Cut(address, "/")
-	if qualified {
-		session = s
-	} else {
-		name = address
+func (t *Tx) Root(id string) (Session, error) {
+	s, err := t.Session(id)
+	if err != nil || s.Parent == "" {
+		return s, err
 	}
-	a, err := scanAgent(t.tx.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE session = ? AND name = ?`, session, name))
+	return t.Session(s.Parent)
+}
+
+func (t *Tx) Running(s Session) (bool, error) {
+	root, err := t.Root(s.ID)
+	return root.Running && !s.Ended, err
+}
+
+// FindSession is the messaging scope: a parent sees its children by name and
+// its workspace's top-level sessions by ID; a child sees only its parent.
+func (t *Tx) FindSession(caller Session, to string) (Session, error) {
+	var s Session
+	var err error
+	if caller.Parent != "" {
+		if to == caller.Parent {
+			return t.Session(to)
+		}
+		return s, fmt.Errorf("session %q: %w", to, ErrNotFound)
+	}
+	s, err = scanSession(t.tx.QueryRow(`SELECT `+sessionColumns+` FROM sessions
+ WHERE parent = ? AND name = ?`, caller.ID, to))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("agent %q: %w", address, ErrNotFound)
+		s, err = scanSession(t.tx.QueryRow(`SELECT `+sessionColumns+` FROM sessions
+  WHERE parent IS NULL AND workspace = ? AND id = ?`, caller.Workspace, to))
 	}
-	return a, err
+	if errors.Is(err, sql.ErrNoRows) {
+		err = fmt.Errorf("session %q: %w", to, ErrNotFound)
+	}
+	return s, err
 }
 
-func (t *Tx) DeleteAgent(id string) error {
-	return t.exec(`DELETE FROM agents WHERE id = ?`, id)
+func (t *Tx) DeleteSession(id string) error {
+	return t.exec(`DELETE FROM sessions WHERE id = ?`, id)
 }
 
 // Queue adds a message for its recipient.
@@ -350,7 +325,7 @@ func (t *Tx) Queue(m Message) error {
 	return t.exec(`INSERT INTO messages (sender, recipient, text) VALUES (?, ?, ?)`, m.From, m.To, m.Text)
 }
 
-// Queued returns the messages waiting for an agent, oldest first.
+// Queued returns the messages waiting for a session, oldest first.
 func (t *Tx) Queued(id string) ([]Message, error) {
 	rows, err := t.tx.Query(`SELECT id, sender, recipient, text FROM messages WHERE recipient = ? ORDER BY id`, id)
 	if err != nil {
@@ -368,7 +343,11 @@ func (t *Tx) Dequeue(id int64) error {
 	return t.exec(`DELETE FROM messages WHERE id = ?`, id)
 }
 
-// Entry is one item of an agent's transcript: its position, the item's ID, and
+func (t *Tx) DropQueued(id string) error {
+	return t.exec(`DELETE FROM messages WHERE recipient = ?`, id)
+}
+
+// Entry is one item of a session's transcript: its position, the item's ID, and
 // the item as JSON.
 type Entry struct {
 	Seq  int64
@@ -378,16 +357,16 @@ type Entry struct {
 
 // PutEntry saves a completed transcript item and returns its position. An item
 // with the same ID as an earlier one replaces its data and keeps its position.
-func (t *Tx) PutEntry(agent string, e Entry) (int64, error) {
+func (t *Tx) PutEntry(session string, e Entry) (int64, error) {
 	var seq int64
-	err := t.tx.QueryRow(`INSERT INTO transcript (agent, seq, item, data) VALUES (?, ?, ?, ?)
-  ON CONFLICT (agent, item) DO UPDATE SET data = excluded.data RETURNING seq`, agent, e.Seq, e.Item, string(e.Data)).Scan(&seq)
+	err := t.tx.QueryRow(`INSERT INTO transcript (session, seq, item, data) VALUES (?, ?, ?, ?)
+  ON CONFLICT (session, item) DO UPDATE SET data = excluded.data RETURNING seq`, session, e.Seq, e.Item, string(e.Data)).Scan(&seq)
 	return seq, err
 }
 
-// Transcript returns the agent's saved items in order.
-func (t *Tx) Transcript(agent string) ([]Entry, error) {
-	rows, err := t.tx.Query(`SELECT seq, item, data FROM transcript WHERE agent = ? ORDER BY seq`, agent)
+// Transcript returns the session's saved items in order.
+func (t *Tx) Transcript(session string) ([]Entry, error) {
+	rows, err := t.tx.Query(`SELECT seq, item, data FROM transcript WHERE session = ? ORDER BY seq`, session)
 	if err != nil {
 		return nil, err
 	}
@@ -401,22 +380,22 @@ func (t *Tx) Transcript(agent string) ([]Entry, error) {
 }
 
 // LastText returns the latest top-level text and its position, or "" and zero.
-func (t *Tx) LastText(agent string) (string, int64, error) {
+func (t *Tx) LastText(session string) (string, int64, error) {
 	var text string
 	var seq int64
 	err := t.tx.QueryRow(`SELECT COALESCE(json_extract(data, '$.text'), ''), seq FROM transcript
-  WHERE agent = ? AND json_extract(data, '$.kind') = 'text' AND json_extract(data, '$.parent') IS NULL
-  ORDER BY seq DESC LIMIT 1`, agent).Scan(&text, &seq)
+  WHERE session = ? AND json_extract(data, '$.kind') = 'text' AND json_extract(data, '$.parent') IS NULL
+  ORDER BY seq DESC LIMIT 1`, session).Scan(&text, &seq)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", 0, nil
 	}
 	return text, seq, err
 }
 
-// LastSeq returns the position of the agent's last saved item, or zero.
-func (t *Tx) LastSeq(agent string) (int64, error) {
+// LastSeq returns the position of the session's last saved item, or zero.
+func (t *Tx) LastSeq(session string) (int64, error) {
 	var seq int64
-	err := t.tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM transcript WHERE agent = ?`, agent).Scan(&seq)
+	err := t.tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM transcript WHERE session = ?`, session).Scan(&seq)
 	return seq, err
 }
 

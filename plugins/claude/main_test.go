@@ -572,7 +572,7 @@ func (e *emitted) all() []harness.Event {
 }
 
 var startArgs = harness.StartArgs{
-	Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_AGENT_ID": "a1"}, Agent: "a1", Role: "lead",
+	Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
 	Model: "opus", Effort: "high", Dir: ".", Instructions: "You lead a team.",
 }
 
@@ -597,7 +597,7 @@ func TestStart(t *testing.T) {
 	args := string(data)
 	for _, want := range []string{"-p", "--input-format stream-json", "--output-format stream-json", "--include-partial-messages",
 		"--permission-prompt-tool stdio", "--permission-mode auto", "--model opus", "--effort high", "--append-system-prompt You lead a team.",
-		`"command":"/bin/hc","env":{"HYPERCUBE_AGENT_ID":"a1"}`} {
+		`"command":"/bin/hc","env":{"HYPERCUBE_SESSION_ID":"a1"}`} {
 		if !strings.Contains(args, want) {
 			t.Errorf("arguments lack %s: %s", want, args)
 		}

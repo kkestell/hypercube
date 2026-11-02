@@ -29,14 +29,14 @@ func nextChange(t *testing.T, changes <-chan Change, match func(Change) bool) Ch
 
 func TestWritePublishesAfterCommit(t *testing.T) {
 	f := newFixture(t)
-	s, _ := f.session()
+	s := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	if err := f.rt.Rename(s.ID, "Changed"); err != nil {
 		t.Fatal(err)
 	}
 	change := nextChange(t, changes, func(Change) bool { return true })
-	if change.Agent != "" || f.storedSession(s.ID).Title != "Changed" {
+	if change.Session != "" || f.storedSession(s.ID).Title != "Changed" {
 		t.Fatalf("rename change = %+v", change)
 	}
 }
@@ -58,11 +58,11 @@ func TestFailedWritePublishesNothing(t *testing.T) {
 
 func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
+	s := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	f.input(lead.ID, "!stream")
-	streamed := func(c Change) bool { return c.Agent == lead.ID && strings.HasSuffix(c.Item.ID, ":s") }
+	f.input(s.ID, "!stream")
+	streamed := func(c Change) bool { return c.Session == s.ID && strings.HasSuffix(c.Item.ID, ":s") }
 	first := nextChange(t, changes, streamed)
 	second := nextChange(t, changes, streamed)
 	last := nextChange(t, changes, streamed)
@@ -71,7 +71,7 @@ func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 		first.Item.Done || second.Item.Done || !last.Item.Done || first.Item.At == 0 || first.Item.At != last.Item.At {
 		t.Fatalf("stream changes: %+v, %+v, %+v", first, second, last)
 	}
-	items, err := f.rt.Transcript(lead.ID)
+	items, err := f.rt.Transcript(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,45 +88,45 @@ func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 
 func TestDeliveredMessagePublishesItsItem(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
-	worker := f.addWorker(lead, "worker", "")
+	s := f.session()
+	child := f.child(s, "worker", "")
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	if _, _, err := f.rt.SendMessage(worker.ID, "lead", "message"); err != nil {
+	if _, _, err := f.rt.SendMessage(child.ID, s.ID, "message"); err != nil {
 		t.Fatal(err)
 	}
-	change := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID && c.Item.Kind == harness.KindUser })
-	if change.Session != s.ID || change.Seq <= 2 || change.Item.Text != "message" || change.Item.From != worker.Address() || !change.Item.Done {
+	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID && c.Item.Kind == harness.KindUser })
+	if change.Session != s.ID || change.Seq <= 2 || change.Item.Text != "message" || change.Item.From != child.ID || !change.Item.Done {
 		t.Fatalf("delivered message = %+v", change)
 	}
 }
 
 func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	f.input(lead.ID, "!work")
-	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 4 })
+	parent := f.session()
+	f.input(parent.ID, "!work")
+	f.until("a pending item", func() bool { return len(f.transcript(parent.ID)) == 4 })
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	f.input(lead.ID, "!crash")
-	drained := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID && c.Item.Kind == harness.KindText && c.Item.Done })
-	note := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID && c.Item.Kind == harness.KindError })
-	if drained.Item.Text != "working" || note.Seq <= drained.Seq || !strings.HasPrefix(note.Item.Text, "The agent ended: ") {
+	f.input(parent.ID, "!crash")
+	drained := nextChange(t, changes, func(c Change) bool { return c.Session == parent.ID && c.Item.Kind == harness.KindText && c.Item.Done })
+	note := nextChange(t, changes, func(c Change) bool { return c.Session == parent.ID && c.Item.Kind == harness.KindError })
+	if drained.Item.Text != "working" || note.Seq <= drained.Seq || !strings.HasPrefix(note.Item.Text, "The agent exited: ") {
 		t.Fatalf("end changes = %+v, %+v", drained, note)
 	}
 }
 
 func TestStoppedSessionPublishesDrainedItems(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
-	f.input(lead.ID, "!work")
-	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 4 })
+	s := f.session()
+	f.input(s.ID, "!work")
+	f.until("a pending item", func() bool { return len(f.transcript(s.ID)) == 4 })
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	if err := f.rt.Stop(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	change := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID })
+	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID })
 	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done {
 		t.Fatalf("stopped item = %+v", change)
 	}
@@ -148,8 +148,8 @@ func TestSlowSubscriberIsDropped(t *testing.T) {
 	}
 	current, stop := r.Subscribe()
 	defer stop()
-	r.feed.publish(Change{Agent: "current"})
-	if change := <-current; change.Agent != "current" {
+	r.feed.publish(Change{Session: "current"})
+	if change := <-current; change.Session != "current" {
 		t.Fatalf("new subscription = %+v", change)
 	}
 }
@@ -169,23 +169,25 @@ func TestCancelStopsDelivery(t *testing.T) {
 // says so.
 func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	f.input(lead.ID, "!work")
+	parent := f.session()
+	f.input(parent.ID, "!work")
 	f.until("the working item", func() bool {
-		for _, item := range f.transcript(lead.ID) {
+		for _, item := range f.transcript(parent.ID) {
 			if item.Text == "working" && !item.Done {
 				return true
 			}
 		}
 		return false
 	})
-	f.input(lead.ID, "!finish")
-	f.until("the finished item", func() bool { return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish" })
+	f.input(parent.ID, "!finish")
+	f.until("the finished item", func() bool {
+		return f.summary(parent.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish"
+	})
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	f.input(lead.ID, "!finish")
-	change := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID && c.Item.Text == "finished" })
-	items, err := f.rt.Transcript(lead.ID)
+	f.input(parent.ID, "!finish")
+	change := nextChange(t, changes, func(c Change) bool { return c.Session == parent.ID && c.Item.Text == "finished" })
+	items, err := f.rt.Transcript(parent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

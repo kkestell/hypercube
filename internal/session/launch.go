@@ -19,7 +19,7 @@ import (
 // exits, or by detachLocked, when it is stopped. Events and exits from a launch
 // that is over are ignored, and no further deliveries start.
 type live struct {
-	id, session string
+	id, root string
 	// prefix makes the plugin's item IDs unique across launches, since
 	// plugins number items from the start of each one.
 	prefix string
@@ -51,11 +51,11 @@ func (r *Runtime) current(l *live) bool { return r.live[l.id] == l }
 
 // register adds a starting launch for the agent, whose transcript position is
 // loaded. The caller holds mu.
-func (r *Runtime) register(a store.Agent, quick int) *live {
+func (r *Runtime) register(id, root string, quick int) *live {
 	r.gen++
-	l := &live{id: a.ID, session: a.Session, prefix: strconv.FormatInt(r.gen, 36) + ":",
+	l := &live{id: id, root: root, prefix: strconv.FormatInt(r.gen, 36) + ":",
 		starting: true, quick: quick, pending: map[string]*pendingItem{}}
-	r.live[a.ID] = l
+	r.live[id] = l
 	return l
 }
 
@@ -80,11 +80,11 @@ func (r *Runtime) nextSeq(agent string) int64 {
 	return r.seqs[agent]
 }
 
-// sessionLive reports whether any of the session's agents has a launch. The
+// sessionLive reports whether any member of the family has a launch. The
 // caller holds mu.
 func (r *Runtime) sessionLive(session string) bool {
 	for _, l := range r.live {
-		if l.session == session {
+		if l.root == session {
 			return true
 		}
 	}
@@ -110,12 +110,12 @@ func (r *Runtime) launch(l *live) error {
 	}
 	l.starting, l.launched = false, time.Now()
 	if err := r.save(func(tx *write) error {
-		a, err := tx.Agent(l.id)
+		a, err := tx.Session(l.id)
 		if err != nil || a.Activity != store.Exited {
 			return err
 		}
 		a.Activity = store.Idle
-		return tx.SaveAgent(a)
+		return tx.SaveSession(a)
 	}); err != nil {
 		logf("marking %s ready: %v", l.id, err)
 	}
@@ -150,18 +150,18 @@ func (r *Runtime) startPlugin(l *live) (*harness.Client, error) {
 
 // startArgs returns the agent's plugin and what it starts with.
 func (r *Runtime) startArgs(agent string) (path string, args harness.StartArgs, err error) {
-	var a store.Agent
+	var a store.Session
 	err = r.db.Read(func(tx *store.Tx) error {
-		if a, err = tx.Agent(agent); err != nil {
+		if a, err = tx.Session(agent); err != nil {
 			return err
 		}
 		var profiles []harness.Profile
-		if a.Role == store.Lead {
+		if a.Parent == "" {
 			cfg, err := harness.LoadConfig()
 			if err != nil {
 				return err
 			}
-			profiles = cfg.Workers()
+			profiles = cfg.ChildProfiles()
 		}
 		instructions, err := report.Instructions(tx, a, profiles)
 		if err != nil {
@@ -172,8 +172,8 @@ func (r *Runtime) startArgs(agent string) (path string, args harness.StartArgs, 
 			return err
 		}
 		args = harness.StartArgs{
-			Hypercube: exe, Env: map[string]string{"HYPERCUBE_AGENT_ID": a.ID, "HYPERCUBE_URL": r.url},
-			Agent: a.ID, Role: a.Role, Model: a.Model, Effort: a.Effort, Conversation: a.Conversation,
+			Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": a.ID, "HYPERCUBE_URL": r.url},
+			Session: a.ID, Model: a.Model, Effort: a.Effort, Conversation: a.Conversation,
 			Dir: a.Dir, Instructions: instructions, StateDir: store.Dir(),
 		}
 		return nil
@@ -187,10 +187,10 @@ func (r *Runtime) startArgs(agent string) (path string, args harness.StartArgs, 
 
 // end records that l's launch is over because it failed to start or its
 // plugin exited: it saves l's unfinished items, notes why in the transcript,
-// and marks the agent ended. An agent whose plugin exits after starting is
+// and marks the agent exited. An agent whose plugin exits after starting is
 // launched again, resuming its conversation, unless its session stopped or it
 // ended maxQuickExits times in a row within quickExit of starting. A launch
-// that failed to start stays ended. end ignores a launch that was stopped or
+// that failed to start stays exited. end ignores a launch that was stopped or
 // has ended already.
 func (r *Runtime) end(l *live, cause error) {
 	r.mu.Lock()
@@ -202,7 +202,7 @@ func (r *Runtime) end(l *live, cause error) {
 	l.cause = cause
 	note, relaunch, quick := "Could not start the agent: ", false, 0
 	if !l.starting {
-		note = "The agent ended: "
+		note = "The agent exited: "
 		if time.Since(l.launched) < quickExit {
 			quick = l.quick + 1
 		}
@@ -210,18 +210,22 @@ func (r *Runtime) end(l *live, cause error) {
 	}
 	err := r.save(func(tx *write) error {
 		for _, p := range l.drain() {
-			if err := tx.putItem(l, p.seq, p.item); err != nil {
+			if err := tx.putItem(l.id, p.seq, p.item); err != nil {
 				return err
 			}
 		}
 		if err := r.note(tx, l, harness.KindError, note+cause.Error()); err != nil {
 			return err
 		}
-		if err := markEnded(tx, l.id); err != nil {
+		if err := markExited(tx, l.id); err != nil {
 			return err
 		}
-		s, err := tx.Session(l.session)
-		relaunch = relaunch && s.Running
+		s, err := tx.Session(l.id)
+		if err != nil {
+			return err
+		}
+		running, err := tx.Running(s)
+		relaunch = relaunch && running
 		return err
 	})
 	if err != nil {
@@ -229,19 +233,19 @@ func (r *Runtime) end(l *live, cause error) {
 		return
 	}
 	if relaunch {
-		next := r.register(store.Agent{ID: l.id, Session: l.session}, quick)
+		next := r.register(l.id, l.root, quick)
 		// A relaunch that fails ends too, which records why.
 		go r.launch(next)
 	}
 }
 
-func markEnded(tx *write, id string) error {
-	a, err := tx.Agent(id)
+func markExited(tx *write, id string) error {
+	a, err := tx.Session(id)
 	if err != nil {
 		return err
 	}
 	a.Activity, a.Attention = store.Exited, false
-	return tx.SaveAgent(a)
+	return tx.SaveSession(a)
 }
 
 // drain takes the launch's unfinished items as finished items.
@@ -259,5 +263,5 @@ func (l *live) drain() []*pendingItem {
 // note adds an item written by Hypercube to l's agent's transcript. The caller
 // holds mu.
 func (r *Runtime) note(tx *write, l *live, kind, text string) error {
-	return tx.putItem(l, r.nextSeq(l.id), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: kind, Text: text, Done: true})
+	return tx.putItem(l.id, r.nextSeq(l.id), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: kind, Text: text, Done: true})
 }

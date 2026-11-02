@@ -1,11 +1,11 @@
 // What the user has typed and attached but not yet sent, by draft key: an
-// agent ID for its composer, unsentKey for the unsent session's lead, or
-// '<agent>/<request>' for a typed answer to an attention request. Drafts
+// session ID for its composer, unsentKey for the unsent session, or
+// '<session>/<request>' for a typed answer to an attention request. Drafts
 // outlive their views, so text survives session switches and closed tabs.
 import {imageBytes, imageTypes, maxImageBytes, readImage} from '../images.js';
 import {showError} from '../notifications/errors.js';
 
-// The unsent session's lead is drawn under this ID and keeps its draft here.
+// The unsent session is drawn under this ID and keeps its draft here.
 export const unsentKey = 'new';
 
 const emptyDraft = {text: '', images: [], reading: 0};
@@ -15,8 +15,8 @@ export const draftOf = (state, key) => state.drafts[key] ?? emptyDraft;
 // A prompt has text, images, or both, and waits for images still being read.
 const hasContent = draft => !draft.reading && (!!draft.text.trim() || draft.images.length > 0);
 
-export const canSend = (state, agent) =>
-  hasContent(draftOf(state, agent.id)) && agent.activity !== 'exited' && !(agent.id === unsentKey && state.unsent?.sending);
+export const canSend = (state, session) =>
+  !session.ended && hasContent(draftOf(state, session.id)) && session.activity !== 'exited' && !(session.id === unsentKey && state.unsent?.sending);
 
 function withDraft(state, key, change) {
   const draft = change(draftOf(state, key));
@@ -65,10 +65,10 @@ export async function attachImages(store, key, files) {
   })));
 }
 
-// unsentCreated gives the created session's lead whatever the user typed in
+// unsentCreated gives the created session whatever the user typed in
 // the unsent session while its first prompt was sent. Pending image reads
 // belong to the discarded unsent session and will be ignored.
-export function unsentCreated(state, lead) {
+export function unsentCreated(state, session) {
   const {text, images} = draftOf(state, unsentKey);
-  return withDraft(cleared(state, unsentKey), lead, () => ({text, images, reading: 0}));
+  return withDraft(cleared(state, unsentKey), session, () => ({text, images, reading: 0}));
 }

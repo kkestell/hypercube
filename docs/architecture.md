@@ -30,33 +30,31 @@ app never replaces a conversation it could not resume with a new one. Each start
 from an earlier generation are ignored.
 
 The browser view reads everything from the app: Hypercube's data and the
-selected session's transcripts. Agents reach Hypercube's tools through
+selected session's transcript. Agents reach Hypercube's tools through
 `hypercube mcp`, the stdio server each plugin's harness runs. It forwards each
-request, with the agent's ID, to a route in the app, which runs the tool. MCP
+request, with the session's ID, to a route in the app, which runs the tool. MCP
 and the browser's actions share one owner of session state.
 
-Worker worktrees live inside the checkout so harnesses can inherit its folder
-trust. Session IDs qualify worker paths and branches to avoid collisions
-between sessions.
+Child worktrees live inside the checkout so harnesses can inherit its folder
+trust. Parent session IDs qualify their paths and branches to avoid collisions.
 
-Agents are trusted local processes with the user's credentials. Session scoping
-in MCP prevents accidental cross-session operations, with messages between the
-leads of one workspace as the one exception so that leads sharing a checkout
-can coordinate. It does not isolate agents from the filesystem or from tools
-they can invoke through a shell.
+Agents are trusted local processes with the user's credentials. A top-level
+session can message its children and other top-level sessions in its workspace;
+a child can message only its parent. This prevents accidental cross-session
+operations. It does not isolate agents from the filesystem or shell tools.
 
 ## Persistence and concurrency
 
 Everything Hypercube knows lives in one SQLite database,
 `$XDG_STATE_HOME/hypercube/hypercube.db`, defaulting to
-`~/.local/state/hypercube/hypercube.db`: workspaces, sessions, agents, queued
-messages, and each agent's transcript. The app serializes its own operations;
+`~/.local/state/hypercube/hypercube.db`: workspaces, sessions, queued
+messages, and each session's transcript. The app serializes its own operations;
 the app never holds that lock while waiting on a plugin, since a native request
 can call back into a tool.
 
 A transcript is an ordered list of items: the user's messages, text,
-reasoning, tool calls and results, errors, and attention requests. Completed
-items are written to the database. Items still streaming stay in memory and are
+reasoning, tool calls and results, errors, attention requests, and child status
+updates. Completed items are written to the database. Items still streaming stay in memory and are
 published as they change. A later item with the same ID replaces the earlier
 one in its place.
 
@@ -66,14 +64,14 @@ after the plugin accepts it; a refused message stays queued. Acceptance means
 the native harness took the text, not that the model processed it.
 
 The state WebSocket sends the view a new snapshot of its data when the data
-changes. It also sends the transcripts of the session the page selected: all of
-them on connecting and on selecting, then the items that are new or changed. A
+changes. It also sends the transcript of the selected session: the whole chat
+on connecting and on selecting, then the items that are new or changed. A
 reconnecting page takes new snapshots.
 
 ## Panel shell
 
 `internal/terminal` owns one shell on a pseudo-terminal per session. It starts
-on demand in the workspace's folder, keeps a bounded buffer of its recent output,
+on demand in the session's directory, keeps a bounded buffer of its recent output,
 and replays that buffer to each browser connection. The shell survives hiding
 the panel and closing the browser, and ends when it exits, when its session
 stops or is deleted, or when the app shuts down.
@@ -86,7 +84,7 @@ documented by the implementation rather than copied here.
 | Source | Responsibility |
 | --- | --- |
 | [cmd/hypercube](../cmd/hypercube/main.go) | The command line and the app process. |
-| [session](../internal/session/runtime.go) | The runtime that runs agents: [workspace and session](../internal/session/sessions.go) and [worker](../internal/session/workers.go) lifecycle, [launch and relaunch](../internal/session/launch.go), [events](../internal/session/event.go), [delivery](../internal/session/deliver.go), restore, and shutdown. |
+| [session](../internal/session/runtime.go) | The runtime that runs agents: [workspace and session](../internal/session/sessions.go) and [child session](../internal/session/children.go) lifecycle, [launch and relaunch](../internal/session/launch.go), [events](../internal/session/event.go), [delivery](../internal/session/deliver.go), restore, and shutdown. |
 | [store](../internal/store/store.go) | The database schema, transactions, queues, and transcripts. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
 | [harness](../internal/harness/harness.go) | Configuration, plugin discovery, and the [serve protocol](../internal/harness/protocol.go) client. |

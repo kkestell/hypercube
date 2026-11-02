@@ -27,7 +27,7 @@ function Title({item}) {
   return <span class="tool-items-title"><span class="tool-items-name">{name}</span> {detail}</span>;
 }
 
-export function ToolRun({run, agent, expanded, setOpen}) {
+export function ToolRun({run, session, expanded, setOpen}) {
   const latest = run.calls[run.calls.length - 1].item;
   const summary = <>
     {run.running && <Spinner />}
@@ -38,13 +38,13 @@ export function ToolRun({run, agent, expanded, setOpen}) {
       <div class="tool-items-calls">
         {run.calls.map(call => call.type === 'message'
           ? <MessageItem key={call.item.id} item={call.item} expanded={!!expanded[call.item.id]} setOpen={setOpen} />
-          : <ToolCall key={call.item.id} call={call} agent={agent} expanded={expanded} setOpen={setOpen} />)}
+          : <ToolCall key={call.item.id} call={call} session={session} expanded={expanded} setOpen={setOpen} />)}
       </div>
     </Disclosure>
   );
 }
 
-function ToolCall({call, agent, expanded, setOpen}) {
+function ToolCall({call, session, expanded, setOpen}) {
   const {item, children} = call;
   const input = toolInput(item.input), output = clip(item.output ?? '');
   const summary = <>
@@ -59,7 +59,7 @@ function ToolCall({call, agent, expanded, setOpen}) {
         {output && <pre class="tool-items-text">{output}</pre>}
         {children.length > 0 && (
           <div class="tool-items-children">
-            {children.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} agent={agent} expanded={expanded} setOpen={setOpen} />)}
+            {children.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
           </div>
         )}
       </Disclosure>

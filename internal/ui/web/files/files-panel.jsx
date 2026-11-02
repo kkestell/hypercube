@@ -43,5 +43,5 @@ export function FilesPanel() {
     );
   });
 
-  return <vscode-tree ref={tree} class="files-panel" aria-label="Files" onvsc-tree-select={selected}>{entries('', 0)}</vscode-tree>;
+  return <vscode-tree ref={tree} class="files-panel" aria-label="Files" onvsc-tree-select={selected}>{files?.listings[''] === null ? <div>This session's folder no longer exists.</div> : entries('', 0)}</vscode-tree>;
 }

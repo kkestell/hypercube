@@ -30,7 +30,7 @@ export function Sidebar() {
 
   if (!renaming) frozen.current = state.workspaces;
   const workspaces = frozen.current;
-  const sessionById = id => workspaces.flatMap(w => w.sessions).find(s => s.id === id);
+  const sessionById = id => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
 
   const selected = e => {
     const item = e.detail[0];
@@ -58,6 +58,16 @@ export function Sidebar() {
     run(below(e.currentTarget));
   };
 
+  const sessionRow = session => (
+    <SessionItem
+      key={session.id} session={session} selected={session.id === state.selected}
+      open={!collapsed[session.id]} renaming={session.id === renaming}
+      onRenaming={on => setRenaming(on ? session.id : null)}
+    >
+      {session.children.map(sessionRow)}
+    </SessionItem>
+  );
+
   return (
     <div class="sidebar">
       <div class="sidebar-title">
@@ -78,15 +88,7 @@ export function Sidebar() {
                 slot="actions" icon="new-session" label="New Session" title="New Session"
                 onClick={action(point => menus.showLeads(point, workspace))}
               />
-              {workspace.sessions.slice(0, limit).map(session => (
-                <SessionItem
-                  key={session.id}
-                  session={session}
-                  selected={session.id === state.selected}
-                  renaming={session.id === renaming}
-                  onRenaming={on => setRenaming(on ? session.id : null)}
-                />
-              ))}
+              {workspace.sessions.slice(0, limit).map(sessionRow)}
               {workspace.sessions.length > limit && (
                 <vscode-tree-item class="sidebar-show-more" data-show-more={workspace.id}>Show more</vscode-tree-item>
               )}

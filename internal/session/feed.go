@@ -10,11 +10,11 @@ import (
 )
 
 // Change is one change the runtime made. A transcript change names the
-// session, agent, item, and the item's position. Other writes leave Agent empty.
+// session, item, and the item's position. Other writes leave Session empty.
 type Change struct {
-	Session, Agent string
-	Seq            int64
-	Item           harness.Item
+	Session string
+	Seq     int64
+	Item    harness.Item
 }
 
 type feed struct {
@@ -58,7 +58,8 @@ func (f *feed) publish(change Change) {
 
 type write struct {
 	*store.Tx
-	items []Change
+	items   []Change
+	runtime *Runtime
 }
 
 // save runs fn in one transaction and, once it commits, publishes the write and
@@ -69,6 +70,7 @@ func (r *Runtime) save(fn func(*write) error) error {
 	var w write
 	err := r.db.Tx(func(tx *store.Tx) error {
 		w.Tx = tx
+		w.runtime = r
 		return fn(&w)
 	})
 	if err != nil {
@@ -81,7 +83,7 @@ func (r *Runtime) save(fn func(*write) error) error {
 	return nil
 }
 
-func (w *write) putItem(l *live, seq int64, item harness.Item) error {
+func (w *write) putItem(id string, seq int64, item harness.Item) error {
 	if item.At == 0 {
 		item.At = time.Now().UnixMilli()
 	}
@@ -89,10 +91,26 @@ func (w *write) putItem(l *live, seq int64, item harness.Item) error {
 	if err != nil {
 		return err
 	}
-	seq, err = w.PutEntry(l.id, store.Entry{Seq: seq, Item: item.ID, Data: data})
+	seq, err = w.PutEntry(id, store.Entry{Seq: seq, Item: item.ID, Data: data})
 	if err != nil {
 		return err
 	}
-	w.items = append(w.items, Change{Session: l.session, Agent: l.id, Seq: seq, Item: item})
-	return nil
+	w.items = append(w.items, Change{Session: id, Seq: seq, Item: item})
+	return w.runtime.mirrorLocked(w, id, item)
+}
+
+// mirrorLocked writes only opening and saved attention items. The caller holds mu.
+func (r *Runtime) mirrorLocked(tx *write, id string, item harness.Item) error {
+	if item.Kind != harness.KindAttention {
+		return nil
+	}
+	s, err := tx.Session(id)
+	if err != nil || s.Parent == "" {
+		return err
+	}
+	if err := r.loadSeq(tx.Tx, s.Parent); err != nil {
+		return err
+	}
+	item.From, item.Parent = id, ""
+	return tx.putItem(s.Parent, r.nextSeq(s.Parent), item)
 }

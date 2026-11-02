@@ -2,7 +2,7 @@
 // dragged tab drops on the strip, before the tab under the pointer, or on the
 // body, where an edge within a quarter of the pane splits it.
 import {useRef, useState} from 'preact/hooks';
-import {shownAgents} from '../sessions/selection.js';
+import {shownSession} from '../sessions/selection.js';
 import {FileView} from '../files/file-view.jsx';
 import {useStore} from '../store.js';
 import {moveTab, tabEntry} from './editor.js';
@@ -46,7 +46,7 @@ export function EditorPane({pane}) {
 
   return (
     <div class="editor-pane" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      <EditorTabs pane={pane} entries={entries} lead={shownAgents(state).find(a => a.role === 'lead')?.id} />
+      <EditorTabs pane={pane} entries={entries} session={shownSession(state)?.id} />
       <div ref={body} class="editor-pane-body">
         {active?.path !== undefined && <FileView key={active.id} id={active.id} path={active.path} />}
       </div>

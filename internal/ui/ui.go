@@ -31,7 +31,6 @@ func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	mux.Handle("POST /mcp", mcp.Handler(db, rt))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
-	mux.HandleFunc("POST /agent", s.agentAction)
 	mux.HandleFunc("GET /terminal", s.terminal)
 	mux.HandleFunc("GET /files", s.listFiles)
 	mux.HandleFunc("GET /file", s.readFile)

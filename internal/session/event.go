@@ -16,6 +16,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	}
 	var completed []*pendingItem
 	var failures []string
+	var opened []harness.Item
 	at := time.Now().UnixMilli()
 	for _, it := range ev.Items {
 		native := it.ID
@@ -29,6 +30,9 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			it.At = p.item.At
 		}
 		if p == nil {
+			if it.Kind == harness.KindAttention {
+				opened = append(opened, it)
+			}
 			p = &pendingItem{seq: r.nextSeq(l.id), native: native}
 			l.pending[it.ID] = p
 			if it.Kind == harness.KindError {
@@ -45,7 +49,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			delete(l.pending, it.ID)
 			completed = append(completed, p)
 		} else {
-			r.feed.publish(Change{Session: l.session, Agent: l.id, Seq: p.seq, Item: it})
+			r.feed.publish(Change{Session: l.id, Seq: p.seq, Item: it})
 		}
 	}
 	attention := false
@@ -53,40 +57,38 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		attention = attention || p.item.Kind == harness.KindAttention
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(completed) == 0 && len(failures) == 0 && !changed {
+	if len(completed) == 0 && len(opened) == 0 && len(failures) == 0 && !changed {
 		return
 	}
 	err := r.save(func(tx *write) error {
-		if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
+		if err := tx.TouchSession(l.id, time.Now().UnixMilli()); err != nil {
 			return err
 		}
+		for _, item := range opened {
+			if err := r.mirrorLocked(tx, l.id, item); err != nil {
+				return err
+			}
+		}
 		for _, e := range completed {
-			if err := tx.putItem(l, e.seq, e.item); err != nil {
+			if err := tx.putItem(l.id, e.seq, e.item); err != nil {
 				return err
 			}
 		}
 		if !changed && len(failures) == 0 {
 			return nil
 		}
-		a, err := tx.Agent(l.id)
+		a, err := tx.Session(l.id)
 		if err != nil {
 			return err
 		}
 		if changed {
-			s, err := tx.Session(a.Session)
-			if err != nil {
-				return err
-			}
-			applyEvent(&a, &s, ev)
+			applyEvent(&a, ev)
 			a.Attention = attention
-			if err := tx.SaveAgent(a); err != nil {
-				return err
-			}
-			if err := tx.SaveSession(s); err != nil {
+			if err := tx.SaveSession(a); err != nil {
 				return err
 			}
 		}
-		if a.Role == store.Worker {
+		if a.Parent != "" {
 			for _, text := range failures {
 				if err := queueFailure(tx, a, text); err != nil {
 					return err
@@ -101,15 +103,15 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	}
 	l.attention = attention
 	if len(failures) > 0 {
-		r.kickSessionLocked(l.session)
+		r.kickFamilyLocked(l.root)
 	} else if ev.State == harness.Idle {
 		r.kickLocked(l.id)
 	}
 }
 
-// applyEvent records an event's conversation, work state, and usage. A lead that
+// applyEvent records an event's conversation, work state, and usage. A top-level session that
 // finishes a turn has a reply for the user to see.
-func applyEvent(a *store.Agent, s *store.Session, ev harness.Event) {
+func applyEvent(a *store.Session, ev harness.Event) {
 	if ev.Conversation != "" {
 		a.Conversation = ev.Conversation
 	}
@@ -117,8 +119,8 @@ func applyEvent(a *store.Agent, s *store.Session, ev harness.Event) {
 	case harness.Working:
 		a.Activity = store.Busy
 	case harness.Idle:
-		if a.Activity == store.Busy && a.Role == store.Lead {
-			s.Unseen = true
+		if a.Activity == store.Busy && a.Parent == "" {
+			a.Unseen = true
 		}
 		a.Activity = store.Idle
 	}

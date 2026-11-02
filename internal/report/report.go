@@ -31,101 +31,100 @@ func Title(prompt string) string {
 	return "Image"
 }
 
-// Format renders a message as the model sees it. A message from an agent
-// says how to reply, since the sender cannot see the recipient's chat, and
-// from is the sender's address; from is empty for a message from the user.
-func Format(tx *store.Tx, m store.Message) (text, from string) {
-	a, err := tx.Agent(m.From)
+// Format renders a message as the model sees it, including how to reply.
+func Format(tx *store.Tx, m store.Message) string {
+	from := m.From
+	s, err := tx.Session(m.From)
 	if err != nil {
-		return fmt.Sprintf("Message from %s:\n%s", m.From, m.Text), ""
+		return fmt.Sprintf("Message from %s:\n%s", m.From, m.Text)
 	}
-	from = a.Address()
-	return fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", from, m.Text, from, from), from
+	if s.Parent == m.To {
+		from = s.Name
+	}
+	return fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", from, m.Text, from, from)
 }
 
-// Leads returns the leads of the workspace's sessions other than the given
-// one, which leads can message, with their sessions' titles.
-func Leads(tx *store.Tx, workspace, except string) ([]store.Agent, map[string]string, error) {
+// Peers returns the workspace's other top-level sessions.
+func Peers(tx *store.Tx, workspace, except string) ([]store.Session, error) {
 	sessions, err := tx.Sessions(workspace)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	var leads []store.Agent
-	titles := map[string]string{}
+	var peers []store.Session
 	for _, s := range sessions {
-		titles[s.ID] = s.Title
-		if s.ID == except {
-			continue
+		if s.ID != except {
+			peers = append(peers, s)
 		}
-		lead, err := tx.Lead(s.ID)
-		if err != nil {
-			return nil, nil, err
-		}
-		leads = append(leads, lead)
 	}
-	return leads, titles, nil
+	return peers, nil
 }
 
-// Instructions describe the agent's place in the team. The lead also gets
-// the configured worker profiles.
-func Instructions(tx *store.Tx, a store.Agent, profiles []harness.Profile) (string, error) {
-	s, err := tx.Session(a.Session)
+// Instructions describe the session's place and tools.
+func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (string, error) {
+	var b strings.Builder
+	if s.Parent != "" {
+		parent, err := tx.Session(s.Parent)
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&b, "You are %s, a child session of Hypercube session %s, titled %q. Your parent created you and is the only session you can message: use send_message to %s.\n", s.Name, parent.ID, parent.Title, parent.ID)
+	} else {
+		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)
+		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message the other top-level sessions in this workspace by their IDs, and list_sessions lists the current ones.\n")
+	}
+	b.WriteString("Reach Hypercube sessions only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
+	fmt.Fprintf(&b, "Your working directory is %s%s.\n", s.Dir, onBranch(s.Branch))
+	if s.Parent != "" {
+		if s.Branch != "" {
+			b.WriteString("Commit your work on your branch. Your parent merges it from its checkout.")
+		} else {
+			b.WriteString("You work directly in your working directory. Handle branches and commits as your parent tells you.")
+		}
+		b.WriteString(reportBack)
+		return b.String(), nil
+	}
+	children, err := tx.Children(s.ID)
 	if err != nil {
 		return "", err
 	}
+	b.WriteString("\nChildren:\n")
+	if len(children) == 0 {
+		b.WriteString("none yet\n")
+	}
+	for _, c := range children {
+		ended := ""
+		if c.Ended {
+			ended = ", ended"
+		}
+		fmt.Fprintf(&b, "- %s: %s, %s%s%s\n", c.Name, c.Harness, c.Dir, onBranch(c.Branch), ended)
+	}
+	peers, err := Peers(tx, s.Workspace, s.ID)
+	if err != nil {
+		return "", err
+	}
+	var names []string
+	for _, p := range peers {
+		names = append(names, fmt.Sprintf("%s (%s)", p.ID, p.Title))
+	}
+	if len(names) == 0 {
+		names = append(names, "none yet")
+	}
+	fmt.Fprintf(&b, "Other top-level sessions: %s\n", strings.Join(names, ", "))
+	b.WriteString("\nOther Hypercube top-level sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits. list_sessions shows the current sessions.\n")
 	w, err := tx.Workspace(s.Workspace)
 	if err != nil {
 		return "", err
 	}
-	team, err := tx.Agents(a.Session)
-	if err != nil {
-		return "", err
-	}
-	others, titles, err := Leads(tx, s.Workspace, s.ID)
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "You are %s, the %s in a Hypercube team of coding agents.\n", a.Address(), a.Role)
-	fmt.Fprintf(&b, "Your Hypercube session is %q, titled %q. Agents are addressed as session/name, where session is the session's ID; a bare name means an agent in your session.\n", a.Session, titles[a.Session])
-	if a.Role == store.Lead {
-		b.WriteString("Worker tools apply only to this session. You can also message the leads of other sessions.\n")
+	if w.NoGit {
+		b.WriteString(`
+Your working directory is not a Git checkout. Each child session works directly in the directory you give it, usually its own Git checkout. Tell each child session how to handle branches and commits in its directory. Child sessions given the same directory share one checkout. End a child session when its work is done. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
+`)
 	} else {
-		b.WriteString("Messaging applies only to this session.\n")
-	}
-	b.WriteString("Reach Hypercube agents only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube agents arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
-	fmt.Fprintf(&b, "Your working directory is %s%s.\n\nTeam:\n", a.Dir, onBranch(a.Branch))
-	for _, t := range team {
-		fmt.Fprintf(&b, "- %s: %s, %s, %s%s\n", t.Address(), t.Role, t.Harness, t.Dir, onBranch(t.Branch))
-	}
-	if a.Role == store.Lead {
-		b.WriteString("\nOther Hypercube sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their leads and the user; use worker worktrees for independent edits. list_agents shows the current leads.\n")
-		var leads []string
-		for _, l := range others {
-			leads = append(leads, fmt.Sprintf("%s (%s)", l.Address(), titles[l.Session]))
-		}
-		if len(leads) > 0 {
-			fmt.Fprintf(&b, "Other leads: %s\n", strings.Join(leads, ", "))
-		}
-	}
-	switch {
-	case a.Role == store.Lead && w.NoGit:
 		b.WriteString(`
-Your working directory is not a Git checkout. Each worker works directly in the directory you give it, usually its own Git checkout. Tell each worker how to handle branches and commits in its directory. Workers given the same directory share one checkout. Remove a worker when its work is done. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
+You work in the original checkout. Unless the user says otherwise, give a child session its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then end the child session when its work is merged. A child session that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and end it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
 `)
-		writeTeamwork(&b, profiles)
-	case a.Role == store.Lead:
-		b.WriteString(`
-You work in the original checkout. Unless the user says otherwise, give a worker its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then remove the worker when its work is merged. A worker that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and remove it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the worker how to handle branches and commits there. Workers given the same directory share one checkout. You decide how to divide the work, coordinate the workers, and judge when it is done. The user talks to you in this session.
-`)
-		writeTeamwork(&b, profiles)
-	case a.Branch != "":
-		b.WriteString(`
-Commit your work on your branch. The lead merges it from its checkout.` + reportBack)
-	default:
-		b.WriteString(`
-You work directly in your working directory. Handle branches and commits as the lead tells you.` + reportBack)
 	}
+	writeTeamwork(&b, profiles)
 	return b.String(), nil
 }
 
@@ -136,29 +135,29 @@ func onBranch(branch string) string {
 	return " on branch " + branch
 }
 
-const reportBack = ` Use the hypercube set_status tool often to keep the user up to date: when you start, when you move to a new step, and when you find something that changes the plan, say in a sentence or two what you are doing now. When you finish, or need something, send the lead a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. A message you send is the only way other agents see your work's status.
+const reportBack = ` Use the hypercube set_status tool often to keep the user up to date: when you start, when you move to a new step, and when you find something that changes the plan, say in a sentence or two what you are doing now. When you finish, or need something, send your parent a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. set_status reaches the user in your parent's session, not your parent's agent. A message you send is the only way your parent's agent sees your work's status.
 `
 
-// writeTeamwork writes the lead's guidance on parallel work and the
-// configured worker profiles.
+// writeTeamwork writes the top-level session's guidance on parallel work and the
+// configured child session profiles.
 func writeTeamwork(b *strings.Builder, profiles []harness.Profile) {
 	b.WriteString(`
 Teamwork:
-- Do small or tightly coupled tasks yourself. Create workers when the work splits into long, self-contained parts. A team uses several times the tokens of a single agent.
-- Run independent work in parallel and coupled work in sequence. Give each file that several tasks touch to one worker.
-- A worker's first message states the objective, the expected result, the files and sources to start from, and the boundaries: what to leave alone and when to stop and report.
-- Choose the cheapest profile that fits the task. When a worker's result fails its checks, give the task to a stronger profile.
-- Before you merge a change, run the build and tests. A non-trivial change also needs a review by a worker that did not write it. A trivial change needs none.
-- Ask workers for conclusions, not transcripts, to keep your context for coordination.
+- Do small or tightly coupled tasks yourself. Create child sessions when the work splits into long, self-contained parts. A team uses several times the tokens of a single agent.
+- Run independent work in parallel and coupled work in sequence. Give each file that several tasks touch to one child session.
+- A child session's first message states the objective, the expected result, the files and sources to start from, and the boundaries: what to leave alone and when to stop and report.
+- Choose the cheapest profile that fits the task. When a child session's result fails its checks, give the task to a stronger profile.
+- Before you merge a change, run the build and tests. A non-trivial change also needs a review by a child session that did not write it. A trivial change needs none.
+- Ask child sessions for conclusions, not transcripts, to keep your context for coordination.
 
-Worker profiles. The role says which work each profile suits: plan, work, or review. Pass the name of the one that fits the task to create_agent as profile:
+Child profiles. The role says which work each profile suits: plan, work, or review. Pass the name of the one that fits the task to create_session as profile:
 `)
 	for _, p := range profiles {
 		fmt.Fprintf(b, "- %s (%s; %s, %s, %s): %s\n", p.Name, p.Role, p.Harness, p.Model, p.Effort, p.Description)
 	}
 }
 
-// FailureMessage describes a worker's failed turn for its lead.
+// FailureMessage describes a child session's failed turn for its parent.
 func FailureMessage(detail string) string {
 	detail = strings.TrimSpace(detail)
 	if detail == "" {

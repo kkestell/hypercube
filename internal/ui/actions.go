@@ -70,7 +70,7 @@ func readInput(w http.ResponseWriter, r *http.Request) (input, bool) {
 }
 
 // sessionAction creates a session in a workspace from its first prompt and
-// returns the session and lead IDs, or starts, stops, deletes, renames, or marks
+// returns the session ID, or starts, stops, deletes, renames, or marks
 // seen a session.
 func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -82,12 +82,12 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		created, lead, err := s.rt.Create(q.Get("workspace"), q.Get("lead"), in.Text, in.Images...)
+		created, err := s.rt.Create(q.Get("workspace"), q.Get("lead"), in.Text, in.Images...)
 		if refused(w, err) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"session": created.ID, "lead": lead.ID})
+		_ = json.NewEncoder(w).Encode(map[string]string{"session": created.ID})
 		return
 	case "start":
 		err = s.rt.Start(id)
@@ -99,21 +99,6 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		err = s.rt.Rename(id, q.Get("title"))
 	case "seen":
 		err = s.rt.Seen(id)
-	default:
-		http.Error(w, "unknown session action", http.StatusBadRequest)
-		return
-	}
-	refused(w, err)
-}
-
-// agentAction sends the user's input to an agent, interrupts its turn, or
-// answers one of its attention requests. An input's body is JSON with its text
-// and images; an answer's body is its typed reply.
-func (s *server) agentAction(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	id := q.Get("id")
-	var err error
-	switch q.Get("action") {
 	case "input":
 		in, ok := readInput(w, r)
 		if !ok {
@@ -131,7 +116,7 @@ func (s *server) agentAction(w http.ResponseWriter, r *http.Request) {
 		}
 		err = s.rt.Answer(id, q.Get("request"), q.Get("choice"), string(body))
 	default:
-		http.Error(w, "unknown agent action", http.StatusBadRequest)
+		http.Error(w, "unknown session action", http.StatusBadRequest)
 		return
 	}
 	refused(w, err)

@@ -47,7 +47,7 @@ func (s *standIn) start(a harness.StartArgs, emit func(harness.Event)) (Agent, e
 	})
 	return Agent{
 		Process:      p,
-		Conversation: "conversation-" + a.Agent,
+		Conversation: "conversation-" + a.Session,
 		Input: func(text string, _ []harness.Image) error {
 			s.record("input " + text)
 			_, err := io.WriteString(p.Stdin, text+"\n")
@@ -145,7 +145,7 @@ func (c *serving) wait() error {
 	return nil
 }
 
-var startArgs = harness.StartArgs{Agent: "a1"}
+var startArgs = harness.StartArgs{Session: "a1"}
 
 func (c *serving) start() {
 	c.t.Helper()

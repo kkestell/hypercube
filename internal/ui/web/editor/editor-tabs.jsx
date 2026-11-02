@@ -16,21 +16,21 @@ const keyMoves = {
   End: (index, count) => count - 1,
 };
 
-// lead is the lead's agent ID, whose text box takes the focus when the last
+// session is the session ID, whose text box takes the focus when the last
 // tab closes.
-export function EditorTabs({pane, entries, lead}) {
+export function EditorTabs({pane, entries, session}) {
   const [, store] = useStore();
   const strip = useRef(null);
 
   // The store redraws the page after a handler returns, so the focus moves
   // once the new tabs are drawn. A closed pane's strip is gone; the focus
-  // goes to another pane's active tab, or to the lead.
+  // goes to another pane's active tab, or to the composer.
   const focusActiveTab = () => {
     const area = strip.current.closest('.editor-area');
     requestAnimationFrame(() => {
       const tab = (strip.current ?? area).querySelector('.editor-tabs-tab-active > .editor-tabs-select');
       if (tab) tab.focus();
-      else focusComposer(lead);
+      else focusComposer(session);
     });
   };
 

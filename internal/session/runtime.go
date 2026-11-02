@@ -24,7 +24,7 @@ const (
 	// process group is killed.
 	shutdownWait = 3 * time.Second
 	// An agent that ends maxQuickExits times in a row, each within quickExit of
-	// starting, stays ended.
+	// starting, stays exited.
 	quickExit     = 10 * time.Second
 	maxQuickExits = 3
 	idleTimeout   = 10 * time.Minute

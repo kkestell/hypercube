@@ -19,6 +19,13 @@ func (r *Runtime) ViewSession(id string) func() {
 	if id == "" {
 		return func() {}
 	}
+	if err := r.db.Read(func(tx *store.Tx) error {
+		root, err := tx.Root(id)
+		id = root.ID
+		return err
+	}); err != nil {
+		return func() {}
+	}
 	r.mu.Lock()
 	r.viewers[id]++
 	r.mu.Unlock()
@@ -63,12 +70,15 @@ func (r *Runtime) stopIdleSessions(now time.Time) {
 			if !s.Running || r.viewers[s.ID] > 0 || now.UnixMilli()-s.LastActive < idleTimeout.Milliseconds() {
 				continue
 			}
-			agents, err := tx.Agents(s.ID)
+			children, err := tx.Children(s.ID)
 			if err != nil {
 				return err
 			}
 			busy := false
-			for _, a := range agents {
+			for _, a := range append([]store.Session{s}, children...) {
+				if a.Ended {
+					continue
+				}
 				l := r.live[a.ID]
 				busy = busy || a.Activity == store.Busy || (l != nil && (l.starting || l.delivering))
 			}
@@ -95,6 +105,6 @@ func (r *Runtime) stopIdleSessions(now time.Time) {
 	}
 	stopClients(lives)
 	for _, id := range expired {
-		r.Terminals.Stop(id)
+		r.stopShells(id)
 	}
 }

@@ -27,9 +27,9 @@ export function toolSummary(input) {
 // Hypercube's own tools, as what each call does and the input that tells
 // calls apart. send_message draws as a message instead.
 const hypercubeTools = {
-  create_agent: input => ['Create agent', input.name],
-  remove_agent: input => ['Remove agent', input.name],
-  list_agents: () => ['List agents', ''],
+  create_session: input => ['Create session', input.name],
+  end_session: input => ['End session', input.name],
+  list_sessions: () => ['List sessions', ''],
   set_status: input => ['Set status', input.text],
 };
 
@@ -59,7 +59,7 @@ export const toolInput = input => input === undefined || input === null ? '' : c
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
 const isCall = item => item.kind === 'tool' && !isMessage(item);
 
-const kinds = new Set(['user', 'reasoning', 'error', 'attention']);
+const kinds = new Set(['user', 'reasoning', 'error', 'attention', 'status']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
 
 function workedFor(start, until) {

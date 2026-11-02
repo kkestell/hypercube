@@ -28,9 +28,7 @@ func tx(t *testing.T, db *DB, fn func(*Tx) error) {
 	}
 }
 
-// seed adds workspace w at path with session s holding agents named in order,
-// the first a lead.
-func seed(t *testing.T, db *DB, w, path, s string, agents ...string) {
+func seed(t *testing.T, db *DB, w, path, s string, children ...string) {
 	t.Helper()
 	tx(t, db, func(tx *Tx) error {
 		if _, err := tx.Workspace(w); err != nil {
@@ -41,12 +39,8 @@ func seed(t *testing.T, db *DB, w, path, s string, agents ...string) {
 		if err := tx.AddSession(Session{ID: s, Workspace: w, Running: true}); err != nil {
 			return err
 		}
-		for i, name := range agents {
-			role := Worker
-			if i == 0 {
-				role = Lead
-			}
-			if err := tx.AddAgent(Agent{ID: s + "-" + name, Session: s, Name: name, Role: role, Activity: Idle}); err != nil {
+		for _, name := range children {
+			if err := tx.AddSession(Session{ID: s + "-" + name, Parent: s, Workspace: w, Name: name}); err != nil {
 				return err
 			}
 		}
@@ -59,7 +53,7 @@ func TestOpenCreatesSchema(t *testing.T) {
 	if _, err := os.Stat(dbPath()); err != nil {
 		t.Fatal(err)
 	}
-	seed(t, db, "w", "/repo", "s", "lead")
+	seed(t, db, "w", "/repo", "s")
 	tx(t, db, func(tx *Tx) error { return tx.TouchSession("s", 1234) })
 	db.Close()
 	again, err := Open()
@@ -75,7 +69,7 @@ func TestOpenCreatesSchema(t *testing.T) {
 		if s.LastActive != 1234 {
 			t.Errorf("reopened last activity = %d", s.LastActive)
 		}
-		_, err = tx.Lead("s")
+		_, err = tx.Session("s")
 		return err
 	}); err != nil {
 		t.Fatal("reopened database lost its rows:", err)
@@ -89,9 +83,6 @@ func TestLookupsReturnErrNotFound(t *testing.T) {
 		lookups := map[string]error{
 			"Workspace": func() error { _, err := tx.Workspace("x"); return err }(),
 			"Session":   func() error { _, err := tx.Session("x"); return err }(),
-			"Agent":     func() error { _, err := tx.Agent("x"); return err }(),
-			"Find":      func() error { _, err := tx.Find("s", "x"); return err }(),
-			"Lead":      func() error { _, err := tx.Lead("s"); return err }(),
 		}
 		for name, err := range lookups {
 			if !errors.Is(err, ErrNotFound) {
@@ -102,7 +93,7 @@ func TestLookupsReturnErrNotFound(t *testing.T) {
 	})
 }
 
-func TestSaveSessionKeepsLastActive(t *testing.T) {
+func TestSaveSessionWritesMutableFields(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s")
 	tx(t, db, func(tx *Tx) error {
@@ -120,7 +111,7 @@ func TestSaveSessionKeepsLastActive(t *testing.T) {
 		if s, err = tx.Session("s"); err != nil {
 			return err
 		}
-		if s.Title != "renamed" || s.LastActive != 1234 {
+		if s.Title != "renamed" || s.LastActive != 1 {
 			t.Errorf("after SaveSession: title %q, last active %d", s.Title, s.LastActive)
 		}
 		return nil
@@ -129,12 +120,12 @@ func TestSaveSessionKeepsLastActive(t *testing.T) {
 
 func TestDuplicatesFail(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "lead")
+	seed(t, db, "w", "/repo", "s", "w1")
 	if err := db.Tx(func(tx *Tx) error { return tx.AddWorkspace(Workspace{ID: "w2", Path: "/repo"}) }); err == nil {
 		t.Error("added a second workspace at the same path")
 	}
 	if err := db.Tx(func(tx *Tx) error {
-		return tx.AddAgent(Agent{ID: "x", Session: "s", Name: "lead", Role: Worker, Activity: Idle})
+		return tx.AddSession(Session{ID: "x", Workspace: "w", Parent: "s", Name: "w1"})
 	}); err == nil {
 		t.Error("added a second agent with the same name in a session")
 	}
@@ -142,10 +133,10 @@ func TestDuplicatesFail(t *testing.T) {
 
 func TestDeleteSessionCascades(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "lead", "w1")
-	seed(t, db, "w", "/repo", "t", "lead")
+	seed(t, db, "w", "/repo", "s", "w1")
+	seed(t, db, "w", "/repo", "t")
 	tx(t, db, func(tx *Tx) error {
-		for _, m := range []Message{{From: "t-lead", To: "s-w1", Text: "hi"}, {From: "s-w1", To: "t-lead", Text: "back"}} {
+		for _, m := range []Message{{From: "t", To: "s-w1", Text: "hi"}, {From: "s-w1", To: "t", Text: "back"}} {
 			if err := tx.Queue(m); err != nil {
 				return err
 			}
@@ -153,13 +144,13 @@ func TestDeleteSessionCascades(t *testing.T) {
 		return tx.DeleteSession("s")
 	})
 	tx(t, db, func(tx *Tx) error {
-		if a, _ := tx.Agents("s"); len(a) != 0 {
+		if a, _ := tx.Children("s"); len(a) != 0 {
 			t.Errorf("agents remain: %+v", a)
 		}
 		if m, _ := tx.Queued("s-w1"); len(m) != 0 {
 			t.Errorf("messages remain: %+v", m)
 		}
-		if m, _ := tx.Queued("t-lead"); len(m) != 1 {
+		if m, _ := tx.Queued("t"); len(m) != 1 {
 			t.Errorf("another session's messages: %+v", m)
 		}
 		return nil
@@ -168,10 +159,10 @@ func TestDeleteSessionCascades(t *testing.T) {
 
 func TestDequeueAndFind(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "x", "lead", "one")
-	seed(t, db, "w", "/repo", "y", "lead")
+	seed(t, db, "w", "/repo", "x", "one")
+	seed(t, db, "w", "/repo", "y")
 	tx(t, db, func(tx *Tx) error {
-		for i, to := range []string{"x-one", "x-lead", "x-one"} {
+		for i, to := range []string{"x-one", "x", "x-one"} {
 			if err := tx.Queue(Message{From: "user", To: to, Text: fmt.Sprint(i)}); err != nil {
 				return err
 			}
@@ -186,16 +177,8 @@ func TestDequeueAndFind(t *testing.T) {
 		if left, _ := tx.Queued("x-one"); len(left) != 1 || left[0].Text != "2" {
 			t.Errorf("Dequeue left %+v", left)
 		}
-		if left, _ := tx.Queued("x-lead"); len(left) != 1 {
+		if left, _ := tx.Queued("x"); len(left) != 1 {
 			t.Errorf("Dequeue took another agent's messages: %+v", left)
-		}
-		for _, session := range []string{"x", "y"} {
-			if a, err := tx.Find(session, "x/one"); err != nil || a.ID != "x-one" {
-				t.Errorf("Find(%s, x/one) = %+v, %v", session, a, err)
-			}
-		}
-		if a, err := tx.Find("y", "one"); err == nil {
-			t.Errorf("Find(y, one) = %+v", a)
 		}
 		return nil
 	})
@@ -203,39 +186,39 @@ func TestDequeueAndFind(t *testing.T) {
 
 func TestTranscript(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "lead", "w1")
+	seed(t, db, "w", "/repo", "s", "w1")
 	tx(t, db, func(tx *Tx) error {
-		if n, err := tx.LastSeq("s-lead"); err != nil || n != 0 {
+		if n, err := tx.LastSeq("s"); err != nil || n != 0 {
 			t.Errorf("LastSeq of an empty transcript = %d, %v", n, err)
 		}
 		// Items come back in position order, whatever order they were saved in.
 		for _, e := range []Entry{{3, "c", []byte(`{"n":3}`)}, {1, "a", []byte(`{"n":1}`)}, {2, "b", []byte(`{"n":2}`)}} {
-			if _, err := tx.PutEntry("s-lead", e); err != nil {
+			if _, err := tx.PutEntry("s", e); err != nil {
 				return err
 			}
 		}
 		// An item saved again replaces its data and keeps its position.
-		if seq, err := tx.PutEntry("s-lead", Entry{9, "a", []byte(`{"n":"again"}`)}); err != nil || seq != 1 {
+		if seq, err := tx.PutEntry("s", Entry{9, "a", []byte(`{"n":"again"}`)}); err != nil || seq != 1 {
 			t.Errorf("replaced entry's position = %d, %v", seq, err)
 		}
 		_, err := tx.PutEntry("s-w1", Entry{1, "a", []byte(`{}`)})
 		return err
 	})
 	tx(t, db, func(tx *Tx) error {
-		got, err := tx.Transcript("s-lead")
+		got, err := tx.Transcript("s")
 		if err != nil || len(got) != 3 || got[0].Item != "a" || got[0].Seq != 1 || string(got[0].Data) != `{"n":"again"}` || got[1].Item != "b" || got[2].Item != "c" {
 			t.Errorf("Transcript = %+v, %v", got, err)
 		}
-		if n, _ := tx.LastSeq("s-lead"); n != 3 {
+		if n, _ := tx.LastSeq("s"); n != 3 {
 			t.Errorf("LastSeq = %d", n)
 		}
-		return tx.DeleteAgent("s-lead")
+		return tx.DeleteSession("s-w1")
 	})
 	tx(t, db, func(tx *Tx) error {
-		if got, _ := tx.Transcript("s-lead"); len(got) != 0 {
+		if got, _ := tx.Transcript("s-w1"); len(got) != 0 {
 			t.Errorf("deleted agent's transcript remains: %+v", got)
 		}
-		if got, _ := tx.Transcript("s-w1"); len(got) != 1 {
+		if got, _ := tx.Transcript("s"); len(got) != 3 {
 			t.Errorf("another agent's transcript: %+v", got)
 		}
 		return nil
@@ -244,9 +227,9 @@ func TestTranscript(t *testing.T) {
 
 func TestLastText(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "lead", "worker")
+	seed(t, db, "w", "/repo", "s", "worker")
 	tx(t, db, func(tx *Tx) error {
-		if text, seq, err := tx.LastText("s-lead"); err != nil || text != "" || seq != 0 {
+		if text, seq, err := tx.LastText("s"); err != nil || text != "" || seq != 0 {
 			t.Errorf("empty LastText = %q, %d, %v", text, seq, err)
 		}
 		for _, entry := range []Entry{
@@ -255,11 +238,11 @@ func TestLastText(t *testing.T) {
 			{Seq: 3, Item: "child", Data: []byte(`{"kind":"text","text":"nested","parent":"last"}`)},
 			{Seq: 4, Item: "tool", Data: []byte(`{"kind":"tool","text":"tool"}`)},
 		} {
-			if _, err := tx.PutEntry("s-lead", entry); err != nil {
+			if _, err := tx.PutEntry("s", entry); err != nil {
 				return err
 			}
 		}
-		if text, seq, err := tx.LastText("s-lead"); err != nil || text != "last" || seq != 2 {
+		if text, seq, err := tx.LastText("s"); err != nil || text != "last" || seq != 2 {
 			t.Errorf("LastText = %q, %d, %v", text, seq, err)
 		}
 		if text, seq, err := tx.LastText("s-worker"); err != nil || text != "" || seq != 0 {
@@ -277,14 +260,14 @@ func TestConcurrentTransactions(t *testing.T) {
 			os.Exit(1)
 		}
 		for i := 0; i < 50; i++ {
-			if err := db.Tx(func(tx *Tx) error { return tx.Queue(Message{From: "child", To: "s-lead", Text: "c"}) }); err != nil {
+			if err := db.Tx(func(tx *Tx) error { return tx.Queue(Message{From: "child", To: "s", Text: "c"}) }); err != nil {
 				os.Exit(2)
 			}
 		}
 		os.Exit(0)
 	}
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "lead")
+	seed(t, db, "w", "/repo", "s")
 	exe, _ := os.Executable()
 	child := exec.Command(exe, "-test.run", "^TestConcurrentTransactions$")
 	child.Env = append(os.Environ(), "HYPERCUBE_STORE_CHILD=1")
@@ -294,7 +277,7 @@ func TestConcurrentTransactions(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Go(func() {
-			if err := db.Tx(func(tx *Tx) error { return tx.Queue(Message{From: "parent", To: "s-lead", Text: "p"}) }); err != nil {
+			if err := db.Tx(func(tx *Tx) error { return tx.Queue(Message{From: "parent", To: "s", Text: "p"}) }); err != nil {
 				t.Error(err)
 			}
 		})
@@ -304,8 +287,81 @@ func TestConcurrentTransactions(t *testing.T) {
 		t.Fatal("child:", err)
 	}
 	tx(t, db, func(tx *Tx) error {
-		if m, _ := tx.Queued("s-lead"); len(m) != 100 {
+		if m, _ := tx.Queued("s"); len(m) != 100 {
 			t.Errorf("%d messages, want 100", len(m))
+		}
+		return nil
+	})
+}
+
+func TestSessionScopeAndFamilyState(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "p", "one", "two")
+	seed(t, db, "w", "/repo", "q", "one")
+	seed(t, db, "v", "/other", "r")
+	tx(t, db, func(tx *Tx) error {
+		p, _ := tx.Session("p")
+		one, _ := tx.Session("p-one")
+		tops, _ := tx.Sessions("")
+		kids, _ := tx.Children("p")
+		if len(tops) != 3 || len(kids) != 2 || kids[0].Name != "one" || kids[1].Name != "two" {
+			t.Fatalf("top-level=%+v children=%+v", tops, kids)
+		}
+		for _, c := range []struct {
+			caller   Session
+			to, want string
+		}{
+			{p, "one", "p-one"}, {p, "q", "q"}, {p, "r", ""}, {p, "q-one", ""},
+			{one, "p", "p"}, {one, "two", ""}, {one, "q", ""}, {one, "r", ""}, {one, "one", ""},
+		} {
+			got, err := tx.FindSession(c.caller, c.to)
+			if c.want == "" {
+				if !errors.Is(err, ErrNotFound) {
+					t.Errorf("FindSession(%s,%s)=%+v,%v", c.caller.ID, c.to, got, err)
+				}
+			} else if err != nil || got.ID != c.want {
+				t.Errorf("FindSession=%+v,%v", got, err)
+			}
+		}
+		root, err := tx.Root(one.ID)
+		if err != nil || root.ID != p.ID {
+			t.Fatalf("Root=%+v,%v", root, err)
+		}
+		running, err := tx.Running(one)
+		if err != nil || !running {
+			t.Fatalf("Running=%v,%v", running, err)
+		}
+		one.Ended = true
+		if err := tx.SaveSession(one); err != nil {
+			return err
+		}
+		running, err = tx.Running(one)
+		if err != nil || running {
+			t.Fatalf("ended Running=%v,%v", running, err)
+		}
+		if err := tx.TouchSession(one.ID, 123); err != nil {
+			return err
+		}
+		p, _ = tx.Session(p.ID)
+		if p.LastActive != 123 {
+			t.Error("child did not touch root")
+		}
+		if _, err := tx.PutEntry(one.ID, Entry{Seq: 1, Item: "i", Data: []byte(`{}`)}); err != nil {
+			return err
+		}
+		if err := tx.Queue(Message{From: p.ID, To: one.ID, Text: "queued"}); err != nil {
+			return err
+		}
+		if err := tx.DeleteSession(p.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Session(one.ID); !errors.Is(err, ErrNotFound) {
+			t.Error("child survives parent")
+		}
+		entries, _ := tx.Transcript(one.ID)
+		messages, _ := tx.Queued(one.ID)
+		if len(entries) != 0 || len(messages) != 0 {
+			t.Error("child data survives parent")
 		}
 		return nil
 	})

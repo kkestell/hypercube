@@ -1,5 +1,5 @@
-// Package workspace finds the checkout, manages worker branches and
-// worktrees, and resolves worker directories.
+// Package workspace finds the checkout, manages child session branches and
+// worktrees, and resolves child session directories.
 package workspace
 
 import (
@@ -95,18 +95,18 @@ func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")
 }
 
-// WorkerBranch names a worker's branch.
-func WorkerBranch(name string) string {
-	return "hypercube/" + name
+// ChildBranch names a child session's branch.
+func ChildBranch(parent, name string) string {
+	return "hypercube/" + parent + "/" + name
 }
 
-// WorktreeDir is where a worker's worktree lives. Worktrees sit inside the
+// WorktreeDir is where a child session's worktree lives. Worktrees sit inside the
 // checkout so that harnesses extend the checkout's folder trust to them.
-func WorktreeDir(root, name string) string {
-	return filepath.Join(root, ".hypercube", name)
+func WorktreeDir(root, parent, name string) string {
+	return filepath.Join(root, ".hypercube", parent, name)
 }
 
-// AddWorktree creates the worker's branch from HEAD and checks it out in dir.
+// AddWorktree creates the child session's branch from HEAD and checks it out in dir.
 // It adds .hypercube/ to the checkout's local excludes.
 func AddWorktree(root, dir, branch string) error {
 	if err := excludeWorktrees(root); err != nil {

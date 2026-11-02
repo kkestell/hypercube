@@ -8,35 +8,31 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// SendMessage queues a message between agents and attempts delivery.
-func (r *Runtime) SendMessage(from, to, text string) (recipient store.Agent, running bool, err error) {
+// SendMessage queues a message between sessions and attempts delivery.
+func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, running bool, err error) {
 	if strings.TrimSpace(text) == "" {
 		return recipient, false, errors.New("text is required")
 	}
 	err = r.save(func(tx *write) error {
-		caller, err := tx.Agent(from)
+		caller, err := tx.Session(from)
 		if err != nil {
 			return err
 		}
-		a, err := tx.Find(caller.Session, to)
+		a, err := tx.FindSession(caller, to)
 		if err != nil {
 			return err
 		}
 		if a.ID == from {
 			return errors.New("cannot send a message to yourself")
 		}
-		source, err := tx.Session(caller.Session)
+		if a.Ended {
+			return errors.New("cannot send a message to an ended child session")
+		}
+		recipient = a
+		running, err = tx.Running(a)
 		if err != nil {
 			return err
 		}
-		s, err := tx.Session(a.Session)
-		if err != nil {
-			return err
-		}
-		if a.Session != caller.Session && (caller.Role != store.Lead || a.Role != store.Lead || s.Workspace != source.Workspace) {
-			return errors.New("across sessions, only leads in the same workspace can message each other")
-		}
-		recipient, running = a, s.Running
 		return tx.Queue(store.Message{From: from, To: a.ID, Text: text})
 	})
 	if err != nil {
@@ -46,10 +42,6 @@ func (r *Runtime) SendMessage(from, to, text string) (recipient store.Agent, run
 	return recipient, running, nil
 }
 
-func queueFailure(w *write, worker store.Agent, detail string) error {
-	lead, err := w.Lead(worker.Session)
-	if err != nil {
-		return err
-	}
-	return w.Queue(store.Message{From: worker.ID, To: lead.ID, Text: report.FailureMessage(detail)})
+func queueFailure(w *write, child store.Session, detail string) error {
+	return w.Queue(store.Message{From: child.ID, To: child.Parent, Text: report.FailureMessage(detail)})
 }

@@ -6,8 +6,7 @@ Local coding-agent teams for macOS, built with Go.
   and development sessions.
 - [Usage](docs/usage.md): workspaces, sessions, commands, the browser view,
   resume, and cleanup.
-- [Configuration](docs/configuration.md): lead settings, worker
-  profiles, and worktree setup.
+- [Configuration](docs/configuration.md): lead and child profiles and worktree setup.
 - [Architecture](docs/architecture.md): ownership, persistence, and design
   rationale, with links to the implementation.
 - [Harness support](docs/harness-support.md): native integration, permissions,

@@ -12,20 +12,22 @@ import (
 
 func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	f.input(lead.ID, "hello")
-	f.until("the first turn", func() bool { return len(f.transcript(lead.ID)) == 4 })
-	f.input(lead.ID, "!crash")
-	f.until("a relaunch", func() bool { return len(f.log(lead.ID, "start")) == 2 && f.agent(lead.ID).Activity == store.Idle })
-	if start := f.log(lead.ID, "start"); start[1].Conversation != lead.ID+"-conversation" {
+	parent := f.session()
+	f.input(parent.ID, "hello")
+	f.until("the first turn", func() bool { return len(f.transcript(parent.ID)) == 4 })
+	f.input(parent.ID, "!crash")
+	f.until("a relaunch", func() bool {
+		return len(f.log(parent.ID, "start")) == 2 && f.storedSession(parent.ID).Activity == store.Idle
+	})
+	if start := f.log(parent.ID, "start"); start[1].Conversation != parent.ID+"-conversation" {
 		t.Fatalf("relaunch did not resume: %v", start[1])
 	}
 	// The ended launch left a note, and the new launch's items follow the old
 	// ones even though it numbers its own from the start.
-	f.input(lead.ID, "again")
-	f.until("a turn after the relaunch", func() bool { return len(f.transcript(lead.ID)) == 8 })
-	got := f.summary(lead.ID)
-	if !strings.HasPrefix(got, "user:start|text:ack|user:hello|text:ack|user:!crash|error:The agent ended: ") ||
+	f.input(parent.ID, "again")
+	f.until("a turn after the relaunch", func() bool { return len(f.transcript(parent.ID)) == 8 })
+	got := f.summary(parent.ID)
+	if !strings.HasPrefix(got, "user:start|text:ack|user:hello|text:ack|user:!crash|error:The agent exited: ") ||
 		!strings.HasSuffix(got, "|user:again|text:ack") {
 		t.Fatalf("transcript = %q", got)
 	}
@@ -35,42 +37,43 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	f := newFixture(t)
 	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
 	// The plugin can exit before the first prompt reaches it, which Create
-	// reports; the session and its lead remain.
-	s, lead, _ := f.rt.Create(f.workspace.ID, "lead", "start")
+	// reports; the session and its parent remain.
+	s, _ := f.rt.Create(f.workspace.ID, "lead", "start")
+	parent := s
 	ended := func() (n int) {
-		for _, it := range f.transcript(lead.ID) {
-			if strings.HasPrefix(it.Text, "The agent ended: ") {
+		for _, it := range f.transcript(parent.ID) {
+			if strings.HasPrefix(it.Text, "The agent exited: ") {
 				n++
 			}
 		}
 		return n
 	}
 	f.until("the agent to end three times", func() bool { return ended() == maxQuickExits })
-	// AddWorker refuses only when the lead has no launch, even a starting one.
-	if _, err := f.rt.AddWorker(lead.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+	// AddWorker refuses only when the parent has no launch, even a starting one.
+	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
 		t.Fatalf("a lead that stayed ended took a worker: %v", err)
 	}
-	if n := len(f.log(lead.ID, "start")); n != maxQuickExits {
+	if n := len(f.log(parent.ID, "start")); n != maxQuickExits {
 		t.Fatalf("%d launches", n)
 	}
-	if f.agent(lead.ID).Activity != store.Exited || !f.storedSession(s.ID).Running {
-		t.Fatalf("agent %+v, session %+v", f.agent(lead.ID), f.storedSession(s.ID))
+	if f.storedSession(parent.ID).Activity != store.Exited || !f.storedSession(s.ID).Running {
+		t.Fatalf("agent %+v, session %+v", f.storedSession(parent.ID), f.storedSession(s.ID))
 	}
 }
 
 func TestFailedResumeIsAnError(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
+	s := f.session()
 	if err := f.rt.Stop(s.ID); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.db.Tx(func(tx *store.Tx) error {
-		a, err := tx.Agent(lead.ID)
+		a, err := tx.Session(s.ID)
 		if err != nil {
 			return err
 		}
 		a.Conversation = "unresumable"
-		return tx.SaveAgent(a)
+		return tx.SaveSession(a)
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -80,42 +83,42 @@ func TestFailedResumeIsAnError(t *testing.T) {
 	}
 	// The agent stays ended with the error in its transcript, and no fresh
 	// conversation starts in its place.
-	if got := f.summary(lead.ID); !strings.HasSuffix(got, "|error:Could not start the agent: cannot resume conversation unresumable") {
+	if got := f.summary(s.ID); !strings.HasSuffix(got, "|error:Could not start the agent: cannot resume conversation unresumable") {
 		t.Fatalf("transcript = %q", got)
 	}
-	starts := f.log(lead.ID, "start")
-	if a := f.agent(lead.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
+	starts := f.log(s.ID, "start")
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
 		t.Fatalf("after a failed resume: agent %+v, starts %v", a, starts)
 	}
 	// Nothing of the failed launch remains, so starting again tries again.
-	if err := f.rt.Start(s.ID); err == nil || len(f.log(lead.ID, "start")) != 3 {
+	if err := f.rt.Start(s.ID); err == nil || len(f.log(s.ID, "start")) != 3 {
 		t.Fatalf("second start: %v", err)
 	}
 }
 
 func TestFailedRelaunchStaysEnded(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
+	parent := f.session()
 	if err := f.db.Tx(func(tx *store.Tx) error {
-		a, err := tx.Agent(lead.ID)
+		a, err := tx.Session(parent.ID)
 		if err != nil {
 			return err
 		}
 		a.Conversation = "unresumable"
-		return tx.SaveAgent(a)
+		return tx.SaveSession(a)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	f.input(lead.ID, "!crash")
+	f.input(parent.ID, "!crash")
 	f.until("the failed relaunch", func() bool {
-		return strings.HasSuffix(f.summary(lead.ID), "|error:Could not start the agent: cannot resume conversation unresumable")
+		return strings.HasSuffix(f.summary(parent.ID), "|error:Could not start the agent: cannot resume conversation unresumable")
 	})
 	// The failed relaunch has no successor, including one still starting.
-	if _, err := f.rt.AddWorker(lead.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
 		t.Fatalf("a failed relaunch took a worker: %v", err)
 	}
-	starts := f.log(lead.ID, "start")
-	if a := f.agent(lead.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
+	starts := f.log(parent.ID, "start")
+	if a := f.storedSession(parent.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
 		t.Fatalf("after a failed relaunch: agent %+v, starts %v", a, starts)
 	}
 }
@@ -127,10 +130,7 @@ func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := f.db.Tx(func(tx *store.Tx) error {
-		if err := tx.AddSession(store.Session{ID: "s", Workspace: f.workspace.ID}); err != nil {
-			return err
-		}
-		return tx.AddAgent(store.Agent{ID: "a", Session: "s", Name: "lead", Role: store.Lead, Harness: "old", Dir: f.root, Activity: store.Exited})
+		return tx.AddSession(store.Session{ID: "s", Workspace: f.workspace.ID, Harness: "old", Dir: f.root, Activity: store.Exited})
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,8 +138,8 @@ func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unsupported harness: not ported") {
 		t.Fatalf("start: %v", err)
 	}
-	items := f.transcript("a")
-	if len(items) != 1 || items[0].Kind != harness.KindError || !strings.Contains(items[0].Text, "unsupported harness") || f.agent("a").Activity != store.Exited {
+	items := f.transcript("s")
+	if len(items) != 1 || items[0].Kind != harness.KindError || !strings.Contains(items[0].Text, "unsupported harness") || f.storedSession("s").Activity != store.Exited {
 		t.Fatalf("transcript = %+v", items)
 	}
 }

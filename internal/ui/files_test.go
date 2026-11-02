@@ -52,7 +52,7 @@ func TestFiles(t *testing.T) {
 		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
 			return err
 		}
-		return tx.AddSession(store.Session{ID: "s", Workspace: "w"})
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
 	})
 	h := handler(t, db)
 	get := func(route, session, path, etag string) *httptest.ResponseRecorder {
@@ -128,5 +128,30 @@ func TestFiles(t *testing.T) {
 		if res.Code != tc.status {
 			t.Errorf("/%s session=%q path=%q = %d %s; want %d", tc.route, tc.session, tc.path, res.Code, res.Body, tc.status)
 		}
+	}
+}
+
+func TestChildFilesUseItsDirectory(t *testing.T) {
+	a := newApp(t)
+	child := a.child("files")
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "child.txt"), []byte("child contents"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	change(t, a.db, func(tx *store.Tx) error { child.Dir = dir; return tx.SaveSession(child) })
+	h := handler(t, a.db)
+	get := func(route string) *httptest.ResponseRecorder {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/"+route+"?session="+child.ID+"&path=child.txt", nil))
+		return res
+	}
+	if res := get("file"); res.Code != 200 || res.Body.String() != "child contents" {
+		t.Fatalf("child file=%d %s", res.Code, res.Body)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if res := get("files"); res.Code != 404 {
+		t.Fatalf("removed directory=%d %s", res.Code, res.Body)
 	}
 }

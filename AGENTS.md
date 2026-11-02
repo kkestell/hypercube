@@ -73,7 +73,7 @@ The example in `docs/configuration.md` is the user's
 when the behavior it describes changes. `AGENTS.md` gives instructions to
 agents and should rarely change.
 
-Leads must use the [hypercube skill](.agents/skills/hypercube/SKILL.md) for new
+Top-level session agents must use the [hypercube skill](.agents/skills/hypercube/SKILL.md) for new
 features and behavior changes. Keep that skill up to date as the workflow evolves.
 
 The code describes the implementation. A fact lives in one place. Correct or

@@ -21,7 +21,7 @@ import (
 func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // team returns a database holding a workspace, outside Git if noGit is set,
-// with session session-1, whose lead "a" works in leadDir and, if workerDir is
+// with session session-1, whose lead "session-1" works in leadDir and, if workerDir is
 // set, whose worker "b" works directly in it.
 func team(t *testing.T, noGit bool, leadDir, workerDir string) (*store.DB, *session.Runtime) {
 	t.Helper()
@@ -49,14 +49,11 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) (*store.DB, *sess
 		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: leadDir, NoGit: noGit}); err != nil {
 			return err
 		}
-		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true}); err != nil {
-			return err
-		}
-		if err := tx.AddAgent(store.Agent{ID: "a", Session: "session-1", Name: "lead", Role: store.Lead, Dir: leadDir, Activity: store.Idle}); err != nil {
+		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true, Dir: leadDir, Activity: store.Idle}); err != nil {
 			return err
 		}
 		if workerDir != "" {
-			return tx.AddAgent(store.Agent{ID: "b", Session: "session-1", Name: "w1", Role: store.Worker, Dir: workerDir, Activity: store.Idle})
+			return tx.AddSession(store.Session{ID: "b", Workspace: "w", Parent: "session-1", Name: "w1", Dir: workerDir, Activity: store.Idle})
 		}
 		return nil
 	})
@@ -70,16 +67,16 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 	}
 }
 
-func agents(t *testing.T, db *store.DB, session string) (list []store.Agent) {
+func agents(t *testing.T, db *store.DB, session string) (list []store.Session) {
 	t.Helper()
-	change(t, db, func(tx *store.Tx) error { var err error; list, err = tx.Agents(session); return err })
+	change(t, db, func(tx *store.Tx) error { var err error; list, err = tx.Children(session); return err })
 	return list
 }
 
 // post sends a JSON-RPC request to the handler as the agent.
 func post(handler http.Handler, agent, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "http://localhost/mcp", strings.NewReader(body))
-	req.Header.Set(AgentHeader, agent)
+	req.Header.Set(SessionHeader, agent)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	res := httptest.NewRecorder()
@@ -152,20 +149,20 @@ func TestTools(t *testing.T) {
 	for _, noGit := range []bool{false, true} {
 		db, rt := team(t, noGit, t.TempDir(), "")
 		server := httptest.NewServer(Handler(db, rt))
-		list := tools(t, connect(t, server.URL, "a"))
+		list := tools(t, connect(t, server.URL, "session-1"))
 		server.Close()
-		for _, name := range []string{"send_message", "list_agents", "set_status", "create_agent", "remove_agent"} {
+		for _, name := range []string{"send_message", "list_sessions", "create_session", "end_session"} {
 			if list[name] == nil {
 				t.Errorf("noGit=%v: %s missing", noGit, name)
 			}
 		}
-		create := schemaOf(t, list["create_agent"])
+		create := schemaOf(t, list["create_session"])
 		want := []any{"name", "profile"}
 		if noGit {
 			want = append(want, "dir")
 		}
 		if got := create["required"]; !slices.Equal(got.([]any), want) {
-			t.Errorf("noGit=%v: create_agent requires %v", noGit, got)
+			t.Errorf("noGit=%v: create_session requires %v", noGit, got)
 		}
 		// Only worker profiles are offered.
 		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"sol"}) {
@@ -178,7 +175,7 @@ func TestProtocol(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), "")
 	server := httptest.NewServer(Handler(db, rt))
 	defer server.Close()
-	s := connect(t, server.URL, "a")
+	s := connect(t, server.URL, "session-1")
 	if v := s.InitializeResult().ProtocolVersion; v == "" || v == "unknown" {
 		t.Errorf("negotiated protocol version %q", v)
 	}
@@ -186,24 +183,20 @@ func TestProtocol(t *testing.T) {
 		t.Errorf("server name %q", name)
 	}
 	// A client asking for an unsupported version gets a supported one.
-	res := post(Handler(db, rt), "a", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
+	res := post(Handler(db, rt), "session-1", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
 	if !strings.Contains(res.Body.String(), `"id":7`) || strings.Contains(res.Body.String(), "1999-01-01") {
 		t.Errorf("initialize = %s", res.Body)
 	}
 	// Unknown methods are refused, not answered with an empty success.
-	res = post(Handler(db, rt), "a", `{"jsonrpc":"2.0","id":8,"method":"no/such"}`)
+	res = post(Handler(db, rt), "session-1", `{"jsonrpc":"2.0","id":8,"method":"no/such"}`)
 	if res.Code != http.StatusBadRequest {
 		t.Errorf("unknown method = %d %s", res.Code, res.Body)
 	}
 	if _, err := s.CallTool(context.Background(), &mcp.CallToolParams{Name: "no_such_tool"}); err == nil {
 		t.Error("an unknown tool succeeded")
 	}
-	// Tool failures are results marked as errors.
-	if text, failed := callTool(t, s, "set_status", map[string]any{"text": 5}); !failed {
-		t.Errorf("a number for a string argument = %q", text)
-	}
-	if text, failed := callTool(t, s, "set_status", map[string]any{"text": "Planning."}); !failed || !strings.Contains(text, "only workers") {
-		t.Errorf("the lead set a status: %q %v", text, failed)
+	if text, failed := callTool(t, s, "send_message", map[string]any{"to": "missing", "text": 5}); !failed {
+		t.Error(text)
 	}
 }
 
@@ -224,7 +217,7 @@ func TestBridge(t *testing.T) {
 	server := serve(t, db, rt)
 	run := func(agent, url string) []map[string]any {
 		t.Helper()
-		t.Setenv("HYPERCUBE_AGENT_ID", agent)
+		t.Setenv("HYPERCUBE_SESSION_ID", agent)
 		t.Setenv("HYPERCUBE_URL", url)
 		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
@@ -249,8 +242,8 @@ func TestBridge(t *testing.T) {
 	if len(answers) != 3 || answers[0]["id"] != 1.0 || answers[1]["id"] != 2.0 || answers[1]["result"].(map[string]any)["isError"] == true || answers[2]["id"] != 3.0 || answers[2]["error"] == nil {
 		t.Fatalf("answers = %v", answers)
 	}
-	if a := agents(t, db, "session-1")[1]; a.Status != "Reading" {
-		t.Errorf("the tool did not run for the agent: %+v", a)
+	if items, _ := rt.Transcript("session-1"); len(items) != 1 || items[0].Text != "Reading" {
+		t.Error("status did not reach parent transcript")
 	}
 	// A refused or unreachable app answers each request with an error.
 	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "no app": run("b", "http://127.0.0.1:1")} {
@@ -264,11 +257,11 @@ func TestBridge(t *testing.T) {
 	}
 }
 
-// create_agent refuses bad arguments, a lead profile, and a stopped session,
+// create_session refuses bad arguments, a lead profile, and a stopped session,
 // adding no agent.
 func TestCreateAgentRefusals(t *testing.T) {
 	db, rt := team(t, true, t.TempDir(), "")
-	lead := connect(t, serve(t, db, rt).URL, "a")
+	lead := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
 		{"name": "w1", "profile": "sol"},
 		{"name": "w1", "dir": "."},
@@ -277,11 +270,11 @@ func TestCreateAgentRefusals(t *testing.T) {
 		{"name": "w1", "profile": "opus", "dir": "."},
 		{"name": "w1", "profile": "sol", "dir": "."},
 	} {
-		if text, failed := callTool(t, lead, "create_agent", args); !failed {
-			t.Errorf("create_agent(%v) = %q", args, text)
+		if text, failed := callTool(t, lead, "create_session", args); !failed {
+			t.Errorf("create_session(%v) = %q", args, text)
 		}
-		if list := agents(t, db, "session-1"); len(list) != 1 {
-			t.Errorf("after create_agent(%v): %+v", args, list)
+		if list := agents(t, db, "session-1"); len(list) != 0 {
+			t.Errorf("after create_session(%v): %+v", args, list)
 		}
 	}
 }
@@ -294,114 +287,80 @@ func TestCreateAgentRefusesMissingDirectory(t *testing.T) {
 	rt.PluginDir = plugins
 	t.Cleanup(rt.Shutdown)
 	change(t, db, func(tx *store.Tx) error {
-		lead, err := tx.Agent("a")
+		lead, err := tx.Session("session-1")
 		if err != nil {
 			return err
 		}
 		lead.Harness, lead.Model, lead.Effort = "one", "opus", "high"
-		return tx.SaveAgent(lead)
+		return tx.SaveSession(lead)
 	})
 	if err := rt.Start("session-1"); err != nil {
 		t.Fatal(err)
 	}
-	lead := connect(t, serve(t, db, rt).URL, "a")
-	text, failed := callTool(t, lead, "create_agent", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
+	lead := connect(t, serve(t, db, rt).URL, "session-1")
+	text, failed := callTool(t, lead, "create_session", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
-		t.Fatalf("create_agent with a missing directory: %q %v", text, failed)
+		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}
-	if list := agents(t, db, "session-1"); len(list) != 1 {
-		t.Errorf("after create_agent: %+v", list)
+	if list := agents(t, db, "session-1"); len(list) != 0 {
+		t.Errorf("after create_session: %+v", list)
 	}
 }
 
-// remove_agent refuses a stopped session and leaves the worker.
+// end_session refuses a stopped session and leaves the worker.
 func TestRemoveAgentStoppedSession(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
-	lead := connect(t, serve(t, db, rt).URL, "a")
-	if text, failed := callTool(t, lead, "remove_agent", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
-		t.Fatalf("remove_agent in a stopped session: %q %v", text, failed)
+	lead := connect(t, serve(t, db, rt).URL, "session-1")
+	if text, failed := callTool(t, lead, "end_session", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
+		t.Fatalf("end_session in a stopped session: %q %v", text, failed)
 	}
-	if list := agents(t, db, "session-1"); len(list) != 2 {
-		t.Errorf("after remove_agent: %+v", list)
+	if list := agents(t, db, "session-1"); len(list) != 1 {
+		t.Errorf("after end_session: %+v", list)
 	}
 }
 
 func TestSessionBoundaries(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
-		if err := tx.AddSession(store.Session{ID: "other", Workspace: "w", Title: "Fix the parser"}); err != nil {
-			return err
-		}
-		if err := tx.AddAgent(store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead, Activity: store.Idle}); err != nil {
-			return err
-		}
-		if err := tx.AddAgent(store.Agent{ID: "other-worker", Session: "other", Name: "w1", Role: store.Worker, Activity: store.Idle}); err != nil {
-			return err
-		}
-		if err := tx.AddWorkspace(store.Workspace{ID: "far", Path: "/elsewhere"}); err != nil {
-			return err
-		}
-		if err := tx.AddSession(store.Session{ID: "far", Workspace: "far"}); err != nil {
-			return err
-		}
-		return tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle})
-	})
-	url := serve(t, db, rt).URL
-	sessions := map[string]*mcp.ClientSession{}
-	for _, id := range []string{"a", "b", "other-lead"} {
-		sessions[id] = connect(t, url, id)
-	}
-	for _, send := range [][2]string{{"a", "other/w1"}, {"b", "other/w1"}, {"b", "other/lead"}, {"a", "far/lead"}} {
-		if text, failed := callTool(t, sessions[send[0]], "send_message", map[string]any{"to": send[1], "text": "wrong session"}); !failed {
-			t.Fatalf("%s reached %s across sessions: %q", send[0], send[1], text)
-		}
-	}
-	if text, failed := callTool(t, sessions["a"], "remove_agent", map[string]any{"name": "other/w1"}); !failed {
-		t.Fatalf("removed another session's worker: %q", text)
-	}
-	if text, failed := callTool(t, sessions["b"], "remove_agent", map[string]any{"name": "w1"}); !failed {
-		t.Fatalf("worker removed an agent: %q", text)
-	}
-	// Session "other" is stopped; session-1 runs.
-	for _, send := range [][3]string{{"other-lead", "w1", "stopped"}, {"a", "other/lead", "stopped"}, {"other-lead", "session-1/lead", ""}} {
-		reply, failed := callTool(t, sessions[send[0]], "send_message", map[string]any{"to": send[1], "text": "allowed"})
-		if failed {
-			t.Fatal(reply)
-		}
-		if stopped := strings.Contains(reply, "stopped"); stopped != (send[2] == "stopped") {
-			t.Errorf("reply to %s: %q", send[1], reply)
-		}
-	}
-	change(t, db, func(tx *store.Tx) error {
-		for id, want := range map[string]int{"other-worker": 1, "other-lead": 1, "a": 1, "far-lead": 0} {
-			if m, _ := tx.Queued(id); len(m) != want {
-				t.Errorf("%s has %d messages, want %d", id, len(m), want)
+		for _, s := range []store.Session{{ID: "peer", Workspace: "w", Title: "Fix parser"}, {ID: "peer-child", Workspace: "w", Parent: "peer", Name: "child"}} {
+			if err := tx.AddSession(s); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
-	if listed, _ := callTool(t, sessions["a"], "list_agents", nil); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") || strings.Contains(listed, "far/") {
-		t.Fatal("lead's list_agents", listed)
-	}
-	if listed, _ := callTool(t, sessions["b"], "list_agents", nil); strings.Contains(listed, "other/") {
-		t.Fatal("worker's list_agents", listed)
-	}
-}
-
-func TestSetStatus(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), t.TempDir())
 	url := serve(t, db, rt).URL
-	worker, lead := connect(t, url, "b"), connect(t, url, "a")
-	if text, failed := callTool(t, worker, "set_status", map[string]any{"text": "  Reading\nthe card view. "}); failed {
+	parent := connect(t, url, "session-1")
+	child := connect(t, url, "b")
+	parentTools, childTools := tools(t, parent), tools(t, child)
+	if len(parentTools) != 4 || parentTools["set_status"] != nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+		t.Fatalf("tools: %v / %v", parentTools, childTools)
+	}
+	listed, failed := callTool(t, parent, "list_sessions", nil)
+	if failed || !strings.Contains(listed, `"to": "w1"`) || !strings.Contains(listed, `"to": "peer"`) || strings.Contains(listed, "peer-child") {
+		t.Fatal(listed)
+	}
+	listed, failed = callTool(t, child, "list_sessions", nil)
+	if failed || !strings.Contains(listed, `"to": "session-1"`) || strings.Contains(listed, "peer") {
+		t.Fatal(listed)
+	}
+	if text, failed := callTool(t, child, "send_message", map[string]any{"to": "peer", "text": "no"}); !failed {
 		t.Fatal(text)
 	}
-	if a := agents(t, db, "session-1")[1]; a.Status != "Reading the card view." || a.StatusAt == 0 {
-		t.Errorf("worker = %+v", a)
+	if text, failed := callTool(t, parent, "send_message", map[string]any{"to": "peer", "text": "yes"}); failed || !strings.Contains(text, "stopped") {
+		t.Fatal(text)
 	}
-	if text, failed := callTool(t, lead, "set_status", map[string]any{"text": "Planning."}); !failed {
-		t.Errorf("the lead set a status: %q", text)
+	if text, failed := callTool(t, child, "send_message", map[string]any{"to": "session-1", "text": "yes"}); failed {
+		t.Fatal(text)
 	}
-	if text, failed := callTool(t, worker, "set_status", map[string]any{"text": " "}); !failed {
-		t.Errorf("an empty status was accepted: %q", text)
+	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " Reading\nthe code. "}); failed {
+		t.Fatal(text)
+	}
+	items, _ := rt.Transcript("session-1")
+	if len(items) != 1 || items[0].Text != "Reading the code." || items[0].From != "b" {
+		t.Fatalf("status=%+v", items)
+	}
+	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " "}); !failed {
+		t.Fatal(text)
 	}
 }

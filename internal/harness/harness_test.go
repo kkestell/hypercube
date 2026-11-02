@@ -33,7 +33,7 @@ func TestLoadConfig(t *testing.T) {
 	if got := c.Leads(); len(got) != 2 || got[0].Name != "first" || got[1].Name != "second" {
 		t.Fatalf("leads = %+v", got)
 	}
-	if got := c.Workers(); len(got) != 1 || got[0].Name != "fast" {
+	if got := c.ChildProfiles(); len(got) != 1 || got[0].Name != "fast" {
 		t.Fatalf("workers = %+v", got)
 	}
 	for name, want := range map[string]string{"": "first", "first": "first", "second": "second"} {
@@ -46,11 +46,11 @@ func TestLoadConfig(t *testing.T) {
 			t.Errorf("Lead(%q) accepted", name)
 		}
 	}
-	if p, err := c.Worker("fast"); err != nil || p.Name != "fast" {
+	if p, err := c.ChildProfile("fast"); err != nil || p.Name != "fast" {
 		t.Errorf("Worker(fast) = %+v, %v", p, err)
 	}
 	for _, name := range []string{"first", "missing", ""} {
-		if _, err := c.Worker(name); err == nil {
+		if _, err := c.ChildProfile(name); err == nil {
 			t.Errorf("Worker(%q) accepted", name)
 		}
 	}
@@ -83,7 +83,7 @@ func TestLoadConfig(t *testing.T) {
 	// All worker roles retain their file order, even with leads between them.
 	c = Config{Profiles: []Profile{{Name: "plan", Role: RolePlan}, {Name: "lead", Role: RoleLead}, {Name: "work", Role: RoleWork}, {Name: "review", Role: RoleReview}}}
 	var names []string
-	for _, p := range c.Workers() {
+	for _, p := range c.ChildProfiles() {
 		names = append(names, p.Name)
 	}
 	if !slices.Equal(names, []string{"plan", "work", "review"}) {

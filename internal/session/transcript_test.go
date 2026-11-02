@@ -11,20 +11,22 @@ import (
 
 func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	f.input(lead.ID, "!work")
+	parent := f.session()
+	f.input(parent.ID, "!work")
 	f.until("an unfinished item", func() bool {
-		items := f.transcript(lead.ID)
+		items := f.transcript(parent.ID)
 		return len(items) == 4 && items[3].Text == "working" && !items[3].Done
 	})
 	// The item's later version replaces it in place instead of appearing again.
-	f.input(lead.ID, "!finish")
+	f.input(parent.ID, "!finish")
 	f.until("the replaced item", func() bool {
-		return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish"
+		return f.summary(parent.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish"
 	})
-	f.input(lead.ID, "!stream")
-	f.until("the streamed turn", func() bool { return f.agent(lead.ID).Activity == store.Idle && len(f.transcript(lead.ID)) == 8 })
-	items := f.transcript(lead.ID)
+	f.input(parent.ID, "!stream")
+	f.until("the streamed turn", func() bool {
+		return f.storedSession(parent.ID).Activity == store.Idle && len(f.transcript(parent.ID)) == 8
+	})
+	items := f.transcript(parent.ID)
 	text, tool := items[6], items[7]
 	if items[5].Text != "!stream" || text.Text != "Hello!" || !text.Done || tool.Kind != harness.KindTool || tool.Output != "ok" || tool.Input != nil {
 		t.Fatalf("streamed items = %+v", items[5:])
@@ -36,33 +38,33 @@ func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
 
 func TestRequestsNewestFirst(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	worker := f.addWorker(lead, "w1", "")
-	f.input(lead.ID, "!ask")
+	parent := f.session()
+	child := f.child(parent, "w1", "")
+	f.input(parent.ID, "!ask")
 	f.until("the lead's request", func() bool { return len(f.rt.Requests()) == 1 })
-	f.input(worker.ID, "!ask")
+	f.input(child.ID, "!ask")
 	f.until("the worker's request", func() bool { return len(f.rt.Requests()) == 2 })
-	if requests := f.rt.Requests(); requests[0].Agent != worker.ID || requests[1].Agent != lead.ID {
+	if requests := f.rt.Requests(); requests[0].Session != child.ID || requests[1].Session != parent.ID {
 		t.Fatalf("requests = %+v", requests)
 	}
 }
 
 func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
 	f := newFixture(t)
-	_, lead := f.session()
-	f.input(lead.ID, "!work")
-	f.until("the unfinished item", func() bool { return len(f.transcript(lead.ID)) == 4 })
-	first := f.transcript(lead.ID)[3]
+	parent := f.session()
+	f.input(parent.ID, "!work")
+	f.until("the unfinished item", func() bool { return len(f.transcript(parent.ID)) == 4 })
+	first := f.transcript(parent.ID)[3]
 	if first.At == 0 {
 		t.Fatal("streamed item has no arrival timestamp")
 	}
 	// Make replacing the timestamp on completion observable.
 	time.Sleep(2 * time.Millisecond)
-	f.input(lead.ID, "!finish")
-	f.until("the finished item", func() bool { return f.agent(lead.ID).Activity == store.Idle })
+	f.input(parent.ID, "!finish")
+	f.until("the finished item", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
 	f.rt.Shutdown()
 	reloaded := f.newRuntime()
-	items, err := reloaded.Transcript(lead.ID)
+	items, err := reloaded.Transcript(parent.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

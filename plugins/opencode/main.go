@@ -105,7 +105,7 @@ type field struct {
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	config := map[string]any{}
 	if a.Instructions != "" {
-		file, err := plugin.WriteFile(filepath.Join(a.StateDir, "opencode-instructions"), a.Agent+".md", []byte(a.Instructions))
+		file, err := plugin.WriteFile(filepath.Join(a.StateDir, "opencode-instructions"), a.Session+".md", []byte(a.Instructions))
 		if err != nil {
 			return nil, err
 		}

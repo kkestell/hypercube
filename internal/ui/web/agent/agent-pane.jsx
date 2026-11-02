@@ -1,4 +1,4 @@
-// One agent: its transcript above its composer, with a border while it waits
+// One session: its transcript above its composer, with a border while it waits
 // on the user. Images dropped anywhere on the pane attach to its draft; tab
 // drags carry no files and pass through.
 import {useState} from 'preact/hooks';
@@ -10,7 +10,7 @@ import './agent-pane.css';
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
 
-export function AgentPane({agent}) {
+export function AgentPane({session}) {
   const [, store] = useStore();
   const [dropping, setDropping] = useState(false);
 
@@ -27,14 +27,14 @@ export function AgentPane({agent}) {
     if (!hasFiles(e)) return;
     e.preventDefault();
     setDropping(false);
-    attachImages(store, agent.id, [...e.dataTransfer.files]);
+    attachImages(store, session.id, [...e.dataTransfer.files]);
   };
 
-  const classes = ['agent-pane', agent.attention && 'agent-pane-attention', dropping && 'agent-pane-dropping'].filter(Boolean).join(' ');
+  const classes = ['agent-pane', session.attention && 'agent-pane-attention', dropping && 'agent-pane-dropping'].filter(Boolean).join(' ');
   return (
     <article class={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      <Transcript agent={agent.id} />
-      <Composer agent={agent} />
+      <Transcript session={session} />
+      <Composer session={session} />
     </article>
   );
 }

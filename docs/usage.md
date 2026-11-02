@@ -4,22 +4,22 @@ After creating your configuration, run `hypercube ui` and open
 http://localhost:4280/. The browser view is Hypercube's interface.
 
 A workspace is a folder that holds sessions. In Git, its folder is the
-checkout's top level; outside Git, it is the folder itself. A session is a lead
-and its workers, with their chats displayed beside each other.
-You create, start, stop, rename, and delete sessions; a stopped session has no
-running agents and stays listed until you start it.
+checkout's top level; outside Git, it is the folder itself. Each session has
+one agent and its own chat. A top-level session's agent can create child sessions
+one level deep to work in parallel. Together they form a family. Starting or stopping a top-level session
+starts or stops its children too.
 
-Each session has a random ID, such as `k3f9a2c1`, and a title. A session is
-titled with the first line of the prompt that creates it, cut to 200 characters
-("Image" for a prompt of only images). You can change the title at any time;
-later prompts leave it alone.
-Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
-means an agent in the sender's own session. Agents see each session's title
-beside its ID. Workers message only their own session, and leads can also
-message the leads of the workspace's other sessions. Worker lifecycle is scoped
-to the session.
-Leads share the workspace's folder, including its files, Git index, and branch.
-Use worker worktrees for independent edits.
+Each session has a random ID, such as `a3f9a2c1`, and a title. A top-level
+session is titled with the first line of its first prompt, cut to 200 characters
+("Image" for a prompt of only images). A child's title starts as its name. You
+can rename any title; later prompts leave it alone. A child's name stays fixed
+and cannot be reused among that parent's children, including ended children.
+
+A parent addresses its children by name, and other top-level sessions in the
+workspace by ID. A child can message only its parent, by ID. `list_sessions`
+lists the sessions each agent can message. Top-level sessions share the
+workspace's files, Git index, and branch; use child worktrees for independent
+edits.
 
 | Command | Use |
 | --- | --- |
@@ -27,39 +27,43 @@ Use worker worktrees for independent edits.
 
 ## Browser view
 
-The sidebar lists each workspace's sessions by last activity, newest first,
-with stopped sessions below running ones. It shows five under each workspace;
-click the workspace row to collapse or expand them, and click Show more to
-list five more. Click `+` at the top of the sidebar to choose a folder and add
-it as a workspace. Hover over a workspace's row and click New Session to list
-its lead profiles; choose one to open a new session with it. Sending its first
-prompt creates the session; selecting another session first discards it. Click More Actions,
-or right-click the row, to delete the workspace.
+The sidebar lists top-level sessions by last activity, newest first, with
+stopped sessions below running ones. It shows five under each workspace;
+Show more lists five more. Children appear under their parent in creation
+order and do not count toward this limit. Click a workspace row to collapse
+or expand it. A parent's chevron collapses or expands its children; clicking
+its title selects the session without changing its children's expansion.
+Click `+` at the top of the sidebar to add a workspace. Hover over a workspace
+and click New Session to choose a lead profile. Sending its first prompt
+creates the session; selecting another session first discards it. More Actions,
+or right-clicking a workspace, offers Delete Workspace.
 
-Click a session to show it, and double-click it to change its title.
-Right-click a session to start or stop it, or to delete it. A stopped session's
-row is dimmed; clicking it starts it. A session shows a spinner at the right of
-its row while any of its agents is busy, an amber dot while any
-of its agents awaits your approval, and a blue dot after its lead finishes a
-reply you have not seen. A worker's card shows a spinner while it is busy, an
-amber dot while it awaits you, and a red dot after it exits.
+Click a session to show its chat, and double-click it to change its title.
+A top-level session's menu offers Start/Stop and Delete. Stopped rows are
+dimmed; clicking a child of a stopped parent starts the family. Each row shows
+its own spinner while busy. An amber dot means that session or a running child
+awaits you; a blue dot marks a top-level reply you have not seen. The composer
+shows the agent's spinner, waiting dot, or red dot after an unexpected exit.
 
-Notification cards stack in the top right for unseen lead replies and for
-questions and approval requests outside the session you are viewing. Each card
-shows the workspace, the session, and the worker when a worker asks, with the
-reply's opening lines or the request with its choices and text field, so you
-can answer from the card. The eye icon opens the session. Closing a reply's
-card marks the reply seen; closing a request's card only hides it. A reply's
-card closes by itself after 15 seconds, or when its lead starts working again.
-A request's card stays until the request is answered or the card is closed.
+A parent ends children with `end_session`. Ending removes a managed worktree
+and branch only when Git permits it, and stops the child for good. The ended
+row stays dimmed and opens its saved chat with sending disabled. Its menu offers
+Delete Session, which deletes its chat. An active child has no menu.
 
-The lead's chat stays in its own column, followed by a vertical stack of
-workers, the open-file area, and the right sidebar. Workers start as cards
-showing their latest report and its age. Click a worker's header to expand its
-chat and message box in place; click again to collapse it. Drag the column
-dividers to resize the lead, workers, and files. Drag a divider below an
-expanded worker to resize it and the next expanded worker; collapsed cards
-keep their height. The file area appears only while files are open.
+Notification cards stack in the top right for unseen top-level replies and
+open questions or approval requests. A request card names the workspace,
+parent, and child, and offers its answers. It is hidden while you view the
+requesting session or its parent. The eye opens the requesting session.
+Closing a reply card marks it seen; closing a request card only hides it.
+Reply cards close after 15 seconds or when the agent works again. Request
+cards stay until answered or closed.
+
+The center shows one session's chat beside its open files. Drag the divider
+to resize them. The file area appears only while files are open. A child's
+requests also appear in its parent's transcript, where you can answer them;
+answering in either place updates both. Child status updates appear there too,
+with the child's title and time. These copies are for the user; the parent's
+agent does not receive them.
 
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
@@ -84,42 +88,41 @@ Below each message box, the harness, model, and effort appear on the left,
 with context use and cost on the right. Codex reports no cost. Drag a file tab to
 another pane's tab bar to move it there, or to a pane's left, right, top, or
 bottom edge to split it. These moves and splits stay within the file
-area; agents stay in their columns. Drag dividers to resize panes and the sidebar.
+area; the chat stays in its column. Drag dividers to resize panes and the sidebar.
 
 The right panel button in the header shows or hides the right panel. Its icon
 tabs select Files and Changes; Changes is blank for now. Files
-shows the session's folder as a read-only tree. Click a file to preview it in
+shows the session's directory as a read-only tree, including a child's worktree.
+After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open.
 
-The panel button in the header shows or hides a terminal below the agents. It
-runs your shell in the workspace's folder, one per session, and keeps running
+The panel button in the header shows or hides a terminal below the chat. It
+runs your shell in the session's directory, one per session, and keeps running
 while the panel is hidden or the browser is closed, until the shell exits or the
 session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-Sessions stop automatically after ten minutes without a prompt or agent
-activity, once none of their agents is working. Sessions selected in an open
-browser page are exempt. Closing the browser leaves
-agents running until that timeout. Quitting Hypercube ends them, and
-the sessions that were running start again at the next start. Stopping a session
-keeps its conversations, chats, and queued messages. Starting it resumes each agent's
-conversation, and at login Hypercube starts the sessions that were running when
-it last exited. A started session starts no turn and delivers no queued
-message until you type a prompt into any of its agents.
+A family stops automatically after ten minutes without a prompt or agent
+activity, once no member is working. Viewing any family member in a browser
+page keeps the family running. Closing the browser leaves agents running until
+that timeout. Quitting Hypercube ends them, and families that were running
+start again at the next launch. Stopping keeps conversations, chats, and queued
+messages. Starting resumes the top-level agent and children that have not
+ended. It starts no turn and delivers no queued message until you prompt any
+family member.
 
 A harness that exits after starting is relaunched with its saved conversation.
 Repeated quick exits stop automatic relaunches. A harness that fails to start
-stays ended, with the error in the agent's chat. Stop and start the session to
-retry after correcting the error.
+stays exited, with the error in its chat. Stop and start the family to retry.
 
-Deleting a session or workspace removes its workers' managed worktrees and
-branches only after checking for uncommitted work and commits not merged into
-the original checkout's HEAD. Existing directories supplied to workers are
-left alone. Failed cleanup stays recorded so deletion can be retried.
+Deleting a top-level session deletes its children and their chats, managed
+worktrees, and branches. Git first checks for uncommitted work and commits not
+merged into the original checkout's HEAD. Existing directories supplied to
+children are left alone. Failed cleanup stays recorded so deletion can be retried.
+Ended children can also be deleted individually.
 
 The cleanup check currently follows Git's display settings: hiding untracked
-files or ignoring submodule changes can make a dirty worktree pass. Keep
-those settings at their normal visibility and inspect worker work before
-removal. The check is in
-[workspace.go](../internal/workspace/workspace.go).
+files or ignoring submodule changes can make a dirty worktree pass. Keep those
+settings at their normal visibility and inspect child work before ending it.
+The check is in [workspace.go](../internal/workspace/workspace.go).

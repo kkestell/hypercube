@@ -897,7 +897,7 @@ func TestConnectStartsAThread(t *testing.T) {
 	h.server.handle("thread/start", func(map[string]any) (any, *plugin.RPCError) {
 		return map[string]any{"thread": map[string]any{"id": "thread-1"}}, nil
 	})
-	args := harness.StartArgs{Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_AGENT_ID": "a"}, Model: "m", Effort: "low", Dir: dir, Instructions: "be useful"}
+	args := harness.StartArgs{Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a"}, Model: "m", Effort: "low", Dir: dir, Instructions: "be useful"}
 	if err := h.connect(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -910,7 +910,7 @@ func TestConnectStartsAThread(t *testing.T) {
 	}
 	p := h.server.sent("thread/start")[0]
 	config, _ := json.Marshal(p["config"])
-	wantConfig := `{"mcp_servers":{"hypercube":{"args":["mcp"],"command":"/bin/hc","default_tools_approval_mode":"approve","env":{"HYPERCUBE_AGENT_ID":"a"}}},` +
+	wantConfig := `{"mcp_servers":{"hypercube":{"args":["mcp"],"command":"/bin/hc","default_tools_approval_mode":"approve","env":{"HYPERCUBE_SESSION_ID":"a"}}},` +
 		`"model_reasoning_effort":"low","projects":{"` + resolved + `":{"trust_level":"trusted"}},` +
 		`"sandbox_workspace_write":{"network_access":true,"writable_roots":["` + resolved + `/.git"]}}`
 	if p["model"] != "m" || p["cwd"] != dir || p["approvalPolicy"] != "on-request" || p["approvalsReviewer"] != "auto_review" || p["sandbox"] != "workspace-write" ||

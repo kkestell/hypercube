@@ -9,7 +9,7 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// shownWorkspace, shownSession, and shownAgent are what the browser view shows.
+// shownWorkspace, shownSession are what the browser view shows.
 type shownWorkspace struct {
 	ID       string         `json:"id"`
 	Path     string         `json:"path"`
@@ -18,28 +18,54 @@ type shownWorkspace struct {
 }
 
 type shownSession struct {
-	ID       string       `json:"id"`
-	Title    string       `json:"title"`
-	Running  bool         `json:"running"`
-	Unseen   bool         `json:"unseen"`
-	Reply    string       `json:"reply,omitempty"`
-	ReplySeq int64        `json:"replySeq,omitempty"`
-	Agents   []shownAgent `json:"agents"`
+	ID        string         `json:"id"`
+	Parent    string         `json:"parent"`
+	Title     string         `json:"title"`
+	Running   bool           `json:"running"`
+	Ended     bool           `json:"ended"`
+	Unseen    bool           `json:"unseen"`
+	Reply     string         `json:"reply,omitempty"`
+	ReplySeq  int64          `json:"replySeq,omitempty"`
+	Harness   string         `json:"harness"`
+	Model     string         `json:"model"`
+	Effort    string         `json:"effort"`
+	Dir       string         `json:"dir"`
+	Activity  string         `json:"activity"`
+	Attention bool           `json:"attention"`
+	Usage     harness.Usage  `json:"usage"`
+	Children  []shownSession `json:"children"`
 }
 
-type shownAgent struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Role      string        `json:"role"`
-	Harness   string        `json:"harness"`
-	Model     string        `json:"model"`
-	Effort    string        `json:"effort"`
-	Dir       string        `json:"dir"`
-	Activity  string        `json:"activity"`
-	Attention bool          `json:"attention"`
-	Status    string        `json:"status"`
-	StatusAt  int64         `json:"statusAt"`
-	Usage     harness.Usage `json:"usage"`
+func showSession(tx *store.Tx, s store.Session) (shownSession, error) {
+	running, err := tx.Running(s)
+	if err != nil {
+		return shownSession{}, err
+	}
+	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
+		Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir, Activity: s.Activity,
+		Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
+	if s.Parent != "" {
+		return shown, nil
+	}
+	shown.Unseen = s.Unseen
+	if s.Unseen && s.Activity == store.Idle {
+		shown.Reply, shown.ReplySeq, err = tx.LastText(s.ID)
+		if err != nil {
+			return shown, err
+		}
+	}
+	children, err := tx.Children(s.ID)
+	if err != nil {
+		return shown, err
+	}
+	for _, c := range children {
+		child, err := showSession(tx, c)
+		if err != nil {
+			return shown, err
+		}
+		shown.Children = append(shown.Children, child)
+	}
+	return shown, nil
 }
 
 // snapshot reads everything the view shows in one transaction: workspaces by
@@ -67,19 +93,9 @@ func snapshot(db *store.DB) ([]shownWorkspace, error) {
 				return cmp.Or(cmp.Compare(b.LastActive, a.LastActive), cmp.Compare(b.Created, a.Created))
 			})
 			for _, s := range sessions {
-				agents, err := tx.Agents(s.ID)
+				session, err := showSession(tx, s)
 				if err != nil {
 					return err
-				}
-				session := shownSession{ID: s.ID, Title: s.Title, Running: s.Running, Unseen: s.Unseen, Agents: []shownAgent{}}
-				for _, a := range agents {
-					session.Agents = append(session.Agents, shownAgent{a.ID, a.Name, a.Role, a.Harness, a.Model, a.Effort,
-						a.Dir, a.Activity, a.Attention, a.Status, a.StatusAt, a.Usage})
-					if s.Unseen && a.Role == store.Lead && a.Activity == store.Idle {
-						if session.Reply, session.ReplySeq, err = tx.LastText(a.ID); err != nil {
-							return err
-						}
-					}
 				}
 				shown.Sessions = append(shown.Sessions, session)
 			}

@@ -147,13 +147,13 @@ Create `~/.config/hypercube/config.json`, or
 ```
 
 All fields shown are required, including each profile's role. Provide at least
-one `lead` profile and one worker profile, with unique names across all
+one `lead` profile and one child profile, with unique names across all
 profiles. Remove the profiles for harnesses and models you don't use.
 
 The workspace's `+` menu lists the `lead` profiles by their descriptions, so a
 lead's description is a short label.
-Profiles with role `plan`, `work`, or `review` are offered to leads for workers;
-the role says which kind of work a profile suits, and the description explains
+Profiles with role `plan`, `work`, or `review` are offered to top-level sessions
+for children; the role says which kind of work a profile suits, and the description explains
 when to use it. Existing agents keep their saved settings across restarts.
 Changes affect subsequently created agents, and profiles are reread when the
 session menu, tools, and startup context are requested.
@@ -164,9 +164,9 @@ receives them as its model and effort; OpenCode uses effort as the model's
 variant. Consult the harness for accepted values. Hypercube's exact schema
 and validation are maintained in [config.go](../internal/harness/config.go).
 
-## Files needed by worker worktrees
+## Files needed by child worktrees
 
-A new managed worktree starts at the lead's HEAD and initializes
+A new managed worktree starts at the parent's HEAD and initializes
 submodules. Uncommitted changes in the original checkout are absent.
 
 To supply ignored local files, add a `.worktreeinclude` file at the checkout
@@ -178,6 +178,6 @@ node_modules/
 ```
 
 Only paths also ignored by Git are copied. Copies are independent APFS
-clones, so workers can change them without modifying the originals. They are
+clones, so child sessions can change them without modifying the originals. They are
 made when the worktree is created, not kept in sync. The implementation is
 in [workspace.go](../internal/workspace/workspace.go).

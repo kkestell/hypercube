@@ -31,9 +31,8 @@ func (s *server) sessionRoot(id string) (*os.Root, error) {
 		if err != nil {
 			return err
 		}
-		workspace, err := tx.Workspace(session.Workspace)
-		dir = workspace.Path
-		return err
+		dir = session.Dir
+		return nil
 	})
 	if err != nil {
 		return nil, err

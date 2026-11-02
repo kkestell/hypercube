@@ -1,11 +1,9 @@
 import {expect, test} from 'bun:test';
 import {unsentKey} from '../agent/drafts.js';
-import {rememberScroll} from '../editor/editor.js';
 import {receivedTranscript} from '../transcript/transcripts.js';
 import {openUnsent, pageTitle, receivedWorkspaces, selectSession} from './selection.js';
 
-const agent = (id, extra = {}) => ({id, name: id, role: 'work', activity: 'idle', ...extra});
-const session = (id, running, agents = [agent(id + '-lead', {role: 'lead'})]) => ({id, title: 'Title ' + id, running, unseen: false, agents});
+const session = (id, running, extra = {}) => ({id, title: 'Title ' + id, running, unseen: false, children: [], ...extra});
 const workspaces = (...sessions) => [{id: 'w', name: 'repo', path: '/repo', sessions}];
 const initial = (selected = '') => ({workspaces: [], requests: [], selected, pending: null, unsent: null, drafts: {}, session: null});
 
@@ -63,21 +61,30 @@ test('attaching to another session replaces the session state', () => {
   expect(state.session).not.toBe(attached);
 });
 
-test('a departing agent loses its transcript and scroll', () => {
-  const lead = agent('lead', {role: 'lead'}), worker = agent('worker');
-  let state = receivedWorkspaces(initial('a'), workspaces(session('a', true, [lead, worker])));
-  state = receivedTranscript(state, {session: 'a', agent: 'worker', reset: true, items: [{id: '1', seq: 1, kind: 'text'}]});
-  state = rememberScroll(state, 'a', 'worker', {top: 1, left: 0, following: false});
-  state = receivedWorkspaces(state, workspaces(session('a', true, [lead])));
-  expect(state.session.transcripts).toEqual({});
-  expect(state.session.scroll).toEqual({});
-  expect(state.session.tabs.root).toBeNull();
+test('ended children attach and stay shown when they end', () => {
+  const child = session('child', true, {parent: 'a'});
+  let state = receivedWorkspaces(initial('child'), workspaces(session('a', true, {children: [child]})));
+  expect(state.session.id).toBe('child');
+  state = receivedTranscript(state, {session: 'child', reset: true, items: [{id: '1', seq: 1, kind: 'text'}]});
+  state = receivedWorkspaces(state, workspaces(session('a', true, {children: [{...child, running: false, ended: true}]})));
+  expect(state.selected).toBe('child');
+  expect(state.session.transcript.order).toEqual(['1']);
+  state = selectSession({...state, selected: null, session: null}, 'child');
+  expect(state.session.id).toBe('child');
 });
 
-test('pageTitle counts waiting agents and names the session and workspace', () => {
+test('a child is deselected when its family stops', () => {
+  const child = session('child', true, {parent: 'a'});
+  let state = receivedWorkspaces(initial('child'), workspaces(session('a', true, {children: [child]})));
+  state = receivedWorkspaces(state, workspaces(session('a', false, {children: [{...child, running: false}]})));
+  expect(state.selected).toBeNull();
+  expect(state.session).toBeNull();
+});
+
+test('pageTitle counts waiting sessions and names the session and workspace', () => {
   const state = receivedWorkspaces(initial('a'), workspaces(
-    session('a', true, [agent('l', {role: 'lead', attention: true}), agent('x', {attention: true})]),
-    session('b', false, [agent('m', {role: 'lead', attention: true})]),
+    session('a', true, {attention: true, children: [session('x', true, {parent: 'a', attention: true})]}),
+    session('b', false, {attention: true}),
   ));
   expect(pageTitle(state)).toBe('(2) Title a — repo — Hypercube');
   expect(pageTitle(initial())).toBe('Hypercube');

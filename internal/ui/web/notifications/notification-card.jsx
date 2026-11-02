@@ -31,7 +31,7 @@ export function NotificationCard({card}) {
           {card.kind === 'request' ? (
             <>
               <div class="notification-card-text">{card.item.text ?? ''}</div>
-              <AttentionForm agent={card.agent} item={card.item} />
+              <AttentionForm session={card.session.id} item={card.item} />
             </>
           ) : <div class={card.kind === 'reply' ? 'notification-card-text notification-card-reply' : 'notification-card-text'}>{card.text}</div>}
         </div>
@@ -40,7 +40,7 @@ export function NotificationCard({card}) {
           <vscode-toolbar-button icon="close" label="Close" title="Close" onClick={() => closeCard(store, card)} />
         </div>
       </div>
-      {card.session && <div class="notification-card-source">{[card.workspace, card.session.title, card.worker].filter(Boolean).join(' — ')}</div>}
+      {card.session && <div class="notification-card-source">{[card.workspace, card.parent?.title, card.session.title].filter(Boolean).join(' — ')}</div>}
     </div>
   );
 }

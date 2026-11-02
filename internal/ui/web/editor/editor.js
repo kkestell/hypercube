@@ -2,7 +2,7 @@
 // view's remembered scroll. Each tab is a file, by fileTabId. As in VS Code, a file opened with one click shows in the
 // preview tab, which the next file opened replaces until it is kept open.
 import {readOpenFile} from '../files/files.js';
-import {shownAgents} from '../sessions/selection.js';
+import {shownSession} from '../sessions/selection.js';
 import * as layout from './tab-layout.js';
 
 export const fileTabId = path => 'file:' + path;
@@ -84,7 +84,7 @@ export const resizeSplit = (state, splitId, ratio) =>
 // after the tab is forgotten.
 export function rememberScroll(state, sessionId, id, scroll) {
   if (state.session?.id !== sessionId) return state;
-  const kept = layout.findPane(state.session.tabs.root, id) || shownAgents(state).some(agent => agent.id === id);
+  const kept = layout.findPane(state.session.tabs.root, id) || shownSession(state)?.id === id;
   if (!kept) return state;
   return withSession(state, session => ({...session, scroll: {...session.scroll, [id]: scroll}}));
 }

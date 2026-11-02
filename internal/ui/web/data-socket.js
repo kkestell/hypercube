@@ -1,7 +1,7 @@
 // The /state socket. The server sends the workspaces and open requests, and
-// the transcripts of the session the page names in {select}. The page names
+// the transcript of the session the page names in {select}. The page names
 // its attached session when the socket opens and whenever it changes; after a
-// reconnect the server sends the transcripts whole again. A page reloads when
+// reconnect the server sends the transcript whole again. A page reloads when
 // the server serves a different browser build than the one it first saw.
 import {receivedRequests} from './notifications/notifications.js';
 import {receivedWorkspaces} from './sessions/selection.js';

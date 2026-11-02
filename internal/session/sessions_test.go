@@ -15,22 +15,23 @@ import (
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	f := newFixture(t)
-	s, lead, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
+	s, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
+	parent := s
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := f.storedSession(s.ID).Title; got != "Fix the parser" {
 		t.Errorf("title = %q", got)
 	}
-	if got := f.inputs(lead.ID); len(got) != 1 || got[0] != "\n  Fix the  parser \nand the lexer" {
+	if got := f.inputs(parent.ID); len(got) != 1 || got[0] != "\n  Fix the  parser \nand the lexer" {
 		t.Errorf("plugin inputs = %q", got)
 	}
 	f.until("the prompt in the transcript", func() bool {
-		items := f.transcript(lead.ID)
+		items := f.transcript(parent.ID)
 		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
 	})
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
-	s, lead, err = f.rt.Create(f.workspace.ID, "lead", "", png)
+	s, err = f.rt.Create(f.workspace.ID, "lead", "", png)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 		{" \n", nil},
 		{"", []harness.Image{{MIMEType: "image/png", Data: "bm90IGEgcG5n"}}},
 	} {
-		if _, _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
+		if _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
 			t.Errorf("Create accepted %q and %d images", c.text, len(c.images))
 		}
 	}
@@ -67,31 +68,31 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 
 func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
+	s := f.session()
 	if err := f.rt.Stop(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if a := f.agent(lead.ID); a.Activity != store.Exited || f.storedSession(s.ID).Running || len(f.log(lead.ID, "shutdown")) != 1 {
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || f.storedSession(s.ID).Running || len(f.log(s.ID, "shutdown")) != 1 {
 		t.Fatalf("after stop: %+v", a)
 	}
-	if err := f.rt.Input(lead.ID, "to a stopped agent"); err == nil {
+	if err := f.rt.Input(s.ID, "to a stopped agent"); err == nil {
 		t.Fatal("input reached a stopped agent")
 	}
-	f.queue("user", lead.ID, "queued while stopped")
+	f.queue("user", s.ID, "queued while stopped")
 	if err := f.rt.Start(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	f.until("the lead idle", func() bool { return f.agent(lead.ID).Activity == store.Idle })
-	start := f.log(lead.ID, "start")
-	if len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
+	f.until("the lead idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
+	start := f.log(s.ID, "start")
+	if len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
 		t.Fatalf("restart: %v awaiting=%v", start, f.storedSession(s.ID).AwaitingUser)
 	}
 	// A delivery attempt sends nothing until the user's prompt, which goes
 	// first; then the queue.
-	f.rt.Deliver(lead.ID)
-	f.input(lead.ID, "continue")
-	f.until("the held message", func() bool { return len(f.inputs(lead.ID)) == 3 && len(f.queued(lead.ID)) == 0 })
-	if got := f.inputs(lead.ID); got[1] != "continue" || !strings.Contains(got[2], "queued while stopped") {
+	f.rt.Deliver(s.ID)
+	f.input(s.ID, "continue")
+	f.until("the held message", func() bool { return len(f.inputs(s.ID)) == 3 && len(f.queued(s.ID)) == 0 })
+	if got := f.inputs(s.ID); got[1] != "continue" || !strings.Contains(got[2], "queued while stopped") {
 		t.Fatalf("inputs = %q", got)
 	}
 	if got := f.storedSession(s.ID); got.AwaitingUser || got.Title != "start" {
@@ -101,20 +102,20 @@ func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 
 func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
-	f.input(lead.ID, "!work")
-	f.until("a working lead", func() bool { return f.agent(lead.ID).Activity == store.Busy })
-	pid := f.log(lead.ID, "start")[0].Pid
+	s := f.session()
+	f.input(s.ID, "!work")
+	f.until("a working lead", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
+	pid := f.log(s.ID, "start")[0].Pid
 	f.rt.Shutdown()
 	// Shutdown saves the unfinished item, ends the process, and leaves the
 	// session marked running.
-	if a := f.agent(lead.ID); a.Activity != store.Exited || !f.storedSession(s.ID).Running {
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || !f.storedSession(s.ID).Running {
 		t.Fatalf("after shutdown: %+v", a)
 	}
-	if got := f.summary(lead.ID); got != "user:start|text:ack|user:!work|text:working" {
+	if got := f.summary(s.ID); got != "user:start|text:ack|user:!work|text:working" {
 		t.Fatalf("transcript = %q", got)
 	}
-	saved, err := f.rt.Transcript(lead.ID)
+	saved, err := f.rt.Transcript(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,15 +128,15 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	rt := f.newRuntime()
 	f.rt = rt
 	rt.Restore()
-	f.until("the restored lead", func() bool { return f.agent(lead.ID).Activity == store.Idle })
-	if start := f.log(lead.ID, "start"); len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
+	f.until("the restored lead", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
+	if start := f.log(s.ID, "start"); len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
 		t.Fatalf("restore: %v", start)
 	}
-	f.input(lead.ID, "continue")
+	f.input(s.ID, "continue")
 	f.until("a turn after restore", func() bool {
-		return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:working|user:continue|text:ack"
+		return f.summary(s.ID) == "user:start|text:ack|user:!work|text:working|user:continue|text:ack"
 	})
-	items, err := rt.Transcript(lead.ID)
+	items, err := rt.Transcript(s.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,24 +152,24 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 
 func TestDeletingASessionEndsItsAgents(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
-	worker := f.addWorker(lead, "w1", "")
-	f.input(worker.ID, "!child")
-	var child int
+	s := f.session()
+	child := f.child(s, "w1", "")
+	f.input(child.ID, "!child")
+	var childPID int
 	f.until("the worker's child", func() bool {
-		for _, e := range f.log(worker.ID, "child") {
-			child = e.Pid
+		for _, e := range f.log(child.ID, "child") {
+			childPID = e.Pid
 		}
-		return child != 0
+		return childPID != 0
 	})
 	if err := f.rt.Delete(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.agents(s.ID)) != 0 || len(f.log(lead.ID, "shutdown")) != 1 || len(f.log(worker.ID, "shutdown")) != 1 {
+	if len(f.family(s.ID)) != 0 || len(f.log(s.ID, "shutdown")) != 1 || len(f.log(child.ID, "shutdown")) != 1 {
 		t.Fatal("the session or its agents remain")
 	}
-	f.until("the child to end", func() bool { return syscall.Kill(child, 0) == syscall.ESRCH })
-	if _, err := os.Stat(worker.Dir); !os.IsNotExist(err) {
+	f.until("the child to end", func() bool { return syscall.Kill(childPID, 0) == syscall.ESRCH })
+	if _, err := os.Stat(child.Dir); !os.IsNotExist(err) {
 		t.Fatal("the worktree remains")
 	}
 }
@@ -176,7 +177,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 func TestShellsEndWithTheirSession(t *testing.T) {
 	f := newFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
-	s, _ := f.session()
+	s := f.session()
 	open := func() interface{ Done() <-chan struct{} } {
 		sh, err := f.rt.Shell(s.ID, 80, 24)
 		if err != nil {
@@ -206,7 +207,7 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 	if err := f.rt.Delete(s.ID); err != nil || !ended(sh) {
 		t.Fatalf("Delete left the shell running: %v", err)
 	}
-	s, _ = f.session()
+	s = f.session()
 	sh = open()
 	f.rt.Shutdown()
 	if !ended(sh) {
@@ -222,7 +223,7 @@ func TestWorkspaceAndSessionEdits(t *testing.T) {
 	if _, err := f.rt.AddWorkspace(filepath.Join(f.root, "missing")); err == nil {
 		t.Fatal("added a missing directory")
 	}
-	s, _ := f.session()
+	s := f.session()
 	if err := f.rt.Rename(s.ID, "  Changed  "); err != nil || f.storedSession(s.ID).Title != "Changed" {
 		t.Fatalf("rename: %v", err)
 	}
@@ -240,16 +241,16 @@ func TestWorkspaceAndSessionEdits(t *testing.T) {
 	}
 }
 
-// Delete refuses, changing nothing, while a worker's branch is unmerged or its
+// Delete refuses, changing nothing, while a child's branch is unmerged or its
 // worktree is dirty, and otherwise removes worktrees, branches, and the session.
 func TestDelete(t *testing.T) {
 	f := newFixture(t)
-	dir, branch := workspace.WorktreeDir(f.root, "s/w1"), workspace.WorkerBranch("s/w1")
+	dir, branch := workspace.WorktreeDir(f.root, "s", "w1"), workspace.ChildBranch("s", "w1")
 	if err := workspace.AddWorktree(f.root, dir, branch); err != nil {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
-	f.seed(store.Agent{ID: "b", Name: "w1", Dir: dir, Branch: branch}, store.Agent{ID: "c", Name: "w2", Dir: other})
+	f.seed(store.Session{ID: "b", Name: "w1", Dir: dir, Branch: branch}, store.Session{ID: "c", Name: "w2", Dir: other})
 
 	f.git(dir, "commit", "-q", "--allow-empty", "-m", "work")
 	if err := f.rt.Delete("s"); err == nil {
@@ -263,7 +264,7 @@ func TestDelete(t *testing.T) {
 	if err := f.rt.Delete("s"); err == nil {
 		t.Fatal("delete deleted a dirty worktree")
 	}
-	if n := len(f.agents("s")); n != 3 {
+	if n := len(f.family("s")); n != 3 {
 		t.Errorf("refused delete left %d agents", n)
 	}
 	if _, err := os.Stat(dir); err != nil {
@@ -276,7 +277,7 @@ func TestDelete(t *testing.T) {
 	if err := f.rt.Delete("s"); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(f.agents("s")); n != 0 {
+	if n := len(f.family("s")); n != 0 {
 		t.Errorf("delete left %d agents", n)
 	}
 	if _, err := os.Stat(dir); err == nil {
@@ -289,7 +290,7 @@ func TestDelete(t *testing.T) {
 
 func TestDeleteMissingCheckout(t *testing.T) {
 	f := newFixture(t)
-	f.seed(store.Agent{ID: "b", Name: "w", Dir: filepath.Join(f.root, ".hypercube/s/w"), Branch: "hypercube/s/w"})
+	f.seed(store.Session{ID: "b", Name: "w", Dir: filepath.Join(f.root, ".hypercube/s/w"), Branch: "hypercube/s/w"})
 	if err := os.RemoveAll(f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -309,18 +310,18 @@ func TestDeleteMissingCheckout(t *testing.T) {
 // plugin of it outlives the delete.
 func TestDeletingSessionCannotStart(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
-	f.input(lead.ID, "!linger")
+	s := f.session()
+	f.input(s.ID, "!linger")
 	deleted := make(chan error, 1)
 	go func() { deleted <- f.rt.Delete(s.ID) }()
-	f.until("the lead's shutdown", func() bool { return len(f.log(lead.ID, "shutdown")) == 1 })
+	f.until("the lead's shutdown", func() bool { return len(f.log(s.ID, "shutdown")) == 1 })
 	if err := f.rt.Start(s.ID); !errors.Is(err, errDeleting) {
 		t.Fatalf("start during delete: %v", err)
 	}
 	if err := <-deleted; err != nil {
 		t.Fatal(err)
 	}
-	if n := len(f.log(lead.ID, "start")); n != 1 {
+	if n := len(f.log(s.ID, "start")); n != 1 {
 		t.Fatalf("the lead started %d times", n)
 	}
 	f.rt.mu.Lock()

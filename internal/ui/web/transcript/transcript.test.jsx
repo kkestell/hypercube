@@ -17,7 +17,7 @@ function setup(items) {
   const store = createStore({workspaces: [], drafts: {}, errors: [], session: emptySession('s')});
   const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', agent: 'a', reset, items}));
   send(withSeq(items), true);
-  const root = mount(store, <Transcript agent="a" />);
+  const root = mount(store, <Transcript session={{id: "s"}} />);
   return {store, root, send: items => send(withSeq(items))};
 }
 let seq = 0;
@@ -70,7 +70,7 @@ test('an attention request offers its choices, waits while sending, and opens ag
   expect(buttons().map(b => b.textContent)).toEqual(['yes', 'no']);
   act(() => buttons()[0].click());
   const url = new URL(fetches.mock.calls[0][0], 'http://x/');
-  expect(Object.fromEntries(url.searchParams)).toEqual({action: 'answer', id: 'a', request: 'q', choice: 'yes'});
+  expect(Object.fromEntries(url.searchParams)).toEqual({action: 'answer', id: 's', request: 'q', choice: 'yes'});
   expect(buttons().every(b => b.hasAttribute('disabled'))).toBe(true);
   await act(async () => {
     answer(new Response('no longer open', {status: 409}));
@@ -178,4 +178,21 @@ test('prompts, text, and tool calls show their images, outside the call\'s detai
   expect(sources('.transcript-text')).toEqual(['data:image/gif;base64,R0lGODlh']);
   expect(sources('.tool-items-call')).toEqual(['data:image/png;base64,' + png]);
   expect(sources('.tool-items-call details')).toEqual([]);
+});
+
+test('mirrored requests name their sender and answer at its session ID; status rows name the sender', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
+  spies.push(fetches);
+  const {store, root} = setup([
+    {id: 'status', kind: 'status', from: 'child', text: 'Reading.', at: 1},
+    {id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', choices: ['yes']},
+    {id: 'message', kind: 'user', from: 'child', text: 'Result.'},
+  ]);
+  store.update(state => ({...state, workspaces: [{sessions: [{id: 's', children: [{id: 'child', parent: 's', title: 'Builder', children: []}]}]}]}));
+  expect(root.querySelector('.status-item-source').textContent).toBe('Builder');
+  expect(root.querySelector('.status-item [name="pulse"]')).not.toBeNull();
+  expect(root.querySelector('.attention-item-source').textContent).toBe('Builder');
+  expect(root.querySelector('.message-item-heading').textContent).toBe('From Builder');
+  await act(async () => root.querySelector('.attention-form vscode-button').click());
+  expect(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams.get('id')).toBe('child');
 });

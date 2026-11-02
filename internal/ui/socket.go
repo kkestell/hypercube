@@ -27,7 +27,6 @@ type stateMessage struct {
 type transcriptMessage struct {
 	Type    string                   `json:"type"`
 	Session string                   `json:"session"`
-	Agent   string                   `json:"agent"`
 	Reset   bool                     `json:"reset"`
 	Items   []session.TranscriptItem `json:"items"`
 }
@@ -49,7 +48,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	go readSelections(ctx, cancel, conn, selections)
 
 	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt, releaseView: func() {},
-		batch: map[string]map[string]session.TranscriptItem{}, stale: true}
+		batch: map[string]session.TranscriptItem{}, stale: true}
 	defer func() { d.releaseView() }()
 	if d.sendState() != nil {
 		return
@@ -99,8 +98,8 @@ type dataSocket struct {
 
 	selected    string
 	releaseView func()
-	// batch holds the selected session's changed items by agent and item ID.
-	batch map[string]map[string]session.TranscriptItem
+	// batch holds the selected session's changed items by item ID.
+	batch map[string]session.TranscriptItem
 }
 
 // sendState sends the view data and requests if they differ from the last
@@ -124,8 +123,7 @@ func (d *dataSocket) sendState() error {
 	return nil
 }
 
-// selectSession holds the session open for viewing and sends each of its
-// agents' whole transcript.
+// selectSession holds the session open for viewing and sends its whole transcript.
 func (d *dataSocket) selectSession(id string) error {
 	release := d.rt.ViewSession(id)
 	d.releaseView()
@@ -134,52 +132,36 @@ func (d *dataSocket) selectSession(id string) error {
 	if id == "" {
 		return nil
 	}
-	var agents []store.Agent
-	if err := d.db.Read(func(tx *store.Tx) error {
-		var err error
-		agents, err = tx.Agents(id)
-		return err
-	}); err != nil {
+	items, err := d.rt.Transcript(id)
+	if err != nil {
 		return err
 	}
-	for _, a := range agents {
-		items, err := d.rt.Transcript(a.ID)
-		if err != nil {
-			return err
-		}
-		if err := d.sendTranscript(a.ID, true, items); err != nil {
-			return err
-		}
-	}
-	return nil
+	return d.sendTranscript(true, items)
 }
 
 // add records a change for the next batch.
 func (d *dataSocket) add(change session.Change) {
 	switch {
-	case change.Agent == "":
+	case change.Session == "":
 		d.stale = true
 	case change.Session == d.selected:
-		if d.batch[change.Agent] == nil {
-			d.batch[change.Agent] = map[string]session.TranscriptItem{}
-		}
-		d.batch[change.Agent][change.Item.ID] = session.TranscriptItem{Item: change.Item, Seq: change.Seq}
+		d.batch[change.Item.ID] = session.TranscriptItem{Item: change.Item, Seq: change.Seq}
 	}
 }
 
-// flush sends the state if it changed, then each agent's batched items in
+// flush sends the state if it changed, then the batched items in
 // transcript order.
 func (d *dataSocket) flush() error {
 	if err := d.sendState(); err != nil {
 		return err
 	}
-	for agent, changed := range d.batch {
-		items := make([]session.TranscriptItem, 0, len(changed))
-		for _, item := range changed {
+	if len(d.batch) > 0 {
+		items := make([]session.TranscriptItem, 0, len(d.batch))
+		for _, item := range d.batch {
 			items = append(items, item)
 		}
 		slices.SortFunc(items, func(a, b session.TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
-		if err := d.sendTranscript(agent, false, items); err != nil {
+		if err := d.sendTranscript(false, items); err != nil {
 			return err
 		}
 	}
@@ -187,8 +169,8 @@ func (d *dataSocket) flush() error {
 	return nil
 }
 
-func (d *dataSocket) sendTranscript(agent string, reset bool, items []session.TranscriptItem) error {
-	data, err := json.Marshal(transcriptMessage{"transcript", d.selected, agent, reset, items})
+func (d *dataSocket) sendTranscript(reset bool, items []session.TranscriptItem) error {
+	data, err := json.Marshal(transcriptMessage{"transcript", d.selected, reset, items})
 	if err != nil {
 		return err
 	}
