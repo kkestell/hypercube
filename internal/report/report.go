@@ -71,6 +71,7 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 	} else {
 		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)
 		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message the other top-level sessions in this workspace by their IDs, and list_sessions lists the current ones.\n")
+		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
 	}
 	b.WriteString("Reach Hypercube sessions only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n", s.Dir, onBranch(s.Branch))
@@ -96,7 +97,7 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		if c.Ended {
 			ended = ", ended"
 		}
-		fmt.Fprintf(&b, "- %s: %s, %s%s%s\n", c.Name, c.Harness, c.Dir, onBranch(c.Branch), ended)
+		fmt.Fprintf(&b, "- %s (%s): %s, %s%s%s\n", c.Name, c.Title, c.Harness, c.Dir, onBranch(c.Branch), ended)
 	}
 	peers, err := Peers(tx, s.Workspace, s.ID)
 	if err != nil {

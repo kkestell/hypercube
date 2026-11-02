@@ -37,9 +37,14 @@ type setStatusArgs struct {
 
 type createSessionArgs struct {
 	Name    string `json:"name"`
+	Title   string `json:"title"`
 	Profile string `json:"profile"`
 	Dir     string `json:"dir,omitempty"`
 	Message string `json:"message,omitempty"`
+}
+
+type setTitleArgs struct {
+	Title string `json:"title"`
 }
 
 type endSessionArgs struct {
@@ -89,15 +94,24 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
 		return server
 	}
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "set_title",
+		Description: "Set your session's title: a short display title for the user. It does not change how sessions are addressed.",
+	}, result(func(a setTitleArgs) (string, error) {
+		if err := rt.Rename(self, a.Title); err != nil {
+			return "", err
+		}
+		return "Title set.", nil
+	}))
 	cfg, cfgErr := harness.LoadConfig()
 
 	createSchema, err := jsonschema.For[createSessionArgs](nil)
 	if err != nil {
 		panic(err)
 	}
-	createDescription := "Create a child session and launch its agent. Without dir, the child session gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
+	createDescription := "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Without dir, the child session gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
 	if w.NoGit {
-		createDescription = "Create a child session and launch its agent. Given dir, " + dirArg + ". " + profileArg
+		createDescription = "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Given dir, " + dirArg + ". " + profileArg
 		createSchema.Required = append(createSchema.Required, "dir")
 	}
 	for _, p := range cfg.ChildProfiles() {
@@ -284,7 +298,7 @@ func createSession(rt *session.Runtime, self string, cfg harness.Config, args cr
 	if err != nil {
 		return "", err
 	}
-	child, err := rt.CreateChild(self, args.Name, profile, args.Dir, args.Message)
+	child, err := rt.CreateChild(self, args.Name, args.Title, profile, args.Dir, args.Message)
 	if err != nil {
 		return "", err
 	}

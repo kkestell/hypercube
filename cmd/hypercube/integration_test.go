@@ -310,7 +310,7 @@ func (w *world) newSession(c client, workspace, profile string) store.Session {
 // child's plugin to start and receive the brief, if any.
 func (w *world) createChild(c client, parent store.Session, name, brief string) store.Session {
 	w.t.Helper()
-	args := map[string]string{"name": name, "profile": "worker"}
+	args := map[string]string{"name": name, "title": "Title", "profile": "worker"}
 	if brief != "" {
 		args["message"] = brief
 	}
@@ -556,7 +556,7 @@ func TestAppProcess(t *testing.T) {
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-		"params": map[string]any{"name": "create_session", "arguments": map[string]string{"name": "w1", "profile": "worker", "message": "brief"}}})
+		"params": map[string]any{"name": "create_session", "arguments": map[string]string{"name": "w1", "title": "Title", "profile": "worker", "message": "brief"}}})
 	bridge := exec.Command(binary, "mcp")
 	bridge.Env = append(os.Environ(), "HYPERCUBE_SESSION_ID="+parent.ID, "HYPERCUBE_URL="+c.base)
 	bridge.Stdin = bytes.NewReader(append(body, '\n'))

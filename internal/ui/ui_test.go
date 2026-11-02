@@ -528,7 +528,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 
 func (a *app) child(name string) store.Session {
 	a.t.Helper()
-	child, err := a.rt.CreateChild(a.session.ID, name, harness.Profile{Harness: "test", Model: "m", Effort: "low"}, ".", "")
+	child, err := a.rt.CreateChild(a.session.ID, name, "Title", harness.Profile{Harness: "test", Model: "m", Effort: "low"}, ".", "")
 	if err != nil {
 		a.t.Fatal(err)
 	}

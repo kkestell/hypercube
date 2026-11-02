@@ -18,6 +18,12 @@ func TestChildLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(child.Dir, ".git")); err != nil {
 		t.Fatal("no worktree:", err)
 	}
+	if child.Name != "w1" || child.Title != "Title" {
+		t.Fatalf("child name and title = %q, %q", child.Name, child.Title)
+	}
+	if _, err := f.rt.CreateChild(parent.ID, "w9", " ", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
+		t.Fatal("a child took a blank title")
+	}
 	// The brief is the child's first input.
 	f.until("the brief", func() bool { return len(f.queued(child.ID)) == 0 && len(f.inputs(child.ID)) == 1 })
 	if got := f.inputs(child.ID)[0]; !strings.Contains(got, "the brief") || !strings.Contains(got, parent.ID) {
@@ -30,7 +36,7 @@ func TestChildLifecycle(t *testing.T) {
 	if start := f.log(child.ID, "start"); start[0].Dir != child.Dir {
 		t.Fatalf("child start = %v", start)
 	}
-	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
+	if _, err := f.rt.CreateChild(parent.ID, "w1", "Title", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
 		t.Fatal("a second child took the name")
 	}
 	// A dirty worktree keeps its child running.
@@ -52,7 +58,7 @@ func TestChildLifecycle(t *testing.T) {
 		t.Fatal("the child, its worktree, or its process remains")
 	}
 	// A child that cannot start leaves nothing behind.
-	if _, err := f.rt.CreateChild(parent.ID, "w2", harness.Profile{Spec: harness.Spec{Harness: "missing"}}, "", ""); err == nil || !strings.Contains(err.Error(), "hypercube-harness-missing") {
+	if _, err := f.rt.CreateChild(parent.ID, "w2", "Title", harness.Profile{Spec: harness.Spec{Harness: "missing"}}, "", ""); err == nil || !strings.Contains(err.Error(), "hypercube-harness-missing") {
 		t.Fatalf("child with no plugin: %v", err)
 	}
 	if len(f.family(parent.ID)) != 2 {
@@ -64,7 +70,7 @@ func TestChildLifecycle(t *testing.T) {
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.CreateChild(parent.ID, "w3", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil {
+	if _, err := f.rt.CreateChild(parent.ID, "w3", "Title", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil {
 		t.Fatal("a stopped session took a child")
 	}
 }
@@ -138,11 +144,11 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	profile := harness.Profile{Harness: "test", Model: "m", Effort: "low"}
-	direct, err := f.rt.CreateChild(parent.ID, "direct", profile, ".", "")
+	direct, err := f.rt.CreateChild(parent.ID, "direct", "Title", profile, ".", "")
 	if err != nil || direct.Dir != f.root || direct.Branch != "" {
 		t.Fatalf("direct child=%+v,%v", direct, err)
 	}
-	if _, err := f.rt.CreateChild(direct.ID, "nested", profile, ".", ""); err == nil {
+	if _, err := f.rt.CreateChild(direct.ID, "nested", "Title", profile, ".", ""); err == nil {
 		t.Fatal("child created a child")
 	}
 	for _, action := range []func(string) error{f.rt.Start, f.rt.Stop, f.rt.Delete} {
@@ -158,10 +164,10 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.CreateChild(top.ID, "missing-dir", profile, "", ""); err == nil || !strings.Contains(err.Error(), "dir is required") {
+	if _, err := f.rt.CreateChild(top.ID, "missing-dir", "Title", profile, "", ""); err == nil || !strings.Contains(err.Error(), "dir is required") {
 		t.Fatalf("non-Git child: %v", err)
 	}
-	child, err := f.rt.CreateChild(top.ID, "direct", profile, ".", "")
+	child, err := f.rt.CreateChild(top.ID, "direct", "Title", profile, ".", "")
 	if err != nil || child.Dir != outside.Path || child.Branch != "" {
 		t.Fatalf("non-Git child=%+v,%v", child, err)
 	}
@@ -187,7 +193,7 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	if _, _, err := f.rt.SendMessage(parent.ID, child.Name, "too late"); err == nil {
 		t.Fatal("messaged ended child")
 	}
-	if _, err := f.rt.CreateChild(parent.ID, child.Name, harness.Profile{Harness: "test"}, ".", ""); err == nil || !strings.Contains(err.Error(), "choose another") {
+	if _, err := f.rt.CreateChild(parent.ID, child.Name, "Title", harness.Profile{Harness: "test"}, ".", ""); err == nil || !strings.Contains(err.Error(), "choose another") {
 		t.Fatalf("reused child name: %v", err)
 	}
 	if err := f.rt.Stop(parent.ID); err != nil {

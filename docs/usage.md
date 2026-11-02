@@ -11,9 +11,9 @@ starts or stops its children too.
 
 Each session has a random ID, such as `a3f9a2c1`, and a title. A top-level
 session is titled with the first line of its first prompt, cut to 200 characters
-("Image" for a prompt of only images). A child's title starts as its name. You
-can rename any title; later prompts leave it alone. A child's name stays fixed
-and cannot be reused among that parent's children, including ended children.
+("Image" for a prompt of only images) until its agent sets a title. An agent
+gives each child a title when it creates the child. You can rename any title;
+later prompts leave it alone. A child's name stays fixed and cannot be reused among that parent's children, including ended children.
 
 A parent addresses its children by name, and other top-level sessions in the
 workspace by ID. A child can message only its parent, by ID. `list_sessions`

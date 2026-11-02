@@ -157,7 +157,7 @@ func TestTools(t *testing.T) {
 			}
 		}
 		create := schemaOf(t, list["create_session"])
-		want := []any{"name", "profile"}
+		want := []any{"name", "title", "profile"}
 		if noGit {
 			want = append(want, "dir")
 		}
@@ -263,12 +263,14 @@ func TestCreateSessionRefusals(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
-		{"name": "w1", "profile": "sol"},
-		{"name": "w1", "dir": "."},
-		{"name": "W 1", "profile": "sol", "dir": "."},
-		{"name": "w1", "profile": "nope", "dir": "."},
-		{"name": "w1", "profile": "opus", "dir": "."},
+		{"name": "w1", "title": "One", "profile": "sol"},
+		{"name": "w1", "title": "One", "dir": "."},
+		{"name": "W 1", "title": "One", "profile": "sol", "dir": "."},
+		{"name": "w1", "title": "One", "profile": "nope", "dir": "."},
+		{"name": "w1", "title": "One", "profile": "opus", "dir": "."},
 		{"name": "w1", "profile": "sol", "dir": "."},
+		{"name": "w1", "title": "  ", "profile": "sol", "dir": "."},
+		{"name": "w1", "title": "One", "profile": "sol", "dir": "."},
 	} {
 		if text, failed := callTool(t, parent, "create_session", args); !failed {
 			t.Errorf("create_session(%v) = %q", args, text)
@@ -298,12 +300,34 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
-	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
+	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "title": "One", "profile": "sol", "dir": "missing"})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
 		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}
 	if list := children(t, db, "session-1"); len(list) != 0 {
 		t.Errorf("after create_session: %+v", list)
+	}
+}
+
+// set_title changes the caller's display title and nothing else.
+func TestSetTitle(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	parent := connect(t, serve(t, db, rt).URL, "session-1")
+	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": "  Fix the parser "}); failed {
+		t.Fatal(text)
+	}
+	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": " "}); !failed {
+		t.Errorf("set_title accepted a blank title: %q", text)
+	}
+	change(t, db, func(tx *store.Tx) error {
+		s, err := tx.Session("session-1")
+		if s.Title != "Fix the parser" {
+			t.Errorf("title = %q", s.Title)
+		}
+		return err
+	})
+	if tools(t, connect(t, serve(t, db, rt).URL, "b"))["set_title"] != nil {
+		t.Error("a child can set its title")
 	}
 }
 
@@ -333,7 +357,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 4 || parentTools["set_status"] != nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 5 || parentTools["set_status"] != nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	listed, failed := callTool(t, parent, "list_sessions", nil)

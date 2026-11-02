@@ -15,9 +15,13 @@ import (
 var childName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // CreateChild launches a child in a new worktree, or directly in dir.
-func (r *Runtime) CreateChild(parentID, name string, profile harness.Profile, dir, message string) (store.Session, error) {
+func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Profile, dir, message string) (store.Session, error) {
 	if !childName.MatchString(name) {
 		return store.Session{}, errors.New("name must be lowercase letters, digits, and hyphens")
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return store.Session{}, errors.New("a session needs a title")
 	}
 	var parent store.Session
 	if err := r.db.Read(func(tx *store.Tx) error { var err error; parent, err = tx.Session(parentID); return err }); err != nil {
@@ -26,7 +30,7 @@ func (r *Runtime) CreateChild(parentID, name string, profile harness.Profile, di
 	if parent.Parent != "" {
 		return store.Session{}, errors.New("only a top-level session can do this")
 	}
-	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: name,
+	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
 		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
 	r.mu.Lock()
 	if r.live[parentID] == nil {

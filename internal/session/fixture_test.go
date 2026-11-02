@@ -125,7 +125,7 @@ func (f *fixture) child(parent store.Session, name, message string) store.Sessio
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	child, err := f.rt.CreateChild(parent.ID, name, profile, "", message)
+	child, err := f.rt.CreateChild(parent.ID, name, "Title", profile, "", message)
 	if err != nil {
 		f.t.Fatal(err)
 	}

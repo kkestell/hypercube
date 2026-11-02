@@ -35,7 +35,7 @@ func open(t *testing.T, sessions ...store.Session) *store.DB {
 }
 
 func TestInstructions(t *testing.T) {
-	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "builder", Harness: "test", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
+	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "Build it", Harness: "test", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
 	profiles := []harness.Profile{{Name: "planner", Role: "plan", Description: "design", Spec: harness.Spec{Harness: "test", Model: "m", Effort: "low"}}}
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
@@ -48,7 +48,7 @@ func TestInstructions(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, want := range []string{"Hypercube session p", "Children:", "builder: test", "ended", "q (Fix)", "planner (plan; test, m, low): design", "create_session", "end_session"} {
+		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test", "set_title", "ended", "q (Fix)", "planner (plan; test, m, low): design", "create_session", "end_session"} {
 			if !strings.Contains(parentText, want) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}

@@ -57,7 +57,7 @@ func TestIdleSessionStopsAndResumes(t *testing.T) {
 func TestBusyChildKeepsSessionRunning(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
-	child, err := f.rt.CreateChild(s.ID, "worker", harness.Profile{Harness: "test", Model: "m"}, ".", "")
+	child, err := f.rt.CreateChild(s.ID, "worker", "Title", harness.Profile{Harness: "test", Model: "m"}, ".", "")
 	if err != nil {
 		t.Fatal(err)
 	}
