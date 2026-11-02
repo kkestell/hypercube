@@ -349,9 +349,21 @@ func TestEndSessionStoppedSession(t *testing.T) {
 }
 
 func TestSessionBoundaries(t *testing.T) {
-	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	dir := t.TempDir()
+	db, rt := family(t, false, dir, t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
-		for _, s := range []store.Session{{ID: "peer", Workspace: "w", Title: "Fix parser"}, {ID: "peer-child", Workspace: "w", Parent: "peer", Name: "child"}} {
+		if err := tx.AddWorkspace(store.Workspace{ID: "far", Path: "/other"}); err != nil {
+			return err
+		}
+		for _, s := range []store.Session{
+			{ID: "peer", Workspace: "w", Title: "Fix parser", Running: true},
+			{ID: "peer-child", Workspace: "w", Parent: "peer", Name: "child"},
+			{ID: "far", Workspace: "far", Running: true},
+			{ID: "far-child", Workspace: "far", Parent: "far", Name: "child"},
+			{ID: "stopped", Workspace: "far"},
+			{ID: "stopped-child", Workspace: "far", Parent: "stopped", Name: "child"},
+			{ID: "ended", Workspace: "w", Parent: "session-1", Name: "ended", Ended: true},
+		} {
 			if err := tx.AddSession(s); err != nil {
 				return err
 			}
@@ -365,23 +377,67 @@ func TestSessionBoundaries(t *testing.T) {
 	if len(parentTools) != 5 || parentTools["set_status"] != nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
-	listed, failed := callTool(t, parent, "list_sessions", nil)
-	if failed || !strings.Contains(listed, `"to": "w1"`) || !strings.Contains(listed, `"to": "peer"`) || strings.Contains(listed, "peer-child") {
-		t.Fatal(listed)
+	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
+		t.Error("tool descriptions do not describe messaging scope")
 	}
-	listed, failed = callTool(t, child, "list_sessions", nil)
-	if failed || !strings.Contains(listed, `"to": "session-1"`) || strings.Contains(listed, "peer") {
-		t.Fatal(listed)
+	checkList := func(client *mcp.ClientSession, want map[string][2]string) {
+		t.Helper()
+		listed, failed := callTool(t, client, "list_sessions", nil)
+		var entries []map[string]any
+		if err := json.Unmarshal([]byte(listed), &entries); failed || err != nil {
+			t.Fatalf("list_sessions: %s %v", listed, err)
+		}
+		if len(entries) != len(want) {
+			t.Fatalf("list_sessions: %s, want %v", listed, want)
+		}
+		for _, e := range entries {
+			identity, ok := want[e["to"].(string)]
+			if !ok || e["workspace"] != identity[0] || e["parent"] != identity[1] {
+				t.Errorf("unexpected recipient: %v", e)
+			}
+			for _, field := range []string{"to", "title", "harness", "activity", "directory", "branch", "workspace", "parent"} {
+				if _, ok := e[field]; !ok {
+					t.Errorf("missing %s: %v", field, e)
+				}
+			}
+			if _, ok := e["ended"]; ok {
+				t.Error("redundant ended field:", e)
+			}
+		}
 	}
-	if text, failed := callTool(t, child, "send_message", map[string]any{"to": "peer", "text": "no"}); !failed {
-		t.Fatal(text)
+	checkList(parent, map[string][2]string{"w1": {dir, "session-1"}, "peer": {dir, ""}, "far": {"/other", ""}})
+	checkList(child, map[string][2]string{"session-1": {dir, ""}})
+	checkList(connect(t, url, "stopped-child"), map[string][2]string{})
+	for _, to := range []string{"peer", "far", "peer-child", "far-child", "w1"} {
+		if text, failed := callTool(t, child, "send_message", map[string]any{"to": to, "text": "no"}); !failed {
+			t.Fatal(text)
+		}
 	}
-	if text, failed := callTool(t, parent, "send_message", map[string]any{"to": "peer", "text": "yes"}); failed || !strings.Contains(text, "stopped") {
-		t.Fatal(text)
+	for _, to := range []string{"peer-child", "far-child", "stopped", "ended"} {
+		if text, failed := callTool(t, parent, "send_message", map[string]any{"to": to, "text": "no"}); !failed {
+			t.Fatal(text)
+		}
+	}
+	for _, to := range []string{"peer", "far"} {
+		if text, failed := callTool(t, parent, "send_message", map[string]any{"to": to, "text": "yes"}); failed || text != "Message queued for "+to+"." {
+			t.Fatal(text)
+		}
 	}
 	if text, failed := callTool(t, child, "send_message", map[string]any{"to": "session-1", "text": "yes"}); failed {
 		t.Fatal(text)
 	}
+	change(t, db, func(tx *store.Tx) error {
+		for _, id := range []string{"peer-child", "far-child", "stopped", "ended"} {
+			messages, err := tx.Queued(id)
+			if err != nil {
+				return err
+			}
+			if len(messages) != 0 {
+				t.Errorf("refused messages queued for %s: %+v", id, messages)
+			}
+		}
+		return nil
+	})
 	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " Reading\nthe code. "}); failed {
 		t.Fatal(text)
 	}
@@ -392,6 +448,15 @@ func TestSessionBoundaries(t *testing.T) {
 	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " "}); !failed {
 		t.Fatal(text)
 	}
+	change(t, db, func(tx *store.Tx) error {
+		s, err := tx.Session("session-1")
+		if err != nil {
+			return err
+		}
+		s.Running = false
+		return tx.SaveSession(s)
+	})
+	checkList(child, map[string][2]string{})
 }
 
 func TestBridgeWaitsForRestartingApp(t *testing.T) {

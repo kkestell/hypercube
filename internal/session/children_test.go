@@ -190,7 +190,7 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	if !saved.Ended || saved.Dir != child.Dir || saved.Branch != child.Branch || saved.Activity != store.Exited || len(f.transcript(child.ID)) != 2 || len(f.queued(child.ID)) != 0 {
 		t.Fatalf("ended child=%+v", saved)
 	}
-	if _, _, err := f.rt.SendMessage(parent.ID, child.Name, "too late"); err == nil {
+	if _, err := f.rt.SendMessage(parent.ID, child.Name, "too late"); err == nil {
 		t.Fatal("messaged ended child")
 	}
 	if _, err := f.rt.CreateChild(parent.ID, child.Name, "Title", harness.Profile{Harness: "test"}, ".", ""); err == nil || !strings.Contains(err.Error(), "choose another") {

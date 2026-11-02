@@ -35,9 +35,13 @@ Child worktrees live inside the checkout so harnesses can inherit its folder
 trust. Parent session IDs qualify their paths and branches to avoid collisions.
 
 Agents are trusted local processes with the user's credentials. A top-level
-session can message its children and other top-level sessions in its workspace;
-a child can message only its parent. This prevents accidental cross-session
-operations. It does not isolate agents from the filesystem or shell tools.
+session can message its own children by name and any other running top-level
+session across all workspaces in the app by ID; a child can message only its
+parent, by ID. Stopped and ended recipients are refused. `list_sessions` lists
+only running addressable recipients, with workspace paths and parent IDs.
+Top-level sessions in the same workspace share its checkout, files, Git index,
+and branch. Messaging scope does not isolate agents from the filesystem or
+shell tools.
 
 ## Persistence and concurrency
 

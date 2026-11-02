@@ -230,6 +230,16 @@ func (a asAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 // tool calls an MCP tool as the agent through the app's route and returns its text.
 func (c client) tool(agent, name string, args map[string]string) string {
 	c.t.Helper()
+	text, failed := c.callTool(agent, name, args)
+	if failed {
+		c.t.Fatalf("MCP %s: %s", name, text)
+	}
+	return text
+}
+
+// callTool also returns tool refusals so tests can check failed operations.
+func (c client) callTool(agent, name string, args map[string]string) (string, bool) {
+	c.t.Helper()
 	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(c.t.Context(), &sdk.StreamableClientTransport{
 		Endpoint:             c.base + "/mcp",
 		HTTPClient:           &http.Client{Transport: asAgent(agent)},
@@ -243,11 +253,7 @@ func (c client) tool(agent, name string, args map[string]string) string {
 	if err != nil {
 		c.t.Fatalf("MCP %s: %v", name, err)
 	}
-	text := res.Content[0].(*sdk.TextContent).Text
-	if res.IsError {
-		c.t.Fatalf("MCP %s: %s", name, text)
-	}
-	return text
+	return res.Content[0].(*sdk.TextContent).Text, res.IsError
 }
 
 type shownWorkspace struct {
@@ -395,6 +401,61 @@ func TestSessionsAreIsolated(t *testing.T) {
 	if w.got(child.ID, "to my child") {
 		t.Fatal("a message crossed to another session's child")
 	}
+}
+
+func TestMessagesAcrossWorkspaces(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside, err := app.rt.AddWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := w.newSession(c, ws.ID, "first")
+	peer := w.newSession(c, outside.ID, "second")
+	child := w.createChild(c, parent, "worker", "")
+	c.tool(peer.ID, "create_session", map[string]string{"name": "worker", "title": "Other child", "profile": "worker", "dir": "."})
+	foreign := w.family(peer.ID)[1]
+	if listed := c.tool(parent.ID, "list_sessions", nil); !strings.Contains(listed, peer.ID) || !strings.Contains(listed, outside.Path) || strings.Contains(listed, foreign.ID) {
+		t.Fatal(listed)
+	}
+	c.tool(parent.ID, "send_message", map[string]string{"to": peer.ID, "text": "across to peer"})
+	c.tool(peer.ID, "send_message", map[string]string{"to": parent.ID, "text": "back to parent"})
+	w.until("cross-workspace messages", func() bool {
+		return w.got(peer.ID, "across to peer") && w.got(parent.ID, "back to parent")
+	})
+	if !w.got(parent.ID, fmt.Sprintf("Message from %s (%q, workspace %s):", peer.ID, peer.Title, outside.Path)) {
+		t.Fatal("peer message missed sender title or workspace")
+	}
+	for _, pair := range [][2]string{{parent.ID, foreign.ID}, {peer.ID, child.ID}, {child.ID, peer.ID}, {child.ID, foreign.ID}, {foreign.ID, parent.ID}, {foreign.ID, child.ID}} {
+		if text, failed := c.callTool(pair[0], "send_message", map[string]string{"to": pair[1], "text": "forbidden"}); !failed || !strings.Contains(text, "not found") {
+			t.Fatalf("out-of-scope message %v: %s", pair, text)
+		}
+	}
+	c.sessionAction("stop", peer.ID)
+	if listed := c.tool(parent.ID, "list_sessions", nil); strings.Contains(listed, peer.ID) {
+		t.Fatal("stopped peer still listed:", listed)
+	}
+	if text, failed := c.callTool(parent.ID, "send_message", map[string]string{"to": peer.ID, "text": "stopped"}); !failed || !strings.Contains(text, "stopped session") {
+		t.Fatalf("stopped recipient: %s", text)
+	}
+	w.read(func(tx *store.Tx) error {
+		for _, id := range []string{parent.ID, peer.ID, child.ID, foreign.ID} {
+			messages, err := tx.Queued(id)
+			if err != nil {
+				return err
+			}
+			for _, message := range messages {
+				if message.Text == "forbidden" || message.Text == "stopped" {
+					t.Errorf("refused message queued: %+v", message)
+				}
+			}
+		}
+		return nil
+	})
 }
 
 func TestRoutesRefuseBadRequests(t *testing.T) {
