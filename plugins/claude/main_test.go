@@ -42,7 +42,6 @@ func newClaude() *harnessUnderTest {
 	h.claude = &claude{
 		stdin:  h.sent,
 		blocks: map[string]int{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{},
-		requests: map[string]*request{},
 	}
 	h.emit = func(ev harness.Event) { h.events = append(h.events, ev) }
 	return h

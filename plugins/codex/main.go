@@ -64,11 +64,11 @@ type agent struct {
 	thread   string
 	turn     string                  // the main turn in progress
 	ended    string                  // the last main turn that completed
-	finished map[string]bool         // items that have completed
+	finished map[string]bool         // items that have completed in this turn or the last
 	open     map[string]harness.Item // streamed items that have not completed
 	running  map[string]harness.Item // tool items that have not completed
 	children map[string]string       // subagent thread to the item that started it
-	requests map[string]*request     // open attention items, by item ID
+	requests plugin.Requests[request]
 	errs     plugin.Errors
 }
 
@@ -81,7 +81,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	}
 	ag := &agent{
 		proc: p, emit: emit, finished: map[string]bool{},
-		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]string{}, requests: map[string]*request{},
+		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]string{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)

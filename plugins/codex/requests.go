@@ -41,9 +41,8 @@ const (
 type request struct {
 	id      json.RawMessage
 	method  string
-	items   []harness.Item
+	items   []harness.Item // the questions, before ag.requests tracks them
 	answers []string
-	given   int
 
 	declinable  bool            // an approval that lets the user decline
 	permissions json.RawMessage // the permissions asked for
@@ -87,8 +86,8 @@ func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 	for i := range r.items {
 		r.items[i].ID = fmt.Sprintf("request:%s/%d", strings.Trim(string(m.ID), `"`), i)
 		r.items[i].Kind = harness.KindAttention
-		ag.requests[r.items[i].ID] = r
 	}
+	ag.requests.Add(r, r.items)
 	ev.Items = append(ev.Items, r.items...)
 }
 
@@ -383,20 +382,20 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 func (ag *agent) answer(item, choice, text string) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	r := ag.requests[item]
-	if r == nil {
+	open, ok := ag.requests.Get(item)
+	if !ok {
 		return fmt.Errorf("request %s is not open", item)
 	}
-	i := slices.IndexFunc(r.items, func(it harness.Item) bool { return it.ID == item })
+	r, i := open.Request, open.Index
 	answer := choice
 	switch {
 	case choice != "":
-		if !slices.Contains(r.items[i].Choices, choice) {
+		if !slices.Contains(open.Item.Choices, choice) {
 			return fmt.Errorf("unknown choice %q", choice)
 		}
 	case text == "":
 		return errors.New("the answer is empty")
-	case !r.items[i].Free:
+	case !open.Item.Free:
 		return errors.New("the question needs one of its choices")
 	default:
 		answer = text
@@ -408,7 +407,7 @@ func (ag *agent) answer(item, choice, text string) error {
 		}
 	}
 	r.answers[i] = answer
-	if r.given+1 == len(r.items) {
+	if open.Last {
 		response, err := r.response()
 		if err != nil {
 			return err
@@ -417,34 +416,18 @@ func (ag *agent) answer(item, choice, text string) error {
 			return err
 		}
 	}
-	r.given++
-	done := r.items[i]
-	done.Done, done.Answer = true, answer
-	delete(ag.requests, item)
-	ag.emit(harness.Event{Items: []harness.Item{done}})
+	ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, answer)}})
 	return nil
 }
 
 // closeRequests finishes the items of the requests that match, which nobody
 // will answer. With refuse, codex is told the user gave up.
 func (ag *agent) closeRequests(match func(*request) bool, refuse bool) []harness.Item {
-	var items []harness.Item
-	closed := map[*request]bool{}
-	for id, r := range ag.requests {
-		if !match(r) {
-			continue
-		}
-		if refuse && !closed[r] {
+	items, closed := ag.requests.Close(match)
+	if refuse {
+		for _, r := range closed {
 			_ = ag.rpc.Respond(r.id, r.refusal())
 		}
-		closed[r] = true
-		for _, it := range r.items {
-			if it.ID == id {
-				it.Done = true
-				items = append(items, it)
-			}
-		}
-		delete(ag.requests, id)
 	}
 	return items
 }

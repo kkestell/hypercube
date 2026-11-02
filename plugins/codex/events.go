@@ -234,12 +234,14 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	}
 }
 
-// startTurn marks a main turn as running. ag.mu is held.
+// startTurn marks a main turn as running, and forgets the items of earlier
+// turns, which codex does not report again. ag.mu is held.
 func (ag *agent) startTurn(ev *harness.Event, id string) {
 	if id == "" || id == ag.turn || id == ag.ended {
 		return
 	}
 	ag.turn = id
+	clear(ag.finished)
 	ev.State = harness.Working
 }
 
@@ -330,15 +332,21 @@ func (ag *agent) item(ev *harness.Event, parent string, it threadItem, completed
 // the final text; an empty one that never streamed, and has no images, is not
 // shown.
 func (ag *agent) complete(ev *harness.Event, item harness.Item) {
-	_, streamed := ag.open[item.ID]
-	delete(ag.open, item.ID)
-	delete(ag.running, item.ID)
-	ag.finished[item.ID] = true
+	streamed := ag.finish(item.ID)
 	if item.Kind != harness.KindTool && item.Text == "" && len(item.Images) == 0 && !streamed {
 		return
 	}
 	item.Done = true
 	ev.Items = append(ev.Items, item)
+}
+
+// finish records that an item has completed, and reports whether it streamed.
+func (ag *agent) finish(id string) (streamed bool) {
+	_, streamed = ag.open[id]
+	delete(ag.open, id)
+	delete(ag.running, id)
+	ag.finished[id] = true
+	return streamed
 }
 
 // generatedImage shows an image Codex generated: the file it saved, else the
@@ -354,10 +362,10 @@ func (ag *agent) generatedImage(ev *harness.Event, parent string, it threadItem)
 	case ok:
 		ag.complete(ev, harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindText, Images: []harness.Image{img}})
 	case it.Status == "failed" || len(it.Failure) > 0 && string(it.Failure) != "null":
-		ag.complete(ev, harness.Item{ID: it.ID})
+		ag.finish(it.ID)
 		ag.fail(ev, "Image generation failed.")
 	default:
-		ag.complete(ev, harness.Item{ID: it.ID})
+		ag.finish(it.ID)
 	}
 }
 
@@ -420,7 +428,10 @@ func (ag *agent) tool(ev *harness.Event, parent string, it threadItem, completed
 		item.Failed = it.Status == "failed"
 	}
 	if input != nil {
-		item.Input = json.RawMessage(plugin.JSONString(input))
+		var err error
+		if item.Input, err = json.Marshal(input); err != nil {
+			ag.fail(ev, "Codex sent a "+it.Type+" item that Hypercube cannot show: "+err.Error())
+		}
 	}
 	if it.Status == "declined" && item.Output == "" {
 		item.Output = "Declined."
