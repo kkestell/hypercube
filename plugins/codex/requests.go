@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,20 +19,58 @@ const (
 	deny         = "Deny"
 )
 
+// Choices for an elicitation that only carries a message.
+const (
+	accept  = "Accept"
+	decline = "Decline"
+)
+
+// The server requests that ask the user.
+const (
+	methodCommand     = "item/commandExecution/requestApproval"
+	methodFile        = "item/fileChange/requestApproval"
+	methodPermissions = "item/permissions/requestApproval"
+	methodQuestions   = "item/tool/requestUserInput"
+	methodElicitation = "mcpServer/elicitation/request"
+)
+
+// request is a server request waiting for the user, with one attention item
+// per question. answers holds the answer to each item. Once every item has one,
+// response turns them into the reply to codex; refusal is the reply that gives
+// up. The other fields are what a kind of request needs to build its response.
+type request struct {
+	id      json.RawMessage
+	method  string
+	items   []harness.Item
+	answers []string
+	given   int
+
+	declinable  bool            // an approval that lets the user decline
+	permissions json.RawMessage // the permissions asked for
+	questionIDs []string        // the ID of each question, by item
+	form        []formField     // the fields of a form, by item; nil without one
+}
+
+// formField is a field of an elicitation's form.
+type formField struct {
+	key   string
+	field plugin.Field
+}
+
 // serverRequest turns a request from codex into attention items. The ones
 // codex's automatic reviewer settles never arrive.
 func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 	var build func(json.RawMessage) (*request, error)
 	switch m.Method {
-	case "item/commandExecution/requestApproval":
+	case methodCommand:
 		build = commandRequest
-	case "item/fileChange/requestApproval":
+	case methodFile:
 		build = fileRequest
-	case "item/permissions/requestApproval":
+	case methodPermissions:
 		build = permissionsRequest
-	case "item/tool/requestUserInput":
+	case methodQuestions:
 		build = questionsRequest
-	case "mcpServer/elicitation/request":
+	case methodElicitation:
 		build = elicitationRequest
 	default:
 		_ = ag.rpc.RespondError(m.ID, -32601, "method not found")
@@ -45,8 +82,8 @@ func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 		ag.fail(ev, "Codex asked for something Hypercube cannot show: "+err.Error())
 		return
 	}
-	r.id = m.ID
-	r.values = make([]any, len(r.items))
+	r.id, r.method = m.ID, m.Method
+	r.answers = make([]string, len(r.items))
 	for i := range r.items {
 		r.items[i].ID = fmt.Sprintf("request:%s/%d", strings.Trim(string(m.ID), `"`), i)
 		r.items[i].Kind = harness.KindAttention
@@ -55,19 +92,39 @@ func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 	ev.Items = append(ev.Items, r.items...)
 }
 
-// approval asks for one of the choices; reply maps the choice to the response.
-func approval(text string, choices []string, reply func(choice string) any, refuse any) *request {
-	return &request{
-		items:  []harness.Item{{Text: text, Choices: choices}},
-		reply:  func(values []any) any { return reply(values[0].(string)) },
-		refuse: refuse,
+// response is the reply to codex once every item has an answer.
+func (r *request) response() (any, error) {
+	switch r.method {
+	case methodCommand, methodFile:
+		return approvalResponse(r.answers[0], r.declinable), nil
+	case methodPermissions:
+		return permissionsResponse(r.answers[0], r.permissions), nil
+	case methodQuestions:
+		return questionsResponse(r.questionIDs, r.answers), nil
+	default:
+		return elicitationResponse(r.form, r.answers)
 	}
 }
 
-// decisions offers the approval choices that codex accepts. A request lists
-// its available decisions; one that does not accepts them all. Codex offers no
-// decline when only cancelling is possible, so Deny cancels then.
-func decisions(available []json.RawMessage) ([]string, func(string) any) {
+// refusal is the reply that tells codex the user gave up.
+func (r *request) refusal() any {
+	switch r.method {
+	case methodPermissions:
+		return map[string]any{"permissions": map[string]any{}}
+	case methodQuestions:
+		return map[string]any{"answers": map[string]any{}}
+	case methodElicitation:
+		return map[string]any{"action": "cancel"}
+	default:
+		return map[string]any{"decision": "cancel"}
+	}
+}
+
+// decisions offers the approval choices that codex accepts, and reports
+// whether the user may decline. A request lists its available decisions; one
+// that does not accepts them all. Codex offers no decline when only cancelling
+// is possible, so Deny cancels then.
+func decisions(available []json.RawMessage) (choices []string, declinable bool) {
 	names := map[string]bool{}
 	for _, raw := range available {
 		var name string
@@ -76,22 +133,77 @@ func decisions(available []json.RawMessage) ([]string, func(string) any) {
 		}
 	}
 	has := func(name string) bool { return len(available) == 0 || names[name] }
-	choices := []string{allow}
+	choices = []string{allow}
 	if has("acceptForSession") {
 		choices = append(choices, allowSession)
 	}
-	choices = append(choices, deny)
-	return choices, func(choice string) any {
-		switch {
-		case choice == allow:
-			return map[string]any{"decision": "accept"}
-		case choice == allowSession:
-			return map[string]any{"decision": "acceptForSession"}
-		case has("decline"):
-			return map[string]any{"decision": "decline"}
-		}
-		return map[string]any{"decision": "cancel"}
+	return append(choices, deny), has("decline")
+}
+
+func approvalResponse(choice string, declinable bool) any {
+	switch {
+	case choice == allow:
+		return map[string]any{"decision": "accept"}
+	case choice == allowSession:
+		return map[string]any{"decision": "acceptForSession"}
+	case declinable:
+		return map[string]any{"decision": "decline"}
 	}
+	return map[string]any{"decision": "cancel"}
+}
+
+func permissionsResponse(choice string, permissions json.RawMessage) any {
+	if choice == deny {
+		return map[string]any{"permissions": map[string]any{}}
+	}
+	scope := "turn"
+	if choice == allowSession {
+		scope = "session"
+	}
+	return map[string]any{"permissions": permissions, "scope": scope}
+}
+
+func questionsResponse(ids, answers []string) any {
+	byID := map[string]any{}
+	for i, id := range ids {
+		byID[id] = map[string]any{"answers": []string{answers[i]}}
+	}
+	return map[string]any{"answers": byID}
+}
+
+func elicitationResponse(form []formField, answers []string) (any, error) {
+	if form == nil {
+		if answers[0] == accept {
+			return map[string]any{"action": "accept", "content": map[string]any{}}, nil
+		}
+		return map[string]any{"action": "decline"}, nil
+	}
+	content := map[string]any{}
+	for i, f := range form {
+		value, err := formValue(f.field, answers[i])
+		if err != nil {
+			return nil, err
+		}
+		content[f.key] = value
+	}
+	return map[string]any{"action": "accept", "content": content}, nil
+}
+
+// formValue converts the answer to a form field to the value codex expects.
+func formValue(f plugin.Field, answer string) (any, error) {
+	switch f.Type {
+	case "boolean":
+		return answer == "Yes", nil
+	case "number", "integer":
+		n, err := strconv.ParseFloat(strings.TrimSpace(answer), 64)
+		if err != nil {
+			return nil, errors.New("the answer must be a number")
+		}
+		return n, nil
+	case "array":
+		return []string{answer}, nil
+	}
+	return answer, nil
 }
 
 func codeBlock(s string) string { return "```\n" + s + "\n```" }
@@ -122,8 +234,8 @@ func commandRequest(params json.RawMessage) (*request, error) {
 	if p.Reason != "" {
 		text += "\n\n" + p.Reason
 	}
-	choices, reply := decisions(p.Decisions)
-	return approval(text, choices, reply, map[string]any{"decision": "cancel"}), nil
+	choices, declinable := decisions(p.Decisions)
+	return &request{items: []harness.Item{{Text: text, Choices: choices}}, declinable: declinable}, nil
 }
 
 func fileRequest(params json.RawMessage) (*request, error) {
@@ -142,8 +254,8 @@ func fileRequest(params json.RawMessage) (*request, error) {
 	if p.Reason != "" {
 		text += "\n\n" + p.Reason
 	}
-	choices, reply := decisions(p.Decisions)
-	return approval(text, choices, reply, map[string]any{"decision": "cancel"}), nil
+	choices, declinable := decisions(p.Decisions)
+	return &request{items: []harness.Item{{Text: text, Choices: choices}}, declinable: declinable}, nil
 }
 
 func permissionsRequest(params json.RawMessage) (*request, error) {
@@ -158,31 +270,10 @@ func permissionsRequest(params json.RawMessage) (*request, error) {
 	if p.Reason != "" {
 		text += "\n\n" + p.Reason
 	}
-	none := map[string]any{"permissions": map[string]any{}}
-	return approval(text, []string{allow, allowSession, deny}, func(choice string) any {
-		if choice == deny {
-			return none
-		}
-		scope := "turn"
-		if choice == allowSession {
-			scope = "session"
-		}
-		return map[string]any{"permissions": p.Permissions, "scope": scope}
-	}, none), nil
-}
-
-// optionNotes appends the options' descriptions to a question.
-func optionNotes(text string, labels, descriptions []string) string {
-	var notes []string
-	for i, d := range descriptions {
-		if d != "" {
-			notes = append(notes, fmt.Sprintf("- %s: %s", labels[i], d))
-		}
-	}
-	if len(notes) > 0 {
-		text += "\n\n" + strings.Join(notes, "\n")
-	}
-	return text
+	return &request{
+		items:       []harness.Item{{Text: text, Choices: []string{allow, allowSession, deny}}},
+		permissions: p.Permissions,
+	}, nil
 }
 
 // questionsRequest makes one attention item per question. Codex receives the
@@ -206,8 +297,7 @@ func questionsRequest(params json.RawMessage) (*request, error) {
 	if len(p.Questions) == 0 {
 		return nil, errors.New("a request without questions")
 	}
-	r := &request{refuse: map[string]any{"answers": map[string]any{}}}
-	var ids []string
+	r := &request{}
 	for _, q := range p.Questions {
 		item := harness.Item{Text: q.Question, Free: q.Other || len(q.Options) == 0}
 		if q.Header != "" {
@@ -218,36 +308,11 @@ func questionsRequest(params json.RawMessage) (*request, error) {
 			labels, descriptions = append(labels, o.Label), append(descriptions, o.Description)
 		}
 		item.Choices = labels
-		item.Text = optionNotes(item.Text, labels, descriptions)
+		item.Text = plugin.OptionNotes(item.Text, labels, descriptions)
 		r.items = append(r.items, item)
-		ids = append(ids, q.ID)
-	}
-	r.reply = func(values []any) any {
-		answers := map[string]any{}
-		for i, id := range ids {
-			answers[id] = map[string]any{"answers": []string{values[i].(string)}}
-		}
-		return map[string]any{"answers": answers}
+		r.questionIDs = append(r.questionIDs, q.ID)
 	}
 	return r, nil
-}
-
-// field is a property of an elicitation form's schema.
-type field struct {
-	Type        string   `json:"type"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Enum        []string `json:"enum"`
-	OneOf       []option `json:"oneOf"`
-	Items       struct {
-		Enum  []string `json:"enum"`
-		AnyOf []option `json:"anyOf"`
-	} `json:"items"`
-}
-
-type option struct {
-	Const string `json:"const"`
-	Title string `json:"title"`
 }
 
 // elicitationRequest shows an MCP server's request. A request that only
@@ -267,34 +332,23 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 		return nil, err
 	}
 	text := p.Server + ": " + p.Message
-	refuse := map[string]any{"action": "cancel"}
 	var keys []string
-	var fields map[string]field
+	var fields map[string]plugin.Field
 	switch p.Mode {
 	case "url":
 		text += "\n\n" + p.URL
 	case "form":
 		var err error
-		if keys, fields, err = parseForm(p.Schema.Properties); err != nil {
+		if keys, fields, err = plugin.ParseForm(p.Schema.Properties); err != nil {
 			return nil, err
 		}
 	default:
 		return nil, fmt.Errorf("a %s request", p.Mode)
 	}
 	if len(keys) == 0 {
-		const accept, decline = "Accept", "Decline"
-		return &request{
-			items: []harness.Item{{Text: text, Choices: []string{accept, decline}}},
-			reply: func(values []any) any {
-				if values[0] == accept {
-					return map[string]any{"action": "accept", "content": map[string]any{}}
-				}
-				return map[string]any{"action": "decline"}
-			},
-			refuse: refuse,
-		}, nil
+		return &request{items: []harness.Item{{Text: text, Choices: []string{accept, decline}}}}, nil
 	}
-	r := &request{refuse: refuse}
+	r := &request{}
 	for i, key := range keys {
 		f := fields[key]
 		item := harness.Item{Text: f.Description}
@@ -304,83 +358,25 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 		if i == 0 {
 			item.Text = text + "\n\n" + item.Text
 		}
-		var parse func(string) (any, error)
-		switch {
-		case f.Type == "boolean":
+		switch f.Type {
+		case "boolean":
 			item.Choices = []string{"Yes", "No"}
-			parse = func(s string) (any, error) { return s == "Yes", nil }
-		case f.Type == "number" || f.Type == "integer":
+		case "number", "integer":
 			item.Free = true
-			parse = func(s string) (any, error) {
-				n, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
-				if err != nil {
-					return nil, errors.New("the answer must be a number")
-				}
-				return n, nil
+		case "string", "array":
+			var titles []string
+			for _, o := range f.Options() {
+				item.Choices, titles = append(item.Choices, o.Const), append(titles, o.Title)
 			}
-		case f.Type == "string" || f.Type == "array":
-			choices, labels := f.choices()
-			item.Choices = choices
-			item.Free = len(choices) == 0
-			if f.Type == "array" {
-				parse = func(s string) (any, error) { return []string{s}, nil }
-			}
-			item.Text = optionNotes(item.Text, choices, labels)
+			item.Free = len(item.Choices) == 0
+			item.Text = plugin.OptionNotes(item.Text, item.Choices, titles)
 		default:
 			return nil, fmt.Errorf("a %s field", f.Type)
 		}
 		r.items = append(r.items, item)
-		r.parse = append(r.parse, parse)
-	}
-	r.reply = func(values []any) any {
-		content := map[string]any{}
-		for i, key := range keys {
-			content[key] = values[i]
-		}
-		return map[string]any{"action": "accept", "content": content}
+		r.form = append(r.form, formField{key: key, field: f})
 	}
 	return r, nil
-}
-
-// choices returns the values a field offers and their titles.
-func (f field) choices() (values, titles []string) {
-	options := f.OneOf
-	if f.Type == "array" {
-		options = f.Items.AnyOf
-		for _, v := range f.Items.Enum {
-			options = append(options, option{Const: v})
-		}
-	}
-	for _, v := range f.Enum {
-		options = append(options, option{Const: v})
-	}
-	for _, o := range options {
-		values, titles = append(values, o.Const), append(titles, o.Title)
-	}
-	return values, titles
-}
-
-// parseForm reads a form's properties in the order the schema lists them.
-func parseForm(properties json.RawMessage) ([]string, map[string]field, error) {
-	dec := json.NewDecoder(bytes.NewReader(properties))
-	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
-		return nil, nil, errors.New("a form without fields")
-	}
-	var keys []string
-	fields := map[string]field{}
-	for dec.More() {
-		key, err := dec.Token()
-		if err != nil {
-			return nil, nil, err
-		}
-		var f field
-		if err := dec.Decode(&f); err != nil {
-			return nil, nil, err
-		}
-		keys = append(keys, key.(string))
-		fields[key.(string)] = f
-	}
-	return keys, fields, nil
 }
 
 // answer replies to an open request with a choice or text.
@@ -405,16 +401,19 @@ func (ag *agent) answer(item, choice, text string) error {
 	default:
 		answer = text
 	}
-	var value any = answer
-	if r.parse != nil && r.parse[i] != nil {
-		var err error
-		if value, err = r.parse[i](answer); err != nil {
+	// A form answer that cannot be converted is refused at once.
+	if r.form != nil {
+		if _, err := formValue(r.form[i].field, answer); err != nil {
 			return err
 		}
 	}
-	r.values[i] = value
+	r.answers[i] = answer
 	if r.given+1 == len(r.items) {
-		if err := ag.rpc.Respond(r.id, r.reply(r.values)); err != nil {
+		response, err := r.response()
+		if err != nil {
+			return err
+		}
+		if err := ag.rpc.Respond(r.id, response); err != nil {
 			return err
 		}
 	}
@@ -436,7 +435,7 @@ func (ag *agent) closeRequests(match func(*request) bool, refuse bool) []harness
 			continue
 		}
 		if refuse && !closed[r] {
-			_ = ag.rpc.Respond(r.id, r.refuse)
+			_ = ag.rpc.Respond(r.id, r.refusal())
 		}
 		closed[r] = true
 		for _, it := range r.items {

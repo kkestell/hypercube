@@ -459,6 +459,13 @@ func turnStart(h *agentUnderTest, id string) {
 	})
 }
 
+// threadStatus makes thread/read report the thread's status.
+func threadStatus(h *agentUnderTest, status string) {
+	h.server.handle("thread/read", func(map[string]any) (any, *plugin.RPCError) {
+		return map[string]any{"thread": map[string]any{"id": "t1", "status": map[string]any{"type": status}}}, nil
+	})
+}
+
 func inputText(params map[string]any) string {
 	return params["input"].([]any)[0].(map[string]any)["text"].(string)
 }
@@ -494,6 +501,7 @@ func TestSteerRejectedAfterTheTurnEnded(t *testing.T) {
 	h := newAgent(t)
 	h.thread = "t1"
 	turnStart(h, "u2")
+	threadStatus(h, "idle")
 	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) {
 		return nil, &plugin.RPCError{Code: -32600, Message: "no active turn to steer"}
 	})
@@ -523,18 +531,37 @@ func TestSteerRejectedAfterTheTurnEnded(t *testing.T) {
 	}
 }
 
+// Only an idle thread starts a turn after a failed steer. Any other status, or
+// a thread that cannot be read, returns the steer's error.
 func TestSteerFailureOnALiveTurnIsReturned(t *testing.T) {
-	h := newAgent(t)
-	h.thread = "t1"
-	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) {
-		return nil, &plugin.RPCError{Code: -32600, Message: "cannot steer a compaction turn"}
-	})
-	h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1","status":"inProgress"}}}`)
-	if err := h.input("x", nil); err == nil || !strings.Contains(err.Error(), "cannot steer") {
-		t.Fatal(err)
-	}
-	if len(h.server.sent("turn/start")) != 0 {
-		t.Fatal("started a turn beside the live one")
+	for name, test := range map[string]struct {
+		status  string // "" makes thread/read fail
+		message string
+	}{
+		"active":                   {"active", "cannot steer a compaction turn"},
+		"active with the old text": {"active", "no active turn to steer"},
+		"not loaded":               {"notLoaded", "no active turn to steer"},
+		"system error":             {"systemError", "no active turn to steer"},
+		"unknown status":           {"paused", "no active turn to steer"},
+		"unreadable thread":        {"", "no active turn to steer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newAgent(t)
+			h.thread = "t1"
+			h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) {
+				return nil, &plugin.RPCError{Code: -32600, Message: test.message}
+			})
+			if test.status != "" {
+				threadStatus(h, test.status)
+			}
+			h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1","status":"inProgress"}}}`)
+			if err := h.input("x", nil); err == nil || !strings.Contains(err.Error(), test.message) {
+				t.Fatal(err)
+			}
+			if len(h.server.sent("thread/read")) != 1 || len(h.server.sent("turn/start")) != 0 {
+				t.Fatal("started a turn beside the live one")
+			}
+		})
 	}
 }
 
@@ -554,7 +581,8 @@ func TestStartFailureIsReturned(t *testing.T) {
 
 func TestInputWhenNotRunning(t *testing.T) {
 	h := newAgent(t)
-	close(h.done)
+	h.server.out.(io.Closer).Close()
+	<-h.rpc.Done()
 	if err := h.input("hello", nil); err == nil {
 		t.Fatal("input to a process that has ended")
 	}

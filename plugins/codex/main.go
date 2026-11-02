@@ -70,21 +70,7 @@ type agent struct {
 	running  map[string]harness.Item // tool items that have not completed
 	children map[string]string       // subagent thread to the item that started it
 	requests map[string]*request     // open attention items, by item ID
-	errors   int
-}
-
-// request is a server request waiting for the user, with one attention item
-// per question. parse converts an answer for the question at its index, if
-// set. reply turns the converted answers into the response once every
-// question has one; refuse is the response that gives up.
-type request struct {
-	id     json.RawMessage
-	items  []harness.Item
-	parse  []func(string) (any, error)
-	values []any
-	given  int
-	reply  func(values []any) any
-	refuse any
+	errs     plugin.Errors
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (*agent, error) {
@@ -279,12 +265,12 @@ func userInput(text string, images []harness.Image) []map[string]any {
 	return input
 }
 
-// input steers the turn in progress, or starts a turn. Codex refuses a steer
-// once the turn has ended, which can happen before its completion reaches us;
-// the input then starts a turn.
+// input steers the turn in progress, or starts a turn. A steer can arrive after
+// the turn has ended but before its completion reaches us; the input then
+// starts a turn.
 func (ag *agent) input(text string, images []harness.Image) error {
 	select {
-	case <-ag.done:
+	case <-ag.rpc.Done():
 		return errors.New("codex is not running")
 	default:
 	}
@@ -298,10 +284,12 @@ func (ag *agent) input(text string, images []harness.Image) error {
 		if err == nil {
 			return nil
 		}
+		// Codex answers a steer after the turn ended with the invalid request
+		// error that its other refusals use too, so the thread's status decides.
 		ag.mu.Lock()
-		ended := ag.turn != turn || strings.Contains(err.Error(), "no active turn")
+		current := ag.turn
 		ag.mu.Unlock()
-		if !ended {
+		if current == turn && !ag.threadIdle(thread) {
 			return err
 		}
 	}
@@ -321,6 +309,24 @@ func (ag *agent) input(text string, images []harness.Image) error {
 	ag.startTurn(&ev, started.Turn.ID)
 	ag.send(ev)
 	return nil
+}
+
+// threadIdle reports whether codex says the thread has no turn running. A
+// thread that cannot be read is not idle.
+func (ag *agent) threadIdle(thread string) bool {
+	var read struct {
+		Thread struct {
+			Status struct {
+				Type string `json:"type"`
+			} `json:"status"`
+		} `json:"thread"`
+	}
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
+	defer cancel()
+	if err := ag.call(ctx, "thread/read", map[string]any{"threadId": thread}, &read); err != nil {
+		return false
+	}
+	return read.Thread.Status.Type == "idle"
 }
 
 func (ag *agent) send(ev harness.Event) {
