@@ -17,6 +17,10 @@ export function age(ms, now = Date.now()) {
 export function WorkersPanel() {
   const [state, store] = useStore();
   const workers = shownAgents(state).filter(a => a.role !== 'lead');
+  const openTranscript = id => {
+    store.update(s => openWorkerTab(s, id));
+    requestAnimationFrame(() => document.querySelector(`.composer[data-agent="${id}"] textarea`)?.focus());
+  };
   if (!workers.length) return <div class="workers-panel"><p class="workers-panel-empty">No workers yet.</p></div>;
   return (
     <div class="workers-panel">
@@ -26,7 +30,7 @@ export function WorkersPanel() {
             <span class="workers-panel-name">{worker.name}</span>
             <AgentStatus agent={worker} />
             <vscode-toolbar-button icon="layout-sidebar-left" label="Open Transcript" title="Open Transcript"
-              onClick={() => store.update(s => openWorkerTab(s, worker.id))} />
+              onClick={() => openTranscript(worker.id)} />
           </header>
           {worker.status ? (
             <>

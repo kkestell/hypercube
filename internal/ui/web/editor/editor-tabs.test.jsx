@@ -4,7 +4,7 @@ import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {EditorArea} from './editor-area.jsx';
-import {fileTabId, openWorkerTab} from './editor.js';
+import {fileTabId, moveTab, openWorkerTab} from './editor.js';
 import {openTab} from './tab-layout.js';
 
 afterEach(unmountAll);
@@ -53,6 +53,22 @@ test('the arrow keys, Home, and End select tabs and keep the focus on them', asy
   await press('ArrowLeft');
   expect(store.get().session.tabs.root.active).toBe('w2');
   expect(document.activeElement.getAttribute('aria-selected')).toBe('true');
+});
+
+test('splitting a pane restores the scroll saved by the departing view', () => {
+  const {store, root} = setup(state => openWorkerTab(openWorkerTab(state, 'w2'), 'w1'));
+  const view = root.querySelector('.transcript');
+  Object.defineProperty(view, 'scrollHeight', {value: 1000});
+  Object.defineProperty(view, 'clientHeight', {value: 300});
+  for (const top of [900, 500]) {
+    view.scrollTop = top;
+    view.dispatchEvent(new Event('scroll'));
+  }
+  act(() => store.update(state => moveTab(state, 'w2', state.session.tabs.root.id, 'right')));
+  const restored = root.querySelector('.transcript');
+  expect(restored).not.toBe(view);
+  expect(restored.scrollTop).toBe(500);
+  expect(store.get().session.scroll.w1.following).toBe(false);
 });
 
 test('a preview tab is italic until double-clicked, and a deleted file is struck through', () => {

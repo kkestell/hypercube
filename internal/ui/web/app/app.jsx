@@ -4,7 +4,7 @@
 // hash in step with it, and refuses drops that would land outside their
 // targets: a tab outside the editor area could type its ID into a text box,
 // and a file outside an agent pane would open in the browser.
-import {useEffect, useMemo, useState} from 'preact/hooks';
+import {useEffect, useLayoutEffect, useMemo, useState} from 'preact/hooks';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
 import {pageTitle} from '../sessions/selection.js';
 import {SessionView} from '../sessions/session-view.jsx';
@@ -34,7 +34,11 @@ function refuseStrayDrops(store) {
 
 export function App({store}) {
   const [state, setState] = useState(store.get());
-  useEffect(() => store.subscribe(setState), []);
+  useLayoutEffect(() => {
+    const unsubscribe = store.subscribe(setState);
+    setState(store.get());
+    return unsubscribe;
+  }, [store]);
   useEffect(() => refuseStrayDrops(store), []);
   const context = useMemo(() => [state, store], [state]);
 

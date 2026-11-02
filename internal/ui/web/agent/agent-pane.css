@@ -4,7 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: 1px solid transparent;
+  border: var(--size-border) solid transparent;
   background: var(--vscode-editor-background);
 }
 
@@ -13,6 +13,6 @@
 }
 
 .agent-pane-dropping {
-  outline: 2px solid var(--vscode-focusBorder);
-  outline-offset: -2px;
+  outline: calc(var(--size-border) * 2) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -2);
 }

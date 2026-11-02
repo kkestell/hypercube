@@ -4,7 +4,7 @@
   align-items: center;
   height: var(--size-bar-height);
   padding: 0 calc(var(--size-space) * 2);
-  border-bottom: 1px solid var(--vscode-titleBar-border);
+  border-bottom: var(--size-border) solid var(--vscode-titleBar-border);
   background: var(--vscode-titleBar-activeBackground);
   color: var(--vscode-titleBar-activeForeground);
 }

@@ -14,8 +14,8 @@
 }
 
 .usage-ring {
-  width: calc(var(--size-icon) - 2px);
-  height: calc(var(--size-icon) - 2px);
+  width: calc(var(--size-icon) - var(--size-border) * 2);
+  height: calc(var(--size-icon) - var(--size-border) * 2);
   transform: rotate(-90deg);
 }
 

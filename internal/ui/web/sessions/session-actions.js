@@ -26,15 +26,17 @@ export function chooseSession(store, id) {
 }
 
 // createSession sends the unsent session's first prompt, which creates the
-// session, then shows it. It reports whether the server accepted the prompt.
+// session, then shows it. A refusal restores the prompt only while that
+// unsent session is still open.
 export async function createSession(store, prompt) {
-  const {workspace, lead} = store.get().unsent;
   store.update(state => unsentSending(state, true));
+  const unsent = store.get().unsent;
+  const {workspace, lead} = unsent;
   const created = await post('session', {action: 'new', workspace, lead}, JSON.stringify(prompt));
+  // A completion must not change another unsent session or restore into it.
+  if (store.get().unsent?.identity !== unsent.identity) return true;
   store.update(state => unsentSending(state, false));
   if (created === null) return false;
-  // The user may have closed the unsent session meanwhile.
-  if (!store.get().unsent) return true;
   const ids = JSON.parse(created);
   store.update(state => unsentCreated(state, ids.lead));
   chooseSession(store, ids.session);

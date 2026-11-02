@@ -1,5 +1,5 @@
-// Builds the browser view into the directory given as the only argument: one
-// Bun bundle of web/, the page, the theme stylesheet, and the license of every
+// Builds the browser view into the directory given as the only argument: the
+// bundles of web/, the page, the theme stylesheet, and the license of every
 // package the bundle includes. Its output depends only on the sources and the
 // locked dependencies, so make check can compare it with the committed dist/.
 // Run `bun install --frozen-lockfile` before it: the bundler resolves packages
@@ -27,19 +27,24 @@ mkdirSync(outdir, {recursive: true});
 // Bun.build resolves paths against the working directory, and the metafile
 // names its inputs relative to it.
 process.chdir(root);
-const result = await Bun.build({
-  entrypoints: ['web/main.jsx', 'web/codicon.css'],
-  outdir,
-  target: 'browser',
-  minify: true,
-  splitting: true,
-  sourcemap: 'none',
-  metafile: true,
-  naming: {entry: '[name].[ext]', chunk: '[name]-[hash].[ext]', asset: '[name]-[hash].[ext]'},
-});
-if (!result.success) {
-  for (const log of result.logs) console.error(log);
-  process.exit(1);
+const inputs = new Set();
+// A CSS entry in the split JavaScript build makes Bun emit an empty JS chunk.
+for (const [entrypoint, splitting] of [['web/main.jsx', true], ['web/codicon.css', false]]) {
+  const result = await Bun.build({
+    entrypoints: [entrypoint],
+    outdir,
+    target: 'browser',
+    minify: true,
+    splitting,
+    sourcemap: 'none',
+    metafile: true,
+    naming: {entry: '[name].[ext]', chunk: '[name]-[hash].[ext]', asset: '[name]-[hash].[ext]'},
+  });
+  if (!result.success) {
+    for (const log of result.logs) console.error(log);
+    process.exit(1);
+  }
+  for (const input of Object.keys(result.metafile.inputs)) inputs.add(input);
 }
 
 const {theme} = await import('@vscode-elements/webview-playground/dist/themes/dark-v2.js');
@@ -48,7 +53,7 @@ for (const file of ['index.html', 'favicon.svg']) cpSync(join('web', file), join
 
 // Every bundled package ships its license, and so does the vendored Seti font.
 const licenses = new Map([['@vscode-elements/webview-playground', 'node_modules/@vscode-elements/webview-playground']]);
-for (const input of Object.keys(result.metafile.inputs)) {
+for (const input of inputs) {
   const match = input.match(/^(.*node_modules\/)((?:@[^/]+\/)?[^/]+)/);
   if (match) licenses.set(match[2], match[1] + match[2]);
   else if (input.startsWith('web/') && existsSync(join(dirname(input), 'LICENSE'))) licenses.set(basename(dirname(input)), dirname(input));

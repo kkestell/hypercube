@@ -37,3 +37,9 @@ test('an open request expands the runs and calls around it', () => {
   expect(next.session.expanded).toEqual({'run:a': true, a: true, 'run:b': true, b: true});
   expect(setExpanded(next, 'a', false).session.expanded).toEqual({'run:a': true, 'run:b': true, b: true});
 });
+
+test('an open request reveals its parent when the parent arrives later', () => {
+  let next = receivedTranscript(state(), message([{id: 'q', seq: 1, parent: 'p', kind: 'attention', text: 'Allow?'}], true));
+  next = receivedTranscript(next, message([{id: 'p', seq: 2, kind: 'tool', tool: 'agent'}]));
+  expect(next.session.expanded).toEqual({'run:p': true, p: true});
+});

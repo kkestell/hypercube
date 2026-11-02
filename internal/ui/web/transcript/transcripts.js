@@ -16,7 +16,7 @@ export function receivedTranscript(state, message) {
   const order = Object.keys(items).sort((a, b) => items[a].seq - items[b].seq);
   const transcript = {order, items};
   const expanded = {...session.expanded};
-  for (const item of message.items) {
+  for (const item of Object.values(items)) {
     if (item.kind !== 'attention' || item.done) continue;
     for (const key of ancestorKeys(transcript, item.id)) expanded[key] = true;
   }

@@ -27,9 +27,9 @@ export const MessageItem = memo(({item, expanded, setOpen}) => {
         )}
         <div class={long && !expanded ? 'message-item-text message-item-clamped' : 'message-item-text'}>{text}</div>
         {long && (
-          <button type="button" class="message-item-more" onClick={() => setOpen(item.id, !expanded)}>
+          <vscode-button secondary class="message-item-more" onClick={() => setOpen(item.id, !expanded)}>
             {expanded ? 'Show less' : 'Show more'}
-          </button>
+          </vscode-button>
         )}
         {!own && item.failed && <div class="message-item-failure">{item.output ?? ''}</div>}
         {own && <TranscriptImages images={item.images} />}

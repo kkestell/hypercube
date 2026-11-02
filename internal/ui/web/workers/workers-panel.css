@@ -9,7 +9,7 @@
 
 .workers-panel-card {
   padding: calc(var(--size-space) * 3);
-  border: 1px solid var(--vscode-widget-border);
+  border: var(--size-border) solid var(--vscode-widget-border);
   border-radius: var(--size-radius);
   background: var(--vscode-editor-background);
 }

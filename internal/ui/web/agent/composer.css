@@ -5,7 +5,7 @@
   gap: calc(var(--size-space) * 2);
   margin: calc(var(--size-space) * 3);
   padding: calc(var(--size-space) * 2);
-  border: 1px solid var(--vscode-input-border);
+  border: var(--size-border) solid var(--vscode-input-border);
   border-radius: calc(var(--size-radius) * 2);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
@@ -37,18 +37,6 @@
   position: absolute;
   top: calc(var(--size-space) * -1);
   right: calc(var(--size-space) * -1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--size-icon);
-  height: var(--size-icon);
-  border-radius: 50%;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-
-.composer-image-remove:hover {
-  background: var(--vscode-button-secondaryHoverBackground);
 }
 
 .composer-text {
@@ -82,7 +70,7 @@
   gap: var(--size-space) calc(var(--size-space) * 4);
   min-width: 0;
   color: var(--vscode-descriptionForeground);
-  font-size: calc(var(--vscode-font-size) - 2px);
+  font-size: calc(var(--vscode-font-size) - var(--size-border) * 2);
 }
 
 .composer-config {

@@ -116,7 +116,8 @@ export function selectSession(state, id) {
 // of any other unsent session.
 export function openUnsent(state, workspace, profile) {
   const next = discardUnsent(state);
-  const unsent = {workspace, lead: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort, sending: false};
+  // Identity survives immutable updates to the sending flag.
+  const unsent = {identity: {}, workspace, lead: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort, sending: false};
   return attach({...next, unsent, selected: null, pending: null});
 }
 
@@ -127,5 +128,8 @@ export const unsentSending = (state, sending) => state.unsent ? {...state, unsen
 export function unsentCreated(state, lead) {
   const draft = state.drafts[unsentKey];
   if (!draft) return state;
-  return {...state, drafts: {...omit(state.drafts, [unsentKey]), [lead]: draft}};
+  const drafts = omit(state.drafts, [unsentKey]);
+  // Pending reads belong to the discarded unsent session and will be ignored.
+  if (draft.text || draft.images.length) drafts[lead] = {...draft, reading: 0};
+  return {...state, drafts};
 }

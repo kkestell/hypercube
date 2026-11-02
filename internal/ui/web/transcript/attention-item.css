@@ -6,7 +6,7 @@
 
 .attention-item-open {
   padding: calc(var(--size-space) * 2);
-  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  border: var(--size-border) solid var(--vscode-inputValidation-warningBorder);
   background: var(--vscode-inputValidation-warningBackground);
 }
 

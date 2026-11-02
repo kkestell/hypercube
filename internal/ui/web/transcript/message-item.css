@@ -14,7 +14,7 @@
   min-width: 0;
   max-width: 85%;
   padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
-  border: 1px solid var(--vscode-chat-requestBorder);
+  border: var(--size-border) solid var(--vscode-chat-requestBorder);
   border-radius: calc(var(--size-radius) * 2);
   background: var(--vscode-chat-requestBubbleBackground);
 }
@@ -40,11 +40,6 @@
 
 .message-item-more {
   align-self: flex-start;
-  color: var(--vscode-textLink-foreground);
-}
-
-.message-item-more:hover {
-  text-decoration: underline;
 }
 
 .message-item-failure {

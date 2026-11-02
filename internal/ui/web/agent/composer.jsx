@@ -45,10 +45,8 @@ export function Composer({agent}) {
           {draft.images.map(image => (
             <div class="composer-image">
               <img src={imageSrc(image)} alt="Attached image" />
-              <button type="button" class="composer-image-remove" title="Remove Image" aria-label="Remove Image"
-                onClick={() => store.update(s => removeImage(s, agent.id, image))}>
-                <vscode-icon name="close" size={12} />
-              </button>
+              <vscode-button icon-only secondary icon="close" class="composer-image-remove" title="Remove Image" aria-label="Remove Image"
+                onClick={() => store.update(s => removeImage(s, agent.id, image))} />
             </div>
           ))}
         </div>

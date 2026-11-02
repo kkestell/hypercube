@@ -5,6 +5,8 @@
   --vscode-editor-font-family: Menlo, Monaco, "Courier New", monospace;
   --vscode-editor-font-size: 12px;
 
+  --size-border: 1px;
+  --size-scrollbar: 10px;
   --size-space: 4px;
   --size-row-height: 22px;
   --size-bar-height: 35px;
@@ -47,8 +49,8 @@ button {
 
 /* VS Code's scrollbars: a thumb on no track. */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: var(--size-scrollbar);
+  height: var(--size-scrollbar);
 }
 ::-webkit-scrollbar-track,
 ::-webkit-scrollbar-corner {

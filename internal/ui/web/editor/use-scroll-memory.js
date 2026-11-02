@@ -9,11 +9,13 @@ import {rememberScroll} from './editor.js';
 
 export function useScrollMemory(ref, id) {
   const [state, store] = useStore();
-  const memory = useRef(state.session?.scroll[id] ?? {top: 0, left: 0, following: true});
+  const memory = useRef({top: 0, left: 0, following: true});
   const sessionId = state.session?.id;
 
   useLayoutEffect(() => {
     const view = ref.current;
+    // A split may unmount the old view after this view rendered.
+    memory.current = store.get().session?.scroll[id] ?? memory.current;
     view.scrollTop = memory.current.top;
     view.scrollLeft = memory.current.left;
     const scrolled = () => {

@@ -21,7 +21,7 @@ function setup(sessions) {
   const store = createStore(state(sessions));
   const root = mount(store, <Sidebar />);
   const posted = () => fetches.mock.calls.map(([url]) => Object.fromEntries(new URL(url, 'http://x/').searchParams));
-  return {store, root, posted};
+  return {store, root, posted, fetches};
 }
 
 const select = (root, item) => act(() => root.querySelector('vscode-tree').dispatchEvent(new CustomEvent('vsc-tree-select', {detail: [item]})));
@@ -117,3 +117,22 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
   ]);
   expect(root.querySelector('vscode-context-menu')).toBeNull();
 });
+
+for (const cancel of [
+  () => new Event('pointerdown', {bubbles: true}),
+  () => new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}),
+  () => new Event('blur'),
+]) {
+  test(`a pending lead picker is cancelled by ${cancel().type}`, async () => {
+    const {root, fetches} = setup([]);
+    let answer;
+    fetches.mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+    act(() => root.querySelector('[title="New Session"]').click());
+    act(() => dispatchEvent(cancel()));
+    await act(async () => {
+      answer(Response.json([{name: 'claude-lead', description: 'Claude'}]));
+      await new Promise(resolve => setTimeout(resolve));
+    });
+    expect(root.querySelector('vscode-context-menu')).toBeNull();
+  });
+}

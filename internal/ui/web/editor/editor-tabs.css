@@ -16,7 +16,7 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  border-right: 1px solid var(--vscode-tab-border);
+  border-right: var(--size-border) solid var(--vscode-tab-border);
   background: var(--vscode-tab-inactiveBackground);
   color: var(--vscode-tab-inactiveForeground);
 }
@@ -35,7 +35,7 @@
   content: "";
   position: absolute;
   inset: 0 0 auto;
-  height: 1px;
+  height: var(--size-border);
   background: var(--vscode-tab-activeBorderTop);
 }
 
@@ -50,8 +50,8 @@
 }
 
 .editor-tabs-select:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
 }
 
 .editor-tabs-label {

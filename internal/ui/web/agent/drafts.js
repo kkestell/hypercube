@@ -51,7 +51,7 @@ export async function attachImages(store, key, files) {
     alert('Reading the image failed: ' + error.message);
   }
   // Closing the unsent session discards its draft.
-  if (key === unsentKey && store.get().unsent !== unsent) return;
+  if (key === unsentKey && store.get().unsent?.identity !== unsent.identity) return;
   const fits = imageBytes([...draftOf(store.get(), key).images, ...added]) <= maxImageBytes;
   if (!fits) alert('Images can total at most 10 MiB.');
   store.update(state => withDraft(state, key, draft => ({

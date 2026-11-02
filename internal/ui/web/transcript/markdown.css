@@ -42,7 +42,7 @@
 
 .markdown hr {
   border: 0;
-  border-top: 1px solid var(--vscode-textSeparator-foreground);
+  border-top: var(--size-border) solid var(--vscode-textSeparator-foreground);
 }
 
 .markdown table {
@@ -52,7 +52,7 @@
 .markdown th,
 .markdown td {
   padding: var(--size-space) calc(var(--size-space) * 2);
-  border: 1px solid var(--vscode-textSeparator-foreground);
+  border: var(--size-border) solid var(--vscode-textSeparator-foreground);
   text-align: left;
 }
 
@@ -87,7 +87,7 @@
 /* VS Code's Markdown preview. */
 .markdown-preview {
   padding: calc(var(--size-space) * 4) calc(var(--size-space) * 6);
-  font-size: calc(var(--vscode-font-size) + 1px);
+  font-size: calc(var(--vscode-font-size) + var(--size-border));
   line-height: 1.6;
 }
 
@@ -98,7 +98,7 @@
 .markdown-preview h1,
 .markdown-preview h2 {
   padding-bottom: calc(var(--size-space) * 1.5);
-  border-bottom: 1px solid var(--vscode-textSeparator-foreground);
+  border-bottom: var(--size-border) solid var(--vscode-textSeparator-foreground);
 }
 
 .markdown-preview h1,
