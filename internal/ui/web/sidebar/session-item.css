@@ -53,22 +53,30 @@
   border-radius: inherit;
 }
 
-/* Long titles run under the padding and fade out, clear of the status
-   column; short ones end before it. */
+/* Long titles run under the padding and are fully faded 16px before its end,
+   clear of the caret and the status column; short ones end before it. */
 .session-item-text {
-  padding-right: 24px;
+  padding-right: 36px;
   overflow: hidden;
   white-space: nowrap;
-  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent calc(100% - 8px));
+  mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent calc(100% - 16px));
 }
 
-/* The chevron's glyph is inset in its 16px box, so it sits about 8px after a
-   short title. */
+/* The chevron's glyph is inset 4px in its 16px box, so it starts
+   8px after a long title has faded out and 28px after a short one. */
 .session-item-caret {
   position: relative;
   display: flex;
   flex-shrink: 0;
-  margin-left: -24px;
+  margin-right: calc(var(--size-space) * 2);
+  margin-left: -12px;
+}
+
+/* A centered chevron sits above the lowercase letters, which ride below the
+   middle of the line, so it drops 1px to meet them. */
+.session-item-caret vscode-icon {
+  position: relative;
+  top: 1px;
 }
 
 .session-item-status {

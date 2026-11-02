@@ -51,7 +51,10 @@
   white-space: nowrap;
 }
 
+/* Like a session's chevron, it drops 1px to the lowercase letters' middle. */
 .sidebar-caret {
+  position: relative;
+  top: 1px;
   flex-shrink: 0;
 }
 
