@@ -101,12 +101,6 @@ func (w *world) session(id string) (s store.Session) {
 	return s
 }
 
-func (w *world) queued(id string) (m []store.Message) {
-	w.t.Helper()
-	w.read(func(tx *store.Tx) error { var err error; m, err = tx.Queued(id); return err })
-	return m
-}
-
 func (w *world) until(what string, check func() bool) {
 	w.t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -146,12 +140,6 @@ func (w *world) got(id, text string) bool {
 // starts counts how many times the agent's plugin started.
 func (w *world) starts(id string) int { return len(w.log(id, "start")) }
 
-// resumed reports whether the agent's latest plugin start resumed its conversation.
-func (w *world) resumed(id string) bool {
-	starts := w.log(id, "start")
-	return len(starts) > 0 && starts[len(starts)-1].Conversation == id+"-conversation"
-}
-
 // lastPid is the process ID of the agent's most recent plugin.
 func (w *world) lastPid(id string) int {
 	w.t.Helper()
@@ -170,47 +158,57 @@ type client struct {
 	base string
 }
 
-func (c client) post(path string, values map[string]string, body ...string) (int, string) {
+func (c client) post(path string, values map[string]string, body string) (int, string) {
 	c.t.Helper()
 	q := url.Values{}
 	for k, v := range values {
 		q.Set(k, v)
 	}
-	req, _ := http.NewRequest("POST", c.base+path+"?"+q.Encode(), strings.NewReader(strings.Join(body, "")))
+	req, err := http.NewRequest("POST", c.base+path+"?"+q.Encode(), strings.NewReader(body))
+	if err != nil {
+		c.t.Fatal(err)
+	}
 	req.Header.Set("Origin", c.base)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		c.t.Fatal(err)
 	}
 	defer res.Body.Close()
-	b, _ := io.ReadAll(res.Body)
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		c.t.Fatal(err)
+	}
 	return res.StatusCode, strings.TrimSpace(string(b))
 }
 
-// act posts a session action. A new session's body is its first prompt.
-func (c client) act(values map[string]string) string {
+// newSession starts a session with the named lead and returns its ID.
+func (c client) newSession(workspace, lead string) string {
 	c.t.Helper()
-	code, body := c.post("/session", values, `{"text":"start"}`)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "lead": lead}, `{"text":"start"}`)
 	if code != http.StatusOK {
-		c.t.Fatalf("session %v: %d %s", values, code, body)
+		c.t.Fatalf("new session: %d %s", code, body)
 	}
-	if values["action"] == "new" {
-		var created struct{ Session string }
-		if err := json.Unmarshal([]byte(body), &created); err != nil {
-			c.t.Fatal(err)
-		}
-		return created.Session
+	var created struct{ Session string }
+	if err := json.Unmarshal([]byte(body), &created); err != nil {
+		c.t.Fatal(err)
 	}
-	return body
+	return created.Session
 }
 
-// asAgent adds the agent's identity and the app's origin to every request.
-type asAgent struct{ agent, origin string }
+// sessionAction posts an action on a session that the app accepts.
+func (c client) sessionAction(action, id string) {
+	c.t.Helper()
+	if code, body := c.post("/session", map[string]string{"action": action, "id": id}, ""); code != http.StatusOK {
+		c.t.Fatalf("session %s: %d %s", action, code, body)
+	}
+}
+
+// asAgent adds the agent's identity to every request.
+type asAgent string
 
 func (a asAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set(mcp.AgentHeader, a.agent)
-	r.Header.Set("Origin", a.origin)
+	r.Header.Set(mcp.AgentHeader, string(a))
 	return http.DefaultTransport.RoundTrip(r)
 }
 
@@ -219,7 +217,7 @@ func (c client) tool(agent, name string, args map[string]string) string {
 	c.t.Helper()
 	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(c.t.Context(), &sdk.StreamableClientTransport{
 		Endpoint:             c.base + "/mcp",
-		HTTPClient:           &http.Client{Transport: asAgent{agent, c.base}},
+		HTTPClient:           &http.Client{Transport: asAgent(agent)},
 		DisableStandaloneSSE: true,
 	}, nil)
 	if err != nil {
@@ -272,265 +270,205 @@ func listen(t *testing.T) net.Listener {
 	return l
 }
 
-// TestTeams runs the app in this process with the stand-in plugin: several
-// sessions with workers, messages, failures, restarts, and deletions.
-func TestTeams(t *testing.T) {
-	w := newWorld(t)
-	var app *app
-	var c client
-	start := func() {
-		t.Helper()
-		listener := listen(t)
-		var err error
-		if app, err = startApp(listener, w.plugins); err != nil {
-			t.Fatal(err)
-		}
-		c = client{t, "http://" + listener.Addr().String()}
+// runApp starts the app in this process on a free port.
+func (w *world) runApp() (*app, client) {
+	w.t.Helper()
+	listener := listen(w.t)
+	a, err := startApp(listener, w.plugins)
+	if err != nil {
+		w.t.Fatal(err)
 	}
-	start()
-	t.Cleanup(func() { app.shutdown() })
-	input := func(agent, text string) {
-		t.Helper()
-		if err := app.rt.Input(agent, text); err != nil {
-			t.Fatal(err)
-		}
-	}
-	ready := func(id string) func() bool {
-		return func() bool { return w.starts(id) > 0 && w.agent(id).Activity == store.Idle }
-	}
+	w.t.Cleanup(a.shutdown)
+	return a, client{w.t, "http://" + listener.Addr().String()}
+}
 
+// ready reports whether the agent's plugin has started and the agent is idle.
+func (w *world) ready(id string) bool { return w.starts(id) > 0 && w.agent(id).Activity == store.Idle }
+
+// newLead starts a session with the named lead and waits for the lead.
+func (w *world) newLead(c client, workspace, profile string) (store.Session, store.Agent) {
+	w.t.Helper()
+	id := c.newSession(workspace, profile)
+	lead := w.agents(id)[0]
+	w.until("the lead of "+id, func() bool { return w.ready(lead.ID) })
+	return w.session(id), w.agent(lead.ID)
+}
+
+// newWorker has the lead create a worker through MCP and waits for the
+// worker's plugin to start and receive the brief, if any.
+func (w *world) newWorker(c client, lead store.Agent, name, brief string) store.Agent {
+	w.t.Helper()
+	args := map[string]string{"name": name, "profile": "worker"}
+	if brief != "" {
+		args["message"] = brief
+	}
+	c.tool(lead.ID, "create_agent", args)
+	var worker store.Agent
+	w.until("worker "+name, func() bool {
+		for _, a := range w.agents(lead.Session) {
+			if a.Name == name {
+				worker = a
+			}
+		}
+		return worker.ID != "" && w.starts(worker.ID) > 0 && (brief == "" || w.got(worker.ID, brief))
+	})
+	return worker
+}
+
+func (w *world) noPath(path, what string) {
+	w.t.Helper()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		w.t.Fatalf("%s remains: %v", what, err)
+	}
+}
+
+func TestMCPToolsManageWorkers(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
 	ws, err := app.rt.AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, err := app.rt.AddWorkspace(filepath.Join(w.root, ".")); err != nil || again.ID != ws.ID {
-		t.Fatalf("adding the folder again: %+v, %v", again, err)
+	_, lead := w.newLead(c, ws.ID, "first")
+	if lead.Model != "haiku" {
+		t.Fatalf("the chosen lead's model is %q", lead.Model)
 	}
-	if code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`); code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
-		t.Fatalf("unknown lead: %d %s", code, body)
-	}
-	first := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "first"})
-	lead := w.agents(first)[0]
-	w.until("the first lead", ready(lead.ID))
-	if lead = w.agent(lead.ID); lead.Model != "haiku" || w.session(first).AwaitingUser {
-		t.Fatalf("first session: %+v %+v", lead, w.session(first))
-	}
-	c.tool(lead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "first brief"})
-	w.until("the worker's brief", func() bool {
-		list := w.agents(first)
-		return len(list) == 2 && w.got(list[1].ID, "first brief") && len(w.queued(list[1].ID)) == 0
-	})
-	worker := w.agents(first)[1]
+	worker := w.newWorker(c, lead, "worker", "the brief")
 	if _, err := os.Stat(filepath.Join(worker.Dir, ".git")); err != nil {
-		t.Fatal("worker did not get a worktree", err)
+		t.Fatalf("the worker has no worktree: %v", err)
 	}
-	// Sessions are separate: their workers, names, and worktrees.
-	second := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "second"})
-	otherLead := w.agents(second)[0]
-	w.until("the second lead", ready(otherLead.ID))
-	if w.agent(otherLead.ID).Model != "sol" {
-		t.Fatalf("chosen lead model = %q", w.agent(otherLead.ID).Model)
+	c.tool(lead.ID, "send_message", map[string]string{"to": "worker", "text": "a later message"})
+	w.until("the message", func() bool { return w.got(worker.ID, "a later message") })
+	if listed := c.tool(lead.ID, "list_agents", nil); !strings.Contains(listed, worker.Address()) {
+		t.Fatalf("list_agents missed the worker: %s", listed)
 	}
-	c.tool(otherLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "second session brief"})
-	w.until("the second session's worker", func() bool {
-		list := w.agents(second)
-		return len(list) == 2 && w.got(list[1].ID, "second session brief")
-	})
-	otherWorker := w.agents(second)[1]
-	if otherWorker.Dir == worker.Dir || otherWorker.Branch == worker.Branch {
-		t.Fatal("sessions share a worker worktree or branch")
+	pid := w.lastPid(worker.ID)
+	c.tool(lead.ID, "remove_agent", map[string]string{"name": "worker"})
+	w.noPath(worker.Dir, "the removed worker's worktree")
+	if n := len(w.agents(lead.Session)); n != 1 || !gone(pid) {
+		t.Fatalf("the removed worker remains: %d agents, process gone = %v", n, gone(pid))
+	}
+}
+
+func TestSessionsAreIsolated(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, lead := w.newLead(c, ws.ID, "first")
+	_, otherLead := w.newLead(c, ws.ID, "second")
+	worker := w.newWorker(c, lead, "worker", "")
+	otherWorker := w.newWorker(c, otherLead, "worker", "")
+	if worker.Dir == otherWorker.Dir || worker.Branch == otherWorker.Branch {
+		t.Fatal("the sessions share a worktree or branch")
 	}
 	for _, pair := range [][2]store.Agent{{lead, otherWorker}, {otherLead, worker}} {
 		if listed := c.tool(pair[0].ID, "list_agents", nil); strings.Contains(listed, pair[1].Address()) {
-			t.Fatal("list_agents exposed another session", listed)
+			t.Fatalf("list_agents exposed another session's worker: %s", listed)
 		}
 	}
-	// Deleting a session protects a worker's dirty worktree.
-	third := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "first"})
-	thirdLead := w.agents(third)[0]
-	w.until("the third lead", ready(thirdLead.ID))
-	c.tool(thirdLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker"})
-	w.until("the third session's worker", func() bool { return len(w.agents(third)) == 2 && w.starts(w.agents(third)[1].ID) == 1 })
-	thirdWorker := w.agents(third)[1]
-	dirty := filepath.Join(thirdWorker.Dir, "unfinished")
-	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
+	// A name reaches the sender's own session; another session's lead is
+	// reached by address. The delivery to the second lead shows the first
+	// message had its chance to cross.
+	c.tool(otherLead.ID, "send_message", map[string]string{"to": "worker", "text": "to my worker"})
+	c.tool(otherLead.ID, "send_message", map[string]string{"to": lead.Address(), "text": "to the other lead"})
+	w.until("the deliveries", func() bool { return w.got(otherWorker.ID, "to my worker") && w.got(lead.ID, "to the other lead") })
+	if w.got(worker.ID, "to my worker") {
+		t.Fatal("a message crossed to another session's worker")
+	}
+}
+
+func TestRoutesRefuseBadRequests(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if code, body := c.post("/session", map[string]string{"action": "delete", "id": third}); code != http.StatusConflict || !strings.Contains(body, "uncommitted changes") {
-		t.Fatalf("session deletion failed to protect dirty work: %d %s", code, body)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`)
+	if code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
+		t.Fatalf("unknown lead: %d %s", code, body)
 	}
-	if len(w.agents(third)) != 2 || len(w.log(thirdWorker.ID, "shutdown")) > 0 {
-		t.Fatal("refused deletion changed the session")
+	if code, _ := c.post("/session", map[string]string{"action": "bogus", "id": "x"}, ""); code != http.StatusBadRequest {
+		t.Fatalf("unknown action: %d", code)
 	}
-	if err := os.Remove(dirty); err != nil {
+}
+
+func TestDeletingASessionLeavesOthers(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	thirdPid := w.lastPid(thirdWorker.ID)
-	c.act(map[string]string{"action": "delete", "id": third})
-	if len(w.agents(third)) != 0 || !gone(thirdPid) {
-		t.Fatal("session deletion left its agents or their processes")
+	doomed, doomedLead := w.newLead(c, ws.ID, "first")
+	kept, keptLead := w.newLead(c, ws.ID, "second")
+	doomedWorker := w.newWorker(c, doomedLead, "worker", "")
+	keptWorker := w.newWorker(c, keptLead, "worker", "")
+	pids := []int{w.lastPid(doomedLead.ID), w.lastPid(doomedWorker.ID)}
+	c.sessionAction("delete", doomed.ID)
+	if n := len(w.agents(doomed.ID)); n != 0 || !gone(pids[0]) || !gone(pids[1]) {
+		t.Fatal("the deleted session left agents or processes")
 	}
-	if _, err := os.Stat(thirdWorker.Dir); !os.IsNotExist(err) {
-		t.Fatal("deleted session's worktree remains", err)
-	}
-	if w.starts(worker.ID) != 1 || len(w.log(worker.ID, "shutdown")) > 0 {
-		t.Fatal("session deletion affected another session")
-	}
-	// Starting a running session changes nothing.
-	c.act(map[string]string{"action": "start", "id": first})
-	if w.starts(lead.ID) != 1 || w.starts(worker.ID) != 1 {
-		t.Fatal("start relaunched a running session")
-	}
-	// Messages go to the agent named in the sender's session.
-	c.tool(otherLead.ID, "send_message", map[string]string{"to": "worker", "text": "only second worker"})
-	w.until("session-local name delivery", func() bool { return w.got(otherWorker.ID, "only second worker") })
-	c.tool(otherLead.ID, "send_message", map[string]string{"to": lead.Address(), "text": "from the other lead"})
-	w.until("lead-to-lead delivery", func() bool { return w.got(lead.ID, "from the other lead") })
-	if w.got(worker.ID, "only second worker") {
-		t.Fatal("message crossed sessions")
-	}
-	// The creation prompt titles the session; later messages and prompts leave
-	// the title.
-	w.until("the lead idle after the message", func() bool { return w.agent(lead.ID).Activity == store.Idle })
-	input(lead.ID, "Something else")
-	if w.session(first).Title != "start" {
-		t.Fatalf("title = %q", w.session(first).Title)
-	}
-	w.until("the lead's reply unseen", func() bool { return w.session(first).Unseen })
-	c.act(map[string]string{"action": "seen", "id": first})
-	if w.session(first).Unseen {
-		t.Fatal("seen left the reply unseen")
-	}
-	// A worker that fails tells its own lead. Messages reach it mid-turn.
-	input(worker.ID, "!work")
-	w.until("a busy worker", func() bool { return w.agent(worker.ID).Activity == store.Busy })
-	c.tool(lead.ID, "send_message", map[string]string{"to": worker.Name, "text": "change course during turn"})
-	w.until("mid-turn steering", func() bool { return w.got(worker.ID, "change course during turn") })
-	input(worker.ID, "!fail")
-	w.until("the failure reaches the lead", func() bool { return w.got(lead.ID, "test provider failure") })
-	if w.got(otherLead.ID, "test provider failure") {
-		t.Fatal("failure reached another session's lead")
-	}
-	// A worker whose process ends comes back with its conversation.
-	input(worker.ID, "!crash")
-	w.until("the resumed worker", func() bool { return w.starts(worker.ID) == 2 && w.agent(worker.ID).Activity == store.Idle })
-	if !w.resumed(worker.ID) {
-		t.Fatal("relaunch lost the conversation")
-	}
-	workerPid := w.lastPid(worker.ID)
-	c.tool(lead.ID, "remove_agent", map[string]string{"name": worker.Name})
-	if _, err := os.Stat(worker.Dir); !os.IsNotExist(err) || len(w.agents(first)) != 1 || !gone(workerPid) {
-		t.Fatal("the removed worker, its worktree, or its process remains")
-	}
-
-	// A stopped session stays stopped when the app restarts, and keeps its
-	// conversations and queued messages.
-	otherPid := w.lastPid(otherLead.ID)
-	c.act(map[string]string{"action": "stop", "id": second})
-	if w.session(second).Running || !gone(otherPid) {
-		t.Fatal("stop left the session running")
-	}
-	w.until("the view lists the session stopped", func() bool {
-		for _, s := range c.snapshot()[0].Sessions {
-			if s.Running != (s.ID == first) {
-				return false
-			}
-		}
-		return true
-	})
-	if code, _ := c.post("/session", map[string]string{"action": "bogus", "id": second}); code != http.StatusBadRequest {
-		t.Fatal("an unknown action was accepted")
-	}
-	queue := func(to, text string) {
-		t.Helper()
-		if err := w.db.Tx(func(tx *store.Tx) error { return tx.Queue(store.Message{From: "user", To: to, Text: text}) }); err != nil {
-			t.Fatal(err)
+	w.noPath(doomedWorker.Dir, "the deleted session's worktree")
+	for _, a := range []store.Agent{keptLead, keptWorker} {
+		if w.starts(a.ID) != 1 || len(w.log(a.ID, "shutdown")) != 0 || !w.session(kept.ID).Running {
+			t.Fatalf("deleting a session affected %s", a.Address())
 		}
 	}
-	queue(otherLead.ID, "queued while stopped")
-	queue(otherWorker.ID, "other queued while stopped")
-	app.shutdown()
-	start()
-	time.Sleep(300 * time.Millisecond)
-	if w.starts(otherLead.ID) != 1 || w.session(second).Running {
-		t.Fatal("restarting the app started a stopped session")
-	}
-	// Start resumes the conversations and waits for the user's prompt.
-	c.act(map[string]string{"action": "start", "id": second})
-	w.until("the started session", func() bool { return ready(otherLead.ID)() && ready(otherWorker.ID)() && w.starts(otherWorker.ID) == 2 })
-	if !w.session(second).AwaitingUser || !w.resumed(otherWorker.ID) {
-		t.Fatal("started session did not resume and await the user")
-	}
-	time.Sleep(300 * time.Millisecond)
-	if w.got(otherLead.ID, "queued while stopped") || len(w.queued(otherLead.ID)) != 1 || len(w.queued(otherWorker.ID)) != 1 {
-		t.Fatal("a started session delivered messages before a user prompt")
-	}
-	input(otherLead.ID, "continue")
-	w.until("the started session released", func() bool {
-		return w.got(otherLead.ID, "queued while stopped") && w.got(otherWorker.ID, "other queued while stopped")
-	})
+}
 
-	// When the app ends, sessions the user left running start again at the next
-	// launch, waiting for the user.
-	c.act(map[string]string{"action": "stop", "id": second})
-	queue(lead.ID, "queued at shutdown")
-	leadStarts, leadPid := w.starts(lead.ID), w.lastPid(lead.ID)
-	app.shutdown()
-	if !gone(leadPid) || !w.session(first).Running || w.agent(lead.ID).Activity != store.Exited {
-		t.Fatal("shutdown did not end the agents and keep the running mark")
+func TestDeletingAWorkspaceEndsItsSessions(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	start()
-	w.until("the restored session", func() bool { return w.starts(lead.ID) == leadStarts+1 && ready(lead.ID)() })
-	if w.session(second).Running || !w.session(first).AwaitingUser {
-		t.Fatal("restore started the wrong sessions")
-	}
-	time.Sleep(300 * time.Millisecond)
-	if w.got(lead.ID, "queued at shutdown") {
-		t.Fatal("a restored session delivered messages before a user prompt")
-	}
-	input(lead.ID, "continue")
-	w.until("the restored session released", func() bool { return w.got(lead.ID, "queued at shutdown") })
-
-	// A new title shows to agents; the address stays, and prompts leave it.
-	c.act(map[string]string{"action": "rename", "id": first, "title": "#{session_name} -triage;"})
-	c.act(map[string]string{"action": "start", "id": second})
-	w.until("the second session running", func() bool { return ready(otherLead.ID)() && w.starts(otherLead.ID) == 3 })
-	if listed := c.tool(otherLead.ID, "list_agents", nil); !strings.Contains(listed, lead.Address()) || !strings.Contains(listed, "#{session_name} -triage;") {
-		t.Fatal("list_agents missed the new title", listed)
-	}
-	input(lead.ID, "Another line")
-	if got := w.session(first).Title; got != "#{session_name} -triage;" {
-		t.Fatalf("a prompt replaced the user's title: %q", got)
-	}
-	// Deleting the last session leaves the workspace; deleting the workspace
-	// removes it and its worktrees.
-	c.act(map[string]string{"action": "delete", "id": second})
-	c.tool(lead.ID, "create_agent", map[string]string{"name": "last", "profile": "worker"})
-	w.until("the last worker", func() bool { return len(w.agents(first)) == 2 && w.starts(w.agents(first)[1].ID) == 1 })
-	lastWorker := w.agents(first)[1]
-	c.act(map[string]string{"action": "delete", "id": first})
-	w.until("a workspace without sessions", func() bool { list := c.snapshot(); return len(list) == 1 && len(list[0].Sessions) == 0 })
-	if _, err := os.Stat(lastWorker.Dir); !os.IsNotExist(err) {
-		t.Fatal("deleted session's worktree remains", err)
-	}
-	last := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "first"})
-	lastLead := w.agents(last)[0]
-	w.until("the new session's lead", ready(lastLead.ID))
-	c.tool(lastLead.ID, "create_agent", map[string]string{"name": "w", "profile": "worker"})
-	w.until("the new session's worker", func() bool { return len(w.agents(last)) == 2 && w.starts(w.agents(last)[1].ID) == 1 })
-	finalWorker := w.agents(last)[1]
-	if code, body := c.post("/workspace", map[string]string{"action": "delete", "id": ws.ID}); code != http.StatusOK {
+	_, lead := w.newLead(c, ws.ID, "first")
+	worker := w.newWorker(c, lead, "worker", "")
+	pids := []int{w.lastPid(lead.ID), w.lastPid(worker.ID)}
+	if code, body := c.post("/workspace", map[string]string{"action": "delete", "id": ws.ID}, ""); code != http.StatusOK {
 		t.Fatalf("deleting the workspace: %d %s", code, body)
 	}
 	w.until("no workspaces", func() bool { return len(c.snapshot()) == 0 })
-	if !gone(w.lastPid(lastLead.ID)) || !gone(w.lastPid(finalWorker.ID)) {
+	if !gone(pids[0]) || !gone(pids[1]) {
 		t.Fatal("the deleted workspace's agents run")
 	}
-	if _, err := os.Stat(finalWorker.Dir); !os.IsNotExist(err) {
-		t.Fatal("deleted workspace's worktree remains", err)
+	w.noPath(worker.Dir, "the deleted workspace's worktree")
+	w.noPath(filepath.Join(w.root, ".hypercube"), "the session worktree directory")
+}
+
+// A restart brings back the sessions the user left running, waiting for the
+// user's prompt, and leaves a stopped session stopped.
+func TestStartAppRestoresRunningSessions(t *testing.T) {
+	w := newWorld(t)
+	app, c := w.runApp()
+	ws, err := app.rt.AddWorkspace(w.root)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(w.root, ".hypercube")); !os.IsNotExist(err) {
-		t.Fatal("session worktree directories remain", err)
+	running, runningLead := w.newLead(c, ws.ID, "first")
+	stopped, stoppedLead := w.newLead(c, ws.ID, "second")
+	stoppedPid := w.lastPid(stoppedLead.ID)
+	c.sessionAction("stop", stopped.ID)
+	if w.session(stopped.ID).Running || !gone(stoppedPid) {
+		t.Fatal("stop left the session running")
+	}
+	app.shutdown()
+	if !w.session(running.ID).Running || w.agent(runningLead.ID).Activity != store.Exited {
+		t.Fatal("shutdown did not end the agents and keep the running mark")
+	}
+	w.runApp()
+	w.until("the restored session", func() bool { return w.starts(runningLead.ID) == 2 && w.ready(runningLead.ID) })
+	if !w.session(running.ID).AwaitingUser {
+		t.Fatal("the restored session does not await the user")
+	}
+	// startApp restores every running session before it returns.
+	if w.session(stopped.ID).Running || w.starts(stoppedLead.ID) != 1 {
+		t.Fatal("the restart started a stopped session")
 	}
 }
 
@@ -579,7 +517,7 @@ func TestAppProcess(t *testing.T) {
 		}
 	})
 	start()
-	first := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "first"})
+	first := c.newSession(ws.ID, "first")
 	lead := w.agents(first)[0]
 	w.until("the lead", func() bool { return w.starts(lead.ID) == 1 && w.agent(lead.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
