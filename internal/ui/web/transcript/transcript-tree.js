@@ -1,11 +1,12 @@
 // Turns a transcript's items, in seq order, into the rows the page draws.
 //
 // An item nests under its parent tool call when the parent is present.
-// Consecutive tool calls within one container form a run, which shows the
-// latest call while it lasts and closes at the next item that is not a tool
-// call, showing how long it worked. A call that sends a message to a session
-// draws as a message. The rows are rebuilt from the whole list, so an item
-// that arrives before its parent moves under the parent when it arrives.
+// Tool calls within one container form a run, passing over user messages
+// and closing at the next other item, showing how long it worked. User
+// messages draw in place, with later calls joining the run above them. A call
+// that sends a message to a session draws as a message. The rows are rebuilt
+// from the whole list, so an item that arrives before its parent moves under
+// the parent when it arrives.
 
 // Tool input fields, in the order that best says what a call does.
 const summaryKeys = ['command', 'cmd', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
@@ -54,7 +55,7 @@ export const toolInput = input => input === undefined || input === null ? '' : c
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
 const isCall = item => item.kind === 'tool' && !isMessage(item);
 
-const kinds = new Set(['user', 'reasoning', 'error', 'attention']);
+const kinds = new Set(['reasoning', 'error', 'attention']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
 
 function workedFor(start, until) {
@@ -64,7 +65,7 @@ function workedFor(start, until) {
 }
 
 // transcriptRows returns the top-level rows of a transcript {order, items}:
-//   {type: 'run', key, calls, closed, duration, running}, whose calls are
+//   {type: 'run', key, calls, closed, duration}, whose calls are
 //     {type: 'tool', item, children} or {type: 'message', item};
 //   {type: 'user' | 'text' | 'reasoning' | 'error' | 'attention', item}.
 export function transcriptRows({order, items}) {
@@ -82,18 +83,21 @@ export function transcriptRows({order, items}) {
     const rows = [];
     let run = null;
     for (const item of containers.get(container) ?? []) {
+      if (item.kind === 'user') {
+        rows.push({type: 'user', item});
+        continue;
+      }
       if (item.kind !== 'tool') {
-        if (run) Object.assign(run, {closed: true, duration: workedFor(run.calls[0].item.at, item.at), running: false});
+        if (run) Object.assign(run, {closed: true, duration: workedFor(run.calls[0].item.at, item.at)});
         run = null;
         rows.push({type: rowType(item), item});
         continue;
       }
       if (!run) {
-        run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, duration: '', running: false};
+        run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, duration: ''};
         rows.push(run);
       }
       run.calls.push(isMessage(item) ? {type: 'message', item} : {type: 'tool', item, children: rowsOf(item.id)});
-      run.running ||= !item.done;
     }
     return rows;
   };

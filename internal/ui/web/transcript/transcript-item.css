@@ -1,3 +1,13 @@
+.transcript-text {
+  align-self: flex-start;
+  min-width: 0;
+  max-width: 85%;
+  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
+  border: var(--size-border) solid var(--vscode-chat-requestBorder);
+  border-radius: calc(var(--size-radius) * 2);
+  background: var(--vscode-input-background);
+}
+
 .transcript-text > .transcript-images {
   margin-top: calc(var(--size-space) * 2);
 }

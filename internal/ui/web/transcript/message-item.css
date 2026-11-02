@@ -19,14 +19,14 @@
   background: var(--vscode-chat-requestBubbleBackground);
 }
 
+.message-item-agent {
+  line-height: 1.5;
+}
+
 .message-item-summary {
-  display: grid;
-  grid-template-columns: var(--size-icon) minmax(0, 1fr);
-  column-gap: var(--size-space);
-  align-items: center;
+  display: block;
   cursor: pointer;
   list-style: none;
-  line-height: 1.5;
 }
 
 .message-item-summary::-webkit-details-marker {
@@ -46,7 +46,7 @@
 }
 
 .message-item-preview {
-  grid-column: 2;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -56,7 +56,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--size-space);
-  padding-left: calc(var(--size-icon) + var(--size-space));
 }
 
 .message-item-text {

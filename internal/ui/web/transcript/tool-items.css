@@ -1,11 +1,10 @@
 .tool-items-disclosure {
   min-width: 0;
+  line-height: 1.5;
 }
 
 .tool-items-summary {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  display: block;
   min-width: 0;
   padding: var(--size-space) 0;
   color: var(--vscode-descriptionForeground);
@@ -21,11 +20,23 @@
   color: var(--vscode-foreground);
 }
 
+.tool-items-heading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  min-width: 0;
+}
+
+.tool-items-preview {
+  display: flex;
+  min-width: 0;
+}
+
 .tool-items-chevron {
   flex-shrink: 0;
 }
 
-.tool-items-disclosure[open] > .tool-items-summary > .tool-items-chevron {
+.tool-items-disclosure[open] > .tool-items-summary > .tool-items-heading > .tool-items-chevron {
   transform: rotate(90deg);
 }
 

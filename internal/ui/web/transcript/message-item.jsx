@@ -26,11 +26,11 @@ export const MessageItem = memo(({item, expanded, setOpen}) => {
   return (
     <details class="message-item message-item-agent" open={expanded} onToggle={e => setOpen(item.id, e.currentTarget.open)}>
       <summary class="message-item-summary">
-        <vscode-icon name="chevron-right" class="message-item-chevron" />
         <span class="message-item-heading">
           {heading}
           {outgoing && !item.done && <vscode-icon name="loading" spin role="img" title="Running" />}
           {outgoing && item.failed && <vscode-icon name="error" class="message-item-failure" role="img" title="Failed" />}
+          <vscode-icon name="chevron-right" class="message-item-chevron" />
         </span>
         {!expanded && <span class="message-item-preview">{text.split(/\r?\n/, 1)[0]}</span>}
       </summary>

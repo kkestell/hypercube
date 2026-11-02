@@ -61,6 +61,45 @@ test('a tool call shows its title, status, input, output, and nested items', () 
   expect(call().querySelector('.tool-items-children').textContent).toBe('inside');
 });
 
+test.each([['the user', undefined], ['another session', 'child']])('a tool run passes over a message from %s and shows working details until other output', (_source, from) => {
+  const first = {id: 'a', kind: 'tool', tool: 'read', input: {path: '/first'}, at: 1000, seq: 1};
+  const {root, send} = setup([first]);
+  const list = root.querySelector('.transcript-list');
+  const group = list.firstElementChild;
+  const summary = group.querySelector('summary');
+  const chevron = summary.querySelector('.tool-items-chevron');
+  expect(chevron).not.toBeNull();
+  expect(summary.querySelector('[title="Running"]')).toBeNull();
+  const heading = summary.querySelector('.tool-items-heading');
+  const preview = summary.querySelector('.tool-items-preview');
+  expect(heading.lastElementChild).toBe(chevron);
+  expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'read /first']);
+  act(() => summary.click());
+  expect(group.open).toBe(true);
+  expect(group.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
+
+  send([{...first, done: true}, {id: 'u', kind: 'user', from, text: 'Keep going', at: 3000, seq: 2}]);
+  const user = list.children[1];
+  expect(user.textContent).toContain('Keep going');
+  expect(summary.querySelector('.tool-items-preview')).toBe(preview);
+
+  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'.repeat(200)}, at: 5000, seq: 3}]);
+  expect([...list.children]).toEqual([group, user]);
+  expect(group.open).toBe(true);
+  expect(group.querySelectorAll('.tool-items-call').length).toBe(2);
+  expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'bash ' + 'x'.repeat(119) + '…']);
+  expect(summary.querySelector('[title="Running"]')).toBeNull();
+  expect(group.querySelectorAll('.tool-items-call [title="Running"]').length).toBe(1);
+
+  send([{id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
+  expect(list.firstElementChild).toBe(group);
+  expect(group.open).toBe(true);
+  expect(summary.textContent).toBe('Worked for 9s');
+  expect(heading.lastElementChild).toBe(chevron);
+  expect(summary.querySelector('.tool-items-preview')).toBeNull();
+  expect(summary.querySelector('[title="Running"]')).toBeNull();
+});
+
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
   let answer;
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
