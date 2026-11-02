@@ -59,7 +59,7 @@ func newAgent(t *testing.T) *agentUnderTest {
 	peerIn, agentOut := io.Pipe()
 	h := &agentUnderTest{server: &appServer{t: t, out: peerOut, handlers: map[string]func(map[string]any) (any, *plugin.RPCError){}}}
 	h.agent = &agent{
-		done: make(chan struct{}), finished: map[string]bool{}, open: map[string]harness.Item{}, running: map[string]harness.Item{},
+		finished: map[string]bool{}, open: map[string]harness.Item{}, running: map[string]harness.Item{},
 		children: map[string]string{}, requests: map[string]*request{},
 	}
 	h.ctx, h.cancel = context.WithCancel(context.Background())
@@ -68,7 +68,8 @@ func newAgent(t *testing.T) *agentUnderTest {
 		defer h.evMu.Unlock()
 		h.events = append(h.events, ev)
 	}
-	h.rpc = plugin.NewRPC(agentIn, agentOut, h.handle)
+	h.rpc = plugin.NewRPC(agentOut, h.handle)
+	go func() { h.rpc.End(plugin.ReadLines(agentIn, h.rpc.Line)) }()
 	go h.server.serve(peerIn)
 	t.Cleanup(func() { h.cancel(); peerOut.Close(); peerIn.Close() })
 	return h
@@ -930,7 +931,7 @@ func TestConnectReportsAnIncompatibleServer(t *testing.T) {
 
 func TestStartWithoutCodex(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {}, make(chan error, 1))
+	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "Codex is missing") {
 		t.Fatal(err)
 	}
@@ -945,7 +946,7 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {}, make(chan error, 1))
+	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "bad value") {
 		t.Fatal(err)
 	}
@@ -1031,17 +1032,6 @@ done
 	}))
 	send(harness.Command{ID: "3", Command: harness.CmdShutdown})
 	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestErrorsExplainADeadConnection(t *testing.T) {
-	h := newAgent(t)
-	h.stderr.Write([]byte("fatal: cannot load config"))
-	close(h.done)
-	h.server.out.(io.Closer).Close()
-	err := h.call(context.Background(), "initialize", nil, nil)
-	if err == nil || !strings.Contains(err.Error(), "cannot load config") {
 		t.Fatal(err)
 	}
 }

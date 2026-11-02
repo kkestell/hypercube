@@ -1,8 +1,10 @@
 package main
 
 import (
-	"bufio"
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -46,14 +48,12 @@ func newPi() *piUnderTest {
 			defer p.mu.Unlock()
 			p.events = append(p.events, ev)
 		},
-		done: make(chan struct{}), calls: map[string]chan response{},
+		ended: make(chan struct{}), calls: map[string]chan response{},
 		blocks: map[string]*block{}, tools: map[string]harness.Item{}, requests: map[string]*request{},
 		session: "session-1", window: 1000,
 	}
 	return p
 }
-
-func (p *piUnderTest) Close() error { return nil }
 
 func (p *piUnderTest) Write(b []byte) (int, error) {
 	var m map[string]any
@@ -519,7 +519,18 @@ func TestInputWhenNotRunning(t *testing.T) {
 type failingStdin struct{}
 
 func (failingStdin) Write([]byte) (int, error) { return 0, os.ErrClosed }
-func (failingStdin) Close() error              { return nil }
+
+// A call waiting for its response ends with the reason pi's output ended.
+func TestPendingCallEndsWithTheExitReason(t *testing.T) {
+	p := newPi()
+	p.stdin = io.Discard
+	done := make(chan error, 1)
+	go func() { done <- p.call(context.Background(), "abort", nil, nil) }()
+	p.end(errors.New("pi exited: exit status 3: boom"))
+	if err := <-done; err == nil || err.Error() != "abort: pi exited: exit status 3: boom" {
+		t.Fatal(err)
+	}
+}
 
 // fakePi installs a `pi` that records its arguments in $FAKE_ARGS and the MCP
 // description in $FAKE_ARGS.mcp, answers get_state and get_session_stats, and
@@ -563,77 +574,66 @@ done
 	return args
 }
 
-// connection is a test's end of serve.
-type connection struct {
-	t       *testing.T
-	in      *os.File
-	records chan harness.Record
-	done    chan error
-	next    int
+// emitted collects the events of a started agent.
+type emitted struct {
+	mu     sync.Mutex
+	events []harness.Event
 }
 
-func connect(t *testing.T) *connection {
+func (e *emitted) emit(ev harness.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.events = append(e.events, ev)
+}
+
+func (e *emitted) all() []harness.Event {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return slices.Clone(e.events)
+}
+
+// idle waits until the agent has reported itself idle and returns the events
+// so far.
+func (e *emitted) idle(t *testing.T) []harness.Event {
 	t.Helper()
-	inRead, inWrite, _ := os.Pipe()
-	outRead, outWrite, _ := os.Pipe()
-	c := &connection{t: t, in: inWrite, records: make(chan harness.Record, 256), done: make(chan error, 1)}
-	go func() {
-		c.done <- serve(inRead, outWrite)
-		outWrite.Close()
-	}()
-	go func() {
-		scanner := bufio.NewScanner(outRead)
-		for scanner.Scan() {
-			var r harness.Record
-			if err := json.Unmarshal(scanner.Bytes(), &r); err != nil {
-				t.Error(err)
-			}
-			c.records <- r
-		}
-		close(c.records)
-	}()
-	t.Cleanup(func() { inWrite.Close() })
-	return c
-}
-
-func (c *connection) send(cmd harness.Command) string {
-	c.next++
-	cmd.ID = string(rune('a' + c.next))
-	b, _ := json.Marshal(cmd)
-	if _, err := c.in.Write(append(b, '\n')); err != nil {
-		c.t.Fatal(err)
-	}
-	return cmd.ID
-}
-
-// until reads records until match accepts one, and returns the events and
-// replies seen on the way, including that record.
-func (c *connection) until(match func(harness.Record) bool) (events []harness.Event, replies []harness.Reply) {
-	c.t.Helper()
-	timeout := time.After(10 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for {
-		select {
-		case r, ok := <-c.records:
-			if !ok {
-				c.t.Fatal("the connection closed")
-			}
-			if r.Event != nil {
-				events = append(events, *r.Event)
-			}
-			if r.Reply != nil {
-				replies = append(replies, *r.Reply)
-			}
-			if match(r) {
-				return
-			}
-		case <-timeout:
-			c.t.Fatal("timed out")
+		events := e.all()
+		if slices.ContainsFunc(events, func(ev harness.Event) bool { return ev.State == harness.Idle }) {
+			return events
 		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out; saw %+v", events)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
-func replyTo(id string) func(harness.Record) bool {
-	return func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == id }
+func start(t *testing.T, a harness.StartArgs) (*agent, *emitted) {
+	t.Helper()
+	e := &emitted{}
+	ag, err := startAgent(a, e.emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(ag.proc.Stop)
+	return ag, e
+}
+
+// startFails starts pi and returns the error, checking that nothing was
+// emitted.
+func startFails(t *testing.T, a harness.StartArgs) error {
+	t.Helper()
+	e := &emitted{}
+	ag, err := startAgent(a, e.emit)
+	if err == nil {
+		ag.proc.Stop()
+		t.Fatal("start succeeded")
+	}
+	if events := e.all(); len(events) != 0 {
+		t.Errorf("events %+v", events)
+	}
+	return err
 }
 
 func startArgs(t *testing.T) harness.StartArgs {
@@ -643,24 +643,18 @@ func startArgs(t *testing.T) harness.StartArgs {
 	}
 }
 
-func TestServe(t *testing.T) {
+func TestStart(t *testing.T) {
 	argsFile := fakePi(t, nil)
-	c := connect(t)
-	start := startArgs(t)
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	_, replies := c.until(replyTo(id))
-	if replies[len(replies)-1].Error != "" {
-		t.Fatal(replies)
-	}
-	events, _ := c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Idle })
-	if len(events) != 1 || events[0].Conversation != "" {
-		t.Errorf("a new session was reported before it exists: %+v", events)
+	a := startArgs(t)
+	ag, e := start(t, a)
+	if c := ag.conversation(); c != "" {
+		t.Errorf("a new session %s was reported before it exists", c)
 	}
 	data, err := os.ReadFile(argsFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	extension := filepath.Join(start.StateDir, "pi-extension", "index.js")
+	extension := filepath.Join(a.StateDir, "pi-extension", "index.js")
 	for _, want := range []string{"--mode rpc", "--provider openrouter", "--model x/m", "--thinking high", "--append-system-prompt You work in a team.", "-e " + extension} {
 		if !strings.Contains(string(data), want) {
 			t.Errorf("arguments lack %s: %s", want, data)
@@ -677,16 +671,12 @@ func TestServe(t *testing.T) {
 		t.Errorf("extension %v %s", err, text)
 	}
 
-	id = c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	var seen []harness.Event
-	events, replies = c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Idle })
-	seen = append(seen, events...)
-	if len(replies) != 1 || replies[0].ID != id || replies[0].Error != "" {
-		t.Errorf("replies %v", replies)
+	if err := ag.input("hello", nil); err != nil {
+		t.Fatal(err)
 	}
 	var texts []string
 	var reported []string
-	for _, ev := range seen {
+	for _, ev := range e.idle(t) {
 		if ev.Conversation != "" {
 			reported = append(reported, ev.Conversation)
 		}
@@ -699,48 +689,32 @@ func TestServe(t *testing.T) {
 	if !slices.Equal(texts, []string{"done"}) || !slices.Equal(reported, []string{"session-1"}) {
 		t.Errorf("texts %v, conversations %v", texts, reported)
 	}
-
-	id = c.send(harness.Command{Command: harness.CmdAnswer, Request: "nothing"})
-	if _, replies = c.until(replyTo(id)); replies[len(replies)-1].Error == "" {
+	if err := ag.answer("nothing", "", ""); err == nil {
 		t.Error("an answer to no request succeeded")
-	}
-	id = c.send(harness.Command{Command: harness.CmdShutdown})
-	c.until(replyTo(id))
-	select {
-	case err := <-c.done:
-		if err != nil {
-			t.Error(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not end")
 	}
 }
 
-func TestServeResumesTheSession(t *testing.T) {
+func TestStartResumesTheSession(t *testing.T) {
 	argsFile := fakePi(t, nil)
 	if err := os.WriteFile(os.Getenv("FAKE_SESSION_FILE"), []byte("{}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	c := connect(t)
-	start := startArgs(t)
-	start.Conversation = "session-1"
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	if _, replies := c.until(replyTo(id)); replies[len(replies)-1].Error != "" {
-		t.Fatal(replies)
-	}
-	events, _ := c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Idle })
-	if last := events[len(events)-1]; last.Conversation != "session-1" {
-		t.Errorf("events %+v", events)
+	a := startArgs(t)
+	a.Conversation = "session-1"
+	ag, e := start(t, a)
+	if c := ag.conversation(); c != "session-1" {
+		t.Errorf("conversation %q", c)
 	}
 	data, _ := os.ReadFile(argsFile)
 	if !strings.Contains(string(data), "--session-id session-1") {
 		t.Error(string(data))
 	}
 	// The cost of the resumed session carries on.
-	c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	events, _ = c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Idle })
+	if err := ag.input("hello", nil); err != nil {
+		t.Fatal(err)
+	}
 	var usage harness.Usage
-	for _, ev := range events {
+	for _, ev := range e.idle(t) {
 		if ev.Usage != nil {
 			usage = *ev.Usage
 		}
@@ -750,30 +724,21 @@ func TestServeResumesTheSession(t *testing.T) {
 	}
 }
 
-func TestServeFailedResumeIsAnErrorReply(t *testing.T) {
+func TestStartFailedResume(t *testing.T) {
 	// The session file is missing: Pi would start a new session under the ID.
 	fakePi(t, nil)
-	c := connect(t)
-	start := startArgs(t)
-	start.Conversation = "gone"
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	events, replies := c.until(replyTo(id))
-	if got := replies[len(replies)-1].Error; !strings.Contains(got, "no saved session gone") {
-		t.Errorf("error %q", got)
-	}
-	if len(events) != 0 {
-		t.Errorf("events %+v", events)
+	a := startArgs(t)
+	a.Conversation = "gone"
+	if err := startFails(t, a); !strings.Contains(err.Error(), "no saved session gone") {
+		t.Errorf("error %v", err)
 	}
 }
 
-func TestServeRejectsAnotherModel(t *testing.T) {
+func TestStartRejectsAnotherModel(t *testing.T) {
 	fakePi(t, map[string]string{"FAKE_MODEL": "other"})
-	c := connect(t)
-	start := startArgs(t)
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	_, replies := c.until(replyTo(id))
-	if got := replies[len(replies)-1].Error; !strings.Contains(got, "openrouter/other") || !strings.Contains(got, "openrouter/x/m") {
-		t.Errorf("error %q", got)
+	err := startFails(t, startArgs(t))
+	if !strings.Contains(err.Error(), "openrouter/other") || !strings.Contains(err.Error(), "openrouter/x/m") {
+		t.Errorf("error %v", err)
 	}
 }
 
@@ -781,14 +746,14 @@ func TestStartRejectsAModelWithoutProvider(t *testing.T) {
 	fakePi(t, nil)
 	a := startArgs(t)
 	a.Model = "m"
-	if _, err := startAgent(a, func(harness.Event) {}, make(chan error, 1)); err == nil || !strings.Contains(err.Error(), "provider/id") {
+	if _, err := startAgent(a, func(harness.Event) {}); err == nil || !strings.Contains(err.Error(), "provider/id") {
 		t.Errorf("error %v", err)
 	}
 }
 
 func TestStartWithoutPi(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	if _, err := startAgent(startArgs(t), func(harness.Event) {}, make(chan error, 1)); err == nil || !strings.Contains(err.Error(), "Pi is missing") {
+	if _, err := startAgent(startArgs(t), func(harness.Event) {}); err == nil || !strings.Contains(err.Error(), "Pi is missing") {
 		t.Errorf("error %v", err)
 	}
 }
@@ -800,35 +765,23 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	_, err := startAgent(startArgs(t), func(harness.Event) {}, make(chan error, 1))
+	_, err := startAgent(startArgs(t), func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "exit status 1") || !strings.Contains(err.Error(), "No API key for openrouter") {
 		t.Errorf("error %v", err)
 	}
 }
 
-func TestServeEndsWhenPiExits(t *testing.T) {
+func TestExitEndsTheProcess(t *testing.T) {
 	fakePi(t, map[string]string{"FAKE_EXIT": "1"})
-	c := connect(t)
-	start := startArgs(t)
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	c.until(replyTo(id))
-	c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
+	ag, _ := start(t, startArgs(t))
+	_ = ag.input("hello", nil) // fails with the exit reason or a broken pipe
 	select {
-	case err := <-c.done:
-		if err == nil || !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
-			t.Errorf("error %v", err)
-		}
+	case <-ag.proc.Done():
 	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not end")
+		t.Fatal("pi did not end")
 	}
-}
-
-func TestServeRejectsCommandsBeforeStart(t *testing.T) {
-	fakePi(t, nil)
-	c := connect(t)
-	id := c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	if _, replies := c.until(replyTo(id)); replies[len(replies)-1].Error == "" {
-		t.Error("input before start succeeded")
+	if err := ag.proc.Err(); !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error %v", err)
 	}
 }
 

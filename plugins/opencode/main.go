@@ -25,7 +25,6 @@ import (
 
 const (
 	startTimeout = 60 * time.Second
-	stopTimeout  = 3 * time.Second
 
 	// protocolVersion is the version of the Agent Client Protocol spoken here.
 	protocolVersion = 1
@@ -43,25 +42,25 @@ func main() {
 }
 
 func serve(in io.Reader, out io.Writer) error {
-	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (plugin.Agent, error) {
-		ag, err := startAgent(a, emit, exited)
+	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event)) (plugin.Agent, error) {
+		ag, err := startAgent(a, emit)
 		if err != nil {
 			return plugin.Agent{}, err
 		}
-		return plugin.Agent{Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Idle: ag.idle, Stop: ag.stop}, nil
+		return plugin.Agent{
+			Process: ag.proc, Conversation: ag.session,
+			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
+		}, nil
 	})
 }
 
 // agent is a running `opencode acp` process and what its updates have told us.
 type agent struct {
-	cmd    *exec.Cmd
-	stdin  io.Closer
+	proc   *plugin.Process
 	rpc    *plugin.RPC
 	emit   func(harness.Event)
-	done   chan struct{} // closed when the process has ended
 	ctx    context.Context
 	cancel context.CancelFunc
-	stderr plugin.Tail
 	dir    string
 	model  string
 
@@ -105,11 +104,7 @@ type field struct {
 	custom  string // the key of the field for a typed answer, if any
 }
 
-func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (*agent, error) {
-	path, err := exec.LookPath("opencode")
-	if err != nil {
-		return nil, errors.New("OpenCode is missing: install opencode")
-	}
+func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	config := map[string]any{}
 	if a.Instructions != "" {
 		file, err := plugin.WriteFile(filepath.Join(a.StateDir, "opencode-instructions"), a.Agent+".md", []byte(a.Instructions))
@@ -118,53 +113,29 @@ func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- err
 		}
 		config["instructions"] = []string{file}
 	}
-	cmd := exec.Command(path, "acp")
+	cmd := exec.Command("opencode", "acp")
 	cmd.Dir = a.Dir
 	cmd.Env = append(os.Environ(), "OPENCODE_CONFIG_CONTENT="+plugin.JSONString(config))
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
+	p, err := plugin.StartProcess("OpenCode", cmd)
 	if err != nil {
 		return nil, err
 	}
 	ag := newAgent(a, emit)
-	ag.cmd, ag.stdin = cmd, stdin
-	cmd.Stderr = io.MultiWriter(os.Stderr, &ag.stderr)
-	// OpenCode's children may keep its stderr open after it ends.
-	cmd.WaitDelay = time.Second
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start opencode: %w", err)
-	}
-	ag.rpc = plugin.NewRPC(stdout, stdin, ag.handle)
-	died := make(chan error, 1)
-	go func() {
-		err := cmd.Wait()
-		ag.cancel()
-		close(ag.done)
-		reason := "opencode exited"
-		if err != nil {
-			reason = fmt.Sprintf("opencode exited: %v", err)
-		}
-		if detail := ag.stderr.Last(); detail != "" {
-			reason += ": " + detail
-		}
-		died <- errors.New(reason)
-	}()
+	ag.proc = p
+	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)
+	go func() { ag.rpc.End(p.Read(ag.rpc.Line)) }()
 	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
 	defer cancel()
 	if err := ag.begin(ctx, a); err != nil {
 		ag.stop()
 		return nil, err
 	}
-	go func() { exited <- <-died }()
 	return ag, nil
 }
 
 func newAgent(a harness.StartArgs, emit func(harness.Event)) *agent {
 	ag := &agent{
-		emit: emit, done: make(chan struct{}), dir: a.Dir, model: a.Model, session: a.Conversation,
+		emit: emit, dir: a.Dir, model: a.Model, session: a.Conversation,
 		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{}, requests: map[string]*request{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
@@ -304,22 +275,10 @@ func (ag *agent) choose(ctx context.Context, options []configOption, id, value s
 }
 
 // call makes an ACP request and decodes its result into result, unless that
-// is nil. A connection that has ended is explained by the end of opencode's
-// diagnostics.
+// is nil.
 func (ag *agent) call(ctx context.Context, method string, params, result any) error {
 	raw, err := ag.rpc.Call(ctx, method, params)
 	if err != nil {
-		select {
-		case <-ag.rpc.Done():
-			select {
-			case <-ag.done:
-			case <-time.After(stopTimeout):
-			}
-			if detail := ag.stderr.Last(); detail != "" {
-				err = fmt.Errorf("%w: %s", err, detail)
-			}
-		default:
-		}
 		return fmt.Errorf("%s: %w", method, err)
 	}
 	if result == nil {
@@ -328,24 +287,10 @@ func (ag *agent) call(ctx context.Context, method string, params, result any) er
 	return json.Unmarshal(raw, result)
 }
 
-// idle reports the started agent as waiting for input.
-func (ag *agent) idle() {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	ag.emit(harness.Event{Conversation: ag.session, State: harness.Idle})
-}
-
-// stop ends opencode: closing its input lets it finish, and it is killed if it
-// does not. Its children share the plugin's process group, which Hypercube
-// kills.
+// stop gives up the prompt in flight and ends opencode.
 func (ag *agent) stop() {
 	ag.cancel()
-	_ = ag.stdin.Close()
-	select {
-	case <-ag.done:
-	case <-time.After(stopTimeout):
-		_ = ag.cmd.Process.Kill()
-	}
+	ag.proc.Stop()
 }
 
 // input starts a turn. OpenCode refuses a prompt while one is running, so

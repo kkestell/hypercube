@@ -67,7 +67,8 @@ func connected(t *testing.T) *agentUnderTest {
 		defer h.evMu.Unlock()
 		h.events = append(h.events, ev)
 	})
-	h.rpc = plugin.NewRPC(agentIn, agentOut, h.handle)
+	h.rpc = plugin.NewRPC(agentOut, h.handle)
+	go func() { h.rpc.End(plugin.ReadLines(agentIn, h.rpc.Line)) }()
 	go h.acp.serve(peerIn)
 	t.Cleanup(func() { h.cancel(); peerOut.Close(); peerIn.Close() })
 	return h
@@ -903,7 +904,7 @@ func TestInputWhenNotRunning(t *testing.T) {
 
 func TestStartWithoutOpenCode(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {}, make(chan error, 1))
+	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "OpenCode is missing") {
 		t.Fatal(err)
 	}
@@ -921,7 +922,7 @@ func TestStartRunsOpenCodeAcp(t *testing.T) {
 	}
 	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
 	t.Setenv("FAKE_OUT", state)
-	_, err := startAgent(harness.StartArgs{Dir: dir, Agent: "a1", Instructions: "Be brief.", StateDir: state}, func(harness.Event) {}, make(chan error, 1))
+	_, err := startAgent(harness.StartArgs{Dir: dir, Agent: "a1", Instructions: "Be brief.", StateDir: state}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "cannot start") {
 		t.Fatal(err)
 	}

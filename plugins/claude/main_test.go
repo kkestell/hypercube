@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -9,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,10 +29,6 @@ func fixture(t *testing.T, name string) []string {
 	return strings.Split(strings.TrimSpace(string(data)), "\n")
 }
 
-type nopCloser struct{ *bytes.Buffer }
-
-func (nopCloser) Close() error { return nil }
-
 // harnessUnderTest is a claude that reads fixture lines and writes to a
 // buffer instead of a process.
 type harnessUnderTest struct {
@@ -44,12 +40,11 @@ type harnessUnderTest struct {
 func newClaude() *harnessUnderTest {
 	h := &harnessUnderTest{sent: &bytes.Buffer{}}
 	h.claude = &claude{
-		stdin: nopCloser{h.sent}, ready: make(chan struct{}),
+		stdin:  h.sent,
 		blocks: map[string]int{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{},
 		requests: map[string]*request{},
 	}
 	h.emit = func(ev harness.Event) { h.events = append(h.events, ev) }
-	close(h.ready)
 	return h
 }
 
@@ -488,18 +483,22 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 }
 
 // fakeClaude installs a `claude` that answers initialize, plays $FAKE_STREAM
-// for each user message, and records its arguments in $FAKE_ARGS. With
-// $FAKE_FAIL it plays that file and exits at once, as claude does when it cannot
-// resume. With $FAKE_EXIT it exits when it gets a user message.
+// for each user message, and records its arguments in $FAKE_ARGS. It plays
+// $FAKE_BEFORE first, and with $FAKE_FAIL it then exits, as claude does when
+// it cannot resume. With $FAKE_INIT it plays that file in answer to
+// initialize and exits. With $FAKE_EXIT it exits when it gets a user message.
 func fakeClaude(t *testing.T, env map[string]string) (args string) {
 	t.Helper()
 	dir := t.TempDir()
 	script := `#!/bin/sh
 echo "$@" > "$FAKE_ARGS"
-if [ -n "$FAKE_FAIL" ]; then cat "$FAKE_FAIL"; echo "resume failed" >&2; exit 1; fi
+if [ -n "$FAKE_BEFORE" ]; then cat "$FAKE_BEFORE"; fi
+if [ -n "$FAKE_FAIL" ]; then echo "resume failed" >&2; exit 1; fi
 while IFS= read -r line; do
   case "$line" in
-    *'"initialize"'*) echo '{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}' ;;
+    *'"initialize"'*)
+      if [ -n "$FAKE_INIT" ]; then cat "$FAKE_INIT"; exit 0; fi
+      echo '{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}' ;;
     *'"type":"user"'*) if [ -n "$FAKE_EXIT" ]; then echo boom >&2; exit 3; fi; cat "$FAKE_STREAM" ;;
   esac
 done
@@ -511,88 +510,41 @@ done
 	args = filepath.Join(dir, "args")
 	t.Setenv("FAKE_ARGS", args)
 	t.Setenv("FAKE_STREAM", filepath.Join("testdata", "text.jsonl"))
-	t.Setenv("FAKE_FAIL", "")
-	t.Setenv("FAKE_EXIT", "")
+	for _, k := range []string{"FAKE_BEFORE", "FAKE_FAIL", "FAKE_INIT", "FAKE_EXIT"} {
+		t.Setenv(k, "")
+	}
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
 	return args
 }
 
-// connection is a test's end of serve.
-type connection struct {
-	t       *testing.T
-	in      *os.File
-	records chan harness.Record
-	done    chan error
-	next    int
-}
-
-func connect(t *testing.T) *connection {
+// playFile writes a file of claude output for the fake to play.
+func playFile(t *testing.T, lines ...string) string {
 	t.Helper()
-	inRead, inWrite, _ := os.Pipe()
-	outRead, outWrite, _ := os.Pipe()
-	c := &connection{t: t, in: inWrite, records: make(chan harness.Record, 256), done: make(chan error, 1)}
-	go func() {
-		c.done <- serve(inRead, outWrite)
-		outWrite.Close()
-	}()
-	go func() {
-		scanner := bufio.NewScanner(outRead)
-		for scanner.Scan() {
-			var r harness.Record
-			if err := json.Unmarshal(scanner.Bytes(), &r); err != nil {
-				t.Error(err)
-			}
-			c.records <- r
-		}
-		if err := scanner.Err(); err != nil {
-			t.Error(err)
-		}
-		close(c.records)
-	}()
-	t.Cleanup(func() { inWrite.Close() })
-	return c
-}
-
-func (c *connection) send(cmd harness.Command) string {
-	c.next++
-	cmd.ID = string(rune('a' + c.next))
-	b, _ := json.Marshal(cmd)
-	if _, err := c.in.Write(append(b, '\n')); err != nil {
-		c.t.Fatal(err)
+	file := filepath.Join(t.TempDir(), "lines.jsonl")
+	if err := os.WriteFile(file, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
-	return cmd.ID
+	return file
 }
 
-// until reads records until match accepts one, and returns the events and the
-// reply seen on the way.
-func (c *connection) until(match func(harness.Record) bool) (events []harness.Event, replies []harness.Reply) {
-	c.t.Helper()
-	timeout := time.After(10 * time.Second)
-	for {
-		select {
-		case r, ok := <-c.records:
-			if !ok {
-				c.t.Fatal("the connection closed")
-			}
-			if r.Event != nil {
-				events = append(events, *r.Event)
-			}
-			if r.Reply != nil {
-				replies = append(replies, *r.Reply)
-			}
-			if match(r) {
-				return
-			}
-		case <-timeout:
-			c.t.Fatal("timed out")
-		}
-	}
+// emitted collects the events of a started claude.
+type emitted struct {
+	mu     sync.Mutex
+	events []harness.Event
 }
 
-func replyTo(id string) func(harness.Record) bool {
-	return func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == id }
+func (e *emitted) emit(ev harness.Event) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.events = append(e.events, ev)
+}
+
+func (e *emitted) all() []harness.Event {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return slices.Clone(e.events)
 }
 
 var startArgs = harness.StartArgs{
@@ -600,18 +552,20 @@ var startArgs = harness.StartArgs{
 	Model: "opus", Effort: "high", Dir: ".", Instructions: "You lead a team.",
 }
 
-func TestServe(t *testing.T) {
+func start(t *testing.T, a harness.StartArgs) (*claude, *emitted) {
+	t.Helper()
+	e := &emitted{}
+	c, err := startClaude(a, e.emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(c.proc.Stop)
+	return c, e
+}
+
+func TestStart(t *testing.T) {
 	argsFile := fakeClaude(t, nil)
-	c := connect(t)
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &startArgs})
-	_, replies := c.until(replyTo(id))
-	if replies[len(replies)-1].Error != "" {
-		t.Fatal(replies)
-	}
-	events, _ := c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Idle })
-	if len(events) == 0 {
-		t.Error("no idle event after start")
-	}
+	c, e := start(t, startArgs)
 	data, err := os.ReadFile(argsFile)
 	if err != nil {
 		t.Fatal(err)
@@ -628,10 +582,18 @@ func TestServe(t *testing.T) {
 		t.Error(args)
 	}
 
-	id = c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	events, _ = c.until(func(r harness.Record) bool { return r.Event != nil && r.Event.Usage != nil && r.Event.Usage.Window > 0 })
+	if err := c.input("hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.ContainsFunc(e.all(), func(ev harness.Event) bool { return ev.Usage != nil && ev.Usage.Window > 0 }) {
+		if time.Now().After(deadline) {
+			t.Fatal("the turn did not end")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	var texts []string
-	for _, ev := range events {
+	for _, ev := range e.all() {
 		for _, it := range ev.Items {
 			if it.Done {
 				texts = append(texts, it.Text)
@@ -641,75 +603,95 @@ func TestServe(t *testing.T) {
 	if !slices.Equal(texts, []string{"Hello there."}) {
 		t.Errorf("texts %v", texts)
 	}
-
-	id = c.send(harness.Command{Command: harness.CmdAnswer, Request: "nothing"})
-	if _, replies = c.until(replyTo(id)); replies[len(replies)-1].Error == "" {
+	if err := c.answer("nothing", "", ""); err == nil {
 		t.Error("an answer to no request succeeded")
-	}
-	id = c.send(harness.Command{Command: harness.CmdShutdown})
-	c.until(replyTo(id))
-	select {
-	case err := <-c.done:
-		if err != nil {
-			t.Error(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not end")
 	}
 }
 
-func TestServeResumesTheConversation(t *testing.T) {
+func TestStartResumes(t *testing.T) {
 	argsFile := fakeClaude(t, nil)
-	c := connect(t)
-	start := startArgs
-	start.Conversation = "saved-conversation"
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	if _, replies := c.until(replyTo(id)); replies[len(replies)-1].Error != "" {
-		t.Fatal(replies)
-	}
+	a := startArgs
+	a.Conversation = "saved-conversation"
+	start(t, a)
 	data, _ := os.ReadFile(argsFile)
 	if !strings.Contains(string(data), "--resume saved-conversation") {
 		t.Error(string(data))
 	}
 }
 
-func TestServeFailedResumeIsAnErrorReply(t *testing.T) {
-	fakeClaude(t, map[string]string{"FAKE_FAIL": filepath.Join("testdata", "badresume.jsonl")})
-	c := connect(t)
-	start := startArgs
-	start.Conversation = "11111111-1111-4111-8111-111111111111"
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &start})
-	events, replies := c.until(replyTo(id))
-	if got := replies[len(replies)-1].Error; !strings.Contains(got, "No conversation found") {
-		t.Errorf("error %q", got)
+// startFails starts claude and returns the error, checking that nothing was
+// emitted.
+func startFails(t *testing.T, a harness.StartArgs) error {
+	t.Helper()
+	e := &emitted{}
+	c, err := startClaude(a, e.emit)
+	if err == nil {
+		c.proc.Stop()
+		t.Fatal("start succeeded")
 	}
-	if len(events) != 0 {
+	if events := e.all(); len(events) != 0 {
 		t.Errorf("events %+v", events)
 	}
+	return err
 }
 
-func TestServeEndsWhenClaudeExits(t *testing.T) {
-	fakeClaude(t, map[string]string{"FAKE_EXIT": "1"})
-	c := connect(t)
-	id := c.send(harness.Command{Command: harness.CmdStart, Start: &startArgs})
-	c.until(replyTo(id))
-	c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	select {
-	case err := <-c.done:
-		if err == nil || !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
-			t.Errorf("error %v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("serve did not end")
+func TestStartFailedResume(t *testing.T) {
+	const conversation = "11111111-1111-4111-8111-111111111111"
+	other := strings.ReplaceAll(fixture(t, "badresume")[0], conversation, "22222222-2222-4222-8222-222222222222")
+	for name, file := range map[string]string{
+		"same session":  filepath.Join("testdata", "badresume.jsonl"),
+		"other session": playFile(t, other),
+	} {
+		t.Run(name, func(t *testing.T) {
+			fakeClaude(t, map[string]string{"FAKE_BEFORE": file, "FAKE_FAIL": "1"})
+			a := startArgs
+			a.Conversation = conversation
+			if err := startFails(t, a); !strings.Contains(err.Error(), "No conversation found") {
+				t.Error(err)
+			}
+		})
 	}
 }
 
-func TestServeRejectsCommandsBeforeStart(t *testing.T) {
-	fakeClaude(t, nil)
-	c := connect(t)
-	id := c.send(harness.Command{Command: harness.CmdInput, Text: "hello"})
-	if _, replies := c.until(replyTo(id)); replies[len(replies)-1].Error == "" {
-		t.Error("input before start succeeded")
+// A result before the response to initialize fails the start, and what
+// follows is discarded.
+func TestStartFailsOnAResult(t *testing.T) {
+	fakeClaude(t, map[string]string{
+		"FAKE_BEFORE": playFile(t, `{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["first failure"]}`),
+		"FAKE_INIT": playFile(t,
+			`{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}`,
+			`{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["second failure"]}`),
+	})
+	if err := startFails(t, startArgs); err.Error() != "first failure" {
+		t.Error(err)
+	}
+}
+
+func TestStartFailsOnAnInitializeError(t *testing.T) {
+	fakeClaude(t, map[string]string{
+		"FAKE_INIT": playFile(t,
+			`{"type":"control_response","response":{"subtype":"error","request_id":"initialize","error":"bad options"}}`,
+			`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"ignored"}]}}`,
+			`{"type":"result","subtype":"success","result":"done"}`),
+	})
+	if err := startFails(t, startArgs); err.Error() != "bad options" {
+		t.Error(err)
+	}
+}
+
+func TestExitEndsTheProcess(t *testing.T) {
+	fakeClaude(t, map[string]string{"FAKE_EXIT": "1"})
+	c, _ := start(t, startArgs)
+	if err := c.input("hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-c.proc.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatal("claude did not end")
+	}
+	if err := c.proc.Err(); !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("error %v", err)
 	}
 }
 
