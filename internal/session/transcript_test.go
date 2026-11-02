@@ -62,7 +62,7 @@ func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
 	time.Sleep(2 * time.Millisecond)
 	f.input(parent.ID, "!finish")
 	f.until("the finished item", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
-	f.rt.Shutdown()
+	f.rt.Quit()
 	reloaded := f.newRuntime()
 	items, err := reloaded.Transcript(parent.ID)
 	if err != nil {

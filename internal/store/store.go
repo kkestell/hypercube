@@ -59,6 +59,10 @@ type Session struct {
 	Attention    bool
 	Usage        harness.Usage
 	Created      int64
+	Launch       string
+	Position     int64
+	Ready        int64
+	Quick        int
 	LastActive   int64
 }
 
@@ -110,7 +114,13 @@ CREATE TABLE IF NOT EXISTS sessions (
   attention INTEGER NOT NULL DEFAULT 0,
   context INTEGER NOT NULL DEFAULT 0, window INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
+  launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
+  ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
   last_active INTEGER NOT NULL, UNIQUE (parent, name));
+CREATE TABLE IF NOT EXISTS commands (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  command TEXT NOT NULL, line TEXT NOT NULL, message INTEGER, seq INTEGER, item TEXT);
 CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY,
   sender TEXT NOT NULL,
@@ -214,22 +224,22 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, last_active, launch, position, ready, quick)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
 		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, cmp.Or(s.LastActive, created))
+		s.Usage.Cost, created, cmp.Or(s.LastActive, created), s.Launch, s.Position, s.Ready, s.Quick)
 }
 
 // SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
 	return t.exec(`UPDATE sessions SET title = ?, running = ?, ended = ?, awaiting_user = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, last_active = ? WHERE id = ?`,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, last_active = ?, launch = ?, position = ?, ready = ?, quick = ? WHERE id = ?`,
 		s.Title, s.Running, s.Ended, s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.LastActive, s.ID)
+		s.Usage.Window, s.Usage.Cost, s.LastActive, s.Launch, s.Position, s.Ready, s.Quick, s.ID)
 }
 
 // TouchSession records activity on the family's root.
@@ -243,14 +253,14 @@ func (t *Tx) TouchSession(id string, at int64) error {
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active`
+ activity, attention, context, window, cost, created, last_active, launch, position, ready, quick`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
 		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.LastActive)
+		&s.Usage.Cost, &s.Created, &s.LastActive, &s.Launch, &s.Position, &s.Ready, &s.Quick)
 	return s, err
 }
 
@@ -355,7 +365,7 @@ type Entry struct {
 	Data []byte
 }
 
-// PutEntry saves a completed transcript item and returns its position. An item
+// PutEntry saves a transcript item and returns its position. An item
 // with the same ID as an earlier one replaces its data and keeps its position.
 func (t *Tx) PutEntry(session string, e Entry) (int64, error) {
 	var seq int64
@@ -384,7 +394,7 @@ func (t *Tx) LastText(session string) (string, int64, error) {
 	var text string
 	var seq int64
 	err := t.tx.QueryRow(`SELECT COALESCE(json_extract(data, '$.text'), ''), seq FROM transcript
-  WHERE session = ? AND json_extract(data, '$.kind') = 'text' AND json_extract(data, '$.parent') IS NULL
+  WHERE session = ? AND json_extract(data, '$.kind') = 'text' AND json_extract(data, '$.parent') IS NULL AND json_extract(data, '$.done') = 1
   ORDER BY seq DESC LIMIT 1`, session).Scan(&text, &seq)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", 0, nil
@@ -392,10 +402,11 @@ func (t *Tx) LastText(session string) (string, int64, error) {
 	return text, seq, err
 }
 
-// LastSeq returns the position of the session's last saved item, or zero.
+// LastSeq returns the largest saved or reserved transcript position, or zero.
 func (t *Tx) LastSeq(session string) (int64, error) {
 	var seq int64
-	err := t.tx.QueryRow(`SELECT COALESCE(MAX(seq), 0) FROM transcript WHERE session = ?`, session).Scan(&seq)
+	err := t.tx.QueryRow(`SELECT MAX(COALESCE((SELECT MAX(seq) FROM transcript WHERE session = ?), 0),
+ COALESCE((SELECT MAX(seq) FROM commands WHERE session = ?), 0))`, session, session).Scan(&seq)
 	return seq, err
 }
 
@@ -410,4 +421,44 @@ func collect[T any](rows *sql.Rows, scan func(interface{ Scan(...any) error }) (
 		list = append(list, v)
 	}
 	return list, rows.Err()
+}
+
+// Command is an unanswered command for the session's current launch. Line is
+// the exact JSON sent; Item and Seq reserve an accepted input's transcript entry.
+type Command struct {
+	ID                     int64
+	Session, Command, Line string
+	Message, Seq           int64
+	Item                   []byte
+}
+
+// AddCommand records a command without its line and returns its ID, which the
+// line carries. SetCommandLine saves the line.
+func (t *Tx) AddCommand(c Command) (int64, error) {
+	result, err := t.tx.Exec(`INSERT INTO commands (session, command, line, message, seq, item)
+ VALUES (?, ?, '', NULLIF(?,0), NULLIF(?,0), ?)`, c.Session, c.Command, c.Message, c.Seq, string(c.Item))
+	if err != nil {
+		return 0, err
+	}
+	return result.LastInsertId()
+}
+func (t *Tx) SetCommandLine(id int64, line string) error {
+	return t.exec(`UPDATE commands SET line = ? WHERE id = ?`, line, id)
+}
+func (t *Tx) Commands(session string) ([]Command, error) {
+	rows, err := t.tx.Query(`SELECT id, session, command, line, COALESCE(message,0), COALESCE(seq,0), COALESCE(item,'') FROM commands WHERE session = ? ORDER BY id`, session)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(row interface{ Scan(...any) error }) (Command, error) {
+		var c Command
+		var item string
+		err := row.Scan(&c.ID, &c.Session, &c.Command, &c.Line, &c.Message, &c.Seq, &item)
+		c.Item = []byte(item)
+		return c, err
+	})
+}
+func (t *Tx) DeleteCommand(id int64) error { return t.exec(`DELETE FROM commands WHERE id = ?`, id) }
+func (t *Tx) DeleteCommands(session string) error {
+	return t.exec(`DELETE FROM commands WHERE session = ?`, session)
 }

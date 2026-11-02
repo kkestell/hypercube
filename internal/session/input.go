@@ -1,7 +1,6 @@
 package session
 
 import (
-	"context"
 	"errors"
 	"strings"
 
@@ -9,17 +8,10 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// request sends cmd to the plugin and waits for its reply.
-func request(client *harness.Client, cmd harness.Command) error {
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
-	defer cancel()
-	return client.Do(ctx, cmd)
-}
-
 // running returns the session's launch if it is ready. The caller holds mu.
 func (r *Runtime) running(id string) (*live, error) {
 	l := r.live[id]
-	if l == nil || l.starting {
+	if l == nil || l.ready == 0 || l.stopping || r.closing {
 		return nil, errors.New("the session is not running")
 	}
 	return l, nil
@@ -49,29 +41,13 @@ func (r *Runtime) Input(id, text string, images ...harness.Image) error {
 		r.mu.Unlock()
 		return err
 	}
-	seq, client := r.nextSeq(id), l.client
+	item := &harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true}
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: text, Images: images}, item, true)
 	r.mu.Unlock()
-	if err := request(client, harness.Command{Command: harness.CmdInput, Text: text, Images: images}); err != nil {
-		return err
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	err = r.save(func(tx *write) error {
-		s, err := tx.Root(l.id)
-		if err != nil {
-			return err
-		}
-		s.AwaitingUser = false
-		if err := tx.SaveSession(s); err != nil {
-			return err
-		}
-		return tx.putItem(l.id, seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true})
-	})
 	if err != nil {
 		return err
 	}
-	r.kickFamilyLocked(l.root)
-	return nil
+	return r.request(l, command)
 }
 
 // Interrupt stops the agent's current turn. The turn stays in the transcript
@@ -87,9 +63,12 @@ func (r *Runtime) Interrupt(id string) error {
 		r.mu.Unlock()
 		return err
 	}
-	client := l.client
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInterrupt}, nil, false)
 	r.mu.Unlock()
-	return request(client, harness.Command{Command: harness.CmdInterrupt})
+	if err != nil {
+		return err
+	}
+	return r.request(l, command)
 }
 
 // Answer replies to an attention request with one of its choices, typed text,
@@ -97,7 +76,7 @@ func (r *Runtime) Interrupt(id string) error {
 func (r *Runtime) Answer(id, requestID, choice, text string) error {
 	r.mu.Lock()
 	l := r.live[id]
-	if l == nil || l.starting {
+	if l == nil || l.ready == 0 || l.stopping || r.closing {
 		r.mu.Unlock()
 		return errors.New("the request is finished")
 	}
@@ -110,7 +89,10 @@ func (r *Runtime) Answer(id, requestID, choice, text string) error {
 		r.mu.Unlock()
 		return err
 	}
-	client, native := l.client, p.native
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(requestID, l.prefix), Choice: choice, Text: text}, nil, false)
 	r.mu.Unlock()
-	return request(client, harness.Command{Command: harness.CmdAnswer, Request: native, Choice: choice, Text: text})
+	if err != nil {
+		return err
+	}
+	return r.request(l, command)
 }

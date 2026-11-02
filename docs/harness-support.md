@@ -16,10 +16,13 @@ exchange JSON Lines on the plugin's standard input and output, and the plugin
 writes diagnostics to standard error. The plugin ends when its input closes.
 The types are in [protocol.go](../internal/harness/protocol.go).
 
-- **Commands.** Each carries an ID, and the plugin replies with the same ID: a
-  success or an error. `start` gives the plugin the agent's launch information:
+- **Commands.** Each carries an integer ID, and the plugin replies with the same
+  ID: a success or an error. IDs increase, including across launches. Hypercube
+  resends unanswered commands after restarting; a plugin ignores any ID not
+  greater than the last one it read. `start` gives the plugin the agent's launch
+  information:
   the hypercube executable path, an environment for Hypercube processes the
-  harness starts, the agent's ID, role, model, effort, saved conversation,
+  harness starts, the agent's ID, model, effort, saved conversation,
   working directory, runtime instructions, and the state directory. The
   plugin replies once the harness is ready for input, and the harness loads
   `hypercube mcp` as an MCP server with that environment. `input` carries text,
@@ -27,7 +30,7 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   its `mime_type` and base64 `data`, 10 MiB decoded at most in all. Its reply
   means the harness accepted the input, including into its own queue, and an
   error means it did not. `interrupt` stops the current turn. `answer` replies
-  to an attention request. `shutdown` ends the plugin.
+  to an attention request. Closing input ends the plugin.
 - **Events.** The plugin reports the native conversation ID to resume later,
   the main agent's work state (`working` or `idle`), transcript items, and
   usage: `context`, the tokens of the latest request, `window`, the model's

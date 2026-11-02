@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -41,7 +43,11 @@ type world struct {
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp("", "hc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	w := &world{t: t, dir: dir, plugins: filepath.Join(dir, "plugins"), logs: filepath.Join(dir, "logs"), root: filepath.Join(dir, "repo")}
 	for _, d := range []string{w.plugins, w.logs, w.root, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -49,7 +55,7 @@ func newWorld(t *testing.T) *world {
 		}
 	}
 	harnesstest.Install(t, w.plugins, "test")
-	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state with spaces"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
 	config := `{"profiles":[
@@ -66,7 +72,6 @@ func newWorld(t *testing.T) *world {
 			t.Fatalf("git: %v\n%s", err, out)
 		}
 	}
-	var err error
 	if w.root, err = filepath.EvalSymlinks(w.root); err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +436,7 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 		t.Fatal("refused deletion changed the session")
 	}
 	for i, a := range []store.Session{doomed, doomedChild} {
-		if gone(pids[i]) || w.session(a.ID).Activity == store.Exited || len(w.log(a.ID, "shutdown")) != 0 {
+		if gone(pids[i]) || w.session(a.ID).Activity == store.Exited {
 			t.Fatalf("refused deletion stopped %s", a.ID)
 		}
 	}
@@ -444,7 +449,7 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 	}
 	w.noPath(doomedChild.Dir, "the deleted session's worktree")
 	for _, a := range []store.Session{kept, keptChild} {
-		if w.starts(a.ID) != 1 || len(w.log(a.ID, "shutdown")) != 0 || !w.session(kept.ID).Running {
+		if w.starts(a.ID) != 1 || !w.session(kept.ID).Running {
 			t.Fatalf("deleting a session affected %s", a.ID)
 		}
 	}
@@ -506,10 +511,7 @@ func TestStartAppRestoresRunningSessions(t *testing.T) {
 	}
 }
 
-// TestAppProcess runs the built command: the app serves before it restores
-// agents, tools reach it through `hypercube mcp`, and SIGTERM ends the agents
-// while the sessions stay marked running. Agents also end when the app is
-// killed outright.
+// TestAppProcess exercises real app exits against isolated state and plugins.
 func TestAppProcess(t *testing.T) {
 	w := newWorld(t)
 	binary := filepath.Join(w.plugins, "hypercube")
@@ -546,7 +548,7 @@ func TestAppProcess(t *testing.T) {
 	}
 	t.Cleanup(func() {
 		if app != nil && app.ProcessState == nil {
-			_ = app.Process.Kill()
+			_ = app.Process.Signal(syscall.SIGINT)
 			_ = app.Wait()
 		}
 	})
@@ -570,32 +572,87 @@ func TestAppProcess(t *testing.T) {
 	})
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
 
-	// SIGTERM ends the agents and keeps the running mark.
-	if err := app.Process.Signal(syscall.SIGTERM); err != nil {
+	panelURL := func() string { return "ws" + strings.TrimPrefix(c.base, "http") + "/terminal?session=" + parent.ID }
+	panel, _, err := websocket.Dial(t.Context(), panelURL(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { panel.CloseNow() }()
+	shellPIDFile := filepath.Join(w.dir, "panel.pid")
+	if err = panel.Write(t.Context(), websocket.MessageBinary, []byte("echo $$ > '"+shellPIDFile+"'; echo shell-before\n")); err != nil {
+		t.Fatal(err)
+	}
+	w.until("panel shell PID", func() bool { b, _ := os.ReadFile(shellPIDFile); return len(b) > 0 })
+	b, _ := os.ReadFile(shellPIDFile)
+	shellPID, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pids = append(pids, shellPID)
+	readPanel := func(want string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		defer cancel()
+		var got string
+		for !strings.Contains(got, want) {
+			_, b, err := panel.Read(ctx)
+			if err != nil {
+				t.Fatalf("panel %q: %v", got, err)
+			}
+			got += string(b)
+		}
+	}
+	readPanel("shell-before")
+	// SIGTERM and a crash preserve process identity and transcript continuity.
+	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
+		if err := app.Process.Signal(sig); err != nil {
+			t.Fatal(err)
+		}
+		waitErr := app.Wait()
+		if sig == syscall.SIGTERM && waitErr != nil {
+			t.Fatal(waitErr)
+		}
+		for _, pid := range pids {
+			if gone(pid) {
+				t.Fatalf("agent %d died with app", pid)
+			}
+		}
+		start()
+		panel.CloseNow()
+		panel, _, err = websocket.Dial(t.Context(), panelURL(), nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readPanel("shell-before")
+		if err = panel.Write(t.Context(), websocket.MessageBinary, []byte("echo shell-after\n")); err != nil {
+			t.Fatal(err)
+		}
+		readPanel("shell-after")
+		status, body := c.post("/session", map[string]string{"action": "input", "id": parent.ID}, `{"text":"after restart"}`)
+		if status != http.StatusOK {
+			t.Fatalf("input: %d %s", status, body)
+		}
+		w.until("input after restart", func() bool { return w.session(parent.ID).Activity == store.Idle })
+		if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 || w.session(first).AwaitingUser {
+			t.Fatal("restart replaced agents or awaits user")
+		}
+	}
+	if err := app.Process.Signal(syscall.SIGINT); err != nil {
 		t.Fatal(err)
 	}
 	if err := app.Wait(); err != nil {
-		t.Fatalf("the app's exit: %v", err)
+		t.Fatal(err)
 	}
 	for _, pid := range pids {
 		if !gone(pid) {
-			t.Fatalf("agent process %d remains", pid)
+			t.Fatalf("agent %d survived Quit", pid)
 		}
 	}
-	if !w.session(first).Running || w.session(parent.ID).Activity != store.Exited || len(w.log(parent.ID, "shutdown")) == 0 {
-		t.Fatal("shutdown did not end the agents and keep the running mark")
-	}
-	// The next launch restores the session, waiting for the user.
 	start()
-	w.until("the restored agents", func() bool {
-		return w.starts(parent.ID) == 2 && w.starts(child.ID) == 2 && w.session(parent.ID).Activity == store.Idle && w.session(child.ID).Activity == store.Idle
+	w.until("agents after Quit", func() bool {
+		return w.starts(parent.ID) == 2 && w.starts(child.ID) == 2 && w.ready(parent.ID) && w.ready(child.ID)
 	})
 	if !w.session(first).AwaitingUser {
-		t.Fatal("the restored session does not await the user")
+		t.Fatal("launch after Quit did not await user")
 	}
-	// A killed app leaves no agents: a plugin ends when its connection does.
-	pids = []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
-	_ = app.Process.Kill()
-	_ = app.Wait()
-	w.until("the agents to end with the app", func() bool { return gone(pids[0]) && gone(pids[1]) })
 }

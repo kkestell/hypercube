@@ -30,6 +30,16 @@ func TestChildRequestMirrorsOpenAndSavedItems(t *testing.T) {
 	}
 }
 
+// event applies an event as if the launch had reported it.
+func (f *fixture) event(l *live, ev harness.Event) {
+	f.t.Helper()
+	f.rt.mu.Lock()
+	defer f.rt.mu.Unlock()
+	if err := f.rt.eventLocked(l, ev, l.position); err != nil {
+		f.t.Fatal(err)
+	}
+}
+
 func TestNestedChildRequestMirrorsWithoutItsToolParent(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
@@ -37,7 +47,7 @@ func TestNestedChildRequestMirrorsWithoutItsToolParent(t *testing.T) {
 	f.rt.mu.Lock()
 	launch := f.rt.live[child.ID]
 	f.rt.mu.Unlock()
-	f.rt.event(launch, harness.Event{Items: []harness.Item{
+	f.event(launch, harness.Event{Items: []harness.Item{
 		{ID: "tool", Kind: harness.KindTool, Tool: "native"},
 		{ID: "request", Parent: "tool", Kind: harness.KindAttention, Text: "Question?"},
 	}})
@@ -47,7 +57,7 @@ func TestNestedChildRequestMirrorsWithoutItsToolParent(t *testing.T) {
 		t.Fatalf("nested mirror=%+v", mirror)
 	}
 	// Streaming edits stay in the child until the item is saved.
-	f.rt.event(launch, harness.Event{Items: []harness.Item{{ID: "request", Parent: "tool", Kind: harness.KindAttention, Text: "Changed?"}}})
+	f.event(launch, harness.Event{Items: []harness.Item{{ID: "request", Parent: "tool", Kind: harness.KindAttention, Text: "Changed?"}}})
 	if got := f.transcript(parent.ID)[2].Text; got != "Question?" {
 		t.Fatalf("stream mirrored: %q", got)
 	}

@@ -1,49 +1,29 @@
-// Package terminal runs one shell per session on a pseudo-terminal. A shell
-// starts on demand, keeps running while no one is connected, and keeps a
-// bounded buffer of its recent output for the next connection.
+// Package terminal runs each session's panel shell under a terminal holder.
+// Each connection reads the holder's retained output directly, so scrollback
+// survives an app restart.
 package terminal
 
 import (
 	"errors"
 	"os"
-	"os/exec"
+	"path/filepath"
 	"sync"
-	"syscall"
-	"time"
 
-	"github.com/creack/pty"
+	"github.com/kkestell/hypercube/internal/hold"
 )
 
-const (
-	// bufferSize is how much recent output a shell keeps.
-	bufferSize = 256 << 10
-	// stopWait is how long a shell has to end after SIGHUP before it is killed.
-	stopWait = 2 * time.Second
-	// A subscriber that falls this many chunks behind is dropped.
-	backlog = 256
-)
-
-// Set holds the sessions' shells.
+// Set holds one shell per session.
 type Set struct {
-	// Command is the program a shell runs. Empty means the user's login shell.
 	Command []string
-
+	// Dir is the holders' parent directory.
+	Dir    string
 	mu     sync.Mutex
 	shells map[string]*Shell
 	closed bool
 }
 
-// Shell is one running shell.
-type Shell struct {
-	cmd  *exec.Cmd
-	pty  *os.File
-	done chan struct{}
-
-	mu   sync.Mutex
-	buf  []byte
-	subs map[chan []byte]struct{}
-	exit int
-}
+// Shell is a session's shell holder. It may have ended.
+type Shell struct{ holder *hold.Holder }
 
 var errClosed = errors.New("hypercube is shutting down")
 
@@ -58,159 +38,105 @@ func (s *Set) command() []string {
 	return []string{shell, "-l"}
 }
 
-// Open returns the session's shell, starting it in dir at the given size if
-// the session has none.
+// Name is the name of the session's shell holder directory in Dir.
+func Name(session string) string { return "shell-" + session }
+
+func (s *Set) dir(session string) string { return filepath.Join(s.Dir, Name(session)) }
+
+// Open returns the session's running shell, or starts one in dir in place of
+// one that ended.
 func (s *Set) Open(session, dir string, cols, rows int) (*Shell, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, errClosed
 	}
-	if sh := s.shells[session]; sh != nil {
+	if sh := s.shells[session]; sh != nil && sh.holder.Alive() {
 		return sh, nil
 	}
-	argv := s.command()
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor")
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
+	if err := os.RemoveAll(s.dir(session)); err != nil {
+		return nil, err
+	}
+	h, err := hold.Start(s.dir(session), s.command(), append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor"), dir, &hold.Size{Cols: cols, Rows: rows})
 	if err != nil {
 		return nil, err
 	}
-	sh := &Shell{cmd: cmd, pty: f, done: make(chan struct{}), subs: map[chan []byte]struct{}{}}
 	if s.shells == nil {
 		s.shells = map[string]*Shell{}
 	}
+	sh := &Shell{holder: h}
 	s.shells[session] = sh
-	go func() {
-		sh.run()
-		s.mu.Lock()
-		if s.shells[session] == sh {
-			delete(s.shells, session)
-		}
-		s.mu.Unlock()
-	}()
 	return sh, nil
 }
 
-// Stop ends the session's shell, if it has one, and waits for it to end.
+// Adopt takes over the session's shell after an app restart, removing it if
+// it has ended.
+func (s *Set) Adopt(session string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return errClosed
+	}
+	h, err := hold.Open(s.dir(session))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !h.Alive() {
+		return h.Remove()
+	}
+	if s.shells == nil {
+		s.shells = map[string]*Shell{}
+	}
+	s.shells[session] = &Shell{holder: h}
+	return nil
+}
+
+// Stop ends the session's shell and removes its holder.
 func (s *Set) Stop(session string) {
 	s.mu.Lock()
 	sh := s.shells[session]
+	delete(s.shells, session)
 	s.mu.Unlock()
 	if sh != nil {
-		sh.stop()
+		sh.end()
 	}
 }
 
-// Close ends every shell and refuses new ones.
+// Close ends every shell, for Quit, and opens no more.
 func (s *Set) Close() {
 	s.mu.Lock()
 	s.closed = true
-	var all []*Shell
-	for _, sh := range s.shells {
-		all = append(all, sh)
-	}
+	shells := s.shells
+	s.shells = nil
 	s.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, sh := range all {
-		wg.Go(sh.stop)
+	for _, sh := range shells {
+		wg.Go(sh.end)
 	}
 	wg.Wait()
 }
 
-// run copies the shell's output to its buffer and subscribers until it ends.
-func (sh *Shell) run() {
-	chunk := make([]byte, 32<<10)
-	for {
-		n, err := sh.pty.Read(chunk)
-		if n > 0 {
-			sh.publish(append([]byte(nil), chunk[:n]...))
-		}
-		if err != nil {
-			break
-		}
-	}
-	_ = sh.cmd.Wait()
-	_ = sh.pty.Close()
-	sh.mu.Lock()
-	sh.exit = sh.cmd.ProcessState.ExitCode()
-	close(sh.done)
-	for ch := range sh.subs {
-		close(ch)
-	}
-	sh.subs = nil
-	sh.mu.Unlock()
+// end stops the holder; removing it waits for it to exit.
+func (sh *Shell) end() {
+	_ = sh.holder.Stop()
+	_ = sh.holder.Remove()
 }
 
-func (sh *Shell) publish(b []byte) {
-	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	sh.buf = append(sh.buf, b...)
-	if extra := len(sh.buf) - bufferSize; extra > 0 {
-		sh.buf = append([]byte(nil), sh.buf[extra:]...)
-	}
-	for ch := range sh.subs {
-		select {
-		case ch <- b:
-		default:
-			close(ch)
-			delete(sh.subs, ch)
-		}
-	}
+// Output reads the shell's retained output, then what it writes next.
+func (sh *Shell) Output() (*hold.Output, error) {
+	return sh.holder.Output(sh.holder.First())
 }
+func (sh *Shell) Write(p []byte) error        { _, err := sh.holder.Write(p); return err }
+func (sh *Shell) Resize(cols, rows int) error { return sh.holder.Resize(cols, rows) }
 
-func (sh *Shell) stop() {
-	_ = syscall.Kill(-sh.cmd.Process.Pid, syscall.SIGHUP)
-	select {
-	case <-sh.done:
-		return
-	case <-time.After(stopWait):
-	}
-	_ = syscall.Kill(-sh.cmd.Process.Pid, syscall.SIGKILL)
-	_ = sh.pty.Close()
-	<-sh.done
-}
-
-// Subscribe returns the output so far and a channel of the output after it.
-// The channel closes when the shell ends, or when the subscriber falls too far
-// behind; Done tells which. Cancel releases the subscription.
-func (sh *Shell) Subscribe() (replay []byte, out <-chan []byte, cancel func()) {
-	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	ch := make(chan []byte, backlog)
-	if sh.subs == nil {
-		close(ch)
-	} else {
-		sh.subs[ch] = struct{}{}
-	}
-	return append([]byte(nil), sh.buf...), ch, func() {
-		sh.mu.Lock()
-		defer sh.mu.Unlock()
-		if _, ok := sh.subs[ch]; ok {
-			delete(sh.subs, ch)
-			close(ch)
-		}
-	}
-}
-
-// Write sends input to the shell.
-func (sh *Shell) Write(p []byte) error {
-	_, err := sh.pty.Write(p)
-	return err
-}
-
-// Resize sets the shell's terminal size.
-func (sh *Shell) Resize(cols, rows int) error {
-	return pty.Setsize(sh.pty, &pty.Winsize{Cols: uint16(cols), Rows: uint16(rows)})
-}
-
-// Done is closed when the shell has ended.
-func (sh *Shell) Done() <-chan struct{} { return sh.done }
-
-// ExitCode is the shell's exit status once it has ended.
+// ExitCode is the ended shell's exit code, or -1 when it has none.
 func (sh *Shell) ExitCode() int {
-	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	return sh.exit
+	e, err := sh.holder.Exit()
+	if err != nil {
+		return -1
+	}
+	return e.Code
 }

@@ -233,10 +233,11 @@ func TestLastText(t *testing.T) {
 			t.Errorf("empty LastText = %q, %d, %v", text, seq, err)
 		}
 		for _, entry := range []Entry{
-			{Seq: 1, Item: "first", Data: []byte(`{"kind":"text","text":"first"}`)},
-			{Seq: 2, Item: "last", Data: []byte(`{"kind":"text","text":"last"}`)},
-			{Seq: 3, Item: "child", Data: []byte(`{"kind":"text","text":"nested","parent":"last"}`)},
+			{Seq: 1, Item: "first", Data: []byte(`{"kind":"text","text":"first","done":true}`)},
+			{Seq: 2, Item: "last", Data: []byte(`{"kind":"text","text":"last","done":true}`)},
+			{Seq: 3, Item: "child", Data: []byte(`{"kind":"text","text":"nested","done":true,"parent":"last"}`)},
 			{Seq: 4, Item: "tool", Data: []byte(`{"kind":"tool","text":"tool"}`)},
+			{Seq: 5, Item: "stream", Data: []byte(`{"kind":"text","text":"unfinished"}`)},
 		} {
 			if _, err := tx.PutEntry("s", entry); err != nil {
 				return err
@@ -362,6 +363,57 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 		messages, _ := tx.Queued(one.ID)
 		if len(entries) != 0 || len(messages) != 0 {
 			t.Error("child data survives parent")
+		}
+		return nil
+	})
+}
+
+func TestCommandsReservePositionsAndIncreaseIDs(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s", "child")
+	tx(t, db, func(tx *Tx) error {
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		s.Launch, s.Position, s.Ready, s.Quick = "launch", 123, 456, 2
+		if err = tx.SaveSession(s); err != nil {
+			return err
+		}
+		s, err = tx.Session("s")
+		if err != nil {
+			return err
+		}
+		if s.Launch != "launch" || s.Position != 123 || s.Ready != 456 || s.Quick != 2 {
+			t.Fatal(s)
+		}
+		id, err := tx.AddCommand(Command{Session: "s", Command: "input", Seq: 4, Item: []byte(`{"id":"user","kind":"user","done":true}`)})
+		if err != nil {
+			return err
+		}
+		line := `{"id":1,"command":"input","text":"hello"}` + "\n"
+		if err = tx.SetCommandLine(id, line); err != nil {
+			return err
+		}
+		commands, err := tx.Commands("s")
+		if err != nil {
+			return err
+		}
+		if len(commands) != 1 || commands[0].ID != id || commands[0].Line != line {
+			t.Fatal(commands)
+		}
+		if seq, err := tx.LastSeq("s"); err != nil || seq != 4 {
+			t.Fatalf("reserved seq %d: %v", seq, err)
+		}
+		if err = tx.DeleteCommand(id); err != nil {
+			return err
+		}
+		next, err := tx.AddCommand(Command{Session: "s", Command: "interrupt"})
+		if err != nil {
+			return err
+		}
+		if next <= id {
+			t.Fatal("ID reused")
 		}
 		return nil
 	})

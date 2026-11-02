@@ -6,28 +6,24 @@ the ownership decisions behind them.
 
 ## Ownership
 
-The app process, `hypercube ui`, owns every agent and every panel shell, and is
-the only process that writes the database. It adds and deletes workspaces and
-creates, starts, stops, and deletes sessions.
+The app process, `hypercube ui`, manages sessions and is the only process
+that writes the database. Each agent plugin and panel shell runs under a
+`hypercube hold` process that owns its input and output and outlives the app.
+Plugins keep their native harnesses alive across turns and speak the
+[serve protocol](harness-support.md#plugin-protocol). Closing the browser
+changes nothing.
 
-Each agent is a harness plugin process, started in its own process group, that
-keeps its native harness alive across turns. The plugin speaks the
-[serve protocol](harness-support.md#plugin-protocol) over its standard input
-and output. Closing the browser changes nothing.
-
-Menu Quit, SIGINT, and SIGTERM, which a service restart or a development
-rebuild sends, all stop the app the same way: it sends each plugin `shutdown`,
-waits briefly, then kills the plugin's process group, and ends the panel
-shells. A session keeps the running mark the user last chose, so at startup the
-app starts every running session and resumes its agents' saved conversations.
-It delivers no queued message until the user sends a prompt to the session.
+Menu Quit and SIGINT end all agents and panel shells. SIGTERM, service
+restarts, development rebuilds, and crashes leave them running. At startup
+the app attaches to surviving launches, finishes those that exited, and
+restarts lost launches. A running family whose agents were all lost, or that
+has no launches after Quit or a reboot, starts awaiting the user's prompt.
 Stopping a session clears its running mark.
 
 An agent whose plugin exits after starting is started again with its saved
 conversation, unless it has exited three times within ten seconds of starting.
 A start that fails stays ended, with the error in the agent's transcript; the
-app never replaces a conversation it could not resume with a new one. Each start has a generation number, and events
-from an earlier generation are ignored.
+app never replaces a conversation it could not resume with a new one.
 
 The browser view reads everything from the app: Hypercube's data and the
 selected session's transcript. Agents reach Hypercube's tools through
@@ -48,19 +44,24 @@ operations. It does not isolate agents from the filesystem or shell tools.
 Everything Hypercube knows lives in one SQLite database,
 `$XDG_STATE_HOME/hypercube/hypercube.db`, defaulting to
 `~/.local/state/hypercube/hypercube.db`: workspaces, sessions, queued
-messages, and each session's transcript. The app serializes its own operations;
-the app never holds that lock while waiting on a plugin, since a native request
+messages, commands, and each session's transcript. The app serializes its own
+operations; it never holds that lock while waiting on a plugin, since a native request
 can call back into a tool.
 
 A transcript is an ordered list of items: the user's messages, text,
 reasoning, tool calls and results, errors, attention requests, and child status
-updates. Completed items are written to the database. Items still streaming stay in memory and are
-published as they change. A later item with the same ID replaces the earlier
-one in its place.
+updates. Streaming changes are published from memory. Durable changes commit
+with their output position and any unfinished items, so replay after a restart
+applies each record's effects once. A later item with the same ID replaces the
+earlier one in its place.
 
 The database keeps harness conversation IDs, queued messages, and transcripts
-across launches. The app sends one queued message at a time and removes it
-after the plugin accepts it; a refused message stays queued. Acceptance means
+across launches. The app records every command before sending it, resends
+unanswered commands in ID order when attaching, and applies each reply while
+deleting its command
+in the same transaction. It sends one queued message at a time and removes it
+after the plugin accepts it; a refused message stays queued, and an unanswered
+delivery holds back later messages for that launch. Acceptance means
 the native harness took the text, not that the model processed it.
 
 The state WebSocket sends the view a new snapshot of its data when the data
@@ -70,11 +71,11 @@ reconnecting page takes new snapshots.
 
 ## Panel shell
 
-`internal/terminal` owns one shell on a pseudo-terminal per session. It starts
-on demand in the session's directory, keeps a bounded buffer of its recent output,
-and replays that buffer to each browser connection. The shell survives hiding
-the panel and closing the browser, and ends when it exits, when its session
-stops or is deleted, or when the app shuts down.
+`internal/terminal` manages one shell per session, started on demand in the
+session's directory. Its holder owns the pseudo-terminal and keeps bounded
+scrollback, which each browser connection reads directly. The shell survives
+app restarts, hiding the panel, and closing the browser. It ends when it exits,
+its session stops or is deleted, or the user quits the app.
 
 ## Source ownership
 
@@ -87,6 +88,7 @@ documented by the implementation rather than copied here.
 | [session](../internal/session/runtime.go) | The runtime that runs agents: [workspace and session](../internal/session/sessions.go) and [child session](../internal/session/children.go) lifecycle, [launch and relaunch](../internal/session/launch.go), [events](../internal/session/event.go), [delivery](../internal/session/deliver.go), restore, and shutdown. |
 | [store](../internal/store/store.go) | The database schema, transactions, queues, and transcripts. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
+| [hold](../internal/hold/hold.go) | Detached children, input, retained output, and exit records. |
 | [harness](../internal/harness/harness.go) | Configuration, plugin discovery, and the [serve protocol](../internal/harness/protocol.go) client. |
 | [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations, and the bridge to the app. |
 | [report](../internal/report/report.go) | Instructions, message attribution, titles, and failure reports. |

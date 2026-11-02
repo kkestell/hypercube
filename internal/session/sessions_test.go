@@ -72,7 +72,7 @@ func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 	if err := f.rt.Stop(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if a := f.storedSession(s.ID); a.Activity != store.Exited || f.storedSession(s.ID).Running || len(f.log(s.ID, "shutdown")) != 1 {
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || f.storedSession(s.ID).Running || syscall.Kill(f.log(s.ID, "start")[0].Pid, 0) != syscall.ESRCH {
 		t.Fatalf("after stop: %+v", a)
 	}
 	if err := f.rt.Input(s.ID, "to a stopped agent"); err == nil {
@@ -106,7 +106,7 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	f.input(s.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
 	pid := f.log(s.ID, "start")[0].Pid
-	f.rt.Shutdown()
+	f.rt.Quit()
 	// Shutdown saves the unfinished item, ends the process, and leaves the
 	// session marked running.
 	if a := f.storedSession(s.ID); a.Activity != store.Exited || !f.storedSession(s.ID).Running {
@@ -165,7 +165,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 	if err := f.rt.Delete(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.family(s.ID)) != 0 || len(f.log(s.ID, "shutdown")) != 1 || len(f.log(child.ID, "shutdown")) != 1 {
+	if len(f.family(s.ID)) != 0 || syscall.Kill(f.log(s.ID, "start")[0].Pid, 0) != syscall.ESRCH || syscall.Kill(f.log(child.ID, "start")[0].Pid, 0) != syscall.ESRCH {
 		t.Fatal("the session or its children remain")
 	}
 	f.until("the child to end", func() bool { return syscall.Kill(childPID, 0) == syscall.ESRCH })
@@ -178,23 +178,14 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 	f := newFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	s := f.session()
-	open := func() interface{ Done() <-chan struct{} } {
-		sh, err := f.rt.Shell(s.ID, 80, 24)
-		if err != nil {
+	open := func() string {
+		if _, err := f.rt.Shell(s.ID, 80, 24); err != nil {
 			t.Fatal(err)
 		}
-		return sh
-	}
-	ended := func(sh interface{ Done() <-chan struct{} }) bool {
-		select {
-		case <-sh.Done():
-			return true
-		default:
-			return false
-		}
+		return s.ID
 	}
 	sh := open()
-	if err := f.rt.Stop(s.ID); err != nil || !ended(sh) {
+	if err := f.rt.Stop(s.ID); err != nil || !f.shellEnded(sh) {
 		t.Fatalf("Stop left the shell running: %v", err)
 	}
 	if _, err := f.rt.Shell(s.ID, 80, 24); err == nil {
@@ -204,13 +195,13 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh = open()
-	if err := f.rt.Delete(s.ID); err != nil || !ended(sh) {
+	if err := f.rt.Delete(s.ID); err != nil || !f.shellEnded(sh) {
 		t.Fatalf("Delete left the shell running: %v", err)
 	}
 	s = f.session()
 	sh = open()
-	f.rt.Shutdown()
-	if !ended(sh) {
+	f.rt.Quit()
+	if !f.shellEnded(sh) {
 		t.Fatal("Shutdown left the shell running")
 	}
 }
@@ -309,12 +300,13 @@ func TestDeleteMissingCheckout(t *testing.T) {
 // A session cannot start while Delete waits for its plugins to end, so no
 // plugin of it outlives the delete.
 func TestDeletingSessionCannotStart(t *testing.T) {
+	t.Setenv("HYPERCUBE_TEST_END_DELAY", "500ms")
 	f := newFixture(t)
 	s := f.session()
-	f.input(s.ID, "!linger")
+
 	deleted := make(chan error, 1)
 	go func() { deleted <- f.rt.Delete(s.ID) }()
-	f.until("the session's shutdown", func() bool { return len(f.log(s.ID, "shutdown")) == 1 })
+	f.until("delete to claim the session", func() bool { f.rt.mu.Lock(); defer f.rt.mu.Unlock(); return f.rt.deleting[s.ID] })
 	if err := f.rt.Start(s.ID); !errors.Is(err, errDeleting) {
 		t.Fatalf("start during delete: %v", err)
 	}

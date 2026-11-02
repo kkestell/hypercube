@@ -44,7 +44,7 @@ func TestChildLifecycle(t *testing.T) {
 	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.EndChild(parent.ID, "w1"); err == nil || len(f.family(parent.ID)) != 2 || len(f.log(child.ID, "shutdown")) != 0 {
+	if _, err := f.rt.EndChild(parent.ID, "w1"); err == nil || len(f.family(parent.ID)) != 2 || syscall.Kill(f.log(child.ID, "start")[0].Pid, 0) == syscall.ESRCH {
 		t.Fatalf("ending a dirty child: %v", err)
 	}
 	if err := os.Remove(dirty); err != nil {
@@ -222,16 +222,13 @@ func TestFamilyRestoresAndChildPromptReleasesQueues(t *testing.T) {
 	parent := f.session()
 	child := f.child(parent, "child", "")
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
-	shell, err := f.rt.Shell(child.ID, 80, 24)
-	if err != nil {
+	if _, err := f.rt.Shell(child.ID, 80, 24); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-shell.Done():
-	default:
+	if !f.shellEnded(child.ID) {
 		t.Fatal("parent stop left child shell running")
 	}
 	if f.storedSession(child.ID).Activity != store.Exited {
@@ -250,7 +247,7 @@ func TestFamilyRestoresAndChildPromptReleasesQueues(t *testing.T) {
 	if f.storedSession(parent.ID).AwaitingUser {
 		t.Fatal("child prompt did not release family")
 	}
-	f.rt.Shutdown()
+	f.rt.Quit()
 	f.rt = f.newRuntime()
 	f.rt.Restore()
 	f.until("restored family", func() bool {

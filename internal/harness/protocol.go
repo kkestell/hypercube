@@ -17,7 +17,6 @@ const (
 	CmdInput     = "input"
 	CmdInterrupt = "interrupt"
 	CmdAnswer    = "answer"
-	CmdShutdown  = "shutdown"
 )
 
 // Item kinds. Plugins send every kind but User and Status, which Hypercube writes for the
@@ -39,11 +38,12 @@ const (
 )
 
 // Command is one request to the plugin. The plugin answers each with a Reply
-// carrying the same ID. Start is set for CmdStart, Text and Images for
-// CmdInput, and Request, Choice, and Text for CmdAnswer. An input has text,
-// images, or both.
+// carrying the same ID. Resent commands whose ID is not greater than the last
+// ID read are ignored. IDs increase across launches. Start is set for
+// CmdStart, Text and Images for CmdInput, and Request, Choice, and Text for
+// CmdAnswer. An input has text, images, or both.
 type Command struct {
-	ID      string     `json:"id"`
+	ID      int64      `json:"id"`
 	Command string     `json:"command"`
 	Start   *StartArgs `json:"start,omitempty"`
 	Text    string     `json:"text,omitempty"`
@@ -82,7 +82,7 @@ type StartArgs struct {
 // Reply answers a command: success, or the reason it failed. A reply to input
 // means the native harness accepted the text, including into its own queue.
 type Reply struct {
-	ID    string `json:"id"`
+	ID    int64  `json:"id"`
 	Error string `json:"error,omitempty"`
 }
 
@@ -147,8 +147,9 @@ type Item struct {
 	Images  []Image         `json:"images,omitempty"`
 }
 
-func jsonLine(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+// Line returns the command as one line of the plugin's input.
+func (c Command) Line() ([]byte, error) {
+	b, err := json.Marshal(c)
 	return append(b, '\n'), err
 }
 
@@ -162,7 +163,7 @@ func decode(line []byte) (Record, error) {
 	case r.Reply != nil && r.Event != nil:
 		return r, errors.New("malformed record: both a reply and an event")
 	case r.Reply != nil:
-		if r.Reply.ID == "" {
+		if r.Reply.ID <= 0 {
 			return r, errors.New("malformed record: reply without an ID")
 		}
 	case r.Event != nil:

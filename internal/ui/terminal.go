@@ -35,8 +35,12 @@ func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	_ = sh.Resize(cols, rows)
-	replay, out, release := sh.Subscribe()
-	defer release()
+	out, err := sh.Output()
+	if err != nil {
+		return
+	}
+	defer out.Close()
+	go func() { <-ctx.Done(); _ = out.Close() }()
 	go func() {
 		defer cancel()
 		for {
@@ -56,26 +60,18 @@ func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}()
-	if len(replay) > 0 && conn.Write(ctx, websocket.MessageBinary, replay) != nil {
-		return
-	}
+	buf := make([]byte, 32<<10)
 	for {
-		select {
-		case b, ok := <-out:
-			if !ok {
-				select {
-				case <-sh.Done():
-					exit, _ := json.Marshal(map[string]int{"exit": sh.ExitCode()})
-					_ = conn.Write(ctx, websocket.MessageText, exit)
-					_ = conn.Close(websocket.StatusNormalClosure, "")
-				default:
-				}
-				return
-			}
-			if conn.Write(ctx, websocket.MessageBinary, b) != nil {
-				return
-			}
-		case <-ctx.Done():
+		n, err := out.Read(buf)
+		if n > 0 && conn.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
+			return
+		}
+		// The output ends when the shell ends, when it is stopped and removed,
+		// or when the page goes away and these writes fail.
+		if err != nil {
+			exit, _ := json.Marshal(map[string]int{"exit": sh.ExitCode()})
+			_ = conn.Write(ctx, websocket.MessageText, exit)
+			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/terminal"
 )
 
 func TestStandIn(t *testing.T) { harnesstest.Run() }
@@ -30,7 +31,11 @@ type fixture struct {
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp("", "hc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	f := &fixture{t: t, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo")}
 	for _, d := range []string{f.logs, f.plugins, f.root, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
@@ -49,7 +54,6 @@ func newFixture(t *testing.T) *fixture {
 	}
 	f.git(f.root, "init", "-q", "-b", "main")
 	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "init")
-	var err error
 	if f.root, err = filepath.EvalSymlinks(f.root); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +73,7 @@ func newFixture(t *testing.T) *fixture {
 func (f *fixture) newRuntime() *Runtime {
 	rt := New(f.db, "http://127.0.0.1:1")
 	rt.PluginDir = f.plugins
-	f.t.Cleanup(rt.Shutdown)
+	f.t.Cleanup(rt.Quit)
 	return rt
 }
 
@@ -177,7 +181,7 @@ func (f *fixture) idle(id string) bool {
 	f.rt.mu.Lock()
 	defer f.rt.mu.Unlock()
 	l := f.rt.live[id]
-	return l != nil && !l.starting && !l.delivering
+	return l != nil && l.ready != 0 && !l.delivering()
 }
 
 func (f *fixture) queued(id string) (m []store.Message) {
@@ -200,6 +204,13 @@ func (f *fixture) queue(from, to string, texts ...string) {
 		f.t.Fatal(err)
 	}
 	f.rt.Deliver(to)
+}
+
+// shellEnded reports whether the session's shell has ended and its holder is
+// gone.
+func (f *fixture) shellEnded(session string) bool {
+	_, err := os.Stat(filepath.Join(store.Dir(), "run", terminal.Name(session)))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func (f *fixture) until(what string, check func() bool) {

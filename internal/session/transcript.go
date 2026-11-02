@@ -58,6 +58,9 @@ func (r *Runtime) Transcript(id string) ([]TranscriptItem, error) {
 		if err := json.Unmarshal(e.Data, &item); err != nil {
 			return nil, err
 		}
+		if l := r.live[id]; l != nil && l.pending[item.ID] != nil {
+			continue
+		}
 		items = append(items, TranscriptItem{Item: item, Seq: e.Seq})
 	}
 	if l := r.live[id]; l != nil {

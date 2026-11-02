@@ -35,7 +35,7 @@ func TestIdleSessionStopsAndResumes(t *testing.T) {
 		t.Fatal("session stopped before ten minutes")
 	}
 	f.stopsWhenIdleAt(s.ID, deadline)
-	if f.storedSession(s.ID).Activity != store.Exited || len(f.log(s.ID, "shutdown")) != 1 {
+	if f.storedSession(s.ID).Activity != store.Exited || f.storedSession(s.ID).Launch != "" {
 		t.Fatal("idle session did not stop its agent")
 	}
 	if len(f.transcript(s.ID)) != 4 || len(f.queued(s.ID)) != 1 {

@@ -10,6 +10,9 @@
 // "!" in the text of an input:
 //
 //	!hold      no reply until an interrupt
+//	!onclose   reply when input closes
+//	!append    append to the streaming work item
+//	!complete  finish the streaming work item
 //	!reject    an error reply
 //	!work      start a turn that does not end until "!finish"
 //	!finish    end that turn with its text
@@ -20,7 +23,6 @@
 //	!fail      an error item
 //	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
-//	!linger    take half a second to reply to the shutdown that follows
 //	!crash     reply, then exit
 //	!malformed reply, then write a bad line
 //	!stray     reply, then write a reply nobody asked for
@@ -143,23 +145,27 @@ type standIn struct {
 	enc   *json.Encoder
 	agent string
 	// held holds the IDs of inputs that wait for an interrupt.
-	held  []string
-	turns int
+	onclose []int64
+	held    []int64
+	turns   int
 	// turn names the items of the input being handled.
 	turn string
-	// linger delays the reply to shutdown.
-	linger bool
 }
 
 func serve(in io.Reader, out io.Writer) {
 	p := &standIn{out: out, enc: json.NewEncoder(out)}
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 1<<20), 64<<20)
+	var last int64
 	for scanner.Scan() {
 		var cmd harness.Command
 		if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
 			os.Exit(exitBadCommand)
 		}
+		if cmd.ID <= last {
+			continue
+		}
+		last = cmd.ID
 		switch cmd.Command {
 		case harness.CmdStart:
 			p.start(cmd)
@@ -169,14 +175,13 @@ func serve(in io.Reader, out io.Writer) {
 			p.interrupt(cmd)
 		case harness.CmdAnswer:
 			p.answer(cmd)
-		case harness.CmdShutdown:
-			p.log(Entry{Kind: "shutdown"})
-			if p.linger {
-				time.Sleep(500 * time.Millisecond)
-			}
-			p.reply(cmd.ID, "")
-			return
 		}
+	}
+	for _, id := range p.onclose {
+		p.reply(id, "")
+	}
+	if delay, err := time.ParseDuration(os.Getenv("HYPERCUBE_TEST_END_DELAY")); err == nil {
+		time.Sleep(delay)
 	}
 }
 
@@ -195,7 +200,7 @@ func (p *standIn) log(e Entry) {
 	_ = f.Close()
 }
 
-func (p *standIn) reply(id, problem string) {
+func (p *standIn) reply(id int64, problem string) {
 	_ = p.enc.Encode(harness.Record{Reply: &harness.Reply{ID: id, Error: problem}})
 }
 
@@ -218,6 +223,9 @@ func (p *standIn) start(cmd harness.Command) {
 		p.reply(cmd.ID, "cannot resume conversation unresumable")
 		return
 	}
+	if os.Getenv("HYPERCUBE_TEST_START_HOLD") == "1" {
+		return
+	}
 	p.reply(cmd.ID, "")
 	p.event(harness.Event{Conversation: p.agent + "-conversation", State: harness.Idle})
 	if os.Getenv("HYPERCUBE_TEST_CRASH") != "" {
@@ -234,11 +242,19 @@ func (p *standIn) input(cmd harness.Command) {
 	switch {
 	case has("reject"):
 		p.reply(cmd.ID, "rejected")
+	case has("onclose"):
+		p.onclose = append(p.onclose, cmd.ID)
 	case has("hold"):
 		p.held = append(p.held, cmd.ID)
 	case has("work"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Working, text("w", "working", false))
+	case has("append"):
+		p.reply(cmd.ID, "")
+		p.event(harness.Event{Items: []harness.Item{{ID: "w", Kind: harness.KindText, Append: true, Text: " more"}}})
+	case has("complete"):
+		p.reply(cmd.ID, "")
+		p.state(harness.Idle, harness.Item{ID: "w", Kind: harness.KindText, Append: true, Text: " done", Done: true})
 	case has("finish"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Idle, text("w", "finished", true))
@@ -263,9 +279,6 @@ func (p *standIn) input(cmd harness.Command) {
 		p.state(harness.Idle, harness.Item{ID: p.turn, Kind: harness.KindText, Images: []harness.Image{{MIMEType: "image/png", Data: "iVBORw0KGgo="}}, Done: true})
 	case has("child"):
 		p.child(cmd.ID)
-	case has("linger"):
-		p.linger = true
-		p.reply(cmd.ID, "")
 	case has("crash"):
 		p.reply(cmd.ID, "")
 		os.Exit(exitCrash)
@@ -274,7 +287,7 @@ func (p *standIn) input(cmd harness.Command) {
 		fmt.Fprintln(p.out, "not json")
 	case has("stray"):
 		p.reply(cmd.ID, "")
-		p.reply("999", "")
+		p.reply(999, "")
 	default:
 		p.reply(cmd.ID, "")
 		p.state(harness.Working)
@@ -296,7 +309,7 @@ func (p *standIn) stream() {
 }
 
 // child starts a process in the plugin's group.
-func (p *standIn) child(id string) {
+func (p *standIn) child(id int64) {
 	child := exec.Command("sleep", "300")
 	if err := child.Start(); err != nil {
 		os.Exit(exitChildFailed)
