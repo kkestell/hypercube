@@ -510,10 +510,8 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 
 func TestInputWhenNotRunning(t *testing.T) {
 	p := newPi()
-	close(p.done)
-	p.reason = "pi exited: exit status 1: it broke"
 	p.stdin = failingStdin{}
-	if err := p.input("hello", nil); err == nil || !strings.Contains(err.Error(), "it broke") {
+	if err := p.input("hello", nil); err == nil || !strings.Contains(err.Error(), "pi is not running") {
 		t.Errorf("error %v", err)
 	}
 }

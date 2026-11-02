@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -83,7 +84,7 @@ type agent struct {
 	tools     map[string]harness.Item // tool items that have not completed
 	requests  map[string]*request     // open extension dialogs, by item ID
 	last      assistant               // the latest assistant message of the run
-	errors    int
+	errs      plugin.Errors
 }
 
 // response is Pi's answer to a command.
@@ -210,26 +211,32 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	if selected != a.Model {
 		return fmt.Errorf("Pi selected %s instead of requested %s; use a full provider/model ID from pi --list-models", selected, a.Model)
 	}
-	ag.window, ag.session = state.Model.ContextWindow, state.SessionID
-	if a.Conversation == "" {
-		return nil
+	window, session := state.Model.ContextWindow, state.SessionID
+	var cost float64
+	var contextTokens int
+	announced := a.Conversation != ""
+	if announced {
+		if _, err := os.Stat(state.SessionFile); err != nil {
+			return fmt.Errorf("Pi has no saved session %s", a.Conversation)
+		}
+		var stats struct {
+			Cost         float64 `json:"cost"`
+			ContextUsage *struct {
+				Tokens int `json:"tokens"`
+			} `json:"contextUsage"`
+		}
+		if err := ag.call(ctx, "get_session_stats", nil, &stats); err != nil {
+			return err
+		}
+		cost = stats.Cost
+		if stats.ContextUsage != nil {
+			contextTokens = stats.ContextUsage.Tokens
+		}
 	}
-	if _, err := os.Stat(state.SessionFile); err != nil {
-		return fmt.Errorf("Pi has no saved session %s", a.Conversation)
-	}
-	var stats struct {
-		Cost         float64 `json:"cost"`
-		ContextUsage *struct {
-			Tokens int `json:"tokens"`
-		} `json:"contextUsage"`
-	}
-	if err := ag.call(ctx, "get_session_stats", nil, &stats); err != nil {
-		return err
-	}
-	ag.cost, ag.announced = stats.Cost, true
-	if stats.ContextUsage != nil {
-		ag.context = stats.ContextUsage.Tokens
-	}
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.window, ag.session = window, session
+	ag.cost, ag.announced, ag.context = cost, announced, contextTokens
 	return nil
 }
 
@@ -272,8 +279,9 @@ func (ag *agent) write(v any) error {
 	return nil
 }
 
-// call sends a command and decodes the data of its response. A process that
-// has ended is explained by its exit and the end of its diagnostics.
+// call sends a command and decodes the data of its response. A failed write
+// returns its error. A process that ends before it responds returns its exit
+// and the end of its diagnostics.
 func (ag *agent) call(ctx context.Context, command string, params map[string]any, result any) error {
 	reply := make(chan response, 1)
 	ag.callMu.Lock()
@@ -287,17 +295,10 @@ func (ag *agent) call(ctx context.Context, command string, params map[string]any
 		ag.callMu.Unlock()
 	}
 	rec := map[string]any{"id": id, "type": command}
-	for k, v := range params {
-		rec[k] = v
-	}
+	maps.Copy(rec, params)
 	if err := ag.write(rec); err != nil {
 		forget()
-		select {
-		case <-ag.done:
-			return errors.New(ag.reason)
-		case <-time.After(time.Second):
-			return err
-		}
+		return err
 	}
 	select {
 	case r := <-reply:
@@ -504,8 +505,7 @@ func (ag *agent) response(line []byte, id string) {
 }
 
 func (ag *agent) fail(ev *harness.Event, text string) {
-	ag.errors++
-	ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: text, Done: true})
+	ev.Items = append(ev.Items, ag.errs.Item(text))
 }
 
 // settled ends a run: Pi has nothing more to do on its own. A run that ended
