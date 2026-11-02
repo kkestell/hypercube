@@ -88,7 +88,9 @@ bottom edge to split it. These moves and splits stay within the worker tab
 area; the lead stays in its column. Drag dividers to resize panes and the sidebar.
 
 The right panel button in the header shows or hides the right panel. Its icon
-tabs select Workers, Files, and Changes; Files and Changes are blank for now.
+tabs select Workers, Files, and Changes; Changes is blank for now. Files
+shows the session's folder as a read-only tree. Click a file to preview it in
+the tab area, and double-click it to keep its tab open.
 
 The panel button in the header shows or hides a terminal below the agents. It
 runs your shell in the workspace's folder, one per session, and keeps running
