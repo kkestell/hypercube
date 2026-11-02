@@ -475,7 +475,9 @@ func TestInterruptAndUsage(t *testing.T) {
 		t.Fatalf("transcript = %q", got)
 	}
 	f.input(lead.ID, "!usage")
-	f.until("usage", func() bool { return f.agent(lead.ID).Usage == store.Usage{Context: 45200, Window: 200000, Cost: 0.31} })
+	f.until("usage", func() bool {
+		return f.agent(lead.ID).Usage == harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}
+	})
 }
 
 func TestWorkerFailureReachesItsLead(t *testing.T) {
@@ -906,7 +908,7 @@ func TestApplyEvent(t *testing.T) {
 		t.Fatalf("an event without state or conversation changed the agent: %+v", lead)
 	}
 	applyEvent(&lead, &s, harness.Event{State: harness.Idle, Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
-	if lead.Activity != store.Idle || !s.Unseen || lead.Usage != (store.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
+	if lead.Activity != store.Idle || !s.Unseen || lead.Usage != (harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
 		t.Fatalf("lead idle: %+v %+v", lead, s)
 	}
 	s.Unseen = false

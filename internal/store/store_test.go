@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -55,7 +56,7 @@ func seed(t *testing.T, db *DB, w, path, s string, agents ...string) {
 
 func TestOpenCreatesSchema(t *testing.T) {
 	db := open(t)
-	if _, err := os.Stat(Path()); err != nil {
+	if _, err := os.Stat(dbPath()); err != nil {
 		t.Fatal(err)
 	}
 	seed(t, db, "w", "/repo", "s", "lead")
@@ -81,6 +82,51 @@ func TestOpenCreatesSchema(t *testing.T) {
 	}
 }
 
+func TestLookupsReturnErrNotFound(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		lookups := map[string]error{
+			"Workspace": func() error { _, err := tx.Workspace("x"); return err }(),
+			"Session":   func() error { _, err := tx.Session("x"); return err }(),
+			"Agent":     func() error { _, err := tx.Agent("x"); return err }(),
+			"Find":      func() error { _, err := tx.Find("s", "x"); return err }(),
+			"Lead":      func() error { _, err := tx.Lead("s"); return err }(),
+		}
+		for name, err := range lookups {
+			if !errors.Is(err, ErrNotFound) {
+				t.Errorf("%s = %v, want ErrNotFound", name, err)
+			}
+		}
+		return nil
+	})
+}
+
+func TestSaveSessionKeepsLastActive(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		if err := tx.TouchSession("s", 1234); err != nil {
+			return err
+		}
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		s.Title, s.LastActive = "renamed", 1
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		if s, err = tx.Session("s"); err != nil {
+			return err
+		}
+		if s.Title != "renamed" || s.LastActive != 1234 {
+			t.Errorf("after SaveSession: title %q, last active %d", s.Title, s.LastActive)
+		}
+		return nil
+	})
+}
+
 func TestDuplicatesFail(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s", "lead")
@@ -99,8 +145,11 @@ func TestDeleteSessionCascades(t *testing.T) {
 	seed(t, db, "w", "/repo", "s", "lead", "w1")
 	seed(t, db, "w", "/repo", "t", "lead")
 	tx(t, db, func(tx *Tx) error {
-		tx.Queue(Message{From: "t-lead", To: "s-w1", Text: "hi"})
-		tx.Queue(Message{From: "s-w1", To: "t-lead", Text: "back"})
+		for _, m := range []Message{{From: "t-lead", To: "s-w1", Text: "hi"}, {From: "s-w1", To: "t-lead", Text: "back"}} {
+			if err := tx.Queue(m); err != nil {
+				return err
+			}
+		}
 		return tx.DeleteSession("s")
 	})
 	tx(t, db, func(tx *Tx) error {
@@ -123,7 +172,9 @@ func TestDequeueAndFind(t *testing.T) {
 	seed(t, db, "w", "/repo", "y", "lead")
 	tx(t, db, func(tx *Tx) error {
 		for i, to := range []string{"x-one", "x-lead", "x-one"} {
-			tx.Queue(Message{From: "user", To: to, Text: fmt.Sprint(i)})
+			if err := tx.Queue(Message{From: "user", To: to, Text: fmt.Sprint(i)}); err != nil {
+				return err
+			}
 		}
 		got, err := tx.Queued("x-one")
 		if err != nil || len(got) != 2 || got[0].Text != "0" || got[1].Text != "2" {
@@ -215,29 +266,6 @@ func TestLastText(t *testing.T) {
 		}
 		return nil
 	})
-}
-
-func TestOpenDeletesObsoleteFiles(t *testing.T) {
-	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
-	locks := filepath.Join(Dir(), "locks")
-	if err := os.MkdirAll(locks, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{filepath.Join(locks, "s.lock"), filepath.Join(Dir(), "tools.log")} {
-		if err := os.WriteFile(path, nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	db, err := Open()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	for _, path := range []string{locks, filepath.Join(Dir(), "tools.log")} {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Errorf("%s remains", path)
-		}
-	}
 }
 
 // Concurrent transactions from goroutines and from another process all commit.
