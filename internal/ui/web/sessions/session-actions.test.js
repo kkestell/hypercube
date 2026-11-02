@@ -92,18 +92,26 @@ for (const accepted of [true, false]) {
   });
 }
 
-test('a network failure shows an error, keeps the draft, and re-enables the unsent session', async () => {
-  spy(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
-  const s = store();
-  s.update(state => typed(state, 'lead', 'hello'));
-  await sendPrompt(s, lead);
-  expect(s.get().errors.map(error => error.message)).toEqual(['Load failed']);
-  expect(draftOf(s.get(), 'lead').text).toBe('hello');
+for (const [phase, response] of [
+  ['fetching', () => Promise.reject(new TypeError('Load failed'))],
+  ['reading the response', () => Promise.resolve(new Response(new ReadableStream({
+    start(controller) { controller.error(new TypeError('Load failed')); },
+  })))],
+]) {
+  test(`a network failure while ${phase} shows an error, keeps the draft, and re-enables the unsent session`, async () => {
+    spy(globalThis, 'fetch').mockImplementation(response);
+    const s = store();
+    s.update(state => typed(state, 'lead', 'hello'));
+    await sendPrompt(s, lead);
+    expect(s.get().errors).toHaveLength(1);
+    expect(s.get().errors[0].message).toContain('Load failed');
+    expect(draftOf(s.get(), 'lead').text).toBe('hello');
 
-  s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'create it'));
-  await sendPrompt(s, {id: unsentKey, activity: 'idle'});
-  expect(s.get().errors.length).toBe(2);
-  expect(s.get().unsent.sending).toBe(false);
-  expect(draftOf(s.get(), unsentKey).text).toBe('create it');
-  expect(canSend(s.get(), {id: unsentKey, activity: 'idle'})).toBe(true);
-});
+    s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'create it'));
+    await sendPrompt(s, {id: unsentKey, activity: 'idle'});
+    expect(s.get().errors.length).toBe(2);
+    expect(s.get().unsent.sending).toBe(false);
+    expect(draftOf(s.get(), unsentKey).text).toBe('create it');
+    expect(canSend(s.get(), {id: unsentKey, activity: 'idle'})).toBe(true);
+  });
+}

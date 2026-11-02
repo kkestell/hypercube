@@ -75,3 +75,21 @@ test('fetchLeads shows a network failure and returns null', async () => {
   expect(await fetchLeads(s)).toBeNull();
   expect(errors(s)).toEqual(['Load failed']);
 });
+
+for (const [name, request] of [
+  ['post', s => post(s, 'agent', {})],
+  ['fetchLeads', fetchLeads],
+]) {
+  for (const status of [200, 409]) {
+    test(`${name} shows a failed response body (${status}) and returns null`, async () => {
+      const body = new ReadableStream({
+        start(controller) { controller.error(new TypeError('Connection lost')); },
+      });
+      fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, {status}));
+      const s = store();
+      expect(await request(s)).toBeNull();
+      expect(errors(s)).toHaveLength(1);
+      expect(errors(s)[0]).toContain('Connection lost');
+    });
+  }
+}

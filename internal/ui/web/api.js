@@ -3,38 +3,36 @@ import {showError} from './notifications/errors.js';
 
 const url = (path, params) => path + '?' + new URLSearchParams(params);
 
-// attempt fetches, or returns null after showing why the request failed.
-async function attempt(store, input, init) {
+// post sends an action with an optional body and returns the response text, or
+// null after showing the user why it failed or the server refused.
+export async function post(store, path, params, body) {
   try {
-    return await fetch(input, init);
+    const response = await fetch(url(path, params), {method: 'POST', body});
+    const text = await response.text();
+    if (!response.ok) {
+      showError(store, text);
+      return null;
+    }
+    return text;
   } catch (error) {
     showError(store, error.message);
     return null;
   }
 }
 
-// post sends an action with an optional body and returns the response text, or
-// null after showing the user why it failed or the server refused.
-export async function post(store, path, params, body) {
-  const response = await attempt(store, url(path, params), {method: 'POST', body});
-  if (!response) return null;
-  const text = await response.text();
-  if (!response.ok) {
-    showError(store, text);
-    return null;
-  }
-  return text;
-}
-
 // fetchLeads returns the lead profiles, or null after showing why it failed.
 export async function fetchLeads(store) {
-  const response = await attempt(store, 'leads');
-  if (!response) return null;
-  if (!response.ok) {
-    showError(store, await response.text());
+  try {
+    const response = await fetch('leads');
+    if (!response.ok) {
+      showError(store, await response.text());
+      return null;
+    }
+    return await response.json();
+  } catch (error) {
+    showError(store, error.message);
     return null;
   }
-  return response.json();
 }
 
 // answerRequest answers an agent's attention request and reports whether the
