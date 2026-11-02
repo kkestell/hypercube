@@ -476,6 +476,36 @@ func TestQuestionForm(t *testing.T) {
 	}
 }
 
+// A form that OpenCode withdraws is refused once, and its questions close
+// when the turn ends.
+func TestWithdrawnFormIsRefused(t *testing.T) {
+	h := connected(t)
+	lines := fixture(t, "question")
+	h.adopt(t, lines)
+	h.startTurn(t)
+	h.feed(t, lines...)
+	h.feed(t, `{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":0}}`)
+	var r []map[string]any
+	eventually(t, "the refusal", func() bool { r = h.acp.responses(); return len(r) == 1 })
+	if r[0]["id"] != float64(0) || r[0]["error"].(map[string]any)["code"] != float64(-32603) {
+		t.Fatal(r)
+	}
+	if it := h.item(t, "form:0/0"); it.Done {
+		t.Fatalf("%+v", it)
+	}
+	if err := h.answer("form:0/0", "Red", ""); err != nil {
+		t.Fatal(err)
+	}
+	h.endTurn(t, "cancelled")
+	h.sync(t)
+	if r = h.acp.responses(); len(r) != 1 {
+		t.Fatal("answered a withdrawn form:", r)
+	}
+	if it := h.item(t, "form:0/1"); !it.Done {
+		t.Fatalf("%+v", it)
+	}
+}
+
 func TestFormWithMultipleChoiceAndPlainText(t *testing.T) {
 	h := connected(t)
 	h.session = "ses_1"

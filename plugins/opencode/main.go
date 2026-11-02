@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -89,7 +90,7 @@ type tool struct {
 // request is a form waiting for the user, which is how OpenCode asks the
 // questions of its question tool.
 type request struct {
-	id      json.RawMessage // the form request's JSON-RPC ID
+	id      json.RawMessage // the form request's JSON-RPC ID; nil once OpenCode has withdrawn it
 	items   []harness.Item  // one per form field
 	fields  []field
 	content map[string]any
@@ -467,7 +468,7 @@ func (ag *agent) closeRequests() []harness.Item {
 	var items []harness.Item
 	cancelled := map[*request]bool{}
 	for id, r := range ag.requests {
-		if !cancelled[r] {
+		if !cancelled[r] && r.id != nil {
 			cancelled[r] = true
 			_ = ag.rpc.Respond(r.id, formReply{Action: "cancel"})
 		}
@@ -492,6 +493,8 @@ func (ag *agent) handle(m plugin.Message) {
 	switch {
 	case m.Method == "session/update":
 		ag.update(&ev, m.Params)
+	case m.Method == "$/cancel_request":
+		ag.withdraw(m.Params)
 	case m.ID == nil:
 		// Other notifications carry nothing the plugin shows.
 	case m.Method == "session/request_permission":
@@ -508,6 +511,24 @@ func (ag *agent) handle(m plugin.Message) {
 	}
 	if len(ev.Items) > 0 || ev.Usage != nil {
 		ag.emit(ev)
+	}
+}
+
+// withdraw refuses a form that OpenCode no longer waits for, with the error
+// the ACP SDK sent for a cancelled request. Its questions stay open until the
+// turn ends.
+func (ag *agent) withdraw(params json.RawMessage) {
+	var p struct {
+		RequestID json.RawMessage `json:"requestId"`
+	}
+	if json.Unmarshal(params, &p) != nil {
+		return
+	}
+	for _, r := range ag.requests {
+		if r.id != nil && bytes.Equal(r.id, p.RequestID) {
+			_ = ag.rpc.RespondError(r.id, -32603, "Internal error")
+			r.id = nil
+		}
 	}
 }
 
@@ -804,7 +825,7 @@ func (ag *agent) answer(item, choice, text string) error {
 		r.content[f.key] = text
 	}
 	r.answers++
-	if r.answers == len(r.fields) {
+	if r.answers == len(r.fields) && r.id != nil {
 		_ = ag.rpc.Respond(r.id, formReply{Action: "accept", Content: r.content})
 	}
 	done := r.items[index]
