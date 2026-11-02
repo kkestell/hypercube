@@ -14,13 +14,20 @@ export function ConfirmDialog() {
   const [state, store] = useStore();
   const {confirmation} = state;
   const dialog = useRef(null);
+  const primary = useRef(null);
 
   useEffect(() => {
-    if (confirmation) dialog.current.showModal();
+    if (!confirmation) return;
+    dialog.current.showModal();
+    primary.current.focus();
   }, [confirmation]);
 
   if (!confirmation) return null;
-  const close = () => store.update(s => ({...s, confirmation: null}));
+  const close = () => {
+    // Closing before unmounting restores the focus saved by showModal().
+    dialog.current.close();
+    store.update(s => ({...s, confirmation: null}));
+  };
   const accept = () => {
     close();
     confirmation.accept();
@@ -33,20 +40,20 @@ export function ConfirmDialog() {
   };
 
   return (
-    <dialog ref={dialog} class="confirm-dialog" onKeyDown={key}>
+    <dialog ref={dialog} class="confirm-dialog" aria-labelledby="confirm-dialog-message" aria-describedby="confirm-dialog-detail" onKeyDown={key}>
       <div class="confirm-dialog-toolbar">
         <vscode-toolbar-button icon="close" label="Close Dialog" title="Close Dialog" onClick={close} />
       </div>
       <div class="confirm-dialog-message-row">
         <vscode-icon name="warning" size={48} class="confirm-dialog-icon" />
         <div class="confirm-dialog-text">
-          <div class="confirm-dialog-message">{confirmation.message}</div>
-          <div class="confirm-dialog-detail">{confirmation.detail}</div>
+          <div id="confirm-dialog-message" class="confirm-dialog-message">{confirmation.message}</div>
+          <div id="confirm-dialog-detail" class="confirm-dialog-detail">{confirmation.detail}</div>
         </div>
       </div>
       <div class="confirm-dialog-buttons">
         <vscode-button secondary onClick={close}>Cancel</vscode-button>
-        <vscode-button autofocus onClick={accept}>{confirmation.primary}</vscode-button>
+        <vscode-button ref={primary} onClick={accept}>{confirmation.primary}</vscode-button>
       </div>
     </dialog>
   );

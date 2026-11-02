@@ -125,7 +125,9 @@ test('deleting a session asks first and posts only on Delete', () => {
   const {root, posted} = setup([session('a')]);
   choose(root, '[data-session="a"]', 1);
   expect(dialog(root).open).toBe(true);
-  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'Session a\'?');
+  expect(document.activeElement).toBe(dialogButton(root, 'Delete'));
+  expect(document.getElementById(dialog(root).getAttribute('aria-labelledby')).textContent).toBe("Are you sure you want to delete 'Session a'?");
+  expect(document.getElementById(dialog(root).getAttribute('aria-describedby')).textContent).toContain('Its agents stop');
   expect(posted()).toEqual([]);
   act(() => dialogButton(root, 'Cancel').click());
   expect(dialog(root)).toBeNull();
