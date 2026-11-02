@@ -59,13 +59,24 @@ func TestOpenCreatesSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed(t, db, "w", "/repo", "s", "lead")
+	tx(t, db, func(tx *Tx) error { return tx.TouchSession("s", 1234) })
 	db.Close()
 	again, err := Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	if err := again.Read(func(tx *Tx) error { _, err := tx.Lead("s"); return err }); err != nil {
+	if err := again.Read(func(tx *Tx) error {
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		if s.LastActive != 1234 {
+			t.Errorf("reopened last activity = %d", s.LastActive)
+		}
+		_, err = tx.Lead("s")
+		return err
+	}); err != nil {
 		t.Fatal("reopened database lost its rows:", err)
 	}
 }
@@ -207,6 +218,26 @@ func TestSnapshotOrder(t *testing.T) {
 	seed(t, db, "b", "/src/zeta", "s1", "lead")
 	seed(t, db, "a", "/src/alpha", "s2", "lead")
 	seed(t, db, "b", "/src/zeta", "s3", "lead", "w")
+	seed(t, db, "b", "/src/zeta", "s4", "lead")
+	seed(t, db, "b", "/src/zeta", "s5", "lead")
+	tx(t, db, func(tx *Tx) error {
+		for i, id := range []string{"s1", "s3", "s4", "s5"} {
+			if err := tx.TouchSession(id, int64(i+1)); err != nil {
+				return err
+			}
+			if i >= 2 {
+				s, err := tx.Session(id)
+				if err != nil {
+					return err
+				}
+				s.Running = false
+				if err := tx.SaveSession(s); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
 	list, err := Snapshot(db)
 	if err != nil {
 		t.Fatal(err)
@@ -215,7 +246,7 @@ func TestSnapshotOrder(t *testing.T) {
 		t.Fatalf("workspaces = %+v", list)
 	}
 	z := list[1].Sessions
-	if len(z) != 2 || z[0].ID != "s1" || z[1].ID != "s3" || z[0].Title != Untitled || len(z[1].Agents) != 2 || z[1].Agents[0].Role != Lead {
+	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != Untitled || len(z[0].Agents) != 2 || z[0].Agents[0].Role != Lead {
 		t.Fatalf("sessions = %+v", z)
 	}
 }

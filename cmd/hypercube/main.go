@@ -89,6 +89,7 @@ func startApp(listener net.Listener, plugins string) (*app, error) {
 	a.server = &http.Server{Handler: ui.Handler(ctx, db, rt)}
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
+	go rt.StopIdleSessions(ctx)
 	return a, nil
 }
 

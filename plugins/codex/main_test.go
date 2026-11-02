@@ -862,7 +862,7 @@ func TestConnectStartsAThread(t *testing.T) {
 		`"model_reasoning_effort":"low","projects":{"` + resolved + `":{"trust_level":"trusted"}},` +
 		`"sandbox_workspace_write":{"network_access":true,"writable_roots":["` + resolved + `/.git"]}}`
 	if p["model"] != "m" || p["cwd"] != dir || p["approvalPolicy"] != "on-request" || p["approvalsReviewer"] != "auto_review" || p["sandbox"] != "workspace-write" ||
-		p["developerInstructions"] != "be useful" || string(config) != wantConfig || p["threadId"] != nil {
+		p["developerInstructions"] != "be useful" || string(config) != wantConfig || p["threadId"] != nil || p["threadSource"] != "chatgpt_hidden" {
 		t.Fatalf("%+v\n%s", p, config)
 	}
 }
@@ -881,7 +881,7 @@ func TestConnectResumesAThread(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := h.server.sent("thread/resume")[0]
-	if h.thread != "saved" || p["threadId"] != "saved" || p["approvalsReviewer"] != "auto_review" || p["excludeTurns"] != true || len(h.server.sent("thread/start")) != 0 {
+	if h.thread != "saved" || p["threadId"] != "saved" || p["approvalsReviewer"] != "auto_review" || p["excludeTurns"] != true || p["threadSource"] != nil || len(h.server.sent("thread/start")) != 0 {
 		t.Fatalf("%q %+v", h.thread, p)
 	}
 	// A conversation that cannot be resumed is an error, not a new conversation.

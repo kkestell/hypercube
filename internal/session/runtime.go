@@ -30,6 +30,7 @@ const (
 	// its launch, stays ended.
 	quickExit     = 10 * time.Second
 	maxQuickExits = 3
+	idleTimeout   = 10 * time.Minute
 )
 
 var (
@@ -55,8 +56,9 @@ type Runtime struct {
 	db  *store.DB
 	url string
 
-	mu   sync.Mutex
-	live map[string]*live // by agent ID
+	mu      sync.Mutex
+	live    map[string]*live // by agent ID
+	viewers map[string]int   // open pages selecting each session
 	// seqs holds each agent's last transcript position. It outlives launches,
 	// because a launch that has ended can still record a late item.
 	seqs    map[string]int64
@@ -97,7 +99,7 @@ type pendingItem struct {
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{db: db, url: url, live: map[string]*live{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli(),
-		changed: make(chan struct{})}
+		changed: make(chan struct{}), viewers: map[string]int{}}
 }
 
 // Changes returns a channel that closes the next time an agent's transcript
@@ -156,6 +158,9 @@ func (r *Runtime) sessionLive(session string) bool {
 }
 
 func entry(seq int64, item harness.Item) store.Entry {
+	if item.At == 0 {
+		item.At = time.Now().UnixMilli()
+	}
 	data, _ := json.Marshal(item)
 	return store.Entry{Seq: seq, Item: item.ID, Data: data}
 }
@@ -376,6 +381,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	defer r.touchLocked()
 	var write []store.Entry
 	var failures []string
+	at := time.Now().UnixMilli()
 	for _, it := range ev.Items {
 		native := it.ID
 		it.ID = l.prefix + it.ID
@@ -383,6 +389,10 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			it.Parent = l.prefix + it.Parent
 		}
 		p := l.pending[it.ID]
+		it.At = at
+		if p != nil {
+			it.At = p.item.At
+		}
 		if p == nil {
 			p = &pendingItem{seq: r.nextSeq(l.id), native: native}
 			l.pending[it.ID] = p
@@ -410,6 +420,9 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		return
 	}
 	err := r.db.Tx(func(tx *store.Tx) error {
+		if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
+			return err
+		}
 		for _, e := range write {
 			if err := tx.PutEntry(l.id, e); err != nil {
 				return err
@@ -510,6 +523,9 @@ func (r *Runtime) deliver(l *live, client *harness.Client) {
 				if from != "" {
 					item.Text, item.From = m.Text, from
 				}
+				if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
+					return err
+				}
 				return tx.PutEntry(l.id, entry(seq, item))
 			})
 		}
@@ -593,6 +609,10 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 		r.mu.Unlock()
 		return err
 	}
+	if err := r.recordActivity(l.session); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	seq, client := r.nextSeq(agent), l.client
 	r.mu.Unlock()
 	if err := request(client, harness.Command{Command: harness.CmdInput, Text: text, Images: images}); err != nil {
@@ -631,6 +651,10 @@ func (r *Runtime) Interrupt(agent string) error {
 		r.mu.Unlock()
 		return err
 	}
+	if err := r.recordActivity(l.session); err != nil {
+		r.mu.Unlock()
+		return err
+	}
 	client := l.client
 	r.mu.Unlock()
 	return request(client, harness.Command{Command: harness.CmdInterrupt})
@@ -649,6 +673,10 @@ func (r *Runtime) Answer(agent, requestID, choice, text string) error {
 	if p == nil || p.item.Kind != harness.KindAttention {
 		r.mu.Unlock()
 		return errors.New("the request is finished")
+	}
+	if err := r.recordActivity(l.session); err != nil {
+		r.mu.Unlock()
+		return err
 	}
 	client, native := l.client, p.native
 	r.mu.Unlock()

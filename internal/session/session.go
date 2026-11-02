@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
@@ -114,6 +115,9 @@ func (r *Runtime) start(id string, fresh bool) error {
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}
+		if err := tx.TouchSession(id, time.Now().UnixMilli()); err != nil {
+			return err
+		}
 		agents, err = tx.Agents(id)
 		if err != nil {
 			return err
@@ -156,8 +160,17 @@ func (r *Runtime) start(id string, fresh bool) error {
 // Stop ends the session's agents. Their conversations and queued messages stay
 // for the next Start.
 func (r *Runtime) Stop(id string) error {
-	lives := r.detach(id, true)
+	r.mu.Lock()
+	lives, err := r.stopLocked(id)
+	r.mu.Unlock()
 	stopClients(lives)
+	r.Terminals.Stop(id)
+	return err
+}
+
+// stopLocked marks the session stopped before releasing its agents, so a late
+// exit cannot relaunch them. The caller holds mu.
+func (r *Runtime) stopLocked(id string) ([]*live, error) {
 	err := r.db.Tx(func(tx *store.Tx) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -166,8 +179,10 @@ func (r *Runtime) Stop(id string) error {
 		s.Running = false
 		return tx.SaveSession(s)
 	})
-	r.Terminals.Stop(id)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return r.detachLocked(func(l *live) bool { return l.session == id }, true), nil
 }
 
 // Delete stops the session and deletes it with its workers' worktrees and

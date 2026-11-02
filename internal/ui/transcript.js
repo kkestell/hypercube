@@ -191,9 +191,9 @@ const row = {
   attention: 'border border-amber-400 bg-amber-400/10 px-2 py-1.5',
 };
 
-const summaryClass = 'flex cursor-pointer list-none items-center gap-1.5 px-2 py-1 text-neutral-400 hover:text-neutral-200 [&::-webkit-details-marker]:hidden';
+const summaryClass = 'flex cursor-pointer list-none items-center gap-1.5 py-1 text-neutral-400 hover:text-neutral-200 [&::-webkit-details-marker]:hidden';
 const chevron = 'icon icon-chevron-right size-4 transition-transform group-open:rotate-90';
-const bubble = 'flex max-w-[85%] min-w-0 flex-col gap-0.5 rounded bg-[#37373d] px-3 py-1.5 text-neutral-100';
+const bubble = 'flex max-w-[85%] min-w-0 flex-col gap-0.5 rounded-lg bg-[#37373d] px-4 py-3 text-neutral-100';
 const messageText = 'whitespace-pre-wrap break-words';
 const button = 'rounded border border-[#454545] bg-[#2d2d30] px-2 py-1 text-neutral-200 hover:bg-[#37373d] disabled:opacity-50';
 
@@ -209,6 +209,8 @@ export class Transcript {
     this.list = create(doc, 'div', 'flex flex-col gap-3 p-3');
     this.root = create(doc, 'div', 'min-h-0 flex-1 overflow-y-auto text-[13px]', this.list);
     this.rows = new Map();
+    // Each sibling list can have one unfinished run of consecutive tools.
+    this.toolRuns = new Map();
     // The view follows the end until the user scrolls up, and follows again
     // once they scroll back to the end. Growing content leaves scrollTop alone,
     // so only a scroll upward stops following. The end allows for fractional
@@ -241,6 +243,7 @@ export class Transcript {
   reset(items) {
     this.list.replaceChildren();
     this.rows.clear();
+    this.toolRuns.clear();
     this.apply(items);
     this.following = true;
     this.end();
@@ -253,6 +256,7 @@ export class Transcript {
   }
 
   apply(items) {
+    const changedGroups = new Set();
     for (const item of items) {
       const json = JSON.stringify(item);
       const kind = kindOf(item);
@@ -263,22 +267,72 @@ export class Transcript {
         r = this.build(kind);
         this.rows.set(item.id, r);
         if (old) {
+          r.group = old.group;
           old.element.replaceWith(r.element);
         } else {
           const parent = this.rows.get(item.parent);
           if (parent?.kids) parent.kids.hidden = false;
-          (parent?.kids ?? this.list).append(r.element);
+          const container = parent?.kids ?? this.list;
+          let group = this.toolRuns.get(container);
+          if (item.kind === 'tool') {
+            if (!group) {
+              group = this.buildToolGroup(item.at);
+              this.toolRuns.set(container, group);
+              container.append(group.element);
+            }
+            group.ids.push(item.id);
+            group.body.append(r.element);
+            r.group = group;
+          } else {
+            if (group) {
+              group.closed = true;
+              group.until = item.at;
+              changedGroups.add(group);
+              this.toolRuns.delete(container);
+            }
+            container.append(r.element);
+          }
         }
       }
       r.json = json;
       this.fill(r, item);
+      if (r.group) changedGroups.add(r.group);
       if (kind === 'attention' && !item.done) this.reveal(item.parent);
     }
+    for (const group of changedGroups) this.fillToolGroup(group);
+  }
+
+  buildToolGroup(at) {
+    const doc = this.doc;
+    const head = create(doc, 'span', 'min-w-0 truncate');
+    const status = create(doc, 'span', 'flex shrink-0 empty:hidden');
+    const body = create(doc, 'div', 'flex flex-col gap-1');
+    const element = create(doc, 'details', 'tool-run min-w-0',
+      create(doc, 'summary', summaryClass, status, head,
+        create(doc, 'span', 'tool-run-chevron icon icon-chevron-right size-4 transition-transform')), body);
+    return {element, head, status, body, at, ids: [], closed: false};
+  }
+
+  fillToolGroup(group) {
+    const items = group.ids.map(id => this.rows.get(id).item);
+    const latest = items[items.length - 1];
+    if (group.closed) {
+      const seconds = Math.max(0, Math.round((group.until - group.at) / 1000));
+      group.head.textContent = group.at && group.until ? `Worked for ${seconds < 1 ? '<1' : seconds}s` : 'Worked';
+    } else {
+      const [name, detail] = toolTitle(latest);
+      group.head.replaceChildren(create(this.doc, 'span', 'font-medium text-neutral-200', name), ' ', detail);
+    }
+    const running = !group.closed && items.some(item => !item.done);
+    group.status.replaceChildren(...(running ? [spinner(this.doc)] : []));
   }
 
   // reveal opens the details around an item that needs the user.
   reveal(id) {
-    for (let r = this.rows.get(id); r; r = this.rows.get(r.item.parent)) (r.details ?? r.element).open = true;
+    for (let r = this.rows.get(id); r; r = this.rows.get(r.item.parent)) {
+      if (r.group) r.group.element.open = true;
+      (r.details ?? r.element).open = true;
+    }
   }
 
   build(kind) {
@@ -300,20 +354,26 @@ export class Transcript {
         r.element = create(doc, 'div', row[kind], create(doc, 'div', bubble, r.head, r.body, r.more, r.error, r.pics));
         break;
       case 'reasoning':
-        r.body = create(doc, 'div', 'mt-1 whitespace-pre-wrap break-words');
-        r.element = create(doc, 'details', 'group ' + row.reasoning,
-          create(doc, 'summary', 'flex cursor-pointer list-none items-center gap-1 italic hover:text-neutral-300 [&::-webkit-details-marker]:hidden',
-            create(doc, 'span', chevron), 'Thinking'), r.body);
+        r.body = create(doc, 'div', 'shrink-0 whitespace-pre-wrap break-words');
+        r.preview = create(doc, 'div', 'reasoning-preview', r.body);
+        r.chevron = create(doc, 'span', 'icon icon-chevron-right size-4 transition-transform');
+        r.more = create(doc, 'button', 'flex items-center gap-1 italic hover:text-neutral-300', 'Thinking', r.chevron);
+        r.more.type = 'button';
+        r.more.onclick = () => {
+          r.expanded = !r.expanded;
+          this.fill(r, r.item);
+        };
+        r.element = create(doc, 'div', row.reasoning, r.more, r.preview);
         break;
       case 'tool':
         r.head = create(doc, 'span', 'min-w-0 flex-1 truncate');
-        r.status = create(doc, 'span', 'flex shrink-0');
+        r.status = create(doc, 'span', 'flex shrink-0 empty:hidden');
         r.input = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-400');
         r.output = create(doc, 'pre', 'max-h-64 overflow-auto whitespace-pre-wrap break-words px-2 py-1 font-mono text-xs text-neutral-300');
         r.kids = create(doc, 'div', 'flex flex-col gap-3 p-2');
         r.pics = pictures(doc, [], 'flex flex-wrap gap-2 px-2 py-1');
         r.details = create(doc, 'details', row.tool,
-          create(doc, 'summary', summaryClass, create(doc, 'span', chevron), r.head, r.status), r.input, r.output, r.kids);
+          create(doc, 'summary', summaryClass + ' px-2', create(doc, 'span', chevron), r.status, r.head), r.input, r.output, r.kids);
         r.element = create(doc, 'div', 'min-w-0', r.details, r.pics);
         break;
       case 'error':
@@ -350,11 +410,15 @@ export class Transcript {
       }
       case 'reasoning':
         r.body.textContent = item.text ?? '';
+        r.preview.className = r.expanded ? '' : 'reasoning-preview';
+        r.more.setAttribute('aria-expanded', !!r.expanded);
+        r.more.title = r.expanded ? 'Show latest six lines' : 'Show full thinking';
+        r.chevron.className = 'icon icon-chevron-right size-4 transition-transform' + (r.expanded ? ' rotate-90' : '');
         break;
       case 'tool': {
         const [name, summary] = toolTitle(item);
         r.head.replaceChildren(create(doc, 'span', 'font-medium text-neutral-200', name), ' ', summary);
-        r.status.replaceChildren(...(!item.done ? [spinner(doc)] : item.failed ? [dot(doc, 'Failed', 'bg-red-400')] : []));
+        r.status.replaceChildren(...(!item.done ? [spinner(doc)] : item.failed ? [failedIcon(doc)] : []));
         const input = inputText(item.input), output = clip(item.output ?? '');
         r.input.textContent = input;
         r.input.hidden = !input;
@@ -439,8 +503,9 @@ const spinner = doc => {
   return s;
 };
 
-const dot = (doc, title, color) => {
-  const s = create(doc, 'span', `block size-2 rounded-full ${color}`);
-  s.title = title;
+const failedIcon = doc => {
+  const s = create(doc, 'span', 'icon icon-error size-3.5 text-red-400');
+  s.setAttribute('role', 'img');
+  s.title = 'Failed';
   return s;
 };

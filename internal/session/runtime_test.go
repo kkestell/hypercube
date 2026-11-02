@@ -772,3 +772,39 @@ func TestImagePrompts(t *testing.T) {
 		return false
 	})
 }
+
+func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
+	f := newFixture(t)
+	_, lead := f.session()
+	f.input(lead.ID, "!work")
+	f.until("the unfinished item", func() bool { return len(f.transcript(lead.ID)) == 2 })
+	first := f.transcript(lead.ID)[1]
+	if first.At == 0 {
+		t.Fatal("streamed item has no arrival timestamp")
+	}
+	// Make replacing the timestamp on completion observable.
+	time.Sleep(2 * time.Millisecond)
+	f.input(lead.ID, "!finish")
+	f.until("the finished item", func() bool { return f.agent(lead.ID).Activity == store.Idle })
+	f.rt.Shutdown()
+	reloaded := f.newRuntime()
+	items, err := reloaded.Transcript(lead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, it := range items {
+		if it.At == 0 {
+			t.Fatalf("saved item %q has no arrival timestamp", it.ID)
+		}
+		if it.ID == first.ID {
+			found = true
+			if it.At != first.At || !it.Done || it.Text != "finished" {
+				t.Fatalf("arrival timestamp changed or item was not completed: %+v", it)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("reloaded transcript lost the completed item")
+	}
+}

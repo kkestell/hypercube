@@ -15,6 +15,9 @@
   <button type="button" id="toggle-panel" title="Show Panel" aria-pressed="false" class="flex rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
     <span class="icon icon-layout-panel-off size-4"></span>
   </button>
+  <button type="button" id="toggle-right-panel" title="Hide Right Panel" aria-label="Hide Right Panel" aria-controls="right-panel" aria-expanded="true" class="flex rounded p-1 text-neutral-400 hover:bg-neutral-700 hover:text-neutral-100">
+    <span class="icon icon-layout-sidebar-left size-4 rotate-180"></span>
+  </button>
 </header>
 
 <div class="flex min-h-0 flex-1">
@@ -29,30 +32,42 @@
   <div class="flex min-w-0 flex-1 flex-col">
     <div id="center" class="relative flex min-h-0 flex-1 bg-[#181818]">
       <canvas id="hypercube" class="pointer-events-none absolute inset-0 size-full opacity-0 transition-opacity duration-1000" hidden></canvas>
-      <div id="transcripts" class="flex min-h-0 min-w-0 flex-1 overflow-hidden"></div>
+      <div id="transcripts" class="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div id="lead-column" class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"></div>
+        <div id="lead-sash" class="sash" role="separator" aria-label="Resize lead column" aria-orientation="vertical" aria-controls="lead-column worker-tabs" hidden></div>
+        <div id="worker-tabs" class="flex min-h-0 min-w-0 flex-1 overflow-hidden" hidden></div>
+      </div>
     </div>
     <div id="panel-sash" class="sash" aria-orientation="horizontal" hidden></div>
     <div id="panel" class="h-[240px] max-h-[80vh] shrink-0 overflow-hidden pt-1 pl-2" hidden></div>
   </div>
+  <aside id="right-panel" aria-label="Session details" class="flex w-[320px] max-w-[40vw] shrink-0 flex-col border-l border-[#2b2b2b] bg-[#252526]">
+    <div id="right-panel-tabs" role="tablist" aria-label="Session details" class="flex h-[35px] shrink-0 border-b border-[#2b2b2b] bg-[#181818]">
+      <button type="button" id="workers-tab" role="tab" aria-label="Workers" title="Workers" aria-controls="workers-panel" aria-selected="true" class="right-panel-tab"><span class="icon icon-workers size-4"></span></button>
+      <button type="button" id="files-tab" role="tab" aria-label="Files" title="Files" aria-controls="files-panel" aria-selected="false" tabindex="-1" class="right-panel-tab"><span class="icon icon-folder size-4"></span></button>
+      <button type="button" id="changes-tab" role="tab" aria-label="Changes" title="Changes" aria-controls="changes-panel" aria-selected="false" tabindex="-1" class="right-panel-tab"><span class="icon icon-diff size-4"></span></button>
+    </div>
+    <div id="workers-panel" role="tabpanel" aria-labelledby="workers-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
+      <div id="worker-cards" class="flex flex-col gap-2"></div>
+    </div>
+    <div id="files-panel" role="tabpanel" aria-labelledby="files-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto" hidden></div>
+    <div id="changes-panel" role="tabpanel" aria-labelledby="changes-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto" hidden></div>
+  </aside>
 </div>
 </div>
 
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
-<div id="worker-previews" popover="auto" aria-label="Workers" class="fixed inset-auto m-0 max-h-[min(560px,80vh)] w-[360px] max-w-[calc(100vw-16px)] overflow-y-auto rounded-md border border-[#454545] bg-[#252526] p-3 text-xs text-neutral-300 shadow-xl">
-  <h2 class="mb-3 text-sm font-medium text-neutral-100">Workers</h2>
-  <div id="worker-cards" class="flex flex-col gap-2"></div>
-</div>
 <script src="hypercube.js"></script>
 <script type="module">
 import {Transcript, imageSrc, submitsOnKey} from './transcript.js';
 import {createTerminal} from './terminal.js';
 import {TabLayout, TabContainer} from './tabs.js';
 
-// Each open agent transcript lives in a tab. Panes can be split by dragging
-// tabs to their edges; worker previews live in a popover on the lead's header.
+// The lead stays in its own column. Worker transcripts open in the tab area
+// to its right; only that area accepts tab moves and splits.
 const $ = id => document.getElementById(id);
-const transcripts = $('transcripts');
-const workerPreviews = $('worker-previews'), workerCards = $('worker-cards');
+const transcripts = $('transcripts'), leadColumn = $('lead-column'), tabArea = $('worker-tabs'), leadSash = $('lead-sash');
+const workerCards = $('worker-cards'), rightPanel = $('right-panel');
 const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 
 // data is the app's latest snapshot, selected is the selected session's ID,
@@ -150,8 +165,10 @@ function attach(id) {
   views.clear();
   cards.clear();
   shown = null;
-  transcripts.replaceChildren();
-  workerPreviews.hidePopover();
+  leadColumn.replaceChildren();
+  tabArea.replaceChildren();
+  tabArea.hidden = leadSash.hidden = true;
+  leadColumn.style.flex = tabArea.style.flex = '';
   workerCards.replaceChildren();
   tabLayout = tabContainer = null;
   scrolls.clear();
@@ -193,9 +210,13 @@ function render() {
       scrolls.delete(id);
     }
   }
-  if (leader && !tabLayout) {
-    tabLayout = new TabLayout(leader.id);
-    tabContainer = new TabContainer(transcripts, tabLayout, renderTabs);
+  if (leader) {
+    const element = cards.get(leader.id).element;
+    if (element.parentElement !== leadColumn) leadColumn.append(element);
+    if (!tabLayout) {
+      tabLayout = new TabLayout();
+      tabContainer = new TabContainer(tabArea, tabLayout, renderTabs);
+    }
   }
   renderTabs();
   update(workerCards, stacked.map(a => `<article class="rounded border ${a.attention ? 'border-amber-400' : 'border-[#454545]'} bg-[#1e1e1e] p-3">
@@ -212,10 +233,15 @@ function render() {
 const scrolls = new Map();
 function renderTabs() {
   if (!tabContainer) return;
+  const returnFocus = !tabLayout.root && tabArea.contains(document.activeElement);
+  tabArea.hidden = leadSash.hidden = !tabLayout.root;
   for (const [id, v] of views) {
     if (v.root.clientHeight) scrolls.set(id, {top: v.root.scrollTop, following: v.following});
   }
-  tabContainer.render([...cards].map(([id, c]) => ({id, label: c.name.textContent, element: c.element})));
+  tabContainer.render(shown.stacked.map(a => {
+    const c = cards.get(a.id);
+    return {id: a.id, label: c.label, status: c.status, element: c.element};
+  }));
   for (const [id, v] of views) {
     if (!v.root.clientHeight) continue;
     const saved = scrolls.get(id);
@@ -223,6 +249,7 @@ function renderTabs() {
     if (v.following) v.end();
     else { v.root.scrollTop = saved.top; v.top = v.root.scrollTop; }
   }
+  if (returnFocus) cards.get(shown.leader?.id)?.field.focus();
 }
 
 workerCards.onclick = e => {
@@ -231,52 +258,47 @@ workerCards.onclick = e => {
   const id = button.dataset.openWorker;
   tabLayout.open(id);
   renderTabs();
-  workerPreviews.hidePopover();
   cards.get(id).field.focus();
 };
 
-function showWorkers(button) {
-  const rect = button.getBoundingClientRect();
-  workerPreviews.style.left = Math.max(8, Math.min(rect.right - 360, innerWidth - 368)) + 'px';
-  workerPreviews.style.top = Math.min(rect.bottom + 6, innerHeight - 100) + 'px';
-  workerPreviews.style.maxHeight = Math.max(80, innerHeight - rect.bottom - 14) + 'px';
-}
-
-workerPreviews.addEventListener('toggle', e => {
-  const button = cards.get(shown?.leader?.id)?.workerButton;
-  button?.setAttribute('aria-expanded', e.newState === 'open');
-});
-
-// The sidebar lists each workspace's sessions below a row that collapses
-// them. It stays as it is while a session is being renamed.
+// The sidebar lists each workspace's sessions by activity below a row that
+// collapses them, five more each time the user asks. It stays as it is while a
+// session is being renamed.
 let renaming = false;
-const collapsed = new Set();
+const collapsed = new Set(), limits = new Map();
+const pageSize = 5;
 
-// A busy workspace shows a spinner in place of its folder icon, and a busy
-// session in the same column.
-const spinner = title => `<span role="img" title="${escape(title)}" class="icon icon-loading size-4 text-neutral-400"></span>`;
+const iconButton = 'invisible flex size-[22px] shrink-0 items-center justify-center rounded text-neutral-300 group-hover:visible group-focus-within:visible hover:bg-[#5a5d5e50]';
 
 function renderSidebar() {
   if (renaming) return;
   update(sessionList, data.map(w => {
     const open = !collapsed.has(w.id);
-    const busy = w.sessions.some(s => s.running && s.agents.some(a => a.activity === 'busy'));
-    return `<li class="group flex items-center gap-1 pr-2 hover:bg-[#2a2d2e]" data-workspace="${w.id}" title="${escape(w.path)}">
-        <button type="button" data-collapse="${w.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left text-neutral-400">
-          ${busy ? spinner('Busy') : `<span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span>`}<span class="truncate">${escape(w.name)}</span>
+    const newest = w.sessions, limit = limits.get(w.id) ?? pageSize;
+    return `<li class="group mx-1.5 flex h-[26px] items-center gap-0.5 rounded-md pr-1 hover:bg-[#2a2d2e]" data-workspace="${w.id}" title="${escape(w.path)}">
+        <button type="button" data-collapse="${w.id}" aria-expanded="${open}" class="flex min-w-0 flex-1 items-center gap-2 self-stretch pl-2 text-left text-neutral-400">
+          <span class="icon ${open ? 'icon-folder-opened' : 'icon-folder'} size-4"></span><span class="truncate">${escape(w.name)}</span>
         </button>
-        <button type="button" title="New Session" aria-haspopup="menu" class="invisible flex size-[22px] group-hover:visible group-focus-within:visible items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"
-          data-leads="${w.id}"><span class="icon icon-add size-4"></span></button>
+        <button type="button" title="More Actions" aria-haspopup="menu" class="${iconButton}" data-more="${w.id}"><span class="icon icon-ellipsis size-4"></span></button>
+        <button type="button" title="New Session" aria-haspopup="menu" class="${iconButton}" data-leads="${w.id}"><span class="icon icon-new-session size-4"></span></button>
       </li>` +
-      (open ? w.sessions.map(sessionRow).join('') : '');
+      (open ? newest.slice(0, limit).map(sessionRow).join('') +
+        (newest.length > limit ? `<li class="mx-1.5"><button type="button" data-show-more="${w.id}" class="flex h-[26px] w-full items-center pl-8 text-left text-neutral-500 hover:text-neutral-300">Show more</button></li>` : '')
+      : '');
   }).join(''));
 }
 
 sessionList.addEventListener('click', e => {
-  const header = e.target.closest('[data-collapse]');
-  if (!header) return;
-  const id = header.dataset.collapse;
-  if (!collapsed.delete(id)) collapsed.add(id);
+  const header = e.target.closest('[data-collapse]'), more = e.target.closest('[data-show-more]');
+  if (header) {
+    const id = header.dataset.collapse;
+    if (!collapsed.delete(id)) collapsed.add(id);
+  } else if (more) {
+    const id = more.dataset.showMore;
+    limits.set(id, (limits.get(id) ?? pageSize) + pageSize);
+  } else {
+    return;
+  }
   renderSidebar();
 });
 
@@ -289,7 +311,7 @@ sessionList.addEventListener('dblclick', e => {
   renaming = true;
   const input = document.createElement('input');
   input.value = s.title;
-  input.className = 'my-1 mr-1 ml-7 min-w-0 flex-1 border border-sky-500 bg-[#3c3c3c] px-1 py-0.5 text-neutral-100 outline-none';
+  input.className = 'mx-1.5 block h-[26px] w-[calc(100%-0.75rem)] rounded-md border border-sky-500 bg-[#3c3c3c] pr-2 pl-[31px] text-neutral-100 outline-none';
   row.replaceWith(input);
   input.focus();
   input.select();
@@ -312,23 +334,22 @@ sessionList.addEventListener('dblclick', e => {
 });
 
 // A stopped session's row is dimmed. Busy and waiting agents show only while
-// the session runs.
+// the session runs. Their indicators sit at the right of the row over a
+// gradient in the row's background color, which fades out the title beneath.
 function sessionRow(s) {
   const active = s.id === selected;
   const busy = s.running ? names(s.agents.filter(a => a.activity === 'busy')) : '';
   const waiting = s.running ? names(s.agents.filter(a => a.attention)) : '';
   const text = !s.running ? 'text-neutral-500' : active ? 'text-neutral-100' : '';
-  return `<li class="${active ? 'bg-[#37373d]' : 'hover:bg-[#2a2d2e]'} ${text}" data-session="${s.id}">
-    <div class="flex items-center gap-1 pr-2">
-      <button type="button" data-select="${s.id}" class="flex min-w-0 flex-1 items-center gap-2 py-1.5 pl-2 text-left">
-        ${busy ? spinner('Busy: ' + busy) : '<span class="size-4 shrink-0"></span>'}
-        <span class="flex min-w-0 items-center gap-1.5">
-          <span class="truncate">${escape(s.title)}</span>
-          ${waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : ''}
-          ${s.unseen && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : ''}
-        </span>
-      </button>
-    </div>
+  const background = active ? 'bg-[#37373d] [--row:#37373d]' : '[--row:#252526] hover:bg-[#2a2d2e] hover:[--row:#2a2d2e]';
+  const indicators = (busy ? `<span role="img" title="Busy: ${escape(busy)}" class="icon icon-loading size-4 text-neutral-400"></span>` : '') +
+    (waiting ? `<span title="Waiting on you: ${escape(waiting)}" class="size-2 shrink-0 rounded-full bg-amber-400"></span>` : '') +
+    (s.unseen && !active ? '<span title="New reply" class="size-2 shrink-0 rounded-full bg-sky-400"></span>' : '');
+  return `<li class="mx-1.5 rounded-md ${background} ${text}" data-session="${s.id}">
+    <button type="button" data-select="${s.id}" class="relative flex h-[26px] w-full items-center pr-2 pl-8 text-left">
+      <span class="truncate">${escape(s.title)}</span>
+      ${indicators ? `<span class="absolute inset-y-0 right-0 flex items-center gap-1.5 rounded-r-md bg-linear-to-r from-transparent to-(--row) to-40% pr-2 pl-6">${indicators}</span>` : ''}
+    </button>
   </li>`;
 }
 
@@ -352,7 +373,7 @@ function usage(a) {
   const {context = 0, window = 0, cost = 0} = a.usage ?? {};
   const radius = 6, circumference = 2 * Math.PI * radius;
   const ring = window ? `<svg viewBox="0 0 16 16" class="size-3.5 shrink-0 -rotate-90">
-        <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-700"/>
+        <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-neutral-500"/>
         <circle cx="8" cy="8" r="${radius}" fill="none" stroke="currentColor" stroke-width="2" class="text-sky-400"
           stroke-dasharray="${circumference}" stroke-dashoffset="${(circumference * (1 - Math.min(1, context / window))).toFixed(2)}"/>
       </svg>` : '';
@@ -372,34 +393,34 @@ function card(a) {
   if (!c) {
     const element = document.createElement('article');
     element.dataset.agent = a.id;
-    element.innerHTML = `<header class="flex h-5 shrink-0 items-center gap-2">
-        <span class="name min-w-0 truncate text-left text-[13px] text-neutral-100"></span>
-        <span class="status ml-auto shrink-0"></span>
-        <button type="button" title="Workers" aria-label="Workers" aria-expanded="false" popovertarget="worker-previews" class="worker-button flex size-5 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-workers size-4"></span></button>
-      </header>
-      <div class="slot -mx-3 mt-1 -mb-3 flex min-h-[120px] min-w-0 flex-1 flex-col overflow-hidden border-t border-[#2b2b2b] bg-[#1e1e1e]">
-        <form class="flex shrink-0 flex-col gap-2 border-t border-[#2b2b2b] p-2">
+    element.innerHTML = `<div class="slot flex min-h-[120px] min-w-0 flex-1 flex-col overflow-hidden bg-[#1e1e1e]">
+        <form class="m-4 flex shrink-0 flex-col gap-2 rounded-lg border border-[#3c3c3c] bg-[#3c3c3c] p-2 focus-within:border-sky-500">
           <div class="previews flex flex-wrap gap-2" hidden></div>
-          <div class="flex items-end gap-1">
-            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden>
+          <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 resize-none bg-transparent px-2 py-1 text-[13px] text-neutral-100 outline-none"></textarea>
+          <div class="flex items-center gap-2">
             <button type="button" title="Attach Image" aria-label="Attach Image" class="attach flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-attach size-4"></span></button>
-            <textarea rows="1" aria-label="Message" class="field-sizing-content max-h-40 min-h-7 min-w-0 flex-1 resize-none border border-[#3c3c3c] bg-[#3c3c3c] px-2 py-1 text-[13px] text-neutral-100 outline-none focus:border-sky-500"></textarea>
-            <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
-            <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
-          </div>
-          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-500">
-            <span class="config min-w-0 truncate"></span>
-            <span class="usage ml-auto flex shrink-0 items-center gap-3"></span>
+            <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-400">
+              <span class="config min-w-0 truncate"></span>
+              <span class="usage ml-auto flex shrink-0 items-center gap-3"></span>
+            </div>
+            <div class="flex shrink-0 gap-1">
+              <button type="button" title="Stop" class="stop flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50]"><span class="icon icon-stop-circle size-4"></span></button>
+              <button type="submit" title="Send" class="send flex size-7 shrink-0 items-center justify-center rounded text-neutral-300 hover:bg-[#5a5d5e50] disabled:opacity-40 disabled:hover:bg-transparent"><span class="icon icon-send size-4"></span></button>
+            </div>
           </div>
         </form>
       </div>`;
     const q = name => element.querySelector('.' + name);
-    c = {element, header: element.querySelector('header'), name: q('name'), usage: q('usage'), status: q('status'),
-      config: q('config'), workerButton: q('worker-button'), slot: q('slot'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send'),
+    c = {element, label: a.name, usage: q('usage'), status: document.createElement('span'),
+      config: q('config'), form: element.querySelector('form'), field: element.querySelector('textarea'), stop: q('stop'), send: q('send'),
       previews: q('previews'), attach: q('attach'), file: element.querySelector('input[type=file]')};
-    c.workerButton.hidden = a.role !== 'lead';
-    c.workerButton.onclick = () => showWorkers(c.workerButton);
-    c.slot.prepend(view(a.id).root);
+    c.status.className = 'flex shrink-0 items-center';
+    if (a.role === 'lead') {
+      element.setAttribute('aria-label', 'Lead transcript');
+      c.config.parentElement.prepend(c.status);
+    }
+    q('slot').prepend(view(a.id).root);
     c.field.value = drafts.get(a.id) ?? '';
     c.field.oninput = () => {
       if (c.field.value) drafts.set(a.id, c.field.value); else drafts.delete(a.id);
@@ -438,11 +459,12 @@ function card(a) {
     c.stop.onclick = () => post('agent?' + new URLSearchParams({action: 'interrupt', id: a.id}));
     cards.set(a.id, c);
   }
-  const className = `relative flex min-h-0 min-w-0 flex-1 flex-col gap-2 border bg-[#252526] p-3 text-xs data-dropping:outline-2 data-dropping:-outline-offset-2 data-dropping:outline-sky-500 ${
+  const className = `relative flex min-h-0 min-w-0 flex-1 flex-col border bg-[#1e1e1e] text-xs data-dropping:outline-2 data-dropping:-outline-offset-2 data-dropping:outline-sky-500 ${
     a.attention ? 'border-amber-400' : 'border-[#2b2b2b]'}`;
   if (c.element.className !== className) c.element.className = className;
-  if (c.name.textContent !== a.name) c.name.textContent = a.name;
+  c.label = a.name;
   update(c.status, agentStatus(a));
+  c.status.hidden = !c.status.hasChildNodes();
   update(c.usage, usage(a));
   const config = [a.harness, a.model, a.effort].filter(Boolean).join(' · ');
   if (c.config.textContent !== config) c.config.textContent = config;
@@ -541,7 +563,7 @@ async function submit(agent, c) {
   showAttachments(agent, c);
 }
 
-// The same activity indicator appears in transcripts and worker previews.
+// The same activity indicator appears in tabs and worker previews.
 function agentStatus(a) {
   return a.activity === 'exited' ? '<span title="Exited" class="block size-2 shrink-0 rounded-full bg-red-400"></span>'
     : a.attention ? '<span title="Waiting on you" class="block size-2 shrink-0 rounded-full bg-amber-400"></span>'
@@ -563,10 +585,16 @@ async function post(action, body) {
 document.body.addEventListener('click', async e => {
   closeMenu();
   const leadButton = e.target.closest('[data-leads]');
+  const moreButton = e.target.closest('[data-more]');
   const action = e.target.closest('[data-action]');
   const row = e.target.closest('[data-select]');
+  const w = data.find(w => w.id === moreButton?.dataset.more);
   if (leadButton) {
     await pickLead(leadButton);
+  } else if (w) {
+    const rect = moreButton.getBoundingClientRect();
+    showMenu(workspaceItems(w), rect.left, rect.bottom);
+    menu.querySelector('[role="menuitem"]')?.focus();
   } else if (action) {
     if (action.dataset.question && !confirm(action.dataset.question)) return;
     post(action.dataset.action);
@@ -594,7 +622,7 @@ function placeMenu(x, y) {
   menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
-// The lead picker is a menu under the workspace's + button, listing each lead
+// The lead picker is a menu under the workspace's New Session button, listing each lead
 // by its description. Picking one creates a
 // session with it and selects the session.
 async function pickLead(button) {
@@ -626,6 +654,15 @@ menu.addEventListener('keydown', e => {
 });
 
 // A session's menu starts or stops it and deletes it; a workspace's deletes it.
+// A workspace's menu also opens under its More Actions button.
+const workspaceItems = w => [{label: 'Delete Workspace', action: 'workspace?' + new URLSearchParams({action: 'delete', id: w.id}), question: `Delete workspace ${w.name}?`}];
+
+function showMenu(items, x, y) {
+  menu.innerHTML = items.map(i => `<button type="button" role="menuitem" data-action="${escape(i.action)}" ${i.question ? `data-question="${escape(i.question)}"` : ''}
+    class="${menuItemClass}">${escape(i.label)}</button>`).join('');
+  placeMenu(x, y);
+}
+
 document.addEventListener('contextmenu', e => {
   closeMenu();
   const row = e.target.closest('[data-session]'), header = e.target.closest('[data-workspace]');
@@ -638,14 +675,12 @@ document.addEventListener('contextmenu', e => {
     items = [live ? {label: 'Stop Session', action: action('stop')} : {label: 'Start Session', action: action('start')},
       {label: 'Delete Session', action: action('delete'), question: `Delete session ${s.title}?`}];
   } else if (w) {
-    items = [{label: 'Delete Workspace', action: 'workspace?' + new URLSearchParams({action: 'delete', id: w.id}), question: `Delete workspace ${w.name}?`}];
+    items = workspaceItems(w);
   } else {
     return;
   }
   e.preventDefault();
-  menu.innerHTML = items.map(i => `<button type="button" role="menuitem" data-action="${escape(i.action)}" ${i.question ? `data-question="${escape(i.question)}"` : ''}
-    class="${menuItemClass}">${escape(i.label)}</button>`).join('');
-  placeMenu(e.clientX, e.clientY);
+  showMenu(items, e.clientX, e.clientY);
 });
 addEventListener('pointerdown', e => {
   if (!menu.contains(e.target)) closeMenu();
@@ -761,6 +796,40 @@ $('toggle-sidebar').onclick = () => {
   $('toggle-sidebar').firstElementChild.className = `icon ${open ? 'icon-layout-sidebar-left' : 'icon-layout-sidebar-left-off'} size-4`;
 };
 
+$('toggle-right-panel').onclick = () => {
+  const open = rightPanel.hidden;
+  rightPanel.hidden = !open;
+  const button = $('toggle-right-panel');
+  button.setAttribute('aria-expanded', open);
+  button.title = open ? 'Hide Right Panel' : 'Show Right Panel';
+  button.setAttribute('aria-label', button.title);
+  button.firstElementChild.className = `icon ${open ? 'icon-layout-sidebar-left' : 'icon-layout-sidebar-left-off'} size-4 rotate-180`;
+};
+
+const rightTabs = [...$('right-panel-tabs').querySelectorAll('[role="tab"]')];
+function selectRightTab(tab) {
+  for (const button of rightTabs) {
+    const selected = button === tab;
+    button.setAttribute('aria-selected', selected);
+    button.tabIndex = selected ? 0 : -1;
+    $(button.getAttribute('aria-controls')).hidden = !selected;
+  }
+}
+for (const [index, tab] of rightTabs.entries()) {
+  tab.onclick = () => selectRightTab(tab);
+  tab.onkeydown = e => {
+    let next;
+    if (e.key === 'ArrowRight') next = (index + 1) % rightTabs.length;
+    else if (e.key === 'ArrowLeft') next = (index + rightTabs.length - 1) % rightTabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = rightTabs.length - 1;
+    else return;
+    e.preventDefault();
+    selectRightTab(rightTabs[next]);
+    rightTabs[next].focus();
+  };
+}
+
 // drag follows the pointer from a sash until release.
 let dragging = false;
 function drag(sash, move, release, start) {
@@ -783,11 +852,22 @@ function drag(sash, move, release, start) {
   };
 }
 drag($('sidebar-sash'), e => sidebar.style.width = Math.max(160, Math.min(e.clientX, innerWidth / 2)) + 'px');
+drag(leadSash, e => {
+  const rect = transcripts.getBoundingClientRect();
+  const ratio = Math.max(0.15, Math.min(0.85, (e.clientX - rect.left) / rect.width));
+  leadColumn.style.flex = `${ratio} 1 0%`;
+  tabArea.style.flex = `${1 - ratio} 1 0%`;
+});
 drag($('panel-sash'), e => panel.style.height = Math.max(40, Math.min(panel.getBoundingClientRect().bottom - e.clientY, innerHeight * 0.8)) + 'px');
-// A file dropped outside a pane would open in the browser, so such drops are
-// refused.
+// Files outside a pane would open in the browser. Tabs outside their area
+// could insert their ID into the lead's input. Refuse both kinds of drop.
 for (const type of ['dragover', 'drop']) {
   addEventListener(type, e => {
+    if (tabContainer?.dragged && !tabArea.contains(e.target)) {
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+      return;
+    }
     if (!hasFiles(e) || e.defaultPrevented) return;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';

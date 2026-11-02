@@ -148,7 +148,7 @@ test('items replace themselves in place, and unchanged items are left alone', ()
 test('a tool call shows its summary, status, and nested items', () => {
   const t = transcript();
   t.reset([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
-  const [call] = find(t.list.children[0], 'details');
+  const call = t.rows.get('c').details;
   const [summary, input, output, kids] = call.children;
   expect(summary.textContent).toContain('bash');
   expect(summary.textContent).toContain('ls');
@@ -243,9 +243,10 @@ test('a request inside a collapsed tool opens it', () => {
     {id: 'b', parent: 'a', kind: 'tool', tool: 'inner'},
     {id: 'q', parent: 'b', kind: 'attention', text: 'Allow?', choices: ['ok']},
   ]);
-  const [outer, inner] = find(t.list.children[0], 'details');
-  expect(outer.open).toBe(true);
-  expect(inner.open).toBe(true);
+  expect(t.rows.get('a').details.open).toBe(true);
+  expect(t.rows.get('b').details.open).toBe(true);
+  expect(t.rows.get('a').group.element.open).toBe(true);
+  expect(t.rows.get('b').group.element.open).toBe(true);
 });
 
 test('the view follows the end until the user scrolls up', () => {
@@ -311,13 +312,13 @@ const clamped = body => body.className.includes('line-clamp');
 test('a message an agent sends shows its recipient and text', () => {
   const t = transcript();
   t.reset([{id: 's', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: 'Done.'}}]);
-  const [row] = t.list.children;
+  const row = t.rows.get('s').element;
   expect(row.textContent).toBe('To c1/leadDone.');
   expect(find(row, 'span').some(s => s.className.includes('icon-loading'))).toBe(true);
   expect(find(row, 'button')[0].hidden).toBe(true);
 
   t.update([{id: 's', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: 'Done.'}, output: 'no such agent', done: true, failed: true}]);
-  expect(t.list.children[0]).toBe(row);
+  expect(t.rows.get('s').element).toBe(row);
   expect(find(row, 'span').some(s => s.className.includes('icon-loading'))).toBe(false);
   expect(row.textContent).toContain('no such agent');
 });
@@ -328,7 +329,7 @@ test('a long message between agents expands and collapses', () => {
     {id: 'in', kind: 'user', from: 'c1/lead', text: longText, done: true},
     {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: longText}},
   ]);
-  for (const row of t.list.children) {
+  for (const row of [t.rows.get('in').element, t.rows.get('out').element]) {
     const [bubble] = row.children;
     const [, body, more] = bubble.children;
     expect(body.textContent).toBe(longText);
@@ -344,7 +345,7 @@ test('a long message between agents expands and collapses', () => {
   expect(t.list.children[0].textContent).toStartWith('From c1/lead');
 
   // An expanded message stays expanded when its call finishes.
-  const out = t.list.children[1];
+  const out = t.rows.get('out').element;
   const [, body, more] = out.children[0].children;
   more.onclick();
   t.update([{id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: longText}, done: true}]);
@@ -398,14 +399,148 @@ test('user, assistant, and tool items show their images', () => {
   expect(imgs(assistant)).toEqual(['data:image/gif;base64,R0lGODlh']);
   expect(imgs(plain)).toEqual([]);
   expect(plain.textContent).toBe('plain');
-  // A tool's images sit outside its details, so they show while it is closed,
-  // and an image the page cannot show is left out.
+  // Images remain outside the individual call's details, inside its group.
+  // An image the page cannot show is left out.
   expect(imgs(tool)).toEqual(['data:image/png;base64,' + png]);
-  const [details] = find(tool, 'details');
+  const details = t.rows.get('c').details;
   expect(find(details, 'img')).toEqual([]);
   expect(find(tool, 'img')[0].className).toContain('max-h-64');
   expect(find(tool, 'img')[0].attributes.alt).toBe('Image');
 
   t.update([{id: 'c', kind: 'tool', tool: 'screenshot', done: true}]);
   expect(imgs(tool)).toEqual([]);
+});
+
+const toolCall = (id, tool, at, extra = {}) => ({id, kind: 'tool', tool, at, ...extra});
+
+test('consecutive calls share one group showing the latest call, not the latest update', () => {
+  const t = transcript();
+  t.reset([toolCall('a', 'read', 1000, {input: {path: '/first'}})]);
+  const group = t.list.children[0];
+  const heading = group.children[0];
+  expect(group.tag).toBe('details');
+  expect(heading.textContent).toBe('read /first');
+  expect(group.open).not.toBe(true);
+  group.open = true;
+
+  t.update([toolCall('b', 'bash', 2000, {input: {command: 'go test'}})]);
+  expect(t.list.children).toEqual([group]);
+  expect(heading.textContent).toBe('bash go test');
+  expect(group.children[1].children).toEqual([t.rows.get('a').element, t.rows.get('b').element]);
+  expect(group.open).toBe(true);
+
+  t.update([toolCall('a', 'read', 1000, {done: true, output: 'old call completed'})]);
+  expect(heading.textContent).toBe('bash go test');
+  expect(t.rows.get('a').output.textContent).toBe('old call completed');
+});
+
+test('the next non-tool item freezes a group duration and later tool updates preserve it', () => {
+  const t = transcript();
+  t.reset([toolCall('a', 'read', 1000), toolCall('b', 'bash', 2000)]);
+  const group = t.list.children[0];
+  group.open = true;
+  t.update([{id: 'text', kind: 'text', text: 'Finished', at: 33000}]);
+  expect(t.list.children.length).toBe(2);
+  expect(group.children[0].textContent).toBe('Worked for 32s');
+  expect(group.open).toBe(true);
+
+  t.update([toolCall('b', 'bash', 2000, {done: true, failed: true, output: 'oops'})]);
+  expect(group.children[0].textContent).toBe('Worked for 32s');
+  expect(find(group.children[0], 'span').some(s => s.title === 'Failed')).toBe(false);
+  expect(find(t.rows.get('b').details, 'span').some(s => s.title === 'Failed')).toBe(true);
+  expect(t.rows.get('b').output.textContent).toBe('oops');
+  t.update([toolCall('c', 'next call', 35000)]);
+  expect(t.list.children.length).toBe(3);
+  expect(t.list.children[2].children[0].textContent).toBe('next call ');
+});
+
+test('replaying timestamped history retains durations and distinguishes separate runs', () => {
+  const t = transcript();
+  const items = [
+    toolCall('a', 'read', 1000, {done: true}),
+    toolCall('b', 'bash', 5000, {done: true}),
+    {id: 'r', kind: 'reasoning', text: 'Next', at: 33000},
+    toolCall('c', 'edit', 34000, {done: true}),
+    {id: 'u', kind: 'user', text: 'Continue', at: 36000},
+  ];
+  t.reset(items);
+  expect(t.list.children.length).toBe(4);
+  expect(t.list.children[0].children[0].textContent).toBe('Worked for 32s');
+  expect(t.list.children[2].children[0].textContent).toBe('Worked for 2s');
+  t.reset(items);
+  expect(t.list.children.length).toBe(4);
+  expect(t.list.children[0].children[0].textContent).toBe('Worked for 32s');
+  expect(t.list.children[2].children[0].textContent).toBe('Worked for 2s');
+});
+
+test('nested items do not finish the outer run, and nested tools group among their siblings', () => {
+  const t = transcript();
+  t.reset([
+    toolCall('parent', 'agent', 1000),
+    toolCall('one', 'read', 2000, {parent: 'parent'}),
+    toolCall('two', 'bash', 3000, {parent: 'parent'}),
+    {id: 'child-text', parent: 'parent', kind: 'text', text: 'Child finished', at: 6000},
+    toolCall('next', 'edit', 7000),
+  ]);
+  expect(t.list.children.length).toBe(1);
+  const outer = t.list.children[0];
+  expect(outer.children[0].textContent).toBe('edit ');
+  const children = t.rows.get('parent').kids;
+  expect(children.children.length).toBe(2);
+  expect(children.children[0].children[0].textContent).toBe('Worked for 4s');
+  expect(t.rows.get('one').group).toBe(t.rows.get('two').group);
+});
+
+test('message-sending tools join consecutive calls and retain their message content inside', () => {
+  const t = transcript();
+  t.reset([
+    toolCall('a', 'read', 1000),
+    {id: 'm', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'lead', text: 'Result'}, at: 2000},
+    toolCall('b', 'bash', 3000),
+  ]);
+  expect(t.list.children.length).toBe(1);
+  expect(t.list.children[0].children[1].children.length).toBe(3);
+  expect(t.rows.get('m').element.textContent).toBe('To leadResult');
+});
+
+test('one failed call does not mark a mixed tool batch as failed', () => {
+  const t = transcript();
+  t.reset([
+    toolCall('failed', 'bash', 1000, {done: true, failed: true, output: 'failed command'}),
+    toolCall('success', 'read', 2000, {done: true}),
+  ]);
+  const group = t.list.children[0];
+  expect(find(group.children[0], 'span').some(s => s.title === 'Failed')).toBe(false);
+  expect(find(t.rows.get('failed').details, 'span').some(s => s.title === 'Failed')).toBe(true);
+  t.update([{id: 'reply', kind: 'text', text: 'Recovered', at: 3000}]);
+  expect(group.children[0].textContent).toBe('Worked for 2s');
+  expect(find(group.children[0], 'span').some(s => s.title === 'Failed')).toBe(false);
+  expect(t.rows.get('failed').output.textContent).toBe('failed command');
+});
+
+test('thinking shows a bounded preview by default, expands fully, and keeps its choice while streaming', () => {
+  const t = transcript();
+  t.reset([{id: 'thinking', kind: 'reasoning', text: longText}]);
+  const row = t.rows.get('thinking');
+  expect(row.element.tag).toBe('div');
+  expect(row.body.textContent).toBe(longText);
+  expect(row.preview.className).toBe('reasoning-preview');
+  expect(row.more.attributes['aria-expanded']).toBe('false');
+  expect(row.body.hidden).toBe(false);
+
+  t.update([{id: 'thinking', kind: 'reasoning', text: longText + '\nlatest thought'}]);
+  expect(row.body.textContent).toEndWith('latest thought');
+  expect(row.preview.className).toBe('reasoning-preview');
+
+  row.more.onclick();
+  expect(row.preview.className).toBe('');
+  expect(row.more.attributes['aria-expanded']).toBe('true');
+  expect(row.body.textContent).toBe(longText + '\nlatest thought');
+  t.update([{id: 'thinking', kind: 'reasoning', text: longText + '\nlatest thought\nmore', done: true}]);
+  expect(row.preview.className).toBe('');
+  expect(row.body.textContent).toEndWith('more');
+  row.more.onclick();
+  expect(row.preview.className).toBe('reasoning-preview');
+  expect(row.more.attributes['aria-expanded']).toBe('false');
+  expect(row.body.textContent).toEndWith('more');
 });

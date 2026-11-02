@@ -179,6 +179,9 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 		method = "thread/resume"
 		params["threadId"] = a.Conversation
 		params["excludeTurns"] = true
+	} else {
+		// Keep worker conversations out of the desktop app without losing resume.
+		params["threadSource"] = "chatgpt_hidden"
 	}
 	var opened struct {
 		Thread struct {

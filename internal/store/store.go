@@ -40,7 +40,7 @@ type Workspace struct {
 	Created int64
 }
 
-// Session is a lead and its workers. Running is what the user last chose.
+// Session is a lead and its workers. Running means it has not been stopped.
 // AwaitingUser holds queued messages until the user prompts the session, and
 // Unseen marks a lead reply the user has not seen.
 type Session struct {
@@ -51,6 +51,7 @@ type Session struct {
 	AwaitingUser bool
 	Unseen       bool
 	Created      int64
+	LastActive   int64
 }
 
 type Agent struct {
@@ -130,6 +131,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   title TEXT NOT NULL DEFAULT '', running INTEGER NOT NULL,
   awaiting_user INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
   created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS session_activity (
+  session TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  last_active INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -281,11 +285,18 @@ func (t *Tx) SaveSession(s Session) error {
 		s.Title, s.Running, s.AwaitingUser, s.Unseen, s.ID)
 }
 
-const sessionColumns = `id, workspace, title, running, awaiting_user, unseen, created`
+// TouchSession records activity separately from session edits such as Seen.
+func (t *Tx) TouchSession(id string, at int64) error {
+	return t.exec(`INSERT INTO session_activity (session, last_active) VALUES (?, ?)
+  ON CONFLICT(session) DO UPDATE SET last_active = excluded.last_active`, id, at)
+}
+
+const sessionColumns = `id, workspace, title, running, awaiting_user, unseen, created,
+  COALESCE((SELECT last_active FROM session_activity WHERE session = sessions.id), created)`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	err := row.Scan(&s.ID, &s.Workspace, &s.Title, &s.Running, &s.AwaitingUser, &s.Unseen, &s.Created)
+	err := row.Scan(&s.ID, &s.Workspace, &s.Title, &s.Running, &s.AwaitingUser, &s.Unseen, &s.Created, &s.LastActive)
 	return s, err
 }
 
@@ -482,7 +493,7 @@ type ShownAgent struct {
 }
 
 // Snapshot reads everything the view shows in one transaction: workspaces by
-// folder name, each with its sessions in creation order.
+// folder name, with running sessions first, each group by most recent activity.
 func Snapshot(db *DB) ([]ShownWorkspace, error) {
 	list := []ShownWorkspace{}
 	err := db.Read(func(tx *Tx) error {
@@ -496,6 +507,15 @@ func Snapshot(db *DB) ([]ShownWorkspace, error) {
 			if err != nil {
 				return err
 			}
+			slices.SortStableFunc(sessions, func(a, b Session) int {
+				if a.Running != b.Running {
+					if a.Running {
+						return -1
+					}
+					return 1
+				}
+				return cmp.Or(cmp.Compare(b.LastActive, a.LastActive), cmp.Compare(b.Created, a.Created))
+			})
 			for _, s := range sessions {
 				agents, err := tx.Agents(s.ID)
 				if err != nil {

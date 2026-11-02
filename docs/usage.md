@@ -27,27 +27,30 @@ Use worker worktrees for independent edits.
 
 ## Browser view
 
-The sidebar lists every workspace's sessions under a row for the workspace;
-click the row to collapse or expand them. Click `+` at the top of the sidebar
-to choose a folder and add it as a workspace. Hover over a workspace's row and
-click `+` to list its lead profiles; choose one to create a session with it.
-Right-click a workspace to delete it.
+The sidebar lists each workspace's sessions by last activity, newest first,
+with stopped sessions below running ones. It shows five under each workspace;
+click the workspace row to collapse or expand them, and click Show more to
+list five more. Click `+` at the top of the sidebar to choose a folder and add
+it as a workspace. Hover over a workspace's row and click New Session to list
+its lead profiles; choose one to create a session with it. Click More Actions,
+or right-click the row, to delete the workspace.
 
 Click a session to show it, and double-click it to change its title.
 Right-click a session to start or stop it, or to delete it. A stopped session's
-row is dimmed; clicking it starts it. A workspace's folder icon becomes a
-spinner while any of its agents is busy, and a session shows one in the same
-place. A session shows an amber dot while any
+row is dimmed; clicking it starts it. A session shows a spinner at the right of
+its row while any of its agents is busy, an amber dot while any
 of its agents awaits your approval, and a blue dot after its lead finishes a
 reply you have not seen. A worker's card shows a spinner while it is busy, an
 amber dot while it awaits you, and a red dot after it exits.
 
-The lead's chat opens in a tab that cannot be closed. Click Workers in its
-header to see preview cards with each worker's latest report and its age.
-Click a card's Open Transcript icon to open that worker in a tab. The first
-worker opens in a new pane to the right; later workers reuse that pane. With
-other splits, new workers use the first pane without the lead, ordered from
-left to right and top to bottom. Closing a worker's tab leaves it running.
+The lead's chat stays in its own column. The right panel's Workers tab shows
+cards with each worker's latest report and its age. Click a card's Open
+Transcript icon to open that worker in the tab area to the right of the lead.
+That area appears when the first tab opens and disappears when the last tab
+closes. Drag the divider to resize the lead's column. New worker tabs use the
+first pane, ordered from left to right and top to bottom. Worker tabs show
+their agent's activity indicator; the lead's appears beside its harness and
+model. Closing a worker's tab leaves it running.
 
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
@@ -57,16 +60,24 @@ files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
 a remove button, and can be sent without text. Images from the agent or its
 tools appear in the transcript. The stop button next to the send button appears
 while the agent works and interrupts its current turn; the turn stays in the
-chat. A tool call shows its name and its main argument; click it to see its
-input, its output, and the calls a native subagent made inside it. When an agent
-asks you a question or for approval, its chat shows the request with its choices
-and a field for typed text; answer there. Each agent's unsent text stays in its
+chat. Consecutive tool calls share one expandable item. It shows the latest
+call until the next non-tool item arrives, then shows the elapsed time as
+"Worked for 32s". Expand it to see each call's input, output, and native
+subagent calls. Failures are marked on the individual calls. Thinking shows
+its latest six lines by default; click Thinking to expand the full text or
+return to the preview. When an agent asks you a question or for approval, its
+chat shows the request with its choices and a field for typed text; answer
+there. Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 
 Below each message box, the harness, model, and effort appear on the left,
 with context use and cost on the right. Codex reports no cost. Drag a tab to
 another pane's tab bar to move it there, or to a pane's left, right, top, or
-bottom edge to split it. Drag dividers to resize panes and the sidebar.
+bottom edge to split it. These moves and splits stay within the worker tab
+area; the lead stays in its column. Drag dividers to resize panes and the sidebar.
+
+The right panel button in the header shows or hides the right panel. Its icon
+tabs select Workers, Files, and Changes; Files and Changes are blank for now.
 
 The panel button in the header shows or hides a terminal below the agents. It
 runs your shell in the workspace's folder, one per session, and keeps running
@@ -75,7 +86,10 @@ session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-Closing the browser leaves agents running. Quitting Hypercube ends them, and
+Sessions stop automatically after ten minutes without a prompt or agent
+activity, once none of their agents is working. Sessions selected in an open
+browser page are exempt. Closing the browser leaves
+agents running until that timeout. Quitting Hypercube ends them, and
 the sessions that were running start again at the next start. Stopping a session
 keeps its conversations, chats, and queued messages. Starting it resumes each agent's
 conversation, and at login Hypercube starts the sessions that were running when

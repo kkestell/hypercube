@@ -1,8 +1,7 @@
-// A session's open transcripts form a tree of tab panes and two-way splits.
+// Open worker transcripts form a tree of tab panes and two-way splits.
 export class TabLayout {
-  constructor(lead) {
-    this.lead = lead;
-    this.root = this.pane(lead);
+  constructor() {
+    this.root = null;
   }
 
   pane(id) { return {tabs: [id], active: id}; }
@@ -14,12 +13,12 @@ export class TabLayout {
   open(id) {
     let pane = this.find(id);
     if (!pane) {
-      // Reuse the first other pane, in left-to-right, top-to-bottom order.
-      pane = this.panes().find(p => !p.tabs.includes(this.lead));
+      // Reuse the first pane, in left-to-right, top-to-bottom order.
+      pane = this.panes()[0];
       if (pane) pane.tabs.push(id);
       else {
         pane = this.pane(id);
-        this.root = {axis: 'x', ratio: 0.5, children: [this.root, pane]};
+        this.root = pane;
       }
     }
     pane.active = id;
@@ -34,6 +33,7 @@ export class TabLayout {
   }
 
   prune(node = this.root) {
+    if (!node) return null;
     if (node.tabs) return node.tabs.length ? node : null;
     const children = node.children.map(child => this.prune(child)).filter(Boolean);
     if (children.length < 2) return children[0] ?? null;
@@ -42,7 +42,6 @@ export class TabLayout {
   }
 
   close(id) {
-    if (id === this.lead) return;
     this.detach(id);
     this.root = this.prune();
   }
@@ -118,27 +117,33 @@ export class TabContainer {
             select.id = 'agent-tab-' + id;
             select.setAttribute('aria-controls', 'agent-panel-' + id);
             select.onclick = () => { node.active = id; this.changed(); select.focus(); };
+            const label = document.createElement('span');
+            label.className = 'tab-label';
+            select.append(label);
             tab.append(select);
-            if (id !== this.layout.lead) {
-              const close = document.createElement('button');
-              close.type = 'button';
-              close.className = 'close-tab';
-              close.textContent = '×';
-              close.title = `Close ${entry.label}`;
-              close.setAttribute('aria-label', close.title);
-              close.onclick = () => {
-                this.layout.close(id);
-                this.changed();
-                const next = el.isConnected ? el.bar.querySelector('[aria-selected="true"]') :
-                  this.root.querySelector('[aria-selected="true"]');
-                next?.focus();
-              };
-              tab.append(close);
-            }
+            const close = document.createElement('button');
+            close.type = 'button';
+            close.className = 'close-tab';
+            close.textContent = '×';
+            close.title = `Close ${entry.label}`;
+            close.setAttribute('aria-label', close.title);
+            close.onclick = () => {
+              this.layout.close(id);
+              this.changed();
+              const next = el.isConnected ? el.bar.querySelector('[aria-selected="true"]') :
+                this.root.querySelector('[aria-selected="true"]');
+              next?.focus();
+            };
+            tab.append(close);
           }
           const selected = id === node.active;
           tab.classList.toggle('active', selected);
-          tab.firstElementChild.textContent = entry.label;
+          const select = tab.firstElementChild;
+          select.firstElementChild.textContent = entry.label;
+          if (select.children[1] !== entry.status) {
+            select.children[1]?.remove();
+            if (entry.status) select.append(entry.status);
+          }
           tab.firstElementChild.setAttribute('aria-selected', selected);
           tab.firstElementChild.title = entry.label;
           tab.firstElementChild.tabIndex = selected ? 0 : -1;

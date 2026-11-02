@@ -124,6 +124,8 @@ tools need no approval. The agent's Git directories are writable, so a worker
 can commit in its worktree. The runtime instructions are the thread's developer
 instructions on every launch, and a saved conversation resumes with
 `thread/resume`. A conversation Codex cannot resume fails the launch.
+New threads use `chatgpt_hidden` so they stay out of the ChatGPT desktop app
+while remaining resumable by Hypercube. Existing threads keep their visibility.
 
 - **Text and tools.** Text and reasoning summaries stream into the transcript
   as Codex writes them. Commands, file changes, MCP and other tool calls, and

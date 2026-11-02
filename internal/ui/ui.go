@@ -228,6 +228,8 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	}()
 	var sent []byte
 	var selected string
+	releaseView := func() {}
+	defer func() { releaseView() }()
 	have := map[string]*sentItems{}
 	for {
 		s.mu.Lock()
@@ -260,6 +262,9 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case id := <-selections:
+			nextView := s.rt.ViewSession(id)
+			releaseView()
+			releaseView = nextView
 			selected = id
 			clear(have)
 		case <-ctx.Done():

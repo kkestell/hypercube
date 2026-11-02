@@ -127,6 +127,8 @@ type Usage struct {
 // own name for the tool. A user item that delivers another agent's message
 // names that agent's address in From, and Text is the message alone.
 type Item struct {
+	// At is when Hypercube first received the item, in Unix milliseconds.
+	At      int64           `json:"at,omitempty"`
 	ID      string          `json:"id"`
 	Parent  string          `json:"parent,omitempty"`
 	Kind    string          `json:"kind"`
