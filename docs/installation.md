@@ -47,6 +47,10 @@ and browser view. Agents and panel shells keep running across the restart.
 A new plugin build applies at each agent's next launch. A change to the holder
 directory or plugin protocol requires quitting Hypercube before installing.
 
+Upgrading from the earlier leads/workers version restarts agents and panel
+shells once. Saved sessions, conversations, worktrees, transcripts, and queued
+messages migrate automatically.
+
 ## Development
 
 `make dev` builds this checkout and opens its browser view at

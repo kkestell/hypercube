@@ -135,9 +135,9 @@ CREATE TABLE IF NOT EXISTS transcript (
 // DB is the open database.
 type DB struct{ sql *sql.DB }
 
-// Open opens the database at Path, creating it and its tables if they are
-// missing. Writes take the database lock when they begin and wait up to five
-// seconds for it.
+// Open opens the database at Path, creating its tables if they are missing
+// and upgrading a database from an older version. Writes take the database
+// lock when they begin and wait up to five seconds for it.
 func Open() (*DB, error) {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return nil, err
@@ -147,14 +147,10 @@ func Open() (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := db.Exec(schema); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("%s: %w", dbPath(), err)
-	}
 	d := &DB{db}
 	if err := d.migrate(); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("upgrading %s: %w", dbPath(), err)
+		return nil, fmt.Errorf("%s: %w", dbPath(), err)
 	}
 	return d, nil
 }
