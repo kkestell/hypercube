@@ -106,7 +106,11 @@
   display: flex;
 }
 
-.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) .status-dot {
+.session-item-busy {
+  color: var(--vscode-descriptionForeground);
+}
+
+.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) :is(.status-dot, .session-item-busy) {
   display: none;
 }
 

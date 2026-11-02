@@ -287,9 +287,19 @@ test('each row shows only its own state', () => {
   expect(dots(root, 'a')).toEqual([]);
   expect(dots(root, 'asks')).toEqual(['waiting']);
   expect(dots(root, 'replied')).toEqual(['unseen']);
-  expect(root.querySelector('[name="loading"]')).toBeNull();
   store.update(s => ({...s, selected: 'replied'}));
   expect(dots(root, 'replied')).toEqual([]);
+});
+
+test('a top-level row spins while it or a nested session works', () => {
+  const busy = root => [...root.querySelectorAll('[name="loading"]')].map(icon => icon.closest('[data-session]').dataset.session);
+  const {store, root} = setup([session('a', {children: [session('child', {parent: 'a', activity: 'busy'})]}), session('b')]);
+  expect(busy(root)).toEqual(['a']);
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [session('child', {parent: 'a'})]}), session('b', {activity: 'busy'})]}]}));
+  expect(busy(root)).toEqual(['b']);
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [session('child', {parent: 'a'})]}), session('b', {activity: 'busy', unseen: true})]}]}));
+  expect(busy(root)).toEqual([]);
+  expect(dots(root, 'b')).toEqual(['unseen']);
 });
 
 test('a row\'s More Actions button opens its menu, and the workspace\'s opens the workspace menu', () => {

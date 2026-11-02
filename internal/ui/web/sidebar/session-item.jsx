@@ -1,7 +1,8 @@
 // A session's row in the sidebar: its title, dimmed when it is stopped, a caret
 // when it has nested sessions, and a dot for its own state: amber while it
-// waits on the user, blue for a reply the user has not seen. Hovering the row
-// shows its menu button in the dot's place. Double-clicking the title renames
+// waits on the user, blue for a reply the user has not seen. A top-level row
+// without a dot shows a spinner while it or any of its nested sessions works.
+// Hovering the row shows its menu button in the indicator's place. Double-clicking the title renames
 // the session in place.
 import {useEffect, useRef} from 'preact/hooks';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
@@ -12,6 +13,9 @@ import './session-item.css';
 const dotOf = (session, selected) => {
   if (session.running && session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
+  if (!session.parent && [session, ...session.children].some(s => s.activity === 'busy')) {
+    return <vscode-icon class="session-item-busy" name="loading" spin role="img" title="Working" />;
+  }
   return null;
 };
 
