@@ -52,6 +52,7 @@ func newPi() *piUnderTest {
 		blocks: map[string]*block{}, tools: map[string]harness.Item{}, requests: map[string]*request{},
 		session: "session-1", window: 1000,
 	}
+	p.agent.ctx, p.agent.cancel = context.WithCancel(context.Background())
 	return p
 }
 
@@ -421,6 +422,23 @@ func TestExtensionErrorIsShown(t *testing.T) {
 	p.feed(`{"type":"extension_error","extensionPath":"/x.ts","event":"tool_call","error":"boom"}`)
 	if e := p.item(t, harness.KindError); !strings.Contains(e.Text, "boom") {
 		t.Errorf("error %+v", e)
+	}
+}
+
+// Stopping the agent gives up a call that pi has not answered.
+func TestStopCancelsPendingCall(t *testing.T) {
+	ag := &agent{stdin: io.Discard, ended: make(chan struct{}), calls: map[string]chan response{}}
+	ag.ctx, ag.cancel = context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- ag.input("hello", nil) }()
+	ag.cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("input returned %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("input is still waiting after stop")
 	}
 }
 

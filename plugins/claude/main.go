@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -63,7 +62,7 @@ type claude struct {
 	blocks       map[string]int          // content blocks seen per assistant message
 	open         map[string]harness.Item // streamed items that no complete block has finished
 	tools        map[string]harness.Item // tool items, by tool use ID
-	requests     map[string]*request     // open permission requests, by item ID
+	requests     plugin.Requests[request]
 	errors       plugin.Errors
 	usage        harness.Usage
 }
@@ -73,17 +72,20 @@ type claude struct {
 type request struct {
 	id        string          // the control request's ID
 	input     json.RawMessage // the tool input, which an allowing reply carries back
-	items     []harness.Item  // one per question, or the one permission prompt
-	questions []string
+	questions []string        // the text of each question, by item; nil for a permission
 	answers   map[string]string
 }
 
 func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error) {
 	mcp := map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env}}}
+	mcpJSON, err := json.Marshal(mcp)
+	if err != nil {
+		return nil, err
+	}
 	// The prompt snapshot would freeze the instructions of the first launch.
 	argv := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--permission-prompt-tool", "stdio", "--permission-mode", "auto", "--system-prompt-snapshot", "off",
-		"--mcp-config", plugin.JSONString(mcp), "--model", a.Model, "--effort", a.Effort}
+		"--mcp-config", string(mcpJSON), "--model", a.Model, "--effort", a.Effort}
 	if a.Instructions != "" {
 		argv = append(argv, "--append-system-prompt", a.Instructions)
 	}
@@ -101,7 +103,6 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 	c := &claude{
 		proc: p, stdin: p.Stdin, emit: emit, conversation: a.Conversation,
 		blocks: map[string]int{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{},
-		requests: map[string]*request{},
 	}
 	ready := make(chan error, 1)
 	go c.read(ready)
@@ -220,17 +221,18 @@ const (
 func (c *claude) answer(item, choice, text string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	r := c.requests[item]
-	if r == nil {
+	open, ok := c.requests.Get(item)
+	if !ok {
 		return fmt.Errorf("request %s is not open", item)
 	}
-	if r.questions != nil {
-		return c.answerQuestion(r, item, choice, text)
+	if open.Request.questions != nil {
+		return c.answerQuestion(open, choice, text)
 	}
-	return c.answerPermission(r, choice, text)
+	return c.answerPermission(open, choice, text)
 }
 
-func (c *claude) answerPermission(r *request, choice, text string) error {
+func (c *claude) answerPermission(open plugin.Open[request], choice, text string) error {
+	r := open.Request
 	var response map[string]any
 	var result string
 	switch {
@@ -255,20 +257,20 @@ func (c *claude) answerPermission(r *request, choice, text string) error {
 	if err := c.respond(r.id, response); err != nil {
 		return err
 	}
-	c.finish(r, 0, result)
+	c.emit(harness.Event{Items: []harness.Item{c.requests.Done(open.Item.ID, result)}})
 	return nil
 }
 
 // answerQuestion records the answer to one question. Claude is answered once
 // every question of the request has an answer.
-func (c *claude) answerQuestion(r *request, item, choice, text string) error {
+func (c *claude) answerQuestion(open plugin.Open[request], choice, text string) error {
+	r := open.Request
 	result := cmp.Or(choice, text)
 	if result == "" {
 		return errors.New("the answer is empty")
 	}
-	index := slices.IndexFunc(r.items, func(it harness.Item) bool { return it.ID == item })
-	r.answers[r.questions[index]] = result
-	if len(r.answers) == len(r.questions) {
+	r.answers[r.questions[open.Index]] = result
+	if open.Last {
 		input, err := withAnswers(r.input, r.answers)
 		if err != nil {
 			return err
@@ -277,7 +279,7 @@ func (c *claude) answerQuestion(r *request, item, choice, text string) error {
 			return err
 		}
 	}
-	c.finish(r, index, result)
+	c.emit(harness.Event{Items: []harness.Item{c.requests.Done(open.Item.ID, result)}})
 	return nil
 }
 
@@ -296,34 +298,8 @@ func withAnswers(input json.RawMessage, answers map[string]string) (json.RawMess
 	return json.Marshal(fields)
 }
 
-// finish shows an item of a request as answered and stops tracking it.
-func (c *claude) finish(r *request, index int, result string) {
-	done := r.items[index]
-	done.Done, done.Answer = true, result
-	delete(c.requests, done.ID)
-	c.emit(harness.Event{Items: []harness.Item{done}})
-}
-
 func (c *claude) respond(id string, response any) error {
 	return c.send(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "success", "request_id": id, "response": response}})
-}
-
-// closeRequests finishes the items of requests claude no longer waits on.
-func (c *claude) closeRequests(match func(*request) bool) []harness.Item {
-	var items []harness.Item
-	for id, r := range c.requests {
-		if !match(r) {
-			continue
-		}
-		for _, it := range r.items {
-			if it.ID == id {
-				it.Done = true
-				items = append(items, it)
-			}
-		}
-		delete(c.requests, id)
-	}
-	return items
 }
 
 // message is the part of a stream line the translation reads.
@@ -422,7 +398,8 @@ func (c *claude) line(line []byte) {
 	case "control_request":
 		c.control(&ev, m)
 	case "control_cancel_request":
-		ev.Items = append(ev.Items, c.closeRequests(func(r *request) bool { return r.id == m.RequestID })...)
+		items, _ := c.requests.Close(func(r *request) bool { return r.id == m.RequestID })
+		ev.Items = append(ev.Items, items...)
 	case "result":
 		c.result(&ev, m)
 	}
@@ -558,6 +535,7 @@ func (c *claude) control(ev *harness.Event, m message) {
 		return
 	}
 	r := &request{id: m.RequestID, input: req.Input}
+	var items []harness.Item
 	if req.Tool == "AskUserQuestion" {
 		r.questions, r.answers = []string{}, map[string]string{}
 		var in struct {
@@ -581,10 +559,10 @@ func (c *claude) control(ev *harness.Event, m message) {
 				notes = append(notes, o.Description)
 			}
 			item.Text = plugin.OptionNotes(q.Question, item.Choices, notes)
-			r.items = append(r.items, item)
+			items = append(items, item)
 			r.questions = append(r.questions, q.Question)
 		}
-		if len(r.items) == 0 {
+		if len(items) == 0 {
 			_ = c.respond(m.RequestID, map[string]any{"behavior": "deny", "message": "The question had no content."})
 			return
 		}
@@ -600,12 +578,10 @@ func (c *claude) control(ev *harness.Event, m message) {
 		if req.Description != "" {
 			text += "\n\n" + req.Description
 		}
-		r.items = []harness.Item{{ID: m.RequestID, Kind: harness.KindAttention, Text: text, Choices: []string{allow, deny}, Free: true}}
+		items = []harness.Item{{ID: m.RequestID, Kind: harness.KindAttention, Text: text, Choices: []string{allow, deny}, Free: true}}
 	}
-	for _, it := range r.items {
-		c.requests[it.ID] = r
-	}
-	ev.Items = append(ev.Items, r.items...)
+	c.requests.Add(r, items)
+	ev.Items = append(ev.Items, items...)
 }
 
 // summary is what a result line says about how its turn ended.
@@ -634,7 +610,11 @@ func (c *claude) result(ev *harness.Event, m message) {
 		ev.Items = append(ev.Items, it)
 		delete(c.open, id)
 	}
-	ev.Items = append(ev.Items, c.closeRequests(func(*request) bool { return true })...)
+	items, _ := c.requests.Close(func(*request) bool { return true })
+	ev.Items = append(ev.Items, items...)
+	// Nothing of the turn is needed later.
+	clear(c.blocks)
+	clear(c.tools)
 	// An interrupted turn is the user's own doing.
 	if m.IsError && !strings.HasPrefix(m.TerminalReason, "aborted") {
 		ev.Items = append(ev.Items, c.errors.Item(m.summary()))

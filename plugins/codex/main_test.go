@@ -60,7 +60,7 @@ func newAgent(t *testing.T) *agentUnderTest {
 	h := &agentUnderTest{server: &appServer{t: t, out: peerOut, handlers: map[string]func(map[string]any) (any, *plugin.RPCError){}}}
 	h.agent = &agent{
 		finished: map[string]bool{}, open: map[string]harness.Item{}, running: map[string]harness.Item{},
-		children: map[string]string{}, requests: map[string]*request{},
+		children: map[string]string{},
 	}
 	h.ctx, h.cancel = context.WithCancel(context.Background())
 	h.emit = func(ev harness.Event) {
@@ -146,6 +146,12 @@ func (p *appServer) await(n int) []map[string]any {
 	p.t.Helper()
 	eventually(p.t, "the agent's responses", func() bool { return len(p.responses()) >= n })
 	return p.responses()
+}
+
+// compact is v as compact JSON. A value decoded from JSON always marshals.
+func compact(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }
 
 func eventually(t *testing.T, what string, ok func() bool) {
@@ -614,7 +620,7 @@ func TestApprovalBecomesAnAttentionRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	responses := h.server.await(1)
-	if len(responses) != 1 || responses[0]["id"] != float64(0) || plugin.JSONString(responses[0]["result"]) != `{"decision":"cancel"}` {
+	if len(responses) != 1 || responses[0]["id"] != float64(0) || compact(responses[0]["result"]) != `{"decision":"cancel"}` {
 		t.Fatalf("%+v", responses)
 	}
 	if got := h.item(t, ask.ID); !got.Done || got.Answer != deny {
@@ -650,7 +656,7 @@ func TestApprovalDecisions(t *testing.T) {
 	}
 	var got []string
 	for _, r := range h.server.await(3) {
-		got = append(got, plugin.JSONString(r["id"])+plugin.JSONString(r["result"]))
+		got = append(got, compact(r["id"])+compact(r["result"]))
 	}
 	if want := []string{`7{"decision":"acceptForSession"}`, `"s8"{"decision":"accept"}`, `9{"decision":"decline"}`}; !slices.Equal(got, want) {
 		t.Fatalf("%q", got)
@@ -674,7 +680,7 @@ func TestPermissionsRequest(t *testing.T) {
 	}
 	var got []string
 	for _, r := range h.server.await(2) {
-		got = append(got, plugin.JSONString(r["result"]))
+		got = append(got, compact(r["result"]))
 	}
 	if want := []string{`{"permissions":{"network":{"enabled":true}},"scope":"session"}`, `{"permissions":{}}`}; !slices.Equal(got, want) {
 		t.Fatalf("%q", got)
@@ -712,7 +718,7 @@ func TestQuestionsAreAnsweredTogether(t *testing.T) {
 	}
 	responses := h.server.await(1)
 	want := `{"answers":{"color":{"answers":["teal"]},"name":{"answers":["Ada"]},"size":{"answers":["Large"]}}}`
-	if len(responses) != 1 || plugin.JSONString(responses[0]["result"]) != want {
+	if len(responses) != 1 || compact(responses[0]["result"]) != want {
 		t.Fatalf("%+v", responses)
 	}
 }
@@ -738,7 +744,7 @@ func TestElicitationApproval(t *testing.T) {
 	}
 	var got []string
 	for _, r := range h.server.await(2) {
-		got = append(got, plugin.JSONString(r["result"]))
+		got = append(got, compact(r["result"]))
 	}
 	if want := []string{`{"action":"accept","content":{}}`, `{"action":"decline"}`}; !slices.Equal(got, want) {
 		t.Fatalf("%q", got)
@@ -775,7 +781,7 @@ func TestElicitationForm(t *testing.T) {
 	}
 	responses := h.server.await(1)
 	want := `{"action":"accept","content":{"alpha":false,"count":3,"note":"hi","tags":["b"],"zeta":"slow"}}`
-	if len(responses) != 1 || plugin.JSONString(responses[0]["result"]) != want {
+	if len(responses) != 1 || compact(responses[0]["result"]) != want {
 		t.Fatalf("%+v", responses)
 	}
 }
@@ -812,7 +818,7 @@ func TestInterruptRefusesOpenRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	responses := h.server.await(1)
-	if len(responses) != 1 || plugin.JSONString(responses[0]["result"]) != `{"decision":"cancel"}` {
+	if len(responses) != 1 || compact(responses[0]["result"]) != `{"decision":"cancel"}` {
 		t.Fatalf("%+v", responses)
 	}
 	if got := h.item(t, "request:0/0"); !got.Done || got.Answer != "" {

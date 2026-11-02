@@ -53,18 +53,20 @@ func serve(in io.Reader, out io.Writer) error {
 		}
 		return plugin.Agent{
 			Process: ag.proc, Conversation: ag.conversation(),
-			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.proc.Stop,
+			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
 		}, nil
 	})
 }
 
 // agent is a running `pi --mode rpc` process and what its events have told us.
 type agent struct {
-	proc  *plugin.Process
-	stdin io.Writer
-	emit  func(harness.Event)
-	ended chan struct{} // closed when pi's output has ended
-	exit  error         // why it ended; set before ended is closed
+	proc   *plugin.Process
+	stdin  io.Writer
+	emit   func(harness.Event)
+	ctx    context.Context // ends when pi is stopped
+	cancel context.CancelFunc
+	ended  chan struct{} // closed when pi's output has ended
+	exit   error         // why it ended; set before ended is closed
 
 	writing sync.Mutex // serializes writes to stdin
 	callMu  sync.Mutex
@@ -141,7 +143,11 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	cmd := exec.Command("pi", argv...)
 	cmd.Dir = a.Dir
 	mcp := map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "exposure": "direct"}
-	cmd.Env = append(os.Environ(), "HYPERCUBE_MCP="+plugin.JSONString(mcp))
+	mcpJSON, err := json.Marshal(mcp)
+	if err != nil {
+		return nil, err
+	}
+	cmd.Env = append(os.Environ(), "HYPERCUBE_MCP="+string(mcpJSON))
 	p, err := plugin.StartProcess("Pi", cmd)
 	if err != nil {
 		return nil, err
@@ -150,14 +156,21 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 		proc: p, stdin: p.Stdin, emit: emit, ended: make(chan struct{}), calls: map[string]chan response{},
 		blocks: map[string]*block{}, tools: map[string]harness.Item{}, requests: map[string]*request{},
 	}
+	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	go func() { ag.end(p.Read(ag.line)) }()
-	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
 	defer cancel()
 	if err := ag.connect(ctx, a); err != nil {
-		p.Stop()
+		ag.stop()
 		return nil, err
 	}
 	return ag, nil
+}
+
+// stop gives up the calls in flight and ends pi.
+func (ag *agent) stop() {
+	ag.cancel()
+	ag.proc.Stop()
 }
 
 // end fails the calls waiting on pi, and later ones, with the reason its
@@ -286,7 +299,7 @@ func (ag *agent) call(ctx context.Context, command string, params map[string]any
 // input sends the text and images as a prompt. Pi starts a turn, or, during
 // one, queues them to steer it: Pi reads them before its next model request.
 func (ag *agent) input(text string, images []harness.Image) error {
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
 	defer cancel()
 	params := map[string]any{"message": text, "streamingBehavior": "steer"}
 	if len(images) > 0 {
@@ -305,7 +318,7 @@ func (ag *agent) interrupt() error {
 	ag.mu.Lock()
 	ag.send(harness.Event{Items: ag.closeRequests(true)})
 	ag.mu.Unlock()
-	ctx, cancel := context.WithTimeout(context.Background(), callTimeout)
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
 	defer cancel()
 	return ag.call(ctx, "abort", nil, nil)
 }

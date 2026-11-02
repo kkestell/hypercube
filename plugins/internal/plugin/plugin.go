@@ -4,7 +4,6 @@ package plugin
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,15 +21,6 @@ func MCPTool(name string) (server, tool string) {
 		}
 	}
 	return "", name
-}
-
-// JSONString marshals v as compact JSON.
-func JSONString(v any) string {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return string(b)
 }
 
 // Errors numbers a harness's error items. The owner's lock guards it.

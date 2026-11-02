@@ -74,7 +74,7 @@ type agent struct {
 	open     map[string]harness.Item // streamed items that the turn's end has not finished
 	tools    map[string]*tool        // by tool call ID
 	children map[string]string       // child session ID to the tool item that started it
-	requests map[string]*request     // open attention items, by item ID
+	requests plugin.Requests[request]
 	forms    int
 	errors   plugin.Errors
 	usage    harness.Usage
@@ -90,10 +90,8 @@ type tool struct {
 // questions of its question tool.
 type request struct {
 	id      json.RawMessage // the form request's JSON-RPC ID; nil once OpenCode has withdrawn it
-	items   []harness.Item  // one per form field
-	fields  []field
+	fields  []field         // one per attention item
 	content map[string]any
-	answers int
 }
 
 // field is a form field shown as one attention item.
@@ -113,9 +111,13 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 		}
 		config["instructions"] = []string{file}
 	}
+	configJSON, err := json.Marshal(config)
+	if err != nil {
+		return nil, err
+	}
 	cmd := exec.Command("opencode", "acp")
 	cmd.Dir = a.Dir
-	cmd.Env = append(os.Environ(), "OPENCODE_CONFIG_CONTENT="+plugin.JSONString(config))
+	cmd.Env = append(os.Environ(), "OPENCODE_CONFIG_CONTENT="+string(configJSON))
 	p, err := plugin.StartProcess("OpenCode", cmd)
 	if err != nil {
 		return nil, err
@@ -136,7 +138,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 func newAgent(a harness.StartArgs, emit func(harness.Event)) *agent {
 	ag := &agent{
 		emit: emit, dir: a.Dir, model: a.Model, session: a.Conversation,
-		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{}, requests: map[string]*request{},
+		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	return ag
@@ -416,21 +418,12 @@ type formReply struct {
 // closeRequests finishes the items of requests that nobody will answer, and
 // cancels each request once.
 func (ag *agent) closeRequests() []harness.Item {
-	var items []harness.Item
-	cancelled := map[*request]bool{}
-	for id, r := range ag.requests {
-		if !cancelled[r] && r.id != nil {
-			cancelled[r] = true
+	items, closed := ag.requests.Close(func(*request) bool { return true })
+	for _, r := range closed {
+		if r.id != nil {
 			_ = ag.rpc.Respond(r.id, formReply{Action: "cancel"})
 		}
-		for _, it := range r.items {
-			if it.ID == id {
-				it.Done = true
-				items = append(items, it)
-			}
-		}
 	}
-	clear(ag.requests)
 	return items
 }
 
@@ -475,11 +468,10 @@ func (ag *agent) withdraw(params json.RawMessage) {
 	if json.Unmarshal(params, &p) != nil {
 		return
 	}
-	for _, r := range ag.requests {
-		if r.id != nil && bytes.Equal(r.id, p.RequestID) {
-			_ = ag.rpc.RespondError(r.id, -32603, "Internal error")
-			r.id = nil
-		}
+	r := ag.requests.Find(func(r *request) bool { return r.id != nil && bytes.Equal(r.id, p.RequestID) })
+	if r != nil {
+		_ = ag.rpc.RespondError(r.id, -32603, "Internal error")
+		r.id = nil
 	}
 }
 
@@ -636,8 +628,10 @@ func toolOutput(content []toolContent) (string, []harness.Image) {
 }
 
 // parent is the tool item that started the subagent session an update came
-// from. A subagent session is named after its tool call's description, and
-// the call is still running when the session starts.
+// from. OpenCode names the child session after the tool call's description
+// and gives no call ID while the child runs; the call's result names the
+// session only once the child has finished. The title is therefore the only
+// link, and the call is still running when the session starts.
 func (ag *agent) parent(c *childSession) string {
 	if c == nil {
 		return ""
@@ -699,6 +693,7 @@ func (ag *agent) form(ev *harness.Event, id, params json.RawMessage) {
 		return
 	}
 	r := &request{id: id, content: map[string]any{}}
+	var items []harness.Item
 	for _, key := range keys {
 		f := props[key]
 		if base, ok := strings.CutSuffix(key, "_custom"); ok && props[base].Type != "" {
@@ -719,35 +714,34 @@ func (ag *agent) form(ev *harness.Event, id, params json.RawMessage) {
 		if _, ok := props[key+"_custom"]; ok {
 			fld.custom = key + "_custom"
 		}
-		item := harness.Item{ID: fmt.Sprintf("form:%d/%d", ag.forms, len(r.items)), Kind: harness.KindAttention, Free: !fld.options || fld.custom != ""}
+		item := harness.Item{ID: fmt.Sprintf("form:%d/%d", ag.forms, len(items)), Kind: harness.KindAttention, Free: !fld.options || fld.custom != ""}
 		var notes []string
 		for _, o := range options {
 			item.Choices = append(item.Choices, o.Const)
 			notes = append(notes, o.Description)
 		}
 		item.Text = plugin.OptionNotes(text, item.Choices, notes)
-		r.items = append(r.items, item)
+		items = append(items, item)
 		r.fields = append(r.fields, fld)
 	}
 	ag.forms++
-	if len(r.items) == 0 {
+	if len(items) == 0 {
 		_ = ag.rpc.Respond(id, formReply{Action: "accept"})
 		return
 	}
-	for _, it := range r.items {
-		ag.requests[it.ID] = r
-	}
-	ev.Items = append(ev.Items, r.items...)
+	ag.requests.Add(r, items)
+	ev.Items = append(ev.Items, items...)
 }
 
 // answer replies to an open question with a choice or text.
 func (ag *agent) answer(item, choice, text string) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	r := ag.requests[item]
-	if r == nil {
+	open, ok := ag.requests.Get(item)
+	if !ok {
 		return fmt.Errorf("request %s is not open", item)
 	}
+	r := open.Request
 	result := choice
 	if result == "" {
 		result = text
@@ -755,13 +749,7 @@ func (ag *agent) answer(item, choice, text string) error {
 	if result == "" {
 		return errors.New("the answer is empty")
 	}
-	index := 0
-	for i, it := range r.items {
-		if it.ID == item {
-			index = i
-		}
-	}
-	f := r.fields[index]
+	f := r.fields[open.Index]
 	if choice == "" && f.options && f.custom == "" {
 		return errors.New("the question needs one of its choices")
 	}
@@ -775,13 +763,9 @@ func (ag *agent) answer(item, choice, text string) error {
 	default:
 		r.content[f.key] = text
 	}
-	r.answers++
-	if r.answers == len(r.fields) && r.id != nil {
+	if open.Last && r.id != nil {
 		_ = ag.rpc.Respond(r.id, formReply{Action: "accept", Content: r.content})
 	}
-	done := r.items[index]
-	done.Done, done.Answer = true, result
-	delete(ag.requests, item)
-	ag.emit(harness.Event{Items: []harness.Item{done}})
+	ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, result)}})
 	return nil
 }
