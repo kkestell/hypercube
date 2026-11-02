@@ -127,6 +127,22 @@ func gitRepo(t *testing.T) (string, func(dir string, args ...string)) {
 	return root, run
 }
 
+func TestGitWithKeepsStderrOutOfOutput(t *testing.T) {
+	root, run := gitRepo(t)
+	hook := filepath.Join(root, ".git/fsmonitor-test")
+	write(t, hook, "#!/bin/sh\necho diagnostic-from-fsmonitor >&2\nprintf 'token\\0'\n")
+	if err := os.Chmod(hook, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run(root, "config", "core.fsmonitor", hook)
+	write(t, filepath.Join(root, ".gitignore"), ".env\n")
+	write(t, filepath.Join(root, ".env"), "value")
+	got, err := gitWith(root, nil, ".env", "check-ignore", "--stdin")
+	if err != nil || got != ".env" {
+		t.Fatalf("check-ignore output = %q, %v", got, err)
+	}
+}
+
 func TestWorktreeSetUp(t *testing.T) {
 	// Git refuses local submodule URLs unless file transport is allowed.
 	t.Setenv("GIT_CONFIG_COUNT", "1")
