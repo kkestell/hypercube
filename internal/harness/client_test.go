@@ -265,3 +265,41 @@ func TestPluginThatEndsReportsItsDiagnostics(t *testing.T) {
 		t.Fatalf("exit = %v", got)
 	}
 }
+
+// A plugin that stops reading its input cannot hold up Shutdown, even when a
+// large input has filled the pipe.
+func TestShutdownEndsAPluginThatStopsReading(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hypercube-harness-deaf")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexec sleep 60\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c, err := harness.Launch(path, func(harness.Event) {}, func(error) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocked := make(chan error, 1)
+	go func() {
+		blocked <- c.Do(context.Background(), harness.Command{Command: harness.CmdInput, Text: strings.Repeat("x", 1<<20)})
+	}()
+	// Give the input time to fill the pipe and block its writer.
+	time.Sleep(100 * time.Millisecond)
+	ended := make(chan struct{})
+	go func() {
+		c.Shutdown(100 * time.Millisecond)
+		close(ended)
+	}()
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown did not return")
+	}
+	select {
+	case err := <-blocked:
+		if err == nil {
+			t.Fatal("input reached a plugin that never read it")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the blocked input never ended")
+	}
+}

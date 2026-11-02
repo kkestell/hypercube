@@ -217,7 +217,9 @@ func (c *Client) exitErr() error {
 func (c *Client) Shutdown(wait time.Duration) {
 	ctx, cancel := context.WithTimeout(context.Background(), wait)
 	defer cancel()
-	_ = c.Do(ctx, Command{Command: CmdShutdown})
+	// A plugin that stops reading can leave the write blocked; killing the
+	// process breaks the pipe and frees it.
+	go c.Do(ctx, Command{Command: CmdShutdown})
 	select {
 	case <-c.done:
 	case <-ctx.Done():
