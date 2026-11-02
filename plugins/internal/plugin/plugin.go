@@ -5,9 +5,12 @@ package plugin
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/kkestell/hypercube/internal/harness"
 )
 
 // MCPTool splits a tool name of the form mcp__<server>__<tool>, which Claude
@@ -30,6 +33,15 @@ func JSONString(v any) string {
 	return string(b)
 }
 
+// Errors numbers a harness's error items. The owner's lock guards it.
+type Errors struct{ n int }
+
+// Item returns the next finished error item, with IDs error-1, error-2, ...
+func (e *Errors) Item(text string) harness.Item {
+	e.n++
+	return harness.Item{ID: fmt.Sprintf("error-%d", e.n), Kind: harness.KindError, Text: text, Done: true}
+}
+
 // WriteFile writes text to name in dir and returns the file's path. Running
 // harness processes may be reading the file, so it is replaced only when it
 // changes, through a rename.
@@ -41,7 +53,7 @@ func WriteFile(dir, name string, text []byte) (string, error) {
 	if before, err := os.ReadFile(path); err == nil && bytes.Equal(before, text) {
 		return path, nil
 	}
-	file, err := os.CreateTemp(dir, "index-*.tmp")
+	file, err := os.CreateTemp(dir, "."+name+"-*.tmp")
 	if err != nil {
 		return "", err
 	}
