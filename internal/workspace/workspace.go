@@ -13,14 +13,37 @@ import (
 	"syscall"
 )
 
+// gitError is a failed git command. It wraps the command's exec error so that
+// callers can read the exit code.
+type gitError struct {
+	args   []string
+	output string
+	err    error
+}
+
+func (e *gitError) Error() string {
+	return fmt.Sprintf("git %s: %s", strings.Join(e.args, " "), e.output)
+}
+
+func (e *gitError) Unwrap() error { return e.err }
+
 func git(dir string, args ...string) (string, error) {
+	return gitWith(dir, nil, "", args...)
+}
+
+// gitWith runs git in dir with extra environment variables and standard input,
+// and returns its trimmed output.
+func gitWith(dir string, env []string, stdin string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
+	output := strings.TrimSpace(string(out))
 	if err != nil {
-		return "", fmt.Errorf("git %s: %s", strings.Join(args, " "), strings.TrimSpace(string(out)))
+		return "", &gitError{args, output, err}
 	}
-	return strings.TrimSpace(string(out)), nil
+	return output, nil
 }
 
 // Resolve returns dir as an absolute path. A leading ~/ is the home
@@ -48,9 +71,9 @@ func Resolve(base, dir string) (string, error) {
 }
 
 // At returns the workspace root for dir: the top level of its checkout, or
-// dir itself outside Git. A relative dir is relative to base.
-func At(base, dir string) (string, error) {
-	root, err := Resolve(base, dir)
+// dir itself outside Git. A relative dir is relative to /.
+func At(dir string) (string, error) {
+	root, err := Resolve("/", dir)
 	if err != nil {
 		return "", err
 	}
@@ -84,45 +107,55 @@ func WorktreeDir(root, name string) string {
 // AddWorktree creates the worker's branch from HEAD and checks it out in dir.
 // It adds .hypercube/ to the checkout's local excludes.
 func AddWorktree(root, dir, branch string) error {
-	exclude, err := git(root, "rev-parse", "--git-path", "info/exclude")
-	if err != nil {
+	if err := excludeWorktrees(root); err != nil {
 		return err
-	}
-	if !filepath.IsAbs(exclude) {
-		exclude = filepath.Join(root, exclude)
-	}
-	data, _ := os.ReadFile(exclude)
-	if !slices.Contains(strings.Split(string(data), "\n"), "/.hypercube/") {
-		rule := "/.hypercube/\n"
-		if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
-			rule = "\n" + rule
-		}
-		if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
-			return err
-		}
-		f, err := os.OpenFile(exclude, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(rule)
-		f.Close()
-		if err != nil {
-			return err
-		}
 	}
 	existed := exists(root, branch)
 	if _, err := git(root, "worktree", "add", "-b", branch, dir, "HEAD"); err != nil {
 		if !existed {
-			_, _ = git(root, "branch", "-D", branch)
+			_, deleteErr := git(root, "branch", "-D", branch)
+			err = errors.Join(err, deleteErr)
 		}
 		return err
 	}
 	if err := setUp(root, dir); err != nil {
-		git(root, "worktree", "remove", "--force", dir)
-		git(root, "branch", "-D", branch)
-		return err
+		_, removeErr := git(root, "worktree", "remove", "--force", dir)
+		_, deleteErr := git(root, "branch", "-D", branch)
+		return errors.Join(err, removeErr, deleteErr)
 	}
 	return nil
+}
+
+// excludeWorktrees adds .hypercube/ to the checkout's local excludes.
+func excludeWorktrees(root string) error {
+	path, err := git(root, "rev-parse", "--git-path", "info/exclude")
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(root, path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	text := string(data)
+	if slices.Contains(strings.Split(text, "\n"), "/.hypercube/") {
+		return nil
+	}
+	rule := "/.hypercube/\n"
+	if text != "" && !strings.HasSuffix(text, "\n") {
+		rule = "\n" + rule
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(rule)
+	return errors.Join(err, f.Close())
 }
 
 // setUp gives a new worktree what the checkout has but Git does not check
@@ -134,13 +167,8 @@ func setUp(root, dir string) error {
 	if _, err := os.Stat(filepath.Join(dir, ".gitmodules")); err != nil {
 		return nil
 	}
-	cmd := exec.Command("git", "submodule", "update", "--init", "--recursive")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("git submodule update: %s", strings.TrimSpace(string(out)))
-	}
-	return nil
+	_, err := gitWith(dir, []string{"GIT_TERMINAL_PROMPT=0"}, "", "submodule", "update", "--init", "--recursive")
+	return err
 }
 
 // copyIncluded copies the paths in root that match a pattern in root's
@@ -154,19 +182,17 @@ func copyIncluded(root, dir string) error {
 	if err != nil || matched == "" {
 		return err
 	}
-	cmd := exec.Command("git", "check-ignore", "--stdin")
-	cmd.Dir = root
-	cmd.Stdin = strings.NewReader(matched)
-	out, err := cmd.Output()
+	ignored, err := gitWith(root, nil, matched, "check-ignore", "--stdin")
 	// check-ignore exits 1 when it matches nothing.
-	if exit, ok := err.(*exec.ExitError); ok && exit.ExitCode() == 1 {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == 1 {
 		return nil
 	} else if err != nil {
-		return fmt.Errorf("git check-ignore: %w", err)
+		return err
 	}
 	// With --directory, Git lists a directory and also the files in it.
 	var copied []string
-	for _, p := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, p := range strings.Split(ignored, "\n") {
 		if slices.ContainsFunc(copied, func(d string) bool { return strings.HasPrefix(p, d) }) {
 			continue
 		}
@@ -203,7 +229,7 @@ func Removable(root, dir, branch string) error {
 	if _, err := git(root, "merge-base", "--is-ancestor", head, "HEAD"); err != nil {
 		return fmt.Errorf("worktree %s has commits not merged into HEAD", dir)
 	}
-	dirty, err := Dirty(dir)
+	dirty, err := isDirty(dir)
 	if err != nil {
 		return err
 	}
@@ -213,9 +239,9 @@ func Removable(root, dir, branch string) error {
 	return nil
 }
 
-// Dirty reports whether the checkout in dir has uncommitted changes or
+// isDirty reports whether the checkout in dir has uncommitted changes or
 // untracked files.
-func Dirty(dir string) (bool, error) {
+func isDirty(dir string) (bool, error) {
 	status, err := git(dir, "status", "--porcelain")
 	return status != "", err
 }

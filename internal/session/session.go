@@ -21,7 +21,7 @@ import (
 // itself outside Git. It returns the existing workspace when the folder is
 // already added.
 func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
-	root, err := workspace.At("/", dir)
+	root, err := workspace.At(dir)
 	if err != nil {
 		return store.Workspace{}, err
 	}

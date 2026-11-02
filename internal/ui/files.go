@@ -2,7 +2,6 @@ package ui
 
 import (
 	"bytes"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,7 +42,7 @@ func (s *server) sessionRoot(id string) (*os.Root, error) {
 }
 
 func fileError(w http.ResponseWriter, err error) bool {
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return true
 	}
