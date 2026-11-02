@@ -51,7 +51,11 @@ function render(doc, tokens = []) {
         return [];
       case 'paragraph': return [create(doc, 'p', '', ...kids())];
       case 'heading': return [create(doc, 'h' + t.depth, '', ...kids())];
-      case 'code': return [create(doc, 'pre', '', create(doc, 'code', '', t.text))];
+      case 'code': {
+        const code = create(doc, 'code', '', t.text);
+        if (t.lang) code.setAttribute('data-lang', t.lang);
+        return [create(doc, 'pre', '', code)];
+      }
       case 'blockquote': return [create(doc, 'blockquote', '', ...kids())];
       case 'hr': return [create(doc, 'hr', '')];
       case 'list': {

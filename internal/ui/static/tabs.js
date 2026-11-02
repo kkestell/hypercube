@@ -1,4 +1,4 @@
-// Open worker transcripts form a tree of tab panes and two-way splits.
+// Open worker transcripts and files form a tree of tab panes and two-way splits.
 export class TabLayout {
   constructor() {
     this.root = null;
@@ -117,9 +117,11 @@ export class TabContainer {
             select.id = 'agent-tab-' + id;
             select.setAttribute('aria-controls', 'agent-panel-' + id);
             select.onclick = () => { node.active = id; this.changed(); select.focus(); };
+            if (entry.icon) select.insertAdjacentHTML('afterbegin', entry.icon);
             const label = document.createElement('span');
             label.className = 'tab-label';
             select.append(label);
+            tab.label = label;
             tab.append(select);
             const close = document.createElement('button');
             close.type = 'button';
@@ -139,13 +141,14 @@ export class TabContainer {
           const selected = id === node.active;
           tab.classList.toggle('active', selected);
           const select = tab.firstElementChild;
-          select.firstElementChild.textContent = entry.label;
-          if (select.children[1] !== entry.status) {
-            select.children[1]?.remove();
+          tab.label.textContent = entry.label;
+          if (tab.status !== entry.status) {
+            tab.status?.remove();
+            tab.status = entry.status;
             if (entry.status) select.append(entry.status);
           }
           tab.firstElementChild.setAttribute('aria-selected', selected);
-          tab.firstElementChild.title = entry.label;
+          tab.firstElementChild.title = entry.title ?? entry.label;
           tab.firstElementChild.tabIndex = selected ? 0 : -1;
           return tab;
         });
@@ -198,7 +201,7 @@ export class TabContainer {
     el.bar = document.createElement('div');
     el.bar.className = 'transcript-tabs';
     el.bar.setAttribute('role', 'tablist');
-    el.bar.setAttribute('aria-label', 'Agent transcripts');
+    el.bar.setAttribute('aria-label', 'Open tabs');
     el.body = document.createElement('div');
     el.body.className = 'transcript-body';
     el.append(el.bar, el.body);

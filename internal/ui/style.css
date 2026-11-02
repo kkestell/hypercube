@@ -4,6 +4,7 @@
 @import "@xterm/xterm/css/xterm.css";
 @source "./static/index.html";
 @source "./transcript.js";
+@source "./static/files.js";
 
 @layer base {
   /* VS Code's dark scrollbars: a thin translucent thumb on no track. */
@@ -342,4 +343,232 @@
   max-height: 9em;
   overflow: hidden;
   line-height: 1.5;
+}
+
+/* VS Code's Seti file icons, a glyph of seti.woff in its color. */
+@font-face {
+  font-family: seti;
+  src: url(seti.woff) format("woff");
+}
+.seti-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 22px;
+  padding-right: 6px;
+  font-family: seti;
+  font-size: 19.5px;
+  line-height: 1;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+}
+/* A tab's label follows its icon after the tab's own gap. */
+.transcript-tab .seti-icon {
+  width: 16px;
+  margin-right: -2px;
+  padding-right: 0;
+}
+
+/* The file tree, sized and colored as VS Code's Explorer. */
+.file-tree {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  outline: none;
+  color: #ccc;
+  font-size: 13px;
+  line-height: 22px;
+}
+.file-row {
+  display: flex;
+  height: 22px;
+  align-items: center;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.file-row:hover {
+  background: #2a2d2e;
+}
+.file-row[aria-selected="true"] {
+  background: #37373d;
+}
+.file-tree:focus .file-row[aria-selected="true"] {
+  background: #04395e;
+  color: #fff;
+  outline: 1px solid #007fd4;
+  outline-offset: -1px;
+}
+.file-twistie {
+  display: flex;
+  width: 22px;
+  flex-shrink: 0;
+  justify-content: center;
+  padding-right: 6px;
+  transform: translateX(3px);
+}
+.file-row[aria-expanded="true"] .file-twistie > .icon {
+  transform: rotate(90deg);
+}
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A file's tab: source as VS Code's editor shows it, or a Markdown preview. */
+.file-view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  align-items: flex-start;
+  overflow: auto;
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+.code-gutter,
+.code-lines {
+  margin: 0;
+  font-family: Menlo, Monaco, "Courier New", monospace;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre;
+}
+.code-gutter {
+  position: sticky;
+  left: 0;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  width: calc(var(--digits) * 1ch);
+  padding: 0 26px 0 18px;
+  background: #1e1e1e;
+  color: #858585;
+  text-align: right;
+  user-select: none;
+}
+.code-lines {
+  padding-right: 14px;
+  tab-size: 4;
+}
+
+/* VS Code's Markdown preview in its dark theme. */
+.markdown-preview {
+  min-width: 0;
+  flex: 1;
+  padding: 1em 26px 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  overflow-wrap: break-word;
+
+  & p {
+    margin-bottom: 16px;
+  }
+  & h1,
+  & h2,
+  & h3,
+  & h4,
+  & h5,
+  & h6 {
+    margin-top: 24px;
+    margin-bottom: 16px;
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  & h1 {
+    margin-top: 0;
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid rgb(255 255 255 / 0.18);
+    font-size: 2em;
+  }
+  & h2 {
+    padding-bottom: 0.3em;
+    border-bottom: 1px solid rgb(255 255 255 / 0.18);
+    font-size: 1.5em;
+  }
+  & h3 {
+    font-size: 1.25em;
+  }
+  & h5 {
+    font-size: 0.875em;
+  }
+  & h6 {
+    font-size: 0.85em;
+  }
+  & ul,
+  & ol {
+    margin-bottom: 0.7em;
+    padding-left: 40px;
+  }
+  & ul {
+    list-style: disc;
+  }
+  & ul ul {
+    list-style: circle;
+  }
+  & ul ul ul {
+    list-style: square;
+  }
+  & ol {
+    list-style: decimal;
+  }
+  & :is(ul, ol) :is(ul, ol):first-child {
+    margin-bottom: 0;
+  }
+  & li p {
+    margin-bottom: 0.7em;
+  }
+  & a {
+    color: #3794ff;
+  }
+  & a:hover {
+    text-decoration: underline;
+  }
+  & hr {
+    height: 1px;
+    border-bottom: 1px solid rgb(255 255 255 / 0.18);
+  }
+  & table {
+    margin-bottom: 0.7em;
+    border-collapse: collapse;
+  }
+  & th {
+    border-bottom: 1px solid rgb(255 255 255 / 0.69);
+    font-weight: bold;
+    text-align: left;
+  }
+  & th,
+  & td {
+    padding: 5px 10px;
+  }
+  & tbody > tr + tr > td {
+    border-top: 1px solid rgb(255 255 255 / 0.18);
+  }
+  & blockquote {
+    padding: 0 16px 0 10px;
+    border-left: 5px solid #007acc80;
+    border-radius: 2px;
+    background: #222;
+  }
+  & code {
+    padding: 1px 3px;
+    border-radius: 4px;
+    background: #ffffff1a;
+    color: #d7ba7d;
+    font-family: "SF Mono", Monaco, Menlo, Consolas, "Ubuntu Mono", "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace;
+    font-size: 1em;
+    line-height: 1.357em;
+  }
+  & pre {
+    margin-bottom: 1em;
+    padding: 16px;
+    overflow: auto;
+    border: 1px solid #303031;
+    border-radius: 3px;
+    background: #0a0a0a66;
+  }
+  & pre code {
+    display: inline-block;
+    padding: 0;
+    background: none;
+    color: #d4d4d4;
+    tab-size: 4;
+  }
 }
