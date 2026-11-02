@@ -46,10 +46,9 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 		return n
 	}
 	f.until("the agent to end three times", func() bool { return ended() == maxQuickExits })
-	// The last end decided against a relaunch while it wrote its note, so the
-	// lead has no launch to take input.
-	if err := f.rt.Input(lead.ID, "hello"); err == nil || !strings.Contains(err.Error(), "not running") {
-		t.Fatalf("input to an agent that stayed ended: %v", err)
+	// AddWorker refuses only when the lead has no launch, even a starting one.
+	if _, err := f.rt.AddWorker(lead.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+		t.Fatalf("a lead that stayed ended took a worker: %v", err)
 	}
 	if n := len(f.log(lead.ID, "start")); n != maxQuickExits {
 		t.Fatalf("%d launches", n)
