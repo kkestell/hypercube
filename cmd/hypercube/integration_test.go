@@ -128,31 +128,38 @@ func (w *world) until(what string, check func() bool) {
 	w.t.Fatalf("timed out waiting for %s", what)
 }
 
-func (w *world) logOf(id string) string {
-	b, _ := os.ReadFile(filepath.Join(w.logs, id+".log"))
-	return string(b)
+func (w *world) log(id, kind string) []harnesstest.Entry {
+	w.t.Helper()
+	return harnesstest.Log(w.t, w.logs, id, kind)
+}
+
+// got reports whether a prompt containing text reached the agent's plugin.
+func (w *world) got(id, text string) bool {
+	for _, e := range w.log(id, "input") {
+		if strings.Contains(e.Text, text) {
+			return true
+		}
+	}
+	return false
 }
 
 // starts counts how many times the agent's plugin started.
-func (w *world) starts(id string) int { return strings.Count(w.logOf(id), `"kind":"start"`) }
+func (w *world) starts(id string) int { return len(w.log(id, "start")) }
+
+// resumed reports whether the agent's latest plugin start resumed its conversation.
+func (w *world) resumed(id string) bool {
+	starts := w.log(id, "start")
+	return len(starts) > 0 && starts[len(starts)-1].Conversation == id+"-conversation"
+}
 
 // lastPid is the process ID of the agent's most recent plugin.
 func (w *world) lastPid(id string) int {
 	w.t.Helper()
-	var pid int
-	for _, line := range strings.Split(w.logOf(id), "\n") {
-		var entry struct {
-			Kind string
-			Pid  int
-		}
-		if json.Unmarshal([]byte(line), &entry) == nil && entry.Kind == "start" {
-			pid = entry.Pid
-		}
-	}
-	if pid == 0 {
+	starts := w.log(id, "start")
+	if len(starts) == 0 {
 		w.t.Fatalf("agent %s has no plugin process", id)
 	}
-	return pid
+	return starts[len(starts)-1].Pid
 }
 
 func gone(pid int) bool { return syscall.Kill(pid, 0) == syscall.ESRCH }
@@ -311,7 +318,7 @@ func TestTeams(t *testing.T) {
 	c.tool(lead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "first brief"})
 	w.until("the worker's brief", func() bool {
 		list := w.agents(first)
-		return len(list) == 2 && strings.Contains(w.logOf(list[1].ID), "first brief") && len(w.queued(list[1].ID)) == 0
+		return len(list) == 2 && w.got(list[1].ID, "first brief") && len(w.queued(list[1].ID)) == 0
 	})
 	worker := w.agents(first)[1]
 	if _, err := os.Stat(filepath.Join(worker.Dir, ".git")); err != nil {
@@ -327,7 +334,7 @@ func TestTeams(t *testing.T) {
 	c.tool(otherLead.ID, "create_agent", map[string]string{"name": "worker", "profile": "worker", "message": "second session brief"})
 	w.until("the second session's worker", func() bool {
 		list := w.agents(second)
-		return len(list) == 2 && strings.Contains(w.logOf(list[1].ID), "second session brief")
+		return len(list) == 2 && w.got(list[1].ID, "second session brief")
 	})
 	otherWorker := w.agents(second)[1]
 	if otherWorker.Dir == worker.Dir || otherWorker.Branch == worker.Branch {
@@ -352,7 +359,7 @@ func TestTeams(t *testing.T) {
 	if code, body := c.post("/session", map[string]string{"action": "delete", "id": third}); code != http.StatusConflict || !strings.Contains(body, "uncommitted changes") {
 		t.Fatalf("session deletion failed to protect dirty work: %d %s", code, body)
 	}
-	if len(w.agents(third)) != 2 || strings.Contains(w.logOf(thirdWorker.ID), `"kind":"shutdown"`) {
+	if len(w.agents(third)) != 2 || len(w.log(thirdWorker.ID, "shutdown")) > 0 {
 		t.Fatal("refused deletion changed the session")
 	}
 	if err := os.Remove(dirty); err != nil {
@@ -366,7 +373,7 @@ func TestTeams(t *testing.T) {
 	if _, err := os.Stat(thirdWorker.Dir); !os.IsNotExist(err) {
 		t.Fatal("deleted session's worktree remains", err)
 	}
-	if w.starts(worker.ID) != 1 || strings.Contains(w.logOf(worker.ID), `"kind":"shutdown"`) {
+	if w.starts(worker.ID) != 1 || len(w.log(worker.ID, "shutdown")) > 0 {
 		t.Fatal("session deletion affected another session")
 	}
 	// Starting a running session changes nothing.
@@ -376,10 +383,10 @@ func TestTeams(t *testing.T) {
 	}
 	// Messages go to the agent named in the sender's session.
 	c.tool(otherLead.ID, "send_message", map[string]string{"to": "worker", "text": "only second worker"})
-	w.until("session-local name delivery", func() bool { return strings.Contains(w.logOf(otherWorker.ID), "only second worker") })
+	w.until("session-local name delivery", func() bool { return w.got(otherWorker.ID, "only second worker") })
 	c.tool(otherLead.ID, "send_message", map[string]string{"to": lead.Address(), "text": "from the other lead"})
-	w.until("lead-to-lead delivery", func() bool { return strings.Contains(w.logOf(lead.ID), "from the other lead") })
-	if strings.Contains(w.logOf(worker.ID), "only second worker") {
+	w.until("lead-to-lead delivery", func() bool { return w.got(lead.ID, "from the other lead") })
+	if w.got(worker.ID, "only second worker") {
 		t.Fatal("message crossed sessions")
 	}
 	// The creation prompt titles the session; later messages and prompts leave
@@ -398,16 +405,16 @@ func TestTeams(t *testing.T) {
 	input(worker.ID, "!work")
 	w.until("a busy worker", func() bool { return w.agent(worker.ID).Activity == store.Busy })
 	c.tool(lead.ID, "send_message", map[string]string{"to": worker.Name, "text": "change course during turn"})
-	w.until("mid-turn steering", func() bool { return strings.Contains(w.logOf(worker.ID), "change course during turn") })
+	w.until("mid-turn steering", func() bool { return w.got(worker.ID, "change course during turn") })
 	input(worker.ID, "!fail")
-	w.until("the failure reaches the lead", func() bool { return strings.Contains(w.logOf(lead.ID), "test provider failure") })
-	if strings.Contains(w.logOf(otherLead.ID), "test provider failure") {
+	w.until("the failure reaches the lead", func() bool { return w.got(lead.ID, "test provider failure") })
+	if w.got(otherLead.ID, "test provider failure") {
 		t.Fatal("failure reached another session's lead")
 	}
 	// A worker whose process ends comes back with its conversation.
 	input(worker.ID, "!crash")
 	w.until("the resumed worker", func() bool { return w.starts(worker.ID) == 2 && w.agent(worker.ID).Activity == store.Idle })
-	if !strings.Contains(w.logOf(worker.ID), `"conversation":"`+worker.ID+`-conversation"`) {
+	if !w.resumed(worker.ID) {
 		t.Fatal("relaunch lost the conversation")
 	}
 	workerPid := w.lastPid(worker.ID)
@@ -451,16 +458,16 @@ func TestTeams(t *testing.T) {
 	// Start resumes the conversations and waits for the user's prompt.
 	c.act(map[string]string{"action": "start", "id": second})
 	w.until("the started session", func() bool { return ready(otherLead.ID)() && ready(otherWorker.ID)() && w.starts(otherWorker.ID) == 2 })
-	if !w.session(second).AwaitingUser || !strings.Contains(w.logOf(otherWorker.ID), `"conversation":"`+otherWorker.ID+`-conversation"`) {
+	if !w.session(second).AwaitingUser || !w.resumed(otherWorker.ID) {
 		t.Fatal("started session did not resume and await the user")
 	}
 	time.Sleep(300 * time.Millisecond)
-	if strings.Contains(w.logOf(otherLead.ID), "queued while stopped") || len(w.queued(otherLead.ID)) != 1 || len(w.queued(otherWorker.ID)) != 1 {
+	if w.got(otherLead.ID, "queued while stopped") || len(w.queued(otherLead.ID)) != 1 || len(w.queued(otherWorker.ID)) != 1 {
 		t.Fatal("a started session delivered messages before a user prompt")
 	}
 	input(otherLead.ID, "continue")
 	w.until("the started session released", func() bool {
-		return strings.Contains(w.logOf(otherLead.ID), "queued while stopped") && strings.Contains(w.logOf(otherWorker.ID), "other queued while stopped")
+		return w.got(otherLead.ID, "queued while stopped") && w.got(otherWorker.ID, "other queued while stopped")
 	})
 
 	// When the app ends, sessions the user left running start again at the next
@@ -478,11 +485,11 @@ func TestTeams(t *testing.T) {
 		t.Fatal("restore started the wrong sessions")
 	}
 	time.Sleep(300 * time.Millisecond)
-	if strings.Contains(w.logOf(lead.ID), "queued at shutdown") {
+	if w.got(lead.ID, "queued at shutdown") {
 		t.Fatal("a restored session delivered messages before a user prompt")
 	}
 	input(lead.ID, "continue")
-	w.until("the restored session released", func() bool { return strings.Contains(w.logOf(lead.ID), "queued at shutdown") })
+	w.until("the restored session released", func() bool { return w.got(lead.ID, "queued at shutdown") })
 
 	// A new title shows to agents; the address stays, and prompts leave it.
 	c.act(map[string]string{"action": "rename", "id": first, "title": "#{session_name} -triage;"})
@@ -587,7 +594,7 @@ func TestAppProcess(t *testing.T) {
 	}
 	worker := w.agents(first)[1]
 	w.until("the worker's brief", func() bool {
-		return strings.Contains(w.logOf(worker.ID), "brief") && w.agent(worker.ID).Activity == store.Idle
+		return w.got(worker.ID, "brief") && w.agent(worker.ID).Activity == store.Idle
 	})
 	pids := []int{w.lastPid(lead.ID), w.lastPid(worker.ID)}
 
@@ -603,7 +610,7 @@ func TestAppProcess(t *testing.T) {
 			t.Fatalf("agent process %d remains", pid)
 		}
 	}
-	if !w.session(first).Running || w.agent(lead.ID).Activity != store.Exited || !strings.Contains(w.logOf(lead.ID), `"kind":"shutdown"`) {
+	if !w.session(first).Running || w.agent(lead.ID).Activity != store.Exited || len(w.log(lead.ID, "shutdown")) == 0 {
 		t.Fatal("shutdown did not end the agents and keep the running mark")
 	}
 	// The next launch restores the session, waiting for the user.

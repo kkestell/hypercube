@@ -49,7 +49,7 @@ func TestIdleSessionStopsAndResumes(t *testing.T) {
 		t.Fatal("idle session did not resume with its messages held")
 	}
 	start := f.log(lead.ID, "start")
-	if len(start) != 2 || start[1]["conversation"] != lead.ID+"-conversation" {
+	if len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" {
 		t.Fatal("idle session did not resume its conversation")
 	}
 }

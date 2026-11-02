@@ -2,7 +2,6 @@ package harness_test
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,15 +151,8 @@ func TestShutdownEndsTheProcessGroup(t *testing.T) {
 	}
 	var child int
 	until(t, "the child", func() bool {
-		b, _ := os.ReadFile(filepath.Join(c.logs, "a.log"))
-		for _, line := range strings.Split(string(b), "\n") {
-			var entry struct {
-				Kind string
-				Pid  int
-			}
-			if json.Unmarshal([]byte(line), &entry) == nil && entry.Kind == "child" {
-				child = entry.Pid
-			}
+		for _, e := range harnesstest.Log(t, c.logs, "a", "child") {
+			child = e.Pid
 		}
 		return child != 0
 	})
@@ -212,10 +204,7 @@ func TestCrashFailsWaitingRequests(t *testing.T) {
 	}
 	held := make(chan error, 1)
 	go func() { held <- c.input("!hold") }()
-	until(t, "the held request", func() bool {
-		b, _ := os.ReadFile(filepath.Join(c.logs, "a.log"))
-		return strings.Contains(string(b), "!hold")
-	})
+	until(t, "the held request", func() bool { return len(harnesstest.Log(t, c.logs, "a", "input")) == 1 })
 	// The crash reply arrives; the plugin's exit then fails the held request.
 	if err := c.input("!crash"); err != nil {
 		t.Fatal(err)

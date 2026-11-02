@@ -1,7 +1,6 @@
 package session
 
 import (
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -154,22 +153,16 @@ func (f *fixture) until(what string, check func() bool) {
 }
 
 // log returns the stand-in's log entries for the agent with the given kind.
-func (f *fixture) log(agent, kind string) (entries []map[string]any) {
-	b, _ := os.ReadFile(filepath.Join(f.logs, agent+".log"))
-	for _, line := range strings.Split(string(b), "\n") {
-		var e map[string]any
-		if json.Unmarshal([]byte(line), &e) == nil && e["kind"] == kind {
-			entries = append(entries, e)
-		}
-	}
-	return entries
+func (f *fixture) log(agent, kind string) []harnesstest.Entry {
+	f.t.Helper()
+	return harnesstest.Log(f.t, f.logs, agent, kind)
 }
 
 // inputs lists the texts sent to the agent's plugin. For a lead made by
 // session, the creation prompt is left out.
 func (f *fixture) inputs(agent string) (texts []string) {
 	for _, e := range f.log(agent, "input") {
-		texts = append(texts, e["text"].(string))
+		texts = append(texts, e.Text)
 	}
 	if f.created[agent] && len(texts) > 0 {
 		texts = texts[1:]
@@ -220,9 +213,9 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	}
 	// The plugin starts in the lead's directory with the team's instructions.
 	start := f.log(lead.ID, "start")
-	if len(start) != 1 || start[0]["dir"] != f.root || start[0]["role"] != "lead" ||
-		!strings.Contains(start[0]["instructions"].(string), "You are "+lead.Address()) ||
-		start[0]["env"].(map[string]any)["HYPERCUBE_AGENT_ID"] != lead.ID {
+	if len(start) != 1 || start[0].Dir != f.root || start[0].Role != "lead" ||
+		!strings.Contains(start[0].Instructions, "You are "+lead.Address()) ||
+		start[0].Env["HYPERCUBE_AGENT_ID"] != lead.ID {
 		t.Fatalf("start = %v", start)
 	}
 	if got := f.agent(lead.ID).Conversation; got != lead.ID+"-conversation" {
@@ -307,7 +300,7 @@ func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 	}
 	f.until("the lead idle", func() bool { return f.agent(lead.ID).Activity == store.Idle })
 	start := f.log(lead.ID, "start")
-	if len(start) != 2 || start[1]["conversation"] != lead.ID+"-conversation" || !f.session1(s.ID).AwaitingUser {
+	if len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" || !f.session1(s.ID).AwaitingUser {
 		t.Fatalf("restart: %v awaiting=%v", start, f.session1(s.ID).AwaitingUser)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -330,7 +323,7 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	s, lead := f.session()
 	f.input(lead.ID, "!work")
 	f.until("a working lead", func() bool { return f.agent(lead.ID).Activity == store.Busy })
-	pid := int(f.log(lead.ID, "start")[0]["pid"].(float64))
+	pid := f.log(lead.ID, "start")[0].Pid
 	f.rt.Shutdown()
 	// Shutdown saves the unfinished item, ends the process, and leaves the
 	// session marked running.
@@ -350,7 +343,7 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	f.rt = rt
 	rt.Restore()
 	f.until("the restored lead", func() bool { return f.agent(lead.ID).Activity == store.Idle })
-	if start := f.log(lead.ID, "start"); len(start) != 2 || start[1]["conversation"] != lead.ID+"-conversation" || !f.session1(s.ID).AwaitingUser {
+	if start := f.log(lead.ID, "start"); len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" || !f.session1(s.ID).AwaitingUser {
 		t.Fatalf("restore: %v", start)
 	}
 }
@@ -427,7 +420,7 @@ func TestAttentionRequests(t *testing.T) {
 	if requests := f.rt.Requests(); len(requests) != 0 {
 		t.Fatalf("answered requests = %+v", requests)
 	}
-	if got := f.log(lead.ID, "answer"); len(got) != 1 || got[0]["request"] != "q" || got[0]["choice"] != "yes" {
+	if got := f.log(lead.ID, "answer"); len(got) != 1 || got[0].Request != "q" || got[0].Choice != "yes" {
 		t.Fatalf("the plugin was answered with %v", got)
 	}
 	var answered harness.Item
@@ -530,7 +523,7 @@ func TestWorkerLifecycle(t *testing.T) {
 	if items := f.transcript(worker.ID); len(items) == 0 || items[0].From != lead.Address() || items[0].Text != "the brief" {
 		t.Fatalf("brief item = %+v", items)
 	}
-	if start := f.log(worker.ID, "start"); start[0]["role"] != "worker" || start[0]["dir"] != worker.Dir {
+	if start := f.log(worker.ID, "start"); start[0].Role != "worker" || start[0].Dir != worker.Dir {
 		t.Fatalf("worker start = %v", start)
 	}
 	if _, err := f.rt.AddWorker(lead.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
@@ -545,7 +538,7 @@ func TestWorkerLifecycle(t *testing.T) {
 		t.Fatalf("removing a dirty worker: %v", err)
 	}
 	os.Remove(dirty)
-	pid := int(f.log(worker.ID, "start")[0]["pid"].(float64))
+	pid := f.log(worker.ID, "start")[0].Pid
 	if _, err := f.rt.RemoveWorker(lead.ID, "w1"); err != nil {
 		t.Fatal(err)
 	}
@@ -602,7 +595,7 @@ func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 	old := f.rt.live[lead.ID]
 	f.input(lead.ID, "!crash")
 	f.until("a relaunch", func() bool { return len(f.log(lead.ID, "start")) == 2 && f.agent(lead.ID).Activity == store.Idle })
-	if start := f.log(lead.ID, "start"); start[1]["conversation"] != lead.ID+"-conversation" {
+	if start := f.log(lead.ID, "start"); start[1].Conversation != lead.ID+"-conversation" {
 		t.Fatalf("relaunch did not resume: %v", start[1])
 	}
 	// The ended launch left a note, and the new launch's items follow the old
@@ -724,7 +717,7 @@ func TestFailedResumeIsAnError(t *testing.T) {
 		shown = shown || it.Kind == harness.KindError && strings.Contains(it.Text, "cannot resume")
 	}
 	starts := f.log(lead.ID, "start")
-	if !shown || f.agent(lead.ID).Activity != store.Exited || f.agent(lead.ID).Conversation != "unresumable" || len(starts) != 2 || starts[1]["conversation"] != "unresumable" {
+	if !shown || f.agent(lead.ID).Activity != store.Exited || f.agent(lead.ID).Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
 		t.Fatalf("after a failed resume: shown=%v agent=%+v starts=%v", shown, f.agent(lead.ID), starts)
 	}
 	if f.rt.live[lead.ID] != nil {
@@ -763,7 +756,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 	var child int
 	f.until("the worker's child", func() bool {
 		for _, e := range f.log(worker.ID, "child") {
-			child = int(e["pid"].(float64))
+			child = e.Pid
 		}
 		return child != 0
 	})
@@ -838,7 +831,7 @@ func TestImagePrompts(t *testing.T) {
 	if got := f.session1(s.ID).Title; got != "start" {
 		t.Errorf("title = %q", got)
 	}
-	if got := f.log(lead.ID, "input"); len(got) != 2 || got[1]["images"] != 1.0 {
+	if got := f.log(lead.ID, "input"); len(got) != 2 || got[1].Images != 1 {
 		t.Errorf("plugin inputs = %v", got)
 	}
 	f.until("the image prompt in the transcript", func() bool {
