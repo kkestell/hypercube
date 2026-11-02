@@ -33,22 +33,29 @@ approved UI and UX stay as they are.
 - **Root.** The session's working directory is its workspace's `Path`, the
   lead's directory and the shell's. The browser already addresses sessions by
   ID (`attached`, `terminal?session=`), so both routes take `session=<id>` and
-  the server looks up the path in the database on each request. Stopped
-  sessions are browsable; an unknown session is 404.
+  the server looks up the path in the database on each request. The handlers
+  do not check whether the session is running.
 - **Confinement.** Paths are relative, slash-separated, `""` for the root.
-  The server refuses a path that is not `""` and not `filepath.IsLocal`, or
-  that has a hidden name as any component (400). It opens the directory with
-  `os.OpenRoot` and does every list, stat, and read through the `os.Root`, so
+  The server opens the directory with `os.OpenRoot` and does every list, stat, and read through the `os.Root`, so
   `..` and symbolic links that lead outside the directory fail. A symbolic link
   inside the directory is listed as a folder or file by what it points to
   (`root.Stat`); a broken or escaping link is listed as a file and fails to
   open.
-- **Hidden entries.** VS Code's default `files.exclude`: `.git`, `.svn`,
-  `.hg`, `.DS_Store`, `Thumbs.db`, matched by name at any depth.
+- **Hidden entries.** VS Code's default `files.exclude` (`.git`, `.svn`,
+  `.hg`, `.DS_Store`, `Thumbs.db`) and `.hypercube`, the folder of worker
+  worktrees, matched by name at any depth. Only listings filter them; reads
+  are confined by `os.Root` alone.
+- **Errors.** An unknown session, and a path that does not exist
+  (`os.ErrNotExist`), get 404. Other failures, such as a database or
+  permission error, are answered through `refused` with their error text.
+  During a poll, any failure other than 404 leaves the listing or tab as it
+  is.
 - **Change detection: polling, no new dependency or transport.** While the
-  page is visible and a session is attached, the page polls once a second:
-  it re-lists every loaded folder that is expanded (and the root), and
-  re-requests every open file tab with `If-None-Match`. Requests go one at a
+  page is visible and a session is attached, the page polls once a second.
+  While the Files panel is shown, it re-lists the root and each expanded
+  folder among the visible rows (a folder under a collapsed ancestor is not
+  re-listed). It re-requests each visible file tab (`clientHeight > 0`) with
+  `If-None-Match`; a tab shown later is refreshed by the next tick. Requests go one at a
   time, so polling never holds more than one of the browser's six
   connections, and a poll is skipped while the previous one runs. Cost per
   tick is one `ReadDir` per expanded folder and one `stat` per open file,
@@ -65,15 +72,23 @@ approved UI and UX stay as they are.
   the text editor because it is either binary or uses an unsupported text
   encoding."
 - **Unreadable entries.** A file that cannot be opened shows the server's
-  error text in its tab. A folder that cannot be listed shows no children.
+  error text in its tab. A folder that cannot be listed on first expand shows
+  no children.
 - **Deleted while open.** As in VS Code, a deleted file's tab keeps its last
   contents and its label is struck through, with "(deleted)" in its title.
   If the file returns, the next poll shows it again. A deleted folder drops
   out of its parent's listing; when its own listing returns 404, the tree
   forgets its entries and expansion.
 - **Re-rendering.** The tree re-renders only when a listing differs from the
-  one it has. A file tab re-renders only on a 200, and keeps its scroll
-  position.
+  one it has. A file tab re-renders on any response other than 304, unless
+  it shows the same message it already shows. `showFile` saves and restores
+  the view's `scrollTop` and `scrollLeft`. Marking a tab deleted clears its
+  ETag, so a file restored with the same size and mtime renders again.
+- **Highlight cost.** Measure the time Shiki takes to re-highlight a file
+  near the size limit after its grammar is loaded, and lower `maxFile` so a
+  re-highlight stays near 100 ms.
+- **Reading.** The read route reads through `io.LimitReader(maxFile+1)`, so
+  a file that grows after the stat is still refused with 413.
 
 ## Test plan
 
@@ -88,7 +103,7 @@ byte over 1 MiB:
 - `GET /file` returns `a.go`'s text with an ETag; the same ETag in
   `If-None-Match` gets 304; after the file changes it gets 200 with the new
   text.
-- `..`, `/etc/passwd`, `.git/config`, and the escaping link are refused; a
+- `..`, `/etc/passwd`, and the escaping link are refused; a
   missing file is 404; the binary file is 415; the large file is 413; a
   folder path on `/file` is 400; an unknown session is 404.
 
@@ -101,7 +116,7 @@ session and path.
 
 1. `internal/ui/files.go` (new): `hidden` (the excluded names), `sessionRoot`
    (session ID to `*os.Root` through `tx.Session` and `tx.Workspace`),
-   `checkPath`, and the handlers `listFiles` (`GET /files`, JSON array of
+   and the handlers `listFiles` (`GET /files`, JSON array of
    `{name, dir}`) and `readFile` (`GET /file`, `text/plain; charset=utf-8`,
    `Cache-Control: no-cache`, ETag, 304, 413, 415). Constant `maxFile = 1 <<
    20`. Register both routes in `Handler`.
@@ -110,15 +125,16 @@ session and path.
    becomes `list(session, dir)` and `read(session, path, etag)`, which
    resolves to `{text, etag}`, `{unchanged: true}`, `{deleted: true}`, or
    `{message}`. `FileTree` takes `list` bound to the session (rebound in
-   `reset`), and gains `refresh()`, which re-lists the root and each loaded,
-   expanded folder in turn, replaces a listing that differs, drops a folder
+   `reset`), and gains `refresh()`, which re-lists the root and each expanded
+   folder among the visible rows in turn, replaces a listing that differs, drops a folder
    whose listing is 404, and renders once if anything changed.
 4. `internal/ui/static/index.html`: `showFile` uses `files.read` with the
    tab's ETag and renders text, a message, or the deleted state;
    `fileTabs` entries keep `etag` and `deleted`. Add `poll()`, run by a
    one-second interval: it returns when `document.hidden`, no session is
    attached, or a poll is running; otherwise it awaits `fileTree.refresh()`
-   and then each open file tab's `showFile` in turn, guarding against a
+   while the Files panel is shown, and then each visible file tab's
+   `showFile` in turn, guarding against a
    session change mid-poll as `FileTree.reset` does with `generation`.
    `renderTabs` passes `deleted` and the "(deleted)" title.
 5. `internal/ui/static/tabs.js`: toggle a `deleted` class on the tab from
