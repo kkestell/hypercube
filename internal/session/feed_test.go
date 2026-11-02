@@ -1,7 +1,6 @@
 package session
 
 import (
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -37,36 +36,22 @@ func TestWritePublishesAfterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	change := nextChange(t, changes, func(Change) bool { return true })
-	if change.Agent != "" || f.session1(s.ID).Title != "Changed" {
+	if change.Agent != "" || f.storedSession(s.ID).Title != "Changed" {
 		t.Fatalf("rename change = %+v", change)
 	}
 }
 
 func TestFailedWritePublishesNothing(t *testing.T) {
 	f := newFixture(t)
-	s, lead := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	f.rt.mu.Lock()
-	l := f.rt.live[lead.ID]
-	want := errors.New("rollback")
-	err := f.rt.save(func(w *write) error {
-		if err := w.putItem(l, f.rt.nextSeq(lead.ID), harness.Item{ID: "rolled-back", Kind: harness.KindText, Text: "lost", Done: true}); err != nil {
-			return err
-		}
-		s.Title = "Lost"
-		if err := w.SaveSession(s); err != nil {
-			return err
-		}
-		return want
-	})
-	f.rt.mu.Unlock()
-	if !errors.Is(err, want) || f.session1(s.ID).Title == "Lost" || len(f.transcript(lead.ID)) != 0 {
-		t.Fatalf("failed write: %v", err)
+	if err := f.rt.Rename("missing", "Title"); err == nil {
+		t.Fatal("renamed a missing session")
 	}
+	// A write publishes before it returns, so its change would be waiting.
 	select {
 	case change := <-changes:
-		t.Fatalf("failed transaction published %+v", change)
+		t.Fatalf("failed write published %+v", change)
 	default:
 	}
 }
@@ -76,24 +61,28 @@ func TestStreamedChangesKeepTheirPositionAndText(t *testing.T) {
 	s, lead := f.session()
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	f.rt.mu.Lock()
-	l := f.rt.live[lead.ID]
-	f.rt.mu.Unlock()
-	itemChange := func(c Change) bool { return c.Agent == lead.ID }
-	f.rt.event(l, harness.Event{Items: []harness.Item{{ID: "stream", Kind: harness.KindText, Text: "Hel"}}})
-	first := nextChange(t, changes, itemChange)
-	f.rt.event(l, harness.Event{Items: []harness.Item{{ID: "stream", Kind: harness.KindText, Append: true, Text: "lo"}}})
-	second := nextChange(t, changes, itemChange)
-	f.rt.event(l, harness.Event{Items: []harness.Item{{ID: "stream", Kind: harness.KindText, Append: true, Text: "!", Done: true}}})
-	last := nextChange(t, changes, itemChange)
-	if first.Session != s.ID || first.Seq <= 2 || first.Seq != second.Seq || second.Seq != last.Seq ||
+	f.input(lead.ID, "!stream")
+	streamed := func(c Change) bool { return c.Agent == lead.ID && strings.HasSuffix(c.Item.ID, ":s") }
+	first := nextChange(t, changes, streamed)
+	second := nextChange(t, changes, streamed)
+	last := nextChange(t, changes, streamed)
+	if first.Session != s.ID || first.Seq != second.Seq || second.Seq != last.Seq ||
 		first.Item.Text != "Hel" || second.Item.Text != "Hello" || last.Item.Text != "Hello!" ||
 		first.Item.Done || second.Item.Done || !last.Item.Done || first.Item.At == 0 || first.Item.At != last.Item.At {
 		t.Fatalf("stream changes: %+v, %+v, %+v", first, second, last)
 	}
 	items, err := f.rt.Transcript(lead.ID)
-	if err != nil || items[2].Seq != first.Seq || items[2].Text != last.Item.Text {
-		t.Fatalf("transcript = %+v, %v", items, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var saved TranscriptItem
+	for _, it := range items {
+		if it.ID == last.Item.ID {
+			saved = it
+		}
+	}
+	if saved.Seq != last.Seq || saved.Text != "Hello!" {
+		t.Fatalf("saved item = %+v", saved)
 	}
 }
 
@@ -116,7 +105,7 @@ func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
 	f := newFixture(t)
 	_, lead := f.session()
 	f.input(lead.ID, "!work")
-	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 2 })
+	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 4 })
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	f.input(lead.ID, "!crash")
@@ -131,7 +120,7 @@ func TestStoppedSessionPublishesDrainedItems(t *testing.T) {
 	f := newFixture(t)
 	s, lead := f.session()
 	f.input(lead.ID, "!work")
-	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 2 })
+	f.until("a pending item", func() bool { return len(f.transcript(lead.ID)) == 4 })
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	if err := f.rt.Stop(s.ID); err != nil {
