@@ -24,38 +24,46 @@ function setup(sessions) {
   return {store, root, posted, fetches};
 }
 
-const select = (root, item) => act(() => root.querySelector('vscode-tree').dispatchEvent(new CustomEvent('vsc-tree-select', {detail: [item]})));
+const click = element => act(() => element.click());
 const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row => row.dataset.session);
+const title = (root, id) => root.querySelector(`[data-session="${id}"] .session-item-title`);
+const caret = (root, id) => root.querySelector(`[data-session="${id}"] .session-item-caret`);
+const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
+const summary = root => root.querySelector('.sidebar-nested-summary');
 
 test('a workspace lists five sessions, and Show more adds five', () => {
   const {root} = setup(Array.from({length: 12}, (_, i) => session('s' + i)));
   expect(sessionRows(root).length).toBe(5);
-  select(root, root.querySelector('[data-show-more]'));
+  click(root.querySelector('.sidebar-show-more'));
   expect(sessionRows(root).length).toBe(10);
-  select(root, root.querySelector('[data-show-more]'));
+  click(root.querySelector('.sidebar-show-more'));
   expect(sessionRows(root).length).toBe(12);
-  expect(root.querySelector('[data-show-more]')).toBeNull();
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
 });
 
-test('a workspace collapses when its item closes itself', async () => {
-  const {store, root} = setup([session('a')]);
-  const workspace = root.querySelector('[data-key="w"]');
-  expect(workspace.hasAttribute('open')).toBe(true);
-  workspace.removeAttribute('open');
-  await act(async () => {});
-  store.update(s => ({...s, workspaces: [...s.workspaces]}));
-  expect(workspace.hasAttribute('open')).toBe(false);
+test('clicking a workspace header collapses and expands it, and New Session leaves it open', async () => {
+  const {root, fetches} = setup([session('a')]);
+  fetches.mockImplementation(async () => Response.json([]));
+  click(root.querySelector('.sidebar-workspace-toggle'));
+  expect(sessionRows(root)).toEqual([]);
+  click(root.querySelector('.sidebar-workspace-toggle'));
+  expect(sessionRows(root)).toEqual(['a']);
+  await act(async () => {
+    root.querySelector('[title="New Session"]').click();
+    await new Promise(resolve => setTimeout(resolve));
+  });
+  expect(sessionRows(root)).toEqual(['a']);
 });
 
-test('selecting a session row chooses it, and a stopped one starts', () => {
+test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
-  select(root, root.querySelector('[data-session="b"]'));
+  click(title(root, 'b'));
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
 });
 
 function rename(root, id) {
-  act(() => root.querySelector(`[data-session="${id}"]`).dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
+  act(() => title(root, id).dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
   return root.querySelector('vscode-textfield');
 }
 const key = (element, key) => act(() => element.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true})));
@@ -84,10 +92,10 @@ test('Enter saves a changed title, Escape cancels, and leaving the field saves',
   expect(posted().length).toBe(2);
 });
 
-test('keys typed in the rename field do not reach the tree', () => {
+test('keys typed in the rename field do not reach the sidebar', () => {
   const {root} = setup([session('a')]);
   const reached = [];
-  root.querySelector('vscode-tree').addEventListener('keydown', e => reached.push(e.key));
+  root.querySelector('.sidebar').addEventListener('keydown', e => reached.push(e.key));
   const field = rename(root, 'a');
   key(field, ' ');
   key(field, 'ArrowDown');
@@ -140,13 +148,13 @@ test('deleting a session asks first and posts only on Delete', () => {
 
 test('Escape cancels deleting a workspace', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-key="w"]', 0);
+  choose(root, '[data-workspace="w"]', 0);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
   press(root, 'Escape');
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-key="w"]', 0);
+  choose(root, '[data-workspace="w"]', 0);
   act(() => dialogButton(root, 'Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
@@ -184,47 +192,73 @@ test('choosing a lead profile from the picker opens the unsent session', async (
   expect(root.querySelector('vscode-context-menu')).toBeNull();
 });
 
-test('children stay in creation order, ended children dim, and Show more counts parents', () => {
+test('nested sessions stay in creation order, ended ones dim, and Show more counts parents', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), ...Array.from({length: 5}, (_, i) => session('p' + i))]);
   expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0', 'p1', 'p2', 'p3']);
   expect(root.querySelector('[data-session="first"]').classList.contains('session-item-stopped')).toBe(true);
-  expect(root.querySelector('[data-session="a"]').hasAttribute('open')).toBe(true);
+  expect(caret(root, 'a').getAttribute('aria-expanded')).toBe('true');
 });
 
-test('parent clicks select without collapsing and chevron clicks collapse without selecting', async () => {
+test('clicking a parent selects it and leaves it open; clicking its caret collapses it without selecting', () => {
   const {store, root, posted} = setup([session('a', {children: [session('child', {parent: 'a'})]})]);
-  const row = root.querySelector('[data-session="a"]');
-  act(() => row.querySelector('.session-item-title').click());
+  click(title(root, 'a'));
   expect(store.get().selected).toBe('a');
-  expect(row.hasAttribute('open')).toBe(true);
+  expect(sessionRows(root)).toEqual(['a', 'child']);
   store.update(s => ({...s, selected: null}));
-  const shadow = row.attachShadow({mode: 'open'});
-  const arrow = document.createElement('span');
-  arrow.setAttribute('part', 'arrow-icon-container');
-  shadow.append(arrow);
-  act(() => arrow.dispatchEvent(new MouseEvent('click', {bubbles: true, composed: true})));
-  await act(async () => {});
-  expect(row.hasAttribute('open')).toBe(false);
+  click(caret(root, 'a'));
+  expect(sessionRows(root)).toEqual(['a']);
   expect(store.get().selected).toBeNull();
   expect(posted()).toEqual([]);
-  // A child click is handled by the tree, without the parent's capture handler.
-  const child = root.querySelector('[data-session="child"]');
-  select(root, child);
-  expect(store.get().selected).toBe('child');
-  expect(row.hasAttribute('open')).toBe(false);
 });
 
-test('a running child request marks its parent while its spinner stays on its own row', () => {
-  const {root} = setup([session('a', {children: [session('child', {parent: 'a', attention: true, activity: 'busy'})]})]);
-  const parent = root.querySelector('[data-session="a"]');
-  const decorations = parent.querySelector(':scope > .session-item-indicators');
-  expect(decorations.querySelector('[title="Waiting on you: Session child"]')).not.toBeNull();
-  expect(decorations.querySelector('[name="loading"]')).toBeNull();
-  expect(root.querySelector('[data-session="child"] [name="loading"]')).not.toBeNull();
+test('a collapsed parent lists its waiting nested sessions, then a summary of the rest', () => {
+  const nested = (id, extra) => session(id, {parent: 'a', ...extra});
+  const {store, root} = setup([session('a', {children: [
+    nested('one', {unseen: true}), nested('asks', {attention: true}), nested('two'),
+  ]})]);
+  click(caret(root, 'a'));
+  expect(sessionRows(root)).toEqual(['a', 'asks']);
+  expect(summary(root).textContent).toBe('2 more nested sessions · 1 unread');
+
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [nested('one'), nested('asks', {attention: true}), nested('two')]})]}]}));
+  expect(summary(root).textContent).toBe('2 more nested sessions');
+
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [nested('asks', {attention: true})]})]}]}));
+  expect(sessionRows(root)).toEqual(['a', 'asks']);
+  expect(summary(root)).toBeNull();
+
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [nested('asks', {attention: true}), nested('two')]})]}]}));
+  click(summary(root));
+  expect(sessionRows(root)).toEqual(['a', 'asks', 'two']);
+  expect(summary(root)).toBeNull();
 });
 
-test('active children have no menu and ended children offer only Delete Session', () => {
+test('each row shows only its own state', () => {
+  const {store, root} = setup([session('a', {children: [
+    session('asks', {parent: 'a', attention: true, activity: 'busy'}),
+    session('replied', {parent: 'a', unseen: true}),
+  ]})]);
+  expect(dots(root, 'a')).toEqual([]);
+  expect(dots(root, 'asks')).toEqual(['waiting']);
+  expect(dots(root, 'replied')).toEqual(['unseen']);
+  expect(root.querySelector('[name="loading"]')).toBeNull();
+  store.update(s => ({...s, selected: 'replied'}));
+  expect(dots(root, 'replied')).toEqual([]);
+});
+
+test('a row\'s More Actions button opens its menu, and the workspace\'s opens the workspace menu', () => {
+  const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'})]})]);
+  expect(root.querySelector('[data-session="active"] .session-item-menu')).toBeNull();
+  click(root.querySelector('[data-session="a"] .session-item-menu'));
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
+  expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
+  click(root.querySelector('.sidebar-workspace-menu'));
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
+  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
+});
+
+test('active nested sessions have no menu and ended ones offer only Delete Session', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
   act(() => root.querySelector('[data-session="active"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
   expect(root.querySelector('vscode-context-menu')).toBeNull();

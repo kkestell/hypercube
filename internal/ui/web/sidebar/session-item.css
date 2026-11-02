@@ -1,19 +1,101 @@
+/* The title button covers the row, so a click anywhere selects it; the caret
+   and the status column sit above it. */
+.session-item {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 32px;
+  padding-right: 8px;
+  border-radius: 6px;
+}
+
+.session-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.session-item-selected,
+.session-item-selected:hover {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.session-item:has(:focus-visible) {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.session-item button {
+  outline: none;
+}
+
 .session-item-stopped {
   color: var(--vscode-descriptionForeground);
 }
 
 .session-item-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  padding-left: 14px;
 }
 
-.session-item-indicators {
+.session-item-nested .session-item-title {
+  padding-left: 34px;
+}
+
+.session-item-title::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* Long titles run under the padding and fade out; short ones end before it. */
+.session-item-text {
+  padding-right: 24px;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.session-item-caret {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: -16px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+}
+
+.session-item-status {
+  position: relative;
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+}
+
+.session-item-menu {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.session-item:is(:hover, :focus-within) .session-item-menu {
+  display: flex;
+}
+
+.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) .status-dot {
+  display: none;
 }
 
 .session-item-rename {
-  width: 100%;
+  flex: 1;
+  margin-left: 8px;
 }

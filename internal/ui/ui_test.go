@@ -541,6 +541,11 @@ func (p *page) session(id string) shownSession {
 			if session.ID == id {
 				return session
 			}
+			for _, child := range session.Children {
+				if child.ID == id {
+					return child
+				}
+			}
 		}
 	}
 	return shownSession{}
@@ -589,6 +594,21 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	a.post("/session?action=seen&id="+a.session.ID, "", http.StatusOK)
 	for _, p := range pages {
 		p.until("seen replies to clear", func() bool { s := p.session(a.session.ID); return !s.Unseen && s.Reply == "" && s.ReplySeq == 0 })
+	}
+	for _, input := range []string{"!work", "!finish"} {
+		if err := a.rt.Input(child.ID, input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, p := range pages {
+		p.until("the child's reply", func() bool {
+			s := p.session(child.ID)
+			return s.Unseen && s.Reply == "finished" && s.ReplySeq > 0
+		})
+	}
+	a.post("/session?action=seen&id="+child.ID, "", http.StatusOK)
+	for _, p := range pages {
+		p.until("the child's reply to clear", func() bool { s := p.session(child.ID); return !s.Unseen && s.Reply == "" && s.ReplySeq == 0 })
 	}
 }
 

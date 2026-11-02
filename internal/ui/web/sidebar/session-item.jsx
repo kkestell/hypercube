@@ -1,62 +1,58 @@
-// A session's row in the sidebar: its title, dimmed when it is stopped, and
-// indicators naming its busy and waiting sessions while it runs, and its unseen
-// reply. Double-clicking the row renames the session in place.
+// A session's row in the sidebar: its title, dimmed when it is stopped, a caret
+// when it has nested sessions, and a dot for its own state: amber while it
+// waits on the user, blue for a reply the user has not seen. Hovering the row
+// shows its menu button in the dot's place. Double-clicking the title renames
+// the session in place.
 import {useEffect, useRef} from 'preact/hooks';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
 import {useStore} from '../store.js';
 import './session-item.css';
 
-export function SessionItem({session, selected, renaming, onRenaming, open, children}) {
-  const [, store] = useStore();
-  const row = useRef(null);
-  const branch = session.children.length > 0;
-  const busy = session.running && session.activity === 'busy';
-  const waiting = [session, ...session.children].filter(s => s.running && s.attention).map(s => s.title).join(', ');
-  const unseen = !session.parent && session.unseen && !selected;
+const dotOf = (session, selected) => {
+  if (session.running && session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
+  if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
+  return null;
+};
 
-  // vscode-tree toggles branches on every row click. Own parent clicks so
-  // only the chevron changes expansion; child rows retain their own behavior.
-  useEffect(() => {
-    if (!branch) return;
-    const element = row.current;
-    const clicked = event => {
-      const path = event.composedPath();
-      if (path.find(node => node.localName === 'vscode-tree-item') !== element) return;
-      event.stopPropagation();
-      if (renaming) return;
-      if (path.some(node => node.getAttribute?.('part')?.split(' ').includes('arrow-icon-container'))) element.toggleAttribute('open');
-      else chooseSession(store, session.id);
-    };
-    element.addEventListener('click', clicked, true);
-    return () => element.removeEventListener('click', clicked, true);
-  }, [branch, renaming, session.id, store]);
+// onToggle is set when the session has nested sessions, and onMenu, called
+// with the menu button, when it has a menu.
+export function SessionItem({session, selected, renaming, onRenaming, open, onToggle, onMenu}) {
+  const [, store] = useStore();
+  const classes = ['session-item'];
+  if (session.parent) classes.push('session-item-nested');
+  if (selected) classes.push('session-item-selected');
+  if (!session.running) classes.push('session-item-stopped');
 
   return (
-    <vscode-tree-item
-      ref={row} data-session={session.id} data-key={branch ? session.id : undefined}
-      branch={branch} open={branch && open} selected={selected}
-      class={session.running ? 'session-item' : 'session-item session-item-stopped'}
-      ondblclick={e => { e.stopPropagation(); onRenaming(true); }}
-    >
+    <div class={classes.join(' ')} data-session={session.id}>
       {renaming
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
-        : <span class="session-item-title">{session.title}</span>}
-      {(busy || waiting || unseen) && (
-        <span slot="decoration" class="session-item-indicators">
-          {busy && <vscode-icon name="loading" spin role="img" title={'Busy: ' + session.title} />}
-          {waiting && <StatusDot kind="waiting" title={'Waiting on you: ' + waiting} />}
-          {unseen && <StatusDot kind="unseen" title="New reply" />}
-        </span>
+        : (
+          <button class="session-item-title" onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
+            <span class="session-item-text">{session.title}</span>
+          </button>
+        )}
+      {onToggle && !renaming && (
+        <button class="session-item-caret" aria-expanded={open} title={open ? 'Collapse' : 'Expand'} onClick={onToggle}>
+          {open ? '▾' : '▸'}
+        </button>
       )}
-      {children}
-    </vscode-tree-item>
+      <span class="session-item-status">
+        {dotOf(session, selected)}
+        {onMenu && (
+          <button class="session-item-menu" title="More Actions" aria-label="More Actions" onClick={e => onMenu(e.currentTarget)}>
+            <vscode-icon name="ellipsis" />
+          </button>
+        )}
+      </span>
+    </div>
   );
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it
 // loses the focus, and cancels on Escape. It keeps its keys and clicks from
-// the tree, which would treat them as navigation and selection.
+// the sidebar.
 function RenameField({session, onDone}) {
   const [, store] = useStore();
   const ref = useRef(null);

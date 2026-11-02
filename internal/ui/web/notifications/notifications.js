@@ -1,6 +1,6 @@
 // Notification cards, which stack in the top right for the page's errors and
-// for the open attention requests and unseen top-level replies of sessions the page
-// is not showing. A request comes from the state message's requests, newest
+// for the open attention requests and unseen replies of sessions the page is
+// not showing. A request comes from the state message's requests, newest
 // first; a reply from a session's reply and replySeq. Closing an error card
 // removes the error; closing another card dismisses it in this page.
 import {markSeen} from '../sessions/session-actions.js';
@@ -30,9 +30,10 @@ export function cards(state) {
     if (!found) return [];
     return [{key: requestKey(request), kind: 'request', workspace: found.workspace.name, session: found.session, parent: found.parent, item: request.item}];
   });
-  const replies = state.workspaces.flatMap(workspace => workspace.sessions.filter(s => s.replySeq).map(session =>
-    ({key: replyKey(session), kind: 'reply', workspace: workspace.name, session, text: session.reply})));
-  const shown = [...requests, ...replies].filter(card => card.session.id !== state.selected && card.parent?.id !== state.selected && !state.dismissed[card.key]);
+  const replies = state.workspaces.flatMap(workspace => workspace.sessions.flatMap(top =>
+    [[top, null], ...top.children.map(child => [child, top])].filter(([session]) => session.replySeq).map(([session, parent]) =>
+      ({key: replyKey(session), kind: 'reply', workspace: workspace.name, session, parent, text: session.reply}))));
+  const shown = [...requests, ...replies].filter(card => card.session.id !== state.selected && !state.dismissed[card.key]);
   return [...errors, ...shown];
 }
 

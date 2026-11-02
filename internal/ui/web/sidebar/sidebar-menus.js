@@ -58,6 +58,7 @@ export function useSidebarMenu(store) {
       const items = sessionItems(store, session);
       if (items.length) show(point, items);
     },
+    hasSessionMenu: session => sessionItems(store, session).length > 0,
     showWorkspace: (point, workspace) => show(point, workspaceItems(store, workspace)),
     showLeads,
   };

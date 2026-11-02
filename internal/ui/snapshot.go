@@ -39,8 +39,29 @@ type shownSession struct {
 // showSession shows a top-level session with its children. A child runs
 // while its parent runs, until it ends.
 func showSession(tx *store.Tx, s store.Session) (shownSession, error) {
-	shown := show(s, s.Running)
-	shown.Unseen = s.Unseen
+	shown, err := show(tx, s, s.Running)
+	if err != nil {
+		return shown, err
+	}
+	children, err := tx.Children(s.ID)
+	if err != nil {
+		return shown, err
+	}
+	for _, c := range children {
+		child, err := show(tx, c, s.Running && !c.Ended)
+		if err != nil {
+			return shown, err
+		}
+		shown.Children = append(shown.Children, child)
+	}
+	return shown, nil
+}
+
+// show shows one session. An unseen idle session carries its last reply.
+func show(tx *store.Tx, s store.Session, running bool) (shownSession, error) {
+	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
+		Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
+		Activity: s.Activity, Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 	if s.Unseen && s.Activity == store.Idle {
 		var err error
 		shown.Reply, shown.ReplySeq, err = tx.LastText(s.ID)
@@ -48,20 +69,7 @@ func showSession(tx *store.Tx, s store.Session) (shownSession, error) {
 			return shown, err
 		}
 	}
-	children, err := tx.Children(s.ID)
-	if err != nil {
-		return shown, err
-	}
-	for _, c := range children {
-		shown.Children = append(shown.Children, show(c, s.Running && !c.Ended))
-	}
 	return shown, nil
-}
-
-func show(s store.Session, running bool) shownSession {
-	return shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
-		Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir, Activity: s.Activity,
-		Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 }
 
 // snapshot reads everything the view shows in one transaction: workspaces by

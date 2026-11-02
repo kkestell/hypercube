@@ -22,7 +22,7 @@ func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
 	}
 }
 
-func TestIdleParentAndFinishedChildDoNotMarkTheSessionUnseen(t *testing.T) {
+func TestFinishedTurnsMarkOnlyTheirOwnSessionUnseen(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	if err := f.rt.Seen(s.ID); err != nil {
@@ -39,7 +39,16 @@ func TestIdleParentAndFinishedChildDoNotMarkTheSessionUnseen(t *testing.T) {
 	f.until("the child working", func() bool { return f.storedSession(child.ID).Activity == store.Busy })
 	f.input(child.ID, "!finish")
 	f.until("the child idle", func() bool { return f.storedSession(child.ID).Activity == store.Idle })
+	if !f.storedSession(child.ID).Unseen {
+		t.Fatal("a child's finished turn did not mark it unseen")
+	}
 	if f.storedSession(s.ID).Unseen {
-		t.Fatal("a child's finished turn marked its session unseen")
+		t.Fatal("a child's finished turn marked its parent unseen")
+	}
+	if err := f.rt.Seen(child.ID); err != nil {
+		t.Fatal(err)
+	}
+	if f.storedSession(child.ID).Unseen {
+		t.Fatal("seeing the child left it unseen")
 	}
 }

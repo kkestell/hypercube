@@ -109,8 +109,8 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	}
 }
 
-// applyEvent records an event's conversation, work state, and usage. A top-level session that
-// finishes a turn has a reply for the user to see.
+// applyEvent records an event's conversation, work state, and usage. A session that finishes a
+// turn has a reply for the user to see.
 func applyEvent(s *store.Session, ev harness.Event) {
 	if ev.Conversation != "" {
 		s.Conversation = ev.Conversation
@@ -119,7 +119,7 @@ func applyEvent(s *store.Session, ev harness.Event) {
 	case harness.Working:
 		s.Activity = store.Busy
 	case harness.Idle:
-		if s.Activity == store.Busy && s.Parent == "" {
+		if s.Activity == store.Busy {
 			s.Unseen = true
 		}
 		s.Activity = store.Idle

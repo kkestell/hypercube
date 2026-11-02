@@ -25,12 +25,131 @@
   text-transform: uppercase;
 }
 
-.sidebar-tree {
+/* Rows are 32px tall with 2px between them, inside a 4px inset. Titles start
+   14px into a row, 34px for nested rows, and each row's right 16px column
+   holds its dot or buttons. */
+.sidebar-list {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: 8px;
   min-height: 0;
+  padding: var(--size-space);
   overflow: auto;
 }
 
+.sidebar-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-workspace-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--size-space);
+  height: 32px;
+  padding-right: 8px;
+}
+
+.sidebar-workspace-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding-left: 14px;
+}
+
+.sidebar-workspace-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-caret {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 10px;
+}
+
+.sidebar-icon-button {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+}
+
+.sidebar-workspace-menu {
+  margin-left: auto;
+}
+
+.sidebar-workspace-header:not(:hover, :focus-within) .sidebar-workspace-menu {
+  visibility: hidden;
+}
+
+/* The guide runs down the nested rows and hooks into the last one. */
+.sidebar-nested {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nested::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 16px;
+  left: 14px;
+  width: 12px;
+  border-bottom: 1px solid var(--vscode-tree-indentGuidesStroke);
+  border-left: 1px solid var(--vscode-tree-indentGuidesStroke);
+  border-bottom-left-radius: 6px;
+  pointer-events: none;
+}
+
+.sidebar-nested-summary,
+.sidebar-show-more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 32px;
+  padding-left: 14px;
+  overflow: hidden;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.sidebar-nested-summary {
+  padding-left: 34px;
+}
+
+.sidebar-nested-summary:hover,
+.sidebar-show-more:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.sidebar-nested-separator,
 .sidebar-show-more {
   color: var(--vscode-descriptionForeground);
+}
+
+.sidebar-nested-separator {
+  white-space: pre;
+}
+
+.sidebar-nested-unread {
+  color: var(--vscode-notificationsInfoIcon-foreground);
+}
+
+.sidebar-workspace-toggle:focus-visible,
+.sidebar-icon-button:focus-visible,
+.sidebar-nested-summary:focus-visible,
+.sidebar-show-more:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
 }

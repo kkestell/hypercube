@@ -30,19 +30,23 @@ edits.
 The sidebar lists top-level sessions by last activity, newest first, with
 stopped sessions below running ones. It shows five under each workspace;
 Show more lists five more. Children appear under their parent in creation
-order and do not count toward this limit. Click a workspace row to collapse
-or expand it. A parent's chevron collapses or expands its children; clicking
-its title selects the session without changing its children's expansion.
-Click `+` at the top of the sidebar to add a workspace. Hover over a workspace
-and click New Session to choose a lead profile. Sending its first prompt
-creates the session; selecting another session first discards it. More Actions,
-or right-clicking a workspace, offers Delete Workspace.
+order and do not count toward this limit. Click a workspace's name or caret to
+collapse or expand it. A parent's caret collapses or expands its children;
+clicking its title selects the session without changing its children's
+expansion. A collapsed parent still lists the children waiting on you, then a
+row counting the rest and how many have unseen replies; click it to expand the
+parent. Click `+` at the top of the sidebar to add a workspace. Click `+`
+beside a workspace's name to choose a lead profile for a new session. Sending
+its first prompt creates the session; selecting another session first discards
+it. More Actions, shown while hovering a workspace, or right-clicking a
+workspace, offers Delete Workspace.
 
 Click a session to show its chat, and double-click it to change its title.
-A top-level session's menu offers Start/Stop and Delete. Stopped rows are
-dimmed; clicking a child of a stopped parent starts the family. Each row shows
-its own spinner while busy. An amber dot means that session or a running child
-awaits you; a blue dot marks a top-level reply you have not seen. The composer
+Hovering a row shows More Actions in place of its dot, which opens the same
+menu as right-clicking it. A top-level session's menu offers Start/Stop and
+Delete. Stopped rows are dimmed; clicking a child of a stopped parent starts
+the family. Each row's dot shows only its own session: amber means it awaits
+you, and blue marks a reply you have not seen. The composer
 shows the agent's spinner, waiting dot, or red dot after an unexpected exit.
 
 A parent ends children with `end_session`. Ending removes a managed worktree
@@ -50,10 +54,10 @@ and branch only when Git permits it, and stops the child for good. The ended
 row stays dimmed and opens its saved chat with sending disabled. Its menu offers
 Delete Session, which deletes its chat. An active child has no menu.
 
-Notification cards stack in the top right for unseen top-level replies and
-open questions or approval requests. A request card names the workspace,
-parent, and child, and offers its answers. It is hidden while you view the
-requesting session or its parent. The eye opens the requesting session.
+Notification cards stack in the top right for unseen replies and open
+questions or approval requests from any session. A card names the workspace,
+parent, and child, and a request card offers its answers. A card is hidden
+while you view its own session. The eye opens the requesting session.
 Closing a reply card marks it seen; closing a request card only hides it.
 Reply cards close after 15 seconds or when the agent works again. Request
 cards stay until answered or closed.

@@ -1,11 +1,13 @@
-// The Workspaces view: each workspace's sessions under a row that collapses
-// them, five at a time, with the workspace and session menus. The view holds
-// still while a session is renamed, so the field keeps its place and focus.
+// The Workspaces view: each workspace's sessions under a header that collapses
+// them, five at a time, with the workspace and session menus. A parent's
+// caret collapses its nested sessions. The view holds still while a session is
+// renamed, so the field keeps its place and focus.
+import {Fragment} from 'preact';
 import {useRef, useState} from 'preact/hooks';
-import {addWorkspace, chooseSession} from '../sessions/session-actions.js';
+import {addWorkspace} from '../sessions/session-actions.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
-import {useTreeOpen} from '../shared/use-tree-open.js';
 import {useStore} from '../store.js';
+import {NestedSessions} from './nested-sessions.jsx';
 import {SessionItem} from './session-item.jsx';
 import {useSidebarMenu} from './sidebar-menus.js';
 import './sidebar.css';
@@ -24,27 +26,15 @@ export function Sidebar() {
   const [renaming, setRenaming] = useState(null);
   const frozen = useRef(state.workspaces);
   const menus = useSidebarMenu(store);
-  const tree = useRef(null);
-
-  useTreeOpen(tree, (id, open) => setCollapsed(c => ({...c, [id]: !open})));
 
   if (!renaming) frozen.current = state.workspaces;
   const workspaces = frozen.current;
   const sessionById = id => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
-
-  const selected = e => {
-    const item = e.detail[0];
-    if (item?.dataset.session) chooseSession(store, item.dataset.session);
-    else if (item?.dataset.showMore) {
-      const id = item.dataset.showMore;
-      setLimits(l => ({...l, [id]: (l[id] ?? pageSize) + pageSize}));
-    }
-  };
+  const toggle = id => setCollapsed(c => ({...c, [id]: !c[id]}));
 
   const contextMenu = e => {
-    const item = e.target.closest('vscode-tree-item');
-    const session = sessionById(item?.dataset.session);
-    const workspace = workspaces.find(w => w.id === item?.dataset.key);
+    const session = sessionById(e.target.closest('[data-session]')?.dataset.session);
+    const workspace = workspaces.find(w => w.id === e.target.closest('[data-workspace]')?.dataset.workspace);
     if (!session && !workspace) return;
     e.preventDefault();
     const point = {x: e.clientX, y: e.clientY};
@@ -52,20 +42,13 @@ export function Sidebar() {
     else menus.showWorkspace(point, workspace);
   };
 
-  // A row's buttons keep their clicks from the row, which would toggle it.
-  const action = run => e => {
-    e.stopPropagation();
-    run(below(e.currentTarget));
-  };
-
   const sessionRow = session => (
     <SessionItem
       key={session.id} session={session} selected={session.id === state.selected}
-      open={!collapsed[session.id]} renaming={session.id === renaming}
-      onRenaming={on => setRenaming(on ? session.id : null)}
-    >
-      {session.children.map(sessionRow)}
-    </SessionItem>
+      open={!collapsed[session.id]} onToggle={session.children.length ? () => toggle(session.id) : null}
+      onMenu={menus.hasSessionMenu(session) ? button => menus.showSession(below(button), session) : null}
+      renaming={session.id === renaming} onRenaming={on => setRenaming(on ? session.id : null)}
+    />
   );
 
   return (
@@ -74,28 +57,40 @@ export function Sidebar() {
         <h2 class="sidebar-title-label">Workspaces</h2>
         <vscode-toolbar-button icon="add" label="New Workspace" title="New Workspace" onClick={() => addWorkspace(store)} />
       </div>
-      <vscode-tree ref={tree} class="sidebar-tree" indent={0} onvsc-tree-select={selected} onContextMenu={contextMenu}>
+      <div class="sidebar-list" onContextMenu={contextMenu}>
         {workspaces.map(workspace => {
+          const open = !collapsed[workspace.id];
           const limit = limits[workspace.id] ?? pageSize;
           return (
-            <vscode-tree-item key={workspace.id} data-key={workspace.id} branch open={!collapsed[workspace.id]} title={workspace.path}>
-              {workspace.name}
-              <vscode-toolbar-button
-                slot="actions" icon="ellipsis" label="More Actions" title="More Actions"
-                onClick={action(point => menus.showWorkspace(point, workspace))}
-              />
-              <vscode-toolbar-button
-                slot="actions" icon="new-session" label="New Session" title="New Session"
-                onClick={action(point => menus.showLeads(point, workspace))}
-              />
-              {workspace.sessions.slice(0, limit).map(sessionRow)}
-              {workspace.sessions.length > limit && (
-                <vscode-tree-item class="sidebar-show-more" data-show-more={workspace.id}>Show more</vscode-tree-item>
+            <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
+              <div class="sidebar-workspace-header">
+                <button class="sidebar-workspace-toggle" aria-expanded={open} title={workspace.path} onClick={() => toggle(workspace.id)}>
+                  <span class="sidebar-workspace-name">{workspace.name}</span>
+                  <span class="sidebar-caret">{open ? '▾' : '▸'}</span>
+                </button>
+                <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => menus.showWorkspace(below(e.currentTarget), workspace)}>
+                  <vscode-icon name="ellipsis" />
+                </button>
+                <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={e => menus.showLeads(below(e.currentTarget), workspace)}>
+                  <vscode-icon name="add" />
+                </button>
+              </div>
+              {open && workspace.sessions.slice(0, limit).map(session => (
+                <Fragment key={session.id}>
+                  {sessionRow(session)}
+                  <NestedSessions
+                    parent={session} open={!collapsed[session.id]} row={sessionRow}
+                    onExpand={() => setCollapsed(c => ({...c, [session.id]: false}))}
+                  />
+                </Fragment>
+              ))}
+              {open && workspace.sessions.length > limit && (
+                <button class="sidebar-show-more" onClick={() => setLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
               )}
-            </vscode-tree-item>
+            </div>
           );
         })}
-      </vscode-tree>
+      </div>
       {menus.menu && <ContextMenu {...menus.menu} onClose={menus.close} />}
     </div>
   );
