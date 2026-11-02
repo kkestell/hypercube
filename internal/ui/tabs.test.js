@@ -189,3 +189,13 @@ test('worker splits and closing every tab leave the separate lead column intact'
     globalThis.document = previous;
   }
 });
+
+test('a preview tab is replaced in place by the next file', () => {
+  const layout = new TabLayout();
+  layout.open('one');
+  layout.open('preview');
+  layout.open('two');
+  layout.replace('preview', 'next');
+  expect(tabs(layout)).toEqual([['one', 'next', 'two']]);
+  expect(layout.find('next').active).toBe('next');
+});

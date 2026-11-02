@@ -186,9 +186,10 @@ const parent = path => path.slice(0, Math.max(0, path.lastIndexOf('/')));
 // click and keep the expansion of their subfolders while collapsed. It loads
 // each folder's entries once, when the folder first expands.
 export class FileTree {
-  constructor(root, {list, open}) {
+  constructor(root, {list, open, keepOpen}) {
     this.list = list;
     this.open = open;
+    this.keepOpen = keepOpen;
     this.element = document.createElement('div');
     this.element.className = 'file-tree';
     this.element.setAttribute('role', 'tree');
@@ -197,7 +198,10 @@ export class FileTree {
     root.append(this.element);
     this.element.onclick = e => {
       const row = e.target.closest('[data-path]');
-      if (row) this.activate(row.dataset.path);
+      if (!row) return;
+      // The second click of a double-click keeps a file open.
+      if (e.detail === 2 && !this.rows.find(r => r.path === row.dataset.path).dir) this.keepOpen(row.dataset.path);
+      else this.activate(row.dataset.path);
     };
     this.element.onkeydown = e => this.key(e);
     this.reset(false);

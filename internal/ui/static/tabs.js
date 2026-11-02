@@ -41,6 +41,13 @@ export class TabLayout {
     return node;
   }
 
+  // replace puts a new tab in place of an open one, as a preview tab is replaced.
+  replace(old, id) {
+    const pane = this.find(old);
+    pane.tabs[pane.tabs.indexOf(old)] = id;
+    pane.active = id;
+  }
+
   close(id) {
     this.detach(id);
     this.root = this.prune();
@@ -117,6 +124,7 @@ export class TabContainer {
             select.id = 'agent-tab-' + id;
             select.setAttribute('aria-controls', 'agent-panel-' + id);
             select.onclick = () => { node.active = id; this.changed(); select.focus(); };
+            select.ondblclick = () => this.entries.get(id).keepOpen?.();
             if (entry.icon) select.insertAdjacentHTML('afterbegin', entry.icon);
             const label = document.createElement('span');
             label.className = 'tab-label';
@@ -140,6 +148,7 @@ export class TabContainer {
           }
           const selected = id === node.active;
           tab.classList.toggle('active', selected);
+          tab.classList.toggle('preview', !!entry.preview);
           const select = tab.firstElementChild;
           tab.label.textContent = entry.label;
           if (tab.status !== entry.status) {

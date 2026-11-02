@@ -193,6 +193,7 @@ function attach(id) {
   tabLayout = tabContainer = null;
   scrolls.clear();
   fileTabs.clear();
+  preview = null;
   fileTree.reset(!!id);
   closeShell();
   announce();
@@ -264,10 +265,12 @@ function renderTabs() {
     if (!tabLayout.find(id)) fileTabs.delete(id);
     else if (f.element.clientHeight) f.scroll = [f.element.scrollTop, f.element.scrollLeft];
   }
+  if (!fileTabs.has(preview)) preview = null;
   tabContainer.render([...shown.stacked.map(a => {
     const c = cards.get(a.id);
     return {id: a.id, label: c.label, status: c.status, element: c.element};
-  }), ...[...fileTabs].map(([id, f]) => ({id, label: f.name, title: f.path, icon: f.icon, element: f.element}))]);
+  }), ...[...fileTabs].map(([id, f]) => ({id, label: f.name, title: f.path, icon: f.icon, element: f.element,
+    preview: id === preview, keepOpen: () => keepOpen(id)}))]);
   for (const f of fileTabs.values()) {
     if (f.element.clientHeight && f.scroll) [f.element.scrollTop, f.element.scrollLeft] = f.scroll;
   }
@@ -281,10 +284,20 @@ function renderTabs() {
   if (returnFocus) cards.get(shown.leader?.id)?.field.focus();
 }
 
-// The Files tab shows the session's working directory. A file opens in a tab
-// of the tab area, or selects its tab if it is open.
+// The Files tab shows the session's working directory. As in VS Code, a single
+// click opens a file in the preview tab, which has an italic title and which
+// the next file opened replaces. Double-clicking the file or the preview tab
+// keeps it open as a regular tab. A file already open selects its tab.
 const fileTabs = new Map();
-const fileTree = new FileTree($('files-panel'), {list: files.list, open: openFile});
+let preview = null;
+const fileTree = new FileTree($('files-panel'), {list: files.list, open: openFile,
+  keepOpen: path => keepOpen('file:' + encodeURIComponent(path))});
+
+function keepOpen(id) {
+  if (preview !== id) return;
+  preview = null;
+  renderTabs();
+}
 
 async function openFile(path) {
   const theme = await seti();
@@ -296,6 +309,8 @@ async function openFile(path) {
     element.className = 'file-view';
     fileTabs.set(id, {path, name, element, icon: fileIcon(theme, name)});
     showFile(path, name, element);
+    if (tabLayout.find(preview)) tabLayout.replace(preview, id);
+    preview = id;
   }
   tabLayout.open(id);
   renderTabs();
