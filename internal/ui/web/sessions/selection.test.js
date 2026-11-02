@@ -1,7 +1,8 @@
 import {expect, test} from 'bun:test';
+import {unsentKey} from '../agent/drafts.js';
 import {openWorkerTab, rememberScroll} from '../editor/editor.js';
 import {receivedTranscript} from '../transcript/transcripts.js';
-import {openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentKey} from './selection.js';
+import {openUnsent, pageTitle, receivedWorkspaces, selectSession} from './selection.js';
 
 const agent = (id, extra = {}) => ({id, name: id, role: 'work', activity: 'idle', ...extra});
 const session = (id, running, agents = [agent(id + '-lead', {role: 'lead'})]) => ({id, title: 'Title ' + id, running, unseen: false, agents});

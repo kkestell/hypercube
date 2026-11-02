@@ -1,20 +1,12 @@
 import {afterEach, expect, test} from 'bun:test';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
-import {Composer, submitsOnKey} from './composer.jsx';
+import {Composer} from './composer.jsx';
 
 afterEach(unmountAll);
 
 const agent = {id: 'a', name: 'lead', role: 'lead', activity: 'idle', harness: 'claude', model: 'opus', effort: 'high'};
 const store = () => createStore({drafts: {}, unsent: null, session: null});
-
-test('submitsOnKey sends on Enter alone', () => {
-  expect(submitsOnKey({key: 'Enter'})).toBe(true);
-  expect(submitsOnKey({key: 'Enter', shiftKey: true})).toBe(false);
-  expect(submitsOnKey({key: 'Enter', isComposing: true})).toBe(false);
-  expect(submitsOnKey({key: 'Enter', metaKey: true})).toBe(false);
-  expect(submitsOnKey({key: 'a'})).toBe(false);
-});
 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer agent={agent} />);

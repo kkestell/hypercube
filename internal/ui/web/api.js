@@ -3,10 +3,21 @@ import {showError} from './notifications/errors.js';
 
 const url = (path, params) => path + '?' + new URLSearchParams(params);
 
+// attempt fetches, or returns null after showing why the request failed.
+async function attempt(store, input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    showError(store, error.message);
+    return null;
+  }
+}
+
 // post sends an action with an optional body and returns the response text, or
-// null after showing the user why the server refused.
+// null after showing the user why it failed or the server refused.
 export async function post(store, path, params, body) {
-  const response = await fetch(url(path, params), {method: 'POST', body});
+  const response = await attempt(store, url(path, params), {method: 'POST', body});
+  if (!response) return null;
   const text = await response.text();
   if (!response.ok) {
     showError(store, text);
@@ -17,7 +28,8 @@ export async function post(store, path, params, body) {
 
 // fetchLeads returns the lead profiles, or null after showing why it failed.
 export async function fetchLeads(store) {
-  const response = await fetch('leads');
+  const response = await attempt(store, 'leads');
+  if (!response) return null;
   if (!response.ok) {
     showError(store, await response.text());
     return null;

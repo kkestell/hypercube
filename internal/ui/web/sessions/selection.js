@@ -3,10 +3,8 @@
 // which gives it a fresh session state for its transcripts, tabs, and files.
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
+import {unsentKey} from '../agent/drafts.js';
 import {closeTab} from '../editor/tab-layout.js';
-
-// The unsent session's lead is drawn under this ID and keeps its draft here.
-export const unsentKey = 'new';
 
 export const allSessions = state => state.workspaces.flatMap(w => w.sessions);
 
@@ -122,14 +120,3 @@ export function openUnsent(state, workspace, profile) {
 }
 
 export const unsentSending = (state, sending) => state.unsent ? {...state, unsent: {...state.unsent, sending}} : state;
-
-// unsentCreated gives the created session's lead whatever the user typed in
-// the unsent session while its first prompt was sent.
-export function unsentCreated(state, lead) {
-  const draft = state.drafts[unsentKey];
-  if (!draft) return state;
-  const drafts = omit(state.drafts, [unsentKey]);
-  // Pending reads belong to the discarded unsent session and will be ignored.
-  if (draft.text || draft.images.length) drafts[lead] = {...draft, reading: 0};
-  return {...state, drafts};
-}

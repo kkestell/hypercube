@@ -170,3 +170,17 @@ for (const cancel of [
     expect(root.querySelector('vscode-context-menu')).toBeNull();
   });
 }
+
+test('choosing a lead profile from the picker opens the unsent session', async () => {
+  const {store, root, fetches} = setup([session('a')]);
+  const profiles = [{name: 'claude-lead', description: 'Claude', harness: 'claude', model: 'opus', effort: 'high'}, {name: 'codex-lead', description: 'Codex', harness: 'codex'}];
+  fetches.mockImplementation(async () => Response.json(profiles));
+  await act(async () => {
+    root.querySelector('[title="New Session"]').click();
+    await new Promise(resolve => setTimeout(resolve));
+  });
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '1'}})));
+  expect(store.get().unsent).toMatchObject({workspace: 'w', lead: 'codex-lead', harness: 'codex', sending: false});
+  expect(store.get().selected).toBeNull();
+  expect(root.querySelector('vscode-context-menu')).toBeNull();
+});

@@ -1,8 +1,12 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {listFiles, readFile} from './api.js';
+import {fetchLeads, listFiles, post, readFile} from './api.js';
+import {createStore} from './store.js';
 
 let fetchMock;
 afterEach(() => fetchMock?.mockRestore());
+
+const store = () => createStore({errors: []});
+const errors = s => s.get().errors.map(error => error.message);
 
 const query = call => new URL(call[0], 'http://localhost/').searchParams;
 
@@ -43,4 +47,31 @@ test('readFile maps unchanged, deleted, large, and binary files', async () => {
 test('readFile reports other failures with their text', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('permission denied', {status: 409}));
   expect(await readFile('s', 'a.go')).toEqual({error: 'permission denied'});
+});
+
+test('post returns the response text', async () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'));
+  expect(await post(store(), 'agent', {action: 'input'}, 'body')).toBe('ok');
+  expect(fetchMock.mock.calls[0][1]).toEqual({method: 'POST', body: 'body'});
+});
+
+test('post shows a refusal and returns null', async () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('busy', {status: 409}));
+  const s = store();
+  expect(await post(s, 'agent', {})).toBeNull();
+  expect(errors(s)).toEqual(['busy']);
+});
+
+test('post shows a network failure and returns null', async () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
+  const s = store();
+  expect(await post(s, 'agent', {})).toBeNull();
+  expect(errors(s)).toEqual(['Load failed']);
+});
+
+test('fetchLeads shows a network failure and returns null', async () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
+  const s = store();
+  expect(await fetchLeads(s)).toBeNull();
+  expect(errors(s)).toEqual(['Load failed']);
 });

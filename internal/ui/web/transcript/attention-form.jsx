@@ -6,7 +6,7 @@
 import {useState} from 'preact/hooks';
 import {answerRequest} from '../api.js';
 import {draftOf, typed} from '../agent/drafts.js';
-import {submitsOnKey} from '../agent/composer.jsx';
+import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import './attention-form.css';
 

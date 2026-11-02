@@ -18,7 +18,7 @@ function setup(change = state => openWorkerTab(openWorkerTab(state, 'w1'), 'w2')
   lead.dataset.agent = 'lead';
   lead.append(document.createElement('textarea'));
   document.body.append(lead);
-  const store = createStore(change({drafts: {}, unsent: null, session: emptySession('s')}));
+  const store = createStore(change({workspaces: [], drafts: {}, unsent: null, session: emptySession('s')}));
   const root = mount(store, <EditorArea agents={agents} />);
   const tabs = () => [...root.querySelectorAll('[role="tab"]')];
   return {store, root, tabs, leadField: lead.firstChild};

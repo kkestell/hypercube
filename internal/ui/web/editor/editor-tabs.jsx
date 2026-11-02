@@ -3,6 +3,7 @@
 // pane's edge; double-clicking a preview tab keeps it open. A preview tab's
 // label is italic and a deleted file's is struck through.
 import {useRef} from 'preact/hooks';
+import {focusComposer} from '../agent/focus-composer.js';
 import {FileIcon} from '../files/file-icon.jsx';
 import {AgentStatus} from '../shared/agent-status.jsx';
 import {useStore} from '../store.js';
@@ -29,7 +30,8 @@ export function EditorTabs({pane, entries, lead}) {
     const area = strip.current.closest('.editor-area');
     requestAnimationFrame(() => {
       const tab = (strip.current ?? area).querySelector('.editor-tabs-tab-active > .editor-tabs-select');
-      (tab ?? document.querySelector(`.composer[data-agent="${lead}"] textarea`))?.focus();
+      if (tab) tab.focus();
+      else focusComposer(lead);
     });
   };
 

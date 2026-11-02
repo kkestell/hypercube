@@ -1,14 +1,10 @@
 // VS Code's modal confirmation dialog: a warning, the question, a detail line,
-// and Cancel beside the primary button, in macOS order. The page asks one
-// question at a time, held in state.confirmation. The primary button takes the
+// and Cancel beside the primary button, in macOS order. askToConfirm holds the
+// question in state.confirmation. The primary button takes the
 // focus, so Enter confirms, and Escape cancels.
 import {useEffect, useRef} from 'preact/hooks';
 import {useStore} from '../store.js';
 import './confirm-dialog.css';
-
-// askToConfirm shows the dialog for {message, detail, primary, accept}, and
-// runs accept if the user confirms.
-export const askToConfirm = (store, confirmation) => store.update(state => ({...state, confirmation}));
 
 export function ConfirmDialog() {
   const [state, store] = useStore();

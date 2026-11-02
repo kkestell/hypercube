@@ -1,4 +1,4 @@
-// The center of the page: the tesseract while nothing is shown, otherwise the
+// The center of the page: the tesseract while no lead is shown, otherwise the
 // lead in its own column beside the editor area, which shows while any tab is
 // open. While the page is visible, a shown session's unseen reply is seen.
 import {useEffect, useState} from 'preact/hooks';
@@ -21,8 +21,7 @@ export function SessionView() {
     if (session?.unseen && state.visible) markSeen(store, session.id);
   }, [session?.id, session?.unseen, state.visible]);
 
-  if (!session && !state.unsent) return <Tesseract />;
-  if (!lead) return null;
+  if (!lead) return <Tesseract />;
   return (
     <Split size={leadShare} minStart="15%" minEnd="15%" collapsed={state.session?.tabs.root ? null : 'end'} onResize={setLeadShare}>
       <AgentPane agent={lead} />

@@ -2,11 +2,11 @@
 // agent ID for its composer, unsentKey for the unsent session's lead, or
 // '<agent>/<request>' for a typed answer to an attention request. Drafts
 // outlive their views, so text survives session switches and closed tabs.
-import {post} from '../api.js';
 import {imageBytes, imageTypes, maxImageBytes, readImage} from '../images.js';
 import {showError} from '../notifications/errors.js';
-import {createSession} from '../sessions/session-actions.js';
-import {unsentKey} from '../sessions/selection.js';
+
+// The unsent session's lead is drawn under this ID and keeps its draft here.
+export const unsentKey = 'new';
 
 const emptyDraft = {text: '', images: [], reading: 0};
 
@@ -26,12 +26,15 @@ function withDraft(state, key, change) {
   return {...state, drafts};
 }
 
+// cleared empties a draft, as after its prompt is sent.
+export const cleared = (state, key) => withDraft(state, key, () => emptyDraft);
+
 export const typed = (state, key, text) => withDraft(state, key, draft => ({...draft, text}));
 
 export const removeImage = (state, key, image) => withDraft(state, key, draft => ({...draft, images: draft.images.filter(i => i !== image)}));
 
 // restored puts a refused prompt back, unless the user has started another.
-const restored = (state, key, prompt) => withDraft(state, key, draft => ({
+export const restored = (state, key, prompt) => withDraft(state, key, draft => ({
   ...draft,
   text: draft.text || prompt.text,
   images: draft.images.length ? draft.images : prompt.images,
@@ -62,15 +65,10 @@ export async function attachImages(store, key, files) {
   })));
 }
 
-// sendPrompt sends an agent's draft. The unsent session's first prompt
-// creates the session.
-export async function sendPrompt(store, agent) {
-  const state = store.get();
-  if (!canSend(state, agent)) return;
-  const {text, images} = draftOf(state, agent.id);
-  store.update(next => withDraft(next, agent.id, () => emptyDraft));
-  const accepted = agent.id === unsentKey
-    ? await createSession(store, {text, images})
-    : await post(store, 'agent', {action: 'input', id: agent.id}, JSON.stringify({text, images})) !== null;
-  if (!accepted) store.update(next => restored(next, agent.id, {text, images}));
+// unsentCreated gives the created session's lead whatever the user typed in
+// the unsent session while its first prompt was sent. Pending image reads
+// belong to the discarded unsent session and will be ignored.
+export function unsentCreated(state, lead) {
+  const {text, images} = draftOf(state, unsentKey);
+  return withDraft(cleared(state, unsentKey), lead, () => ({text, images, reading: 0}));
 }
