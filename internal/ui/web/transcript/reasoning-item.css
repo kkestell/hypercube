@@ -1,0 +1,37 @@
+.reasoning-item {
+  color: var(--vscode-descriptionForeground);
+}
+
+.reasoning-item-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--size-space);
+  font-style: italic;
+}
+
+.reasoning-item-toggle:hover {
+  color: var(--vscode-foreground);
+}
+
+.reasoning-item-toggle[aria-expanded="true"] .reasoning-item-chevron {
+  transform: rotate(90deg);
+}
+
+.reasoning-item-text {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The last six lines stay in view as the text grows. */
+.reasoning-item-preview {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: 9em;
+  overflow: hidden;
+}
+
+.reasoning-item-preview > div {
+  flex-shrink: 0;
+}

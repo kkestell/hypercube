@@ -1,0 +1,60 @@
+.notification-card {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 2);
+  padding: calc(var(--size-space) * 2.5) calc(var(--size-space) * 2);
+  border: 1px solid var(--vscode-notificationToast-border);
+  border-radius: var(--size-radius);
+  background: var(--vscode-notifications-background);
+  color: var(--vscode-notifications-foreground);
+  box-shadow: 0 0 calc(var(--size-space) * 2) var(--vscode-widget-shadow);
+}
+
+.notification-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--size-space) * 2);
+}
+
+.notification-card-info {
+  flex-shrink: 0;
+  color: var(--vscode-notificationsInfoIcon-foreground);
+}
+
+.notification-card-warning {
+  flex-shrink: 0;
+  color: var(--vscode-notificationsWarningIcon-foreground);
+}
+
+.notification-card-details {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 2);
+  min-width: 0;
+}
+
+.notification-card-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.notification-card-reply {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+
+.notification-card-actions {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.notification-card-source {
+  padding-left: calc(var(--size-icon) + var(--size-space) * 2);
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

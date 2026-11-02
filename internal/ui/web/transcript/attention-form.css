@@ -1,0 +1,11 @@
+.attention-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+}
+
+.attention-form-text {
+  flex: 1;
+  min-width: calc(var(--size-space) * 40);
+}

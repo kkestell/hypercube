@@ -8,12 +8,12 @@ import (
 	"sync"
 )
 
-//go:embed static
+//go:embed dist
 var embedded embed.FS
 
 // assets returns the browser files, rooted at the page.
 func assets() fs.FS {
-	files, _ := fs.Sub(embedded, "static")
+	files, _ := fs.Sub(embedded, "dist")
 	return files
 }
 

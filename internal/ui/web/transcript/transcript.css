@@ -1,0 +1,12 @@
+.transcript {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.transcript-list {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 3);
+  padding: calc(var(--size-space) * 3);
+}

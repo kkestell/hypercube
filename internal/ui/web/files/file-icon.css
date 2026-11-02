@@ -1,0 +1,15 @@
+@font-face {
+  font-family: seti;
+  src: url("./seti/seti.woff") format("woff");
+}
+
+.file-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--size-icon);
+  font-family: seti;
+  font-size: calc(var(--size-icon) * 1.2);
+  line-height: 1;
+  text-align: center;
+  -webkit-font-smoothing: antialiased;
+}

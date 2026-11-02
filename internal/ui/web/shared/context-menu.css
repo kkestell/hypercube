@@ -1,0 +1,5 @@
+.context-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: calc(var(--size-space) * 40);
+}

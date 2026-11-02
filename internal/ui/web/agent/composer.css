@@ -1,0 +1,93 @@
+.composer {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 2);
+  margin: calc(var(--size-space) * 3);
+  padding: calc(var(--size-space) * 2);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: calc(var(--size-radius) * 2);
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+}
+
+.composer:focus-within {
+  border-color: var(--vscode-focusBorder);
+}
+
+.composer-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--size-space) * 2);
+}
+
+.composer-image {
+  position: relative;
+}
+
+.composer-image img {
+  display: block;
+  width: calc(var(--size-space) * 14);
+  height: calc(var(--size-space) * 14);
+  object-fit: cover;
+  border-radius: var(--size-radius);
+}
+
+.composer-image-remove {
+  position: absolute;
+  top: calc(var(--size-space) * -1);
+  right: calc(var(--size-space) * -1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--size-icon);
+  height: var(--size-icon);
+  border-radius: 50%;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+
+.composer-image-remove:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.composer-text {
+  min-height: calc(var(--size-space) * 7);
+  max-height: calc(var(--size-space) * 40);
+  padding: var(--size-space) calc(var(--size-space) * 2);
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  field-sizing: content;
+}
+
+.composer-text::placeholder {
+  color: var(--vscode-input-placeholderForeground);
+}
+
+.composer-bar {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+}
+
+.composer-details {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-space) calc(var(--size-space) * 4);
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: calc(var(--vscode-font-size) - 2px);
+}
+
+.composer-config {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

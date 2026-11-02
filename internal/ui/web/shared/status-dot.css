@@ -1,0 +1,19 @@
+.status-dot {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--size-dot);
+  height: var(--size-dot);
+  border-radius: 50%;
+}
+
+.status-dot-waiting {
+  background: var(--vscode-editorWarning-foreground);
+}
+
+.status-dot-exited {
+  background: var(--vscode-errorForeground);
+}
+
+.status-dot-unseen {
+  background: var(--vscode-notificationsInfoIcon-foreground);
+}

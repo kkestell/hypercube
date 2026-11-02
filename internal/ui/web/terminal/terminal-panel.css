@@ -1,0 +1,5 @@
+.terminal-panel {
+  height: 100%;
+  padding: var(--size-space) 0 0 calc(var(--size-space) * 2);
+  background: var(--vscode-terminal-background, var(--vscode-panel-background));
+}

@@ -1,0 +1,11 @@
+.transcript-text > .transcript-images {
+  margin-top: calc(var(--size-space) * 2);
+}
+
+.transcript-error {
+  padding: calc(var(--size-space) * 1.5) calc(var(--size-space) * 2);
+  border: 1px solid var(--vscode-inputValidation-errorBorder);
+  background: var(--vscode-inputValidation-errorBackground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
