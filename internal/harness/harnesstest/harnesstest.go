@@ -20,6 +20,7 @@
 //	!fail      an error item
 //	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
+//	!linger    take half a second to reply to the shutdown that follows
 //	!crash     reply, then exit
 //	!malformed reply, then write a bad line
 //	!stray     reply, then write a reply nobody asked for
@@ -147,6 +148,8 @@ type standIn struct {
 	turns int
 	// turn names the items of the input being handled.
 	turn string
+	// linger delays the reply to shutdown.
+	linger bool
 }
 
 func serve(in io.Reader, out io.Writer) {
@@ -169,6 +172,9 @@ func serve(in io.Reader, out io.Writer) {
 			p.answer(cmd)
 		case harness.CmdShutdown:
 			p.log(Entry{Kind: "shutdown"})
+			if p.linger {
+				time.Sleep(500 * time.Millisecond)
+			}
 			p.reply(cmd.ID, "")
 			return
 		}
@@ -258,6 +264,9 @@ func (p *standIn) input(cmd harness.Command) {
 		p.state(harness.Idle, harness.Item{ID: p.turn, Kind: harness.KindText, Images: []harness.Image{{MIMEType: "image/png", Data: "iVBORw0KGgo="}}, Done: true})
 	case has("child"):
 		p.child(cmd.ID)
+	case has("linger"):
+		p.linger = true
+		p.reply(cmd.ID, "")
 	case has("crash"):
 		p.reply(cmd.ID, "")
 		os.Exit(exitCrash)

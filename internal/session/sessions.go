@@ -108,6 +108,10 @@ func (r *Runtime) start(id string, fresh bool) error {
 		r.mu.Unlock()
 		return errClosing
 	}
+	if r.deleting[id] {
+		r.mu.Unlock()
+		return errDeleting
+	}
 	if r.sessionLive(id) {
 		r.mu.Unlock()
 		return nil
@@ -240,7 +244,18 @@ func (r *Runtime) Delete(id string) error {
 	if len(problems) > 0 {
 		return fmt.Errorf("not deleting: problem worktrees:\n  %s", strings.Join(problems, "\n  "))
 	}
-	stopClients(r.detach(id, false))
+	// Waiting for the plugins releases mu, so the mark keeps Start from
+	// resuming the session meanwhile.
+	r.mu.Lock()
+	r.deleting[id] = true
+	lives := r.detachLocked(func(l *live) bool { return l.session == id }, false)
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.deleting, id)
+		r.mu.Unlock()
+	}()
+	stopClients(lives)
 	// A worker can change its worktree before the session ends. Such a worker
 	// stays, so that delete can run again after it is fixed.
 	for _, a := range workers {
@@ -350,15 +365,9 @@ func (r *Runtime) Shell(session string, cols, rows int) (*terminal.Shell, error)
 	return r.Terminals.Open(session, dir, cols, rows)
 }
 
-// detach removes the session's running agents from the runtime, saving their
-// unfinished items, and returns them for stopClients. With ended set it also
-// marks the agents ended.
-func (r *Runtime) detach(session string, ended bool) []*live {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.detachLocked(func(l *live) bool { return l.session == session }, ended)
-}
-
+// detachLocked removes the matching running agents from the runtime, saving
+// their unfinished items, and returns them for stopClients. With ended set it
+// also marks the agents ended. The caller holds mu.
 func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
 	var lives []*live
 	for id, l := range r.live {

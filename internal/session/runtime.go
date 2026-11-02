@@ -31,8 +31,9 @@ const (
 )
 
 var (
-	errStopped = errors.New("the agent was stopped")
-	errClosing = errors.New("hypercube is shutting down")
+	errStopped  = errors.New("the agent was stopped")
+	errClosing  = errors.New("hypercube is shutting down")
+	errDeleting = errors.New("the session is being deleted")
 )
 
 // Runtime is the app's service for running agents.
@@ -61,13 +62,15 @@ type Runtime struct {
 	gen  int64
 	// closing is set by Shutdown, after which no agent launches.
 	closing bool
-	feed    feed
+	// deleting holds the sessions Delete is ending, which cannot start.
+	deleting map[string]bool
+	feed     feed
 }
 
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{db: db, url: url, live: map[string]*live{}, viewers: map[string]int{},
-		seqs: map[string]int64{}, gen: time.Now().UnixMilli()}
+		deleting: map[string]bool{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli()}
 }
 
 func logf(format string, args ...any) {

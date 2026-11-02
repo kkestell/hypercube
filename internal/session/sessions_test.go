@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -302,4 +303,29 @@ func TestDeleteMissingCheckout(t *testing.T) {
 		}
 		return err
 	})
+}
+
+// A session cannot start while Delete waits for its plugins to end, so no
+// plugin of it outlives the delete.
+func TestDeletingSessionCannotStart(t *testing.T) {
+	f := newFixture(t)
+	s, lead := f.session()
+	f.input(lead.ID, "!linger")
+	deleted := make(chan error, 1)
+	go func() { deleted <- f.rt.Delete(s.ID) }()
+	f.until("the lead's shutdown", func() bool { return len(f.log(lead.ID, "shutdown")) == 1 })
+	if err := f.rt.Start(s.ID); !errors.Is(err, errDeleting) {
+		t.Fatalf("start during delete: %v", err)
+	}
+	if err := <-deleted; err != nil {
+		t.Fatal(err)
+	}
+	if n := len(f.log(lead.ID, "start")); n != 1 {
+		t.Fatalf("the lead started %d times", n)
+	}
+	f.rt.mu.Lock()
+	defer f.rt.mu.Unlock()
+	if len(f.rt.live) != 0 {
+		t.Fatal("an agent of the deleted session is running")
+	}
 }
