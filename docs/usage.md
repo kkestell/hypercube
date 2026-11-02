@@ -77,11 +77,12 @@ files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
 a remove button, and can be sent without text. Images from the agent or its
 tools appear in the transcript. The stop button next to the send button appears
 while the agent works and interrupts its current turn; the turn stays in the
-chat. Consecutive tool calls share one expandable item. It shows the latest
-call until the next non-tool item arrives, then shows the elapsed time as
-"Worked for 32s". Expand it to see each call's input, output, and native
-subagent calls. Failures are marked on the individual calls. Thinking shows
-its latest six lines by default; click Thinking to expand the full text or
+chat. Tool calls share one expandable item across messages to the agent.
+It shows "Working…" with the latest call on an indented second line until
+the next item that is neither a tool call nor a message to the agent, then
+shows the elapsed time as "Worked for 32s". Expand it to see each call's input,
+output, and native subagent calls. Failures are marked on the individual calls.
+Thinking shows its latest six lines by default; click Thinking to expand the full text or
 return to the preview. Messages between sessions show their sender or recipient
 and first line; expand one to read the full message. When an agent asks you a question or for approval, its
 chat shows the request with its choices and a field for typed text; answer

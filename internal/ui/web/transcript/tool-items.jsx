@@ -1,7 +1,7 @@
-// Tool runs and tool calls, as the chat's inline disclosures. A run shows its
-// latest call while it lasts, then how long it worked; expanding it lists its
-// calls. A call shows its input, output, and the items nested under it, with
-// its images below.
+// Tool runs and tool calls, as the chat's inline disclosures. A run shows
+// Working… and its latest call on separate lines while open, then how long it
+// worked; expanding it lists its calls. Each call shows its own spinner,
+// input, output, and nested items, with its images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
 import {MessageItem} from './message-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
@@ -29,10 +29,9 @@ function Title({item}) {
 
 export function ToolRun({run, session, expanded, setOpen}) {
   const latest = run.calls[run.calls.length - 1].item;
-  const summary = <>
-    {run.running && <Spinner />}
-    {run.closed ? <span class="tool-items-title">{run.duration}</span> : <Title item={latest} />}
-  </>;
+  const summary = run.closed
+    ? <span class="tool-items-title">{run.duration}</span>
+    : <span class="tool-items-working"><span>Working…</span><Title item={latest} /></span>;
   return (
     <Disclosure open={!!expanded[run.key]} onToggle={open => setOpen(run.key, open)} summary={summary}>
       <div class="tool-items-calls">

@@ -21,6 +21,16 @@
   color: var(--vscode-foreground);
 }
 
+.tool-items-summary:has(> .tool-items-working) {
+  align-items: flex-start;
+}
+
+.tool-items-working {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
 .tool-items-chevron {
   flex-shrink: 0;
 }
