@@ -1,7 +1,7 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {attachImages, canSend, draftOf, typed, unsentKey} from '../agent/drafts.js';
 import {createStore} from '../store.js';
-import {openUnsent} from './selection.js';
+import {openUnsent, unsentProfile} from './selection.js';
 import {chooseSession, sendPrompt} from './session-actions.js';
 
 const session = {id: 's', activity: 'idle'};
@@ -37,9 +37,18 @@ test('a refused prompt returns unless another was started', async () => {
   expect(draftOf(s.get(), 's').text).toBe('second');
 });
 
+test('the unsent session cannot send until it has a profile', () => {
+  const s = store();
+  s.update(state => typed(openUnsent(state, 'w'), unsentKey, 'hello'));
+  const unsent = {id: unsentKey, activity: 'idle'};
+  expect(canSend(s.get(), unsent)).toBe(false);
+  s.update(state => unsentProfile(state, {name: 'claude-lead'}));
+  expect(canSend(s.get(), unsent)).toBe(true);
+});
+
 test('text typed while the unsent session sends moves to the created session', async () => {
   const s = store();
-  s.update(state => openUnsent(state, 'w', {name: 'claude-lead', harness: 'claude'}));
+  s.update(state => unsentProfile(openUnsent(state, 'w'), {name: 'claude-lead', harness: 'claude'}));
   s.update(state => typed(state, unsentKey, 'create it'));
   let release;
   const fetches = spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
@@ -58,11 +67,11 @@ for (const accepted of [true, false]) {
   test(`a ${accepted ? 'successful' : 'refused'} creation leaves a replacement unsent session alone`, async () => {
     const s = store();
     const profile = {name: 'claude-lead', harness: 'claude'};
-    s.update(state => typed(openUnsent(state, 'w', profile), unsentKey, 'first'));
+    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), profile), unsentKey, 'first'));
     let release;
     spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = resolve; }));
     const sending = sendPrompt(s, {id: unsentKey, activity: 'idle'});
-    s.update(state => typed(openUnsent(state, 'w', profile), unsentKey, 'second'));
+    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), profile), unsentKey, 'second'));
     const replacement = s.get().unsent;
     release(accepted ? Response.json({session: 'n'}) : new Response('refused', {status: 409}));
     await sending;
@@ -73,7 +82,7 @@ for (const accepted of [true, false]) {
 
   test(`image reads do not strand a composer when creation ${accepted ? 'succeeds' : 'is refused'}`, async () => {
     const s = store();
-    s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'first'));
+    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), {name: 'claude-lead'}), unsentKey, 'first'));
     let release, reader;
     spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = resolve; }));
     spy(FileReader.prototype, 'readAsDataURL').mockImplementation(function() { reader = this; });
@@ -108,7 +117,7 @@ for (const [phase, response] of [
     expect(s.get().errors[0].message).toContain('Load failed');
     expect(draftOf(s.get(), 's').text).toBe('hello');
 
-    s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'create it'));
+    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), {name: 'claude-lead'}), unsentKey, 'create it'));
     await sendPrompt(s, {id: unsentKey, activity: 'idle'});
     expect(s.get().errors.length).toBe(2);
     expect(s.get().unsent.sending).toBe(false);

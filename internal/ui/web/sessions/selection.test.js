@@ -1,7 +1,7 @@
 import {expect, test} from 'bun:test';
 import {unsentKey} from '../agent/drafts.js';
 import {receivedTranscript} from '../transcript/transcripts.js';
-import {openUnsent, pageTitle, receivedWorkspaces, selectSession} from './selection.js';
+import {openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentProfile} from './selection.js';
 
 const session = (id, running, extra = {}) => ({id, title: 'Title ' + id, running, unseen: false, children: [], ...extra});
 const workspaces = (...sessions) => [{id: 'w', name: 'repo', path: '/repo', sessions}];
@@ -41,11 +41,12 @@ test('a removed selection moves to a running session', () => {
 
 test('the unsent session is discarded with its workspace', () => {
   let state = receivedWorkspaces(initial(), workspaces(session('a', true)));
-  state = openUnsent(state, 'w', {name: 'claude-lead', harness: 'claude', model: 'opus', effort: 'high'});
+  state = openUnsent(state, 'w');
+  expect(state.unsent.profile).toBeNull();
+  state = unsentProfile(state, {name: 'claude-lead'});
   state = {...state, drafts: {[unsentKey]: {text: 'hi', images: [], reading: 0}}};
   expect(state.selected).toBeNull();
   expect(state.session).toBeNull();
-  expect(state.unsent.harness).toBe('claude');
   expect(state.unsent.profile).toBe('claude-lead');
   state = receivedWorkspaces(state, []);
   expect(state.unsent).toBeNull();

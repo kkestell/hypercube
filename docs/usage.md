@@ -35,8 +35,9 @@ sessions and the selected one; Show more lists five stopped sessions more.
 Children appear under their parent in creation order. Running children are always visible;
 Show Stopped Sessions in the parent's menu lists stopped children too, and
 Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
-the sidebar to add a workspace. Click `+` beside a workspace's name to choose
-a profile for a new session. Sending its first prompt creates the session;
+the sidebar to add a workspace. Click `+` beside a workspace's name to open a
+new session. Its composer chooses the profile until the first prompt is sent,
+and sending that prompt creates the session;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
 right-clicking a workspace, offers Delete Workspace.
 

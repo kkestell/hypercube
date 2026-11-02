@@ -1,6 +1,7 @@
 // The box below a transcript for the user's next message: its text, attached
 // images, the attach, stop, and send buttons, and a line with the session's
-// harness, model, effort, and usage. It takes the focus when it mounts.
+// harness, model, effort, and usage. The unsent session chooses its profile
+// there instead. It takes the focus when it mounts.
 import {useEffect, useRef} from 'preact/hooks';
 import {post} from '../api.js';
 import {imageSrc, imageTypes} from '../images.js';
@@ -9,6 +10,7 @@ import {AgentStatus} from '../shared/agent-status.jsx';
 import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.js';
+import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
 import './composer.css';
 
@@ -54,7 +56,9 @@ export function Composer({session}) {
         <vscode-button icon-only secondary icon="attach" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current.click()} />
         <div class="composer-details">
           <AgentStatus session={session} />
-          <span class="composer-config">{[session.harness, session.model, session.effort].filter(Boolean).join(' · ')}</span>
+          {session.id === unsentKey
+            ? <ProfileSelect unsent={state.unsent} />
+            : <span class="composer-config">{[session.harness, session.model, session.effort].filter(Boolean).join(' · ')}</span>}
           <Usage usage={session.usage} />
         </div>
         {session.activity === 'busy' && session.id !== unsentKey && (
