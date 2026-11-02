@@ -172,7 +172,7 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	parent := f.session()
 	child := f.child(parent, "child", "brief")
 	f.until("the child reply", func() bool {
-		return len(f.transcript(child.ID)) == 2 && f.storedSession(child.ID).Activity == store.Idle
+		return len(f.transcript(child.ID)) == 2 && f.idle(child.ID)
 	})
 	if err := f.db.Tx(func(tx *store.Tx) error { return tx.Queue(store.Message{From: parent.ID, To: child.ID, Text: "held"}) }); err != nil {
 		t.Fatal(err)

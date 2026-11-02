@@ -23,7 +23,7 @@ func TestIdleSessionStopsAndResumes(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "hello")
-	f.until("the reply", func() bool { return len(f.transcript(s.ID)) == 4 && f.storedSession(s.ID).Activity == store.Idle })
+	f.until("the reply", func() bool { return len(f.transcript(s.ID)) == 4 && f.idle(s.ID) })
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		return tx.Queue(store.Message{From: "user", To: s.ID, Text: "saved for later"})
 	}); err != nil {

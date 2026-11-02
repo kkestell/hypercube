@@ -166,6 +166,20 @@ func (f *fixture) storedSession(id string) (s store.Session) {
 	return s
 }
 
+// idle reports whether the session's agent is idle and the delivery its idle
+// event started has finished, so a message queued now stays queued. The
+// database is read first: the event saves the idle state and starts the
+// delivery while holding mu, so the check under mu then sees the delivery.
+func (f *fixture) idle(id string) bool {
+	if f.storedSession(id).Activity != store.Idle {
+		return false
+	}
+	f.rt.mu.Lock()
+	defer f.rt.mu.Unlock()
+	l := f.rt.live[id]
+	return l != nil && !l.starting && !l.delivering
+}
+
 func (f *fixture) queued(id string) (m []store.Message) {
 	f.t.Helper()
 	f.read(func(tx *store.Tx) error { var err error; m, err = tx.Queued(id); return err })
