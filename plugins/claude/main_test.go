@@ -154,8 +154,8 @@ func TestStreamedAndFinalTextAppearOnce(t *testing.T) {
 	if streamed != 1 {
 		t.Errorf("text streamed %d times", streamed)
 	}
-	if h.conversation != "98dec42e-cafa-48e3-a4a4-b76fa5c35b3a" || h.events[0].Conversation != "" {
-		t.Errorf("conversation %q, first event %+v", h.conversation, h.events[0])
+	if got := h.events[len(h.events)-1].Conversation; got != "98dec42e-cafa-48e3-a4a4-b76fa5c35b3a" || h.events[0].Conversation != "" {
+		t.Errorf("conversation %q, first event %+v", got, h.events[0])
 	}
 	if got := h.states(); !slices.Equal(got, []string{harness.Working}) {
 		t.Errorf("states %v", got)
@@ -477,8 +477,8 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 	h := newClaude()
 	lines := fixture(t, "text")
 	h.feed("not json", lines[len(lines)-1])
-	if h.conversation == "" {
-		t.Error("the line after it was not read")
+	if len(h.events) != 1 || h.events[0].Conversation != "98dec42e-cafa-48e3-a4a4-b76fa5c35b3a" {
+		t.Errorf("the line after it was not reported: %+v", h.events)
 	}
 }
 

@@ -618,6 +618,22 @@ func TestPromptFailures(t *testing.T) {
 	})
 }
 
+// The serve loop reports a CLI exit. The pending prompt must not add a turn
+// error before the serve loop has cancelled the agent's context.
+func TestExitDuringAPromptIsNotATurnError(t *testing.T) {
+	h := connected(t)
+	h.session = "ses_1"
+	h.startTurn(t)
+	eventually(t, "the prompt", func() bool { return len(h.acp.sent("session/prompt")) == 1 })
+	if err := h.acp.out.(io.Closer).Close(); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, "the end of the turn", func() bool { return slices.Equal(h.states(), []string{harness.Working, harness.Idle}) })
+	if items := h.transcript(); len(items) != 0 {
+		t.Fatalf("%+v", items)
+	}
+}
+
 // A turn that ends finishes what was still streaming or waiting.
 func TestEndOfTurnFinishesOpenItems(t *testing.T) {
 	h := connected(t)

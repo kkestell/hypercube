@@ -363,10 +363,16 @@ func (ag *agent) ended(stopReason string, err error) {
 		delete(ag.open, id)
 	}
 	ev.Items = append(ev.Items, ag.closeRequests()...)
+	stopping := ag.ctx.Err() != nil
+	select {
+	case <-ag.rpc.Done():
+		stopping = true // Serve reports the process's exit reason.
+	default:
+	}
 	// A cancelled turn is the user's own doing.
 	text := ""
 	switch {
-	case ag.ctx.Err() != nil:
+	case stopping:
 		// The agent is stopping.
 	case err != nil:
 		text = err.Error()
