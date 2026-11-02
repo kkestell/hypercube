@@ -261,14 +261,14 @@ func (r *Runtime) failed(l *live, cause error) {
 		if err := r.note(tx, l, harness.KindError, "Could not start the agent: "+cause.Error()); err != nil {
 			return err
 		}
-		return r.markEnded(tx, l.id)
+		return markEnded(tx, l.id)
 	})
 	if err != nil {
 		logf("recording the failed start of %s: %v", l.id, err)
 	}
 }
 
-func (r *Runtime) markEnded(tx *write, id string) error {
+func markEnded(tx *write, id string) error {
 	a, err := tx.Agent(id)
 	if err != nil {
 		return err
@@ -315,15 +315,10 @@ func (r *Runtime) ended(l *live, reason error) {
 		if err := r.note(tx, l, harness.KindError, "The agent ended: "+reason.Error()); err != nil {
 			return err
 		}
-		a, err := tx.Agent(l.id)
-		if err != nil {
+		if err := markEnded(tx, l.id); err != nil {
 			return err
 		}
-		a.Activity, a.Attention = store.Exited, false
-		if err := tx.SaveAgent(a); err != nil {
-			return err
-		}
-		s, err := tx.Session(a.Session)
+		s, err := tx.Session(l.session)
 		relaunch = relaunch && s.Running
 		return err
 	})
@@ -786,7 +781,7 @@ func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
 				}
 			}
 			if ended {
-				if err := r.markEnded(tx, l.id); err != nil {
+				if err := markEnded(tx, l.id); err != nil {
 					return err
 				}
 			}
