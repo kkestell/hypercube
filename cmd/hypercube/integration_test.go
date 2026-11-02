@@ -186,6 +186,13 @@ func (c client) act(values map[string]string) string {
 	if code != http.StatusOK {
 		c.t.Fatalf("session %v: %d %s", values, code, body)
 	}
+	if values["action"] == "new" {
+		var created struct{ Session string }
+		if err := json.Unmarshal([]byte(body), &created); err != nil {
+			c.t.Fatal(err)
+		}
+		return created.Session
+	}
 	return body
 }
 

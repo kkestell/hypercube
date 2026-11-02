@@ -367,7 +367,8 @@ func readInput(w http.ResponseWriter, r *http.Request) (input, bool) {
 }
 
 // sessionAction creates a session in a workspace from its first prompt and
-// returns its ID, or starts, stops, deletes, renames, or marks seen a session.
+// returns the session and lead IDs, or starts, stops, deletes, renames, or marks
+// seen a session.
 func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
@@ -379,9 +380,16 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		created, err := s.rt.Create(q.Get("workspace"), q.Get("lead"), in.Text, in.Images...)
-		if !refused(w, err) {
-			fmt.Fprint(w, created.ID)
+		if refused(w, err) {
+			return
 		}
+		var lead store.Agent
+		err = s.db.Read(func(tx *store.Tx) error { var err error; lead, err = tx.Lead(created.ID); return err })
+		if refused(w, err) {
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"session": created.ID, "lead": lead.ID})
 		return
 	case "start":
 		err = s.rt.Start(id)

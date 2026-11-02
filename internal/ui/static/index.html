@@ -96,6 +96,7 @@ function discardUnsent() {
   unsent = null;
   drafts.delete(unsentId);
   attachments.delete(unsentId);
+  cards.get(unsentId)?.element.remove();
   cards.delete(unsentId);
   views.delete(unsentId);
 }
@@ -512,12 +513,14 @@ function readImage(file) {
 // attachImages adds the image files to the agent's unsent prompt.
 async function attachImages(agent, c, files) {
   if (!files.length) return;
+  const first = agent === unsentId ? unsent : null;
   const images = files.filter(f => imageTypes.includes(f.type));
   if (images.length < files.length) alert('Attach PNG, JPEG, GIF, or WebP images.');
   c.pending = (c.pending ?? 0) + 1;
   c.send.disabled = true;
   try {
     const added = await Promise.all(images.map(readImage));
+    if (first && unsent !== first) return;
     const all = [...(attachments.get(agent) ?? []), ...added];
     if (imageBytes(all) > maxImageBytes) {
       alert('Images can total at most 10 MiB.');
@@ -581,8 +584,14 @@ async function submit(agent, c) {
   if (first) {
     first.sending = false;
     if (unsent !== first) return;
+    if (sent !== null) {
+      const created = JSON.parse(sent);
+      if (drafts.has(agent)) drafts.set(created.lead, drafts.get(agent));
+      if (attachments.has(agent)) attachments.set(created.lead, attachments.get(agent));
+      select(created.session);
+      return;
+    }
     render();
-    if (sent !== null) { select(sent); return; }
   }
   if (sent !== null) return;
   if (!c.field.value) {

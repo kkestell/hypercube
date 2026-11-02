@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -617,15 +616,21 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	id, _ := io.ReadAll(res.Body)
-	res.Body.Close()
+	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK || count() != 2 {
 		t.Fatalf("new session: status %d, %d sessions", res.StatusCode, count())
+	}
+	var created struct{ Session, Lead string }
+	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	if res.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("new session content type = %q", res.Header.Get("Content-Type"))
 	}
 	var title string
 	var lead store.Agent
 	if err := a.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(string(id))
+		s, err := tx.Session(created.Session)
 		title = s.Title
 		if err == nil {
 			lead, err = tx.Lead(s.ID)
@@ -633,6 +638,9 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 		return err
 	}); err != nil {
 		t.Fatal(err)
+	}
+	if created.Lead != lead.ID {
+		t.Fatalf("new session lead = %q, want %q", created.Lead, lead.ID)
 	}
 	items, err := a.rt.Transcript(lead.ID)
 	if err != nil || title != "Fix the parser" || len(items) == 0 || items[0].Text != "Fix the parser\nand the lexer" {
