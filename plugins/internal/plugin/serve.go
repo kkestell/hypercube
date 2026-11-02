@@ -6,31 +6,30 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strings"
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
 
-// Agent is a started harness, as the serve loop drives it. Idle reports the
-// harness as waiting for input once start has replied; Stop ends it.
+// Agent is a started harness, as the serve loop drives it. Stop ends it.
 type Agent struct {
-	Input     func(text string, images []harness.Image) error
-	Interrupt func() error
-	Answer    func(request, choice, text string) error
-	Idle      func()
-	Stop      func()
+	Process      *Process // Serve returns Process.Err() when it ends by itself
+	Conversation string   // reported with the idle event that follows start's reply
+	Input        func(text string, images []harness.Image) error
+	Interrupt    func() error
+	Answer       func(request, choice, text string) error
+	Stop         func()
 }
 
 // Start starts the harness for the `start` command. The harness reports
-// through emit and sends the reason on exited if it ends by itself.
-type Start func(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (Agent, error)
+// through emit.
+type Start func(a harness.StartArgs, emit func(harness.Event)) (Agent, error)
 
 // Serve runs a plugin's `serve` loop: it reads commands from in, drives the
 // harness that start returns, and writes replies and events to out. It returns
 // when in closes, on `shutdown`, or when the harness ends.
 func Serve(in io.Reader, out io.Writer, start Start) error {
-	s := &server{enc: json.NewEncoder(out), exited: make(chan error, 1)}
+	s := &server{enc: json.NewEncoder(out)}
 	defer func() {
 		if s.agent != nil {
 			s.agent.Stop()
@@ -54,6 +53,7 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 			failed <- err
 		}
 	}()
+	var exited <-chan struct{} // the started process's Done
 	for {
 		select {
 		case cmd, ok := <-commands:
@@ -72,10 +72,11 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 			err := s.handle(cmd, start)
 			s.reply(cmd.ID, err)
 			if err == nil && cmd.Command == harness.CmdStart {
-				s.agent.Idle()
+				s.write(harness.Record{Event: &harness.Event{Conversation: s.agent.Conversation, State: harness.Idle}})
+				exited = s.agent.Process.Done()
 			}
-		case err := <-s.exited:
-			return err
+		case <-exited:
+			return s.agent.Process.Err()
 		}
 	}
 }
@@ -84,8 +85,7 @@ type server struct {
 	outMu sync.Mutex
 	enc   *json.Encoder
 
-	agent  *Agent // set by start
-	exited chan error
+	agent *Agent // set by start
 }
 
 func (s *server) write(r harness.Record) {
@@ -110,7 +110,7 @@ func (s *server) handle(cmd harness.Command, start Start) error {
 		if cmd.Start == nil {
 			return errors.New("start without arguments")
 		}
-		a, err := start(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) }, s.exited)
+		a, err := start(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) })
 		if err != nil {
 			return err
 		}
@@ -129,27 +129,4 @@ func (s *server) handle(cmd harness.Command, start Start) error {
 		return s.agent.Answer(cmd.Request, cmd.Choice, cmd.Text)
 	}
 	return fmt.Errorf("unknown command %q", cmd.Command)
-}
-
-// Tail keeps the end of a harness's diagnostics for error messages.
-type Tail struct {
-	mu  sync.Mutex
-	buf []byte
-}
-
-func (t *Tail) Write(p []byte) (int, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.buf = append(t.buf, p...)
-	if len(t.buf) > 2048 {
-		t.buf = t.buf[len(t.buf)-2048:]
-	}
-	return len(p), nil
-}
-
-// Last returns the kept diagnostics.
-func (t *Tail) Last() string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return strings.TrimSpace(string(t.buf))
 }

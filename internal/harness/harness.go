@@ -173,11 +173,15 @@ func (c *Client) Do(ctx context.Context, cmd Command) error {
 		c.writing.Unlock()
 	}
 	if err != nil {
-		// The write failed because the plugin ended; its reason is the cause.
+		c.mu.Lock()
+		delete(c.pending, cmd.ID)
+		c.mu.Unlock()
+		// A write fails when the plugin has ended; if the reader has seen
+		// that, its reason is the better explanation.
 		select {
 		case <-c.done:
 			return c.exitErr()
-		case <-time.After(time.Second):
+		default:
 			return err
 		}
 	}

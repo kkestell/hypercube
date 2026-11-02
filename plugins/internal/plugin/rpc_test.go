@@ -22,7 +22,8 @@ func connect(t *testing.T, handle func(Message)) (*RPC, *peer) {
 	t.Helper()
 	clientIn, peerOut := io.Pipe()
 	peerIn, clientOut := io.Pipe()
-	c := NewRPC(clientIn, clientOut, handle)
+	c := NewRPC(clientOut, handle)
+	go func() { c.End(ReadLines(clientIn, c.Line)) }()
 	t.Cleanup(func() { peerOut.Close(); peerIn.Close() })
 	return c, &peer{in: bufio.NewReader(peerIn), out: peerOut}
 }
@@ -180,4 +181,20 @@ func TestCallEnds(t *testing.T) {
 			t.Fatal("call on a closed connection succeeded")
 		}
 	})
+}
+
+// A response on the last line of the output, without a newline, still reaches
+// its call.
+func TestFinalResponseWithoutNewline(t *testing.T) {
+	c, p := connect(t, func(Message) {})
+	done := make(chan error, 1)
+	go func() { _, err := c.Call(context.Background(), "x", nil); done <- err }()
+	p.read(t)
+	if _, err := io.WriteString(p.out, `{"id":1,"result":{}}`); err != nil {
+		t.Fatal(err)
+	}
+	p.out.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
 }

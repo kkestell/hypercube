@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -274,8 +273,7 @@ func (ag *agent) endTurn(ev *harness.Event, id, status, message string) {
 }
 
 func (ag *agent) fail(ev *harness.Event, text string) {
-	ag.errors++
-	ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: text, Done: true})
+	ev.Items = append(ev.Items, ag.errs.Item(text))
 }
 
 // stream extends a message or reasoning item with the next piece of its text.

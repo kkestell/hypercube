@@ -1,8 +1,6 @@
 package plugin
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,15 +29,17 @@ type RPCError struct {
 func (e *RPCError) Error() string { return fmt.Sprintf("%s (code %d)", e.Message, e.Code) }
 
 // RPC is a JSON-RPC 2.0 connection over newline-delimited JSON, as a harness
-// speaks on its stdin and stdout.
+// speaks on its stdin and stdout. Its owner feeds it the lines it reads with
+// Line and ends it with End.
 type RPC struct {
-	w     io.Writer
-	wmu   sync.Mutex
-	done  chan struct{}
-	err   error // why the connection ended; set before done is closed
-	mu    sync.Mutex
-	next  int64
-	calls map[int64]chan response
+	w      io.Writer
+	handle func(Message)
+	wmu    sync.Mutex
+	done   chan struct{}
+	err    error // why the connection ended; set before done is closed
+	mu     sync.Mutex
+	next   int64
+	calls  map[int64]chan response
 }
 
 type response struct {
@@ -47,37 +47,16 @@ type response struct {
 	err    *RPCError
 }
 
-// NewRPC reads messages from r and writes to w. It calls handle for each
-// request and notification, in order, on the reading goroutine: handle may
-// write but must not wait for a response. A line that is not JSON is
-// reported on stderr and skipped. The connection ends when r does.
-func NewRPC(r io.Reader, w io.Writer, handle func(Message)) *RPC {
-	c := &RPC{w: w, done: make(chan struct{}), calls: map[int64]chan response{}}
-	go c.read(r, handle)
-	return c
+// NewRPC writes to w. Line calls handle for each request and notification:
+// handle may write but must not wait for a response.
+func NewRPC(w io.Writer, handle func(Message)) *RPC {
+	return &RPC{w: w, handle: handle, done: make(chan struct{}), calls: map[int64]chan response{}}
 }
 
-func (c *RPC) read(r io.Reader, handle func(Message)) {
-	reader := bufio.NewReaderSize(r, 1<<20)
-	var err error
-	for {
-		var line []byte
-		line, err = reader.ReadBytes('\n')
-		if len(bytes.TrimSpace(line)) > 0 {
-			c.line(line, handle)
-		}
-		if err != nil {
-			break
-		}
-	}
-	if errors.Is(err, io.EOF) {
-		err = errors.New("connection closed")
-	}
-	c.err = err
-	close(c.done)
-}
-
-func (c *RPC) line(line []byte, handle func(Message)) {
+// Line handles one line of input: a response for a call, or a request or
+// notification for handle. A line that is not JSON is reported on stderr and
+// skipped.
+func (c *RPC) Line(line []byte) {
 	var m struct {
 		ID     json.RawMessage `json:"id"`
 		Method string          `json:"method"`
@@ -93,7 +72,7 @@ func (c *RPC) line(line []byte, handle func(Message)) {
 		m.ID = nil
 	}
 	if m.Method != "" {
-		handle(Message{ID: m.ID, Method: m.Method, Params: m.Params})
+		c.handle(Message{ID: m.ID, Method: m.Method, Params: m.Params})
 		return
 	}
 	id, err := strconv.ParseInt(string(m.ID), 10, 64)
@@ -107,6 +86,16 @@ func (c *RPC) line(line []byte, handle func(Message)) {
 	if ch != nil { // a call that gave up on its response has no channel
 		ch <- response{m.Result, m.Error}
 	}
+}
+
+// End ends the connection: pending and later calls fail with err. io.EOF
+// becomes "connection closed".
+func (c *RPC) End(err error) {
+	if errors.Is(err, io.EOF) {
+		err = errors.New("connection closed")
+	}
+	c.err = err
+	close(c.done)
 }
 
 // Done is closed when the connection has ended.

@@ -4,13 +4,13 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -27,7 +27,6 @@ import (
 const (
 	startTimeout = 60 * time.Second
 	callTimeout  = 30 * time.Second
-	stopTimeout  = 3 * time.Second
 )
 
 // extension registers the hypercube MCP server in Pi.
@@ -47,23 +46,25 @@ func main() {
 }
 
 func serve(in io.Reader, out io.Writer) error {
-	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (plugin.Agent, error) {
-		ag, err := startAgent(a, emit, exited)
+	return plugin.Serve(in, out, func(a harness.StartArgs, emit func(harness.Event)) (plugin.Agent, error) {
+		ag, err := startAgent(a, emit)
 		if err != nil {
 			return plugin.Agent{}, err
 		}
-		return plugin.Agent{Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Idle: ag.idle, Stop: ag.stop}, nil
+		return plugin.Agent{
+			Process: ag.proc, Conversation: ag.conversation(),
+			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.proc.Stop,
+		}, nil
 	})
 }
 
 // agent is a running `pi --mode rpc` process and what its events have told us.
 type agent struct {
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	emit   func(harness.Event)
-	done   chan struct{} // closed when the process has ended
-	reason string        // why it ended; set before done is closed
-	stderr plugin.Tail
+	proc  *plugin.Process
+	stdin io.Writer
+	emit  func(harness.Event)
+	ended chan struct{} // closed when pi's output has ended
+	exit  error         // why it ended; set before ended is closed
 
 	writing sync.Mutex // serializes writes to stdin
 	callMu  sync.Mutex
@@ -83,7 +84,7 @@ type agent struct {
 	tools     map[string]harness.Item // tool items that have not completed
 	requests  map[string]*request     // open extension dialogs, by item ID
 	last      assistant               // the latest assistant message of the run
-	errors    int
+	errs      plugin.Errors
 }
 
 // response is Pi's answer to a command.
@@ -116,11 +117,7 @@ func (r *request) stop() {
 	}
 }
 
-func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- error) (*agent, error) {
-	path, err := exec.LookPath("pi")
-	if err != nil {
-		return nil, errors.New("Pi is missing: install pi")
-	}
+func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	provider, model, ok := strings.Cut(a.Model, "/")
 	if !ok {
 		return nil, fmt.Errorf("model %q is not provider/id; see pi --list-models", a.Model)
@@ -141,50 +138,33 @@ func startAgent(a harness.StartArgs, emit func(harness.Event), exited chan<- err
 	if a.Conversation != "" {
 		argv = append(argv, "--session-id", a.Conversation)
 	}
-	cmd := exec.Command(path, argv...)
+	cmd := exec.Command("pi", argv...)
 	cmd.Dir = a.Dir
 	mcp := map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "exposure": "direct"}
 	cmd.Env = append(os.Environ(), "HYPERCUBE_MCP="+plugin.JSONString(mcp))
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-	stdout, err := cmd.StdoutPipe()
+	p, err := plugin.StartProcess("Pi", cmd)
 	if err != nil {
 		return nil, err
 	}
 	ag := &agent{
-		cmd: cmd, stdin: stdin, emit: emit, done: make(chan struct{}), calls: map[string]chan response{},
+		proc: p, stdin: p.Stdin, emit: emit, ended: make(chan struct{}), calls: map[string]chan response{},
 		blocks: map[string]*block{}, tools: map[string]harness.Item{}, requests: map[string]*request{},
 	}
-	cmd.Stderr = io.MultiWriter(os.Stderr, &ag.stderr)
-	// Pi's children may keep its pipes open after it ends.
-	cmd.WaitDelay = time.Second
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("start pi: %w", err)
-	}
-	go ag.read(stdout)
-	died := make(chan error, 1)
-	go func() {
-		err := cmd.Wait()
-		ag.reason = "pi exited"
-		if err != nil {
-			ag.reason = fmt.Sprintf("pi exited: %v", err)
-		}
-		if detail := ag.stderr.Last(); detail != "" {
-			ag.reason += ": " + detail
-		}
-		close(ag.done)
-		died <- errors.New(ag.reason)
-	}()
+	go func() { ag.end(p.Read(ag.line)) }()
 	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 	defer cancel()
 	if err := ag.connect(ctx, a); err != nil {
-		ag.stop()
+		p.Stop()
 		return nil, err
 	}
-	go func() { exited <- <-died }()
 	return ag, nil
+}
+
+// end fails the calls waiting on pi, and later ones, with the reason its
+// output ended.
+func (ag *agent) end(err error) {
+	ag.exit = err
+	close(ag.ended)
 }
 
 // connect checks what Pi started with: the model, which Pi replaces with
@@ -210,52 +190,44 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	if selected != a.Model {
 		return fmt.Errorf("Pi selected %s instead of requested %s; use a full provider/model ID from pi --list-models", selected, a.Model)
 	}
-	ag.window, ag.session = state.Model.ContextWindow, state.SessionID
-	if a.Conversation == "" {
-		return nil
+	window, session := state.Model.ContextWindow, state.SessionID
+	var cost float64
+	var contextTokens int
+	announced := a.Conversation != ""
+	if announced {
+		if _, err := os.Stat(state.SessionFile); err != nil {
+			return fmt.Errorf("Pi has no saved session %s", a.Conversation)
+		}
+		var stats struct {
+			Cost         float64 `json:"cost"`
+			ContextUsage *struct {
+				Tokens int `json:"tokens"`
+			} `json:"contextUsage"`
+		}
+		if err := ag.call(ctx, "get_session_stats", nil, &stats); err != nil {
+			return err
+		}
+		cost = stats.Cost
+		if stats.ContextUsage != nil {
+			contextTokens = stats.ContextUsage.Tokens
+		}
 	}
-	if _, err := os.Stat(state.SessionFile); err != nil {
-		return fmt.Errorf("Pi has no saved session %s", a.Conversation)
-	}
-	var stats struct {
-		Cost         float64 `json:"cost"`
-		ContextUsage *struct {
-			Tokens int `json:"tokens"`
-		} `json:"contextUsage"`
-	}
-	if err := ag.call(ctx, "get_session_stats", nil, &stats); err != nil {
-		return err
-	}
-	ag.cost, ag.announced = stats.Cost, true
-	if stats.ContextUsage != nil {
-		ag.context = stats.ContextUsage.Tokens
-	}
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ag.window, ag.session = window, session
+	ag.cost, ag.announced, ag.context = cost, announced, contextTokens
 	return nil
 }
 
-// idle reports the started agent as waiting for input.
-func (ag *agent) idle() {
+// conversation is the session to report once started. A new session is
+// reported once Pi has saved it.
+func (ag *agent) conversation() string {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	ev := harness.Event{State: harness.Idle}
-	if ag.announced {
-		ev.Conversation = ag.session
+	if !ag.announced {
+		return ""
 	}
-	ag.emit(ev)
-}
-
-// stop ends pi: closing its input lets it shut down, and it is killed if it
-// does not. Its children share the plugin's process group, which Hypercube
-// kills.
-func (ag *agent) stop() {
-	ag.writing.Lock()
-	_ = ag.stdin.Close()
-	ag.writing.Unlock()
-	select {
-	case <-ag.done:
-	case <-time.After(stopTimeout):
-		_ = ag.cmd.Process.Kill()
-	}
+	return ag.session
 }
 
 // write sends one record to pi.
@@ -272,8 +244,9 @@ func (ag *agent) write(v any) error {
 	return nil
 }
 
-// call sends a command and decodes the data of its response. A process that
-// has ended is explained by its exit and the end of its diagnostics.
+// call sends a command and decodes the data of its response. A failed write
+// returns its error. A process that ends before it responds returns why it
+// ended.
 func (ag *agent) call(ctx context.Context, command string, params map[string]any, result any) error {
 	reply := make(chan response, 1)
 	ag.callMu.Lock()
@@ -287,17 +260,10 @@ func (ag *agent) call(ctx context.Context, command string, params map[string]any
 		ag.callMu.Unlock()
 	}
 	rec := map[string]any{"id": id, "type": command}
-	for k, v := range params {
-		rec[k] = v
-	}
+	maps.Copy(rec, params)
 	if err := ag.write(rec); err != nil {
 		forget()
-		select {
-		case <-ag.done:
-			return errors.New(ag.reason)
-		case <-time.After(time.Second):
-			return err
-		}
+		return err
 	}
 	select {
 	case r := <-reply:
@@ -308,9 +274,9 @@ func (ag *agent) call(ctx context.Context, command string, params map[string]any
 			return nil
 		}
 		return json.Unmarshal(r.data, result)
-	case <-ag.done:
+	case <-ag.ended:
 		forget()
-		return errors.New(ag.reason)
+		return fmt.Errorf("%s: %w", command, ag.exit)
 	case <-ctx.Done():
 		forget()
 		return fmt.Errorf("%s: %w", command, ctx.Err())
@@ -410,20 +376,6 @@ func (ag *agent) closeRequests(cancel bool) []harness.Item {
 	return items
 }
 
-// read translates Pi's output until it ends.
-func (ag *agent) read(r io.Reader) {
-	reader := bufio.NewReaderSize(r, 1<<20)
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(strings.TrimSpace(string(line))) > 0 {
-			ag.line(line)
-		}
-		if err != nil {
-			return
-		}
-	}
-}
-
 // line translates one line of pi's output.
 func (ag *agent) line(line []byte) {
 	var h struct {
@@ -504,8 +456,7 @@ func (ag *agent) response(line []byte, id string) {
 }
 
 func (ag *agent) fail(ev *harness.Event, text string) {
-	ag.errors++
-	ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", ag.errors), Kind: harness.KindError, Text: text, Done: true})
+	ev.Items = append(ev.Items, ag.errs.Item(text))
 }
 
 // settled ends a run: Pi has nothing more to do on its own. A run that ended
