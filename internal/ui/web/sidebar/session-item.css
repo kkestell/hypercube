@@ -62,8 +62,8 @@
   mask-image: linear-gradient(to right, #000 calc(100% - 36px), transparent calc(100% - 16px));
 }
 
-/* The chevron's glyph is inset 4px in its 16px box, so it starts
-   8px after a long title has faded out and 28px after a short one. */
+/* The chevron's glyph is inset 3.5px in its 14px box, so it starts
+   about 8px after a long title has faded out and 28px after a short one. */
 .session-item-caret {
   position: relative;
   display: flex;

@@ -35,7 +35,7 @@ export function SessionItem({session, selected, renaming, onRenaming, open, onTo
         )}
       {onToggle && !renaming && (
         <button class="session-item-caret" aria-expanded={open} title={open ? 'Collapse' : 'Expand'} onClick={onToggle}>
-          <vscode-icon name={open ? 'chevron-down' : 'chevron-right'} />
+          <vscode-icon size="14" name={open ? 'chevron-down' : 'chevron-right'} />
         </button>
       )}
       <span class="session-item-status">

@@ -201,6 +201,7 @@ test('choosing a lead profile from the picker opens the unsent session', async (
 test('nested sessions stay in creation order, ended ones dim, and Show more counts parents', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), ...Array.from({length: 5}, (_, i) => session('p' + i))]);
+  click(summary(root));
   expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0', 'p1', 'p2', 'p3']);
   expect(root.querySelector('[data-session="first"]').classList.contains('session-item-stopped')).toBe(true);
   expect(caret(root, 'a').getAttribute('aria-expanded')).toBe('true');
@@ -240,6 +241,44 @@ test('a collapsed parent lists its waiting nested sessions, then a summary of th
   expect(summary(root)).toBeNull();
 });
 
+test('an expanded parent hides its stopped sessions behind a button that reveals them', () => {
+  const nested = (id, extra) => session(id, {parent: 'a', ...extra});
+  const stopped = {running: false, ended: true};
+  const {store, root} = setup([session('a', {children: [nested('one', stopped), nested('run'), nested('two', stopped)]})]);
+  expect(sessionRows(root)).toEqual(['a', 'run']);
+  expect(summary(root).textContent).toBe('Show 2 stopped sessions');
+
+  click(summary(root));
+  expect(sessionRows(root)).toEqual(['a', 'one', 'run', 'two']);
+  expect(summary(root)).toBeNull();
+
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [nested('one', stopped), nested('run')]})]}]}));
+  expect(sessionRows(root)).toEqual(['a', 'one', 'run']);
+});
+
+test('a single hidden stopped session is counted in the singular', () => {
+  const {root} = setup([session('a', {children: [session('one', {parent: 'a', running: false, ended: true})]})]);
+  expect(summary(root).textContent).toBe('Show 1 stopped session');
+});
+
+test('the selected stopped session stays visible and is not counted as hidden', () => {
+  const stopped = {running: false, ended: true};
+  const {store, root} = setup([session('a', {children: [session('one', {parent: 'a', ...stopped}), session('two', {parent: 'a', ...stopped})]})]);
+  store.update(s => ({...s, selected: 'two'}));
+  expect(sessionRows(root)).toEqual(['a', 'two']);
+  expect(summary(root).textContent).toBe('Show 1 stopped session');
+});
+
+test('expanding a collapsed parent from its summary shows the expanded view', () => {
+  const stopped = {running: false, ended: true};
+  const {root} = setup([session('a', {children: [session('one', {parent: 'a', ...stopped}), session('run', {parent: 'a'})]})]);
+  click(caret(root, 'a'));
+  expect(summary(root).textContent).toBe('2 more nested sessions');
+  click(summary(root));
+  expect(sessionRows(root)).toEqual(['a', 'run']);
+  expect(summary(root).textContent).toBe('Show 1 stopped session');
+});
+
 test('each row shows only its own state', () => {
   const {store, root} = setup([session('a', {children: [
     session('asks', {parent: 'a', attention: true, activity: 'busy'}),
@@ -268,6 +307,7 @@ test('active nested sessions have no menu and ended ones offer only Delete Sessi
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
   act(() => root.querySelector('[data-session="active"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
   expect(root.querySelector('vscode-context-menu')).toBeNull();
+  click(summary(root));
   choose(root, '[data-session="ended"]', 0);
   expect(dialog(root).querySelector('.confirm-dialog-detail').textContent).toBe('Its chat is deleted.');
   act(() => dialogButton(root, 'Delete').click());
