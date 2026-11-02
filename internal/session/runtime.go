@@ -54,9 +54,9 @@ type Runtime struct {
 	url string
 
 	mu      sync.Mutex
-	live    map[string]*live // by agent ID
+	live    map[string]*live // by session ID
 	viewers map[string]int   // open pages selecting each session
-	// seqs holds each agent's last transcript position. It outlives launches,
+	// seqs holds each session's last transcript position. It outlives launches,
 	// because a launch that has ended can still record a late item.
 	seqs map[string]int64
 	gen  int64

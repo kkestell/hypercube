@@ -1,4 +1,4 @@
-// An session's indicator: a dot when it exited or waits on the user, a spinner
+// A session's indicator: a dot when it exited or waits on the user, a spinner
 // while it works, and nothing while it is idle.
 import {StatusDot} from './status-dot.jsx';
 import './agent-status.css';

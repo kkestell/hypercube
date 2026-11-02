@@ -49,7 +49,7 @@ test('only shown folders and the active file tab of each pane are polled', async
   expect(fetchMock.mock.calls[3][1].headers).toEqual({'If-None-Match': '"z"'});
 
   const hidden = stubFetch({});
-  await createFilePoller(createStore(state({workbench: {rightPanel: true, rightTab: 'workers'}})))();
+  await createFilePoller(createStore(state({workbench: {rightPanel: true, rightTab: 'changes'}})))();
   expect(hidden).toEqual(['file:z.go', 'file:x.go']);
 });
 

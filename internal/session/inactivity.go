@@ -75,12 +75,12 @@ func (r *Runtime) stopIdleSessions(now time.Time) {
 				return err
 			}
 			busy := false
-			for _, a := range append([]store.Session{s}, children...) {
-				if a.Ended {
+			for _, member := range append([]store.Session{s}, children...) {
+				if member.Ended {
 					continue
 				}
-				l := r.live[a.ID]
-				busy = busy || a.Activity == store.Busy || (l != nil && (l.starting || l.delivering))
+				l := r.live[member.ID]
+				busy = busy || member.Activity == store.Busy || (l != nil && (l.starting || l.delivering))
 			}
 			if !busy {
 				expired = append(expired, s.ID)

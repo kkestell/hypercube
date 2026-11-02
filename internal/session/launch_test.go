@@ -51,7 +51,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	f.until("the agent to end three times", func() bool { return ended() == maxQuickExits })
 	// AddWorker refuses only when the parent has no launch, even a starting one.
 	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
-		t.Fatalf("a lead that stayed ended took a worker: %v", err)
+		t.Fatalf("a session that stayed exited took a child: %v", err)
 	}
 	if n := len(f.log(parent.ID, "start")); n != maxQuickExits {
 		t.Fatalf("%d launches", n)
@@ -115,7 +115,7 @@ func TestFailedRelaunchStaysEnded(t *testing.T) {
 	})
 	// The failed relaunch has no successor, including one still starting.
 	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
-		t.Fatalf("a failed relaunch took a worker: %v", err)
+		t.Fatalf("a failed relaunch took a child: %v", err)
 	}
 	starts := f.log(parent.ID, "start")
 	if a := f.storedSession(parent.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {

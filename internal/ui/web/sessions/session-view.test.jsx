@@ -28,7 +28,7 @@ test('a selected stopped session attaches and shows its transcript', () => {
   expect(root.querySelector('.agent-pane')).not.toBeNull();
 });
 
-test('a running session shows its lead', () => {
+test('a running session shows its agent pane', () => {
   const root = mount(store('a', [session('a')]), <SessionView />);
   expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.agent-pane')).not.toBeNull();

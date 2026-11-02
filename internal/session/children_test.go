@@ -28,10 +28,10 @@ func TestChildLifecycle(t *testing.T) {
 		t.Fatalf("brief item = %+v", items)
 	}
 	if start := f.log(child.ID, "start"); start[0].Dir != child.Dir {
-		t.Fatalf("worker start = %v", start)
+		t.Fatalf("child start = %v", start)
 	}
 	if _, err := f.rt.CreateChild(parent.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
-		t.Fatal("a second worker took the name")
+		t.Fatal("a second child took the name")
 	}
 	// A dirty worktree keeps its child running.
 	dirty := filepath.Join(child.Dir, "unfinished")
@@ -39,7 +39,7 @@ func TestChildLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := f.rt.EndChild(parent.ID, "w1"); err == nil || len(f.family(parent.ID)) != 2 || len(f.log(child.ID, "shutdown")) != 0 {
-		t.Fatalf("removing a dirty worker: %v", err)
+		t.Fatalf("ending a dirty child: %v", err)
 	}
 	if err := os.Remove(dirty); err != nil {
 		t.Fatal(err)
@@ -49,23 +49,23 @@ func TestChildLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(child.Dir); !os.IsNotExist(err) || len(f.family(parent.ID)) != 2 || syscall.Kill(pid, 0) != syscall.ESRCH {
-		t.Fatal("the worker, its worktree, or its process remains")
+		t.Fatal("the child, its worktree, or its process remains")
 	}
 	// A child that cannot start leaves nothing behind.
 	if _, err := f.rt.CreateChild(parent.ID, "w2", harness.Profile{Spec: harness.Spec{Harness: "missing"}}, "", ""); err == nil || !strings.Contains(err.Error(), "hypercube-harness-missing") {
-		t.Fatalf("worker with no plugin: %v", err)
+		t.Fatalf("child with no plugin: %v", err)
 	}
 	if len(f.family(parent.ID)) != 2 {
-		t.Fatal("the failed worker remains")
+		t.Fatal("the failed child remains")
 	}
 	if _, err := os.Stat(filepath.Join(f.root, ".hypercube", parent.ID, "w2")); !os.IsNotExist(err) {
-		t.Fatal("the failed worker's worktree remains")
+		t.Fatal("the failed child's worktree remains")
 	}
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.rt.CreateChild(parent.ID, "w3", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil {
-		t.Fatal("a stopped session took a worker")
+		t.Fatal("a stopped session took a child")
 	}
 }
 
@@ -108,7 +108,7 @@ func TestChildFailureReachesItsParent(t *testing.T) {
 		return false
 	})
 	if got := strings.Join(f.inputs(other.ID), "|"); got != "start" || f.storedSession(child.ID).Activity != store.Idle {
-		t.Fatalf("the failure reached %s's lead, or the worker is %s", other.ID, f.storedSession(child.ID).Activity)
+		t.Fatalf("the failure reached %s, or the child is %s", other.ID, f.storedSession(child.ID).Activity)
 	}
 }
 
@@ -271,4 +271,21 @@ func TestDeleteParentSkipsEndedChildren(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+func TestChildFollowsItsParent(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	child := f.child(parent, "child", "")
+	for name, run := range map[string]func(string) error{"Start": f.rt.Start, "Stop": f.rt.Stop} {
+		if err := run(child.ID); err == nil || !strings.Contains(err.Error(), "starts and stops with its parent") {
+			t.Errorf("%s(child) = %v", name, err)
+		}
+	}
+	if err := f.rt.Delete(child.ID); err == nil || !strings.Contains(err.Error(), "must be ended") {
+		t.Fatalf("Delete(active child) = %v", err)
+	}
+	if _, err := os.Stat(child.Dir); err != nil || f.storedSession(child.ID).Activity == store.Exited {
+		t.Fatalf("a refusal changed the child: %v", err)
+	}
 }

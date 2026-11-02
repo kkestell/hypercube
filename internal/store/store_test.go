@@ -145,7 +145,7 @@ func TestDeleteSessionCascades(t *testing.T) {
 	})
 	tx(t, db, func(tx *Tx) error {
 		if a, _ := tx.Children("s"); len(a) != 0 {
-			t.Errorf("agents remain: %+v", a)
+			t.Errorf("children remain: %+v", a)
 		}
 		if m, _ := tx.Queued("s-w1"); len(m) != 0 {
 			t.Errorf("messages remain: %+v", m)
@@ -227,7 +227,7 @@ func TestTranscript(t *testing.T) {
 
 func TestLastText(t *testing.T) {
 	db := open(t)
-	seed(t, db, "w", "/repo", "s", "worker")
+	seed(t, db, "w", "/repo", "s", "child")
 	tx(t, db, func(tx *Tx) error {
 		if text, seq, err := tx.LastText("s"); err != nil || text != "" || seq != 0 {
 			t.Errorf("empty LastText = %q, %d, %v", text, seq, err)
@@ -245,8 +245,8 @@ func TestLastText(t *testing.T) {
 		if text, seq, err := tx.LastText("s"); err != nil || text != "last" || seq != 2 {
 			t.Errorf("LastText = %q, %d, %v", text, seq, err)
 		}
-		if text, seq, err := tx.LastText("s-worker"); err != nil || text != "" || seq != 0 {
-			t.Errorf("another agent's LastText = %q, %d, %v", text, seq, err)
+		if text, seq, err := tx.LastText("s-child"); err != nil || text != "" || seq != 0 {
+			t.Errorf("another session's LastText = %q, %d, %v", text, seq, err)
 		}
 		return nil
 	})

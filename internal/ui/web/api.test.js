@@ -51,21 +51,21 @@ test('readFile reports other failures with their text', async () => {
 
 test('post returns the response text', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'));
-  expect(await post(store(), 'agent', {action: 'input'}, 'body')).toBe('ok');
+  expect(await post(store(), 'session', {action: 'input'}, 'body')).toBe('ok');
   expect(fetchMock.mock.calls[0][1]).toEqual({method: 'POST', body: 'body'});
 });
 
 test('post shows a refusal and returns null', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('busy', {status: 409}));
   const s = store();
-  expect(await post(s, 'agent', {})).toBeNull();
+  expect(await post(s, 'session', {})).toBeNull();
   expect(errors(s)).toEqual(['busy']);
 });
 
 test('post shows a network failure and returns null', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
   const s = store();
-  expect(await post(s, 'agent', {})).toBeNull();
+  expect(await post(s, 'session', {})).toBeNull();
   expect(errors(s)).toEqual(['Load failed']);
 });
 
@@ -77,7 +77,7 @@ test('fetchLeads shows a network failure and returns null', async () => {
 });
 
 for (const [name, request] of [
-  ['post', s => post(s, 'agent', {})],
+  ['post', s => post(s, 'session', {})],
   ['fetchLeads', fetchLeads],
 ]) {
   for (const status of [200, 409]) {

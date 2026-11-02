@@ -46,7 +46,7 @@ test('state and transcript messages reach the store, and select follows the atta
   socket.receive(state('b1'));
   expect(store.get().session.id).toBe('a');
   expect(socket.sent).toEqual([{select: ''}, {select: 'a'}]);
-  socket.receive({type: 'transcript', session: 'a', agent: 'a-lead', reset: true, items: [{id: '1', seq: 1, kind: 'text', text: 'hi'}]});
+  socket.receive({type: 'transcript', session: 'a', reset: true, items: [{id: '1', seq: 1, kind: 'text', text: 'hi'}]});
   expect(store.get().session.transcript.order).toEqual(['1']);
   socket.receive(state('b1', false));
   expect(socket.sent.at(-1)).toEqual({select: ''});
@@ -72,13 +72,13 @@ test('a reset transcript after a reconnect replaces the old items', () => {
   first.open();
   first.receive(state('b1'));
   const item = (id, seq, text) => ({id, seq, kind: 'text', text});
-  first.receive({type: 'transcript', session: 'a', agent: 'a-lead', reset: true, items: [item('1', 1, 'old'), item('2', 2, 'older')]});
+  first.receive({type: 'transcript', session: 'a', reset: true, items: [item('1', 1, 'old'), item('2', 2, 'older')]});
   first.onclose();
   jest.advanceTimersByTime(1000);
   const second = FakeSocket.all[1];
   second.open();
   second.receive(state('b1'));
-  second.receive({type: 'transcript', session: 'a', agent: 'a-lead', reset: true, items: [item('3', 1, 'new')]});
+  second.receive({type: 'transcript', session: 'a', reset: true, items: [item('3', 1, 'new')]});
   const {order, items} = store.get().session.transcript;
   expect(order).toEqual(['3']);
   expect(items['3'].text).toBe('new');

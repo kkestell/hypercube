@@ -8,7 +8,7 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// Deliver sends the agent's queued messages, if it is running and its session
+// Deliver sends the session's queued messages, if it is running and its session
 // is not waiting for the user. Callers queue a message, then call Deliver.
 func (r *Runtime) Deliver(id string) {
 	r.mu.Lock()
@@ -91,7 +91,7 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 		m := queued[0]
 		text := report.Format(tx, m)
 		out = outgoing{message: m.ID, text: text, item: harness.Item{Kind: harness.KindUser, Text: text, Done: true}}
-		// The transcript shows an agent's message as written, with its sender.
+		// The transcript shows a session's message as written, with its sender.
 		if m.From != "" {
 			out.item.Text, out.item.From = m.Text, m.From
 		}

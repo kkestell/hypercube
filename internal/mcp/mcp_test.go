@@ -20,10 +20,10 @@ import (
 
 func TestStandIn(t *testing.T) { harnesstest.Run() }
 
-// team returns a database holding a workspace, outside Git if noGit is set,
-// with session session-1, whose lead "session-1" works in leadDir and, if workerDir is
-// set, whose worker "b" works directly in it.
-func team(t *testing.T, noGit bool, leadDir, workerDir string) (*store.DB, *session.Runtime) {
+// family returns a database holding a workspace, outside Git if noGit is set,
+// with top-level session session-1 working in parentDir and, if childDir is
+// set, its child "w1" (ID "b") working directly in it.
+func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *session.Runtime) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -46,14 +46,14 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) (*store.DB, *sess
 	}
 	t.Cleanup(func() { db.Close() })
 	change(t, db, func(tx *store.Tx) error {
-		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: leadDir, NoGit: noGit}); err != nil {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: parentDir, NoGit: noGit}); err != nil {
 			return err
 		}
-		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true, Dir: leadDir, Activity: store.Idle}); err != nil {
+		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true, Dir: parentDir, Activity: store.Idle}); err != nil {
 			return err
 		}
-		if workerDir != "" {
-			return tx.AddSession(store.Session{ID: "b", Workspace: "w", Parent: "session-1", Name: "w1", Dir: workerDir, Activity: store.Idle})
+		if childDir != "" {
+			return tx.AddSession(store.Session{ID: "b", Workspace: "w", Parent: "session-1", Name: "w1", Dir: childDir, Activity: store.Idle})
 		}
 		return nil
 	})
@@ -67,16 +67,16 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 	}
 }
 
-func agents(t *testing.T, db *store.DB, session string) (list []store.Session) {
+func children(t *testing.T, db *store.DB, session string) (list []store.Session) {
 	t.Helper()
 	change(t, db, func(tx *store.Tx) error { var err error; list, err = tx.Children(session); return err })
 	return list
 }
 
-// post sends a JSON-RPC request to the handler as the agent.
-func post(handler http.Handler, agent, body string) *httptest.ResponseRecorder {
+// post sends a JSON-RPC request to the handler as the session.
+func post(handler http.Handler, session, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "http://localhost/mcp", strings.NewReader(body))
-	req.Header.Set(SessionHeader, agent)
+	req.Header.Set(SessionHeader, session)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	res := httptest.NewRecorder()
@@ -92,13 +92,13 @@ func serve(t *testing.T, db *store.DB, rt *session.Runtime) *httptest.Server {
 	return server
 }
 
-// connect returns an SDK client session with the app's /mcp route as the agent.
-func connect(t *testing.T, url, agent string) *mcp.ClientSession {
+// connect returns an SDK client session with the app's /mcp route as the session.
+func connect(t *testing.T, url, id string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	s, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint:             url,
-		HTTPClient:           &http.Client{Transport: identity(agent)},
+		HTTPClient:           &http.Client{Transport: identity(id)},
 		DisableStandaloneSSE: true,
 	}, nil)
 	if err != nil {
@@ -147,7 +147,7 @@ func schemaOf(t *testing.T, tl *mcp.Tool) map[string]any {
 
 func TestTools(t *testing.T) {
 	for _, noGit := range []bool{false, true} {
-		db, rt := team(t, noGit, t.TempDir(), "")
+		db, rt := family(t, noGit, t.TempDir(), "")
 		server := httptest.NewServer(Handler(db, rt))
 		list := tools(t, connect(t, server.URL, "session-1"))
 		server.Close()
@@ -164,7 +164,7 @@ func TestTools(t *testing.T) {
 		if got := create["required"]; !slices.Equal(got.([]any), want) {
 			t.Errorf("noGit=%v: create_session requires %v", noGit, got)
 		}
-		// Only worker profiles are offered.
+		// Only child profiles are offered.
 		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"sol"}) {
 			t.Errorf("noGit=%v: profile enum = %v", noGit, enum)
 		}
@@ -172,7 +172,7 @@ func TestTools(t *testing.T) {
 }
 
 func TestProtocol(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), "")
+	db, rt := family(t, false, t.TempDir(), "")
 	server := httptest.NewServer(Handler(db, rt))
 	defer server.Close()
 	s := connect(t, server.URL, "session-1")
@@ -200,24 +200,24 @@ func TestProtocol(t *testing.T) {
 	}
 }
 
-func TestHandlerChecksTheAgent(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), "")
+func TestHandlerChecksTheSession(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), "")
 	handler := Handler(db, rt)
-	for _, agent := range []string{"", "nobody"} {
-		if res := post(handler, agent, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); res.Code != http.StatusForbidden {
-			t.Errorf("agent %q: status %d", agent, res.Code)
+	for _, id := range []string{"", "nobody"} {
+		if res := post(handler, id, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); res.Code != http.StatusForbidden {
+			t.Errorf("session %q: status %d", id, res.Code)
 		}
 	}
 }
 
-// The bridge forwards each request to the app with the agent's identity and
+// The bridge forwards each request to the app with the session ID and
 // answers in the app's words.
 func TestBridge(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), t.TempDir())
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	server := serve(t, db, rt)
-	run := func(agent, url string) []map[string]any {
+	run := func(id, url string) []map[string]any {
 		t.Helper()
-		t.Setenv("HYPERCUBE_SESSION_ID", agent)
+		t.Setenv("HYPERCUBE_SESSION_ID", id)
 		t.Setenv("HYPERCUBE_URL", url)
 		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
@@ -259,9 +259,9 @@ func TestBridge(t *testing.T) {
 
 // create_session refuses bad arguments, a lead profile, and a stopped session,
 // adding no agent.
-func TestCreateAgentRefusals(t *testing.T) {
-	db, rt := team(t, true, t.TempDir(), "")
-	lead := connect(t, serve(t, db, rt).URL, "session-1")
+func TestCreateSessionRefusals(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
 		{"name": "w1", "profile": "sol"},
 		{"name": "w1", "dir": "."},
@@ -270,57 +270,57 @@ func TestCreateAgentRefusals(t *testing.T) {
 		{"name": "w1", "profile": "opus", "dir": "."},
 		{"name": "w1", "profile": "sol", "dir": "."},
 	} {
-		if text, failed := callTool(t, lead, "create_session", args); !failed {
+		if text, failed := callTool(t, parent, "create_session", args); !failed {
 			t.Errorf("create_session(%v) = %q", args, text)
 		}
-		if list := agents(t, db, "session-1"); len(list) != 0 {
+		if list := children(t, db, "session-1"); len(list) != 0 {
 			t.Errorf("after create_session(%v): %+v", args, list)
 		}
 	}
 }
 
-func TestCreateAgentRefusesMissingDirectory(t *testing.T) {
-	db, rt := team(t, true, t.TempDir(), "")
+func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
 	plugins := t.TempDir()
 	harnesstest.Install(t, plugins, "one")
 	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
 	rt.PluginDir = plugins
 	t.Cleanup(rt.Shutdown)
 	change(t, db, func(tx *store.Tx) error {
-		lead, err := tx.Session("session-1")
+		parent, err := tx.Session("session-1")
 		if err != nil {
 			return err
 		}
-		lead.Harness, lead.Model, lead.Effort = "one", "opus", "high"
-		return tx.SaveSession(lead)
+		parent.Harness, parent.Model, parent.Effort = "one", "opus", "high"
+		return tx.SaveSession(parent)
 	})
 	if err := rt.Start("session-1"); err != nil {
 		t.Fatal(err)
 	}
-	lead := connect(t, serve(t, db, rt).URL, "session-1")
-	text, failed := callTool(t, lead, "create_session", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
+	parent := connect(t, serve(t, db, rt).URL, "session-1")
+	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
 		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}
-	if list := agents(t, db, "session-1"); len(list) != 0 {
+	if list := children(t, db, "session-1"); len(list) != 0 {
 		t.Errorf("after create_session: %+v", list)
 	}
 }
 
-// end_session refuses a stopped session and leaves the worker.
-func TestRemoveAgentStoppedSession(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), t.TempDir())
-	lead := connect(t, serve(t, db, rt).URL, "session-1")
-	if text, failed := callTool(t, lead, "end_session", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
+// end_session refuses in a stopped session and leaves the child.
+func TestEndSessionStoppedSession(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	parent := connect(t, serve(t, db, rt).URL, "session-1")
+	if text, failed := callTool(t, parent, "end_session", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
 		t.Fatalf("end_session in a stopped session: %q %v", text, failed)
 	}
-	if list := agents(t, db, "session-1"); len(list) != 1 {
+	if list := children(t, db, "session-1"); len(list) != 1 {
 		t.Errorf("after end_session: %+v", list)
 	}
 }
 
 func TestSessionBoundaries(t *testing.T) {
-	db, rt := team(t, false, t.TempDir(), t.TempDir())
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
 		for _, s := range []store.Session{{ID: "peer", Workspace: "w", Title: "Fix parser"}, {ID: "peer-child", Workspace: "w", Parent: "peer", Name: "child"}} {
 			if err := tx.AddSession(s); err != nil {

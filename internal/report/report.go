@@ -110,7 +110,7 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		names = append(names, "none yet")
 	}
 	fmt.Fprintf(&b, "Other top-level sessions: %s\n", strings.Join(names, ", "))
-	b.WriteString("\nOther Hypercube top-level sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits. list_sessions shows the current sessions.\n")
+	b.WriteString("\nOther Hypercube top-level sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits.\n")
 	w, err := tx.Workspace(s.Workspace)
 	if err != nil {
 		return "", err

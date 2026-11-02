@@ -77,20 +77,20 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		if !changed && len(failures) == 0 {
 			return nil
 		}
-		a, err := tx.Session(l.id)
+		s, err := tx.Session(l.id)
 		if err != nil {
 			return err
 		}
 		if changed {
-			applyEvent(&a, ev)
-			a.Attention = attention
-			if err := tx.SaveSession(a); err != nil {
+			applyEvent(&s, ev)
+			s.Attention = attention
+			if err := tx.SaveSession(s); err != nil {
 				return err
 			}
 		}
-		if a.Parent != "" {
+		if s.Parent != "" {
 			for _, text := range failures {
-				if err := queueFailure(tx, a, text); err != nil {
+				if err := queueFailure(tx, s, text); err != nil {
 					return err
 				}
 			}
@@ -111,20 +111,20 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 
 // applyEvent records an event's conversation, work state, and usage. A top-level session that
 // finishes a turn has a reply for the user to see.
-func applyEvent(a *store.Session, ev harness.Event) {
+func applyEvent(s *store.Session, ev harness.Event) {
 	if ev.Conversation != "" {
-		a.Conversation = ev.Conversation
+		s.Conversation = ev.Conversation
 	}
 	switch ev.State {
 	case harness.Working:
-		a.Activity = store.Busy
+		s.Activity = store.Busy
 	case harness.Idle:
-		if a.Activity == store.Busy && a.Parent == "" {
-			a.Unseen = true
+		if s.Activity == store.Busy && s.Parent == "" {
+			s.Unseen = true
 		}
-		a.Activity = store.Idle
+		s.Activity = store.Idle
 	}
 	if ev.Usage != nil {
-		a.Usage = *ev.Usage
+		s.Usage = *ev.Usage
 	}
 }

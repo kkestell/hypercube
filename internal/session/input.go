@@ -16,11 +16,11 @@ func request(client *harness.Client, cmd harness.Command) error {
 	return client.Do(ctx, cmd)
 }
 
-// running returns the agent's launch if it is ready. The caller holds mu.
-func (r *Runtime) running(agent string) (*live, error) {
-	l := r.live[agent]
+// running returns the session's launch if it is ready. The caller holds mu.
+func (r *Runtime) running(id string) (*live, error) {
+	l := r.live[id]
 	if l == nil || l.starting {
-		return nil, errors.New("the agent is not running")
+		return nil, errors.New("the session is not running")
 	}
 	return l, nil
 }
@@ -35,12 +35,12 @@ func checkPrompt(text string, images []harness.Image) error {
 
 // Input sends the user's prompt, text and images, to the agent at once, even
 // while it works. It also releases the session's queued messages.
-func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
+func (r *Runtime) Input(id, text string, images ...harness.Image) error {
 	if err := checkPrompt(text, images); err != nil {
 		return err
 	}
 	r.mu.Lock()
-	l, err := r.running(agent)
+	l, err := r.running(id)
 	if err != nil {
 		r.mu.Unlock()
 		return err
@@ -49,7 +49,7 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 		r.mu.Unlock()
 		return err
 	}
-	seq, client := r.nextSeq(agent), l.client
+	seq, client := r.nextSeq(id), l.client
 	r.mu.Unlock()
 	if err := request(client, harness.Command{Command: harness.CmdInput, Text: text, Images: images}); err != nil {
 		return err
@@ -76,9 +76,9 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 
 // Interrupt stops the agent's current turn. The turn stays in the transcript
 // and is not sent again.
-func (r *Runtime) Interrupt(agent string) error {
+func (r *Runtime) Interrupt(id string) error {
 	r.mu.Lock()
-	l, err := r.running(agent)
+	l, err := r.running(id)
 	if err != nil {
 		r.mu.Unlock()
 		return err
@@ -94,9 +94,9 @@ func (r *Runtime) Interrupt(agent string) error {
 
 // Answer replies to an attention request with one of its choices, typed text,
 // or both. A request that has finished cannot be answered.
-func (r *Runtime) Answer(agent, requestID, choice, text string) error {
+func (r *Runtime) Answer(id, requestID, choice, text string) error {
 	r.mu.Lock()
-	l := r.live[agent]
+	l := r.live[id]
 	if l == nil || l.starting {
 		r.mu.Unlock()
 		return errors.New("the request is finished")

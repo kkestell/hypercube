@@ -14,7 +14,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	if got := f.storedSession(s.ID); got.AwaitingUser || !got.Running {
 		t.Fatalf("new session: %+v", got)
 	}
-	// The plugin starts in the parent's directory with the team's instructions.
+	// The plugin starts in the parent's directory with its instructions.
 	start := f.log(s.ID, "start")
 	if len(start) != 1 || start[0].Dir != f.root ||
 		!strings.Contains(start[0].Instructions, "Hypercube session "+s.ID) ||
@@ -34,7 +34,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	if got := strings.Join(f.inputs(s.ID), "|"); got != want {
 		t.Fatalf("inputs = %q", got)
 	}
-	f.until("the lead idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle && len(f.transcript(s.ID)) == 8 })
+	f.until("the session idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle && len(f.transcript(s.ID)) == 8 })
 	// The plugin's replies and the next delivery race, so a reply can land
 	// after the next message's item. The messages keep their order.
 	var users []string
@@ -87,13 +87,13 @@ func TestMessagesGoOutWhileTheAgentWorks(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
-	f.until("a working lead", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
+	f.until("a working session", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
 	f.queue("user", parent.ID, "change course")
 	f.until("steering", func() bool { return len(f.inputs(parent.ID)) == 3 && len(f.queued(parent.ID)) == 0 })
 	f.input(parent.ID, "!finish")
-	f.until("an idle lead", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
+	f.until("an idle session", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
 	// A parent's finished turn is a reply for the user to see.
 	if !f.storedSession(parent.ID).Unseen {
-		t.Fatal("the lead's reply is not marked unseen")
+		t.Fatal("the session's reply is not marked unseen")
 	}
 }

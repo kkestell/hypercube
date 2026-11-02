@@ -297,16 +297,16 @@ func (w *world) ready(id string) bool {
 	return w.starts(id) > 0 && w.session(id).Activity == store.Idle
 }
 
-// newLead starts a session with the named parent and waits for the parent.
+// newSession starts a session with the named profile and waits for its agent.
 func (w *world) newSession(c client, workspace, profile string) store.Session {
 	w.t.Helper()
 	id := c.newSession(workspace, profile)
 	parent := w.family(id)[0]
-	w.until("the lead of "+id, func() bool { return w.ready(parent.ID) })
+	w.until("session "+id, func() bool { return w.ready(parent.ID) })
 	return w.session(parent.ID)
 }
 
-// newWorker has the parent create a child through MCP and waits for the
+// createChild has the parent create a child through MCP and waits for the
 // child's plugin to start and receive the brief, if any.
 func (w *world) createChild(c client, parent store.Session, name, brief string) store.Session {
 	w.t.Helper()
@@ -316,7 +316,7 @@ func (w *world) createChild(c client, parent store.Session, name, brief string) 
 	}
 	c.tool(parent.ID, "create_session", args)
 	var child store.Session
-	w.until("worker "+name, func() bool {
+	w.until("child "+name, func() bool {
 		for _, a := range w.family(parent.ID) {
 			if a.Name == name {
 				child = a
@@ -343,22 +343,22 @@ func TestMCPToolsManageChildren(t *testing.T) {
 	}
 	parent := w.newSession(c, ws.ID, "first")
 	if parent.Model != "haiku" {
-		t.Fatalf("the chosen lead's model is %q", parent.Model)
+		t.Fatalf("the chosen profile's model is %q", parent.Model)
 	}
 	child := w.createChild(c, parent, "worker", "the brief")
 	if _, err := os.Stat(filepath.Join(child.Dir, ".git")); err != nil {
-		t.Fatalf("the worker has no worktree: %v", err)
+		t.Fatalf("the child has no worktree: %v", err)
 	}
 	c.tool(parent.ID, "send_message", map[string]string{"to": "worker", "text": "a later message"})
 	w.until("the message", func() bool { return w.got(child.ID, "a later message") })
 	if listed := c.tool(parent.ID, "list_sessions", nil); !strings.Contains(listed, child.Name) {
-		t.Fatalf("list_sessions missed the worker: %s", listed)
+		t.Fatalf("list_sessions missed the child: %s", listed)
 	}
 	pid := w.lastPid(child.ID)
 	c.tool(parent.ID, "end_session", map[string]string{"name": "worker"})
-	w.noPath(child.Dir, "the removed worker's worktree")
+	w.noPath(child.Dir, "the ended child's worktree")
 	if n := len(w.family(parent.ID)); n != 2 || !w.session(child.ID).Ended || !gone(pid) {
-		t.Fatalf("the removed worker remains: %d agents, process gone = %v", n, gone(pid))
+		t.Fatalf("the ended child is missing or running: %d sessions, process gone = %v", n, gone(pid))
 	}
 }
 
@@ -370,25 +370,25 @@ func TestSessionsAreIsolated(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := w.newSession(c, ws.ID, "first")
-	otherLead := w.newSession(c, ws.ID, "second")
+	otherParent := w.newSession(c, ws.ID, "second")
 	child := w.createChild(c, parent, "worker", "")
-	otherWorker := w.createChild(c, otherLead, "worker", "")
-	if child.Dir == otherWorker.Dir || child.Branch == otherWorker.Branch {
+	otherChild := w.createChild(c, otherParent, "worker", "")
+	if child.Dir == otherChild.Dir || child.Branch == otherChild.Branch {
 		t.Fatal("the sessions share a worktree or branch")
 	}
-	for _, pair := range [][2]store.Session{{parent, otherWorker}, {otherLead, child}} {
+	for _, pair := range [][2]store.Session{{parent, otherChild}, {otherParent, child}} {
 		if listed := c.tool(pair[0].ID, "list_sessions", nil); strings.Contains(listed, pair[1].ID) {
-			t.Fatalf("list_sessions exposed another session's worker: %s", listed)
+			t.Fatalf("list_sessions exposed another session's child: %s", listed)
 		}
 	}
 	// A name reaches the sender's own session; another session's parent is
 	// reached by address. The delivery to the second parent shows the first
 	// message had its chance to cross.
-	c.tool(otherLead.ID, "send_message", map[string]string{"to": "worker", "text": "to my worker"})
-	c.tool(otherLead.ID, "send_message", map[string]string{"to": parent.ID, "text": "to the other lead"})
-	w.until("the deliveries", func() bool { return w.got(otherWorker.ID, "to my worker") && w.got(parent.ID, "to the other lead") })
-	if w.got(child.ID, "to my worker") {
-		t.Fatal("a message crossed to another session's worker")
+	c.tool(otherParent.ID, "send_message", map[string]string{"to": "worker", "text": "to my child"})
+	c.tool(otherParent.ID, "send_message", map[string]string{"to": parent.ID, "text": "to the other parent"})
+	w.until("the deliveries", func() bool { return w.got(otherChild.ID, "to my child") && w.got(parent.ID, "to the other parent") })
+	if w.got(child.ID, "to my child") {
+		t.Fatal("a message crossed to another session's child")
 	}
 }
 
@@ -401,7 +401,7 @@ func TestRoutesRefuseBadRequests(t *testing.T) {
 	}
 	code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`)
 	if code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
-		t.Fatalf("unknown lead: %d %s", code, body)
+		t.Fatalf("unknown lead profile: %d %s", code, body)
 	}
 	if code, _ := c.post("/session", map[string]string{"action": "bogus", "id": "x"}, ""); code != http.StatusBadRequest {
 		t.Fatalf("unknown action: %d", code)
@@ -417,10 +417,10 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 	}
 	doomed := w.newSession(c, ws.ID, "first")
 	kept := w.newSession(c, ws.ID, "second")
-	doomedWorker := w.createChild(c, doomed, "worker", "")
-	keptWorker := w.createChild(c, kept, "worker", "")
-	pids := []int{w.lastPid(doomed.ID), w.lastPid(doomedWorker.ID)}
-	dirty := filepath.Join(doomedWorker.Dir, "unfinished")
+	doomedChild := w.createChild(c, doomed, "worker", "")
+	keptChild := w.createChild(c, kept, "worker", "")
+	pids := []int{w.lastPid(doomed.ID), w.lastPid(doomedChild.ID)}
+	dirty := filepath.Join(doomedChild.Dir, "unfinished")
 	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +430,7 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 	if len(w.family(doomed.ID)) != 2 || !w.session(doomed.ID).Running {
 		t.Fatal("refused deletion changed the session")
 	}
-	for i, a := range []store.Session{doomed, doomedWorker} {
+	for i, a := range []store.Session{doomed, doomedChild} {
 		if gone(pids[i]) || w.session(a.ID).Activity == store.Exited || len(w.log(a.ID, "shutdown")) != 0 {
 			t.Fatalf("refused deletion stopped %s", a.ID)
 		}
@@ -440,10 +440,10 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 	}
 	c.sessionAction("delete", doomed.ID)
 	if n := len(w.family(doomed.ID)); n != 0 || !gone(pids[0]) || !gone(pids[1]) {
-		t.Fatal("the deleted session left agents or processes")
+		t.Fatal("the deleted session left sessions or processes")
 	}
-	w.noPath(doomedWorker.Dir, "the deleted session's worktree")
-	for _, a := range []store.Session{kept, keptWorker} {
+	w.noPath(doomedChild.Dir, "the deleted session's worktree")
+	for _, a := range []store.Session{kept, keptChild} {
 		if w.starts(a.ID) != 1 || len(w.log(a.ID, "shutdown")) != 0 || !w.session(kept.ID).Running {
 			t.Fatalf("deleting a session affected %s", a.ID)
 		}
@@ -553,7 +553,7 @@ func TestAppProcess(t *testing.T) {
 	start()
 	first := c.newSession(ws.ID, "first")
 	parent := w.family(first)[0]
-	w.until("the lead", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
+	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
 		"params": map[string]any{"name": "create_session", "arguments": map[string]string{"name": "w1", "profile": "worker", "message": "brief"}}})
@@ -565,7 +565,7 @@ func TestAppProcess(t *testing.T) {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
 	child := w.family(first)[1]
-	w.until("the worker's brief", func() bool {
+	w.until("the child's brief", func() bool {
 		return w.got(child.ID, "brief") && w.session(child.ID).Activity == store.Idle
 	})
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}

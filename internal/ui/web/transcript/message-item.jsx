@@ -1,6 +1,6 @@
-// A message bubble: the user's prompt, a message from another agent (From),
-// or a message this agent sends (To), with a spinner until it is delivered
-// and the failure if it was not. A long message between agents shows its
+// A message bubble: the user's prompt, a message from another session (From),
+// or a message this session sends (To), with a spinner until it is delivered
+// and the failure if it was not. A long message between sessions shows its
 // first lines until it is expanded.
 import {useStore} from '../store.js';
 import {sessionOf} from '../sessions/selection.js';

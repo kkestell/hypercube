@@ -64,7 +64,7 @@ type write struct {
 
 // save runs fn in one transaction and, once it commits, publishes the write and
 // then each item fn saved. Callers that save items hold mu, as event does when
-// it publishes streaming items, so each agent's changes are published in the
+// it publishes streaming items, so each session's changes are published in the
 // order they were made.
 func (r *Runtime) save(fn func(*write) error) error {
 	var w write

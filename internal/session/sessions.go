@@ -81,7 +81,7 @@ func (r *Runtime) Start(id string) error {
 }
 
 func (r *Runtime) start(id string, fresh bool) error {
-	var root string
+	var dir string
 	err := r.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -90,15 +90,15 @@ func (r *Runtime) start(id string, fresh bool) error {
 		if s.Parent != "" {
 			return errors.New("a child session starts and stops with its parent")
 		}
-		root = s.Dir
-		return err
+		dir = s.Dir
+		return nil
 	})
 	if err != nil {
 		return err
 	}
-	branch, _ := workspace.Branch(root)
-	// The agents are registered before any plugin starts, so a second start
-	// finds the session running.
+	branch, _ := workspace.Branch(dir)
+	// The family is registered before any plugin starts, so a second start
+	// finds it running.
 	r.mu.Lock()
 	if r.closing {
 		r.mu.Unlock()
@@ -112,8 +112,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 		r.mu.Unlock()
 		return nil
 	}
-	var lives []*live
-	var sessions []store.Session
+	var launching []string
 	err = r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -121,34 +120,29 @@ func (r *Runtime) start(id string, fresh bool) error {
 		}
 		s.Running, s.AwaitingUser, s.Branch = true, !fresh, branch
 		s.LastActive = time.Now().UnixMilli()
-		if err := tx.SaveSession(s); err != nil {
-			return err
-		}
 		children, err := tx.Children(id)
 		if err != nil {
 			return err
 		}
-		sessions = append([]store.Session{s}, children...)
-		active := sessions[:0]
-		for _, a := range sessions {
-			if a.Ended {
+		for _, member := range append([]store.Session{s}, children...) {
+			if member.Ended {
 				continue
 			}
-			a.Activity, a.Attention = store.Exited, false
-			if err := tx.SaveSession(a); err != nil {
+			member.Activity, member.Attention = store.Exited, false
+			if err := tx.SaveSession(member); err != nil {
 				return err
 			}
-			if err := r.loadSeq(tx.Tx, a.ID); err != nil {
+			if err := r.loadSeq(tx.Tx, member.ID); err != nil {
 				return err
 			}
-			active = append(active, a)
+			launching = append(launching, member.ID)
 		}
-		sessions = active
 		return nil
 	})
+	var lives []*live
 	if err == nil {
-		for _, a := range sessions {
-			lives = append(lives, r.register(a.ID, id, 0))
+		for _, member := range launching {
+			lives = append(lives, r.register(member, id, 0))
 		}
 	}
 	r.mu.Unlock()
@@ -160,7 +154,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 	for i, l := range lives {
 		wg.Go(func() {
 			if err := r.launch(l); err != nil && !errors.Is(err, errStopped) {
-				errs[i] = fmt.Errorf("launching %s: %w", sessions[i].ID, err)
+				errs[i] = fmt.Errorf("launching %s: %w", l.id, err)
 			}
 		})
 	}
@@ -201,16 +195,19 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 	return r.detachLocked(func(l *live) bool { return l.root == id }, true), nil
 }
 
-// Delete stops the session and deletes it with its child sessions' worktrees and
-// branches. It refuses, changing nothing, if a child has uncommitted changes
-// in its worktree or an unmerged branch. Children without worktrees have their
-// directories left alone.
+// Delete deletes a session. An ended child loses only its row and chat. A
+// top-level session stops and is deleted with its children and their
+// worktrees and branches. It refuses, changing nothing, if a child has
+// uncommitted changes in its worktree or an unmerged branch. Children without
+// worktrees have their directories left alone.
 func (r *Runtime) Delete(id string) error {
+	var s store.Session
 	var root string
-	var children []store.Session
+	var worktrees []store.Session
 	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(id)
-		if err != nil {
+		var err error
+		s, err = tx.Session(id)
+		if err != nil || s.Parent != "" {
 			return err
 		}
 		w, err := tx.Workspace(s.Workspace)
@@ -218,19 +215,13 @@ func (r *Runtime) Delete(id string) error {
 			return err
 		}
 		root = w.Path
-		if s.Parent != "" {
-			if !s.Ended {
-				return errors.New("a child session must be ended before it can be deleted")
-			}
-			return nil
-		}
-		allChildren, err := tx.Children(id)
+		children, err := tx.Children(id)
 		if err != nil {
 			return err
 		}
-		for _, a := range allChildren {
-			if !a.Ended && a.Branch != "" {
-				children = append(children, a)
+		for _, c := range children {
+			if !c.Ended && c.Branch != "" {
+				worktrees = append(worktrees, c)
 			}
 		}
 		return nil
@@ -238,14 +229,20 @@ func (r *Runtime) Delete(id string) error {
 	if err != nil {
 		return err
 	}
+	if s.Parent != "" {
+		if !s.Ended {
+			return errors.New("a child session must be ended before it can be deleted")
+		}
+		return r.save(func(tx *write) error { return tx.DeleteSession(id) })
+	}
 	// A checkout that moved or disappeared took its worktrees with it.
 	_, statErr := os.Stat(root)
 	present := !errors.Is(statErr, os.ErrNotExist)
 	var problems []string
 	if present {
-		for _, a := range children {
-			if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
-				problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
+		for _, c := range worktrees {
+			if err := workspace.Removable(root, c.Dir, c.Branch); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", c.Name, err))
 			}
 		}
 	}
@@ -266,13 +263,13 @@ func (r *Runtime) Delete(id string) error {
 	stopClients(lives)
 	r.stopShells(id)
 	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
-	for _, a := range children {
+	for _, c := range worktrees {
 		if present {
-			if err := workspace.RemoveWorktree(root, a.Dir, a.Branch); err != nil {
-				return fmt.Errorf("%s: %w", a.Name, err)
+			if err := workspace.RemoveWorktree(root, c.Dir, c.Branch); err != nil {
+				return fmt.Errorf("%s: %w", c.Name, err)
 			}
 		}
-		if err := r.save(func(tx *write) error { return tx.DeleteSession(a.ID) }); err != nil {
+		if err := r.save(func(tx *write) error { return tx.DeleteSession(c.ID) }); err != nil {
 			return err
 		}
 	}

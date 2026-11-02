@@ -21,8 +21,8 @@ const (
 	RoleReview = "review"
 )
 
-// Profile is a named spec. Its role and description tell the user or lead
-// when to use it.
+// Profile is a named spec. Its role and description tell the user or a
+// top-level session when to use it.
 type Profile struct {
 	Name        string `json:"name"`
 	Role        string `json:"role"`
@@ -55,7 +55,7 @@ func LoadConfig() (Config, error) {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
 	seen := map[string]bool{}
-	var leads, workers int
+	var leads, children int
 	for i, p := range c.Profiles {
 		switch {
 		case p.Name == "":
@@ -69,7 +69,7 @@ func LoadConfig() (Config, error) {
 		case RoleLead:
 			leads++
 		case RolePlan, RoleWork, RoleReview:
-			workers++
+			children++
 		default:
 			return c, fmt.Errorf("%s: profile %q: invalid role %q (want lead, plan, work, or review)", path, p.Name, p.Role)
 		}
@@ -81,7 +81,7 @@ func LoadConfig() (Config, error) {
 	if leads == 0 {
 		return c, fmt.Errorf("%s: at least one lead profile is required", path)
 	}
-	if workers == 0 {
+	if children == 0 {
 		return c, fmt.Errorf("%s: at least one child profile is required", path)
 	}
 	return c, nil

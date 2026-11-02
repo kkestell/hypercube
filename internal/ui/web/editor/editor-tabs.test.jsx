@@ -14,19 +14,19 @@ const frame = () => act(() => new Promise(resolve => requestAnimationFrame(resol
 const openTestTab = (state, id) => ({...state, session: {...state.session, tabs: openTab(state.session.tabs, id)}});
 
 function setup(change = state => openTestTab(openTestTab(state, 'file:one'), 'file:two')) {
-  const lead = document.createElement('form');
-  lead.className = 'composer';
-  lead.dataset.session = 's';
-  lead.append(document.createElement('textarea'));
-  document.body.append(lead);
+  const composer = document.createElement('form');
+  composer.className = 'composer';
+  composer.dataset.session = 's';
+  composer.append(document.createElement('textarea'));
+  document.body.append(composer);
   const store = createStore(change({selected: 's', workspaces: [{sessions: [{id: 's', children: []}]}], drafts: {}, unsent: null, session: emptySession('s')}));
   const root = mount(store, <EditorArea />);
   const tabs = () => [...root.querySelectorAll('[role="tab"]')];
-  return {store, root, tabs, leadField: lead.firstChild};
+  return {store, root, tabs, composerField: composer.firstChild};
 }
 
-test('closing a tab focuses the next one, and closing the last focuses the lead', async () => {
-  const {root, tabs, leadField} = setup();
+test('closing a tab focuses the next one, and closing the last focuses the composer', async () => {
+  const {root, tabs, composerField} = setup();
   expect(tabs().map(t => t.querySelector('.editor-tabs-label').textContent)).toEqual(['one', 'two']);
   act(() => root.querySelector('[aria-label="Close two"]').click());
   await frame();
@@ -35,7 +35,7 @@ test('closing a tab focuses the next one, and closing the last focuses the lead'
   act(() => root.querySelector('[aria-label="Close one"]').click());
   await frame();
   expect(tabs().length).toBe(0);
-  expect(document.activeElement === leadField).toBe(true);
+  expect(document.activeElement === composerField).toBe(true);
 });
 
 test('the arrow keys, Home, and End select tabs and keep the focus on them', async () => {

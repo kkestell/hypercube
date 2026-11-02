@@ -3,7 +3,7 @@
 // An item nests under its parent tool call when the parent is present.
 // Consecutive tool calls within one container form a run, which shows the
 // latest call while it lasts and closes at the next item that is not a tool
-// call, showing how long it worked. A call that sends a message to an agent
+// call, showing how long it worked. A call that sends a message to a session
 // draws as a message. The rows are rebuilt from the whole list, so an item
 // that arrives before its parent moves under the parent when it arrives.
 
@@ -45,7 +45,7 @@ export function toolTitle(item) {
   return [name, toolSummary(item.input)];
 }
 
-// A message between agents longer than this many lines, or about as many lines
+// A message between sessions longer than this many lines, or about as many lines
 // of text, shows its first lines until it is expanded.
 const clampLines = 6;
 export const isLong = text => text.split('\n').length > clampLines || text.length > clampLines * 100;

@@ -82,7 +82,7 @@ func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 	if err := f.rt.Start(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	f.until("the lead idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
+	f.until("the session idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
 	start := f.log(s.ID, "start")
 	if len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
 		t.Fatalf("restart: %v awaiting=%v", start, f.storedSession(s.ID).AwaitingUser)
@@ -104,7 +104,7 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
-	f.until("a working lead", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
+	f.until("a working session", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
 	pid := f.log(s.ID, "start")[0].Pid
 	f.rt.Shutdown()
 	// Shutdown saves the unfinished item, ends the process, and leaves the
@@ -128,7 +128,7 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	rt := f.newRuntime()
 	f.rt = rt
 	rt.Restore()
-	f.until("the restored lead", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
+	f.until("the restored session", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
 	if start := f.log(s.ID, "start"); len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
 		t.Fatalf("restore: %v", start)
 	}
@@ -156,7 +156,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 	child := f.child(s, "w1", "")
 	f.input(child.ID, "!child")
 	var childPID int
-	f.until("the worker's child", func() bool {
+	f.until("the child's subprocess", func() bool {
 		for _, e := range f.log(child.ID, "child") {
 			childPID = e.Pid
 		}
@@ -166,7 +166,7 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(f.family(s.ID)) != 0 || len(f.log(s.ID, "shutdown")) != 1 || len(f.log(child.ID, "shutdown")) != 1 {
-		t.Fatal("the session or its agents remain")
+		t.Fatal("the session or its children remain")
 	}
 	f.until("the child to end", func() bool { return syscall.Kill(childPID, 0) == syscall.ESRCH })
 	if _, err := os.Stat(child.Dir); !os.IsNotExist(err) {
@@ -265,7 +265,7 @@ func TestDelete(t *testing.T) {
 		t.Fatal("delete deleted a dirty worktree")
 	}
 	if n := len(f.family("s")); n != 3 {
-		t.Errorf("refused delete left %d agents", n)
+		t.Errorf("refused delete left %d sessions", n)
 	}
 	if _, err := os.Stat(dir); err != nil {
 		t.Errorf("refused delete removed the worktree: %v", err)
@@ -278,13 +278,13 @@ func TestDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := len(f.family("s")); n != 0 {
-		t.Errorf("delete left %d agents", n)
+		t.Errorf("delete left %d sessions", n)
 	}
 	if _, err := os.Stat(dir); err == nil {
 		t.Errorf("%s remains", dir)
 	}
 	if _, err := os.Stat(other); err != nil {
-		t.Errorf("delete touched a worker's own directory: %v", err)
+		t.Errorf("delete touched a child's own directory: %v", err)
 	}
 }
 
@@ -314,7 +314,7 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 	f.input(s.ID, "!linger")
 	deleted := make(chan error, 1)
 	go func() { deleted <- f.rt.Delete(s.ID) }()
-	f.until("the lead's shutdown", func() bool { return len(f.log(s.ID, "shutdown")) == 1 })
+	f.until("the session's shutdown", func() bool { return len(f.log(s.ID, "shutdown")) == 1 })
 	if err := f.rt.Start(s.ID); !errors.Is(err, errDeleting) {
 		t.Fatalf("start during delete: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	if n := len(f.log(s.ID, "start")); n != 1 {
-		t.Fatalf("the lead started %d times", n)
+		t.Fatalf("the session started %d times", n)
 	}
 	f.rt.mu.Lock()
 	defer f.rt.mu.Unlock()

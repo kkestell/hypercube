@@ -9,7 +9,7 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// TranscriptItem is an item with its position in the agent's transcript.
+// TranscriptItem is an item with its position in the session's transcript.
 type TranscriptItem struct {
 	harness.Item
 	Seq int64 `json:"seq"`
@@ -21,7 +21,7 @@ type Request struct {
 	Item    harness.Item `json:"item"`
 }
 
-// Requests returns open attention items, newest first, across all live agents.
+// Requests returns open attention items, newest first, across all live sessions.
 func (r *Runtime) Requests() []Request {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -39,15 +39,15 @@ func (r *Runtime) Requests() []Request {
 	return requests
 }
 
-// Transcript returns the agent's items in order: those saved, then those still
+// Transcript returns the session's items in order: those saved, then those still
 // streaming.
-func (r *Runtime) Transcript(agent string) ([]TranscriptItem, error) {
+func (r *Runtime) Transcript(id string) ([]TranscriptItem, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var entries []store.Entry
 	if err := r.db.Read(func(tx *store.Tx) error {
 		var err error
-		entries, err = tx.Transcript(agent)
+		entries, err = tx.Transcript(id)
 		return err
 	}); err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (r *Runtime) Transcript(agent string) ([]TranscriptItem, error) {
 		}
 		items = append(items, TranscriptItem{Item: item, Seq: e.Seq})
 	}
-	if l := r.live[agent]; l != nil {
+	if l := r.live[id]; l != nil {
 		for _, p := range l.pending {
 			items = append(items, TranscriptItem{Item: p.item, Seq: p.seq})
 		}

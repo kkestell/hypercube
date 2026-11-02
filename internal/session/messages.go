@@ -18,22 +18,22 @@ func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, r
 		if err != nil {
 			return err
 		}
-		a, err := tx.FindSession(caller, to)
+		s, err := tx.FindSession(caller, to)
 		if err != nil {
 			return err
 		}
-		if a.ID == from {
+		if s.ID == from {
 			return errors.New("cannot send a message to yourself")
 		}
-		if a.Ended {
+		if s.Ended {
 			return errors.New("cannot send a message to an ended child session")
 		}
-		recipient = a
-		running, err = tx.Running(a)
+		recipient = s
+		running, err = tx.Running(s)
 		if err != nil {
 			return err
 		}
-		return tx.Queue(store.Message{From: from, To: a.ID, Text: text})
+		return tx.Queue(store.Message{From: from, To: s.ID, Text: text})
 	})
 	if err != nil {
 		return recipient, running, err

@@ -89,7 +89,7 @@ func (f *fixture) session() store.Session {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	f.until("the lead idle after the first prompt", func() bool {
+	f.until("the session idle after the first prompt", func() bool {
 		return f.summary(s.ID) == "user:start|text:ack" && f.storedSession(s.ID).Activity == store.Idle
 	})
 	return s
@@ -125,11 +125,11 @@ func (f *fixture) child(parent store.Session, name, message string) store.Sessio
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	w, err := f.rt.CreateChild(parent.ID, name, profile, "", message)
+	child, err := f.rt.CreateChild(parent.ID, name, profile, "", message)
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	return w
+	return child
 }
 
 func (f *fixture) read(fn func(*store.Tx) error) {

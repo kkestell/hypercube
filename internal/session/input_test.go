@@ -56,11 +56,11 @@ func TestInterruptAndUsage(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	f.input(parent.ID, "!work")
-	f.until("a working lead", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
+	f.until("a working session", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
 	if err := f.rt.Interrupt(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	f.until("an idle lead", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
+	f.until("an idle session", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
 	// The interrupted turn stays, and nothing sends it again.
 	if got := f.summary(parent.ID); got != "user:start|text:ack|user:!work|text:working" || len(f.inputs(parent.ID)) != 2 {
 		t.Fatalf("transcript = %q, inputs %q", got, f.inputs(parent.ID))

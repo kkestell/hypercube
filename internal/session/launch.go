@@ -46,10 +46,10 @@ type pendingItem struct {
 	native string
 }
 
-// current reports whether l is its agent's launch. The caller holds mu.
+// current reports whether l is its session's launch. The caller holds mu.
 func (r *Runtime) current(l *live) bool { return r.live[l.id] == l }
 
-// register adds a starting launch for the agent, whose transcript position is
+// register adds a starting launch for the session, whose transcript position is
 // loaded. The caller holds mu.
 func (r *Runtime) register(id, root string, quick int) *live {
 	r.gen++
@@ -59,25 +59,25 @@ func (r *Runtime) register(id, root string, quick int) *live {
 	return l
 }
 
-// loadSeq reads the agent's last transcript position, unless the runtime has
+// loadSeq reads the session's last transcript position, unless the runtime has
 // it already: the runtime's position can be ahead of the database while an
 // item is being written. The caller holds mu.
-func (r *Runtime) loadSeq(tx *store.Tx, agent string) error {
-	if _, ok := r.seqs[agent]; ok {
+func (r *Runtime) loadSeq(tx *store.Tx, id string) error {
+	if _, ok := r.seqs[id]; ok {
 		return nil
 	}
-	last, err := tx.LastSeq(agent)
+	last, err := tx.LastSeq(id)
 	if err != nil {
 		return err
 	}
-	r.seqs[agent] = last
+	r.seqs[id] = last
 	return nil
 }
 
-// nextSeq returns the agent's next transcript position. The caller holds mu.
-func (r *Runtime) nextSeq(agent string) int64 {
-	r.seqs[agent]++
-	return r.seqs[agent]
+// nextSeq returns the session's next transcript position. The caller holds mu.
+func (r *Runtime) nextSeq(id string) int64 {
+	r.seqs[id]++
+	return r.seqs[id]
 }
 
 // sessionLive reports whether any member of the family has a launch. The
@@ -110,12 +110,12 @@ func (r *Runtime) launch(l *live) error {
 	}
 	l.starting, l.launched = false, time.Now()
 	if err := r.save(func(tx *write) error {
-		a, err := tx.Session(l.id)
-		if err != nil || a.Activity != store.Exited {
+		s, err := tx.Session(l.id)
+		if err != nil || s.Activity != store.Exited {
 			return err
 		}
-		a.Activity = store.Idle
-		return tx.SaveSession(a)
+		s.Activity = store.Idle
+		return tx.SaveSession(s)
 	}); err != nil {
 		logf("marking %s ready: %v", l.id, err)
 	}
@@ -148,22 +148,22 @@ func (r *Runtime) startPlugin(l *live) (*harness.Client, error) {
 	return client, client.Do(ctx, harness.Command{Command: harness.CmdStart, Start: &args})
 }
 
-// startArgs returns the agent's plugin and what it starts with.
-func (r *Runtime) startArgs(agent string) (path string, args harness.StartArgs, err error) {
-	var a store.Session
+// startArgs returns the session's plugin and what it starts with.
+func (r *Runtime) startArgs(id string) (path string, args harness.StartArgs, err error) {
+	var s store.Session
 	err = r.db.Read(func(tx *store.Tx) error {
-		if a, err = tx.Session(agent); err != nil {
+		if s, err = tx.Session(id); err != nil {
 			return err
 		}
 		var profiles []harness.Profile
-		if a.Parent == "" {
+		if s.Parent == "" {
 			cfg, err := harness.LoadConfig()
 			if err != nil {
 				return err
 			}
 			profiles = cfg.ChildProfiles()
 		}
-		instructions, err := report.Instructions(tx, a, profiles)
+		instructions, err := report.Instructions(tx, s, profiles)
 		if err != nil {
 			return err
 		}
@@ -172,16 +172,16 @@ func (r *Runtime) startArgs(agent string) (path string, args harness.StartArgs, 
 			return err
 		}
 		args = harness.StartArgs{
-			Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": a.ID, "HYPERCUBE_URL": r.url},
-			Session: a.ID, Model: a.Model, Effort: a.Effort, Conversation: a.Conversation,
-			Dir: a.Dir, Instructions: instructions, StateDir: store.Dir(),
+			Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url},
+			Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation,
+			Dir: s.Dir, Instructions: instructions, StateDir: store.Dir(),
 		}
 		return nil
 	})
 	if err != nil {
 		return "", args, err
 	}
-	path, err = harness.Find(r.PluginDir, a.Harness)
+	path, err = harness.Find(r.PluginDir, s.Harness)
 	return path, args, err
 }
 
@@ -240,12 +240,12 @@ func (r *Runtime) end(l *live, cause error) {
 }
 
 func markExited(tx *write, id string) error {
-	a, err := tx.Session(id)
+	s, err := tx.Session(id)
 	if err != nil {
 		return err
 	}
-	a.Activity, a.Attention = store.Exited, false
-	return tx.SaveSession(a)
+	s.Activity, s.Attention = store.Exited, false
+	return tx.SaveSession(s)
 }
 
 // drain takes the launch's unfinished items as finished items.
@@ -260,7 +260,7 @@ func (l *live) drain() []*pendingItem {
 	return items
 }
 
-// note adds an item written by Hypercube to l's agent's transcript. The caller
+// note adds an item written by Hypercube to l's session's transcript. The caller
 // holds mu.
 func (r *Runtime) note(tx *write, l *live, kind, text string) error {
 	return tx.putItem(l.id, r.nextSeq(l.id), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: kind, Text: text, Done: true})

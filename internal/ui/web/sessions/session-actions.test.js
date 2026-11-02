@@ -4,7 +4,7 @@ import {createStore} from '../store.js';
 import {openUnsent} from './selection.js';
 import {chooseSession, sendPrompt} from './session-actions.js';
 
-const lead = {id: 'lead', activity: 'idle'};
+const session = {id: 's', activity: 'idle'};
 const store = (extra = {}) => createStore({workspaces: [], selected: 's', pending: null, unsent: null, drafts: {}, errors: [], session: null, ...extra});
 const png = bytes => new File([new Uint8Array(bytes)], 'a.png', {type: 'image/png'});
 
@@ -22,22 +22,22 @@ afterEach(() => {
 test('a refused prompt returns unless another was started', async () => {
   const fetches = spy(globalThis, 'fetch').mockImplementation(async () => new Response('busy', {status: 409}));
   const s = store();
-  s.update(state => typed(state, 'lead', 'first'));
-  await sendPrompt(s, lead);
+  s.update(state => typed(state, 's', 'first'));
+  await sendPrompt(s, session);
   expect(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams.get('action')).toBe('input');
-  expect(draftOf(s.get(), 'lead').text).toBe('first');
+  expect(draftOf(s.get(), 's').text).toBe('first');
 
   let release;
   fetches.mockImplementation(() => new Promise(resolve => { release = () => resolve(new Response('busy', {status: 409})); }));
-  const sending = sendPrompt(s, lead);
-  expect(draftOf(s.get(), 'lead').text).toBe('');
-  s.update(state => typed(state, 'lead', 'second'));
+  const sending = sendPrompt(s, session);
+  expect(draftOf(s.get(), 's').text).toBe('');
+  s.update(state => typed(state, 's', 'second'));
   release();
   await sending;
-  expect(draftOf(s.get(), 'lead').text).toBe('second');
+  expect(draftOf(s.get(), 's').text).toBe('second');
 });
 
-test('text typed while the unsent session sends moves to the created lead', async () => {
+test('text typed while the unsent session sends moves to the created session', async () => {
   const s = store();
   s.update(state => openUnsent(state, 'w', {name: 'claude-lead', harness: 'claude'}));
   s.update(state => typed(state, unsentKey, 'create it'));
@@ -101,11 +101,11 @@ for (const [phase, response] of [
   test(`a network failure while ${phase} shows an error, keeps the draft, and re-enables the unsent session`, async () => {
     spy(globalThis, 'fetch').mockImplementation(response);
     const s = store();
-    s.update(state => typed(state, 'lead', 'hello'));
-    await sendPrompt(s, lead);
+    s.update(state => typed(state, 's', 'hello'));
+    await sendPrompt(s, session);
     expect(s.get().errors).toHaveLength(1);
     expect(s.get().errors[0].message).toContain('Load failed');
-    expect(draftOf(s.get(), 'lead').text).toBe('hello');
+    expect(draftOf(s.get(), 's').text).toBe('hello');
 
     s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'create it'));
     await sendPrompt(s, {id: unsentKey, activity: 'idle'});

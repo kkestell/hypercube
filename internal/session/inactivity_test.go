@@ -44,7 +44,7 @@ func TestIdleSessionStopsAndResumes(t *testing.T) {
 	if err := f.rt.Start(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	f.until("the resumed lead", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
+	f.until("the resumed session", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
 	if !f.storedSession(s.ID).Running || !f.storedSession(s.ID).AwaitingUser || len(f.queued(s.ID)) != 1 {
 		t.Fatal("idle session did not resume with its messages held")
 	}
@@ -62,21 +62,21 @@ func TestBusyChildKeepsSessionRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.input(child.ID, "!work")
-	f.until("a busy worker", func() bool { return f.storedSession(child.ID).Activity == store.Busy })
+	f.until("a busy child", func() bool { return f.storedSession(child.ID).Activity == store.Busy })
 	f.rt.stopIdleSessions(time.Now().Add(2 * idleTimeout))
 	if !f.storedSession(s.ID).Running {
-		t.Fatal("idle lead caused its busy worker's session to stop")
+		t.Fatal("an idle parent stopped while its child was busy")
 	}
 	f.input(child.ID, "!finish")
-	f.until("an idle worker", func() bool { return f.storedSession(child.ID).Activity == store.Idle })
+	f.until("an idle child", func() bool { return f.storedSession(child.ID).Activity == store.Idle })
 	deadline := time.UnixMilli(f.storedSession(s.ID).LastActive).Add(idleTimeout)
 	f.rt.stopIdleSessions(deadline.Add(-time.Millisecond))
 	if !f.storedSession(s.ID).Running {
-		t.Fatal("session did not receive ten minutes after the worker finished")
+		t.Fatal("session did not receive ten minutes after the child finished")
 	}
 	f.stopsWhenIdleAt(s.ID, deadline)
 	if f.storedSession(child.ID).Activity != store.Exited {
-		t.Fatal("session did not stop after the worker became idle")
+		t.Fatal("session did not stop after the child became idle")
 	}
 }
 

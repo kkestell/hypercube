@@ -133,15 +133,15 @@ test('the list follows its end until the user scrolls up', () => {
 
 const longText = Array.from({length: 10}, (_, i) => 'line ' + i).join('\n');
 
-test('long messages between agents expand and collapse; the user\'s own prompts do not clamp', () => {
+test('long messages between sessions expand and collapse; the user\'s own prompts do not clamp', () => {
   const {root} = setup([
-    {id: 'in', kind: 'user', from: 'c1/lead', text: longText, done: true},
-    {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1/lead', text: longText}},
+    {id: 'in', kind: 'user', from: 'c1', text: longText, done: true},
+    {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}},
     {id: 'own', kind: 'user', text: longText},
   ]);
   const [incoming, outgoing, own] = root.querySelectorAll('.message-item');
-  expect(incoming.textContent).toStartWith('From c1/lead');
-  expect(outgoing.textContent).toStartWith('To c1/lead');
+  expect(incoming.textContent).toStartWith('From c1');
+  expect(outgoing.textContent).toStartWith('To c1');
   expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
   for (const message of [incoming, outgoing]) {
     const text = message.querySelector('.message-item-text');

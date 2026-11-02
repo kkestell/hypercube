@@ -1,6 +1,6 @@
 // Package mcp gives agents the Hypercube tools. Each agent's harness runs
 // `hypercube mcp`, a stdio MCP server that forwards every request, with the
-// agent's identity, to the app's /mcp route. The tools run in the app, beside
+// session ID, to the app's /mcp route. The tools run in the app, beside
 // the browser's actions.
 package mcp
 
@@ -57,7 +57,7 @@ func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
 	}
 }
 
-// newServer returns the server for one agent. Outside Git, child sessions cannot
+// newServer returns the server for one session. Outside Git, child sessions cannot
 // have worktrees, so create_session requires dir. Profiles restrict profile to
 // the configured child session profiles.
 func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
@@ -180,7 +180,7 @@ func Bridge(stdin io.Reader, stdout io.Writer) error {
 	}
 }
 
-// identity adds the agent ID that the app's /mcp route requires.
+// identity adds the session ID that the app's /mcp route requires.
 type identity string
 
 func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -193,7 +193,7 @@ type nopCloser struct{ io.Writer }
 
 func (nopCloser) Close() error { return nil }
 
-// Handler is the app's /mcp route: it serves the tools to the agent named in
+// Handler is the app's /mcp route: it serves the tools to the session named in
 // SessionHeader. Each request is answered on its own, so the tools follow the
 // current workspace and configuration.
 func Handler(db *store.DB, rt *session.Runtime) http.Handler {
@@ -284,20 +284,20 @@ func createSession(rt *session.Runtime, self string, cfg harness.Config, args cr
 	if err != nil {
 		return "", err
 	}
-	a, err := rt.CreateChild(self, args.Name, profile, args.Dir, args.Message)
+	child, err := rt.CreateChild(self, args.Name, profile, args.Dir, args.Message)
 	if err != nil {
 		return "", err
 	}
-	if a.Branch == "" {
-		return fmt.Sprintf("Created %s in %s.", a.Name, a.Dir), nil
+	if child.Branch == "" {
+		return fmt.Sprintf("Created %s in %s.", child.Name, child.Dir), nil
 	}
-	return fmt.Sprintf("Created %s on branch %s in %s.", a.Name, a.Branch, a.Dir), nil
+	return fmt.Sprintf("Created %s on branch %s in %s.", child.Name, child.Branch, child.Dir), nil
 }
 
 func endSession(rt *session.Runtime, self, name string) (string, error) {
-	a, err := rt.EndChild(self, name)
+	child, err := rt.EndChild(self, name)
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("Ended %s.", a.Name), nil
+	return fmt.Sprintf("Ended %s.", child.Name), nil
 }

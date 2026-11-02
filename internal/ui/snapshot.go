@@ -36,19 +36,13 @@ type shownSession struct {
 	Children  []shownSession `json:"children"`
 }
 
+// showSession shows a top-level session with its children. A child runs
+// while its parent runs, until it ends.
 func showSession(tx *store.Tx, s store.Session) (shownSession, error) {
-	running, err := tx.Running(s)
-	if err != nil {
-		return shownSession{}, err
-	}
-	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
-		Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir, Activity: s.Activity,
-		Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
-	if s.Parent != "" {
-		return shown, nil
-	}
+	shown := show(s, s.Running)
 	shown.Unseen = s.Unseen
 	if s.Unseen && s.Activity == store.Idle {
+		var err error
 		shown.Reply, shown.ReplySeq, err = tx.LastText(s.ID)
 		if err != nil {
 			return shown, err
@@ -59,13 +53,15 @@ func showSession(tx *store.Tx, s store.Session) (shownSession, error) {
 		return shown, err
 	}
 	for _, c := range children {
-		child, err := showSession(tx, c)
-		if err != nil {
-			return shown, err
-		}
-		shown.Children = append(shown.Children, child)
+		shown.Children = append(shown.Children, show(c, s.Running && !c.Ended))
 	}
 	return shown, nil
+}
+
+func show(s store.Session, running bool) shownSession {
+	return shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
+		Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir, Activity: s.Activity,
+		Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 }
 
 // snapshot reads everything the view shows in one transaction: workspaces by

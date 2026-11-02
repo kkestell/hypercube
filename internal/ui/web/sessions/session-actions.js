@@ -48,7 +48,7 @@ export async function createSession(store, prompt) {
   return true;
 }
 
-// sendPrompt sends an session's draft. The unsent session's first prompt
+// sendPrompt sends a session's draft. The unsent session's first prompt
 // creates the session. A refused prompt returns to its draft.
 export async function sendPrompt(store, session) {
   const state = store.get();

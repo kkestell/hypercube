@@ -430,7 +430,7 @@ func (p *page) find(agent string, match func(harness.Item) bool) (harness.Item, 
 	return harness.Item{}, false
 }
 
-// input posts the user's text to the lead as an input action.
+// input posts the user's text to the session as an input action.
 func (a *app) input(text string, want int) {
 	a.t.Helper()
 	body, _ := json.Marshal(map[string]any{"text": text})
@@ -551,14 +551,14 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	child := a.child("worker")
 	pages := []*page{a.page(), a.page()}
 	for _, p := range pages {
-		p.until("the lead's reply", func() bool {
+		p.until("the parent's reply", func() bool {
 			s := p.session(a.session.ID)
 			return s.Unseen && s.Reply == "ack" && s.ReplySeq == 2
 		})
 	}
 	a.input("!work", http.StatusOK)
 	for _, p := range pages {
-		p.until("the reply to clear while the lead works", func() bool {
+		p.until("the reply to clear while the parent works", func() bool {
 			s := p.session(a.session.ID)
 			return s.Unseen && s.Reply == "" && s.ReplySeq == 0 && s.Activity == store.Busy
 		})
@@ -575,7 +575,7 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, p := range pages {
-		p.until("requests from lead and worker", func() bool { return len(p.state.Requests) == 2 })
+		p.until("requests from parent and child", func() bool { return len(p.state.Requests) == 2 })
 		if p.state.Requests[0].Session == p.state.Requests[1].Session {
 			t.Fatalf("requests = %+v", p.state.Requests)
 		}

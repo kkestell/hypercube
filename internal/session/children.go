@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -113,13 +114,15 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		if parent.Parent != "" {
 			return errors.New("only a top-level session can do this")
 		}
-		child, err = tx.FindSession(parent, name)
+		children, err := tx.Children(parent.ID)
 		if err != nil {
 			return err
 		}
-		if child.Parent != parent.ID {
-			return errors.New("only your child sessions can be ended")
+		i := slices.IndexFunc(children, func(c store.Session) bool { return c.Name == name })
+		if i < 0 {
+			return fmt.Errorf("you have no child session named %s", name)
 		}
+		child = children[i]
 		if child.Ended {
 			return errors.New("the child session has already ended")
 		}

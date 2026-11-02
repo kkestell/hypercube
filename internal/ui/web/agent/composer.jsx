@@ -17,7 +17,7 @@ export function Composer({session}) {
   const draft = draftOf(state, session.id);
   const field = useRef(null), picker = useRef(null);
 
-  // Preserve keyboard focus in the file tab strip when an session mounts.
+  // Preserve keyboard focus in the file tab strip when a session mounts.
   useEffect(() => {
     if (!document.activeElement?.closest('.editor-tabs')) field.current.focus();
   }, []);

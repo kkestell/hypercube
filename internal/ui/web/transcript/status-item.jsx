@@ -1,3 +1,5 @@
+// A child session's status update in its parent's transcript: the child's
+// title, or its ID once it is deleted, the text, and the time.
 import {useStore} from '../store.js';
 import {sessionOf} from '../sessions/selection.js';
 import './status-item.css';
