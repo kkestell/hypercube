@@ -250,6 +250,14 @@ func TestActions(t *testing.T) {
 		}
 		return nil
 	})
+	dir := t.TempDir()
+	post("/workspace?action=new&path="+url.QueryEscape(dir), http.StatusOK)
+	change(t, db, func(tx *store.Tx) error {
+		if list, _ := tx.Workspaces(); len(list) != 1 {
+			t.Errorf("workspaces after adding %s = %+v", dir, list)
+		}
+		return nil
+	})
 }
 
 // app is the view over a runtime whose agents are the stand-in plugin.

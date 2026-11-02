@@ -11,7 +11,9 @@
   flex-shrink: 0;
   align-items: center;
   height: var(--size-bar-height);
-  padding: 0 calc(var(--size-space) * 2) 0 calc(var(--size-space) * 5);
+  /* The label lines up with the tree's chevrons, and the button with the
+     tree's row buttons. */
+  padding: 0 calc(var(--size-space) * 3) 0 14px;
   background: var(--vscode-sideBarTitle-background);
   color: var(--vscode-sideBarTitle-foreground);
 }

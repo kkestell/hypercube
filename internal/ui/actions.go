@@ -15,23 +15,27 @@ import (
 // maxInput is the largest input body: 10 MiB of images in base64, and text.
 const maxInput = 16 << 20
 
-// workspaceAction adds a workspace in a folder the user picks and returns its
-// ID, or deletes a workspace.
+// workspaceAction adds a workspace in the given folder, or one the user picks,
+// and returns its ID, or deletes a workspace.
 func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
 	case "new":
-		// activate brings the picker in front of the browser.
-		out, err := exec.Command("osascript", "-e", "activate", "-e", `POSIX path of (choose folder with prompt "Choose the workspace's folder:")`).Output()
-		var exit *exec.ExitError
-		if errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "(-128)") {
-			return // The user cancelled.
+		dir := q.Get("path")
+		if dir == "" {
+			// activate brings the picker in front of the browser.
+			out, err := exec.Command("osascript", "-e", "activate", "-e", `POSIX path of (choose folder with prompt "Choose the workspace's folder:")`).Output()
+			var exit *exec.ExitError
+			if errors.As(err, &exit) && strings.Contains(string(exit.Stderr), "(-128)") {
+				return // The user cancelled.
+			}
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			dir = strings.TrimSpace(string(out))
 		}
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		added, err := s.rt.AddWorkspace(strings.TrimSpace(string(out)))
+		added, err := s.rt.AddWorkspace(dir)
 		if refused(w, err) {
 			return
 		}

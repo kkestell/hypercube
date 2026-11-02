@@ -1,6 +1,6 @@
 import {expect, test} from 'bun:test';
 import {unsentKey} from '../agent/drafts.js';
-import {openWorkerTab, rememberScroll} from '../editor/editor.js';
+import {rememberScroll} from '../editor/editor.js';
 import {receivedTranscript} from '../transcript/transcripts.js';
 import {openUnsent, pageTitle, receivedWorkspaces, selectSession} from './selection.js';
 
@@ -63,11 +63,11 @@ test('attaching to another session replaces the session state', () => {
   expect(state.session).not.toBe(attached);
 });
 
-test('a departing agent loses its tab, transcript, and scroll', () => {
+test('a departing agent loses its transcript and scroll', () => {
   const lead = agent('lead', {role: 'lead'}), worker = agent('worker');
   let state = receivedWorkspaces(initial('a'), workspaces(session('a', true, [lead, worker])));
   state = receivedTranscript(state, {session: 'a', agent: 'worker', reset: true, items: [{id: '1', seq: 1, kind: 'text'}]});
-  state = rememberScroll(openWorkerTab(state, 'worker'), 'a', 'worker', {top: 1, left: 0, following: false});
+  state = rememberScroll(state, 'a', 'worker', {top: 1, left: 0, following: false});
   state = receivedWorkspaces(state, workspaces(session('a', true, [lead])));
   expect(state.session.transcripts).toEqual({});
   expect(state.session.scroll).toEqual({});

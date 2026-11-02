@@ -1,13 +1,11 @@
-// The right panel: the shown session's Workers, Files, and Changes, as icon
+// The right panel: the shown session's Files and Changes, as icon
 // tabs. Changes is empty.
 import {FilesPanel} from '../files/files-panel.jsx';
 import {useStore} from '../store.js';
-import {WorkersPanel} from '../workers/workers-panel.jsx';
 import {selectRightTab} from './workbench.js';
 import './right-panel.css';
 
 const tabs = [
-  {id: 'workers', icon: 'organization', title: 'Workers'},
   {id: 'files', icon: 'files', title: 'Files'},
   {id: 'changes', icon: 'source-control', title: 'Changes'},
 ];
@@ -24,7 +22,6 @@ export function RightPanel() {
             <vscode-icon name={tab.icon} />
           </vscode-tab-header>
         ))}
-        <vscode-tab-panel class="right-panel-body"><WorkersPanel /></vscode-tab-panel>
         <vscode-tab-panel class="right-panel-body"><FilesPanel key={state.session?.id} /></vscode-tab-panel>
         <vscode-tab-panel class="right-panel-body" />
       </vscode-tabs>

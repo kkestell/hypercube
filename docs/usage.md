@@ -5,7 +5,7 @@ http://localhost:4280/. The browser view is Hypercube's interface.
 
 A workspace is a folder that holds sessions. In Git, its folder is the
 checkout's top level; outside Git, it is the folder itself. A session is a lead
-and its workers, with their chats displayed in tabs.
+and its workers, with their chats displayed beside each other.
 You create, start, stop, rename, and delete sessions; a stopped session has no
 running agents and stays listed until you start it.
 
@@ -53,14 +53,13 @@ card marks the reply seen; closing a request's card only hides it. A reply's
 card closes by itself after 15 seconds, or when its lead starts working again.
 A request's card stays until the request is answered or the card is closed.
 
-The lead's chat stays in its own column. The right panel's Workers tab shows
-cards with each worker's latest report and its age. Click a card's Open
-Transcript icon to open that worker in the tab area to the right of the lead.
-That area appears when the first tab opens and disappears when the last tab
-closes. Drag the divider to resize the lead's column. New worker tabs use the
-first pane, ordered from left to right and top to bottom. Worker tabs show
-their agent's activity indicator; the lead's appears beside its harness and
-model. Closing a worker's tab leaves it running.
+The lead's chat stays in its own column, followed by a vertical stack of
+workers, the open-file area, and the right sidebar. Workers start as cards
+showing their latest report and its age. Click a worker's header to expand its
+chat and message box in place; click again to collapse it. Drag the column
+dividers to resize the lead, workers, and files. Drag a divider below an
+expanded worker to resize it and the next expanded worker; collapsed cards
+keep their height. The file area appears only while files are open.
 
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
@@ -82,13 +81,13 @@ Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 
 Below each message box, the harness, model, and effort appear on the left,
-with context use and cost on the right. Codex reports no cost. Drag a tab to
+with context use and cost on the right. Codex reports no cost. Drag a file tab to
 another pane's tab bar to move it there, or to a pane's left, right, top, or
-bottom edge to split it. These moves and splits stay within the worker tab
-area; the lead stays in its column. Drag dividers to resize panes and the sidebar.
+bottom edge to split it. These moves and splits stay within the file
+area; agents stay in their columns. Drag dividers to resize panes and the sidebar.
 
 The right panel button in the header shows or hides the right panel. Its icon
-tabs select Workers, Files, and Changes; Changes is blank for now. Files
+tabs select Files and Changes; Changes is blank for now. Files
 shows the session's folder as a read-only tree. Click a file to preview it in
 the tab area, and double-click it to keep its tab open.
 

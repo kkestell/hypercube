@@ -7,9 +7,10 @@
   display: inline-block;
   flex-shrink: 0;
   width: var(--size-icon);
+  height: var(--size-row-height);
   font-family: seti;
-  font-size: calc(var(--size-icon) * 1.2);
-  line-height: 1;
+  font-size: 150%;
+  line-height: var(--size-row-height);
   text-align: center;
   -webkit-font-smoothing: antialiased;
 }

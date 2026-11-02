@@ -4,7 +4,6 @@
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
 import {unsentKey} from '../agent/drafts.js';
-import {closeTab} from '../editor/tab-layout.js';
 
 export const allSessions = state => state.workspaces.flatMap(w => w.sessions);
 
@@ -69,7 +68,7 @@ function attach(state) {
   return {...state, session: id ? emptySession(id) : null};
 }
 
-// withoutDeparted drops the transcripts, tabs, and scroll of agents that left
+// withoutDeparted drops the transcripts and scroll of agents that left
 // the attached session.
 function withoutDeparted(before, after) {
   const session = after.session;
@@ -83,7 +82,6 @@ function withoutDeparted(before, after) {
       ...session,
       transcripts: omit(session.transcripts, gone),
       scroll: omit(session.scroll, gone),
-      tabs: gone.reduce(closeTab, session.tabs),
     },
   };
 }

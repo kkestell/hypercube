@@ -5,7 +5,6 @@
 import {useRef} from 'preact/hooks';
 import {focusComposer} from '../agent/focus-composer.js';
 import {FileIcon} from '../files/file-icon.jsx';
-import {AgentStatus} from '../shared/agent-status.jsx';
 import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
 import './editor-tabs.css';
@@ -50,7 +49,7 @@ export function EditorTabs({pane, entries, lead}) {
   };
 
   return (
-    <div ref={strip} class="editor-tabs" role="tablist" aria-label="Open tabs" onKeyDown={key}>
+    <div ref={strip} class="editor-tabs" role="tablist" aria-label="Open files" onKeyDown={key}>
       {entries.map(entry => {
         const active = entry.id === pane.active;
         const classes = ['editor-tabs-tab', active && 'editor-tabs-tab-active', entry.preview && 'editor-tabs-tab-preview', entry.deleted && 'editor-tabs-tab-deleted'];
@@ -77,9 +76,8 @@ export function EditorTabs({pane, entries, lead}) {
               onClick={() => store.update(s => selectTab(s, pane.id, entry.id))}
               onDblClick={() => store.update(s => keepOpen(s, entry.id))}
             >
-              {entry.path !== undefined && <FileIcon name={entry.label} />}
+              <FileIcon name={entry.label} />
               <span class="editor-tabs-label">{entry.label}</span>
-              {entry.agent && <AgentStatus agent={entry.agent} />}
             </button>
             <button type="button" class="editor-tabs-close" title={`Close ${entry.label}`} aria-label={`Close ${entry.label}`} onClick={() => close(entry.id)}>
               <vscode-icon name="close" />

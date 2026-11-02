@@ -23,7 +23,8 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
     const element = ref.current;
     if (collapsed) element.handlePosition = collapsed === 'start' ? '0px' : '100%';
     else if (fixed === 'start') element.handlePosition = `${kept.current}px`;
-    else if (fixed === 'end') element.handlePosition = `${length() - kept.current}px`;
+    // The split has no width until it and the splits around it have rendered.
+    else if (fixed === 'end') Promise.resolve(element.updateComplete).then(() => element.handlePosition = `${length() - kept.current}px`);
     else element.handlePosition = `${kept.current}%`;
   }, [collapsed, size]);
 
@@ -39,7 +40,9 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
       ref={ref}
       class={collapsed ? 'split split-collapsed' : 'split'}
       split={split}
-      fixed-pane={fixed}
+      // A zero-width parent makes percentage panes both grow from 0%.
+      // Fix the collapsed side at zero so it stays hidden when its parent opens.
+      fixed-pane={collapsed ?? fixed}
       handle-size={collapsed ? 0 : handleSize}
       min-start={collapsed ? undefined : minStart}
       min-end={collapsed ? undefined : minEnd}

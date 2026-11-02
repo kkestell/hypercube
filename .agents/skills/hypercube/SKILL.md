@@ -80,9 +80,9 @@ same reviewer directly fix the findings the lead selects.
 
 Complete the checks required by `AGENTS.md`. When the change affects the
 browser view, stop any existing isolated dev server, start a new one with
-`make dev`, and open it in the default browser so the user can test the finished
-work. Leave the installed app and the user's workspaces alone. Iterate on the
-user's feedback, then shut down the dev server and reset its isolated state with
+`make dev`, and give the user its address so they can test the finished work.
+Leave the installed app and the user's workspaces alone. Iterate on the user's
+feedback, then shut down the dev server and reset its isolated state with
 `scripts/dev clean`.
 
 The lead owns integration and the final commit; commit only the changes

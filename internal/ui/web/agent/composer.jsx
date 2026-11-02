@@ -17,8 +17,7 @@ export function Composer({agent}) {
   const draft = draftOf(state, agent.id);
   const field = useRef(null), picker = useRef(null);
 
-  // Clicking a tab, or moving between tabs with the arrow keys, mounts the
-  // tab's composer; the focus stays on the tab.
+  // Preserve keyboard focus in the file tab strip when an agent mounts.
   useEffect(() => {
     if (!document.activeElement?.closest('.editor-tabs')) field.current.focus();
   }, []);

@@ -64,13 +64,11 @@ export function Sidebar() {
         <h2 class="sidebar-title-label">Workspaces</h2>
         <vscode-toolbar-button icon="add" label="New Workspace" title="New Workspace" onClick={() => addWorkspace(store)} />
       </div>
-      <vscode-tree ref={tree} class="sidebar-tree" onvsc-tree-select={selected} onContextMenu={contextMenu}>
+      <vscode-tree ref={tree} class="sidebar-tree" indent={0} onvsc-tree-select={selected} onContextMenu={contextMenu}>
         {workspaces.map(workspace => {
           const limit = limits[workspace.id] ?? pageSize;
           return (
             <vscode-tree-item key={workspace.id} data-key={workspace.id} branch open={!collapsed[workspace.id]} title={workspace.path}>
-              <vscode-icon slot="icon-branch" name="folder" />
-              <vscode-icon slot="icon-branch-opened" name="folder-opened" />
               {workspace.name}
               <vscode-toolbar-button
                 slot="actions" icon="ellipsis" label="More Actions" title="More Actions"

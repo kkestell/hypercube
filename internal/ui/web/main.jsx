@@ -19,7 +19,7 @@ const store = createStore({
   dismissed: {},
   errors: [],
   confirmation: null,
-  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'workers'},
+  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
   session: null,
 });
 

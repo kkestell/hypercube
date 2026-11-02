@@ -1,28 +1,61 @@
 .workers-panel {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--size-space) * 2);
   height: 100%;
   overflow-y: auto;
-  padding: calc(var(--size-space) * 3);
 }
 
 .workers-panel-card {
-  padding: calc(var(--size-space) * 3);
-  border: var(--size-border) solid var(--vscode-widget-border);
-  border-radius: var(--size-radius);
+  flex: 0 0 auto;
+  overflow: hidden;
   background: var(--vscode-editor-background);
 }
 
-.workers-panel-card-attention {
-  border-color: var(--vscode-inputValidation-warningBorder);
+.workers-panel-card-expanded {
+  display: flex;
+  flex-direction: column;
+  flex-basis: var(--size-row-height);
+  min-height: calc(var(--size-row-height) + 120px);
 }
 
+.workers-panel-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workers-panel-divider {
+  flex: 0 0 4px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.workers-panel-divider:hover {
+  background: var(--vscode-focusBorder);
+}
+
+/* VS Code's view section header. */
 .workers-panel-header {
   display: flex;
+  flex: 0 0 var(--size-row-height);
   align-items: center;
-  gap: calc(var(--size-space) * 2);
-  margin-bottom: calc(var(--size-space) * 2);
+  gap: 2px;
+  width: 100%;
+  height: var(--size-row-height);
+  padding: 0 calc(var(--size-space) * 2) 0 2px;
+  border-top: var(--size-border) solid var(--vscode-sideBarSectionHeader-border);
+  background: var(--vscode-sideBarSectionHeader-background);
+  color: var(--vscode-sideBarSectionHeader-foreground);
+  font-size: 11px;
+  font-weight: bold;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.workers-panel-card:first-child > .workers-panel-header {
+  border-top-color: transparent;
 }
 
 .workers-panel-name {
@@ -49,4 +82,10 @@
 
 .workers-panel-empty {
   color: var(--vscode-descriptionForeground);
+}
+
+.workers-panel-status,
+.workers-panel-age,
+.workers-panel-card > .workers-panel-empty {
+  margin: 12px;
 }
