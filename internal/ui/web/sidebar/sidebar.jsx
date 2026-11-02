@@ -62,7 +62,7 @@ export function Sidebar() {
     <div class="sidebar">
       <div class="sidebar-title">
         <h2 class="sidebar-title-label">Workspaces</h2>
-        <vscode-toolbar-button icon="add" label="New Workspace" title="New Workspace" onClick={addWorkspace} />
+        <vscode-toolbar-button icon="add" label="New Workspace" title="New Workspace" onClick={() => addWorkspace(store)} />
       </div>
       <vscode-tree ref={tree} class="sidebar-tree" onvsc-tree-select={selected} onContextMenu={contextMenu}>
         {workspaces.map(workspace => {

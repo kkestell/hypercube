@@ -17,6 +17,8 @@ const store = createStore({
   visible: document.visibilityState === 'visible',
   drafts: {},
   dismissed: {},
+  errors: [],
+  confirmation: null,
   workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'workers'},
   session: null,
 });

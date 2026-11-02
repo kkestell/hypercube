@@ -4,7 +4,7 @@ import {openUnsent, unsentKey} from '../sessions/selection.js';
 import {attachImages, canSend, draftOf, sendPrompt, typed} from './drafts.js';
 
 const lead = {id: 'lead', activity: 'idle'};
-const store = (extra = {}) => createStore({workspaces: [], selected: 's', pending: null, unsent: null, drafts: {}, session: null, ...extra});
+const store = (extra = {}) => createStore({workspaces: [], selected: 's', pending: null, unsent: null, drafts: {}, errors: [], session: null, ...extra});
 const png = bytes => new File([new Uint8Array(bytes)], 'a.png', {type: 'image/png'});
 
 let spies = [];
@@ -19,13 +19,13 @@ afterEach(() => {
 });
 
 test('attaching refuses other types and images beyond 10 MiB', async () => {
-  const alerts = spy(globalThis, 'alert').mockImplementation(() => {});
   const s = store();
+  const errors = () => s.get().errors.map(error => error.message);
   await attachImages(s, 'lead', [png(4), new File(['x'], 'a.txt', {type: 'text/plain'})]);
-  expect(alerts.mock.calls).toEqual([['Attach PNG, JPEG, GIF, or WebP images.']]);
+  expect(errors()).toEqual(['Attach PNG, JPEG, GIF, or WebP images.']);
   expect(draftOf(s.get(), 'lead').images.length).toBe(1);
   await attachImages(s, 'lead', [png(10 << 20)]);
-  expect(alerts.mock.calls[1]).toEqual(['Images can total at most 10 MiB.']);
+  expect(errors()).toEqual(['Images can total at most 10 MiB.', 'Attach PNG, JPEG, GIF, or WebP images.']);
   expect(draftOf(s.get(), 'lead').images.length).toBe(1);
 });
 
@@ -40,7 +40,6 @@ test('sending waits for images still being read', async () => {
 });
 
 test('a refused prompt returns unless another was started', async () => {
-  spy(globalThis, 'alert').mockImplementation(() => {});
   const fetches = spy(globalThis, 'fetch').mockImplementation(async () => new Response('busy', {status: 409}));
   const s = store();
   s.update(state => typed(state, 'lead', 'first'));
@@ -76,8 +75,7 @@ test('text typed while the unsent session sends moves to the created lead', asyn
 
 for (const accepted of [true, false]) {
   test(`a ${accepted ? 'successful' : 'refused'} creation leaves a replacement unsent session alone`, async () => {
-    spy(globalThis, 'alert').mockImplementation(() => {});
-    const s = store();
+      const s = store();
     const profile = {name: 'claude-lead', harness: 'claude'};
     s.update(state => typed(openUnsent(state, 'w', profile), unsentKey, 'first'));
     let release;
@@ -93,8 +91,7 @@ for (const accepted of [true, false]) {
   });
 
   test(`image reads do not strand a composer when creation ${accepted ? 'succeeds' : 'is refused'}`, async () => {
-    spy(globalThis, 'alert').mockImplementation(() => {});
-    const s = store();
+      const s = store();
     s.update(state => typed(openUnsent(state, 'w', {name: 'claude-lead'}), unsentKey, 'first'));
     let release, reader;
     spy(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { release = resolve; }));

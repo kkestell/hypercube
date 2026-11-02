@@ -63,7 +63,7 @@ export function Composer({agent}) {
         </div>
         {agent.activity === 'busy' && agent.id !== unsentKey && (
           <vscode-button icon-only secondary icon="stop-circle" title="Stop" aria-label="Stop"
-            onClick={() => post('agent', {action: 'interrupt', id: agent.id})} />
+            onClick={() => post(store, 'agent', {action: 'interrupt', id: agent.id})} />
         )}
         <vscode-button icon-only secondary icon="send" title="Send" aria-label="Send" disabled={!canSend(state, agent)} onClick={send} />
       </div>

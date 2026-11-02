@@ -1,6 +1,7 @@
 import {afterEach, expect, jest, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
+import {post} from '../api.js';
 import {createStore} from '../store.js';
 import {NotificationStack} from './notification-stack.jsx';
 
@@ -14,7 +15,7 @@ const workspaces = [{id: 'w', name: 'repo', sessions: [
   {id: 'b', title: 'Ask', unseen: false, agents: [{id: 'b-lead', name: 'lead', role: 'lead'}, {id: 'b-w', name: 'auditor', role: 'work'}]},
 ]}];
 const requests = [{agent: 'b-w', item: {id: 'q', kind: 'attention', text: 'Allow?', choices: ['Yes']}}];
-const state = {workspaces, requests, selected: '', pending: null, unsent: null, drafts: {}, dismissed: {}, session: null};
+const state = {workspaces, requests, selected: '', pending: null, unsent: null, drafts: {}, dismissed: {}, errors: [], session: null};
 
 test('cards show their source and request answers', () => {
   const root = mount(createStore(state), <NotificationStack />);
@@ -46,5 +47,20 @@ test('a reply card closes after 15 seconds without marking the reply seen', () =
   expect(root.querySelectorAll('.notification-card').length).toBe(1);
   expect(store.get().dismissed).toEqual({'reply:a:4': true});
   expect(fetches).not.toHaveBeenCalled();
+  fetches.mockRestore();
+});
+
+test('a refused action shows an error card, newest first, until it is closed', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('session is busy', {status: 409}));
+  const store = createStore({...state, workspaces: [], requests: []});
+  const root = mount(store, <NotificationStack />);
+  expect(await post(store, 'session', {action: 'stop', id: 'a'})).toBeNull();
+  fetches.mockResolvedValue(new Response('no such session', {status: 404}));
+  await post(store, 'session', {action: 'stop', id: 'b'});
+  const texts = () => [...root.querySelectorAll('.notification-card')].map(card => card.textContent);
+  expect(texts()).toEqual(['no such session', 'session is busy']);
+  expect(root.querySelector('[title="View Session"]')).toBeNull();
+  act(() => root.querySelector('[title="Close"]').click());
+  expect(texts()).toEqual(['session is busy']);
   fetches.mockRestore();
 });

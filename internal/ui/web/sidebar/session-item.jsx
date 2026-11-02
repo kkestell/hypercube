@@ -4,6 +4,7 @@
 import {useEffect, useRef} from 'preact/hooks';
 import {renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
+import {useStore} from '../store.js';
 import './session-item.css';
 
 const names = agents => agents.map(a => a.name).join(', ');
@@ -37,6 +38,7 @@ export function SessionItem({session, selected, renaming, onRenaming}) {
 // loses the focus, and cancels on Escape. It keeps its keys and clicks from
 // the tree, which would treat them as navigation and selection.
 function RenameField({session, onDone}) {
+  const [, store] = useStore();
   const ref = useRef(null);
   const finished = useRef(false);
 
@@ -50,7 +52,7 @@ function RenameField({session, onDone}) {
     if (finished.current) return;
     finished.current = true;
     const title = save ? ref.current.value.trim() : '';
-    if (title && title !== session.title) renameSession(session.id, title);
+    if (title && title !== session.title) renameSession(store, session.id, title);
     onDone();
   };
 

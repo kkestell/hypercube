@@ -16,6 +16,11 @@
   gap: calc(var(--size-space) * 2);
 }
 
+.notification-card-error {
+  flex-shrink: 0;
+  color: var(--vscode-notificationsErrorIcon-foreground);
+}
+
 .notification-card-info {
   flex-shrink: 0;
   color: var(--vscode-notificationsInfoIcon-foreground);

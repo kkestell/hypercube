@@ -11,14 +11,14 @@ import {markSeen} from './session-actions.js';
 import {currentSession, shownAgents} from './selection.js';
 
 export function SessionView() {
-  const [state] = useStore();
+  const [state, store] = useStore();
   const [leadShare, setLeadShare] = useState(50);
   const session = currentSession(state);
   const agents = shownAgents(state);
   const lead = agents.find(a => a.role === 'lead');
 
   useEffect(() => {
-    if (session?.unseen && state.visible) markSeen(session.id);
+    if (session?.unseen && state.visible) markSeen(store, session.id);
   }, [session?.id, session?.unseen, state.visible]);
 
   if (!session && !state.unsent) return <Tesseract />;

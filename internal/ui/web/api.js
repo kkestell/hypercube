@@ -1,24 +1,25 @@
 // Every HTTP call the page makes to the server.
+import {showError} from './notifications/errors.js';
 
 const url = (path, params) => path + '?' + new URLSearchParams(params);
 
 // post sends an action with an optional body and returns the response text, or
 // null after showing the user why the server refused.
-export async function post(path, params, body) {
+export async function post(store, path, params, body) {
   const response = await fetch(url(path, params), {method: 'POST', body});
   const text = await response.text();
   if (!response.ok) {
-    alert(text);
+    showError(store, text);
     return null;
   }
   return text;
 }
 
 // fetchLeads returns the lead profiles, or null after showing why it failed.
-export async function fetchLeads() {
+export async function fetchLeads(store) {
   const response = await fetch('leads');
   if (!response.ok) {
-    alert(await response.text());
+    showError(store, await response.text());
     return null;
   }
   return response.json();
@@ -26,8 +27,8 @@ export async function fetchLeads() {
 
 // answerRequest answers an agent's attention request and reports whether the
 // server accepted the answer.
-export async function answerRequest(agent, request, choice, text) {
-  return await post('agent', {action: 'answer', id: agent, request, choice}, text) !== null;
+export async function answerRequest(store, agent, request, choice, text) {
+  return await post(store, 'agent', {action: 'answer', id: agent, request, choice}, text) !== null;
 }
 
 // listFiles returns a folder's entries, relative to the session's working

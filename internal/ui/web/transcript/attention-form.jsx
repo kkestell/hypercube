@@ -19,7 +19,7 @@ export function AttentionForm({agent, item}) {
   const send = async choice => {
     if (sending) return;
     setSending(true);
-    if (await answerRequest(agent, item.id, choice, text)) store.update(s => typed(s, key, ''));
+    if (await answerRequest(store, agent, item.id, choice, text)) store.update(s => typed(s, key, ''));
     else setSending(false);
   };
   const sendText = () => {

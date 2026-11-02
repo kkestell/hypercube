@@ -1,9 +1,11 @@
-// Notification cards, which stack in the top right for the open attention
-// requests and unseen lead replies of sessions the page is not showing. A
-// request comes from the state message's requests, newest first; a reply from
-// a session's reply and replySeq. Closing a card dismisses it in this page.
+// Notification cards, which stack in the top right for the page's errors and
+// for the open attention requests and unseen lead replies of sessions the page
+// is not showing. A request comes from the state message's requests, newest
+// first; a reply from a session's reply and replySeq. Closing an error card
+// removes the error; closing another card dismisses it in this page.
 import {markSeen} from '../sessions/session-actions.js';
 import {allSessions, sessionOfAgent} from '../sessions/selection.js';
+import {closeError} from './errors.js';
 
 const requestKey = request => `request:${request.agent}:${request.item.id}`;
 const replyKey = session => `reply:${session.id}:${session.replySeq}`;
@@ -19,9 +21,10 @@ export function receivedRequests(state, requests) {
   return {...state, requests, dismissed};
 }
 
-// cards are the request cards in the server's order, then the reply cards in
-// sidebar order.
+// cards are the error cards, then the request cards in the server's order,
+// then the reply cards in sidebar order.
 export function cards(state) {
+  const errors = state.errors.map(error => ({key: error.key, kind: 'error', text: error.message}));
   const requests = state.requests.flatMap(request => {
     const found = sessionOfAgent(state, request.agent);
     if (!found) return [];
@@ -30,14 +33,19 @@ export function cards(state) {
   });
   const replies = state.workspaces.flatMap(workspace => workspace.sessions.filter(s => s.replySeq).map(session =>
     ({key: replyKey(session), kind: 'reply', workspace: workspace.name, session, text: session.reply})));
-  return [...requests, ...replies].filter(card => card.session.id !== state.selected && !state.dismissed[card.key]);
+  const shown = [...requests, ...replies].filter(card => card.session.id !== state.selected && !state.dismissed[card.key]);
+  return [...errors, ...shown];
 }
 
 export const dismiss = (state, key) => ({...state, dismissed: {...state.dismissed, [key]: true}});
 
-// closeCard dismisses a card. Closing a reply's card also marks it seen, which
-// lasts across reloads.
+// closeCard removes an error card and dismisses another. Closing a reply's card
+// also marks it seen, which lasts across reloads.
 export function closeCard(store, card) {
+  if (card.kind === 'error') {
+    store.update(state => closeError(state, card.key));
+    return;
+  }
   store.update(state => dismiss(state, card.key));
-  if (card.kind === 'reply') markSeen(card.session.id);
+  if (card.kind === 'reply') markSeen(store, card.session.id);
 }

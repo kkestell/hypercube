@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function setup(items) {
-  const store = createStore({drafts: {}, session: emptySession('s')});
+  const store = createStore({drafts: {}, errors: [], session: emptySession('s')});
   const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', agent: 'a', reset, items}));
   send(withSeq(items), true);
   const root = mount(store, <Transcript agent="a" />);
@@ -62,7 +62,6 @@ test('a tool call shows its title, status, input, output, and nested items', () 
 });
 
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
-  spies.push(spyOn(globalThis, 'alert').mockImplementation(() => {}));
   let answer;
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
   spies.push(fetches);

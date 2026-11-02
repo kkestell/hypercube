@@ -1,0 +1,67 @@
+/* VS Code's dialog box, centered over the dimmed page. */
+.confirm-dialog {
+  flex-direction: column;
+  width: min-content;
+  min-width: 500px;
+  max-width: 90vw;
+  margin: auto;
+  padding: calc(var(--size-space) * 2.5);
+  border: 0;
+  border-radius: var(--size-radius);
+  background: var(--vscode-editorWidget-background);
+  color: var(--vscode-editorWidget-foreground);
+  box-shadow: 0 0 calc(var(--size-space) * 2) calc(var(--size-space) / 2) var(--vscode-widget-shadow);
+}
+
+.confirm-dialog[open] {
+  display: flex;
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.confirm-dialog-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  height: var(--size-row-height);
+  padding-bottom: var(--size-space);
+}
+
+.confirm-dialog-message-row {
+  display: flex;
+  align-items: center;
+  padding: 0 calc(var(--size-space) * 2.5);
+}
+
+.confirm-dialog-icon {
+  flex-shrink: 0;
+  align-self: baseline;
+  color: var(--vscode-problemsWarningIcon-foreground);
+}
+
+.confirm-dialog-text {
+  display: flex;
+  flex-direction: column;
+  padding-left: calc(var(--size-space) * 6);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.confirm-dialog-message {
+  margin-bottom: calc(var(--size-space) * 2);
+  font-size: 18px;
+  line-height: var(--size-row-height);
+}
+
+.confirm-dialog-detail {
+  line-height: var(--size-row-height);
+}
+
+.confirm-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: calc(var(--size-space) * 2.5);
+  margin-top: calc(var(--size-space) * 5);
+  padding: var(--size-space) calc(var(--size-space) * 1.25);
+}

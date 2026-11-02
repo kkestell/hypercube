@@ -17,7 +17,7 @@ const requests = [
   {agent: 'c-lead', item: {id: 'q2', kind: 'attention', text: 'Allow?', at: 2}},
   {agent: 'a-w', item: {id: 'q1', kind: 'attention', text: 'Proceed?', at: 1}},
 ];
-const state = (extra = {}) => receivedRequests({workspaces, requests: [], selected: '', dismissed: {}, ...extra}, requests);
+const state = (extra = {}) => receivedRequests({workspaces, requests: [], selected: '', dismissed: {}, errors: [], ...extra}, requests);
 
 test('request cards come in the server order, then reply cards in sidebar order', () => {
   expect(cards(state()).map(c => c.key)).toEqual(['request:c-lead:q2', 'request:a-w:q1', 'reply:a:7', 'reply:b:3']);

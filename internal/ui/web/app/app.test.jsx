@@ -15,7 +15,7 @@ test('state arriving before passive effects reaches the page', async () => {
   try {
     const store = createStore({
       workspaces: [], requests: [], selected: '', pending: null, unsent: null,
-      visible: true, drafts: {}, dismissed: {}, session: null,
+      visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null,
       workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'workers'},
     });
     const root = document.createElement('div');

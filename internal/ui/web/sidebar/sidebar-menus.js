@@ -6,14 +6,14 @@ import {fetchLeads} from '../api.js';
 import {deleteSession, deleteWorkspace, startSession, stopSession} from '../sessions/session-actions.js';
 import {failed, openUnsent} from '../sessions/selection.js';
 
-const sessionItems = session => [
+const sessionItems = (store, session) => [
   session.running && !failed(session)
-    ? {label: 'Stop Session', run: () => stopSession(session.id)}
-    : {label: 'Start Session', run: () => startSession(session.id)},
-  {label: 'Delete Session', run: () => deleteSession(session)},
+    ? {label: 'Stop Session', run: () => stopSession(store, session.id)}
+    : {label: 'Start Session', run: () => startSession(store, session.id)},
+  {label: 'Delete Session', run: () => deleteSession(store, session)},
 ];
 
-const workspaceItems = workspace => [{label: 'Delete Workspace', run: () => deleteWorkspace(workspace)}];
+const workspaceItems = (store, workspace) => [{label: 'Delete Workspace', run: () => deleteWorkspace(store, workspace)}];
 
 // useSidebarMenu holds the sidebar's open menu, {x, y, items} or null. The
 // lead picker opens when its profiles arrive, unless another menu opened or
@@ -45,15 +45,15 @@ export function useSidebarMenu(store) {
   }, []);
   const showLeads = async (point, workspace) => {
     const asked = ++request.current;
-    const leads = await fetchLeads();
+    const leads = await fetchLeads(store);
     if (!leads || asked !== request.current) return;
     show(point, leads.map(profile => ({label: profile.description, run: () => store.update(state => openUnsent(state, workspace.id, profile))})));
   };
   return {
     menu,
     close,
-    showSession: (point, session) => show(point, sessionItems(session)),
-    showWorkspace: (point, workspace) => show(point, workspaceItems(workspace)),
+    showSession: (point, session) => show(point, sessionItems(store, session)),
+    showWorkspace: (point, workspace) => show(point, workspaceItems(store, workspace)),
     showLeads,
   };
 }

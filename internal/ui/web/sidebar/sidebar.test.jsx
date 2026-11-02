@@ -1,6 +1,7 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
+import {ConfirmDialog} from '../shared/confirm-dialog.jsx';
 import {createStore} from '../store.js';
 import {Sidebar} from './sidebar.jsx';
 
@@ -13,13 +14,13 @@ afterEach(() => {
 
 const lead = (activity = 'idle') => ({id: 'lead', name: 'lead', role: 'lead', activity});
 const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, agents: [lead()], ...extra});
-const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], selected: null, unsent: null, session: null});
+const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], selected: null, unsent: null, session: null, confirmation: null});
 
 function setup(sessions) {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const store = createStore(state(sessions));
-  const root = mount(store, <Sidebar />);
+  const root = mount(store, <><Sidebar /><ConfirmDialog /></>);
   const posted = () => fetches.mock.calls.map(([url]) => Object.fromEntries(new URL(url, 'http://x/').searchParams));
   return {store, root, posted, fetches};
 }
@@ -94,28 +95,59 @@ test('keys typed in the rename field do not reach the tree', () => {
   expect(reached).toEqual([]);
 });
 
+const choose = (root, selector, index) => {
+  act(() => root.querySelector(selector).dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
+};
+
 test('a session\'s menu stops a running session and starts a stopped or failed one', () => {
-  spies.push(spyOn(globalThis, 'confirm').mockImplementation(() => true));
   const {root, posted} = setup([
     session('running'),
     session('stopped', {running: false}),
     session('failed', {agents: [lead('exited')]}),
   ]);
-  const choose = (id, index) => {
-    act(() => root.querySelector(`[data-session="${id}"]`).dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-    act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
-  };
-  choose('running', 0);
-  choose('stopped', 0);
-  choose('failed', 0);
-  choose('running', 1);
+  choose(root, '[data-session="running"]', 0);
+  choose(root, '[data-session="stopped"]', 0);
+  choose(root, '[data-session="failed"]', 0);
   expect(posted()).toEqual([
     {action: 'stop', id: 'running'},
     {action: 'start', id: 'stopped'},
     {action: 'start', id: 'failed'},
-    {action: 'delete', id: 'running'},
   ]);
   expect(root.querySelector('vscode-context-menu')).toBeNull();
+});
+
+const dialog = root => root.querySelector('dialog');
+const press = (root, key) => act(() => dialog(root).querySelector('vscode-button').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+const dialogButton = (root, label) => [...dialog(root).querySelectorAll('vscode-button')].find(b => b.textContent === label);
+
+test('deleting a session asks first and posts only on Delete', () => {
+  const {root, posted} = setup([session('a')]);
+  choose(root, '[data-session="a"]', 1);
+  expect(dialog(root).open).toBe(true);
+  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'Session a\'?');
+  expect(posted()).toEqual([]);
+  act(() => dialogButton(root, 'Cancel').click());
+  expect(dialog(root)).toBeNull();
+  expect(posted()).toEqual([]);
+
+  choose(root, '[data-session="a"]', 1);
+  act(() => dialogButton(root, 'Delete').click());
+  expect(dialog(root)).toBeNull();
+  expect(posted()).toEqual([{action: 'delete', id: 'a'}]);
+});
+
+test('Escape cancels deleting a workspace', () => {
+  const {root, posted} = setup([session('a')]);
+  choose(root, '[data-key="w"]', 0);
+  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
+  press(root, 'Escape');
+  expect(dialog(root)).toBeNull();
+  expect(posted()).toEqual([]);
+
+  choose(root, '[data-key="w"]', 0);
+  act(() => dialogButton(root, 'Delete').click());
+  expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
 
 for (const cancel of [

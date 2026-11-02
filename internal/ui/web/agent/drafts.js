@@ -4,6 +4,7 @@
 // outlive their views, so text survives session switches and closed tabs.
 import {post} from '../api.js';
 import {imageBytes, imageTypes, maxImageBytes, readImage} from '../images.js';
+import {showError} from '../notifications/errors.js';
 import {createSession} from '../sessions/session-actions.js';
 import {unsentKey} from '../sessions/selection.js';
 
@@ -41,19 +42,19 @@ const restored = (state, key, prompt) => withDraft(state, key, draft => ({
 export async function attachImages(store, key, files) {
   if (!files.length) return;
   const images = files.filter(file => imageTypes.includes(file.type));
-  if (images.length < files.length) alert('Attach PNG, JPEG, GIF, or WebP images.');
+  if (images.length < files.length) showError(store, 'Attach PNG, JPEG, GIF, or WebP images.');
   const unsent = store.get().unsent;
   store.update(state => withDraft(state, key, draft => ({...draft, reading: draft.reading + 1})));
   let added = [];
   try {
     added = await Promise.all(images.map(readImage));
   } catch (error) {
-    alert('Reading the image failed: ' + error.message);
+    showError(store, 'Reading the image failed: ' + error.message);
   }
   // Closing the unsent session discards its draft.
   if (key === unsentKey && store.get().unsent?.identity !== unsent.identity) return;
   const fits = imageBytes([...draftOf(store.get(), key).images, ...added]) <= maxImageBytes;
-  if (!fits) alert('Images can total at most 10 MiB.');
+  if (!fits) showError(store, 'Images can total at most 10 MiB.');
   store.update(state => withDraft(state, key, draft => ({
     ...draft,
     reading: draft.reading - 1,
@@ -70,6 +71,6 @@ export async function sendPrompt(store, agent) {
   store.update(next => withDraft(next, agent.id, () => emptyDraft));
   const accepted = agent.id === unsentKey
     ? await createSession(store, {text, images})
-    : await post('agent', {action: 'input', id: agent.id}, JSON.stringify({text, images})) !== null;
+    : await post(store, 'agent', {action: 'input', id: agent.id}, JSON.stringify({text, images})) !== null;
   if (!accepted) store.update(next => restored(next, agent.id, {text, images}));
 }
