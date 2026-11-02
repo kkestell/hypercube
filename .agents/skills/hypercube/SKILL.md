@@ -10,10 +10,11 @@ behavior in this workspace. Follow the workspace's `AGENTS.md` instructions.
 
 The purpose of this workflow is to keep the entire system small and understandable
 as it evolves. For every change, seek the smallest complete system that meets the
-user's requirements, with the fewest concepts and lowest cognitive complexity.
-Less is more; apply YAGNI and prefer a simple, sufficient solution over a more
-elaborate one. Prefer proven approaches and borrow freely from relevant prior
-art rather than inventing mechanisms for ordinary problems.
+user's requirements, with the fewest concepts and lowest cognitive complexity,
+measured across the whole codebase as `AGENTS.md` describes. Less is more;
+apply YAGNI and prefer a simple, sufficient solution over a more elaborate one.
+Prefer proven approaches and borrow freely from relevant prior art rather than
+inventing mechanisms for ordinary problems.
 
 ## Delegation and planning
 
@@ -65,6 +66,10 @@ Have a different worker review the change using `/kreview`. Choose a reviewer
 from a different model family than the implementation worker. For architectural
 changes, also check that the actual implementation satisfies the architectural
 review's conclusions.
+
+The reviewer judges every file the change touches as it stands after the change,
+not only the diff, and reports code that has grown hard to follow. Such a
+finding is never speculative: restructure that code before the change is done.
 
 Tell the reviewer to report findings first and wait for the lead's decisions
 before fixing or staging them, overriding `/kreview`'s default immediate fixes.

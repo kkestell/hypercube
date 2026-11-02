@@ -15,9 +15,18 @@ browser shows each agent's transcript.
 
 ## Code style
 
-- Do less. Keep correct code simple, ordinary, and cheap to change.
+- Do less. Keep correct code simple, ordinary, and cheap to change. Measure
+  simplicity by what a reader must understand, not by the size of a diff.
+- Leave the code a change touches easy to follow. When a change would make a
+  file, module, or function harder to follow, restructure it as part of the
+  change: split it by concern, move code to where it belongs, delete what is
+  unused.
 - Write idiomatic Go. Prefer plain data and direct functions.
-- Give each concern a clear boundary and each lifecycle one owner.
+- Give each concern a clear boundary and each lifecycle one owner. This holds
+  for browser code too: one ES module per concern, and HTML files hold markup
+  only.
+- Keep generated files apart from their source, never edit them by hand, and
+  have `make check` fail when they are stale.
 - Let real needs earn abstractions, dependencies, and configuration.
 - Return clear errors for bad input. Test observable behavior; write comments
   that explain why.
