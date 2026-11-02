@@ -1,5 +1,6 @@
 // A card per worker of the shown session: its name, indicator, latest report
 // and its age, and a button that opens its transcript in the editor area.
+import {focusComposer} from '../agent/focus-composer.js';
 import {openWorkerTab} from '../editor/editor.js';
 import {shownAgents} from '../sessions/selection.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
@@ -19,7 +20,7 @@ export function WorkersPanel() {
   const workers = shownAgents(state).filter(a => a.role !== 'lead');
   const openTranscript = id => {
     store.update(s => openWorkerTab(s, id));
-    requestAnimationFrame(() => document.querySelector(`.composer[data-agent="${id}"] textarea`)?.focus());
+    requestAnimationFrame(() => focusComposer(id));
   };
   if (!workers.length) return <div class="workers-panel"><p class="workers-panel-empty">No workers yet.</p></div>;
   return (

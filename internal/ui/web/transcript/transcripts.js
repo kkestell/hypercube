@@ -3,14 +3,14 @@
 // the page selects a session, then each new or changed item.
 import {ancestorKeys} from './transcript-tree.js';
 
-const empty = {order: [], items: {}};
+export const emptyTranscript = {order: [], items: {}};
 
 // receivedTranscript applies a transcript message for the attached session.
 // An open attention request opens the runs and tool calls around it.
 export function receivedTranscript(state, message) {
   const session = state.session;
   if (session?.id !== message.session) return state;
-  const old = message.reset ? empty : session.transcripts[message.agent] ?? empty;
+  const old = message.reset ? emptyTranscript : session.transcripts[message.agent] ?? emptyTranscript;
   const items = {...old.items};
   for (const item of message.items) items[item.id] = item;
   const order = Object.keys(items).sort((a, b) => items[a].seq - items[b].seq);

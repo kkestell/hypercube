@@ -1,8 +1,10 @@
-// What the user does to sessions and workspaces. The server applies each
-// action, and the result arrives in the next state message.
+// What the user does to sessions and workspaces, and the prompts they send.
+// The server applies each action, and the result arrives in the next state
+// message.
 import {post} from '../api.js';
-import {askToConfirm} from '../shared/confirm-dialog.jsx';
-import {allSessions, failed, selectSession, unsentCreated, unsentSending} from './selection.js';
+import {canSend, cleared, draftOf, restored, unsentCreated, unsentKey} from '../agent/drafts.js';
+import {askToConfirm} from '../shared/confirm.js';
+import {allSessions, failed, selectSession, unsentSending} from './selection.js';
 
 export const startSession = (store, id) => post(store, 'session', {action: 'start', id});
 export const stopSession = (store, id) => post(store, 'session', {action: 'stop', id});
@@ -45,4 +47,17 @@ export async function createSession(store, prompt) {
   store.update(state => unsentCreated(state, ids.lead));
   chooseSession(store, ids.session);
   return true;
+}
+
+// sendPrompt sends an agent's draft. The unsent session's first prompt
+// creates the session. A refused prompt returns to its draft.
+export async function sendPrompt(store, agent) {
+  const state = store.get();
+  if (!canSend(state, agent)) return;
+  const {text, images} = draftOf(state, agent.id);
+  store.update(next => cleared(next, agent.id));
+  const accepted = agent.id === unsentKey
+    ? await createSession(store, {text, images})
+    : await post(store, 'agent', {action: 'input', id: agent.id}, JSON.stringify({text, images})) !== null;
+  if (!accepted) store.update(next => restored(next, agent.id, {text, images}));
 }

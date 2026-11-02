@@ -4,16 +4,13 @@
 import {useEffect, useRef} from 'preact/hooks';
 import {post} from '../api.js';
 import {imageSrc, imageTypes} from '../images.js';
-import {unsentKey} from '../sessions/selection.js';
+import {sendPrompt} from '../sessions/session-actions.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
+import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
-import {attachImages, canSend, draftOf, removeImage, sendPrompt, typed} from './drafts.js';
+import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.js';
 import {Usage} from './usage.jsx';
 import './composer.css';
-
-// submitsOnKey reports whether a key press sends the message: Enter alone,
-// outside of text composition.
-export const submitsOnKey = e => e.key === 'Enter' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
 
 export function Composer({agent}) {
   const [state, store] = useStore();

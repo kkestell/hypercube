@@ -7,14 +7,12 @@ import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
 import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
-import {setExpanded} from './transcripts.js';
+import {emptyTranscript, setExpanded} from './transcripts.js';
 import './transcript.css';
-
-const empty = {order: [], items: {}};
 
 export function Transcript({agent}) {
   const [state, store] = useStore();
-  const transcript = state.session?.transcripts[agent] ?? empty;
+  const transcript = state.session?.transcripts[agent] ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
   const setOpen = useCallback((key, open) => store.update(s => setExpanded(s, key, open)), [store]);

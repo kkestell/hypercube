@@ -66,6 +66,25 @@ test('it reconnects after a close and selects again', () => {
   expect(FakeSocket.all[1].sent).toEqual([{select: 'a'}]);
 });
 
+test('a reset transcript after a reconnect replaces the old items', () => {
+  const store = createStore(initial());
+  startDataSocket(store);
+  const [first] = FakeSocket.all;
+  first.open();
+  first.receive(state('b1'));
+  const item = (id, seq, text) => ({id, seq, kind: 'text', text});
+  first.receive({type: 'transcript', session: 'a', agent: 'a-lead', reset: true, items: [item('1', 1, 'old'), item('2', 2, 'older')]});
+  first.onclose();
+  jest.advanceTimersByTime(1000);
+  const second = FakeSocket.all[1];
+  second.open();
+  second.receive(state('b1'));
+  second.receive({type: 'transcript', session: 'a', agent: 'a-lead', reset: true, items: [item('3', 1, 'new')]});
+  const {order, items} = store.get().session.transcripts['a-lead'];
+  expect(order).toEqual(['3']);
+  expect(items['3'].text).toBe('new');
+});
+
 test('a changed build reloads the page and the first one does not', () => {
   const store = createStore(initial());
   startDataSocket(store);

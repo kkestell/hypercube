@@ -1,9 +1,10 @@
 // The page frame: the title bar above the sidebar, the center with the
 // terminal panel below it, and the right panel, with the notification cards
-// and the confirmation dialog over them. App draws from the store's state, keeps the page title and URL
-// hash in step with it, and refuses drops that would land outside their
-// targets: a tab outside the editor area could type its ID into a text box,
-// and a file outside an agent pane would open in the browser.
+// and the confirmation dialog over them. App draws from the store's state,
+// keeps the page title and URL hash in step with it, and refuses drops that
+// would land outside their targets: a tab outside the editor area could type
+// its ID into a text box, and a file outside an agent pane would open in the
+// browser.
 import {useEffect, useLayoutEffect, useMemo, useState} from 'preact/hooks';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
 import {pageTitle} from '../sessions/selection.js';

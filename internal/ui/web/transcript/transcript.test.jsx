@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 function setup(items) {
-  const store = createStore({drafts: {}, errors: [], session: emptySession('s')});
+  const store = createStore({workspaces: [], drafts: {}, errors: [], session: emptySession('s')});
   const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', agent: 'a', reset, items}));
   send(withSeq(items), true);
   const root = mount(store, <Transcript agent="a" />);
