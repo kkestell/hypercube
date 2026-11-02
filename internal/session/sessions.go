@@ -1,6 +1,3 @@
-// Package session owns the lifecycle of workspaces, sessions, and workers:
-// adding and deleting them, and starting and stopping a session's agents. The
-// Runtime in runtime.go runs the agents.
 package session
 
 import (
@@ -14,6 +11,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/terminal"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
@@ -141,6 +139,9 @@ func (r *Runtime) start(id string, fresh bool) error {
 			if err := tx.SaveAgent(*a); err != nil {
 				return err
 			}
+			if err := r.loadSeq(tx.Tx, a.ID); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
@@ -158,7 +159,6 @@ func (r *Runtime) start(id string, fresh bool) error {
 	for i, l := range lives {
 		wg.Go(func() {
 			if err := r.launch(l); err != nil && !errors.Is(err, errStopped) {
-				r.failed(l, err)
 				errs[i] = fmt.Errorf("launching %s: %w", agents[i].Name, err)
 			}
 		})
@@ -213,12 +213,15 @@ func (r *Runtime) Delete(id string) error {
 		}
 		root = w.Path
 		agents, err := tx.Agents(id)
+		if err != nil {
+			return err
+		}
 		for _, a := range agents {
 			if a.Role == store.Worker && a.Branch != "" {
 				workers = append(workers, a)
 			}
 		}
-		return err
+		return nil
 	})
 	if err != nil {
 		return err
@@ -227,12 +230,11 @@ func (r *Runtime) Delete(id string) error {
 	_, statErr := os.Stat(root)
 	present := !errors.Is(statErr, os.ErrNotExist)
 	var problems []string
-	for _, a := range workers {
-		if !present {
-			continue
-		}
-		if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
+	if present {
+		for _, a := range workers {
+			if err := workspace.Removable(root, a.Dir, a.Branch); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", a.Name, err))
+			}
 		}
 	}
 	if len(problems) > 0 {
@@ -292,25 +294,6 @@ func (r *Runtime) Seen(id string) error {
 	return r.update(id, func(s *store.Session) { s.Unseen = false })
 }
 
-// SetStatus records a worker's status on one line.
-func (r *Runtime) SetStatus(agent, text string) error {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
-		return errors.New("text is required")
-	}
-	return r.save(func(tx *write) error {
-		a, err := tx.Agent(agent)
-		if err != nil {
-			return err
-		}
-		if a.Role != store.Worker {
-			return errors.New("only workers have a status")
-		}
-		a.Status, a.StatusAt = text, time.Now().UnixMilli()
-		return tx.SaveAgent(a)
-	})
-}
-
 func (r *Runtime) update(id string, change func(*store.Session)) error {
 	return r.save(func(tx *write) error {
 		s, err := tx.Session(id)
@@ -345,135 +328,84 @@ func (r *Runtime) Restore() {
 	}
 }
 
-// AddWorker adds a worker to the lead's running session and launches it. An
-// optional first message is queued for it. Without dir, the worker gets its own
-// branch and worktree from HEAD; with dir, it works directly in that directory.
-func (r *Runtime) AddWorker(leadID, name string, profile harness.Profile, dir, message string) (store.Agent, error) {
-	var lead store.Agent
-	if err := r.db.Read(func(tx *store.Tx) error {
-		var err error
-		lead, err = tx.Agent(leadID)
-		return err
-	}); err != nil {
-		return store.Agent{}, err
-	}
-	if lead.Role != store.Lead {
-		return store.Agent{}, errors.New("only the lead can do this")
-	}
-	a := store.Agent{
-		ID: store.NewID(), Session: lead.Session, Name: name, Role: store.Worker,
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited,
-	}
-	root := lead.Dir
-	r.mu.Lock()
-	if r.live[leadID] == nil {
-		r.mu.Unlock()
-		return store.Agent{}, errors.New("the session is not running")
-	}
-	err := r.save(func(tx *write) error {
-		s, err := tx.Session(lead.Session)
+// Shell returns the running session's shell, starting it in the workspace
+// folder with the given size if the session has none.
+func (r *Runtime) Shell(session string, cols, rows int) (*terminal.Shell, error) {
+	var dir string
+	err := r.db.Read(func(tx *store.Tx) error {
+		s, err := tx.Session(session)
 		if err != nil {
 			return err
+		}
+		if !s.Running {
+			return errors.New("the session is not running")
 		}
 		w, err := tx.Workspace(s.Workspace)
-		if err != nil {
-			return err
+		dir = w.Path
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return r.Terminals.Open(session, dir, cols, rows)
+}
+
+// detach removes the session's running agents from the runtime, saving their
+// unfinished items, and returns them for stopClients. With ended set it also
+// marks the agents ended.
+func (r *Runtime) detach(session string, ended bool) []*live {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.detachLocked(func(l *live) bool { return l.session == session }, ended)
+}
+
+func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
+	var lives []*live
+	for id, l := range r.live {
+		if match(l) {
+			lives = append(lives, l)
+			delete(r.live, id)
 		}
-		if _, err := tx.Find(lead.Session, name); err == nil {
-			return fmt.Errorf("an agent named %s already exists", name)
-		}
-		switch {
-		case dir != "":
-			if a.Dir, err = workspace.Resolve(root, dir); err != nil {
-				return err
+	}
+	err := r.save(func(tx *write) error {
+		for _, l := range lives {
+			for _, e := range l.drain() {
+				if err := tx.putItem(l, e.seq, e.item); err != nil {
+					return err
+				}
 			}
-		case w.NoGit:
-			return errors.New("dir is required: this workspace is not a Git checkout, so workers cannot have worktrees")
-		default:
-			a.Dir, a.Branch = workspace.WorktreeDir(root, a.Address()), workspace.WorkerBranch(a.Address())
-		}
-		if err := tx.AddAgent(a); err != nil {
-			return err
-		}
-		if message != "" {
-			return tx.Queue(store.Message{From: leadID, To: a.ID, Text: message})
+			if ended {
+				if err := markEnded(tx, l.id); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
-	var l *live
-	if err == nil {
-		l = r.register(a, 0)
-	}
-	r.mu.Unlock()
 	if err != nil {
-		return store.Agent{}, err
+		logf("saving agents' transcripts: %v", err)
 	}
-	worktreeCreated := false
-	if a.Branch != "" {
-		err = workspace.AddWorktree(root, a.Dir, a.Branch)
-		worktreeCreated = err == nil
-	}
-	if err == nil {
-		err = r.launch(l)
-	}
-	if err == nil {
-		return a, nil
-	}
-	cause := err
-	r.mu.Lock()
-	if r.current(l) {
-		delete(r.live, l.id)
-	}
-	r.mu.Unlock()
-	if worktreeCreated {
-		if cleanup := workspace.RemoveWorktree(root, a.Dir, a.Branch); cleanup != nil {
-			return a, fmt.Errorf("%w; worktree cleanup failed: %v; agent %s was kept for cleanup", cause, cleanup, a.Name)
-		}
-	}
-	if cleanup := r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) }); cleanup != nil {
-		return a, fmt.Errorf("%w; removing the agent failed: %v", cause, cleanup)
-	}
-	return a, cause
+	return lives
 }
 
-// RemoveWorker ends a worker and removes it from the lead's session. A worker
-// with a worktree also has its worktree and branch removed, which Git refuses
-// for dirty worktrees and unmerged branches.
-func (r *Runtime) RemoveWorker(leadID, name string) (store.Agent, error) {
-	var lead, a store.Agent
-	err := r.db.Read(func(tx *store.Tx) error {
-		var err error
-		if lead, err = tx.Agent(leadID); err != nil {
-			return err
+// stopClients ends the plugins of detached agents, in parallel.
+func stopClients(lives []*live) {
+	var wg sync.WaitGroup
+	for _, l := range lives {
+		if l.client != nil {
+			wg.Go(func() { l.client.Shutdown(shutdownWait) })
 		}
-		if lead.Role != store.Lead {
-			return errors.New("only the lead can do this")
-		}
-		a, err = tx.Find(lead.Session, name)
-		return err
-	})
-	if err != nil {
-		return a, err
 	}
+	wg.Wait()
+}
+
+// Shutdown ends every agent's plugin for the app's exit. Sessions keep the
+// running mark, so Restore starts them again.
+func (r *Runtime) Shutdown() {
 	r.mu.Lock()
-	running := r.live[leadID] != nil
+	r.closing = true
+	lives := r.detachLocked(func(*live) bool { return true }, true)
 	r.mu.Unlock()
-	switch {
-	case a.Session != lead.Session:
-		return a, errors.New("only workers in your session can be removed")
-	case a.Role != store.Worker:
-		return a, errors.New("only workers can be removed")
-	case !running:
-		return a, errors.New("the session is not running")
-	}
-	if a.Branch != "" {
-		if err := workspace.RemoveWorktree(lead.Dir, a.Dir, a.Branch); err != nil {
-			return a, err
-		}
-	}
-	r.mu.Lock()
-	lives := r.detachLocked(func(l *live) bool { return l.id == a.ID }, false)
-	r.mu.Unlock()
+	r.Terminals.Close()
 	stopClients(lives)
-	return a, r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) })
 }

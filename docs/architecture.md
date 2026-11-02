@@ -23,10 +23,10 @@ app starts every running session and resumes its agents' saved conversations.
 It delivers no queued message until the user sends a prompt to the session.
 Stopping a session clears its running mark.
 
-An agent whose plugin exits is started again with its saved conversation,
-unless it has exited three times within ten seconds of starting. A resume that
-fails is an error in the agent's transcript; the app never replaces the
-conversation with a new one. Each start has a generation number, and events
+An agent whose plugin exits after starting is started again with its saved
+conversation, unless it has exited three times within ten seconds of starting.
+A start that fails stays ended, with the error in the agent's transcript; the
+app never replaces a conversation it could not resume with a new one. Each start has a generation number, and events
 from an earlier generation are ignored.
 
 The browser view reads everything from the app: Hypercube's data and the
@@ -86,7 +86,7 @@ documented by the implementation rather than copied here.
 | Source | Responsibility |
 | --- | --- |
 | [cmd/hypercube](../cmd/hypercube/main.go) | The command line and the app process. |
-| [session](../internal/session/session.go) | Workspace, session, and worker lifecycle, and the [runtime](../internal/session/runtime.go) that runs agents: delivery, events, relaunch, restore, and shutdown. |
+| [session](../internal/session/runtime.go) | The runtime that runs agents: [workspace and session](../internal/session/sessions.go) and [worker](../internal/session/workers.go) lifecycle, [launch and relaunch](../internal/session/launch.go), [events](../internal/session/event.go), [delivery](../internal/session/deliver.go), restore, and shutdown. |
 | [store](../internal/store/store.go) | The database schema, transactions, queues, and transcripts. |
 | [workspace](../internal/workspace/workspace.go) | Directory resolution and Git resources. |
 | [harness](../internal/harness/harness.go) | Configuration, plugin discovery, and the [serve protocol](../internal/harness/protocol.go) client. |

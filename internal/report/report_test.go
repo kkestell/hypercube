@@ -130,16 +130,20 @@ func TestInstructionsScopeToTheSession(t *testing.T) {
 func TestFormatAttributesMessages(t *testing.T) {
 	db := open(t, []store.Session{{ID: "session-1"}},
 		store.Agent{ID: "a", Session: "session-1", Name: "lead", Role: store.Lead})
-	var got string
+	var agentText, agentFrom, userText, userFrom string
 	if err := db.Read(func(tx *store.Tx) error {
-		got = Format(tx, []store.Message{{From: "a", Text: "hello"}, {From: "user", Text: "hi"}})
+		agentText, agentFrom = Format(tx, store.Message{From: "a", Text: "hello"})
+		userText, userFrom = Format(tx, store.Message{From: "user", Text: "hi"})
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-	want := "Message from session-1/lead:\nhello\n\nsession-1/lead cannot see your chat. To answer, use the hypercube send_message tool to session-1/lead.\n\nMessage from user:\nhi"
-	if got != want {
-		t.Fatalf("Format = %q", got)
+	want := "Message from session-1/lead:\nhello\n\nsession-1/lead cannot see your chat. To answer, use the hypercube send_message tool to session-1/lead."
+	if agentText != want || agentFrom != "session-1/lead" {
+		t.Fatalf("Format from an agent = %q, %q", agentText, agentFrom)
+	}
+	if userText != "Message from user:\nhi" || userFrom != "" {
+		t.Fatalf("Format from the user = %q, %q", userText, userFrom)
 	}
 }
 

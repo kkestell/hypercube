@@ -31,18 +31,16 @@ func Title(prompt string) string {
 	return "Image"
 }
 
-// Format renders messages as the model sees them.
-// Senders cannot see the recipient's chat, so agent messages say how to reply.
-func Format(tx *store.Tx, messages []store.Message) string {
-	var parts []string
-	for _, m := range messages {
-		if a, err := tx.Agent(m.From); err == nil {
-			parts = append(parts, fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", a.Address(), m.Text, a.Address(), a.Address()))
-		} else {
-			parts = append(parts, fmt.Sprintf("Message from %s:\n%s", m.From, m.Text))
-		}
+// Format renders a message as the model sees it. A message from an agent
+// says how to reply, since the sender cannot see the recipient's chat, and
+// from is the sender's address; from is empty for a message from the user.
+func Format(tx *store.Tx, m store.Message) (text, from string) {
+	a, err := tx.Agent(m.From)
+	if err != nil {
+		return fmt.Sprintf("Message from %s:\n%s", m.From, m.Text), ""
 	}
-	return strings.Join(parts, "\n\n")
+	from = a.Address()
+	return fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", from, m.Text, from, from), from
 }
 
 // Leads returns the leads of the workspace's sessions other than the given

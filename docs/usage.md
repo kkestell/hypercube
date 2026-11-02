@@ -109,9 +109,10 @@ conversation, and at login Hypercube starts the sessions that were running when
 it last exited. A started session starts no turn and delivers no queued
 message until you type a prompt into any of its agents.
 
-A harness that exits is relaunched with its saved conversation. Repeated quick
-exits stop automatic retries, and launch errors stay in the agent's chat. Click
-the session, or stop and start it, to retry after correcting the error.
+A harness that exits after starting is relaunched with its saved conversation.
+Repeated quick exits stop automatic relaunches. A harness that fails to start
+stays ended, with the error in the agent's chat. Click the session, or stop and
+start it, to retry after correcting the error.
 
 Deleting a session or workspace removes its workers' managed worktrees and
 branches only after checking for uncommitted work and commits not merged into
