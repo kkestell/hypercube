@@ -6,7 +6,6 @@
 .tool-items-summary {
   display: block;
   min-width: 0;
-  padding: var(--size-space) 0;
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   list-style: none;
@@ -60,7 +59,6 @@
 .tool-items-calls {
   display: flex;
   flex-direction: column;
-  gap: var(--size-space);
 }
 
 .tool-items-call {

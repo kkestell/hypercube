@@ -71,25 +71,33 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
   expect(chevron).not.toBeNull();
   expect(summary.querySelector('[title="Running"]')).toBeNull();
   const heading = summary.querySelector('.tool-items-heading');
-  const preview = summary.querySelector('.tool-items-preview');
   expect(heading.lastElementChild).toBe(chevron);
   expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'read /first']);
   act(() => summary.click());
   expect(group.open).toBe(true);
+  expect(summary.textContent).toBe('Working…');
+  expect(summary.querySelector('.tool-items-preview')).toBeNull();
   expect(group.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
 
   send([{...first, done: true}, {id: 'u', kind: 'user', from, text: 'Keep going', at: 3000, seq: 2}]);
   const user = list.children[1];
   expect(user.textContent).toContain('Keep going');
-  expect(summary.querySelector('.tool-items-preview')).toBe(preview);
+  expect(summary.querySelector('.tool-items-preview')).toBeNull();
 
   send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'.repeat(200)}, at: 5000, seq: 3}]);
   expect([...list.children]).toEqual([group, user]);
   expect(group.open).toBe(true);
   expect(group.querySelectorAll('.tool-items-call').length).toBe(2);
-  expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'bash ' + 'x'.repeat(119) + '…']);
+  expect(summary.textContent).toBe('Working…');
   expect(summary.querySelector('[title="Running"]')).toBeNull();
   expect(group.querySelectorAll('.tool-items-call [title="Running"]').length).toBe(1);
+
+  act(() => summary.click());
+  expect(group.open).toBe(false);
+  expect(summary.querySelector('.tool-items-preview').textContent).toBe('bash ' + 'x'.repeat(119) + '…');
+  act(() => summary.click());
+  expect(group.open).toBe(true);
+  expect(summary.querySelector('.tool-items-preview')).toBeNull();
 
   send([{id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
   expect(list.firstElementChild).toBe(group);

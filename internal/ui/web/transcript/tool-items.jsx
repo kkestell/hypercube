@@ -1,7 +1,7 @@
-// Tool runs and tool calls, as the chat's inline disclosures. A run shows
-// Working… and its latest call on separate lines while open, then how long it
-// worked; expanding it lists its calls. Each call shows its own spinner,
-// input, output, and nested items, with its images below.
+// Tool runs and tool calls, as inline disclosures. A working run previews its
+// latest call while collapsed; expanding it lists the calls instead. Once
+// finished, its summary shows how long it worked. Each call shows its own
+// spinner, input, output, and nested items, with its images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
 import {MessageItem} from './message-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
@@ -18,7 +18,7 @@ function Disclosure({open, onToggle, summary, preview, children}) {
           {summary}
           <vscode-icon name="chevron-right" class="tool-items-chevron" />
         </span>
-        {preview && <span class="tool-items-preview">{preview}</span>}
+        {!open && preview && <span class="tool-items-preview">{preview}</span>}
       </summary>
       {children}
     </details>
