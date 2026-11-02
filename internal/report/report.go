@@ -41,22 +41,15 @@ func Format(tx *store.Tx, m store.Message) string {
 	if s.Parent == m.To {
 		from = s.Name
 	}
-	return fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", from, m.Text, from, from)
-}
-
-// Peers returns the workspace's other top-level sessions.
-func Peers(tx *store.Tx, workspace, except string) ([]store.Session, error) {
-	sessions, err := tx.Sessions(workspace)
-	if err != nil {
-		return nil, err
-	}
-	var peers []store.Session
-	for _, s := range sessions {
-		if s.ID != except {
-			peers = append(peers, s)
+	sender := from
+	if s.Parent == "" {
+		if recipient, err := tx.Session(m.To); err == nil && recipient.Parent == "" {
+			if w, err := tx.Workspace(s.Workspace); err == nil {
+				sender = fmt.Sprintf("%s (%q, workspace %s)", s.ID, s.Title, w.Path)
+			}
 		}
 	}
-	return peers, nil
+	return fmt.Sprintf("Message from %s:\n%s\n\n%s cannot see your chat. To answer, use the hypercube send_message tool to %s.", sender, m.Text, from, from)
 }
 
 // Instructions describe the session's place and tools.
@@ -70,7 +63,7 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		fmt.Fprintf(&b, "You are %s, a child session of Hypercube session %s, titled %q. Your parent created you and is the only session you can message: use send_message to %s.\n", s.Name, parent.ID, parent.Title, parent.ID)
 	} else {
 		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)
-		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message the other top-level sessions in this workspace by their IDs, and list_sessions lists the current ones.\n")
+		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. Use list_sessions to find running addressable recipients, including their workspace paths and parent IDs.\n")
 		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
 	}
 	b.WriteString("Reach Hypercube sessions only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
@@ -99,18 +92,6 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		}
 		fmt.Fprintf(&b, "- %s (%s): %s, %s%s%s\n", c.Name, c.Title, c.Harness, c.Dir, onBranch(c.Branch), ended)
 	}
-	peers, err := Peers(tx, s.Workspace, s.ID)
-	if err != nil {
-		return "", err
-	}
-	var names []string
-	for _, p := range peers {
-		names = append(names, fmt.Sprintf("%s (%s)", p.ID, p.Title))
-	}
-	if len(names) == 0 {
-		names = append(names, "none yet")
-	}
-	fmt.Fprintf(&b, "Other top-level sessions: %s\n", strings.Join(names, ", "))
 	b.WriteString("\nOther Hypercube top-level sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits.\n")
 	w, err := tx.Workspace(s.Workspace)
 	if err != nil {

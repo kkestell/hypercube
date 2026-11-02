@@ -9,9 +9,9 @@ import (
 )
 
 // SendMessage queues a message between sessions and attempts delivery.
-func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, running bool, err error) {
+func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, err error) {
 	if strings.TrimSpace(text) == "" {
-		return recipient, false, errors.New("text is required")
+		return recipient, errors.New("text is required")
 	}
 	err = r.save(func(tx *write) error {
 		caller, err := tx.Session(from)
@@ -29,17 +29,20 @@ func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, r
 			return errors.New("cannot send a message to an ended child session")
 		}
 		recipient = s
-		running, err = tx.Running(s)
+		running, err := tx.Running(s)
 		if err != nil {
 			return err
+		}
+		if !running {
+			return errors.New("cannot send a message to a stopped session")
 		}
 		return tx.Queue(store.Message{From: from, To: s.ID, Text: text})
 	})
 	if err != nil {
-		return recipient, running, err
+		return recipient, err
 	}
 	r.Deliver(recipient.ID)
-	return recipient, running, nil
+	return recipient, nil
 }
 
 func queueFailure(w *write, child store.Session, detail string) error {

@@ -48,7 +48,7 @@ func TestInstructions(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test", "set_title", "ended", "q (Fix)", "planner (test, m, low): design", "create_session", "end_session"} {
+		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", "planner (test, m, low): design", "create_session", "end_session"} {
 			if !strings.Contains(parentText, want) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}
@@ -57,6 +57,12 @@ func TestInstructions(t *testing.T) {
 			if !strings.Contains(childText, want) {
 				t.Errorf("child missing %q: %s", want, childText)
 			}
+		}
+		if strings.Contains(parentText, "Other top-level sessions:") || strings.Contains(parentText, "q (Fix)") {
+			t.Error("instructions include a stale peer snapshot:", parentText)
+		}
+		if !strings.Contains(parentText, "top-level sessions in this workspace share") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
+			t.Error("instructions changed workspace sharing or child scope")
 		}
 		child.Branch = ""
 		text, err := Instructions(tx, child, nil)
@@ -78,13 +84,17 @@ func TestInstructions(t *testing.T) {
 }
 
 func TestFormatAttributesMessages(t *testing.T) {
-	db := open(t, store.Session{ID: "p"}, store.Session{ID: "q"}, store.Session{ID: "c", Parent: "p", Name: "builder"})
+	db := open(t, store.Session{ID: "p"}, store.Session{ID: "q", Title: "Fix parser"}, store.Session{ID: "c", Parent: "p", Name: "builder"})
 	if err := db.Read(func(tx *store.Tx) error {
-		for _, c := range []struct{ from, to, address string }{{"c", "p", "builder"}, {"p", "c", "p"}, {"q", "p", "q"}} {
+		for _, c := range []struct{ from, to, address string }{{"c", "p", "builder"}, {"p", "c", "p"}} {
 			got := Format(tx, store.Message{From: c.from, To: c.to, Text: "hello"})
 			if !strings.HasPrefix(got, "Message from "+c.address+":\nhello") || !strings.HasSuffix(got, "send_message tool to "+c.address+".") {
 				t.Error(got)
 			}
+		}
+		got := Format(tx, store.Message{From: "q", To: "p", Text: "hello"})
+		if !strings.HasPrefix(got, "Message from q (\"Fix parser\", workspace /repo):\nhello") || !strings.HasSuffix(got, "send_message tool to q.") {
+			t.Error(got)
 		}
 		if got := Format(tx, store.Message{From: "gone", Text: "hi"}); got != "Message from gone:\nhi" {
 			t.Error(got)

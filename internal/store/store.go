@@ -309,7 +309,7 @@ func (t *Tx) Running(s Session) (bool, error) {
 }
 
 // FindSession is the messaging scope: a parent sees its children by name and
-// its workspace's top-level sessions by ID; a child sees only its parent.
+// other top-level sessions by ID; a child sees only its parent.
 func (t *Tx) FindSession(caller Session, to string) (Session, error) {
 	var s Session
 	var err error
@@ -323,7 +323,7 @@ func (t *Tx) FindSession(caller Session, to string) (Session, error) {
  WHERE parent = ? AND name = ?`, caller.ID, to))
 	if errors.Is(err, sql.ErrNoRows) {
 		s, err = scanSession(t.tx.QueryRow(`SELECT `+sessionColumns+` FROM sessions
-  WHERE parent IS NULL AND workspace = ? AND id = ?`, caller.Workspace, to))
+  WHERE parent IS NULL AND id = ?`, to))
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		err = fmt.Errorf("session %q: %w", to, ErrNotFound)

@@ -16,11 +16,12 @@ gives each child a title when it creates the child. You can rename any title;
 later prompts leave it alone. A child's name stays fixed and cannot be reused
 among that parent's children, including ended children.
 
-A parent addresses its children by name, and other top-level sessions in the
-workspace by ID. A child can message only its parent, by ID. `list_sessions`
-lists the sessions each agent can message. Top-level sessions share the
-workspace's files, Git index, and branch; use child worktrees for independent
-edits.
+A parent addresses its children by name, and any other running top-level
+session across all workspaces in the app by ID. A child can message only its
+parent, by ID. Stopped and ended recipients are refused. `list_sessions` lists
+only running addressable recipients, with their workspace paths and parent IDs.
+Top-level sessions in the same workspace share its files, Git index, and branch;
+use child worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |

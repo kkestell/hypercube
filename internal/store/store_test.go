@@ -299,7 +299,7 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "p", "one", "two")
 	seed(t, db, "w", "/repo", "q", "one")
-	seed(t, db, "v", "/other", "r")
+	seed(t, db, "v", "/other", "r", "one")
 	tx(t, db, func(tx *Tx) error {
 		p, _ := tx.Session("p")
 		one, _ := tx.Session("p-one")
@@ -312,8 +312,8 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 			caller   Session
 			to, want string
 		}{
-			{p, "one", "p-one"}, {p, "q", "q"}, {p, "r", ""}, {p, "q-one", ""},
-			{one, "p", "p"}, {one, "two", ""}, {one, "q", ""}, {one, "r", ""}, {one, "one", ""},
+			{p, "one", "p-one"}, {p, "q", "q"}, {p, "r", "r"}, {p, "q-one", ""}, {p, "r-one", ""},
+			{one, "p", "p"}, {one, "two", ""}, {one, "q", ""}, {one, "r", ""}, {one, "one", ""}, {one, "q-one", ""}, {one, "r-one", ""},
 		} {
 			got, err := tx.FindSession(c.caller, c.to)
 			if c.want == "" {

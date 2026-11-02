@@ -92,7 +92,7 @@ func TestDeliveredMessagePublishesItsItem(t *testing.T) {
 	child := f.child(s, "worker", "")
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	if _, _, err := f.rt.SendMessage(child.ID, s.ID, "message"); err != nil {
+	if _, err := f.rt.SendMessage(child.ID, s.ID, "message"); err != nil {
 		t.Fatal(err)
 	}
 	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID && c.Item.Kind == harness.KindUser })

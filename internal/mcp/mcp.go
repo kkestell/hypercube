@@ -17,7 +17,6 @@ import (
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
@@ -82,13 +81,13 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		return err
 	})
 
-	sendDescription := "Send a message to one of your child sessions by its name, or to another top-level session in this workspace by its ID. This is the only way to reach other Hypercube sessions."
+	sendDescription := "Send a message to one of your running child sessions by its name, or to any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. This is the only way to reach other Hypercube sessions."
 	if caller.Parent != "" {
-		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only way to reach it.", caller.Parent)
+		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only session you can message, and it must be running.", caller.Parent)
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
-	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, activity, ended, directory, and branch."}, result(func(struct{}) (string, error) { return listSessions(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "set_status",
@@ -246,13 +245,14 @@ func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 // listSessions lists exactly the sessions in the caller's messaging scope.
 func listSessions(db *store.DB, self string) (string, error) {
 	type entry struct {
-		To       string `json:"to"`
-		Title    string `json:"title"`
-		Harness  string `json:"harness"`
-		Activity string `json:"activity"`
-		Ended    bool   `json:"ended"`
-		Dir      string `json:"directory"`
-		Branch   string `json:"branch"`
+		To        string `json:"to"`
+		Title     string `json:"title"`
+		Harness   string `json:"harness"`
+		Activity  string `json:"activity"`
+		Dir       string `json:"directory"`
+		Branch    string `json:"branch"`
+		Workspace string `json:"workspace"`
+		Parent    string `json:"parent"`
 	}
 	listed := []entry{}
 	err := db.Read(func(tx *store.Tx) error {
@@ -272,18 +272,32 @@ func listSessions(db *store.DB, self string) (string, error) {
 			if err != nil {
 				return err
 			}
-			peers, err := report.Peers(tx, caller.Workspace, caller.ID)
+			peers, err := tx.Sessions("")
 			if err != nil {
 				return err
 			}
 			sessions = append(sessions, peers...)
 		}
 		for _, s := range sessions {
+			if s.ID == self || s.Ended {
+				continue
+			}
+			running, err := tx.Running(s)
+			if err != nil {
+				return err
+			}
+			if !running {
+				continue
+			}
+			w, err := tx.Workspace(s.Workspace)
+			if err != nil {
+				return err
+			}
 			to := s.ID
 			if s.Parent == caller.ID {
 				to = s.Name
 			}
-			listed = append(listed, entry{to, s.Title, s.Harness, s.Activity, s.Ended, s.Dir, s.Branch})
+			listed = append(listed, entry{To: to, Title: s.Title, Harness: s.Harness, Activity: s.Activity, Dir: s.Dir, Branch: s.Branch, Workspace: w.Path, Parent: s.Parent})
 		}
 		return nil
 	})
@@ -295,15 +309,10 @@ func listSessions(db *store.DB, self string) (string, error) {
 }
 
 func sendMessage(rt *session.Runtime, self, to, text string) (string, error) {
-	_, running, err := rt.SendMessage(self, to, text)
-	if err != nil {
+	if _, err := rt.SendMessage(self, to, text); err != nil {
 		return "", err
 	}
-	reply := fmt.Sprintf("Message queued for %s.", to)
-	if !running {
-		reply += " Its session is stopped; the message will be delivered when the session starts."
-	}
-	return reply, nil
+	return fmt.Sprintf("Message queued for %s.", to), nil
 }
 
 func setStatus(rt *session.Runtime, self, text string) (string, error) {
