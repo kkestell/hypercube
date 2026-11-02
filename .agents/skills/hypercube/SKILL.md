@@ -1,12 +1,12 @@
 ---
 name: hypercube
-description: Use whenever a Hypercube top-level session adds a new feature or changes how an existing feature works.
+description: Workflow for adding a Hypercube feature or changing how one works. Use only when the user invokes it.
 ---
 
 # Hypercube
 
-Top-level session agents must use this skill when adding new features or changing existing feature
-behavior in this workspace. Follow the workspace's `AGENTS.md` instructions.
+Use this skill only when the user invokes it. Follow the workspace's
+`AGENTS.md` instructions.
 
 The purpose of this workflow is to keep the entire system small and understandable
 as it evolves. For every change, seek the smallest complete system that meets the
@@ -15,6 +15,11 @@ measured across the whole codebase as `AGENTS.md` describes. Less is more;
 apply YAGNI and prefer a simple, sufficient solution over a more elaborate one.
 Prefer proven approaches and borrow freely from relevant prior art rather than
 inventing mechanisms for ordinary problems.
+
+## Restarting active sessions
+
+Before starting work, tell the user clearly whether loading the change will
+require restarting active sessions, as `AGENTS.md` describes.
 
 ## Delegation and planning
 
@@ -86,4 +91,5 @@ feedback, then shut down the dev server and reset its isolated state with
 `scripts/dev clean`.
 
 The top-level session agent owns integration and the final commit; commit only the changes
-belonging to the task.
+belonging to the task. After the commit, offer to run `make install-service`,
+repeating the restart warning if the change needs it.

@@ -57,12 +57,19 @@ browser shows each agent's transcript.
 - Use focused `go test -run`, or `bun test` in `internal/ui`, while working.
 - After changing only docs or comments, inspect the diff; run nothing.
 - Tests use isolated state, harness stand-ins, and their own shells. Never stop
-  the user's workspaces, and never run `make install-service`.
+  the user's workspaces.
 - Use `make dev` for a live smoke test, and clean up what you start.
 - The user judges how the browser view looks. Leave rendering, screenshots,
   and visual checks of it to them.
-- After a change is merged, the user runs `make install-service` from the
-  original checkout to load it.
+- `make install-service` loads a merged change into the installed app. Run it
+  from the original checkout. Offer to run it after finishing a change, and run
+  it whenever the user asks.
+- Agents and panel shells keep running across `make install-service` with the
+  code they started with. A change to the harness plugins, `hypercube hold`,
+  `hypercube mcp`, the plugin protocol, or how agents and shells launch reaches
+  an active session only after that session restarts. When a requested change
+  needs that, warn the user clearly before starting the work and again when
+  offering to install it.
 
 ## Documentation
 
@@ -73,8 +80,8 @@ The example in `docs/configuration.md` is the user's
 when the behavior it describes changes. `AGENTS.md` gives instructions to
 agents and should rarely change.
 
-Top-level session agents must use the [hypercube skill](.agents/skills/hypercube/SKILL.md) for new
-features and behavior changes. Keep that skill up to date as the workflow evolves.
+The [hypercube skill](.agents/skills/hypercube/SKILL.md) runs only when the
+user invokes it. Keep that skill up to date as the workflow evolves.
 
 The code describes the implementation. A fact lives in one place. Correct or
 delete inaccurate text without expanding it. Do not create documents unless
@@ -82,9 +89,10 @@ asked.
 
 ## Backwards compatibility
 
-Currently, there is none. Change the state format freely instead of adding
-migrations or versions. Delete obsolete files when you find them, including
-leftovers from earlier builds and installs.
+The user's state carries forward from each version to the next. A change to
+the database schema or other saved state includes a migration that upgrades
+the previous version's state when the app starts. Delete obsolete files when
+you find them, including leftovers from earlier builds and installs.
 
 ## Communication
 
