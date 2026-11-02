@@ -3,7 +3,6 @@ package ui
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -67,13 +66,12 @@ func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
 		if n > 0 && conn.Write(ctx, websocket.MessageBinary, buf[:n]) != nil {
 			return
 		}
+		// The output ends when the shell ends, when it is stopped and removed,
+		// or when the page goes away and these writes fail.
 		if err != nil {
-			if err == io.EOF {
-				<-sh.Done()
-				exit, _ := json.Marshal(map[string]int{"exit": sh.ExitCode()})
-				_ = conn.Write(ctx, websocket.MessageText, exit)
-				_ = conn.Close(websocket.StatusNormalClosure, "")
-			}
+			exit, _ := json.Marshal(map[string]int{"exit": sh.ExitCode()})
+			_ = conn.Write(ctx, websocket.MessageText, exit)
+			_ = conn.Close(websocket.StatusNormalClosure, "")
 			return
 		}
 	}

@@ -89,6 +89,13 @@ func connect(t *testing.T) *connection {
 	t.Cleanup(func() { _ = client.Stop(); _ = client.Remove() })
 	return c
 }
+func (c *connection) send(cmd harness.Command) error {
+	line, err := cmd.Line()
+	if err != nil {
+		return err
+	}
+	return c.Send(line)
+}
 func (c *connection) do(cmd harness.Command) error {
 	c.mu.Lock()
 	if c.ended != nil {
@@ -100,7 +107,7 @@ func (c *connection) do(cmd harness.Command) error {
 	ch := make(chan error, 1)
 	c.pending[cmd.ID] = ch
 	c.mu.Unlock()
-	if err := c.Send(cmd); err != nil {
+	if err := c.send(cmd); err != nil {
 		return err
 	}
 	select {
@@ -201,13 +208,13 @@ func TestStandInIgnoresResentCommands(t *testing.T) {
 	if err := c.start(); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}}); err != nil {
+	if err := c.send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.input("one"); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "one"}); err != nil {
+	if err := c.send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "one"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := c.input("two"); err != nil {

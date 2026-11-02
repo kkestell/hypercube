@@ -57,16 +57,19 @@ func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
 }
 func (f *fixture) recordDetachedInput(id, text string, send bool) {
 	f.t.Helper()
-	var c store.Command
+	var line []byte
 	err := f.db.Tx(func(tx *store.Tx) error {
 		seq, err := tx.LastSeq(id)
 		if err != nil {
 			return err
 		}
 		item, _ := json.Marshal(harness.Item{ID: "offline-" + store.NewID(), Kind: harness.KindUser, Text: text, Done: true})
-		line, _ := json.Marshal(harness.Command{Command: harness.CmdInput, Text: text})
-		c, err = tx.AddCommand(store.Command{Session: id, Command: harness.CmdInput, Line: string(line), Seq: seq + 1, Item: item})
-		return err
+		c, err := tx.AddCommand(store.Command{Session: id, Command: harness.CmdInput, Seq: seq + 1, Item: item})
+		if err != nil {
+			return err
+		}
+		line, _ = harness.Command{ID: c, Command: harness.CmdInput, Text: text}.Line()
+		return tx.SetCommandLine(c, string(line))
 	})
 	if err != nil {
 		f.t.Fatal(err)
@@ -74,7 +77,7 @@ func (f *fixture) recordDetachedInput(id, text string, send bool) {
 	if send {
 		h := f.holder(id)
 		defer h.Close()
-		if _, err = h.Write([]byte(c.Line)); err != nil {
+		if _, err = h.Write(line); err != nil {
 			f.t.Fatal(err)
 		}
 	}
@@ -314,9 +317,10 @@ func TestQuickExitCountSurvivesRestarts(t *testing.T) {
 
 func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 	f := newFixture(t)
+	f.rt.requestTimeout = 2 * time.Second
 	s := f.session()
 	f.queue("user", s.ID, "!hold", "later")
-	deadline := time.Now().Add(requestTimeout + 5*time.Second)
+	deadline := time.Now().Add(f.rt.requestTimeout + 5*time.Second)
 	noted := func() int {
 		n := 0
 		for _, item := range f.transcript(s.ID) {
@@ -347,6 +351,7 @@ func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 
 func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 	f := newFixture(t)
+	f.rt.startTimeout = 2 * time.Second
 	t.Setenv("HYPERCUBE_TEST_START_HOLD", "1")
 	f.seed()
 	f.rt.mu.Lock()
@@ -368,7 +373,7 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.rt.Restore()
-	deadline := time.Now().Add(startTimeout + 5*time.Second)
+	deadline := time.Now().Add(f.rt.startTimeout + 5*time.Second)
 	for f.storedSession("s").Launch != "" && time.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)
 	}

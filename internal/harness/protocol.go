@@ -147,8 +147,9 @@ type Item struct {
 	Images  []Image         `json:"images,omitempty"`
 }
 
-func jsonLine(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+// Line returns the command as one line of the plugin's input.
+func (c Command) Line() ([]byte, error) {
+	b, err := json.Marshal(c)
 	return append(b, '\n'), err
 }
 

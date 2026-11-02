@@ -12,6 +12,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/terminal"
 )
 
 func TestStandIn(t *testing.T) { harnesstest.Run() }
@@ -203,6 +204,13 @@ func (f *fixture) queue(from, to string, texts ...string) {
 		f.t.Fatal(err)
 	}
 	f.rt.Deliver(to)
+}
+
+// shellEnded reports whether the session's shell has ended and its holder is
+// gone.
+func (f *fixture) shellEnded(session string) bool {
+	_, err := os.Stat(filepath.Join(store.Dir(), "run", terminal.Name(session)))
+	return errors.Is(err, os.ErrNotExist)
 }
 
 func (f *fixture) until(what string, check func() bool) {

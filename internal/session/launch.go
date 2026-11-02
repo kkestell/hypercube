@@ -108,7 +108,7 @@ func (r *Runtime) launch(l *live) error {
 	if start == 0 {
 		return nil
 	}
-	err := r.wait(l, start, startTimeout)
+	err := r.wait(l, start, r.startTimeout)
 	if err != nil {
 		<-l.done
 	}
@@ -138,16 +138,17 @@ func (r *Runtime) run(l *live) {
 	} else {
 		client, err = harness.Attach(dir)
 	}
+	stop := err == nil && l.stopping
 	if err == nil {
 		l.client = client
-		if l.stopping {
-			_ = client.Stop()
-		}
 	}
 	r.mu.Unlock()
 	if err != nil {
 		r.end(l, err)
 		return
+	}
+	if stop {
+		_ = client.Stop()
 	}
 	go r.send(l)
 	r.mu.Lock()
@@ -157,11 +158,14 @@ func (r *Runtime) run(l *live) {
 		}
 	}
 	r.mu.Unlock()
-	timer := time.AfterFunc(startTimeout, func() {
+	timer := time.AfterFunc(r.startTimeout, func() {
 		r.mu.Lock()
-		defer r.mu.Unlock()
-		if r.current(l) && l.ready == 0 && !r.detached {
+		late := r.current(l) && l.ready == 0 && !r.detached
+		if late {
 			l.cause = errors.New("the plugin did not start within a minute")
+		}
+		r.mu.Unlock()
+		if late {
 			_ = client.Stop()
 		}
 	})
@@ -208,12 +212,33 @@ func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartAr
 }
 
 // end applies the final output before clearing this launch and deciding its
-// successor in the same transaction.
+// successor in the same transaction. Removing the holder waits for it to exit,
+// so it happens outside mu.
 func (r *Runtime) end(l *live, cause error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.current(l) || r.detached {
+	next, ended := r.endLocked(l, cause)
+	r.mu.Unlock()
+	if !ended {
 		return
+	}
+	if l.client != nil {
+		_ = l.client.Close()
+		if err := l.client.Remove(); err != nil {
+			logf("removing holder: %v", err)
+		}
+	} else {
+		_ = os.RemoveAll(r.launchDir(l))
+	}
+	if next != nil {
+		go r.launch(next)
+	}
+}
+
+// endLocked records the end and registers the next launch, if any. It reports
+// whether the end was recorded. The caller holds mu.
+func (r *Runtime) endLocked(l *live, cause error) (*live, bool) {
+	if !r.current(l) || r.detached {
+		return nil, false
 	}
 	var next *live
 	err := r.save(func(tx *write) error {
@@ -262,7 +287,7 @@ func (r *Runtime) end(l *live, cause error) {
 	})
 	if err != nil {
 		logf("recording the end of %s: %v", l.id, err)
-		return
+		return nil, false
 	}
 	delete(r.live, l.id)
 	l.cause = cmp.Or(l.cause, cause, errStopped)
@@ -272,18 +297,10 @@ func (r *Runtime) end(l *live, cause error) {
 		default:
 		}
 	}
-	if l.client != nil {
-		_ = l.client.Close()
-		if err := l.client.Remove(); err != nil {
-			logf("removing holder: %v", err)
-		}
-	} else {
-		_ = os.RemoveAll(r.launchDir(l))
-	}
 	if next != nil {
 		r.live[next.id] = next
-		go r.launch(next)
 	}
+	return next, true
 }
 
 // drain takes the launch's unfinished items as finished items.

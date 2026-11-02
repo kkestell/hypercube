@@ -49,6 +49,8 @@ type Runtime struct {
 
 	db  *store.DB
 	url string
+	// startTimeout and requestTimeout bound replies; tests shorten them.
+	startTimeout, requestTimeout time.Duration
 
 	mu      sync.Mutex
 	live    map[string]*live // by session ID
@@ -67,7 +69,7 @@ type Runtime struct {
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{}, viewers: map[string]int{},
-		deleting: map[string]bool{}, seqs: map[string]int64{}}
+		deleting: map[string]bool{}, seqs: map[string]int64{}, startTimeout: startTimeout, requestTimeout: requestTimeout}
 }
 
 func logf(format string, args ...any) {

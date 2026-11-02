@@ -222,16 +222,13 @@ func TestFamilyRestoresAndChildPromptReleasesQueues(t *testing.T) {
 	parent := f.session()
 	child := f.child(parent, "child", "")
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
-	shell, err := f.rt.Shell(child.ID, 80, 24)
-	if err != nil {
+	if _, err := f.rt.Shell(child.ID, 80, 24); err != nil {
 		t.Fatal(err)
 	}
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-shell.Done():
-	default:
+	if !f.shellEnded(child.ID) {
 		t.Fatal("parent stop left child shell running")
 	}
 	if f.storedSession(child.ID).Activity != store.Exited {

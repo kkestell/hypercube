@@ -21,8 +21,7 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 		return r.eventLocked(l, *rec.Event, next)
 	}
 	reply := *rec.Reply
-	c, ok := l.commands[reply.ID]
-	if !ok {
+	if _, ok := l.commands[reply.ID]; !ok {
 		return fmt.Errorf("reply to unknown request %d", reply.ID)
 	}
 	if err := r.save(func(tx *write) error {
@@ -35,14 +34,12 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 	}
 	l.position = next
 	delete(l.commands, reply.ID)
-	if c.Command != harness.CmdStart || reply.Error == "" {
+	if ch := l.waiters[reply.ID]; ch != nil {
 		var err error
 		if reply.Error != "" {
 			err = errors.New(reply.Error)
 		}
-		if ch := l.waiters[reply.ID]; ch != nil {
-			ch <- err
-		}
+		ch <- err
 	}
 	_ = l.client.Discard(next)
 	if reply.Error == "" {
@@ -71,13 +68,6 @@ func (r *Runtime) checkpoint(tx *write, l *live, next int64) error {
 	return tx.SaveSession(s)
 }
 
-func (r *Runtime) event(l *live, ev harness.Event) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if err := r.eventLocked(l, ev, l.position); err != nil {
-		logf("recording event: %v", err)
-	}
-}
 func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	if !r.current(l) {
 		return nil
@@ -141,9 +131,6 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			if err := tx.putItem(l.id, e.seq, e.item); err != nil {
 				return err
 			}
-		}
-		if !changed && len(failures) == 0 {
-			return r.checkpoint(tx, l, next)
 		}
 		s, err := tx.Session(l.id)
 		if err != nil {

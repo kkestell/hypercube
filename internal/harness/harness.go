@@ -60,11 +60,10 @@ func Attach(dir string) (*Client, error) {
 	}
 	return &Client{holder: h}, nil
 }
-func (c *Client) Send(cmd Command) error {
-	line, err := jsonLine(cmd)
-	if err == nil {
-		_, err = c.holder.Write(line)
-	}
+
+// Send writes one command line to the plugin's input.
+func (c *Client) Send(line []byte) error {
+	_, err := c.holder.Write(line)
 	return err
 }
 

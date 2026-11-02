@@ -421,5 +421,4 @@ func (r *Runtime) Detach() {
 	for _, l := range lives {
 		<-l.done
 	}
-	r.Terminals.Detach()
 }

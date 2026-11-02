@@ -1,5 +1,6 @@
-// Package terminal attaches panel shells to terminal holders. Each connection
-// reads retained output directly, so scrollback survives an app restart.
+// Package terminal runs each session's panel shell under a terminal holder.
+// Each connection reads the holder's retained output directly, so scrollback
+// survives an app restart.
 package terminal
 
 import (
@@ -7,30 +8,22 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/hold"
 )
 
+// Set holds one shell per session.
 type Set struct {
 	Command []string
 	// Dir is the holders' parent directory.
-	Dir      string
-	mu       sync.Mutex
-	shells   map[string]*Shell
-	closed   bool
-	detached chan struct{}
+	Dir    string
+	mu     sync.Mutex
+	shells map[string]*Shell
+	closed bool
 }
 
-type Shell struct {
-	holder  *hold.Holder
-	done    chan struct{}
-	removed chan struct{}
-	mu      sync.Mutex
-	readers sync.WaitGroup
-	ended   bool
-	exit    int
-}
+// Shell is a session's shell holder. It may have ended.
+type Shell struct{ holder *hold.Holder }
 
 var errClosed = errors.New("hypercube is shutting down")
 
@@ -44,149 +37,106 @@ func (s *Set) command() []string {
 	}
 	return []string{shell, "-l"}
 }
+
+// Name is the name of the session's shell holder directory in Dir.
+func Name(session string) string { return "shell-" + session }
+
+func (s *Set) dir(session string) string { return filepath.Join(s.Dir, Name(session)) }
+
+// Open returns the session's running shell, or starts one in dir in place of
+// one that ended.
 func (s *Set) Open(session, dir string, cols, rows int) (*Shell, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, errClosed
 	}
-	if sh := s.shells[session]; sh != nil {
+	if sh := s.shells[session]; sh != nil && sh.holder.Alive() {
 		return sh, nil
 	}
-	h, err := hold.Start(filepath.Join(s.Dir, "shell-"+session), s.command(), append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor"), dir, &hold.Size{Cols: cols, Rows: rows})
+	if err := os.RemoveAll(s.dir(session)); err != nil {
+		return nil, err
+	}
+	h, err := hold.Start(s.dir(session), s.command(), append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor"), dir, &hold.Size{Cols: cols, Rows: rows})
 	if err != nil {
 		return nil, err
 	}
-	return s.adopt(session, h), nil
+	if s.shells == nil {
+		s.shells = map[string]*Shell{}
+	}
+	sh := &Shell{holder: h}
+	s.shells[session] = sh
+	return sh, nil
 }
-func (s *Set) Adopt(session, dir string) error {
+
+// Adopt takes over the session's shell after an app restart, removing it if
+// it has ended.
+func (s *Set) Adopt(session string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return errClosed
 	}
-	if s.shells[session] != nil {
+	h, err := hold.Open(s.dir(session))
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	h, err := hold.Open(dir)
 	if err != nil {
 		return err
 	}
 	if !h.Alive() {
 		return h.Remove()
 	}
-	s.adopt(session, h)
-	return nil
-}
-func (s *Set) adopt(session string, h *hold.Holder) *Shell {
 	if s.shells == nil {
 		s.shells = map[string]*Shell{}
 	}
-	if s.detached == nil {
-		s.detached = make(chan struct{})
-	}
-	detached := s.detached
-	sh := &Shell{holder: h, done: make(chan struct{}), removed: make(chan struct{})}
-	s.shells[session] = sh
-	go func() {
-		ticker := time.NewTicker(25 * time.Millisecond)
-		defer ticker.Stop()
-		for h.Alive() {
-			select {
-			case <-detached:
-				return
-			case <-ticker.C:
-			}
-		}
-		sh.mu.Lock()
-		sh.ended = true
-		e, err := h.Exit()
-		sh.exit = -1
-		if err == nil {
-			sh.exit = e.Code
-		}
-		close(sh.done)
-		sh.mu.Unlock()
-		// Readers finish the final segments before their files are removed.
-		sh.readers.Wait()
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		select {
-		case <-detached:
-			return
-		default:
-		}
-		_ = h.Remove()
-		if s.shells[session] == sh {
-			delete(s.shells, session)
-		}
-		close(sh.removed)
-	}()
-	return sh
+	s.shells[session] = &Shell{holder: h}
+	return nil
 }
+
+// Stop ends the session's shell and removes its holder.
 func (s *Set) Stop(session string) {
 	s.mu.Lock()
 	sh := s.shells[session]
+	delete(s.shells, session)
 	s.mu.Unlock()
 	if sh != nil {
-		_ = sh.holder.Stop()
-		<-sh.removed
+		sh.end()
 	}
 }
+
+// Close ends every shell, for Quit, and opens no more.
 func (s *Set) Close() {
 	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return
-	}
 	s.closed = true
-	var all []*Shell
-	for _, sh := range s.shells {
-		all = append(all, sh)
-	}
+	shells := s.shells
+	s.shells = nil
 	s.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, sh := range all {
-		wg.Go(func() { _ = sh.holder.Stop(); <-sh.removed })
+	for _, sh := range shells {
+		wg.Go(sh.end)
 	}
 	wg.Wait()
 }
-func (s *Set) Detach() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if !s.closed {
-		s.closed = true
-		if s.detached != nil {
-			close(s.detached)
-		}
-	}
+
+// end stops the holder; removing it waits for it to exit.
+func (sh *Shell) end() {
+	_ = sh.holder.Stop()
+	_ = sh.holder.Remove()
 }
 
-// Output is one connection's cursor through retained scrollback.
-type Output struct {
-	*hold.Output
-	sh   *Shell
-	once sync.Once
-}
-
-func (sh *Shell) Output() (*Output, error) {
-	sh.mu.Lock()
-	defer sh.mu.Unlock()
-	if sh.ended {
-		return nil, errors.New("shell ended")
-	}
-	output, err := sh.holder.Output(sh.holder.First())
-	if err != nil {
-		return nil, err
-	}
-	sh.readers.Add(1)
-	return &Output{Output: output, sh: sh}, nil
-}
-func (o *Output) Close() error {
-	o.once.Do(func() { _ = o.Output.Close(); o.sh.readers.Done() })
-	return nil
+// Output reads the shell's retained output, then what it writes next.
+func (sh *Shell) Output() (*hold.Output, error) {
+	return sh.holder.Output(sh.holder.First())
 }
 func (sh *Shell) Write(p []byte) error        { _, err := sh.holder.Write(p); return err }
 func (sh *Shell) Resize(cols, rows int) error { return sh.holder.Resize(cols, rows) }
-func (sh *Shell) Done() <-chan struct{}       { return sh.done }
-func (sh *Shell) ExitCode() int               { sh.mu.Lock(); defer sh.mu.Unlock(); return sh.exit }
+
+// ExitCode is the ended shell's exit code, or -1 when it has none.
+func (sh *Shell) ExitCode() int {
+	e, err := sh.holder.Exit()
+	if err != nil {
+		return -1
+	}
+	return e.Code
+}

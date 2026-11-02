@@ -204,7 +204,7 @@ func TestStopKillsChildIgnoringEOF(t *testing.T) {
 	}
 }
 func TestTerminalResizeHangupAndRetention(t *testing.T) {
-	h := start(t, &Size{Cols: 80, Rows: 24}, "/bin/sh", "-c", "trap 'echo hungup; exit' HUP; stty size; read line; stty size; head -c 700000 /dev/zero | tr '\\0' x; echo done; while :; do sleep 1; done")
+	h := start(t, &Size{Cols: 80, Rows: 24}, "/bin/sh", "-c", "trap 'echo hungup; exit' HUP; stty size; read line; stty size; read line; head -c 700000 /dev/zero | tr '\\0' x; echo done; while :; do sleep 1; done")
 	out := output(t, h, 0)
 	got := readN(t, out, 7)
 	if string(got) != "24 80\r\n" {
@@ -218,6 +218,8 @@ func TestTerminalResizeHangupAndRetention(t *testing.T) {
 	if !bytes.Contains(got, []byte("40 120")) {
 		t.Fatal(string(got))
 	}
+	// The output that follows rotates the earlier segments away.
+	_, _ = h.Write([]byte("\n"))
 	until(t, func() bool { p, _ := h.segments(); return len(p) == 2 && p[0] >= segmentSize })
 	_ = h.Stop()
 	_, err := io.ReadAll(out)

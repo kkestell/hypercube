@@ -10,6 +10,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/terminal"
 )
 
 // Restore adopts durable launches before starting families that lost every
@@ -34,7 +35,7 @@ func (r *Runtime) Restore() {
 					known[s.Launch] = true
 				}
 				if root.Running && !s.Ended {
-					known["shell-"+s.ID] = true
+					known[terminal.Name(s.ID)] = true
 				}
 			}
 		}
@@ -80,7 +81,10 @@ func (r *Runtime) restoreFamily(family []store.Session) {
 			_, exitErr := h.Exit()
 			exited = exitErr == nil
 		}
-		allLost = allLost && !missing && !alive && !exited
+		// The holder writes its exit record before it releases its lock, so
+		// checking the lock first leaves no gap between the two.
+		holderLost := !missing && !alive && !exited
+		allLost = allLost && holderLost
 		l, err := r.attach(s, root.ID)
 		if err != nil {
 			logf("restoring %s: %v", s.ID, err)
@@ -90,7 +94,7 @@ func (r *Runtime) restoreFamily(family []store.Session) {
 		if !root.Running || s.Ended {
 			l.stopping = true
 		}
-		if !missing && !alive && !exited {
+		if holderLost {
 			lost = append(lost, l)
 		}
 		attached = append(attached, l)
@@ -137,7 +141,9 @@ func (r *Runtime) restoreFamily(family []store.Session) {
 	}
 	for _, s := range family {
 		if !s.Ended {
-			_ = r.Terminals.Adopt(s.ID, filepath.Join(run, "shell-"+s.ID))
+			if err := r.Terminals.Adopt(s.ID); err != nil {
+				logf("adopting the shell of %s: %v", s.ID, err)
+			}
 		}
 	}
 }

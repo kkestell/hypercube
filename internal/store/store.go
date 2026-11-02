@@ -8,7 +8,6 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -433,27 +432,18 @@ type Command struct {
 	Item                   []byte
 }
 
-func (t *Tx) AddCommand(c Command) (Command, error) {
+// AddCommand records a command without its line and returns its ID, which the
+// line carries. SetCommandLine saves the line.
+func (t *Tx) AddCommand(c Command) (int64, error) {
 	result, err := t.tx.Exec(`INSERT INTO commands (session, command, line, message, seq, item)
  VALUES (?, ?, '', NULLIF(?,0), NULLIF(?,0), ?)`, c.Session, c.Command, c.Message, c.Seq, string(c.Item))
 	if err != nil {
-		return c, err
+		return 0, err
 	}
-	c.ID, err = result.LastInsertId()
-	if err != nil {
-		return c, err
-	}
-	var cmd harness.Command
-	if err = json.Unmarshal([]byte(c.Line), &cmd); err != nil {
-		return c, err
-	}
-	cmd.ID = c.ID
-	data, err := json.Marshal(cmd)
-	if err != nil {
-		return c, err
-	}
-	c.Line = string(data) + "\n"
-	return c, t.exec(`UPDATE commands SET line = ? WHERE id = ?`, c.Line, c.ID)
+	return result.LastInsertId()
+}
+func (t *Tx) SetCommandLine(id int64, line string) error {
+	return t.exec(`UPDATE commands SET line = ? WHERE id = ?`, line, id)
 }
 func (t *Tx) Commands(session string) ([]Command, error) {
 	rows, err := t.tx.Query(`SELECT id, session, command, line, COALESCE(message,0), COALESCE(seq,0), COALESCE(item,'') FROM commands WHERE session = ? ORDER BY id`, session)

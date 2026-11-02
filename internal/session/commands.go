@@ -13,19 +13,23 @@ import (
 // record reserves an ID and the input's position before any bytes are sent.
 // The caller holds mu; send serializes all recorded lines in database order.
 func (r *Runtime) record(tx *write, l *live, cmd harness.Command, message, seq int64, item *harness.Item) (int64, error) {
-	line, err := json.Marshal(cmd)
-	if err != nil {
-		return 0, err
-	}
-	var data []byte
+	c := store.Command{Session: l.id, Command: cmd.Command, Message: message, Seq: seq}
+	var err error
 	if item != nil {
-		data, err = json.Marshal(item)
-		if err != nil {
+		if c.Item, err = json.Marshal(item); err != nil {
 			return 0, err
 		}
 	}
-	c, err := tx.AddCommand(store.Command{Session: l.id, Command: cmd.Command, Line: string(line), Message: message, Seq: seq, Item: data})
+	if c.ID, err = tx.AddCommand(c); err != nil {
+		return 0, err
+	}
+	cmd.ID = c.ID
+	line, err := cmd.Line()
 	if err != nil {
+		return 0, err
+	}
+	c.Line = string(line)
+	if err = tx.SetCommandLine(c.ID, c.Line); err != nil {
 		return 0, err
 	}
 	l.commands[c.ID] = c
@@ -57,11 +61,7 @@ func (r *Runtime) send(l *live) {
 		if c.ID <= l.sent {
 			continue
 		}
-		var cmd harness.Command
-		if err = json.Unmarshal([]byte(c.Line), &cmd); err == nil {
-			err = client.Send(cmd)
-		}
-		if err != nil {
+		if err = client.Send([]byte(c.Line)); err != nil {
 			return
 		}
 		l.sent = c.ID
@@ -180,5 +180,5 @@ func (r *Runtime) recordRequest(l *live, cmd harness.Command, item *harness.Item
 
 func (r *Runtime) request(l *live, id int64) error {
 	go r.send(l)
-	return r.wait(l, id, requestTimeout)
+	return r.wait(l, id, r.requestTimeout)
 }

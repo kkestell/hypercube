@@ -52,7 +52,7 @@ func (r *Runtime) kickLocked(id string) {
 }
 
 func (r *Runtime) watchDelivery(l *live, command int64) {
-	timer := time.NewTimer(requestTimeout)
+	timer := time.NewTimer(r.requestTimeout)
 	defer timer.Stop()
 	select {
 	case <-l.done:

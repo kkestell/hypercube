@@ -387,28 +387,32 @@ func TestCommandsReservePositionsAndIncreaseIDs(t *testing.T) {
 		if s.Launch != "launch" || s.Position != 123 || s.Ready != 456 || s.Quick != 2 {
 			t.Fatal(s)
 		}
-		c, err := tx.AddCommand(Command{Session: "s", Command: "input", Line: `{"command":"input","text":"hello"}`, Seq: 4, Item: []byte(`{"id":"user","kind":"user","done":true}`)})
+		id, err := tx.AddCommand(Command{Session: "s", Command: "input", Seq: 4, Item: []byte(`{"id":"user","kind":"user","done":true}`)})
 		if err != nil {
+			return err
+		}
+		line := `{"id":1,"command":"input","text":"hello"}` + "\n"
+		if err = tx.SetCommandLine(id, line); err != nil {
 			return err
 		}
 		commands, err := tx.Commands("s")
 		if err != nil {
 			return err
 		}
-		if len(commands) != 1 || commands[0].ID != c.ID || commands[0].Line != c.Line {
+		if len(commands) != 1 || commands[0].ID != id || commands[0].Line != line {
 			t.Fatal(commands)
 		}
 		if seq, err := tx.LastSeq("s"); err != nil || seq != 4 {
 			t.Fatalf("reserved seq %d: %v", seq, err)
 		}
-		if err = tx.DeleteCommand(c.ID); err != nil {
+		if err = tx.DeleteCommand(id); err != nil {
 			return err
 		}
-		next, err := tx.AddCommand(Command{Session: "s", Command: "interrupt", Line: `{"command":"interrupt"}`})
+		next, err := tx.AddCommand(Command{Session: "s", Command: "interrupt"})
 		if err != nil {
 			return err
 		}
-		if next.ID <= c.ID {
+		if next <= id {
 			t.Fatal("ID reused")
 		}
 		return nil

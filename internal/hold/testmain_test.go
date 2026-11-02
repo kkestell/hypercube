@@ -25,6 +25,8 @@ func TestMain(m *testing.M) {
 		}
 		os.Exit(0)
 	}
+	// Holders inherit this, so a race-enabled holder exits at once instead of
+	// sleeping a second to report races.
 	_ = os.Setenv("GORACE", "atexit_sleep_ms=0")
 	os.Exit(m.Run())
 }

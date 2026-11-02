@@ -65,13 +65,15 @@ func (o *Output) Read(p []byte) (int, error) {
 		if ended != nil {
 			return 0, ended
 		}
-		// The end marker follows all writes. Re-read after observing it so
-		// output appended between EOF and the marker cannot be missed.
+		// The holder writes the exit record after all output and before it
+		// releases the lock, so a dead holder without one was lost. Re-read
+		// after either so output appended before the end cannot be missed.
+		alive := o.h.Alive()
 		if _, err := o.h.Exit(); err == nil {
 			ended = io.EOF
 			continue
 		}
-		if !o.h.Alive() {
+		if !alive {
 			ended = ErrLost
 			continue
 		}

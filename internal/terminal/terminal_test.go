@@ -1,12 +1,14 @@
 package terminal
 
 import (
+	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/hold"
 )
 
 func newSet(t *testing.T, command ...string) *Set {
@@ -46,7 +48,7 @@ func read(t *testing.T, out io.Reader, want string) string {
 	}
 	return ""
 }
-func output(t *testing.T, sh *Shell) *Output {
+func output(t *testing.T, sh *Shell) *hold.Output {
 	t.Helper()
 	out, err := sh.Output()
 	if err != nil {
@@ -55,16 +57,28 @@ func output(t *testing.T, sh *Shell) *Output {
 	t.Cleanup(func() { out.Close() })
 	return out
 }
-func ended(t *testing.T, sh *Shell) {
+
+// exitCode waits for the shell to end and returns its exit code.
+func exitCode(t *testing.T, sh *Shell) int {
 	t.Helper()
-	select {
-	case <-sh.Done():
-	case <-time.After(5 * time.Second):
-		t.Fatal("shell did not end")
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(25 * time.Millisecond) {
+		if code := sh.ExitCode(); code != -1 {
+			return code
+		}
 	}
+	t.Fatal("shell did not end")
+	return 0
+}
+
+// gone reports whether the session's shell holder has been removed.
+func gone(s *Set, session string) bool {
+	_, err := os.Stat(s.dir(session))
+	return errors.Is(err, os.ErrNotExist)
 }
 func TestInputOutputAndAdopt(t *testing.T) {
-	set := newSet(t, "/bin/cat")
+	next := newSet(t, "/bin/cat")
+	// The first set belongs to an app that exits without ending its shells.
+	set := &Set{Dir: next.Dir, Command: next.Command}
 	sh, err := set.Open("s", t.TempDir(), 80, 24)
 	if err != nil {
 		t.Fatal(err)
@@ -75,10 +89,7 @@ func TestInputOutputAndAdopt(t *testing.T) {
 	}
 	read(t, out, "before")
 	out.Close()
-	set.Detach()
-	next := &Set{Dir: set.Dir}
-	t.Cleanup(next.Close)
-	if err = next.Adopt("s", filepath.Join(set.Dir, "shell-s")); err != nil {
+	if err = next.Adopt("s"); err != nil {
 		t.Fatal(err)
 	}
 	again, err := next.Open("s", t.TempDir(), 80, 24)
@@ -107,9 +118,8 @@ func TestStartsInDirectoryAtSize(t *testing.T) {
 	}
 	_ = sh.Write([]byte("\n"))
 	read(t, out, "40 120")
-	ended(t, sh)
-	if sh.ExitCode() != 0 {
-		t.Fatal(sh.ExitCode())
+	if code := exitCode(t, sh); code != 0 {
+		t.Fatal(code)
 	}
 }
 func TestShellExitAndNewShell(t *testing.T) {
@@ -125,11 +135,9 @@ func TestShellExitAndNewShell(t *testing.T) {
 		t.Fatal(err)
 	}
 	out.Close()
-	ended(t, sh)
-	if sh.ExitCode() != 3 {
-		t.Fatal(sh.ExitCode())
+	if code := exitCode(t, sh); code != 3 {
+		t.Fatal(code)
 	}
-	<-sh.removed
 	next, err := set.Open("s", t.TempDir(), 80, 24)
 	if err != nil || next == sh {
 		t.Fatalf("new shell: %v", err)
@@ -146,14 +154,16 @@ func TestStopAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 	set.Stop("a")
-	ended(t, a)
-	select {
-	case <-b.Done():
+	if !gone(set, "a") || a.holder.Alive() {
+		t.Fatal("Stop left the shell")
+	}
+	if gone(set, "b") || !b.holder.Alive() {
 		t.Fatal("stopped other shell")
-	default:
 	}
 	set.Close()
-	ended(t, b)
+	if !gone(set, "b") {
+		t.Fatal("Close left a shell")
+	}
 	if _, err = set.Open("c", t.TempDir(), 80, 24); err == nil {
 		t.Fatal("closed set opened shell")
 	}

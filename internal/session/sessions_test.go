@@ -178,23 +178,14 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 	f := newFixture(t)
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	s := f.session()
-	open := func() interface{ Done() <-chan struct{} } {
-		sh, err := f.rt.Shell(s.ID, 80, 24)
-		if err != nil {
+	open := func() string {
+		if _, err := f.rt.Shell(s.ID, 80, 24); err != nil {
 			t.Fatal(err)
 		}
-		return sh
-	}
-	ended := func(sh interface{ Done() <-chan struct{} }) bool {
-		select {
-		case <-sh.Done():
-			return true
-		default:
-			return false
-		}
+		return s.ID
 	}
 	sh := open()
-	if err := f.rt.Stop(s.ID); err != nil || !ended(sh) {
+	if err := f.rt.Stop(s.ID); err != nil || !f.shellEnded(sh) {
 		t.Fatalf("Stop left the shell running: %v", err)
 	}
 	if _, err := f.rt.Shell(s.ID, 80, 24); err == nil {
@@ -204,13 +195,13 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	sh = open()
-	if err := f.rt.Delete(s.ID); err != nil || !ended(sh) {
+	if err := f.rt.Delete(s.ID); err != nil || !f.shellEnded(sh) {
 		t.Fatalf("Delete left the shell running: %v", err)
 	}
 	s = f.session()
 	sh = open()
 	f.rt.Quit()
-	if !ended(sh) {
+	if !f.shellEnded(sh) {
 		t.Fatal("Shutdown left the shell running")
 	}
 }
