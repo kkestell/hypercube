@@ -16,10 +16,10 @@ import (
 // live is one launch of an agent's plugin. It starts in Runtime.live with
 // starting set, becomes ready when the plugin replies to start, and is over
 // once it leaves Runtime.live: by end, when it fails to start or its plugin
-// exits, or by detachLocked, when it is stopped. Events, exits, and deliveries
-// from a launch that is over are ignored.
+// exits, or by detachLocked, when it is stopped. Events and exits from a launch
+// that is over are ignored, and no further deliveries start.
 type live struct {
-	id, session, role string
+	id, session string
 	// prefix makes the plugin's item IDs unique across launches, since
 	// plugins number items from the start of each one.
 	prefix string
@@ -53,7 +53,7 @@ func (r *Runtime) current(l *live) bool { return r.live[l.id] == l }
 // loaded. The caller holds mu.
 func (r *Runtime) register(a store.Agent, quick int) *live {
 	r.gen++
-	l := &live{id: a.ID, session: a.Session, role: a.Role, prefix: strconv.FormatInt(r.gen, 36) + ":",
+	l := &live{id: a.ID, session: a.Session, prefix: strconv.FormatInt(r.gen, 36) + ":",
 		starting: true, quick: quick, pending: map[string]*pendingItem{}}
 	r.live[a.ID] = l
 	return l
@@ -229,7 +229,7 @@ func (r *Runtime) end(l *live, cause error) {
 		return
 	}
 	if relaunch {
-		next := r.register(store.Agent{ID: l.id, Session: l.session, Role: l.role}, quick)
+		next := r.register(store.Agent{ID: l.id, Session: l.session}, quick)
 		// A relaunch that fails ends too, which records why.
 		go r.launch(next)
 	}

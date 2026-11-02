@@ -93,6 +93,33 @@ func TestFailedResumeIsAnError(t *testing.T) {
 	}
 }
 
+func TestFailedRelaunchStaysEnded(t *testing.T) {
+	f := newFixture(t)
+	_, lead := f.session()
+	if err := f.db.Tx(func(tx *store.Tx) error {
+		a, err := tx.Agent(lead.ID)
+		if err != nil {
+			return err
+		}
+		a.Conversation = "unresumable"
+		return tx.SaveAgent(a)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.input(lead.ID, "!crash")
+	f.until("the failed relaunch", func() bool {
+		return strings.HasSuffix(f.summary(lead.ID), "|error:Could not start the agent: cannot resume conversation unresumable")
+	})
+	// The failed relaunch has no successor, including one still starting.
+	if _, err := f.rt.AddWorker(lead.ID, "w1", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+		t.Fatalf("a failed relaunch took a worker: %v", err)
+	}
+	starts := f.log(lead.ID, "start")
+	if a := f.agent(lead.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
+		t.Fatalf("after a failed relaunch: agent %+v, starts %v", a, starts)
+	}
+}
+
 func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
 	f := newFixture(t)
 	script := "#!/bin/sh\necho 'unsupported harness: not ported' >&2\nexit 1\n"

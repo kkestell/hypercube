@@ -113,6 +113,10 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	if got := f.summary(lead.ID); got != "user:start|text:ack|user:!work|text:working" {
 		t.Fatalf("transcript = %q", got)
 	}
+	saved, err := f.rt.Transcript(lead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
 		t.Fatalf("the plugin process remains: %v", err)
 	}
@@ -125,6 +129,22 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	f.until("the restored lead", func() bool { return f.agent(lead.ID).Activity == store.Idle })
 	if start := f.log(lead.ID, "start"); len(start) != 2 || start[1].Conversation != lead.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
 		t.Fatalf("restore: %v", start)
+	}
+	f.input(lead.ID, "continue")
+	f.until("a turn after restore", func() bool {
+		return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:working|user:continue|text:ack"
+	})
+	items, err := rt.Transcript(lead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, item := range items {
+		if i < len(saved) && (item.ID != saved[i].ID || item.Seq != saved[i].Seq) {
+			t.Fatalf("saved item moved: %+v became %+v", saved[i], item)
+		}
+		if i > 0 && item.Seq <= items[i-1].Seq {
+			t.Fatalf("transcript positions are not increasing: %+v", items)
+		}
 	}
 }
 

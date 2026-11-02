@@ -7,29 +7,39 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-func TestApplyEvent(t *testing.T) {
-	worker := store.Agent{Role: store.Worker, Activity: store.Busy}
-	lead := store.Agent{Role: store.Lead, Activity: store.Idle}
-	var s store.Session
-	applyEvent(&lead, &s, harness.Event{State: harness.Working, Conversation: "c1"})
-	if lead.Activity != store.Busy || lead.Conversation != "c1" || s.Unseen {
-		t.Fatalf("working: %+v %+v", lead, s)
+func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
+	f := newFixture(t)
+	_, lead := f.session()
+	f.input(lead.ID, "!work")
+	f.until("the lead working", func() bool { return f.agent(lead.ID).Activity == store.Busy })
+	conversation := f.agent(lead.ID).Conversation
+	f.input(lead.ID, "!usage")
+	f.until("the usage event", func() bool {
+		return f.agent(lead.ID).Usage == (harness.Usage{Context: 45200, Window: 200000, Cost: 0.31})
+	})
+	if a := f.agent(lead.ID); a.Activity != store.Busy || a.Conversation != conversation {
+		t.Fatalf("an event without state or conversation changed the agent: %+v", a)
 	}
-	applyEvent(&lead, &s, harness.Event{Items: []harness.Item{{ID: "x", Kind: harness.KindText}}})
-	if lead.Activity != store.Busy || lead.Conversation != "c1" {
-		t.Fatalf("an event without state or conversation changed the agent: %+v", lead)
+}
+
+func TestIdleLeadAndFinishedWorkerDoNotMarkTheSessionUnseen(t *testing.T) {
+	f := newFixture(t)
+	s, lead := f.session()
+	if err := f.rt.Seen(s.ID); err != nil {
+		t.Fatal(err)
 	}
-	applyEvent(&lead, &s, harness.Event{State: harness.Idle, Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
-	if lead.Activity != store.Idle || !s.Unseen || lead.Usage != (harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
-		t.Fatalf("lead idle: %+v %+v", lead, s)
-	}
-	s.Unseen = false
-	applyEvent(&lead, &s, harness.Event{State: harness.Idle})
-	if s.Unseen {
+	// The image arrives with an idle event, while the lead is already idle.
+	f.input(lead.ID, "!image")
+	f.until("the image", func() bool { return len(f.transcript(lead.ID)) == 4 })
+	if f.storedSession(s.ID).Unseen {
 		t.Fatal("a lead that was already idle marked its session unseen")
 	}
-	applyEvent(&worker, &s, harness.Event{State: harness.Idle})
-	if worker.Activity != store.Idle || s.Unseen {
-		t.Fatalf("worker idle: %+v %+v", worker, s)
+	worker := f.addWorker(lead, "worker", "")
+	f.input(worker.ID, "!work")
+	f.until("the worker working", func() bool { return f.agent(worker.ID).Activity == store.Busy })
+	f.input(worker.ID, "!finish")
+	f.until("the worker idle", func() bool { return f.agent(worker.ID).Activity == store.Idle })
+	if f.storedSession(s.ID).Unseen {
+		t.Fatal("a worker's finished turn marked its session unseen")
 	}
 }
