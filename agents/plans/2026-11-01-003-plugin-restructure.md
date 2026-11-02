@@ -177,19 +177,21 @@ func (e *Errors) Item(text string) harness.Item
 ### Claude
 
 - **Startup in one place.** `startClaude` gives `p.Read` a handler that owns
-  the startup state in local variables, `started` and `failure`, and reports
-  through a buffered channel `ready` that `startClaude` waits on, with the
-  existing 60 s timeout. Until claude answers `initialize`, the handler does
-  the following:
-  - The initialize response sets `started`. It sends either the initialize
-    error or the kept `failure`, and otherwise nil.
+  the startup state in local variables and reports through a buffered channel
+  `ready` that `startClaude` waits on, with the existing 60 s timeout. The
+  state is `state` (one of starting, started, or failed) and `failure`. While
+  the state is starting:
+  - The initialize response ends startup. If it carries an error, or
+    `failure` is set, the handler sends that error and sets failed. Otherwise
+    it sends nil and sets started.
   - A `result` line is a failed start. Its text, formatted as `result` formats
     it, becomes `failure`. The line does not go to `line`.
   - Other lines go to `line`.
 
-  After `started`, every line goes to `line`. When `p.Read` returns without
-  `started`, the goroutine sends `failure` if it is set, and otherwise the exit
-  reason. This deletes `ready`, `initError`, `resultText`, `failure()`, and the
+  Once started, every line goes to `line`. Once failed, the handler discards
+  every line, and `Process.Read` drains the output. When `p.Read` returns while
+  still starting, the goroutine sends `failure` if it is set, and otherwise the
+  exit reason. This deletes `ready`, `initError`, `resultText`, `failure()`, and the
   read loop. `line` never sees a pre-ready result, so the conversation update
   moves into `result`, and a failed resume can no longer emit a conversation.
 - **Input decoded once.** `control` decodes `Input` as `json.RawMessage`. A
@@ -376,6 +378,11 @@ The tests check the same behavior as today, minus what the shared tests cover.
   - `TestStartFailedResume` uses `badresume.jsonl` and a variant whose
     `session_id` differs from the requested one. Both return the "No
     conversation found" error, and neither emits an event.
+  - A third failed-start case has the fake `claude` print a result, then
+    answer initialize, then print another result before exiting. Start
+    returns the first result's error, and no event is emitted.
+  - A fourth case has initialize answer with an error and further lines
+    follow. Start returns the initialize error, and no event is emitted.
   - `TestExitEndsTheProcess` uses `FAKE_EXIT`. `Process.Err()` contains
     `exit status 3` and `boom`.
   - `newClaude` drops `ready`. The question and permission tests stay as they
