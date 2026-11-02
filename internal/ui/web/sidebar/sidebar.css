@@ -6,25 +6,6 @@
   color: var(--vscode-sideBar-foreground);
 }
 
-.sidebar-title {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  height: var(--size-bar-height);
-  /* The label lines up with the tree's chevrons, and the button with the
-     tree's row buttons. */
-  padding: 0 calc(var(--size-space) * 3) 0 14px;
-  background: var(--vscode-sideBarTitle-background);
-  color: var(--vscode-sideBarTitle-foreground);
-}
-
-.sidebar-title-label {
-  flex: 1;
-  font-size: 11px;
-  font-weight: normal;
-  text-transform: uppercase;
-}
-
 /* Rows are 32px tall with 2px between them, inside a 4px inset. Titles start
    14px into a row, 34px for nested rows, and each row's right 16px column
    holds its dot or buttons. */
@@ -44,11 +25,13 @@
   gap: 2px;
 }
 
+/* Its buttons are spaced like toolbar buttons, whose 16px icons sit in 22px
+   boxes 4px apart. */
 .sidebar-workspace-header {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: var(--size-space);
+  gap: calc(var(--size-space) * 2.5);
   height: 32px;
   padding-right: 8px;
 }
@@ -56,7 +39,7 @@
 .sidebar-workspace-toggle {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--size-space);
   min-width: 0;
   height: 100%;
   padding-left: 14px;
@@ -70,8 +53,6 @@
 
 .sidebar-caret {
   flex-shrink: 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 10px;
 }
 
 .sidebar-icon-button {
@@ -110,10 +91,12 @@
   border-left: 1px solid var(--vscode-tree-indentGuidesStroke);
   border-bottom-left-radius: 6px;
   pointer-events: none;
+  z-index: 1;
 }
 
 .sidebar-nested-summary,
-.sidebar-show-more {
+.sidebar-show-more,
+.sidebar-add-workspace {
   display: flex;
   flex-shrink: 0;
   align-items: center;
@@ -129,8 +112,14 @@
 }
 
 .sidebar-nested-summary:hover,
-.sidebar-show-more:hover {
+.sidebar-show-more:hover,
+.sidebar-add-workspace:hover {
   background: var(--vscode-list-hoverBackground);
+}
+
+.sidebar-add-workspace {
+  gap: calc(var(--size-space) * 2);
+  margin: 0 var(--size-space) var(--size-space);
 }
 
 .sidebar-nested-separator,
@@ -149,7 +138,8 @@
 .sidebar-workspace-toggle:focus-visible,
 .sidebar-icon-button:focus-visible,
 .sidebar-nested-summary:focus-visible,
-.sidebar-show-more:focus-visible {
+.sidebar-show-more:focus-visible,
+.sidebar-add-workspace:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);
   outline-offset: -1px;
 }

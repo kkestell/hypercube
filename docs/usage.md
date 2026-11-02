@@ -35,7 +35,7 @@ collapse or expand it. A parent's caret collapses or expands its children;
 clicking its title selects the session without changing its children's
 expansion. A collapsed parent still lists the children waiting on you, then a
 row counting the rest and how many have unseen replies; click it to expand the
-parent. Click `+` at the top of the sidebar to add a workspace. Click `+`
+parent. Click Add Workspace at the bottom of the sidebar to add a workspace. Click `+`
 beside a workspace's name to choose a lead profile for a new session. Sending
 its first prompt creates the session; selecting another session first discards
 it. More Actions, shown while hovering a workspace, or right-clicking a

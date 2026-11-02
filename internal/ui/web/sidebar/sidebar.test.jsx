@@ -55,6 +55,12 @@ test('clicking a workspace header collapses and expands it, and New Session leav
   expect(sessionRows(root)).toEqual(['a']);
 });
 
+test('Add Workspace adds a workspace', () => {
+  const {root, posted} = setup([]);
+  click(root.querySelector('.sidebar-add-workspace'));
+  expect(posted()).toEqual([{action: 'new'}]);
+});
+
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
   click(title(root, 'b'));

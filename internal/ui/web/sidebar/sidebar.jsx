@@ -1,5 +1,6 @@
 // The Workspaces view: each workspace's sessions under a header that collapses
-// them, five at a time, with the workspace and session menus. A parent's
+// them, five at a time, with the workspace and session menus, and Add
+// Workspace pinned below the list. A parent's
 // caret collapses its nested sessions. The view holds still while a session is
 // renamed, so the field keeps its place and focus.
 import {Fragment} from 'preact';
@@ -53,10 +54,6 @@ export function Sidebar() {
 
   return (
     <div class="sidebar">
-      <div class="sidebar-title">
-        <h2 class="sidebar-title-label">Workspaces</h2>
-        <vscode-toolbar-button icon="add" label="New Workspace" title="New Workspace" onClick={() => addWorkspace(store)} />
-      </div>
       <div class="sidebar-list" onContextMenu={contextMenu}>
         {workspaces.map(workspace => {
           const open = !collapsed[workspace.id];
@@ -66,7 +63,7 @@ export function Sidebar() {
               <div class="sidebar-workspace-header">
                 <button class="sidebar-workspace-toggle" aria-expanded={open} title={workspace.path} onClick={() => toggle(workspace.id)}>
                   <span class="sidebar-workspace-name">{workspace.name}</span>
-                  <span class="sidebar-caret">{open ? '▾' : '▸'}</span>
+                  <vscode-icon class="sidebar-caret" name={open ? 'chevron-down' : 'chevron-right'} />
                 </button>
                 <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => menus.showWorkspace(below(e.currentTarget), workspace)}>
                   <vscode-icon name="ellipsis" />
@@ -91,6 +88,10 @@ export function Sidebar() {
           );
         })}
       </div>
+      <button class="sidebar-add-workspace" onClick={() => addWorkspace(store)}>
+        <vscode-icon name="add" />
+        Add Workspace
+      </button>
       {menus.menu && <ContextMenu {...menus.menu} onClose={menus.close} />}
     </div>
   );
