@@ -612,9 +612,6 @@ func (c *claude) result(ev *harness.Event, m message) {
 	}
 	items, _ := c.requests.Close(func(*request) bool { return true })
 	ev.Items = append(ev.Items, items...)
-	// Nothing of the turn is needed later.
-	clear(c.blocks)
-	clear(c.tools)
 	// An interrupted turn is the user's own doing.
 	if m.IsError && !strings.HasPrefix(m.TerminalReason, "aborted") {
 		ev.Items = append(ev.Items, c.errors.Item(m.summary()))

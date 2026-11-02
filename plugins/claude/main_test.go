@@ -238,6 +238,31 @@ func TestNativeSubagentItemsAreNested(t *testing.T) {
 	}
 }
 
+func TestMainResultPreservesBackgroundMessageBlocks(t *testing.T) {
+	h := newClaude()
+	h.feed(
+		`{"type":"assistant","parent_tool_use_id":"agent1","message":{"id":"child1","content":[{"type":"thinking","thinking":"considering"}]}}`,
+		`{"type":"result","subtype":"success","modelUsage":{}}`,
+		`{"type":"assistant","parent_tool_use_id":"agent1","message":{"id":"child1","content":[{"type":"text","text":"answer"}]}}`)
+	items := h.transcript()
+	if len(items) != 2 || items[0].Kind != harness.KindReasoning || items[0].Text != "considering" ||
+		items[1].Kind != harness.KindText || items[1].Text != "answer" || items[0].ID == items[1].ID {
+		t.Fatalf("background message blocks: %+v", items)
+	}
+}
+
+func TestMainResultPreservesBackgroundTool(t *testing.T) {
+	h := newClaude()
+	h.feed(
+		`{"type":"assistant","parent_tool_use_id":"agent1","message":{"id":"child1","content":[{"type":"tool_use","id":"read1","name":"Read","input":{}}]}}`,
+		`{"type":"result","subtype":"success","modelUsage":{}}`,
+		`{"type":"user","parent_tool_use_id":"agent1","message":{"content":[{"type":"tool_result","tool_use_id":"read1","content":"contents"}]}}`)
+	items := h.transcript()
+	if len(items) != 1 || items[0].Parent != "agent1" || !items[0].Done || items[0].Output != "contents" {
+		t.Fatalf("background tool result: %+v", items)
+	}
+}
+
 func TestQuestionBecomesAttentionAndAnswerReachesClaude(t *testing.T) {
 	h := newClaude()
 	head, rest := until(t, fixture(t, "question"), `"control_request"`)

@@ -234,14 +234,12 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	}
 }
 
-// startTurn marks a main turn as running, and forgets the items of earlier
-// turns, which codex does not report again. ag.mu is held.
+// startTurn marks a main turn as running. ag.mu is held.
 func (ag *agent) startTurn(ev *harness.Event, id string) {
 	if id == "" || id == ag.turn || id == ag.ended {
 		return
 	}
 	ag.turn = id
-	clear(ag.finished)
 	ev.State = harness.Working
 }
 
