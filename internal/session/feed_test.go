@@ -164,3 +164,26 @@ func TestCancelStopsDelivery(t *testing.T) {
 		t.Fatalf("canceled subscription received %+v", change)
 	}
 }
+
+// A completed item reported again keeps its saved position, and its change
+// says so.
+func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
+	f := newFixture(t)
+	_, lead := f.session()
+	f.input(lead.ID, "!work")
+	f.input(lead.ID, "!finish")
+	f.until("the finished item", func() bool { return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish" })
+	changes, cancel := f.rt.Subscribe()
+	defer cancel()
+	f.input(lead.ID, "!finish")
+	change := nextChange(t, changes, func(c Change) bool { return c.Agent == lead.ID && c.Item.Text == "finished" })
+	items, err := f.rt.Transcript(lead.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.ID == change.Item.ID && it.Seq != change.Seq {
+			t.Fatalf("published position %d, saved position %d", change.Seq, it.Seq)
+		}
+	}
+}

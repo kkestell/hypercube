@@ -210,15 +210,16 @@ func TestTranscript(t *testing.T) {
 		}
 		// Items come back in position order, whatever order they were saved in.
 		for _, e := range []Entry{{3, "c", []byte(`{"n":3}`)}, {1, "a", []byte(`{"n":1}`)}, {2, "b", []byte(`{"n":2}`)}} {
-			if err := tx.PutEntry("s-lead", e); err != nil {
+			if _, err := tx.PutEntry("s-lead", e); err != nil {
 				return err
 			}
 		}
 		// An item saved again replaces its data and keeps its position.
-		if err := tx.PutEntry("s-lead", Entry{9, "a", []byte(`{"n":"again"}`)}); err != nil {
-			return err
+		if seq, err := tx.PutEntry("s-lead", Entry{9, "a", []byte(`{"n":"again"}`)}); err != nil || seq != 1 {
+			t.Errorf("replaced entry's position = %d, %v", seq, err)
 		}
-		return tx.PutEntry("s-w1", Entry{1, "a", []byte(`{}`)})
+		_, err := tx.PutEntry("s-w1", Entry{1, "a", []byte(`{}`)})
+		return err
 	})
 	tx(t, db, func(tx *Tx) error {
 		got, err := tx.Transcript("s-lead")
@@ -254,7 +255,7 @@ func TestLastText(t *testing.T) {
 			{Seq: 3, Item: "child", Data: []byte(`{"kind":"text","text":"nested","parent":"last"}`)},
 			{Seq: 4, Item: "tool", Data: []byte(`{"kind":"tool","text":"tool"}`)},
 		} {
-			if err := tx.PutEntry("s-lead", entry); err != nil {
+			if _, err := tx.PutEntry("s-lead", entry); err != nil {
 				return err
 			}
 		}

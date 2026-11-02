@@ -89,7 +89,8 @@ func (w *write) putItem(l *live, seq int64, item harness.Item) error {
 	if err != nil {
 		return err
 	}
-	if err := w.PutEntry(l.id, store.Entry{Seq: seq, Item: item.ID, Data: data}); err != nil {
+	seq, err = w.PutEntry(l.id, store.Entry{Seq: seq, Item: item.ID, Data: data})
+	if err != nil {
 		return err
 	}
 	w.items = append(w.items, Change{Session: l.session, Agent: l.id, Seq: seq, Item: item})

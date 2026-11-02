@@ -376,11 +376,13 @@ type Entry struct {
 	Data []byte
 }
 
-// PutEntry saves a completed transcript item. An item with the same ID as an
-// earlier one replaces its data and keeps its position.
-func (t *Tx) PutEntry(agent string, e Entry) error {
-	return t.exec(`INSERT INTO transcript (agent, seq, item, data) VALUES (?, ?, ?, ?)
-  ON CONFLICT (agent, item) DO UPDATE SET data = excluded.data`, agent, e.Seq, e.Item, string(e.Data))
+// PutEntry saves a completed transcript item and returns its position. An item
+// with the same ID as an earlier one replaces its data and keeps its position.
+func (t *Tx) PutEntry(agent string, e Entry) (int64, error) {
+	var seq int64
+	err := t.tx.QueryRow(`INSERT INTO transcript (agent, seq, item, data) VALUES (?, ?, ?, ?)
+  ON CONFLICT (agent, item) DO UPDATE SET data = excluded.data RETURNING seq`, agent, e.Seq, e.Item, string(e.Data)).Scan(&seq)
+	return seq, err
 }
 
 // Transcript returns the agent's saved items in order.
