@@ -1,0 +1,85 @@
+.tool-items-disclosure {
+  min-width: 0;
+}
+
+.tool-items-summary {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  min-width: 0;
+  padding: var(--size-space) 0;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-items-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-items-summary:hover {
+  color: var(--vscode-foreground);
+}
+
+.tool-items-chevron {
+  flex-shrink: 0;
+}
+
+.tool-items-disclosure[open] > .tool-items-summary > .tool-items-chevron {
+  transform: rotate(90deg);
+}
+
+.tool-items-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-items-name {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.tool-items-failed {
+  flex-shrink: 0;
+  color: var(--vscode-errorForeground);
+}
+
+.tool-items-calls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+  padding-left: calc(var(--size-space) * 5);
+}
+
+.tool-items-call {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+  min-width: 0;
+}
+
+.tool-items-text {
+  max-height: calc(var(--size-row-height) * 12);
+  overflow: auto;
+  margin-left: calc(var(--size-space) * 5);
+  padding: var(--size-space) calc(var(--size-space) * 2);
+  background: var(--vscode-textCodeBlock-background);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tool-items-input {
+  color: var(--vscode-descriptionForeground);
+}
+
+.tool-items-children {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 3);
+  margin-left: calc(var(--size-space) * 5);
+  padding: calc(var(--size-space) * 2) 0;
+}

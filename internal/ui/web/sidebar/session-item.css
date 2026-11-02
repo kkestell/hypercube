@@ -1,0 +1,19 @@
+.session-item-stopped {
+  color: var(--vscode-descriptionForeground);
+}
+
+.session-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-item-indicators {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+}
+
+.session-item-rename {
+  width: 100%;
+}

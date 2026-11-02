@@ -1,0 +1,26 @@
+.attention-item {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 2);
+}
+
+.attention-item-open {
+  padding: calc(var(--size-space) * 2);
+  border: 1px solid var(--vscode-inputValidation-warningBorder);
+  background: var(--vscode-inputValidation-warningBackground);
+}
+
+.attention-item-question {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.attention-item-answered {
+  color: var(--vscode-descriptionForeground);
+}
+
+.attention-item-answer {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+}

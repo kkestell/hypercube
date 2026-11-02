@@ -117,11 +117,12 @@ JSON
 	fi
 
 	# Poll source contents rather than mtimes, including additions and deletions.
-	# Generated CSS and dependencies are excluded so builds do not trigger builds.
+	# The generated browser build and dependencies are excluded so builds do not
+	# trigger builds.
 	sources() {
 		{
-			find cmd internal plugins -type d -name node_modules -prune -o \
-				-type f ! -path internal/ui/static/ui.css -exec cksum {} +
+			find cmd internal plugins \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
+				-type f -exec cksum {} +
 			cksum go.mod go.sum Makefile scripts/dev
 		} | LC_ALL=C sort | cksum
 	}
@@ -129,7 +130,7 @@ JSON
 		make ui && make build
 	}
 	start_view() {
-		"${DEV_ENV[@]}" HYPERCUBE_DEV_RELOAD="$revision" "$BIN" ui "$PORT" &
+		"${DEV_ENV[@]}" "$BIN" ui "$PORT" &
 		view_pid=$!
 		echo "$view_pid" >"$DEV/ui.pid"
 		for _ in $(seq 50); do

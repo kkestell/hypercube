@@ -1,0 +1,34 @@
+.usage {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: calc(var(--size-space) * 3);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.usage-context {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+}
+
+.usage-ring {
+  width: calc(var(--size-icon) - 2px);
+  height: calc(var(--size-icon) - 2px);
+  transform: rotate(-90deg);
+}
+
+.usage-track,
+.usage-fill {
+  fill: none;
+  stroke-width: 2;
+}
+
+.usage-track {
+  stroke: var(--vscode-descriptionForeground);
+}
+
+.usage-fill {
+  stroke: var(--vscode-progressBar-background);
+}

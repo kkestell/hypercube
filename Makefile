@@ -12,7 +12,12 @@ build:
 	go build -o bin/hypercube-harness-codex ./plugins/codex
 	go build -o bin/hypercube-harness-pi ./plugins/pi
 
+# check runs every check, and fails when internal/ui/dist differs from a fresh
+# build of its sources.
 check: build
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd internal/ui && \
+		bun install --frozen-lockfile && bun build.js "$$tmp" && \
+		{ diff -rq dist "$$tmp" || { echo "internal/ui/dist is stale; run make ui"; exit 1; }; }
 	cd internal/ui && bun test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal plugins)" || { gofmt -l cmd internal plugins; exit 1; }
@@ -26,20 +31,10 @@ install: build
 install-service: install
 	BINDIR="$(BINDIR)" SERVICE="$(SERVICE)" PORT="$(PORT)" scripts/install-service
 
-# ui regenerates the browser view's stylesheet from its Tailwind classes,
-# bundles its transcript renderer, terminal, and file highlighter with their npm
-# dependencies, and copies those packages' licenses next to the bundles.
+# ui builds the browser view into internal/ui/dist, which is committed and
+# embedded, so go build needs no bun.
 ui:
-	cd internal/ui && bun install --frozen-lockfile && \
-		bun x tailwindcss -i style.css -o static/ui.css --minify && \
-		bun build transcript.js --outfile static/transcript.js --format esm --minify && \
-		bun build terminal.js --outfile static/terminal.js --format esm --minify && \
-		bun build viewer.js --outfile static/viewer.js --format esm --minify && \
-		cp node_modules/marked/LICENSE static/marked-LICENSE && \
-		cp node_modules/shiki/LICENSE static/shiki-LICENSE && \
-		cp node_modules/@xterm/xterm/LICENSE static/xterm-LICENSE && \
-		cp node_modules/@xterm/addon-webgl/LICENSE static/xterm-addon-webgl-LICENSE && \
-		cp node_modules/@xterm/addon-fit/LICENSE static/xterm-addon-fit-LICENSE
+	cd internal/ui && bun install --frozen-lockfile && bun build.js dist
 
 dev:
 	scripts/dev up

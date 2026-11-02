@@ -1,0 +1,18 @@
+.agent-pane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid transparent;
+  background: var(--vscode-editor-background);
+}
+
+.agent-pane-attention {
+  border-color: var(--vscode-inputValidation-warningBorder);
+}
+
+.agent-pane-dropping {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}

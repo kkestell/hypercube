@@ -1,0 +1,19 @@
+.split {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  border: 0;
+  --separator-border: var(--vscode-panel-border);
+}
+
+.split-collapsed {
+  --separator-border: transparent;
+}
+
+.split-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}

@@ -1,0 +1,125 @@
+.markdown {
+  overflow-wrap: anywhere;
+}
+
+.markdown a {
+  color: var(--vscode-textLink-foreground);
+}
+
+.markdown a:hover {
+  color: var(--vscode-textLink-activeForeground);
+}
+
+.markdown code {
+  font-family: var(--vscode-editor-font-family);
+  color: var(--vscode-textPreformat-foreground);
+  background: var(--vscode-textPreformat-background);
+  border-radius: var(--size-radius);
+  padding: 0 var(--size-space);
+}
+
+.markdown pre {
+  overflow-x: auto;
+  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: var(--size-radius);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  white-space: pre;
+}
+
+.markdown pre code {
+  padding: 0;
+  background: none;
+  color: inherit;
+}
+
+.markdown blockquote {
+  padding: 0 calc(var(--size-space) * 3);
+  border-left: var(--size-space) solid var(--vscode-textBlockQuote-border);
+  background: var(--vscode-textBlockQuote-background);
+}
+
+.markdown hr {
+  border: 0;
+  border-top: 1px solid var(--vscode-textSeparator-foreground);
+}
+
+.markdown table {
+  border-collapse: collapse;
+}
+
+.markdown th,
+.markdown td {
+  padding: var(--size-space) calc(var(--size-space) * 2);
+  border: 1px solid var(--vscode-textSeparator-foreground);
+  text-align: left;
+}
+
+.markdown ul,
+.markdown ol {
+  padding-left: calc(var(--size-space) * 5);
+}
+
+.markdown li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+
+/* The chat: compact, in the transcript's font. */
+.markdown-chat {
+  line-height: 1.5;
+}
+
+.markdown-chat > * + * {
+  margin-top: calc(var(--size-space) * 2);
+}
+
+.markdown-chat h1,
+.markdown-chat h2,
+.markdown-chat h3,
+.markdown-chat h4,
+.markdown-chat h5,
+.markdown-chat h6 {
+  font-size: var(--vscode-font-size);
+  font-weight: 600;
+}
+
+/* VS Code's Markdown preview. */
+.markdown-preview {
+  padding: calc(var(--size-space) * 4) calc(var(--size-space) * 6);
+  font-size: calc(var(--vscode-font-size) + 1px);
+  line-height: 1.6;
+}
+
+.markdown-preview > * + * {
+  margin-top: calc(var(--size-space) * 4);
+}
+
+.markdown-preview h1,
+.markdown-preview h2 {
+  padding-bottom: calc(var(--size-space) * 1.5);
+  border-bottom: 1px solid var(--vscode-textSeparator-foreground);
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.markdown-preview h1 {
+  font-size: 2em;
+}
+
+.markdown-preview h2 {
+  font-size: 1.5em;
+}
+
+.markdown-preview h3 {
+  font-size: 1.25em;
+}
+
+.markdown-preview pre {
+  padding: calc(var(--size-space) * 4);
+}

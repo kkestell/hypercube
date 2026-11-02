@@ -1,0 +1,12 @@
+.transcript-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--size-space) * 2);
+}
+
+.transcript-images-image {
+  max-width: 100%;
+  max-height: calc(var(--size-row-height) * 12);
+  object-fit: contain;
+  border-radius: var(--size-radius);
+}

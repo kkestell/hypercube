@@ -1,0 +1,47 @@
+.file-view {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  min-height: 0;
+  overflow: auto;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+}
+
+.file-view > .markdown-preview {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-view-message {
+  margin: auto;
+  padding: calc(var(--size-space) * 6);
+  text-align: center;
+}
+
+.file-view-gutter,
+.file-view-code {
+  margin: 0;
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.file-view-gutter {
+  position: sticky;
+  left: 0;
+  flex-shrink: 0;
+  box-sizing: content-box;
+  width: calc(var(--digits) * 1ch);
+  padding: 0 calc(var(--size-space) * 6.5) 0 calc(var(--size-space) * 4.5);
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editorLineNumber-foreground);
+  text-align: right;
+  user-select: none;
+}
+
+.file-view-code {
+  padding-right: calc(var(--size-space) * 3.5);
+  tab-size: 4;
+}

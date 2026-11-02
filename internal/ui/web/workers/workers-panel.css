@@ -1,0 +1,52 @@
+.workers-panel {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 2);
+  height: 100%;
+  overflow-y: auto;
+  padding: calc(var(--size-space) * 3);
+}
+
+.workers-panel-card {
+  padding: calc(var(--size-space) * 3);
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: var(--size-radius);
+  background: var(--vscode-editor-background);
+}
+
+.workers-panel-card-attention {
+  border-color: var(--vscode-inputValidation-warningBorder);
+}
+
+.workers-panel-header {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+  margin-bottom: calc(var(--size-space) * 2);
+}
+
+.workers-panel-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workers-panel-status {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.workers-panel-age {
+  display: flex;
+  justify-content: flex-end;
+  color: var(--vscode-descriptionForeground);
+}
+
+.workers-panel-empty {
+  color: var(--vscode-descriptionForeground);
+}

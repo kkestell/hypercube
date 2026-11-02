@@ -1,0 +1,90 @@
+.editor-tabs {
+  display: flex;
+  flex-shrink: 0;
+  height: var(--size-bar-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+}
+
+.editor-tabs::-webkit-scrollbar {
+  height: 3px;
+}
+
+.editor-tabs-tab {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  border-right: 1px solid var(--vscode-tab-border);
+  background: var(--vscode-tab-inactiveBackground);
+  color: var(--vscode-tab-inactiveForeground);
+}
+
+.editor-tabs-tab:hover {
+  background: var(--vscode-tab-hoverBackground);
+}
+
+.editor-tabs-tab-active,
+.editor-tabs-tab-active:hover {
+  background: var(--vscode-tab-activeBackground);
+  color: var(--vscode-tab-activeForeground);
+}
+
+.editor-tabs-tab-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: var(--vscode-tab-activeBorderTop);
+}
+
+.editor-tabs-select {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  height: 100%;
+  max-width: calc(var(--size-space) * 55);
+  padding-left: calc(var(--size-space) * 2.5);
+  color: inherit;
+}
+
+.editor-tabs-select:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -1px;
+}
+
+.editor-tabs-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-tabs-tab-preview .editor-tabs-label {
+  font-style: italic;
+}
+
+.editor-tabs-tab-deleted .editor-tabs-label {
+  text-decoration: line-through;
+}
+
+.editor-tabs-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--size-icon) + var(--size-space));
+  height: calc(var(--size-icon) + var(--size-space));
+  margin: 0 var(--size-space);
+  border-radius: var(--size-radius);
+  color: inherit;
+  visibility: hidden;
+}
+
+.editor-tabs-tab:hover .editor-tabs-close,
+.editor-tabs-tab-active .editor-tabs-close {
+  visibility: visible;
+}
+
+.editor-tabs-close:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}

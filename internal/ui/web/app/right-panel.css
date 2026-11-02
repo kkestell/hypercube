@@ -1,0 +1,19 @@
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--vscode-sideBar-background);
+}
+
+/* The tab panels fill the height below the tab headers. */
+.right-panel-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.right-panel-body {
+  flex: 1;
+  min-height: 0;
+}

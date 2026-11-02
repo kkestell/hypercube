@@ -1,0 +1,54 @@
+.message-item {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.message-item-user {
+  justify-content: flex-end;
+}
+
+.message-item-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+  min-width: 0;
+  max-width: 85%;
+  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
+  border: 1px solid var(--vscode-chat-requestBorder);
+  border-radius: calc(var(--size-radius) * 2);
+  background: var(--vscode-chat-requestBubbleBackground);
+}
+
+.message-item-heading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  color: var(--vscode-descriptionForeground);
+}
+
+.message-item-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-item-clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.message-item-more {
+  align-self: flex-start;
+  color: var(--vscode-textLink-foreground);
+}
+
+.message-item-more:hover {
+  text-decoration: underline;
+}
+
+.message-item-failure {
+  color: var(--vscode-errorForeground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

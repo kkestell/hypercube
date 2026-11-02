@@ -44,6 +44,15 @@ of its agents awaits your approval, and a blue dot after its lead finishes a
 reply you have not seen. A worker's card shows a spinner while it is busy, an
 amber dot while it awaits you, and a red dot after it exits.
 
+Notification cards stack in the top right for unseen lead replies and for
+questions and approval requests outside the session you are viewing. Each card
+shows the workspace, the session, and the worker when a worker asks, with the
+reply's opening lines or the request with its choices and text field, so you
+can answer from the card. The eye icon opens the session. Closing a reply's
+card marks the reply seen; closing a request's card only hides it. A reply's
+card closes by itself after 15 seconds, or when its lead starts working again.
+A request's card stays until the request is answered or the card is closed.
+
 The lead's chat stays in its own column. The right panel's Workers tab shows
 cards with each worker's latest report and its age. Click a card's Open
 Transcript icon to open that worker in the tab area to the right of the lead.
@@ -68,7 +77,8 @@ subagent calls. Failures are marked on the individual calls. Thinking shows
 its latest six lines by default; click Thinking to expand the full text or
 return to the preview. When an agent asks you a question or for approval, its
 chat shows the request with its choices and a field for typed text; answer
-there. Each agent's unsent text stays in its
+there. An answered request shows its question and the answer beside a check.
+Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 
 Below each message box, the harness, model, and effort appear on the left,
