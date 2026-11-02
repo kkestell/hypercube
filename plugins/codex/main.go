@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -73,7 +74,12 @@ type agent struct {
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
-	cmd := exec.Command("codex", "app-server")
+	home, err := prepareStorage(a)
+	if err != nil {
+		return nil, fmt.Errorf("prepare Codex storage: %w", err)
+	}
+	cmd := exec.Command("codex", "app-server", "-c", "sqlite_home="+strconv.Quote(home))
+	cmd.Env = append(os.Environ(), "CODEX_HOME="+home)
 	cmd.Dir = a.Dir
 	p, err := plugin.StartProcess("Codex", cmd)
 	if err != nil {
@@ -136,9 +142,6 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 		method = "thread/resume"
 		params["threadId"] = a.Conversation
 		params["excludeTurns"] = true
-	} else {
-		// Keep worker conversations out of the desktop app without losing resume.
-		params["threadSource"] = "chatgpt_hidden"
 	}
 	var opened struct {
 		Thread struct {

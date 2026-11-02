@@ -914,7 +914,7 @@ func TestConnectStartsAThread(t *testing.T) {
 		`"model_reasoning_effort":"low","projects":{"` + resolved + `":{"trust_level":"trusted"}},` +
 		`"sandbox_workspace_write":{"network_access":true,"writable_roots":["` + resolved + `/.git"]}}`
 	if p["model"] != "m" || p["cwd"] != dir || p["approvalPolicy"] != "on-request" || p["approvalsReviewer"] != "auto_review" || p["sandbox"] != "workspace-write" ||
-		p["developerInstructions"] != "be useful" || string(config) != wantConfig || p["threadId"] != nil || p["threadSource"] != "chatgpt_hidden" {
+		p["developerInstructions"] != "be useful" || string(config) != wantConfig || p["threadId"] != nil || p["threadSource"] != nil {
 		t.Fatalf("%+v\n%s", p, config)
 	}
 }
@@ -953,8 +953,9 @@ func TestConnectReportsAnIncompatibleServer(t *testing.T) {
 }
 
 func TestStartWithoutCodex(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
+	_, err := startAgent(harness.StartArgs{Dir: t.TempDir(), StateDir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "Codex is missing") {
 		t.Fatal(err)
 	}
@@ -963,13 +964,14 @@ func TestStartWithoutCodex(t *testing.T) {
 // startAgent runs codex in the agent's directory, and reports a process that
 // ends before it is ready.
 func TestStartReportsAProcessThatEnds(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
 	bin := t.TempDir()
 	script := "#!/bin/sh\necho 'config error: bad value' >&2\nexit 3\n"
 	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
+	_, err := startAgent(harness.StartArgs{Dir: t.TempDir(), StateDir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "bad value") {
 		t.Fatal(err)
 	}
@@ -978,9 +980,17 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 // The agent talks to a real process: initialize, a thread, a turn, and an
 // exit that the serve loop reports.
 func TestServeDrivesAProcess(t *testing.T) {
+	t.Setenv("CODEX_HOME", t.TempDir())
+	stateDir := t.TempDir()
+	t.Setenv("EXPECTED_CODEX_HOME", filepath.Join(stateDir, "codex"))
+	t.Setenv("EXPECTED_HOME", os.Getenv("HOME"))
 	bin := t.TempDir()
 	script := `#!/bin/sh
 case "$1" in app-server) ;; *) exit 9;; esac
+[ "$CODEX_HOME" = "$EXPECTED_CODEX_HOME" ] || exit 10
+[ "$HOME" = "$EXPECTED_HOME" ] || exit 11
+[ "$2" = '-c' ] || exit 12
+[ "$3" = "sqlite_home=\"$CODEX_HOME\"" ] || exit 13
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p')
   case "$line" in
@@ -1040,7 +1050,7 @@ done
 	has := func(match func(harness.Record) bool) func([]harness.Record) bool {
 		return func(rs []harness.Record) bool { return slices.ContainsFunc(rs, match) }
 	}
-	send(harness.Command{ID: "1", Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir()}})
+	send(harness.Command{ID: "1", Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), StateDir: stateDir}})
 	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == "1" && r.Reply.Error == "" }))
 	until(has(func(r harness.Record) bool {
 		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == "th"
