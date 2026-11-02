@@ -50,7 +50,7 @@
     <div id="workers-panel" role="tabpanel" aria-labelledby="workers-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
       <div id="worker-cards" class="flex flex-col gap-2"></div>
     </div>
-    <div id="files-panel" role="tabpanel" aria-labelledby="files-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto" hidden></div>
+    <div id="files-panel" role="tabpanel" aria-labelledby="files-tab" class="flex min-h-0 flex-1 flex-col" hidden></div>
     <div id="changes-panel" role="tabpanel" aria-labelledby="changes-tab" tabindex="0" class="min-h-0 flex-1 overflow-y-auto" hidden></div>
   </aside>
 </div>
@@ -59,12 +59,13 @@
 <div id="menu" role="menu" hidden class="fixed z-50 max-h-screen min-w-[160px] max-w-full overflow-auto rounded-[5px] border border-[#454545] bg-[#252526] py-1 text-[13px] shadow-lg shadow-black/50"></div>
 <script src="hypercube.js"></script>
 <script type="module">
-import {Transcript, imageSrc, submitsOnKey} from './transcript.js';
+import {Transcript, imageSrc, renderMarkdown, submitsOnKey} from './transcript.js';
 import {createTerminal} from './terminal.js';
 import {TabLayout, TabContainer} from './tabs.js';
+import {FileTree, files, fileIcon, language, seti} from './files.js';
 
-// The lead stays in its own column. Worker transcripts open in the tab area
-// to its right; only that area accepts tab moves and splits.
+// The lead stays in its own column. Worker transcripts and files open in the
+// tab area to its right; only that area accepts tab moves and splits.
 const $ = id => document.getElementById(id);
 const transcripts = $('transcripts'), leadColumn = $('lead-column'), tabArea = $('worker-tabs'), leadSash = $('lead-sash');
 const workerCards = $('worker-cards'), rightPanel = $('right-panel');
@@ -191,6 +192,9 @@ function attach(id) {
   workerCards.replaceChildren();
   tabLayout = tabContainer = null;
   scrolls.clear();
+  fileTabs.clear();
+  preview = null;
+  fileTree.reset(!!id, dir => files.list(id, dir));
   closeShell();
   announce();
   if (!id && !unsent) return;
@@ -257,10 +261,19 @@ function renderTabs() {
   for (const [id, v] of views) {
     if (v.root.clientHeight) scrolls.set(id, {top: v.root.scrollTop, following: v.following});
   }
-  tabContainer.render(shown.stacked.map(a => {
+  for (const [id, f] of fileTabs) {
+    if (!tabLayout.find(id)) fileTabs.delete(id);
+    else if (f.element.clientHeight) f.scroll = [f.element.scrollTop, f.element.scrollLeft];
+  }
+  if (!fileTabs.has(preview)) preview = null;
+  tabContainer.render([...shown.stacked.map(a => {
     const c = cards.get(a.id);
     return {id: a.id, label: c.label, status: c.status, element: c.element};
-  }));
+  }), ...[...fileTabs].map(([id, f]) => ({id, label: f.name, title: f.path + (f.deleted ? ' (deleted)' : ''), deleted: f.deleted, icon: f.icon, element: f.element,
+    preview: id === preview, keepOpen: () => keepOpen(id)}))]);
+  for (const f of fileTabs.values()) {
+    if (f.element.clientHeight && f.scroll) [f.element.scrollTop, f.element.scrollLeft] = f.scroll;
+  }
   for (const [id, v] of views) {
     if (!v.root.clientHeight) continue;
     const saved = scrolls.get(id);
@@ -270,6 +283,116 @@ function renderTabs() {
   }
   if (returnFocus) cards.get(shown.leader?.id)?.field.focus();
 }
+
+// The Files tab shows the session's working directory. As in VS Code, a single
+// click opens a file in the preview tab, which has an italic title and which
+// the next file opened replaces. Double-clicking the file or the preview tab
+// keeps it open as a regular tab. A file already open selects its tab.
+const fileTabs = new Map();
+let preview = null;
+const fileTree = new FileTree($('files-panel'), {list: dir => files.list(attached, dir), open: openFile,
+  keepOpen: path => keepOpen('file:' + encodeURIComponent(path))});
+
+function keepOpen(id) {
+  if (preview !== id) return;
+  preview = null;
+  renderTabs();
+}
+
+async function openFile(path) {
+  const generation = fileTree.generation;
+  const theme = await seti();
+  if (generation !== fileTree.generation || !tabLayout) return;
+  const id = 'file:' + encodeURIComponent(path);
+  if (!fileTabs.has(id)) {
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    const element = document.createElement('div');
+    element.className = 'file-view';
+    const file = {path, name, element, icon: fileIcon(theme, name), etag: null, deleted: false};
+    fileTabs.set(id, file);
+    showFile(file);
+    if (tabLayout.find(preview)) tabLayout.replace(preview, id);
+    preview = id;
+  }
+  tabLayout.open(id);
+  renderTabs();
+}
+
+// showFile fills a file's tab: Markdown as VS Code's preview shows it, and
+// other files as highlighted source with line numbers.
+async function showFile(file, polling = false) {
+  const session = attached, generation = fileTree.generation;
+  const current = () => generation === fileTree.generation && [...fileTabs.values()].includes(file);
+  let result;
+  try {
+    result = await files.read(session, file.path, file.etag);
+  } catch (error) {
+    result = {error: error.message};
+  }
+  // A poll leaves the tab as it is when the file cannot be read.
+  if (result.error) {
+    if (polling) return;
+    result = {message: result.error};
+  }
+  if (!current() || result.unchanged) return;
+  if (result.deleted) {
+    file.etag = null;
+    if (!file.deleted) {
+      file.deleted = true;
+      renderTabs();
+    }
+    return;
+  }
+  if (file.deleted) {
+    file.deleted = false;
+    renderTabs();
+  }
+  if (result.message && result.message === file.message) return;
+  const {element, name} = file;
+  const scroll = [element.scrollTop, element.scrollLeft];
+  if (result.message) {
+    const message = document.createElement('div');
+    message.className = 'file-message';
+    message.textContent = result.message;
+    element.replaceChildren(message);
+  } else {
+    const {highlight} = await import('./viewer.js');
+    if (!current()) return;
+    const lang = language(name), text = result.text;
+    if (lang === 'markdown') {
+      const preview = document.createElement('div');
+      preview.className = 'markdown-preview';
+      preview.append(...renderMarkdown(document, text));
+      for (const code of preview.querySelectorAll('pre > code[data-lang]')) {
+        code.innerHTML = highlight(code.textContent, code.dataset.lang).join('\n');
+      }
+      element.replaceChildren(preview);
+    } else {
+      const lines = highlight(text, lang);
+      element.innerHTML = `<div class="code-gutter" style="--digits:${Math.max(5, String(lines.length).length)}">${lines.map((_, i) => i + 1).join('\n')}</div><pre class="code-lines">${lines.join('\n')}</pre>`;
+    }
+  }
+  file.etag = result.etag ?? null;
+  file.message = result.message;
+  [element.scrollTop, element.scrollLeft] = scroll;
+}
+
+let polling = false;
+async function poll() {
+  if (document.hidden || !attached || polling) return;
+  polling = true;
+  const generation = fileTree.generation;
+  try {
+    if ($('files-panel').clientHeight) await fileTree.refresh();
+    for (const file of fileTabs.values()) {
+      if (generation !== fileTree.generation) return;
+      if (file.element.clientHeight) await showFile(file, true);
+    }
+  } finally {
+    polling = false;
+  }
+}
+setInterval(poll, 1000);
 
 workerCards.onclick = e => {
   const button = e.target.closest('[data-open-worker]');

@@ -91,6 +91,8 @@ func Handler(ctx context.Context, db *store.DB, rt *session.Runtime) http.Handle
 	mux.HandleFunc("POST /session", s.sessionAction)
 	mux.HandleFunc("POST /agent", s.agentAction)
 	mux.HandleFunc("GET /terminal", s.terminal)
+	mux.HandleFunc("GET /files", s.listFiles)
+	mux.HandleFunc("GET /file", s.readFile)
 	return localOnly(mux)
 }
 

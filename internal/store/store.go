@@ -300,7 +300,7 @@ func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 func (t *Tx) Session(id string) (Session, error) {
 	s, err := scanSession(t.tx.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("no session %q", id)
+		err = fmt.Errorf("no session %q: %w", id, err)
 	}
 	return s, err
 }
