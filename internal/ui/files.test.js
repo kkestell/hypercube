@@ -45,9 +45,9 @@ test('files.read maps unchanged, deleted, large and binary responses', async () 
   }
 });
 
-test('files.read reports other server failures with their error text', async () => {
+test('files.read reports other server failures as errors with their text', async () => {
   fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('permission denied', {status: 409}));
-  expect(await files.read('s', 'a.go')).toEqual({message: 'permission denied'});
+  expect(await files.read('s', 'a.go')).toEqual({error: 'permission denied'});
 });
 
 test('Seti icons match a file name, then its extensions, then its language', () => {

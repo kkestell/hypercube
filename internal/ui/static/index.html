@@ -327,10 +327,14 @@ async function showFile(file, polling = false) {
   try {
     result = await files.read(session, file.path, file.etag);
   } catch (error) {
-    if (polling) return;
-    result = {message: error.message};
+    result = {error: error.message};
   }
-  if (!current() || result.unchanged || (polling && result.message)) return;
+  // A poll leaves the tab as it is when the file cannot be read.
+  if (result.error) {
+    if (polling) return;
+    result = {message: result.error};
+  }
+  if (!current() || result.unchanged) return;
   if (result.deleted) {
     file.etag = null;
     if (!file.deleted) {

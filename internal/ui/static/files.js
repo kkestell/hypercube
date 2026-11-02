@@ -19,7 +19,7 @@ export const files = {
     if (response.status === 404) return {deleted: true};
     if (response.status === 413) return {message: 'The file is not displayed in the text editor because it is very large.'};
     if (response.status === 415) return {message: 'The file is not displayed in the text editor because it is either binary or uses an unsupported text encoding.'};
-    if (!response.ok) return {message: await response.text()};
+    if (!response.ok) return {error: await response.text()};
     return {text: await response.text(), etag: response.headers.get('ETag')};
   },
 };
@@ -118,6 +118,8 @@ export class FileTree {
   }
 
   async refresh() {
+    // Rows need the icon theme, which reset loads before the first listing.
+    if (!this.theme) return;
     const generation = this.generation;
     let changed = false;
     const dirs = ['', ...this.rows.filter(row => row.dir && this.expanded.has(row.path)).map(row => row.path)];
