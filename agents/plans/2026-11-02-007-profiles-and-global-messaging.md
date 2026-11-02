@@ -1,4 +1,4 @@
-# Profiles without roles, and messaging between any running sessions
+# Profiles without roles, and messaging between running top-level sessions
 
 ## Goal
 
@@ -12,13 +12,12 @@ one line. The `opus` and `sol` lead profiles leave the example config and the
 user's config. Saved sessions keep their own harness, model, and effort, so
 they are unaffected.
 
-**Part B, messaging.** Any running session's agent can message any other
-running session's agent: its children, its parent, siblings, other families,
-and sessions in other workspaces of the same app. A parent still addresses its
-own children by name; every session is addressable by ID. A message to a
-stopped or ended session is refused instead of queued. `list_sessions` lists
-the running sessions the caller can message, with each one's workspace and
-parent. Messages are queued and delivered on the existing path.
+**Part B, messaging.** A child can message only its own parent. A top-level
+session can message its own children by name and any other running top-level
+session by ID, across all workspaces in the same app. Other families' children
+remain out of scope. Stopped and ended recipients are refused. `list_sessions`
+lists only running addressable recipients, with workspace and parent identity.
+Existing queue and delivery behavior remains.
 
 ## Related code
 
@@ -92,53 +91,31 @@ parent. Messages are queued and delivered on the existing path.
 
 ### Part B
 
-- `FindSession(caller, to)`: a top-level caller's own child by name first (as
-  now); otherwise `t.Session(to)` by ID, in any family and workspace. A child
-  caller resolves by ID only, so it reaches siblings by ID. The doc comment
-  states the new rule.
-- `SendMessage` refuses, in this order: blank text, unknown recipient, self,
-  an ended child (existing message), and a recipient for which `tx.Running`
-  is false: `session %q is stopped; only running sessions receive messages`.
-  It then queues and calls `Deliver` exactly as now. Its signature drops the
-  `running` result: `SendMessage(from, to, text string) (store.Session, error)`.
-  `mcp.sendMessage` replies `Message queued for %s.` with no stopped note.
-- A recipient that stops after the message is queued keeps it in its queue
-  until its next start, as stopped sessions already do. Running sessions
-  waiting for the user after a start (`AwaitingUser`) also hold it, as now.
-- New store query `func (t *Tx) RunningSessions() ([]Session, error)`: every
-  session that is not ended and whose family is running (top-level `running`,
-  or a child whose parent is running), in creation order. It is the single
-  definition used by `list_sessions`; it agrees with `tx.Running`.
-- `list_sessions` lists `RunningSessions` except the caller. Each entry:
-  `to` (the name for the caller's own children, the ID for everyone else),
-  `title`, `harness`, `activity`, `workspace` (the workspace path), `parent`
-  (the parent's ID, empty for a top-level session), `directory`, `branch`.
-  The `ended` field goes, since ended sessions are never listed.
-- `send_message` has one description for every caller: "Send a message to any
-  running Hypercube session by its ID, or to one of your child sessions by its
-  name. list_sessions lists the sessions you can message." A child's version
-  appends "Your parent is %s." `list_sessions`' description lists the new
-  fields.
-- `report.Format` attribution: the sender's address is its name when it is the
-  recipient's own child, else its ID (as now). When the sender is neither the
-  recipient's parent nor its own child, the first line also identifies it:
-  `Message from %s (titled %q, in workspace %s[, a child session of %s]):`.
-  The reply line stays `... use the hypercube send_message tool to <address>.`
-  The fallback for a sender with no session row (`user`) is unchanged.
-- Startup instructions (`report.Instructions`):
-  - Child: "Your parent created you: use send_message to %s to report to it.
-    You can also message any running Hypercube session by its ID;
-    list_sessions lists them." replaces "...is the only session you can
-    message...". `reportBack` is unchanged.
-  - Top-level: "Children can message only you" and "You can also message the
-    other top-level sessions in this workspace by their IDs, and list_sessions
-    lists the current ones" become "You can message any running Hypercube
-    session, in any workspace, by its ID; list_sessions lists them with their
-    workspace and parent."
-  - The "Other top-level sessions: ..." line goes, and `report.Peers` with it:
-    the list was the workspace's messaging scope, and a list of every running
-    session at startup would be stale. The children list and the shared
-    checkout paragraph stay.
+- Preserve the existing family rules in `FindSession(caller, to)`: a child
+  resolves only its parent by ID; a top-level caller resolves its own child by
+  name, otherwise another top-level session by ID. Remove only the workspace
+  condition from the latter lookup. Do not expose foreign children.
+- `SendMessage` refuses blank text, unknown/out-of-scope recipient, self,
+  ended child, and stopped recipient (`tx.Running`). Queue accepted messages
+  and call `Deliver` on the existing path. Remove the now-redundant `running`
+  result and the MCP reply about delivering later to a stopped session.
+- A recipient that stops after acceptance keeps its queued message as today.
+  Running sessions awaiting the user also retain existing delivery behavior.
+- Use existing `Sessions("")`, `Children`, and `Running` queries to list
+  recipients. No global all-session query is needed. A child lists its running
+  parent only. A top-level session lists its running non-ended children and
+  other running top-level sessions across workspaces. Exclude self.
+- Entries keep `to`, `title`, `harness`, `activity`, `directory`, `branch`,
+  add `workspace` (path) and `parent` (ID), and drop the redundant `ended` field.
+  Own children use their names; top-level peers and a child's parent use IDs.
+- Tool descriptions and startup instructions describe the exact scope above.
+  Keep child parent-only wording. Remove the stale startup list of other
+  top-level sessions and `report.Peers` if no longer used; direct agents to
+  `list_sessions` instead. Keep the shared-checkout warning explicitly scoped
+  to the same workspace.
+- `report.Format` keeps reply addressing and parent/child message attribution.
+  A peer message header identifies the sender's title and workspace, with its
+  session ID as the reply address. No extra parent clause is needed.
 
 ### Ownership and order
 
@@ -148,9 +125,9 @@ parent. Messages are queued and delivered on the existing path.
   test configs). Part B starts from the merged Part A and owns everything else
   in `store`, `session/messages.go`, `mcp`, and `report`. Sequencing this way
   gives each file one owner at a time.
-- Part A needs no architecture review and can start now. Part B removes the
-  family and workspace boundary on messaging; it should get the independent
-  review the hypercube skill requires while Part A runs.
+- Part A needs no architecture review. Part B removes only the workspace
+  boundary between top-level sessions; independently review the revised scope
+  before implementation.
 
 ## Test plan
 
@@ -177,29 +154,21 @@ parent. Messages are queued and delivered on the existing path.
 
 ### Part B
 
-- `internal/store/store_test.go` `FindSession`: a parent finds its child by
-  name, any session by ID in any workspace and family (including another
-  family's child and a session in workspace `v`); a child finds its parent,
-  siblings, and other families by ID, and nothing by a sibling's name.
-  `RunningSessions` returns running top-level sessions and the non-ended
-  children of running families only.
-- `internal/session/messages_test.go`: the scope table becomes: allowed to
-  every running session by ID and to own children by name, from parents and
-  children alike, across workspaces; refused to self, to missing, to ended
-  children, and to stopped sessions, with nothing queued for a refused send.
-- `internal/mcp/mcp_test.go`: `list_sessions` from a parent and a child shows
-  running sessions in another family and workspace with `workspace` and
-  `parent`, own children by name, and no stopped or ended sessions; a child
-  can message a running peer; a message to a stopped peer fails with
-  "stopped".
-- `internal/report/report_test.go`: `Format` keeps the short form between
-  parent and child and adds title, workspace, and parent for others, with a
-  reply address that `FindSession` resolves for the recipient; the
-  instructions mention messaging any running session and no longer list
-  peers.
-- `cmd/hypercube/integration_test.go:380-395`: replace the "exposed another
-  session's child" check with one that a running session in another family
-  is listed and reachable.
+- Store scope tests: parents find own children by name and peer top-level
+  sessions by ID across workspaces; children find only their own parent.
+  Refuse sibling, foreign child, and foreign parent access from children,
+  and foreign child access from top-level sessions.
+- Runtime tests: cross-workspace parent messaging succeeds; stopped, ended,
+  missing, self, and out-of-scope recipients fail without adding a message.
+  Preserve delivery behavior for accepted messages.
+- MCP tests: a parent's list includes running peers across workspaces and its
+  own active children only, with workspace/parent identity. A child's list
+  contains only its running parent. Stopped/ended sessions are absent.
+- Report tests: parent-child attribution stays unchanged; peers carry title,
+  workspace, and resolvable ID reply addresses. Instructions preserve child
+  restrictions and describe global running top-level peer access.
+- Integration tests: reach a running top-level session across workspaces,
+  continue rejecting foreign child access, and reject stopped recipients.
 
 ## Implementation plan
 
@@ -228,12 +197,13 @@ parent. Messages are queued and delivered on the existing path.
 
 ### Part B (second child, after Part A is merged and the review is resolved)
 
-1. `internal/store/store.go`: new `FindSession` rule and `RunningSessions`.
-   Update `store_test.go`.
+1. `internal/store/store.go`: remove the workspace filter only from the
+   top-level peer lookup. Update `store_test.go`.
 2. `internal/session/messages.go`: the stopped check and the new signature.
-   Update `messages_test.go`.
-3. `internal/mcp/mcp.go`: tool descriptions, `listSessions` over
-   `RunningSessions` with the new entry fields, `sendMessage` reply. Update
+   Update `messages_test.go` and the signature callers in
+   `session/feed_test.go` and `session/children_test.go`.
+3. `internal/mcp/mcp.go`: tool descriptions, `listSessions` using existing
+   queries and caller scope, new entry fields, `sendMessage` reply. Update
    `mcp_test.go`.
 4. `internal/report/report.go`: `Format` attribution, `Instructions` text,
    delete `Peers`. Update `report_test.go`.
@@ -253,11 +223,13 @@ parent. Messages are queued and delivered on the existing path.
   `~/.config/hypercube/config.json` so it matches the example.
 - Part A, `README.md:9`: "profiles and worktree setup". `docs/usage.md:38`:
   "to choose a profile for a new session".
-- Part B, `docs/usage.md:19-21`: a parent addresses its children by name; any
-  session addresses any running session, in any workspace, by ID; a message to
-  a stopped or ended session is refused; `list_sessions` lists the running
-  sessions an agent can message, with their workspace and parent. Keep the
-  shared-checkout sentence.
+- Part B, `docs/usage.md` and `docs/architecture.md`: children message only
+  their parent; top-level sessions message their own children and any running
+  top-level session across workspaces. Stopped and ended targets are refused.
+  `list_sessions` shows only running addressable recipients with workspace and
+  parent identity. Remove the obsolete claim that workspace restrictions
+  prevent cross-session operations. Keep the shared-checkout warning scoped
+  to sessions in the same workspace.
 
 ## Restart note
 
