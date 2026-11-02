@@ -25,23 +25,23 @@ export function FilesPanel() {
     if (path !== undefined) openFileTab(store, path);
   };
 
-  const entries = dir => (files?.listings[dir] ?? []).map(entry => {
+  const entries = (dir, level) => (files?.listings[dir] ?? []).map(entry => {
     const path = dir ? dir + '/' + entry.name : entry.name;
     if (entry.dir) {
       return (
-        <vscode-tree-item key={path} data-key={path} branch open={!!files.expanded[path]}>
+        <vscode-tree-item key={path} data-key={path} style={{'--level': level}} branch open={!!files.expanded[path]}>
           {entry.name}
-          {entries(path)}
+          {entries(path, level + 1)}
         </vscode-tree-item>
       );
     }
     return (
-      <vscode-tree-item key={path} data-file={path} onDblClick={() => store.update(s => keepOpen(s, fileTabId(path)))}>
+      <vscode-tree-item key={path} data-file={path} style={{'--level': level}} onDblClick={() => store.update(s => keepOpen(s, fileTabId(path)))}>
         <FileIcon slot="icon-leaf" name={entry.name} />
         {entry.name}
       </vscode-tree-item>
     );
   });
 
-  return <vscode-tree ref={tree} class="files-panel" aria-label="Files" onvsc-tree-select={selected}>{entries('')}</vscode-tree>;
+  return <vscode-tree ref={tree} class="files-panel" aria-label="Files" onvsc-tree-select={selected}>{entries('', 0)}</vscode-tree>;
 }
