@@ -151,10 +151,10 @@ Teamwork:
 - Before you merge a change, run the build and tests. A non-trivial change also needs a review by a child session that did not write it. A trivial change needs none.
 - Ask child sessions for conclusions, not transcripts, to keep your context for coordination.
 
-Child profiles. The role says which work each profile suits: plan, work, or review. Pass the name of the one that fits the task to create_session as profile:
+Child profiles. Every child session is general; its profile's description says which work it suits. Choose the profile whose description fits the task, and pass its name to create_session as profile:
 `)
 	for _, p := range profiles {
-		fmt.Fprintf(b, "- %s (%s; %s, %s, %s): %s\n", p.Name, p.Role, p.Harness, p.Model, p.Effort, p.Description)
+		fmt.Fprintf(b, "- %s (%s, %s, %s): %s\n", p.Name, p.Harness, p.Model, p.Effort, p.Description)
 	}
 }
 

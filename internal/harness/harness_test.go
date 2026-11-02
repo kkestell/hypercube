@@ -17,7 +17,7 @@ func TestLoadConfig(t *testing.T) {
 	}
 	first := `{"name":"first","role":"lead","description":"First lead","harness":"one","model":"opus","effort":"high"}`
 	second := `{"name":"second","role":"lead","description":"Second lead","harness":"one","model":"sol","effort":"high"}`
-	child := `{"name":"fast","role":"work","description":"Small jobs","harness":"two","model":"p/m","effort":"low"}`
+	child := `{"name":"fast","role":"general","description":"Small jobs","harness":"two","model":"p/m","effort":"low"}`
 	valid := `{"profiles":[` + first + `,` + child + `,` + second + `]}`
 	load := func(source string) (Config, error) {
 		t.Helper()
@@ -54,14 +54,15 @@ func TestLoadConfig(t *testing.T) {
 			t.Errorf("ChildProfile(%q) accepted", name)
 		}
 	}
-	for _, role := range []string{RolePlan, RoleWork, RoleReview} {
-		if _, err := load(`{"profiles":[` + first + `,` + strings.Replace(child, `"work"`, `"`+role+`"`, 1) + `]}`); err != nil {
-			t.Errorf("one lead and a %s child profile: %v", role, err)
-		}
+	if _, err := load(`{"profiles":[` + first + `,` + child + `]}`); err != nil {
+		t.Errorf("one lead and one general child profile: %v", err)
 	}
 	for name, source := range map[string]string{
-		"missing role":           strings.Replace(valid, `"role":"work",`, "", 1),
-		"unknown role":           strings.Replace(valid, `"work"`, `"other"`, 1),
+		"missing role":           strings.Replace(valid, `"role":"general",`, "", 1),
+		"unknown role":           strings.Replace(valid, `"general"`, `"other"`, 1),
+		"old plan role":          strings.Replace(valid, `"general"`, `"plan"`, 1),
+		"old work role":          strings.Replace(valid, `"general"`, `"work"`, 1),
+		"old review role":        strings.Replace(valid, `"general"`, `"review"`, 1),
 		"no lead":                `{"profiles":[` + child + `]}`,
 		"no child":               `{"profiles":[` + first + `]}`,
 		"duplicate across roles": strings.Replace(valid, `"name":"fast"`, `"name":"first"`, 1),
@@ -80,13 +81,17 @@ func TestLoadConfig(t *testing.T) {
 			}
 		})
 	}
-	// All child roles retain their file order, even with leads between them.
-	c = Config{Profiles: []Profile{{Name: "plan", Role: RolePlan}, {Name: "lead", Role: RoleLead}, {Name: "work", Role: RoleWork}, {Name: "review", Role: RoleReview}}}
+	// Children keep their file order, even with leads between them, and leads
+	// are not children.
+	c = Config{Profiles: []Profile{{Name: "alpha", Role: RoleGeneral}, {Name: "lead", Role: RoleLead}, {Name: "beta", Role: RoleGeneral}, {Name: "gamma", Role: RoleGeneral}}}
+	if got := c.Leads(); len(got) != 1 || got[0].Name != "lead" {
+		t.Errorf("leads = %+v", got)
+	}
 	var names []string
 	for _, p := range c.ChildProfiles() {
 		names = append(names, p.Name)
 	}
-	if !slices.Equal(names, []string{"plan", "work", "review"}) {
+	if !slices.Equal(names, []string{"alpha", "beta", "gamma"}) {
 		t.Errorf("child order = %v", names)
 	}
 }

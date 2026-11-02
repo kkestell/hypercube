@@ -70,7 +70,7 @@ func TestLeads(t *testing.T) {
 	}
 	config := `{"profiles":[
 		{"name":"first","role":"lead","description":"First lead","harness":"claude","model":"opus","effort":"high"},
-		{"name":"worker","role":"work","description":"Worker","harness":"codex","model":"sol","effort":"high"},
+		{"name":"worker","role":"general","description":"Worker","harness":"codex","model":"sol","effort":"high"},
 		{"name":"second","role":"lead","description":"Second lead","harness":"codex","model":"sol","effort":"high"}
 	]}`
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
@@ -285,7 +285,7 @@ func newApp(t *testing.T) *app {
 	harnesstest.Install(t, plugins, "test")
 	config := `{"profiles":[
 		{"name":"lead","role":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","role":"work","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
+		{"name":"worker","role":"general","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}

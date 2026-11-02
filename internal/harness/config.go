@@ -15,14 +15,12 @@ type Spec struct {
 }
 
 const (
-	RoleLead   = "lead"
-	RolePlan   = "plan"
-	RoleWork   = "work"
-	RoleReview = "review"
+	RoleLead    = "lead"
+	RoleGeneral = "general"
 )
 
-// Profile is a named spec. Its role and description tell the user or a
-// top-level session when to use it.
+// Profile is a named spec. Its role says whether it is a lead or a child; its
+// description tells the user or a top-level session when to use it.
 type Profile struct {
 	Name        string `json:"name"`
 	Role        string `json:"role"`
@@ -68,10 +66,10 @@ func LoadConfig() (Config, error) {
 		switch p.Role {
 		case RoleLead:
 			leads++
-		case RolePlan, RoleWork, RoleReview:
+		case RoleGeneral:
 			children++
 		default:
-			return c, fmt.Errorf("%s: profile %q: invalid role %q (want lead, plan, work, or review)", path, p.Name, p.Role)
+			return c, fmt.Errorf("%s: profile %q: invalid role %q (want lead or general)", path, p.Name, p.Role)
 		}
 		if err := p.check(); err != nil {
 			return c, fmt.Errorf("%s: profile %q: %w", path, p.Name, err)
@@ -126,7 +124,7 @@ func (c Config) ChildProfile(name string) (Profile, error) {
 			return p, nil
 		}
 	}
-	return Profile{}, fmt.Errorf("no child profile (plan, work, or review) named %q", name)
+	return Profile{}, fmt.Errorf("no child profile named %q", name)
 }
 
 func (s Spec) check() error {

@@ -34,7 +34,7 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 	config := []byte(`{
   "profiles": [
     {"name": "opus", "role": "lead", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
-    {"name": "sol", "role": "work", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
+    {"name": "sol", "role": "general", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
   ]
 }`)
 	if err := os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), config, 0o644); err != nil {

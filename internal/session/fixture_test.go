@@ -43,7 +43,7 @@ func newFixture(t *testing.T) *fixture {
 	harnesstest.Install(t, f.plugins, "test")
 	config := `{"profiles":[
 		{"name":"lead","role":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","role":"work","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
+		{"name":"worker","role":"general","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}

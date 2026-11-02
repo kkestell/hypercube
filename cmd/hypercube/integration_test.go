@@ -55,7 +55,7 @@ func newWorld(t *testing.T) *world {
 	config := `{"profiles":[
 		{"name":"first","role":"lead","description":"First lead","harness":"test","model":"haiku","effort":"low"},
 		{"name":"second","role":"lead","description":"Second lead","harness":"test","model":"sol","effort":"high"},
-		{"name":"worker","role":"work","description":"test","harness":"test","model":"p/m","effort":"high"}
+		{"name":"worker","role":"general","description":"test","harness":"test","model":"p/m","effort":"high"}
 	]}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)

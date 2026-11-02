@@ -81,7 +81,7 @@ up)
     },
     {
       "name": "claude",
-      "role": "work",
+      "role": "general",
       "description": "Claude Code haiku, for smoke tests.",
       "harness": "claude",
       "model": "haiku",
@@ -89,7 +89,7 @@ up)
     },
     {
       "name": "opencode",
-      "role": "work",
+      "role": "general",
       "description": "OpenCode with DeepSeek Flash, for smoke tests.",
       "harness": "opencode",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
@@ -97,7 +97,7 @@ up)
     },
     {
       "name": "codex",
-      "role": "work",
+      "role": "general",
       "description": "Codex Luna, for smoke tests.",
       "harness": "codex",
       "model": "gpt-6-luna",
@@ -105,7 +105,7 @@ up)
     },
     {
       "name": "pi",
-      "role": "work",
+      "role": "general",
       "description": "Pi with DeepSeek Flash, for smoke tests.",
       "harness": "pi",
       "model": "openrouter/~deepseek/deepseek-flash-latest",
