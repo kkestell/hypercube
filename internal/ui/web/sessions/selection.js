@@ -27,7 +27,6 @@ export const failed = session => !session.parent && session.running && session.a
 export function shownSession(state) {
   if (state.unsent) return {
     id: unsentKey, activity: state.unsent.sending ? 'busy' : 'idle',
-    harness: state.unsent.harness, model: state.unsent.model, effort: state.unsent.effort,
   };
   return state.session ? currentSession(state) : null;
 }
@@ -86,13 +85,18 @@ export function selectSession(state, id) {
   return attach({...next, selected: id, pending: null});
 }
 
-// openUnsent opens a new session in a workspace with a profile, in place
-// of any other unsent session.
-export function openUnsent(state, workspace, profile) {
+// openUnsent opens a new session in a workspace, in place of any other unsent
+// session. It has no profile until the composer chooses one.
+export function openUnsent(state, workspace) {
   const next = discardUnsent(state);
   // Identity survives immutable updates to the sending flag.
-  const unsent = {identity: {}, workspace, profile: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort, sending: false};
+  const unsent = {identity: {}, workspace, profile: null, sending: false};
   return attach({...next, unsent, selected: null, pending: null});
 }
+
+// unsentProfile sets the unsent session's profile.
+export const unsentProfile = (state, profile) => state.unsent
+  ? {...state, unsent: {...state.unsent, profile: profile.name}}
+  : state;
 
 export const unsentSending = (state, sending) => state.unsent ? {...state, unsent: {...state.unsent, sending}} : state;

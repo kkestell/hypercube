@@ -1,9 +1,9 @@
 .message-item {
-  display: flex;
-  justify-content: flex-start;
+  min-width: 0;
 }
 
 .message-item-user {
+  display: flex;
   justify-content: flex-end;
 }
 
@@ -19,27 +19,49 @@
   background: var(--vscode-chat-requestBubbleBackground);
 }
 
+.message-item-summary {
+  display: grid;
+  grid-template-columns: var(--size-icon) minmax(0, 1fr);
+  column-gap: var(--size-space);
+  align-items: center;
+  cursor: pointer;
+  list-style: none;
+  line-height: 1.5;
+}
+
+.message-item-summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-item-agent[open] .message-item-chevron {
+  transform: rotate(90deg);
+}
+
 .message-item-heading {
   display: flex;
   align-items: center;
   gap: calc(var(--size-space) * 1.5);
+  min-width: 0;
   color: var(--vscode-descriptionForeground);
+}
+
+.message-item-preview {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-item-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+  padding-left: calc(var(--size-icon) + var(--size-space));
 }
 
 .message-item-text {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.message-item-clamped {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 6;
-  overflow: hidden;
-}
-
-.message-item-more {
-  align-self: flex-start;
 }
 
 .message-item-failure {

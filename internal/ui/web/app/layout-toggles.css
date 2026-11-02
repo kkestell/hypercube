@@ -1,8 +1,8 @@
 .layout-toggles {
-  --vscode-icon-foreground: var(--vscode-descriptionForeground);
+  --vscode-icon-foreground: color-mix(in srgb, var(--vscode-descriptionForeground) 60%, var(--vscode-editor-background));
   --vscode-inputOption-activeBackground: transparent;
   --vscode-inputOption-activeBorder: transparent;
-  --vscode-inputOption-activeForeground: var(--vscode-tab-activeForeground);
+  --vscode-inputOption-activeForeground: var(--vscode-descriptionForeground);
   display: flex;
   flex-shrink: 0;
   align-items: center;

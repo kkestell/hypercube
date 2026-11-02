@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
-import {openUnsent, receivedWorkspaces} from './selection.js';
+import {openUnsent, receivedWorkspaces, unsentProfile} from './selection.js';
 import {SessionView} from './session-view.jsx';
 
 let spies = [];
@@ -71,7 +71,7 @@ test('a session with nothing unseen posts nothing', () => {
 
 test('an unsent session shows its agent tab', () => {
   const s = store(null, []);
-  s.update(state => openUnsent(state, 'w', {name: 'lead', harness: 'claude', model: 'haiku', effort: 'low'}));
+  s.update(state => unsentProfile(openUnsent(state, 'w'), {name: 'lead', harness: 'claude', model: 'haiku', effort: 'low'}));
   const root = mount(s, <SessionView />);
   expect(root.querySelector('.agent-pane')).not.toBeNull();
   expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('New Session');

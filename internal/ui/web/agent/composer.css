@@ -79,3 +79,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.composer-profile {
+  min-width: 0;
+  max-width: 100%;
+}

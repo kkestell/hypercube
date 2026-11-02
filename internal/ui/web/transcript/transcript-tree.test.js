@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {ancestorKeys, isLong, toolSummary, toolTitle, transcriptRows} from './transcript-tree.js';
+import {ancestorKeys, toolSummary, toolTitle, transcriptRows} from './transcript-tree.js';
 
 const transcript = items => ({order: items.map(item => item.id), items: Object.fromEntries(items.map(item => [item.id, item]))});
 const rows = items => transcriptRows(transcript(items));
@@ -26,16 +26,23 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle({tool: 'bash', input: {command: 'ls'}})).toEqual(['bash', 'ls']);
 });
 
-test('isLong counts lines and length', () => {
-  expect(isLong('a\nb')).toBe(false);
-  expect(isLong(Array.from({length: 10}, (_, i) => 'line ' + i).join('\n'))).toBe(true);
-  expect(isLong('x'.repeat(601))).toBe(true);
-});
-
 test('consecutive calls share one open run', () => {
   const [run] = rows([call('a', 'read', 1000, {done: true}), call('b', 'bash', 2000)]);
   expect(run).toMatchObject({type: 'run', key: 'run:a', closed: false, running: true});
   expect(ids(run.calls)).toEqual(['a', 'b']);
+});
+
+test('child status updates stay hidden and do not split tool runs', () => {
+  const [run, text] = rows([
+    call('a', 'read', 1000, {done: true}),
+    {id: 'status', kind: 'status', from: 'child', text: 'Working', at: 2000},
+    call('b', 'bash', 3000, {done: true}),
+    {id: 'text', kind: 'text', text: 'Done', at: 4000},
+  ]);
+  expect(ids(run.calls)).toEqual(['a', 'b']);
+  expect(run.duration).toBe('Worked for 3s');
+  expect(text.item.id).toBe('text');
+  expect(rows([{id: 'status', kind: 'status', text: 'Working'}])).toEqual([]);
 });
 
 test('the next item that is not a call closes the run with its duration', () => {

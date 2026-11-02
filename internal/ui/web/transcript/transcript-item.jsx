@@ -5,7 +5,6 @@ import {AttentionItem} from './attention-item.jsx';
 import {Markdown} from './markdown.jsx';
 import {MessageItem} from './message-item.jsx';
 import {ReasoningItem} from './reasoning-item.jsx';
-import {StatusItem} from './status-item.jsx';
 import {ToolRun} from './tool-items.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import './transcript-item.css';
@@ -28,7 +27,6 @@ export function TranscriptRow({row, session, expanded, setOpen}) {
     case 'user': return <MessageItem item={item} expanded={!!expanded[item.id]} setOpen={setOpen} />;
     case 'reasoning': return <ReasoningItem item={item} expanded={!!expanded[item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={item} session={session} />;
-    case 'status': return <StatusItem item={item} />;
     case 'error': return <ErrorItem item={item} />;
     default: return <TextItem item={item} />;
   }

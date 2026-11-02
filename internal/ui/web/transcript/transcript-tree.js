@@ -45,11 +45,6 @@ export function toolTitle(item) {
   return [name, toolSummary(item.input)];
 }
 
-// A message between sessions longer than this many lines, or about as many lines
-// of text, shows its first lines until it is expanded.
-const clampLines = 6;
-export const isLong = text => text.split('\n').length > clampLines || text.length > clampLines * 100;
-
 // A tool's input and output show this many characters.
 const shownLimit = 20000;
 export const clip = text => text.length > shownLimit ? text.slice(0, shownLimit) + '\n… (' + (text.length - shownLimit) + ' more characters)' : text;
@@ -59,7 +54,7 @@ export const toolInput = input => input === undefined || input === null ? '' : c
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
 const isCall = item => item.kind === 'tool' && !isMessage(item);
 
-const kinds = new Set(['user', 'reasoning', 'error', 'attention', 'status']);
+const kinds = new Set(['user', 'reasoning', 'error', 'attention']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
 
 function workedFor(start, until) {
@@ -76,6 +71,8 @@ export function transcriptRows({order, items}) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
+    // Keep status updates in the transcript state without displaying them.
+    if (item.kind === 'status') continue;
     const parent = items[item.parent];
     const container = parent && isCall(parent) ? parent.id : '';
     if (!containers.has(container)) containers.set(container, []);

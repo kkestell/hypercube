@@ -35,8 +35,9 @@ sessions and the selected one; Show more lists five stopped sessions more.
 Children appear under their parent in creation order. Running children are always visible;
 Show Stopped Sessions in the parent's menu lists stopped children too, and
 Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
-the sidebar to add a workspace. Click `+` beside a workspace's name to choose
-a profile for a new session. Sending its first prompt creates the session;
+the sidebar to add a workspace. Click `+` beside a workspace's name to open a
+new session. Its composer chooses the profile until the first prompt is sent,
+and sending that prompt creates the session;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
 right-clicking a workspace, offers Delete Workspace.
 
@@ -65,9 +66,8 @@ cards stay until answered or closed.
 The center is one tabbed area holding a session's chat and its open files. The
 chat's tab carries the session's title and cannot be closed. A file opens
 beside the chat. A child's requests also appear in its parent's transcript, where you can answer them;
-answering in either place updates both. Child status updates appear there too,
-with the child's title and time. These copies are for the user; the parent's
-agent does not receive them.
+answering in either place updates both. These copies are for the user; the
+parent's agent does not receive them.
 
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
@@ -82,7 +82,8 @@ call until the next non-tool item arrives, then shows the elapsed time as
 "Worked for 32s". Expand it to see each call's input, output, and native
 subagent calls. Failures are marked on the individual calls. Thinking shows
 its latest six lines by default; click Thinking to expand the full text or
-return to the preview. When an agent asks you a question or for approval, its
+return to the preview. Messages between sessions show their sender or recipient
+and first line; expand one to read the full message. When an agent asks you a question or for approval, its
 chat shows the request with its choices and a field for typed text; answer
 there. An answered request shows its question and the answer beside a check.
 Each agent's unsent text stays in its

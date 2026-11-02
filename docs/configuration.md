@@ -69,7 +69,7 @@ Create `~/.config/hypercube/config.json`, or
 Every field shown is required. Provide at least one profile, with unique names.
 Remove the profiles for harnesses and models you don't use.
 
-The workspace's `+` picker lists every profile with its harness, model, effort,
+A new session's composer lists every profile with its harness, model, effort,
 and description. Top-level sessions choose among the same profiles for their
 children. Each description says which kind of work the profile suits and when
 to use it.

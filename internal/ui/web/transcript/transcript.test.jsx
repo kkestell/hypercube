@@ -133,25 +133,46 @@ test('the list follows its end until the user scrolls up', () => {
 
 const longText = Array.from({length: 10}, (_, i) => 'line ' + i).join('\n');
 
-test('long messages between sessions expand and collapse; the user\'s own prompts do not clamp', () => {
-  const {root} = setup([
+test('agent messages show the sender and first line, and expand to the full message', () => {
+  const {root, send} = setup([
     {id: 'in', kind: 'user', from: 'c1', text: longText, done: true},
     {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}},
     {id: 'own', kind: 'user', text: longText},
   ]);
   const [incoming, outgoing, own] = root.querySelectorAll('.message-item');
-  expect(incoming.textContent).toStartWith('From c1');
-  expect(outgoing.textContent).toStartWith('To c1');
+  expect(incoming.querySelector('.message-item-heading').textContent).toBe('From c1');
+  expect(outgoing.querySelector('.message-item-heading').textContent).toBe('To c1');
   expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
   for (const message of [incoming, outgoing]) {
-    const text = message.querySelector('.message-item-text');
-    expect(text.classList.contains('message-item-clamped')).toBe(true);
-    act(() => message.querySelector('.message-item-more').click());
-    expect(text.classList.contains('message-item-clamped')).toBe(false);
-    expect(message.querySelector('.message-item-more').textContent).toBe('Show less');
+    expect(message.querySelector('.message-item-bubble')).toBeNull();
+    expect(message.querySelector('.message-item-preview').textContent).toBe('line 0');
+    expect(message.querySelector('.message-item-text')).toBeNull();
+    act(() => message.querySelector('summary').click());
+    expect(message.open).toBe(true);
+    expect(message.querySelector('.message-item-preview')).toBeNull();
+    expect(message.querySelector('.message-item-text').textContent).toBe(longText);
   }
-  expect(own.querySelector('.message-item-clamped')).toBeNull();
-  expect(own.querySelector('.message-item-more')).toBeNull();
+  send([{id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}, done: true, failed: true, output: 'Delivery failed'}]);
+  expect(outgoing.open).toBe(true);
+  expect(outgoing.querySelector('[title="Running"]')).toBeNull();
+  expect(outgoing.querySelector('[title="Failed"]')).not.toBeNull();
+  expect(outgoing.querySelector('.message-item-body .message-item-failure').textContent).toBe('Delivery failed');
+  act(() => incoming.querySelector('summary').click());
+  expect(incoming.open).toBe(false);
+  expect(incoming.querySelector('.message-item-preview').textContent).toBe('line 0');
+  expect(own.querySelector('.message-item-bubble')).not.toBeNull();
+  expect(own.querySelector('.message-item-text').textContent).toBe(longText);
+  expect(own.querySelector('summary')).toBeNull();
+});
+
+test('short agent messages also expand, including their attached images', () => {
+  const {root} = setup([{id: 'in', kind: 'user', from: 'c1', text: 'One line', images: [{mime_type: 'image/png', data: 'iVBORw0KGgo='}]}]);
+  const message = root.querySelector('.message-item-agent');
+  expect(message.querySelector('.message-item-preview').textContent).toBe('One line');
+  expect(message.querySelector('img')).toBeNull();
+  act(() => message.querySelector('summary').click());
+  expect(message.querySelector('.message-item-text').textContent).toBe('One line');
+  expect(message.querySelector('img').getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=');
 });
 
 test('Thinking shows a preview until expanded and keeps the choice while it streams', () => {
@@ -180,7 +201,7 @@ test('prompts, text, and tool calls show their images, outside the call\'s detai
   expect(sources('.tool-items-call details')).toEqual([]);
 });
 
-test('mirrored requests name their sender and answer at its session ID; status rows name the sender', async () => {
+test('mirrored requests name their sender and answer at its session ID; child status stays hidden', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const {store, root} = setup([
@@ -189,8 +210,8 @@ test('mirrored requests name their sender and answer at its session ID; status r
     {id: 'message', kind: 'user', from: 'child', text: 'Result.'},
   ]);
   store.update(state => ({...state, workspaces: [{sessions: [{id: 's', children: [{id: 'child', parent: 's', title: 'Builder', children: []}]}]}]}));
-  expect(root.querySelector('.status-item-source').textContent).toBe('Builder');
-  expect(root.querySelector('.status-item [name="pulse"]')).not.toBeNull();
+  expect(root.textContent).not.toContain('Reading.');
+  expect(store.get().session.transcript.items.status.text).toBe('Reading.');
   expect(root.querySelector('.attention-item-source').textContent).toBe('Builder');
   expect(root.querySelector('.message-item-heading').textContent).toBe('From Builder');
   await act(async () => root.querySelector('.attention-form vscode-button').click());
