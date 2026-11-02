@@ -225,12 +225,13 @@ func TestSnapshotOrder(t *testing.T) {
 			if err := tx.TouchSession(id, int64(i+1)); err != nil {
 				return err
 			}
-			if i >= 2 {
+			if i >= 1 {
 				s, err := tx.Session(id)
 				if err != nil {
 					return err
 				}
-				s.Running = false
+				s.Title = "Title " + id
+				s.Running = i < 2
 				if err := tx.SaveSession(s); err != nil {
 					return err
 				}
@@ -246,7 +247,7 @@ func TestSnapshotOrder(t *testing.T) {
 		t.Fatalf("workspaces = %+v", list)
 	}
 	z := list[1].Sessions
-	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != Untitled || len(z[0].Agents) != 2 || z[0].Agents[0].Role != Lead {
+	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Agents) != 2 || z[0].Agents[0].Role != Lead {
 		t.Fatalf("sessions = %+v", z)
 	}
 }

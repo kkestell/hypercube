@@ -162,13 +162,13 @@ type client struct {
 	base string
 }
 
-func (c client) post(path string, values map[string]string) (int, string) {
+func (c client) post(path string, values map[string]string, body ...string) (int, string) {
 	c.t.Helper()
 	q := url.Values{}
 	for k, v := range values {
 		q.Set(k, v)
 	}
-	req, _ := http.NewRequest("POST", c.base+path+"?"+q.Encode(), nil)
+	req, _ := http.NewRequest("POST", c.base+path+"?"+q.Encode(), strings.NewReader(strings.Join(body, "")))
 	req.Header.Set("Origin", c.base)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -179,9 +179,10 @@ func (c client) post(path string, values map[string]string) (int, string) {
 	return res.StatusCode, strings.TrimSpace(string(b))
 }
 
+// act posts a session action. A new session's body is its first prompt.
 func (c client) act(values map[string]string) string {
 	c.t.Helper()
-	code, body := c.post("/session", values)
+	code, body := c.post("/session", values, `{"text":"start"}`)
 	if code != http.StatusOK {
 		c.t.Fatalf("session %v: %d %s", values, code, body)
 	}
@@ -283,7 +284,7 @@ func TestTeams(t *testing.T) {
 	if again, err := session.AddWorkspace(w.db, filepath.Join(w.root, ".")); err != nil || again.ID != ws.ID {
 		t.Fatalf("adding the folder again: %+v, %v", again, err)
 	}
-	if code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}); code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
+	if code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`); code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
 		t.Fatalf("unknown lead: %d %s", code, body)
 	}
 	first := c.act(map[string]string{"action": "new", "workspace": ws.ID, "lead": "first"})
@@ -366,19 +367,12 @@ func TestTeams(t *testing.T) {
 	if strings.Contains(w.logOf(worker.ID), "only second worker") {
 		t.Fatal("message crossed sessions")
 	}
-	// A turn that delivered messages leaves a session untitled. The first
-	// prompt typed while idle titles it, and later prompts leave the title.
+	// The creation prompt titles the session; later messages and prompts leave
+	// the title.
 	w.until("the lead idle after the message", func() bool { return w.agent(lead.ID).Activity == store.Idle })
-	if w.session(first).Title != "" {
-		t.Fatal("a delivered message titled the session")
-	}
-	input(lead.ID, "Fix the parser")
-	if w.session(first).Title != "Fix the parser" {
-		t.Fatalf("title = %q", w.session(first).Title)
-	}
 	input(lead.ID, "Something else")
-	if w.session(first).Title != "Fix the parser" {
-		t.Fatal("a later prompt changed the title")
+	if w.session(first).Title != "start" {
+		t.Fatalf("title = %q", w.session(first).Title)
 	}
 	w.until("the lead's reply unseen", func() bool { return w.session(first).Unseen })
 	c.act(map[string]string{"action": "seen", "id": first})

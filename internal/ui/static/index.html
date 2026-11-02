@@ -73,8 +73,12 @@ const sessionList = $('sessions'), sidebar = $('sidebar'), panel = $('panel');
 // data is the app's latest snapshot, selected is the selected session's ID,
 // or null once the selected session stops, and attached is the running session
 // whose agents are shown. pending is a session to select once the data lists
-// it.
-let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null;
+// it. unsent is the new session the user has opened but not yet sent a prompt
+// to: its workspace, lead profile, and the profile's harness, model, and
+// effort. It exists only in this page until its first prompt creates the
+// session, and it shows a lead pane under the id unsentId.
+let data = [], selected = decodeURIComponent(location.hash.slice(1)), pending = null, attached = null, unsent = null;
+const unsentId = 'new';
 // The layout belongs to the currently attached session.
 let shown = null, tabLayout = null, tabContainer = null;
 // Each agent's unsent text and images outlive its card, and each agent has one
@@ -83,6 +87,18 @@ const drafts = new Map(), attachments = new Map(), views = new Map(), cards = ne
 
 const sessions = () => data.flatMap(w => w.sessions);
 const current = () => sessions().find(s => s.id === selected);
+const unsentAgent = () => ({id: unsentId, name: 'lead', role: 'lead', activity: unsent.sending ? 'busy' : 'idle',
+  harness: unsent.harness, model: unsent.model, effort: unsent.effort});
+
+// discardUnsent drops the unsent session with its draft and attachments.
+function discardUnsent() {
+  if (!unsent) return;
+  unsent = null;
+  drafts.delete(unsentId);
+  attachments.delete(unsentId);
+  cards.delete(unsentId);
+  views.delete(unsentId);
+}
 // A running session whose lead has exited, as after a failed start, can be
 // started again.
 const failed = s => s.running && s.agents.some(a => a.role === 'lead' && a.activity === 'exited');
@@ -127,6 +143,7 @@ function received(msg) {
 // changed shows new data: the title, the sidebar, and the selected session,
 // attaching to its agents when it runs.
 function changed() {
+  if (unsent && !data.some(w => w.id === unsent.workspace)) discardUnsent();
   const all = sessions();
   if (pending && all.some(s => s.id === pending)) { selected = pending; pending = null; }
   // A session that stops while shown is deselected, and nothing is selected
@@ -138,10 +155,10 @@ function changed() {
   if (decodeURIComponent(location.hash.slice(1)) !== (selected ?? '')) history.replaceState(null, '', selected ? '#' + encodeURIComponent(selected) : location.pathname);
   const s = current();
   const waiting = all.filter(s => s.running).reduce((n, s) => n + s.agents.filter(a => a.attention).length, 0);
-  const workspace = data.find(w => w.sessions.includes(s));
+  const workspace = unsent ? data.find(w => w.id === unsent.workspace) : data.find(w => w.sessions.includes(s));
   document.title = (waiting ? `(${waiting}) ` : '') + [s?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
   renderSidebar();
-  $('hypercube').hidden = !!s;
+  $('hypercube').hidden = !!(s || unsent);
   const want = s?.running ? s.id : null;
   if (want !== attached) attach(want);
   else render();
@@ -152,6 +169,7 @@ document.addEventListener('visibilitychange', changed);
 // Selecting a stopped session starts it. A new session's ID can arrive before
 // the state that lists it, so the selection waits for that state.
 function select(id) {
+  discardUnsent();
   if (!sessions().some(s => s.id === id)) { pending = id; return; }
   pending = null;
   selected = id;
@@ -174,7 +192,7 @@ function attach(id) {
   scrolls.clear();
   closeShell();
   announce();
-  if (!id) return;
+  if (!id && !unsent) return;
   render();
   if (panelOpen) connectShell();
   cards.get(shown.leader?.id)?.field.focus();
@@ -196,7 +214,7 @@ function update(parent, html) {
 // State updates change transcript content and previews without rebuilding panes.
 function render() {
   const s = current();
-  const agents = attached && s?.running ? s.agents : [];
+  const agents = unsent ? [unsentAgent()] : attached && s?.running ? s.agents : [];
   const leader = agents.find(a => a.role === 'lead');
   const stacked = agents.filter(a => a !== leader);
   shown = {leader, stacked};
@@ -468,8 +486,8 @@ function card(a) {
   update(c.usage, usage(a));
   const config = [a.harness, a.model, a.effort].filter(Boolean).join(' · ');
   if (c.config.textContent !== config) c.config.textContent = config;
-  c.stop.hidden = a.activity !== 'busy';
-  c.send.disabled = !hasContent(a.id, c) || a.activity === 'exited';
+  c.stop.hidden = a.activity !== 'busy' || a.id === unsentId;
+  c.send.disabled = !hasContent(a.id, c) || a.activity === 'exited' || a.id === unsentId && unsent.sending;
   return c;
 }
 
@@ -543,17 +561,29 @@ function showAttachments(agent, c) {
   c.send.disabled = !hasContent(agent, c);
 }
 
-// submit sends a card's text and images to its agent. A refused prompt returns
+// submit sends a card's text and images to its agent. The unsent session's
+// prompt creates the session, which is then selected. A refused prompt returns
 // to the composer unless the user has started another.
 async function submit(agent, c) {
   const text = c.field.value, images = attachments.get(agent) ?? [];
   if (!hasContent(agent, c) || c.send.disabled) return;
+  const first = agent === unsentId ? unsent : null;
+  if (first?.sending) return;
   c.field.value = '';
   drafts.delete(agent);
   attachments.delete(agent);
   showAttachments(agent, c);
   c.send.disabled = true;
-  const sent = await post('agent?' + new URLSearchParams({action: 'input', id: agent}), JSON.stringify({text, images}));
+  const url = first ? 'session?' + new URLSearchParams({action: 'new', workspace: first.workspace, lead: first.lead})
+    : 'agent?' + new URLSearchParams({action: 'input', id: agent});
+  if (first) { first.sending = true; render(); }
+  const sent = await post(url, JSON.stringify({text, images}));
+  if (first) {
+    first.sending = false;
+    if (unsent !== first) return;
+    render();
+    if (sent !== null) { select(sent); return; }
+  }
   if (sent !== null) return;
   if (!c.field.value) {
     c.field.value = text;
@@ -622,9 +652,9 @@ function placeMenu(x, y) {
   menu.style.top = Math.max(0, Math.min(y, innerHeight - menu.offsetHeight)) + 'px';
 }
 
-// The lead picker is a menu under the workspace's New Session button, listing each lead
-// by its description. Picking one creates a
-// session with it and selects the session.
+// The lead picker is a menu under the workspace's New Session button, listing
+// each lead by its description. Picking one opens an unsent new session with
+// that lead, replacing any other unsent session.
 async function pickLead(button) {
   const request = ++menuRequest, workspace = button.dataset.leads;
   const rect = button.getBoundingClientRect();
@@ -633,12 +663,16 @@ async function pickLead(button) {
   const leads = await res.json();
   if (request !== menuRequest) return;
   menu.innerHTML = leads.map(p => `<button type="button" role="menuitem" data-lead="${escape(p.name)}" class="${menuItemClass} whitespace-nowrap">${escape(p.description)}</button>`).join('');
-  menu.onclick = async e => {
+  menu.onclick = e => {
     const item = e.target.closest('[data-lead]');
     if (!item) return;
     closeMenu();
-    const id = await post('session?' + new URLSearchParams({action: 'new', workspace, lead: item.dataset.lead}));
-    if (id) select(id);
+    const profile = leads.find(p => p.name === item.dataset.lead);
+    discardUnsent();
+    pending = null;
+    selected = null;
+    unsent = {workspace, lead: profile.name, harness: profile.harness, model: profile.model, effort: profile.effort};
+    changed();
   };
   placeMenu(rect.left, rect.bottom);
   menu.querySelector('[role="menuitem"]')?.focus();

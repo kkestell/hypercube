@@ -589,23 +589,23 @@ func (r *Runtime) ready(agent string) (*live, error) {
 	return l, nil
 }
 
-// Input sends the user's prompt, text and images, to the agent at once, even
-// while it works. It also releases the session's queued messages.
-func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
+// checkPrompt refuses a prompt with no text and no image, and bad images.
+func checkPrompt(text string, images []harness.Image) error {
 	if strings.TrimSpace(text) == "" && len(images) == 0 {
 		return errors.New("a prompt needs text or an image")
 	}
-	if err := harness.CheckImages(images); err != nil {
+	return harness.CheckImages(images)
+}
+
+// Input sends the user's prompt, text and images, to the agent at once, even
+// while it works. It also releases the session's queued messages.
+func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
+	if err := checkPrompt(text, images); err != nil {
 		return err
 	}
 	r.mu.Lock()
 	l, err := r.ready(agent)
 	if err != nil {
-		r.mu.Unlock()
-		return err
-	}
-	var before store.Agent
-	if err := r.db.Read(func(tx *store.Tx) error { var err error; before, err = tx.Agent(agent); return err }); err != nil {
 		r.mu.Unlock()
 		return err
 	}
@@ -625,11 +625,7 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 		if err != nil {
 			return err
 		}
-		titled := text
-		if strings.TrimSpace(text) == "" {
-			titled = "Image"
-		}
-		report.Prompt(before, &s, titled)
+		report.Prompt(&s)
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}

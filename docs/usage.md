@@ -9,10 +9,10 @@ and its workers, with their chats displayed in tabs.
 You create, start, stop, rename, and delete sessions; a stopped session has no
 running agents and stays listed until you start it.
 
-Each session has a random ID, such as `k3f9a2c1`, and a title. A new session
-shows as "New Session" until the first prompt you type to its lead titles it
-with that prompt's first line, cut to 200 characters. You can change the title
-at any time; later prompts leave it alone.
+Each session has a random ID, such as `k3f9a2c1`, and a title. A session is
+titled with the first line of the prompt that creates it, cut to 200 characters
+("Image" for a prompt of only images). You can change the title at any time;
+later prompts leave it alone.
 Agents are addressed as `id/name`, such as `k3f9a2c1/lead`; a bare name
 means an agent in the sender's own session. Agents see each session's title
 beside its ID. Workers message only their own session, and leads can also
@@ -32,7 +32,8 @@ with stopped sessions below running ones. It shows five under each workspace;
 click the workspace row to collapse or expand them, and click Show more to
 list five more. Click `+` at the top of the sidebar to choose a folder and add
 it as a workspace. Hover over a workspace's row and click New Session to list
-its lead profiles; choose one to create a session with it. Click More Actions,
+its lead profiles; choose one to open a new session with it. Sending its first
+prompt creates the session; selecting another session first discards it. Click More Actions,
 or right-click the row, to delete the workspace.
 
 Click a session to show it, and double-click it to change its title.

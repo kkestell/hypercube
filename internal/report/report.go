@@ -4,7 +4,6 @@
 package report
 
 import (
-	"cmp"
 	"fmt"
 	"strings"
 
@@ -32,15 +31,9 @@ func Apply(a *store.Agent, s *store.Session, ev harness.Event) {
 	}
 }
 
-// Prompt records the user's prompt to an agent: it releases the session's
-// queued messages, and it titles an untitled session when the prompt is the
-// lead's first, typed while the lead was idle. a is the agent as it was before
-// the prompt.
-func Prompt(a store.Agent, s *store.Session, text string) {
+// Prompt records the user's prompt: it releases the session's queued messages.
+func Prompt(s *store.Session) {
 	s.AwaitingUser = false
-	if a.Role == store.Lead && s.Title == "" && a.Activity != store.Busy {
-		s.Title = title(text)
-	}
 }
 
 // Failure tells the lead that a worker's turn failed.
@@ -58,9 +51,10 @@ func Failure(tx *store.Tx, worker store.Agent, detail string) error {
 // maxTitle is the longest session title, in characters.
 const maxTitle = 200
 
-// title makes a session title from a prompt: its first line with text, with
-// runs of whitespace collapsed and cut to maxTitle characters.
-func title(prompt string) string {
+// Title makes a session title from its first prompt: the first line with text,
+// with runs of whitespace collapsed and cut to maxTitle characters. A prompt
+// without text is titled "Image".
+func Title(prompt string) string {
 	for _, line := range strings.Split(prompt, "\n") {
 		line = strings.Join(strings.Fields(line), " ")
 		if line == "" {
@@ -71,7 +65,7 @@ func title(prompt string) string {
 		}
 		return line
 	}
-	return ""
+	return "Image"
 }
 
 // Format renders messages as the model sees them.
@@ -98,7 +92,7 @@ func Leads(tx *store.Tx, workspace, except string) ([]store.Agent, map[string]st
 	var leads []store.Agent
 	titles := map[string]string{}
 	for _, s := range sessions {
-		titles[s.ID] = cmp.Or(s.Title, store.Untitled)
+		titles[s.ID] = s.Title
 		if s.ID == except {
 			continue
 		}

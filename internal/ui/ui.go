@@ -283,10 +283,13 @@ func leads(w http.ResponseWriter, r *http.Request) {
 	type lead struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
+		Harness     string `json:"harness"`
+		Model       string `json:"model"`
+		Effort      string `json:"effort"`
 	}
 	var list []lead
 	for _, p := range cfg.Leads() {
-		list = append(list, lead{p.Name, p.Description})
+		list = append(list, lead{p.Name, p.Description, p.Harness, p.Model, p.Effort})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(list)
@@ -341,16 +344,41 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// sessionAction creates a session in a workspace and returns its ID, or
-// starts, stops, deletes, renames, or marks seen a session.
+// input is the JSON body of a prompt: its text and images.
+type input struct {
+	Text   string          `json:"text"`
+	Images []harness.Image `json:"images"`
+}
+
+// readInput reads and decodes a prompt's body, answering the request and
+// returning false when it is too large or malformed.
+func readInput(w http.ResponseWriter, r *http.Request) (input, bool) {
+	var in input
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxInput))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		return in, false
+	}
+	if err := json.Unmarshal(body, &in); err != nil {
+		http.Error(w, "malformed input: "+err.Error(), http.StatusBadRequest)
+		return in, false
+	}
+	return in, true
+}
+
+// sessionAction creates a session in a workspace from its first prompt and
+// returns its ID, or starts, stops, deletes, renames, or marks seen a session.
 func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
 	var err error
 	switch q.Get("action") {
 	case "new":
-		var created store.Session
-		created, err = s.rt.Create(q.Get("workspace"), q.Get("lead"))
+		in, ok := readInput(w, r)
+		if !ok {
+			return
+		}
+		created, err := s.rt.Create(q.Get("workspace"), q.Get("lead"), in.Text, in.Images...)
 		if !refused(w, err) {
 			fmt.Fprint(w, created.ID)
 		}
@@ -378,29 +406,23 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 func (s *server) agentAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
-	limit := int64(4 << 20)
-	if q.Get("action") == "input" {
-		limit = maxInput
-	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
-		return
-	}
+	var err error
 	switch q.Get("action") {
 	case "input":
-		var in struct {
-			Text   string          `json:"text"`
-			Images []harness.Image `json:"images"`
-		}
-		if err := json.Unmarshal(body, &in); err != nil {
-			http.Error(w, "malformed input: "+err.Error(), http.StatusBadRequest)
+		in, ok := readInput(w, r)
+		if !ok {
 			return
 		}
 		err = s.rt.Input(id, in.Text, in.Images...)
 	case "interrupt":
 		err = s.rt.Interrupt(id)
 	case "answer":
+		var body []byte
+		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+			return
+		}
 		err = s.rt.Answer(id, q.Get("request"), q.Get("choice"), string(body))
 	default:
 		http.Error(w, "unknown agent action", http.StatusBadRequest)

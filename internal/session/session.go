@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
@@ -44,8 +45,12 @@ func AddWorkspace(db *store.DB, dir string) (store.Workspace, error) {
 }
 
 // Create adds a session to the workspace with a lead from the named lead
-// profile, or the first one, and starts it.
-func (r *Runtime) Create(workspaceID, lead string) (store.Session, error) {
+// profile, or the first one, starts it, and sends the lead the first prompt,
+// which titles the session.
+func (r *Runtime) Create(workspaceID, lead, text string, images ...harness.Image) (store.Session, error) {
+	if err := checkPrompt(text, images); err != nil {
+		return store.Session{}, err
+	}
 	cfg, err := harness.LoadConfig()
 	if err != nil {
 		return store.Session{}, err
@@ -54,7 +59,8 @@ func (r *Runtime) Create(workspaceID, lead string) (store.Session, error) {
 	if err != nil {
 		return store.Session{}, err
 	}
-	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Running: true}
+	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true}
+	leadID := store.NewID()
 	err = r.db.Tx(func(tx *store.Tx) error {
 		w, err := tx.Workspace(workspaceID)
 		if err != nil {
@@ -63,13 +69,16 @@ func (r *Runtime) Create(workspaceID, lead string) (store.Session, error) {
 		if err := tx.AddSession(s); err != nil {
 			return err
 		}
-		return tx.AddAgent(store.Agent{ID: store.NewID(), Session: s.ID, Name: "lead", Role: store.Lead,
+		return tx.AddAgent(store.Agent{ID: leadID, Session: s.ID, Name: "lead", Role: store.Lead,
 			Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Dir: w.Path, Activity: store.Idle})
 	})
 	if err != nil {
 		return s, err
 	}
-	return s, r.start(s.ID, true)
+	if err := r.start(s.ID, true); err != nil {
+		return s, err
+	}
+	return s, r.Input(leadID, text, images...)
 }
 
 // Start launches a stopped session's agents, resuming their conversations.

@@ -118,7 +118,7 @@ func TestInstructionsListWorkerRoles(t *testing.T) {
 }
 
 func TestInstructionsScopeToTheSession(t *testing.T) {
-	db := open(t, []store.Session{{ID: "session-1"}, {ID: "other", Title: "Fix the parser"}},
+	db := open(t, []store.Session{{ID: "session-1", Title: "Add a flag"}, {ID: "other", Title: "Fix the parser"}},
 		store.Agent{ID: "o", Session: "session-1", Name: "lead", Role: store.Lead},
 		store.Agent{ID: "w", Session: "session-1", Name: "worker", Role: store.Worker},
 		store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead},
@@ -128,7 +128,7 @@ func TestInstructionsScopeToTheSession(t *testing.T) {
 		t.Fatal("worker instructions exposed the wrong team", got)
 	}
 	writeConfig(t, `{"profiles":[{"name":"l","role":"lead","description":"d","harness":"h","model":"m","effort":"e"},{"name":"w","role":"work","description":"d","harness":"h","model":"m","effort":"e"}]}`)
-	if got := instructions(t, db, "other-lead"); !strings.Contains(got, "Other leads: session-1/lead (New Session)") || strings.Contains(got, "session-1/worker") {
+	if got := instructions(t, db, "other-lead"); !strings.Contains(got, "Other leads: session-1/lead (Add a flag)") || strings.Contains(got, "session-1/worker") {
 		t.Fatal("lead instructions missed the other lead", got)
 	}
 }
@@ -199,13 +199,7 @@ func TestFailureGoesToTheLeadOfTheWorkersSession(t *testing.T) {
 	}
 }
 
-func TestPromptReleasesAndTitles(t *testing.T) {
-	titled := func(a store.Agent, s store.Session, text string) (store.Session, string) {
-		a.ID = "x"
-		Prompt(a, &s, text)
-		return s, s.Title
-	}
-	idleLead := store.Agent{Role: store.Lead, Activity: store.Idle}
+func TestTitle(t *testing.T) {
 	long := strings.Repeat("a", 250)
 	for _, c := range []struct{ name, text, want string }{
 		{"first line", "Fix the parser\nand the lexer", "Fix the parser"},
@@ -213,27 +207,19 @@ func TestPromptReleasesAndTitles(t *testing.T) {
 		{"long line", long, strings.Repeat("a", 199) + "…"},
 		{"exactly 200", long[:200], long[:200]},
 		{"non-ASCII", strings.Repeat("é", 250), strings.Repeat("é", 199) + "…"},
-		{"only whitespace", " \n\t ", ""},
-		{"no text", "", ""},
+		{"only whitespace", " \n\t ", "Image"},
+		{"no text", "", "Image"},
 	} {
-		if _, got := titled(idleLead, store.Session{AwaitingUser: true}, c.text); got != c.want {
+		if got := Title(c.text); got != c.want {
 			t.Errorf("%s: title = %q, want %q", c.name, got, c.want)
 		}
 	}
-	s, _ := titled(idleLead, store.Session{AwaitingUser: true}, "first")
-	if s.AwaitingUser || s.Title != "first" {
-		t.Errorf("first prompt: %+v", s)
-	}
-	if got := func() string { s, _ := titled(idleLead, s, "second"); return s.Title }(); got != "first" {
-		t.Errorf("a later prompt changed the title to %q", got)
-	}
-	if _, got := titled(store.Agent{Role: store.Lead, Activity: store.Busy}, store.Session{}, "busy"); got != "" {
-		t.Errorf("a busy lead's prompt set title %q", got)
-	}
-	if _, got := titled(idleLead, store.Session{Title: "Mine"}, "other"); got != "Mine" {
-		t.Errorf("a titled session's title became %q", got)
-	}
-	if s, got := titled(store.Agent{Role: store.Worker, Activity: store.Idle}, store.Session{AwaitingUser: true}, "worker prompt"); got != "" || s.AwaitingUser {
-		t.Errorf("a worker's prompt: %+v", s)
+}
+
+func TestPromptReleasesQueuedMessages(t *testing.T) {
+	s := store.Session{AwaitingUser: true}
+	Prompt(&s)
+	if s.AwaitingUser {
+		t.Error("the prompt left messages queued")
 	}
 }

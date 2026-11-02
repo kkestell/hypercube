@@ -27,12 +27,15 @@ type fixture struct {
 	plugins   string
 	root      string
 	workspace store.Workspace
+	// created holds the leads made by session, whose creation prompt and reply
+	// inputs and transcript leave out.
+	created map[string]bool
 }
 
 func newFixture(t *testing.T) *fixture {
 	t.Helper()
 	dir := t.TempDir()
-	f := &fixture{t: t, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo")}
+	f := &fixture{t: t, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo"), created: map[string]bool{}}
 	for _, d := range []string{f.logs, f.plugins, f.root, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
@@ -78,15 +81,20 @@ func (f *fixture) newRuntime() *Runtime {
 	return rt
 }
 
-// session creates a session, and returns it with its lead.
+// session creates a session from the prompt "start", and returns it with its
+// lead once the lead has answered.
 func (f *fixture) session() (store.Session, store.Agent) {
 	f.t.Helper()
-	s, err := f.rt.Create(f.workspace.ID, "lead")
+	s, err := f.rt.Create(f.workspace.ID, "lead", "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}
 	lead := f.agents(s.ID)[0]
-	f.until("the lead idle", func() bool { return f.agent(lead.ID).Activity == store.Idle })
+	f.created[lead.ID] = true
+	f.until("the lead idle after the first prompt", func() bool {
+		items, err := f.rt.Transcript(lead.ID)
+		return err == nil && len(items) == 2 && f.agent(lead.ID).Activity == store.Idle
+	})
 	return s, lead
 }
 
@@ -158,9 +166,14 @@ func (f *fixture) log(agent, kind string) (entries []map[string]any) {
 	return entries
 }
 
+// inputs lists the texts sent to the agent's plugin. For a lead made by
+// session, the creation prompt is left out.
 func (f *fixture) inputs(agent string) (texts []string) {
 	for _, e := range f.log(agent, "input") {
 		texts = append(texts, e["text"].(string))
+	}
+	if f.created[agent] && len(texts) > 0 {
+		texts = texts[1:]
 	}
 	return texts
 }
@@ -170,6 +183,9 @@ func (f *fixture) transcript(agent string) []harness.Item {
 	items, err := f.rt.Transcript(agent)
 	if err != nil {
 		f.t.Fatal(err)
+	}
+	if f.created[agent] {
+		items = items[min(2, len(items)):]
 	}
 	return items
 }
@@ -288,13 +304,13 @@ func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
 	if len(f.inputs(lead.ID)) != 0 || len(f.queued(lead.ID)) != 1 {
 		t.Fatalf("a restarted session delivered before the user's prompt: %q", f.inputs(lead.ID))
 	}
-	// The user's prompt goes first and titles the session; then the queue.
+	// The user's prompt goes first; then the queue.
 	f.input(lead.ID, "continue")
 	f.until("the held message", func() bool { return len(f.inputs(lead.ID)) == 2 && len(f.queued(lead.ID)) == 0 })
 	if got := f.inputs(lead.ID); got[0] != "continue" || !strings.Contains(got[1], "queued while stopped") {
 		t.Fatalf("inputs = %q", got)
 	}
-	if got := f.session1(s.ID); got.AwaitingUser || got.Title != "continue" {
+	if got := f.session1(s.ID); got.AwaitingUser || got.Title != "start" {
 		t.Fatalf("session = %+v", got)
 	}
 }
@@ -572,13 +588,65 @@ func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 	}
 }
 
-func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
+func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	f := newFixture(t)
-	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
-	s, err := f.rt.Create(f.workspace.ID, "lead")
+	s, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
 	if err != nil {
 		t.Fatal(err)
 	}
+	lead := f.agents(s.ID)[0]
+	if got := f.session1(s.ID).Title; got != "Fix the parser" {
+		t.Errorf("title = %q", got)
+	}
+	if got := f.inputs(lead.ID); len(got) != 1 || got[0] != "\n  Fix the  parser \nand the lexer" {
+		t.Errorf("plugin inputs = %q", got)
+	}
+	f.until("the prompt in the transcript", func() bool {
+		items := f.transcript(lead.ID)
+		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
+	})
+	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
+	s, err = f.rt.Create(f.workspace.ID, "lead", "", png)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.session1(s.ID).Title; got != "Image" {
+		t.Errorf("image-only title = %q", got)
+	}
+}
+
+func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
+	f := newFixture(t)
+	for _, c := range []struct {
+		text   string
+		images []harness.Image
+	}{
+		{"", nil},
+		{" \n", nil},
+		{"", []harness.Image{{MIMEType: "image/png", Data: "bm90IGEgcG5n"}}},
+	} {
+		if _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
+			t.Errorf("Create accepted %q and %d images", c.text, len(c.images))
+		}
+	}
+	f.read(func(tx *store.Tx) error {
+		sessions, err := tx.Sessions(f.workspace.ID)
+		if err != nil || len(sessions) != 0 {
+			t.Errorf("sessions = %v, %v", sessions, err)
+		}
+		return nil
+	})
+	if entries, _ := os.ReadDir(f.logs); len(entries) != 0 {
+		t.Errorf("a plugin started: %v", entries)
+	}
+}
+
+func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
+	f := newFixture(t)
+	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
+	// The plugin can exit before the first prompt reaches it, which Create
+	// reports; the session and its lead remain.
+	s, _ := f.rt.Create(f.workspace.ID, "lead", "start")
 	lead := f.agents(s.ID)[0]
 	f.until("the agent to stay ended", func() bool {
 		return len(f.log(lead.ID, "start")) == maxQuickExits && f.agent(lead.ID).Activity == store.Exited && f.rt.live[lead.ID] == nil
@@ -746,15 +814,15 @@ func TestImagePrompts(t *testing.T) {
 	if err := f.rt.Input(lead.ID, "  "); err == nil {
 		t.Fatal("input accepted neither text nor an image")
 	}
-	// An image alone is a prompt: the plugin gets it, the session is titled
-	// generically, and the user's item holds it.
+	// An image alone is a prompt: the plugin gets it, and the user's item holds
+	// it. The session keeps its title.
 	if err := f.rt.Input(lead.ID, "", png); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.session1(s.ID).Title; got != "Image" {
+	if got := f.session1(s.ID).Title; got != "start" {
 		t.Errorf("title = %q", got)
 	}
-	if got := f.log(lead.ID, "input"); len(got) != 1 || got[0]["images"] != 1.0 {
+	if got := f.log(lead.ID, "input"); len(got) != 2 || got[1]["images"] != 1.0 {
 		t.Errorf("plugin inputs = %v", got)
 	}
 	f.until("the image prompt in the transcript", func() bool {

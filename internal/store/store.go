@@ -28,9 +28,6 @@ const (
 	Exited = "exited"
 )
 
-// Untitled is what a session shows until its first prompt titles it.
-const Untitled = "New Session"
-
 // Workspace is a folder that holds sessions. NoGit is set for a folder that is
 // not a Git checkout; its workers work directly in existing directories.
 type Workspace struct {
@@ -521,7 +518,7 @@ func Snapshot(db *DB) ([]ShownWorkspace, error) {
 				if err != nil {
 					return err
 				}
-				session := ShownSession{ID: s.ID, Title: cmp.Or(s.Title, Untitled), Running: s.Running, Unseen: s.Unseen, Agents: []ShownAgent{}}
+				session := ShownSession{ID: s.ID, Title: s.Title, Running: s.Running, Unseen: s.Unseen, Agents: []ShownAgent{}}
 				for _, a := range agents {
 					session.Agents = append(session.Agents, ShownAgent{a.ID, a.Name, a.Role, a.Harness, a.Model, a.Effort,
 						a.Dir, a.Activity, a.Attention, a.Status, a.StatusAt, a.Usage})

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -86,12 +87,12 @@ func TestLeads(t *testing.T) {
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("leads response = %d %s", res.Code, res.Body)
 	}
-	type lead struct{ Name, Description string }
+	type lead struct{ Name, Description, Harness, Model, Effort string }
 	var got []lead
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []lead{{"first", "First lead"}, {"second", "Second lead"}}) {
+	if !slices.Equal(got, []lead{{"first", "First lead", "claude", "opus", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
 		t.Fatalf("leads = %+v", got)
 	}
 	// The same handler reads config edits instead of keeping a cached list.
@@ -297,6 +298,7 @@ func TestActions(t *testing.T) {
 type app struct {
 	t       *testing.T
 	server  *httptest.Server
+	db      *store.DB
 	rt      *session.Runtime
 	session store.Session
 	lead    store.Agent
@@ -335,11 +337,11 @@ func newApp(t *testing.T) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := rt.Create(w.ID, "lead")
+	s, err := rt.Create(w.ID, "lead", "start")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &app{t: t, rt: rt, session: s}
+	a := &app{t: t, db: db, rt: rt, session: s}
 	a.server = httptest.NewServer(Handler(t.Context(), db, rt))
 	t.Cleanup(a.server.Close)
 	if err := db.Read(func(tx *store.Tx) error { var err error; a.lead, err = tx.Lead(s.ID); return err }); err != nil {
@@ -453,7 +455,7 @@ func TestImageInput(t *testing.T) {
 	a.post(path, `{"text":" "}`, http.StatusConflict)
 	a.post(path, `{"images":[{"mime_type":"image/png","data":"iVBORw0KGgo="}]}`, http.StatusOK)
 	p.until("the image prompt", func() bool {
-		it, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser })
+		it, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser && len(it.Images) > 0 })
 		return ok && len(it.Images) == 1 && it.Images[0].Data == "iVBORw0KGgo="
 	})
 }
@@ -464,12 +466,13 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	// Nothing is sent until the page selects a session.
 	p.send(`{"select":"` + a.session.ID + `"}`)
 	p.until("the first snapshot", func() bool { return p.resets == 1 })
+	p.until("the creation prompt's reply", func() bool { return len(p.items[a.lead.ID]) == 2 })
 
 	a.input("!stream", http.StatusOK)
 	// The streamed text replaces itself in place instead of repeating, and the
 	// tool call nests under it.
 	p.until("the streamed turn", func() bool {
-		text, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindText })
+		text, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindText && it.Text == "Hello!" })
 		tool, found := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindTool })
 		return ok && found && text.Text == "Hello!" && text.Done && tool.Done && tool.Output == "ok" && tool.Parent == text.ID
 	})
@@ -477,7 +480,8 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	for _, it := range p.items[a.lead.ID] {
 		kinds = append(kinds, it.Kind)
 	}
-	if !slices.Equal(kinds, []string{"user", "text", "tool"}) {
+	// The session's creation prompt and its reply come first.
+	if !slices.Equal(kinds, []string{"user", "text", "user", "text", "tool"}) {
 		t.Fatalf("transcript kinds = %v", kinds)
 	}
 	if p.resets != 1 {
@@ -487,13 +491,13 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	// A new connection gets the whole transcript as its first snapshot.
 	q := a.page()
 	q.send(`{"select":"` + a.session.ID + `"}`)
-	q.until("the whole transcript", func() bool { return len(q.items[a.lead.ID]) == 3 })
+	q.until("the whole transcript", func() bool { return len(q.items[a.lead.ID]) == 5 })
 
 	// Selecting nothing stops the transcripts.
 	p.send(`{"select":""}`)
 	a.input("again", http.StatusOK)
-	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 5 })
-	if len(p.items[a.lead.ID]) != 3 {
+	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 7 })
+	if len(p.items[a.lead.ID]) != 5 {
 		t.Fatalf("an unselected page received items: %d", len(p.items[a.lead.ID]))
 	}
 }
@@ -584,5 +588,54 @@ func TestTerminalSocket(t *testing.T) {
 	}
 	if _, res, err := dial(t, a.server, path); err == nil || res == nil || res.StatusCode != http.StatusConflict {
 		t.Fatalf("terminal of a stopped session: %v %v", res, err)
+	}
+}
+
+// A session is created by its first prompt: a refused prompt makes no session.
+func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
+	a := newApp(t)
+	count := func() (n int) {
+		t.Helper()
+		if err := a.db.Read(func(tx *store.Tx) error {
+			list, err := tx.Sessions(a.session.Workspace)
+			n = len(list)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	path := "/session?action=new&workspace=" + a.session.Workspace + "&lead=lead"
+	a.post(path, `{`, http.StatusBadRequest)
+	a.post(path, `{"text":" "}`, http.StatusConflict)
+	if count() != 1 {
+		t.Fatalf("a refused prompt left %d sessions", count())
+	}
+	req, _ := http.NewRequest("POST", a.server.URL+path, strings.NewReader(`{"text":"Fix the parser\nand the lexer"}`))
+	req.Header.Set("Origin", a.server.URL)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || count() != 2 {
+		t.Fatalf("new session: status %d, %d sessions", res.StatusCode, count())
+	}
+	var title string
+	var lead store.Agent
+	if err := a.db.Read(func(tx *store.Tx) error {
+		s, err := tx.Session(string(id))
+		title = s.Title
+		if err == nil {
+			lead, err = tx.Lead(s.ID)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	items, err := a.rt.Transcript(lead.ID)
+	if err != nil || title != "Fix the parser" || len(items) == 0 || items[0].Text != "Fix the parser\nand the lexer" {
+		t.Fatalf("title %q, transcript %+v, %v", title, items, err)
 	}
 }
