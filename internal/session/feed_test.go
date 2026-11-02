@@ -171,6 +171,14 @@ func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
 	f := newFixture(t)
 	_, lead := f.session()
 	f.input(lead.ID, "!work")
+	f.until("the working item", func() bool {
+		for _, item := range f.transcript(lead.ID) {
+			if item.Text == "working" && !item.Done {
+				return true
+			}
+		}
+		return false
+	})
 	f.input(lead.ID, "!finish")
 	f.until("the finished item", func() bool { return f.summary(lead.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish" })
 	changes, cancel := f.rt.Subscribe()
