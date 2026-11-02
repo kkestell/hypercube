@@ -203,13 +203,12 @@ func (c client) sessionAction(action, id string) {
 	}
 }
 
-// asAgent adds the agent's identity and the app's origin to every request.
-type asAgent struct{ agent, origin string }
+// asAgent adds the agent's identity to every request.
+type asAgent string
 
 func (a asAgent) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set(mcp.AgentHeader, a.agent)
-	r.Header.Set("Origin", a.origin)
+	r.Header.Set(mcp.AgentHeader, string(a))
 	return http.DefaultTransport.RoundTrip(r)
 }
 
@@ -218,7 +217,7 @@ func (c client) tool(agent, name string, args map[string]string) string {
 	c.t.Helper()
 	session, err := sdk.NewClient(&sdk.Implementation{Name: "test", Version: "1"}, nil).Connect(c.t.Context(), &sdk.StreamableClientTransport{
 		Endpoint:             c.base + "/mcp",
-		HTTPClient:           &http.Client{Transport: asAgent{agent, c.base}},
+		HTTPClient:           &http.Client{Transport: asAgent(agent)},
 		DisableStandaloneSSE: true,
 	}, nil)
 	if err != nil {
