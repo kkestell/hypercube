@@ -3,17 +3,30 @@
   overflow: auto;
 }
 
-/* Rows lay out as in VS Code's Explorer with the Seti icon theme. A row is
-   indented 8px per level, then holds a 22px column: a folder's chevron, or a
-   file's icon, since Seti has no folder icons. Labels start after that column.
-   The tree item sets its own inline left padding, so it needs !important. */
+/* Both edges use the shared content inset. Each level adds 8px before a
+   fixed 22px icon column. Items set padding and guide positions inline,
+   so these overrides need !important. */
 .files-panel vscode-tree-item::part(wrapper) {
-  padding: 0 0 0 calc(8px + var(--level) * 8px) !important;
+  align-items: center;
+  min-height: var(--size-tree-row-height);
+  line-height: var(--size-tree-row-height);
+  padding: 0 var(--size-content-inset) 0
+    calc(var(--size-content-inset) + var(--level) * 8px) !important;
+}
+
+.files-panel vscode-tree-item::part(children) {
+  --indentation-guide-left: calc(var(--size-content-inset) + var(--level) * 8px + 8px) !important;
+}
+
+.files-panel vscode-tree-item::part(content) {
+  line-height: var(--size-tree-row-height);
 }
 
 .files-panel vscode-tree-item::part(arrow-icon-container) {
-  padding: 0 6px 0 0;
-  transform: translateX(3px);
+  flex-shrink: 0;
+  justify-content: flex-start;
+  width: 22px;
+  padding: 0;
 }
 
 .files-panel vscode-tree-item::part(icon-container) {

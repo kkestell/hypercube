@@ -3,7 +3,7 @@
   flex-shrink: 0;
   flex-direction: column;
   gap: calc(var(--size-space) * 2);
-  margin: calc(var(--size-space) * 3);
+  margin: calc(var(--size-space) * 3) var(--size-content-inset) var(--size-content-inset);
   padding: calc(var(--size-space) * 2);
   border: var(--size-border) solid var(--vscode-input-border);
   border-radius: calc(var(--size-radius) * 2);

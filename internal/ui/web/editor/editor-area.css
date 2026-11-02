@@ -1,7 +1,12 @@
 .editor-area {
+  --editor-area-background: color-mix(in srgb, var(--vscode-editor-background) 50%, var(--vscode-sideBar-background));
+  --vscode-editorGroupHeader-tabsBackground: var(--editor-area-background);
+  --vscode-tab-inactiveBackground: var(--editor-area-background);
+  --vscode-tab-activeBackground: var(--editor-area-background);
   display: flex;
   flex-direction: column;
   height: 100%;
   min-width: 0;
   min-height: 0;
+  background: var(--editor-area-background);
 }

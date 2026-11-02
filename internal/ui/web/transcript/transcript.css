@@ -8,5 +8,5 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--size-space) * 3);
-  padding: calc(var(--size-space) * 3);
+  padding: calc(var(--size-space) * 3) var(--size-content-inset) var(--size-content-inset);
 }

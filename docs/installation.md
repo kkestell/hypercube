@@ -51,9 +51,10 @@ directory or plugin protocol requires quitting Hypercube before installing.
 
 `make dev` builds this checkout and opens its browser view at
 http://localhost:4281/ with isolated state, configuration, and a scratch
-repository under `~/projects/hypercube-dev`, which you add as a workspace in the
-view. Set `HYPERCUBE_DEV_DIR` to use another location or `HYPERCUBE_DEV_PORT`
-to use another port.
+repository under `~/projects/hypercube-dev/repo`. It adds the workspace and
+opens a stopped preview session, with sample source files ready in Files,
+without starting a model. Set `HYPERCUBE_DEV_DIR` to use another location or
+`HYPERCUBE_DEV_PORT` to use another port.
 It stays in the foreground, rebuilds after source changes, and reloads the
 browser. A failed build leaves the running app alone. Successful rebuilds keep
 dev agents and panel shells running. Ctrl-C and `make dev-stop` end them;

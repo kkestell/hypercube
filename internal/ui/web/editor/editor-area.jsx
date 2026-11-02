@@ -24,6 +24,6 @@ function Node({node}) {
 
 export function EditorArea() {
   const [state] = useStore();
-  const root = state.session.tabs.root;
+  const root = state.session?.tabs.root;
   return <div class="editor-area">{root && <Node node={root} />}</div>;
 }

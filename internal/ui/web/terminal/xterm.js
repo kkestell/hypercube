@@ -19,6 +19,9 @@ function theme(element) {
     foreground,
     cursor: color('terminalCursor-foreground') ?? foreground,
     selectionBackground: color('terminal-selectionBackground'),
+    scrollbarSliderBackground: color('scrollbarSlider-background'),
+    scrollbarSliderHoverBackground: color('scrollbarSlider-hoverBackground'),
+    scrollbarSliderActiveBackground: color('scrollbarSlider-activeBackground'),
   };
   for (const name of ansi) {
     colors[name.toLowerCase()] = color('terminal-ansi' + name);

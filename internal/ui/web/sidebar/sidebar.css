@@ -6,23 +6,36 @@
   color: var(--vscode-sideBar-foreground);
 }
 
-/* Rows are 32px tall with 2px between them, inside a 4px inset. Titles start
-   14px into a row, 34px for nested rows, and each row's right 16px column
-   holds its dot or buttons. */
+.sidebar-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Match the Files tree's row height and 8px nesting step.
+   The right 16px column holds status indicators and menu buttons. */
 .sidebar-list {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 8px;
+  gap: calc(var(--size-space) * 4);
   min-height: 0;
-  padding: var(--size-space);
   overflow: auto;
 }
 
 .sidebar-workspace {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+}
+
+.sidebar-workspace-header + .session-item,
+.sidebar-empty {
+  margin-top: calc(var(--size-space) * 2);
+}
+
+.sidebar-empty {
+  padding: 0 var(--size-content-inset);
+  line-height: var(--size-tree-row-height);
+  color: var(--vscode-descriptionForeground);
 }
 
 /* Its buttons are spaced like toolbar buttons, whose 16px icons sit in 22px
@@ -32,17 +45,9 @@
   flex-shrink: 0;
   align-items: center;
   gap: calc(var(--size-space) * 2.5);
-  height: 32px;
-  padding-right: 8px;
-}
-
-.sidebar-workspace-toggle {
-  display: flex;
-  align-items: center;
-  gap: var(--size-space);
-  min-width: 0;
-  height: 100%;
-  padding-left: 14px;
+  height: var(--size-tree-row-height);
+  margin: 0 var(--size-content-inset);
+  border-bottom: var(--size-border) solid var(--vscode-sideBar-border);
 }
 
 .sidebar-workspace-name {
@@ -50,13 +55,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Like a session's chevron, it drops 1px to the lowercase letters' middle. */
-.sidebar-caret {
-  position: relative;
-  top: 1px;
-  flex-shrink: 0;
 }
 
 .sidebar-icon-button {
@@ -72,50 +70,26 @@
   margin-left: auto;
 }
 
-.sidebar-workspace-header:not(:hover, :focus-within) .sidebar-workspace-menu {
-  visibility: hidden;
+.sidebar-workspace-header:not(:hover, :focus-within) .sidebar-icon-button {
+  opacity: 0;
+  pointer-events: none;
 }
 
-/* The guide runs down the nested rows and hooks into the last one. */
 .sidebar-nested {
-  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  margin-bottom: calc(var(--size-space) * 2);
 }
 
-.sidebar-nested::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 16px;
-  left: 14px;
-  width: 12px;
-  border-bottom: 1px solid var(--vscode-tree-indentGuidesStroke);
-  border-left: 1px solid var(--vscode-tree-indentGuidesStroke);
-  border-bottom-left-radius: 6px;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.sidebar-nested-summary,
 .sidebar-show-more,
 .sidebar-add-workspace {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  height: 32px;
-  padding-left: 14px;
   overflow: hidden;
-  border-radius: 6px;
   white-space: nowrap;
 }
 
-.sidebar-nested-summary {
-  padding-left: 34px;
-}
-
-.sidebar-nested-summary:hover,
 .sidebar-show-more:hover,
 .sidebar-add-workspace:hover {
   background: var(--vscode-list-hoverBackground);
@@ -123,25 +97,17 @@
 
 .sidebar-add-workspace {
   gap: calc(var(--size-space) * 2);
-  margin: 0 var(--size-space) var(--size-space);
+  padding: var(--size-content-inset);
 }
 
-.sidebar-nested-separator,
 .sidebar-show-more {
+  height: var(--size-tree-row-height);
+  padding-left: var(--size-content-inset);
+  border-radius: 6px;
   color: var(--vscode-descriptionForeground);
 }
 
-.sidebar-nested-separator {
-  white-space: pre;
-}
-
-.sidebar-nested-unread {
-  color: var(--vscode-notificationsInfoIcon-foreground);
-}
-
-.sidebar-workspace-toggle:focus-visible,
 .sidebar-icon-button:focus-visible,
-.sidebar-nested-summary:focus-visible,
 .sidebar-show-more:focus-visible,
 .sidebar-add-workspace:focus-visible {
   outline: 1px solid var(--vscode-focusBorder);

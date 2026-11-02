@@ -73,7 +73,7 @@ func show(tx *store.Tx, s store.Session, running bool) (shownSession, error) {
 }
 
 // snapshot reads everything the view shows in one transaction: workspaces by
-// folder name, with running sessions first, each group by most recent activity.
+// folder name, each with its sessions newest first, so a session keeps its place.
 func snapshot(db *store.DB) ([]shownWorkspace, error) {
 	list := []shownWorkspace{}
 	err := db.Read(func(tx *store.Tx) error {
@@ -87,15 +87,7 @@ func snapshot(db *store.DB) ([]shownWorkspace, error) {
 			if err != nil {
 				return err
 			}
-			slices.SortStableFunc(sessions, func(a, b store.Session) int {
-				if a.Running != b.Running {
-					if a.Running {
-						return -1
-					}
-					return 1
-				}
-				return cmp.Or(cmp.Compare(b.LastActive, a.LastActive), cmp.Compare(b.Created, a.Created))
-			})
+			slices.Reverse(sessions)
 			for _, s := range sessions {
 				session, err := showSession(tx, s)
 				if err != nil {

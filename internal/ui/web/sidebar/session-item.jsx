@@ -1,9 +1,8 @@
-// A session's row in the sidebar: its title, dimmed when it is stopped, a caret
-// when it has nested sessions, and a dot for its own state: amber while it
-// waits on the user, blue for a reply the user has not seen. A top-level row
+// A session's row: its title, dimmed for stopped children, and its own state
+// dot: amber while it waits on the user, blue for a reply not yet seen. A top-level row
 // without a dot shows a spinner while it or any of its nested sessions works.
-// Hovering the row shows its menu button in the indicator's place. Double-clicking the title renames
-// the session in place.
+// Hovering shows its menu button in the indicator's place. Double-clicking
+// the title renames the session in place.
 import {useEffect, useRef} from 'preact/hooks';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
@@ -19,14 +18,13 @@ const dotOf = (session, selected) => {
   return null;
 };
 
-// onToggle is set when the session has nested sessions, and onMenu, called
-// with the menu button, when it has a menu.
-export function SessionItem({session, selected, renaming, onRenaming, open, onToggle, onMenu}) {
+// onMenu is called with the menu button when the session has a menu.
+export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
   const [, store] = useStore();
   const classes = ['session-item'];
   if (session.parent) classes.push('session-item-nested');
   if (selected) classes.push('session-item-selected');
-  if (!session.running) classes.push('session-item-stopped');
+  if (session.parent && !session.running) classes.push('session-item-stopped');
 
   return (
     <div class={classes.join(' ')} data-session={session.id}>
@@ -37,11 +35,6 @@ export function SessionItem({session, selected, renaming, onRenaming, open, onTo
             <span class="session-item-text">{session.title}</span>
           </button>
         )}
-      {onToggle && !renaming && (
-        <button class="session-item-caret" aria-expanded={open} title={open ? 'Collapse' : 'Expand'} onClick={onToggle}>
-          <vscode-icon size="14" name={open ? 'chevron-down' : 'chevron-right'} />
-        </button>
-      )}
       <span class="session-item-status">
         {dotOf(session, selected)}
         {onMenu && (

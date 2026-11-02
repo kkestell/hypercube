@@ -2,7 +2,7 @@ import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
-import {receivedWorkspaces} from './selection.js';
+import {openUnsent, receivedWorkspaces} from './selection.js';
 import {SessionView} from './session-view.jsx';
 
 let spies = [];
@@ -61,16 +61,30 @@ test('a session with nothing unseen posts nothing', () => {
   expect(posted()).toEqual([]);
 });
 
-test('the session and files share one split', () => {
+test('the editor area stays open and keeps its size with no files open', () => {
   const s = store('a', [session('a', {children: [session('child', {parent: 'a'})]})]);
   const root = mount(s, <SessionView />);
   const splits = root.querySelectorAll('vscode-split-layout');
   expect(splits.length).toBe(1);
   expect(root.querySelectorAll('.agent-pane').length).toBe(1);
   const split = splits[0];
-  expect(split.classList.contains('split-collapsed')).toBe(true);
+  expect(split.classList.contains('split-collapsed')).toBe(false);
+  expect(root.querySelector('.editor-area')).not.toBeNull();
   s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: {id: 1, tabs: ['file:a.go'], active: 'file:a.go'}}}}));
   expect(split.classList.contains('split-collapsed')).toBe(false);
   act(() => split.dispatchEvent(new CustomEvent('vsc-split-layout-change', {detail: {positionInPercentage: 40}})));
   expect(split.handlePosition).toBe('40%');
+  s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: null}}}));
+  expect(split.classList.contains('split-collapsed')).toBe(false);
+  expect(split.handlePosition).toBe('40%');
+  expect(root.querySelector('.editor-area').childElementCount).toBe(0);
+});
+
+test('an unsent session also reserves the editor area', () => {
+  const s = store(null, []);
+  s.update(state => openUnsent(state, 'w', {name: 'lead', harness: 'claude', model: 'haiku', effort: 'low'}));
+  const root = mount(s, <SessionView />);
+  expect(root.querySelector('.agent-pane')).not.toBeNull();
+  expect(root.querySelector('.editor-area')).not.toBeNull();
+  expect(root.querySelector('.split-collapsed')).toBeNull();
 });

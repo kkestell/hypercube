@@ -7,10 +7,6 @@
   background: var(--vscode-editorGroupHeader-tabsBackground);
 }
 
-.editor-tabs::-webkit-scrollbar {
-  height: 3px;
-}
-
 .editor-tabs-tab {
   position: relative;
   display: flex;

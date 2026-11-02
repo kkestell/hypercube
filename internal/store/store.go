@@ -151,7 +151,12 @@ func Open() (*DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("%s: %w", dbPath(), err)
 	}
-	return &DB{db}, nil
+	d := &DB{db}
+	if err := d.migrate(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("upgrading %s: %w", dbPath(), err)
+	}
+	return d, nil
 }
 
 func (d *DB) Close() error { return d.sql.Close() }

@@ -14,7 +14,6 @@ export function SessionView() {
   const [share, setShare] = useState(50);
   const session = currentSession(state);
   const shown = shownSession(state);
-  const hasFiles = !!state.session?.tabs.root;
 
   useEffect(() => {
     if (session?.unseen && state.visible) markSeen(store, session.id);
@@ -22,9 +21,9 @@ export function SessionView() {
 
   if (!shown) return <Tesseract />;
   return (
-    <Split size={share} minStart="15%" minEnd="15%" collapsed={hasFiles ? null : 'end'} onResize={setShare}>
+    <Split size={share} minStart="15%" minEnd="15%" onResize={setShare}>
       <AgentPane key={shown.id} session={shown} />
-      {state.session && <EditorArea />}
+      <EditorArea />
     </Split>
   );
 }

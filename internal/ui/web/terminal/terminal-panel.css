@@ -3,3 +3,12 @@
   padding: var(--size-space) 0 0 calc(var(--size-space) * 2);
   background: var(--vscode-terminal-background, var(--vscode-panel-background));
 }
+
+/* xterm draws its own overlay scrollbar and sets the slider size inline.
+   Keep its wider hit target while making the visible thumb slim. */
+.terminal-panel .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: auto !important;
+  right: 0;
+  width: var(--size-scrollbar) !important;
+  border-radius: var(--size-scrollbar);
+}

@@ -1,13 +1,23 @@
-/* The title button covers the row, so a click anywhere selects it; the caret
-   and the status column sit above it. */
+/* The title button covers the row, so a click anywhere selects it; the status
+   column sits above it. */
 .session-item {
+  --session-title-inset: var(--size-content-inset);
   position: relative;
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  height: 32px;
-  padding-right: 8px;
-  border-radius: 6px;
+  height: var(--size-tree-row-height);
+  padding-right: var(--size-content-inset);
+}
+
+.session-item-nested {
+  --session-title-inset: calc(var(--size-content-inset) + 8px);
+  font-size: calc(var(--vscode-font-size) - 1px);
+  color: var(--vscode-descriptionForeground);
+}
+
+.session-item-stopped {
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 80%, var(--vscode-sideBar-background));
 }
 
 .session-item:hover {
@@ -16,7 +26,13 @@
 
 .session-item-selected,
 .session-item-selected:hover {
+  color: var(--vscode-foreground);
   background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.sidebar-list:focus-within .session-item-selected {
+  color: var(--vscode-list-activeSelectionForeground);
+  background: var(--vscode-list-activeSelectionBackground);
 }
 
 .session-item:has(:focus-visible) {
@@ -28,10 +44,6 @@
   outline: none;
 }
 
-.session-item-stopped {
-  color: var(--vscode-descriptionForeground);
-}
-
 .session-item-title {
   display: flex;
   flex: 0 1 auto;
@@ -39,11 +51,7 @@
   min-width: 0;
   height: 100%;
   margin-right: var(--size-space);
-  padding-left: 14px;
-}
-
-.session-item-nested .session-item-title {
-  padding-left: 34px;
+  padding-left: var(--session-title-inset);
 }
 
 .session-item-title::after {
@@ -66,21 +74,6 @@
   white-space: nowrap;
   animation: fade-title-end linear;
   animation-timeline: scroll(self inline);
-}
-
-/* The chevron follows the title, a space apart like the workspace header's. */
-.session-item-caret {
-  position: relative;
-  display: flex;
-  flex-shrink: 0;
-  margin-right: calc(var(--size-space) * 2);
-}
-
-/* A centered chevron sits above the lowercase letters, which ride below the
-   middle of the line, so it drops 1px to meet them. */
-.session-item-caret vscode-icon {
-  position: relative;
-  top: 1px;
 }
 
 .session-item-status {
@@ -116,5 +109,5 @@
 
 .session-item-rename {
   flex: 1;
-  margin-left: 8px;
+  margin-left: var(--session-title-inset);
 }

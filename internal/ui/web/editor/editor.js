@@ -83,7 +83,7 @@ export const resizeSplit = (state, splitId, ratio) =>
 // agents and for files that are still open. A closed tab's view unmounts
 // after the tab is forgotten.
 export function rememberScroll(state, sessionId, id, scroll) {
-  if (state.session?.id !== sessionId) return state;
+  if (!state.session || state.session.id !== sessionId) return state;
   const kept = layout.findPane(state.session.tabs.root, id) || shownSession(state)?.id === id;
   if (!kept) return state;
   return withSession(state, session => ({...session, scroll: {...session.scroll, [id]: scroll}}));

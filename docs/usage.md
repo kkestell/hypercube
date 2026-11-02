@@ -28,27 +28,25 @@ edits.
 
 ## Browser view
 
-The sidebar lists top-level sessions by last activity, newest first, with
-stopped sessions below running ones. It shows five under each workspace;
+The sidebar lists top-level sessions newest first, in the order they were
+created, so a session keeps its place. It shows five under each workspace;
 Show more lists five more. Children appear under their parent in creation
-order and do not count toward this limit. Click a workspace's name or caret to
-collapse or expand it. A parent's caret collapses or expands its children;
-clicking its title selects the session without changing its children's
-expansion. A collapsed parent still lists the children waiting on you, then a
-row counting the rest and how many have unseen replies; click it to expand the
-parent. Click Add Workspace at the bottom of the sidebar to add a workspace. Click `+`
-beside a workspace's name to choose a lead profile for a new session. Sending
-its first prompt creates the session; selecting another session first discards
-it. More Actions, shown while hovering a workspace, or right-clicking a
-workspace, offers Delete Workspace.
+order and do not count toward this limit. Running children are always visible;
+Show Stopped Sessions in the parent's menu lists stopped children too, and
+Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
+the sidebar to add a workspace. Click `+` beside a workspace's name to choose
+a lead profile for a new session. Sending its first prompt creates the session;
+selecting another session first discards it. More Actions, shown while hovering a workspace, or
+right-clicking a workspace, offers Delete Workspace.
 
 Click a session to show its chat, and double-click it to change its title.
 Hovering a row shows More Actions in place of its dot, which opens the same
-menu as right-clicking it. A top-level session's menu offers Start/Stop and
-Delete. Stopped rows are dimmed; clicking a child of a stopped parent starts
-the family. Each row's dot shows only its own session: amber means it awaits
-you, and blue marks a reply you have not seen. The composer
-shows the agent's spinner, waiting dot, or red dot after an unexpected exit.
+menu as right-clicking it. A top-level session's menu offers Start/Stop,
+Show/Hide Stopped Sessions when it has children, and Delete. Stopped child rows
+are dimmed; clicking a child of a stopped parent starts the family. Each row's
+dot shows only its own session: amber means it awaits you, and blue marks a reply
+you have not seen. The composer shows the agent's spinner, waiting dot, or red
+dot after an unexpected exit.
 
 A parent ends children with `end_session`. Ending removes a managed worktree
 and branch only when Git permits it, and stops the child for good. The ended
@@ -64,7 +62,7 @@ Reply cards close after 15 seconds or when the agent works again. Request
 cards stay until answered or closed.
 
 The center shows one session's chat beside its open files. Drag the divider
-to resize them. The file area appears only while files are open. A child's
+to resize them. The file area stays visible when no files are open. A child's
 requests also appear in its parent's transcript, where you can answer them;
 answering in either place updates both. Child status updates appear there too,
 with the child's title and time. These copies are for the user; the parent's

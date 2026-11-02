@@ -795,7 +795,7 @@ func TestSnapshotOrder(t *testing.T) {
 		t.Fatalf("workspaces = %+v", list)
 	}
 	z := list[1].Sessions
-	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Children) != 1 || z[0].Children[0].Parent != "s3" {
+	if len(z) != 4 || z[0].ID != "s5" || z[1].ID != "s4" || z[2].ID != "s3" || z[3].ID != "s1" || z[2].Title != "Title s3" || len(z[2].Children) != 1 || z[2].Children[0].Parent != "s3" {
 		t.Fatalf("sessions = %+v", z)
 	}
 }

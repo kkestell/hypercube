@@ -13,7 +13,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--vscode-editor-background);
+  background: var(--editor-area-background);
 }
 
 /* Where a dragged tab would land. */

@@ -1,0 +1,20 @@
+/* Both side panels share their tab and content spacing. The tab component
+   insets its icons 18px from the left; 10px above its centered icon balances
+   the top inset with that built-in spacing. */
+.panel-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 10px;
+}
+
+.panel-tabs > vscode-tab-header > vscode-icon {
+  display: block;
+}
+
+.panel-tabs > vscode-tab-panel {
+  flex: 1;
+  min-height: 0;
+  padding-top: calc(var(--size-space) * 3);
+}

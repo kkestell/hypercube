@@ -4,7 +4,7 @@
   align-items: flex-start;
   min-height: 0;
   overflow: auto;
-  background: var(--vscode-editor-background);
+  background: var(--editor-area-background);
   color: var(--vscode-editor-foreground);
 }
 
@@ -35,7 +35,7 @@
   box-sizing: content-box;
   width: calc(var(--digits) * 1ch);
   padding: 0 calc(var(--size-space) * 6.5) 0 calc(var(--size-space) * 4.5);
-  background: var(--vscode-editor-background);
+  background: var(--editor-area-background);
   color: var(--vscode-editorLineNumber-foreground);
   text-align: right;
   user-select: none;
