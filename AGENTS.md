@@ -17,10 +17,10 @@ browser shows each agent's transcript.
 
 - Do less. Keep correct code simple, ordinary, and cheap to change. Measure
   simplicity by what a reader must understand, not by the size of a diff.
-- Leave the code a change touches easy to follow. When a change would make a
-  file, module, or function harder to follow, restructure it as part of the
-  change: split it by concern, move code to where it belongs, delete what is
-  unused.
+- Leave the code a change touches easy to follow. When you find code that is
+  hard to follow, or a change would make it so, stop and restructure it before
+  continuing: split it by concern, move code to where it belongs, delete what
+  is unused.
 - Write idiomatic Go. Prefer plain data and direct functions.
 - Give each concern a clear boundary and each lifecycle one owner. This holds
   for browser code too: one ES module per concern, and HTML files hold markup
@@ -36,7 +36,9 @@ browser shows each agent's transcript.
 - Handle required behavior, normal use, and evidenced failures. Additional
   handling must justify its complexity. Validate external input; trust internal
   invariants and fail clearly when they break.
-- Tests and reviews should address observable behavior and meaningful failures.
+- Tests address observable behavior and meaningful failures. Reviews address
+  those and whether the code is easy to follow. A change that leaves code hard
+  to follow does not pass review.
 
 ## Code
 

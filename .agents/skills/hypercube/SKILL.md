@@ -69,7 +69,8 @@ review's conclusions.
 
 The reviewer judges every file the change touches as it stands after the change,
 not only the diff, and reports code that has grown hard to follow. Such a
-finding is never speculative: restructure that code before the change is done.
+finding is never speculative or deferred: restructure that code before the
+change is done.
 
 Tell the reviewer to report findings first and wait for the lead's decisions
 before fixing or staging them, overriding `/kreview`'s default immediate fixes.
