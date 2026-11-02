@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -27,18 +28,18 @@ type shownSession struct {
 }
 
 type shownAgent struct {
-	ID        string      `json:"id"`
-	Name      string      `json:"name"`
-	Role      string      `json:"role"`
-	Harness   string      `json:"harness"`
-	Model     string      `json:"model"`
-	Effort    string      `json:"effort"`
-	Dir       string      `json:"dir"`
-	Activity  string      `json:"activity"`
-	Attention bool        `json:"attention"`
-	Status    string      `json:"status"`
-	StatusAt  int64       `json:"statusAt"`
-	Usage     store.Usage `json:"usage"`
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Role      string        `json:"role"`
+	Harness   string        `json:"harness"`
+	Model     string        `json:"model"`
+	Effort    string        `json:"effort"`
+	Dir       string        `json:"dir"`
+	Activity  string        `json:"activity"`
+	Attention bool          `json:"attention"`
+	Status    string        `json:"status"`
+	StatusAt  int64         `json:"statusAt"`
+	Usage     harness.Usage `json:"usage"`
 }
 
 // snapshot reads everything the view shows in one transaction: workspaces by

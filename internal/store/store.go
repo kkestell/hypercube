@@ -16,8 +16,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/harness"
+
 	_ "modernc.org/sqlite"
 )
+
+// ErrNotFound is returned when a lookup matches nothing.
+var ErrNotFound = errors.New("not found")
 
 const (
 	Lead   = "lead"
@@ -67,17 +72,8 @@ type Agent struct {
 	// StatusAt in Unix milliseconds.
 	Status   string
 	StatusAt int64
-	Usage    Usage
+	Usage    harness.Usage
 	Created  int64
-}
-
-// Usage is what the agent's conversation has used: the tokens of its latest
-// request, its model's context window, and its cost in US dollars. A harness
-// that reports no cost leaves Cost zero.
-type Usage struct {
-	Context int     `json:"context,omitempty"`
-	Window  int     `json:"window,omitempty"`
-	Cost    float64 `json:"cost,omitempty"`
 }
 
 type Message struct {
@@ -103,8 +99,8 @@ func Dir() string {
 	return filepath.Join(base, "hypercube")
 }
 
-// Path is the database file.
-func Path() string {
+// dbPath is the database file.
+func dbPath() string {
 	return filepath.Join(Dir(), "hypercube.db")
 }
 
@@ -126,10 +122,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   workspace TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   title TEXT NOT NULL DEFAULT '', running INTEGER NOT NULL,
   awaiting_user INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
-  created INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS session_activity (
-  session TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
-  last_active INTEGER NOT NULL);
+  created INTEGER NOT NULL, last_active INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS agents (
   id TEXT PRIMARY KEY,
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -162,17 +155,14 @@ func Open() (*DB, error) {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return nil, err
 	}
-	// Earlier builds left session lock files and a tool log here.
-	_ = os.RemoveAll(filepath.Join(Dir(), "locks"))
-	_ = os.Remove(filepath.Join(Dir(), "tools.log"))
 	params := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)"}, "_txlock": {"immediate"}}
-	db, err := sql.Open("sqlite", Path()+"?"+params.Encode())
+	db, err := sql.Open("sqlite", dbPath()+"?"+params.Encode())
 	if err != nil {
 		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("%s: %w", Path(), err)
+		return nil, fmt.Errorf("%s: %w", dbPath(), err)
 	}
 	return &DB{db}, nil
 }
@@ -226,7 +216,7 @@ func scanWorkspace(row interface{ Scan(...any) error }) (Workspace, error) {
 func (t *Tx) Workspace(id string) (Workspace, error) {
 	w, err := scanWorkspace(t.tx.QueryRow(`SELECT `+workspaceColumns+` FROM workspaces WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("no workspace %q", id)
+		err = fmt.Errorf("workspace %q: %w", id, ErrNotFound)
 	}
 	return w, err
 }
@@ -244,8 +234,9 @@ func (t *Tx) DeleteWorkspace(id string) error {
 }
 
 func (t *Tx) AddSession(s Session) error {
-	return t.exec(`INSERT INTO sessions (id, workspace, title, running, awaiting_user, unseen, created) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Workspace, s.Title, s.Running, s.AwaitingUser, s.Unseen, cmp.Or(s.Created, now()))
+	created := cmp.Or(s.Created, now())
+	return t.exec(`INSERT INTO sessions (id, workspace, title, running, awaiting_user, unseen, created, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Workspace, s.Title, s.Running, s.AwaitingUser, s.Unseen, created, cmp.Or(s.LastActive, created))
 }
 
 func (t *Tx) SaveSession(s Session) error {
@@ -255,12 +246,10 @@ func (t *Tx) SaveSession(s Session) error {
 
 // TouchSession records activity separately from session edits such as Seen.
 func (t *Tx) TouchSession(id string, at int64) error {
-	return t.exec(`INSERT INTO session_activity (session, last_active) VALUES (?, ?)
-  ON CONFLICT(session) DO UPDATE SET last_active = excluded.last_active`, id, at)
+	return t.exec(`UPDATE sessions SET last_active = ? WHERE id = ?`, at, id)
 }
 
-const sessionColumns = `id, workspace, title, running, awaiting_user, unseen, created,
-  COALESCE((SELECT last_active FROM session_activity WHERE session = sessions.id), created)`
+const sessionColumns = `id, workspace, title, running, awaiting_user, unseen, created, last_active`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
@@ -271,7 +260,7 @@ func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 func (t *Tx) Session(id string) (Session, error) {
 	s, err := scanSession(t.tx.QueryRow(`SELECT `+sessionColumns+` FROM sessions WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("no session %q: %w", id, err)
+		err = fmt.Errorf("session %q: %w", id, ErrNotFound)
 	}
 	return s, err
 }
@@ -318,7 +307,7 @@ func (t *Tx) SaveAgent(a Agent) error {
 func (t *Tx) Agent(id string) (Agent, error) {
 	a, err := scanAgent(t.tx.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("no agent %q", id)
+		err = fmt.Errorf("agent %q: %w", id, ErrNotFound)
 	}
 	return a, err
 }
@@ -347,7 +336,7 @@ func (t *Tx) Find(session, address string) (Agent, error) {
 	}
 	a, err := scanAgent(t.tx.QueryRow(`SELECT `+agentColumns+` FROM agents WHERE session = ? AND name = ?`, session, name))
 	if errors.Is(err, sql.ErrNoRows) {
-		err = fmt.Errorf("no agent %q", address)
+		err = fmt.Errorf("agent %q: %w", address, ErrNotFound)
 	}
 	return a, err
 }

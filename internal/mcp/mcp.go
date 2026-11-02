@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"regexp"
-	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
@@ -66,8 +65,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
 	w, _ := workspaceOf(db, self)
-	cfg, _ := harness.LoadConfig()
-	profiles := cfg.Workers()
+	cfg, cfgErr := harness.LoadConfig()
 
 	createSchema, err := jsonschema.For[createAgentArgs](nil)
 	if err != nil {
@@ -80,10 +78,8 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		removeDescription = "Lead only. End a worker and remove it from the team. Its directory is left as it is."
 		createSchema.Required = append(createSchema.Required, "dir")
 	}
-	if len(profiles) > 0 {
-		for _, p := range profiles {
-			createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
-		}
+	for _, p := range cfg.Workers() {
+		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
 	}
 
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
@@ -100,7 +96,12 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		Description: "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.",
 	}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "create_agent", Description: createDescription, InputSchema: createSchema},
-		result(func(a createAgentArgs) (string, error) { return createAgent(rt, self, a) }))
+		result(func(a createAgentArgs) (string, error) {
+			if cfgErr != nil {
+				return "", cfgErr
+			}
+			return createAgent(rt, self, cfg, a)
+		}))
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_agent", Description: removeDescription},
 		result(func(a removeAgentArgs) (string, error) { return removeAgent(rt, self, a.Name) }))
 	return server
@@ -121,7 +122,7 @@ func Bridge(stdin io.Reader, stdout io.Writer) error {
 	ctx := context.Background()
 	agent, err := (&mcp.StreamableClientTransport{
 		Endpoint:             base + "/mcp",
-		HTTPClient:           &http.Client{Transport: identity{id, base}},
+		HTTPClient:           &http.Client{Transport: identity(id)},
 		DisableStandaloneSSE: true,
 	}).Connect(ctx)
 	if err != nil {
@@ -170,14 +171,12 @@ func Bridge(stdin io.Reader, stdout io.Writer) error {
 	}
 }
 
-// identity adds the agent and origin that the app's /mcp route requires. The
-// app accepts only requests whose Origin is its own address.
-type identity struct{ agent, origin string }
+// identity adds the agent ID that the app's /mcp route requires.
+type identity string
 
 func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
-	r.Header.Set(AgentHeader, i.agent)
-	r.Header.Set("Origin", i.origin)
+	r.Header.Set(AgentHeader, string(i))
 	return http.DefaultTransport.RoundTrip(r)
 }
 
@@ -284,20 +283,15 @@ func setStatus(rt *session.Runtime, self, text string) (string, error) {
 
 var validName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-func createAgent(rt *session.Runtime, self string, args createAgentArgs) (string, error) {
-	name := args.Name
-	if !validName.MatchString(name) {
+func createAgent(rt *session.Runtime, self string, cfg harness.Config, args createAgentArgs) (string, error) {
+	if !validName.MatchString(args.Name) {
 		return "", errors.New("name must be lowercase letters, digits, and hyphens")
-	}
-	cfg, err := harness.LoadConfig()
-	if err != nil {
-		return "", err
 	}
 	profile, err := cfg.Worker(args.Profile)
 	if err != nil {
 		return "", err
 	}
-	a, err := rt.AddWorker(self, name, profile, args.Dir, args.Message)
+	a, err := rt.AddWorker(self, args.Name, profile, args.Dir, args.Message)
 	if err != nil {
 		return "", err
 	}
@@ -308,9 +302,6 @@ func createAgent(rt *session.Runtime, self string, args createAgentArgs) (string
 }
 
 func removeAgent(rt *session.Runtime, self, name string) (string, error) {
-	if strings.TrimSpace(name) == "" {
-		return "", errors.New("name is required")
-	}
 	a, err := rt.RemoveWorker(self, name)
 	if err != nil {
 		return "", err

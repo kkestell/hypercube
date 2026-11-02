@@ -459,7 +459,7 @@ func applyEvent(a *store.Agent, s *store.Session, ev harness.Event) {
 		a.Activity = store.Idle
 	}
 	if ev.Usage != nil {
-		a.Usage = store.Usage(*ev.Usage)
+		a.Usage = *ev.Usage
 	}
 }
 
