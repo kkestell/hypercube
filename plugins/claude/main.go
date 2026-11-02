@@ -6,13 +6,14 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -69,16 +70,16 @@ type claude struct {
 	open         map[string]harness.Item // streamed items that no complete block has finished
 	tools        map[string]harness.Item // tool items, by tool use ID
 	requests     map[string]*request     // open permission requests, by item ID
-	errors       int
+	errors       plugin.Errors
 	usage        harness.Usage
 }
 
 // request is a can_use_tool control request waiting for the user: a tool
 // permission, or the questions of AskUserQuestion.
 type request struct {
-	id        string // the control request's ID
-	input     map[string]any
-	items     []harness.Item // one per question, or the one permission prompt
+	id        string          // the control request's ID
+	input     json.RawMessage // the tool input, which an allowing reply carries back
+	items     []harness.Item  // one per question, or the one permission prompt
 	questions []string
 	answers   map[string]string
 }
@@ -262,62 +263,84 @@ func (c *claude) answer(item, choice, text string) error {
 	if r == nil {
 		return fmt.Errorf("request %s is not open", item)
 	}
+	if r.questions != nil {
+		return c.answerQuestion(r, item, choice, text)
+	}
+	return c.answerPermission(r, choice, text)
+}
+
+func (c *claude) answerPermission(r *request, choice, text string) error {
 	var response map[string]any
 	var result string
-	if r.questions == nil {
-		switch {
-		case choice == allow:
-			response = map[string]any{"behavior": "allow", "updatedInput": r.input}
-			result = allow
-		case choice == deny || choice == "" && text != "":
-			message := text
-			if message == "" {
-				message = "The user denied this tool use."
-			}
-			response = map[string]any{"behavior": "deny", "message": message}
-			result = deny
-			if text != "" {
-				result += ": " + text
-			}
-		case choice == "":
-			return errors.New("the answer is empty")
-		default:
-			return fmt.Errorf("unknown choice %q", choice)
+	switch {
+	case choice == allow:
+		response = map[string]any{"behavior": "allow", "updatedInput": r.input}
+		result = allow
+	case choice == deny || choice == "" && text != "":
+		message := text
+		if message == "" {
+			message = "The user denied this tool use."
 		}
-	} else {
-		result = choice
-		if result == "" {
-			result = text
+		response = map[string]any{"behavior": "deny", "message": message}
+		result = deny
+		if text != "" {
+			result += ": " + text
 		}
-		if result == "" {
-			return errors.New("the answer is empty")
-		}
+	case choice == "":
+		return errors.New("the answer is empty")
+	default:
+		return fmt.Errorf("unknown choice %q", choice)
 	}
-	// The question's index is the item's position within the request.
-	index := 0
-	for i, it := range r.items {
-		if it.ID == item {
-			index = i
-		}
+	if err := c.respond(r.id, response); err != nil {
+		return err
 	}
-	if r.questions != nil {
-		r.answers[r.questions[index]] = result
-		if len(r.answers) == len(r.questions) {
-			input := maps.Clone(r.input)
-			input["answers"] = r.answers
-			response = map[string]any{"behavior": "allow", "updatedInput": input}
-		}
+	c.finish(r, 0, result)
+	return nil
+}
+
+// answerQuestion records the answer to one question. Claude is answered once
+// every question of the request has an answer.
+func (c *claude) answerQuestion(r *request, item, choice, text string) error {
+	result := cmp.Or(choice, text)
+	if result == "" {
+		return errors.New("the answer is empty")
 	}
-	if response != nil {
-		if err := c.respond(r.id, response); err != nil {
+	index := slices.IndexFunc(r.items, func(it harness.Item) bool { return it.ID == item })
+	r.answers[r.questions[index]] = result
+	if len(r.answers) == len(r.questions) {
+		input, err := withAnswers(r.input, r.answers)
+		if err != nil {
+			return err
+		}
+		if err := c.respond(r.id, map[string]any{"behavior": "allow", "updatedInput": input}); err != nil {
 			return err
 		}
 	}
+	c.finish(r, index, result)
+	return nil
+}
+
+// withAnswers is the question input with its answers added. Every other field
+// stays as claude sent it.
+func withAnswers(input json.RawMessage, answers map[string]string) (json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(input, &fields); err != nil {
+		return nil, err
+	}
+	raw, err := json.Marshal(answers)
+	if err != nil {
+		return nil, err
+	}
+	fields["answers"] = raw
+	return json.Marshal(fields)
+}
+
+// finish shows an item of a request as answered and stops tracking it.
+func (c *claude) finish(r *request, index int, result string) {
 	done := r.items[index]
 	done.Done, done.Answer = true, result
-	delete(c.requests, item)
+	delete(c.requests, done.ID)
 	c.emit(harness.Event{Items: []harness.Item{done}})
-	return nil
 }
 
 func (c *claude) respond(id string, response any) error {
@@ -576,12 +599,12 @@ func resultText(raw json.RawMessage) (string, []harness.Image) {
 // control turns a permission request into attention items.
 func (c *claude) control(ev *harness.Event, m message) {
 	var req struct {
-		Subtype     string         `json:"subtype"`
-		Tool        string         `json:"tool_name"`
-		DisplayName string         `json:"display_name"`
-		Title       string         `json:"title"`
-		Description string         `json:"description"`
-		Input       map[string]any `json:"input"`
+		Subtype     string          `json:"subtype"`
+		Tool        string          `json:"tool_name"`
+		DisplayName string          `json:"display_name"`
+		Title       string          `json:"title"`
+		Description string          `json:"description"`
+		Input       json.RawMessage `json:"input"`
 	}
 	if err := json.Unmarshal(m.Request, &req); err != nil || req.Subtype != "can_use_tool" {
 		_ = c.send(map[string]any{"type": "control_response", "response": map[string]any{"subtype": "error", "request_id": m.RequestID, "error": "unsupported request"}})
@@ -599,20 +622,18 @@ func (c *claude) control(ev *harness.Event, m message) {
 				} `json:"options"`
 			} `json:"questions"`
 		}
-		raw, _ := json.Marshal(req.Input)
-		_ = json.Unmarshal(raw, &in)
+		if err := json.Unmarshal(req.Input, &in); err != nil {
+			_ = c.respond(m.RequestID, map[string]any{"behavior": "deny", "message": "The question could not be read: " + err.Error()})
+			return
+		}
 		for i, q := range in.Questions {
 			item := harness.Item{ID: fmt.Sprintf("%s/%d", m.RequestID, i), Kind: harness.KindAttention, Text: q.Question, Free: true}
 			var notes []string
 			for _, o := range q.Options {
 				item.Choices = append(item.Choices, o.Label)
-				if o.Description != "" {
-					notes = append(notes, fmt.Sprintf("- %s: %s", o.Label, o.Description))
-				}
+				notes = append(notes, o.Description)
 			}
-			if len(notes) > 0 {
-				item.Text += "\n\n" + strings.Join(notes, "\n")
-			}
+			item.Text = plugin.OptionNotes(q.Question, item.Choices, notes)
 			r.items = append(r.items, item)
 			r.questions = append(r.questions, q.Question)
 		}
@@ -666,8 +687,7 @@ func (c *claude) result(ev *harness.Event, m message) {
 	ev.Items = append(ev.Items, c.closeRequests(func(*request) bool { return true })...)
 	// An interrupted turn is the user's own doing.
 	if m.IsError && !strings.HasPrefix(m.TerminalReason, "aborted") {
-		c.errors++
-		ev.Items = append(ev.Items, harness.Item{ID: fmt.Sprintf("error-%d", c.errors), Kind: harness.KindError, Text: text, Done: true})
+		ev.Items = append(ev.Items, c.errors.Item(text))
 	}
 	window := m.ModelUsage[c.model].ContextWindow
 	if len(m.ModelUsage) == 1 {

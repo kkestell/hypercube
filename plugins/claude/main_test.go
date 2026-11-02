@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -303,6 +304,23 @@ func TestQuestionTypedAnswer(t *testing.T) {
 	answers := body["updatedInput"].(map[string]any)["answers"].(map[string]any)
 	if answers["Which color do you like, Red or Blue?"] != "Green" {
 		t.Errorf("%v", answers)
+	}
+}
+
+func TestQuestionInputIsKept(t *testing.T) {
+	h := newClaude()
+	h.feed(`{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{` +
+		`"questions":[{"question":"One?","options":[{"label":"a","description":""}]}],"source":{"id":7,"tags":["x"]}}}}`)
+	if err := h.answer("r1/0", "a", ""); err != nil {
+		t.Fatal(err)
+	}
+	_, body := h.reply(t)
+	in := body["updatedInput"].(map[string]any)
+	if !reflect.DeepEqual(in["source"], map[string]any{"id": 7.0, "tags": []any{"x"}}) {
+		t.Errorf("the input's other fields were lost: %v", in)
+	}
+	if answers := in["answers"].(map[string]any); answers["One?"] != "a" {
+		t.Errorf("%v", in)
 	}
 }
 
