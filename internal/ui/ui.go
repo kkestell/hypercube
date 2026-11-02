@@ -8,7 +8,6 @@ package ui
 import (
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,15 +28,6 @@ import (
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
-
-//go:embed static
-var static embed.FS
-
-// Icon returns the Hypercube SVG shared by the browser and menu bar.
-func Icon() []byte {
-	icon, _ := static.ReadFile("static/favicon.svg")
-	return icon
-}
 
 type server struct {
 	db *store.DB
@@ -78,9 +68,8 @@ func Handler(ctx context.Context, db *store.DB, rt *session.Runtime) http.Handle
 			}
 		}
 	}()
-	files, _ := fs.Sub(static, "static")
 	mux := http.NewServeMux()
-	mux.Handle("GET /", http.FileServerFS(files))
+	mux.Handle("GET /", http.FileServerFS(assets()))
 	if revision := os.Getenv("HYPERCUBE_DEV_RELOAD"); revision != "" {
 		devReload(mux, revision)
 	}
@@ -104,7 +93,7 @@ func devReload(mux *http.ServeMux, revision string) {
 		fmt.Fprint(w, revision)
 	})
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		page, _ := static.ReadFile("static/index.html")
+		page, _ := fs.ReadFile(assets(), "index.html")
 		encoded, _ := json.Marshal(revision)
 		reload := fmt.Sprintf(`<script>
 setInterval(async () => {
