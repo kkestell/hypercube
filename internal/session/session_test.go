@@ -47,6 +47,59 @@ func count(t *testing.T, db *store.DB) (n int) {
 	return n
 }
 
+func TestWorkspaceAndSessionEdits(t *testing.T) {
+	f := newFixture(t)
+	if w, err := f.rt.AddWorkspace(f.root); err != nil || w.ID != f.workspace.ID {
+		t.Fatalf("existing workspace = %+v, %v", w, err)
+	}
+	if _, err := f.rt.AddWorkspace(filepath.Join(f.root, "missing")); err == nil {
+		t.Fatal("added a missing directory")
+	}
+	s, _ := f.session()
+	if err := f.rt.Rename(s.ID, "  Changed  "); err != nil || f.session1(s.ID).Title != "Changed" {
+		t.Fatalf("rename: %v", err)
+	}
+	if err := f.rt.Rename(s.ID, " \n"); err == nil {
+		t.Fatal("blank title accepted")
+	}
+	if err := f.rt.Seen(s.ID); err != nil || f.session1(s.ID).Unseen {
+		t.Fatalf("seen: %v", err)
+	}
+	if err := f.rt.Rename("missing", "Title"); err == nil {
+		t.Fatal("renamed a missing session")
+	}
+	if err := f.rt.Seen("missing"); err == nil {
+		t.Fatal("marked a missing session seen")
+	}
+}
+
+func TestSetStatus(t *testing.T) {
+	db, rt := open(t)
+	seed(t, db, t.TempDir(), store.Agent{ID: "worker", Name: "worker"})
+	changes, cancel := rt.Subscribe()
+	defer cancel()
+	if err := rt.SetStatus("worker", "  Reading\nthe code. "); err != nil {
+		t.Fatal(err)
+	}
+	if change := nextChange(t, changes, func(Change) bool { return true }); change.Agent != "" {
+		t.Fatalf("status change = %+v", change)
+	}
+	if err := db.Read(func(tx *store.Tx) error {
+		a, err := tx.Agent("worker")
+		if err == nil && (a.Status != "Reading the code." || a.StatusAt == 0) {
+			t.Errorf("status = %+v", a)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ agent, text string }{{"a", "Planning"}, {"worker", " \n"}, {"missing", "Working"}} {
+		if err := rt.SetStatus(c.agent, c.text); err == nil {
+			t.Fatalf("accepted status %+v", c)
+		}
+	}
+}
+
 // Delete refuses, changing nothing, while a worker's branch is unmerged or its
 // worktree is dirty, and otherwise removes worktrees, branches, and the session.
 func TestDelete(t *testing.T) {

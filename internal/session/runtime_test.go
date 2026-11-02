@@ -66,7 +66,7 @@ func newFixture(t *testing.T) *fixture {
 	}
 	t.Cleanup(func() { f.db.Close() })
 	f.rt = f.newRuntime()
-	if f.workspace, err = AddWorkspace(f.db, f.root); err != nil {
+	if f.workspace, err = f.rt.AddWorkspace(f.root); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -85,11 +85,10 @@ func (f *fixture) newRuntime() *Runtime {
 // lead once the lead has answered.
 func (f *fixture) session() (store.Session, store.Agent) {
 	f.t.Helper()
-	s, err := f.rt.Create(f.workspace.ID, "lead", "start")
+	s, lead, err := f.rt.Create(f.workspace.ID, "lead", "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	lead := f.agents(s.ID)[0]
 	f.created[lead.ID] = true
 	f.until("the lead idle after the first prompt", func() bool {
 		items, err := f.rt.Transcript(lead.ID)
@@ -187,7 +186,11 @@ func (f *fixture) transcript(agent string) []harness.Item {
 	if f.created[agent] {
 		items = items[min(2, len(items)):]
 	}
-	return items
+	plain := make([]harness.Item, len(items))
+	for i, item := range items {
+		plain[i] = item.Item
+	}
+	return plain
 }
 
 // texts summarizes a transcript as kind:text, with a tool's output for tools.
@@ -257,8 +260,15 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 func TestRefusedMessageStaysQueued(t *testing.T) {
 	f := newFixture(t)
 	_, lead := f.session()
-	f.queue("user", lead.ID, "!reject this")
-	f.queue("user", lead.ID, "after")
+	if err := f.rt.save(func(w *write) error {
+		if err := w.Queue(store.Message{From: "user", To: lead.ID, Text: "!reject this"}); err != nil {
+			return err
+		}
+		return w.Queue(store.Message{From: "user", To: lead.ID, Text: "after"})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.Deliver(lead.ID)
 	f.until("a refusal", func() bool {
 		for _, it := range f.transcript(lead.ID) {
 			if it.Kind == harness.KindError && strings.Contains(it.Text, "rejected") {
@@ -395,6 +405,9 @@ func TestAttentionRequests(t *testing.T) {
 	_, lead := f.session()
 	f.input(lead.ID, "!ask")
 	f.until("attention", func() bool { return f.agent(lead.ID).Attention })
+	if requests := f.rt.Requests(); len(requests) != 1 || requests[0].Agent != lead.ID || requests[0].Item.Kind != harness.KindAttention {
+		t.Fatalf("requests = %+v", requests)
+	}
 	var request string
 	for _, it := range f.transcript(lead.ID) {
 		if it.Kind == harness.KindAttention {
@@ -411,6 +424,9 @@ func TestAttentionRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.until("the answered request", func() bool { return !f.agent(lead.ID).Attention })
+	if requests := f.rt.Requests(); len(requests) != 0 {
+		t.Fatalf("answered requests = %+v", requests)
+	}
 	if got := f.log(lead.ID, "answer"); len(got) != 1 || got[0]["request"] != "q" || got[0]["choice"] != "yes" {
 		t.Fatalf("the plugin was answered with %v", got)
 	}
@@ -425,6 +441,23 @@ func TestAttentionRequests(t *testing.T) {
 	}
 	if err := f.rt.Answer(lead.ID, request, "no", ""); err == nil || !strings.Contains(err.Error(), "finished") {
 		t.Fatalf("a second answer: %v", err)
+	}
+}
+
+func TestRequestsNewestFirst(t *testing.T) {
+	r := &Runtime{live: map[string]*live{
+		"a": {id: "a", pending: map[string]*pendingItem{
+			"older": {item: harness.Item{ID: "older", At: 1, Kind: harness.KindAttention}},
+			"z":     {item: harness.Item{ID: "z", At: 2, Kind: harness.KindAttention}},
+			"text":  {item: harness.Item{ID: "text", At: 3, Kind: harness.KindText}},
+		}},
+		"b": {id: "b", pending: map[string]*pendingItem{
+			"a": {item: harness.Item{ID: "a", At: 2, Kind: harness.KindAttention}},
+		}},
+	}}
+	requests := r.Requests()
+	if len(requests) != 3 || requests[0].Item.ID != "z" || requests[1].Item.ID != "a" || requests[2].Item.ID != "older" || requests[1].Agent != "b" {
+		t.Fatalf("requests = %+v", requests)
 	}
 }
 
@@ -590,11 +623,10 @@ func TestRelaunchAfterTheProcessEnds(t *testing.T) {
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	f := newFixture(t)
-	s, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
+	s, lead, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
 	if err != nil {
 		t.Fatal(err)
 	}
-	lead := f.agents(s.ID)[0]
 	if got := f.session1(s.ID).Title; got != "Fix the parser" {
 		t.Errorf("title = %q", got)
 	}
@@ -606,7 +638,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
 	})
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
-	s, err = f.rt.Create(f.workspace.ID, "lead", "", png)
+	s, lead, err = f.rt.Create(f.workspace.ID, "lead", "", png)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -625,7 +657,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 		{" \n", nil},
 		{"", []harness.Image{{MIMEType: "image/png", Data: "bm90IGEgcG5n"}}},
 	} {
-		if _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
+		if _, _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
 			t.Errorf("Create accepted %q and %d images", c.text, len(c.images))
 		}
 	}
@@ -646,8 +678,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
 	// The plugin can exit before the first prompt reaches it, which Create
 	// reports; the session and its lead remain.
-	s, _ := f.rt.Create(f.workspace.ID, "lead", "start")
-	lead := f.agents(s.ID)[0]
+	s, lead, _ := f.rt.Create(f.workspace.ID, "lead", "start")
 	f.until("the agent to stay ended", func() bool {
 		return len(f.log(lead.ID, "start")) == maxQuickExits && f.agent(lead.ID).Activity == store.Exited && f.rt.live[lead.ID] == nil
 	})
@@ -745,21 +776,6 @@ func TestDeletingASessionEndsItsAgents(t *testing.T) {
 	f.until("the child to end", func() bool { return syscall.Kill(child, 0) == syscall.ESRCH })
 	if _, err := os.Stat(worker.Dir); !os.IsNotExist(err) {
 		t.Fatal("the worktree remains")
-	}
-}
-
-func TestChangesFiresForStreamingItems(t *testing.T) {
-	f := newFixture(t)
-	_, lead := f.session()
-	changes := f.rt.Changes()
-	f.input(lead.ID, "!work")
-	select {
-	case <-changes:
-	case <-time.After(5 * time.Second):
-		t.Fatal("no change for a streaming item")
-	}
-	if f.rt.Changes() == changes {
-		t.Fatal("the channel was not replaced")
 	}
 }
 
@@ -874,5 +890,32 @@ func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("reloaded transcript lost the completed item")
+	}
+}
+
+func TestApplyEvent(t *testing.T) {
+	worker := store.Agent{Role: store.Worker, Activity: store.Busy}
+	lead := store.Agent{Role: store.Lead, Activity: store.Idle}
+	var s store.Session
+	applyEvent(&lead, &s, harness.Event{State: harness.Working, Conversation: "c1"})
+	if lead.Activity != store.Busy || lead.Conversation != "c1" || s.Unseen {
+		t.Fatalf("working: %+v %+v", lead, s)
+	}
+	applyEvent(&lead, &s, harness.Event{Items: []harness.Item{{ID: "x", Kind: harness.KindText}}})
+	if lead.Activity != store.Busy || lead.Conversation != "c1" {
+		t.Fatalf("an event without state or conversation changed the agent: %+v", lead)
+	}
+	applyEvent(&lead, &s, harness.Event{State: harness.Idle, Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
+	if lead.Activity != store.Idle || !s.Unseen || lead.Usage != (store.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
+		t.Fatalf("lead idle: %+v %+v", lead, s)
+	}
+	s.Unseen = false
+	applyEvent(&lead, &s, harness.Event{State: harness.Idle})
+	if s.Unseen {
+		t.Fatal("a lead that was already idle marked its session unseen")
+	}
+	applyEvent(&worker, &s, harness.Event{State: harness.Idle})
+	if worker.Activity != store.Idle || s.Unseen {
+		t.Fatalf("worker idle: %+v %+v", worker, s)
 	}
 }

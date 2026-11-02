@@ -299,7 +299,7 @@ func TestSessionBoundaries(t *testing.T) {
 		return tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle})
 	})
 	for _, send := range [][2]string{{"a", "other/w1"}, {"b", "other/w1"}, {"b", "other/lead"}, {"a", "far/lead"}} {
-		if _, err := sendMessage(db, rt, send[0], send[1], "wrong session"); err == nil {
+		if _, err := sendMessage(rt, send[0], send[1], "wrong session"); err == nil {
 			t.Fatalf("%s reached %s across sessions", send[0], send[1])
 		}
 	}
@@ -311,7 +311,7 @@ func TestSessionBoundaries(t *testing.T) {
 	}
 	// Session "other" is stopped; session-1 runs.
 	for _, send := range [][3]string{{"other-lead", "w1", "stopped"}, {"a", "other/lead", "stopped"}, {"other-lead", "session-1/lead", ""}} {
-		reply, err := sendMessage(db, rt, send[0], send[1], "allowed")
+		reply, err := sendMessage(rt, send[0], send[1], "allowed")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,17 +336,17 @@ func TestSessionBoundaries(t *testing.T) {
 }
 
 func TestSetStatus(t *testing.T) {
-	db, _ := team(t, false, t.TempDir(), t.TempDir())
-	if _, err := setStatus(db, "b", "  Reading\nthe card view. "); err != nil {
+	db, rt := team(t, false, t.TempDir(), t.TempDir())
+	if _, err := setStatus(rt, "b", "  Reading\nthe card view. "); err != nil {
 		t.Fatal(err)
 	}
 	if a := agents(t, db, "session-1")[1]; a.Status != "Reading the card view." || a.StatusAt == 0 {
 		t.Errorf("worker = %+v", a)
 	}
-	if _, err := setStatus(db, "a", "Planning."); err == nil {
+	if _, err := setStatus(rt, "a", "Planning."); err == nil {
 		t.Error("the lead set a status")
 	}
-	if _, err := setStatus(db, "b", " "); err == nil {
+	if _, err := setStatus(rt, "b", " "); err == nil {
 		t.Error("an empty status was accepted")
 	}
 }

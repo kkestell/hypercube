@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -201,34 +200,6 @@ func (d *DB) run(readOnly bool, fn func(*Tx) error) error {
 		return err
 	}
 	return tx.Commit()
-}
-
-// Watch calls changed whenever another connection commits a change, checking
-// every 250 milliseconds until ctx ends.
-func (d *DB) Watch(ctx context.Context, changed func()) error {
-	conn, err := d.sql.Conn(ctx)
-	if err != nil {
-		return err
-	}
-	defer conn.Close()
-	var last int64 = -1
-	tick := time.NewTicker(250 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		var version int64
-		if err := conn.QueryRowContext(ctx, "PRAGMA data_version").Scan(&version); err != nil {
-			return err
-		}
-		if version != last {
-			last = version
-			changed()
-		}
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-tick.C:
-		}
-	}
 }
 
 // Tx reads and writes within one transaction.
@@ -438,6 +409,19 @@ func (t *Tx) Transcript(agent string) ([]Entry, error) {
 	})
 }
 
+// LastText returns the latest top-level text and its position, or "" and zero.
+func (t *Tx) LastText(agent string) (string, int64, error) {
+	var text string
+	var seq int64
+	err := t.tx.QueryRow(`SELECT COALESCE(json_extract(data, '$.text'), ''), seq FROM transcript
+  WHERE agent = ? AND json_extract(data, '$.kind') = 'text' AND json_extract(data, '$.parent') IS NULL
+  ORDER BY seq DESC LIMIT 1`, agent).Scan(&text, &seq)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", 0, nil
+	}
+	return text, seq, err
+}
+
 // LastSeq returns the position of the agent's last saved item, or zero.
 func (t *Tx) LastSeq(agent string) (int64, error) {
 	var seq int64
@@ -456,79 +440,4 @@ func collect[T any](rows *sql.Rows, scan func(interface{ Scan(...any) error }) (
 		list = append(list, v)
 	}
 	return list, rows.Err()
-}
-
-// ShownWorkspace, ShownSession, and ShownAgent are what the browser view shows.
-type ShownWorkspace struct {
-	ID       string         `json:"id"`
-	Path     string         `json:"path"`
-	Name     string         `json:"name"`
-	Sessions []ShownSession `json:"sessions"`
-}
-
-type ShownSession struct {
-	ID      string       `json:"id"`
-	Title   string       `json:"title"`
-	Running bool         `json:"running"`
-	Unseen  bool         `json:"unseen"`
-	Agents  []ShownAgent `json:"agents"`
-}
-
-type ShownAgent struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	Harness   string `json:"harness"`
-	Model     string `json:"model"`
-	Effort    string `json:"effort"`
-	Dir       string `json:"dir"`
-	Activity  string `json:"activity"`
-	Attention bool   `json:"attention"`
-	Status    string `json:"status"`
-	StatusAt  int64  `json:"statusAt"`
-	Usage     Usage  `json:"usage"`
-}
-
-// Snapshot reads everything the view shows in one transaction: workspaces by
-// folder name, with running sessions first, each group by most recent activity.
-func Snapshot(db *DB) ([]ShownWorkspace, error) {
-	list := []ShownWorkspace{}
-	err := db.Read(func(tx *Tx) error {
-		workspaces, err := tx.Workspaces()
-		if err != nil {
-			return err
-		}
-		for _, w := range workspaces {
-			shown := ShownWorkspace{ID: w.ID, Path: w.Path, Name: filepath.Base(w.Path), Sessions: []ShownSession{}}
-			sessions, err := tx.Sessions(w.ID)
-			if err != nil {
-				return err
-			}
-			slices.SortStableFunc(sessions, func(a, b Session) int {
-				if a.Running != b.Running {
-					if a.Running {
-						return -1
-					}
-					return 1
-				}
-				return cmp.Or(cmp.Compare(b.LastActive, a.LastActive), cmp.Compare(b.Created, a.Created))
-			})
-			for _, s := range sessions {
-				agents, err := tx.Agents(s.ID)
-				if err != nil {
-					return err
-				}
-				session := ShownSession{ID: s.ID, Title: s.Title, Running: s.Running, Unseen: s.Unseen, Agents: []ShownAgent{}}
-				for _, a := range agents {
-					session.Agents = append(session.Agents, ShownAgent{a.ID, a.Name, a.Role, a.Harness, a.Model, a.Effort,
-						a.Dir, a.Activity, a.Attention, a.Status, a.StatusAt, a.Usage})
-				}
-				shown.Sessions = append(shown.Sessions, session)
-			}
-			list = append(list, shown)
-		}
-		return nil
-	})
-	slices.SortStableFunc(list, func(a, b ShownWorkspace) int { return cmp.Compare(a.Name, b.Name) })
-	return list, err
 }

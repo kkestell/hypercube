@@ -1,6 +1,6 @@
 // Package report writes the text agents and the user read: the instructions
 // that start an agent, attribution of queued messages, session titles, and
-// failure reports. It applies protocol events to the stored agent.
+// failure reports.
 package report
 
 import (
@@ -10,43 +10,6 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
-
-// Apply records an event's conversation, work state, and usage. A lead that
-// finishes a turn has a reply for the user to see.
-func Apply(a *store.Agent, s *store.Session, ev harness.Event) {
-	if ev.Conversation != "" {
-		a.Conversation = ev.Conversation
-	}
-	switch ev.State {
-	case harness.Working:
-		a.Activity = store.Busy
-	case harness.Idle:
-		if a.Activity == store.Busy && a.Role == store.Lead {
-			s.Unseen = true
-		}
-		a.Activity = store.Idle
-	}
-	if ev.Usage != nil {
-		a.Usage = store.Usage(*ev.Usage)
-	}
-}
-
-// Prompt records the user's prompt: it releases the session's queued messages.
-func Prompt(s *store.Session) {
-	s.AwaitingUser = false
-}
-
-// Failure tells the lead that a worker's turn failed.
-func Failure(tx *store.Tx, worker store.Agent, detail string) error {
-	if worker.Role != store.Worker {
-		return nil
-	}
-	lead, err := tx.Lead(worker.Session)
-	if err != nil {
-		return err
-	}
-	return tx.Queue(store.Message{From: worker.ID, To: lead.ID, Text: failure(detail)})
-}
 
 // maxTitle is the longest session title, in characters.
 const maxTitle = 200
@@ -197,7 +160,8 @@ Worker profiles. The role says which work each profile suits: plan, work, or rev
 	}
 }
 
-func failure(detail string) string {
+// FailureMessage describes a worker's failed turn for its lead.
+func FailureMessage(detail string) string {
 	detail = strings.TrimSpace(detail)
 	if detail == "" {
 		return "My turn failed."

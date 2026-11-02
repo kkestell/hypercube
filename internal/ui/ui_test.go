@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -50,7 +51,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(t.Context(), db, session.New(db, ""))
+	return Handler(db, session.New(db, ""))
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -115,72 +116,33 @@ func TestIcon(t *testing.T) {
 	}
 }
 
-func TestDevReload(t *testing.T) {
-	for _, revision := range []string{"", "build-1", "build-2"} {
-		t.Run("revision="+revision, func(t *testing.T) {
-			t.Setenv("HYPERCUBE_DEV_RELOAD", revision)
-			handler := handler(t, open(t))
-			page := httptest.NewRecorder()
-			handler.ServeHTTP(page, httptest.NewRequest("GET", "http://localhost:4281/", nil))
-			if page.Code != http.StatusOK {
-				t.Fatalf("page status = %d", page.Code)
-			}
-			res := httptest.NewRecorder()
-			handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4281/dev-reload", nil))
-			if revision == "" {
-				if strings.Contains(page.Body.String(), "/dev-reload") || res.Code != http.StatusNotFound {
-					t.Fatal("production serves development reload")
-				}
-				return
-			}
-			encoded, _ := json.Marshal(revision)
-			if !strings.Contains(page.Body.String(), "await response.text() !== "+string(encoded)) {
-				t.Fatal("page does not check its source revision")
-			}
-			if res.Code != http.StatusOK || res.Body.String() != revision {
-				t.Fatalf("revision response = %d %q", res.Code, res.Body.String())
-			}
-			if res.Header().Get("Cache-Control") != "no-store" || page.Header().Get("Cache-Control") != "no-store" {
-				t.Fatal("development responses must not be cached")
-			}
-		})
-	}
-}
-
 func TestStateStreamsSnapshots(t *testing.T) {
-	db := open(t)
-	change(t, db, func(tx *store.Tx) error { return tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"}) })
-	server := httptest.NewServer(handler(t, db))
-	defer server.Close()
-	conn, _, err := dial(t, server, "/state")
+	a := newApp(t)
+	p := a.page()
+	p.until("the first state", func() bool { return len(p.state.Workspaces) == 1 })
+	if p.state.Build != buildID() || p.state.Requests == nil {
+		t.Fatalf("first state = %+v", p.state)
+	}
+	w, err := a.rt.AddWorkspace(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.CloseNow()
-	next := func() []store.ShownWorkspace {
-		t.Helper()
-		_, data, err := conn.Read(t.Context())
-		if err != nil {
-			t.Fatal(err)
-		}
-		var msg struct {
-			Type       string
-			Workspaces []store.ShownWorkspace
-		}
-		if err := json.Unmarshal(data, &msg); err != nil || msg.Type != "state" {
-			t.Fatalf("message %s: %v", data, err)
-		}
-		return msg.Workspaces
+	p.until("the new workspace", func() bool { return len(p.state.Workspaces) == 2 })
+	s, lead, err := a.rt.Create(w.ID, "lead", "Fix it")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if list := next(); len(list) != 1 || list[0].Name != "repo" || len(list[0].Sessions) != 0 {
-		t.Fatalf("first snapshot = %+v", list)
-	}
-	change(t, db, func(tx *store.Tx) error {
-		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Title: "Fix it"})
+	p.until("the new session", func() bool {
+		for _, workspace := range p.state.Workspaces {
+			if workspace.ID != w.ID {
+				continue
+			}
+			return len(workspace.Sessions) == 1 && workspace.Sessions[0].ID == s.ID &&
+				workspace.Sessions[0].Title == "Fix it" && workspace.Sessions[0].Running &&
+				len(workspace.Sessions[0].Agents) == 1 && workspace.Sessions[0].Agents[0].ID == lead.ID
+		}
+		return false
 	})
-	if list := next(); len(list[0].Sessions) != 1 || list[0].Sessions[0].Title != "Fix it" || list[0].Sessions[0].Running {
-		t.Fatalf("snapshot after a change = %+v", list)
-	}
 }
 
 func TestRoutesRefuseOtherSites(t *testing.T) {
@@ -332,20 +294,31 @@ func newApp(t *testing.T) *app {
 	rt.PluginDir = plugins
 	rt.Terminals.Command = []string{"/bin/cat"}
 	t.Cleanup(rt.Shutdown)
-	w, err := session.AddWorkspace(db, workspace)
+	w, err := rt.AddWorkspace(workspace)
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := rt.Create(w.ID, "lead", "start")
+	s, lead, err := rt.Create(w.ID, "lead", "start")
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(t.Context(), db, rt))
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		items, err := rt.Transcript(lead.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(items) == 2 && items[1].Done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("creation reply did not finish")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	a := &app{t: t, db: db, rt: rt, session: s, lead: lead}
+	a.server = httptest.NewServer(Handler(db, rt))
 	t.Cleanup(a.server.Close)
-	if err := db.Read(func(tx *store.Tx) error { var err error; a.lead, err = tx.Lead(s.ID); return err }); err != nil {
-		t.Fatal(err)
-	}
 	return a
 }
 
@@ -366,11 +339,13 @@ func (a *app) post(path, body string, want int) {
 // page follows the data socket as the browser does, keeping the transcripts
 // it has been sent.
 type page struct {
-	t       *testing.T
-	conn    *websocket.Conn
-	items   map[string][]harness.Item
-	resets  int
-	lastMsg string
+	t        *testing.T
+	conn     *websocket.Conn
+	items    map[string][]session.TranscriptItem
+	state    stateMessage
+	messages []transcriptMessage
+	resets   int
+	lastMsg  string
 }
 
 func (a *app) page() *page {
@@ -379,7 +354,7 @@ func (a *app) page() *page {
 		a.t.Fatal(err)
 	}
 	a.t.Cleanup(func() { conn.CloseNow() })
-	return &page{t: a.t, conn: conn, items: map[string][]harness.Item{}}
+	return &page{t: a.t, conn: conn, items: map[string][]session.TranscriptItem{}}
 }
 
 func (p *page) send(msg string) {
@@ -400,37 +375,52 @@ func (p *page) until(what string, check func() bool) {
 			p.t.Fatalf("waiting for %s: %v (last message %s)", what, err, p.lastMsg)
 		}
 		p.lastMsg = string(data)
-		var msg struct {
-			Type  string
-			Agent string
-			Reset bool
-			Items []harness.Item
-		}
+		var msg transcriptMessage
 		if err := json.Unmarshal(data, &msg); err != nil {
 			p.t.Fatal(err)
 		}
-		if msg.Type != "transcript" {
+		if msg.Type == "state" {
+			p.state = stateMessage{}
+			if err := json.Unmarshal(data, &p.state); err != nil {
+				p.t.Fatal(err)
+			}
+			if p.state.Build != buildID() {
+				p.t.Fatalf("build = %q", p.state.Build)
+			}
 			continue
 		}
+		if msg.Type != "transcript" {
+			p.t.Fatalf("unknown message: %s", data)
+		}
+		if msg.Session == "" {
+			p.t.Fatalf("transcript without session: %s", data)
+		}
+		for i, item := range msg.Items {
+			if item.Seq <= 0 || i > 0 && item.Seq <= msg.Items[i-1].Seq {
+				p.t.Fatalf("unordered items: %s", data)
+			}
+		}
+		p.messages = append(p.messages, msg)
 		if msg.Reset {
 			p.items[msg.Agent] = nil
 			p.resets++
 		}
 		for _, it := range msg.Items {
-			i := slices.IndexFunc(p.items[msg.Agent], func(have harness.Item) bool { return have.ID == it.ID })
+			i := slices.IndexFunc(p.items[msg.Agent], func(have session.TranscriptItem) bool { return have.ID == it.ID })
 			if i < 0 {
 				p.items[msg.Agent] = append(p.items[msg.Agent], it)
 			} else {
 				p.items[msg.Agent][i] = it
 			}
 		}
+		slices.SortFunc(p.items[msg.Agent], func(a, b session.TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
 	}
 }
 
 func (p *page) find(agent string, match func(harness.Item) bool) (harness.Item, bool) {
 	for _, it := range p.items[agent] {
-		if match(it) {
-			return it, true
+		if match(it.Item) {
+			return it.Item, true
 		}
 	}
 	return harness.Item{}, false
@@ -461,43 +451,144 @@ func TestImageInput(t *testing.T) {
 
 func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	a := newApp(t)
+	worker := a.worker("first")
 	p := a.page()
-	// Nothing is sent until the page selects a session.
 	p.send(`{"select":"` + a.session.ID + `"}`)
-	p.until("the first snapshot", func() bool { return p.resets == 1 })
-	p.until("the creation prompt's reply", func() bool { return len(p.items[a.lead.ID]) == 2 })
+	p.until("one reset per agent", func() bool { return p.resets == 2 })
+	if len(p.items[a.lead.ID]) != 2 || len(p.items[worker.ID]) != 0 {
+		t.Fatalf("reset items = %+v", p.items)
+	}
+	for _, message := range p.messages {
+		if !message.Reset || message.Session != a.session.ID {
+			t.Fatalf("reset = %+v", message)
+		}
+	}
+	p.messages = nil
 
+	a.input("!work", http.StatusOK)
+	p.until("streaming text", func() bool {
+		item, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Text == "working" })
+		return ok && !item.Done
+	})
+	a.input("!finish", http.StatusOK)
+	p.until("replaced text", func() bool {
+		item, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Text == "finished" })
+		return ok && item.Done && len(p.items[a.lead.ID]) == 5
+	})
 	a.input("!stream", http.StatusOK)
-	// The streamed text replaces itself in place instead of repeating, and the
-	// tool call nests under it.
 	p.until("the streamed turn", func() bool {
 		text, ok := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindText && it.Text == "Hello!" })
 		tool, found := p.find(a.lead.ID, func(it harness.Item) bool { return it.Kind == harness.KindTool })
-		return ok && found && text.Text == "Hello!" && text.Done && tool.Done && tool.Output == "ok" && tool.Parent == text.ID
+		return ok && found && text.Done && tool.Done && tool.Output == "ok" && tool.Parent == text.ID && len(p.items[a.lead.ID]) == 8
 	})
-	var kinds []string
-	for _, it := range p.items[a.lead.ID] {
-		kinds = append(kinds, it.Kind)
-	}
-	// The session's creation prompt and its reply come first.
-	if !slices.Equal(kinds, []string{"user", "text", "user", "text", "tool"}) {
-		t.Fatalf("transcript kinds = %v", kinds)
-	}
-	if p.resets != 1 {
-		t.Fatalf("the page was sent %d snapshots, want 1", p.resets)
+	for _, message := range p.messages {
+		if message.Reset || message.Session != a.session.ID {
+			t.Fatalf("update = %+v", message)
+		}
+		for _, item := range message.Items {
+			if item.Seq <= 2 {
+				t.Fatalf("unchanged item in update: %+v", item)
+			}
+		}
 	}
 
-	// A new connection gets the whole transcript as its first snapshot.
+	// A later worker's items arrive without a reset.
+	later := a.worker("later")
+	if err := a.rt.Input(later.ID, "!work"); err != nil {
+		t.Fatal(err)
+	}
+	p.until("the later worker", func() bool { return len(p.items[later.ID]) == 2 })
+	if p.resets != 2 {
+		t.Fatalf("resets after worker added = %d", p.resets)
+	}
+
 	q := a.page()
 	q.send(`{"select":"` + a.session.ID + `"}`)
-	q.until("the whole transcript", func() bool { return len(q.items[a.lead.ID]) == 5 })
+	q.until("the whole transcript", func() bool { return q.resets == 3 })
+	if len(q.items[a.lead.ID]) != 8 || len(q.items[later.ID]) != 2 {
+		t.Fatalf("reconnected items = %+v", q.items)
+	}
+	first, _ := json.Marshal(p.items[a.lead.ID])
+	second, _ := json.Marshal(q.items[a.lead.ID])
+	if !bytes.Equal(first, second) {
+		t.Fatalf("reconnected transcript differs: %s / %s", first, second)
+	}
 
-	// Selecting nothing stops the transcripts.
 	p.send(`{"select":""}`)
 	a.input("again", http.StatusOK)
-	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 7 })
-	if len(p.items[a.lead.ID]) != 5 {
-		t.Fatalf("an unselected page received items: %d", len(p.items[a.lead.ID]))
+	q.until("the second turn", func() bool { return len(q.items[a.lead.ID]) == 10 })
+	if err := a.rt.Rename(a.session.ID, "Unselected"); err != nil {
+		t.Fatal(err)
+	}
+	p.until("the state after deselection", func() bool { return p.session(a.session.ID).Title == "Unselected" })
+	if len(p.items[a.lead.ID]) != 8 {
+		t.Fatalf("unselected page received items: %d", len(p.items[a.lead.ID]))
+	}
+}
+
+func (a *app) worker(name string) store.Agent {
+	a.t.Helper()
+	worker, err := a.rt.AddWorker(a.lead.ID, name, harness.Profile{Harness: "test", Model: "m", Effort: "low"}, ".", "")
+	if err != nil {
+		a.t.Fatal(err)
+	}
+	return worker
+}
+
+func (p *page) session(id string) shownSession {
+	for _, workspace := range p.state.Workspaces {
+		for _, session := range workspace.Sessions {
+			if session.ID == id {
+				return session
+			}
+		}
+	}
+	return shownSession{}
+}
+
+func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
+	a := newApp(t)
+	worker := a.worker("worker")
+	pages := []*page{a.page(), a.page()}
+	for _, p := range pages {
+		p.until("the lead's reply", func() bool {
+			s := p.session(a.session.ID)
+			return s.Unseen && s.Reply == "ack" && s.ReplySeq == 2
+		})
+	}
+	a.input("!work", http.StatusOK)
+	for _, p := range pages {
+		p.until("the reply to clear while the lead works", func() bool {
+			s := p.session(a.session.ID)
+			return s.Unseen && s.Reply == "" && s.ReplySeq == 0 && s.Agents[0].Activity == store.Busy
+		})
+	}
+	a.input("!finish", http.StatusOK)
+	for _, p := range pages {
+		p.until("the new reply", func() bool {
+			s := p.session(a.session.ID)
+			return s.Reply == "finished" && s.ReplySeq > 2
+		})
+	}
+	a.input("!ask", http.StatusOK)
+	if err := a.rt.Input(worker.ID, "!ask"); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range pages {
+		p.until("requests from lead and worker", func() bool { return len(p.state.Requests) == 2 })
+		if p.state.Requests[0].Agent == p.state.Requests[1].Agent {
+			t.Fatalf("requests = %+v", p.state.Requests)
+		}
+	}
+	for _, request := range pages[0].state.Requests {
+		a.post("/agent?action=answer&id="+request.Agent+"&request="+url.QueryEscape(request.Item.ID)+"&choice=yes", "", http.StatusOK)
+	}
+	for _, p := range pages {
+		p.until("answered requests to clear", func() bool { return len(p.state.Requests) == 0 })
+	}
+	a.post("/session?action=seen&id="+a.session.ID, "", http.StatusOK)
+	for _, p := range pages {
+		p.until("seen replies to clear", func() bool { s := p.session(a.session.ID); return !s.Unseen && s.Reply == "" && s.ReplySeq == 0 })
 	}
 }
 
@@ -646,4 +737,67 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 	if err != nil || title != "Fix the parser" || len(items) == 0 || items[0].Text != "Fix the parser\nand the lexer" {
 		t.Fatalf("title %q, transcript %+v, %v", title, items, err)
 	}
+}
+
+func TestSnapshotOrder(t *testing.T) {
+	db := open(t)
+	seedSnapshot(t, db, "b", "/src/zeta", "s1", "lead")
+	seedSnapshot(t, db, "a", "/src/alpha", "s2", "lead")
+	seedSnapshot(t, db, "b", "/src/zeta", "s3", "lead", "w")
+	seedSnapshot(t, db, "b", "/src/zeta", "s4", "lead")
+	seedSnapshot(t, db, "b", "/src/zeta", "s5", "lead")
+	change(t, db, func(tx *store.Tx) error {
+		for i, id := range []string{"s1", "s3", "s4", "s5"} {
+			if err := tx.TouchSession(id, int64(i+1)); err != nil {
+				return err
+			}
+			if i >= 1 {
+				s, err := tx.Session(id)
+				if err != nil {
+					return err
+				}
+				s.Title = "Title " + id
+				s.Running = i < 2
+				if err := tx.SaveSession(s); err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+	list, err := snapshot(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].Name != "alpha" || list[1].Name != "zeta" {
+		t.Fatalf("workspaces = %+v", list)
+	}
+	z := list[1].Sessions
+	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Agents) != 2 || z[0].Agents[0].Role != store.Lead {
+		t.Fatalf("sessions = %+v", z)
+	}
+}
+
+func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, names ...string) {
+	t.Helper()
+	change(t, db, func(tx *store.Tx) error {
+		if _, err := tx.Workspace(workspace); err != nil {
+			if err := tx.AddWorkspace(store.Workspace{ID: workspace, Path: path}); err != nil {
+				return err
+			}
+		}
+		if err := tx.AddSession(store.Session{ID: id, Workspace: workspace, Running: true}); err != nil {
+			return err
+		}
+		for i, name := range names {
+			role := store.Worker
+			if i == 0 {
+				role = store.Lead
+			}
+			if err := tx.AddAgent(store.Agent{ID: id + "-" + name, Session: id, Name: name, Role: role, Activity: store.Idle}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

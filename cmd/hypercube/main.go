@@ -86,7 +86,7 @@ func startApp(listener net.Listener, plugins string) (*app, error) {
 	rt.PluginDir = plugins
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &app{db: db, rt: rt, cancel: cancel, done: make(chan error, 1)}
-	a.server = &http.Server{Handler: ui.Handler(ctx, db, rt)}
+	a.server = &http.Server{Handler: ui.Handler(db, rt)}
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
 	go rt.StopIdleSessions(ctx)

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -64,8 +65,7 @@ type Runtime struct {
 	seqs    map[string]int64
 	gen     int64
 	closing bool
-	// changed is closed and replaced whenever an agent's transcript changes.
-	changed chan struct{}
+	feed    feed
 }
 
 // live is one launch of an agent's plugin. Events and exits from a launch that
@@ -99,22 +99,7 @@ type pendingItem struct {
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{db: db, url: url, live: map[string]*live{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli(),
-		changed: make(chan struct{}), viewers: map[string]int{}}
-}
-
-// Changes returns a channel that closes the next time an agent's transcript
-// changes, including items still streaming. Callers read the transcripts after
-// getting the channel, so no change is missed.
-func (r *Runtime) Changes() <-chan struct{} {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.changed
-}
-
-// touchLocked wakes the watchers of Changes. The caller holds mu.
-func (r *Runtime) touchLocked() {
-	close(r.changed)
-	r.changed = make(chan struct{})
+		viewers: map[string]int{}}
 }
 
 func logf(format string, args ...any) {
@@ -157,30 +142,22 @@ func (r *Runtime) sessionLive(session string) bool {
 	return false
 }
 
-func entry(seq int64, item harness.Item) store.Entry {
-	if item.At == 0 {
-		item.At = time.Now().UnixMilli()
-	}
-	data, _ := json.Marshal(item)
-	return store.Entry{Seq: seq, Item: item.ID, Data: data}
-}
-
-// drain takes the launch's unfinished items as finished entries.
-func (l *live) drain() []store.Entry {
-	var entries []store.Entry
+// drain takes the launch's unfinished items as finished items.
+func (l *live) drain() []*pendingItem {
+	items := make([]*pendingItem, 0, len(l.pending))
 	for id, p := range l.pending {
 		p.item.Done = true
-		entries = append(entries, entry(p.seq, p.item))
+		items = append(items, p)
 		delete(l.pending, id)
 	}
-	slices.SortFunc(entries, func(a, b store.Entry) int { return int(a.Seq - b.Seq) })
-	return entries
+	slices.SortFunc(items, func(a, b *pendingItem) int { return cmp.Compare(a.seq, b.seq) })
+	return items
 }
 
 // note adds an item written by Hypercube to l's agent's transcript. The caller
 // holds mu.
-func (r *Runtime) note(tx *store.Tx, l *live, kind, text string) error {
-	return tx.PutEntry(l.id, entry(r.nextSeq(l.id), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: kind, Text: text, Done: true}))
+func (r *Runtime) note(tx *write, l *live, kind, text string) error {
+	return tx.putItem(l, r.nextSeq(l.id), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: kind, Text: text, Done: true})
 }
 
 // launch starts the plugin for l, which the caller registered, and waits for
@@ -259,7 +236,7 @@ func (r *Runtime) launch(l *live) error {
 	}
 	defer r.mu.Unlock()
 	l.launched = time.Now()
-	if err := r.db.Tx(func(tx *store.Tx) error {
+	if err := r.save(func(tx *write) error {
 		a, err := tx.Agent(l.id)
 		if err != nil || a.Activity != store.Exited {
 			return err
@@ -280,7 +257,7 @@ func (r *Runtime) failed(l *live, cause error) {
 	if cur := r.live[l.id]; cur != nil && cur != l {
 		return
 	}
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		if err := r.note(tx, l, harness.KindError, "Could not start the agent: "+cause.Error()); err != nil {
 			return err
 		}
@@ -291,7 +268,7 @@ func (r *Runtime) failed(l *live, cause error) {
 	}
 }
 
-func (r *Runtime) markEnded(tx *store.Tx, id string) error {
+func (r *Runtime) markEnded(tx *write, id string) error {
 	a, err := tx.Agent(id)
 	if err != nil {
 		return err
@@ -329,9 +306,9 @@ func (r *Runtime) ended(l *live, reason error) {
 		quick = 0
 	}
 	relaunch := quick < maxQuickExits && !r.closing
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		for _, e := range l.drain() {
-			if err := tx.PutEntry(l.id, e); err != nil {
+			if err := tx.putItem(l, e.seq, e.item); err != nil {
 				return err
 			}
 		}
@@ -378,8 +355,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	if !r.current(l) {
 		return
 	}
-	defer r.touchLocked()
-	var write []store.Entry
+	var completed []*pendingItem
 	var failures []string
 	at := time.Now().UnixMilli()
 	for _, it := range ev.Items {
@@ -408,7 +384,9 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		p.item = it
 		if it.Done {
 			delete(l.pending, it.ID)
-			write = append(write, entry(p.seq, it))
+			completed = append(completed, p)
+		} else {
+			r.feed.publish(Change{Session: l.session, Agent: l.id, Seq: p.seq, Item: it})
 		}
 	}
 	attention := false
@@ -416,15 +394,15 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		attention = attention || p.item.Kind == harness.KindAttention
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(write) == 0 && len(failures) == 0 && !changed {
+	if len(completed) == 0 && len(failures) == 0 && !changed {
 		return
 	}
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
 			return err
 		}
-		for _, e := range write {
-			if err := tx.PutEntry(l.id, e); err != nil {
+		for _, e := range completed {
+			if err := tx.putItem(l, e.seq, e.item); err != nil {
 				return err
 			}
 		}
@@ -440,7 +418,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			if err != nil {
 				return err
 			}
-			report.Apply(&a, &s, ev)
+			applyEvent(&a, &s, ev)
 			a.Attention = attention
 			if err := tx.SaveAgent(a); err != nil {
 				return err
@@ -449,9 +427,11 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 				return err
 			}
 		}
-		for _, text := range failures {
-			if err := report.Failure(tx, a, text); err != nil {
-				return err
+		if a.Role == store.Worker {
+			for _, text := range failures {
+				if err := queueFailure(tx, a, text); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -465,6 +445,26 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 		r.kickSessionLocked(l.session)
 	} else if ev.State == harness.Idle {
 		r.kickLocked(l.id)
+	}
+}
+
+// applyEvent records an event's conversation, work state, and usage. A lead that
+// finishes a turn has a reply for the user to see.
+func applyEvent(a *store.Agent, s *store.Session, ev harness.Event) {
+	if ev.Conversation != "" {
+		a.Conversation = ev.Conversation
+	}
+	switch ev.State {
+	case harness.Working:
+		a.Activity = store.Busy
+	case harness.Idle:
+		if a.Activity == store.Busy && a.Role == store.Lead {
+			s.Unseen = true
+		}
+		a.Activity = store.Idle
+	}
+	if ev.Usage != nil {
+		a.Usage = store.Usage(*ev.Usage)
 	}
 }
 
@@ -511,11 +511,11 @@ func (r *Runtime) deliver(l *live, client *harness.Client) {
 		r.mu.Lock()
 		var err error
 		if sent != nil {
-			err = r.db.Tx(func(tx *store.Tx) error {
+			err = r.save(func(tx *write) error {
 				return r.note(tx, l, harness.KindError, "Delivering a message failed: "+sent.Error())
 			})
 		} else {
-			err = r.db.Tx(func(tx *store.Tx) error {
+			err = r.save(func(tx *write) error {
 				if err := tx.Dequeue(m.ID); err != nil {
 					return err
 				}
@@ -526,7 +526,7 @@ func (r *Runtime) deliver(l *live, client *harness.Client) {
 				if err := tx.TouchSession(l.session, time.Now().UnixMilli()); err != nil {
 					return err
 				}
-				return tx.PutEntry(l.id, entry(seq, item))
+				return tx.putItem(l, seq, item)
 			})
 		}
 		if err != nil {
@@ -620,16 +620,16 @@ func (r *Runtime) Input(agent, text string, images ...harness.Image) error {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	err = r.db.Tx(func(tx *store.Tx) error {
+	err = r.save(func(tx *write) error {
 		s, err := tx.Session(l.session)
 		if err != nil {
 			return err
 		}
-		report.Prompt(&s)
+		s.AwaitingUser = false
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}
-		return tx.PutEntry(l.id, entry(seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true}))
+		return tx.putItem(l, seq, harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true})
 	})
 	if err != nil {
 		return err
@@ -701,9 +701,39 @@ func (r *Runtime) Shell(session string, cols, rows int) (*terminal.Shell, error)
 	return r.Terminals.Open(session, dir, cols, rows)
 }
 
+// TranscriptItem is an item with its position in the agent's transcript.
+type TranscriptItem struct {
+	harness.Item
+	Seq int64 `json:"seq"`
+}
+
+// Request is an agent's open attention item.
+type Request struct {
+	Agent string       `json:"agent"`
+	Item  harness.Item `json:"item"`
+}
+
+// Requests returns open attention items, newest first, across all live agents.
+func (r *Runtime) Requests() []Request {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	requests := []Request{}
+	for _, l := range r.live {
+		for _, p := range l.pending {
+			if p.item.Kind == harness.KindAttention {
+				requests = append(requests, Request{Agent: l.id, Item: p.item})
+			}
+		}
+	}
+	slices.SortFunc(requests, func(a, b Request) int {
+		return cmp.Or(cmp.Compare(b.Item.At, a.Item.At), cmp.Compare(b.Item.ID, a.Item.ID))
+	})
+	return requests
+}
+
 // Transcript returns the agent's items in order: those saved, then those still
 // streaming.
-func (r *Runtime) Transcript(agent string) ([]harness.Item, error) {
+func (r *Runtime) Transcript(agent string) ([]TranscriptItem, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var entries []store.Entry
@@ -714,19 +744,19 @@ func (r *Runtime) Transcript(agent string) ([]harness.Item, error) {
 	}); err != nil {
 		return nil, err
 	}
-	if l := r.live[agent]; l != nil {
-		for _, p := range l.pending {
-			entries = append(entries, entry(p.seq, p.item))
-		}
-		slices.SortFunc(entries, func(a, b store.Entry) int { return int(a.Seq - b.Seq) })
-	}
-	items := make([]harness.Item, 0, len(entries))
+	items := make([]TranscriptItem, 0, len(entries))
 	for _, e := range entries {
 		var item harness.Item
 		if err := json.Unmarshal(e.Data, &item); err != nil {
 			return nil, err
 		}
-		items = append(items, item)
+		items = append(items, TranscriptItem{Item: item, Seq: e.Seq})
+	}
+	if l := r.live[agent]; l != nil {
+		for _, p := range l.pending {
+			items = append(items, TranscriptItem{Item: p.item, Seq: p.seq})
+		}
+		slices.SortFunc(items, func(a, b TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
 	}
 	return items, nil
 }
@@ -748,10 +778,10 @@ func (r *Runtime) detachLocked(match func(*live) bool, ended bool) []*live {
 			delete(r.live, id)
 		}
 	}
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		for _, l := range lives {
 			for _, e := range l.drain() {
-				if err := tx.PutEntry(l.id, e); err != nil {
+				if err := tx.putItem(l, e.seq, e.item); err != nil {
 					return err
 				}
 			}

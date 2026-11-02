@@ -121,7 +121,8 @@ func (w *world) until(what string, check func() bool) {
 		b, _ := os.ReadFile(filepath.Join(w.logs, entry.Name()))
 		w.t.Logf("%s:\n%s", entry.Name(), b)
 	}
-	list, _ := store.Snapshot(w.db)
+	var list []store.Session
+	_ = w.db.Read(func(tx *store.Tx) error { var err error; list, err = tx.Sessions(""); return err })
 	b, _ := json.MarshalIndent(list, "", "  ")
 	w.t.Logf("database: %s", b)
 	w.t.Fatalf("timed out waiting for %s", what)
@@ -229,7 +230,14 @@ func (c client) tool(agent, name string, args map[string]string) string {
 	return text
 }
 
-func (c client) snapshot() []store.ShownWorkspace {
+type shownWorkspace struct {
+	Sessions []struct {
+		ID      string
+		Running bool
+	}
+}
+
+func (c client) snapshot() []shownWorkspace {
 	c.t.Helper()
 	conn, _, err := websocket.Dial(c.t.Context(), "ws"+strings.TrimPrefix(c.base, "http")+"/state", nil)
 	if err != nil {
@@ -240,7 +248,7 @@ func (c client) snapshot() []store.ShownWorkspace {
 	if err != nil {
 		c.t.Fatal(err)
 	}
-	var msg struct{ Workspaces []store.ShownWorkspace }
+	var msg struct{ Workspaces []shownWorkspace }
 	if err := json.Unmarshal(data, &msg); err != nil {
 		c.t.Fatal(err)
 	}
@@ -284,11 +292,11 @@ func TestTeams(t *testing.T) {
 		return func() bool { return w.starts(id) > 0 && w.agent(id).Activity == store.Idle }
 	}
 
-	ws, err := session.AddWorkspace(w.db, w.root)
+	ws, err := app.rt.AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, err := session.AddWorkspace(w.db, filepath.Join(w.root, ".")); err != nil || again.ID != ws.ID {
+	if again, err := app.rt.AddWorkspace(filepath.Join(w.root, ".")); err != nil || again.ID != ws.ID {
 		t.Fatalf("adding the folder again: %+v, %v", again, err)
 	}
 	if code, body := c.post("/session", map[string]string{"action": "new", "workspace": ws.ID, "lead": "missing"}, `{"text":"start"}`); code != http.StatusConflict || !strings.Contains(body, `no lead profile named "missing"`) {
@@ -532,7 +540,7 @@ func TestAppProcess(t *testing.T) {
 	if out, err := exec.Command(binary).CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
 		t.Fatalf("no arguments should print the usage: %v %s", err, out)
 	}
-	ws, err := session.AddWorkspace(w.db, w.root)
+	ws, err := session.New(w.db, "").AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}

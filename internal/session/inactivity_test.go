@@ -119,10 +119,10 @@ func TestPromptRefreshesIdleDeadlineButSeenDoesNot(t *testing.T) {
 	if active <= old {
 		t.Fatal("prompt and reply did not refresh activity")
 	}
-	if err := Seen(f.db, s.ID); err != nil {
+	if err := f.rt.Seen(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := Rename(f.db, s.ID, "Another title"); err != nil {
+	if err := f.rt.Rename(s.ID, "Another title"); err != nil {
 		t.Fatal(err)
 	}
 	if f.session1(s.ID).LastActive != active {

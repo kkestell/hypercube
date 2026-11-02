@@ -14,7 +14,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
@@ -91,7 +90,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "send_message",
 		Description: "Send a message to a Hypercube agent in your session, by name or session/name address. This is the only way to reach Hypercube agents. A lead can also message another session's lead at session/lead.",
-	}, result(func(a sendMessageArgs) (string, error) { return sendMessage(db, rt, self, a.To, a.Text) }))
+	}, result(func(a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_agents",
 		Description: "List the Hypercube agents in your session and, for a lead, other sessions' leads: address, session title, role, harness, activity, directory, and branch.",
@@ -99,7 +98,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_status",
 		Description: "Worker only. Tell the user in a sentence or two what you are doing now. The user's view shows it on your card in place of your previous status.",
-	}, result(func(a setStatusArgs) (string, error) { return setStatus(db, self, a.Text) }))
+	}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "create_agent", Description: createDescription, InputSchema: createSchema},
 		result(func(a createAgentArgs) (string, error) { return createAgent(rt, self, a) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "remove_agent", Description: removeDescription},
@@ -264,42 +263,11 @@ func listAgents(db *store.DB, self string) (string, error) {
 	return string(b), err
 }
 
-func sendMessage(db *store.DB, rt *session.Runtime, self, to, text string) (string, error) {
-	if strings.TrimSpace(text) == "" {
-		return "", errors.New("text is required")
-	}
-	var recipient store.Agent
-	running := false
-	err := db.Tx(func(tx *store.Tx) error {
-		caller, err := tx.Agent(self)
-		if err != nil {
-			return err
-		}
-		a, err := tx.Find(caller.Session, to)
-		if err != nil {
-			return err
-		}
-		if a.ID == self {
-			return errors.New("cannot send a message to yourself")
-		}
-		from, err := tx.Session(caller.Session)
-		if err != nil {
-			return err
-		}
-		s, err := tx.Session(a.Session)
-		if err != nil {
-			return err
-		}
-		if a.Session != caller.Session && (caller.Role != store.Lead || a.Role != store.Lead || s.Workspace != from.Workspace) {
-			return errors.New("across sessions, only leads in the same workspace can message each other")
-		}
-		recipient, running = a, s.Running
-		return tx.Queue(store.Message{From: self, To: a.ID, Text: text})
-	})
+func sendMessage(rt *session.Runtime, self, to, text string) (string, error) {
+	recipient, running, err := rt.SendMessage(self, to, text)
 	if err != nil {
 		return "", err
 	}
-	rt.Deliver(recipient.ID)
 	reply := fmt.Sprintf("Message queued for %s.", recipient.Address())
 	if !running {
 		reply += " Its session is stopped; the message will be delivered when the session starts."
@@ -307,24 +275,8 @@ func sendMessage(db *store.DB, rt *session.Runtime, self, to, text string) (stri
 	return reply, nil
 }
 
-// setStatus records a worker's status on one line.
-func setStatus(db *store.DB, self, text string) (string, error) {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
-		return "", errors.New("text is required")
-	}
-	err := db.Tx(func(tx *store.Tx) error {
-		a, err := tx.Agent(self)
-		if err != nil {
-			return err
-		}
-		if a.Role != store.Worker {
-			return errors.New("only workers have a status")
-		}
-		a.Status, a.StatusAt = text, time.Now().UnixMilli()
-		return tx.SaveAgent(a)
-	})
-	if err != nil {
+func setStatus(rt *session.Runtime, self, text string) (string, error) {
+	if err := rt.SetStatus(self, text); err != nil {
 		return "", err
 	}
 	return "Status set.", nil

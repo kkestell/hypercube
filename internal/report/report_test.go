@@ -50,12 +50,6 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 	}
 }
 
-func queued(t *testing.T, db *store.DB, id string) (m []store.Message) {
-	t.Helper()
-	change(t, db, func(tx *store.Tx) error { var err error; m, err = tx.Queued(id); return err })
-	return m
-}
-
 func writeConfig(t *testing.T, config string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -149,52 +143,8 @@ func TestFormatAttributesMessages(t *testing.T) {
 	}
 }
 
-func TestApply(t *testing.T) {
-	worker := store.Agent{Role: store.Worker, Activity: store.Busy}
-	lead := store.Agent{Role: store.Lead, Activity: store.Idle}
-	var s store.Session
-	Apply(&lead, &s, harness.Event{State: harness.Working, Conversation: "c1"})
-	if lead.Activity != store.Busy || lead.Conversation != "c1" || s.Unseen {
-		t.Fatalf("working: %+v %+v", lead, s)
-	}
-	Apply(&lead, &s, harness.Event{Items: []harness.Item{{ID: "x", Kind: harness.KindText}}})
-	if lead.Activity != store.Busy || lead.Conversation != "c1" {
-		t.Fatalf("an event without state or conversation changed the agent: %+v", lead)
-	}
-	Apply(&lead, &s, harness.Event{State: harness.Idle, Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
-	if lead.Activity != store.Idle || !s.Unseen || lead.Usage != (store.Usage{Context: 45200, Window: 200000, Cost: 0.31}) {
-		t.Fatalf("lead idle: %+v %+v", lead, s)
-	}
-	s.Unseen = false
-	Apply(&lead, &s, harness.Event{State: harness.Idle})
-	if s.Unseen {
-		t.Fatal("a lead that was already idle marked its session unseen")
-	}
-	Apply(&worker, &s, harness.Event{State: harness.Idle})
-	if worker.Activity != store.Idle || s.Unseen {
-		t.Fatalf("worker idle: %+v %+v", worker, s)
-	}
-}
-
-func TestFailureGoesToTheLeadOfTheWorkersSession(t *testing.T) {
-	db := open(t, []store.Session{{ID: "session-1"}, {ID: "other"}},
-		store.Agent{ID: "l", Session: "session-1", Name: "lead", Role: store.Lead},
-		store.Agent{ID: "w", Session: "session-1", Name: "worker", Role: store.Worker},
-		store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead})
-	change(t, db, func(tx *store.Tx) error {
-		w, _ := tx.Agent("w")
-		l, _ := tx.Agent("l")
-		if err := Failure(tx, w, " rate limited "); err != nil {
-			return err
-		}
-		// A lead's own failure is for the user, who sees it in the transcript.
-		return Failure(tx, l, "ignored")
-	})
-	m := queued(t, db, "l")
-	if len(m) != 1 || m[0].From != "w" || m[0].Text != "My turn failed: rate limited" || len(queued(t, db, "other-lead")) != 0 {
-		t.Fatalf("lead's messages = %+v", m)
-	}
-	if failure(" ") != "My turn failed." || !strings.HasSuffix(failure(strings.Repeat("é", 2500)), "…") {
+func TestFailureMessage(t *testing.T) {
+	if FailureMessage(" rate limited ") != "My turn failed: rate limited" || FailureMessage(" ") != "My turn failed." || !strings.HasSuffix(FailureMessage(strings.Repeat("é", 2500)), "…") {
 		t.Error("failure text")
 	}
 }
@@ -213,13 +163,5 @@ func TestTitle(t *testing.T) {
 		if got := Title(c.text); got != c.want {
 			t.Errorf("%s: title = %q, want %q", c.name, got, c.want)
 		}
-	}
-}
-
-func TestPromptReleasesQueuedMessages(t *testing.T) {
-	s := store.Session{AwaitingUser: true}
-	Prompt(&s)
-	if s.AwaitingUser {
-		t.Error("the prompt left messages queued")
 	}
 }

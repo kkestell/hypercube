@@ -20,14 +20,14 @@ import (
 // AddWorkspace adds the workspace at dir: the top of its Git checkout, or dir
 // itself outside Git. It returns the existing workspace when the folder is
 // already added.
-func AddWorkspace(db *store.DB, dir string) (store.Workspace, error) {
+func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 	root, err := workspace.At("/", dir)
 	if err != nil {
 		return store.Workspace{}, err
 	}
 	_, gitErr := workspace.Root(root)
 	var w store.Workspace
-	err = db.Tx(func(tx *store.Tx) error {
+	err = r.save(func(tx *write) error {
 		list, err := tx.Workspaces()
 		if err != nil {
 			return err
@@ -47,21 +47,22 @@ func AddWorkspace(db *store.DB, dir string) (store.Workspace, error) {
 // Create adds a session to the workspace with a lead from the named lead
 // profile, or the first one, starts it, and sends the lead the first prompt,
 // which titles the session.
-func (r *Runtime) Create(workspaceID, lead, text string, images ...harness.Image) (store.Session, error) {
+func (r *Runtime) Create(workspaceID, lead, text string, images ...harness.Image) (store.Session, store.Agent, error) {
 	if err := checkPrompt(text, images); err != nil {
-		return store.Session{}, err
+		return store.Session{}, store.Agent{}, err
 	}
 	cfg, err := harness.LoadConfig()
 	if err != nil {
-		return store.Session{}, err
+		return store.Session{}, store.Agent{}, err
 	}
 	profile, err := cfg.Lead(lead)
 	if err != nil {
-		return store.Session{}, err
+		return store.Session{}, store.Agent{}, err
 	}
 	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true}
-	leadID := store.NewID()
-	err = r.db.Tx(func(tx *store.Tx) error {
+	a := store.Agent{ID: store.NewID(), Session: s.ID, Name: "lead", Role: store.Lead,
+		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle}
+	err = r.save(func(tx *write) error {
 		w, err := tx.Workspace(workspaceID)
 		if err != nil {
 			return err
@@ -69,16 +70,16 @@ func (r *Runtime) Create(workspaceID, lead, text string, images ...harness.Image
 		if err := tx.AddSession(s); err != nil {
 			return err
 		}
-		return tx.AddAgent(store.Agent{ID: leadID, Session: s.ID, Name: "lead", Role: store.Lead,
-			Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Dir: w.Path, Activity: store.Idle})
+		a.Dir = w.Path
+		return tx.AddAgent(a)
 	})
 	if err != nil {
-		return s, err
+		return s, a, err
 	}
 	if err := r.start(s.ID, true); err != nil {
-		return s, err
+		return s, a, err
 	}
-	return s, r.Input(leadID, text, images...)
+	return s, a, r.Input(a.ID, text, images...)
 }
 
 // Start launches a stopped session's agents, resuming their conversations.
@@ -115,7 +116,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 	}
 	var lives []*live
 	var agents []store.Agent
-	err = r.db.Tx(func(tx *store.Tx) error {
+	err = r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
 			return err
@@ -180,7 +181,7 @@ func (r *Runtime) Stop(id string) error {
 // stopLocked marks the session stopped before releasing its agents, so a late
 // exit cannot relaunch them. The caller holds mu.
 func (r *Runtime) stopLocked(id string) ([]*live, error) {
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
 			return err
@@ -246,11 +247,11 @@ func (r *Runtime) Delete(id string) error {
 				return fmt.Errorf("%s: %w", a.Name, err)
 			}
 		}
-		if err := r.db.Tx(func(tx *store.Tx) error { return tx.DeleteAgent(a.ID) }); err != nil {
+		if err := r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) }); err != nil {
 			return err
 		}
 	}
-	err = r.db.Tx(func(tx *store.Tx) error { return tx.DeleteSession(id) })
+	err = r.save(func(tx *write) error { return tx.DeleteSession(id) })
 	// The session is gone, so its shell cannot restart.
 	r.Terminals.Stop(id)
 	return err
@@ -273,26 +274,45 @@ func (r *Runtime) DeleteWorkspace(id string) error {
 			return err
 		}
 	}
-	return r.db.Tx(func(tx *store.Tx) error { return tx.DeleteWorkspace(id) })
+	return r.save(func(tx *write) error { return tx.DeleteWorkspace(id) })
 }
 
 // Rename changes a session's title. Its ID, and so its agents' addresses,
 // stay the same.
-func Rename(db *store.DB, id, title string) error {
+func (r *Runtime) Rename(id, title string) error {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return errors.New("a session needs a title")
 	}
-	return update(db, id, func(s *store.Session) { s.Title = title })
+	return r.update(id, func(s *store.Session) { s.Title = title })
 }
 
 // Seen clears the session's unseen reply.
-func Seen(db *store.DB, id string) error {
-	return update(db, id, func(s *store.Session) { s.Unseen = false })
+func (r *Runtime) Seen(id string) error {
+	return r.update(id, func(s *store.Session) { s.Unseen = false })
 }
 
-func update(db *store.DB, id string, change func(*store.Session)) error {
-	return db.Tx(func(tx *store.Tx) error {
+// SetStatus records a worker's status on one line.
+func (r *Runtime) SetStatus(agent, text string) error {
+	text = strings.Join(strings.Fields(text), " ")
+	if text == "" {
+		return errors.New("text is required")
+	}
+	return r.save(func(tx *write) error {
+		a, err := tx.Agent(agent)
+		if err != nil {
+			return err
+		}
+		if a.Role != store.Worker {
+			return errors.New("only workers have a status")
+		}
+		a.Status, a.StatusAt = text, time.Now().UnixMilli()
+		return tx.SaveAgent(a)
+	})
+}
+
+func (r *Runtime) update(id string, change func(*store.Session)) error {
+	return r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
 			return err
@@ -350,7 +370,7 @@ func (r *Runtime) AddWorker(leadID, name string, profile harness.Profile, dir, m
 		r.mu.Unlock()
 		return store.Agent{}, errors.New("the session is not running")
 	}
-	err := r.db.Tx(func(tx *store.Tx) error {
+	err := r.save(func(tx *write) error {
 		s, err := tx.Session(lead.Session)
 		if err != nil {
 			return err
@@ -410,7 +430,7 @@ func (r *Runtime) AddWorker(leadID, name string, profile harness.Profile, dir, m
 			return a, fmt.Errorf("%w; worktree cleanup failed: %v; agent %s was kept for cleanup", cause, cleanup, a.Name)
 		}
 	}
-	if cleanup := r.db.Tx(func(tx *store.Tx) error { return tx.DeleteAgent(a.ID) }); cleanup != nil {
+	if cleanup := r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) }); cleanup != nil {
 		return a, fmt.Errorf("%w; removing the agent failed: %v", cause, cleanup)
 	}
 	return a, cause
@@ -455,5 +475,5 @@ func (r *Runtime) RemoveWorker(leadID, name string) (store.Agent, error) {
 	lives := r.detachLocked(func(l *live) bool { return l.id == a.ID }, false)
 	r.mu.Unlock()
 	stopClients(lives)
-	return a, r.db.Tx(func(tx *store.Tx) error { return tx.DeleteAgent(a.ID) })
+	return a, r.save(func(tx *write) error { return tx.DeleteAgent(a.ID) })
 }

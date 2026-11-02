@@ -190,6 +190,33 @@ func TestTranscript(t *testing.T) {
 	})
 }
 
+func TestLastText(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s", "lead", "worker")
+	tx(t, db, func(tx *Tx) error {
+		if text, seq, err := tx.LastText("s-lead"); err != nil || text != "" || seq != 0 {
+			t.Errorf("empty LastText = %q, %d, %v", text, seq, err)
+		}
+		for _, entry := range []Entry{
+			{Seq: 1, Item: "first", Data: []byte(`{"kind":"text","text":"first"}`)},
+			{Seq: 2, Item: "last", Data: []byte(`{"kind":"text","text":"last"}`)},
+			{Seq: 3, Item: "child", Data: []byte(`{"kind":"text","text":"nested","parent":"last"}`)},
+			{Seq: 4, Item: "tool", Data: []byte(`{"kind":"tool","text":"tool"}`)},
+		} {
+			if err := tx.PutEntry("s-lead", entry); err != nil {
+				return err
+			}
+		}
+		if text, seq, err := tx.LastText("s-lead"); err != nil || text != "last" || seq != 2 {
+			t.Errorf("LastText = %q, %d, %v", text, seq, err)
+		}
+		if text, seq, err := tx.LastText("s-worker"); err != nil || text != "" || seq != 0 {
+			t.Errorf("another agent's LastText = %q, %d, %v", text, seq, err)
+		}
+		return nil
+	})
+}
+
 func TestOpenDeletesObsoleteFiles(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state"))
 	locks := filepath.Join(Dir(), "locks")
@@ -210,45 +237,6 @@ func TestOpenDeletesObsoleteFiles(t *testing.T) {
 		if _, err := os.Stat(path); !os.IsNotExist(err) {
 			t.Errorf("%s remains", path)
 		}
-	}
-}
-
-func TestSnapshotOrder(t *testing.T) {
-	db := open(t)
-	seed(t, db, "b", "/src/zeta", "s1", "lead")
-	seed(t, db, "a", "/src/alpha", "s2", "lead")
-	seed(t, db, "b", "/src/zeta", "s3", "lead", "w")
-	seed(t, db, "b", "/src/zeta", "s4", "lead")
-	seed(t, db, "b", "/src/zeta", "s5", "lead")
-	tx(t, db, func(tx *Tx) error {
-		for i, id := range []string{"s1", "s3", "s4", "s5"} {
-			if err := tx.TouchSession(id, int64(i+1)); err != nil {
-				return err
-			}
-			if i >= 1 {
-				s, err := tx.Session(id)
-				if err != nil {
-					return err
-				}
-				s.Title = "Title " + id
-				s.Running = i < 2
-				if err := tx.SaveSession(s); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-	list, err := Snapshot(db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 2 || list[0].Name != "alpha" || list[1].Name != "zeta" {
-		t.Fatalf("workspaces = %+v", list)
-	}
-	z := list[1].Sessions
-	if len(z) != 4 || z[0].ID != "s3" || z[1].ID != "s1" || z[2].ID != "s5" || z[3].ID != "s4" || z[0].Title != "Title s3" || len(z[0].Agents) != 2 || z[0].Agents[0].Role != Lead {
-		t.Fatalf("sessions = %+v", z)
 	}
 }
 

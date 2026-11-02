@@ -8,7 +8,7 @@ import (
 )
 
 func (r *Runtime) recordActivity(session string) error {
-	return r.db.Tx(func(tx *store.Tx) error {
+	return r.save(func(tx *write) error {
 		return tx.TouchSession(session, time.Now().UnixMilli())
 	})
 }
