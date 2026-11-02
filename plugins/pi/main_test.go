@@ -427,11 +427,18 @@ func TestExtensionErrorIsShown(t *testing.T) {
 
 // Stopping the agent gives up a call that pi has not answered.
 func TestStopCancelsPendingCall(t *testing.T) {
-	ag := &agent{stdin: io.Discard, ended: make(chan struct{}), calls: map[string]chan response{}}
-	ag.ctx, ag.cancel = context.WithCancel(context.Background())
+	pending := filepath.Join(t.TempDir(), "pending")
+	fakePi(t, map[string]string{"FAKE_PENDING": pending})
+	ag, _ := start(t, startArgs(t))
 	done := make(chan error, 1)
 	go func() { done <- ag.input("hello", nil) }()
-	ag.cancel()
+	eventually(t, "Pi to receive the unanswered prompt", func() bool {
+		_, err := os.Stat(pending)
+		return err == nil
+	})
+	stopped := make(chan struct{})
+	go func() { ag.stop(); close(stopped) }()
+	defer func() { os.Remove(pending); <-stopped }()
 	select {
 	case err := <-done:
 		if !errors.Is(err, context.Canceled) {
@@ -553,6 +560,8 @@ func TestPendingCallEndsWithTheExitReason(t *testing.T) {
 // fakePi installs a `pi` that records its arguments in $FAKE_ARGS and the MCP
 // description in $FAKE_ARGS.mcp, answers get_state and get_session_stats, and
 // plays $FAKE_STREAM for each prompt. With $FAKE_EXIT it exits at a prompt.
+// With $FAKE_PENDING it records an unanswered prompt there and waits for the
+// file to be removed, so a test can cancel the call before the process exits.
 func fakePi(t *testing.T, env map[string]string) (args string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -566,6 +575,11 @@ while IFS= read -r line; do
     *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":0.5,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id";;
     *'"type":"prompt"'*)
       if [ -n "$FAKE_EXIT" ]; then echo boom >&2; exit 3; fi
+      if [ -n "$FAKE_PENDING" ]; then
+        echo pending > "$FAKE_PENDING"
+        while [ -f "$FAKE_PENDING" ]; do sleep 0.01; done
+        continue
+      fi
       printf '{"id":"%s","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}\n' "$id"
       cat "$FAKE_STREAM";;
   esac
@@ -586,6 +600,7 @@ done
 	}
 	t.Setenv("FAKE_STREAM", stream)
 	t.Setenv("FAKE_EXIT", "")
+	t.Setenv("FAKE_PENDING", "")
 	for k, v := range env {
 		t.Setenv(k, v)
 	}

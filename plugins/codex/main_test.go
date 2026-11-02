@@ -296,6 +296,23 @@ func TestDuplicateCompletedItems(t *testing.T) {
 	}
 }
 
+// A background shell keeps its original turn ID when it eventually exits.
+// Ending that turn already finished the item; later turns do not reopen it.
+func TestLaterTurnDoesNotReemitOldCommandCompletion(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	h.feed(t,
+		`{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}`,
+		`{"method":"item/started","params":{"threadId":"t1","turnId":"u1","item":{"type":"commandExecution","id":"exec1","command":"sleep 60","status":"inProgress"}}}`,
+		`{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`,
+		`{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u2"}}}`)
+	before := len(h.snapshot())
+	h.feed(t, `{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"commandExecution","id":"exec1","command":"sleep 60","status":"completed","aggregatedOutput":"late","exitCode":0}}}`)
+	if len(h.snapshot()) != before {
+		t.Fatalf("old command re-emitted: %+v", h.item(t, "exec1"))
+	}
+}
+
 func TestFailedTurnReportsItsError(t *testing.T) {
 	h := newAgent(t)
 	h.thread = "t1"

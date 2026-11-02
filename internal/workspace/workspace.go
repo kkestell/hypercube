@@ -3,6 +3,7 @@
 package workspace
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -38,12 +39,13 @@ func gitWith(dir string, env []string, stdin string, args ...string) (string, er
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdin = strings.NewReader(stdin)
-	out, err := cmd.CombinedOutput()
-	output := strings.TrimSpace(string(out))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		return "", &gitError{args, output, err}
+		return "", &gitError{args, strings.TrimSpace(stderr.String()), err}
 	}
-	return output, nil
+	return strings.TrimSpace(string(out)), nil
 }
 
 // Resolve returns dir as an absolute path. A leading ~/ is the home

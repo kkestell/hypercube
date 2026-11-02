@@ -12,10 +12,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // team returns a database holding a workspace, outside Git if noGit is set,
 // with session session-1, whose lead "a" works in leadDir and, if workerDir is
@@ -268,7 +271,6 @@ func TestCreateAgentRefusals(t *testing.T) {
 	lead := connect(t, serve(t, db, rt).URL, "a")
 	for _, args := range []map[string]any{
 		{"name": "w1", "profile": "sol"},
-		{"name": "w1", "profile": "sol", "dir": "missing"},
 		{"name": "w1", "dir": "."},
 		{"name": "W 1", "profile": "sol", "dir": "."},
 		{"name": "w1", "profile": "nope", "dir": "."},
@@ -281,6 +283,34 @@ func TestCreateAgentRefusals(t *testing.T) {
 		if list := agents(t, db, "session-1"); len(list) != 1 {
 			t.Errorf("after create_agent(%v): %+v", args, list)
 		}
+	}
+}
+
+func TestCreateAgentRefusesMissingDirectory(t *testing.T) {
+	db, rt := team(t, true, t.TempDir(), "")
+	plugins := t.TempDir()
+	harnesstest.Install(t, plugins, "one")
+	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
+	rt.PluginDir = plugins
+	t.Cleanup(rt.Shutdown)
+	change(t, db, func(tx *store.Tx) error {
+		lead, err := tx.Agent("a")
+		if err != nil {
+			return err
+		}
+		lead.Harness, lead.Model, lead.Effort = "one", "opus", "high"
+		return tx.SaveAgent(lead)
+	})
+	if err := rt.Start("session-1"); err != nil {
+		t.Fatal(err)
+	}
+	lead := connect(t, serve(t, db, rt).URL, "a")
+	text, failed := callTool(t, lead, "create_agent", map[string]any{"name": "w1", "profile": "sol", "dir": "missing"})
+	if !failed || !strings.Contains(text, "missing: no such file or directory") {
+		t.Fatalf("create_agent with a missing directory: %q %v", text, failed)
+	}
+	if list := agents(t, db, "session-1"); len(list) != 1 {
+		t.Errorf("after create_agent: %+v", list)
 	}
 }
 
@@ -299,19 +329,22 @@ func TestRemoveAgentStoppedSession(t *testing.T) {
 func TestSessionBoundaries(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
-		for _, add := range []error{
-			tx.AddSession(store.Session{ID: "other", Workspace: "w", Title: "Fix the parser"}),
-			tx.AddAgent(store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead, Activity: store.Idle}),
-			tx.AddAgent(store.Agent{ID: "other-worker", Session: "other", Name: "w1", Role: store.Worker, Activity: store.Idle}),
-			tx.AddWorkspace(store.Workspace{ID: "far", Path: "/elsewhere"}),
-			tx.AddSession(store.Session{ID: "far", Workspace: "far"}),
-			tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle}),
-		} {
-			if add != nil {
-				return add
-			}
+		if err := tx.AddSession(store.Session{ID: "other", Workspace: "w", Title: "Fix the parser"}); err != nil {
+			return err
 		}
-		return nil
+		if err := tx.AddAgent(store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead, Activity: store.Idle}); err != nil {
+			return err
+		}
+		if err := tx.AddAgent(store.Agent{ID: "other-worker", Session: "other", Name: "w1", Role: store.Worker, Activity: store.Idle}); err != nil {
+			return err
+		}
+		if err := tx.AddWorkspace(store.Workspace{ID: "far", Path: "/elsewhere"}); err != nil {
+			return err
+		}
+		if err := tx.AddSession(store.Session{ID: "far", Workspace: "far"}); err != nil {
+			return err
+		}
+		return tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle})
 	})
 	url := serve(t, db, rt).URL
 	sessions := map[string]*mcp.ClientSession{}

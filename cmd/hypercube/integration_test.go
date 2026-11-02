@@ -408,6 +408,24 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 	doomedWorker := w.newWorker(c, doomedLead, "worker", "")
 	keptWorker := w.newWorker(c, keptLead, "worker", "")
 	pids := []int{w.lastPid(doomedLead.ID), w.lastPid(doomedWorker.ID)}
+	dirty := filepath.Join(doomedWorker.Dir, "unfinished")
+	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code, body := c.post("/session", map[string]string{"action": "delete", "id": doomed.ID}, ""); code != http.StatusConflict || !strings.Contains(body, "uncommitted changes") {
+		t.Fatalf("delete with dirty work: %d %s", code, body)
+	}
+	if len(w.agents(doomed.ID)) != 2 || !w.session(doomed.ID).Running {
+		t.Fatal("refused deletion changed the session")
+	}
+	for i, a := range []store.Agent{doomedLead, doomedWorker} {
+		if gone(pids[i]) || w.agent(a.ID).Activity == store.Exited || len(w.log(a.ID, "shutdown")) != 0 {
+			t.Fatalf("refused deletion stopped %s", a.Address())
+		}
+	}
+	if err := os.Remove(dirty); err != nil {
+		t.Fatal(err)
+	}
 	c.sessionAction("delete", doomed.ID)
 	if n := len(w.agents(doomed.ID)); n != 0 || !gone(pids[0]) || !gone(pids[1]) {
 		t.Fatal("the deleted session left agents or processes")
@@ -417,6 +435,10 @@ func TestDeletingASessionLeavesOthers(t *testing.T) {
 		if w.starts(a.ID) != 1 || len(w.log(a.ID, "shutdown")) != 0 || !w.session(kept.ID).Running {
 			t.Fatalf("deleting a session affected %s", a.Address())
 		}
+	}
+	c.sessionAction("delete", kept.ID)
+	if list := c.snapshot(); len(list) != 1 || len(list[0].Sessions) != 0 {
+		t.Fatalf("deleting the last session removed its workspace: %+v", list)
 	}
 }
 
