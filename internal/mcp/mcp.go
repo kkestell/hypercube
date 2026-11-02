@@ -12,6 +12,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"syscall"
+	"time"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
@@ -200,7 +202,25 @@ type identity string
 func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
 	r = r.Clone(r.Context())
 	r.Header.Set(SessionHeader, string(i))
-	return http.DefaultTransport.RoundTrip(r)
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		response, err := http.DefaultTransport.RoundTrip(r)
+		if !errors.Is(err, syscall.ECONNREFUSED) || time.Now().After(deadline) {
+			return response, err
+		}
+		select {
+		case <-r.Context().Done():
+			return nil, r.Context().Err()
+		case <-time.After(250 * time.Millisecond):
+		}
+		// A refused connection sent no bytes, but the transport closed its body.
+		if r.GetBody != nil {
+			r.Body, err = r.GetBody()
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
 }
 
 type nopCloser struct{ io.Writer }

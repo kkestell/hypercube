@@ -2,61 +2,64 @@ package session
 
 import (
 	"cmp"
-	"context"
+	"errors"
 	"os"
+	"path/filepath"
 	"slices"
-	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// live is one launch of an agent's plugin. It starts in Runtime.live with
-// starting set, becomes ready when the plugin replies to start, and is over
-// once it leaves Runtime.live: by end, when it fails to start or its plugin
-// exits, or by detachLocked, when it is stopped. Events and exits from a launch
-// that is over are ignored, and no further deliveries start.
+// live is an attachment to the durable launch named by prefix. The reader
+// owns its end; stopping never removes it before its last output is applied.
 type live struct {
-	id, root string
-	// prefix makes the plugin's item IDs unique across launches, since
-	// plugins number items from the start of each one.
-	prefix string
-	// client is set once the plugin process exists.
-	client   *harness.Client
-	starting bool
-	// launched is when the launch became ready.
-	launched time.Time
-	// quick counts the quick exits before this launch.
-	quick int
-	// cause is why the launch ended by itself. It is nil for a launch that is
-	// running or was stopped.
-	cause      error
-	delivering bool
-	attention  bool
-	// pending holds items still streaming. They are written when done, or
-	// when the launch ends.
-	pending map[string]*pendingItem
+	id, root, prefix string
+	client           *harness.Client
+	ready            int64
+	position         int64
+	quick            int
+	cause            error
+	stopping         bool
+	attention        bool
+	pending          map[string]*pendingItem
+	commands         map[int64]store.Command
+	waiters          map[int64]chan error
+	send             sync.Mutex
+	sent             int64
+	done             chan struct{}
 }
-
 type pendingItem struct {
-	seq    int64
-	item   harness.Item
-	native string
+	seq  int64
+	item harness.Item
 }
 
-// current reports whether l is its session's launch. The caller holds mu.
 func (r *Runtime) current(l *live) bool { return r.live[l.id] == l }
 
-// register adds a starting launch for the session, whose transcript position is
-// loaded. The caller holds mu.
-func (r *Runtime) register(id, root string, quick int) *live {
-	r.gen++
-	l := &live{id: id, root: root, prefix: strconv.FormatInt(r.gen, 36) + ":",
-		starting: true, quick: quick, pending: map[string]*pendingItem{}}
-	r.live[id] = l
-	return l
+// decide records a launch and its start line together. The caller holds mu.
+func (r *Runtime) decide(tx *write, s store.Session, root string, quick int) (*live, error) {
+	args, err := r.startArgs(tx.Tx, s)
+	if err != nil {
+		return nil, err
+	}
+	s.Launch, s.Position, s.Ready, s.Quick = store.NewID(), 0, 0, quick
+	s.Activity, s.Attention = store.Exited, false
+	if err = tx.SaveSession(s); err != nil {
+		return nil, err
+	}
+	l := &live{id: s.ID, root: root, prefix: s.Launch + ":", pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{}), quick: quick}
+	if err = r.loadSeq(tx.Tx, s.ID); err != nil {
+		return nil, err
+	}
+	if _, err = r.record(tx, l, harness.Command{Command: harness.CmdStart, Start: &args}, 0, 0, nil); err != nil {
+		return nil, err
+	}
+	return l, nil
 }
 
 // loadSeq reads the session's last transcript position, unless the runtime has
@@ -91,161 +94,196 @@ func (r *Runtime) sessionLive(session string) bool {
 	return false
 }
 
-// launch starts l's plugin and waits until its harness is ready. A launch that
-// fails to start ends. launch returns why the launch ended, or errStopped if it
-// was stopped first.
+// launch attaches the reader and waits for the durable start command's reply.
 func (r *Runtime) launch(l *live) error {
-	client, err := r.startPlugin(l)
-	if err != nil {
-		// end records the start's error before Kill makes the plugin exit.
-		r.end(l, err)
-		if client != nil {
-			client.Kill()
-		}
-	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.current(l) {
-		return cmp.Or(l.cause, errStopped)
-	}
-	l.starting, l.launched = false, time.Now()
-	if err := r.save(func(tx *write) error {
-		s, err := tx.Session(l.id)
-		if err != nil || s.Activity != store.Exited {
-			return err
+	var start int64
+	for id, c := range l.commands {
+		if c.Command == harness.CmdStart {
+			start = id
 		}
-		s.Activity = store.Idle
-		return tx.SaveSession(s)
-	}); err != nil {
-		logf("marking %s ready: %v", l.id, err)
-	}
-	r.kickLocked(l.id)
-	return nil
-}
-
-// startPlugin starts l's plugin and sends it start. It returns the plugin's
-// client, if the process started, with any error.
-func (r *Runtime) startPlugin(l *live) (*harness.Client, error) {
-	path, args, err := r.startArgs(l.id)
-	if err != nil {
-		return nil, err
-	}
-	client, err := harness.Launch(path, func(ev harness.Event) { r.event(l, ev) }, func(err error) { r.end(l, err) })
-	if err != nil {
-		return nil, err
-	}
-	r.mu.Lock()
-	running := r.current(l)
-	if running {
-		l.client = client
 	}
 	r.mu.Unlock()
-	if !running {
-		return client, errStopped
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
-	defer cancel()
-	return client, client.Do(ctx, harness.Command{Command: harness.CmdStart, Start: &args})
-}
-
-// startArgs returns the session's plugin and what it starts with.
-func (r *Runtime) startArgs(id string) (path string, args harness.StartArgs, err error) {
-	var s store.Session
-	err = r.db.Read(func(tx *store.Tx) error {
-		if s, err = tx.Session(id); err != nil {
-			return err
-		}
-		var profiles []harness.Profile
-		if s.Parent == "" {
-			cfg, err := harness.LoadConfig()
-			if err != nil {
-				return err
-			}
-			profiles = cfg.ChildProfiles()
-		}
-		instructions, err := report.Instructions(tx, s, profiles)
-		if err != nil {
-			return err
-		}
-		exe, err := os.Executable()
-		if err != nil {
-			return err
-		}
-		args = harness.StartArgs{
-			Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url},
-			Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation,
-			Dir: s.Dir, Instructions: instructions, StateDir: store.Dir(),
-		}
+	go r.run(l)
+	if start == 0 {
 		return nil
-	})
-	if err != nil {
-		return "", args, err
 	}
-	path, err = harness.Find(r.PluginDir, s.Harness)
-	return path, args, err
+	err := r.wait(l, start, startTimeout)
+	if err != nil {
+		<-l.done
+	}
+	return err
 }
 
-// end records that l's launch is over because it failed to start or its
-// plugin exited: it saves l's unfinished items, notes why in the transcript,
-// and marks the agent exited. An agent whose plugin exits after starting is
-// launched again, resuming its conversation, unless its session stopped or it
-// ended maxQuickExits times in a row within quickExit of starting. A launch
-// that failed to start stays exited. end ignores a launch that was stopped or
-// has ended already.
+func (r *Runtime) run(l *live) {
+	defer close(l.done)
+	r.mu.Lock()
+	if r.detached {
+		r.mu.Unlock()
+		return
+	}
+	var client *harness.Client
+	var err error
+	dir := r.launchDir(l)
+	if _, statErr := os.Stat(dir); errors.Is(statErr, os.ErrNotExist) {
+		if l.stopping {
+			err = errStopped
+		} else {
+			var path string
+			path, err = r.pluginPath(l.id)
+			if err == nil {
+				client, err = harness.Launch(dir, path)
+			}
+		}
+	} else {
+		client, err = harness.Attach(dir)
+	}
+	if err == nil {
+		l.client = client
+		if l.stopping {
+			_ = client.Stop()
+		}
+	}
+	r.mu.Unlock()
+	if err != nil {
+		r.end(l, err)
+		return
+	}
+	go r.send(l)
+	r.mu.Lock()
+	for id, c := range l.commands {
+		if c.Message != 0 {
+			go r.watchDelivery(l, id)
+		}
+	}
+	r.mu.Unlock()
+	timer := time.AfterFunc(startTimeout, func() {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.current(l) && l.ready == 0 && !r.detached {
+			l.cause = errors.New("the plugin did not start within a minute")
+			_ = client.Stop()
+		}
+	})
+	defer timer.Stop()
+	reason := client.Read(l.position, func(rec harness.Record, next int64) error { return r.apply(l, rec, next) })
+	if errors.Is(reason, hold.ErrClosed) {
+		return
+	}
+	r.end(l, reason)
+}
+
+func (r *Runtime) launchDir(l *live) string {
+	return filepath.Join(store.Dir(), "run", strings.TrimSuffix(l.prefix, ":"))
+}
+func (r *Runtime) pluginPath(id string) (string, error) {
+	var s store.Session
+	err := r.db.Read(func(tx *store.Tx) error { var err error; s, err = tx.Session(id); return err })
+	if err != nil {
+		return "", err
+	}
+	return harness.Find(r.PluginDir, s.Harness)
+}
+
+// startArgs builds the arguments recorded with the launch's start command.
+func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartArgs, err error) {
+	var profiles []harness.Profile
+	if s.Parent == "" {
+		cfg, err := harness.LoadConfig()
+		if err != nil {
+			return args, err
+		}
+		profiles = cfg.ChildProfiles()
+	}
+	instructions, err := report.Instructions(tx, s, profiles)
+	if err != nil {
+		return args, err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return args, err
+	}
+	args = harness.StartArgs{Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
+	return args, nil
+}
+
+// end applies the final output before clearing this launch and deciding its
+// successor in the same transaction.
 func (r *Runtime) end(l *live, cause error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.current(l) {
+	if !r.current(l) || r.detached {
 		return
 	}
-	delete(r.live, l.id)
-	l.cause = cause
-	note, relaunch, quick := "Could not start the agent: ", false, 0
-	if !l.starting {
-		note = "The agent exited: "
-		if time.Since(l.launched) < quickExit {
-			quick = l.quick + 1
-		}
-		relaunch = quick < maxQuickExits
-	}
+	var next *live
 	err := r.save(func(tx *write) error {
 		for _, p := range l.drain() {
 			if err := tx.putItem(l.id, p.seq, p.item); err != nil {
 				return err
 			}
 		}
-		if err := r.note(tx, l, harness.KindError, note+cause.Error()); err != nil {
-			return err
-		}
-		if err := markExited(tx, l.id); err != nil {
-			return err
-		}
 		s, err := tx.Session(l.id)
 		if err != nil {
 			return err
 		}
 		running, err := tx.Running(s)
-		relaunch = relaunch && running
+		if err != nil {
+			return err
+		}
+		suppress := r.closing || l.stopping || !running || r.deleting[l.root]
+		lost := errors.Is(cause, hold.ErrLost)
+		failed := l.ready == 0
+		reason := cmp.Or(l.cause, cause, errStopped)
+		if !suppress && !lost {
+			note := "The agent exited: "
+			if failed {
+				note = "Could not start the agent: "
+			}
+			if err = r.note(tx, l, harness.KindError, note+reason.Error()); err != nil {
+				return err
+			}
+		}
+		quick := 0
+		if l.ready > 0 && time.Since(time.UnixMilli(l.ready)) < quickExit {
+			quick = l.quick + 1
+		}
+		s.Launch, s.Position, s.Ready, s.Quick = "", 0, 0, quick
+		s.Activity, s.Attention = store.Exited, false
+		if err = tx.SaveSession(s); err != nil {
+			return err
+		}
+		if err = tx.DeleteCommands(l.id); err != nil {
+			return err
+		}
+		if !suppress && !lost && !failed && quick < maxQuickExits {
+			next, err = r.decide(tx, s, l.root, quick)
+		}
 		return err
 	})
 	if err != nil {
 		logf("recording the end of %s: %v", l.id, err)
 		return
 	}
-	if relaunch {
-		next := r.register(l.id, l.root, quick)
-		// A relaunch that fails ends too, which records why.
+	delete(r.live, l.id)
+	l.cause = cmp.Or(l.cause, cause, errStopped)
+	for _, ch := range l.waiters {
+		select {
+		case ch <- l.cause:
+		default:
+		}
+	}
+	if l.client != nil {
+		_ = l.client.Close()
+		if err := l.client.Remove(); err != nil {
+			logf("removing holder: %v", err)
+		}
+	} else {
+		_ = os.RemoveAll(r.launchDir(l))
+	}
+	if next != nil {
+		r.live[next.id] = next
 		go r.launch(next)
 	}
-}
-
-func markExited(tx *write, id string) error {
-	s, err := tx.Session(id)
-	if err != nil {
-		return err
-	}
-	s.Activity, s.Attention = store.Exited, false
-	return tx.SaveSession(s)
 }
 
 // drain takes the launch's unfinished items as finished items.

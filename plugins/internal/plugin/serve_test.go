@@ -128,7 +128,7 @@ func (c *serving) reply(cmd harness.Command) string {
 	c.command(cmd)
 	r := c.next()
 	if r.Reply == nil || r.Reply.ID != cmd.ID {
-		c.t.Fatalf("got %+v, not the reply to %s", r, cmd.ID)
+		c.t.Fatalf("got %+v, not the reply to %d", r, cmd.ID)
 	}
 	return r.Reply.Error
 }
@@ -149,7 +149,7 @@ var startArgs = harness.StartArgs{Session: "a1"}
 
 func (c *serving) start() {
 	c.t.Helper()
-	if err := c.reply(harness.Command{ID: "start", Command: harness.CmdStart, Start: &startArgs}); err != "" {
+	if err := c.reply(harness.Command{ID: 1, Command: harness.CmdStart, Start: &startArgs}); err != "" {
 		c.t.Fatal(err)
 	}
 	r := c.next()
@@ -162,27 +162,25 @@ func TestServeDrivesTheAgent(t *testing.T) {
 	s := &standIn{script: "cat >/dev/null"}
 	c := serveStandIn(t, s)
 	c.start()
-	if err := c.reply(harness.Command{ID: "1", Command: harness.CmdStart, Start: &startArgs}); err != "already started" {
+	if err := c.reply(harness.Command{ID: 2, Command: harness.CmdStart, Start: &startArgs}); err != "already started" {
 		t.Error(err)
 	}
-	if err := c.reply(harness.Command{ID: "2", Command: harness.CmdStart}); err != "already started" {
+	if err := c.reply(harness.Command{ID: 3, Command: harness.CmdStart}); err != "already started" {
 		t.Error(err)
 	}
-	if err := c.reply(harness.Command{ID: "3", Command: "dance"}); err != `unknown command "dance"` {
+	if err := c.reply(harness.Command{ID: 4, Command: "dance"}); err != `unknown command "dance"` {
 		t.Error(err)
 	}
 	for _, cmd := range []harness.Command{
-		{ID: "4", Command: harness.CmdInput, Text: "hello"},
-		{ID: "5", Command: harness.CmdInterrupt},
-		{ID: "6", Command: harness.CmdAnswer, Request: "r1", Choice: "Yes", Text: "why"},
+		{ID: 5, Command: harness.CmdInput, Text: "hello"},
+		{ID: 6, Command: harness.CmdInterrupt},
+		{ID: 7, Command: harness.CmdAnswer, Request: "r1", Choice: "Yes", Text: "why"},
 	} {
 		if err := c.reply(cmd); err != "" {
 			t.Error(err)
 		}
 	}
-	if err := c.reply(harness.Command{ID: "7", Command: harness.CmdShutdown}); err != "" {
-		t.Error(err)
-	}
+	c.in.Close()
 	if err := c.wait(); err != nil {
 		t.Fatal(err)
 	}
@@ -194,10 +192,10 @@ func TestServeDrivesTheAgent(t *testing.T) {
 
 func TestServeBeforeStart(t *testing.T) {
 	c := serveStandIn(t, &standIn{script: "cat >/dev/null"})
-	if err := c.reply(harness.Command{ID: "1", Command: harness.CmdInput, Text: "hello"}); err != "not started" {
+	if err := c.reply(harness.Command{ID: 2, Command: harness.CmdInput, Text: "hello"}); err != "not started" {
 		t.Error(err)
 	}
-	if err := c.reply(harness.Command{ID: "2", Command: harness.CmdStart}); err != "start without arguments" {
+	if err := c.reply(harness.Command{ID: 3, Command: harness.CmdStart}); err != "start without arguments" {
 		t.Error(err)
 	}
 }
@@ -229,7 +227,7 @@ func TestServeEndsWithTheHarness(t *testing.T) {
 	c := serveStandIn(t, &standIn{script: `read line; echo '{"text":"first"}'; printf '{"text":"last"}'; echo bye >&2; exit 3`})
 	c.start()
 	// The harness's events may come before the reply to input.
-	c.command(harness.Command{ID: "1", Command: harness.CmdInput, Text: "go"})
+	c.command(harness.Command{ID: 2, Command: harness.CmdInput, Text: "go"})
 	err := c.wait()
 	var texts []string
 	for r := range c.records {
@@ -244,5 +242,28 @@ func TestServeEndsWithTheHarness(t *testing.T) {
 	}
 	if !slices.Equal(texts, []string{"first", "last"}) {
 		t.Fatal(texts)
+	}
+}
+
+func TestServeIgnoresResentCommands(t *testing.T) {
+	s := &standIn{script: "cat >/dev/null"}
+	c := serveStandIn(t, s)
+	c.start()
+	c.command(harness.Command{ID: 1, Command: harness.CmdStart, Start: &startArgs})
+	cmd := harness.Command{ID: 2, Command: harness.CmdInput, Text: "once"}
+	if err := c.reply(cmd); err != "" {
+		t.Fatal(err)
+	}
+	c.command(cmd)
+	c.command(harness.Command{ID: 1, Command: harness.CmdInput, Text: "old"})
+	if err := c.reply(harness.Command{ID: 3, Command: harness.CmdInterrupt}); err != "" {
+		t.Fatal(err)
+	}
+	c.in.Close()
+	if err := c.wait(); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.recorded(); !slices.Equal(got, []string{"input once", "interrupt", "stop"}) {
+		t.Fatal(got)
 	}
 }

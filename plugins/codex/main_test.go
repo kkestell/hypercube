@@ -1050,20 +1050,20 @@ done
 	has := func(match func(harness.Record) bool) func([]harness.Record) bool {
 		return func(rs []harness.Record) bool { return slices.ContainsFunc(rs, match) }
 	}
-	send(harness.Command{ID: "1", Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), StateDir: stateDir}})
-	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == "1" && r.Reply.Error == "" }))
+	send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), StateDir: stateDir}})
+	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 1 && r.Reply.Error == "" }))
 	until(has(func(r harness.Record) bool {
 		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == "th"
 	}))
-	send(harness.Command{ID: "2", Command: harness.CmdInput, Text: "hi"})
-	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == "2" && r.Reply.Error == "" }))
+	send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "hi"})
+	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 2 && r.Reply.Error == "" }))
 	until(has(func(r harness.Record) bool {
 		return r.Event != nil && len(r.Event.Items) == 1 && r.Event.Items[0].Text == "hello" && r.Event.Items[0].Done
 	}))
 	until(has(func(r harness.Record) bool {
 		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == ""
 	}))
-	send(harness.Command{ID: "3", Command: harness.CmdShutdown})
+	inWrite.Close()
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}

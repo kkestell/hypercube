@@ -43,7 +43,7 @@ browser shows each agent's transcript.
 ## Code
 
 - `cmd/hypercube/` — the command line and the app process.
-- `internal/` — one package per concern: `harness`, `mcp`, `menu`, `report`,
+- `internal/` — one package per concern: `harness`, `hold`, `mcp`, `menu`, `report`,
   `session`, `store`, `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness.

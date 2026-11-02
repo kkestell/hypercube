@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
@@ -25,7 +27,11 @@ func TestStandIn(t *testing.T) { harnesstest.Run() }
 // set, its child "w1" (ID "b") working directly in it.
 func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *session.Runtime) {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp("", "hc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	if err := os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755); err != nil {
@@ -246,7 +252,7 @@ func TestBridge(t *testing.T) {
 		t.Error("status did not reach parent transcript")
 	}
 	// A refused or unreachable app answers each request with an error.
-	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "no app": run("b", "http://127.0.0.1:1")} {
+	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "bad app URL": run("b", ":invalid")} {
 		if len(got) != 3 || got[0]["error"] == nil || got[0]["id"] != 1.0 || got[1]["error"] == nil {
 			t.Errorf("%s: answers = %v", name, got)
 		}
@@ -287,7 +293,7 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 	harnesstest.Install(t, plugins, "one")
 	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
 	rt.PluginDir = plugins
-	t.Cleanup(rt.Shutdown)
+	t.Cleanup(rt.Quit)
 	change(t, db, func(tx *store.Tx) error {
 		parent, err := tx.Session("session-1")
 		if err != nil {
@@ -386,5 +392,50 @@ func TestSessionBoundaries(t *testing.T) {
 	}
 	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " "}); !failed {
 		t.Fatal(text)
+	}
+}
+
+func TestBridgeWaitsForRestartingApp(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := listener.Addr().String()
+	listener.Close()
+	t.Setenv("HYPERCUBE_SESSION_ID", "b")
+	t.Setenv("HYPERCUBE_URL", "http://"+addr)
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- Bridge(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"set_status","arguments":{"text":"after restart"}}}`+"\n"), &out)
+	}()
+	// The first refused attempt has to wait for the replacement app.
+	select {
+	case err := <-done:
+		t.Fatalf("bridge gave up before app started: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	listener, err = net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: Handler(db, rt)}
+	go server.Serve(listener)
+	defer server.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("bridge did not resume")
+	}
+	if !strings.Contains(out.String(), "Status set.") {
+		t.Fatal(out.String())
+	}
+	items, err := rt.Transcript("session-1")
+	if err != nil || len(items) != 1 || items[0].Text != "after restart" {
+		t.Fatalf("%+v: %v", items, err)
 	}
 }

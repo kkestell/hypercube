@@ -44,7 +44,7 @@ func TestChildLifecycle(t *testing.T) {
 	if err := os.WriteFile(dirty, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.EndChild(parent.ID, "w1"); err == nil || len(f.family(parent.ID)) != 2 || len(f.log(child.ID, "shutdown")) != 0 {
+	if _, err := f.rt.EndChild(parent.ID, "w1"); err == nil || len(f.family(parent.ID)) != 2 || syscall.Kill(f.log(child.ID, "start")[0].Pid, 0) == syscall.ESRCH {
 		t.Fatalf("ending a dirty child: %v", err)
 	}
 	if err := os.Remove(dirty); err != nil {
@@ -250,7 +250,7 @@ func TestFamilyRestoresAndChildPromptReleasesQueues(t *testing.T) {
 	if f.storedSession(parent.ID).AwaitingUser {
 		t.Fatal("child prompt did not release family")
 	}
-	f.rt.Shutdown()
+	f.rt.Quit()
 	f.rt = f.newRuntime()
 	f.rt.Restore()
 	f.until("restored family", func() bool {

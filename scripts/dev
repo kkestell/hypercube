@@ -23,13 +23,12 @@ CONFIG=$DEV/config/hypercube/config.json
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
 	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
 
-# Stop the app through its own shutdown, which ends every agent's harness and
-# the panel shells, and wait for it to finish. The sessions stay marked running.
-stop() {
+# Wait for the app to finish detaching or quitting before starting its replacement.
+stop_app() {
 	if [ -f "$DEV/ui.pid" ]; then
 		pid=$(cat "$DEV/ui.pid")
 		if ps -p "$pid" -o command= | grep -q 'hypercube ui'; then
-			kill "$pid" || true
+			kill -"$1" "$pid" || true
 			# A child of this script is reaped by wait; any other process is polled.
 			wait "$pid" 2>/dev/null || true
 			for _ in $(seq 200); do
@@ -42,11 +41,31 @@ stop() {
 	fi
 }
 
+restart() { stop_app TERM; }
+quit() { stop_app INT; }
+
+# A crashed dev app can leave holders behind. They belong to this dev state.
+stop_holders() {
+	local file pid
+	local pids=()
+	for file in "$DEV"/state/hypercube/run/*/pid; do
+		[ -f "$file" ] || continue
+		pid=$(cat "$file")
+		case "$(ps -p "$pid" -o command=)" in
+			*"hypercube hold "*) kill -TERM "$pid" 2>/dev/null || true; pids+=("$pid");;
+		esac
+	done
+	[ "${#pids[@]}" -gt 0 ] || return 0
+	for pid in "${pids[@]}"; do
+		while kill -0 "$pid" 2>/dev/null; do sleep 0.1;	done
+	done
+}
+
 case "${1:-up}" in
 up)
 	cd "$ROOT"
-	stop
-	trap stop EXIT
+	restart
+	trap quit EXIT
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
 
@@ -161,7 +180,7 @@ JSON
 		revision=$next
 		echo "Sources changed; rebuilding..."
 		if build; then
-			stop
+			restart
 			start_view
 		else
 			echo "Build failed; keeping the previous view. Waiting for changes." >&2
@@ -170,13 +189,14 @@ JSON
 	wait "$view_pid"
 	;;
 stop)
-	stop
+	quit
 	;;
 clean)
-	stop
+	quit
+	stop_holders
 	# OpenCode's conversations of the dev agents, with their subagents'.
 	for conversation in $(sqlite3 "$DEV/state/hypercube/hypercube.db" \
-		"SELECT conversation FROM agents WHERE harness = 'opencode' AND conversation != ''" 2>/dev/null); do
+		"SELECT conversation FROM sessions WHERE harness = 'opencode' AND conversation != ''" 2>/dev/null); do
 		opencode session delete "$conversation" >/dev/null 2>&1 || true
 	done
 	[ -n "$DEV" ] && rm -rf "$DEV"

@@ -271,7 +271,11 @@ type app struct {
 
 func newApp(t *testing.T) *app {
 	t.Helper()
-	dir := t.TempDir()
+	dir, err := os.MkdirTemp("", "hc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	plugins, workspace := filepath.Join(dir, "plugins"), filepath.Join(dir, "repo")
 	logs := filepath.Join(dir, "logs")
 	for _, d := range []string{plugins, workspace, logs, filepath.Join(dir, "config/hypercube")} {
@@ -297,7 +301,7 @@ func newApp(t *testing.T) *app {
 	rt := session.New(db, "")
 	rt.PluginDir = plugins
 	rt.Terminals.Command = []string{"/bin/cat"}
-	t.Cleanup(rt.Shutdown)
+	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {
 		t.Fatal(err)

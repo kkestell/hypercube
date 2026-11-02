@@ -1,13 +1,13 @@
 // Package session runs Hypercube's workspaces, sessions, and agents. A Runtime
-// owns each agent's plugin process, delivers queued messages and the user's
-// input to it, records what it reports, and is the only writer of the
-// database.
+// attaches to each agent's holder, records commands and reported output, and
+// is the only writer of the database.
 package session
 
 import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -20,9 +20,6 @@ const (
 	// a long conversation.
 	startTimeout   = time.Minute
 	requestTimeout = 30 * time.Second
-	// shutdownWait is how long a plugin has to end after shutdown before its
-	// process group is killed.
-	shutdownWait = 3 * time.Second
 	// An agent that ends maxQuickExits times in a row, each within quickExit of
 	// starting, stays exited.
 	quickExit     = 10 * time.Second
@@ -46,7 +43,7 @@ type Runtime struct {
 	// PluginDir holds the harness plugins. Empty means beside the running
 	// executable.
 	PluginDir string
-	// Terminals holds each running session's shell. Stop, Delete, and Shutdown
+	// Terminals holds each running session's shell. Stop, Delete, and Quit
 	// end them.
 	Terminals terminal.Set
 
@@ -59,9 +56,9 @@ type Runtime struct {
 	// seqs holds each session's last transcript position. It outlives launches,
 	// because a launch that has ended can still record a late item.
 	seqs map[string]int64
-	gen  int64
-	// closing is set by Shutdown, after which no agent launches.
-	closing bool
+	// closing is set by Quit or Detach, after which no agent launches.
+	closing  bool
+	detached bool
 	// deleting holds the sessions Delete is ending, which cannot start.
 	deleting map[string]bool
 	feed     feed
@@ -69,8 +66,8 @@ type Runtime struct {
 
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
-	return &Runtime{db: db, url: url, live: map[string]*live{}, viewers: map[string]int{},
-		deleting: map[string]bool{}, seqs: map[string]int64{}, gen: time.Now().UnixMilli()}
+	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{}, viewers: map[string]int{},
+		deleting: map[string]bool{}, seqs: map[string]int64{}}
 }
 
 func logf(format string, args ...any) {

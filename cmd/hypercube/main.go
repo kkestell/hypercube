@@ -1,5 +1,5 @@
 // Command hypercube runs teams of coding agents. `hypercube ui` is the app
-// process: it owns every agent. `hypercube mcp` is the stdio server each
+// process: it manages sessions and attaches to their holders. `hypercube mcp` is the stdio server each
 // agent's harness runs, which forwards to the app.
 package main
 
@@ -15,6 +15,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/menu"
 	"github.com/kkestell/hypercube/internal/session"
@@ -22,11 +23,13 @@ import (
 	"github.com/kkestell/hypercube/internal/ui"
 )
 
-const usage = "usage: hypercube ui [port] [--menu]"
+const usage = "usage: hypercube ui [port] [--menu] | mcp | hold [-terminal -cols N -rows N] <dir> <command> [args...]"
 
 func main() {
 	var err error
 	switch {
+	case len(os.Args) > 1 && os.Args[1] == "hold":
+		err = hold.Main(os.Args[2:])
 	case len(os.Args) == 1:
 		err = errors.New(usage)
 	case len(os.Args) <= 4 && os.Args[1] == "ui":
@@ -95,9 +98,15 @@ func startApp(listener net.Listener, plugins string) (*app, error) {
 
 // shutdown ends every agent, then the server. Sessions keep their running
 // mark, so the next start restores them.
-func (a *app) shutdown() {
+func (a *app) shutdown() { a.close(true) }
+func (a *app) detach()   { a.close(false) }
+func (a *app) close(quit bool) {
 	a.once.Do(func() {
-		a.rt.Shutdown()
+		if quit {
+			a.rt.Quit()
+		} else {
+			a.rt.Detach()
+		}
 		_ = a.server.Close()
 		a.cancel()
 		_ = a.db.Close()
@@ -116,8 +125,7 @@ func serveUI(args []string) error {
 		return err
 	}
 	defer listener.Close()
-	// A signal during the restore waits for it, so shutdown ends the agents it
-	// started.
+	// Signals received during restore are handled after its attachments exist.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	a, err := startApp(listener, "")
@@ -129,11 +137,11 @@ func serveUI(args []string) error {
 	if withMenu {
 		go func() {
 			select {
-			case <-signals:
-				a.shutdown()
+			case sig := <-signals:
+				a.close(sig == syscall.SIGINT)
 				os.Exit(0)
 			case err := <-a.done:
-				a.shutdown()
+				a.detach()
 				fmt.Fprintln(os.Stderr, "hypercube:", err)
 				os.Exit(1)
 			}
@@ -143,11 +151,11 @@ func serveUI(args []string) error {
 		return nil
 	}
 	select {
-	case <-signals:
-		a.shutdown()
+	case sig := <-signals:
+		a.close(sig == syscall.SIGINT)
 		return nil
 	case err := <-a.done:
-		a.shutdown()
+		a.detach()
 		return err
 	}
 }

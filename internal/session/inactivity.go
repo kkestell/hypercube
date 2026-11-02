@@ -80,7 +80,7 @@ func (r *Runtime) stopIdleSessions(now time.Time) {
 					continue
 				}
 				l := r.live[member.ID]
-				busy = busy || member.Activity == store.Busy || (l != nil && (l.starting || l.delivering))
+				busy = busy || member.Activity == store.Busy || (l != nil && (l.ready == 0 || l.delivering()))
 			}
 			if !busy {
 				expired = append(expired, s.ID)
@@ -103,7 +103,7 @@ func (r *Runtime) stopIdleSessions(now time.Time) {
 		logf("checking idle sessions: %v", err)
 		return
 	}
-	stopClients(lives)
+	r.stopLaunches(lives)
 	for _, id := range expired {
 		r.stopShells(id)
 	}

@@ -1,0 +1,378 @@
+package session
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/hold"
+	"github.com/kkestell/hypercube/internal/store"
+)
+
+func (f *fixture) restart() { f.t.Helper(); f.rt.Detach(); f.rt = f.newRuntime(); f.rt.Restore() }
+func (f *fixture) holder(id string) *hold.Holder {
+	f.t.Helper()
+	s := f.storedSession(id)
+	h, err := hold.Open(filepath.Join(store.Dir(), "run", s.Launch))
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return h
+}
+func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.input(s.ID, "!work")
+	f.until("working", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
+	f.rt.Detach()
+	f.recordDetachedInput(s.ID, "!usage", true)
+	f.recordDetachedInput(s.ID, "!finish", true)
+	f.until("offline inputs", func() bool { return len(f.inputs(s.ID)) == 4 })
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	f.until("replayed state", func() bool {
+		return f.storedSession(s.ID).Usage.Context == 45200 && f.storedSession(s.ID).Activity == store.Idle && strings.Contains(f.summary(s.ID), "text:finished")
+	})
+	if len(f.log(s.ID, "start")) != 1 || f.storedSession(s.ID).AwaitingUser {
+		t.Fatal("restart launched another plugin or awaits user")
+	}
+	count := 0
+	for _, item := range f.transcript(s.ID) {
+		if item.Text == "finished" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("streaming item appears %d times", count)
+	}
+	before := f.summary(s.ID)
+	f.restart()
+	f.until("same transcript", func() bool { return f.summary(s.ID) == before })
+}
+func (f *fixture) recordDetachedInput(id, text string, send bool) {
+	f.t.Helper()
+	var c store.Command
+	err := f.db.Tx(func(tx *store.Tx) error {
+		seq, err := tx.LastSeq(id)
+		if err != nil {
+			return err
+		}
+		item, _ := json.Marshal(harness.Item{ID: "offline-" + store.NewID(), Kind: harness.KindUser, Text: text, Done: true})
+		line, _ := json.Marshal(harness.Command{Command: harness.CmdInput, Text: text})
+		c, err = tx.AddCommand(store.Command{Session: id, Command: harness.CmdInput, Line: string(line), Seq: seq + 1, Item: item})
+		return err
+	})
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	if send {
+		h := f.holder(id)
+		defer h.Close()
+		if _, err = h.Write([]byte(c.Line)); err != nil {
+			f.t.Fatal(err)
+		}
+	}
+}
+func TestRestartAnswersPersistedAttention(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.input(s.ID, "!ask")
+	f.until("attention", func() bool { return len(f.rt.Requests()) == 1 })
+	id := f.rt.Requests()[0].Item.ID
+	f.restart()
+	f.until("restored attention", func() bool { return len(f.rt.Requests()) == 1 })
+	if err := f.rt.Answer(s.ID, id, "yes", ""); err != nil {
+		t.Fatal(err)
+	}
+	f.until("answered", func() bool { return len(f.rt.Requests()) == 0 })
+	if log := f.log(s.ID, "answer"); len(log) != 1 || log[0].Request != "q" {
+		t.Fatal(log)
+	}
+}
+func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.queue("user", s.ID, "!hold", "later")
+	f.until("held delivery", func() bool { return len(f.inputs(s.ID)) == 2 })
+	f.restart()
+	f.until("attached", func() bool {
+		f.rt.mu.Lock()
+		defer f.rt.mu.Unlock()
+		return f.rt.live[s.ID] != nil && f.rt.live[s.ID].client != nil
+	})
+	if len(f.queued(s.ID)) != 2 || len(f.inputs(s.ID)) != 2 {
+		t.Fatal("held delivery repeated or removed")
+	}
+	if err := f.rt.Interrupt(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.until("delivered once", func() bool { return len(f.queued(s.ID)) == 0 && len(f.inputs(s.ID)) == 3 })
+	count := 0
+	for _, item := range f.transcript(s.ID) {
+		if strings.Contains(item.Text, "!hold") {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("held item written %d times", count)
+	}
+	f.rt.Detach()
+	f.recordDetachedInput(s.ID, "not sent", false)
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	f.until("unsent command delivered", func() bool { return len(f.inputs(s.ID)) == 4 && strings.HasSuffix(f.summary(s.ID), "text:ack") })
+	if got := f.inputs(s.ID); got[3] != "not sent" {
+		t.Fatal(got)
+	}
+}
+func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.rt.Detach()
+	f.recordDetachedInput(s.ID, "!crash", true)
+	h := f.holder(s.ID)
+	f.until("offline exit", func() bool { _, err := h.Exit(); return err == nil })
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	f.until("resumed after exit", func() bool { return len(f.log(s.ID, "start")) == 2 && f.idle(s.ID) })
+	if !strings.Contains(f.summary(s.ID), "The agent exited: ") || f.storedSession(s.ID).Quick != 1 {
+		t.Fatalf("exit not applied: %s %+v", f.summary(s.ID), f.storedSession(s.ID))
+	}
+	if f.log(s.ID, "start")[1].Conversation != s.ID+"-conversation" {
+		t.Fatal("conversation lost")
+	}
+}
+func killHolder(t *testing.T, dir string) {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, "pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(string(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = syscall.Kill(pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	h, _ := hold.Open(dir)
+	deadline := time.Now().Add(5 * time.Second)
+	for h.Alive() && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.Alive() {
+		t.Fatal("holder still alive")
+	}
+}
+func TestRestartLostLaunchWithLiveFamilyMember(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	child := f.child(s, "child", "")
+	f.rt.Detach()
+	f.recordDetachedInput(child.ID, "!usage", true)
+	f.until("offline usage", func() bool { return len(f.inputs(child.ID)) == 1 })
+	dir := filepath.Join(store.Dir(), "run", f.storedSession(child.ID).Launch)
+	killHolder(t, dir)
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	f.until("lost child relaunched", func() bool { return len(f.log(child.ID, "start")) == 2 && f.idle(child.ID) })
+	if len(f.log(s.ID, "start")) != 1 || f.storedSession(s.ID).AwaitingUser || f.storedSession(child.ID).Usage.Context != 45200 || strings.Contains(f.summary(child.ID), "exited") {
+		t.Fatal("lost launch was not recovered without a note")
+	}
+}
+func TestRestartAllLostAwaitsUser(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.rt.Detach()
+	killHolder(t, filepath.Join(store.Dir(), "run", f.storedSession(s.ID).Launch))
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	if !f.storedSession(s.ID).AwaitingUser || len(f.log(s.ID, "start")) != 2 {
+		t.Fatal("all-lost family did not await user")
+	}
+}
+func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
+	f := newFixture(t)
+	f.seed()
+	f.rt.mu.Lock()
+	var l *live
+	err := f.rt.save(func(tx *write) error {
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		s.Running = true
+		s.Harness = "test"
+		if err = tx.SaveSession(s); err != nil {
+			return err
+		}
+		l, err = f.rt.decide(tx, s, "s", 0)
+		return err
+	})
+	f.rt.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := strings.TrimSuffix(l.prefix, ":")
+	orphan, err := hold.Start(filepath.Join(store.Dir(), "run", "orphan"), []string{"/bin/cat"}, os.Environ(), f.root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer orphan.Remove()
+	f.rt.Restore()
+	f.until("decided launch ready", func() bool { return f.idle("s") })
+	if f.storedSession("s").Launch != original || len(f.log("s", "start")) != 1 {
+		t.Fatal("recorded launch replaced")
+	}
+	if orphan.Alive() {
+		t.Fatal("orphan alive")
+	}
+	if _, err = os.Stat(filepath.Join(store.Dir(), "run", "orphan")); !os.IsNotExist(err) {
+		t.Fatal("orphan directory remains")
+	}
+}
+
+func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.input(s.ID, "!work")
+	f.input(s.ID, "!append")
+	f.until("streaming append", func() bool { return strings.Contains(f.summary(s.ID), "text:working more") })
+	f.restart()
+	f.until("replayed append", func() bool { return strings.Contains(f.summary(s.ID), "text:working more") })
+	count := func(text string) int {
+		n := 0
+		for _, item := range f.transcript(s.ID) {
+			if item.Kind == harness.KindText && item.Text == text {
+				n++
+			}
+		}
+		return n
+	}
+	if count("working more") != 1 {
+		t.Fatal(f.summary(s.ID))
+	}
+	f.input(s.ID, "!complete")
+	f.until("completed append", func() bool { return count("working more done") == 1 })
+	f.restart()
+	f.until("completed item once", func() bool { return count("working more done") == 1 })
+}
+func TestStopAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.queue("user", s.ID, "!onclose")
+	f.until("pending delivery", func() bool { return len(f.inputs(s.ID)) == 2 })
+	if err := f.rt.Stop(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.queued(s.ID)) != 0 || !strings.Contains(f.summary(s.ID), "user:!onclose") {
+		t.Fatal("stop discarded acceptance")
+	}
+	if err := f.rt.Start(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.input(s.ID, "again")
+	if len(f.inputs(s.ID)) != 3 {
+		t.Fatal("accepted message repeated")
+	}
+	entries, err := os.ReadDir(filepath.Join(store.Dir(), "run"))
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("holder directories: %v %v", entries, err)
+	}
+	f.rt.Quit()
+	entries, err = os.ReadDir(filepath.Join(store.Dir(), "run"))
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("Quit left directories: %v %v", entries, err)
+	}
+}
+func TestQuickExitCountSurvivesRestarts(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	for exits := 1; exits <= maxQuickExits; exits++ {
+		f.rt.Detach()
+		f.recordDetachedInput(s.ID, "!crash", true)
+		h := f.holder(s.ID)
+		f.until("exit", func() bool { _, err := h.Exit(); return err == nil })
+		f.rt = f.newRuntime()
+		f.rt.Restore()
+		if exits < maxQuickExits {
+			f.until("next launch", func() bool { return len(f.log(s.ID, "start")) == exits+1 && f.idle(s.ID) })
+		} else {
+			f.until("third exit stays ended", func() bool { return f.storedSession(s.ID).Launch == "" })
+		}
+	}
+	if len(f.log(s.ID, "start")) != maxQuickExits {
+		t.Fatal("quick-exit limit lost")
+	}
+}
+
+func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.queue("user", s.ID, "!hold", "later")
+	deadline := time.Now().Add(requestTimeout + 5*time.Second)
+	noted := func() int {
+		n := 0
+		for _, item := range f.transcript(s.ID) {
+			if strings.Contains(item.Text, "later messages wait for it") {
+				n++
+			}
+		}
+		return n
+	}
+	for noted() == 0 && time.Now().Before(deadline) {
+		time.Sleep(25 * time.Millisecond)
+	}
+	if noted() != 1 || len(f.queued(s.ID)) != 2 || len(f.inputs(s.ID)) != 2 {
+		t.Fatal("timeout did not hold delivery")
+	}
+	f.rt.stopIdleSessions(time.Now().Add(2 * idleTimeout))
+	if !f.storedSession(s.ID).Running {
+		t.Fatal("idle check stopped unanswered delivery")
+	}
+	if err := f.rt.Interrupt(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.until("delivery resumes", func() bool { return len(f.queued(s.ID)) == 0 && len(f.inputs(s.ID)) == 3 })
+	if noted() != 1 {
+		t.Fatal("timeout noted more than once")
+	}
+}
+
+func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
+	f := newFixture(t)
+	t.Setenv("HYPERCUBE_TEST_START_HOLD", "1")
+	f.seed()
+	f.rt.mu.Lock()
+	err := f.rt.save(func(tx *write) error {
+		s, err := tx.Session("s")
+		if err != nil {
+			return err
+		}
+		s.Harness = "test"
+		s.Running = true
+		if err = tx.SaveSession(s); err != nil {
+			return err
+		}
+		_, err = f.rt.decide(tx, s, "s", 0)
+		return err
+	})
+	f.rt.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.rt.Restore()
+	deadline := time.Now().Add(startTimeout + 5*time.Second)
+	for f.storedSession("s").Launch != "" && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !strings.Contains(f.summary("s"), "Could not start the agent: the plugin did not start within a minute") || f.storedSession("s").Launch != "" {
+		t.Fatal(f.summary("s"))
+	}
+}

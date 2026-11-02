@@ -112,7 +112,7 @@ func (r *Runtime) start(id string, fresh bool) error {
 		r.mu.Unlock()
 		return nil
 	}
-	var launching []string
+	var lives []*live
 	err = r.save(func(tx *write) error {
 		s, err := tx.Session(id)
 		if err != nil {
@@ -128,21 +128,20 @@ func (r *Runtime) start(id string, fresh bool) error {
 			if member.Ended {
 				continue
 			}
-			member.Activity, member.Attention = store.Exited, false
 			if err := tx.SaveSession(member); err != nil {
 				return err
 			}
-			if err := r.loadSeq(tx.Tx, member.ID); err != nil {
+			l, err := r.decide(tx, member, id, 0)
+			if err != nil {
 				return err
 			}
-			launching = append(launching, member.ID)
+			lives = append(lives, l)
 		}
 		return nil
 	})
-	var lives []*live
 	if err == nil {
-		for _, member := range launching {
-			lives = append(lives, r.register(member, id, 0))
+		for _, l := range lives {
+			r.live[l.id] = l
 		}
 	}
 	r.mu.Unlock()
@@ -168,7 +167,7 @@ func (r *Runtime) Stop(id string) error {
 	r.mu.Lock()
 	lives, err := r.stopLocked(id)
 	r.mu.Unlock()
-	stopClients(lives)
+	r.stopLaunches(lives)
 	if err == nil {
 		r.stopShells(id)
 	}
@@ -192,7 +191,7 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.detachLocked(func(l *live) bool { return l.root == id }, true), nil
+	return r.selectLaunches(func(l *live) bool { return l.root == id }), nil
 }
 
 // Delete deletes a session. An ended child loses only its row and chat. A
@@ -253,14 +252,14 @@ func (r *Runtime) Delete(id string) error {
 	// resuming the session meanwhile.
 	r.mu.Lock()
 	r.deleting[id] = true
-	lives := r.detachLocked(func(l *live) bool { return l.root == id }, false)
+	lives := r.selectLaunches(func(l *live) bool { return l.root == id })
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
 		delete(r.deleting, id)
 		r.mu.Unlock()
 	}()
-	stopClients(lives)
+	r.stopLaunches(lives)
 	r.stopShells(id)
 	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
 	for _, c := range worktrees {
@@ -324,29 +323,6 @@ func (r *Runtime) update(id string, change func(*store.Session)) error {
 	})
 }
 
-// Restore starts every session the user left running, as after the app
-// restarts. One failure does not stop the others.
-func (r *Runtime) Restore() {
-	var sessions []store.Session
-	err := r.db.Read(func(tx *store.Tx) error {
-		var err error
-		sessions, err = tx.Sessions("")
-		return err
-	})
-	if err != nil {
-		logf("restore sessions: %v", err)
-		return
-	}
-	for _, s := range sessions {
-		if !s.Running {
-			continue
-		}
-		if err := r.Start(s.ID); err != nil {
-			logf("restore session %s: %v", s.ID, err)
-		}
-	}
-}
-
 // Shell opens the running session's shell in its own directory.
 func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 	var dir string
@@ -383,56 +359,67 @@ func (r *Runtime) stopShells(id string) {
 	}
 }
 
-// detachLocked removes the matching running agents from the runtime, saving
-// their unfinished items, and returns them for stopClients. With exited set it
-// also marks the agents exited. The caller holds mu.
-func (r *Runtime) detachLocked(match func(*live) bool, exited bool) []*live {
+// selectLaunches marks launches as stopping but leaves their readers attached.
+// The caller holds mu.
+func (r *Runtime) selectLaunches(match func(*live) bool) []*live {
 	var lives []*live
-	for id, l := range r.live {
+	for _, l := range r.live {
 		if match(l) {
+			l.stopping = true
 			lives = append(lives, l)
-			delete(r.live, id)
 		}
-	}
-	err := r.save(func(tx *write) error {
-		for _, l := range lives {
-			for _, e := range l.drain() {
-				if err := tx.putItem(l.id, e.seq, e.item); err != nil {
-					return err
-				}
-			}
-			if exited {
-				if err := markExited(tx, l.id); err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		logf("saving agents' transcripts: %v", err)
 	}
 	return lives
 }
-
-// stopClients ends the plugins of detached agents, in parallel.
-func stopClients(lives []*live) {
+func (r *Runtime) stopLaunches(lives []*live) {
 	var wg sync.WaitGroup
 	for _, l := range lives {
-		if l.client != nil {
-			wg.Go(func() { l.client.Shutdown(shutdownWait) })
-		}
+		wg.Go(func() {
+			r.mu.Lock()
+			client := l.client
+			r.mu.Unlock()
+			if client != nil {
+				_ = client.Stop()
+			}
+			<-l.done
+		})
 	}
 	wg.Wait()
 }
 
-// Shutdown ends every agent's plugin for the app's exit. Sessions keep the
-// running mark, so Restore starts them again.
-func (r *Runtime) Shutdown() {
+// Quit ends children and shells while preserving the sessions' running marks.
+func (r *Runtime) Quit() {
 	r.mu.Lock()
+	if r.detached {
+		r.mu.Unlock()
+		return
+	}
 	r.closing = true
-	lives := r.detachLocked(func(*live) bool { return true }, true)
+	lives := r.selectLaunches(func(*live) bool { return true })
 	r.mu.Unlock()
 	r.Terminals.Close()
-	stopClients(lives)
+	r.stopLaunches(lives)
+}
+
+// Detach finishes writes and releases readers, leaving each holder running.
+func (r *Runtime) Detach() {
+	r.mu.Lock()
+	r.closing = true
+	r.detached = true
+	lives := make([]*live, 0, len(r.live))
+	for _, l := range r.live {
+		lives = append(lives, l)
+	}
+	r.mu.Unlock()
+	for _, l := range lives {
+		l.send.Lock()
+		if l.client != nil {
+			_ = l.client.Close()
+		}
+		l.send.Unlock()
+	}
+	for _, l := range lives {
+		<-l.done
+	}
+	r.Terminals.Detach()
 }

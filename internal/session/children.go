@@ -33,10 +33,11 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
 		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
 	r.mu.Lock()
-	if r.live[parentID] == nil {
+	if r.live[parentID] == nil || r.live[parentID].stopping || r.closing {
 		r.mu.Unlock()
 		return store.Session{}, errors.New("the session is not running")
 	}
+	var l *live
 	err := r.save(func(tx *write) error {
 		w, err := tx.Workspace(parent.Workspace)
 		if err != nil {
@@ -69,13 +70,15 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 			return err
 		}
 		if message != "" {
-			return tx.Queue(store.Message{From: parentID, To: child.ID, Text: message})
+			if err := tx.Queue(store.Message{From: parentID, To: child.ID, Text: message}); err != nil {
+				return err
+			}
 		}
-		return nil
+		l, err = r.decide(tx, child, parent.ID, 0)
+		return err
 	})
-	var l *live
 	if err == nil {
-		l = r.register(child.ID, parent.ID, 0)
+		r.live[child.ID] = l
 	}
 	r.mu.Unlock()
 	if err != nil {
@@ -86,6 +89,7 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 		err = workspace.AddWorktree(parent.Dir, child.Dir, child.Branch)
 		if err != nil {
 			r.end(l, err)
+			close(l.done)
 		}
 		created = err == nil
 	}
@@ -147,7 +151,7 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		}
 	}
 	r.mu.Lock()
-	lives := r.detachLocked(func(l *live) bool { return l.id == child.ID }, true)
+	lives := r.selectLaunches(func(l *live) bool { return l.id == child.ID })
 	err = r.save(func(tx *write) error {
 		var err error
 		child, err = tx.Session(child.ID)
@@ -161,7 +165,7 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		return tx.DropQueued(child.ID)
 	})
 	r.mu.Unlock()
-	stopClients(lives)
+	r.stopLaunches(lives)
 	r.Terminals.Stop(child.ID)
 	return child, err
 }

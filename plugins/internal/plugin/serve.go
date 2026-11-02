@@ -27,7 +27,7 @@ type Start func(a harness.StartArgs, emit func(harness.Event)) (Agent, error)
 
 // Serve runs a plugin's `serve` loop: it reads commands from in, drives the
 // harness that start returns, and writes replies and events to out. It returns
-// when in closes, on `shutdown`, or when the harness ends.
+// when in closes or when the harness ends.
 func Serve(in io.Reader, out io.Writer, start Start) error {
 	s := &server{enc: json.NewEncoder(out)}
 	defer func() {
@@ -53,6 +53,7 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 			failed <- err
 		}
 	}()
+	var last int64
 	var exited <-chan struct{} // the started process's Done
 	for {
 		select {
@@ -65,10 +66,10 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 					return nil
 				}
 			}
-			if cmd.Command == harness.CmdShutdown {
-				s.reply(cmd.ID, nil)
-				return nil
+			if cmd.ID <= last {
+				continue
 			}
+			last = cmd.ID
 			err := s.handle(cmd, start)
 			s.reply(cmd.ID, err)
 			if err == nil && cmd.Command == harness.CmdStart {
@@ -94,7 +95,7 @@ func (s *server) write(r harness.Record) {
 	_ = s.enc.Encode(r)
 }
 
-func (s *server) reply(id string, err error) {
+func (s *server) reply(id int64, err error) {
 	r := harness.Reply{ID: id}
 	if err != nil {
 		r.Error = err.Error()

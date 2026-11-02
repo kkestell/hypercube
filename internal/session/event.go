@@ -1,25 +1,93 @@
 package session
 
 import (
+	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// event applies an event from l's plugin.
+// apply commits every durable effect with the position of its source record.
+func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.current(l) || r.detached {
+		return nil
+	}
+	if rec.Event != nil {
+		return r.eventLocked(l, *rec.Event, next)
+	}
+	reply := *rec.Reply
+	c, ok := l.commands[reply.ID]
+	if !ok {
+		return fmt.Errorf("reply to unknown request %d", reply.ID)
+	}
+	if err := r.save(func(tx *write) error {
+		if err := r.reply(tx, l, reply); err != nil {
+			return err
+		}
+		return r.checkpoint(tx, l, next)
+	}); err != nil {
+		return err
+	}
+	l.position = next
+	delete(l.commands, reply.ID)
+	if c.Command != harness.CmdStart || reply.Error == "" {
+		var err error
+		if reply.Error != "" {
+			err = errors.New(reply.Error)
+		}
+		if ch := l.waiters[reply.ID]; ch != nil {
+			ch <- err
+		}
+	}
+	_ = l.client.Discard(next)
+	if reply.Error == "" {
+		r.kickFamilyLocked(l.root)
+	}
+	return nil
+}
+
+// checkpoint saves streaming items as unfinished, without mirroring already
+// opened attention requests a second time.
+func (r *Runtime) checkpoint(tx *write, l *live, next int64) error {
+	for _, p := range l.pending {
+		data, err := json.Marshal(p.item)
+		if err != nil {
+			return err
+		}
+		if _, err = tx.PutEntry(l.id, store.Entry{Seq: p.seq, Item: p.item.ID, Data: data}); err != nil {
+			return err
+		}
+	}
+	s, err := tx.Session(l.id)
+	if err != nil {
+		return err
+	}
+	s.Position = next
+	return tx.SaveSession(s)
+}
+
 func (r *Runtime) event(l *live, ev harness.Event) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.current(l) {
-		return
+	if err := r.eventLocked(l, ev, l.position); err != nil {
+		logf("recording event: %v", err)
 	}
+}
+func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
+	if !r.current(l) {
+		return nil
+	}
+	l.position = next
 	var completed []*pendingItem
 	var failures []string
 	var opened []harness.Item
 	at := time.Now().UnixMilli()
 	for _, it := range ev.Items {
-		native := it.ID
 		it.ID = l.prefix + it.ID
 		if it.Parent != "" {
 			it.Parent = l.prefix + it.Parent
@@ -33,7 +101,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			if it.Kind == harness.KindAttention {
 				opened = append(opened, it)
 			}
-			p = &pendingItem{seq: r.nextSeq(l.id), native: native}
+			p = &pendingItem{seq: r.nextSeq(l.id)}
 			l.pending[it.ID] = p
 			if it.Kind == harness.KindError {
 				failures = append(failures, it.Text)
@@ -58,7 +126,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
 	if len(completed) == 0 && len(opened) == 0 && len(failures) == 0 && !changed {
-		return
+		return nil
 	}
 	err := r.save(func(tx *write) error {
 		if err := tx.TouchSession(l.id, time.Now().UnixMilli()); err != nil {
@@ -75,7 +143,7 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 			}
 		}
 		if !changed && len(failures) == 0 {
-			return nil
+			return r.checkpoint(tx, l, next)
 		}
 		s, err := tx.Session(l.id)
 		if err != nil {
@@ -95,11 +163,10 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 				}
 			}
 		}
-		return nil
+		return r.checkpoint(tx, l, next)
 	})
 	if err != nil {
-		logf("recording an event from %s: %v", l.id, err)
-		return
+		return err
 	}
 	l.attention = attention
 	if len(failures) > 0 {
@@ -107,6 +174,10 @@ func (r *Runtime) event(l *live, ev harness.Event) {
 	} else if ev.State == harness.Idle {
 		r.kickLocked(l.id)
 	}
+	if l.client != nil {
+		_ = l.client.Discard(next)
+	}
+	return nil
 }
 
 // applyEvent records an event's conversation, work state, and usage. A session that finishes a
