@@ -166,8 +166,6 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 	for name, got := range map[string]int{
 		"foreign host":          send("GET", "example.com", "", "/leads"),
 		"rebound host":          send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
-		"foreign origin":        send("POST", "localhost:4280", "http://example.com", "/mcp"),
-		"no origin":             send("POST", "localhost:4280", "", "/mcp"),
 		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/agent?action=input&id=a"),
 		"input without origin":  send("POST", "localhost:4280", "", "/agent?action=input&id=a"),
 		"terminal foreign host": send("GET", "example.com", "", "/terminal?session=s"),
@@ -176,10 +174,9 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 			t.Errorf("%s: status %d", name, got)
 		}
 	}
-	// The agents' own bridge sends its own address as the origin. The origin
-	// check lets the request through to the MCP handler, which refuses this
-	// stand-in for lacking a content type.
-	if got := send("POST", "127.0.0.1:4280", "http://127.0.0.1:4280", "/mcp"); got == http.StatusForbidden {
+	// An agent's request names no origin. The origin check lets it through to
+	// the MCP handler, which refuses this stand-in for lacking a content type.
+	if got := send("POST", "127.0.0.1:4280", "", "/mcp"); got == http.StatusForbidden {
 		t.Errorf("the bridge: status %d", got)
 	}
 	// Another page cannot open the data or terminal sockets.

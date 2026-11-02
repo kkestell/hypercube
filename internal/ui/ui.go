@@ -64,7 +64,8 @@ func leads(w http.ResponseWriter, r *http.Request) {
 // server, and other origins' requests, so another page cannot reach the app's
 // routes. Actions must name their origin. A socket's origin is checked here
 // rather than by websocket.Accept, because the terminal route starts a shell
-// before accepting.
+// before accepting. The /mcp route is for agents, not pages; it requires a
+// known agent ID in a header, which another page cannot send.
 func localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.Host)
@@ -73,7 +74,7 @@ func localOnly(next http.Handler) http.Handler {
 			return
 		}
 		origin := r.Header.Get("Origin")
-		if origin != "http://"+r.Host && (r.Method != http.MethodGet || origin != "") {
+		if r.URL.Path != "/mcp" && origin != "http://"+r.Host && (r.Method != http.MethodGet || origin != "") {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}

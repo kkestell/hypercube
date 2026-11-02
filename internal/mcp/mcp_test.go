@@ -25,22 +25,33 @@ func team(t *testing.T, noGit bool, leadDir, workerDir string) (*store.DB, *sess
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755)
-	os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), []byte(`{
+	if err := os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := []byte(`{
   "profiles": [
     {"name": "opus", "role": "lead", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
     {"name": "sol", "role": "work", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
   ]
-}`), 0o644)
+}`)
+	if err := os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), config, 0o644); err != nil {
+		t.Fatal(err)
+	}
 	db, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	change(t, db, func(tx *store.Tx) error {
-		tx.AddWorkspace(store.Workspace{ID: "w", Path: leadDir, NoGit: noGit})
-		tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true})
-		tx.AddAgent(store.Agent{ID: "a", Session: "session-1", Name: "lead", Role: store.Lead, Dir: leadDir, Activity: store.Idle})
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: leadDir, NoGit: noGit}); err != nil {
+			return err
+		}
+		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true}); err != nil {
+			return err
+		}
+		if err := tx.AddAgent(store.Agent{ID: "a", Session: "session-1", Name: "lead", Role: store.Lead, Dir: leadDir, Activity: store.Idle}); err != nil {
+			return err
+		}
 		if workerDir != "" {
 			return tx.AddAgent(store.Agent{ID: "b", Session: "session-1", Name: "w1", Role: store.Worker, Dir: workerDir, Activity: store.Idle})
 		}
@@ -73,13 +84,12 @@ func post(handler http.Handler, agent, body string) *httptest.ResponseRecorder {
 	return res
 }
 
-// withAgent adds the agent's identity to every request.
-type withAgent string
-
-func (a withAgent) RoundTrip(r *http.Request) (*http.Response, error) {
-	r = r.Clone(r.Context())
-	r.Header.Set(AgentHeader, string(a))
-	return http.DefaultTransport.RoundTrip(r)
+// serve runs the app's /mcp route on a test server.
+func serve(t *testing.T, db *store.DB, rt *session.Runtime) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(Handler(db, rt))
+	t.Cleanup(server.Close)
+	return server
 }
 
 // connect returns an SDK client session with the app's /mcp route as the agent.
@@ -88,7 +98,7 @@ func connect(t *testing.T, url, agent string) *mcp.ClientSession {
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	s, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint:             url,
-		HTTPClient:           &http.Client{Transport: withAgent(agent)},
+		HTTPClient:           &http.Client{Transport: identity(agent)},
 		DisableStandaloneSSE: true,
 	}, nil)
 	if err != nil {
@@ -208,12 +218,7 @@ func TestHandlerChecksTheAgent(t *testing.T) {
 // answers in the app's words.
 func TestBridge(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
-	var origins []string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origins = append(origins, r.Header.Get("Origin"))
-		Handler(db, rt).ServeHTTP(w, r)
-	}))
-	defer server.Close()
+	server := serve(t, db, rt)
 	run := func(agent, url string) []map[string]any {
 		t.Helper()
 		t.Setenv("HYPERCUBE_AGENT_ID", agent)
@@ -244,12 +249,6 @@ func TestBridge(t *testing.T) {
 	if a := agents(t, db, "session-1")[1]; a.Status != "Reading" {
 		t.Errorf("the tool did not run for the agent: %+v", a)
 	}
-	for _, o := range origins {
-		if o != server.URL {
-			t.Errorf("origins = %v", origins)
-			break
-		}
-	}
 	// A refused or unreachable app answers each request with an error.
 	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "no app": run("b", "http://127.0.0.1:1")} {
 		if len(got) != 3 || got[0]["error"] == nil || got[0]["id"] != 1.0 || got[1]["error"] == nil {
@@ -266,54 +265,75 @@ func TestBridge(t *testing.T) {
 // adding no agent.
 func TestCreateAgentRefusals(t *testing.T) {
 	db, rt := team(t, true, t.TempDir(), "")
-	for _, args := range []createAgentArgs{{Name: "w1", Profile: "sol"}, {Name: "w1", Profile: "sol", Dir: "missing"}, {Name: "w1", Dir: "."}, {Name: "w1", Profile: "nope", Dir: "."}, {Name: "w1", Profile: "opus", Dir: "."}, {Name: "w1", Profile: "sol", Dir: "."}} {
-		if _, err := createAgent(rt, "a", args); err == nil {
-			t.Errorf("createAgent(%v) succeeded", args)
+	lead := connect(t, serve(t, db, rt).URL, "a")
+	for _, args := range []map[string]any{
+		{"name": "w1", "profile": "sol"},
+		{"name": "w1", "profile": "sol", "dir": "missing"},
+		{"name": "w1", "dir": "."},
+		{"name": "W 1", "profile": "sol", "dir": "."},
+		{"name": "w1", "profile": "nope", "dir": "."},
+		{"name": "w1", "profile": "opus", "dir": "."},
+		{"name": "w1", "profile": "sol", "dir": "."},
+	} {
+		if text, failed := callTool(t, lead, "create_agent", args); !failed {
+			t.Errorf("create_agent(%v) = %q", args, text)
 		}
 		if list := agents(t, db, "session-1"); len(list) != 1 {
-			t.Errorf("after createAgent(%v): %+v", args, list)
+			t.Errorf("after create_agent(%v): %+v", args, list)
 		}
 	}
 }
 
 // remove_agent refuses a stopped session and leaves the worker.
 func TestRemoveAgentStoppedSession(t *testing.T) {
-	workerDir := t.TempDir()
-	db, rt := team(t, false, t.TempDir(), workerDir)
-	if _, err := removeAgent(rt, "a", "w1"); err == nil || !strings.Contains(err.Error(), "not running") {
-		t.Fatalf("removeAgent in a stopped session: %v", err)
+	db, rt := team(t, false, t.TempDir(), t.TempDir())
+	lead := connect(t, serve(t, db, rt).URL, "a")
+	if text, failed := callTool(t, lead, "remove_agent", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
+		t.Fatalf("remove_agent in a stopped session: %q %v", text, failed)
 	}
 	if list := agents(t, db, "session-1"); len(list) != 2 {
-		t.Errorf("after removeAgent: %+v", list)
+		t.Errorf("after remove_agent: %+v", list)
 	}
 }
 
 func TestSessionBoundaries(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
 	change(t, db, func(tx *store.Tx) error {
-		tx.AddSession(store.Session{ID: "other", Workspace: "w", Title: "Fix the parser"})
-		tx.AddAgent(store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead, Activity: store.Idle})
-		tx.AddAgent(store.Agent{ID: "other-worker", Session: "other", Name: "w1", Role: store.Worker, Activity: store.Idle})
-		tx.AddWorkspace(store.Workspace{ID: "far", Path: "/elsewhere"})
-		tx.AddSession(store.Session{ID: "far", Workspace: "far"})
-		return tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle})
+		for _, add := range []error{
+			tx.AddSession(store.Session{ID: "other", Workspace: "w", Title: "Fix the parser"}),
+			tx.AddAgent(store.Agent{ID: "other-lead", Session: "other", Name: "lead", Role: store.Lead, Activity: store.Idle}),
+			tx.AddAgent(store.Agent{ID: "other-worker", Session: "other", Name: "w1", Role: store.Worker, Activity: store.Idle}),
+			tx.AddWorkspace(store.Workspace{ID: "far", Path: "/elsewhere"}),
+			tx.AddSession(store.Session{ID: "far", Workspace: "far"}),
+			tx.AddAgent(store.Agent{ID: "far-lead", Session: "far", Name: "lead", Role: store.Lead, Activity: store.Idle}),
+		} {
+			if add != nil {
+				return add
+			}
+		}
+		return nil
 	})
+	url := serve(t, db, rt).URL
+	sessions := map[string]*mcp.ClientSession{}
+	for _, id := range []string{"a", "b", "other-lead"} {
+		sessions[id] = connect(t, url, id)
+	}
 	for _, send := range [][2]string{{"a", "other/w1"}, {"b", "other/w1"}, {"b", "other/lead"}, {"a", "far/lead"}} {
-		if _, err := sendMessage(rt, send[0], send[1], "wrong session"); err == nil {
-			t.Fatalf("%s reached %s across sessions", send[0], send[1])
+		if text, failed := callTool(t, sessions[send[0]], "send_message", map[string]any{"to": send[1], "text": "wrong session"}); !failed {
+			t.Fatalf("%s reached %s across sessions: %q", send[0], send[1], text)
 		}
 	}
-	if _, err := removeAgent(rt, "a", "other/w1"); err == nil {
-		t.Fatal("removed another session's worker")
+	if text, failed := callTool(t, sessions["a"], "remove_agent", map[string]any{"name": "other/w1"}); !failed {
+		t.Fatalf("removed another session's worker: %q", text)
 	}
-	if _, err := removeAgent(rt, "b", "w1"); err == nil {
-		t.Fatal("worker removed an agent")
+	if text, failed := callTool(t, sessions["b"], "remove_agent", map[string]any{"name": "w1"}); !failed {
+		t.Fatalf("worker removed an agent: %q", text)
 	}
 	// Session "other" is stopped; session-1 runs.
 	for _, send := range [][3]string{{"other-lead", "w1", "stopped"}, {"a", "other/lead", "stopped"}, {"other-lead", "session-1/lead", ""}} {
-		reply, err := sendMessage(rt, send[0], send[1], "allowed")
-		if err != nil {
-			t.Fatal(err)
+		reply, failed := callTool(t, sessions[send[0]], "send_message", map[string]any{"to": send[1], "text": "allowed"})
+		if failed {
+			t.Fatal(reply)
 		}
 		if stopped := strings.Contains(reply, "stopped"); stopped != (send[2] == "stopped") {
 			t.Errorf("reply to %s: %q", send[1], reply)
@@ -327,26 +347,28 @@ func TestSessionBoundaries(t *testing.T) {
 		}
 		return nil
 	})
-	if listed, _ := listAgents(db, "a"); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") || strings.Contains(listed, "far/") {
+	if listed, _ := callTool(t, sessions["a"], "list_agents", nil); !strings.Contains(listed, "other/lead") || !strings.Contains(listed, `"session_title": "Fix the parser"`) || strings.Contains(listed, "other/w1") || strings.Contains(listed, "far/") {
 		t.Fatal("lead's list_agents", listed)
 	}
-	if listed, _ := listAgents(db, "b"); strings.Contains(listed, "other/") {
+	if listed, _ := callTool(t, sessions["b"], "list_agents", nil); strings.Contains(listed, "other/") {
 		t.Fatal("worker's list_agents", listed)
 	}
 }
 
 func TestSetStatus(t *testing.T) {
 	db, rt := team(t, false, t.TempDir(), t.TempDir())
-	if _, err := setStatus(rt, "b", "  Reading\nthe card view. "); err != nil {
-		t.Fatal(err)
+	url := serve(t, db, rt).URL
+	worker, lead := connect(t, url, "b"), connect(t, url, "a")
+	if text, failed := callTool(t, worker, "set_status", map[string]any{"text": "  Reading\nthe card view. "}); failed {
+		t.Fatal(text)
 	}
 	if a := agents(t, db, "session-1")[1]; a.Status != "Reading the card view." || a.StatusAt == 0 {
 		t.Errorf("worker = %+v", a)
 	}
-	if _, err := setStatus(rt, "a", "Planning."); err == nil {
-		t.Error("the lead set a status")
+	if text, failed := callTool(t, lead, "set_status", map[string]any{"text": "Planning."}); !failed {
+		t.Errorf("the lead set a status: %q", text)
 	}
-	if _, err := setStatus(rt, "b", " "); err == nil {
-		t.Error("an empty status was accepted")
+	if text, failed := callTool(t, worker, "set_status", map[string]any{"text": " "}); !failed {
+		t.Errorf("an empty status was accepted: %q", text)
 	}
 }
