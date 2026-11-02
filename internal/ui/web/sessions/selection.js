@@ -4,6 +4,7 @@
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
 import {unsentKey} from '../agent/drafts.js';
+import {agentTabs} from '../editor/editor.js';
 
 export const allSessions = state => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 
@@ -42,7 +43,7 @@ export const emptySession = id => ({
   id,
   transcript: {order: [], items: {}},
   expanded: {},
-  tabs: {root: null, preview: null, dragging: null, nextId: 1},
+  tabs: agentTabs,
   scroll: {},
   files: {listings: {}, expanded: {}, open: {}},
 });

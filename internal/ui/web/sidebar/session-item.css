@@ -50,7 +50,6 @@
   align-items: center;
   min-width: 0;
   height: 100%;
-  margin-right: var(--size-space);
   padding-left: var(--session-title-inset);
 }
 
@@ -61,12 +60,25 @@
   border-radius: inherit;
 }
 
-/* A title that overflows fades over its last 20px. The scroll timeline runs
-   only while the text has something to scroll, so short titles are not masked. */
+/* A title that overflows fades out gently toward the row's right edge. Beside
+   a dot, spinner, or menu button it fades sooner and fully, so the text clears
+   the icon. The scroll timeline runs only while the text has something to
+   scroll, so short titles are not masked. */
 @keyframes fade-title-end {
   from, to {
-    mask-image: linear-gradient(to right, #000 calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent calc(100% - var(--title-fade-gap)));
   }
+}
+
+.session-item {
+  --title-fade: 32px;
+  --title-fade-gap: 0px;
+}
+
+.session-item:has(.session-item-status > :not(.session-item-menu)),
+.session-item:is(:hover, :focus-within):has(.session-item-menu) {
+  --title-fade: 28px;
+  --title-fade-gap: 6px;
 }
 
 .session-item-text {
@@ -82,9 +94,13 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 16px;
   height: 16px;
   margin-left: auto;
+}
+
+.session-item-status:has(> :not(.session-item-menu)),
+.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) {
+  width: 16px;
 }
 
 .session-item-menu {

@@ -5,7 +5,7 @@ import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {EditorArea} from './editor-area.jsx';
 import {fileTabId, moveTab} from './editor.js';
-import {openTab} from './tab-layout.js';
+import {findPane, openTab} from './tab-layout.js';
 
 afterEach(unmountAll);
 
@@ -14,42 +14,57 @@ const frame = () => act(() => new Promise(resolve => requestAnimationFrame(resol
 const openTestTab = (state, id) => ({...state, session: {...state.session, tabs: openTab(state.session.tabs, id)}});
 
 function setup(change = state => openTestTab(openTestTab(state, 'file:one'), 'file:two')) {
-  const composer = document.createElement('form');
-  composer.className = 'composer';
-  composer.dataset.session = 's';
-  composer.append(document.createElement('textarea'));
-  document.body.append(composer);
-  const store = createStore(change({selected: 's', workspaces: [{sessions: [{id: 's', children: []}]}], drafts: {}, unsent: null, session: emptySession('s')}));
+  const store = createStore(change({
+    selected: 's', workspaces: [{sessions: [{id: 's', title: 'Chat', children: [], activity: 'idle'}]}], drafts: {}, unsent: null,
+    workbench: {sidebar: true, rightPanel: true, panel: false}, session: emptySession('s'),
+  }));
   const root = mount(store, <EditorArea />);
   const tabs = () => [...root.querySelectorAll('[role="tab"]')];
-  return {store, root, tabs, composerField: composer.firstChild};
+  const labels = () => tabs().map(t => t.querySelector('.editor-tabs-label').textContent);
+  return {store, root, tabs, labels};
 }
 
-test('closing a tab focuses the next one, and closing the last focuses the composer', async () => {
-  const {root, tabs, composerField} = setup();
-  expect(tabs().map(t => t.querySelector('.editor-tabs-label').textContent)).toEqual(['one', 'two']);
+test('the agent\'s tab shows its title and has no close button', () => {
+  const {root, labels} = setup();
+  expect(labels()).toEqual(['Chat', 'one', 'two']);
+  expect(root.querySelector('[data-tab="agent"] .editor-tabs-close')).toBeNull();
+});
+
+test('closing a tab focuses the next one, and closing a pane\'s last focuses another pane\'s tab', async () => {
+  const {store, root, tabs, labels} = setup();
   act(() => root.querySelector('[aria-label="Close two"]').click());
   await frame();
-  expect(tabs().map(t => t.querySelector('.editor-tabs-label').textContent)).toEqual(['one']);
-  expect(document.activeElement === tabs()[0]).toBe(true);
+  expect(labels()).toEqual(['Chat', 'one']);
+  expect(document.activeElement === tabs()[1]).toBe(true);
+  act(() => store.update(state => moveTab(state, 'file:one', state.session.tabs.root.id, 'right')));
   act(() => root.querySelector('[aria-label="Close one"]').click());
   await frame();
-  expect(tabs().length).toBe(0);
-  expect(document.activeElement === composerField).toBe(true);
+  expect(labels()).toEqual(['Chat']);
+  expect(document.activeElement === tabs()[0]).toBe(true);
+});
+
+test('the layout toggles show only in the top-right pane', () => {
+  const {store, root} = setup();
+  const togglesIn = () => [...root.querySelectorAll('.layout-toggles')].map(t => t.closest('.editor-pane').querySelector('[aria-selected="true"]').closest('[data-tab]').dataset.tab);
+  expect(togglesIn()).toEqual(['file:two']);
+  act(() => store.update(state => moveTab(state, 'file:two', state.session.tabs.root.id, 'right')));
+  expect(togglesIn()).toEqual(['file:two']);
+  act(() => store.update(state => moveTab(state, 'file:one', findPane(state.session.tabs.root, 'file:two').id, 'left')));
+  expect(togglesIn()).toEqual(['file:two']);
 });
 
 test('the arrow keys, Home, and End select tabs and keep the focus on them', async () => {
   const {store, tabs} = setup();
-  tabs()[1].focus();
+  tabs()[2].focus();
   const press = async key => {
     act(() => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true})));
     await frame();
   };
   await press('ArrowRight');
-  expect(store.get().session.tabs.root.active).toBe('file:one');
+  expect(store.get().session.tabs.root.active).toBe('agent');
   expect(document.activeElement === tabs()[0]).toBe(true);
   await press('End');
-  expect(document.activeElement === tabs()[1]).toBe(true);
+  expect(document.activeElement === tabs()[2]).toBe(true);
   await press('Home');
   await press('ArrowLeft');
   expect(store.get().session.tabs.root.active).toBe('file:two');

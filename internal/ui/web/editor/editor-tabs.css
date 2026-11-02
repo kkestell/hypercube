@@ -1,10 +1,15 @@
-.editor-tabs {
+.editor-tabs-bar {
   display: flex;
   flex-shrink: 0;
   height: var(--size-bar-height);
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+}
+
+.editor-tabs {
+  display: flex;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  background: var(--vscode-editorGroupHeader-tabsBackground);
 }
 
 .editor-tabs-tab {
@@ -43,6 +48,10 @@
   max-width: calc(var(--size-space) * 55);
   padding-left: calc(var(--size-space) * 2.5);
   color: inherit;
+}
+
+.editor-tabs-tab-agent .editor-tabs-select {
+  padding-right: calc(var(--size-space) * 2.5);
 }
 
 .editor-tabs-select:focus-visible {

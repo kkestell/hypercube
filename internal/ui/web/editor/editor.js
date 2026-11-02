@@ -1,9 +1,16 @@
-// The editor area of the attached session: its tabs, the preview tab, and each
-// view's remembered scroll. Each tab is a file, by fileTabId. As in VS Code, a file opened with one click shows in the
-// preview tab, which the next file opened replaces until it is kept open.
+// The tabbed area of the attached session: its tabs, the preview tab, and each
+// view's remembered scroll. One tab is the session's agent, which never
+// closes; every other tab is a file, by fileTabId. As in VS Code, a file
+// opened with one click shows in the preview tab, which the next file opened
+// replaces until it is kept open.
 import {readOpenFile} from '../files/files.js';
 import {shownSession} from '../sessions/selection.js';
 import * as layout from './tab-layout.js';
+
+export const agentTabId = 'agent';
+
+// agentTabs is the layout a session starts with: its agent alone.
+export const agentTabs = {root: {id: 1, tabs: [agentTabId], active: agentTabId}, preview: null, dragging: null, nextId: 2};
 
 export const fileTabId = path => 'file:' + path;
 
@@ -17,7 +24,12 @@ function withSession(state, change) {
 const withTabs = (state, change) => withSession(state, session => ({...session, tabs: change(session.tabs)}));
 
 // tabEntry describes a tab for its tab strip.
-export function tabEntry(session, id) {
+export function tabEntry(state, id) {
+  if (id === agentTabId) {
+    const title = shownSession(state)?.title ?? 'New Session';
+    return {id, agent: true, label: title, title, preview: false, deleted: false};
+  }
+  const {session} = state;
   const path = tabPath(id);
   const deleted = !!session.files.open[path]?.deleted;
   return {
@@ -48,7 +60,7 @@ function fileTabOpened(state, path) {
   return withSession(state, session => {
     if (layout.findPane(session.tabs.root, id)) return {...session, tabs: layout.openTab(session.tabs, id)};
     const preview = session.tabs.preview;
-    const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openTab(session.tabs, id);
+    const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openBeside(session.tabs, id, agentTabId);
     const open = {...session.files.open, [path]: unread};
     const scroll = {...session.scroll};
     if (preview) {

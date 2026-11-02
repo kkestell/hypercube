@@ -1,8 +1,8 @@
-// The page frame: the title bar above the sidebar, the center with the
+// The page frame: the sidebar, the center with the
 // terminal panel below it, and the right panel, with the notification cards
 // and the confirmation dialog over them. App draws from the store's state,
 // keeps the page title and URL hash in step with it, and refuses drops that
-// would land outside their targets: a tab outside the editor area could type
+// would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
 import {useEffect, useLayoutEffect, useMemo, useState} from 'preact/hooks';
@@ -15,7 +15,6 @@ import {Sidebar} from '../sidebar/sidebar.jsx';
 import {StoreContext} from '../store.js';
 import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {RightPanel} from './right-panel.jsx';
-import {TitleBar} from './title-bar.jsx';
 import './app.css';
 
 function refuseStrayDrops(store) {
@@ -59,7 +58,6 @@ export function App({store}) {
   return (
     <StoreContext.Provider value={context}>
       <div class="app">
-        <TitleBar />
         <div class="app-body">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar />

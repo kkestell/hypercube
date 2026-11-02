@@ -1,0 +1,15 @@
+.layout-toggles {
+  --vscode-icon-foreground: var(--vscode-descriptionForeground);
+  --vscode-inputOption-activeBackground: transparent;
+  --vscode-inputOption-activeBorder: transparent;
+  --vscode-inputOption-activeForeground: var(--vscode-tab-activeForeground);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 calc(var(--size-space) * 2);
+}
+
+.layout-toggles vscode-toolbar-button:focus-within {
+  --vscode-inputOption-activeBorder: var(--vscode-focusBorder);
+}

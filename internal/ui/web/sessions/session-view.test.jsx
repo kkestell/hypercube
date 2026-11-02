@@ -1,5 +1,4 @@
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
 import {openUnsent, receivedWorkspaces} from './selection.js';
@@ -18,6 +17,7 @@ afterEach(() => {
 const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, children: [], activity: 'idle', ...extra});
 const store = (selected, sessions, visible = true) => createStore(receivedWorkspaces({
   workspaces: [], requests: [], selected, pending: null, unsent: null, visible, drafts: {}, errors: [], session: null,
+  workbench: {sidebar: true, rightPanel: true, panel: false},
 }, [{id: 'w', name: 'repo', path: '/repo', sessions}]));
 
 test('a selected stopped session attaches and shows its transcript', () => {
@@ -28,10 +28,18 @@ test('a selected stopped session attaches and shows its transcript', () => {
   expect(root.querySelector('.agent-pane')).not.toBeNull();
 });
 
-test('a running session shows its agent pane', () => {
+test('a running session shows its agent in a tab named for it', () => {
   const root = mount(store('a', [session('a')]), <SessionView />);
   expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.agent-pane')).not.toBeNull();
+  expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('Session a');
+});
+
+test('with no session shown, the tesseract shows under the layout toggles', () => {
+  const root = mount(store(null, []), <SessionView />);
+  expect(root.querySelector('.tesseract')).not.toBeNull();
+  expect(root.querySelector('.layout-toggles')).not.toBeNull();
+  expect(root.querySelector('[role="tab"]')).toBeNull();
 });
 
 function seenPosts() {
@@ -61,30 +69,10 @@ test('a session with nothing unseen posts nothing', () => {
   expect(posted()).toEqual([]);
 });
 
-test('the editor area stays open and keeps its size with no files open', () => {
-  const s = store('a', [session('a', {children: [session('child', {parent: 'a'})]})]);
-  const root = mount(s, <SessionView />);
-  const splits = root.querySelectorAll('vscode-split-layout');
-  expect(splits.length).toBe(1);
-  expect(root.querySelectorAll('.agent-pane').length).toBe(1);
-  const split = splits[0];
-  expect(split.classList.contains('split-collapsed')).toBe(false);
-  expect(root.querySelector('.editor-area')).not.toBeNull();
-  s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: {id: 1, tabs: ['file:a.go'], active: 'file:a.go'}}}}));
-  expect(split.classList.contains('split-collapsed')).toBe(false);
-  act(() => split.dispatchEvent(new CustomEvent('vsc-split-layout-change', {detail: {positionInPercentage: 40}})));
-  expect(split.handlePosition).toBe('40%');
-  s.update(state => ({...state, session: {...state.session, tabs: {...state.session.tabs, root: null}}}));
-  expect(split.classList.contains('split-collapsed')).toBe(false);
-  expect(split.handlePosition).toBe('40%');
-  expect(root.querySelector('.editor-area').childElementCount).toBe(0);
-});
-
-test('an unsent session also reserves the editor area', () => {
+test('an unsent session shows its agent tab', () => {
   const s = store(null, []);
   s.update(state => openUnsent(state, 'w', {name: 'lead', harness: 'claude', model: 'haiku', effort: 'low'}));
   const root = mount(s, <SessionView />);
   expect(root.querySelector('.agent-pane')).not.toBeNull();
-  expect(root.querySelector('.editor-area')).not.toBeNull();
-  expect(root.querySelector('.split-collapsed')).toBeNull();
+  expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('New Session');
 });

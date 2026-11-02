@@ -29,9 +29,9 @@ edits.
 ## Browser view
 
 The sidebar lists top-level sessions newest first, in the order they were
-created, so a session keeps its place. It shows five under each workspace;
-Show more lists five more. Children appear under their parent in creation
-order and do not count toward this limit. Running children are always visible;
+created, so a session keeps its place. It shows each workspace's started
+sessions and the selected one; Show more lists five stopped sessions more.
+Children appear under their parent in creation order. Running children are always visible;
 Show Stopped Sessions in the parent's menu lists stopped children too, and
 Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
 the sidebar to add a workspace. Click `+` beside a workspace's name to choose
@@ -61,9 +61,9 @@ Closing a reply card marks it seen; closing a request card only hides it.
 Reply cards close after 15 seconds or when the agent works again. Request
 cards stay until answered or closed.
 
-The center shows one session's chat beside its open files. Drag the divider
-to resize them. The file area stays visible when no files are open. A child's
-requests also appear in its parent's transcript, where you can answer them;
+The center is one tabbed area holding a session's chat and its open files. The
+chat's tab carries the session's title and cannot be closed. A file opens
+beside the chat. A child's requests also appear in its parent's transcript, where you can answer them;
 answering in either place updates both. Child status updates appear there too,
 with the child's title and time. These copies are for the user; the parent's
 agent does not receive them.
@@ -88,18 +88,19 @@ Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 
 Below each message box, the harness, model, and effort appear on the left,
-with context use and cost on the right. Codex reports no cost. Drag a file tab to
-another pane's tab bar to move it there, or to a pane's left, right, top, or
-bottom edge to split it. These moves and splits stay within the file
-area; the chat stays in its column. Drag dividers to resize panes and the sidebar.
+with context use and cost on the right. Codex reports no cost. Drag a tab,
+including the chat's, to another pane's tab bar to move it there, or to a pane's
+left, right, top, or bottom edge to split it. Drag dividers to resize panes and
+the sidebar.
 
-The right panel button in the header shows or hides the right panel. Its icon
+The buttons at the right of the top-right tab bar show or hide the sidebar, the
+terminal panel, and the right panel. The right panel's icon
 tabs select Files and Changes; Changes is blank for now. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open.
 
-The panel button in the header shows or hides a terminal below the chat. It
+The panel button shows or hides a terminal below the tabbed area. It
 runs your shell in the session's directory, one per session, and keeps running
 while the panel is hidden or the browser is closed, until the shell exits or the
 session stops. Drag the divider above it to change its height.

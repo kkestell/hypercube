@@ -1,6 +1,6 @@
-// The Workspaces view: each workspace's sessions under its name, five at a
-// time, with the workspace and session menus, and Add Workspace pinned below
-// the list. Started children are always listed under their parent; its menu
+// The Workspaces view: each workspace's started sessions under its name, with
+// Show more revealing stopped ones five at a time, the workspace and session
+// menus, and Add Workspace pinned below the list. Started children are always listed under their parent; its menu
 // shows or hides stopped children.
 // The view holds still while a session is renamed, so the field keeps its
 // place and focus.
@@ -62,7 +62,9 @@ export function Sidebar() {
         <vscode-tab-panel class="sidebar-body">
           <div class="sidebar-list" onContextMenu={contextMenu}>
             {workspaces.map(workspace => {
-              const limit = limits[workspace.id] ?? pageSize;
+              const limit = limits[workspace.id] ?? 0;
+              const stopped = workspace.sessions.filter(s => !s.running && s.id !== state.selected);
+              const hidden = new Set(stopped.slice(limit).map(s => s.id));
               return (
                 <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
                   <div class="sidebar-workspace-header">
@@ -75,7 +77,7 @@ export function Sidebar() {
                     </button>
                   </div>
                   {workspace.sessions.length === 0 && <div class="sidebar-empty">No sessions</div>}
-                  {workspace.sessions.slice(0, limit).map(session => (
+                  {workspace.sessions.filter(s => !hidden.has(s.id)).map(session => (
                     <Fragment key={session.id}>
                       {sessionRow(session)}
                       <NestedSessions
@@ -84,7 +86,7 @@ export function Sidebar() {
                       />
                     </Fragment>
                   ))}
-                  {workspace.sessions.length > limit && (
+                  {hidden.size > 0 && (
                     <button class="sidebar-show-more" onClick={() => setLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
                   )}
                 </div>

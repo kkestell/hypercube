@@ -1,7 +1,7 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
-import {closeTab, fileTabId, keepOpen, openFileTab, rememberScroll, resizeSplit} from './editor.js';
+import {agentTabId, closeTab, fileTabId, keepOpen, openFileTab, rememberScroll, resizeSplit} from './editor.js';
 import {moveTab, openTab, panes} from './tab-layout.js';
 
 let fetchMock;
@@ -11,19 +11,20 @@ const openTestTab = (state, id) => ({...state, session: {...state.session, tabs:
 const store = () => createStore({workspaces: [], session: emptySession('s')});
 const tabsOf = s => panes(s.get().session.tabs.root).map(pane => pane.tabs);
 
-test('a clicked file replaces the preview tab until it is kept open', () => {
+test('a clicked file opens beside the agent and replaces the preview tab until it is kept open', () => {
   fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('text'));
   const s = store();
+  expect(tabsOf(s)).toEqual([[agentTabId]]);
   openFileTab(s, 'a.go');
   openFileTab(s, 'b.go');
-  expect(tabsOf(s)).toEqual([[fileTabId('b.go')]]);
+  expect(tabsOf(s)).toEqual([[agentTabId], [fileTabId('b.go')]]);
   expect(s.get().session.tabs.preview).toBe(fileTabId('b.go'));
   expect(Object.keys(s.get().session.files.open)).toEqual(['b.go']);
   s.update(state => keepOpen(state, fileTabId('b.go')));
   openFileTab(s, 'c.go');
-  expect(tabsOf(s)).toEqual([[fileTabId('b.go'), fileTabId('c.go')]]);
+  expect(tabsOf(s)).toEqual([[agentTabId], [fileTabId('b.go'), fileTabId('c.go')]]);
   openFileTab(s, 'b.go');
-  expect(s.get().session.tabs.root.active).toBe(fileTabId('b.go'));
+  expect(panes(s.get().session.tabs.root)[1].active).toBe(fileTabId('b.go'));
   expect(s.get().session.tabs.preview).toBe(fileTabId('c.go'));
 });
 

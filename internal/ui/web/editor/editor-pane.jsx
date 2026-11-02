@@ -1,7 +1,9 @@
-// A pane of the editor area: its tab strip and its active tab's view. A
+// A pane of the tabbed area: its tab strip and its active tab's view, the
+// agent or a file. A
 // dragged tab drops on the strip, before the tab under the pointer, or on the
 // body, where an edge within a quarter of the pane splits it.
 import {useRef, useState} from 'preact/hooks';
+import {AgentPane} from '../agent/agent-pane.jsx';
 import {shownSession} from '../sessions/selection.js';
 import {FileView} from '../files/file-view.jsx';
 import {useStore} from '../store.js';
@@ -17,13 +19,14 @@ function edgeAt(e, body) {
   return distance < 0.25 ? edge : 'center';
 }
 
-export function EditorPane({pane}) {
+// toggles puts the layout toggles at the right of the pane's tab strip.
+export function EditorPane({pane, toggles}) {
   const [state, store] = useStore();
   const [drop, setDrop] = useState(null);
   const body = useRef(null);
-  const {session} = state;
-  const dragging = session.tabs.dragging;
-  const entries = pane.tabs.map(id => tabEntry(session, id));
+  const shown = shownSession(state);
+  const dragging = state.session?.tabs.dragging;
+  const entries = pane.tabs.map(id => tabEntry(state, id));
   const active = entries.find(entry => entry.id === pane.active);
 
   const over = e => {
@@ -46,9 +49,11 @@ export function EditorPane({pane}) {
 
   return (
     <div class="editor-pane" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      <EditorTabs pane={pane} entries={entries} session={shownSession(state)?.id} />
+      <EditorTabs pane={pane} entries={entries} toggles={toggles} />
       <div ref={body} class="editor-pane-body">
-        {active?.path !== undefined && <FileView key={active.id} id={active.id} path={active.path} />}
+        {active.agent
+          ? <AgentPane key={shown.id} session={shown} />
+          : <FileView key={active.id} id={active.id} path={active.path} />}
       </div>
     </div>
   );

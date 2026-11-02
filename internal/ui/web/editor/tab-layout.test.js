@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {closeTab, findPane, moveTab, openTab, panes, replaceTab} from './tab-layout.js';
+import {closeTab, cornerPane, findPane, moveTab, openBeside, openTab, panes, replaceTab} from './tab-layout.js';
 
 const empty = {root: null, nextId: 1};
 const tabs = layout => panes(layout.root).map(pane => pane.tabs);
@@ -78,4 +78,20 @@ test('every function returns a new layout and leaves its input unchanged', () =>
   ];
   expect(JSON.stringify(layout)).toBe(before);
   for (const result of results) expect(result).not.toBe(layout);
+});
+
+test('a tab opens beside a kept tab, splitting its pane only when it is alone', () => {
+  let layout = openBeside(open('chat'), 'one', 'chat');
+  expect(tabs(layout)).toEqual([['chat'], ['one']]);
+  expect(layout.root.axis).toBe('x');
+  layout = openBeside(layout, 'two', 'chat');
+  expect(tabs(layout)).toEqual([['chat'], ['one', 'two']]);
+  expect(tabs(openBeside(open('chat', 'one'), 'two', 'chat'))).toEqual([['chat', 'one', 'two']]);
+});
+
+test('the corner pane is the top-right one', () => {
+  let layout = open('one', 'two', 'three');
+  layout = moveTab(layout, 'two', pane(layout, 'one'), 'right');
+  layout = moveTab(layout, 'three', pane(layout, 'two'), 'bottom');
+  expect(cornerPane(layout.root).tabs).toEqual(['two']);
 });

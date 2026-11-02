@@ -1,12 +1,17 @@
-/* Both side panels share their tab and content spacing. The tab component
-   insets its icons 18px from the left; 10px above its centered icon balances
-   the top inset with that built-in spacing. */
+/* Both side panels share their tab and content spacing. Each tab header is as
+   tall as the center's tab bars, with its content centered, so the headers
+   across the window form one band with their icons level. */
 .panel-tabs {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding-top: 10px;
+}
+
+.panel-tabs > vscode-tab-header {
+  display: flex;
+  align-items: center;
+  height: var(--size-bar-height);
 }
 
 .panel-tabs > vscode-tab-header > vscode-icon {

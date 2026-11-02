@@ -16,7 +16,7 @@
   background: var(--editor-area-background);
 }
 
-/* Where a dragged tab would land. */
+/* Where a dragged tab would land, below the tab bar. */
 .editor-pane[data-drop]::after {
   content: "";
   position: absolute;

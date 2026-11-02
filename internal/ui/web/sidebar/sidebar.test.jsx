@@ -34,14 +34,23 @@ const toggleStopped = root => {
   pick(root, 1);
 };
 
-test('a workspace lists five sessions, and Show more adds five', () => {
-  const {root} = setup(Array.from({length: 12}, (_, i) => session('s' + i)));
-  expect(sessionRows(root).length).toBe(5);
+test('a workspace lists its started sessions, and Show more adds five stopped ones', () => {
+  const sessions = Array.from({length: 14}, (_, i) => session('s' + i, {running: i % 7 === 0}));
+  const {root} = setup(sessions);
+  expect(sessionRows(root)).toEqual(['s0', 's7']);
   click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root).length).toBe(10);
+  expect(sessionRows(root)).toEqual(['s0', 's1', 's2', 's3', 's4', 's5', 's7']);
   click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root).length).toBe(12);
+  expect(sessionRows(root)).toEqual(['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']);
+  click(root.querySelector('.sidebar-show-more'));
+  expect(sessionRows(root).length).toBe(14);
   expect(root.querySelector('.sidebar-show-more')).toBeNull();
+});
+
+test('the selected stopped top-level session stays visible', () => {
+  const {store, root} = setup([session('a'), session('b', {running: false}), session('c', {running: false})]);
+  store.update(s => ({...s, selected: 'c'}));
+  expect(sessionRows(root)).toEqual(['a', 'c']);
 });
 
 test('Add Workspace adds a workspace', () => {
@@ -52,6 +61,7 @@ test('Add Workspace adds a workspace', () => {
 
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
+  click(root.querySelector('.sidebar-show-more'));
   click(title(root, 'b'));
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
@@ -108,6 +118,7 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     session('stopped', {running: false}),
     session('failed', {activity: 'exited'}),
   ]);
+  click(root.querySelector('.sidebar-show-more'));
   choose(root, '[data-session="running"]', 0);
   choose(root, '[data-session="stopped"]', 0);
   choose(root, '[data-session="failed"]', 0);
@@ -187,11 +198,11 @@ test('choosing a lead profile from the picker opens the unsent session', async (
   expect(root.querySelector('vscode-context-menu')).toBeNull();
 });
 
-test('nested sessions stay in creation order, ended ones dim, and Show more counts parents', () => {
+test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
-  const {root} = setup([session('a', {children}), ...Array.from({length: 5}, (_, i) => session('p' + i))]);
+  const {root} = setup([session('a', {children}), session('p0')]);
   toggleStopped(root);
-  expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0', 'p1', 'p2', 'p3']);
+  expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0']);
   expect(root.querySelector('[data-session="first"]').classList.contains('session-item-stopped')).toBe(true);
 });
 
