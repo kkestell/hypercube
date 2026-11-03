@@ -20,9 +20,11 @@ const state = {workspaces, requests, selected: '', pending: null, unsent: null, 
 test('cards show their source and request answers', () => {
   const root = mount(createStore(state), <NotificationStack />);
   const [request, reply] = root.querySelectorAll('.notification-card');
-  expect(request.querySelector('.notification-card-source').textContent).toBe('repo — Ask — auditor');
-  expect(request.querySelector('vscode-tree-item').textContent).toBe('Yes');
-  expect(reply.querySelector('.notification-card-source').textContent).toBe('repo — Fix it');
+  expect(request.querySelector('.notification-card-header .notification-card-session').textContent).toBe('auditor');
+  expect([...request.querySelectorAll('.notification-card-context span')].map(span => span.textContent)).toEqual(['repo', 'Ask']);
+  expect(request.querySelector('vscode-button[data-choice]').textContent).toBe('Yes');
+  expect(reply.querySelector('.notification-card-header .notification-card-session').textContent).toBe('Fix it');
+  expect(reply.querySelector('.notification-card-context').textContent).toBe('repo');
   expect(reply.querySelector('.notification-card-text').textContent).toBe('Done.\nAll tests pass.');
 });
 

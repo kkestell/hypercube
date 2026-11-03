@@ -3,6 +3,7 @@
 import '@vscode-elements/elements/dist/vscode-button/index.js';
 import '@vscode-elements/elements/dist/vscode-context-menu/index.js';
 import '@vscode-elements/elements/dist/vscode-icon/index.js';
+import '@vscode-elements/elements/dist/vscode-label/index.js';
 import '@vscode-elements/elements/dist/vscode-option/index.js';
 import '@vscode-elements/elements/dist/vscode-single-select/index.js';
 import '@vscode-elements/elements/dist/vscode-split-layout/index.js';

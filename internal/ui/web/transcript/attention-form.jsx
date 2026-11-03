@@ -1,10 +1,10 @@
-// The answers to an open attention request, as VS Code's Quick Pick: a list of
-// choices, each with its note beside it, and, when the request takes typed
-// text, a field with Send inside it. The transcript and notification cards
+// The answers to an open attention request: content-sized choice buttons
+// with their notes, and a labeled reply field with a separate Send button
+// when the request takes typed text. The transcript and notification cards
 // both draw it, and answers go only through answerRequest. Its controls are
 // disabled while an answer is sent and enabled again if the server refuses it.
 // A typed answer is a draft, so it survives the form closing.
-import {useState} from 'preact/hooks';
+import {useId, useState} from 'preact/hooks';
 import {answerRequest} from '../api.js';
 import {draftOf, typed} from '../agent/drafts.js';
 import {submitsOnKey} from '../shared/submit-key.js';
@@ -14,6 +14,7 @@ import './attention-form.css';
 export function AttentionForm({session, item}) {
   const [state, store] = useStore();
   const [sending, setSending] = useState(false);
+  const id = useId();
   const key = `${session}/${item.id}`;
   const text = draftOf(state, key).text;
 
@@ -27,34 +28,35 @@ export function AttentionForm({session, item}) {
     if (text.trim()) send('');
   };
 
-  // The tree reports a click or Enter on a choice as a selection.
-  const chosen = e => {
-    const choice = e.detail[0]?.dataset.choice;
-    if (choice !== undefined) send(choice);
-  };
-
   return (
     <div class="attention-form">
       {item.choices?.length > 0 && (
-        <vscode-tree class="attention-form-choices" aria-label="Choices" aria-disabled={sending} onvsc-tree-select={chosen}>
+        <div class="attention-form-choices" role="group" aria-label="Choices">
           {item.choices.map((choice, i) => (
-            <vscode-tree-item key={choice} data-choice={choice}>
-              {choice}
-              {item.notes?.[i] && <span slot="description">{item.notes[i]}</span>}
-            </vscode-tree-item>
+            <div class="attention-form-choice" key={choice}>
+              <vscode-button secondary data-choice={choice} disabled={sending} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
+                {choice}
+              </vscode-button>
+              {item.notes?.[i] && <span class="attention-form-note" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
+            </div>
           ))}
-        </vscode-tree>
+        </div>
       )}
       {item.free && (
-        <vscode-textfield
-          label={item.text ? 'Answer to ' + item.text : 'Answer'}
-          value={text}
-          disabled={sending}
-          onInput={e => store.update(s => typed(s, key, e.currentTarget.value))}
-          onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
-        >
-          <vscode-button slot="content-after" class="attention-form-send" icon-only secondary icon="send" title="Send" aria-label="Send" disabled={sending || !text.trim()} onClick={sendText} />
-        </vscode-textfield>
+        <div class="attention-form-reply">
+          <vscode-label for={`${id}-reply`}>{item.choices?.length ? 'Other response' : 'Your response'}</vscode-label>
+          <div class="attention-form-entry">
+            <vscode-textfield
+              id={`${id}-reply`}
+              label={item.choices?.length ? 'Other response' : 'Your response'}
+              value={text}
+              disabled={sending}
+              onInput={e => store.update(s => typed(s, key, e.currentTarget.value))}
+              onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
+            />
+            <vscode-button secondary disabled={sending || !text.trim()} onClick={sendText}>Send</vscode-button>
+          </div>
+        </div>
       )}
     </div>
   );

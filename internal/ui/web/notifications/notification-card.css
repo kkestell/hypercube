@@ -1,6 +1,7 @@
 .notification-card {
   display: flex;
   flex-direction: column;
+  max-width: 100%;
   gap: calc(var(--size-space) * 2);
   padding: calc(var(--size-space) * 2.5) calc(var(--size-space) * 2);
   border: var(--size-border) solid var(--vscode-notificationToast-border);
@@ -10,9 +11,9 @@
   box-shadow: 0 0 calc(var(--size-space) * 2) var(--vscode-widget-shadow);
 }
 
-.notification-card-main {
+.notification-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: calc(var(--size-space) * 2);
 }
 
@@ -54,12 +55,32 @@
 .notification-card-actions {
   display: flex;
   flex-shrink: 0;
+  margin-left: auto;
+  align-self: flex-start;
 }
 
 .notification-card-source {
-  padding-left: calc(var(--size-icon) + var(--size-space) * 2);
-  color: var(--vscode-descriptionForeground);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+  min-width: 0;
+}
+
+.notification-card-session,
+.notification-card-context span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.notification-card-context {
+  display: flex;
+  align-items: center;
+  gap: var(--size-space);
+  color: var(--vscode-descriptionForeground);
+  font-size: calc(var(--vscode-font-size) - 1px);
+}
+
+.notification-card-context vscode-icon {
+  flex-shrink: 0;
 }

@@ -4,12 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border: var(--size-border) solid transparent;
   background: var(--vscode-editor-background);
-}
-
-.agent-pane-attention {
-  border-color: var(--vscode-inputValidation-warningBorder);
 }
 
 .agent-pane-dropping {

@@ -237,15 +237,24 @@ test('each row shows only its own state', () => {
   expect(dots(root, 'replied')).toEqual([]);
 });
 
-test('a top-level row spins while it or a nested session works', () => {
-  const busy = root => [...root.querySelectorAll('[name="loading"]')].map(icon => icon.closest('[data-session]').dataset.session);
-  const {store, root} = setup([session('a', {children: [session('child', {parent: 'a', activity: 'busy'})]}), session('b')]);
-  expect(busy(root)).toEqual(['a']);
-  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [session('child', {parent: 'a'})]}), session('b', {activity: 'busy'})]}]}));
-  expect(busy(root)).toEqual(['b']);
-  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [session('child', {parent: 'a'})]}), session('b', {activity: 'busy', unseen: true})]}]}));
-  expect(busy(root)).toEqual([]);
-  expect(dots(root, 'b')).toEqual(['unseen']);
+test.each([
+  ['idle', 'idle', []],
+  ['idle', 'busy', ['child']],
+  ['busy', 'idle', ['a']],
+  ['busy', 'busy', ['a', 'child']],
+])('each row spins for its own activity: parent=%s, child=%s', (parent, child, expected) => {
+  const {root} = setup([session('a', {activity: parent, children: [session('child', {parent: 'a', activity: child})]})]);
+  const busy = [...root.querySelectorAll('[name="loading"]')].map(icon => icon.closest('[data-session]').dataset.session);
+  expect(busy).toEqual(expected);
+});
+
+test('waiting and unseen indicators take priority over spinners', () => {
+  const {root} = setup([session('a', {activity: 'busy', unseen: true, children: [
+    session('child', {parent: 'a', activity: 'busy', attention: true}),
+  ]})]);
+  expect(root.querySelector('[name="loading"]')).toBeNull();
+  expect(dots(root, 'a')).toEqual(['unseen']);
+  expect(dots(root, 'child')).toEqual(['waiting']);
 });
 
 test('a row\'s More Actions button opens its menu, and the workspace\'s opens the workspace menu', () => {

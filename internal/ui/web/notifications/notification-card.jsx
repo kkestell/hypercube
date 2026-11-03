@@ -1,6 +1,5 @@
-// One notification card, as VS Code's toasts: an icon, the details, View
-// Session and close, and the source below. A request card offers the
-// request's answers; a reply card shows the reply's opening lines and closes
+// One notification card: session context and actions above the message.
+// A request card offers answers; a reply card shows its opening lines and closes
 // itself after 15 seconds, as if closed. An error card has only its message
 // and close, and stays until it is closed.
 import {useEffect} from 'preact/hooks';
@@ -26,8 +25,24 @@ export function NotificationCard({card}) {
   const icon = icons[card.kind];
   return (
     <div class="notification-card" role="alert">
-      <div class="notification-card-main">
+      <div class="notification-card-header">
         <vscode-icon name={icon} class={'notification-card-' + icon} />
+        {!card.session && <div class="notification-card-text">{card.text}</div>}
+        {card.session && (
+          <div class="notification-card-source">
+            <span class="notification-card-session" title={card.session.title}>{card.session.title}</span>
+            <div class="notification-card-context">
+              <span title={card.workspace}>{card.workspace}</span>
+              {card.parent && <><vscode-icon name="chevron-right" /><span title={card.parent.title}>{card.parent.title}</span></>}
+            </div>
+          </div>
+        )}
+        <div class="notification-card-actions">
+          {card.session && <vscode-toolbar-button icon="eye" label="View Session" title="View Session" onClick={() => chooseSession(store, card.session.id)} />}
+          <vscode-toolbar-button icon="close" label="Close" title="Close" onClick={() => closeCard(store, card)} />
+        </div>
+      </div>
+      {card.session && (
         <div class="notification-card-details">
           {card.kind === 'request' ? (
             <>
@@ -35,17 +50,12 @@ export function NotificationCard({card}) {
               <AttentionForm session={card.session.id} item={card.item} />
             </>
           ) : (
-            <div class={card.kind === 'reply' ? 'notification-card-text notification-card-reply' : 'notification-card-text'}>
-              {card.kind === 'reply' ? <MarkdownText text={card.text} /> : card.text}
+            <div class="notification-card-text notification-card-reply">
+              <MarkdownText text={card.text} />
             </div>
           )}
         </div>
-        <div class="notification-card-actions">
-          {card.session && <vscode-toolbar-button icon="eye" label="View Session" title="View Session" onClick={() => chooseSession(store, card.session.id)} />}
-          <vscode-toolbar-button icon="close" label="Close" title="Close" onClick={() => closeCard(store, card)} />
-        </div>
-      </div>
-      {card.session && <div class="notification-card-source">{[card.workspace, card.parent?.title, card.session.title].filter(Boolean).join(' — ')}</div>}
+      )}
     </div>
   );
 }

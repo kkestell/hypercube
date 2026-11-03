@@ -6,10 +6,12 @@
 }
 
 .attention-item-open {
+  width: fit-content;
+  max-width: 100%;
   padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
-  border-radius: calc(var(--size-radius) * 2);
-  border: var(--size-border) solid var(--vscode-inputValidation-warningBorder);
-  background: var(--vscode-inputValidation-warningBackground);
+  border-radius: var(--size-radius);
+  border: var(--size-border) solid var(--vscode-widget-border);
+  background: var(--vscode-editorWidget-background);
 }
 
 .attention-item-question {

@@ -108,8 +108,7 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
 });
 
 const choose = (root, choice) => {
-  const row = root.querySelector(`vscode-tree-item[data-choice="${choice}"]`);
-  act(() => row.closest('vscode-tree').dispatchEvent(new CustomEvent('vsc-tree-select', {detail: [row]})));
+  act(() => root.querySelector(`vscode-button[data-choice="${choice}"]`).click());
 };
 
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
@@ -117,22 +116,22 @@ test('an attention request offers its choices, waits while sending, and opens ag
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
   spies.push(fetches);
   const {root, send} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
-  const rows = () => [...root.querySelectorAll('vscode-tree-item')];
-  const list = () => root.querySelector('vscode-tree');
+  const rows = () => [...root.querySelectorAll('vscode-button[data-choice]')];
+  const list = () => root.querySelector('[role="group"]');
   expect(list().getAttribute('aria-label')).toBe('Choices');
   expect(rows().map(r => r.textContent)).toEqual(['yes', 'no']);
   expect(root.querySelector('vscode-textfield')).toBeNull();
   choose(root, 'yes');
   const url = new URL(fetches.mock.calls[0][0], 'http://x/');
   expect(Object.fromEntries(url.searchParams)).toEqual({action: 'answer', id: 's', request: 'q', choice: 'yes'});
-  expect(list().getAttribute('aria-disabled')).toBe('true');
+  expect(rows().every(row => row.hasAttribute('disabled'))).toBe(true);
   choose(root, 'no');
   expect(fetches).toHaveBeenCalledTimes(1);
   await act(async () => {
     answer(new Response('no longer open', {status: 409}));
     await new Promise(resolve => setTimeout(resolve));
   });
-  expect(list().getAttribute('aria-disabled')).toBe('false');
+  expect(rows().every(row => !row.hasAttribute('disabled'))).toBe(true);
 
   send([{id: 'q', kind: 'attention', text: 'Proceed?', done: true, answer: 'no', seq: 1}]);
   expect(rows()).toEqual([]);
@@ -140,12 +139,12 @@ test('an attention request offers its choices, waits while sending, and opens ag
   expect(root.querySelector('.attention-item-answer').textContent).toBe('no');
 });
 
-test('a choice shows its note after the label', () => {
+test('a choice shows its associated note', () => {
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Language?', choices: ['Python', 'Go'], notes: ['Readable', '']}]);
-  const [python, go] = root.querySelectorAll('vscode-tree-item');
-  expect(python.firstChild.textContent).toBe('Python');
-  expect(python.querySelector('[slot="description"]').textContent).toBe('Readable');
-  expect(go.querySelector('[slot="description"]')).toBeNull();
+  const [python, go] = root.querySelectorAll('vscode-button[data-choice]');
+  expect(python.textContent).toBe('Python');
+  expect(document.getElementById(python.getAttribute('aria-describedby')).textContent).toBe('Readable');
+  expect(go.hasAttribute('aria-describedby')).toBe(false);
 });
 
 test('a typed answer is sent with Enter and not when empty', async () => {
@@ -153,8 +152,12 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   spies.push(fetches);
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true, choices: ['Ada']}]);
   const field = root.querySelector('vscode-textfield');
-  const sendButton = field.querySelector('vscode-button[slot="content-after"]');
-  expect(sendButton.getAttribute('aria-label')).toBe('Send');
+  const sendButton = root.querySelector('.attention-form-entry vscode-button');
+  const label = root.querySelector('vscode-label');
+  expect(label.textContent).toBe('Other response');
+  expect(label.getAttribute('for')).toBe(field.id);
+  expect(field.querySelector('vscode-button')).toBeNull();
+  expect(sendButton.textContent).toBe('Send');
   expect(sendButton.hasAttribute('disabled')).toBe(true);
   act(() => sendButton.click());
   expect(fetches).not.toHaveBeenCalled();
@@ -169,14 +172,15 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   expect(options.body).toBe('Ada');
 });
 
-test('the Send button in the field sends the typed answer', async () => {
+test('the Send button beside the field sends the typed answer', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true}]);
   const field = root.querySelector('vscode-textfield');
+  expect(root.querySelector('vscode-label').textContent).toBe('Your response');
   field.value = 'Grace';
   act(() => field.dispatchEvent(new Event('input')));
-  await act(async () => field.querySelector('vscode-button').click());
+  await act(async () => root.querySelector('.attention-form-entry vscode-button').click());
   expect(fetches.mock.calls[0][1].body).toBe('Grace');
 });
 
@@ -421,7 +425,7 @@ test('prompts, text, and tool calls show their images, outside the call\'s detai
 test('mirrored requests name their sender and answer at its session ID; child status stays hidden', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
-  const {store, root} = setup([
+  const {store, root, send} = setup([
     {id: 'status', kind: 'status', from: 'child', text: 'Reading.', at: 1},
     {id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', choices: ['yes']},
     {id: 'message', kind: 'user', from: 'child', text: 'Result.'},
@@ -433,4 +437,18 @@ test('mirrored requests name their sender and answer at its session ID; child st
   expect(root.querySelector('.disclosure-heading').textContent).toBe('From Builder');
   await act(async () => choose(root, 'yes'));
   expect(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams.get('id')).toBe('child');
+  send([{id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', done: true, answer: 'yes'}]);
+  expect(root.querySelector('.attention-item')).toBeNull();
+  expect(root.textContent).toContain('Result.');
+});
+
+test('saved completed child requests are hidden while the session\'s own answers remain', () => {
+  const {root} = setup([
+    {id: 'child-request', kind: 'attention', from: 'child', text: 'Child approval?', done: true, answer: 'Allow'},
+    {id: 'own-request', kind: 'attention', text: 'Own approval?', done: true, answer: 'Deny'},
+  ]);
+  expect(root.textContent).not.toContain('Child approval?');
+  expect(root.textContent).not.toContain('Allow');
+  expect(root.querySelector('.attention-item-answered').textContent).toBe('Own approval?');
+  expect(root.querySelector('.attention-item-answer').textContent).toBe('Deny');
 });

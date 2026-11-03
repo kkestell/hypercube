@@ -49,7 +49,8 @@ menu as right-clicking it. A top-level session's menu offers Start/Stop,
 Show/Hide Stopped Sessions when it has children, and Delete. Stopped child rows
 are dimmed; clicking a child of a stopped parent starts the family. Each row's
 dot shows only its own session: amber means it awaits you, and blue marks a reply
-you have not seen. The composer shows the agent's spinner, waiting dot, or red
+you have not seen. Each row spins only while its own session works.
+The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
 
 A parent ends children with `end_session`. Ending removes a managed worktree
@@ -69,7 +70,8 @@ The center is one tabbed area holding a session's chat and its open files. The
 chat's tab carries the session's title and cannot be closed. A file opens
 beside the chat. A child's requests also appear in its parent's transcript, where you can answer them;
 answering in either place updates both. These copies are for the user; the
-parent's agent does not receive them.
+parent's agent does not receive them. Completed requests disappear from the
+parent's transcript and remain in the child's chat.
 
 A chat shows the agent's messages, reasoning, and tool calls in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
