@@ -127,7 +127,7 @@ func TestStoppedSessionPublishesDrainedItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID })
-	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done {
+	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done || change.Item.End < change.Item.At || change.Item.End == 0 {
 		t.Fatalf("stopped item = %+v", change)
 	}
 }

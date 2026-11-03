@@ -99,6 +99,9 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			merged.Done = it.Done
 			it = merged
 		}
+		if it.Done {
+			it.End = at
+		}
 		p.item = it
 		if it.Done {
 			delete(l.pending, it.ID)

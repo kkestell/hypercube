@@ -128,7 +128,10 @@ type Usage struct {
 // names that session's ID in From, and Text is the message alone.
 type Item struct {
 	// At is when Hypercube first received the item, in Unix milliseconds.
-	At      int64           `json:"at,omitempty"`
+	At int64 `json:"at,omitempty"`
+	// End is when Hypercube received the item's completion, in Unix
+	// milliseconds. Items saved by earlier versions have none.
+	End     int64           `json:"end,omitempty"`
 	ID      string          `json:"id"`
 	Parent  string          `json:"parent,omitempty"`
 	Kind    string          `json:"kind"`

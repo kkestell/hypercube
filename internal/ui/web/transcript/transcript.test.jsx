@@ -14,11 +14,13 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-function setup(items) {
+const busy = {id: 's', running: true, activity: 'busy'};
+
+function setup(items, session = busy) {
   const store = createStore({workspaces: [], drafts: {}, errors: [], session: emptySession('s')});
   const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', reset, items}));
   send(withSeq(items), true);
-  const root = mount(store, <Transcript session={{id: "s"}} />);
+  const root = mount(store, <Transcript session={session} />);
   return {store, root, send: items => send(withSeq(items))};
 }
 let seq = 0;
@@ -235,10 +237,43 @@ test('Thinking counts its time while it streams and shows only a header until ex
   send([{id: 't', kind: 'reasoning', text: longText + '\nmore', at: 1000, seq: 1}]);
   expect(item.querySelector('details').open).toBe(true);
   expect(item.querySelector('.reasoning-item-text').textContent).toEndWith('more');
-  send([{id: 'x', kind: 'text', text: 'Answer', at: 191000, seq: 2}]);
+  send([{id: 't', kind: 'reasoning', text: longText, at: 1000, end: 191000, done: true, seq: 1}]);
   expect(summary.textContent).toBe('Thought for 3m 10s');
   act(() => jest.advanceTimersByTime(10000));
   expect(summary.textContent).toBe('Thought for 3m 10s');
+});
+
+test('finished Thinking shows its real duration whether or not anything follows it', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(500000);
+  const {root, send} = setup([{id: 't', kind: 'reasoning', text: 'x', at: 1000, end: 4000, done: true, seq: 1}], {id: 's', running: false, activity: 'idle'});
+  const summary = root.querySelector('summary');
+  expect(summary.textContent).toBe('Thought for 3s');
+  send([{id: 'u', kind: 'reasoning', text: 'y', at: 10000, done: true, seq: 2}]);
+  expect(root.querySelectorAll('summary')[1].textContent).toBe('Thought');
+});
+
+test('a message that arrives during Thinking leaves it counting until it finishes', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(3000);
+  const thought = {id: 't', kind: 'reasoning', text: 'x', at: 1000, seq: 1};
+  const {root, send} = setup([thought]);
+  const summary = root.querySelector('summary');
+  send([{id: 'u', kind: 'user', text: 'hello', at: 2000, seq: 2}]);
+  act(() => jest.advanceTimersByTime(8000));
+  expect(summary.textContent).toBe('Thinking for 10s…');
+  send([{...thought, done: true, end: 12000}]);
+  expect(summary.textContent).toBe('Thought for 11s');
+});
+
+test('a finished last run in a session that is not working shows a fixed duration', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(900000);
+  const {root} = setup([{id: 'a', kind: 'tool', tool: 'read', done: true, at: 1000, end: 5000, seq: 1}], {id: 's', running: true, activity: 'idle'});
+  const summary = root.querySelector('summary');
+  expect(summary.textContent).toBe('Worked for 4s');
+  act(() => jest.advanceTimersByTime(60000));
+  expect(summary.textContent).toBe('Worked for 4s');
 });
 
 test('expanded Thinking stays scrolled to the newest text until the user scrolls up', () => {

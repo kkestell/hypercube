@@ -19,9 +19,8 @@ function ReasoningText({text}) {
   return <div ref={box} class="reasoning-item-text" onScroll={scrolled}>{text}</div>;
 }
 
-export function ReasoningItem({row, expanded, setOpen}) {
-  const {item, until} = row;
-  const summary = <Elapsed live={!until && !item.done} present="Thinking" past="Thought" start={item.at} until={until} />;
+export function ReasoningItem({item, expanded, setOpen}) {
+  const summary = <Elapsed live={!item.done} present="Thinking" past="Thought" start={item.at} until={item.end} />;
   return (
     <div class="reasoning-item">
       <Disclosure open={expanded} onToggle={open => setOpen(item.id, open)} summary={summary}>

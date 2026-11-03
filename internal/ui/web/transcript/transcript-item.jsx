@@ -25,7 +25,7 @@ export function TranscriptRow({row, session, expanded, setOpen}) {
   switch (row.type) {
     case 'run': return <ToolRun run={row} session={session} expanded={expanded} setOpen={setOpen} />;
     case 'user': return <MessageItem item={item} expanded={!!expanded[item.id]} setOpen={setOpen} />;
-    case 'reasoning': return <ReasoningItem row={row} expanded={!!expanded[item.id]} setOpen={setOpen} />;
+    case 'reasoning': return <ReasoningItem item={item} expanded={!!expanded[item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={item} session={session} />;
     case 'error': return <ErrorItem item={item} />;
     default: return <TextItem item={item} />;

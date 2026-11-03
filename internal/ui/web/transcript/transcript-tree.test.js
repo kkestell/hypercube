@@ -55,15 +55,13 @@ test('a run with missing timestamps has no times', () => {
   expect(rows([call('a', 'read'), {id: 't', kind: 'text'}])[0]).toMatchObject({closed: true, start: 0, until: 0});
 });
 
-test('thinking lasts until the next row begins', () => {
-  const [first, run, last] = rows([
-    {id: 'r1', kind: 'reasoning', at: 1000, done: true},
-    call('a', 'read', 4000, {done: true}),
-    {id: 'r2', kind: 'reasoning', at: 9000},
-  ]);
-  expect(first).toMatchObject({type: 'reasoning', until: 4000});
-  expect(run.type).toBe('run');
-  expect(last).toMatchObject({type: 'reasoning', until: 0});
+test('a run still open when the session is not working closes at its last call\'s end', () => {
+  const items = [call('a', 'read', 1000, {done: true, end: 2000}), call('b', 'bash', 3000, {done: true, end: 7000}), call('c', 'edit', 4000, {done: true, end: 5000})];
+  expect(rows(items)[0]).toMatchObject({closed: false, until: 0});
+  expect(transcriptRows(transcript(items), false)[0]).toMatchObject({closed: true, start: 1000, until: 7000});
+  expect(transcriptRows(transcript([call('a', 'read', 1000, {done: true})]), false)[0]).toMatchObject({closed: true, start: 1000, until: 0});
+  const nested = transcriptRows(transcript([call('p', 'agent', 1000, {end: 9000}), call('n', 'read', 2000, {parent: 'p', end: 3000})]), false);
+  expect(nested[0].calls[0].children[0]).toMatchObject({closed: true, until: 3000});
 });
 
 test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves the run open and later calls join above it', (_source, from) => {

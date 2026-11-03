@@ -15,7 +15,8 @@ export function Transcript({session}) {
   const [state, store] = useStore();
   const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
-  const rows = useMemo(() => transcriptRows(transcript), [transcript]);
+  const working = session.running && session.activity === 'busy';
+  const rows = useMemo(() => transcriptRows(transcript, working), [transcript, working]);
   const setOpen = useCallback((key, open) => store.update(s => setExpanded(s, key, open)), [store]);
 
   const view = useRef(null), list = useRef(null);
