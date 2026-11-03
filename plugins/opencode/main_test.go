@@ -442,7 +442,7 @@ func TestQuestionForm(t *testing.T) {
 	h.adopt(t, lines)
 	h.feed(t, lines...)
 	color, size := h.item(t, "form:0/0"), h.item(t, "form:0/1")
-	if color.Kind != harness.KindAttention || !strings.HasPrefix(color.Text, "Which color do you prefer?") || !strings.Contains(color.Text, "- Red: Go with red.") ||
+	if color.Kind != harness.KindAttention || color.Text != "Which color do you prefer?" || !slices.Equal(color.Notes, []string{"Go with red.", "Go with blue."}) ||
 		!slices.Equal(color.Choices, []string{"Red", "Blue"}) || !color.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) {
 		t.Fatalf("%+v %+v", color, size)
 	}

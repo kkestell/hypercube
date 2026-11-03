@@ -63,18 +63,17 @@ func TestFieldOptions(t *testing.T) {
 	}
 }
 
-func TestOptionNotes(t *testing.T) {
+func TestNotes(t *testing.T) {
 	for _, test := range []struct {
-		name         string
-		labels, note []string
-		want         string
+		name  string
+		notes []string
+		want  []string
 	}{
-		{"notes", []string{"A", "B", "C"}, []string{"first", "", "third"},
-			"Pick\n\n- A: first\n- C: third"},
-		{"no notes", []string{"A"}, []string{""}, "Pick"},
-		{"no options", nil, nil, "Pick"},
+		{"notes", []string{"first", "", "third"}, []string{"first", "", "third"}},
+		{"no notes", []string{"", ""}, nil},
+		{"no options", nil, nil},
 	} {
-		if got := OptionNotes("Pick", test.labels, test.note); got != test.want {
+		if got := Notes(test.notes); !slices.Equal(got, test.want) {
 			t.Errorf("%s: got %q, want %q", test.name, got, test.want)
 		}
 	}

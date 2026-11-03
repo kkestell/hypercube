@@ -1,11 +1,20 @@
 .attention-form {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
   gap: calc(var(--size-space) * 2);
 }
 
-.attention-form-text {
-  flex: 1;
-  min-width: calc(var(--size-space) * 40);
+.attention-form-choices {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.attention-form-choices[aria-disabled='true'] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.attention-form-choices vscode-tree-item::part(wrapper) {
+  min-height: var(--size-tree-row-height);
+  line-height: var(--size-tree-row-height);
 }

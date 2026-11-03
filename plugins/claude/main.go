@@ -558,7 +558,7 @@ func (c *claude) control(ev *harness.Event, m message) {
 				item.Choices = append(item.Choices, o.Label)
 				notes = append(notes, o.Description)
 			}
-			item.Text = plugin.OptionNotes(q.Question, item.Choices, notes)
+			item.Notes = plugin.Notes(notes)
 			items = append(items, item)
 			r.questions = append(r.questions, q.Question)
 		}
