@@ -58,22 +58,30 @@
 
 .composer-bar {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: calc(var(--size-space) * 2);
+  min-width: 0;
+  container: composer-bar / inline-size;
+}
+
+.composer-bar > vscode-button {
+  flex: 0 0 auto;
 }
 
 .composer-details {
   display: flex;
-  flex: 1;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
   align-items: center;
-  gap: var(--size-space) calc(var(--size-space) * 4);
+  gap: calc(var(--size-space) * 4);
   min-width: 0;
   color: var(--vscode-descriptionForeground);
   font-size: calc(var(--vscode-font-size) - var(--size-border) * 2);
+  white-space: nowrap;
 }
 
 .composer-config {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -81,6 +89,15 @@
 }
 
 .composer-profile {
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
+}
+
+/* The usage numbers yield to the ring before the label loses room. */
+@container composer-bar (max-width: 400px) {
+  .composer-bar .usage-tokens,
+  .composer-bar .usage-cost {
+    display: none;
+  }
 }

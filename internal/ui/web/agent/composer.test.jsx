@@ -19,7 +19,7 @@ const store = () => createStore({workspaces: [], selected: null, pending: null, 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
-  expect(root.querySelector('.composer-config').textContent).toBe('claude · opus · high');
+  expect(root.querySelector('.composer-config').textContent).toBe('Claude · Opus · High');
 });
 
 test('a composer leaves the focus in a tab strip', () => {
@@ -82,7 +82,7 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   expect(s.get().unsent.profile).toBe('claude');
   expect(send().hasAttribute('disabled')).toBe(false);
   const options = [...root.querySelectorAll('vscode-option')];
-  expect(options.map(o => o.textContent)).toEqual(['claude · opus · high', 'codex · sol · medium']);
+  expect(options.map(o => o.textContent)).toEqual(['Claude · Opus · High', 'Codex · Sol · Medium']);
   expect(options.map(o => o.getAttribute('description'))).toEqual(profiles.map(p => p.description));
   expect(root.querySelector('.composer-config')).toBeNull();
 
