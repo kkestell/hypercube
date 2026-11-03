@@ -17,6 +17,7 @@ import {StoreContext} from '../store.js';
 import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
+import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
 import './app.css';
 
 function refuseStrayDrops(store) {
@@ -69,7 +70,9 @@ export function App({store}) {
   return (
     <StoreContext.Provider value={context}>
       <div class="app" onKeyDown={key}>
-        <header class="app-header"><LayoutToggles /></header>
+        <header class="app-header" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
+          <LayoutToggles />
+        </header>
         <div class="app-body">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar />

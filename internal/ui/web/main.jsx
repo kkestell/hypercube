@@ -1,9 +1,10 @@
 // Starts the page: the store, the data socket, file polling, the browsers'
-// reports, the window's notification clicks, and App.
+// reports, the window's notification clicks and title bar, and App.
 import './base.css';
 import './elements.js';
 import {render} from 'preact';
 import {App} from './app/app.jsx';
+import {startTitleBar} from './app/title-bar.js';
 import {setVisible} from './app/workbench.js';
 import {startBrowsers} from './browser/browser.js';
 import {startDataSocket} from './data-socket.js';
@@ -27,6 +28,7 @@ const store = createStore({
   browsers: {},
   fileOpens: {},
   overlays: {},
+  titleBar: null,
 });
 
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
@@ -34,4 +36,5 @@ startDataSocket(store);
 startFilePolling(store);
 startBrowsers(store);
 startNativeNotifications(store);
+startTitleBar(store);
 render(<App store={store} />, document.getElementById('app'));

@@ -4,7 +4,7 @@
 
 // HCWindow is the window that shows the Hypercube UI. Closing it hides it,
 // and the app keeps running in the menu bar.
-@interface HCWindow : NSObject <NSWindowDelegate, WKNavigationDelegate, WKUIDelegate>
+@interface HCWindow : NSObject <NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler>
 @property(readonly) NSWindow *window;
 @property(readonly) WKWebView *webView;
 - (instancetype)initWithURL:(NSURL *)url;

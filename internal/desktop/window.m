@@ -1,30 +1,53 @@
 #import "desktop.h"
 
+// HCPageView keeps its last mouse down, which a drag of the window starts from.
+@interface HCPageView : WKWebView
+@property(readonly) NSEvent *lastMouseDown;
+@end
+
+@implementation HCPageView
+- (void)mouseDown:(NSEvent *)event {
+    _lastMouseDown = event;
+    [super mouseDown:event];
+}
+@end
+
 @implementation HCWindow {
     NSURL *_home;
+    // The title bar's height and the width its buttons take from the left.
+    CGFloat _titleBarHeight, _titleBarInset;
 }
 
 - (instancetype)initWithURL:(NSURL *)url {
     self = [super init];
     _home = url;
-    _webView = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:[[WKWebViewConfiguration alloc] init]];
+    _webView = [[HCPageView alloc] initWithFrame:NSZeroRect configuration:[[WKWebViewConfiguration alloc] init]];
     _webView.navigationDelegate = self;
     _webView.UIDelegate = self;
     _webView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     if (@available(macOS 13.3, *)) _webView.inspectable = YES;
     [_webView addObserver:self forKeyPath:@"title" options:0 context:nil];
+    [_webView.configuration.userContentController addScriptMessageHandler:self name:@"window"];
 
-    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+    // The page fills the window, title bar included, and draws the title bar's
+    // row beside the window's buttons.
+    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
     _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1280, 800) styleMask:style backing:NSBackingStoreBuffered defer:NO];
     _window.releasedWhenClosed = NO;
     _window.delegate = self;
     _window.title = @"Hypercube";
+    _window.titlebarAppearsTransparent = YES;
+    _window.titleVisibility = NSWindowTitleHidden;
     _window.contentMinSize = NSMakeSize(640, 400);
     _webView.frame = _window.contentView.bounds;
     [_window.contentView addSubview:_webView];
     [_window center];
     [_window setFrameUsingName:@"Hypercube"];
     [_window setFrameAutosaveName:@"Hypercube"];
+    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect);
+    // The buttons get the same margin on their right as on their left.
+    NSButton *close = [_window standardWindowButton:NSWindowCloseButton], *zoom = [_window standardWindowButton:NSWindowZoomButton];
+    _titleBarInset = NSMaxX([zoom convertRect:zoom.bounds toView:nil]) + NSMinX([close convertRect:close.bounds toView:nil]);
     [_webView loadRequest:[NSURLRequest requestWithURL:url]];
     return self;
 }
@@ -49,6 +72,40 @@
                           inFrame:nil
                    inContentWorld:WKContentWorld.pageWorld
                 completionHandler:nil];
+}
+
+// reportTitleBar sends the page a hypercube-title-bar event, {height, inset},
+// with the title bar's height and the width of the window's buttons. A full
+// screen window has no title bar in the page.
+- (void)reportTitleBar:(BOOL)fullScreen {
+    [self dispatch:@"hypercube-title-bar" detail:fullScreen ? @{@"height": @0, @"inset": @0} : @{@"height": @(_titleBarHeight), @"inset": @(_titleBarInset)}];
+}
+
+- (void)windowWillEnterFullScreen:(NSNotification *)notification {
+    [self reportTitleBar:YES];
+}
+
+- (void)windowWillExitFullScreen:(NSNotification *)notification {
+    [self reportTitleBar:NO];
+}
+
+// The page asks for the title bar, and moves or zooms the window from a mouse
+// down in its title bar row.
+- (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
+    if (!message.frameInfo.isMainFrame) return;
+    NSDictionary *body = message.body;
+    if (![body isKindOfClass:[NSDictionary class]]) return;
+    NSString *type = body[@"type"];
+    if ([type isEqual:@"title-bar"]) {
+        [self reportTitleBar:(_window.styleMask & NSWindowStyleMaskFullScreen) != 0];
+    } else if ([type isEqual:@"drag"]) {
+        NSEvent *down = ((HCPageView *)_webView).lastMouseDown;
+        if (down && (NSEvent.pressedMouseButtons & 1)) [_window performWindowDragWithEvent:down];
+    } else if ([type isEqual:@"zoom"]) {
+        NSString *action = [NSUserDefaults.standardUserDefaults stringForKey:@"AppleActionOnDoubleClick"];
+        if ([action isEqual:@"Minimize"]) [_window performMiniaturize:nil];
+        else if (![action isEqual:@"None"]) [_window performZoom:nil];
+    }
 }
 
 // The window's title is the page's.
