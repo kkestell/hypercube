@@ -54,3 +54,19 @@ button {
   scrollbar-width: thin;
   scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
 }
+
+/* Toolbars show their icons dimmed and their checked buttons without a box. */
+vscode-toolbar-container {
+  --vscode-icon-foreground: color-mix(in srgb, var(--vscode-descriptionForeground) 60%, var(--vscode-editor-background));
+  --vscode-inputOption-activeBackground: transparent;
+  --vscode-inputOption-activeBorder: transparent;
+  --vscode-inputOption-activeForeground: var(--vscode-descriptionForeground);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0 calc(var(--size-space) * 2);
+}
+
+vscode-toolbar-container vscode-toolbar-button:focus-within {
+  --vscode-inputOption-activeBorder: var(--vscode-focusBorder);
+}

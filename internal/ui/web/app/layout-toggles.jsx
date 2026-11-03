@@ -2,7 +2,6 @@
 // right panel, as VS Code's do.
 import {useStore} from '../store.js';
 import {toggle} from './workbench.js';
-import './layout-toggles.css';
 
 const toggles = [
   {region: 'sidebar', icon: 'layout-sidebar-left', title: 'Toggle Primary Side Bar'},
