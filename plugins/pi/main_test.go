@@ -820,9 +820,9 @@ func TestExitEndsTheProcess(t *testing.T) {
 
 func TestMCPToolNamesItsServer(t *testing.T) {
 	p := newPi()
-	p.feed(`{"type":"tool_execution_start","toolCallId":"c1","toolName":"mcp__hypercube__remove_agent","args":{"name":"auditor"}}`)
+	p.feed(`{"type":"tool_execution_start","toolCallId":"c1","toolName":"mcp__hypercube__end_session","args":{"name":"auditor"}}`)
 	tool := p.item(t, harness.KindTool)
-	if tool.Server != "hypercube" || tool.Tool != "remove_agent" {
+	if tool.Server != "hypercube" || tool.Tool != "end_session" {
 		t.Fatalf("%+v", tool)
 	}
 }

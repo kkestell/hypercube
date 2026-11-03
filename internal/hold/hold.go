@@ -1,5 +1,14 @@
-// Package hold runs children independently of the app, using a directory for
-// input, retained output, and the child's exit status.
+// Package hold runs children independently of the app. Each holder owns a
+// directory:
+//
+//   - lock: locked for the holder's whole life; Alive tests it.
+//   - pid, and tty in terminal mode: the holder's process and terminal.
+//   - in: the socket that carries input to the child.
+//   - out-<offset>: retained output in segments named by their first byte's
+//     offset. Terminal mode keeps the last two; pipe mode keeps them until
+//     Discard.
+//   - exit: the child's exit record, renamed into place after all output and
+//     before the lock is released, so a dead holder without one was lost.
 package hold
 
 import (
@@ -199,13 +208,6 @@ func (h *Holder) segments() ([]int64, error) {
 }
 func (h *Holder) segment(position int64) string {
 	return filepath.Join(h.dir, fmt.Sprintf("out-%d", position))
-}
-func (h *Holder) First() int64 {
-	p, _ := h.segments()
-	if len(p) > 0 {
-		return p[0]
-	}
-	return 0
 }
 func (h *Holder) Discard(before int64) error {
 	p, err := h.segments()

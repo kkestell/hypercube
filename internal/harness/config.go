@@ -7,18 +7,14 @@ import (
 	"path/filepath"
 )
 
-// Spec picks a harness, model, and effort for an agent.
-type Spec struct {
-	Harness string `json:"harness"`
-	Model   string `json:"model"`
-	Effort  string `json:"effort"`
-}
-
-// Profile is a named spec whose description says when to use it.
+// Profile names a harness, model, and effort for an agent, and its
+// description says when to use it.
 type Profile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Spec
+	Harness     string `json:"harness"`
+	Model       string `json:"model"`
+	Effort      string `json:"effort"`
 }
 
 type Config struct {
@@ -76,13 +72,13 @@ func (c Config) Profile(name string) (Profile, error) {
 	return Profile{}, fmt.Errorf("no profile named %q", name)
 }
 
-func (s Spec) check() error {
+func (p Profile) check() error {
 	switch {
-	case s.Harness == "":
+	case p.Harness == "":
 		return fmt.Errorf("missing harness")
-	case s.Model == "":
+	case p.Model == "":
 		return fmt.Errorf("missing model")
-	case s.Effort == "":
+	case p.Effort == "":
 		return fmt.Errorf("missing effort")
 	}
 	return nil

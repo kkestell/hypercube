@@ -75,12 +75,11 @@ func (r *Runtime) Interrupt(id string) error {
 // or both. A request that has finished cannot be answered.
 func (r *Runtime) Answer(id, requestID, choice, text string) error {
 	r.mu.Lock()
-	l := r.live[id]
-	if l == nil || l.ready == 0 || l.stopping || r.closing {
-		r.mu.Unlock()
-		return errors.New("the request is finished")
+	l, err := r.running(id)
+	var p *pendingItem
+	if err == nil {
+		p = l.pending[requestID]
 	}
-	p := l.pending[requestID]
 	if p == nil || p.item.Kind != harness.KindAttention {
 		r.mu.Unlock()
 		return errors.New("the request is finished")

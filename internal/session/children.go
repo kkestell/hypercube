@@ -66,9 +66,6 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 		if err := tx.AddSession(child); err != nil {
 			return err
 		}
-		if err := r.loadSeq(tx.Tx, child.ID); err != nil {
-			return err
-		}
 		if message != "" {
 			if err := tx.Queue(store.Message{From: parentID, To: child.ID, Text: message}); err != nil {
 				return err
@@ -84,30 +81,30 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 	if err != nil {
 		return store.Session{}, err
 	}
-	created := false
+	discard := func(err error) error {
+		if cleanup := r.save(func(tx *write) error { return tx.DeleteSession(child.ID) }); cleanup != nil {
+			return fmt.Errorf("%w; deleting the child session failed: %v", err, cleanup)
+		}
+		return err
+	}
 	if child.Branch != "" {
-		err = workspace.AddWorktree(parent.Dir, child.Dir, child.Branch)
-		if err != nil {
+		if err := workspace.AddWorktree(parent.Dir, child.Dir, child.Branch); err != nil {
+			// run never starts, so end the launch here and release anything
+			// already stopping it.
 			r.end(l, err)
 			close(l.done)
-		}
-		created = err == nil
-	}
-	if err == nil {
-		err = r.launch(l)
-	}
-	if err == nil {
-		return child, nil
-	}
-	if created {
-		if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); cleanup != nil {
-			return store.Session{}, fmt.Errorf("%w; worktree cleanup failed: %v; child session %s was kept for cleanup", err, cleanup, name)
+			return store.Session{}, discard(err)
 		}
 	}
-	if cleanup := r.save(func(tx *write) error { return tx.DeleteSession(child.ID) }); cleanup != nil {
-		return store.Session{}, fmt.Errorf("%w; deleting the child session failed: %v", err, cleanup)
+	if err := r.launch(l); err != nil {
+		if child.Branch != "" {
+			if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); cleanup != nil {
+				return store.Session{}, fmt.Errorf("%w; worktree cleanup failed: %v; child session %s was kept for cleanup", err, cleanup, name)
+			}
+		}
+		return store.Session{}, discard(err)
 	}
-	return store.Session{}, err
+	return child, nil
 }
 
 // EndChild removes its worktree before stopping the agent, keeping its chat.

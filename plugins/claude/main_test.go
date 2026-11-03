@@ -573,7 +573,7 @@ func (e *emitted) all() []harness.Event {
 
 var startArgs = harness.StartArgs{
 	Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
-	Model: "opus", Effort: "high", Dir: ".", Instructions: "You lead a team.",
+	Model: "opus", Effort: "high", Dir: ".", Instructions: "Fix the parser.",
 }
 
 func start(t *testing.T, a harness.StartArgs) (*claude, *emitted) {
@@ -596,7 +596,7 @@ func TestStart(t *testing.T) {
 	}
 	args := string(data)
 	for _, want := range []string{"-p", "--input-format stream-json", "--output-format stream-json", "--include-partial-messages",
-		"--permission-prompt-tool stdio", "--permission-mode auto", "--model opus", "--effort high", "--append-system-prompt You lead a team.",
+		"--permission-prompt-tool stdio", "--permission-mode auto", "--model opus", "--effort high", "--append-system-prompt Fix the parser.",
 		`"command":"/bin/hc","env":{"HYPERCUBE_SESSION_ID":"a1"}`} {
 		if !strings.Contains(args, want) {
 			t.Errorf("arguments lack %s: %s", want, args)
@@ -721,7 +721,7 @@ func TestExitEndsTheProcess(t *testing.T) {
 
 func TestMCPToolNamesItsServer(t *testing.T) {
 	h := newClaude()
-	h.feed(`{"type":"assistant","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"mcp__hypercube__send_message","input":{"to":"lead","text":"done"}}]}}`)
+	h.feed(`{"type":"assistant","message":{"id":"m1","role":"assistant","content":[{"type":"tool_use","id":"t1","name":"mcp__hypercube__send_message","input":{"to":"p","text":"done"}}]}}`)
 	items := h.transcript()
 	if len(items) != 1 || items[0].Server != "hypercube" || items[0].Tool != "send_message" {
 		t.Fatalf("%+v", items)

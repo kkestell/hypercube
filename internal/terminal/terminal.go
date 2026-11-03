@@ -44,14 +44,22 @@ func Name(session string) string { return "shell-" + session }
 func (s *Set) dir(session string) string { return filepath.Join(s.Dir, Name(session)) }
 
 // Open returns the session's running shell, or starts one in dir in place of
-// one that ended.
+// one that ended. It can arrive before Adopt after an app restart, so it takes
+// over a running holder it has not adopted yet.
 func (s *Set) Open(session, dir string, cols, rows int) (*Shell, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
 		return nil, errClosed
 	}
-	if sh := s.shells[session]; sh != nil && sh.holder.Alive() {
+	sh := s.shells[session]
+	if sh == nil {
+		var err error
+		if sh, err = s.adopt(session); err != nil {
+			return nil, err
+		}
+	}
+	if sh != nil && sh.holder.Alive() {
 		return sh, nil
 	}
 	if err := os.RemoveAll(s.dir(session)); err != nil {
@@ -64,7 +72,7 @@ func (s *Set) Open(session, dir string, cols, rows int) (*Shell, error) {
 	if s.shells == nil {
 		s.shells = map[string]*Shell{}
 	}
-	sh := &Shell{holder: h}
+	sh = &Shell{holder: h}
 	s.shells[session] = sh
 	return sh, nil
 }
@@ -77,21 +85,32 @@ func (s *Set) Adopt(session string) error {
 	if s.closed {
 		return errClosed
 	}
-	h, err := hold.Open(s.dir(session))
-	if errors.Is(err, os.ErrNotExist) {
+	if s.shells[session] != nil {
 		return nil
 	}
+	_, err := s.adopt(session)
+	return err
+}
+
+// adopt returns the session's running holder from an earlier app, or nil
+// after removing one that has ended. s.mu must be held.
+func (s *Set) adopt(session string) (*Shell, error) {
+	h, err := hold.Open(s.dir(session))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !h.Alive() {
-		return h.Remove()
+		return nil, h.Remove()
 	}
 	if s.shells == nil {
 		s.shells = map[string]*Shell{}
 	}
-	s.shells[session] = &Shell{holder: h}
-	return nil
+	sh := &Shell{holder: h}
+	s.shells[session] = sh
+	return sh, nil
 }
 
 // Stop ends the session's shell and removes its holder.
@@ -127,7 +146,7 @@ func (sh *Shell) end() {
 
 // Output reads the shell's retained output, then what it writes next.
 func (sh *Shell) Output() (*hold.Output, error) {
-	return sh.holder.Output(sh.holder.First())
+	return sh.holder.Output(0)
 }
 func (sh *Shell) Write(p []byte) error        { _, err := sh.holder.Write(p); return err }
 func (sh *Shell) Resize(cols, rows int) error { return sh.holder.Resize(cols, rows) }

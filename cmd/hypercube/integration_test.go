@@ -196,10 +196,10 @@ func (c client) post(path string, values map[string]string, body string) (int, s
 	return res.StatusCode, strings.TrimSpace(string(b))
 }
 
-// newSession starts a session with the named parent and returns its ID.
-func (c client) newSession(workspace, parent string) string {
+// newSession starts a session with the named profile and returns its ID.
+func (c client) newSession(workspace, profile string) string {
 	c.t.Helper()
-	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "profile": parent}, `{"text":"start"}`)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "profile": profile}, `{"text":"start"}`)
 	if code != http.StatusOK {
 		c.t.Fatalf("new session: %d %s", code, body)
 	}
@@ -312,9 +312,8 @@ func (w *world) ready(id string) bool {
 func (w *world) newSession(c client, workspace, profile string) store.Session {
 	w.t.Helper()
 	id := c.newSession(workspace, profile)
-	parent := w.family(id)[0]
-	w.until("session "+id, func() bool { return w.ready(parent.ID) })
-	return w.session(parent.ID)
+	w.until("session "+id, func() bool { return w.ready(id) })
+	return w.session(id)
 }
 
 // createChild has the parent create a child through MCP and waits for the
@@ -614,8 +613,7 @@ func TestAppProcess(t *testing.T) {
 		}
 	})
 	start()
-	first := c.newSession(ws.ID, "first")
-	parent := w.family(first)[0]
+	parent := w.session(c.newSession(ws.ID, "first"))
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
 	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
@@ -627,7 +625,7 @@ func TestAppProcess(t *testing.T) {
 	if err != nil || !strings.Contains(string(out), "Created w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
-	child := w.family(first)[1]
+	child := w.family(parent.ID)[1]
 	w.until("the child's brief", func() bool {
 		return w.got(child.ID, "brief") && w.session(child.ID).Activity == store.Idle
 	})
@@ -694,7 +692,7 @@ func TestAppProcess(t *testing.T) {
 			t.Fatalf("input: %d %s", status, body)
 		}
 		w.until("input after restart", func() bool { return w.session(parent.ID).Activity == store.Idle })
-		if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 || w.session(first).AwaitingUser {
+		if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 || w.session(parent.ID).AwaitingUser {
 			t.Fatal("restart replaced agents or awaits user")
 		}
 	}
@@ -713,7 +711,7 @@ func TestAppProcess(t *testing.T) {
 	w.until("agents after Quit", func() bool {
 		return w.starts(parent.ID) == 2 && w.starts(child.ID) == 2 && w.ready(parent.ID) && w.ready(child.ID)
 	})
-	if !w.session(first).AwaitingUser {
+	if !w.session(parent.ID).AwaitingUser {
 		t.Fatal("launch after Quit did not await user")
 	}
 }

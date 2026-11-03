@@ -63,6 +63,8 @@ func Main(args []string) error {
 	copied := make(chan error, 1)
 	go func() { copied <- h.copyOutput(child.output, *terminal) }()
 	waitErr := child.wait(signals, *terminal)
+	// A descendant can keep the output open after the child exits; stop
+	// copying after a second rather than wait for it.
 	select {
 	case err = <-copied:
 	case <-time.After(time.Second):
@@ -168,6 +170,7 @@ func (c *child) wait(signals <-chan os.Signal, terminal bool) error {
 		} else {
 			_ = c.input.Close()
 		}
+		// Give the child a moment to exit cleanly before killing its group.
 		select {
 		case err := <-waited:
 			return err

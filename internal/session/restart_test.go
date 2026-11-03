@@ -134,6 +134,16 @@ func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.rt.Detach()
+	// The message was saved, but the app stopped before delivering it.
+	f.queue("user", s.ID, "queued")
+	f.rt = f.newRuntime()
+	f.rt.Restore()
+	f.until("delivered", func() bool { return len(f.queued(s.ID)) == 0 })
+}
 func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
@@ -377,7 +387,7 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 	for f.storedSession("s").Launch != "" && time.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)
 	}
-	if !strings.Contains(f.summary("s"), "Could not start the agent: the plugin did not start within a minute") || f.storedSession("s").Launch != "" {
+	if !strings.Contains(f.summary("s"), "Could not start the agent: the plugin did not start in time") || f.storedSession("s").Launch != "" {
 		t.Fatal(f.summary("s"))
 	}
 }

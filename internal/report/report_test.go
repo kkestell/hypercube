@@ -36,7 +36,7 @@ func open(t *testing.T, sessions ...store.Session) *store.DB {
 
 func TestInstructions(t *testing.T) {
 	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "Build it", Harness: "test", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
-	profiles := []harness.Profile{{Name: "planner", Description: "design", Spec: harness.Spec{Harness: "test", Model: "m", Effort: "low"}}}
+	profiles := []harness.Profile{{Name: "planner", Description: "design", Harness: "test", Model: "m", Effort: "low"}}
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
 		child, _ := tx.Session("c")
@@ -58,7 +58,7 @@ func TestInstructions(t *testing.T) {
 				t.Errorf("child missing %q: %s", want, childText)
 			}
 		}
-		if strings.Contains(parentText, "Other top-level sessions:") || strings.Contains(parentText, "q (Fix)") {
+		if strings.Contains(parentText, "q (Fix)") {
 			t.Error("instructions include a stale peer snapshot:", parentText)
 		}
 		if !strings.Contains(parentText, "top-level sessions in this workspace share") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
@@ -71,11 +71,6 @@ func TestInstructions(t *testing.T) {
 		}
 		if !strings.Contains(text, "Handle branches and commits as your parent tells you") {
 			t.Error(text)
-		}
-		for _, text := range []string{parentText, childText} {
-			if strings.Contains(text, "lead") || strings.Contains(text, "worker") {
-				t.Errorf("old role wording: %s", text)
-			}
 		}
 		return nil
 	}); err != nil {

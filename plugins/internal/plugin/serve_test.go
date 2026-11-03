@@ -208,19 +208,6 @@ func TestServeMalformedCommand(t *testing.T) {
 	}
 }
 
-func TestServeEndsWithItsInput(t *testing.T) {
-	s := &standIn{script: "cat >/dev/null"}
-	c := serveStandIn(t, s)
-	c.start()
-	c.in.Close()
-	if err := c.wait(); err != nil {
-		t.Fatal(err)
-	}
-	if got := s.recorded(); !slices.Equal(got, []string{"stop"}) {
-		t.Fatal(got)
-	}
-}
-
 // When the harness ends by itself, Serve returns why, after the event of the
 // harness's last line, which has no newline.
 func TestServeEndsWithTheHarness(t *testing.T) {

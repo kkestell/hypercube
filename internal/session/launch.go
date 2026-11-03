@@ -19,20 +19,27 @@ import (
 // live is an attachment to the durable launch named by prefix. The reader
 // owns its end; stopping never removes it before its last output is applied.
 type live struct {
-	id, root, prefix string
-	client           *harness.Client
-	ready            int64
-	position         int64
-	quick            int
-	cause            error
-	stopping         bool
-	attention        bool
-	pending          map[string]*pendingItem
-	commands         map[int64]store.Command
-	waiters          map[int64]chan error
-	send             sync.Mutex
-	sent             int64
-	done             chan struct{}
+	// Runtime.mu guards these fields.
+	id, root  string
+	prefix    string // the launch ID and ":", which namespaces item IDs
+	client    *harness.Client
+	ready     int64 // Unix milliseconds of the start reply; zero while starting
+	position  int64 // the output offset applied so far
+	quick     int   // consecutive launches that exited soon after starting
+	cause     error // why the launch ended, once known
+	stopping  bool
+	attention bool // the last saved attention flag
+	pending   map[string]*pendingItem
+	commands  map[int64]store.Command
+	waiters   map[int64]chan error
+
+	// send serializes writes to client and guards sent, the last command
+	// written.
+	send sync.Mutex
+	sent int64
+	// done is closed when the launch is over, by run or, when run never
+	// starts, by CreateChild.
+	done chan struct{}
 }
 type pendingItem struct {
 	seq  int64
@@ -157,12 +164,15 @@ func (r *Runtime) run(l *live) {
 			go r.watchDelivery(l, id)
 		}
 	}
+	// A message can be queued and saved just before the app stops, so an
+	// attached launch delivers what is already queued.
+	r.kickLocked(l.id)
 	r.mu.Unlock()
 	timer := time.AfterFunc(r.startTimeout, func() {
 		r.mu.Lock()
 		late := r.current(l) && l.ready == 0 && !r.detached
 		if late {
-			l.cause = errors.New("the plugin did not start within a minute")
+			l.cause = errors.New("the plugin did not start in time")
 		}
 		r.mu.Unlock()
 		if late {

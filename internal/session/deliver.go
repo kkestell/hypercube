@@ -68,7 +68,7 @@ func (r *Runtime) watchDelivery(l *live, command int64) {
 		return
 	}
 	err := r.save(func(tx *write) error {
-		return tx.putItem(l.id, r.nextSeq(l.id), harness.Item{ID: l.prefix + fmt.Sprintf("delivery-timeout-%d", command), Kind: harness.KindError, Text: "Delivering a message got no reply within 30 seconds; later messages wait for it", Done: true})
+		return tx.putItem(l.id, r.nextSeq(l.id), harness.Item{ID: l.prefix + fmt.Sprintf("delivery-timeout-%d", command), Kind: harness.KindError, Text: "Delivering a message got no reply in time; later messages wait for it", Done: true})
 	})
 	if err != nil {
 		logf("noting delivery: %v", err)
