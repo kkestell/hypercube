@@ -819,3 +819,15 @@ func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, childr
 		return nil
 	})
 }
+
+func TestStopShowsTheSessionStoppedWithoutAttention(t *testing.T) {
+	a := newApp(t)
+	p := a.page()
+	a.input("!ask", http.StatusOK)
+	p.until("the session to wait on the user", func() bool { s := p.session(a.session.ID); return s.Running && s.Attention })
+	a.post("/session?action=stop&id="+a.session.ID, "", http.StatusOK)
+	p.until("the session to show stopped without attention", func() bool {
+		s := p.session(a.session.ID)
+		return !s.Running && !s.Attention && s.Activity == store.Exited
+	})
+}

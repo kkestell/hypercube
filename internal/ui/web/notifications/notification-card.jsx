@@ -1,14 +1,14 @@
 // One notification card, as VS Code's toasts: an icon, the details, View
 // Session and close, and the source below. A request card offers the
 // request's answers; a reply card shows the reply's opening lines and closes
-// itself after 15 seconds without marking the reply seen. An error card has
-// only its message and close, and stays until it is closed.
+// itself after 15 seconds, as if closed. An error card has only its message
+// and close, and stays until it is closed.
 import {useEffect} from 'preact/hooks';
 import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
 import {AttentionForm} from '../transcript/attention-form.jsx';
 import {MarkdownText} from '../transcript/markdown.jsx';
-import {closeCard, dismiss} from './notifications.js';
+import {closeCard} from './notifications.js';
 import './notification-card.css';
 
 const replyLifetime = 15000;
@@ -19,7 +19,7 @@ export function NotificationCard({card}) {
 
   useEffect(() => {
     if (card.kind !== 'reply') return;
-    const timer = setTimeout(() => store.update(s => dismiss(s, card.key)), replyLifetime);
+    const timer = setTimeout(() => closeCard(store, card), replyLifetime);
     return () => clearTimeout(timer);
   }, [card.key]);
 

@@ -155,7 +155,7 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		if err != nil {
 			return err
 		}
-		child.Ended = true
+		child.Ended, child.Attention = true, false
 		if err := tx.SaveSession(child); err != nil {
 			return err
 		}
