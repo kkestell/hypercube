@@ -1,4 +1,5 @@
 .composer {
+  --composer-details-font-size: calc(var(--vscode-font-size) - var(--size-border) * 2);
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
@@ -75,14 +76,19 @@
   flex: 0 0 auto;
 }
 
+/* The details and the controls among them share one smaller size and the
+   description color. The controls read --vscode-font-size, so the details
+   set it from --composer-details-font-size, which .composer resolves. */
 .composer-details {
+  --vscode-font-size: var(--composer-details-font-size);
+  --vscode-settings-dropdownForeground: var(--vscode-descriptionForeground);
   display: flex;
   flex: 1 1 auto;
   align-items: center;
   gap: calc(var(--size-space) * 4);
   min-width: 0;
   color: var(--vscode-descriptionForeground);
-  font-size: calc(var(--vscode-font-size) - var(--size-border) * 2);
+  font-size: var(--vscode-font-size);
   white-space: nowrap;
 }
 
@@ -96,6 +102,7 @@
 }
 
 .composer-worktree {
+  --vscode-foreground: var(--vscode-descriptionForeground);
   flex: 0 0 auto;
 }
 
