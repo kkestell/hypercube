@@ -154,9 +154,11 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   spies.push(fetches);
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true, choices: ['Ada']}]);
   const field = root.querySelector('vscode-textfield');
-  const sendButton = field.querySelector('vscode-toolbar-button[slot="content-after"]');
-  expect(sendButton.getAttribute('label')).toBe('Send');
+  const sendButton = field.querySelector('vscode-button[slot="content-after"]');
+  expect(sendButton.getAttribute('aria-label')).toBe('Send');
   expect(sendButton.hasAttribute('disabled')).toBe(true);
+  act(() => sendButton.click());
+  expect(fetches).not.toHaveBeenCalled();
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'})));
   expect(fetches).not.toHaveBeenCalled();
   field.value = 'Ada';
@@ -175,7 +177,7 @@ test('the Send button in the field sends the typed answer', async () => {
   const field = root.querySelector('vscode-textfield');
   field.value = 'Grace';
   act(() => field.dispatchEvent(new Event('input')));
-  await act(async () => field.querySelector('vscode-toolbar-button').click());
+  await act(async () => field.querySelector('vscode-button').click());
   expect(fetches.mock.calls[0][1].body).toBe('Grace');
 });
 

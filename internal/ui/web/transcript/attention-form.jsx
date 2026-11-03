@@ -53,7 +53,7 @@ export function AttentionForm({session, item}) {
           onInput={e => store.update(s => typed(s, key, e.currentTarget.value))}
           onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
         >
-          <vscode-toolbar-button slot="content-after" icon="send" label="Send" title="Send" disabled={sending || !text.trim()} onClick={sendText} />
+          <vscode-button slot="content-after" class="attention-form-send" icon-only secondary icon="send" title="Send" aria-label="Send" disabled={sending || !text.trim()} onClick={sendText} />
         </vscode-textfield>
       )}
     </div>

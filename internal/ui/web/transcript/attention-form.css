@@ -18,3 +18,9 @@
   min-height: var(--size-tree-row-height);
   line-height: var(--size-tree-row-height);
 }
+
+.attention-form-send {
+  --vscode-button-secondaryBackground: transparent;
+  --vscode-button-secondaryHoverBackground: var(--vscode-toolbar-hoverBackground);
+  margin-right: var(--size-space);
+}
