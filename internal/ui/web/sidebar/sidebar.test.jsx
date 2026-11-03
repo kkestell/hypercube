@@ -1,3 +1,4 @@
+import '@vscode-elements/elements/dist/vscode-context-menu/index.js';
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
@@ -13,7 +14,7 @@ afterEach(() => {
 });
 
 const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, children: [], activity: 'idle', ...extra});
-const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], selected: null, unsent: null, session: null, confirmation: null});
+const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], selected: null, unsent: null, session: null, confirmation: null, overlays: {}});
 
 function setup(sessions) {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
@@ -51,6 +52,8 @@ test('the selected stopped top-level session stays visible', () => {
   const {store, root} = setup([session('a'), session('b', {running: false}), session('c', {running: false})]);
   store.update(s => ({...s, selected: 'c'}));
   expect(sessionRows(root)).toEqual(['a', 'c']);
+  expect(title(root, 'c').getAttribute('aria-current')).toBe('true');
+  expect(title(root, 'a').hasAttribute('aria-current')).toBe(false);
 });
 
 test('Add Workspace adds a workspace', () => {
@@ -254,6 +257,19 @@ test('a row\'s More Actions button opens its menu, and the workspace\'s opens th
   click(root.querySelector('.sidebar-workspace-menu'));
   pick(root, 0);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
+});
+
+test('Escape closes a menu and returns the focus to its button', async () => {
+  const {root} = setup([session('a')]);
+  const button = root.querySelector('[data-session="a"] .session-item-menu');
+  button.focus();
+  click(button);
+  const menu = root.querySelector('vscode-context-menu');
+  await menu.updateComplete;
+  expect(document.activeElement).toBe(menu);
+  act(() => menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
+  expect(root.querySelector('vscode-context-menu')).toBeNull();
+  expect(document.activeElement).toBe(button);
 });
 
 test('active nested sessions have no menu and ended ones offer only Delete Session', () => {

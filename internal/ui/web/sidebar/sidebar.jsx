@@ -5,15 +5,14 @@
 // The view holds still while a session is renamed, so the field keeps its
 // place and focus.
 import {Fragment} from 'preact';
-import {useRef, useState} from 'preact/hooks';
+import {useCallback, useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
 import {openUnsent} from '../sessions/selection.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import '../shared/panel-tabs.css';
 import {useStore} from '../store.js';
-import {NestedSessions} from './nested-sessions.jsx';
 import {SessionItem} from './session-item.jsx';
-import {useSidebarMenu} from './sidebar-menus.js';
+import {sessionItems, workspaceItems} from './sidebar-menus.js';
 import './sidebar.css';
 
 const pageSize = 5;
@@ -28,9 +27,13 @@ export function Sidebar() {
   const [showStopped, setShowStopped] = useState({});
   const [limits, setLimits] = useState({});
   const [renaming, setRenaming] = useState(null);
+  const [menu, setMenu] = useState(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
   const frozen = useRef(state.workspaces);
-  const toggleStopped = id => setShowStopped(s => ({...s, [id]: !s[id]}));
-  const menus = useSidebarMenu(store, showStopped, toggleStopped);
+  const showMenu = (point, items) => {
+    if (items.length) setMenu({...point, items});
+  };
+  const itemsOf = session => sessionItems(store, session, showStopped[session.id], () => setShowStopped(s => ({...s, [session.id]: !s[session.id]})));
 
   if (!renaming) frozen.current = state.workspaces;
   const workspaces = frozen.current;
@@ -42,17 +45,19 @@ export function Sidebar() {
     if (!session && !workspace) return;
     e.preventDefault();
     const point = {x: e.clientX, y: e.clientY};
-    if (session) menus.showSession(point, session);
-    else menus.showWorkspace(point, workspace);
+    showMenu(point, session ? itemsOf(session) : workspaceItems(store, workspace));
   };
 
-  const sessionRow = session => (
-    <SessionItem
-      key={session.id} session={session} selected={session.id === state.selected}
-      onMenu={menus.hasSessionMenu(session) ? button => menus.showSession(below(button), session) : null}
-      renaming={session.id === renaming} onRenaming={on => setRenaming(on ? session.id : null)}
-    />
-  );
+  const sessionRow = session => {
+    const items = itemsOf(session);
+    return (
+      <SessionItem
+        key={session.id} session={session} selected={session.id === state.selected}
+        onMenu={items.length ? button => showMenu(below(button), items) : null}
+        renaming={session.id === renaming} onRenaming={on => setRenaming(on ? session.id : null)}
+      />
+    );
+  };
 
   return (
     <div class="sidebar">
@@ -70,7 +75,7 @@ export function Sidebar() {
                 <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
                   <div class="sidebar-workspace-header">
                     <span class="sidebar-workspace-name" title={workspace.path}>{workspace.name}</span>
-                    <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => menus.showWorkspace(below(e.currentTarget), workspace)}>
+                    <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => showMenu(below(e.currentTarget), workspaceItems(store, workspace))}>
                       <vscode-icon name="ellipsis" />
                     </button>
                     <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}>
@@ -78,15 +83,17 @@ export function Sidebar() {
                     </button>
                   </div>
                   {workspace.sessions.length === 0 && <div class="sidebar-empty">No sessions</div>}
-                  {workspace.sessions.filter(s => !hidden.has(s.id)).map(session => (
-                    <Fragment key={session.id}>
-                      {sessionRow(session)}
-                      <NestedSessions
-                        parent={session} selected={state.selected}
-                        showStopped={showStopped[session.id]} row={sessionRow}
-                      />
-                    </Fragment>
-                  ))}
+                  {workspace.sessions.filter(s => !hidden.has(s.id)).map(session => {
+                    // A parent's running children, the selected one, and
+                    // stopped children when the parent's menu reveals them.
+                    const nested = session.children.filter(s => s.running || showStopped[session.id] || s.id === state.selected);
+                    return (
+                      <Fragment key={session.id}>
+                        {sessionRow(session)}
+                        {nested.length > 0 && <div class="sidebar-nested">{nested.map(sessionRow)}</div>}
+                      </Fragment>
+                    );
+                  })}
                   {hidden.size > 0 && (
                     <button class="sidebar-show-more" onClick={() => setLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
                   )}
@@ -100,7 +107,7 @@ export function Sidebar() {
           </button>
         </vscode-tab-panel>
       </vscode-tabs>
-      {menus.menu && <ContextMenu {...menus.menu} onClose={menus.close} />}
+      {menu && <ContextMenu {...menu} onClose={closeMenu} />}
     </div>
   );
 }

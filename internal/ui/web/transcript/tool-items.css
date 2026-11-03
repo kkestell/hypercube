@@ -1,47 +1,13 @@
 /* Each row is one row height tall. A call's status icon sits in a fixed
    column, and what the call opens to starts at its title. */
-.tool-items-disclosure {
+.tool-items-calls {
   --tool-items-status-width: calc(var(--size-icon) + var(--size-space) * 1.5);
-  min-width: 0;
-}
-
-.tool-items-summary {
-  display: block;
-  min-width: 0;
-  line-height: var(--size-row-height);
-  color: var(--vscode-descriptionForeground);
-  cursor: pointer;
-  list-style: none;
-}
-
-.tool-items-summary::-webkit-details-marker {
-  display: none;
-}
-
-.tool-items-summary:hover {
-  color: var(--vscode-foreground);
-}
-
-.tool-items-heading,
-.tool-items-preview {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 1.5);
-  min-width: 0;
-}
-
-.tool-items-status,
-.tool-items-chevron {
-  display: flex;
-  flex-shrink: 0;
 }
 
 .tool-items-status {
+  display: flex;
+  flex-shrink: 0;
   width: var(--size-icon);
-}
-
-.tool-items-disclosure[open] > .tool-items-summary > .tool-items-heading > .tool-items-chevron {
-  transform: rotate(90deg);
 }
 
 .tool-items-title {

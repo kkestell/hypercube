@@ -3,7 +3,7 @@ import {emptySession} from '../sessions/selection.js';
 import {receivedTranscript, setExpanded} from './transcripts.js';
 
 const state = () => ({session: emptySession('s')});
-const message = (items, reset = false, session = 's') => ({type: 'transcript', session, agent: 'a', reset, items});
+const message = (items, reset = false, session = 's') => ({type: 'transcript', session, reset, items});
 const shown = state => state.session.transcript.order.map(id => state.session.transcript.items[id].text);
 
 test('messages for another session are ignored', () => {

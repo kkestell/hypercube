@@ -3,37 +3,29 @@ import {showError} from './notifications/errors.js';
 
 const url = (path, params) => path + '?' + new URLSearchParams(params);
 
-// post sends an action with an optional body and returns the response text, or
-// null after showing the user why it failed or the server refused.
-export async function post(store, path, params, body) {
+// request fetches path and returns read(response), or null after showing the
+// user why the request failed or the server refused it.
+async function request(store, path, init, read) {
   try {
-    const response = await fetch(url(path, params), {method: 'POST', body});
-    const text = await response.text();
+    const response = await fetch(path, init);
     if (!response.ok) {
-      showError(store, text);
+      showError(store, await response.text());
       return null;
     }
-    return text;
+    return await read(response);
   } catch (error) {
     showError(store, error.message);
     return null;
   }
 }
 
+// post sends an action with an optional body and returns the response text,
+// or null after showing why it failed.
+export const post = (store, path, params, body) =>
+  request(store, url(path, params), {method: 'POST', body}, response => response.text());
+
 // fetchProfiles returns the profiles, or null after showing why it failed.
-export async function fetchProfiles(store) {
-  try {
-    const response = await fetch('profiles');
-    if (!response.ok) {
-      showError(store, await response.text());
-      return null;
-    }
-    return await response.json();
-  } catch (error) {
-    showError(store, error.message);
-    return null;
-  }
-}
+export const fetchProfiles = store => request(store, 'profiles', undefined, response => response.json());
 
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.

@@ -18,7 +18,7 @@ handleStyles.replaceSync(`
   .handle.split-vertical, .handle-overlay.split-vertical { cursor: col-resize; }
   .handle.split-horizontal, .handle-overlay.split-horizontal { cursor: row-resize; }
   .handle.hover, .handle.hide { transition: none; }
-  .handle-overlay.active + .handle { background-color: var(--vscode-sash-hoverBorder, #0078d4); }
+  .handle-overlay.active + .handle { background-color: var(--vscode-sash-hoverBorder); }
 `);
 
 export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, children}) {

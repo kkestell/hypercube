@@ -15,7 +15,7 @@ afterEach(() => {
 
 function setup(items) {
   const store = createStore({workspaces: [], drafts: {}, errors: [], session: emptySession('s')});
-  const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', agent: 'a', reset, items}));
+  const send = (items, reset = false) => store.update(s => receivedTranscript(s, {session: 's', reset, items}));
   send(withSeq(items), true);
   const root = mount(store, <Transcript session={{id: "s"}} />);
   return {store, root, send: items => send(withSeq(items))};
@@ -67,22 +67,22 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
   const list = root.querySelector('.transcript-list');
   const group = list.firstElementChild;
   const summary = group.querySelector('summary');
-  const chevron = summary.querySelector('.tool-items-chevron');
+  const chevron = summary.querySelector('.disclosure-chevron');
   expect(chevron).not.toBeNull();
   expect(summary.querySelector('[title="Running"]')).toBeNull();
-  const heading = summary.querySelector('.tool-items-heading');
+  const heading = summary.querySelector('.disclosure-heading');
   expect(heading.lastElementChild).toBe(chevron);
   expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'read /first']);
   act(() => summary.click());
   expect(group.open).toBe(true);
   expect(summary.textContent).toBe('Working…');
-  expect(summary.querySelector('.tool-items-preview')).toBeNull();
+  expect(summary.querySelector('.disclosure-preview')).toBeNull();
   expect(group.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
 
   send([{...first, done: true}, {id: 'u', kind: 'user', from, text: 'Keep going', at: 3000, seq: 2}]);
   const user = list.children[1];
   expect(user.textContent).toContain('Keep going');
-  expect(summary.querySelector('.tool-items-preview')).toBeNull();
+  expect(summary.querySelector('.disclosure-preview')).toBeNull();
 
   send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'.repeat(200)}, at: 5000, seq: 3}]);
   expect([...list.children]).toEqual([group, user]);
@@ -94,17 +94,17 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
 
   act(() => summary.click());
   expect(group.open).toBe(false);
-  expect(summary.querySelector('.tool-items-preview').textContent).toBe('bash ' + 'x'.repeat(119) + '…');
+  expect(summary.querySelector('.disclosure-preview').textContent).toBe('bash ' + 'x'.repeat(119) + '…');
   act(() => summary.click());
   expect(group.open).toBe(true);
-  expect(summary.querySelector('.tool-items-preview')).toBeNull();
+  expect(summary.querySelector('.disclosure-preview')).toBeNull();
 
   send([{id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
   expect(list.firstElementChild).toBe(group);
   expect(group.open).toBe(true);
   expect(summary.textContent).toBe('Worked for 9s');
   expect(heading.lastElementChild).toBe(chevron);
-  expect(summary.querySelector('.tool-items-preview')).toBeNull();
+  expect(summary.querySelector('.disclosure-preview')).toBeNull();
   expect(summary.querySelector('[title="Running"]')).toBeNull();
 });
 
@@ -187,16 +187,16 @@ test('agent messages show the sender and first line, and expand to the full mess
     {id: 'own', kind: 'user', text: longText},
   ]);
   const [incoming, outgoing, own] = root.querySelectorAll('.message-item');
-  expect(incoming.querySelector('.message-item-heading').textContent).toBe('From c1');
-  expect(outgoing.querySelector('.message-item-heading').textContent).toBe('To c1');
+  expect(incoming.querySelector('.disclosure-heading').textContent).toBe('From c1');
+  expect(outgoing.querySelector('.disclosure-heading').textContent).toBe('To c1');
   expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
   for (const message of [incoming, outgoing]) {
     expect(message.querySelector('.message-item-bubble')).toBeNull();
-    expect(message.querySelector('.message-item-preview').textContent).toBe('line 0');
+    expect(message.querySelector('.disclosure-preview').textContent).toBe('line 0');
     expect(message.querySelector('.message-item-text')).toBeNull();
     act(() => message.querySelector('summary').click());
     expect(message.open).toBe(true);
-    expect(message.querySelector('.message-item-preview')).toBeNull();
+    expect(message.querySelector('.disclosure-preview')).toBeNull();
     expect(message.querySelector('.message-item-text').textContent).toBe(longText);
   }
   send([{id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}, done: true, failed: true, output: 'Delivery failed'}]);
@@ -206,7 +206,7 @@ test('agent messages show the sender and first line, and expand to the full mess
   expect(outgoing.querySelector('.message-item-body .message-item-failure').textContent).toBe('Delivery failed');
   act(() => incoming.querySelector('summary').click());
   expect(incoming.open).toBe(false);
-  expect(incoming.querySelector('.message-item-preview').textContent).toBe('line 0');
+  expect(incoming.querySelector('.disclosure-preview').textContent).toBe('line 0');
   expect(own.querySelector('.message-item-bubble')).not.toBeNull();
   expect(own.querySelector('.message-item-text').textContent).toBe(longText);
   expect(own.querySelector('summary')).toBeNull();
@@ -215,7 +215,7 @@ test('agent messages show the sender and first line, and expand to the full mess
 test('short agent messages also expand, including their attached images', () => {
   const {root} = setup([{id: 'in', kind: 'user', from: 'c1', text: 'One line', images: [{mime_type: 'image/png', data: 'iVBORw0KGgo='}]}]);
   const message = root.querySelector('.message-item-agent');
-  expect(message.querySelector('.message-item-preview').textContent).toBe('One line');
+  expect(message.querySelector('.disclosure-preview').textContent).toBe('One line');
   expect(message.querySelector('img')).toBeNull();
   act(() => message.querySelector('summary').click());
   expect(message.querySelector('.message-item-text').textContent).toBe('One line');
@@ -226,7 +226,7 @@ test('Thinking shows a preview until expanded and keeps the choice while it stre
   const {root, send} = setup([{id: 't', kind: 'reasoning', text: longText}]);
   const preview = () => root.querySelector('.reasoning-item-text').classList.contains('reasoning-item-preview');
   expect(preview()).toBe(true);
-  act(() => root.querySelector('.reasoning-item-toggle').click());
+  act(() => root.querySelector('.reasoning-item summary').click());
   expect(preview()).toBe(false);
   send([{id: 't', kind: 'reasoning', text: longText + '\nmore', seq: 1}]);
   expect(preview()).toBe(false);
@@ -260,7 +260,7 @@ test('mirrored requests name their sender and answer at its session ID; child st
   expect(root.textContent).not.toContain('Reading.');
   expect(store.get().session.transcript.items.status.text).toBe('Reading.');
   expect(root.querySelector('.attention-item-source').textContent).toBe('Builder');
-  expect(root.querySelector('.message-item-heading').textContent).toBe('From Builder');
+  expect(root.querySelector('.disclosure-heading').textContent).toBe('From Builder');
   await act(async () => root.querySelector('.attention-form vscode-button').click());
   expect(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams.get('id')).toBe('child');
 });

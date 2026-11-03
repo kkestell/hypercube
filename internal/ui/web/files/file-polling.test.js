@@ -1,5 +1,5 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {fileTabId} from '../editor/editor.js';
+import {fileTabId, openBrowserTab} from '../editor/editor.js';
 import {moveTab, openTab} from '../editor/tab-layout.js';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -51,6 +51,14 @@ test('only shown folders and the active file tab of each pane are polled', async
   const hidden = stubFetch({});
   await createFilePoller(createStore(state({workbench: {rightPanel: true, rightTab: 'changes'}})))();
   expect(hidden).toEqual(['file:z.go', 'file:x.go']);
+});
+
+test('a browser tab polls no file', async () => {
+  const requests = stubFetch({});
+  const session = {...emptySession('s'), files: {listings: {}, expanded: {}, open: {er: unread}}};
+  const store = createStore(openBrowserTab({visible: true, session, workbench: {rightPanel: false}}, true));
+  await createFilePoller(store)();
+  expect(requests).toEqual([]);
 });
 
 test('requests go one at a time and a poll is skipped while one runs', async () => {

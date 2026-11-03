@@ -31,6 +31,7 @@ export function AttentionForm({session, item}) {
       {item.free && (
         <vscode-textfield
           class="attention-form-text"
+          label={item.text ? 'Answer to ' + item.text : 'Answer'}
           value={text}
           disabled={sending}
           onInput={e => store.update(s => typed(s, key, e.currentTarget.value))}

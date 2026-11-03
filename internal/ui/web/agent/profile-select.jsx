@@ -27,7 +27,7 @@ export function ProfileSelect({unsent}) {
   };
 
   return (
-    <vscode-single-select class="composer-profile" aria-label="Profile" position="above" disabled={unsent.sending} onChange={choose}>
+    <vscode-single-select class="composer-profile" label="Profile" position="above" disabled={unsent.sending} onChange={choose}>
       {profiles.map(p => (
         <vscode-option key={p.name} value={p.name} description={p.description} selected={p.name === unsent.profile}>
           {[p.harness, p.model, p.effort].join(' · ')}

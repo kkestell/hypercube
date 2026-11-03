@@ -2,32 +2,6 @@
   color: var(--vscode-descriptionForeground);
 }
 
-.reasoning-item-toggle {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 1.5);
-  line-height: var(--size-row-height);
-  cursor: pointer;
-  list-style: none;
-}
-
-.reasoning-item-toggle::-webkit-details-marker {
-  display: none;
-}
-
-.reasoning-item-toggle:hover {
-  color: var(--vscode-foreground);
-}
-
-.reasoning-item-chevron {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.reasoning-item-disclosure[open] .reasoning-item-chevron {
-  transform: rotate(90deg);
-}
-
 .reasoning-item-text {
   line-height: 1.5;
   white-space: pre-wrap;
