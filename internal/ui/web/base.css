@@ -1,8 +1,8 @@
-/* VS Code's macOS fonts, which the theme leaves out or sets for another
-   platform, and the sizes every component shares. */
+/* The interface and editor fonts, which the theme leaves out or sets for
+   another platform, and the sizes every component shares. */
 :root {
-  --vscode-font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-  --vscode-editor-font-family: Menlo, Monaco, "Courier New", monospace;
+  --vscode-font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  --vscode-editor-font-family: "Iosevka Term Extended", Menlo, monospace;
   --vscode-editor-font-size: 12px;
 
   --size-border: 1px;

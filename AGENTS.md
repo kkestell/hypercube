@@ -82,7 +82,10 @@ browser shows each agent's transcript.
 - After changing only docs or comments, inspect the diff; run nothing.
 - Tests use isolated state, harness stand-ins, and their own shells. Never stop
   the user's workspaces.
-- Use `make dev` for a live smoke test, and clean up what you start.
+- Use `make dev` for a live smoke test, and clean up what you start. It serves
+  the browser view without the native app: print its URL for the user and leave
+  opening it to them, never in your own browser tool. Use `make dev-app` only
+  to test native app behavior.
 - The user judges how the browser view looks. Leave rendering, screenshots,
   and visual checks of it to them.
 - `make install-service` loads a merged change into the installed app. Run it

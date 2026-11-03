@@ -9,7 +9,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: build bundle check install install-service dev dev-stop dev-clean ui
+.PHONY: build bundle check install install-service dev dev-app dev-stop dev-clean ui
 
 # bundle builds $(APP), the application bundle macOS notifications need, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -59,6 +59,9 @@ ui:
 
 dev:
 	scripts/dev up
+
+dev-app:
+	scripts/dev up --app
 
 dev-stop:
 	scripts/dev stop
