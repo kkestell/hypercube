@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {closeTab, cornerPane, findPane, moveTab, openBeside, openTab, panes, replaceTab} from './tab-layout.js';
+import {closeTab, findPane, moveTab, openBeside, openTab, panes, replaceTab} from './tab-layout.js';
 
 const empty = {root: null, nextId: 1};
 const tabs = layout => panes(layout.root).map(pane => pane.tabs);
@@ -87,11 +87,4 @@ test('a tab opens beside a kept tab, splitting its pane only when it is alone', 
   layout = openBeside(layout, 'two', 'chat');
   expect(tabs(layout)).toEqual([['chat'], ['one', 'two']]);
   expect(tabs(openBeside(open('chat', 'one'), 'two', 'chat'))).toEqual([['chat', 'one', 'two']]);
-});
-
-test('the corner pane is the top-right one', () => {
-  let layout = open('one', 'two', 'three');
-  layout = moveTab(layout, 'two', pane(layout, 'one'), 'right');
-  layout = moveTab(layout, 'three', pane(layout, 'two'), 'bottom');
-  expect(cornerPane(layout.root).tabs).toEqual(['two']);
 });

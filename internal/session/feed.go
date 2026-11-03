@@ -10,7 +10,7 @@ import (
 )
 
 // Change is one change the runtime made. A transcript change names the
-// session, item, and the item's position. Other writes leave Session empty.
+// session, item, and the item's position. Other changes leave Session empty.
 type Change struct {
 	Session string
 	Seq     int64

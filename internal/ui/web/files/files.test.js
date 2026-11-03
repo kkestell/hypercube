@@ -67,3 +67,10 @@ test('an unchanged file and a file that is no longer open are left alone', async
   await readOpenFile(s, 'other.go');
   expect(s.get()).toBe(before);
 });
+
+test('a read preserves the file mode and requested highlights', async () => {
+  const flags = {source: true, lines: [{start: 1, end: 1}], reveal: true};
+  const s = store({...unread, ...flags});
+  expect(await read(s, text('one'))).toMatchObject({...flags, text: 'one'});
+  expect(await read(s, new Response(null, {status: 413}))).toMatchObject({...flags, text: null});
+});

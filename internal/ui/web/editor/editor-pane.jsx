@@ -19,8 +19,7 @@ function edgeAt(e, body) {
   return distance < 0.25 ? edge : 'center';
 }
 
-// toggles puts the layout toggles at the right of the pane's tab strip.
-export function EditorPane({pane, toggles}) {
+export function EditorPane({pane}) {
   const [state, store] = useStore();
   const [drop, setDrop] = useState(null);
   const body = useRef(null);
@@ -49,7 +48,7 @@ export function EditorPane({pane, toggles}) {
 
   return (
     <div class="editor-pane" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      <EditorTabs pane={pane} entries={entries} toggles={toggles} />
+      <EditorTabs pane={pane} entries={entries} />
       <div ref={body} class="editor-pane-body">
         {active.agent ? <AgentPane key={shown.id} session={shown} />
           : active.browser ? <BrowserView key={shown.id} session={shown.id} />

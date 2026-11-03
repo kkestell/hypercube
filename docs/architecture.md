@@ -29,7 +29,9 @@ The browser view reads everything from the app: Hypercube's data and the
 selected session's transcript. Agents reach Hypercube's tools through
 `hypercube mcp`, the stdio server each plugin's harness runs. It forwards each
 request, with the session's ID, to a route in the app, which runs the tool. MCP
-and the browser's actions share one owner of session state.
+and the browser's actions share one owner of session state. `open_file` requests
+wait in the app until a page views the agent's session and arrive over that
+page's data socket.
 
 With `--menu`, the app process also runs the macOS application: the menu bar
 icon and the Hypercube window, a web view of the browser view. Each session

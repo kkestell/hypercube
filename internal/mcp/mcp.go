@@ -88,6 +88,7 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "open_file", Description: "Open a file from your directory in a tab beside your chat, which the user sees, and select it. path is relative to your directory or absolute inside it. lines highlights ranges of lines, each {start, end} with end optional, and scrolls to the first; a Markdown file with lines shows its source, otherwise its preview. The tab opens now if the user is viewing your session, or the next time they do."}, result(func(_ context.Context, a openFileArgs) (string, error) { return openFile(rt, caller.Dir, self, a) }))
 	addBrowserTools(server, browser, self)
 	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {

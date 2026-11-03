@@ -1,8 +1,9 @@
-// The /state socket. The server sends the workspaces and open requests, and
-// the transcript of the session the page names in {select}. The page names
+// The /state socket. The server sends workspaces, confirmation and file open
+// requests, and the transcript of the session the page names in {select}. The page names
 // its attached session when the socket opens and whenever it changes; after a
 // reconnect the server sends the transcript whole again. A page reloads when
 // the server serves a different browser build than the one it first saw.
+import {openPendingFiles, openRequestedFile} from './editor/editor.js';
 import {receivedRequests} from './notifications/notifications.js';
 import {receivedWorkspaces} from './sessions/selection.js';
 import {receivedTranscript} from './transcript/transcripts.js';
@@ -11,6 +12,7 @@ export function startDataSocket(store) {
   let socket = null, build = null, announced = null;
 
   const announce = () => {
+    openPendingFiles(store);
     const id = store.get().session?.id ?? '';
     if (socket?.readyState !== WebSocket.OPEN || id === announced) return;
     announced = id;
@@ -27,7 +29,8 @@ export function startDataSocket(store) {
   };
 
   const received = message => {
-    if (message.type === 'state') receivedState(message);
+    if (message.type === 'open') openRequestedFile(store, message);
+    else if (message.type === 'state') receivedState(message);
     else if (message.type === 'transcript') store.update(state => receivedTranscript(state, message));
   };
 

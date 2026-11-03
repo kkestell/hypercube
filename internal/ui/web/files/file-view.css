@@ -1,4 +1,6 @@
 .file-view {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex: 1;
   align-items: flex-start;
@@ -20,7 +22,8 @@
 }
 
 .file-view-gutter,
-.file-view-code {
+.file-view-code,
+.file-view-highlight {
   margin: 0;
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
@@ -44,4 +47,14 @@
 .file-view-code {
   padding-right: calc(var(--size-space) * 3.5);
   tab-size: 4;
+}
+
+.file-view-highlight {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc((var(--start) - 1) * 1lh);
+  height: calc(var(--count) * 1lh);
+  z-index: -1;
+  background: var(--vscode-editor-rangeHighlightBackground);
 }

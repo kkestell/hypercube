@@ -1,7 +1,7 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
-import {agentTabId, closeTab, fileTabId, keepOpen, openFileTab, rememberScroll, resizeSplit} from './editor.js';
+import {agentTabId, closeTab, fileTabId, keepOpen, openFileTab, openRequestedFile, rememberScroll, resizeSplit} from './editor.js';
 import {moveTab, openTab, panes} from './tab-layout.js';
 
 let fetchMock;
@@ -65,4 +65,33 @@ test('scroll belongs to the attached session and its open files', () => {
   expect(state.session.scroll).toEqual({s: scroll});
   expect(rememberScroll(state, 's', 'other', scroll)).toBe(state);
   expect(rememberScroll(state, 'other', 's', scroll)).toBe(state);
+});
+
+test('an agent opens a kept, selected file beside the chat and updates its highlights', () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('# Title\ntext'));
+  const s = store();
+  const request = lines => openRequestedFile(s, {session: 's', path: 'guide.md', lines});
+  request([]);
+  expect(tabsOf(s)).toEqual([[agentTabId], [fileTabId('guide.md')]]);
+  expect(panes(s.get().session.tabs.root)[1].active).toBe(fileTabId('guide.md'));
+  expect(s.get().session.tabs.preview).toBeNull();
+  expect(s.get().session.files.open['guide.md'].source).toBe(false);
+  request([{start: 2, end: 2}]);
+  expect(s.get().session.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 2, end: 2}], reveal: true});
+  request([{start: 1, end: 1}]);
+  expect(s.get().session.files.open['guide.md'].lines).toEqual([{start: 1, end: 1}]);
+  request([]);
+  expect(s.get().session.files.open['guide.md']).toMatchObject({source: false, lines: [], reveal: false});
+});
+
+test('an agent keeps an existing preview tab without replacing another preview', () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('text'));
+  const s = store();
+  openFileTab(s, 'a.go');
+  openRequestedFile(s, {session: 's', path: 'a.go', lines: []});
+  expect(s.get().session.tabs.preview).toBeNull();
+  openFileTab(s, 'b.go');
+  openRequestedFile(s, {session: 's', path: 'a.go', lines: []});
+  expect(tabsOf(s)).toEqual([[agentTabId], [fileTabId('a.go'), fileTabId('b.go')]]);
+  expect(s.get().session.tabs.preview).toBe(fileTabId('b.go'));
 });

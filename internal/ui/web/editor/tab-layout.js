@@ -53,9 +53,6 @@ export function openBeside(layout, tab, kept) {
   return moveTab(openTab(layout, tab), tab, only.id, 'right');
 }
 
-// cornerPane is the pane at the top right.
-export const cornerPane = node => node.tabs ? node : cornerPane(node.children[node.axis === 'x' ? 1 : 0]);
-
 export function selectTab(layout, paneId, tab) {
   return {...layout, root: mapNode(layout.root, paneId, pane => ({...pane, active: tab}))};
 }

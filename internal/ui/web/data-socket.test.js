@@ -1,5 +1,7 @@
 import {afterEach, beforeEach, expect, jest, spyOn, test} from 'bun:test';
 import {startDataSocket} from './data-socket.js';
+import {selectSession} from './sessions/selection.js';
+import {findPane} from './editor/tab-layout.js';
 import {createStore} from './store.js';
 
 class FakeSocket {
@@ -96,4 +98,55 @@ test('a changed build reloads the page and the first one does not', () => {
   expect(reload).not.toHaveBeenCalled();
   FakeSocket.all[1].receive(state('b2'));
   expect(reload).toHaveBeenCalledTimes(1);
+});
+
+const fileText = (store, path) => new Promise(resolve => {
+  const unsubscribe = store.subscribe(state => {
+    const text = state.session.files.open[path]?.text;
+    if (text === null || text === undefined) return;
+    unsubscribe();
+    resolve(text);
+  });
+});
+
+test('an open message keeps and selects a file and reads its contents', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('hello'));
+  try {
+    const store = createStore(initial());
+    startDataSocket(store);
+    const [socket] = FakeSocket.all;
+    socket.open();
+    socket.receive(state('b1'));
+    socket.receive({type: 'open', session: 'a', path: 'a.go', lines: []});
+    expect(store.get().session.tabs.preview).toBeNull();
+    expect(findPane(store.get().session.tabs.root, 'file:a.go').active).toBe('file:a.go');
+    expect(await fileText(store, 'a.go')).toBe('hello');
+    expect(fetches).toHaveBeenCalledTimes(1);
+  } finally { fetches.mockRestore(); }
+});
+
+test('an open received during a session switch waits until the page returns', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('hello'));
+  try {
+    const store = createStore(initial());
+    startDataSocket(store);
+    const [socket] = FakeSocket.all;
+    socket.open();
+    const message = state('b1');
+    message.workspaces[0].sessions.push({id: 'b', title: 'B', running: true, children: []});
+    socket.receive(message);
+    store.update(state => selectSession(state, 'b'));
+    socket.receive({type: 'open', session: 'a', path: 'guide.md', lines: [{start: 1, end: 1}]});
+    expect(store.get().session.files.open).toEqual({});
+    expect(fetches).not.toHaveBeenCalled();
+    store.update(state => selectSession(state, 'a'));
+    expect(findPane(store.get().session.tabs.root, 'file:guide.md').active).toBe('file:guide.md');
+    expect(store.get().session.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 1, end: 1}]});
+    expect(store.get().fileOpens).toEqual({});
+    expect(await fileText(store, 'guide.md')).toBe('hello');
+    expect(fetches).toHaveBeenCalledTimes(1);
+    store.update(state => selectSession(state, 'b'));
+    store.update(state => selectSession(state, 'a'));
+    expect(store.get().session.files.open).toEqual({});
+  } finally { fetches.mockRestore(); }
 });

@@ -92,7 +92,7 @@ chat, file tree, and terminal to that session's work.
 | Bottom terminal panel | Your shell in the selected session's directory. Each session has its own shell, which keeps running when you hide the panel. |
 | Browser tab | In the Hypercube window, a page the session's agent can navigate and interact with. The tab appears when the agent first loads a page. You can also navigate it yourself or open the page in your default browser. |
 
-The layout buttons at the right of the top tab bar show or hide the sidebar,
+The layout buttons in the header at the top of the window show or hide the sidebar,
 terminal panel, and right panel.
 
 ### Steering work and answering requests

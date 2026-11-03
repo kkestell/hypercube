@@ -24,6 +24,7 @@ const store = createStore({
   workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
   session: null,
   browsers: {},
+  fileOpens: {},
   overlays: {},
 });
 

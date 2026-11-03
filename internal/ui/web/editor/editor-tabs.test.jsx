@@ -4,7 +4,7 @@ import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {EditorArea} from './editor-area.jsx';
-import {browserTabId, fileTabId, moveTab} from './editor.js';
+import {browserTabId, fileTabId, moveTab, selectTab} from './editor.js';
 import {findPane, openTab} from './tab-layout.js';
 
 afterEach(unmountAll);
@@ -43,14 +43,36 @@ test('closing a tab focuses the next one, and closing a pane\'s last focuses ano
   expect(document.activeElement === tabs()[0]).toBe(true);
 });
 
-test('the layout toggles show only in the top-right pane', () => {
-  const {store, root} = setup();
-  const togglesIn = () => [...root.querySelectorAll('.layout-toggles')].map(t => t.closest('.editor-pane').querySelector('[aria-selected="true"]').closest('[data-tab]').dataset.tab);
-  expect(togglesIn()).toEqual(['file:two']);
-  act(() => store.update(state => moveTab(state, 'file:two', state.session.tabs.root.id, 'right')));
-  expect(togglesIn()).toEqual(['file:two']);
-  act(() => store.update(state => moveTab(state, 'file:one', findPane(state.session.tabs.root, 'file:two').id, 'left')));
-  expect(togglesIn()).toEqual(['file:two']);
+test('each pane shows the mode button only for its active Markdown file', () => {
+  const {store, root} = setup(state => ({
+    ...state,
+    browsers: {s: {url: 'https://example.com/', title: 'Example'}},
+    session: {
+      ...state.session,
+      tabs: ['file:guide.md', 'file:notes.md', 'file:code.go', browserTabId].reduce(openTab, state.session.tabs),
+      files: {...state.session.files, open: {
+        'guide.md': {text: '# Title', message: null, source: false},
+        'notes.md': {text: '# Notes', message: null, source: false},
+      }},
+    },
+  }));
+  const buttons = () => [...root.querySelectorAll('.editor-tabs-actions vscode-toolbar-button')];
+  expect(buttons()).toHaveLength(0); // browser
+  const select = id => act(() => store.update(state => selectTab(state, findPane(state.session.tabs.root, id).id, id)));
+  select('agent');
+  expect(buttons()).toHaveLength(0);
+  select('file:code.go');
+  expect(buttons()).toHaveLength(0);
+  select('file:guide.md');
+  expect(buttons()).toHaveLength(1);
+  expect(buttons()[0].getAttribute('label')).toBe('Show Source');
+  act(() => buttons()[0].click());
+  expect(store.get().session.files.open['guide.md'].source).toBe(true);
+  expect(buttons()[0].getAttribute('label')).toBe('Show Preview');
+  act(() => buttons()[0].click());
+  expect(store.get().session.files.open['guide.md'].source).toBe(false);
+  act(() => store.update(state => moveTab(state, 'file:notes.md', state.session.tabs.root.id, 'right')));
+  expect(buttons()).toHaveLength(2);
 });
 
 test('the arrow keys, Home, and End select tabs and keep the focus on them', async () => {

@@ -354,6 +354,7 @@ type page struct {
 	last     map[string]int64                    // the newest position received, markers included
 	state    stateMessage
 	messages []transcriptMessage
+	opens    []openMessage
 	resets   int
 	lastMsg  string
 }
@@ -397,6 +398,14 @@ func (p *page) until(what string, check func() bool) {
 			if p.state.Build != buildID() {
 				p.t.Fatalf("build = %q", p.state.Build)
 			}
+			continue
+		}
+		if msg.Type == "open" {
+			var open openMessage
+			if err := json.Unmarshal(data, &open); err != nil {
+				p.t.Fatal(err)
+			}
+			p.opens = append(p.opens, open)
 			continue
 		}
 		if msg.Type != "transcript" {

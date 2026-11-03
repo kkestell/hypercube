@@ -93,3 +93,19 @@
 .editor-tabs-close:hover {
   background: var(--vscode-toolbar-hoverBackground);
 }
+
+.editor-tabs-actions {
+  --vscode-icon-foreground: color-mix(in srgb, var(--vscode-descriptionForeground) 60%, var(--vscode-editor-background));
+  --vscode-inputOption-activeBackground: transparent;
+  --vscode-inputOption-activeBorder: transparent;
+  --vscode-inputOption-activeForeground: var(--vscode-descriptionForeground);
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 calc(var(--size-space) * 2);
+}
+
+.editor-tabs-actions vscode-toolbar-button:focus-within {
+  --vscode-inputOption-activeBorder: var(--vscode-focusBorder);
+}
