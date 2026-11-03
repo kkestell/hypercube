@@ -19,7 +19,9 @@ const store = () => createStore({workspaces: [], selected: null, pending: null, 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
-  expect(root.querySelector('.composer-config').textContent).toBe('Claude · Opus · High');
+  const select = root.querySelector('vscode-single-select');
+  expect(select.hasAttribute('disabled')).toBe(true);
+  expect(select.querySelector('vscode-option[selected]').textContent).toBe('Claude · Opus · High');
 });
 
 test('a composer leaves the focus in a tab strip', () => {
@@ -33,7 +35,7 @@ test('a composer leaves the focus in a tab strip', () => {
   expect(document.activeElement).toBe(tab);
 });
 
-test('send is disabled without content and stop shows while the agent works', () => {
+test('send is disabled without content and no stop button shows while the agent works', () => {
   const s = store();
   let root = mount(s, <Composer session={session} />);
   const send = () => root.querySelector('[title="Send"]');
@@ -45,7 +47,7 @@ test('send is disabled without content and stop shows while the agent works', ()
   expect(send().hasAttribute('disabled')).toBe(false);
   unmountAll();
   root = mount(s, <Composer session={{...session, activity: 'busy'}} />);
-  expect(root.querySelector('[title="Stop"]')).not.toBeNull();
+  expect(root.querySelector('[title="Stop"]')).toBeNull();
 });
 
 test('an ended session cannot send and shows no exited dot', () => {
@@ -84,7 +86,7 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   const options = [...root.querySelectorAll('vscode-option')];
   expect(options.map(o => o.textContent)).toEqual(['Claude · Opus · High', 'Codex · Sol · Medium']);
   expect(options.map(o => o.getAttribute('description'))).toEqual(profiles.map(p => p.description));
-  expect(root.querySelector('.composer-config')).toBeNull();
+  expect(root.querySelector('vscode-single-select').hasAttribute('disabled')).toBe(false);
 
   const select = root.querySelector('vscode-single-select');
   select.value = 'codex';
@@ -105,5 +107,19 @@ test('profiles that arrive for a replaced unsent session are ignored', async () 
   expect(s.get().unsent).toMatchObject({workspace: 'other', profile: null});
   answers[1](Response.json(profiles));
   await settle();
+  expect(s.get().unsent.profile).toBe('claude');
+});
+
+test('the profile selector stays in place and disables while the first message sends', async () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
+  const s = unsentStore();
+  const root = mount(s, <Composer session={unsentSession} />);
+  await settle();
+  const select = root.querySelector('vscode-single-select');
+  s.update(state => ({...state, unsent: {...state.unsent, sending: true}}));
+  expect(root.querySelector('vscode-single-select')).toBe(select);
+  expect(select.hasAttribute('disabled')).toBe(true);
+  select.value = 'codex';
+  act(() => select.dispatchEvent(new Event('change')));
   expect(s.get().unsent.profile).toBe('claude');
 });

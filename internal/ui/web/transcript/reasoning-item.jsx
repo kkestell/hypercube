@@ -20,8 +20,8 @@ function ReasoningText({text}) {
 }
 
 export function ReasoningItem({row, expanded, setOpen}) {
-  const {item, until} = row;
-  const summary = <Elapsed live={!item.done} present="Thinking" past="Thought" start={item.at} until={until} />;
+  const {item, closed, until} = row;
+  const summary = <Elapsed live={!closed} present="Thinking" past="Thought" start={item.at} until={until} />;
   return (
     <div class="reasoning-item">
       <Disclosure open={expanded} onToggle={open => setOpen(item.id, open)} summary={summary}>

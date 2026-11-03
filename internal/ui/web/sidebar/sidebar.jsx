@@ -1,7 +1,7 @@
-// The Workspaces view: each workspace's started sessions under its name, with
-// Show more revealing stopped ones five at a time, the workspace and session
-// menus, and Add Workspace pinned below the list. Started children are always listed under their parent; its menu
-// shows or hides stopped children.
+// The Workspaces view: each workspace's sessions under its name, five at a
+// time, the workspace and session menus, and Add Workspace pinned below the
+// list. The selected session stays within that limit. Started children are
+// always listed under their parent; its menu shows or hides stopped children.
 // The view holds still while a session is renamed, so the field keeps its
 // place and focus.
 import {Fragment} from 'preact';
@@ -68,9 +68,10 @@ export function Sidebar() {
         <vscode-tab-panel class="sidebar-body">
           <div class="sidebar-list" onContextMenu={contextMenu}>
             {workspaces.map(workspace => {
-              const limit = limits[workspace.id] ?? 0;
-              const stopped = workspace.sessions.filter(s => !s.running && s.id !== state.selected);
-              const hidden = new Set(stopped.slice(limit).map(s => s.id));
+              const limit = limits[workspace.id] ?? pageSize;
+              const sessions = workspace.sessions.slice(0, limit);
+              const selected = workspace.sessions.find(s => s.id === state.selected || s.children.some(c => c.id === state.selected));
+              if (selected && !sessions.includes(selected)) sessions[sessions.length - 1] = selected;
               return (
                 <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
                   <div class="sidebar-workspace-header">
@@ -83,7 +84,7 @@ export function Sidebar() {
                     </button>
                   </div>
                   {workspace.sessions.length === 0 && <div class="sidebar-empty">No sessions</div>}
-                  {workspace.sessions.filter(s => !hidden.has(s.id)).map(session => {
+                  {sessions.map(session => {
                     // A parent's running children, the selected one, and
                     // stopped children when the parent's menu reveals them.
                     const nested = session.children.filter(s => s.running || showStopped[session.id] || s.id === state.selected);
@@ -94,7 +95,7 @@ export function Sidebar() {
                       </Fragment>
                     );
                   })}
-                  {hidden.size > 0 && (
+                  {sessions.length < workspace.sessions.length && (
                     <button class="sidebar-show-more" onClick={() => setLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
                   )}
                 </div>

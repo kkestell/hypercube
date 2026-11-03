@@ -45,14 +45,22 @@ test('child status updates stay hidden and do not split tool runs', () => {
   expect(rows([{id: 'status', kind: 'status', text: 'Working'}])).toEqual([]);
 });
 
-test.each(['text', 'reasoning', 'error', 'attention'])('the next %s item closes the run with its duration', kind => {
-  const [run, next] = rows([call('a', 'read', 1000), call('b', 'bash', 2000, {done: true, failed: true}), {id: 't', kind, at: 33000}]);
+test.each(['text', 'error', 'attention'])('the next %s item closes the run with its duration', kind => {
+  const [run, next] = rows([call('a', 'read', 1000, {done: true}), call('b', 'bash', 2000, {done: true, failed: true}), {id: 't', kind, at: 33000}]);
   expect(run).toMatchObject({closed: true, start: 1000, until: 33000});
   expect(next.type).toBe(kind);
 });
 
+test.each([true, false])('a tool that outlives the next message keeps its run active, working=%s', working => {
+  const tool = call('a', 'shell', 1000);
+  const items = [tool, {id: 't', kind: 'text', at: 4000}];
+  expect(transcriptRows(transcript(items), working)[0]).toMatchObject({closed: false, until: 0});
+  items[0] = {...tool, done: true, end: 9000};
+  expect(transcriptRows(transcript(items), working)[0]).toMatchObject({closed: true, until: 9000});
+});
+
 test('a run with missing timestamps has no times', () => {
-  expect(rows([call('a', 'read'), {id: 't', kind: 'text'}])[0]).toMatchObject({closed: true, start: 0, until: 0});
+  expect(rows([call('a', 'read', undefined, {done: true}), {id: 't', kind: 'text'}])[0]).toMatchObject({closed: true, start: 0, until: 0});
 });
 
 test('a run still open when the session is not working closes at its last call\'s end', () => {
@@ -60,23 +68,34 @@ test('a run still open when the session is not working closes at its last call\'
   expect(rows(items)[0]).toMatchObject({closed: false, until: 0});
   expect(transcriptRows(transcript(items), false)[0]).toMatchObject({closed: true, start: 1000, until: 7000});
   expect(transcriptRows(transcript([call('a', 'read', 1000, {done: true})]), false)[0]).toMatchObject({closed: true, start: 1000, until: 0});
-  const nested = transcriptRows(transcript([call('p', 'agent', 1000, {end: 9000}), call('n', 'read', 2000, {parent: 'p', end: 3000})]), false);
+  const nested = transcriptRows(transcript([call('p', 'agent', 1000, {done: true, end: 9000}), call('n', 'read', 2000, {parent: 'p', done: true, end: 3000})]), false);
   expect(nested[0].calls[0].children[0]).toMatchObject({closed: true, until: 3000});
 });
 
-test('thinking ends at its own end, or for older items at the next row that is not a user message', () => {
-  const [own, older, last, unfinished] = rows([
+test('thinking and calls share one run, and later work stops unfinished thinking', () => {
+  const [run, user, answer] = rows([
     {id: 'a', kind: 'reasoning', at: 1000, end: 3000, done: true},
-    {id: 'b', kind: 'reasoning', at: 4000, done: true},
-    {id: 'u', kind: 'user', at: 5000},
-    call('c', 'read', 8000, {done: true}),
-    {id: 'd', kind: 'reasoning', at: 9000, done: true},
-    {id: 'e', kind: 'reasoning', at: 9500},
-  ]).filter(row => row.type !== 'user' && row.type !== 'run');
-  expect(own.until).toBe(3000);
-  expect(older.until).toBe(8000);
-  expect(last.until).toBe(9500);
-  expect(unfinished.until).toBe(0);
+    call('b', 'read', 4000, {done: true}),
+    {id: 'c', kind: 'reasoning', at: 5000},
+    {id: 'u', kind: 'user', at: 6000},
+    call('d', 'read', 8000, {done: true}),
+    {id: 'e', kind: 'reasoning', at: 9000},
+    {id: 't', kind: 'text', at: 12000},
+  ]);
+  expect(run).toMatchObject({key: 'run:a', start: 1000, closed: true, until: 12000});
+  expect(run.calls.map(c => c.type)).toEqual(['reasoning', 'tool', 'reasoning', 'tool', 'reasoning']);
+  expect(run.calls.filter(c => c.type === 'reasoning').map(c => [c.closed, c.until])).toEqual([
+    [true, 3000], [true, 8000], [true, 12000],
+  ]);
+  expect(user.item.id).toBe('u');
+  expect(answer.item.id).toBe('t');
+});
+
+test('last thinking stops on completion or when the session stops working', () => {
+  const thought = {id: 'a', kind: 'reasoning', at: 1000};
+  expect(rows([thought])[0].calls[0]).toMatchObject({closed: false, until: 0});
+  expect(rows([{...thought, done: true, end: 4000}])[0].calls[0]).toMatchObject({closed: true, until: 4000});
+  expect(transcriptRows(transcript([thought]), false)[0].calls[0]).toMatchObject({closed: true, until: 0});
 });
 
 test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves the run open and later calls join above it', (_source, from) => {
@@ -99,7 +118,7 @@ test.each([['the user', undefined], ['another session', 'child']])('a message fr
 });
 
 test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves a closed run closed and later calls start a new run', (_source, from) => {
-  const items = [call('a', 'read', 1000), {id: 't', kind: 'text', text: 'Done', at: 4000}];
+  const items = [call('a', 'read', 1000, {done: true}), {id: 't', kind: 'text', text: 'Done', at: 4000}];
   const closed = rows(items)[0];
   items.push({id: 'u', kind: 'user', from, text: 'Continue', at: 6000});
   expect(rows(items)[0]).toEqual(closed);
@@ -116,11 +135,11 @@ test('replayed history keeps separate runs and their durations', () => {
   const result = rows([
     call('a', 'read', 1000, {done: true}),
     call('b', 'bash', 5000, {done: true}),
-    {id: 'r', kind: 'reasoning', text: 'Next', at: 33000},
+    {id: 'r', kind: 'text', text: 'Next', at: 33000},
     call('c', 'edit', 34000, {done: true}),
     {id: 'u', kind: 'user', text: 'Continue', at: 36000},
   ]);
-  expect(result.map(r => r.type)).toEqual(['run', 'reasoning', 'run', 'user']);
+  expect(result.map(r => r.type)).toEqual(['run', 'text', 'run', 'user']);
   expect(result[0]).toMatchObject({start: 1000, until: 33000});
   expect(result[2]).toMatchObject({closed: false, until: 0});
 });
@@ -128,8 +147,8 @@ test('replayed history keeps separate runs and their durations', () => {
 test('nested items group among their siblings and leave the outer run open', () => {
   const [outer] = rows([
     call('parent', 'agent', 1000),
-    call('one', 'read', 2000, {parent: 'parent'}),
-    call('two', 'bash', 3000, {parent: 'parent'}),
+    call('one', 'read', 2000, {parent: 'parent', done: true}),
+    call('two', 'bash', 3000, {parent: 'parent', done: true}),
     {id: 'child-text', parent: 'parent', kind: 'text', text: 'Child finished', at: 6000},
     call('next', 'edit', 7000),
   ]);
@@ -154,7 +173,8 @@ test('message calls join runs and draw as messages', () => {
 });
 
 test('ancestorKeys names the runs and calls around an item', () => {
-  const items = transcript([call('a', 'agent'), call('b', 'inner', 0, {parent: 'a'}), {id: 'q', parent: 'b', kind: 'attention'}]);
+  const items = transcript([call('a', 'agent'), call('b', 'inner', 0, {parent: 'a'}), {id: 'q', parent: 'b', kind: 'attention'}, {id: 'r', parent: 'b', kind: 'reasoning'}]);
   expect(ancestorKeys(items, 'q')).toEqual(['run:a', 'a', 'run:b', 'b']);
+  expect(ancestorKeys(items, 'r')).toEqual(['run:a', 'a', 'run:b', 'b', 'run:r']);
   expect(ancestorKeys(items, 'missing')).toEqual([]);
 });

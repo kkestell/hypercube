@@ -1,4 +1,4 @@
-// A session's row: its title, dimmed for stopped children, and its own state
+// A session's row: its title, dimmed for a stopped session, and its own state
 // dot: amber while it waits on the user, blue for a reply not yet seen. A top-level row
 // without a dot shows a spinner while it or any of its nested sessions works.
 // Hovering shows its menu button in the indicator's place. Double-clicking
@@ -24,7 +24,7 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
   const classes = ['session-item'];
   if (session.parent) classes.push('session-item-nested');
   if (selected) classes.push('session-item-selected');
-  if (session.parent && !session.running) classes.push('session-item-stopped');
+  if (!session.running) classes.push('session-item-stopped');
 
   return (
     <div class={classes.join(' ')} data-session={session.id}>

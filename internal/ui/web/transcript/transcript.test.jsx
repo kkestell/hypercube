@@ -99,7 +99,7 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
   expect(group.open).toBe(false);
   expect(summary.textContent).toBe('Working for 6s…');
 
-  send([{id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
+  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'}, at: 5000, done: true, end: 9000, seq: 3}, {id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
   expect(list.firstElementChild).toBe(group);
   expect(summary.textContent).toBe('Worked for 9s');
   expect(summary.querySelector('.disclosure-heading').lastElementChild).toBe(chevron);
@@ -282,10 +282,10 @@ test('finished Thinking shows its real duration whether or not anything follows 
   jest.useFakeTimers();
   jest.setSystemTime(500000);
   const {root, send} = setup([{id: 't', kind: 'reasoning', text: 'x', at: 1000, end: 4000, done: true, seq: 1}], {id: 's', running: false, activity: 'idle'});
-  const summary = root.querySelector('summary');
+  const summary = root.querySelector('.reasoning-item summary');
   expect(summary.textContent).toBe('Thought for 3s');
   send([{id: 'u', kind: 'reasoning', text: 'y', at: 10000, done: true, seq: 2}]);
-  expect(root.querySelectorAll('summary')[1].textContent).toBe('Thought');
+  expect(root.querySelectorAll('.reasoning-item summary')[1].textContent).toBe('Thought');
 });
 
 test('Thinking saved without an end shows the time up to the next row', () => {
@@ -294,7 +294,7 @@ test('Thinking saved without an end shows the time up to the next row', () => {
     {id: 'u', kind: 'user', text: 'hi', at: 2000, seq: 2},
     {id: 'x', kind: 'text', text: 'Answer', at: 4000, seq: 3},
   ], {id: 's', running: false, activity: 'idle'});
-  expect(root.querySelector('summary').textContent).toBe('Thought for 3s');
+  expect(root.querySelector('.reasoning-item summary').textContent).toBe('Thought for 3s');
 });
 
 test('a message that arrives during Thinking leaves it counting until it finishes', () => {
@@ -302,12 +302,70 @@ test('a message that arrives during Thinking leaves it counting until it finishe
   jest.setSystemTime(3000);
   const thought = {id: 't', kind: 'reasoning', text: 'x', at: 1000, seq: 1};
   const {root, send} = setup([thought]);
-  const summary = root.querySelector('summary');
+  const summary = root.querySelector('.reasoning-item summary');
   send([{id: 'u', kind: 'user', text: 'hello', at: 2000, seq: 2}]);
   act(() => jest.advanceTimersByTime(8000));
   expect(summary.textContent).toBe('Thinking for 10s…');
   send([{...thought, done: true, end: 12000}]);
   expect(summary.textContent).toBe('Thought for 11s');
+});
+
+test('alternating thinking and tools stays in one working block and completed timers stop', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(6000);
+  const {root, send} = setup([{id: 'r', kind: 'reasoning', text: 'Plan', at: 1000, seq: 1}]);
+  const list = root.querySelector('.transcript-list');
+  const run = list.firstElementChild;
+  const summary = run.querySelector('summary');
+  act(() => summary.click());
+  const thinking = run.querySelector('.reasoning-item summary');
+  expect(summary.textContent).toBe('Working for 5s…');
+  send([
+    {id: 'c', kind: 'tool', tool: 'read', at: 4000, end: 5000, done: true, seq: 2},
+    {id: 's', kind: 'reasoning', text: 'Next step', at: 5000, seq: 3},
+  ]);
+  expect(list.children.length).toBe(1);
+  expect(list.firstElementChild).toBe(run);
+  expect(thinking.textContent).toBe('Thought for 3s');
+  expect(run.querySelectorAll('.reasoning-item').length).toBe(2);
+  act(() => jest.advanceTimersByTime(2000));
+  expect(thinking.textContent).toBe('Thought for 3s');
+  expect(summary.textContent).toBe('Working for 7s…');
+  send([{id: 'a', kind: 'text', text: 'Answer', at: 8000, seq: 4}]);
+  expect(summary.textContent).toBe('Worked for 7s');
+  expect(run.querySelectorAll('.reasoning-item summary')[1].textContent).toBe('Thought for 3s');
+  act(() => jest.advanceTimersByTime(60000));
+  expect(summary.textContent).toBe('Worked for 7s');
+  expect(thinking.textContent).toBe('Thought for 3s');
+});
+
+test('unfinished thinking in an idle session stops counting', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(6000);
+  const {root} = setup([{id: 'r', kind: 'reasoning', text: 'Old thought', at: 1000}], {id: 's', running: true, activity: 'idle'});
+  expect(root.querySelector('summary').textContent).toBe('Worked');
+  const summary = root.querySelector('.reasoning-item summary');
+  expect(summary.textContent).toBe('Thought');
+  act(() => jest.advanceTimersByTime(60000));
+  expect(summary.textContent).toBe('Thought');
+});
+
+test('a working block waits for its shell after the agent replies', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(6000);
+  const tool = {id: 'a', kind: 'tool', tool: 'shell', at: 1000, seq: 1};
+  const {root, send} = setup([tool], {id: 's', running: true, activity: 'idle'});
+  const summary = root.querySelector('summary');
+  send([{id: 't', kind: 'text', text: 'Preview ready', at: 4000, seq: 2}]);
+  expect(summary.textContent).toBe('Working for 5s…');
+  expect(root.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
+  act(() => jest.advanceTimersByTime(3000));
+  expect(summary.textContent).toBe('Working for 8s…');
+  send([{...tool, done: true, end: 9000}]);
+  expect(summary.textContent).toBe('Worked for 8s');
+  expect(root.querySelector('.tool-items-call [title="Running"]')).toBeNull();
+  act(() => jest.advanceTimersByTime(60000));
+  expect(summary.textContent).toBe('Worked for 8s');
 });
 
 test('a finished last run in a session that is not working shows a fixed duration', () => {

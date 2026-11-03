@@ -6,8 +6,9 @@
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
 import {useEffect, useLayoutEffect, useMemo, useState} from 'preact/hooks';
+import {post} from '../api.js';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
-import {pageTitle} from '../sessions/selection.js';
+import {currentSession, pageTitle} from '../sessions/selection.js';
 import {SessionView} from '../sessions/session-view.jsx';
 import {ConfirmDialog} from '../shared/confirm-dialog.jsx';
 import {Split} from '../shared/split.jsx';
@@ -55,9 +56,18 @@ export function App({store}) {
   }, [state.selected]);
 
   const {sidebar, rightPanel, panel} = state.workbench;
+  const key = e => {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.repeat || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    // Escape belongs to the terminal, dialogs, and menus while they have focus.
+    if (state.confirmation || e.target.closest('.context-menu, .terminal-panel')) return;
+    const session = currentSession(state);
+    if (!session?.running || session.ended || session.activity !== 'busy' || state.unsent) return;
+    e.preventDefault();
+    post(store, 'session', {action: 'interrupt', id: session.id});
+  };
   return (
     <StoreContext.Provider value={context}>
-      <div class="app">
+      <div class="app" onKeyDown={key}>
         <div class="app-body">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar />

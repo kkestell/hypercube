@@ -1,18 +1,21 @@
-// One session: its transcript above its composer, with a border while it waits
-// on the user. Images dropped anywhere on the pane attach to its draft; tab
-// drags carry no files and pass through.
+// One session: its transcript above its composer, or the tesseract in place of
+// the transcript before its first prompt, with a border while it waits on the
+// user. Images dropped anywhere on the pane attach to its draft; tab drags
+// carry no files and pass through.
 import {useState} from 'preact/hooks';
-import {Transcript} from '../transcript/transcript.jsx';
 import {useStore} from '../store.js';
+import {Tesseract} from '../tesseract/tesseract.jsx';
+import {Transcript} from '../transcript/transcript.jsx';
 import {Composer} from './composer.jsx';
-import {attachImages} from './drafts.js';
+import {attachImages, unsentKey} from './drafts.js';
 import './agent-pane.css';
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
 
 export function AgentPane({session}) {
-  const [, store] = useStore();
+  const [state, store] = useStore();
   const [dropping, setDropping] = useState(false);
+  const unsent = session.id === unsentKey;
 
   const over = e => {
     if (!hasFiles(e)) return;
@@ -33,7 +36,7 @@ export function AgentPane({session}) {
   const classes = ['agent-pane', session.attention && 'agent-pane-attention', dropping && 'agent-pane-dropping'].filter(Boolean).join(' ');
   return (
     <article class={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      <Transcript session={session} />
+      {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} />}
       <Composer session={session} />
     </article>
   );

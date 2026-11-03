@@ -30,13 +30,15 @@ use child worktrees for independent edits.
 ## Browser view
 
 The sidebar lists top-level sessions newest first, in the order they were
-created, so a session keeps its place. It shows each workspace's started
-sessions and the selected one; Show more lists five stopped sessions more.
+created, so a session keeps its place. Each workspace shows five sessions;
+Show more reveals five more. If the selected session is outside that group,
+it takes the fifth place.
 Children appear under their parent in creation order. Running children are always visible;
 Show Stopped Sessions in the parent's menu lists stopped children too, and
 Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
 the sidebar to add a workspace. Click `+` beside a workspace's name to open a
-new session. Its composer chooses the profile until the first prompt is sent,
+new session, with the animated hypercube above its composer.
+Its composer chooses the profile until the first prompt is sent,
 and sending that prompt creates the session;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
 right-clicking a workspace, offers Delete Workspace.
@@ -75,13 +77,14 @@ start a new line. A message goes to the agent at once, even while it works.
 Attach PNG, JPEG, GIF, or WebP images with the paperclip button or by dropping
 files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
 a remove button, and can be sent without text. Images from the agent or its
-tools appear in the transcript. The stop button next to the send button appears
-while the agent works and interrupts its current turn; the turn stays in the
-chat. Tool calls share one expandable item across messages to the agent.
-Its header counts the time as "Working for 2m 10s…" until the next item that
-is neither a tool call nor a message to the agent, then reads "Worked for 2m 10s".
-Expand it to see each call's input, output, and native subagent calls. Failures
-are marked on the individual calls. Thinking counts its time the same way
+tools appear in the transcript. Press Escape to interrupt the shown agent's
+current turn; the turn stays in the chat. Thinking and tool calls share one
+expandable working block across messages
+to the agent. Its header counts the time as "Working for 2m 10s…" until the agent
+responds or stops working and every tool in the block finishes, then reads
+"Worked for 2m 10s". Expand it to see the
+thinking and each call's input, output, and native subagent calls. Failures
+are marked on the individual calls. Inside the block, thinking counts its time
 ("Thinking for 5s…", then "Thought for 3m 10s"); click it to show a five-line
 box of the newest text, which scrolls back through the rest. Messages between sessions show their sender or recipient
 and first line; expand one to read the full message. When an agent asks you a question or for approval, its
@@ -90,8 +93,9 @@ there. An answered request shows its question and the answer beside a check.
 Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 
-Below each message box, the harness, model, and effort appear on the left,
-with context use and cost on the right. Codex reports no cost. Drag a tab,
+Below each message box, the profile selector shows the harness, model, and
+effort on the left. It is disabled after the first message is sent. Context use
+and cost appear on the right. Codex reports no cost. Drag a tab,
 including the chat's, to another pane's tab bar to move it there, or to a pane's
 left, right, top, or bottom edge to split it. Drag dividers to resize panes and
 the sidebar.

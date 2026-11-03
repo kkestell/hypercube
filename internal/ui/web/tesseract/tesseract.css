@@ -5,10 +5,14 @@
   min-height: 0;
   background: var(--vscode-editor-background);
   opacity: 0;
-  transition: opacity 1s;
   pointer-events: none;
 }
 
 .tesseract-drawn {
-  opacity: 1;
+  opacity: 0.4;
+}
+
+.tesseract-fading {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
 }

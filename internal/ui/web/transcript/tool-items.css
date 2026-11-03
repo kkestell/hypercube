@@ -25,7 +25,8 @@
   color: var(--vscode-errorForeground);
 }
 
-.tool-items-calls > .message-item {
+.tool-items-calls > .message-item,
+.tool-items-calls > .reasoning-item {
   padding-left: var(--tool-items-status-width);
 }
 

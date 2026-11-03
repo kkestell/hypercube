@@ -1,6 +1,5 @@
-// A wireframe tesseract turning in 4D, drawn as a flickering oscilloscope
-// trace behind an empty center. It animates while it is mounted and fades in
-// once the first frame is drawn.
+// A wireframe tesseract turning in 4D above a new session's composer. White
+// lines fade with depth, against the editor background. It animates while mounted.
 import {useEffect, useRef} from 'preact/hooks';
 import './tesseract.css';
 
@@ -10,21 +9,15 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-// Draws the edges like an oscilloscope beam: each pixel sums a 1/distance glow
-// from every edge. The phosphor color is part of the artwork.
+// Draws thin, antialiased white lines, dimmed by their depth.
 const fragmentShader = `#version 300 es
 precision highp float;
 uniform vec2 resolution;
 uniform vec3 background;
 uniform vec4 segments[32];  // endpoints in pixels from the center
 uniform float intensity[32];
-uniform float core;         // pixels of full brightness around the beam
-uniform float flicker;      // beam brightness this frame
-uniform float time;
+uniform float width;        // line half-width in pixels
 out vec4 color;
-const vec3 phosphor = vec3(87.0, 85.0, 247.0) / 255.0;
-
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
 float sdSegment(vec2 p, vec2 a, vec2 b) {
   vec2 pa = p - a, ba = b - a;
@@ -34,15 +27,13 @@ float sdSegment(vec2 p, vec2 a, vec2 b) {
 
 void main() {
   vec2 p = gl_FragCoord.xy - 0.5 * resolution;
-  float hits = 0.0;
-  for (int i = 0; i < 32; i++) hits += intensity[i] * min(1.0, core / sdSegment(p, segments[i].xy, segments[i].zw));
-  vec3 c = mix(background, phosphor, hits * flicker);
-
-  vec2 q = gl_FragCoord.xy / resolution - 0.5;
-  c *= 1.0 - dot(q, q) * 2.0;
-  // Grain, which also hides banding in the halo.
-  c += (hash(gl_FragCoord.xy + fract(time) * 1000.0) - 0.5) * 0.05;
-  color = vec4(c, 1.0);
+  float brightness = 0.0;
+  for (int i = 0; i < 32; i++) {
+    float d = sdSegment(p, segments[i].xy, segments[i].zw);
+    float line = 1.0 - smoothstep(width - 0.5, width + 0.5, d);
+    brightness = max(brightness, intensity[i] * line);
+  }
+  color = vec4(mix(background, vec3(1.0), brightness), 1.0);
 }`;
 
 // The 16 corners of [-1, 1]^4, and the 32 edges joining corners that differ in
@@ -71,8 +62,8 @@ function project(t, width, height) {
     rotate(q, 0, 2, 0.6);
     rotate(q, 1, 2, 0.45);
     const f = 1.4 / (2.5 - q[2]); // 3D perspective
-    // Edges further along w are fainter; w ranges over [-2, 2].
-    return [q[0] * f * size, q[1] * f * size, 0.25 + 0.75 * (w + 2) / 4];
+    // Squared depth gives distant edges a stronger fade; w ranges over [-2, 2].
+    return [q[0] * f * size, q[1] * f * size, ((w + 2) / 4) ** 2];
   });
 }
 
@@ -96,40 +87,36 @@ function animate(canvas) {
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`Tesseract program: ${gl.getProgramInfoLog(program)}`);
   gl.useProgram(program);
   gl.bindVertexArray(gl.createVertexArray());
-  const uniform = Object.fromEntries(['resolution', 'background', 'segments', 'intensity', 'core', 'flicker', 'time']
+  const uniform = Object.fromEntries(['resolution', 'background', 'segments', 'intensity', 'width']
     .map(name => [name, gl.getUniformLocation(program, name)]));
 
-  // The beam fades into the canvas's own background, the theme's editor color.
+  // Distant lines fade into the canvas's background, the theme's editor color.
   const [r, g, b] = getComputedStyle(canvas).backgroundColor.match(/\d+/g).map(Number);
   gl.uniform3f(uniform.background, r / 255, g / 255, b / 255);
 
-  const resize = () => {
-    canvas.width = Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio));
-    canvas.height = Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio));
-    gl.viewport(0, 0, canvas.width, canvas.height);
-  };
-  const observer = new ResizeObserver(resize);
-  observer.observe(canvas);
-
   const segments = new Float32Array(edges.length * 4);
   const intensity = new Float32Array(edges.length);
-  // Lightly smoothed noise, so the beam wavers in brightness rather than strobing.
-  let flicker = 0, frame = 0;
+  let frame = 0;
   const draw = ms => {
+    const width = Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio));
+    const height = Math.max(1, Math.round(canvas.clientHeight * devicePixelRatio));
+    // Resizing clears the drawing buffer. Redraw in the same frame so a split
+    // drag never presents the cleared buffer between animation frames.
+    if (canvas.width !== width || canvas.height !== height) {
+      canvas.width = width;
+      canvas.height = height;
+      gl.viewport(0, 0, width, height);
+    }
     const projected = project(ms / 1000, canvas.width, canvas.height);
     edges.forEach(([i, j], n) => {
       const a = projected[i], b = projected[j];
       segments.set([a[0], a[1], b[0], b[1]], n * 4);
       intensity[n] = (a[2] + b[2]) / 2;
     });
-    flicker += (Math.random() - flicker) * 0.7;
-
     gl.uniform2f(uniform.resolution, canvas.width, canvas.height);
     gl.uniform4fv(uniform.segments, segments);
     gl.uniform1fv(uniform.intensity, intensity);
-    gl.uniform1f(uniform.core, 0.8 * devicePixelRatio);
-    gl.uniform1f(uniform.flicker, 1 - 0.1 * flicker);
-    gl.uniform1f(uniform.time, ms / 1000);
+    gl.uniform1f(uniform.width, 0.5 * devicePixelRatio);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     canvas.classList.add('tesseract-drawn');
@@ -138,12 +125,11 @@ function animate(canvas) {
   frame = requestAnimationFrame(draw);
   return () => {
     cancelAnimationFrame(frame);
-    observer.disconnect();
   };
 }
 
-export function Tesseract() {
+export function Tesseract({fading = false}) {
   const ref = useRef(null);
   useEffect(() => animate(ref.current), []);
-  return <canvas ref={ref} class="tesseract" />;
+  return <canvas ref={ref} class={fading ? 'tesseract tesseract-fading' : 'tesseract'} />;
 }

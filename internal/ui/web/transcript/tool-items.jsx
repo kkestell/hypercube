@@ -1,10 +1,10 @@
-// Tool runs and tool calls, as inline disclosures. A run's summary counts how
-// long it has worked; expanding it lists the calls. Each call shows its own
-// status, input, output, and nested items, with its images below.
+// Work runs contain thinking, messages, and tool calls as inline disclosures.
+// Each call shows its status, input, output, and nested items, with images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
 import {Disclosure} from './disclosure.jsx';
 import {Elapsed} from './elapsed.jsx';
 import {MessageItem} from './message-item.jsx';
+import {ReasoningItem} from './reasoning-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import './tool-items.css';
@@ -19,9 +19,11 @@ export function ToolRun({run, session, expanded, setOpen}) {
   return (
     <Disclosure open={!!expanded[run.key]} onToggle={open => setOpen(run.key, open)} summary={summary}>
       <div class="tool-items-calls">
-        {run.calls.map(call => call.type === 'message'
-          ? <MessageItem key={call.item.id} item={call.item} expanded={!!expanded[call.item.id]} setOpen={setOpen} />
-          : <ToolCall key={call.item.id} call={call} session={session} expanded={expanded} setOpen={setOpen} />)}
+        {run.calls.map(call => {
+          if (call.type === 'message') return <MessageItem key={call.item.id} item={call.item} expanded={!!expanded[call.item.id]} setOpen={setOpen} />;
+          if (call.type === 'reasoning') return <ReasoningItem key={call.item.id} row={call} expanded={!!expanded[call.item.id]} setOpen={setOpen} />;
+          return <ToolCall key={call.item.id} call={call} session={session} expanded={expanded} setOpen={setOpen} />;
+        })}
       </div>
     </Disclosure>
   );

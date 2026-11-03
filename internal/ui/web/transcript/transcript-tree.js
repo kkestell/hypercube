@@ -1,8 +1,8 @@
 // Turns a transcript's items, in seq order, into the rows the page draws.
 //
 // An item nests under its parent tool call when the parent is present.
-// Tool calls within one container form a run, passing over user messages
-// and closing at the next other item, which ends its duration. User
+// Tool calls and thinking within one container form a run, passing over user
+// messages and separating at the next other item. User
 // messages draw in place, with later calls joining the run above them. A call
 // that sends a message to a session draws as a message. The rows are rebuilt
 // from the whole list, so an item that arrives before its parent moves under
@@ -55,20 +55,18 @@ export const toolInput = input => input === undefined || input === null ? '' : c
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
 const isCall = item => item.kind === 'tool' && !isMessage(item);
 
-const kinds = new Set(['reasoning', 'error', 'attention']);
+const kinds = new Set(['error', 'attention']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
-
-const startOf = row => (row.type === 'run' ? row.calls[0].item : row.item).at ?? 0;
 
 // transcriptRows returns the top-level rows of a transcript {order, items}:
 //   {type: 'run', key, calls, closed, start, until}, whose calls are
-//     {type: 'tool', item, children} or {type: 'message', item};
-//   {type: 'reasoning', item, until};
+//     {type: 'tool', item, children}, {type: 'message', item}, or
+//     {type: 'reasoning', item, closed, until};
 //   {type: 'user' | 'text' | 'error' | 'attention', item}.
 // start and until are millisecond times; until is 0 while a run is open. A run
 // still open when the session is not working closes at its last call's end.
-// Thinking ends at its item's end; one saved without an end ends where the
-// next row other than a user message starts.
+// An unfinished tool keeps its run active even after later output or idle.
+// Thinking ends at its own end, the next work item, or the end of its run.
 export function transcriptRows({order, items}, working = true) {
   const containers = new Map();
   for (const id of order) {
@@ -88,7 +86,7 @@ export function transcriptRows({order, items}, working = true) {
         rows.push({type: 'user', item});
         continue;
       }
-      if (item.kind !== 'tool') {
+      if (item.kind !== 'tool' && item.kind !== 'reasoning') {
         if (run) Object.assign(run, {closed: true, until: item.at ?? 0});
         run = null;
         rows.push({type: rowType(item), item});
@@ -98,14 +96,27 @@ export function transcriptRows({order, items}, working = true) {
         run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, start: item.at ?? 0, until: 0};
         rows.push(run);
       }
-      run.calls.push(isMessage(item) ? {type: 'message', item} : {type: 'tool', item, children: rowsOf(item.id)});
+      if (item.kind === 'reasoning') run.calls.push({type: 'reasoning', item});
+      else if (isMessage(item)) run.calls.push({type: 'message', item});
+      else run.calls.push({type: 'tool', item, children: rowsOf(item.id)});
     }
-    rows.forEach((row, i) => {
-      if (row.type !== 'reasoning') return;
-      const next = rows.slice(i + 1).find(r => r.type !== 'user');
-      row.until = row.item.end ?? (row.item.done && next ? startOf(next) : 0);
-    });
     if (run && !working) Object.assign(run, {closed: true, until: Math.max(0, ...run.calls.map(call => call.item.end ?? 0))});
+    for (const row of rows) {
+      if (row.type !== 'run') continue;
+      row.calls.forEach((call, i) => {
+        if (call.type !== 'reasoning') return;
+        const next = row.calls[i + 1];
+        const until = next ? next.item.at ?? 0 : row.until;
+        call.closed = !!(call.item.done || call.item.end || next || row.closed);
+        call.until = call.item.end ?? (until >= (call.item.at ?? 0) ? until : 0);
+      });
+      if (row.calls.some(call => call.type !== 'reasoning' && !call.item.done)) {
+        row.closed = false;
+        row.until = 0;
+      } else if (row.closed) {
+        row.until = Math.max(row.until, ...row.calls.map(call => call.item.end ?? 0));
+      }
+    }
     return rows;
   };
   return rowsOf('');

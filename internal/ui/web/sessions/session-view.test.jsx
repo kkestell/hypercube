@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
-import {openUnsent, receivedWorkspaces, unsentProfile} from './selection.js';
+import {openUnsent, receivedWorkspaces, selectSession, unsentProfile} from './selection.js';
 import {SessionView} from './session-view.jsx';
 
 let spies = [];
@@ -35,9 +35,9 @@ test('a running session shows its agent in a tab named for it', () => {
   expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('Session a');
 });
 
-test('with no session shown, the tesseract shows under the layout toggles', () => {
+test('with no session shown, only the layout toggles show', () => {
   const root = mount(store(null, []), <SessionView />);
-  expect(root.querySelector('.tesseract')).not.toBeNull();
+  expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.layout-toggles')).not.toBeNull();
   expect(root.querySelector('[role="tab"]')).toBeNull();
 });
@@ -69,10 +69,15 @@ test('a session with nothing unseen posts nothing', () => {
   expect(posted()).toEqual([]);
 });
 
-test('an unsent session shows its agent tab', () => {
+test('an unsent session shows the tesseract in place of its transcript', () => {
   const s = store(null, []);
   s.update(state => unsentProfile(openUnsent(state, 'w'), {name: 'lead', harness: 'claude', model: 'haiku', effort: 'low'}));
   const root = mount(s, <SessionView />);
-  expect(root.querySelector('.agent-pane')).not.toBeNull();
+  expect(root.querySelector('.agent-pane .tesseract')).not.toBeNull();
+  expect(root.querySelector('.transcript')).toBeNull();
+  expect(root.querySelector('.composer textarea[aria-label="Message"]')).not.toBeNull();
   expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('New Session');
+  s.update(state => selectSession(receivedWorkspaces(state, [{id: 'w', name: 'repo', path: '/repo', sessions: [session('a')]}]), 'a'));
+  expect(root.querySelector('.tesseract')).toBeNull();
+  expect(root.querySelector('.transcript')).not.toBeNull();
 });

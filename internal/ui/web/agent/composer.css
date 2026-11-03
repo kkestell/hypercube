@@ -15,6 +15,12 @@
   border-color: var(--vscode-focusBorder);
 }
 
+.composer vscode-button {
+  --vscode-button-border: transparent;
+  --vscode-button-secondaryBackground: transparent;
+  --vscode-button-secondaryHoverBackground: var(--vscode-toolbar-hoverBackground);
+}
+
 .composer-images {
   display: flex;
   flex-wrap: wrap;
@@ -80,15 +86,8 @@
   white-space: nowrap;
 }
 
-.composer-config {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .composer-profile {
+  --vscode-settings-dropdownBorder: transparent;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;

@@ -35,25 +35,27 @@ const toggleStopped = root => {
   pick(root, 1);
 };
 
-test('a workspace lists its started sessions, and Show more adds five stopped ones', () => {
-  const sessions = Array.from({length: 14}, (_, i) => session('s' + i, {running: i % 7 === 0}));
+test.each([true, false, null])('a workspace shows five sessions and Show more adds five, running=%s', running => {
+  const sessions = Array.from({length: 14}, (_, i) => session('s' + (13 - i), {running: running ?? i % 2 === 0}));
   const {root} = setup(sessions);
-  expect(sessionRows(root)).toEqual(['s0', 's7']);
+  expect(sessionRows(root)).toEqual(['s13', 's12', 's11', 's10', 's9']);
   click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root)).toEqual(['s0', 's1', 's2', 's3', 's4', 's5', 's7']);
-  click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root)).toEqual(['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11']);
+  expect(sessionRows(root)).toEqual(['s13', 's12', 's11', 's10', 's9', 's8', 's7', 's6', 's5', 's4']);
   click(root.querySelector('.sidebar-show-more'));
   expect(sessionRows(root).length).toBe(14);
   expect(root.querySelector('.sidebar-show-more')).toBeNull();
 });
 
-test('the selected stopped top-level session stays visible', () => {
-  const {store, root} = setup([session('a'), session('b', {running: false}), session('c', {running: false})]);
-  store.update(s => ({...s, selected: 'c'}));
-  expect(sessionRows(root)).toEqual(['a', 'c']);
-  expect(title(root, 'c').getAttribute('aria-current')).toBe('true');
-  expect(title(root, 'a').hasAttribute('aria-current')).toBe(false);
+test('the selected session replaces the fifth row when it is outside the visible page', () => {
+  const sessions = Array.from({length: 8}, (_, i) => session('s' + (7 - i), {running: false}));
+  const {store, root} = setup(sessions);
+  store.update(s => ({...s, selected: 's0'}));
+  expect(sessionRows(root)).toEqual(['s7', 's6', 's5', 's4', 's0']);
+  expect(title(root, 's0').getAttribute('aria-current')).toBe('true');
+  expect(title(root, 's7').hasAttribute('aria-current')).toBe(false);
+  expect(root.querySelector('[data-session="s0"]').classList.contains('session-item-stopped')).toBe(true);
+  click(root.querySelector('.sidebar-show-more'));
+  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
 });
 
 test('Add Workspace adds a workspace', () => {
@@ -64,7 +66,6 @@ test('Add Workspace adds a workspace', () => {
 
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
-  click(root.querySelector('.sidebar-show-more'));
   click(title(root, 'b'));
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
@@ -121,7 +122,6 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     session('stopped', {running: false}),
     session('failed', {activity: 'exited'}),
   ]);
-  click(root.querySelector('.sidebar-show-more'));
   choose(root, '[data-session="running"]', 0);
   choose(root, '[data-session="stopped"]', 0);
   choose(root, '[data-session="failed"]', 0);
