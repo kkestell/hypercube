@@ -44,3 +44,8 @@ Open design questions:
 - **Who merges:** the agent performs the merge, resolving conflicts and
   handling other complications, rather than the user or a UI button running
   fixed merge code. The mechanism for asking the agent to merge is undecided.
+
+## Dock icon and menu bar icon polish
+
+Give the app a proper dock icon, and adjust the menu bar icon so it is easier
+on the eyes.
