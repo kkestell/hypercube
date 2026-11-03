@@ -1,5 +1,16 @@
 # Roadmap
 
+## Codex async questions use interactive controls
+
+Codex's `request_user_input_async` sends assistant message items with
+`questions` and `delivery: "async"`. The Codex adapter ignores those fields,
+so questions appear as ordinary text without selectable answers. Its existing
+`item/tool/requestUserInput` handler covers blocking questions only.
+
+Translate async question metadata into interactive attention items, preserving
+question titles and options, and support submitting the user's answers to the
+agent. Preserve the existing blocking-question support.
+
 ## Background processes survive the idle timeout
 
 Hypercube stops a session after ten minutes without activity unless someone
