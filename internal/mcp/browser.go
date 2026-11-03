@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -47,7 +48,7 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 		defer cancel()
 		finalURL, title, err := browser.Navigate(ctx, self, a.URL)
 		if errors.Is(err, context.DeadlineExceeded) {
-			return "", errors.New("the page did not finish loading within 30 seconds")
+			return "", fmt.Errorf("the page did not finish loading within %v", browserTimeout)
 		}
 		if err != nil {
 			return "", err
@@ -69,7 +70,7 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 		defer cancel()
 		text, err := browser.Eval(ctx, self, a.Script)
 		if errors.Is(err, context.DeadlineExceeded) {
-			return "", errors.New("the script did not finish within 30 seconds")
+			return "", fmt.Errorf("the script did not finish within %v", browserTimeout)
 		}
 		return text, err
 	}))

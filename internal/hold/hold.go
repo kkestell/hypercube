@@ -1,5 +1,14 @@
-// Package hold runs children independently of the app, using a directory for
-// input, retained output, and the child's exit status.
+// Package hold runs children independently of the app. Each holder owns a
+// directory:
+//
+//   - lock: locked for the holder's whole life; Alive tests it.
+//   - pid, and tty in terminal mode: the holder's process and terminal.
+//   - in: the socket that carries input to the child.
+//   - out-<offset>: retained output in segments named by their first byte's
+//     offset. Terminal mode keeps the last two; pipe mode keeps them until
+//     Discard.
+//   - exit: the child's exit record, renamed into place after all output and
+//     before the lock is released, so a dead holder without one was lost.
 package hold
 
 import (

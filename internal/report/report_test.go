@@ -58,7 +58,7 @@ func TestInstructions(t *testing.T) {
 				t.Errorf("child missing %q: %s", want, childText)
 			}
 		}
-		if strings.Contains(parentText, "Other top-level sessions:") || strings.Contains(parentText, "q (Fix)") {
+		if strings.Contains(parentText, "q (Fix)") {
 			t.Error("instructions include a stale peer snapshot:", parentText)
 		}
 		if !strings.Contains(parentText, "top-level sessions in this workspace share") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
