@@ -15,10 +15,9 @@ const properNames = {
 const titleCase = word => properNames[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1);
 
 // displayName turns a raw ID into words, keeping the hyphen in a versioned
-// acronym such as GPT-6.1. A provider prefix before a slash adds nothing to
-// the harness beside it.
+// acronym such as GPT-6.1.
 function displayName(value = '') {
-  const words = value.split('/').pop().split(/[\s_-]+/).filter(Boolean);
+  const words = value.split(/[\s/_-]+/).filter(Boolean);
   const names = words.map(titleCase);
   return names.map((name, i) => {
     if (i === 0) return name;
@@ -26,5 +25,14 @@ function displayName(value = '') {
   }).join('');
 }
 
+// The first segment of a model ID names its provider. Keep the rest of the
+// path, which may contain slashes of its own.
+function modelName(model = '') {
+  const provider = model.indexOf('/');
+  return displayName(provider < 0 ? model : model.slice(provider + 1));
+}
+
 export const profileLabel = profile =>
-  [profile.harness, profile.model, profile.effort].filter(Boolean).map(displayName).join(' · ');
+  [displayName(profile.harness), modelName(profile.model), displayName(profile.effort)]
+    .filter(Boolean)
+    .join(' · ');
