@@ -28,3 +28,19 @@ that escape it, and symlinks that point outside it. `~` is not expanded.
 Allow `open_file` to open any file the user can read, including absolute paths
 outside the workspace and `~`-prefixed paths, so an agent can show the user a
 file from anywhere on the machine.
+
+## Sessions can run in a worktree
+
+When creating a session, the user can choose to run it in its own git
+worktree. Not every session uses one: sessions that work directly in the
+checkout remain supported.
+
+Open design questions:
+
+- **Merge state:** the UI shows whether a worktree session's branch has been
+  merged.
+- **Stop and delete guard:** a worktree session cannot be stopped or deleted
+  until its branch has been merged.
+- **Who merges:** the agent performs the merge, resolving conflicts and
+  handling other complications, rather than the user or a UI button running
+  fixed merge code. The mechanism for asking the agent to merge is undecided.
