@@ -24,8 +24,7 @@ export function createFilePoller(store) {
         for (const dir of shownFolders(session.files)) await loadFolder(store, session.id, dir);
       }
       for (const pane of panes(session.tabs.root)) {
-        const path = tabPath(pane.active);
-        if (path !== null) await readOpenFile(store, path);
+        if (pane.active.startsWith('file:')) await readOpenFile(store, tabPath(pane.active));
       }
     } finally {
       running = false;

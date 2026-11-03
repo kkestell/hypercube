@@ -36,8 +36,8 @@
 }
 
 .session-item:has(:focus-visible) {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
 }
 
 .session-item button {
@@ -94,21 +94,21 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  height: 16px;
+  height: var(--size-icon);
   margin-left: auto;
 }
 
 .session-item-status:has(> :not(.session-item-menu)),
 .session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) {
-  width: 16px;
+  width: var(--size-icon);
 }
 
 .session-item-menu {
   display: none;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--size-icon);
+  height: var(--size-icon);
 }
 
 .session-item:is(:hover, :focus-within) .session-item-menu {

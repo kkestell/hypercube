@@ -31,7 +31,7 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
       {renaming
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
         : (
-          <button class="session-item-title" onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
+          <button class="session-item-title" aria-current={selected ? 'true' : undefined} onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
             <span class="session-item-text">{session.title}</span>
           </button>
         )}
@@ -79,6 +79,7 @@ function RenameField({session, onDone}) {
     <vscode-textfield
       ref={ref}
       class="session-item-rename"
+      label="Session title"
       value={session.title}
       onKeyDown={key}
       onClick={e => e.stopPropagation()}

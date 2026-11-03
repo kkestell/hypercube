@@ -20,45 +20,6 @@
   line-height: 1.5;
 }
 
-.message-item-summary {
-  display: block;
-  color: var(--vscode-descriptionForeground);
-  line-height: var(--size-row-height);
-  cursor: pointer;
-  list-style: none;
-}
-
-.message-item-summary::-webkit-details-marker {
-  display: none;
-}
-
-.message-item-summary:hover {
-  color: var(--vscode-foreground);
-}
-
-.message-item-heading {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 1.5);
-  min-width: 0;
-}
-
-.message-item-heading > vscode-icon {
-  display: flex;
-  flex-shrink: 0;
-}
-
-.message-item-agent[open] .message-item-chevron {
-  transform: rotate(90deg);
-}
-
-.message-item-preview {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .message-item-body {
   display: flex;
   flex-direction: column;

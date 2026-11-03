@@ -1,0 +1,43 @@
+.disclosure {
+  min-width: 0;
+}
+
+.disclosure-summary {
+  display: block;
+  min-width: 0;
+  line-height: var(--size-row-height);
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  list-style: none;
+}
+
+.disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure-summary:hover {
+  color: var(--vscode-foreground);
+}
+
+.disclosure-heading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  min-width: 0;
+}
+
+.disclosure-heading > vscode-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.disclosure[open] > .disclosure-summary > .disclosure-heading > .disclosure-chevron {
+  transform: rotate(90deg);
+}
+
+.disclosure-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

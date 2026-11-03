@@ -29,22 +29,17 @@ function Page({session}) {
   return (
     <div class="browser-view">
       <header class="browser-view-header">
-        <nav class="browser-view-controls">
-          <button type="button" title="Back" disabled={!page.canGoBack} onClick={() => send('back')}><vscode-icon name="arrow-left" /></button>
-          <button type="button" title="Forward" disabled={!page.canGoForward} onClick={() => send('forward')}><vscode-icon name="arrow-right" /></button>
-          <button type="button" title="Reload" onClick={() => send('reload')}><vscode-icon name="refresh" /></button>
-        </nav>
-        <input
+        <vscode-button icon-only secondary icon="arrow-left" title="Back" aria-label="Back" disabled={!page.canGoBack} onClick={() => send('back')} />
+        <vscode-button icon-only secondary icon="arrow-right" title="Forward" aria-label="Forward" disabled={!page.canGoForward} onClick={() => send('forward')} />
+        <vscode-button icon-only secondary icon="refresh" title="Reload" aria-label="Reload" onClick={() => send('reload')} />
+        <vscode-textfield
           class="browser-view-address"
-          type="text"
-          aria-label="Address"
+          label="Address"
           value={address ?? page.url}
           onInput={e => setAddress(e.currentTarget.value)}
           onKeyDown={key}
         />
-        <nav class="browser-view-controls">
-          <button type="button" title="Open in browser" onClick={() => send('external')}><vscode-icon name="link-external" /></button>
-        </nav>
+        <vscode-button icon-only secondary icon="link-external" title="Open in browser" aria-label="Open in browser" onClick={() => send('external')} />
       </header>
       <div ref={body} class="browser-view-body" aria-busy={page.loading} />
     </div>

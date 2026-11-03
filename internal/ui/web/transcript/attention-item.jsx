@@ -3,11 +3,10 @@
 // the answer beside a check.
 import {useStore} from '../store.js';
 import {sessionOf} from '../sessions/selection.js';
-import {memo} from 'preact/compat';
 import {AttentionForm} from './attention-form.jsx';
 import './attention-item.css';
 
-export const AttentionItem = memo(({item, session}) => {
+export function AttentionItem({item, session}) {
   const [state] = useStore();
   const sender = item.from && (sessionOf(state, item.from)?.session.title || item.from);
   const heading = sender && <div class="attention-item-source">{sender}</div>;
@@ -32,4 +31,4 @@ export const AttentionItem = memo(({item, session}) => {
       )}
     </div>
   );
-});
+}

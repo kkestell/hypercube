@@ -63,8 +63,8 @@
   flex-shrink: 0;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  width: var(--size-icon);
+  height: var(--size-icon);
 }
 
 .sidebar-workspace-menu {
@@ -124,6 +124,6 @@
 .sidebar-icon-button:focus-visible,
 .sidebar-show-more:focus-visible,
 .sidebar-add-workspace:focus-visible {
-  outline: 1px solid var(--vscode-focusBorder);
-  outline-offset: -1px;
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
 }

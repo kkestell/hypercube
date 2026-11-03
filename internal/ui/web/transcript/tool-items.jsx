@@ -3,25 +3,11 @@
 // finished, its summary shows how long it worked. Each call shows its own
 // status, input, output, and nested items, with its images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
+import {Disclosure} from './disclosure.jsx';
 import {MessageItem} from './message-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import './tool-items.css';
-
-function Disclosure({open, onToggle, summary, preview, children}) {
-  return (
-    <details class="tool-items-disclosure" open={open} onToggle={e => onToggle(e.currentTarget.open)}>
-      <summary class="tool-items-summary">
-        <span class="tool-items-heading">
-          {summary}
-          <vscode-icon name="chevron-right" class="tool-items-chevron" />
-        </span>
-        {!open && preview && <span class="tool-items-preview">{preview}</span>}
-      </summary>
-      {children}
-    </details>
-  );
-}
 
 function Title({item}) {
   const [name, detail] = toolTitle(item);

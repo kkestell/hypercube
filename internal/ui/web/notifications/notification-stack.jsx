@@ -1,4 +1,4 @@
-// The notification cards, stacked in the top right corner below the title bar.
+// The notification cards, stacked in the top right corner below the tab bars.
 import {useRef} from 'preact/hooks';
 import {useOverlay} from '../shared/overlays.js';
 import {useStore} from '../store.js';

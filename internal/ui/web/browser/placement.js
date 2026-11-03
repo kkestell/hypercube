@@ -3,40 +3,38 @@
 // overlay covers the body, and once the body unmounts. Only changes reach the
 // window.
 import {useLayoutEffect, useRef} from 'preact/hooks';
-import {covered, onOverlaysChange} from '../shared/overlays.js';
+import {covered} from '../shared/overlays.js';
+import {useStore} from '../store.js';
 import {post} from './browser.js';
-
-let placed = '';
-
-// place shows the session's browser at rect, in CSS pixels, or with a null
-// session hides every browser.
-function place(session, rect) {
-  const message = {type: 'place', session, rect};
-  const key = JSON.stringify(message);
-  if (key === placed) return;
-  placed = key;
-  post(message);
-}
 
 // useBrowserPlacement keeps the session's browser over the element in ref
 // after each render and as the element resizes.
 export function useBrowserPlacement(ref, session, hidden) {
+  const [state] = useStore();
+  const placed = useRef('');
   const update = useRef(null);
+
+  // place shows the session's browser at rect, in CSS pixels, or with a null
+  // session hides every browser.
+  const place = (session, rect) => {
+    const message = {type: 'place', session, rect};
+    const key = JSON.stringify(message);
+    if (key === placed.current) return;
+    placed.current = key;
+    post(message);
+  };
   update.current = () => {
     const {left: x, top: y, width, height} = ref.current.getBoundingClientRect();
     const rect = {x, y, width, height};
-    if (hidden || !width || !height || covered(rect)) place(null, null);
+    if (hidden || !width || !height || covered(state, rect)) place(null, null);
     else place(session, rect);
   };
   useLayoutEffect(() => update.current());
   useLayoutEffect(() => {
-    const changed = () => update.current();
-    const observer = new ResizeObserver(changed);
+    const observer = new ResizeObserver(() => update.current());
     observer.observe(ref.current);
-    const stop = onOverlaysChange(changed);
     return () => {
       observer.disconnect();
-      stop();
       place(null, null);
     };
   }, []);

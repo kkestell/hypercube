@@ -15,7 +15,7 @@ const workspaces = [{id: 'w', name: 'repo', sessions: [
   {id: 'b', title: 'Ask', unseen: false, children: [{id: 'b-w', parent: 'b', title: 'auditor', children: []}]},
 ]}];
 const requests = [{session: 'b-w', item: {id: 'q', kind: 'attention', text: 'Allow?', choices: ['Yes']}}];
-const state = {workspaces, requests, selected: '', pending: null, unsent: null, drafts: {}, dismissed: {}, errors: [], session: null};
+const state = {workspaces, requests, selected: '', pending: null, unsent: null, drafts: {}, dismissed: {}, errors: [], session: null, overlays: {}};
 
 test('cards show their source and request answers', () => {
   const root = mount(createStore(state), <NotificationStack />);

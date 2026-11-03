@@ -6,58 +6,24 @@
   min-height: 0;
 }
 
+/* Toolbar buttons show only their icon until hovered. */
 .browser-view-header {
+  --vscode-button-secondaryBackground: transparent;
+  --vscode-button-secondaryForeground: var(--vscode-icon-foreground);
+  --vscode-button-secondaryHoverBackground: var(--vscode-toolbar-hoverBackground);
   display: flex;
-  margin: 0.4em 1em;
+  align-items: center;
+  gap: var(--size-space);
+  padding: var(--size-space) calc(var(--size-space) * 3);
 }
 
 .browser-view-address {
-  display: block;
   flex: 1;
-  width: 100%;
-  border: none;
-  margin-right: 0.3em;
-  font-family: var(--vscode-font-family);
-  padding: 2px 4px;
-  color: var(--vscode-input-foreground);
-  outline-color: var(--vscode-input-border);
-  background-color: var(--vscode-input-background);
 }
 
-.browser-view-controls {
-  display: flex;
-}
-
-.browser-view-controls button {
-  display: flex;
-  margin-right: 0.3em;
-  border: none;
-  padding: 3px;
-  text-align: center;
-  outline: 1px solid transparent;
-  color: var(--vscode-icon-foreground);
-  background: none;
-  border-radius: 5px;
-}
-
-.browser-view-controls button:hover:not(:disabled) {
-  cursor: pointer;
-  color: var(--vscode-toolbar-hoverForeground);
-  background: var(--vscode-toolbar-hoverBackground);
-}
-
-.browser-view-controls button:disabled {
-  opacity: 0.5;
-}
-
-.browser-view-address:focus,
-.browser-view-controls button:focus {
-  outline-color: var(--vscode-focusBorder);
-}
-
-/* Pages default to a white background. */
+/* Pages draw on the editor's background until they paint their own. */
 .browser-view-body {
-  background: white;
+  background: var(--vscode-editor-background);
 }
 
 .browser-view-message {
