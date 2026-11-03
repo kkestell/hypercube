@@ -7,6 +7,7 @@ import {useEffect} from 'preact/hooks';
 import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
 import {AttentionForm} from '../transcript/attention-form.jsx';
+import {MarkdownText} from '../transcript/markdown.jsx';
 import {closeCard, dismiss} from './notifications.js';
 import './notification-card.css';
 
@@ -33,7 +34,11 @@ export function NotificationCard({card}) {
               <div class="notification-card-text">{card.item.text ?? ''}</div>
               <AttentionForm session={card.session.id} item={card.item} />
             </>
-          ) : <div class={card.kind === 'reply' ? 'notification-card-text notification-card-reply' : 'notification-card-text'}>{card.text}</div>}
+          ) : (
+            <div class={card.kind === 'reply' ? 'notification-card-text notification-card-reply' : 'notification-card-text'}>
+              {card.kind === 'reply' ? <MarkdownText text={card.text} /> : card.text}
+            </div>
+          )}
         </div>
         <div class="notification-card-actions">
           {card.session && <vscode-toolbar-button icon="eye" label="View Session" title="View Session" onClick={() => chooseSession(store, card.session.id)} />}

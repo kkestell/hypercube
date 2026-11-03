@@ -26,6 +26,46 @@ test('cards show their source and request answers', () => {
   expect(reply.querySelector('.notification-card-text').textContent).toBe('Done.\nAll tests pass.');
 });
 
+test('a reply preview renders inline Markdown and flattens blocks', () => {
+  const reply = [
+    '# Heading',
+    '',
+    'This is a **test paragraph** with some *markdown*, `code`, and a [link](https://example.com).',
+    '',
+    '- first',
+    '- second',
+    '',
+    '> quoted',
+    '',
+    '```js',
+    'let a = 1;',
+    '```',
+    '',
+    '![picture](https://example.com/picture.png)',
+  ].join('\n');
+  const replyState = {...state, requests: [], workspaces: [{id: 'w', name: 'repo', sessions: [
+    {id: 'a', title: 'Fix it', unseen: true, reply, replySeq: 1, children: []},
+  ]}]};
+  const root = mount(createStore(replyState), <NotificationStack />);
+  const preview = root.querySelector('.notification-card-text');
+
+  expect(preview.classList.contains('notification-card-reply')).toBe(true);
+  expect(preview.querySelector('strong').textContent).toBe('test paragraph');
+  expect(preview.querySelector('em').textContent).toBe('markdown');
+  expect(preview.querySelector('code').textContent).toBe('code');
+  expect(preview.querySelector('a').getAttribute('href')).toBe('https://example.com/');
+  for (const tag of ['h1', 'ul', 'blockquote', 'pre', 'img']) expect(preview.querySelector(tag)).toBeNull();
+  expect(preview.textContent).toBe([
+    'Heading',
+    'This is a test paragraph with some markdown, code, and a link.',
+    'first',
+    'second',
+    'quoted',
+    'let a = 1;',
+    'picture',
+  ].join('\n'));
+});
+
 test('View Session shows the card\'s session', () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   const store = createStore(state);
