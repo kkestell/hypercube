@@ -1,9 +1,11 @@
-// A session's row: its title, dimmed for a stopped session, and its own state
-// dot: amber while it waits on the user, blue for a reply not yet seen. A row
+// A session's row: its title, dimmed for a stopped session, after a branch
+// icon for a worktree session, tinted while its branch has work outside the
+// checkout's branch and dimmed once merged; and its own state dot: amber while it waits on the user, blue for a reply not yet seen. A row
 // without a dot shows a spinner while that session works.
 // Hovering shows its menu button in the indicator's place. Double-clicking
 // the title renames the session in place.
 import {useEffect, useRef} from 'preact/hooks';
+import {mergeTint} from '../sessions/merge.js';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
 import {useStore} from '../store.js';
@@ -32,6 +34,7 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
         : (
           <button class="session-item-title" aria-current={selected ? 'true' : undefined} onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
+            {session.worktree && <BranchIcon session={session} />}
             <span class="session-item-text">{session.title}</span>
           </button>
         )}
@@ -45,6 +48,12 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
       </span>
     </div>
   );
+}
+
+function BranchIcon({session}) {
+  const tint = mergeTint(session.merge);
+  const classes = ['session-item-branch', tint && `session-item-branch-${tint}`].filter(Boolean).join(' ');
+  return <vscode-icon class={classes} name="git-branch" title={session.merge?.branch} />;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it

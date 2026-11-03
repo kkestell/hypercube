@@ -29,10 +29,14 @@ selects the harness, model, and reasoning effort. When starting a session, you
 choose a profile beneath the message box before sending the first prompt.
 
 Sessions you create with the workspace's **+** button are **top-level
-sessions**. Each works in the workspace's original folder. Separate chats do
-not give these sessions separate copies of the project: they share files,
-the Git index (staged changes), and the checked-out branch. Changes made by
-one are visible to the others.
+sessions**. Each works in the workspace's original folder unless you check
+**Worktree** beside the profile before the first prompt, which gives it its
+own worktree and branch. Separate chats do not give the sessions in the
+original folder separate copies of the project: they share files, the Git
+index (staged changes), and the checked-out branch. Changes made by one are
+visible to the others. A worktree session's work reaches the original
+checkout's branch when you press Merge above its message box and its agent
+merges it.
 
 ## Parents and children
 
@@ -55,7 +59,8 @@ the same repository in a separate folder, on its own branch. This lets it
 change files without changing the parent's working files. The new branch
 starts from the parent's current commit; it does not include the parent's
 uncommitted changes. The child commits its work, and the parent merges the
-branch into the original checkout.
+branch into its own branch, in the original checkout or in the parent's
+worktree.
 
 A child can instead work in an existing directory. This is useful for tasks
 such as reading code or reviewing changes in the parent's checkout. Children

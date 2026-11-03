@@ -13,6 +13,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/terminal"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 const (
@@ -35,7 +36,7 @@ var (
 // Runtime is the app's service for running agents.
 //
 // mu guards the launches in live, their fields other than send and sent, and
-// the maps and fields after it. It is never held while waiting on a plugin: a
+// the maps and fields after it up to refreshMu. It is never held while waiting on a plugin: a
 // native request can call back into the MCP tools, which need it. A function that takes mu releases it
 // before it returns; helpers that need it held say so.
 type Runtime struct {
@@ -62,13 +63,17 @@ type Runtime struct {
 	detached bool
 	// deleting holds the sessions Delete is ending, which cannot start.
 	deleting map[string]bool
-	feed     feed
+	// merges holds each worktree session's merge status, by session ID.
+	merges map[string]workspace.Merge
+	// refreshMu serializes refreshMerges.
+	refreshMu sync.Mutex
+	feed      feed
 }
 
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{},
-		deleting: map[string]bool{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{}, startTimeout: startTimeout, requestTimeout: requestTimeout}
+		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{}, startTimeout: startTimeout, requestTimeout: requestTimeout}
 }
 
 func logf(format string, args ...any) {

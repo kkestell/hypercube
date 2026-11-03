@@ -56,8 +56,13 @@ func (r *Runtime) Restore() {
 			}
 		}
 	}
+	workspaces := map[string]bool{}
 	for _, family := range families {
 		r.restoreFamily(family)
+		workspaces[family[0].Workspace] = true
+	}
+	for id := range workspaces {
+		r.refreshMerges(id)
 	}
 }
 
@@ -149,7 +154,7 @@ func (r *Runtime) restoreFamily(family []store.Session) {
 }
 
 func (r *Runtime) attach(s store.Session, root string) (*live, error) {
-	l := &live{id: s.ID, root: root, prefix: s.Launch + ":", position: s.Position, ready: s.Ready, quick: s.Quick, attention: s.Attention, pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{})}
+	l := &live{id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":", position: s.Position, ready: s.Ready, quick: s.Quick, attention: s.Attention, pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{})}
 	err := r.db.Read(func(tx *store.Tx) error {
 		if err := r.loadSeq(tx, s.ID); err != nil {
 			return err

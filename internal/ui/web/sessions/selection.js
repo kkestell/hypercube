@@ -88,17 +88,23 @@ export function selectSession(state, id) {
 }
 
 // openUnsent opens a new session in a workspace, in place of any other unsent
-// session. It has no profile until the composer chooses one.
+// session. It has no profile until the composer chooses one, and runs in the
+// checkout unless the composer chooses a worktree.
 export function openUnsent(state, workspace) {
   const next = discardUnsent(state);
   // Identity survives immutable updates to the sending flag.
-  const unsent = {identity: {}, workspace, profile: null, sending: false};
+  const unsent = {identity: {}, workspace, profile: null, worktree: false, sending: false};
   return attach({...next, unsent, selected: null, pending: null});
 }
 
 // unsentProfile sets the unsent session's profile.
 export const unsentProfile = (state, profile) => state.unsent
   ? {...state, unsent: {...state.unsent, profile: profile.name}}
+  : state;
+
+// unsentWorktree sets whether the unsent session runs in its own worktree.
+export const unsentWorktree = (state, worktree) => state.unsent
+  ? {...state, unsent: {...state.unsent, worktree}}
   : state;
 
 export const unsentSending = (state, sending) => state.unsent ? {...state, unsent: {...state.unsent, sending}} : state;

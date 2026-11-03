@@ -36,7 +36,8 @@ DROP TABLE commands;
 ALTER TABLE sessions DROP COLUMN launch;
 ALTER TABLE sessions DROP COLUMN position;
 ALTER TABLE sessions DROP COLUMN ready;
-ALTER TABLE sessions DROP COLUMN quick;`); err != nil {
+ALTER TABLE sessions DROP COLUMN quick;
+ALTER TABLE sessions DROP COLUMN base;`); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
@@ -56,7 +57,7 @@ ALTER TABLE sessions DROP COLUMN quick;`); err != nil {
 				t.Fatalf("sessions after upgrade = %+v", sessions)
 			}
 			s := sessions[0]
-			if s.ID != "s" || s.Title != "Saved session" || s.Conversation != "conversation" || !s.Running || s.Launch != "" || s.Position != 0 || s.Ready != 0 || s.Quick != 0 {
+			if s.ID != "s" || s.Title != "Saved session" || s.Conversation != "conversation" || !s.Running || s.Launch != "" || s.Position != 0 || s.Ready != 0 || s.Quick != 0 || s.Base != "" {
 				t.Errorf("session after upgrade = %+v", s)
 			}
 			children, err := tx.Children("s")
@@ -81,6 +82,36 @@ ALTER TABLE sessions DROP COLUMN quick;`); err != nil {
 				t.Errorf("messages after upgrade = %+v", messages)
 			}
 			_, err = tx.Commands("s")
+			return err
+		})
+		if closeErr := again.Close(); closeErr != nil {
+			t.Fatal(closeErr)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestOpenUpgradesDatabaseBeforeWorktreeSessions(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	if _, err := db.sql.Exec(`ALTER TABLE sessions DROP COLUMN base`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		again, err := Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = again.Read(func(tx *Tx) error {
+			s, err := tx.Session("s")
+			if err == nil && (s.Base != "" || !s.Running) {
+				t.Errorf("session after upgrade = %+v", s)
+			}
 			return err
 		})
 		if closeErr := again.Close(); closeErr != nil {

@@ -15,8 +15,16 @@ export const addWorkspace = store => post(store, 'workspace', {action: 'new'});
 const confirmDelete = (store, name, detail, accept) =>
   askToConfirm(store, {message: `Are you sure you want to delete '${name}'?`, detail, primary: 'Delete', accept});
 
-export const deleteSession = (store, session) => confirmDelete(store, session.title,
-  session.ended ? "Its chat is deleted." : "Its agent stops, and its chat, children, and their worktrees and branches are deleted.",
+const deleteDetail = session => {
+  if (session.ended) return "Its chat is deleted.";
+  if (session.worktree) {
+    const branch = session.merge ? ` and branch ${session.merge.branch}` : '';
+    return `Its agent stops, and its chat, its worktree ${session.dir}${branch}, and its children and their worktrees and branches are deleted.`;
+  }
+  return "Its agent stops, and its chat, children, and their worktrees and branches are deleted.";
+};
+
+export const deleteSession = (store, session) => confirmDelete(store, session.title, deleteDetail(session),
   () => post(store, 'session', {action: 'delete', id: session.id}));
 
 export const deleteWorkspace = (store, workspace) => confirmDelete(store, workspace.name,
@@ -36,8 +44,9 @@ export function chooseSession(store, id) {
 export async function createSession(store, prompt) {
   store.update(state => unsentSending(state, true));
   const unsent = store.get().unsent;
-  const {workspace, profile} = unsent;
-  const created = await post(store, 'session', {action: 'new', workspace, profile}, JSON.stringify(prompt));
+  const {workspace, profile, worktree} = unsent;
+  const params = {action: 'new', workspace, profile, ...(worktree && {worktree: '1'})};
+  const created = await post(store, 'session', params, JSON.stringify(prompt));
   // A completion must not change another unsent session or restore into it.
   if (store.get().unsent?.identity !== unsent.identity) return true;
   store.update(state => unsentSending(state, false));
@@ -47,6 +56,11 @@ export async function createSession(store, prompt) {
   chooseSession(store, ids.session);
   return true;
 }
+
+// requestMerge asks a worktree session's agent to merge its branch into the
+// checkout's branch.
+export const requestMerge = (store, session, target, path) => post(store, 'session', {action: 'input', id: session.id},
+  JSON.stringify({text: `Commit any remaining work, then merge your branch into ${target} in the checkout at ${path}, resolving any conflicts, and report the result.`, images: []}));
 
 // sendPrompt sends a session's draft. The unsent session's first prompt
 // creates the session. A refused prompt returns to its draft.

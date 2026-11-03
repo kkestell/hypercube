@@ -21,6 +21,7 @@ import (
 type live struct {
 	// Runtime.mu guards these fields.
 	id, root  string
+	workspace string
 	prefix    string // the launch ID and ":", which namespaces item IDs
 	client    *harness.Client
 	ready     int64 // Unix milliseconds of the start reply; zero while starting
@@ -59,7 +60,7 @@ func (r *Runtime) decide(tx *write, s store.Session, root string, quick int) (*l
 	if err = tx.SaveSession(s); err != nil {
 		return nil, err
 	}
-	l := &live{id: s.ID, root: root, prefix: s.Launch + ":", pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{}), quick: quick}
+	l := &live{id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":", pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{}), quick: quick}
 	if err = r.loadSeq(tx.Tx, s.ID); err != nil {
 		return nil, err
 	}
@@ -180,7 +181,16 @@ func (r *Runtime) run(l *live) {
 		}
 	})
 	defer timer.Stop()
-	reason := client.Read(l.position, func(rec harness.Record, next int64) error { return r.apply(l, rec, next) })
+	reason := client.Read(l.position, func(rec harness.Record, next int64) error {
+		if err := r.apply(l, rec, next); err != nil {
+			return err
+		}
+		// A finished turn can have committed or merged work.
+		if rec.Event != nil && rec.Event.State == harness.Idle {
+			r.refreshMerges(l.workspace)
+		}
+		return nil
+	})
 	if errors.Is(reason, hold.ErrClosed) {
 		return
 	}

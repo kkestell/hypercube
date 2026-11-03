@@ -110,7 +110,7 @@ type dataSocket struct {
 // state sent, rereading the view data first when it is stale.
 func (d *dataSocket) sendState() error {
 	if d.stale {
-		workspaces, err := snapshot(d.db)
+		workspaces, err := snapshot(d.db, d.rt.Merges())
 		if err != nil {
 			return err
 		}

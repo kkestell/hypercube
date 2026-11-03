@@ -32,8 +32,13 @@ ALTER TABLE transcript RENAME TO old_transcript;`); err != nil {
 			if err := tx.convertLegacy(); err != nil {
 				return err
 			}
-		} else if err := tx.addLaunchColumns(); err != nil {
-			return err
+		} else {
+			if err := tx.addLaunchColumns(); err != nil {
+				return err
+			}
+			if err := tx.addBaseColumn(); err != nil {
+				return err
+			}
 		}
 		// A session that is not running waits on nobody.
 		return tx.exec(`
@@ -54,6 +59,15 @@ ALTER TABLE sessions ADD COLUMN launch TEXT NOT NULL DEFAULT '';
 ALTER TABLE sessions ADD COLUMN position INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sessions ADD COLUMN ready INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE sessions ADD COLUMN quick INTEGER NOT NULL DEFAULT 0;`)
+}
+
+// addBaseColumn upgrades databases from before worktree sessions.
+func (t *Tx) addBaseColumn() error {
+	hasBase, err := t.exists(`SELECT 1 FROM pragma_table_info('sessions') WHERE name = 'base'`)
+	if err != nil || hasBase {
+		return err
+	}
+	return t.exec(`ALTER TABLE sessions ADD COLUMN base TEXT NOT NULL DEFAULT '';`)
 }
 
 func (t *Tx) exists(query string) (bool, error) {

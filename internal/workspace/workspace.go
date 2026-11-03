@@ -1,5 +1,5 @@
-// Package workspace finds the checkout, manages child session branches and
-// worktrees, and resolves child session directories.
+// Package workspace finds the checkout, manages the branches and worktrees of
+// worktree sessions and child sessions, and measures their merge state.
 package workspace
 
 import (
@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -95,6 +96,23 @@ func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")
 }
 
+// Head returns the commit checked out in dir.
+func Head(dir string) (string, error) {
+	return git(dir, "rev-parse", "HEAD")
+}
+
+// SessionBranch names a top-level worktree session's branch. It differs from
+// the hypercube/<id>/ prefix that the session's children's branches use,
+// because Git cannot keep a branch and branches beneath its name.
+func SessionBranch(id string) string {
+	return "hypercube/session-" + id
+}
+
+// SessionDir is where a top-level worktree session's worktree lives.
+func SessionDir(root, id string) string {
+	return filepath.Join(root, ".hypercube", id)
+}
+
 // ChildBranch names a child session's branch.
 func ChildBranch(parent, name string) string {
 	return "hypercube/" + parent + "/" + name
@@ -106,7 +124,7 @@ func WorktreeDir(root, parent, name string) string {
 	return filepath.Join(root, ".hypercube", parent, name)
 }
 
-// AddWorktree creates the child session's branch from HEAD and checks it out in dir.
+// AddWorktree creates a session's branch from HEAD and checks it out in dir.
 // It adds .hypercube/ to the checkout's local excludes.
 func AddWorktree(root, dir, branch string) error {
 	if err := excludeWorktrees(root); err != nil {
@@ -231,21 +249,62 @@ func Removable(root, dir, branch string) error {
 	if _, err := git(root, "merge-base", "--is-ancestor", head, "HEAD"); err != nil {
 		return fmt.Errorf("worktree %s has commits not merged into HEAD", dir)
 	}
-	dirty, err := isDirty(dir)
+	n, err := uncommitted(dir)
 	if err != nil {
 		return err
 	}
-	if dirty {
+	if n > 0 {
 		return fmt.Errorf("worktree %s has uncommitted changes", dir)
 	}
 	return nil
 }
 
-// isDirty reports whether the checkout in dir has uncommitted changes or
-// untracked files.
-func isDirty(dir string) (bool, error) {
+// uncommitted counts the changed and untracked files in the checkout in dir.
+func uncommitted(dir string) (int, error) {
 	status, err := git(dir, "status", "--porcelain")
-	return status != "", err
+	if err != nil || status == "" {
+		return 0, err
+	}
+	return strings.Count(status, "\n") + 1, nil
+}
+
+// Merge is a worktree branch measured against the branch checked out in its
+// checkout.
+type Merge struct {
+	Branch      string `json:"branch"`
+	Target      string `json:"target"`      // the checkout's branch
+	Unmerged    int    `json:"unmerged"`    // branch commits not in the target
+	Committed   bool   `json:"committed"`   // the branch has moved past its base
+	Uncommitted int    `json:"uncommitted"` // changed and untracked files in the worktree
+	// Error is why the status could not be read; the other fields but Branch
+	// are then empty. MergeStatus leaves it empty.
+	Error string `json:"error,omitempty"`
+}
+
+// MergeStatus measures the branch checked out in the worktree dir, which
+// started at the commit base, against the checkout at root.
+func MergeStatus(root, dir, branch, base string) (Merge, error) {
+	m := Merge{Branch: branch}
+	var err error
+	if m.Target, err = Branch(root); err != nil {
+		return Merge{}, err
+	}
+	count, err := git(root, "rev-list", "--count", "HEAD.."+branch)
+	if err != nil {
+		return Merge{}, err
+	}
+	if m.Unmerged, err = strconv.Atoi(count); err != nil {
+		return Merge{}, err
+	}
+	tip, err := git(root, "rev-parse", branch)
+	if err != nil {
+		return Merge{}, err
+	}
+	m.Committed = tip != base
+	if m.Uncommitted, err = uncommitted(dir); err != nil {
+		return Merge{}, err
+	}
+	return m, nil
 }
 
 // RemoveWorktree removes the worktree and deletes its branch if Removable

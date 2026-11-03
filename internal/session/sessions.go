@@ -41,8 +41,10 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 	return w, err
 }
 
-// Create starts a top-level session with the first prompt.
-func (r *Runtime) Create(workspaceID, profileName, text string, images ...harness.Image) (store.Session, error) {
+// Create starts a top-level session with the first prompt. With worktree,
+// the session runs in its own worktree on a new branch from the checkout's
+// HEAD.
+func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text string, images ...harness.Image) (store.Session, error) {
 	if err := checkPrompt(text, images); err != nil {
 		return store.Session{}, err
 	}
@@ -54,18 +56,32 @@ func (r *Runtime) Create(workspaceID, profileName, text string, images ...harnes
 	if err != nil {
 		return store.Session{}, err
 	}
+	var w store.Workspace
+	if err := r.db.Read(func(tx *store.Tx) error { var err error; w, err = tx.Workspace(workspaceID); return err }); err != nil {
+		return store.Session{}, err
+	}
 	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true,
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle}
-	err = r.save(func(tx *write) error {
-		w, err := tx.Workspace(workspaceID)
-		if err != nil {
-			return err
+		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle, Dir: w.Path}
+	if worktree {
+		if w.NoGit {
+			return store.Session{}, errors.New("a worktree session needs a Git checkout")
 		}
-		s.Dir = w.Path
-		return tx.AddSession(s)
-	})
-	if err != nil {
+		s.Dir, s.Branch = workspace.SessionDir(w.Path, s.ID), workspace.SessionBranch(s.ID)
+		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch); err != nil {
+			return store.Session{}, err
+		}
+		if s.Base, err = workspace.Head(w.Path); err != nil {
+			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
+		}
+	}
+	if err := r.save(func(tx *write) error { return tx.AddSession(s) }); err != nil {
+		if worktree {
+			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
+		}
 		return s, err
+	}
+	if worktree {
+		r.refreshMerges(workspaceID)
 	}
 	if err := r.start(s.ID, true); err != nil {
 		return s, err
@@ -117,7 +133,11 @@ func (r *Runtime) start(id string, fresh bool) error {
 		if err != nil {
 			return err
 		}
-		s.Running, s.AwaitingUser, s.Branch = true, !fresh, branch
+		s.Running, s.AwaitingUser = true, !fresh
+		// A worktree session's branch is fixed when it is created.
+		if s.Base == "" {
+			s.Branch = branch
+		}
 		children, err := tx.Children(id)
 		if err != nil {
 			return err
@@ -206,9 +226,10 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 
 // Delete deletes a session. An ended child loses only its row and chat. A
 // top-level session stops and is deleted with its children and their
-// worktrees and branches. It refuses, changing nothing, if a child has
-// uncommitted changes in its worktree or an unmerged branch. Children without
-// worktrees have their directories left alone.
+// worktrees and branches, and, for a worktree session, its own worktree and
+// branch. It refuses, changing nothing, if one of those worktrees has
+// uncommitted changes or an unmerged branch. Children without worktrees have
+// their directories left alone.
 func (r *Runtime) Delete(id string) error {
 	var s store.Session
 	var root string
@@ -249,8 +270,13 @@ func (r *Runtime) Delete(id string) error {
 	present := !errors.Is(statErr, os.ErrNotExist)
 	var problems []string
 	if present {
+		if s.Base != "" {
+			if err := workspace.Removable(root, s.Dir, s.Branch); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", s.Title, err))
+			}
+		}
 		for _, c := range worktrees {
-			if err := workspace.Removable(root, c.Dir, c.Branch); err != nil {
+			if err := workspace.Removable(s.Dir, c.Dir, c.Branch); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %v", c.Name, err))
 			}
 		}
@@ -274,11 +300,16 @@ func (r *Runtime) Delete(id string) error {
 	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
 	for _, c := range worktrees {
 		if present {
-			if err := workspace.RemoveWorktree(root, c.Dir, c.Branch); err != nil {
+			if err := workspace.RemoveWorktree(s.Dir, c.Dir, c.Branch); err != nil {
 				return fmt.Errorf("%s: %w", c.Name, err)
 			}
 		}
 		if err := r.save(func(tx *write) error { return tx.DeleteSession(c.ID) }); err != nil {
+			return err
+		}
+	}
+	if present && s.Base != "" {
+		if err := workspace.RemoveWorktree(root, s.Dir, s.Branch); err != nil {
 			return err
 		}
 	}

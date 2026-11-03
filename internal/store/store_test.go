@@ -107,6 +107,21 @@ func TestSaveSessionWritesMutableFields(t *testing.T) {
 	})
 }
 
+func TestAddSessionKeepsBase(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		if err := tx.AddSession(Session{ID: "t", Workspace: "w", Base: "abc123"}); err != nil {
+			return err
+		}
+		s, err := tx.Session("t")
+		if err == nil && s.Base != "abc123" {
+			t.Errorf("Base = %q", s.Base)
+		}
+		return err
+	})
+}
+
 func TestDuplicatesFail(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s", "w1")

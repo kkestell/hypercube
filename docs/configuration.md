@@ -83,10 +83,11 @@ receives them as its model and effort; OpenCode uses effort as the model's
 variant. Consult the harness for accepted values. Hypercube's exact schema
 and validation are maintained in [config.go](../internal/harness/config.go).
 
-## Files needed by child worktrees
+## Files needed by worktrees
 
-A new managed worktree starts at the parent's HEAD and initializes
-submodules. Uncommitted changes in the original checkout are absent.
+A new managed worktree, for a worktree session or a child, starts at the HEAD
+of the checkout or worktree it branches from and initializes submodules.
+Uncommitted changes there are absent.
 
 To supply ignored local files, add a `.worktreeinclude` file at the checkout
 root using Git ignore patterns, for example:
@@ -97,6 +98,6 @@ node_modules/
 ```
 
 Only paths also ignored by Git are copied. Copies are independent APFS
-clones, so child sessions can change them without modifying the originals. They are
+clones, so sessions can change them without modifying the originals. They are
 made when the worktree is created, not kept in sync. The implementation is
 in [workspace.go](../internal/workspace/workspace.go).

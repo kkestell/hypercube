@@ -38,7 +38,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
 	// The plugin can exit before the first prompt reaches it, which Create
 	// reports; the session and its parent remain.
-	s, _ := f.rt.Create(f.workspace.ID, "lead", "start")
+	s, _ := f.rt.Create(f.workspace.ID, "lead", false, "start")
 	parent := s
 	ended := func() (n int) {
 		for _, it := range f.transcript(parent.ID) {

@@ -368,3 +368,20 @@ test('active nested sessions have no menu and ended ones offer only Delete Sessi
   act(() => dialogButton(root, 'Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'ended'}]);
 });
+
+test('a worktree session shows a branch icon tinted by its merge state', () => {
+  const merge = extra => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: true, uncommitted: 0, ...extra});
+  const {store, root} = setup([session('a', {worktree: true, merge: merge({unmerged: 1})}), session('b')]);
+  const icon = id => root.querySelector(`[data-session="${id}"] .session-item-branch`);
+  expect(icon('a').getAttribute('name')).toBe('git-branch');
+  expect(icon('a').getAttribute('title')).toBe('hypercube/session-a');
+  expect(icon('a').classList.contains('session-item-branch-modified')).toBe(true);
+  expect(icon('b')).toBeNull();
+  const shown = m => store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {worktree: true, merge: m}), session('b')]}]}));
+  shown(merge({uncommitted: 1}));
+  expect(icon('a').classList.contains('session-item-branch-modified')).toBe(true);
+  shown(merge());
+  expect(icon('a').classList.contains('session-item-branch-merged')).toBe(true);
+  shown(merge({committed: false}));
+  expect(icon('a').className).toBe('session-item-branch');
+});

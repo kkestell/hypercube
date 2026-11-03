@@ -65,8 +65,8 @@ func TestWorktreeRemoval(t *testing.T) {
 	if data, _ := os.ReadFile(exclude); string(data) != "local-only\n/.hypercube/\n" {
 		t.Errorf("exclude = %q", data)
 	}
-	if dirty, err := isDirty(root); err != nil || dirty {
-		t.Errorf("worktree dir makes the checkout dirty: %v, %v", dirty, err)
+	if n, err := uncommitted(root); err != nil || n > 0 {
+		t.Errorf("worktree dir makes the checkout dirty: %v, %v", n, err)
 	}
 
 	run(dir, "commit", "-q", "--allow-empty", "-m", "work")
@@ -187,8 +187,8 @@ func TestWorktreeSetUp(t *testing.T) {
 			t.Errorf("%s was copied into the worktree", name)
 		}
 	}
-	if dirty, err := isDirty(dir); err != nil || dirty {
-		t.Errorf("new worktree is dirty: %v, %v", dirty, err)
+	if n, err := uncommitted(dir); err != nil || n > 0 {
+		t.Errorf("new worktree is dirty: %v, %v", n, err)
 	}
 
 	write(t, filepath.Join(dir, "vendor/sub/lib"), "changed")
@@ -247,5 +247,37 @@ func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
 	}
 	if err := AddWorktree(root, WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")); err == nil {
 		t.Error("AddWorktree ignored an unreadable exclude file")
+	}
+}
+
+func TestMergeStatus(t *testing.T) {
+	root, run := gitRepo(t)
+	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
+	if err := AddWorktree(root, dir, branch); err != nil {
+		t.Fatal(err)
+	}
+	base, err := Head(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		name   string
+		change func()
+		want   Merge
+	}{
+		{"fresh", func() {}, Merge{}},
+		{"committed", func() { run(dir, "commit", "-q", "--allow-empty", "-m", "work") }, Merge{Unmerged: 1, Committed: true}},
+		{"untracked", func() { write(t, filepath.Join(dir, "scratch"), "") }, Merge{Unmerged: 1, Committed: true, Uncommitted: 1}},
+		{"merged", func() { run(root, "merge", "-q", branch) }, Merge{Committed: true, Uncommitted: 1}},
+	} {
+		step.change()
+		step.want.Branch, step.want.Target = branch, "main"
+		got, err := MergeStatus(root, dir, branch, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != step.want {
+			t.Errorf("%s: MergeStatus = %+v, want %+v", step.name, got, step.want)
+		}
 	}
 }

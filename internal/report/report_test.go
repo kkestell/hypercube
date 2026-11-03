@@ -61,7 +61,7 @@ func TestInstructions(t *testing.T) {
 		if strings.Contains(parentText, "q (Fix)") {
 			t.Error("instructions include a stale peer snapshot:", parentText)
 		}
-		if !strings.Contains(parentText, "top-level sessions in this workspace share") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
+		if !strings.Contains(parentText, "share your checkout") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
 			t.Error("instructions changed workspace sharing or child scope")
 		}
 		child.Branch = ""
@@ -71,6 +71,28 @@ func TestInstructions(t *testing.T) {
 		}
 		if !strings.Contains(text, "Handle branches and commits as your parent tells you") {
 			t.Error(text)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWorktreeSessionInstructions(t *testing.T) {
+	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo/.hypercube/p", Branch: "hypercube/session-p", Base: "abc"})
+	if err := db.Read(func(tx *store.Tx) error {
+		p, _ := tx.Session("p")
+		text, err := Instructions(tx, p, nil)
+		if err != nil {
+			return err
+		}
+		for _, want := range []string{"your own worktree on branch hypercube/session-p", "original checkout at /repo", "child sessions' branches merge into your branch", "when the user asks you to merge"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("missing %q: %s", want, text)
+			}
+		}
+		if strings.Contains(text, "share your checkout") || strings.Contains(text, "You work in the original checkout") {
+			t.Error("a worktree session is told it shares the checkout:", text)
 		}
 		return nil
 	}); err != nil {

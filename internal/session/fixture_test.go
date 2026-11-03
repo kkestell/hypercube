@@ -89,7 +89,7 @@ func (f *fixture) git(dir string, args ...string) {
 // "user:start|text:ack".
 func (f *fixture) session() store.Session {
 	f.t.Helper()
-	s, err := f.rt.Create(f.workspace.ID, "lead", "start")
+	s, err := f.rt.Create(f.workspace.ID, "lead", false, "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}

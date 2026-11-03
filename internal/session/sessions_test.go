@@ -3,6 +3,7 @@ package session
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -15,7 +16,7 @@ import (
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	f := newFixture(t)
-	s, err := f.rt.Create(f.workspace.ID, "lead", "\n  Fix the  parser \nand the lexer")
+	s, err := f.rt.Create(f.workspace.ID, "lead", false, "\n  Fix the  parser \nand the lexer")
 	parent := s
 	if err != nil {
 		t.Fatal(err)
@@ -31,7 +32,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
 	})
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
-	s, err = f.rt.Create(f.workspace.ID, "worker", "", png)
+	s, err = f.rt.Create(f.workspace.ID, "worker", false, "", png)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +44,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 func TestCreateRefusesAnUnknownProfile(t *testing.T) {
 	f := newFixture(t)
 	for _, name := range []string{"", "missing"} {
-		if _, err := f.rt.Create(f.workspace.ID, name, "start"); err == nil || !strings.Contains(err.Error(), "no profile named") {
+		if _, err := f.rt.Create(f.workspace.ID, name, false, "start"); err == nil || !strings.Contains(err.Error(), "no profile named") {
 			t.Errorf("Create(%q) error = %v", name, err)
 		}
 	}
@@ -66,7 +67,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 		{" \n", nil},
 		{"", []harness.Image{{MIMEType: "image/png", Data: "bm90IGEgcG5n"}}},
 	} {
-		if _, err := f.rt.Create(f.workspace.ID, "lead", c.text, c.images...); err == nil {
+		if _, err := f.rt.Create(f.workspace.ID, "lead", false, c.text, c.images...); err == nil {
 			t.Errorf("Create accepted %q and %d images", c.text, len(c.images))
 		}
 	}
@@ -353,6 +354,159 @@ func TestStopClearsTheFamilysAttention(t *testing.T) {
 	for _, id := range []string{"s", "c"} {
 		if got := f.storedSession(id); got.Running || got.Attention {
 			t.Errorf("%s after stop: %+v", id, got)
+		}
+	}
+}
+
+// worktreeSession creates a worktree session from "start" and waits for its
+// reply.
+func (f *fixture) worktreeSession() store.Session {
+	f.t.Helper()
+	s, err := f.rt.Create(f.workspace.ID, "lead", true, "start")
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.until("the worktree session idle", func() bool { return f.idle(s.ID) })
+	return s
+}
+
+// merge waits for the session's measured merge status to satisfy check.
+func (f *fixture) merge(id, what string, check func(workspace.Merge) bool) {
+	f.t.Helper()
+	f.until(what, func() bool {
+		m, ok := f.rt.Merges()[id]
+		return ok && check(m)
+	})
+}
+
+func TestWorktreeSession(t *testing.T) {
+	f := newFixture(t)
+	head, err := workspace.Head(f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := f.worktreeSession()
+	dir, branch := workspace.SessionDir(f.root, s.ID), workspace.SessionBranch(s.ID)
+	if got := f.storedSession(s.ID); got.Dir != dir || got.Branch != branch || got.Base != head {
+		t.Fatalf("session = %+v", got)
+	}
+	if b, err := workspace.Branch(dir); err != nil || b != branch {
+		t.Fatalf("worktree branch = %q, %v", b, err)
+	}
+	f.merge(s.ID, "no commits yet", func(m workspace.Merge) bool {
+		return m == workspace.Merge{Branch: branch, Target: "main"}
+	})
+
+	f.git(dir, "commit", "-q", "--allow-empty", "-m", "work")
+	f.input(s.ID, "continue")
+	f.merge(s.ID, "one unmerged commit", func(m workspace.Merge) bool { return m.Unmerged == 1 && m.Committed })
+	if err := f.rt.Delete(s.ID); err == nil || !strings.Contains(err.Error(), "not merged") {
+		t.Fatalf("delete of an unmerged worktree session: %v", err)
+	}
+	if _, err := os.Stat(dir); err != nil || len(f.family(s.ID)) != 1 {
+		t.Fatalf("refused delete changed the session: %v", err)
+	}
+
+	if err := f.rt.Stop(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Start(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.storedSession(s.ID); got.Dir != dir || got.Branch != branch {
+		t.Fatalf("after restart: %+v", got)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("stop removed the worktree: %v", err)
+	}
+
+	f.git(f.root, "merge", "-q", branch)
+	f.until("the restarted session idle", func() bool { return f.idle(s.ID) })
+	f.input(s.ID, "continue")
+	f.merge(s.ID, "merged", func(m workspace.Merge) bool { return m.Unmerged == 0 && m.Committed })
+	if err := f.rt.Delete(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("worktree remains: %v", err)
+	}
+	if b, _ := workspace.Branch(f.root); b != "main" {
+		t.Errorf("checkout branch = %q", b)
+	}
+	if len(f.family(s.ID)) != 0 {
+		t.Error("session remains")
+	}
+	if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
+		t.Error("branch remains")
+	}
+}
+
+func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {
+	f := newFixture(t)
+	outside, err := f.rt.AddWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.rt.Create(outside.ID, "lead", true, "start"); err == nil {
+		t.Fatal("created a worktree session outside Git")
+	}
+	f.read(func(tx *store.Tx) error {
+		sessions, err := tx.Sessions(outside.ID)
+		if err == nil && len(sessions) != 0 {
+			t.Errorf("sessions = %+v", sessions)
+		}
+		return err
+	})
+}
+
+func TestMergeStatusFailureStaysWithItsSession(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	if err := f.rt.Stop(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(s.Dir); err != nil {
+		t.Fatal(err)
+	}
+	other := f.session()
+	f.input(other.ID, "continue")
+	f.merge(s.ID, "the failed status", func(m workspace.Merge) bool { return m.Branch == s.Branch && m.Error != "" })
+	f.until("the other session's turn", func() bool {
+		return f.summary(other.ID) == "user:start|text:ack|user:continue|text:ack" && f.idle(other.ID)
+	})
+}
+
+// A worktree session's child branches from the session's worktree, and both
+// worktrees go once their work is merged.
+func TestWorktreeSessionChild(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	f.git(s.Dir, "commit", "-q", "--allow-empty", "-m", "parent work")
+	head, err := workspace.Head(s.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := f.child(s, "w1", "")
+	if want := workspace.WorktreeDir(s.Dir, s.ID, "w1"); child.Dir != want {
+		t.Fatalf("child dir = %s, want %s", child.Dir, want)
+	}
+	if got, err := workspace.Head(child.Dir); err != nil || got != head {
+		t.Fatalf("child HEAD = %s, %v, want %s", got, err, head)
+	}
+	f.git(child.Dir, "commit", "-q", "--allow-empty", "-m", "child work")
+	f.git(s.Dir, "merge", "-q", child.Branch)
+	f.git(f.root, "merge", "-q", s.Branch)
+	if err := f.rt.Delete(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{child.Dir, s.Dir} {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("%s remains: %v", dir, err)
+		}
+	}
+	for _, branch := range []string{child.Branch, s.Branch} {
+		if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
+			t.Errorf("branch %s remains", branch)
 		}
 	}
 }

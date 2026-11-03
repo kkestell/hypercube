@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -128,7 +129,7 @@ func TestStateStreamsSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	p.until("the new workspace", func() bool { return len(p.state.Workspaces) == 2 })
-	s, err := a.rt.Create(w.ID, "lead", "Fix it")
+	s, err := a.rt.Create(w.ID, "lead", false, "Fix it")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +307,7 @@ func newApp(t *testing.T) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := rt.Create(w.ID, "lead", "start")
+	s, err := rt.Create(w.ID, "lead", false, "start")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -778,6 +779,36 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 	}
 }
 
+func TestNewWorktreeSession(t *testing.T) {
+	a := newApp(t)
+	repo := t.TempDir()
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"}} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	w, err := a.rt.AddWorkspace(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := a.page()
+	a.post("/session?action=new&workspace="+w.ID+"&profile=lead&worktree=1", `{"text":"Fix it"}`, http.StatusOK)
+	p.until("the worktree session with its merge status", func() bool {
+		for _, shown := range p.state.Workspaces {
+			if shown.ID == w.ID {
+				return !shown.NoGit && len(shown.Sessions) == 1 && shown.Sessions[0].Worktree &&
+					shown.Sessions[0].Merge != nil && shown.Sessions[0].Merge.Target == "main"
+			}
+		}
+		return false
+	})
+	for _, shown := range p.state.Workspaces {
+		if shown.ID == a.session.Workspace && (!shown.NoGit || shown.Sessions[0].Worktree) {
+			t.Errorf("checkout workspace = %+v", shown)
+		}
+	}
+}
+
 func TestSnapshotOrder(t *testing.T) {
 	db := open(t)
 	seedSnapshot(t, db, "b", "/src/zeta", "s1")
@@ -801,7 +832,7 @@ func TestSnapshotOrder(t *testing.T) {
 		}
 		return nil
 	})
-	list, err := snapshot(db)
+	list, err := snapshot(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

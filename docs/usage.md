@@ -20,8 +20,9 @@ A parent addresses its children by name, and any other running top-level
 session across all workspaces in the app by ID. A child can message only its
 parent, by ID. Stopped and ended recipients are refused. `list_sessions` lists
 only running addressable recipients, with their workspace paths and parent IDs.
-Top-level sessions in the same workspace share its files, Git index, and branch;
-use child worktrees for independent edits.
+Top-level sessions that run in the workspace's checkout share its files, Git
+index, and branch; use worktree sessions or child worktrees for independent
+edits.
 
 | Command | Use |
 | --- | --- |
@@ -41,7 +42,11 @@ children too, and Hide Stopped Sessions hides them again. Click Add Workspace at
 the sidebar to add a workspace. Click `+` beside a workspace's name to open a
 new session, with the animated hypercube above its composer.
 Its composer chooses the profile until the first prompt is sent,
-and sending that prompt creates the session;
+and sending that prompt creates the session. In a Git workspace, the Worktree
+checkbox beside the profile, off by default, runs the session in its own
+worktree under `.hypercube/` on a new branch from the checkout's HEAD; the
+branch checked out in the checkout is its merge target. Once the session
+exists, the checkbox shows its choice and cannot change;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
 right-clicking a workspace, offers Show/Hide Stopped Sessions and Delete
 Workspace.
@@ -55,6 +60,15 @@ dot shows only its own session: amber means it awaits you, and blue marks a repl
 you have not seen. Each row spins only while its own session works.
 The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
+
+A worktree session's row shows a branch icon before its title, amber while
+the branch has commits not merged into the checkout's branch or uncommitted
+files, and dimmed once its commits are merged. A line above its composer names
+the branch and its state: commits not merged, merged, or no commits yet, with
+any uncommitted files. It updates whenever a session in the workspace
+finishes a turn. While the branch has unmerged commits, Merge asks the
+session's agent to commit any remaining work and merge the branch into the
+checkout's branch, resolving conflicts.
 
 A parent ends children with `end_session`. Ending removes a managed worktree
 and branch only when Git permits it, and stops the child for good. The ended
@@ -143,7 +157,8 @@ session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-A family keeps running until you stop it. Closing the browser leaves agents
+A family keeps running until you stop it. Stopping a worktree session keeps
+its worktree and branch. Closing the browser leaves agents
 running. Quitting Hypercube ends them, and families that were running
 start again at the next launch. Stopping keeps conversations, chats, and queued
 messages. Starting resumes the top-level agent and children that have not
@@ -155,8 +170,10 @@ Repeated quick exits stop automatic relaunches. A harness that fails to start
 stays exited, with the error in its chat. Stop and start the family to retry.
 
 Deleting a top-level session deletes its children and their chats, managed
-worktrees, and branches. Git first checks for uncommitted work and commits not
-merged into the original checkout's HEAD. Existing directories supplied to
+worktrees, and branches, and a worktree session's own worktree and branch. Git
+first checks for uncommitted work and commits not merged: a child's into its
+parent's checkout or worktree, and a worktree session's into the original
+checkout's HEAD. Delete refuses, changing nothing, until they pass. Existing directories supplied to
 children are left alone. Failed cleanup stays recorded so deletion can be retried.
 Ended children can also be deleted individually.
 

@@ -92,18 +92,24 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		}
 		fmt.Fprintf(&b, "- %s (%s): %s, %s%s%s\n", c.Name, c.Title, c.Harness, c.Dir, onBranch(c.Branch), ended)
 	}
-	b.WriteString("\nOther Hypercube top-level sessions in this workspace share your original checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits.\n")
 	w, err := tx.Workspace(s.Workspace)
 	if err != nil {
 		return "", err
+	}
+	if s.Base == "" {
+		b.WriteString("\nOther Hypercube top-level sessions in this workspace that run in the original checkout share your checkout, files, Git index, and branch. Coordinate shared changes with their agents and the user; use child session worktrees for independent edits.\n")
 	}
 	if w.NoGit {
 		b.WriteString(`
 Your working directory is not a Git checkout. Each child session works directly in the directory you give it, usually its own Git checkout. Tell each child session how to handle branches and commits in its directory. Child sessions given the same directory share one checkout. End a child session when its work is done. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
 `)
 	} else {
-		b.WriteString(`
-You work in the original checkout. Unless the user says otherwise, give a child session its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then end the child session when its work is merged. A child session that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and end it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
+		if s.Base == "" {
+			b.WriteString("\nYou work in the original checkout.")
+		} else {
+			fmt.Fprintf(&b, "\nYou work in your own worktree on branch %s, made from the original checkout at %s. Your child sessions' branches merge into your branch. Your work reaches the original checkout's branch when the user asks you to merge it.", s.Branch, w.Path)
+		}
+		b.WriteString(` Unless the user says otherwise, give a child session its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then end the child session when its work is merged. A child session that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and end it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
 `)
 	}
 	writeTeamwork(&b, profiles)

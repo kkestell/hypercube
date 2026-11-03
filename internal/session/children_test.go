@@ -160,7 +160,7 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	top, err := f.rt.Create(outside.ID, "lead", "start")
+	top, err := f.rt.Create(outside.ID, "lead", false, "start")
 	if err != nil {
 		t.Fatal(err)
 	}

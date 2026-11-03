@@ -1,6 +1,7 @@
 // The box below a transcript for the user's next message: its text, attached
-// images, attach and send buttons, and its profile selector and usage. The
-// profile is locked after the first prompt. The text takes focus on mount.
+// images, attach and send buttons, and its profile selector, worktree choice,
+// and usage. The profile and worktree choice are locked after the first
+// prompt. The text takes focus on mount.
 import {useEffect, useRef} from 'preact/hooks';
 import {imageSrc, imageTypes} from '../images.js';
 import {sendPrompt} from '../sessions/session-actions.js';
@@ -10,6 +11,7 @@ import {useStore} from '../store.js';
 import {attachImages, canSend, draftOf, removeImage, typed} from './drafts.js';
 import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
+import {WorktreeCheckbox} from './worktree-checkbox.jsx';
 import './composer.css';
 
 export function Composer({session}) {
@@ -55,6 +57,7 @@ export function Composer({session}) {
         <div class="composer-details">
           <AgentStatus session={session} />
           <ProfileSelect session={session} />
+          <WorktreeCheckbox session={session} />
           <Usage usage={session.usage} />
         </div>
         <vscode-button icon-only secondary icon="send" title="Send" aria-label="Send" disabled={!canSend(state, session)} onClick={send} />

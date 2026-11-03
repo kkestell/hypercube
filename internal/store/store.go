@@ -63,6 +63,9 @@ type Session struct {
 	Position     int64
 	Ready        int64
 	Quick        int
+	// Base is the commit a top-level worktree session's branch started from.
+	// It is empty for every other session.
+	Base string
 }
 
 type Message struct {
@@ -115,6 +118,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
+  base TEXT NOT NULL DEFAULT '',
   -- Unused since idle stopping was removed; retained for existing databases.
   last_active INTEGER NOT NULL, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
@@ -230,12 +234,12 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active, launch, position, ready, quick)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
 		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick)
+		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base)
 }
 
 // SaveSession writes every mutable field.
@@ -250,14 +254,14 @@ func (t *Tx) SaveSession(s Session) error {
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick`
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
 		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base)
 	return s, err
 }
 

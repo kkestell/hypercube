@@ -97,7 +97,7 @@ func TestSendMessageAcrossWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	peer, err := f.rt.Create(outside.ID, "lead", "start")
+	peer, err := f.rt.Create(outside.ID, "lead", false, "start")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -81,6 +81,19 @@
   --title-fade-gap: 6px;
 }
 
+.session-item-branch {
+  flex-shrink: 0;
+  margin-right: var(--size-space);
+}
+
+.session-item-branch-modified {
+  color: var(--vscode-list-warningForeground);
+}
+
+.session-item-branch-merged {
+  color: var(--vscode-disabledForeground);
+}
+
 .session-item-text {
   overflow: hidden;
   white-space: nowrap;

@@ -123,3 +123,58 @@ test('the profile selector stays in place and disables while the first message s
   act(() => select.dispatchEvent(new Event('change')));
   expect(s.get().unsent.profile).toBe('claude');
 });
+
+const worktreeStore = (noGit, sessions = []) => {
+  const s = createStore({workspaces: [{id: 'w', path: '/repo', noGit, sessions}], selected: null, pending: null, drafts: {}, unsent: null, session: null});
+  s.update(state => openUnsent(state, 'w'));
+  return s;
+};
+const worktreeBox = root => root.querySelector('vscode-checkbox');
+
+test('the unsent composer offers an unchecked Worktree checkbox only in a Git workspace', () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
+  let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
+  expect(worktreeBox(root).getAttribute('label')).toBe('Worktree');
+  expect(worktreeBox(root).hasAttribute('checked')).toBe(false);
+  expect(worktreeBox(root).hasAttribute('disabled')).toBe(false);
+  unmountAll();
+  root = mount(worktreeStore(true), <Composer session={unsentSession} />);
+  expect(worktreeBox(root)).toBeNull();
+});
+
+test('checking Worktree creates the session in a worktree and locks while sending', async () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
+  const s = worktreeStore(false);
+  const root = mount(s, <Composer session={unsentSession} />);
+  await settle();
+  const box = worktreeBox(root);
+  box.checked = true;
+  act(() => box.dispatchEvent(new Event('change')));
+  expect(s.get().unsent.worktree).toBe(true);
+  let release;
+  fetches.mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
+  const field = root.querySelector('textarea');
+  field.value = 'hello';
+  field.dispatchEvent(new Event('input'));
+  act(() => root.querySelector('[title="Send"]').click());
+  expect(worktreeBox(root).hasAttribute('disabled')).toBe(true);
+  box.checked = false;
+  act(() => box.dispatchEvent(new Event('change')));
+  expect(s.get().unsent.worktree).toBe(true);
+  const params = new URL(fetches.mock.calls.at(-1)[0], 'http://x/').searchParams;
+  expect(params.get('action')).toBe('new');
+  expect(params.get('worktree')).toBe('1');
+  release();
+  await settle();
+});
+
+test('an existing top-level session shows its worktree choice disabled, and a child shows none', () => {
+  const top = {...session, worktree: true, children: [{id: 'c', parent: 'a', activity: 'idle'}]};
+  const s = worktreeStore(false, [top]);
+  let root = mount(s, <Composer session={top} />);
+  expect(worktreeBox(root).hasAttribute('checked')).toBe(true);
+  expect(worktreeBox(root).hasAttribute('disabled')).toBe(true);
+  unmountAll();
+  root = mount(s, <Composer session={top.children[0]} />);
+  expect(worktreeBox(root)).toBeNull();
+});

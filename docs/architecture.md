@@ -45,16 +45,17 @@ Browser tab. The page reports where the tab's body is, and the window places
 the session's browser over it. Browsers last until their agents close them or the app quits, and share
 one website data store, so logins persist across sessions and restarts.
 
-Child worktrees live inside the checkout so harnesses can inherit its folder
-trust. Parent session IDs qualify their paths and branches to avoid collisions.
+Worktrees, for worktree sessions and their children alike, live inside the
+checkout so harnesses can inherit its folder trust. Session IDs qualify their
+paths and branches to avoid collisions.
 
 Agents are trusted local processes with the user's credentials. A top-level
 session can message its own children by name and any other running top-level
 session across all workspaces in the app by ID; a child can message only its
 parent, by ID. Stopped and ended recipients are refused. `list_sessions` lists
 only running addressable recipients, with workspace paths and parent IDs.
-Top-level sessions in the same workspace share its checkout, files, Git index,
-and branch. Messaging scope does not isolate agents from the filesystem or
+Top-level sessions that run in the workspace's checkout share its files, Git
+index, and branch. Messaging scope does not isolate agents from the filesystem or
 shell tools.
 
 ## Persistence and concurrency
