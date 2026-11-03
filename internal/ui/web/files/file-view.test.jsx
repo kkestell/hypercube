@@ -1,8 +1,13 @@
-import {expect, test} from 'bun:test';
+import {afterEach, expect, spyOn, test} from 'bun:test';
 import {render} from 'preact';
+import {act} from 'preact/test-utils';
+import {mount, unmountAll} from '../../test-render.jsx';
+import {setSource} from './files.js';
 import {emptySession} from '../sessions/selection.js';
 import {createStore, StoreContext} from '../store.js';
 import {FileView} from './file-view.jsx';
+
+afterEach(unmountAll);
 
 test('Markdown file previews render images relative to the file and session', () => {
   const path = 'docs #1/guide.md';
@@ -41,4 +46,52 @@ test('Markdown file previews render images relative to the file and session', ()
   } finally {
     render(null, root);
   }
+});
+
+test('source highlights reveal once after text arrives, across refreshes and remounts', () => {
+  const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+  try {
+    const session = emptySession('s');
+    session.files.open['a.md'] = {message: null, text: null, source: true, lines: [{start: 1, end: 2}, {start: 3, end: 3}], reveal: true};
+    session.scroll['file:a.md'] = {top: 100, left: 0, following: false};
+    const store = createStore({session, workspaces: []});
+    const root = mount(store, <FileView id="file:a.md" path="a.md" />);
+    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
+    expect(scroll).not.toHaveBeenCalled();
+    const text = value => store.update(state => ({...state, session: {...state.session, files: {...state.session.files, open: {
+      'a.md': {...state.session.files.open['a.md'], text: value},
+    }}}}));
+    act(() => text('# Title\nline\nlast'));
+    expect(root.querySelector('.markdown-preview')).toBeNull();
+    const highlights = root.querySelectorAll('.file-view-highlight');
+    expect(highlights).toHaveLength(2);
+    expect(highlights[0].style.getPropertyValue('--start')).toBe('1');
+    expect(highlights[0].style.getPropertyValue('--count')).toBe('2');
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0] === highlights[0]).toBe(true);
+    expect(scroll.mock.calls[0][0]).toEqual({block: 'center'});
+    expect(store.get().session.files.open['a.md'].reveal).toBe(false);
+    act(() => text('# Changed'));
+    act(() => render(null, root));
+    mount(store, <FileView id="file:a.md" path="a.md" />);
+    expect(scroll).toHaveBeenCalledTimes(1);
+  } finally { scroll.mockRestore(); }
+});
+
+test('reveal waits for a rendered source highlight, including an empty file', () => {
+  const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+  try {
+    const session = emptySession('s');
+    session.files.open['a.md'] = {message: null, text: '', source: false, lines: [{start: 1, end: 1}], reveal: true};
+    const store = createStore({session, workspaces: []});
+    const root = mount(store, <FileView id="file:a.md" path="a.md" />);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(store.get().session.files.open['a.md'].reveal).toBe(true);
+    act(() => store.update(state => setSource(state, 'a.md', true)));
+    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(1);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(store.get().session.files.open['a.md'].reveal).toBe(false);
+    act(() => store.update(state => setSource(state, 'a.md', false)));
+    expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
+  } finally { scroll.mockRestore(); }
 });

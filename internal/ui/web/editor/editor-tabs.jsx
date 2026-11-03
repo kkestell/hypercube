@@ -5,7 +5,7 @@
 // keeps it open. A preview tab's label is italic and a deleted file's is
 // struck through.
 import {useRef} from 'preact/hooks';
-import {LayoutToggles} from '../app/layout-toggles.jsx';
+import {setSource} from '../files/files.js';
 import {FileIcon} from '../files/file-icon.jsx';
 import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
@@ -18,10 +18,11 @@ const keyMoves = {
   End: (index, count) => count - 1,
 };
 
-// toggles adds the layout toggles after the tabs.
-export function EditorTabs({pane, entries, toggles}) {
+export function EditorTabs({pane, entries}) {
   const [, store] = useStore();
   const strip = useRef(null);
+  const active = entries.find(entry => entry.id === pane.active);
+  const modeLabel = active?.source ? 'Show Preview' : 'Show Source';
 
   // The store redraws the page after a handler returns, so the focus moves
   // once the new tabs are drawn. A closed pane's strip is gone; the focus
@@ -86,7 +87,16 @@ export function EditorTabs({pane, entries, toggles}) {
           );
         })}
       </div>
-      {toggles && <LayoutToggles />}
+      {typeof active?.source === 'boolean' && (
+        <vscode-toolbar-container class="editor-tabs-actions">
+          <vscode-toolbar-button
+            icon={active.source ? 'open-preview' : 'go-to-file'}
+            label={modeLabel}
+            title={modeLabel}
+            onClick={() => store.update(state => setSource(state, active.path, !active.source))}
+          />
+        </vscode-toolbar-container>
+      )}
     </div>
   );
 }

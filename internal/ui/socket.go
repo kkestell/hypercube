@@ -31,6 +31,12 @@ type transcriptMessage struct {
 	Items   []session.TranscriptItem `json:"items"`
 }
 
+type openMessage struct {
+	Type    string `json:"type"`
+	Session string `json:"session"`
+	session.FileOpen
+}
+
 // state sends view data and the selected session's transcript changes.
 func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	conn, err := websocket.Accept(w, r, nil)
@@ -136,7 +142,10 @@ func (d *dataSocket) selectSession(id string) error {
 	if err != nil {
 		return err
 	}
-	return d.sendTranscript(true, items)
+	if err := d.sendTranscript(true, items); err != nil {
+		return err
+	}
+	return d.sendOpens()
 }
 
 // add records a change for the next batch.
@@ -166,6 +175,19 @@ func (d *dataSocket) flush() error {
 		}
 	}
 	clear(d.batch)
+	return d.sendOpens()
+}
+
+func (d *dataSocket) sendOpens() error {
+	for _, open := range d.rt.TakeFileOpens(d.selected) {
+		data, err := json.Marshal(openMessage{"open", d.selected, open})
+		if err != nil {
+			return err
+		}
+		if err := d.conn.Write(d.ctx, websocket.MessageText, data); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -105,12 +105,15 @@ including the chat's, to another pane's tab bar to move it there, or to a pane's
 left, right, top, or bottom edge to split it. Drag dividers to resize panes and
 the sidebar.
 
-The buttons at the right of the top-right tab bar show or hide the sidebar, the
-terminal panel, and the right panel. The right panel's icon
+The buttons at the right of the header at the top of the window show or hide
+the sidebar, the terminal panel, and the right panel. The right panel's icon
 tabs select Files and Changes; Changes is blank for now. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
-the tab area, and double-click it to keep its tab open.
+the tab area, and double-click it to keep its tab open. A Markdown file opens in
+its preview; the button at the right of its tab bar switches to its source and
+back. An agent can use `open_file` to open a file from its directory and
+highlight lines; the tab opens when you view its session.
 
 In the Hypercube window, each session's agent has a browser, which it loads
 pages in and runs scripts on with its `browser_navigate` and `browser_eval`

@@ -49,13 +49,21 @@ function fileRead(state, sessionId, path, result) {
       next = {...file, message: result.error};
     } else if (result.message) {
       if (result.message === file.message && !file.deleted) return files;
-      next = {text: null, message: result.message, etag: null, deleted: false};
+      next = {...file, text: null, message: result.message, etag: null, deleted: false};
     } else {
-      next = {text: result.text, message: null, etag: result.etag, deleted: false};
+      next = {...file, text: result.text, message: null, etag: result.etag, deleted: false};
     }
     return {...files, open: {...files.open, [path]: next}};
   });
 }
+
+export const setSource = (state, path, source) => withFiles(state, state.session.id, files => ({
+  ...files, open: {...files.open, [path]: {...files.open[path], source}},
+}));
+
+export const revealed = (state, sessionId, path) => withFiles(state, sessionId, files => ({
+  ...files, open: {...files.open, [path]: {...files.open[path], reveal: false}},
+}));
 
 // loadFolder lists a folder. An unreadable folder shows no children.
 export async function loadFolder(store, sessionId, dir) {

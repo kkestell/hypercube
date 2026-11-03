@@ -4,6 +4,7 @@
 // As in VS Code, a file
 // opened with one click shows in the preview tab, which the next file opened
 // replaces until it is kept open.
+import {hasPreview} from '../files/language.js';
 import {readOpenFile} from '../files/files.js';
 import {shownSession} from '../sessions/selection.js';
 import * as layout from './tab-layout.js';
@@ -42,6 +43,7 @@ export function tabEntry(state, id) {
   const deleted = !!session.files.open[path]?.deleted;
   return {
     id, path, deleted,
+    source: hasPreview(path) ? session.files.open[path]?.source ?? false : null,
     label: path.slice(path.lastIndexOf('/') + 1),
     title: path + (deleted ? ' (deleted)' : ''),
     preview: session.tabs.preview === id,
@@ -62,7 +64,7 @@ export function closeTab(state, id) {
   });
 }
 
-const unread = {text: null, message: null, etag: null, deleted: false};
+const unread = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
 
 function fileTabOpened(state, path) {
   const id = fileTabId(path);
@@ -86,6 +88,38 @@ export function openFileTab(store, path) {
   if (!store.get().session) return;
   store.update(state => fileTabOpened(state, path));
   readOpenFile(store, path);
+}
+
+// openRequestedFile keeps and selects an agent's file. A late socket message
+// waits by session until the page attaches to it again.
+export function openRequestedFile(store, request) {
+  const {session: sessionId, path, lines} = request;
+  if (store.get().session?.id !== sessionId) {
+    store.update(state => ({...state, fileOpens: {
+      ...state.fileOpens, [sessionId]: [...(state.fileOpens?.[sessionId] ?? []), request],
+    }}));
+    return;
+  }
+  store.update(state => withSession(state, session => {
+    const id = fileTabId(path);
+    const tabs = layout.openBeside(session.tabs, id, agentTabId);
+    const file = {...(session.files.open[path] ?? unread), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
+    return {...session, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...session.files, open: {...session.files.open, [path]: file}}};
+  }));
+  readOpenFile(store, path);
+}
+
+// openPendingFiles runs when the attached session changes.
+export function openPendingFiles(store) {
+  const id = store.get().session?.id;
+  const requests = store.get().fileOpens?.[id];
+  if (!requests) return;
+  store.update(state => {
+    const fileOpens = {...state.fileOpens};
+    delete fileOpens[id];
+    return {...state, fileOpens};
+  });
+  for (const request of requests) openRequestedFile(store, request);
 }
 
 // openBrowserTab opens the browser's tab beside the agent, as a file opens,

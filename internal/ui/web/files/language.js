@@ -17,6 +17,8 @@ const extensions = {
   diff: 'diff', patch: 'diff', ini: 'ini',
 };
 
+export const hasPreview = name => language(name) === 'markdown';
+
 export function language(name) {
   const lower = name.toLowerCase();
   if (names[lower]) return names[lower];

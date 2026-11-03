@@ -78,3 +78,29 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
     fetches.mockRestore();
   }
 });
+
+test('the window header holds the three layout toggles and they hide and show their regions', () => {
+  const store = createStore({
+    workspaces: [], requests: [], selected: null, pending: null, unsent: null,
+    visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+    workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
+  });
+  const root = mount(store, <App store={store} />);
+  const buttons = [...root.querySelectorAll('header.app-header vscode-toolbar-button')];
+  expect(buttons.map(button => button.getAttribute('label'))).toEqual([
+    'Toggle Primary Side Bar', 'Toggle Panel', 'Toggle Secondary Side Bar',
+  ]);
+  expect(root.querySelectorAll('.editor-tabs-bar .layout-toggles')).toHaveLength(0);
+  for (const [index, region, selector] of [
+    [0, 'sidebar', '.sidebar'], [1, 'panel', '.terminal-panel'], [2, 'rightPanel', '.right-panel'],
+  ]) {
+    const before = store.get().workbench[region];
+    const split = root.querySelector(selector).closest('vscode-split-layout');
+    act(() => buttons[index].dispatchEvent(new Event('change')));
+    expect(store.get().workbench[region]).toBe(!before);
+    expect(split.classList.contains('split-collapsed')).toBe(before);
+    act(() => buttons[index].dispatchEvent(new Event('change')));
+    expect(store.get().workbench[region]).toBe(before);
+    expect(split.classList.contains('split-collapsed')).toBe(!before);
+  }
+});
