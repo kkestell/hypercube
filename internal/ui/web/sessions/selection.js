@@ -32,7 +32,7 @@ export function shownSession(state) {
 }
 
 export function pageTitle(state) {
-  const waiting = allSessions(state).filter(s => s.running && s.attention).length;
+  const waiting = allSessions(state).filter(s => s.attention).length;
   const session = currentSession(state);
   const workspace = state.unsent ? state.workspaces.find(w => w.id === state.unsent.workspace) : sessionOf(state, session?.id)?.workspace;
   return (waiting ? `(${waiting}) ` : '') + [session?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');

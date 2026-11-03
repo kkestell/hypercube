@@ -338,3 +338,21 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 		t.Fatal("an agent of the deleted session is running")
 	}
 }
+
+func TestStopClearsTheFamilysAttention(t *testing.T) {
+	f := newFixture(t)
+	f.seed(store.Session{ID: "c", Name: "c"})
+	for _, id := range []string{"s", "c"} {
+		if err := f.rt.update(id, func(s *store.Session) { s.Running, s.Attention = id == "s", true }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := f.rt.Stop("s"); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"s", "c"} {
+		if got := f.storedSession(id); got.Running || got.Attention {
+			t.Errorf("%s after stop: %+v", id, got)
+		}
+	}
+}

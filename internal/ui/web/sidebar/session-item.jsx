@@ -10,7 +10,7 @@ import {useStore} from '../store.js';
 import './session-item.css';
 
 const dotOf = (session, selected) => {
-  if (session.running && session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
+  if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (!session.parent && [session, ...session.children].some(s => s.activity === 'busy')) {
     return <vscode-icon class="session-item-busy" name="loading" spin role="img" title="Working" />;

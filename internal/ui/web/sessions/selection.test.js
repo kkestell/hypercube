@@ -86,7 +86,7 @@ test('a child is deselected when its family stops', () => {
 test('pageTitle counts waiting sessions and names the session and workspace', () => {
   const state = receivedWorkspaces(initial('a'), workspaces(
     session('a', true, {attention: true, children: [session('x', true, {parent: 'a', attention: true})]}),
-    session('b', false, {attention: true}),
+    session('b', false),
   ));
   expect(pageTitle(state)).toBe('(2) Title a — repo — Hypercube');
   expect(pageTitle(initial())).toBe('Hypercube');

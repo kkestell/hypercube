@@ -186,7 +186,19 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 			return errors.New("a child session starts and stops with its parent")
 		}
 		s.Running = false
-		return tx.SaveSession(s)
+		children, err := tx.Children(id)
+		if err != nil {
+			return err
+		}
+		// A stopped session waits on nobody, so its family drops the flag now
+		// instead of when each agent exits.
+		for _, c := range append(children, s) {
+			c.Attention = false
+			if err := tx.SaveSession(c); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return nil, err

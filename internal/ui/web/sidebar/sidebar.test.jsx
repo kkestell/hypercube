@@ -197,7 +197,7 @@ test('clicking a parent selects it and keeps its children visible', () => {
 test('started children stay visible and stopped children are hidden by default', () => {
   const nested = (id, extra) => session(id, {parent: 'a', ...extra});
   const {root} = setup([session('a', {children: [
-    nested('one', {unseen: true}), nested('asks', {attention: true}), nested('stopped', {running: false, attention: true}),
+    nested('one', {unseen: true}), nested('asks', {attention: true}), nested('stopped', {running: false}),
   ]})]);
   expect(sessionRows(root)).toEqual(['a', 'one', 'asks']);
 });

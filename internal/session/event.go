@@ -107,9 +107,10 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			r.feed.publish(Change{Session: l.id, Seq: p.seq, Item: it})
 		}
 	}
+	// A stopping launch waits on nobody, whatever it still has pending.
 	attention := false
 	for _, p := range l.pending {
-		attention = attention || p.item.Kind == harness.KindAttention
+		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
 	if len(completed) == 0 && len(opened) == 0 && len(failures) == 0 && !changed {
