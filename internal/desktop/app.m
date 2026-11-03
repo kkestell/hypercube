@@ -103,6 +103,7 @@ void hypercubeRun(const char *url, const void *icon, size_t iconLen) {
         app.mainMenu = mainMenu();
         application.window = [[HCWindow alloc] initWithURL:[NSURL URLWithString:@(url)]];
         HCBrowsersStart(application.window);
+        HCNotificationsStart(application.window);
         application.statusItem = statusItem(icon, iconLen);
         [app run];
     }

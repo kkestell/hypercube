@@ -34,7 +34,11 @@ wait in the app until a page views the agent's session and arrive over that
 page's data socket.
 
 With `--menu`, the app process also runs the macOS application: the menu bar
-icon and the Hypercube window, a web view of the browser view. Each session
+icon and the Hypercube window, a web view of the browser view. It runs as
+`Hypercube.app`, whose `Contents/MacOS` holds `hypercube` and the harness
+plugins, because macOS delivers notifications only to a signed application
+bundle. `Runtime.WatchAlerts` reports each new request and finished turn, and
+the window turns it into a notification unless it has keyboard focus. Each session
 can have a browser, a second web view in that window, which the agent drives
 with `browser_navigate` and `browser_eval` and the user sees in the session's
 Browser tab. The page reports where the tab's body is, and the window places

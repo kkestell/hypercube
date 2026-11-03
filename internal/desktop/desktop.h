@@ -18,3 +18,6 @@ void HCRunOpenPanel(WKOpenPanelParameters *parameters, NSWindow *window, void (^
 
 // HCBrowsersStart gives the window's page the sessions' browsers.
 void HCBrowsersStart(HCWindow *window);
+
+// HCNotificationsStart shows the window's alerts as macOS notifications.
+void HCNotificationsStart(HCWindow *window);

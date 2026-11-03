@@ -11,10 +11,12 @@ Use the Go version required by [go.mod](../go.mod). Build and install with:
 make install
 ```
 
-`hypercube` and its harness plugins go to `~/.local/bin`; add that directory
-to PATH. Set `BINDIR=<dir>` to install elsewhere. For a local build without
-installing, run `make` and use `bin/hypercube`, which uses the plugins beside
-it. Build and validation targets are defined in the [Makefile](../Makefile).
+`Hypercube.app` goes to `~/Applications`, with `hypercube` and its harness
+plugins linked into `~/.local/bin`; add that directory to PATH. Set
+`APPDIR=<dir>` or `BINDIR=<dir>` to install elsewhere. For a local build
+without installing, run `make`, which builds `bin/Hypercube.app` and links
+`hypercube` and the plugins into `bin/`; use `bin/hypercube`. Build and
+validation targets are defined in the [Makefile](../Makefile).
 See [Usage](usage.md) to start working.
 
 To start Hypercube at login, run:
@@ -23,7 +25,8 @@ To start Hypercube at login, run:
 make install-service
 ```
 
-Hypercube starts at login with a menu bar icon. **Show Hypercube** opens the
+Hypercube starts at login with a menu bar icon. Its first start asks for
+permission to show notifications. **Show Hypercube** opens the
 Hypercube window, which shows the browser view; closing the window leaves
 Hypercube running in the menu bar. It runs as a launchd user agent through your interactive login
 shell, so it and the agents it launches get your login environment. It starts
@@ -54,8 +57,8 @@ messages migrate automatically.
 
 ## Development
 
-`make dev` builds this checkout and runs it with its own menu bar icon and
-Hypercube window, serving its browser view at http://localhost:4281/, with
+`make dev` builds this checkout as Hypercube Dev and runs it with its own menu
+bar icon and Hypercube window, serving its browser view at http://localhost:4281/, with
 isolated state, configuration, and a scratch repository under
 `~/projects/hypercube-dev/repo`. It adds the workspace and
 opens a stopped preview session, with sample source files ready in Files,

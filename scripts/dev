@@ -13,7 +13,10 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
-BIN=$ROOT/bin/hypercube
+# The dev session runs as its own application, so its notifications and their
+# clicks never reach the installed Hypercube.
+APP=$ROOT/bin/HypercubeDev.app
+BIN=$APP/Contents/MacOS/hypercube
 PORT=${HYPERCUBE_DEV_PORT:-4281}
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
@@ -135,7 +138,8 @@ JSON
 		} | LC_ALL=C sort | cksum
 	}
 	build() {
-		make ui && make build
+		make ui && make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
+			/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
 	}
 	seed() {
 		"${DEV_ENV[@]}" go run ./scripts/dev-seed "$REPO"

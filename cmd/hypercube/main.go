@@ -79,9 +79,9 @@ type app struct {
 
 // startApp serves HTTP on the listener, then restores the sessions the user
 // left running. Harness plugins are in plugins, or beside the executable when
-// it is empty. browser drives the sessions' browsers, and is nil without the
-// window.
-func startApp(listener net.Listener, plugins string, browser mcp.Browser) (*app, error) {
+// it is empty. browser drives the sessions' browsers and notify shows alerts;
+// both are nil without the window.
+func startApp(listener net.Listener, plugins string, browser mcp.Browser, notify func(session.Alert)) (*app, error) {
 	db, err := store.Open()
 	if err != nil {
 		return nil, err
@@ -94,6 +94,13 @@ func startApp(listener net.Listener, plugins string, browser mcp.Browser) (*app,
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
 	go rt.StopIdleSessions(ctx)
+	if notify != nil {
+		go func() {
+			if err := rt.WatchAlerts(ctx, notify); err != nil {
+				fmt.Fprintln(os.Stderr, "hypercube: watching alerts:", err)
+			}
+		}()
+	}
 	return a, nil
 }
 
@@ -131,10 +138,11 @@ func serveUI(args []string) error {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	var browser mcp.Browser
+	var notify func(session.Alert)
 	if withMenu {
-		browser = desktop.Browser{}
+		browser, notify = desktop.Browser{}, desktop.Notify
 	}
-	a, err := startApp(listener, "", browser)
+	a, err := startApp(listener, "", browser, notify)
 	if err != nil {
 		return err
 	}

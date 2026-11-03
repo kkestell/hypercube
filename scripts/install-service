@@ -2,10 +2,11 @@
 # Run the browser view as a launchd user agent. The agent starts the view
 # through the user's interactive login shell, so the view and the agents it
 # launches get the user's login environment. Run by `make install-service`
-# after installing the build; SERVICE is the agent's label.
+# after installing the build; SERVICE is the agent's label. The agent runs
+# the executable inside Hypercube.app, which macOS notifications require.
 set -eu
 
-BINDIR=${BINDIR:-$HOME/.local/bin}
+APPDIR=${APPDIR:-$HOME/Applications}
 : "${SERVICE:?SERVICE is required}"
 : "${PORT:?PORT is required}"
 PLIST=$HOME/Library/LaunchAgents/$SERVICE.plist
@@ -24,7 +25,7 @@ cat >"$PLIST" <<XML
 	<array>
 		<string>${SHELL:-/bin/zsh}</string>
 		<string>-lic</string>
-		<string>exec "$BINDIR/hypercube" ui $PORT --menu</string>
+		<string>exec "$APPDIR/Hypercube.app/Contents/MacOS/hypercube" ui $PORT --menu</string>
 	</array>
 	<key>RunAtLoad</key>
 	<true/>

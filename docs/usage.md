@@ -66,6 +66,11 @@ Closing a reply card marks it seen; closing a request card only hides it.
 Reply cards close after 15 seconds or when the agent works again. Request
 cards stay until answered or closed.
 
+While the Hypercube window lacks keyboard focus, whether another app is active
+or the window is hidden or minimized, macOS shows a notification for each new
+request and reply instead. Clicking one brings the window forward and opens its
+session. A window with focus shows only the cards.
+
 The center is one tabbed area holding a session's chat and its open files. The
 chat's tab carries the session's title and cannot be closed. A file opens
 beside the chat. A child's requests also appear in its parent's transcript, where you can answer them;

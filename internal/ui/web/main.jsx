@@ -1,5 +1,5 @@
 // Starts the page: the store, the data socket, file polling, the browsers'
-// reports, and App.
+// reports, the window's notification clicks, and App.
 import './base.css';
 import './elements.js';
 import {render} from 'preact';
@@ -8,6 +8,7 @@ import {setVisible} from './app/workbench.js';
 import {startBrowsers} from './browser/browser.js';
 import {startDataSocket} from './data-socket.js';
 import {startFilePolling} from './files/file-polling.js';
+import {startNativeNotifications} from './notifications/notifications.js';
 import {createStore} from './store.js';
 
 const store = createStore({
@@ -32,4 +33,5 @@ document.addEventListener('visibilitychange', () => store.update(state => setVis
 startDataSocket(store);
 startFilePolling(store);
 startBrowsers(store);
+startNativeNotifications(store);
 render(<App store={store} />, document.getElementById('app'));

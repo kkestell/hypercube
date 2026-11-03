@@ -6,7 +6,7 @@ package desktop
 
 /*
 #cgo CFLAGS: -fobjc-arc
-#cgo LDFLAGS: -framework Cocoa -framework WebKit
+#cgo LDFLAGS: -framework Cocoa -framework UserNotifications -framework WebKit
 #include <stdlib.h>
 void hypercubeRun(const char *url, const void *icon, size_t iconLen);
 */

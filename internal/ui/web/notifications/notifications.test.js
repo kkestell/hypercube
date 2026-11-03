@@ -1,6 +1,6 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {createStore} from '../store.js';
-import {cards, closeCard, dismiss, receivedRequests} from './notifications.js';
+import {cards, closeCard, dismiss, receivedRequests, startNativeNotifications} from './notifications.js';
 
 let fetchMock;
 afterEach(() => fetchMock?.mockRestore());
@@ -56,4 +56,12 @@ test('closing a reply card marks it seen; closing a request card does not', () =
   const url = new URL(fetchMock.mock.calls[0][0], 'http://x/');
   expect([url.pathname, url.searchParams.get('action'), url.searchParams.get('id')]).toEqual(['/session', 'seen', 'a']);
   expect(cards(s.get()).map(c => c.key)).toEqual(['request:a-w:q1', 'reply:a-w:4', 'reply:b:3']);
+});
+
+test('a clicked macOS notification shows its session', () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
+  const s = createStore(state({selected: 'c'}));
+  startNativeNotifications(s);
+  dispatchEvent(new CustomEvent('hypercube-notification', {detail: {session: 'b'}}));
+  expect(s.get().selected).toBe('b');
 });

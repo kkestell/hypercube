@@ -106,7 +106,9 @@ waiting on you, and a blue dot marks an unseen reply. Notification cards at
 the top right bring replies, questions, and approval requests from other
 sessions to your attention. You can answer requests in their chat or on a
 notification card. A child's requests also appear in the parent's chat, so
-you can answer them while following the overall task.
+you can answer them while following the overall task. When Hypercube is not
+the app you are using, macOS notifications bring the same requests and replies
+to you, and clicking one opens its session.
 
 ## Pausing and finishing work
 

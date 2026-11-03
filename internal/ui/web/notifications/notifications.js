@@ -3,7 +3,7 @@
 // not showing. A request comes from the state message's requests, newest
 // first; a reply from a session's reply and replySeq. Closing an error card
 // removes the error; closing another card dismisses it in this page.
-import {markSeen} from '../sessions/session-actions.js';
+import {chooseSession, markSeen} from '../sessions/session-actions.js';
 import {allSessions, sessionOf} from '../sessions/selection.js';
 import {closeError} from './errors.js';
 
@@ -48,4 +48,11 @@ export function closeCard(store, card) {
   }
   store.update(state => dismiss(state, card.key));
   if (card.kind === 'reply') markSeen(store, card.session.id);
+}
+
+// startNativeNotifications shows the session of a macOS notification the user
+// clicks. The window reports the click in a hypercube-notification event,
+// {session}.
+export function startNativeNotifications(store) {
+  addEventListener('hypercube-notification', e => chooseSession(store, e.detail.session));
 }
