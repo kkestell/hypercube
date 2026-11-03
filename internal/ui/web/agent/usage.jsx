@@ -25,10 +25,10 @@ export function Usage({usage}) {
             <circle cx="8" cy="8" r={radius} class="usage-fill"
               stroke-dasharray={circumference} stroke-dashoffset={circumference * (1 - Math.min(1, context / window))} />
           </svg>
-          {tokens(context)} / {tokens(window)}
+          <span class="usage-tokens">{tokens(context)} / {tokens(window)}</span>
         </span>
       )}
-      {spent > 0 && <span>{cost(spent)}</span>}
+      {spent > 0 && <span class="usage-cost">{cost(spent)}</span>}
     </span>
   );
 }

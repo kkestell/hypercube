@@ -10,6 +10,7 @@ import {AgentStatus} from '../shared/agent-status.jsx';
 import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.js';
+import {profileLabel} from './profile-label.js';
 import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
 import './composer.css';
@@ -58,7 +59,7 @@ export function Composer({session}) {
           <AgentStatus session={session} />
           {session.id === unsentKey
             ? <ProfileSelect unsent={state.unsent} />
-            : <span class="composer-config">{[session.harness, session.model, session.effort].filter(Boolean).join(' · ')}</span>}
+            : <span class="composer-config">{profileLabel(session)}</span>}
           <Usage usage={session.usage} />
         </div>
         {session.activity === 'busy' && session.id !== unsentKey && (
