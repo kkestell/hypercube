@@ -135,7 +135,7 @@ CREATE TABLE IF NOT EXISTS transcript (
 // DB is the open database.
 type DB struct{ sql *sql.DB }
 
-// Open opens the database at Path, creating its tables if they are missing
+// Open opens the database in Dir, creating its tables if they are missing
 // and upgrading a database from an older version. Writes take the database
 // lock when they begin and wait up to five seconds for it.
 func Open() (*DB, error) {

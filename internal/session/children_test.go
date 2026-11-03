@@ -21,7 +21,7 @@ func TestChildLifecycle(t *testing.T) {
 	if child.Name != "w1" || child.Title != "Title" {
 		t.Fatalf("child name and title = %q, %q", child.Name, child.Title)
 	}
-	if _, err := f.rt.CreateChild(parent.ID, "w9", " ", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
+	if _, err := f.rt.CreateChild(parent.ID, "w9", " ", harness.Profile{Harness: "test"}, "", ""); err == nil {
 		t.Fatal("a child took a blank title")
 	}
 	// The brief is the child's first input.
@@ -36,7 +36,7 @@ func TestChildLifecycle(t *testing.T) {
 	if start := f.log(child.ID, "start"); start[0].Dir != child.Dir {
 		t.Fatalf("child start = %v", start)
 	}
-	if _, err := f.rt.CreateChild(parent.ID, "w1", "Title", harness.Profile{Spec: harness.Spec{Harness: "test"}}, "", ""); err == nil {
+	if _, err := f.rt.CreateChild(parent.ID, "w1", "Title", harness.Profile{Harness: "test"}, "", ""); err == nil {
 		t.Fatal("a second child took the name")
 	}
 	// A dirty worktree keeps its child running.
@@ -58,7 +58,7 @@ func TestChildLifecycle(t *testing.T) {
 		t.Fatal("the child, its worktree, or its process remains")
 	}
 	// A child that cannot start leaves nothing behind.
-	if _, err := f.rt.CreateChild(parent.ID, "w2", "Title", harness.Profile{Spec: harness.Spec{Harness: "missing"}}, "", ""); err == nil || !strings.Contains(err.Error(), "hypercube-harness-missing") {
+	if _, err := f.rt.CreateChild(parent.ID, "w2", "Title", harness.Profile{Harness: "missing"}, "", ""); err == nil || !strings.Contains(err.Error(), "hypercube-harness-missing") {
 		t.Fatalf("child with no plugin: %v", err)
 	}
 	if len(f.family(parent.ID)) != 2 {
@@ -70,7 +70,7 @@ func TestChildLifecycle(t *testing.T) {
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.CreateChild(parent.ID, "w3", "Title", harness.Profile{Spec: harness.Spec{Harness: "test"}}, ".", ""); err == nil {
+	if _, err := f.rt.CreateChild(parent.ID, "w3", "Title", harness.Profile{Harness: "test"}, ".", ""); err == nil {
 		t.Fatal("a stopped session took a child")
 	}
 }

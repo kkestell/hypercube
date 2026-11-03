@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -89,12 +90,25 @@ func TestInputOutputAndAdopt(t *testing.T) {
 	}
 	read(t, out, "before")
 	out.Close()
-	if err = next.Adopt("s"); err != nil {
-		t.Fatal(err)
+	pid := func() string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(next.dir("s"), "pid"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
 	}
+	first := pid()
+	// The browser can open the shell before the restarted app adopts it.
 	again, err := next.Open("s", t.TempDir(), 80, 24)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if err = next.Adopt("s"); err != nil {
+		t.Fatal(err)
+	}
+	if pid() != first {
+		t.Fatal("replaced the running shell")
 	}
 	replay := output(t, again)
 	read(t, replay, "before")

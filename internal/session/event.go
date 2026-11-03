@@ -69,9 +69,6 @@ func (r *Runtime) checkpoint(tx *write, l *live, next int64) error {
 }
 
 func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
-	if !r.current(l) {
-		return nil
-	}
 	l.position = next
 	var completed []*pendingItem
 	var failures []string
@@ -161,9 +158,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	} else if ev.State == harness.Idle {
 		r.kickLocked(l.id)
 	}
-	if l.client != nil {
-		_ = l.client.Discard(next)
-	}
+	_ = l.client.Discard(next)
 	return nil
 }
 

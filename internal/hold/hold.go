@@ -200,13 +200,6 @@ func (h *Holder) segments() ([]int64, error) {
 func (h *Holder) segment(position int64) string {
 	return filepath.Join(h.dir, fmt.Sprintf("out-%d", position))
 }
-func (h *Holder) First() int64 {
-	p, _ := h.segments()
-	if len(p) > 0 {
-		return p[0]
-	}
-	return 0
-}
 func (h *Holder) Discard(before int64) error {
 	p, err := h.segments()
 	if err != nil {

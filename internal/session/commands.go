@@ -99,10 +99,7 @@ func (r *Runtime) wait(l *live, id int64, timeout time.Duration) error {
 // reply applies acceptance even when the original caller has already stopped
 // waiting. The output position is committed by apply in this transaction.
 func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
-	c, ok := l.commands[reply.ID]
-	if !ok {
-		return fmt.Errorf("reply to unknown request %d", reply.ID)
-	}
+	c := l.commands[reply.ID]
 	var failure error
 	if reply.Error != "" {
 		failure = errors.New(reply.Error)

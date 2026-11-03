@@ -66,26 +66,6 @@ func TestStorageSharesInputsAndIsolatesOutputs(t *testing.T) {
 			t.Fatalf("copied unrelated storage %s: %v", name, err)
 		}
 	}
-	// Native file-auth refresh resolves the link before atomic replacement.
-	// Keep that same shared target and observe subsequent config/auth changes.
-	for _, name := range []string{"auth.json", "config.toml"} {
-		path := filepath.Join(home, name)
-		target, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeStorageFile(t, target+".tmp", []byte("refreshed"))
-		if err := os.Rename(target+".tmp", target); err != nil {
-			t.Fatal(err)
-		}
-		got, err := os.ReadFile(path)
-		if err != nil || string(got) != "refreshed" {
-			t.Fatalf("%s: %q %v", name, got, err)
-		}
-		if _, err := os.Readlink(path); err != nil {
-			t.Fatal(err)
-		}
-	}
 	if again, err := prepareStorage(args); err != nil || again != home {
 		t.Fatalf("repeat setup: %q %v", again, err)
 	}

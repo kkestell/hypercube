@@ -387,7 +387,7 @@ func (r *Runtime) stopLaunches(lives []*live) {
 	wg.Wait()
 }
 
-// Quit ends children and shells while preserving the sessions' running marks.
+// Quit ends every agent and shell while preserving the sessions' running marks.
 func (r *Runtime) Quit() {
 	r.mu.Lock()
 	if r.detached {

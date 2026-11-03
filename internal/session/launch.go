@@ -18,6 +18,7 @@ import (
 
 // live is an attachment to the durable launch named by prefix. The reader
 // owns its end; stopping never removes it before its last output is applied.
+// send serializes senders and guards sent; run closes done when it returns.
 type live struct {
 	id, root, prefix string
 	client           *harness.Client
@@ -157,12 +158,15 @@ func (r *Runtime) run(l *live) {
 			go r.watchDelivery(l, id)
 		}
 	}
+	// A message can be queued and saved just before the app stops, so an
+	// attached launch delivers what is already queued.
+	r.kickLocked(l.id)
 	r.mu.Unlock()
 	timer := time.AfterFunc(r.startTimeout, func() {
 		r.mu.Lock()
 		late := r.current(l) && l.ready == 0 && !r.detached
 		if late {
-			l.cause = errors.New("the plugin did not start within a minute")
+			l.cause = errors.New("the plugin did not start in time")
 		}
 		r.mu.Unlock()
 		if late {

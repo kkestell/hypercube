@@ -23,22 +23,15 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 	if title == "" {
 		return store.Session{}, errors.New("a session needs a title")
 	}
-	var parent store.Session
-	if err := r.db.Read(func(tx *store.Tx) error { var err error; parent, err = tx.Session(parentID); return err }); err != nil {
-		return store.Session{}, err
-	}
-	if parent.Parent != "" {
-		return store.Session{}, errors.New("only a top-level session can do this")
-	}
-	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
-	r.mu.Lock()
-	if r.live[parentID] == nil || r.live[parentID].stopping || r.closing {
-		r.mu.Unlock()
-		return store.Session{}, errors.New("the session is not running")
-	}
-	var l *live
-	err := r.save(func(tx *write) error {
+	var parent, child store.Session
+	err := r.db.Read(func(tx *store.Tx) error {
+		var err error
+		if parent, err = tx.Session(parentID); err != nil {
+			return err
+		}
+		if parent.Parent != "" {
+			return errors.New("only a top-level session can do this")
+		}
 		w, err := tx.Workspace(parent.Workspace)
 		if err != nil {
 			return err
@@ -47,59 +40,64 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 		if err != nil {
 			return err
 		}
-		for _, c := range children {
-			if c.Name == name {
-				return fmt.Errorf("a child session with the name %s already exists; choose another", name)
-			}
+		if slices.ContainsFunc(children, func(c store.Session) bool { return c.Name == name }) {
+			return fmt.Errorf("a child session with the name %s already exists; choose another", name)
 		}
+		child = store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
+			Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
 		switch {
 		case dir != "":
 			child.Dir, err = workspace.Resolve(parent.Dir, dir)
-			if err != nil {
-				return err
-			}
+			return err
 		case w.NoGit:
 			return errors.New("dir is required: this workspace is not a Git checkout, so child sessions cannot have worktrees")
-		default:
-			child.Dir, child.Branch = workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name)
 		}
-		if err := tx.AddSession(child); err != nil {
-			return err
+		child.Dir, child.Branch = workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name)
+		return nil
+	})
+	if err != nil {
+		return store.Session{}, err
+	}
+	if child.Branch != "" {
+		if err = workspace.AddWorktree(parent.Dir, child.Dir, child.Branch); err != nil {
+			return store.Session{}, err
 		}
-		if err := r.loadSeq(tx.Tx, child.ID); err != nil {
-			return err
-		}
-		if message != "" {
-			if err := tx.Queue(store.Message{From: parentID, To: child.ID, Text: message}); err != nil {
+	}
+	var l *live
+	r.mu.Lock()
+	if r.live[parentID] == nil || r.live[parentID].stopping || r.closing {
+		err = errors.New("the session is not running")
+	} else {
+		err = r.save(func(tx *write) error {
+			if err := tx.AddSession(child); err != nil {
 				return err
 			}
-		}
-		l, err = r.decide(tx, child, parent.ID, 0)
-		return err
-	})
+			if message != "" {
+				if err := tx.Queue(store.Message{From: parentID, To: child.ID, Text: message}); err != nil {
+					return err
+				}
+			}
+			var err error
+			l, err = r.decide(tx, child, parent.ID, 0)
+			return err
+		})
+	}
 	if err == nil {
 		r.live[child.ID] = l
 	}
 	r.mu.Unlock()
 	if err != nil {
+		if child.Branch != "" {
+			if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); cleanup != nil {
+				return store.Session{}, fmt.Errorf("%w; worktree cleanup failed: %v", err, cleanup)
+			}
+		}
 		return store.Session{}, err
 	}
-	created := false
-	if child.Branch != "" {
-		err = workspace.AddWorktree(parent.Dir, child.Dir, child.Branch)
-		if err != nil {
-			r.end(l, err)
-			close(l.done)
-		}
-		created = err == nil
-	}
-	if err == nil {
-		err = r.launch(l)
-	}
-	if err == nil {
+	if err = r.launch(l); err == nil {
 		return child, nil
 	}
-	if created {
+	if child.Branch != "" {
 		if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); cleanup != nil {
 			return store.Session{}, fmt.Errorf("%w; worktree cleanup failed: %v; child session %s was kept for cleanup", err, cleanup, name)
 		}

@@ -35,8 +35,8 @@ var (
 
 // Runtime is the app's service for running agents.
 //
-// mu guards the launches in live, their fields, and the maps and fields after
-// it. It is never held while waiting on a plugin: a native request can call
+// mu guards the launches in live, their fields other than sent, and the maps
+// and fields after it. It is never held while waiting on a plugin: a native request can call
 // back into the MCP tools, which need it. A function that takes mu releases it
 // before it returns; helpers that need it held say so.
 type Runtime struct {

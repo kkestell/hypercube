@@ -763,11 +763,11 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 
 func TestSnapshotOrder(t *testing.T) {
 	db := open(t)
-	seedSnapshot(t, db, "b", "/src/zeta", "s1", "lead")
-	seedSnapshot(t, db, "a", "/src/alpha", "s2", "lead")
-	seedSnapshot(t, db, "b", "/src/zeta", "s3", "lead", "w")
-	seedSnapshot(t, db, "b", "/src/zeta", "s4", "lead")
-	seedSnapshot(t, db, "b", "/src/zeta", "s5", "lead")
+	seedSnapshot(t, db, "b", "/src/zeta", "s1")
+	seedSnapshot(t, db, "a", "/src/alpha", "s2")
+	seedSnapshot(t, db, "b", "/src/zeta", "s3", "w")
+	seedSnapshot(t, db, "b", "/src/zeta", "s4")
+	seedSnapshot(t, db, "b", "/src/zeta", "s5")
 	change(t, db, func(tx *store.Tx) error {
 		for i, id := range []string{"s1", "s3", "s4", "s5"} {
 			if err := tx.TouchSession(id, int64(i+1)); err != nil {
@@ -800,7 +800,7 @@ func TestSnapshotOrder(t *testing.T) {
 	}
 }
 
-func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, names ...string) {
+func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, children ...string) {
 	t.Helper()
 	change(t, db, func(tx *store.Tx) error {
 		if _, err := tx.Workspace(workspace); err != nil {
@@ -811,7 +811,7 @@ func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, names 
 		if err := tx.AddSession(store.Session{ID: id, Workspace: workspace, Running: true}); err != nil {
 			return err
 		}
-		for _, name := range names[1:] {
+		for _, name := range children {
 			if err := tx.AddSession(store.Session{ID: id + "-" + name, Workspace: workspace, Parent: id, Name: name, Activity: store.Idle}); err != nil {
 				return err
 			}
