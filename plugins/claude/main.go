@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +66,16 @@ type claude struct {
 	requests     plugin.Requests[request]
 	errors       plugin.Errors
 	usage        harness.Usage
+	latest       answer   // the main agent's newest message
+	final        []string // the text items a successful result confirmed, until idle reports them
+}
+
+// answer is the main agent's newest message and the text items its blocks
+// became. A successful result settles it as the response to a turn.
+type answer struct {
+	message string
+	texts   []string
+	settled bool
 }
 
 // request is a can_use_tool control request waiting for the user: a tool
@@ -384,11 +395,13 @@ func (c *claude) line(line []byte) {
 			case "running":
 				ev.State = harness.Working
 			case "idle":
-				ev.State = harness.Idle
+				ev.State, ev.Final = harness.Idle, c.final
+				c.final = nil
 			}
 		}
 	case "stream_event":
 		if m.Parent == "" {
+			c.mainMessage(m.APIID)
 			c.stream(&ev, m)
 		}
 	case "assistant":
@@ -437,10 +450,22 @@ func (c *claude) stream(ev *harness.Event, m message) {
 	ev.Items = append(ev.Items, item)
 }
 
+// mainMessage notes a record of the main agent's message. A new message
+// supersedes a response that an earlier result confirmed.
+func (c *claude) mainMessage(id string) {
+	if id != "" && id != c.latest.message {
+		c.latest = answer{message: id}
+		c.final = nil
+	}
+}
+
 func (c *claude) assistant(ev *harness.Event, m message) {
 	var blocks []block
 	if json.Unmarshal(m.Message.Content, &blocks) != nil {
 		return
+	}
+	if m.Parent == "" {
+		c.mainMessage(m.Message.ID)
 	}
 	for _, b := range blocks {
 		id := fmt.Sprintf("%s:%d", m.Message.ID, c.blocks[m.Message.ID])
@@ -451,6 +476,9 @@ func (c *claude) assistant(ev *harness.Event, m message) {
 		case "text":
 			if streamed || strings.TrimSpace(b.Text) != "" {
 				ev.Items = append(ev.Items, harness.Item{ID: id, Parent: m.Parent, Kind: harness.KindText, Text: b.Text, Done: true})
+				if m.Parent == "" {
+					c.latest.texts = append(c.latest.texts, id)
+				}
 			}
 		case "thinking":
 			if streamed || strings.TrimSpace(b.Thinking) != "" {
@@ -612,6 +640,16 @@ func (c *claude) result(ev *harness.Event, m message) {
 	}
 	items, _ := c.requests.Close(func(*request) bool { return true })
 	ev.Items = append(ev.Items, items...)
+	// A successful result confirms the newest main message as the response; a
+	// result with no newer message, such as a bookkeeping one, leaves it.
+	switch {
+	case m.IsError:
+		c.final = nil
+		c.latest.settled = true
+	case !c.latest.settled:
+		c.final = slices.Clone(c.latest.texts)
+		c.latest.settled = true
+	}
 	// An interrupted turn is the user's own doing.
 	if m.IsError && !strings.HasPrefix(m.TerminalReason, "aborted") {
 		ev.Items = append(ev.Items, c.errors.Item(m.summary()))

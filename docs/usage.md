@@ -73,23 +73,26 @@ answering in either place updates both. These copies are for the user; the
 parent's agent does not receive them. Completed requests disappear from the
 parent's transcript and remain in the child's chat.
 
-A chat shows the agent's messages, reasoning, and tool calls in order, with a
+A chat shows everything the agent does in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
 start a new line. A message goes to the agent at once, even while it works.
 Attach PNG, JPEG, GIF, or WebP images with the paperclip button or by dropping
 files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
 a remove button, and can be sent without text. Images from the agent or its
 tools appear in the transcript. Press Escape to interrupt the shown agent's
-current turn; the turn stays in the chat. Thinking and tool calls share one
-expandable working block across messages
-to the agent. Its header counts the time as "Working for 2m 10s…" until the agent
-responds or stops working and every tool in the block finishes, then reads
-"Worked for 2m 10s". Expand it to see the
-thinking and each call's input, output, and native subagent calls. Failures
-are marked on the individual calls. Inside the block, thinking counts its time
-("Thinking for 5s…", then "Thought for 3m 10s"); click it to show a five-line
-box of the newest text, which scrolls back through the rest. Messages between sessions show their sender or recipient
-and first line; expand one to read the full message. When an agent asks you a question or for approval, its
+current turn; the turn stays in the chat.
+
+A message you send, or one from another session, while the agent is idle begins a
+turn. While the agent works, the chat shows its reasoning in full, each tool
+call with its input, output, and native subagent calls, failures marked on the
+individual calls, its progress text, messages to and from other sessions, and
+messages you send during the turn, all in order. When the turn ends successfully, the message that began it
+stays, followed by one closed "Worked for 2m 10s" row and the agent's whole final
+response. The time runs from the beginning message until the agent is idle. Click the row to see
+everything else the turn showed, in the same order. A message that began the
+turn from another session shows its sender and first line; expand it to read
+the full message. A turn you interrupt, a turn that fails, a turn whose final
+response the harness cannot identify, and chats saved by earlier versions show every row. When an agent asks you a question or for approval, its
 chat shows the request with its choices and a field for typed text; answer
 there. An answered request shows its question and the answer beside a check.
 Each agent's unsent text stays in its

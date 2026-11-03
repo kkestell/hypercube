@@ -74,6 +74,11 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	var failures []string
 	var opened []harness.Item
 	at := time.Now().UnixMilli()
+	// A turn's work marker precedes the items the same event starts, and its
+	// idle marker follows the items the event finishes.
+	if ev.State == harness.Working {
+		completed = append(completed, r.stateMarker(l, ev, next, at))
+	}
 	for _, it := range ev.Items {
 		it.ID = l.prefix + it.ID
 		if it.Parent != "" {
@@ -109,6 +114,9 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		} else {
 			r.feed.publish(Change{Session: l.id, Seq: p.seq, Item: it})
 		}
+	}
+	if ev.State == harness.Idle {
+		completed = append(completed, r.stateMarker(l, ev, next, at))
 	}
 	// A stopping launch waits on nobody, whatever it still has pending.
 	attention := false
@@ -164,6 +172,16 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	}
 	_ = l.client.Discard(next)
 	return nil
+}
+
+// stateMarker is the saved record of an event's work state. Its ID names the
+// source record's position, so a record read again replaces its marker.
+func (r *Runtime) stateMarker(l *live, ev harness.Event, next, at int64) *pendingItem {
+	item := harness.Item{ID: fmt.Sprintf("%sstate-%d", l.prefix, next), Kind: harness.KindState, State: ev.State, Done: true, At: at, End: at}
+	for _, id := range ev.Final {
+		item.Final = append(item.Final, l.prefix+id)
+	}
+	return &pendingItem{seq: r.nextSeq(l.id), item: item}
 }
 
 // applyEvent records an event's conversation, work state, and usage. A session that finishes a

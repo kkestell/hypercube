@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -140,6 +141,17 @@ func (p *piUnderTest) states() []string {
 		}
 	}
 	return states
+}
+
+// finals are the response items reported with each idle state.
+func (p *piUnderTest) finals() [][]string {
+	var finals [][]string
+	for _, ev := range p.snapshot() {
+		if ev.State == harness.Idle {
+			finals = append(finals, ev.Final)
+		}
+	}
+	return finals
 }
 
 func (p *piUnderTest) conversations() []string {
@@ -824,5 +836,56 @@ func TestMCPToolNamesItsServer(t *testing.T) {
 	tool := p.item(t, harness.KindTool)
 	if tool.Server != "hypercube" || tool.Tool != "end_session" {
 		t.Fatalf("%+v", tool)
+	}
+}
+
+// piMessage is the lines of one assistant message whose text blocks are texts.
+func piMessage(stop string, texts ...string) []string {
+	lines := []string{`{"type":"message_start","message":{"role":"assistant"}}`}
+	for i, text := range texts {
+		lines = append(lines,
+			fmt.Sprintf(`{"type":"message_update","assistantMessageEvent":{"type":"text_start","contentIndex":%d}}`, i),
+			fmt.Sprintf(`{"type":"message_update","assistantMessageEvent":{"type":"text_delta","contentIndex":%d,"delta":%q}}`, i, text),
+			fmt.Sprintf(`{"type":"message_update","assistantMessageEvent":{"type":"text_end","contentIndex":%d,"content":%q}}`, i, text))
+	}
+	return append(lines, fmt.Sprintf(`{"type":"message_end","message":{"role":"assistant","stopReason":%q}}`, stop))
+}
+
+func TestIdleReportsTheResponseOfASuccessfulRun(t *testing.T) {
+	run := func(settled string, messages ...[]string) []string {
+		lines := []string{`{"type":"agent_start"}`}
+		for _, m := range messages {
+			lines = append(lines, m...)
+		}
+		return append(lines, settled)
+	}
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		final []string
+	}{
+		{"progress then response", run(`{"type":"agent_settled","aborted":false}`, piMessage("toolUse", "Looking."), piMessage("stop", "Done.")), []string{"m2:0"}},
+		{"every text block", run(`{"type":"agent_settled","aborted":false}`, piMessage("stop", "One.", "Two.")), []string{"m1:0", "m1:1"}},
+		{"tool use without a response", run(`{"type":"agent_settled","aborted":false}`, piMessage("toolUse", "Looking.")), nil},
+		{"error", run(`{"type":"agent_settled","aborted":false}`, piMessage("error", "Partial.")), nil},
+		{"aborted", run(`{"type":"agent_settled","aborted":true}`, piMessage("stop", "Done.")), nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newPi()
+			p.feed(tc.lines...)
+			if got := p.finals(); len(got) != 1 || !slices.Equal(got[0], tc.final) {
+				t.Errorf("final %v, want %v", got, tc.final)
+			}
+		})
+	}
+}
+
+func TestResponseDoesNotCarryToTheNextRun(t *testing.T) {
+	p := newPi()
+	p.feed(`{"type":"agent_start"}`)
+	p.feed(piMessage("stop", "One.")...)
+	p.feed(`{"type":"agent_settled","aborted":false}`, `{"type":"agent_start"}`, `{"type":"agent_settled","aborted":false}`)
+	if got := p.finals(); len(got) != 2 || len(got[0]) != 1 || got[1] != nil {
+		t.Errorf("finals %v", got)
 	}
 }

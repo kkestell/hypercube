@@ -16,6 +16,8 @@ func (r *Runtime) record(tx *write, l *live, cmd harness.Command, message, seq i
 	c := store.Command{Session: l.id, Command: cmd.Command, Message: message, Seq: seq}
 	var err error
 	if item != nil {
+		// The input's time is when it was sent, not when the plugin accepted it.
+		item.At = time.Now().UnixMilli()
 		if c.Item, err = json.Marshal(item); err != nil {
 			return 0, err
 		}

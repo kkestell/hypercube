@@ -16,6 +16,7 @@
 //	!reject    an error reply
 //	!work      start a turn that does not end until "!finish"
 //	!finish    end that turn with its text
+//	!answer    a turn of progress text and a final answer
 //	!stream    text and tool items that replace and extend each other
 //	!early     events before the reply
 //	!ask       an attention request with the choices yes and no
@@ -258,6 +259,10 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("finish"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Idle, text("w", "finished", true))
+	case has("answer"):
+		p.reply(cmd.ID, "")
+		p.state(harness.Working, text("progress", "looking", true))
+		p.event(harness.Event{State: harness.Idle, Final: []string{"answer"}, Items: []harness.Item{text("answer", "the answer", true)}})
 	case has("stream"):
 		p.reply(cmd.ID, "")
 		p.stream()

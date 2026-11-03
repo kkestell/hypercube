@@ -1,13 +1,6 @@
 .reasoning-item {
   color: var(--vscode-descriptionForeground);
-}
-
-/* Five lines tall; the line height is shared by the height. */
-.reasoning-item-text {
-  --reasoning-item-line-height: 1.5em;
-  max-height: calc(var(--reasoning-item-line-height) * 5);
-  overflow-y: auto;
-  line-height: var(--reasoning-item-line-height);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

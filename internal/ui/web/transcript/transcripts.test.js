@@ -28,18 +28,27 @@ test('items are ordered by seq, even when an update arrives out of order', () =>
   expect(shown(next)).toEqual(['one', 'two', 'three']);
 });
 
-test('an open request expands the runs and calls around it', () => {
-  const next = receivedTranscript(state(), message([
-    {id: 'a', seq: 1, kind: 'tool', tool: 'agent'},
-    {id: 'b', seq: 2, parent: 'a', kind: 'tool', tool: 'inner'},
-    {id: 'q', seq: 3, parent: 'b', kind: 'attention', text: 'Allow?', choices: ['ok']},
-  ], true));
-  expect(next.session.expanded).toEqual({'run:a': true, a: true, 'run:b': true, b: true});
-  expect(setExpanded(next, 'a', false).session.expanded).toEqual({'run:a': true, 'run:b': true, b: true});
+const turn = (...items) => [
+  {id: 'u', seq: 1, kind: 'user', text: 'Go'},
+  {id: 'L1:w', seq: 2, kind: 'state', state: 'working', done: true},
+  ...items,
+  {id: 'L1:i', seq: 99, kind: 'state', state: 'idle', done: true, final: ['t']},
+];
+
+test('an open request inside a finished turn expands its activity', () => {
+  const next = receivedTranscript(state(), message(turn(
+    {id: 'a', seq: 3, kind: 'tool', tool: 'agent'},
+    {id: 'q', seq: 4, parent: 'a', kind: 'attention', text: 'Allow?', choices: ['ok']},
+    {id: 't', seq: 5, kind: 'text', text: 'Waiting'},
+  ), true));
+  expect(next.session.expanded).toEqual({'activity:L1:w': true});
+  expect(setExpanded(next, 'activity:L1:w', false).session.expanded).toEqual({});
 });
 
-test('an open request reveals its parent when the parent arrives later', () => {
-  let next = receivedTranscript(state(), message([{id: 'q', seq: 1, parent: 'p', kind: 'attention', text: 'Allow?'}], true));
-  next = receivedTranscript(next, message([{id: 'p', seq: 2, kind: 'tool', tool: 'agent'}]));
-  expect(next.session.expanded).toEqual({'run:p': true, p: true});
+test('an open request reveals its activity when the turn ends later', () => {
+  const [opener, work, ...rest] = turn({id: 'q', seq: 3, kind: 'attention', text: 'Allow?'}, {id: 't', seq: 4, kind: 'text', text: 'Waiting'});
+  let next = receivedTranscript(state(), message([opener, work, rest[0], rest[1]], true));
+  expect(next.session.expanded).toEqual({});
+  next = receivedTranscript(next, message([rest[2]]));
+  expect(next.session.expanded).toEqual({'activity:L1:w': true});
 });

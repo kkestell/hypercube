@@ -71,6 +71,7 @@ type agent struct {
 	busy     bool  // a prompt is in flight
 	queued   []any // prompt content that arrived during the prompt
 	turn     int
+	last     string                  // the main session's latest text message, unless a tool call has followed it
 	open     map[string]harness.Item // streamed items that the turn's end has not finished
 	tools    map[string]*tool        // by tool call ID
 	children map[string]string       // child session ID to the tool item that started it
@@ -343,6 +344,7 @@ func blocks(text string, images []harness.Image) []any {
 // prompt sends one turn made of content blocks. ag.mu is held.
 func (ag *agent) prompt(blocks []any) {
 	ag.turn++
+	ag.last = ""
 	params := map[string]any{"sessionId": ag.session, "prompt": blocks}
 	go func() {
 		var res struct {
@@ -393,6 +395,10 @@ func (ag *agent) ended(stopReason string, err error) {
 	} else {
 		ag.busy = false
 		ev.State = harness.Idle
+		// The message the turn ended on is its response.
+		if !stopping && err == nil && stopReason == "end_turn" && ag.last != "" {
+			ev.Final = []string{ag.last}
+		}
 	}
 	ag.emit(ev)
 }
@@ -568,6 +574,9 @@ func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content conten
 	if messageID != "" {
 		id = messageID
 	}
+	if c == nil && kind == harness.KindText {
+		ag.last = messageID
+	}
 	parent := ag.parent(c)
 	ev.Items = append(ev.Items, harness.Item{ID: id, Parent: parent, Kind: kind, Text: content.Text, Append: true})
 	ag.open[id] = harness.Item{ID: id, Parent: parent, Kind: kind}
@@ -586,6 +595,10 @@ func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json
 			t.session = c.ID
 		}
 		ag.tools[id] = t
+		if c == nil {
+			// Text before a main tool call is progress.
+			ag.last = ""
+		}
 	}
 	if t.item.Done {
 		return

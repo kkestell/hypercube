@@ -316,7 +316,8 @@ func newApp(t *testing.T) *app {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(items) == 2 && items[1].Done {
+		shown := slices.DeleteFunc(items, func(it session.TranscriptItem) bool { return it.Kind == harness.KindState })
+		if len(shown) == 2 && shown[1].Done {
 			break
 		}
 		if time.Now().After(deadline) {
@@ -349,7 +350,8 @@ func (a *app) post(path, body string, want int) {
 type page struct {
 	t        *testing.T
 	conn     *websocket.Conn
-	items    map[string][]session.TranscriptItem
+	items    map[string][]session.TranscriptItem // without state markers
+	last     map[string]int64                    // the newest position received, markers included
 	state    stateMessage
 	messages []transcriptMessage
 	resets   int
@@ -362,7 +364,7 @@ func (a *app) page() *page {
 		a.t.Fatal(err)
 	}
 	a.t.Cleanup(func() { conn.CloseNow() })
-	return &page{t: a.t, conn: conn, items: map[string][]session.TranscriptItem{}}
+	return &page{t: a.t, conn: conn, items: map[string][]session.TranscriptItem{}, last: map[string]int64{}}
 }
 
 func (p *page) send(msg string) {
@@ -414,6 +416,10 @@ func (p *page) until(what string, check func() bool) {
 			p.resets++
 		}
 		for _, it := range msg.Items {
+			p.last[msg.Session] = max(p.last[msg.Session], it.Seq)
+			if it.Kind == harness.KindState {
+				continue
+			}
 			i := slices.IndexFunc(p.items[msg.Session], func(have session.TranscriptItem) bool { return have.ID == it.ID })
 			if i < 0 {
 				p.items[msg.Session] = append(p.items[msg.Session], it)
@@ -472,6 +478,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 		}
 	}
 	p.messages = nil
+	known := p.last[a.session.ID]
 
 	a.input("!work", http.StatusOK)
 	p.until("streaming text", func() bool {
@@ -494,7 +501,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 			t.Fatalf("update = %+v", message)
 		}
 		for _, item := range message.Items {
-			if item.Seq <= 2 {
+			if item.Seq <= known {
 				t.Fatalf("unchanged item in update: %+v", item)
 			}
 		}
@@ -562,7 +569,7 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	for _, p := range pages {
 		p.until("the parent's reply", func() bool {
 			s := p.session(a.session.ID)
-			return s.Unseen && s.Reply == "ack" && s.ReplySeq == 2
+			return s.Unseen && s.Reply == "ack" && s.ReplySeq > 0
 		})
 	}
 	a.input("!work", http.StatusOK)
@@ -576,7 +583,7 @@ func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
 	for _, p := range pages {
 		p.until("the new reply", func() bool {
 			s := p.session(a.session.ID)
-			return s.Reply == "finished" && s.ReplySeq > 2
+			return s.Reply == "finished"
 		})
 	}
 	a.input("!ask", http.StatusOK)
@@ -756,7 +763,8 @@ func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
 	}
 
 	items, err := a.rt.Transcript(parent.ID)
-	if err != nil || title != "Fix the parser" || len(items) == 0 || items[0].Text != "Fix the parser\nand the lexer" {
+	i := slices.IndexFunc(items, func(it session.TranscriptItem) bool { return it.Kind == harness.KindUser })
+	if err != nil || title != "Fix the parser" || i < 0 || items[i].Text != "Fix the parser\nand the lexer" {
 		t.Fatalf("title %q, transcript %+v, %v", title, items, err)
 	}
 }

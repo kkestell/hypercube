@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // A plugin's `serve` command speaks JSON Lines on stdin and stdout; stderr
@@ -19,11 +20,13 @@ const (
 	CmdAnswer    = "answer"
 )
 
-// Item kinds. Plugins send every kind but User and Status, which Hypercube writes for the
-// text and images it delivers.
+// Item kinds. Plugins send every kind but User, Status, and State, which
+// Hypercube writes for the text and images it delivers, a child's status, and
+// each change of work state.
 const (
 	KindUser      = "user"
 	KindStatus    = "status"
+	KindState     = "state"
 	KindText      = "text"
 	KindReasoning = "reasoning"
 	KindTool      = "tool"
@@ -99,8 +102,13 @@ type Event struct {
 	Conversation string `json:"conversation,omitempty"`
 	// State is the main agent's work state. Native subagents do not change it.
 	State string `json:"state,omitempty"`
-	Items []Item `json:"items,omitempty"`
-	Usage *Usage `json:"usage,omitempty"`
+	// Final names the main agent's text and image items that are the response
+	// to the turn that has just ended. It accompanies State Idle, once the turn
+	// succeeded, and is left out when a turn was interrupted, failed, or has no
+	// identifiable response.
+	Final []string `json:"final,omitempty"`
+	Items []Item   `json:"items,omitempty"`
+	Usage *Usage   `json:"usage,omitempty"`
 }
 
 // Usage is what the conversation has used: the tokens of its latest request,
@@ -122,6 +130,10 @@ type Usage struct {
 //
 // An item's Images are shown with its text: the pictures a user sent, or the
 // pictures a model or tool produced. An item may have images and no text.
+//
+// A state item is Hypercube's record of a work state change, in the order the
+// transcript shows it: State is the new work state, and an idle one's Final
+// names the items that answered the turn it ended.
 //
 // A tool item from an MCP server names the Server, and Tool is the server's
 // own name for the tool. A user item that delivers another agent's message
@@ -149,6 +161,8 @@ type Item struct {
 	Answer  string          `json:"answer,omitempty"`
 	From    string          `json:"from,omitempty"`
 	Images  []Image         `json:"images,omitempty"`
+	State   string          `json:"state,omitempty"`
+	Final   []string        `json:"final,omitempty"`
 }
 
 // Line returns the command as one line of the plugin's input.
@@ -183,6 +197,12 @@ func decode(line []byte) (Record, error) {
 func (e Event) check() error {
 	if e.State != "" && e.State != Working && e.State != Idle {
 		return fmt.Errorf("unknown state %q", e.State)
+	}
+	if len(e.Final) > 0 && e.State != Idle {
+		return errors.New("final items without the idle state")
+	}
+	if slices.Contains(e.Final, "") {
+		return errors.New("final item without an ID")
 	}
 	for _, it := range e.Items {
 		if it.ID == "" {

@@ -65,6 +65,7 @@ type agent struct {
 	thread   string
 	turn     string                  // the main turn in progress
 	ended    string                  // the last main turn that completed
+	final    []string                // the main turn's final answer messages so far
 	finished map[string]bool         // items that have completed
 	open     map[string]harness.Item // streamed items that have not completed
 	running  map[string]harness.Item // tool items that have not completed

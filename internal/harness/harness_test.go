@@ -64,3 +64,23 @@ func TestLoadConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeChecksFinalItems(t *testing.T) {
+	for name, tc := range map[string]struct {
+		line string
+		want string
+	}{
+		"idle with a final item": {line: `{"event":{"state":"idle","final":["a"]}}`},
+		"final without idle":     {line: `{"event":{"state":"working","final":["a"]}}`, want: "without the idle state"},
+		"final without a state":  {line: `{"event":{"final":["a"]}}`, want: "without the idle state"},
+		"empty final ID":         {line: `{"event":{"state":"idle","final":[""]}}`, want: "without an ID"},
+		"state item from plugin": {line: `{"event":{"items":[{"id":"a","kind":"state"}]}}`, want: "unknown kind"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := decode([]byte(tc.line))
+			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+				t.Fatalf("error %v, want %q", err, tc.want)
+			}
+		})
+	}
+}

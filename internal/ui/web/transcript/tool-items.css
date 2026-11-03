@@ -1,7 +1,19 @@
 /* Each row is one row height tall. A call's status icon sits in a fixed
-   column, and what the call opens to starts at its title. */
-.tool-items-calls {
+   column, and what the call shows starts at its title. */
+.tool-items-call {
   --tool-items-status-width: calc(var(--size-icon) + var(--size-space) * 1.5);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tool-items-header {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  min-width: 0;
+  line-height: var(--size-row-height);
+  color: var(--vscode-descriptionForeground);
 }
 
 .tool-items-status {
@@ -23,17 +35,6 @@
 
 .tool-items-failed {
   color: var(--vscode-errorForeground);
-}
-
-.tool-items-calls > .message-item,
-.tool-items-calls > .reasoning-item {
-  padding-left: var(--tool-items-status-width);
-}
-
-.tool-items-call {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
 }
 
 .tool-items-body {

@@ -1,0 +1,6 @@
+.activity-item-rows {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--size-space) * 3);
+  padding: calc(var(--size-space) * 2) 0 var(--size-space) calc(var(--size-icon) + var(--size-space) * 1.5);
+}

@@ -1,12 +1,16 @@
 // Turns a transcript's items, in seq order, into the rows the page draws.
 //
-// An item nests under its parent tool call when the parent is present.
-// Tool calls and thinking within one container form a run, passing over user
-// messages and separating at the next other item. User
-// messages draw in place, with later calls joining the run above them. A call
+// An item nests under its parent tool call when the parent is present. A call
 // that sends a message to a session draws as a message. The rows are rebuilt
 // from the whole list, so an item that arrives before its parent moves under
 // the parent when it arrives.
+//
+// Hypercube saves a state item at each change of the agent's work state. The
+// items between a working state and the next idle one are one turn's activity.
+// Once the turn succeeds, the idle state names its final response: the input
+// that began the turn stays above one activity row holding everything else, and
+// the response follows it. A turn that did not succeed, and a transcript saved
+// without state items, draw every row as it is.
 
 // Tool input fields, in the order that best says what a call does.
 const summaryKeys = ['command', 'cmd', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
@@ -53,91 +57,103 @@ export const clip = text => text.length > shownLimit ? text.slice(0, shownLimit)
 export const toolInput = input => input === undefined || input === null ? '' : clip(typeof input === 'string' ? input : JSON.stringify(input, null, 2));
 
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
-const isCall = item => item.kind === 'tool' && !isMessage(item);
 
-const kinds = new Set(['error', 'attention']);
-const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
+const types = new Set(['user', 'reasoning', 'error', 'attention']);
 
-// transcriptRows returns the top-level rows of a transcript {order, items}:
-//   {type: 'run', key, calls, closed, start, until}, whose calls are
-//     {type: 'tool', item, children}, {type: 'message', item}, or
-//     {type: 'reasoning', item, closed, until};
-//   {type: 'user' | 'text' | 'error' | 'attention', item}.
-// start and until are millisecond times; until is 0 while a run is open. A run
-// still open when the session is not working closes at its last call's end.
-// An unfinished tool keeps its run active even after later output or idle.
-// Thinking ends at its own end, the next work item, or the end of its run.
-export function transcriptRows({order, items}, working = true) {
+// transcriptRows returns the rows of a transcript {order, items}:
+//   {type: 'user' | 'reasoning' | 'text' | 'error' | 'attention' | 'message', item},
+//     where a user row inside a turn's activity has inline set;
+//   {type: 'tool', item, children}, whose children are rows;
+//   {type: 'activity', key, rows, start, until}, a finished turn's activity,
+//     whose start and until are millisecond times, 0 when unknown.
+export function transcriptRows({order, items}) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
     // Keep status updates in the transcript state without displaying them.
     if (item.kind === 'status') continue;
     const parent = items[item.parent];
-    const container = parent && isCall(parent) ? parent.id : '';
+    const container = parent && parent.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     if (!containers.has(container)) containers.set(container, []);
     containers.get(container).push(item);
   }
-  const rowsOf = container => {
-    const rows = [];
-    let run = null;
-    for (const item of containers.get(container) ?? []) {
-      if (item.kind === 'user') {
-        rows.push({type: 'user', item});
-        continue;
-      }
-      if (item.kind !== 'tool' && item.kind !== 'reasoning') {
-        if (run) Object.assign(run, {closed: true, until: item.at ?? 0});
-        run = null;
-        rows.push({type: rowType(item), item});
-        continue;
-      }
-      if (!run) {
-        run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, start: item.at ?? 0, until: 0};
-        rows.push(run);
-      }
-      if (item.kind === 'reasoning') run.calls.push({type: 'reasoning', item});
-      else if (isMessage(item)) run.calls.push({type: 'message', item});
-      else run.calls.push({type: 'tool', item, children: rowsOf(item.id)});
+  const rowOf = item => {
+    if (item.kind === 'tool') {
+      return isMessage(item) ? {type: 'message', item} : {type: 'tool', item, children: (containers.get(item.id) ?? []).map(rowOf)};
     }
-    if (run && !working) Object.assign(run, {closed: true, until: Math.max(0, ...run.calls.map(call => call.item.end ?? 0))});
-    for (const row of rows) {
-      if (row.type !== 'run') continue;
-      row.calls.forEach((call, i) => {
-        if (call.type !== 'reasoning') return;
-        const next = row.calls[i + 1];
-        const until = next ? next.item.at ?? 0 : row.until;
-        call.closed = !!(call.item.done || call.item.end || next || row.closed);
-        call.until = call.item.end ?? (until >= (call.item.at ?? 0) ? until : 0);
-      });
-      if (row.calls.some(call => call.type !== 'reasoning' && !call.item.done)) {
-        row.closed = false;
-        row.until = 0;
-      } else if (row.closed) {
-        row.until = Math.max(row.until, ...row.calls.map(call => call.item.end ?? 0));
-      }
-    }
-    return rows;
+    return {type: types.has(item.kind) ? item.kind : 'text', item};
   };
-  return rowsOf('');
+  return turns(containers.get('') ?? [], rowOf);
 }
 
-// ancestorKeys are the expansion keys of the runs and tool calls around an
-// item, outermost first, or [] if the item is not in the transcript.
-export function ancestorKeys(transcript, id) {
-  const search = (rows, path) => {
-    for (const row of rows) {
-      if (row.type !== 'run') {
-        if (row.item.id === id) return path;
-        continue;
-      }
-      for (const call of row.calls) {
-        if (call.item.id === id) return [...path, row.key];
-        const found = call.type === 'tool' && search(call.children, [...path, row.key, call.item.id]);
-        if (found) return found;
-      }
-    }
-    return null;
+// Items of different launches of an agent have different ID prefixes, which
+// Hypercube sets and ends with a colon.
+const launchOf = item => item.id.slice(0, item.id.indexOf(':'));
+
+// turns draws the top-level items, grouping the activity of each turn that a
+// state item shows to have succeeded.
+function turns(items, rowOf) {
+  const out = [];
+  let turn = null; // {launch, work, opener, rows}: the turn in progress
+  let floor = 0; // the input that begins a turn is not above this row
+  const end = () => {
+    if (turn) out.push(...turn.rows);
+    turn = null;
+    floor = out.length;
   };
-  return search(transcriptRows(transcript), []) ?? [];
+  for (const item of items) {
+    if (item.kind !== 'state') {
+      const row = rowOf(item);
+      if (turn) turn.rows.push(inline(row));
+      else out.push(row);
+      continue;
+    }
+    if (turn && turn.launch !== launchOf(item)) end();
+    if (item.state === 'working') {
+      if (!turn) turn = startTurn(item, out, floor);
+    } else if (turn) {
+      finishTurn(turn, item, out);
+      turn = null;
+      floor = out.length;
+    }
+  }
+  end();
+  return out;
+}
+
+// A user row inside a turn is shown with its text, as the opener is not.
+const inline = row => (row.type === 'user' ? Object.assign(row, {inline: true}) : row);
+
+// startTurn begins a turn at a working state. Its opener is the first of the
+// user messages just before the state, which stays in out; later ones were sent
+// while the turn began.
+function startTurn(work, out, floor) {
+  let first = out.length;
+  while (first > floor && out[first - 1].type === 'user') first--;
+  return {launch: launchOf(work), work, opener: out[first], rows: out.splice(first + 1).map(inline)};
+}
+
+// finishTurn draws a turn that an idle state ended. The rows its final names
+// follow one row of the other activity.
+function finishTurn(turn, idle, out) {
+  const final = new Set(idle.final);
+  const response = turn.rows.filter(row => final.has(row.item.id));
+  if (response.length === 0) {
+    out.push(...turn.rows);
+    return;
+  }
+  const activity = turn.rows.filter(row => !final.has(row.item.id));
+  if (activity.length > 0) {
+    const start = turn.opener?.item.at || turn.work.at || 0;
+    out.push({type: 'activity', key: 'activity:' + turn.work.id, rows: activity, start, until: idle.at || 0});
+  }
+  out.push(...response);
+}
+
+// ancestorKeys are the expansion keys of the activity around an item, or []
+// if the item is not inside one.
+export function ancestorKeys(transcript, id) {
+  const holds = rows => rows.some(row => row.item.id === id || row.children && holds(row.children));
+  const activity = transcriptRows(transcript).find(row => row.type === 'activity' && holds(row.rows));
+  return activity ? [activity.key] : [];
 }

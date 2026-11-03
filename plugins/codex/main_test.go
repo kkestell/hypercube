@@ -242,6 +242,17 @@ func (h *agentUnderTest) states() []string {
 	return states
 }
 
+// finals are the answer items reported with each idle state.
+func (h *agentUnderTest) finals() [][]string {
+	var finals [][]string
+	for _, ev := range h.snapshot() {
+		if ev.State == harness.Idle {
+			finals = append(finals, ev.Final)
+		}
+	}
+	return finals
+}
+
 func kinds(items []harness.Item) []string {
 	var out []string
 	for _, it := range items {
@@ -1154,5 +1165,66 @@ func TestImageOutputs(t *testing.T) {
 	h.feed(t, done(`{"type":"imageGeneration","id":"g1","status":"completed","savedPath":null,"result":""}`))
 	if it := h.item(t, "g1"); len(it.Images) != 1 {
 		t.Errorf("%+v", it)
+	}
+}
+
+func TestIdleReportsTheFinalAnswerOfACompletedTurn(t *testing.T) {
+	message := func(id, phase, text string) string {
+		return `{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"agentMessage","id":"` + id + `","text":"` + text + `","phase":"` + phase + `"}}}`
+	}
+	started := `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}`
+	done := func(status string) string {
+		return `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"` + status + `"}}}`
+	}
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		final []string
+	}{
+		{"progress then final", []string{started, message("a", "commentary", "Looking."), message("b", "final_answer", "Done."), done("completed")}, []string{"b"}},
+		{"every final message", []string{started, message("a", "final_answer", "One."), message("b", "final_answer", "Two."), done("completed")}, []string{"a", "b"}},
+		{"no final message", []string{started, message("a", "commentary", "Looking."), done("completed")}, nil},
+		{"interrupted", []string{started, message("a", "final_answer", "Done."), done("interrupted")}, nil},
+		{"failed", []string{started, message("a", "final_answer", "Done."), done("failed")}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newAgent(t)
+			h.thread = "t1"
+			h.feed(t, tc.lines...)
+			if got := h.finals(); len(got) != 1 || !slices.Equal(got[0], tc.final) {
+				t.Errorf("final %v, want %v", got, tc.final)
+			}
+		})
+	}
+}
+
+func TestFinalAnswersBelongToTheirOwnTurn(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	h.feed(t,
+		`{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}`,
+		`{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"agentMessage","id":"a","text":"One.","phase":"final_answer"}}}`,
+		`{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`,
+		`{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u2"}}}`,
+		`{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"agentMessage","id":"late","text":"Late.","phase":"final_answer"}}}`,
+		`{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u2","status":"completed"}}}`)
+	got := h.finals()
+	if len(got) != 2 || !slices.Equal(got[0], []string{"a"}) || got[1] != nil {
+		t.Errorf("finals %v", got)
+	}
+}
+
+func TestNativeSubagentAnswerIsNotTheTurnsFinal(t *testing.T) {
+	h := newAgent(t)
+	lines := fixture(t, "subagent")
+	h.adopt(t, lines)
+	h.feed(t, lines...)
+	got := h.finals()
+	if len(got) != 1 || len(got[0]) != 1 {
+		t.Fatalf("finals %v", got)
+	}
+	final := h.item(t, got[0][0])
+	if final.Parent != "" || final.Kind != harness.KindText {
+		t.Errorf("%+v", final)
 	}
 }

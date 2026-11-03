@@ -11,7 +11,7 @@ func TestChildRequestMirrorsOpenAndSavedItems(t *testing.T) {
 	child := f.child(parent, "child", "")
 	f.input(child.ID, "!ask")
 	f.until("mirrored request", func() bool { return len(f.transcript(parent.ID)) == 3 })
-	opened, _ := f.rt.Transcript(parent.ID)
+	opened := f.saved(parent.ID)
 	mirror := opened[2]
 	if mirror.Kind != harness.KindAttention || mirror.From != child.ID || mirror.Parent != "" || mirror.Done {
 		t.Fatalf("mirror=%+v", mirror)
@@ -20,7 +20,7 @@ func TestChildRequestMirrorsOpenAndSavedItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.until("answered mirror", func() bool { items := f.transcript(parent.ID); return items[2].Done && items[2].Answer == "yes" })
-	saved, _ := f.rt.Transcript(parent.ID)
+	saved := f.saved(parent.ID)
 	if len(saved) != 3 || saved[2].Seq != mirror.Seq || len(f.inputs(parent.ID)) != 1 {
 		t.Fatalf("mirror moved or reached plugin: %+v", saved)
 	}
@@ -51,7 +51,7 @@ func TestNestedChildRequestMirrorsWithoutItsToolParent(t *testing.T) {
 		{ID: "tool", Kind: harness.KindTool, Tool: "native"},
 		{ID: "request", Parent: "tool", Kind: harness.KindAttention, Text: "Question?"},
 	}})
-	items, _ := f.rt.Transcript(parent.ID)
+	items := f.saved(parent.ID)
 	mirror := items[2]
 	if mirror.Parent != "" || mirror.From != child.ID || mirror.Done {
 		t.Fatalf("nested mirror=%+v", mirror)
@@ -64,7 +64,7 @@ func TestNestedChildRequestMirrorsWithoutItsToolParent(t *testing.T) {
 	if err := f.rt.Stop(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	closed, _ := f.rt.Transcript(parent.ID)
+	closed := f.saved(parent.ID)
 	if !closed[2].Done || closed[2].Seq != mirror.Seq || closed[2].Text != "Changed?" || len(f.inputs(parent.ID)) != 1 {
 		t.Fatalf("drained mirror=%+v", closed[2])
 	}

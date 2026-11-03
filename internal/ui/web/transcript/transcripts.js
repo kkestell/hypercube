@@ -6,7 +6,7 @@ import {ancestorKeys} from './transcript-tree.js';
 export const emptyTranscript = {order: [], items: {}};
 
 // receivedTranscript applies a transcript message for the attached session.
-// An open attention request opens the runs and tool calls around it.
+// An open attention request opens the activity around it.
 export function receivedTranscript(state, message) {
   const session = state.session;
   if (session?.id !== message.session) return state;
@@ -23,7 +23,7 @@ export function receivedTranscript(state, message) {
   return {...state, session: {...session, transcript, expanded}};
 }
 
-// setExpanded opens or closes a tool call, run, message, or Thinking item.
+// setExpanded opens or closes an activity or a message.
 export function setExpanded(state, key, open) {
   const session = state.session;
   if (!session || !!session.expanded[key] === open) return state;

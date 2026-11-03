@@ -252,15 +252,28 @@ func (f *fixture) input(agent, text string) {
 	}
 }
 
-func (f *fixture) transcript(agent string) []harness.Item {
+// saved returns the agent's transcript items with their positions, without its
+// state markers.
+func (f *fixture) saved(agent string) []TranscriptItem {
 	f.t.Helper()
 	items, err := f.rt.Transcript(agent)
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	plain := make([]harness.Item, len(items))
-	for i, item := range items {
-		plain[i] = item.Item
+	var shown []TranscriptItem
+	for _, item := range items {
+		if item.Kind != harness.KindState {
+			shown = append(shown, item)
+		}
+	}
+	return shown
+}
+
+func (f *fixture) transcript(agent string) []harness.Item {
+	f.t.Helper()
+	var plain []harness.Item
+	for _, item := range f.saved(agent) {
+		plain = append(plain, item.Item)
 	}
 	return plain
 }

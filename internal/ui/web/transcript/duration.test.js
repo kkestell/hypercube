@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {formatDuration} from './elapsed.jsx';
+import {formatDuration} from './duration.js';
 
 test.each([
   [0, '0s'],

@@ -97,6 +97,20 @@ func (h *harnessUnderTest) states() []string {
 	return states
 }
 
+// idleLine is claude's report that the turn is over.
+const idleLine = `{"type":"system","subtype":"session_state_changed","state":"idle"}`
+
+// finals are the response items reported with each idle state.
+func (h *harnessUnderTest) finals() [][]string {
+	var finals [][]string
+	for _, ev := range h.events {
+		if ev.State == harness.Idle {
+			finals = append(finals, ev.Final)
+		}
+	}
+	return finals
+}
+
 func (h *harnessUnderTest) lastUsage() harness.Usage {
 	for _, ev := range slices.Backward(h.events) {
 		if ev.Usage != nil {
@@ -762,5 +776,60 @@ func TestToolResultImagesAreExtracted(t *testing.T) {
 	}
 	if it := items[0]; it.Output != "a picture\n[image]" || !slices.Equal(it.Images, []harness.Image{{MIMEType: "image/png", Data: "AAAA"}}) || !it.Done {
 		t.Errorf("%+v", it)
+	}
+}
+
+func TestIdleReportsTheSuccessfulResponse(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		lines []string
+		final []string
+	}{
+		{"progress then response", append(fixture(t, "tool"), idleLine), []string{"msg_011CgbcP2J3YD4s1Y7b2eN1N:0"}},
+		{"every text block of the response", []string{
+			`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Checking."},{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}`,
+			`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}`,
+			`{"type":"assistant","message":{"id":"m2","content":[{"type":"thinking","thinking":"hm"},{"type":"text","text":"One."},{"type":"text","text":"Two."}]}}`,
+			`{"type":"result","subtype":"success","modelUsage":{}}`, idleLine,
+		}, []string{"m2:1", "m2:2"}},
+		{"interrupted turn", fixture(t, "interrupt"), nil},
+		{"failed turn", []string{
+			`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Partial."}]}}`,
+			`{"type":"result","subtype":"success","is_error":true,"result":"overloaded","terminal_reason":"model_error","modelUsage":{}}`, idleLine,
+		}, nil},
+		{"tool call without a response", []string{
+			`{"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Read","input":{}}]}}`,
+			`{"type":"result","subtype":"success","modelUsage":{}}`, idleLine,
+		}, nil},
+		{"a native subagent's response is not the turn's", []string{
+			`{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Mine."}]}}`,
+			`{"type":"assistant","parent_tool_use_id":"agent1","message":{"id":"c1","content":[{"type":"text","text":"Theirs."}]}}`,
+			`{"type":"result","subtype":"success","modelUsage":{}}`, idleLine,
+		}, []string{"m1:0"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newClaude()
+			h.feed(tc.lines...)
+			if got := h.finals(); len(got) != 1 || !slices.Equal(got[0], tc.final) {
+				t.Errorf("final %v, want %v", got, tc.final)
+			}
+		})
+	}
+}
+
+// The nested fixture has a successful result while a native subagent still
+// runs, then the main agent's reply and an empty bookkeeping result. Only the
+// last main message answers the turn.
+func TestOnlyTheLastMainMessageAnswersAfterSeveralResults(t *testing.T) {
+	h := newClaude()
+	h.feed(fixture(t, "nested")...)
+	finals := h.finals()
+	if len(finals) != 1 || !slices.Equal(finals[0], []string{"msg_011CgbcPqf7LppvrGwF6c57S:0"}) {
+		t.Fatalf("final %v", finals)
+	}
+	for _, it := range h.transcript() {
+		if it.ID == finals[0][0] && !strings.HasPrefix(it.Text, "The subagent read") {
+			t.Errorf("final item %+v", it)
+		}
 	}
 }

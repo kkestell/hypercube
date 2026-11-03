@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -59,6 +60,7 @@ type threadItem struct {
 	Kind              string          `json:"kind"`
 	AgentThreadID     string          `json:"agentThreadId"`
 	AgentPath         string          `json:"agentPath"`
+	Phase             string          `json:"phase"`
 }
 
 type fileChange struct {
@@ -163,6 +165,7 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	}
 	var n struct {
 		ThreadID     string          `json:"threadId"`
+		TurnID       string          `json:"turnId"`
 		ItemID       string          `json:"itemId"`
 		Delta        string          `json:"delta"`
 		SummaryIndex int             `json:"summaryIndex"`
@@ -217,6 +220,7 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	case "item/completed":
 		if n.Item != nil {
 			ag.item(ev, parent, *n.Item, true)
+			ag.answered(main, n.TurnID, *n.Item)
 		}
 	case "item/agentMessage/delta":
 		ag.stream(ev, parent, harness.KindText, n.ItemID, n.Delta)
@@ -234,22 +238,36 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	}
 }
 
+// answered notes a main message that Codex marks as the turn's final answer.
+// Messages of an earlier turn that complete late do not count.
+func (ag *agent) answered(main bool, turn string, it threadItem) {
+	if main && it.Type == "agentMessage" && it.Phase == "final_answer" && turn == ag.turn && !slices.Contains(ag.final, it.ID) {
+		ag.final = append(ag.final, it.ID)
+	}
+}
+
 // startTurn marks a main turn as running. ag.mu is held.
 func (ag *agent) startTurn(ev *harness.Event, id string) {
 	if id == "" || id == ag.turn || id == ag.ended {
 		return
 	}
 	ag.turn = id
+	ag.final = nil
 	ev.State = harness.Working
 }
 
 // endTurn finishes a main turn: nothing is left streaming or waiting. The
-// agent is idle unless a newer turn has started. An interrupted turn is the
-// user's own doing; a failed one is an error.
+// agent is idle unless a newer turn has started, and a completed turn reports
+// its final answer with it. An interrupted turn is the user's own doing; a
+// failed one is an error.
 func (ag *agent) endTurn(ev *harness.Event, id, status, message string) {
 	ag.ended = id
 	if ag.turn == id || ag.turn == "" {
 		ag.turn = ""
+		if status == "completed" {
+			ev.Final = ag.final
+		}
+		ag.final = nil
 		for id, it := range ag.open {
 			it.Append, it.Done = true, true
 			ev.Items = append(ev.Items, it)

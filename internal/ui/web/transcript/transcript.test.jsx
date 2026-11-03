@@ -1,4 +1,4 @@
-import {afterEach, expect, jest, spyOn, test} from 'bun:test';
+import {afterEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
@@ -11,7 +11,6 @@ afterEach(() => {
   for (const s of spies) s.mockRestore();
   spies = [];
   unmountAll();
-  jest.useRealTimers();
 });
 
 const busy = {id: 's', running: true, activity: 'busy'};
@@ -47,7 +46,6 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
     {id: 'r', kind: 'reasoning', text: '<i>thinking</i>'},
     {id: 'u', kind: 'user', text: '<a href=x>me</a>'},
   ]);
-  act(() => root.querySelector('.reasoning-item summary').click());
   expect(root.querySelectorAll('b, script, img, u, i, a').length).toBe(0);
   for (const text of ['<b>tool</b>', '<img src=x onerror=1>', '<u>bad</u>', '<i>thinking</i>', '<a href=x>me</a>']) expect(root.textContent).toContain(text);
 });
@@ -55,7 +53,7 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
 test('a tool call shows its title, status, input, output, and nested items', () => {
   const {root, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
   const call = () => root.querySelector('.tool-items-call');
-  expect(call().querySelector('summary').textContent).toContain('bash ls');
+  expect(call().querySelector('.tool-items-header').textContent).toContain('bash ls');
   expect(call().querySelector('[title="Running"]')).not.toBeNull();
   expect(call().querySelector('pre').textContent).toBe('{\n  "command": "ls"\n}');
   send([{id: 'n', parent: 'c', kind: 'text', text: 'inside'}, {id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}, output: 'a.txt', done: true, failed: true}]);
@@ -65,46 +63,119 @@ test('a tool call shows its title, status, input, output, and nested items', () 
   expect(call().querySelector('.tool-items-children').textContent).toBe('inside');
 });
 
-test.each([['the user', undefined], ['another session', 'child']])('a tool run passes over a message from %s and counts how long it works until other output', (_source, from) => {
-  jest.useFakeTimers();
-  jest.setSystemTime(6000);
-  const first = {id: 'a', kind: 'tool', tool: 'read', input: {path: '/first'}, at: 1000, seq: 1};
-  const {root, send} = setup([first]);
+const marker = (id, state, at, final) => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
+const summaries = root => [...root.querySelectorAll('.activity-item > summary')];
+
+test('a running turn shows every row openly with no working summary', () => {
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'r', kind: 'reasoning', text: 'Considering the plan.\nSecond line.', at: 1200},
+    {id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}, output: 'a.txt', done: true, at: 1300},
+    {id: 'p', kind: 'text', text: 'Progress update', at: 1400},
+    {id: 'm', kind: 'user', from: 'peer', text: 'Peer says hello.\nMore detail.', at: 1500},
+    {id: 'o', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'peer', text: 'Reply body.'}, done: true, at: 1600},
+  ]);
+  expect(root.querySelector('.activity-item')).toBeNull();
+  expect(root.textContent).not.toContain('Working');
+  expect(root.querySelector('.reasoning-item').textContent).toBe('Considering the plan.\nSecond line.');
+  expect(root.querySelector('.tool-items-call').textContent).toContain('a.txt');
+  expect(root.textContent).toContain('Progress update');
+  expect(root.textContent).toContain('Peer says hello.\nMore detail.');
+  expect(root.textContent).toContain('Reply body.');
+  expect(root.querySelector('details')).toBeNull();
+});
+
+test('a successful turn collapses to its opener, one Worked row, and the whole response', () => {
+  const {root, store, send} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'r', kind: 'reasoning', text: 'Thinking it over.', at: 1200},
+    {id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}, output: 'a.txt', done: true, at: 1300},
+    {id: 'h', kind: 'user', text: 'Also check b', at: 1350},
+    {id: 'm', kind: 'user', from: 'peer', text: 'Peer detail', at: 1400},
+    {id: 'p', kind: 'text', text: 'Almost done.', at: 1450},
+    {id: 'a', kind: 'text', text: 'First part.', at: 1500},
+    {id: 'b', kind: 'text', text: 'Second part.', at: 1600},
+  ]);
   const list = root.querySelector('.transcript-list');
-  const group = list.firstElementChild;
-  const summary = group.querySelector('summary');
-  const chevron = summary.querySelector('.disclosure-chevron');
-  expect(chevron).not.toBeNull();
-  expect(summary.querySelector('.disclosure-heading').lastElementChild).toBe(chevron);
-  expect(summary.querySelector('[title="Running"]')).toBeNull();
-  expect(summary.textContent).toBe('Working for 5s…');
-  expect(summary.querySelector('.disclosure-preview')).toBeNull();
-  act(() => jest.advanceTimersByTime(1000));
-  expect(summary.textContent).toBe('Working for 6s…');
-  act(() => summary.click());
-  expect(group.open).toBe(true);
-  expect(summary.textContent).toBe('Working for 6s…');
-  expect(group.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
-
-  send([{...first, done: true}, {id: 'u', kind: 'user', from, text: 'Keep going', at: 3000, seq: 2}]);
-  expect(list.children[1].textContent).toContain('Keep going');
-  expect(summary.textContent).toBe('Working for 6s…');
-
-  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'}, at: 5000, seq: 3}]);
-  expect(list.children.length).toBe(2);
-  expect(group.querySelectorAll('.tool-items-call').length).toBe(2);
-  expect(group.querySelectorAll('.tool-items-call [title="Running"]').length).toBe(1);
+  send([marker('i', 'idle', 133000, ['a', 'b'])]);
+  expect([...list.children].map(row => row.className.split(' ')[0])).toEqual(['message-item', 'disclosure', 'transcript-text', 'transcript-text']);
+  const [summary] = summaries(root);
+  expect(summary.textContent).toBe('Worked for 2m 12s');
+  expect(summary.parentElement.open).toBe(false);
+  expect(summary.parentElement.querySelector('.activity-item-rows')).toBeNull();
+  expect(list.children[0].textContent).toBe('Go');
+  expect(list.children[2].textContent).toBe('First part.');
+  expect(list.children[3].textContent).toBe('Second part.');
+  expect(root.textContent).not.toContain('Thinking it over.');
 
   act(() => summary.click());
-  expect(group.open).toBe(false);
-  expect(summary.textContent).toBe('Working for 6s…');
+  const rows = [...summary.parentElement.querySelectorAll('.activity-item-rows > *')];
+  expect(rows.map(row => row.textContent)).toEqual([
+    'Thinking it over.', expect.stringContaining('bash ls'), 'Also check b', expect.stringContaining('Peer detail'), 'Almost done.',
+  ]);
+  expect(store.get().session.expanded['activity:L1:w']).toBe(true);
+  act(() => summary.click());
+  expect(summary.parentElement.querySelector('.activity-item-rows')).toBeNull();
+});
 
-  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'}, at: 5000, done: true, end: 9000, seq: 3}, {id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
-  expect(list.firstElementChild).toBe(group);
-  expect(summary.textContent).toBe('Worked for 9s');
-  expect(summary.querySelector('.disclosure-heading').lastElementChild).toBe(chevron);
-  act(() => jest.advanceTimersByTime(5000));
-  expect(summary.textContent).toBe('Worked for 9s');
+test('a finished turn keeps its summary while the next turn runs', () => {
+  const {root, send} = setup([
+    {id: 'u', kind: 'user', text: 'One', at: 1000},
+    marker('w1', 'working', 1100),
+    {id: 'c', kind: 'tool', tool: 'bash', done: true, at: 1200},
+    {id: 'a', kind: 'text', text: 'Answer one', at: 1300},
+    marker('i1', 'idle', 5000, ['a']),
+  ]);
+  send([{id: 'v', kind: 'user', text: 'Two', at: 6000}, marker('w2', 'working', 6100), {id: 'd', kind: 'tool', tool: 'read', at: 6200}]);
+  expect(summaries(root).map(s => s.textContent)).toEqual(['Worked for 4s']);
+  expect(root.querySelectorAll('.tool-items-call').length).toBe(1);
+  expect(root.querySelector('.tool-items-call').textContent).toContain('read');
+});
+
+test.each([
+  ['an idle state without a final', [marker('i', 'idle', 9000)]],
+  ['a final naming nothing shown', [marker('i', 'idle', 9000, ['gone'])]],
+])('%s leaves the turn expanded', (_name, ending) => {
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'c', kind: 'tool', tool: 'bash', input: {command: 'make'}, output: 'failed', failed: true, done: true, at: 1200},
+    {id: 'e', kind: 'error', text: 'The turn failed.', at: 1300},
+    ...ending,
+  ]);
+  expect(root.querySelector('.activity-item')).toBeNull();
+  expect(root.querySelector('.tool-items-call [title="Failed"]')).not.toBeNull();
+  expect(root.querySelector('.transcript-error').textContent).toBe('The turn failed.');
+});
+
+test('a transcript saved without state items stays expanded', () => {
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    {id: 'r', kind: 'reasoning', text: 'Old thought', at: 1100, done: true},
+    {id: 'c', kind: 'tool', tool: 'read', done: true, at: 1200},
+    {id: 'a', kind: 'text', text: 'Old answer', at: 1300},
+  ]);
+  expect(root.querySelector('.activity-item')).toBeNull();
+  expect(root.textContent).toContain('Old thought');
+  expect(root.textContent).toContain('Old answer');
+});
+
+test('a later launch cannot hide what an earlier launch left unfinished', () => {
+  const {root} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'c', kind: 'tool', tool: 'shell', input: {command: 'sleep 60'}, at: 1200},
+    {id: 'u2', kind: 'user', text: 'Again', at: 9000},
+    {id: 'M2:w', kind: 'state', state: 'working', done: true, at: 9100},
+    {id: 'd', kind: 'tool', tool: 'read', done: true, at: 9200},
+    {id: 'a', kind: 'text', text: 'Fresh answer', at: 9300},
+    {id: 'M2:i', kind: 'state', state: 'idle', done: true, at: 9400, final: ['a']},
+  ]);
+  expect(summaries(root).map(s => s.textContent)).toEqual(['Worked for 0s']);
+  expect(root.textContent).toContain('sleep 60');
+  expect(root.querySelectorAll('.tool-items-call').length).toBe(1);
 });
 
 const choose = (root, choice) => {
@@ -184,15 +255,18 @@ test('the Send button beside the field sends the typed answer', async () => {
   expect(fetches.mock.calls[0][1].body).toBe('Grace');
 });
 
-test('a request inside collapsed tool calls opens them', () => {
+test('a request inside a finished turn opens its activity', () => {
   const {root} = setup([
-    {id: 'a', kind: 'tool', tool: 'agent'},
-    {id: 'b', parent: 'a', kind: 'tool', tool: 'inner'},
-    {id: 'q', parent: 'b', kind: 'attention', text: 'Allow?', choices: ['ok']},
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'a', kind: 'tool', tool: 'agent', at: 1200},
+    {id: 'q', parent: 'a', kind: 'attention', text: 'Allow?', choices: ['ok'], at: 1300},
+    {id: 't', kind: 'text', text: 'Waiting on you', at: 1400},
+    marker('i', 'idle', 2000, ['t']),
   ]);
-  const details = [...root.querySelectorAll('details')];
-  expect(details.length).toBe(4);
-  expect(details.every(d => d.open)).toBe(true);
+  const group = root.querySelector('.activity-item');
+  expect(group.open).toBe(true);
+  expect(group.querySelector('vscode-button[data-choice="ok"]')).not.toBeNull();
 });
 
 test('the list follows its end until the user scrolls up', () => {
@@ -218,36 +292,40 @@ test('the list follows its end until the user scrolls up', () => {
 
 const longText = Array.from({length: 10}, (_, i) => 'line ' + i).join('\n');
 
-test('agent messages show the sender and first line, and expand to the full message', () => {
-  const {root, send} = setup([
+test('a message that begins a turn shows its sender and first line, and expands to the full message', () => {
+  const {root} = setup([
     {id: 'in', kind: 'user', from: 'c1', text: longText, done: true},
-    {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}},
     {id: 'own', kind: 'user', text: longText},
   ]);
-  const [incoming, outgoing, own] = root.querySelectorAll('.message-item');
+  const [incoming, own] = root.querySelectorAll('.message-item');
   expect(incoming.querySelector('.disclosure-heading').textContent).toBe('From c1');
-  expect(outgoing.querySelector('.disclosure-heading').textContent).toBe('To c1');
-  expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
-  for (const message of [incoming, outgoing]) {
-    expect(message.querySelector('.message-item-bubble')).toBeNull();
-    expect(message.querySelector('.disclosure-preview').textContent).toBe('line 0');
-    expect(message.querySelector('.message-item-text')).toBeNull();
-    act(() => message.querySelector('summary').click());
-    expect(message.open).toBe(true);
-    expect(message.querySelector('.disclosure-preview')).toBeNull();
-    expect(message.querySelector('.message-item-text').textContent).toBe(longText);
-  }
-  send([{id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}, done: true, failed: true, output: 'Delivery failed'}]);
-  expect(outgoing.open).toBe(true);
-  expect(outgoing.querySelector('[title="Running"]')).toBeNull();
-  expect(outgoing.querySelector('[title="Failed"]')).not.toBeNull();
-  expect(outgoing.querySelector('.message-item-body .message-item-failure').textContent).toBe('Delivery failed');
+  expect(incoming.querySelector('.message-item-bubble')).toBeNull();
+  expect(incoming.querySelector('.disclosure-preview').textContent).toBe('line 0');
+  expect(incoming.querySelector('.message-item-text')).toBeNull();
+  act(() => incoming.querySelector('summary').click());
+  expect(incoming.open).toBe(true);
+  expect(incoming.querySelector('.disclosure-preview')).toBeNull();
+  expect(incoming.querySelector('.message-item-text').textContent).toBe(longText);
   act(() => incoming.querySelector('summary').click());
   expect(incoming.open).toBe(false);
   expect(incoming.querySelector('.disclosure-preview').textContent).toBe('line 0');
   expect(own.querySelector('.message-item-bubble')).not.toBeNull();
   expect(own.querySelector('.message-item-text').textContent).toBe(longText);
   expect(own.querySelector('summary')).toBeNull();
+});
+
+test('messages sent by the agent show their recipient and whole body', () => {
+  const sent = {id: 'out', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'c1', text: longText}};
+  const {root, send} = setup([sent]);
+  const outgoing = root.querySelector('.message-item');
+  expect(outgoing.querySelector('.message-item-heading').textContent).toBe('To c1');
+  expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
+  expect(outgoing.querySelector('.message-item-text').textContent).toBe(longText);
+  expect(outgoing.querySelector('summary')).toBeNull();
+  send([{...sent, done: true, failed: true, output: 'Delivery failed'}]);
+  expect(outgoing.querySelector('[title="Running"]')).toBeNull();
+  expect(outgoing.querySelector('[title="Failed"]')).not.toBeNull();
+  expect(outgoing.querySelector('.message-item-body .message-item-failure').textContent).toBe('Delivery failed');
 });
 
 test('short agent messages also expand, including their attached images', () => {
@@ -260,156 +338,20 @@ test('short agent messages also expand, including their attached images', () => 
   expect(message.querySelector('img').getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=');
 });
 
-test('Thinking counts its time while it streams and shows only a header until expanded', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(6000);
+test('Thinking shows its full text as it streams', () => {
   const {root, send} = setup([{id: 't', kind: 'reasoning', text: longText, at: 1000, seq: 1}]);
   const item = root.querySelector('.reasoning-item');
-  const summary = item.querySelector('summary');
-  expect(summary.textContent).toBe('Thinking for 5s…');
-  expect(item.querySelector('.reasoning-item-text')).toBeNull();
-  expect(item.textContent).toBe('Thinking for 5s…');
-  act(() => jest.advanceTimersByTime(147000));
-  expect(summary.textContent).toBe('Thinking for 2m 32s…');
-  act(() => summary.click());
-  expect(item.querySelector('.reasoning-item-text').textContent).toBe(longText);
+  expect(item.textContent).toBe(longText);
+  expect(root.querySelector('summary')).toBeNull();
   send([{id: 't', kind: 'reasoning', text: longText + '\nmore', at: 1000, seq: 1}]);
-  expect(item.querySelector('details').open).toBe(true);
-  expect(item.querySelector('.reasoning-item-text').textContent).toEndWith('more');
-  send([{id: 't', kind: 'reasoning', text: longText, at: 1000, end: 191000, done: true, seq: 1}]);
-  expect(summary.textContent).toBe('Thought for 3m 10s');
-  act(() => jest.advanceTimersByTime(10000));
-  expect(summary.textContent).toBe('Thought for 3m 10s');
-});
-
-test('finished Thinking shows its real duration whether or not anything follows it', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(500000);
-  const {root, send} = setup([{id: 't', kind: 'reasoning', text: 'x', at: 1000, end: 4000, done: true, seq: 1}], {id: 's', running: false, activity: 'idle'});
-  const summary = root.querySelector('.reasoning-item summary');
-  expect(summary.textContent).toBe('Thought for 3s');
-  send([{id: 'u', kind: 'reasoning', text: 'y', at: 10000, done: true, seq: 2}]);
-  expect(root.querySelectorAll('.reasoning-item summary')[1].textContent).toBe('Thought');
-});
-
-test('Thinking saved without an end shows the time up to the next row', () => {
-  const {root} = setup([
-    {id: 't', kind: 'reasoning', text: 'x', at: 1000, done: true, seq: 1},
-    {id: 'u', kind: 'user', text: 'hi', at: 2000, seq: 2},
-    {id: 'x', kind: 'text', text: 'Answer', at: 4000, seq: 3},
-  ], {id: 's', running: false, activity: 'idle'});
-  expect(root.querySelector('.reasoning-item summary').textContent).toBe('Thought for 3s');
-});
-
-test('a message that arrives during Thinking leaves it counting until it finishes', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(3000);
-  const thought = {id: 't', kind: 'reasoning', text: 'x', at: 1000, seq: 1};
-  const {root, send} = setup([thought]);
-  const summary = root.querySelector('.reasoning-item summary');
-  send([{id: 'u', kind: 'user', text: 'hello', at: 2000, seq: 2}]);
-  act(() => jest.advanceTimersByTime(8000));
-  expect(summary.textContent).toBe('Thinking for 10s…');
-  send([{...thought, done: true, end: 12000}]);
-  expect(summary.textContent).toBe('Thought for 11s');
-});
-
-test('alternating thinking and tools stays in one working block and completed timers stop', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(6000);
-  const {root, send} = setup([{id: 'r', kind: 'reasoning', text: 'Plan', at: 1000, seq: 1}]);
-  const list = root.querySelector('.transcript-list');
-  const run = list.firstElementChild;
-  const summary = run.querySelector('summary');
-  act(() => summary.click());
-  const thinking = run.querySelector('.reasoning-item summary');
-  expect(summary.textContent).toBe('Working for 5s…');
-  send([
-    {id: 'c', kind: 'tool', tool: 'read', at: 4000, end: 5000, done: true, seq: 2},
-    {id: 's', kind: 'reasoning', text: 'Next step', at: 5000, seq: 3},
-  ]);
-  expect(list.children.length).toBe(1);
-  expect(list.firstElementChild).toBe(run);
-  expect(thinking.textContent).toBe('Thought for 3s');
-  expect(run.querySelectorAll('.reasoning-item').length).toBe(2);
-  act(() => jest.advanceTimersByTime(2000));
-  expect(thinking.textContent).toBe('Thought for 3s');
-  expect(summary.textContent).toBe('Working for 7s…');
-  send([{id: 'a', kind: 'text', text: 'Answer', at: 8000, seq: 4}]);
-  expect(summary.textContent).toBe('Worked for 7s');
-  expect(run.querySelectorAll('.reasoning-item summary')[1].textContent).toBe('Thought for 3s');
-  act(() => jest.advanceTimersByTime(60000));
-  expect(summary.textContent).toBe('Worked for 7s');
-  expect(thinking.textContent).toBe('Thought for 3s');
-});
-
-test('unfinished thinking in an idle session stops counting', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(6000);
-  const {root} = setup([{id: 'r', kind: 'reasoning', text: 'Old thought', at: 1000}], {id: 's', running: true, activity: 'idle'});
-  expect(root.querySelector('summary').textContent).toBe('Worked');
-  const summary = root.querySelector('.reasoning-item summary');
-  expect(summary.textContent).toBe('Thought');
-  act(() => jest.advanceTimersByTime(60000));
-  expect(summary.textContent).toBe('Thought');
-});
-
-test('a working block waits for its shell after the agent replies', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(6000);
-  const tool = {id: 'a', kind: 'tool', tool: 'shell', at: 1000, seq: 1};
-  const {root, send} = setup([tool], {id: 's', running: true, activity: 'idle'});
-  const summary = root.querySelector('summary');
-  send([{id: 't', kind: 'text', text: 'Preview ready', at: 4000, seq: 2}]);
-  expect(summary.textContent).toBe('Working for 5s…');
-  expect(root.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
-  act(() => jest.advanceTimersByTime(3000));
-  expect(summary.textContent).toBe('Working for 8s…');
-  send([{...tool, done: true, end: 9000}]);
-  expect(summary.textContent).toBe('Worked for 8s');
-  expect(root.querySelector('.tool-items-call [title="Running"]')).toBeNull();
-  act(() => jest.advanceTimersByTime(60000));
-  expect(summary.textContent).toBe('Worked for 8s');
-});
-
-test('a finished last run in a session that is not working shows a fixed duration', () => {
-  jest.useFakeTimers();
-  jest.setSystemTime(900000);
-  const {root} = setup([{id: 'a', kind: 'tool', tool: 'read', done: true, at: 1000, end: 5000, seq: 1}], {id: 's', running: true, activity: 'idle'});
-  const summary = root.querySelector('summary');
-  expect(summary.textContent).toBe('Worked for 4s');
-  act(() => jest.advanceTimersByTime(60000));
-  expect(summary.textContent).toBe('Worked for 4s');
-});
-
-test('expanded Thinking stays scrolled to the newest text until the user scrolls up', () => {
-  const {root, send} = setup([{id: 't', kind: 'reasoning', text: 'a', at: 1000, seq: 1}]);
-  act(() => root.querySelector('.reasoning-item summary').click());
-  const box = root.querySelector('.reasoning-item-text');
-  let height = 500;
-  Object.defineProperty(box, 'scrollHeight', {get: () => height});
-  Object.defineProperty(box, 'clientHeight', {get: () => 100});
-  const scroll = top => {
-    box.scrollTop = top;
-    box.dispatchEvent(new Event('scroll'));
-  };
-  const stream = text => send([{id: 't', kind: 'reasoning', text, at: 1000, seq: 1}]);
-  height = 600;
-  stream('ab');
-  expect(box.scrollTop).toBe(600);
-  scroll(100);
-  height = 700;
-  stream('abc');
-  expect(box.scrollTop).toBe(100);
-  scroll(600);
-  height = 800;
-  stream('abcd');
-  expect(box.scrollTop).toBe(800);
+  expect(item.textContent).toEndWith('more');
+  send([{id: 'e', kind: 'reasoning', at: 1100, seq: 2}]);
+  expect(root.querySelectorAll('.reasoning-item').length).toBe(1);
 });
 
 const png = 'iVBORw0KGgo=';
 
-test('prompts, text, and tool calls show their images, outside the call\'s details', () => {
+test('prompts, text, and tool calls show their images', () => {
   const {root} = setup([
     {id: 'u', kind: 'user', text: 'look', images: [{mime_type: 'image/png', data: png}]},
     {id: 'x', kind: 'text', images: [{mime_type: 'image/gif', data: 'R0lGODlh'}]},
@@ -419,7 +361,6 @@ test('prompts, text, and tool calls show their images, outside the call\'s detai
   expect(sources('.message-item')).toEqual(['data:image/png;base64,' + png]);
   expect(sources('.transcript-text')).toEqual(['data:image/gif;base64,R0lGODlh']);
   expect(sources('.tool-items-call')).toEqual(['data:image/png;base64,' + png]);
-  expect(sources('.tool-items-call details')).toEqual([]);
 });
 
 test('mirrored requests name their sender and answer at its session ID; child status stays hidden', async () => {

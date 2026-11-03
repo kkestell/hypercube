@@ -19,6 +19,14 @@
   line-height: 1.5;
 }
 
+.message-item-heading {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  line-height: var(--size-row-height);
+  color: var(--vscode-descriptionForeground);
+}
+
 .message-item-body {
   display: flex;
   flex-direction: column;

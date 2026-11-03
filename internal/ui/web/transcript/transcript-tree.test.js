@@ -4,7 +4,12 @@ import {ancestorKeys, toolSummary, toolTitle, transcriptRows} from './transcript
 const transcript = items => ({order: items.map(item => item.id), items: Object.fromEntries(items.map(item => [item.id, item]))});
 const rows = items => transcriptRows(transcript(items));
 const call = (id, tool, at, extra = {}) => ({id, kind: 'tool', tool, at, ...extra});
-const ids = calls => calls.map(c => c.item.id);
+const text = (id, at, extra = {}) => ({id, kind: 'text', text: id, at, ...extra});
+const user = (id, at, extra = {}) => ({id, kind: 'user', text: id, at, ...extra});
+// Hypercube's state items, which name their launch before the colon.
+const working = (id, at, launch = 'L1') => ({id: `${launch}:${id}`, kind: 'state', state: 'working', done: true, at});
+const idle = (id, at, final = [], launch = 'L1') => ({id: `${launch}:${id}`, kind: 'state', state: 'idle', done: true, at, final});
+const shape = list => list.map(row => row.type === 'activity' ? ['activity', row.rows.map(r => r.item.id)] : row.item.id);
 
 test('toolSummary picks the telling text of a call', () => {
   expect(toolSummary({command: 'ls -la\n  /tmp', timeout: 5})).toBe('ls -la /tmp');
@@ -26,155 +31,146 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle({tool: 'bash', input: {command: 'ls'}})).toEqual(['bash', 'ls']);
 });
 
-test('consecutive calls share one open run', () => {
-  const [run] = rows([call('a', 'read', 1000, {done: true}), call('b', 'bash', 2000)]);
-  expect(run).toMatchObject({type: 'run', key: 'run:a', closed: false});
-  expect(ids(run.calls)).toEqual(['a', 'b']);
+test('a successful turn is its opener, one activity, and its response', () => {
+  const result = rows([
+    user('ask', 1000),
+    working('w', 1500),
+    {id: 'think', kind: 'reasoning', text: 'hm', at: 2000},
+    call('read', 'read', 3000, {done: true}),
+    text('progress', 4000),
+    text('answer', 5000),
+    idle('i', 9000, ['answer']),
+  ]);
+  expect(shape(result)).toEqual(['ask', ['activity', ['think', 'read', 'progress']], 'answer']);
+  expect(result[1]).toMatchObject({key: 'activity:L1:w', start: 1000, until: 9000});
+  expect(result[0].inline).toBeUndefined();
 });
 
-test('child status updates stay hidden and do not split tool runs', () => {
-  const [run, text] = rows([
-    call('a', 'read', 1000, {done: true}),
-    {id: 'status', kind: 'status', from: 'child', text: 'Working', at: 2000},
-    call('b', 'bash', 3000, {done: true}),
-    {id: 'text', kind: 'text', text: 'Done', at: 4000},
+test('every final block follows the activity, and a response alone has no activity', () => {
+  expect(shape(rows([user('ask', 1), working('w', 2), text('a', 3), call('c', 'read', 4), text('b', 5), idle('i', 6, ['a', 'b'])])))
+    .toEqual(['ask', ['activity', ['c']], 'a', 'b']);
+  expect(shape(rows([user('ask', 1), working('w', 2), text('a', 3), idle('i', 4, ['a'])]))).toEqual(['ask', 'a']);
+});
+
+test('the duration starts at the working state when no input began the turn', () => {
+  const [activity] = rows([working('w', 1500), call('c', 'read', 2000), text('a', 3000), idle('i', 7500, ['a'])]);
+  expect(activity).toMatchObject({type: 'activity', start: 1500, until: 7500});
+});
+
+test('a running turn draws every row as it is, with no activity', () => {
+  const result = rows([user('ask', 1), working('w', 2), {id: 'think', kind: 'reasoning', text: 'hm', at: 3}, call('c', 'read', 4), text('progress', 5)]);
+  expect(result.map(row => row.type)).toEqual(['user', 'reasoning', 'tool', 'text']);
+});
+
+test.each([['the user', undefined], ['another session', 'child']])('a message from %s during the turn is activity, in order', (_source, from) => {
+  const items = [user('ask', 1), working('w', 2), call('a', 'read', 3, {done: true}), user('more', 4, {from}), call('b', 'bash', 5, {done: true}), text('answer', 6), idle('i', 7, ['answer'])];
+  const result = rows(items);
+  expect(shape(result)).toEqual(['ask', ['activity', ['a', 'more', 'b']], 'answer']);
+  expect(result[1].rows[1]).toMatchObject({type: 'user', inline: true});
+  // While the turn runs, the message draws in place among the other rows.
+  const running = rows(items.slice(0, 5));
+  expect(running.map(row => row.item.id)).toEqual(['ask', 'a', 'more', 'b']);
+  expect(running[2].inline).toBe(true);
+  expect(running[0].inline).toBeUndefined();
+});
+
+test('an idle state outside a turn leaves the message that will begin the next one', () => {
+  const [opener, activity, answer] = rows([user('ask', 1000), idle('start', 2000), working('w', 5000), call('c', 'read', 6000), text('answer', 9000), idle('i', 10000, ['answer'])]);
+  expect(opener.item.id).toBe('ask');
+  expect(activity).toMatchObject({type: 'activity', start: 1000, until: 10000});
+  expect(answer.item.id).toBe('answer');
+});
+
+test('of several messages before the working state, the first begins the turn', () => {
+  const result = rows([user('first', 1), user('second', 2), working('w', 3), text('answer', 4), idle('i', 5, ['answer'])]);
+  expect(shape(result)).toEqual(['first', ['activity', ['second']], 'answer']);
+  expect(result[1].start).toBe(1);
+});
+
+test('a peer message that begins a turn stays above its activity', () => {
+  const result = rows([user('note', 1, {from: 'child'}), working('w', 2), call('c', 'read', 3), text('answer', 4), idle('i', 5, ['answer'])]);
+  expect(shape(result)).toEqual(['note', ['activity', ['c']], 'answer']);
+});
+
+test('earlier turns stay grouped while a later turn runs', () => {
+  const result = rows([
+    user('one', 1), working('w1', 2), call('a', 'read', 3), text('first', 4), idle('i1', 5, ['first']),
+    user('two', 6), working('w2', 7), call('b', 'bash', 8),
   ]);
-  expect(ids(run.calls)).toEqual(['a', 'b']);
-  expect(run).toMatchObject({start: 1000, until: 4000});
-  expect(text.item.id).toBe('text');
+  expect(shape(result)).toEqual(['one', ['activity', ['a']], 'first', 'two', 'b']);
+});
+
+test('repeated working states of one launch do not split a turn', () => {
+  expect(shape(rows([user('ask', 1), working('w1', 2), call('a', 'read', 3), working('w2', 4), call('b', 'bash', 5), text('answer', 6), idle('i', 7, ['answer'])])))
+    .toEqual(['ask', ['activity', ['a', 'b']], 'answer']);
+});
+
+test.each([
+  ['an idle state without a final', [user('ask', 1), working('w', 2), call('a', 'read', 3), text('partial', 4), idle('i', 5)]],
+  ['a final that names nothing in the turn', [user('ask', 1), working('w', 2), call('a', 'read', 3), idle('i', 4, ['missing'])]],
+  ['a transcript without state items', [user('ask', 1), call('a', 'read', 2), text('answer', 3)]],
+])('%s leaves every row as it is', (_name, items) => {
+  expect(rows(items).every(row => row.type !== 'activity')).toBe(true);
+  expect(rows(items).map(row => row.item.id)).toEqual(items.filter(item => item.kind !== 'state').map(item => item.id));
+});
+
+test('a later launch does not group what an earlier launch left unfinished', () => {
+  const result = rows([
+    user('old', 1), working('w1', 2), call('lost', 'shell', 3), text('stale', 4),
+    idle('start', 10, [], 'L2'),
+    user('new', 11), working('w2', 12, 'L2'), call('b', 'bash', 13, {done: true}), text('answer', 14), idle('i2', 15, ['answer'], 'L2'),
+  ]);
+  expect(shape(result)).toEqual(['old', 'lost', 'stale', 'new', ['activity', ['b']], 'answer']);
+  expect(result[4]).toMatchObject({key: 'activity:L2:w2', start: 11, until: 15});
+});
+
+test('a working state of a new launch ends the old launch\'s turn without grouping it', () => {
+  const result = rows([user('old', 1), working('w1', 2), call('lost', 'shell', 3), working('w2', 4, 'L2'), text('answer', 5), idle('i', 6, ['answer'], 'L2')]);
+  expect(shape(result)).toEqual(['old', 'lost', 'answer']);
+});
+
+test('child status updates and state items stay hidden', () => {
+  const result = rows([user('ask', 1), working('w', 2), {id: 'status', kind: 'status', from: 'child', text: 'Working', at: 3}, call('a', 'read', 4), idle('i', 5)]);
+  expect(result.map(row => row.item.id)).toEqual(['ask', 'a']);
   expect(rows([{id: 'status', kind: 'status', text: 'Working'}])).toEqual([]);
 });
 
-test.each(['text', 'error', 'attention'])('the next %s item closes the run with its duration', kind => {
-  const [run, next] = rows([call('a', 'read', 1000, {done: true}), call('b', 'bash', 2000, {done: true, failed: true}), {id: 't', kind, at: 33000}]);
-  expect(run).toMatchObject({closed: true, start: 1000, until: 33000});
-  expect(next.type).toBe(kind);
-});
-
-test.each([true, false])('a tool that outlives the next message keeps its run active, working=%s', working => {
-  const tool = call('a', 'shell', 1000);
-  const items = [tool, {id: 't', kind: 'text', at: 4000}];
-  expect(transcriptRows(transcript(items), working)[0]).toMatchObject({closed: false, until: 0});
-  items[0] = {...tool, done: true, end: 9000};
-  expect(transcriptRows(transcript(items), working)[0]).toMatchObject({closed: true, until: 9000});
-});
-
-test('a run with missing timestamps has no times', () => {
-  expect(rows([call('a', 'read', undefined, {done: true}), {id: 't', kind: 'text'}])[0]).toMatchObject({closed: true, start: 0, until: 0});
-});
-
-test('a run still open when the session is not working closes at its last call\'s end', () => {
-  const items = [call('a', 'read', 1000, {done: true, end: 2000}), call('b', 'bash', 3000, {done: true, end: 7000}), call('c', 'edit', 4000, {done: true, end: 5000})];
-  expect(rows(items)[0]).toMatchObject({closed: false, until: 0});
-  expect(transcriptRows(transcript(items), false)[0]).toMatchObject({closed: true, start: 1000, until: 7000});
-  expect(transcriptRows(transcript([call('a', 'read', 1000, {done: true})]), false)[0]).toMatchObject({closed: true, start: 1000, until: 0});
-  const nested = transcriptRows(transcript([call('p', 'agent', 1000, {done: true, end: 9000}), call('n', 'read', 2000, {parent: 'p', done: true, end: 3000})]), false);
-  expect(nested[0].calls[0].children[0]).toMatchObject({closed: true, until: 3000});
-});
-
-test('thinking and calls share one run, and later work stops unfinished thinking', () => {
-  const [run, user, answer] = rows([
-    {id: 'a', kind: 'reasoning', at: 1000, end: 3000, done: true},
-    call('b', 'read', 4000, {done: true}),
-    {id: 'c', kind: 'reasoning', at: 5000},
-    {id: 'u', kind: 'user', at: 6000},
-    call('d', 'read', 8000, {done: true}),
-    {id: 'e', kind: 'reasoning', at: 9000},
-    {id: 't', kind: 'text', at: 12000},
-  ]);
-  expect(run).toMatchObject({key: 'run:a', start: 1000, closed: true, until: 12000});
-  expect(run.calls.map(c => c.type)).toEqual(['reasoning', 'tool', 'reasoning', 'tool', 'reasoning']);
-  expect(run.calls.filter(c => c.type === 'reasoning').map(c => [c.closed, c.until])).toEqual([
-    [true, 3000], [true, 8000], [true, 12000],
-  ]);
-  expect(user.item.id).toBe('u');
-  expect(answer.item.id).toBe('t');
-});
-
-test('last thinking stops on completion or when the session stops working', () => {
-  const thought = {id: 'a', kind: 'reasoning', at: 1000};
-  expect(rows([thought])[0].calls[0]).toMatchObject({closed: false, until: 0});
-  expect(rows([{...thought, done: true, end: 4000}])[0].calls[0]).toMatchObject({closed: true, until: 4000});
-  expect(transcriptRows(transcript([thought]), false)[0].calls[0]).toMatchObject({closed: true, until: 0});
-});
-
-test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves the run open and later calls join above it', (_source, from) => {
-  const items = [call('a', 'read', 1000, {done: true}), {id: 'u', kind: 'user', from, text: 'Continue', at: 3000}];
-  const [open, user] = rows(items);
-  expect(open).toMatchObject({key: 'run:a', closed: false, until: 0});
-  expect(user).toEqual({type: 'user', item: items[1]});
-
-  items.push(call('b', 'bash', 5000, {done: true}));
-  const joined = rows(items);
-  expect(joined.map(row => row.type)).toEqual(['run', 'user']);
-  expect(joined[0]).toMatchObject({key: 'run:a', closed: false, until: 0});
-  expect(ids(joined[0].calls)).toEqual(['a', 'b']);
-
-  items.push({id: 't', kind: 'text', text: 'Done', at: 10000});
-  const closed = rows(items);
-  expect(closed.map(row => row.type)).toEqual(['run', 'user', 'text']);
-  expect(closed[0]).toMatchObject({key: 'run:a', closed: true, start: 1000, until: 10000});
-  expect(ids(closed[0].calls)).toEqual(['a', 'b']);
-});
-
-test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves a closed run closed and later calls start a new run', (_source, from) => {
-  const items = [call('a', 'read', 1000, {done: true}), {id: 't', kind: 'text', text: 'Done', at: 4000}];
-  const closed = rows(items)[0];
-  items.push({id: 'u', kind: 'user', from, text: 'Continue', at: 6000});
-  expect(rows(items)[0]).toEqual(closed);
-
-  items.push(call('b', 'bash', 8000));
-  const result = rows(items);
-  expect(result.map(row => row.type)).toEqual(['run', 'text', 'user', 'run']);
-  expect(result[0]).toEqual(closed);
-  expect(result[3]).toMatchObject({key: 'run:b', closed: false, until: 0});
-  expect(ids(result[3].calls)).toEqual(['b']);
-});
-
-test('replayed history keeps separate runs and their durations', () => {
-  const result = rows([
-    call('a', 'read', 1000, {done: true}),
-    call('b', 'bash', 5000, {done: true}),
-    {id: 'r', kind: 'text', text: 'Next', at: 33000},
-    call('c', 'edit', 34000, {done: true}),
-    {id: 'u', kind: 'user', text: 'Continue', at: 36000},
-  ]);
-  expect(result.map(r => r.type)).toEqual(['run', 'text', 'run', 'user']);
-  expect(result[0]).toMatchObject({start: 1000, until: 33000});
-  expect(result[2]).toMatchObject({closed: false, until: 0});
-});
-
-test('nested items group among their siblings and leave the outer run open', () => {
-  const [outer] = rows([
+test('nested items draw under their call, in order', () => {
+  const [outer, next] = rows([
     call('parent', 'agent', 1000),
     call('one', 'read', 2000, {parent: 'parent', done: true}),
-    call('two', 'bash', 3000, {parent: 'parent', done: true}),
     {id: 'child-text', parent: 'parent', kind: 'text', text: 'Child finished', at: 6000},
     call('next', 'edit', 7000),
   ]);
-  expect(outer.closed).toBe(false);
-  expect(ids(outer.calls)).toEqual(['parent', 'next']);
-  const [inner, text] = outer.calls[0].children;
-  expect(ids(inner.calls)).toEqual(['one', 'two']);
-  expect(inner).toMatchObject({start: 2000, until: 6000});
-  expect(text.item.id).toBe('child-text');
+  expect(outer.children.map(row => row.item.id)).toEqual(['one', 'child-text']);
+  expect(next.item.id).toBe('next');
+});
+
+test('nested items inside a finished turn stay under their call', () => {
+  const [, activity] = rows([user('ask', 1), working('w', 2), call('p', 'agent', 3), call('n', 'read', 4, {parent: 'p'}), text('answer', 5), idle('i', 6, ['answer'])]);
+  expect(activity.rows[0].children.map(row => row.item.id)).toEqual(['n']);
 });
 
 test('an item that arrives before its parent moves under it', () => {
   const child = {id: 'c', parent: 'p', kind: 'text', seq: 1};
   expect(rows([child]).map(r => r.item.id)).toEqual(['c']);
-  const [run] = rows([child, call('p', 'agent', 0, {seq: 2})]);
-  expect(run.calls[0].children.map(r => r.item.id)).toEqual(['c']);
+  const [parent] = rows([child, call('p', 'agent', 0, {seq: 2})]);
+  expect(parent.children.map(r => r.item.id)).toEqual(['c']);
 });
 
-test('message calls join runs and draw as messages', () => {
-  const [run] = rows([call('a', 'read', 1000), {id: 'm', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'lead', text: 'Result'}}, call('b', 'bash', 3000)]);
-  expect(run.calls.map(c => c.type)).toEqual(['tool', 'message', 'tool']);
+test('message calls draw as messages', () => {
+  const rowsOfCalls = rows([call('a', 'read', 1000), {id: 'm', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'lead', text: 'Result'}}]);
+  expect(rowsOfCalls.map(row => row.type)).toEqual(['tool', 'message']);
 });
 
-test('ancestorKeys names the runs and calls around an item', () => {
-  const items = transcript([call('a', 'agent'), call('b', 'inner', 0, {parent: 'a'}), {id: 'q', parent: 'b', kind: 'attention'}, {id: 'r', parent: 'b', kind: 'reasoning'}]);
-  expect(ancestorKeys(items, 'q')).toEqual(['run:a', 'a', 'run:b', 'b']);
-  expect(ancestorKeys(items, 'r')).toEqual(['run:a', 'a', 'run:b', 'b', 'run:r']);
+test('ancestorKeys names the activity around an item', () => {
+  const items = transcript([
+    user('ask', 1), working('w', 2), call('a', 'agent', 3), {id: 'q', parent: 'a', kind: 'attention', at: 4}, text('answer', 5), idle('i', 6, ['answer']),
+    user('next', 7), {id: 'raw', kind: 'attention', at: 8},
+  ]);
+  expect(ancestorKeys(items, 'q')).toEqual(['activity:L1:w']);
+  expect(ancestorKeys(items, 'a')).toEqual(['activity:L1:w']);
+  expect(ancestorKeys(items, 'answer')).toEqual([]);
+  expect(ancestorKeys(items, 'raw')).toEqual([]);
   expect(ancestorKeys(items, 'missing')).toEqual([]);
 });

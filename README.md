@@ -2,6 +2,8 @@
 
 Local coding-agent teams for macOS, built with Go.
 
+- [Introduction](docs/introduction.md): what Hypercube does, its main concepts,
+  and a tour of the interface.
 - [Installation](docs/installation.md): prerequisites, building, upgrades,
   and development sessions.
 - [Usage](docs/usage.md): workspaces, sessions, commands, the browser view,

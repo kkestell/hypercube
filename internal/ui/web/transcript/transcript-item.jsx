@@ -1,10 +1,12 @@
 // Draws one transcript row with the component for its kind, and draws text
 // and error items, which need no component of their own.
 import {memo} from 'preact/compat';
+import {ActivityItem} from './activity-item.jsx';
 import {AttentionItem} from './attention-item.jsx';
 import {Markdown} from './markdown.jsx';
 import {MessageItem} from './message-item.jsx';
-import {ToolRun} from './tool-items.jsx';
+import {ReasoningItem} from './reasoning-item.jsx';
+import {ToolCall} from './tool-items.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import './transcript-item.css';
 
@@ -22,8 +24,11 @@ const ErrorItem = memo(({item}) => <div class="transcript-error">{item.text ?? '
 export function TranscriptRow({row, session, expanded, setOpen}) {
   const {item} = row;
   switch (row.type) {
-    case 'run': return <ToolRun run={row} session={session} expanded={expanded} setOpen={setOpen} />;
-    case 'user': return <MessageItem item={item} expanded={!!expanded[item.id]} setOpen={setOpen} />;
+    case 'activity': return <ActivityItem row={row} session={session} expanded={expanded} setOpen={setOpen} />;
+    case 'tool': return <ToolCall call={row} session={session} expanded={expanded} setOpen={setOpen} />;
+    case 'message': return <MessageItem item={item} inline />;
+    case 'reasoning': return <ReasoningItem item={item} />;
+    case 'user': return <MessageItem item={item} inline={row.inline} expanded={!!expanded[item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={item} session={session} />;
     case 'error': return <ErrorItem item={item} />;
     default: return <TextItem item={item} />;

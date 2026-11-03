@@ -33,7 +33,13 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   to an attention request. Closing input ends the plugin.
 - **Events.** The plugin reports the native conversation ID to resume later,
   the main agent's work state (`working` or `idle`), transcript items, and
-  usage: `context`, the tokens of the latest request, `window`, the model's
+  usage. An idle event after a successful turn also lists `final`, the IDs of
+  the main agent's text and image items that are the turn's response; the
+  plugin leaves `final` out for an interrupted or failed turn and for a turn
+  with no identifiable response. Hypercube saves each work state change as a
+  hidden `state` item, in order with the other items, with the `final` IDs on an
+  idle one. The browser draws a successful turn as its opening message, one
+  closed activity row, and the `final` items. Usage: `context`, the tokens of the latest request, `window`, the model's
   context window, and `cost`, in US dollars.
 - **Items.** An item has an ID and a kind: text, reasoning, tool, error, or
   attention. A later event with the same item ID replaces the item, or extends
@@ -85,8 +91,10 @@ with `--resume`. A conversation Claude Code cannot resume fails the launch.
   and it reads them before its next step. Interrupt stops the turn the way Esc
   does, and the stopped turn stays in the transcript.
 - **State and usage.** Claude reports when it starts working and when it is
-  idle. Context is the tokens of the latest request; the context window and cost
-  come from each turn's result.
+  idle. A successful result confirms the text of the main agent's newest message
+  as the final response, which the idle event reports; a native subagent's
+  text is never the final response. Context is the tokens of the latest
+  request; the context window and cost come from each turn's result.
 
 ## OpenCode
 
@@ -114,7 +122,9 @@ levels); a launch with any other value fails and names it.
   current one ends, together with any other waiting messages. Interrupt cancels
   the turn and any open questions, and the stopped turn stays in the transcript.
 - **State and usage.** The agent is working from the start of a turn until its
-  last prompt has finished. Context and cost come from OpenCode's usage updates
+  last prompt has finished. A prompt that ends normally with the main
+  conversation's text as its last output, after any tool call, reports that
+  message as the final response when no prompt is waiting. Context and cost come from OpenCode's usage updates
   for the main conversation, and the context window from the model.
 
 ## Codex
@@ -152,7 +162,8 @@ private storage and resumes the same conversation ID.
   starts one. Interrupt stops the turn and gives up any open request, and the
   stopped turn stays in the transcript.
 - **State and usage.** The agent is working from the start of a turn until it
-  ends. Context is the tokens of the latest request, and the context window
+  ends. A completed turn reports the main thread's messages that Codex marks as
+  its final answer. Context is the tokens of the latest request, and the context window
   comes from the model.
 
 ## Pi
@@ -179,6 +190,8 @@ conversation without a saved Pi session fails the launch.
   message sent when Pi is idle starts a run. Interrupt gives up open dialogs and
   aborts the run, and the stopped run stays in the transcript.
 - **State and usage.** The agent is working from the start of a run until Pi
-  settles, with no retry, compaction, or queued message left. Context is the
+  settles, with no retry, compaction, or queued message left. A run whose last
+  message ended normally reports that message's text as the final response.
+  Context is the
   tokens of the latest request, the context window comes from the model, and
   cost is the session's total, including its cost before a resume.

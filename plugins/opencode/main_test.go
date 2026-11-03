@@ -285,6 +285,37 @@ func (h *agentUnderTest) states() []string {
 	return states
 }
 
+// finals are the response items reported with each idle state.
+func (h *agentUnderTest) finals() [][]string {
+	var finals [][]string
+	for _, ev := range h.snapshot() {
+		if ev.State == harness.Idle {
+			finals = append(finals, ev.Final)
+		}
+	}
+	return finals
+}
+
+// update is a session/update line for the session ses_1, from a native
+// subagent's session when child is set.
+func update(kind, messageID, text, tool, child string) string {
+	u := map[string]any{"sessionUpdate": kind}
+	switch kind {
+	case "tool_call":
+		u["toolCallId"], u["name"], u["status"] = tool, "shell", "pending"
+	default:
+		u["content"] = map[string]any{"type": "text", "text": text}
+	}
+	if messageID != "" {
+		u["messageId"] = messageID
+	}
+	if child != "" {
+		u["_meta"] = map[string]any{"opencode/child-session": map[string]any{"id": child, "parentID": "ses_1"}}
+	}
+	line, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{"sessionId": "ses_1", "update": u}})
+	return string(line)
+}
+
 func kinds(items []harness.Item) []string {
 	var out []string
 	for _, it := range items {
@@ -1018,5 +1049,87 @@ func TestToolResultImages(t *testing.T) {
 	it := h.item(t, "c1")
 	if it.Output != "shown" || !it.Done || len(it.Images) != 1 || it.Images[0] != (harness.Image{MIMEType: "image/png", Data: "AAAA"}) {
 		t.Fatalf("%+v", it)
+	}
+}
+
+func TestIdleReportsTheMessageTheTurnEndedOn(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		lines  []string
+		reason string
+		final  []string
+	}{
+		{"progress then response", []string{
+			update("agent_message_chunk", "m1", "Looking.", "", ""), update("tool_call", "", "", "c1", ""),
+			update("agent_message_chunk", "m2", "Done.", "", ""),
+		}, "end_turn", []string{"m2"}},
+		{"progress message then response with no tool call between", []string{
+			update("agent_message_chunk", "m1", "Looking.", "", ""),
+			update("agent_message_chunk", "m2", "Done.", "", ""),
+		}, "end_turn", []string{"m2"}},
+		{"progress before a tool call is not a response", []string{
+			update("agent_message_chunk", "m1", "Looking.", "", ""), update("tool_call", "", "", "c1", ""),
+		}, "end_turn", nil},
+		{"a subagent's message is not a candidate", []string{
+			update("agent_message_chunk", "m1", "Mine.", "", ""), update("tool_call", "", "", "c1", ""),
+			update("agent_message_chunk", "child1", "Theirs.", "", "ses_c"),
+		}, "end_turn", nil},
+		{"cancelled", []string{update("agent_message_chunk", "m1", "Done.", "", "")}, "cancelled", nil},
+		{"output limit", []string{update("agent_message_chunk", "m1", "Cut", "", "")}, "max_tokens", nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := connected(t)
+			h.session = "ses_1"
+			h.startTurn(t)
+			h.feed(t, tc.lines...)
+			h.endTurn(t, tc.reason)
+			if got := h.finals(); len(got) != 1 || !slices.Equal(got[0], tc.final) {
+				t.Errorf("final %v, want %v", got, tc.final)
+			}
+		})
+	}
+}
+
+func TestNativeSubagentFixtureAnswersWithTheMainMessage(t *testing.T) {
+	h := connected(t)
+	lines := fixture(t, "nested")
+	h.adopt(t, lines)
+	h.startTurn(t)
+	h.feed(t, lines...)
+	got := h.finals()
+	if len(got) != 1 || !slices.Equal(got[0], []string{"msg_1958a4c6e001aeweRFBa7e3ZRV"}) {
+		t.Fatalf("finals %v", got)
+	}
+}
+
+func TestQueuedPromptsContinueOneRunWithoutAnIntermediateResponse(t *testing.T) {
+	h := connected(t)
+	h.session = "ses_1"
+	h.startTurn(t)
+	if err := h.input("more", nil); err != nil {
+		t.Fatal(err)
+	}
+	h.feed(t, update("agent_message_chunk", "m1", "First answer.", "", ""))
+	h.endTurn(t, "end_turn")
+	eventually(t, "the queued prompt", func() bool { return len(h.acp.sent("session/prompt")) == 2 })
+	h.endTurn(t, "end_turn")
+	got := h.finals()
+	if len(got) != 1 || got[0] != nil {
+		t.Fatalf("finals %v", got)
+	}
+	// A queued turn's own response is reported when it ends the run.
+	if err := h.input("again", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.input("last", nil); err != nil {
+		t.Fatal(err)
+	}
+	h.feed(t, update("agent_message_chunk", "m2", "Old.", "", ""))
+	h.endTurn(t, "end_turn")
+	eventually(t, "the queued prompt", func() bool { return len(h.acp.sent("session/prompt")) == 4 })
+	h.feed(t, update("agent_message_chunk", "m3", "New.", "", ""))
+	h.endTurn(t, "end_turn")
+	if got := h.finals(); len(got) != 2 || !slices.Equal(got[1], []string{"m3"}) {
+		t.Fatalf("finals %v", got)
 	}
 }

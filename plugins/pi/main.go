@@ -82,6 +82,7 @@ type agent struct {
 	context   int
 	cost      float64
 	messages  int                     // assistant messages seen
+	texts     []string                // text items of the current assistant message
 	blocks    map[string]*block       // text and reasoning of the message in progress
 	tools     map[string]harness.Item // tool items that have not completed
 	requests  map[string]*request     // open extension dialogs, by item ID
@@ -103,8 +104,12 @@ type block struct {
 	shown bool
 }
 
-// assistant is what a finished assistant message says about how it ended.
-type assistant struct{ stop, err string }
+// assistant is what a finished assistant message says about how it ended, and
+// the text items it showed.
+type assistant struct {
+	stop, err string
+	texts     []string
+}
 
 // request is an extension dialog waiting for the user.
 type request struct {
@@ -409,6 +414,7 @@ func (ag *agent) line(line []byte) {
 	switch h.Type {
 	case "agent_start":
 		ev.State = harness.Working
+		ag.texts = nil
 	case "agent_settled":
 		ag.settled(&ev, line)
 	case "message_start":
@@ -417,6 +423,7 @@ func (ag *agent) line(line []byte) {
 		}
 		if json.Unmarshal(line, &m) == nil && m.Message.Role == "assistant" {
 			ag.messages++
+			ag.texts = nil
 		}
 	case "message_update":
 		ag.update(&ev, line)
@@ -486,6 +493,10 @@ func (ag *agent) settled(ev *harness.Event, line []byte) {
 		}
 		ag.fail(ev, text)
 	}
+	// Only a message that ended normally in an uninterrupted run is a response.
+	if !m.Aborted && last.stop == "stop" {
+		ev.Final = last.texts
+	}
 	ev.State = harness.Idle
 }
 
@@ -532,6 +543,9 @@ func (ag *agent) update(ev *harness.Event, line []byte) {
 		delete(ag.blocks, id)
 		if b.shown || strings.TrimSpace(u.Content) != "" {
 			ev.Items = append(ev.Items, harness.Item{ID: id, Kind: b.kind, Text: u.Content, Done: true})
+			if b.kind == harness.KindText {
+				ag.texts = append(ag.texts, id)
+			}
 		}
 	}
 }
@@ -565,7 +579,7 @@ func (ag *agent) messageEnd(ev *harness.Event, line []byte) {
 			}
 			delete(ag.blocks, id)
 		}
-		ag.last = assistant{m.Message.StopReason, m.Message.ErrorMessage}
+		ag.last = assistant{stop: m.Message.StopReason, err: m.Message.ErrorMessage, texts: ag.texts}
 		ag.cost += m.Message.Usage.Cost.Total
 		if t := m.Message.Usage.TotalTokens; t > 0 {
 			ag.context = t
