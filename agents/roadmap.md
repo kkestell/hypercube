@@ -49,3 +49,8 @@ Open design questions:
 
 Give the app a proper dock icon, and adjust the menu bar icon so it is easier
 on the eyes.
+
+## Show Claude Code and Codex usage limits
+
+Display the user's Claude Code and Codex usage against their limits,
+including the 5-hour and 7-day session windows.
