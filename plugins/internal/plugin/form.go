@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // Field is a property of an elicitation form's schema.
@@ -72,17 +71,12 @@ func ParseForm(properties json.RawMessage) (keys []string, fields map[string]Fie
 	return keys, fields, nil
 }
 
-// OptionNotes appends the options' notes to a question. notes[i] describes
-// labels[i]; an empty note adds nothing.
-func OptionNotes(text string, labels, notes []string) string {
-	var lines []string
-	for i, note := range notes {
+// Notes returns notes for an item's Notes field: nil when no option has one.
+func Notes(notes []string) []string {
+	for _, note := range notes {
 		if note != "" {
-			lines = append(lines, fmt.Sprintf("- %s: %s", labels[i], note))
+			return notes
 		}
 	}
-	if len(lines) > 0 {
-		text += "\n\n" + strings.Join(lines, "\n")
-	}
-	return text
+	return nil
 }

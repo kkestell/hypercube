@@ -269,7 +269,7 @@ func TestQuestionBecomesAttentionAndAnswerReachesClaude(t *testing.T) {
 	h.feed(head...)
 	items := h.transcript()
 	if len(items) != 1 || items[0].Kind != harness.KindAttention || items[0].Done || !items[0].Free ||
-		!slices.Equal(items[0].Choices, []string{"Red", "Blue"}) || !strings.HasPrefix(items[0].Text, "Which color do you like, Red or Blue?") {
+		!slices.Equal(items[0].Choices, []string{"Red", "Blue"}) || items[0].Text != "Which color do you like, Red or Blue?" || !slices.Equal(items[0].Notes, []string{"Choose Red", "Choose Blue"}) {
 		t.Fatalf("%+v", items)
 	}
 	// The question is not also a tool call.

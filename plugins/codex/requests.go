@@ -307,7 +307,7 @@ func questionsRequest(params json.RawMessage) (*request, error) {
 			labels, descriptions = append(labels, o.Label), append(descriptions, o.Description)
 		}
 		item.Choices = labels
-		item.Text = plugin.OptionNotes(item.Text, labels, descriptions)
+		item.Notes = plugin.Notes(descriptions)
 		r.items = append(r.items, item)
 		r.questionIDs = append(r.questionIDs, q.ID)
 	}
@@ -368,7 +368,7 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 				item.Choices, titles = append(item.Choices, o.Const), append(titles, o.Title)
 			}
 			item.Free = len(item.Choices) == 0
-			item.Text = plugin.OptionNotes(item.Text, item.Choices, titles)
+			item.Notes = plugin.Notes(titles)
 		default:
 			return nil, fmt.Errorf("a %s field", f.Type)
 		}

@@ -117,7 +117,7 @@ type Usage struct {
 // items name the item that started it as their Parent.
 //
 // An attention item asks the user: Text is the prompt, Choices are the options,
-// and Free allows typed text. It stays open until an event sets Done, with the
+// Notes[i] optionally describes Choices[i], and Free allows typed text. It stays open until an event sets Done, with the
 // Answer when there is one.
 //
 // An item's Images are shown with its text: the pictures a user sent, or the
@@ -141,6 +141,7 @@ type Item struct {
 	Output  string          `json:"output,omitempty"`
 	Failed  bool            `json:"failed,omitempty"`
 	Choices []string        `json:"choices,omitempty"`
+	Notes   []string        `json:"notes,omitempty"`
 	Free    bool            `json:"free,omitempty"`
 	Answer  string          `json:"answer,omitempty"`
 	From    string          `json:"from,omitempty"`

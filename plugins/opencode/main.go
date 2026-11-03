@@ -720,7 +720,7 @@ func (ag *agent) form(ev *harness.Event, id, params json.RawMessage) {
 			item.Choices = append(item.Choices, o.Const)
 			notes = append(notes, o.Description)
 		}
-		item.Text = plugin.OptionNotes(text, item.Choices, notes)
+		item.Text, item.Notes = text, plugin.Notes(notes)
 		items = append(items, item)
 		r.fields = append(r.fields, fld)
 	}

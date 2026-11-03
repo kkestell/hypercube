@@ -712,7 +712,7 @@ func TestQuestionsAreAnsweredTogether(t *testing.T) {
 		{"id":"name","header":"Name","question":"What name?","isOther":true,"isSecret":false,"options":null},
 		{"id":"color","header":"Color","question":"Which color?","isOther":true,"isSecret":false,"options":[{"label":"Red","description":""}]}]}}`)
 	size, name, color := h.item(t, "request:5/0"), h.item(t, "request:5/1"), h.item(t, "request:5/2")
-	if size.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) || !strings.Contains(size.Text, "Which size?") || !strings.Contains(size.Text, "- Small: fits") {
+	if size.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) || !strings.Contains(size.Text, "Which size?") || !slices.Equal(size.Notes, []string{"fits", ""}) {
 		t.Fatalf("%+v", size)
 	}
 	if !name.Free || len(name.Choices) != 0 || !color.Free || len(color.Choices) != 1 {
@@ -778,7 +778,7 @@ func TestElicitationForm(t *testing.T) {
 		"tags":{"type":"array","title":"Tags","items":{"enum":["a","b"]}},
 		"note":{"type":"string","title":"Note"}}}}}`)
 	zeta, alpha, count, tags, note := h.item(t, "request:1/0"), h.item(t, "request:1/1"), h.item(t, "request:1/2"), h.item(t, "request:1/3"), h.item(t, "request:1/4")
-	if !strings.HasPrefix(zeta.Text, "srv: Details") || !slices.Equal(zeta.Choices, []string{"fast", "slow"}) || !strings.Contains(zeta.Text, "- fast: Fast one") {
+	if !strings.HasPrefix(zeta.Text, "srv: Details") || !slices.Equal(zeta.Choices, []string{"fast", "slow"}) || !slices.Equal(zeta.Notes, []string{"Fast one", "Slow one"}) {
 		t.Fatalf("%+v", zeta)
 	}
 	if !slices.Equal(alpha.Choices, []string{"Yes", "No"}) || !count.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || !note.Free {

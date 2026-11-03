@@ -41,10 +41,10 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   output, and whether it failed. Any item can carry images in the same form,
   which the browser shows with the item. A native subagent's items name the
   item that started it as their parent.
-- **Attention requests.** An attention item is a prompt with optional choices
-  and optional free text. The browser answers with the item's ID, and the plugin
-  maps the answer to the native reply. An answer to a finished request is an
-  error.
+- **Attention requests.** An attention item is a prompt with optional choices,
+  each with an optional description, and optional free text. The browser
+  answers with the item's ID, and the plugin maps the answer to the native
+  reply. An answer to a finished request is an error.
 
 A malformed record, or a reply to an unknown ID, ends the connection. The agent
 then follows the relaunch rule in [Architecture](architecture.md#ownership).
