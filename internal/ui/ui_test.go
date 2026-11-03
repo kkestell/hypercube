@@ -51,7 +51,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, ""))
+	return Handler(db, session.New(db, ""), nil)
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -325,7 +325,7 @@ func newApp(t *testing.T) *app {
 		time.Sleep(5 * time.Millisecond)
 	}
 	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(db, rt))
+	a.server = httptest.NewServer(Handler(db, rt, nil))
 	t.Cleanup(a.server.Close)
 	return a
 }

@@ -1,0 +1,63 @@
+package mcp
+
+import (
+	"context"
+	"errors"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// fakeBrowser stands in for the window's browsers. It records the session of
+// each call; a script of "throw" fails.
+type fakeBrowser struct{ sessions []string }
+
+func (b *fakeBrowser) Navigate(_ context.Context, session, url string) (string, string, error) {
+	b.sessions = append(b.sessions, session)
+	return url + "/final", "Title of " + url, nil
+}
+
+func (b *fakeBrowser) Eval(_ context.Context, session, script string) (string, error) {
+	b.sessions = append(b.sessions, session)
+	if script == "throw" {
+		return "", errors.New("ReferenceError: x is not defined")
+	}
+	return `"ran ` + script + `"`, nil
+}
+
+func TestBrowserTools(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	browser := &fakeBrowser{}
+	server := httptest.NewServer(Handler(db, rt, browser))
+	defer server.Close()
+
+	// Top-level and child sessions both drive their own browsers.
+	for _, id := range []string{"session-1", "b"} {
+		s := connect(t, server.URL, id)
+		if text, failed := callTool(t, s, "browser_navigate", map[string]any{"url": "https://example.com"}); failed || text != `{"url":"https://example.com/final","title":"Title of https://example.com"}` {
+			t.Errorf("%s: browser_navigate = %q, failed %v", id, text, failed)
+		}
+		if text, failed := callTool(t, s, "browser_eval", map[string]any{"script": "return 1"}); failed || text != `"ran return 1"` {
+			t.Errorf("%s: browser_eval = %q, failed %v", id, text, failed)
+		}
+		if text, failed := callTool(t, s, "browser_eval", map[string]any{"script": "throw"}); !failed || !strings.Contains(text, "ReferenceError") {
+			t.Errorf("%s: a throwing script = %q, failed %v", id, text, failed)
+		}
+	}
+	want := "session-1 session-1 session-1 b b b"
+	if got := strings.Join(browser.sessions, " "); got != want {
+		t.Errorf("calls came from %q, want %q", got, want)
+	}
+}
+
+func TestBrowserToolsWithoutWindow(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), "")
+	server := httptest.NewServer(Handler(db, rt, nil))
+	defer server.Close()
+	s := connect(t, server.URL, "session-1")
+	for name, args := range map[string]map[string]any{"browser_navigate": {"url": "https://example.com"}, "browser_eval": {"script": "return 1"}} {
+		if text, failed := callTool(t, s, name, args); !failed || !strings.Contains(text, "hypercube ui --menu") {
+			t.Errorf("%s without the window = %q, failed %v", name, text, failed)
+		}
+	}
+}

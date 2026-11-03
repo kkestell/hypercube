@@ -15,9 +15,9 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/mcp"
-	"github.com/kkestell/hypercube/internal/menu"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/ui"
@@ -79,8 +79,9 @@ type app struct {
 
 // startApp serves HTTP on the listener, then restores the sessions the user
 // left running. Harness plugins are in plugins, or beside the executable when
-// it is empty.
-func startApp(listener net.Listener, plugins string) (*app, error) {
+// it is empty. browser drives the sessions' browsers, and is nil without the
+// window.
+func startApp(listener net.Listener, plugins string, browser mcp.Browser) (*app, error) {
 	db, err := store.Open()
 	if err != nil {
 		return nil, err
@@ -89,7 +90,7 @@ func startApp(listener net.Listener, plugins string) (*app, error) {
 	rt.PluginDir = plugins
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &app{db: db, rt: rt, cancel: cancel, done: make(chan error, 1)}
-	a.server = &http.Server{Handler: ui.Handler(db, rt)}
+	a.server = &http.Server{Handler: ui.Handler(db, rt, browser)}
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
 	go rt.StopIdleSessions(ctx)
@@ -114,7 +115,8 @@ func (a *app) close(quit bool) {
 }
 
 // serveUI serves the browser view on the optional port, default 4280, until
-// the menu's Quit, SIGINT, or SIGTERM.
+// Quit, SIGINT, or SIGTERM. With --menu, it also runs the macOS application,
+// whose window shows the view.
 func serveUI(args []string) error {
 	port, withMenu, err := parseUIArgs(args)
 	if err != nil {
@@ -128,7 +130,11 @@ func serveUI(args []string) error {
 	// Signals received during restore are handled after its attachments exist.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	a, err := startApp(listener, "")
+	var browser mcp.Browser
+	if withMenu {
+		browser = desktop.Browser{}
+	}
+	a, err := startApp(listener, "", browser)
 	if err != nil {
 		return err
 	}
@@ -146,7 +152,7 @@ func serveUI(args []string) error {
 				os.Exit(1)
 			}
 		}()
-		menu.Run(url, ui.Icon())
+		desktop.Run(url, ui.Icon())
 		a.shutdown()
 		return nil
 	}

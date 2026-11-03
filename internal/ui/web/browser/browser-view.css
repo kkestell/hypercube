@@ -1,0 +1,67 @@
+/* VS Code's Simple Browser. */
+.browser-view {
+  display: grid;
+  flex: 1;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.browser-view-header {
+  display: flex;
+  margin: 0.4em 1em;
+}
+
+.browser-view-address {
+  display: block;
+  flex: 1;
+  width: 100%;
+  border: none;
+  margin-right: 0.3em;
+  font-family: var(--vscode-font-family);
+  padding: 2px 4px;
+  color: var(--vscode-input-foreground);
+  outline-color: var(--vscode-input-border);
+  background-color: var(--vscode-input-background);
+}
+
+.browser-view-controls {
+  display: flex;
+}
+
+.browser-view-controls button {
+  display: flex;
+  margin-right: 0.3em;
+  border: none;
+  padding: 3px;
+  text-align: center;
+  outline: 1px solid transparent;
+  color: var(--vscode-icon-foreground);
+  background: none;
+  border-radius: 5px;
+}
+
+.browser-view-controls button:hover:not(:disabled) {
+  cursor: pointer;
+  color: var(--vscode-toolbar-hoverForeground);
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.browser-view-controls button:disabled {
+  opacity: 0.5;
+}
+
+.browser-view-address:focus,
+.browser-view-controls button:focus {
+  outline-color: var(--vscode-focusBorder);
+}
+
+/* Pages default to a white background. */
+.browser-view-body {
+  background: white;
+}
+
+.browser-view-message {
+  margin: auto;
+  padding: calc(var(--size-space) * 6);
+  text-align: center;
+}

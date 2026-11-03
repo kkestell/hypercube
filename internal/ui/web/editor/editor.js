@@ -1,6 +1,7 @@
 // The tabbed area of the attached session: its tabs, the preview tab, and each
 // view's remembered scroll. One tab is the session's agent, which never
-// closes; every other tab is a file, by fileTabId. As in VS Code, a file
+// closes; one can be its browser; every other tab is a file, by fileTabId.
+// As in VS Code, a file
 // opened with one click shows in the preview tab, which the next file opened
 // replaces until it is kept open.
 import {readOpenFile} from '../files/files.js';
@@ -11,6 +12,8 @@ export const agentTabId = 'agent';
 
 // agentTabs is the layout a session starts with: its agent alone.
 export const agentTabs = {root: {id: 1, tabs: [agentTabId], active: agentTabId}, preview: null, dragging: null, nextId: 2};
+
+export const browserTabId = 'browser';
 
 export const fileTabId = path => 'file:' + path;
 
@@ -30,6 +33,11 @@ export function tabEntry(state, id) {
     return {id, agent: true, label: title, title, preview: false, deleted: false};
   }
   const {session} = state;
+  if (id === browserTabId) {
+    const page = state.browsers[session.id];
+    const label = page?.title || 'Browser';
+    return {id, browser: true, label, title: page?.url || label, preview: false, deleted: false};
+  }
   const path = tabPath(id);
   const deleted = !!session.files.open[path]?.deleted;
   return {
@@ -40,8 +48,9 @@ export function tabEntry(state, id) {
   };
 }
 
-// closeTab closes a file and forgets its scroll.
+// closeTab closes a file and forgets its scroll, or closes the browser's tab.
 export function closeTab(state, id) {
+  if (id === browserTabId) return withTabs(state, tabs => layout.closeTab(tabs, id));
   return withSession(state, session => {
     const path = tabPath(id);
     const open = {...session.files.open};
@@ -78,6 +87,13 @@ export function openFileTab(store, path) {
   store.update(state => fileTabOpened(state, path));
   readOpenFile(store, path);
 }
+
+// openBrowserTab opens the browser's tab beside the agent, as a file opens,
+// and selects it if select is set or it was closed.
+export const openBrowserTab = (state, select) => withTabs(state, tabs => {
+  if (!layout.findPane(tabs.root, browserTabId)) return layout.openBeside(tabs, browserTabId, agentTabId);
+  return select ? layout.openTab(tabs, browserTabId) : tabs;
+});
 
 export const keepOpen = (state, id) => withTabs(state, tabs => tabs.preview === id ? {...tabs, preview: null} : tabs);
 

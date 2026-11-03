@@ -1,5 +1,6 @@
 // A pane's tab strip, as VS Code's: click or the arrow keys, Home, and End
-// select a tab; a file's close button closes it, and the agent's tab has none;
+// select a tab; a file's or the browser's close button closes it, and the
+// agent's tab has none;
 // a tab drags to another strip or a pane's edge; double-clicking a preview tab
 // keeps it open. A preview tab's label is italic and a deleted file's is
 // struck through.
@@ -73,7 +74,7 @@ export function EditorTabs({pane, entries, toggles}) {
                 onClick={() => store.update(s => selectTab(s, pane.id, entry.id))}
                 onDblClick={() => store.update(s => keepOpen(s, entry.id))}
               >
-                {entry.agent ? <vscode-icon name="comment-discussion" /> : <FileIcon name={entry.label} />}
+                {entry.agent ? <vscode-icon name="comment-discussion" /> : entry.browser ? <vscode-icon name="globe" /> : <FileIcon name={entry.label} />}
                 <span class="editor-tabs-label">{entry.label}</span>
               </button>
               {!entry.agent && (

@@ -13,7 +13,7 @@ Plugins keep their native harnesses alive across turns and speak the
 [serve protocol](harness-support.md#plugin-protocol). Closing the browser
 changes nothing.
 
-Menu Quit and SIGINT end all agents and panel shells. SIGTERM, service
+Quit and SIGINT end all agents and panel shells. SIGTERM, service
 restarts, development rebuilds, and crashes leave them running. At startup
 the app attaches to surviving launches, finishes those that exited, and
 restarts lost launches. A running family whose agents were all lost, or that
@@ -30,6 +30,14 @@ selected session's transcript. Agents reach Hypercube's tools through
 `hypercube mcp`, the stdio server each plugin's harness runs. It forwards each
 request, with the session's ID, to a route in the app, which runs the tool. MCP
 and the browser's actions share one owner of session state.
+
+With `--menu`, the app process also runs the macOS application: the menu bar
+icon and the Hypercube window, a web view of the browser view. Each session
+can have a browser, a second web view in that window, which the agent drives
+with `browser_navigate` and `browser_eval` and the user sees in the session's
+Browser tab. The page reports where the tab's body is, and the window places
+the session's browser over it. Browsers last until the app quits and share
+one website data store, so logins persist across sessions and restarts.
 
 Child worktrees live inside the checkout so harnesses can inherit its folder
 trust. Parent session IDs qualify their paths and branches to avoid collisions.
@@ -95,6 +103,7 @@ documented by the implementation rather than copied here.
 | [hold](../internal/hold/hold.go) | Detached children, input, retained output, and exit records. |
 | [harness](../internal/harness/harness.go) | Configuration, plugin discovery, and the [serve protocol](../internal/harness/protocol.go) client. |
 | [mcp](../internal/mcp/mcp.go) | Agent tool schemas and operations, and the bridge to the app. |
+| [desktop](../internal/desktop/desktop.go) | The macOS application: the menu bar icon, the window, and the sessions' [browsers](../internal/desktop/browser.m). |
 | [report](../internal/report/report.go) | Instructions, message attribution, titles, and failure reports. |
 | [terminal](../internal/terminal/terminal.go) | Panel shells. |
 | [ui](../internal/ui/ui.go) | The browser view: its data stream, transcripts, actions, and panel terminal. |

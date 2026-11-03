@@ -4,7 +4,7 @@ import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {EditorArea} from './editor-area.jsx';
-import {fileTabId, moveTab} from './editor.js';
+import {browserTabId, fileTabId, moveTab} from './editor.js';
 import {findPane, openTab} from './tab-layout.js';
 
 afterEach(unmountAll);
@@ -104,4 +104,18 @@ test('a preview tab is italic until double-clicked, and a deleted file is struck
   act(() => tab('b.go').querySelector('[role="tab"]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
   expect(store.get().session.tabs.preview).toBeNull();
   expect(tab('b.go').classList.contains('editor-tabs-tab-preview')).toBe(false);
+});
+
+test('the browser\'s tab shows its page\'s title and closes without ending the browser', () => {
+  const {store, root, labels} = setup(state => ({
+    ...openTestTab(state, browserTabId),
+    browsers: {s: {url: 'https://example.com/', title: 'Example', loading: false, canGoBack: false, canGoForward: false}},
+  }));
+  const tab = root.querySelector(`[data-tab="${browserTabId}"]`);
+  expect(labels()).toEqual(['Chat', 'Example']);
+  expect(tab.querySelector('vscode-icon').getAttribute('name')).toBe('globe');
+  expect(tab.querySelector('[role="tab"]').title).toBe('https://example.com/');
+  act(() => root.querySelector('[aria-label="Close Example"]').click());
+  expect(labels()).toEqual(['Chat']);
+  expect(store.get().browsers.s.title).toBe('Example');
 });

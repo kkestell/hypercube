@@ -53,9 +53,9 @@ type endSessionArgs struct {
 }
 
 // result wraps a tool's text; an error becomes an error result the model sees.
-func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
-	return func(_ context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
-		text, err := run(in)
+func result[In any](run func(context.Context, In) (string, error)) mcp.ToolHandlerFor[In, any] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in In) (*mcp.CallToolResult, any, error) {
+		text, err := run(ctx, in)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -63,10 +63,11 @@ func result[In any](run func(In) (string, error)) mcp.ToolHandlerFor[In, any] {
 	}
 }
 
-// newServer returns the server for one session. Outside Git, child sessions cannot
+// newServer returns the server for one session; browser drives its browser,
+// and is nil without the Hypercube window. Outside Git, child sessions cannot
 // have worktrees, so create_session requires dir. Profiles restrict profile to
 // the configured profiles.
-func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
+func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
 	var caller store.Session
@@ -86,19 +87,20 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only session you can message, and it must be running.", caller.Parent)
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
-	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
-	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(struct{}) (string, error) { return listSessions(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
+	addBrowserTools(server, browser, self)
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "set_status",
 			Description: "Tell the user in a sentence or two what you are doing now. It appears in your parent session's transcript for the user; your parent's agent does not see it.",
-		}, result(func(a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
+		}, result(func(_ context.Context, a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
 		return server
 	}
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_title",
 		Description: "Set your session's title: a short display title for the user. It does not change how sessions are addressed.",
-	}, result(func(a setTitleArgs) (string, error) {
+	}, result(func(_ context.Context, a setTitleArgs) (string, error) {
 		if err := rt.Rename(self, a.Title); err != nil {
 			return "", err
 		}
@@ -118,7 +120,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	for _, p := range cfg.Profiles {
 		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
 	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_session", Description: createDescription, InputSchema: createSchema}, result(func(a createSessionArgs) (string, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "create_session", Description: createDescription, InputSchema: createSchema}, result(func(_ context.Context, a createSessionArgs) (string, error) {
 		if cfgErr != nil {
 			return "", cfgErr
 		}
@@ -127,7 +129,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "end_session",
 		Description: "End a child session: its agent stops for good, and a child with a worktree also has its worktree and branch removed; Git refuses dirty worktrees and unmerged branches. The ended child stays listed for the user and cannot be messaged.",
-	}, result(func(a endSessionArgs) (string, error) { return endSession(rt, self, a.Name) }))
+	}, result(func(_ context.Context, a endSessionArgs) (string, error) { return endSession(rt, self, a.Name) }))
 	return server
 }
 
@@ -227,11 +229,11 @@ type nopCloser struct{ io.Writer }
 func (nopCloser) Close() error { return nil }
 
 // Handler is the app's /mcp route: it serves the tools to the session named in
-// SessionHeader. Each request is answered on its own, so the tools follow the
+// SessionHeader, with browser as in newServer. Each request is answered on its own, so the tools follow the
 // current workspace and configuration.
-func Handler(db *store.DB, rt *session.Runtime) http.Handler {
+func Handler(db *store.DB, rt *session.Runtime, browser Browser) http.Handler {
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return newServer(db, rt, r.Header.Get(SessionHeader))
+		return newServer(db, rt, browser, r.Header.Get(SessionHeader))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Session(r.Header.Get(SessionHeader)); return err }); err != nil {

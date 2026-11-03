@@ -24,13 +24,14 @@ make install-service
 ```
 
 Hypercube starts at login with a menu bar icon. **Show Hypercube** opens the
-browser view. It runs as a launchd user agent through your interactive login
+Hypercube window, which shows the browser view; closing the window leaves
+Hypercube running in the menu bar. It runs as a launchd user agent through your interactive login
 shell, so it and the agents it launches get your login environment. It starts
 the sessions that were running when it last exited, attaching to surviving
 agents. When every agent of a session was lost, or after Quit, the session
 starts no turn and delivers no queued message until you type a prompt. Hypercube keeps its
 data in `~/.local/state/hypercube/hypercube.db`. **Quit
-Hypercube** ends the agents, the panel shells, the icon, and the view until the
+Hypercube** ends the agents, the panel shells, the icon, and the window until the
 next login; the sessions stay marked running and start again then. Its log is
 `~/.local/state/hypercube/ui.log`. To remove the service, choose **Quit
 Hypercube** first, then unload it and delete its property list:
@@ -43,7 +44,7 @@ rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 ## Upgrades
 
 Run `make install-service` to install the build and restart the menu bar icon
-and browser view. Agents and panel shells keep running across the restart.
+and window. Agents and panel shells keep running across the restart.
 A new plugin build applies at each agent's next launch. A change to the holder
 directory or plugin protocol requires quitting Hypercube before installing.
 

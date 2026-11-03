@@ -21,14 +21,16 @@ type server struct {
 	rt *session.Runtime
 }
 
-// Handler serves the page, its data socket, its actions, and the agents' tools.
-func Handler(db *store.DB, rt *session.Runtime) http.Handler {
+// Handler serves the page, its data socket, its actions, and the agents'
+// tools; browser drives the sessions' browsers, and is nil without the
+// Hypercube window.
+func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handler {
 	s := &server{db: db, rt: rt}
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(assets()))
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /profiles", profiles)
-	mux.Handle("POST /mcp", mcp.Handler(db, rt))
+	mux.Handle("POST /mcp", mcp.Handler(db, rt, browser))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
 	mux.HandleFunc("GET /terminal", s.terminal)

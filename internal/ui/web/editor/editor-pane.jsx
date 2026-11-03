@@ -1,9 +1,9 @@
 // A pane of the tabbed area: its tab strip and its active tab's view, the
-// agent or a file. A
-// dragged tab drops on the strip, before the tab under the pointer, or on the
+// agent, the browser, or a file. A dragged tab drops on the strip, before the tab under the pointer, or on the
 // body, where an edge within a quarter of the pane splits it.
 import {useRef, useState} from 'preact/hooks';
 import {AgentPane} from '../agent/agent-pane.jsx';
+import {BrowserView} from '../browser/browser-view.jsx';
 import {shownSession} from '../sessions/selection.js';
 import {FileView} from '../files/file-view.jsx';
 import {useStore} from '../store.js';
@@ -51,8 +51,8 @@ export function EditorPane({pane, toggles}) {
     <div class="editor-pane" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       <EditorTabs pane={pane} entries={entries} toggles={toggles} />
       <div ref={body} class="editor-pane-body">
-        {active.agent
-          ? <AgentPane key={shown.id} session={shown} />
+        {active.agent ? <AgentPane key={shown.id} session={shown} />
+          : active.browser ? <BrowserView key={shown.id} session={shown.id} />
           : <FileView key={active.id} id={active.id} path={active.path} />}
       </div>
     </div>

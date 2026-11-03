@@ -93,7 +93,7 @@ func post(handler http.Handler, session, body string) *httptest.ResponseRecorder
 // serve runs the app's /mcp route on a test server.
 func serve(t *testing.T, db *store.DB, rt *session.Runtime) *httptest.Server {
 	t.Helper()
-	server := httptest.NewServer(Handler(db, rt))
+	server := httptest.NewServer(Handler(db, rt, nil))
 	t.Cleanup(server.Close)
 	return server
 }
@@ -154,7 +154,7 @@ func schemaOf(t *testing.T, tl *mcp.Tool) map[string]any {
 func TestTools(t *testing.T) {
 	for _, noGit := range []bool{false, true} {
 		db, rt := family(t, noGit, t.TempDir(), "")
-		server := httptest.NewServer(Handler(db, rt))
+		server := httptest.NewServer(Handler(db, rt, nil))
 		list := tools(t, connect(t, server.URL, "session-1"))
 		server.Close()
 		for _, name := range []string{"send_message", "list_sessions", "create_session", "end_session"} {
@@ -179,7 +179,7 @@ func TestTools(t *testing.T) {
 
 func TestProtocol(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), "")
-	server := httptest.NewServer(Handler(db, rt))
+	server := httptest.NewServer(Handler(db, rt, nil))
 	defer server.Close()
 	s := connect(t, server.URL, "session-1")
 	if v := s.InitializeResult().ProtocolVersion; v == "" || v == "unknown" {
@@ -189,12 +189,12 @@ func TestProtocol(t *testing.T) {
 		t.Errorf("server name %q", name)
 	}
 	// A client asking for an unsupported version gets a supported one.
-	res := post(Handler(db, rt), "session-1", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
+	res := post(Handler(db, rt, nil), "session-1", `{"jsonrpc":"2.0","id":7,"method":"initialize","params":{"protocolVersion":"1999-01-01","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}`)
 	if !strings.Contains(res.Body.String(), `"id":7`) || strings.Contains(res.Body.String(), "1999-01-01") {
 		t.Errorf("initialize = %s", res.Body)
 	}
 	// Unknown methods are refused, not answered with an empty success.
-	res = post(Handler(db, rt), "session-1", `{"jsonrpc":"2.0","id":8,"method":"no/such"}`)
+	res = post(Handler(db, rt, nil), "session-1", `{"jsonrpc":"2.0","id":8,"method":"no/such"}`)
 	if res.Code != http.StatusBadRequest {
 		t.Errorf("unknown method = %d %s", res.Code, res.Body)
 	}
@@ -208,7 +208,7 @@ func TestProtocol(t *testing.T) {
 
 func TestHandlerChecksTheSession(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), "")
-	handler := Handler(db, rt)
+	handler := Handler(db, rt, nil)
 	for _, id := range []string{"", "nobody"} {
 		if res := post(handler, id, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`); res.Code != http.StatusForbidden {
 			t.Errorf("session %q: status %d", id, res.Code)
@@ -374,7 +374,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 5 || parentTools["set_status"] != nil || len(childTools) != 3 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 7 || parentTools["set_status"] != nil || len(childTools) != 5 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
@@ -484,7 +484,7 @@ func TestBridgeWaitsForRestartingApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := &http.Server{Handler: Handler(db, rt)}
+	server := &http.Server{Handler: Handler(db, rt, nil)}
 	go server.Serve(listener)
 	defer server.Close()
 	select {

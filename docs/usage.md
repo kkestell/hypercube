@@ -25,7 +25,7 @@ use child worktrees for independent edits.
 
 | Command | Use |
 | --- | --- |
-| `hypercube ui [port] [--menu]` | Serve the browser view at http://localhost:4280/, or on the given port. `--menu` adds a menu bar icon; the service from `make install-service` uses it. |
+| `hypercube ui [port] [--menu]` | Serve the browser view at http://localhost:4280/, or on the given port. `--menu` adds a menu bar icon and the Hypercube window, which shows the view and the sessions' browsers; the service from `make install-service` uses it. |
 
 ## Browser view
 
@@ -102,6 +102,14 @@ tabs select Files and Changes; Changes is blank for now. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open.
+
+In the Hypercube window, each session's agent has a browser, which it loads
+pages in and runs scripts on with its `browser_navigate` and `browser_eval`
+tools. The session's Browser tab shows the page, with back, forward, reload,
+an address field, and a button that opens the page in your default browser.
+The tab opens when the agent first loads a page and comes forward whenever the
+agent navigates. Closing it keeps the page; browsers last until Hypercube
+quits and share your logins.
 
 The panel button shows or hides a terminal below the tabbed area. It
 runs your shell in the session's directory, one per session, and keeps running

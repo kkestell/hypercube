@@ -295,7 +295,7 @@ func listen(t *testing.T) net.Listener {
 func (w *world) runApp() (*app, client) {
 	w.t.Helper()
 	listener := listen(w.t)
-	a, err := startApp(listener, w.plugins)
+	a, err := startApp(listener, w.plugins, nil)
 	if err != nil {
 		w.t.Fatal(err)
 	}
