@@ -1,6 +1,7 @@
-// The composer's profile choice, disabled after the first prompt. Each option
-// shows its harness, model, and effort, with its description beneath. Existing
-// sessions show their saved configuration; new ones default to the first profile.
+// The composer's profile choice for a new session, which defaults to the first
+// profile and disables while the first prompt sends. Each option shows its
+// harness, model, and effort, with its description beneath. Existing sessions
+// show their saved configuration as plain text.
 import {useEffect, useState} from 'preact/hooks';
 import {fetchProfiles} from '../api.js';
 import {unsentProfile} from '../sessions/selection.js';
@@ -31,10 +32,11 @@ export function ProfileSelect({session}) {
     if (profile) store.update(s => unsentProfile(s, profile));
   };
 
+  if (!unsent) return <span class="composer-profile-label">{profileLabel(session)}</span>;
   return (
-    <vscode-single-select class="composer-profile" label="Profile" position="above" disabled={!unsent || unsent.sending} onChange={choose}>
-      {(unsent ? profiles : [session]).map(p => (
-        <vscode-option key={p.name ?? session.id} value={p.name ?? session.id} description={p.description} selected={!unsent || p.name === unsent.profile}>
+    <vscode-single-select class="composer-profile" label="Profile" position="above" disabled={unsent.sending} onChange={choose}>
+      {profiles.map(p => (
+        <vscode-option key={p.name} value={p.name} description={p.description} selected={p.name === unsent.profile}>
           {profileLabel(p)}
         </vscode-option>
       ))}

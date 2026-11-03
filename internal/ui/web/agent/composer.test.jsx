@@ -19,9 +19,8 @@ const store = () => createStore({workspaces: [], selected: null, pending: null, 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
-  const select = root.querySelector('vscode-single-select');
-  expect(select.hasAttribute('disabled')).toBe(true);
-  expect(select.querySelector('vscode-option[selected]').textContent).toBe('Claude · Opus · High');
+  expect(root.querySelector('vscode-single-select')).toBeNull();
+  expect(root.querySelector('.composer-profile-label').textContent).toBe('Claude · Opus · High');
 });
 
 test('a composer leaves the focus in a tab strip', () => {

@@ -101,6 +101,11 @@
   max-width: 100%;
 }
 
+.composer-profile-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .composer-worktree {
   --vscode-foreground: var(--vscode-descriptionForeground);
   flex: 0 0 auto;

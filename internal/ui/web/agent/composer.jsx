@@ -1,8 +1,8 @@
 // The box below a transcript for the user's next message: its text, attached
-// images, attach and send buttons, and its profile selector and usage. A new
-// session chooses its worktree beside the profile; a worktree session shows
-// its branch there. The profile and worktree choice are locked after the
-// first prompt. The text takes focus on mount.
+// images, attach and send buttons, and its profile and usage. A new session
+// chooses its profile and worktree there; after the first prompt the profile
+// shows as text, and a worktree session shows its branch beside it. The text
+// takes focus on mount.
 import {useEffect, useRef} from 'preact/hooks';
 import {imageSrc, imageTypes} from '../images.js';
 import {sendPrompt} from '../sessions/session-actions.js';
