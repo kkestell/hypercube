@@ -30,18 +30,21 @@ use child worktrees for independent edits.
 ## Browser view
 
 The sidebar lists top-level sessions newest first, in the order they were
-created, so a session keeps its place. Each workspace shows five sessions;
-Show more reveals five more. If the selected session is outside that group,
-it takes the fifth place.
-Children appear under their parent in creation order. Running children are always visible;
-Show Stopped Sessions in the parent's menu lists stopped children too, and
-Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
+created, so a session keeps its place. Each workspace shows all started
+sessions. Show Stopped Sessions in a workspace's menu reveals the first five
+stopped sessions; Show more appears when there are more to display. Hide
+Stopped Sessions hides them again. Showing them again starts at five. The
+selected session stays visible, even when stopped.
+Children appear under their parent in creation order. Running children are
+always visible; Show Stopped Sessions in the parent's menu lists stopped
+children too, and Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
 the sidebar to add a workspace. Click `+` beside a workspace's name to open a
 new session, with the animated hypercube above its composer.
 Its composer chooses the profile until the first prompt is sent,
 and sending that prompt creates the session;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
-right-clicking a workspace, offers Delete Workspace.
+right-clicking a workspace, offers Show/Hide Stopped Sessions and Delete
+Workspace.
 
 Click a session to show its chat, and double-click it to change its title.
 Hovering a row shows More Actions in place of its dot, which opens the same
@@ -140,10 +143,8 @@ session stops. Drag the divider above it to change its height.
 
 ## Resume and cleanup
 
-A family stops automatically after ten minutes without a prompt or agent
-activity, once no member is working. Viewing any family member in a browser
-page keeps the family running. Closing the browser leaves agents running until
-that timeout. Quitting Hypercube ends them, and families that were running
+A family keeps running until you stop it. Closing the browser leaves agents
+running. Quitting Hypercube ends them, and families that were running
 start again at the next launch. Stopping keeps conversations, chats, and queued
 messages. Starting resumes the top-level agent and children that have not
 ended. It starts no turn and delivers no queued message until you prompt any

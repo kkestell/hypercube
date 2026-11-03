@@ -93,7 +93,6 @@ func startApp(listener net.Listener, plugins string, browser mcp.Browser, notify
 	a.server = &http.Server{Handler: ui.Handler(db, rt, browser)}
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
-	go rt.StopIdleSessions(ctx)
 	if notify != nil {
 		go func() {
 			if err := rt.WatchAlerts(ctx, notify); err != nil {

@@ -63,7 +63,6 @@ type Session struct {
 	Position     int64
 	Ready        int64
 	Quick        int
-	LastActive   int64
 }
 
 type Message struct {
@@ -116,6 +115,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
+  -- Unused since idle stopping was removed; retained for existing databases.
   last_active INTEGER NOT NULL, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -235,38 +235,29 @@ func (t *Tx) AddSession(s Session) error {
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
 		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, cmp.Or(s.LastActive, created), s.Launch, s.Position, s.Ready, s.Quick)
+		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick)
 }
 
 // SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
 	return t.exec(`UPDATE sessions SET title = ?, running = ?, ended = ?, awaiting_user = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, last_active = ?, launch = ?, position = ?, ready = ?, quick = ? WHERE id = ?`,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ? WHERE id = ?`,
 		s.Title, s.Running, s.Ended, s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.LastActive, s.Launch, s.Position, s.Ready, s.Quick, s.ID)
-}
-
-// TouchSession records activity on the family's root.
-func (t *Tx) TouchSession(id string, at int64) error {
-	root, err := t.Root(id)
-	if err != nil {
-		return err
-	}
-	return t.exec(`UPDATE sessions SET last_active = ? WHERE id = ?`, at, root.ID)
+		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.ID)
 }
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active, launch, position, ready, quick`
+ activity, attention, context, window, cost, created, launch, position, ready, quick`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
 		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.LastActive, &s.Launch, &s.Position, &s.Ready, &s.Quick)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick)
 	return s, err
 }
 

@@ -189,9 +189,9 @@ func TestOpenUpgradesAgentsDatabase(t *testing.T) {
 			want := []Session{
 				{ID: "s1", Workspace: "w1", Title: "Fix parser", Running: true, AwaitingUser: true, Unseen: true,
 					Harness: "claude", Model: "opus", Effort: "high", Dir: "/repo", Conversation: "conv-l1",
-					Activity: Idle, Attention: true, Usage: usage(10, 200, 1.5), Created: 100, LastActive: 900},
+					Activity: Idle, Attention: true, Usage: usage(10, 200, 1.5), Created: 100},
 				{ID: "s2", Workspace: "w2", Title: "Other", Harness: "opencode", Model: "deep", Effort: "max",
-					Dir: "/plain", Conversation: "conv-l2", Activity: Exited, Usage: usage(7, 70, 0.07), Created: 200, LastActive: 300},
+					Dir: "/plain", Conversation: "conv-l2", Activity: Exited, Usage: usage(7, 70, 0.07), Created: 200},
 			}
 			if !reflect.DeepEqual(roots, want) {
 				t.Errorf("sessions = %+v\nwant %+v", roots, want)
@@ -203,9 +203,9 @@ func TestOpenUpgradesAgentsDatabase(t *testing.T) {
 			wantChildren := []Session{
 				{ID: "wk1", Workspace: "w1", Parent: "s1", Name: "scribe", Title: "scribe", Harness: "codex", Model: "gpt", Effort: "xhigh",
 					Dir: "/repo/.worktrees/s1-scribe", Branch: "hypercube/s1/scribe", Conversation: "conv-wk1", Activity: Busy,
-					Usage: usage(20, 400, 0.25), Created: 110, LastActive: 110},
+					Usage: usage(20, 400, 0.25), Created: 110},
 				{ID: "wk2", Workspace: "w1", Parent: "s1", Name: "direct", Title: "direct", Harness: "pi", Model: "free", Effort: "low",
-					Dir: "/repo/pkg", Activity: Exited, Created: 120, LastActive: 120},
+					Dir: "/repo/pkg", Activity: Exited, Created: 120},
 			}
 			if !reflect.DeepEqual(children, wantChildren) {
 				t.Errorf("children of s1 = %+v\nwant %+v", children, wantChildren)

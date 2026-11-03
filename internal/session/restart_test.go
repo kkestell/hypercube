@@ -346,10 +346,6 @@ func TestDeliveryTimeoutHoldsLaterMessagesUntilAcceptance(t *testing.T) {
 	if noted() != 1 || len(f.queued(s.ID)) != 2 || len(f.inputs(s.ID)) != 2 {
 		t.Fatal("timeout did not hold delivery")
 	}
-	f.rt.stopIdleSessions(time.Now().Add(2 * idleTimeout))
-	if !f.storedSession(s.ID).Running {
-		t.Fatal("idle check stopped unanswered delivery")
-	}
 	if err := f.rt.Interrupt(s.ID); err != nil {
 		t.Fatal(err)
 	}

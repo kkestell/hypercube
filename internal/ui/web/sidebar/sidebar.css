@@ -17,7 +17,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: calc(var(--size-space) * 4);
+  gap: calc(var(--size-space) * 3);
   min-height: 0;
   overflow: auto;
 }
@@ -30,7 +30,7 @@
 .sidebar-workspace-header + .session-item,
 .sidebar-workspace-header + .sidebar-show-more,
 .sidebar-empty {
-  margin-top: calc(var(--size-space) * 2);
+  margin-top: var(--size-space);
 }
 
 .sidebar-empty {

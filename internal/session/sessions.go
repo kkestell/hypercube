@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
@@ -119,7 +118,6 @@ func (r *Runtime) start(id string, fresh bool) error {
 			return err
 		}
 		s.Running, s.AwaitingUser, s.Branch = true, !fresh, branch
-		s.LastActive = time.Now().UnixMilli()
 		children, err := tx.Children(id)
 		if err != nil {
 			return err

@@ -30,32 +30,107 @@ const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row
 const title = (root, id) => root.querySelector(`[data-session="${id}"] .session-item-title`);
 const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
 const pick = (root, index) => act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
+const toggleWorkspaceStopped = (root, id = 'w') => {
+  click(root.querySelector(`[data-workspace="${id}"] .sidebar-workspace-menu`));
+  pick(root, 0);
+};
+
 const toggleStopped = root => {
   click(root.querySelector('[data-session="a"] .session-item-menu'));
   pick(root, 1);
 };
 
-test.each([true, false, null])('a workspace shows five sessions and Show more adds five, running=%s', running => {
-  const sessions = Array.from({length: 14}, (_, i) => session('s' + (13 - i), {running: running ?? i % 2 === 0}));
+test.each([true, false, null])('all started sessions show and Show more adds five stopped sessions, running=%s', running => {
+  const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: running ?? i % 2 === 0}));
   const {root} = setup(sessions);
-  expect(sessionRows(root)).toEqual(['s13', 's12', 's11', 's10', 's9']);
-  click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root)).toEqual(['s13', 's12', 's11', 's10', 's9', 's8', 's7', 's6', 's5', 's4']);
-  click(root.querySelector('.sidebar-show-more'));
-  expect(sessionRows(root).length).toBe(14);
+  const started = sessions.filter(s => s.running);
+  const stopped = sessions.filter(s => !s.running);
+  expect(sessionRows(root)).toEqual(started.map(s => s.id));
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(sessions.filter(s => s.running || stopped.slice(0, 5).includes(s)).map(s => s.id));
+  for (let limit = 10; limit < stopped.length + 5; limit += 5) {
+    click(root.querySelector('.sidebar-show-more'));
+    const visible = sessions.filter(s => s.running || stopped.indexOf(s) < limit);
+    expect(sessionRows(root)).toEqual(visible.map(s => s.id));
+  }
+  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
   expect(root.querySelector('.sidebar-show-more')).toBeNull();
 });
 
-test('the selected session replaces the fifth row when it is outside the visible page', () => {
-  const sessions = Array.from({length: 8}, (_, i) => session('s' + (7 - i), {running: false}));
+test('the selected stopped session stays visible without replacing a started session', () => {
+  const sessions = Array.from({length: 8}, (_, i) => session('s' + (7 - i), {running: i === 1}));
   const {store, root} = setup(sessions);
   store.update(s => ({...s, selected: 's0'}));
-  expect(sessionRows(root)).toEqual(['s7', 's6', 's5', 's4', 's0']);
+  expect(sessionRows(root)).toEqual(['s6', 's0']);
   expect(title(root, 's0').getAttribute('aria-current')).toBe('true');
-  expect(title(root, 's7').hasAttribute('aria-current')).toBe(false);
+  expect(title(root, 's6').hasAttribute('aria-current')).toBe(false);
   expect(root.querySelector('[data-session="s0"]').classList.contains('session-item-stopped')).toBe(true);
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(['s7', 's6', 's5', 's4', 's3', 's2', 's0']);
   click(root.querySelector('.sidebar-show-more'));
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+});
+
+test('selecting a child of a stopped parent keeps the family visible', () => {
+  const {store, root} = setup([session('a', {running: false, children: [session('child', {parent: 'a', running: false})]})]);
+  expect(sessionRows(root)).toEqual([]);
+  store.update(s => ({...s, selected: 'child'}));
+  expect(sessionRows(root)).toEqual(['a', 'child']);
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+});
+
+test('stopping and starting sessions updates the default list', () => {
+  const {store, root} = setup([session('a'), session('b', {running: false})]);
+  expect(sessionRows(root)).toEqual(['a']);
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {running: false}), session('b')]}]}));
+  expect(sessionRows(root)).toEqual(['b']);
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(['a', 'b']);
+});
+
+test('hiding stopped sessions resets the next view to five', () => {
+  const sessions = [session('running'), ...Array.from({length: 12}, (_, i) => session('s' + i, {running: false}))];
+  const {root} = setup(sessions);
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(['running', 's0', 's1', 's2', 's3', 's4']);
+  click(root.querySelector('.sidebar-show-more'));
+  click(root.querySelector('.sidebar-show-more'));
+  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+  click(root.querySelector('.sidebar-workspace-menu'));
+  expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Hide Stopped Sessions');
+  pick(root, 0);
+  expect(sessionRows(root)).toEqual(['running']);
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+  click(root.querySelector('.sidebar-workspace-menu'));
+  expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Show Stopped Sessions');
+  pick(root, 0);
+  expect(sessionRows(root)).toEqual(['running', 's0', 's1', 's2', 's3', 's4']);
+  expect(root.querySelector('.sidebar-show-more')).not.toBeNull();
+});
+
+test.each([0, 1, 5])('Show more is absent with %s stopped sessions', count => {
+  const {root} = setup(Array.from({length: count}, (_, i) => session('s' + i, {running: false})));
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toHaveLength(count);
+  expect(root.querySelector('.sidebar-show-more')).toBeNull();
+});
+
+test('workspace stopped-session visibility and pagination are independent', () => {
+  const sessions = prefix => Array.from({length: 6}, (_, i) => session(prefix + i, {running: false}));
+  const {root, store} = setup(sessions('a'));
+  store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: sessions('b')}]}));
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4']);
+  click(root.querySelector('[data-workspace="w"] .sidebar-show-more'));
+  toggleWorkspaceStopped(root, 'other');
+  expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'b0', 'b1', 'b2', 'b3', 'b4']);
+  toggleWorkspaceStopped(root);
+  expect(sessionRows(root)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4']);
 });
 
 test('Add Workspace adds a workspace', () => {
@@ -66,6 +141,7 @@ test('Add Workspace adds a workspace', () => {
 
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
+  toggleWorkspaceStopped(root);
   click(title(root, 'b'));
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
@@ -122,6 +198,7 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     session('stopped', {running: false}),
     session('failed', {activity: 'exited'}),
   ]);
+  toggleWorkspaceStopped(root);
   choose(root, '[data-session="running"]', 0);
   choose(root, '[data-session="stopped"]', 0);
   choose(root, '[data-session="failed"]', 0);
@@ -157,13 +234,13 @@ test('deleting a session asks first and posts only on Delete', () => {
 
 test('Escape cancels deleting a workspace', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-workspace="w"]', 0);
+  choose(root, '[data-workspace="w"]', 1);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
   press(root, 'Escape');
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-workspace="w"]', 0);
+  choose(root, '[data-workspace="w"]', 1);
   act(() => dialogButton(root, 'Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
@@ -264,7 +341,7 @@ test('a row\'s More Actions button opens its menu, and the workspace\'s opens th
   act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
   expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
   click(root.querySelector('.sidebar-workspace-menu'));
-  pick(root, 0);
+  pick(root, 1);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
 });
 

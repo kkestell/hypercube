@@ -146,9 +146,6 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		return nil
 	}
 	err := r.save(func(tx *write) error {
-		if err := tx.TouchSession(l.id, time.Now().UnixMilli()); err != nil {
-			return err
-		}
 		for _, item := range opened {
 			if err := r.mirrorLocked(tx, l.id, item); err != nil {
 				return err

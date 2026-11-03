@@ -24,7 +24,6 @@ const (
 	// starting, stays exited.
 	quickExit     = 10 * time.Second
 	maxQuickExits = 3
-	idleTimeout   = 10 * time.Minute
 )
 
 var (
@@ -52,10 +51,9 @@ type Runtime struct {
 	// startTimeout and requestTimeout bound replies; tests shorten them.
 	startTimeout, requestTimeout time.Duration
 
-	mu      sync.Mutex
-	live    map[string]*live      // by session ID
-	viewers map[string]int        // open pages selecting each session
-	opens   map[string][]FileOpen // file requests waiting for a viewing page
+	mu    sync.Mutex
+	live  map[string]*live      // by session ID
+	opens map[string][]FileOpen // file requests waiting for a viewing page
 	// seqs holds each session's last transcript position. It outlives launches,
 	// because a launch that has ended can still record a late item.
 	seqs map[string]int64
@@ -69,7 +67,7 @@ type Runtime struct {
 
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
-	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{}, viewers: map[string]int{},
+	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{},
 		deleting: map[string]bool{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{}, startTimeout: startTimeout, requestTimeout: requestTimeout}
 }
 

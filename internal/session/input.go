@@ -37,10 +37,6 @@ func (r *Runtime) Input(id, text string, images ...harness.Image) error {
 		r.mu.Unlock()
 		return err
 	}
-	if err := r.recordActivity(l.root); err != nil {
-		r.mu.Unlock()
-		return err
-	}
 	item := &harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true}
 	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: text, Images: images}, item, true)
 	r.mu.Unlock()
@@ -56,10 +52,6 @@ func (r *Runtime) Interrupt(id string) error {
 	r.mu.Lock()
 	l, err := r.running(id)
 	if err != nil {
-		r.mu.Unlock()
-		return err
-	}
-	if err := r.recordActivity(l.root); err != nil {
 		r.mu.Unlock()
 		return err
 	}
@@ -83,10 +75,6 @@ func (r *Runtime) Answer(id, requestID, choice, text string) error {
 	if p == nil || p.item.Kind != harness.KindAttention {
 		r.mu.Unlock()
 		return errors.New("the request is finished")
-	}
-	if err := r.recordActivity(l.root); err != nil {
-		r.mu.Unlock()
-		return err
 	}
 	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(requestID, l.prefix), Choice: choice, Text: text}, nil, false)
 	r.mu.Unlock()

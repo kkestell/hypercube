@@ -787,9 +787,6 @@ func TestSnapshotOrder(t *testing.T) {
 	seedSnapshot(t, db, "b", "/src/zeta", "s5")
 	change(t, db, func(tx *store.Tx) error {
 		for i, id := range []string{"s1", "s3", "s4", "s5"} {
-			if err := tx.TouchSession(id, int64(i+1)); err != nil {
-				return err
-			}
 			if i >= 1 {
 				s, err := tx.Session(id)
 				if err != nil {

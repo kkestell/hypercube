@@ -16,4 +16,7 @@ export const sessionItems = (store, session, stoppedShown, toggleStopped) => ses
   {label: 'Delete Session', run: () => deleteSession(store, session)},
 ];
 
-export const workspaceItems = (store, workspace) => [{label: 'Delete Workspace', run: () => deleteWorkspace(store, workspace)}];
+export const workspaceItems = (store, workspace, stoppedShown, toggleStopped) => [
+  {label: stoppedShown ? 'Hide Stopped Sessions' : 'Show Stopped Sessions', run: toggleStopped},
+  {label: 'Delete Workspace', run: () => deleteWorkspace(store, workspace)},
+];

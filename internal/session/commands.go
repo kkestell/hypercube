@@ -145,9 +145,6 @@ func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 		if err := tx.putItem(l.id, c.Seq, item); err != nil {
 			return err
 		}
-		if err := tx.TouchSession(l.root, time.Now().UnixMilli()); err != nil {
-			return err
-		}
 	}
 	return tx.DeleteCommand(reply.ID)
 }

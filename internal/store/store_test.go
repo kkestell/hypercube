@@ -54,7 +54,6 @@ func TestOpenCreatesSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 	seed(t, db, "w", "/repo", "s")
-	tx(t, db, func(tx *Tx) error { return tx.TouchSession("s", 1234) })
 	db.Close()
 	again, err := Open()
 	if err != nil {
@@ -62,14 +61,7 @@ func TestOpenCreatesSchema(t *testing.T) {
 	}
 	defer again.Close()
 	if err := again.Read(func(tx *Tx) error {
-		s, err := tx.Session("s")
-		if err != nil {
-			return err
-		}
-		if s.LastActive != 1234 {
-			t.Errorf("reopened last activity = %d", s.LastActive)
-		}
-		_, err = tx.Session("s")
+		_, err := tx.Session("s")
 		return err
 	}); err != nil {
 		t.Fatal("reopened database lost its rows:", err)
@@ -97,22 +89,19 @@ func TestSaveSessionWritesMutableFields(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s")
 	tx(t, db, func(tx *Tx) error {
-		if err := tx.TouchSession("s", 1234); err != nil {
-			return err
-		}
 		s, err := tx.Session("s")
 		if err != nil {
 			return err
 		}
-		s.Title, s.LastActive = "renamed", 1
+		s.Title = "renamed"
 		if err := tx.SaveSession(s); err != nil {
 			return err
 		}
 		if s, err = tx.Session("s"); err != nil {
 			return err
 		}
-		if s.Title != "renamed" || s.LastActive != 1 {
-			t.Errorf("after SaveSession: title %q, last active %d", s.Title, s.LastActive)
+		if s.Title != "renamed" {
+			t.Errorf("after SaveSession: title %q", s.Title)
 		}
 		return nil
 	})
@@ -339,13 +328,6 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 		running, err = tx.Running(one)
 		if err != nil || running {
 			t.Fatalf("ended Running=%v,%v", running, err)
-		}
-		if err := tx.TouchSession(one.ID, 123); err != nil {
-			return err
-		}
-		p, _ = tx.Session(p.ID)
-		if p.LastActive != 123 {
-			t.Error("child did not touch root")
 		}
 		if _, err := tx.PutEntry(one.ID, Entry{Seq: 1, Item: "i", Data: []byte(`{}`)}); err != nil {
 			return err

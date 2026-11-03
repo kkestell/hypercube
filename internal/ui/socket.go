@@ -53,9 +53,8 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	selections := make(chan string)
 	go readSelections(ctx, cancel, conn, selections)
 
-	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt, releaseView: func() {},
+	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt,
 		batch: map[string]session.TranscriptItem{}, stale: true}
-	defer func() { d.releaseView() }()
 	if d.sendState() != nil {
 		return
 	}
@@ -102,8 +101,7 @@ type dataSocket struct {
 	stale bool
 	sent  []byte
 
-	selected    string
-	releaseView func()
+	selected string
 	// batch holds the selected session's changed items by item ID.
 	batch map[string]session.TranscriptItem
 }
@@ -129,11 +127,9 @@ func (d *dataSocket) sendState() error {
 	return nil
 }
 
-// selectSession holds the session open for viewing and sends its whole transcript.
+// selectSession selects a session and sends its whole transcript.
 func (d *dataSocket) selectSession(id string) error {
-	release := d.rt.ViewSession(id)
-	d.releaseView()
-	d.releaseView, d.selected = release, id
+	d.selected = id
 	clear(d.batch)
 	if id == "" {
 		return nil

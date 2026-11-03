@@ -1,6 +1,6 @@
-// The Workspaces view: each workspace's sessions under its name, five at a
-// time, the workspace and session menus, and Add Workspace pinned below the
-// list. The selected session stays within that limit. Started children are
+// The Workspaces view lists every started session under its workspace.
+// The workspace menu reveals stopped sessions, five at a time; the selected session
+// stays visible. Add Workspace is pinned below the list. Started children are
 // always listed under their parent; its menu shows or hides stopped children.
 // The view holds still while a session is renamed, so the field keeps its
 // place and focus.
@@ -25,7 +25,7 @@ const below = button => {
 export function Sidebar() {
   const [state, store] = useStore();
   const [showStopped, setShowStopped] = useState({});
-  const [limits, setLimits] = useState({});
+  const [stoppedLimits, setStoppedLimits] = useState({});
   const [renaming, setRenaming] = useState(null);
   const [menu, setMenu] = useState(null);
   const closeMenu = useCallback(() => setMenu(null), []);
@@ -34,6 +34,8 @@ export function Sidebar() {
     if (items.length) setMenu({...point, items});
   };
   const itemsOf = session => sessionItems(store, session, showStopped[session.id], () => setShowStopped(s => ({...s, [session.id]: !s[session.id]})));
+  const workspaceItemsOf = workspace => workspaceItems(store, workspace, !!stoppedLimits[workspace.id],
+    () => setStoppedLimits(l => ({...l, [workspace.id]: l[workspace.id] ? 0 : pageSize})));
 
   if (!renaming) frozen.current = state.workspaces;
   const workspaces = frozen.current;
@@ -45,7 +47,7 @@ export function Sidebar() {
     if (!session && !workspace) return;
     e.preventDefault();
     const point = {x: e.clientX, y: e.clientY};
-    showMenu(point, session ? itemsOf(session) : workspaceItems(store, workspace));
+    showMenu(point, session ? itemsOf(session) : workspaceItemsOf(workspace));
   };
 
   const sessionRow = session => {
@@ -68,15 +70,15 @@ export function Sidebar() {
         <vscode-tab-panel class="sidebar-body">
           <div class="sidebar-list" onContextMenu={contextMenu}>
             {workspaces.map(workspace => {
-              const limit = limits[workspace.id] ?? pageSize;
-              const sessions = workspace.sessions.slice(0, limit);
-              const selected = workspace.sessions.find(s => s.id === state.selected || s.children.some(c => c.id === state.selected));
-              if (selected && !sessions.includes(selected)) sessions[sessions.length - 1] = selected;
+              const limit = stoppedLimits[workspace.id] ?? 0;
+              const stopped = workspace.sessions.filter(s => !s.running).slice(0, limit);
+              const sessions = workspace.sessions.filter(s => s.running || stopped.includes(s)
+                || s.id === state.selected || s.children.some(c => c.id === state.selected));
               return (
                 <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
                   <div class="sidebar-workspace-header">
                     <span class="sidebar-workspace-name" title={workspace.path}>{workspace.name}</span>
-                    <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => showMenu(below(e.currentTarget), workspaceItems(store, workspace))}>
+                    <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => showMenu(below(e.currentTarget), workspaceItemsOf(workspace))}>
                       <vscode-icon name="ellipsis" />
                     </button>
                     <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}>
@@ -95,8 +97,8 @@ export function Sidebar() {
                       </Fragment>
                     );
                   })}
-                  {sessions.length < workspace.sessions.length && (
-                    <button class="sidebar-show-more" onClick={() => setLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
+                  {limit > 0 && sessions.length < workspace.sessions.length && (
+                    <button class="sidebar-show-more" onClick={() => setStoppedLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
                   )}
                 </div>
               );

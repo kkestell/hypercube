@@ -114,9 +114,8 @@ to you, and clicking one opens its session.
 
 Stopping a top-level session stops its family and keeps the conversations so
 you can resume later. Use its sidebar menu to start or stop it. Closing the
-interface leaves agents running; inactive families eventually stop
-automatically. See [Resume and cleanup](usage.md#resume-and-cleanup) for the
-details.
+interface leaves agents running until you stop them. See
+[Resume and cleanup](usage.md#resume-and-cleanup) for the details.
 
 Ending a child is permanent. The parent ends it when its work is done;
 Hypercube checks that a managed worktree is clean and its commits are merged
