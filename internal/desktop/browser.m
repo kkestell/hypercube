@@ -31,6 +31,15 @@ static NSURL *addressURL(NSString *address) {
     return [NSURL URLWithString:address];
 }
 
+static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
+    if (!from || [from isEqual:to]) return NO;
+    NSURLComponents *current = [NSURLComponents componentsWithURL:from resolvingAgainstBaseURL:NO];
+    NSURLComponents *target = [NSURLComponents componentsWithURL:to resolvingAgainstBaseURL:NO];
+    current.fragment = nil;
+    target.fragment = nil;
+    return [current.URL isEqual:target.URL];
+}
+
 @implementation HCBrowsers {
     HCWindow *_window;
     NSMutableDictionary<NSString *, WKWebView *> *_views;
@@ -101,6 +110,8 @@ static NSURL *addressURL(NSString *address) {
 // state. It then places the shown browser and passes on the toolbar's buttons
 // and address.
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
+    // Only the UI page may control browsers; embedded frames must not.
+    if (!message.frameInfo.isMainFrame) return;
     NSDictionary *body = message.body;
     if (![body isKindOfClass:[NSDictionary class]]) return;
     NSString *type = body[@"type"], *session = body[@"session"];
@@ -133,6 +144,19 @@ static NSURL *addressURL(NSString *address) {
         return;
     }
     WKWebView *view = [self viewFor:session];
+    // WebKit does not call didFinishNavigation for a fragment change.
+    if (isFragmentNavigation(view.URL, url)) {
+        [view callAsyncJavaScript:@"location.hash = new URL(url).hash; return JSON.stringify({url: location.href, title: document.title});"
+                       arguments:@{@"url": url.absoluteString}
+                         inFrame:nil
+                  inContentWorld:WKContentWorld.pageWorld
+               completionHandler:^(id result, NSError *error) {
+            if (error) fail(request, error.localizedDescription);
+            else succeed(request, result);
+        }];
+        [self report:view reveal:YES];
+        return;
+    }
     WKNavigation *navigation = [view loadRequest:[NSURLRequest requestWithURL:url]];
     if (!navigation) {
         fail(request, [NSString stringWithFormat:@"%@ could not be loaded", address]);
