@@ -183,11 +183,14 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	if err := f.db.Tx(func(tx *store.Tx) error { return tx.Queue(store.Message{From: parent.ID, To: child.ID, Text: "held"}) }); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.rt.update(child.ID, func(s *store.Session) { s.Attention = true }); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.rt.EndChild(parent.ID, child.Name); err != nil {
 		t.Fatal(err)
 	}
 	saved := f.storedSession(child.ID)
-	if !saved.Ended || saved.Dir != child.Dir || saved.Branch != child.Branch || saved.Activity != store.Exited || len(f.transcript(child.ID)) != 2 || len(f.queued(child.ID)) != 0 {
+	if !saved.Ended || saved.Attention || saved.Dir != child.Dir || saved.Branch != child.Branch || saved.Activity != store.Exited || len(f.transcript(child.ID)) != 2 || len(f.queued(child.ID)) != 0 {
 		t.Fatalf("ended child=%+v", saved)
 	}
 	if _, err := f.rt.SendMessage(parent.ID, child.Name, "too late"); err == nil {
