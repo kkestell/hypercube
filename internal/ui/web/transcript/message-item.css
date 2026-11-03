@@ -10,21 +10,20 @@
 .message-item-bubble {
   display: flex;
   flex-direction: column;
-  gap: var(--size-space);
+  gap: calc(var(--size-space) * 2);
   min-width: 0;
   max-width: 85%;
   padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
   border: var(--size-border) solid var(--vscode-chat-requestBorder);
   border-radius: calc(var(--size-radius) * 2);
   background: var(--vscode-chat-requestBubbleBackground);
-}
-
-.message-item-agent {
   line-height: 1.5;
 }
 
 .message-item-summary {
   display: block;
+  color: var(--vscode-descriptionForeground);
+  line-height: var(--size-row-height);
   cursor: pointer;
   list-style: none;
 }
@@ -33,8 +32,8 @@
   display: none;
 }
 
-.message-item-agent[open] .message-item-chevron {
-  transform: rotate(90deg);
+.message-item-summary:hover {
+  color: var(--vscode-foreground);
 }
 
 .message-item-heading {
@@ -42,7 +41,15 @@
   align-items: center;
   gap: calc(var(--size-space) * 1.5);
   min-width: 0;
-  color: var(--vscode-descriptionForeground);
+}
+
+.message-item-heading > vscode-icon {
+  display: flex;
+  flex-shrink: 0;
+}
+
+.message-item-agent[open] .message-item-chevron {
+  transform: rotate(90deg);
 }
 
 .message-item-preview {
@@ -56,6 +63,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--size-space);
+  padding-bottom: var(--size-space);
+  line-height: 1.5;
 }
 
 .message-item-text {

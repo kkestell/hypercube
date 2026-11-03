@@ -1,11 +1,14 @@
+/* Each row is one row height tall. A call's status icon sits in a fixed
+   column, and what the call opens to starts at its title. */
 .tool-items-disclosure {
+  --tool-items-status-width: calc(var(--size-icon) + var(--size-space) * 1.5);
   min-width: 0;
-  line-height: 1.5;
 }
 
 .tool-items-summary {
   display: block;
   min-width: 0;
+  line-height: var(--size-row-height);
   color: var(--vscode-descriptionForeground);
   cursor: pointer;
   list-style: none;
@@ -19,20 +22,22 @@
   color: var(--vscode-foreground);
 }
 
-.tool-items-heading {
+.tool-items-heading,
+.tool-items-preview {
   display: flex;
   align-items: center;
   gap: calc(var(--size-space) * 1.5);
   min-width: 0;
 }
 
-.tool-items-preview {
+.tool-items-status,
+.tool-items-chevron {
   display: flex;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
-.tool-items-chevron {
-  flex-shrink: 0;
+.tool-items-status {
+  width: var(--size-icon);
 }
 
 .tool-items-disclosure[open] > .tool-items-summary > .tool-items-heading > .tool-items-chevron {
@@ -48,33 +53,42 @@
 
 .tool-items-name {
   color: var(--vscode-foreground);
-  font-weight: 600;
 }
 
 .tool-items-failed {
-  flex-shrink: 0;
   color: var(--vscode-errorForeground);
 }
 
-.tool-items-calls {
-  display: flex;
-  flex-direction: column;
+.tool-items-calls > .message-item {
+  padding-left: var(--tool-items-status-width);
 }
 
 .tool-items-call {
   display: flex;
   flex-direction: column;
-  gap: var(--size-space);
   min-width: 0;
+}
+
+.tool-items-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-space);
+}
+
+.tool-items-body,
+.tool-items-call > .transcript-images {
+  padding: var(--size-space) 0 var(--size-space) var(--tool-items-status-width);
 }
 
 .tool-items-text {
   max-height: calc(var(--size-row-height) * 12);
   overflow: auto;
-  padding: var(--size-space) calc(var(--size-space) * 2);
+  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
+  border-radius: var(--size-radius);
   background: var(--vscode-textCodeBlock-background);
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -87,5 +101,5 @@
   display: flex;
   flex-direction: column;
   gap: calc(var(--size-space) * 3);
-  padding: calc(var(--size-space) * 2) 0;
+  padding-top: calc(var(--size-space) * 2);
 }

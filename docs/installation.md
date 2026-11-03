@@ -54,9 +54,10 @@ messages migrate automatically.
 
 ## Development
 
-`make dev` builds this checkout and opens its browser view at
-http://localhost:4281/ with isolated state, configuration, and a scratch
-repository under `~/projects/hypercube-dev/repo`. It adds the workspace and
+`make dev` builds this checkout and runs it with its own menu bar icon and
+Hypercube window, serving its browser view at http://localhost:4281/, with
+isolated state, configuration, and a scratch repository under
+`~/projects/hypercube-dev/repo`. It adds the workspace and
 opens a stopped preview session, with sample source files ready in Files,
 without starting a model. Set `HYPERCUBE_DEV_DIR` to use another location or
 `HYPERCUBE_DEV_PORT` to use another port.

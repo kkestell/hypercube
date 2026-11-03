@@ -80,8 +80,11 @@ The example in `docs/configuration.md` is the user's
 when the behavior it describes changes. `AGENTS.md` gives instructions to
 agents and should rarely change.
 
-The [hypercube skill](.agents/skills/hypercube/SKILL.md) runs only when the
-user invokes it. Keep that skill up to date as the workflow evolves.
+Use the [hypercube skill](.agents/skills/hypercube/SKILL.md) for nontrivial
+changes, including architecture changes, new concepts, subsystems, and major
+features, even without an explicit invocation. Simple, contained changes may be
+made directly; the skill defines the boundary. Keep it up to date as the
+workflow evolves.
 
 The code describes the implementation. A fact lives in one place. Correct or
 delete inaccurate text without expanding it. Do not create documents unless

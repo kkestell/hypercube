@@ -1,12 +1,33 @@
 ---
 name: hypercube
-description: Workflow for adding a Hypercube feature or changing how one works. Use only when the user invokes it.
+description: Required workflow for nontrivial Hypercube changes, including architecture changes, new concepts, subsystems, and major features. Agents must select it when applicable; simple, contained changes may be made directly.
 ---
 
 # Hypercube
 
-Use this skill only when the user invokes it. Follow the workspace's
-`AGENTS.md` instructions.
+Follow the workspace's `AGENTS.md` instructions.
+
+## When to use this workflow
+
+Use this skill when the user invokes it, and select it yourself when the work
+requires it. Do not wait for the user to name the skill.
+
+Simple, contained changes may be made directly without this workflow's planning
+or delegation. These include localized bug fixes, copy or styling adjustments,
+documentation edits, and small refactors whose behavior and implementation are
+understood and fit the existing design.
+
+This workflow is required for nontrivial changes, including:
+
+- Changes to architecture, system boundaries, or ownership of state and lifecycles.
+- New concepts, subsystems, or major user-facing features.
+- Substantial behavior changes or work across multiple concerns that needs a
+  coordinated design or implementation plan.
+
+Judge the change by its behavior, design decisions, and effect on the whole
+system, not its line count or how easy it looks to implement. Inspect enough of
+the existing code to choose. If a direct fix grows beyond a contained change,
+switch to this workflow before expanding the implementation.
 
 The purpose of this workflow is to keep the entire system small and understandable
 as it evolves. For every change, seek the smallest complete system that meets the
@@ -23,9 +44,8 @@ require restarting active sessions, as `AGENTS.md` describes.
 
 ## Delegation and planning
 
-For a small, contained change that introduces no new concepts or architectural
-changes, delegate implementation directly to a child session with intelligence
-appropriate to the task.
+When the user explicitly invokes this workflow for a simple change, implementation
+may be done directly.
 
 For a nontrivial change, including large codebase changes, architectural changes,
 or new concepts, first confirm your assumptions with the user. Then delegate

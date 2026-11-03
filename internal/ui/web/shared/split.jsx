@@ -11,6 +11,16 @@ import './split.css';
 
 const handleSize = 4;
 
+// The control exposes no CSS parts. Give its shadow-root handles native
+// split-pane cursors and immediate hover and drag feedback.
+const handleStyles = new CSSStyleSheet();
+handleStyles.replaceSync(`
+  .handle.split-vertical, .handle-overlay.split-vertical { cursor: col-resize; }
+  .handle.split-horizontal, .handle-overlay.split-horizontal { cursor: row-resize; }
+  .handle.hover, .handle.hide { transition: none; }
+  .handle-overlay.active + .handle { background-color: var(--vscode-sash-hoverBorder, #0078d4); }
+`);
+
 export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, children}) {
   const [start, end] = toChildArray(children);
   const ref = useRef(null);
@@ -20,6 +30,11 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
   const length = () => split === 'vertical' ? ref.current.clientWidth : ref.current.clientHeight;
 
   useLayoutEffect(() => {
+    const root = ref.current.shadowRoot;
+    if (root) root.adoptedStyleSheets = [...root.adoptedStyleSheets, handleStyles];
+  }, []);
+
+  useLayoutEffect(() => {
     const element = ref.current;
     if (collapsed) element.handlePosition = collapsed === 'start' ? '0px' : '100%';
     else if (fixed === 'start') element.handlePosition = `${kept.current}px`;
@@ -27,6 +42,21 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
     else if (fixed === 'end') Promise.resolve(element.updateComplete).then(() => element.handlePosition = `${length() - kept.current}px`);
     else element.handlePosition = `${kept.current}%`;
   }, [collapsed, size]);
+
+  const startDrag = e => {
+    if (e.button !== 0 || collapsed) return;
+    const element = ref.current;
+    const handle = element.shadowRoot?.querySelector('.handle');
+    if (!handle || !e.composedPath().includes(handle)) return;
+    // Percentage splits cache their dimensions. A parent resize can leave
+    // those stale; synchronize to the visible divider before the control grabs it.
+    const bounds = element.getBoundingClientRect();
+    const rect = handle.getBoundingClientRect();
+    const position = split === 'vertical' ? rect.left + rect.width / 2 - bounds.left : rect.top + rect.height / 2 - bounds.top;
+    element.handlePosition = `${position}px`;
+    handle.setPointerCapture(e.pointerId);
+    window.getSelection()?.removeAllRanges();
+  };
 
   const resized = e => {
     const {position, positionInPercentage} = e.detail;
@@ -46,6 +76,7 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
       handle-size={collapsed ? 0 : handleSize}
       min-start={collapsed ? undefined : minStart}
       min-end={collapsed ? undefined : minEnd}
+      onPointerDownCapture={startDrag}
       onvsc-split-layout-change={resized}
     >
       <div slot="start" class="split-pane">{start}</div>

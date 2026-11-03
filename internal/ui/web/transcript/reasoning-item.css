@@ -5,8 +5,8 @@
 .reasoning-item-toggle {
   display: flex;
   align-items: center;
-  gap: var(--size-space);
-  font-style: italic;
+  gap: calc(var(--size-space) * 1.5);
+  line-height: var(--size-row-height);
   cursor: pointer;
   list-style: none;
 }
@@ -17,6 +17,11 @@
 
 .reasoning-item-toggle:hover {
   color: var(--vscode-foreground);
+}
+
+.reasoning-item-chevron {
+  display: flex;
+  flex-shrink: 0;
 }
 
 .reasoning-item-disclosure[open] .reasoning-item-chevron {

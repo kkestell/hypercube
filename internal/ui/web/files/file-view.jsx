@@ -7,12 +7,13 @@ import {useStore} from '../store.js';
 import {Markdown} from '../transcript/markdown.jsx';
 import {HighlightedCode} from './highlighted-code.jsx';
 import {language} from './language.js';
+import {markdownImageURL} from './markdown-image.js';
 import './file-view.css';
 
-function Contents({file, lang}) {
+function Contents({file, lang, session, path}) {
   if (file.message !== null) return <div class="file-view-message">{file.message}</div>;
   if (file.text === null) return null;
-  if (lang === 'markdown') return <Markdown text={file.text} style="preview" />;
+  if (lang === 'markdown') return <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, session, path)} />;
   const lines = file.text.split('\n').length;
   return (
     <>
@@ -32,7 +33,7 @@ export function FileView({id, path}) {
   const file = state.session.files.open[path];
   return (
     <div ref={view} class="file-view">
-      {file && <Contents file={file} lang={language(path.slice(path.lastIndexOf('/') + 1))} />}
+      {file && <Contents file={file} lang={language(path.slice(path.lastIndexOf('/') + 1))} session={state.session.id} path={path} />}
     </div>
   );
 }

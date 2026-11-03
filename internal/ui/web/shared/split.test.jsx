@@ -72,3 +72,71 @@ test('real split panes stay collapsed after mounting inside a hidden parent and 
   expect(result.stderr.toString()).toBe('');
   expect(result.exitCode).toBe(0);
 });
+
+test('the first grab after a parent resize preserves the divider and captures the drag', () => {
+  const result = Bun.spawnSync([process.execPath, '-e', `
+    import './test-dom.js';
+    import {h, render} from 'preact';
+    import {act} from 'preact/test-utils';
+    import {expect} from 'bun:test';
+    import {Split} from './web/shared/split.jsx';
+    await import('@vscode-elements/elements/dist/vscode-split-layout/index.js');
+    let length = 600;
+    let vertical = true;
+    // Model a parent resizing while the percentage divider stays in place.
+    HTMLElement.prototype.getBoundingClientRect = function() {
+      let left = 100, top = 60, width = length, height = length;
+      if (this.classList.contains('handle')) {
+        const raw = this.style[vertical ? 'left' : 'top'];
+        const position = parseFloat(raw) * (raw.endsWith('%') ? length / 100 : 1);
+        if (vertical) { left += position - 2; width = 4; }
+        else { top += position - 2; height = 4; }
+      }
+      return {left, top, width, height, right: left + width, bottom: top + height};
+    };
+    Object.defineProperty(HTMLElement.prototype, 'clientWidth', {get: () => length});
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {get: () => length});
+    const root = document.createElement('div');
+    document.body.append(root);
+    for (const split of ['vertical', 'horizontal']) {
+      vertical = split === 'vertical';
+      length = 600;
+      let resized, captured;
+      act(() => render(h(Split, {split, size: 40, onResize: value => resized = value},
+        h('div', {class: 'text'}, 'Pane'), h('div')), root));
+      const element = root.querySelector('vscode-split-layout');
+      await element.updateComplete;
+      await element.updateComplete;
+      length = 900;
+      const handle = element.shadowRoot.querySelector('.handle');
+      handle.setPointerCapture = id => captured = id;
+      const bounds = handle.getBoundingClientRect();
+      const center = () => {
+        const r = handle.getBoundingClientRect();
+        return vertical ? r.left + r.width / 2 : r.top + r.height / 2;
+      };
+      const before = center();
+      const coordinates = {clientX: bounds.left + bounds.width / 2, clientY: bounds.top + bounds.height / 2};
+      const options = {...coordinates, button: 0, buttons: 1, bubbles: true, composed: true, cancelable: true};
+      window.getSelection().selectAllChildren(root.querySelector('.text'));
+      handle.dispatchEvent(new PointerEvent('pointerdown', {...options, pointerId: 7}));
+      const down = new MouseEvent('mousedown', options);
+      handle.dispatchEvent(down);
+      await element.updateComplete;
+      expect(center()).toBeCloseTo(before);
+      expect(captured).toBe(7);
+      expect(down.defaultPrevented).toBe(true);
+      expect(window.getSelection().rangeCount).toBe(0);
+      const moved = {...coordinates};
+      moved[vertical ? 'clientX' : 'clientY'] += 90;
+      window.dispatchEvent(new MouseEvent('mousemove', {...moved, buttons: 1}));
+      await element.updateComplete;
+      expect(center()).toBeCloseTo(before + 90);
+      window.dispatchEvent(new MouseEvent('mouseup', moved));
+      expect(resized).toBeCloseTo(50);
+      act(() => render(null, root));
+    }
+  `], {cwd: new URL('../..', import.meta.url).pathname});
+  expect(result.stderr.toString()).toBe('');
+  expect(result.exitCode).toBe(0);
+});

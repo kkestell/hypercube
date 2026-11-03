@@ -43,6 +43,13 @@ test('safeHref allows only web and mail addresses', () => {
   }
 });
 
+test('chat images keep their existing link or text presentation', () => {
+  const root = markdown('![Remote](https://example.com/picture.png) ![Local](images/picture.png)');
+  expect(root.querySelector('img')).toBeNull();
+  expect(root.querySelector('a').getAttribute('href')).toBe('https://example.com/picture.png');
+  expect(root.textContent).toBe('Remote Local');
+});
+
 test('Markdown from a model never becomes HTML', () => {
   const hostile = '<img src=x onerror=alert(1)> <script>alert(2)</script> **bold** [click](javascript:alert(3)) [ok](https://example.com/?q=<b>)\n\n```\n<iframe></iframe>\n```\n\n# <h1>';
   const root = markdown(hostile);

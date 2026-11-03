@@ -57,7 +57,7 @@ Create `~/.config/hypercube/config.json`, or
     },
     {
       "name": "claude-opus-high",
-      "description": "Opus at high effort for the hardest design and debugging work. Slower and costlier than claude-large. Artificial Analysis: Terminal-Bench 4.0 56.6%, FrontierCode 2.0 35.9%, $3.46 per task.",
+      "description": "Opus at high effort for the hardest design and debugging work. Slower and costlier than claude-opus-medium. Artificial Analysis: Terminal-Bench 4.0 56.6%, FrontierCode 2.0 35.9%, $3.46 per task.",
       "harness": "claude",
       "model": "opus",
       "effort": "high"

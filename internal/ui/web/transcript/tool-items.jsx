@@ -1,14 +1,12 @@
 // Tool runs and tool calls, as inline disclosures. A working run previews its
 // latest call while collapsed; expanding it lists the calls instead. Once
 // finished, its summary shows how long it worked. Each call shows its own
-// spinner, input, output, and nested items, with its images below.
+// status, input, output, and nested items, with its images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
 import {MessageItem} from './message-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import './tool-items.css';
-
-const Spinner = () => <vscode-icon name="loading" spin role="img" title="Running" />;
 
 function Disclosure({open, onToggle, summary, preview, children}) {
   return (
@@ -49,19 +47,25 @@ export function ToolRun({run, session, expanded, setOpen}) {
 function ToolCall({call, session, expanded, setOpen}) {
   const {item, children} = call;
   const input = toolInput(item.input), output = clip(item.output ?? '');
+  const status = !item.done ? <vscode-icon name="loading" spin role="img" title="Running" />
+    : item.failed ? <vscode-icon name="error" class="tool-items-failed" role="img" title="Failed" />
+    : <vscode-icon name="check" role="img" title="Done" />;
   const summary = <>
-    {!item.done && <Spinner />}
-    {item.done && item.failed && <vscode-icon name="error" class="tool-items-failed" role="img" title="Failed" />}
+    <span class="tool-items-status">{status}</span>
     <Title item={item} />
   </>;
   return (
     <div class="tool-items-call">
       <Disclosure open={!!expanded[item.id]} onToggle={open => setOpen(item.id, open)} summary={summary}>
-        {input && <pre class="tool-items-text tool-items-input">{input}</pre>}
-        {output && <pre class="tool-items-text">{output}</pre>}
-        {children.length > 0 && (
-          <div class="tool-items-children">
-            {children.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
+        {(input || output || children.length > 0) && (
+          <div class="tool-items-body">
+            {input && <pre class="tool-items-text tool-items-input">{input}</pre>}
+            {output && <pre class="tool-items-text">{output}</pre>}
+            {children.length > 0 && (
+              <div class="tool-items-children">
+                {children.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
+              </div>
+            )}
           </div>
         )}
       </Disclosure>

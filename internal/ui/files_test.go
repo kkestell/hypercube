@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/http/httptest"
 	"net/url"
@@ -111,6 +112,27 @@ func TestFiles(t *testing.T) {
 	if res := get("file", "s", "a.go", etag); res.Code != 200 || res.Header().Get("ETag") == etag || res.Body.String() != "package changed\n" {
 		t.Fatalf("changed = %d %s", res.Code, res.Body)
 	}
+	image, err := base64.StdEncoding.DecodeString("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1sAAAAASUVORK5CYII=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Images must not inherit the text viewer's binary check or size limit.
+	picture := string(image) + strings.Repeat("\x00", maxFile)
+	write("sub/picture #1.png", picture)
+	svg := `<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>`
+	write("sub/drawing.svg", svg)
+	for _, tc := range []struct{ path, content, mime string }{
+		{"sub/picture #1.png", picture, "image/png"},
+		{"sub/drawing.svg", svg, "image/svg+xml"},
+	} {
+		res := get("image", "s", tc.path, "")
+		if res.Code != 200 || res.Body.String() != tc.content || res.Header().Get("Content-Type") != tc.mime {
+			t.Errorf("image %q = %d %v (%d bytes)", tc.path, res.Code, res.Header(), res.Body.Len())
+		}
+		if res.Header().Get("Content-Security-Policy") != "sandbox" || res.Header().Get("X-Content-Type-Options") != "nosniff" || res.Header().Get("Cache-Control") != "no-cache" {
+			t.Errorf("image headers = %v", res.Header())
+		}
+	}
 	for _, tc := range []struct {
 		route, session, path string
 		status               int
@@ -123,6 +145,10 @@ func TestFiles(t *testing.T) {
 		{"file", "s", "over-limit", 413}, {"file", "s", "sub", 400},
 		{"file", "unknown", "a.go", 404}, {"files", "unknown", "", 404},
 		{"file", "s", "limit", 200}, {"file", "s", ".git/config", 200},
+		{"image", "s", "../outside.png", 409}, {"image", "s", "/etc/passwd", 409},
+		{"image", "s", "escape", 409}, {"image", "s", "missing.png", 404},
+		{"image", "s", "sub", 400}, {"image", "s", "a.go", 415},
+		{"image", "unknown", "sub/drawing.svg", 404},
 	} {
 		res := get(tc.route, tc.session, tc.path, "")
 		if res.Code != tc.status {

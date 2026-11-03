@@ -1,6 +1,8 @@
 .files-panel {
   height: 100%;
   overflow: auto;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 /* Both edges use the shared content inset. Each level adds 8px before a
