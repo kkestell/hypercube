@@ -55,8 +55,8 @@ func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
 	f.input(parent.ID, "!work")
 	f.until("the unfinished item", func() bool { return len(f.transcript(parent.ID)) == 4 })
 	first := f.transcript(parent.ID)[3]
-	if first.At == 0 {
-		t.Fatal("streamed item has no arrival timestamp")
+	if first.At == 0 || first.End != 0 {
+		t.Fatalf("streamed item has timestamps at %d, end %d", first.At, first.End)
 	}
 	// Make replacing the timestamp on completion observable.
 	time.Sleep(2 * time.Millisecond)
@@ -77,6 +77,9 @@ func TestTranscriptTimestampsSurviveUpdatesAndReload(t *testing.T) {
 			found = true
 			if it.At != first.At || !it.Done || it.Text != "finished" {
 				t.Fatalf("arrival timestamp changed or item was not completed: %+v", it)
+			}
+			if it.End <= it.At {
+				t.Fatalf("completed item ends at %d, not after its start at %d", it.End, it.At)
 			}
 		}
 	}

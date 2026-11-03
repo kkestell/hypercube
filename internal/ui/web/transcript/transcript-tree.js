@@ -2,7 +2,7 @@
 //
 // An item nests under its parent tool call when the parent is present.
 // Tool calls within one container form a run, passing over user messages
-// and closing at the next other item, showing how long it worked. User
+// and closing at the next other item, which ends its duration. User
 // messages draw in place, with later calls joining the run above them. A call
 // that sends a message to a session draws as a message. The rows are rebuilt
 // from the whole list, so an item that arrives before its parent moves under
@@ -58,17 +58,18 @@ const isCall = item => item.kind === 'tool' && !isMessage(item);
 const kinds = new Set(['reasoning', 'error', 'attention']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
 
-function workedFor(start, until) {
-  if (!start || !until) return 'Worked';
-  const seconds = Math.max(0, Math.round((until - start) / 1000));
-  return `Worked for ${seconds < 1 ? '<1' : seconds}s`;
-}
+const startOf = row => (row.type === 'run' ? row.calls[0].item : row.item).at ?? 0;
 
 // transcriptRows returns the top-level rows of a transcript {order, items}:
-//   {type: 'run', key, calls, closed, duration}, whose calls are
+//   {type: 'run', key, calls, closed, start, until}, whose calls are
 //     {type: 'tool', item, children} or {type: 'message', item};
-//   {type: 'user' | 'text' | 'reasoning' | 'error' | 'attention', item}.
-export function transcriptRows({order, items}) {
+//   {type: 'reasoning', item, until};
+//   {type: 'user' | 'text' | 'error' | 'attention', item}.
+// start and until are millisecond times; until is 0 while a run is open. A run
+// still open when the session is not working closes at its last call's end.
+// Thinking ends at its item's end; one saved without an end ends where the
+// next row other than a user message starts.
+export function transcriptRows({order, items}, working = true) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
@@ -88,17 +89,23 @@ export function transcriptRows({order, items}) {
         continue;
       }
       if (item.kind !== 'tool') {
-        if (run) Object.assign(run, {closed: true, duration: workedFor(run.calls[0].item.at, item.at)});
+        if (run) Object.assign(run, {closed: true, until: item.at ?? 0});
         run = null;
         rows.push({type: rowType(item), item});
         continue;
       }
       if (!run) {
-        run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, duration: ''};
+        run = {type: 'run', key: 'run:' + item.id, calls: [], closed: false, start: item.at ?? 0, until: 0};
         rows.push(run);
       }
       run.calls.push(isMessage(item) ? {type: 'message', item} : {type: 'tool', item, children: rowsOf(item.id)});
     }
+    rows.forEach((row, i) => {
+      if (row.type !== 'reasoning') return;
+      const next = rows.slice(i + 1).find(r => r.type !== 'user');
+      row.until = row.item.end ?? (row.item.done && next ? startOf(next) : 0);
+    });
+    if (run && !working) Object.assign(run, {closed: true, until: Math.max(0, ...run.calls.map(call => call.item.end ?? 0))});
     return rows;
   };
   return rowsOf('');

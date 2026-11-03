@@ -375,6 +375,18 @@ func (t *Tx) PutEntry(session string, e Entry) (int64, error) {
 	return seq, err
 }
 
+// Entry returns the saved item with the ID, or false if there is none.
+func (t *Tx) Entry(session, item string) (Entry, bool, error) {
+	e := Entry{Item: item}
+	var data string
+	err := t.tx.QueryRow(`SELECT seq, data FROM transcript WHERE session = ? AND item = ?`, session, item).Scan(&e.Seq, &data)
+	e.Data = []byte(data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return e, false, nil
+	}
+	return e, err == nil, err
+}
+
 // Transcript returns the session's saved items in order.
 func (t *Tx) Transcript(session string) ([]Entry, error) {
 	rows, err := t.tx.Query(`SELECT seq, item, data FROM transcript WHERE session = ? ORDER BY seq`, session)

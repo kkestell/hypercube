@@ -1,9 +1,9 @@
-// Tool runs and tool calls, as inline disclosures. A working run previews its
-// latest call while collapsed; expanding it lists the calls instead. Once
-// finished, its summary shows how long it worked. Each call shows its own
+// Tool runs and tool calls, as inline disclosures. A run's summary counts how
+// long it has worked; expanding it lists the calls. Each call shows its own
 // status, input, output, and nested items, with its images below.
 import {clip, toolInput, toolTitle} from './transcript-tree.js';
 import {Disclosure} from './disclosure.jsx';
+import {Elapsed} from './elapsed.jsx';
 import {MessageItem} from './message-item.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
@@ -15,12 +15,9 @@ function Title({item}) {
 }
 
 export function ToolRun({run, session, expanded, setOpen}) {
-  const latest = run.calls[run.calls.length - 1].item;
-  const summary = run.closed
-    ? <span class="tool-items-title">{run.duration}</span>
-    : 'Working…';
+  const summary = <Elapsed live={!run.closed} present="Working" past="Worked" start={run.start} until={run.until} />;
   return (
-    <Disclosure open={!!expanded[run.key]} onToggle={open => setOpen(run.key, open)} summary={summary} preview={!run.closed && <Title item={latest} />}>
+    <Disclosure open={!!expanded[run.key]} onToggle={open => setOpen(run.key, open)} summary={summary}>
       <div class="tool-items-calls">
         {run.calls.map(call => call.type === 'message'
           ? <MessageItem key={call.item.id} item={call.item} expanded={!!expanded[call.item.id]} setOpen={setOpen} />

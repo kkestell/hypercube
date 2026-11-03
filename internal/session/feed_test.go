@@ -127,7 +127,7 @@ func TestStoppedSessionPublishesDrainedItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID })
-	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done {
+	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done || change.Item.End < change.Item.At || change.Item.End == 0 {
 		t.Fatalf("stopped item = %+v", change)
 	}
 }
@@ -183,6 +183,12 @@ func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
 	f.until("the finished item", func() bool {
 		return f.summary(parent.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish"
 	})
+	var first harness.Item
+	for _, it := range f.transcript(parent.ID) {
+		if it.Text == "finished" {
+			first = it
+		}
+	}
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
 	f.input(parent.ID, "!finish")
@@ -191,9 +197,12 @@ func TestReplacedItemKeepsItsPublishedPosition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if first.End == 0 || change.Item.At != first.At || change.Item.End != first.End {
+		t.Fatalf("replacement times %d-%d, saved %d-%d", change.Item.At, change.Item.End, first.At, first.End)
+	}
 	for _, it := range items {
-		if it.ID == change.Item.ID && it.Seq != change.Seq {
-			t.Fatalf("published position %d, saved position %d", change.Seq, it.Seq)
+		if it.ID == change.Item.ID && (it.Seq != change.Seq || it.At != first.At || it.End != first.End) {
+			t.Fatalf("published position %d, saved %+v, first %+v", change.Seq, it, first)
 		}
 	}
 }
