@@ -83,7 +83,23 @@ func (r *Runtime) save(fn func(*write) error) error {
 	return nil
 }
 
+// putItem saves an item. One that replaces a saved item keeps its start time,
+// and its end time if the saved item was complete.
 func (w *write) putItem(id string, seq int64, item harness.Item) error {
+	saved, replaces, err := w.Entry(id, item.ID)
+	if err != nil {
+		return err
+	}
+	if replaces {
+		var old harness.Item
+		if err := json.Unmarshal(saved.Data, &old); err != nil {
+			return err
+		}
+		item.At = old.At
+		if old.Done {
+			item.End = old.End
+		}
+	}
 	if item.At == 0 {
 		item.At = time.Now().UnixMilli()
 	}

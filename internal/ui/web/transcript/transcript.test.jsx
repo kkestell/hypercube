@@ -253,6 +253,15 @@ test('finished Thinking shows its real duration whether or not anything follows 
   expect(root.querySelectorAll('summary')[1].textContent).toBe('Thought');
 });
 
+test('Thinking saved without an end shows the time up to the next row', () => {
+  const {root} = setup([
+    {id: 't', kind: 'reasoning', text: 'x', at: 1000, done: true, seq: 1},
+    {id: 'u', kind: 'user', text: 'hi', at: 2000, seq: 2},
+    {id: 'x', kind: 'text', text: 'Answer', at: 4000, seq: 3},
+  ], {id: 's', running: false, activity: 'idle'});
+  expect(root.querySelector('summary').textContent).toBe('Thought for 3s');
+});
+
 test('a message that arrives during Thinking leaves it counting until it finishes', () => {
   jest.useFakeTimers();
   jest.setSystemTime(3000);

@@ -58,12 +58,17 @@ const isCall = item => item.kind === 'tool' && !isMessage(item);
 const kinds = new Set(['reasoning', 'error', 'attention']);
 const rowType = item => kinds.has(item.kind) ? item.kind : 'text';
 
+const startOf = row => (row.type === 'run' ? row.calls[0].item : row.item).at ?? 0;
+
 // transcriptRows returns the top-level rows of a transcript {order, items}:
 //   {type: 'run', key, calls, closed, start, until}, whose calls are
 //     {type: 'tool', item, children} or {type: 'message', item};
-//   {type: 'user' | 'text' | 'reasoning' | 'error' | 'attention', item}.
+//   {type: 'reasoning', item, until};
+//   {type: 'user' | 'text' | 'error' | 'attention', item}.
 // start and until are millisecond times; until is 0 while a run is open. A run
 // still open when the session is not working closes at its last call's end.
+// Thinking ends at its item's end; one saved without an end ends where the
+// next row other than a user message starts.
 export function transcriptRows({order, items}, working = true) {
   const containers = new Map();
   for (const id of order) {
@@ -95,6 +100,11 @@ export function transcriptRows({order, items}, working = true) {
       }
       run.calls.push(isMessage(item) ? {type: 'message', item} : {type: 'tool', item, children: rowsOf(item.id)});
     }
+    rows.forEach((row, i) => {
+      if (row.type !== 'reasoning') return;
+      const next = rows.slice(i + 1).find(r => r.type !== 'user');
+      row.until = row.item.end ?? (row.item.done && next ? startOf(next) : 0);
+    });
     if (run && !working) Object.assign(run, {closed: true, until: Math.max(0, ...run.calls.map(call => call.item.end ?? 0))});
     return rows;
   };

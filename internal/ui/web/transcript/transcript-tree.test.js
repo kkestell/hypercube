@@ -64,6 +64,21 @@ test('a run still open when the session is not working closes at its last call\'
   expect(nested[0].calls[0].children[0]).toMatchObject({closed: true, until: 3000});
 });
 
+test('thinking ends at its own end, or for older items at the next row that is not a user message', () => {
+  const [own, older, last, unfinished] = rows([
+    {id: 'a', kind: 'reasoning', at: 1000, end: 3000, done: true},
+    {id: 'b', kind: 'reasoning', at: 4000, done: true},
+    {id: 'u', kind: 'user', at: 5000},
+    call('c', 'read', 8000, {done: true}),
+    {id: 'd', kind: 'reasoning', at: 9000, done: true},
+    {id: 'e', kind: 'reasoning', at: 9500},
+  ]).filter(row => row.type !== 'user' && row.type !== 'run');
+  expect(own.until).toBe(3000);
+  expect(older.until).toBe(8000);
+  expect(last.until).toBe(9500);
+  expect(unfinished.until).toBe(0);
+});
+
 test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves the run open and later calls join above it', (_source, from) => {
   const items = [call('a', 'read', 1000, {done: true}), {id: 'u', kind: 'user', from, text: 'Continue', at: 3000}];
   const [open, user] = rows(items);
