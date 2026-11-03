@@ -1,4 +1,4 @@
-import {afterEach, expect, spyOn, test} from 'bun:test';
+import {afterEach, expect, jest, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
@@ -11,6 +11,7 @@ afterEach(() => {
   for (const s of spies) s.mockRestore();
   spies = [];
   unmountAll();
+  jest.useRealTimers();
 });
 
 function setup(items) {
@@ -44,6 +45,7 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
     {id: 'r', kind: 'reasoning', text: '<i>thinking</i>'},
     {id: 'u', kind: 'user', text: '<a href=x>me</a>'},
   ]);
+  act(() => root.querySelector('.reasoning-item summary').click());
   expect(root.querySelectorAll('b, script, img, u, i, a').length).toBe(0);
   for (const text of ['<b>tool</b>', '<img src=x onerror=1>', '<u>bad</u>', '<i>thinking</i>', '<a href=x>me</a>']) expect(root.textContent).toContain(text);
 });
@@ -61,7 +63,9 @@ test('a tool call shows its title, status, input, output, and nested items', () 
   expect(call().querySelector('.tool-items-children').textContent).toBe('inside');
 });
 
-test.each([['the user', undefined], ['another session', 'child']])('a tool run passes over a message from %s and shows working details until other output', (_source, from) => {
+test.each([['the user', undefined], ['another session', 'child']])('a tool run passes over a message from %s and counts how long it works until other output', (_source, from) => {
+  jest.useFakeTimers();
+  jest.setSystemTime(6000);
   const first = {id: 'a', kind: 'tool', tool: 'read', input: {path: '/first'}, at: 1000, seq: 1};
   const {root, send} = setup([first]);
   const list = root.querySelector('.transcript-list');
@@ -69,43 +73,36 @@ test.each([['the user', undefined], ['another session', 'child']])('a tool run p
   const summary = group.querySelector('summary');
   const chevron = summary.querySelector('.disclosure-chevron');
   expect(chevron).not.toBeNull();
+  expect(summary.querySelector('.disclosure-heading').lastElementChild).toBe(chevron);
   expect(summary.querySelector('[title="Running"]')).toBeNull();
-  const heading = summary.querySelector('.disclosure-heading');
-  expect(heading.lastElementChild).toBe(chevron);
-  expect([...summary.children].map(line => line.textContent)).toEqual(['Working…', 'read /first']);
+  expect(summary.textContent).toBe('Working for 5s…');
+  expect(summary.querySelector('.disclosure-preview')).toBeNull();
+  act(() => jest.advanceTimersByTime(1000));
+  expect(summary.textContent).toBe('Working for 6s…');
   act(() => summary.click());
   expect(group.open).toBe(true);
-  expect(summary.textContent).toBe('Working…');
-  expect(summary.querySelector('.disclosure-preview')).toBeNull();
+  expect(summary.textContent).toBe('Working for 6s…');
   expect(group.querySelector('.tool-items-call [title="Running"]')).not.toBeNull();
 
   send([{...first, done: true}, {id: 'u', kind: 'user', from, text: 'Keep going', at: 3000, seq: 2}]);
-  const user = list.children[1];
-  expect(user.textContent).toContain('Keep going');
-  expect(summary.querySelector('.disclosure-preview')).toBeNull();
+  expect(list.children[1].textContent).toContain('Keep going');
+  expect(summary.textContent).toBe('Working for 6s…');
 
-  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'.repeat(200)}, at: 5000, seq: 3}]);
-  expect([...list.children]).toEqual([group, user]);
-  expect(group.open).toBe(true);
+  send([{id: 'b', kind: 'tool', tool: 'bash', input: {command: 'x'}, at: 5000, seq: 3}]);
+  expect(list.children.length).toBe(2);
   expect(group.querySelectorAll('.tool-items-call').length).toBe(2);
-  expect(summary.textContent).toBe('Working…');
-  expect(summary.querySelector('[title="Running"]')).toBeNull();
   expect(group.querySelectorAll('.tool-items-call [title="Running"]').length).toBe(1);
 
   act(() => summary.click());
   expect(group.open).toBe(false);
-  expect(summary.querySelector('.disclosure-preview').textContent).toBe('bash ' + 'x'.repeat(119) + '…');
-  act(() => summary.click());
-  expect(group.open).toBe(true);
-  expect(summary.querySelector('.disclosure-preview')).toBeNull();
+  expect(summary.textContent).toBe('Working for 6s…');
 
   send([{id: 't', kind: 'text', text: 'Finished', at: 10000, seq: 4}]);
   expect(list.firstElementChild).toBe(group);
-  expect(group.open).toBe(true);
   expect(summary.textContent).toBe('Worked for 9s');
-  expect(heading.lastElementChild).toBe(chevron);
-  expect(summary.querySelector('.disclosure-preview')).toBeNull();
-  expect(summary.querySelector('[title="Running"]')).toBeNull();
+  expect(summary.querySelector('.disclosure-heading').lastElementChild).toBe(chevron);
+  act(() => jest.advanceTimersByTime(5000));
+  expect(summary.textContent).toBe('Worked for 9s');
 });
 
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
@@ -222,15 +219,51 @@ test('short agent messages also expand, including their attached images', () => 
   expect(message.querySelector('img').getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=');
 });
 
-test('Thinking shows a preview until expanded and keeps the choice while it streams', () => {
-  const {root, send} = setup([{id: 't', kind: 'reasoning', text: longText}]);
-  const preview = () => root.querySelector('.reasoning-item-text').classList.contains('reasoning-item-preview');
-  expect(preview()).toBe(true);
+test('Thinking counts its time while it streams and shows only a header until expanded', () => {
+  jest.useFakeTimers();
+  jest.setSystemTime(6000);
+  const {root, send} = setup([{id: 't', kind: 'reasoning', text: longText, at: 1000, seq: 1}]);
+  const item = root.querySelector('.reasoning-item');
+  const summary = item.querySelector('summary');
+  expect(summary.textContent).toBe('Thinking for 5s…');
+  expect(item.querySelector('.reasoning-item-text')).toBeNull();
+  expect(item.textContent).toBe('Thinking for 5s…');
+  act(() => jest.advanceTimersByTime(147000));
+  expect(summary.textContent).toBe('Thinking for 2m 32s…');
+  act(() => summary.click());
+  expect(item.querySelector('.reasoning-item-text').textContent).toBe(longText);
+  send([{id: 't', kind: 'reasoning', text: longText + '\nmore', at: 1000, seq: 1}]);
+  expect(item.querySelector('details').open).toBe(true);
+  expect(item.querySelector('.reasoning-item-text').textContent).toEndWith('more');
+  send([{id: 'x', kind: 'text', text: 'Answer', at: 191000, seq: 2}]);
+  expect(summary.textContent).toBe('Thought for 3m 10s');
+  act(() => jest.advanceTimersByTime(10000));
+  expect(summary.textContent).toBe('Thought for 3m 10s');
+});
+
+test('expanded Thinking stays scrolled to the newest text until the user scrolls up', () => {
+  const {root, send} = setup([{id: 't', kind: 'reasoning', text: 'a', at: 1000, seq: 1}]);
   act(() => root.querySelector('.reasoning-item summary').click());
-  expect(preview()).toBe(false);
-  send([{id: 't', kind: 'reasoning', text: longText + '\nmore', seq: 1}]);
-  expect(preview()).toBe(false);
-  expect(root.querySelector('.reasoning-item-text').textContent).toEndWith('more');
+  const box = root.querySelector('.reasoning-item-text');
+  let height = 500;
+  Object.defineProperty(box, 'scrollHeight', {get: () => height});
+  Object.defineProperty(box, 'clientHeight', {get: () => 100});
+  const scroll = top => {
+    box.scrollTop = top;
+    box.dispatchEvent(new Event('scroll'));
+  };
+  const stream = text => send([{id: 't', kind: 'reasoning', text, at: 1000, seq: 1}]);
+  height = 600;
+  stream('ab');
+  expect(box.scrollTop).toBe(600);
+  scroll(100);
+  height = 700;
+  stream('abc');
+  expect(box.scrollTop).toBe(100);
+  scroll(600);
+  height = 800;
+  stream('abcd');
+  expect(box.scrollTop).toBe(800);
 });
 
 const png = 'iVBORw0KGgo=';

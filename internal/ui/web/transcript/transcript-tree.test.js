@@ -40,38 +40,48 @@ test('child status updates stay hidden and do not split tool runs', () => {
     {id: 'text', kind: 'text', text: 'Done', at: 4000},
   ]);
   expect(ids(run.calls)).toEqual(['a', 'b']);
-  expect(run.duration).toBe('Worked for 3s');
+  expect(run).toMatchObject({start: 1000, until: 4000});
   expect(text.item.id).toBe('text');
   expect(rows([{id: 'status', kind: 'status', text: 'Working'}])).toEqual([]);
 });
 
 test.each(['text', 'reasoning', 'error', 'attention'])('the next %s item closes the run with its duration', kind => {
   const [run, next] = rows([call('a', 'read', 1000), call('b', 'bash', 2000, {done: true, failed: true}), {id: 't', kind, at: 33000}]);
-  expect(run).toMatchObject({closed: true, duration: 'Worked for 32s'});
+  expect(run).toMatchObject({closed: true, start: 1000, until: 33000});
   expect(next.type).toBe(kind);
 });
 
-test('run durations handle short or missing timestamps', () => {
-  expect(rows([call('a', 'read', 1000, {done: true}), {id: 't', kind: 'text', at: 1200}])[0].duration).toBe('Worked for <1s');
-  expect(rows([call('a', 'read'), {id: 't', kind: 'text'}])[0].duration).toBe('Worked');
+test('a run with missing timestamps has no times', () => {
+  expect(rows([call('a', 'read'), {id: 't', kind: 'text'}])[0]).toMatchObject({closed: true, start: 0, until: 0});
+});
+
+test('thinking lasts until the next row begins', () => {
+  const [first, run, last] = rows([
+    {id: 'r1', kind: 'reasoning', at: 1000, done: true},
+    call('a', 'read', 4000, {done: true}),
+    {id: 'r2', kind: 'reasoning', at: 9000},
+  ]);
+  expect(first).toMatchObject({type: 'reasoning', until: 4000});
+  expect(run.type).toBe('run');
+  expect(last).toMatchObject({type: 'reasoning', until: 0});
 });
 
 test.each([['the user', undefined], ['another session', 'child']])('a message from %s leaves the run open and later calls join above it', (_source, from) => {
   const items = [call('a', 'read', 1000, {done: true}), {id: 'u', kind: 'user', from, text: 'Continue', at: 3000}];
   const [open, user] = rows(items);
-  expect(open).toMatchObject({key: 'run:a', closed: false, duration: ''});
+  expect(open).toMatchObject({key: 'run:a', closed: false, until: 0});
   expect(user).toEqual({type: 'user', item: items[1]});
 
   items.push(call('b', 'bash', 5000, {done: true}));
   const joined = rows(items);
   expect(joined.map(row => row.type)).toEqual(['run', 'user']);
-  expect(joined[0]).toMatchObject({key: 'run:a', closed: false, duration: ''});
+  expect(joined[0]).toMatchObject({key: 'run:a', closed: false, until: 0});
   expect(ids(joined[0].calls)).toEqual(['a', 'b']);
 
   items.push({id: 't', kind: 'text', text: 'Done', at: 10000});
   const closed = rows(items);
   expect(closed.map(row => row.type)).toEqual(['run', 'user', 'text']);
-  expect(closed[0]).toMatchObject({key: 'run:a', closed: true, duration: 'Worked for 9s'});
+  expect(closed[0]).toMatchObject({key: 'run:a', closed: true, start: 1000, until: 10000});
   expect(ids(closed[0].calls)).toEqual(['a', 'b']);
 });
 
@@ -85,7 +95,7 @@ test.each([['the user', undefined], ['another session', 'child']])('a message fr
   const result = rows(items);
   expect(result.map(row => row.type)).toEqual(['run', 'text', 'user', 'run']);
   expect(result[0]).toEqual(closed);
-  expect(result[3]).toMatchObject({key: 'run:b', closed: false, duration: ''});
+  expect(result[3]).toMatchObject({key: 'run:b', closed: false, until: 0});
   expect(ids(result[3].calls)).toEqual(['b']);
 });
 
@@ -98,8 +108,8 @@ test('replayed history keeps separate runs and their durations', () => {
     {id: 'u', kind: 'user', text: 'Continue', at: 36000},
   ]);
   expect(result.map(r => r.type)).toEqual(['run', 'reasoning', 'run', 'user']);
-  expect(result[0].duration).toBe('Worked for 32s');
-  expect(result[2]).toMatchObject({closed: false, duration: ''});
+  expect(result[0]).toMatchObject({start: 1000, until: 33000});
+  expect(result[2]).toMatchObject({closed: false, until: 0});
 });
 
 test('nested items group among their siblings and leave the outer run open', () => {
@@ -114,7 +124,7 @@ test('nested items group among their siblings and leave the outer run open', () 
   expect(ids(outer.calls)).toEqual(['parent', 'next']);
   const [inner, text] = outer.calls[0].children;
   expect(ids(inner.calls)).toEqual(['one', 'two']);
-  expect(inner.duration).toBe('Worked for 4s');
+  expect(inner).toMatchObject({start: 2000, until: 6000});
   expect(text.item.id).toBe('child-text');
 });
 

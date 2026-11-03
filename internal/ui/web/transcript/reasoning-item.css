@@ -2,21 +2,12 @@
   color: var(--vscode-descriptionForeground);
 }
 
+/* Five lines tall; the line height is shared by the height. */
 .reasoning-item-text {
-  line-height: 1.5;
+  --reasoning-item-line-height: 1.5em;
+  max-height: calc(var(--reasoning-item-line-height) * 5);
+  overflow-y: auto;
+  line-height: var(--reasoning-item-line-height);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-/* The last six lines stay in view as the text grows. */
-.reasoning-item-preview {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  max-height: 9em;
-  overflow: hidden;
-}
-
-.reasoning-item-preview > div {
-  flex-shrink: 0;
 }
