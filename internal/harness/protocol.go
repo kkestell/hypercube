@@ -128,6 +128,12 @@ type Usage struct {
 // Notes[i] optionally describes Choices[i], and Free allows typed text. It stays open until an event sets Done, with the
 // Answer when there is one.
 //
+// An approval attention item names the tool it asks to use in Grant, the
+// harness's own name for the tool, and its first choice allows the request
+// once. A user can allow the tool for good, and Hypercube then answers later
+// approvals for that tool with the first choice. The item keeps its Grant when
+// it finishes.
+//
 // An item's Images are shown with its text: the pictures a user sent, or the
 // pictures a model or tool produced. An item may have images and no text.
 //
@@ -163,6 +169,7 @@ type Item struct {
 	Images  []Image         `json:"images,omitempty"`
 	State   string          `json:"state,omitempty"`
 	Final   []string        `json:"final,omitempty"`
+	Grant   string          `json:"grant,omitempty"`
 }
 
 // Line returns the command as one line of the plugin's input.
@@ -212,6 +219,9 @@ func (e Event) check() error {
 		case KindText, KindReasoning, KindTool, KindError, KindAttention:
 		default:
 			return fmt.Errorf("item %q has unknown kind %q", it.ID, it.Kind)
+		}
+		if it.Grant != "" && (it.Kind != KindAttention || len(it.Choices) == 0) {
+			return fmt.Errorf("item %q has a grant but is not an attention item with choices", it.ID)
 		}
 	}
 	return nil

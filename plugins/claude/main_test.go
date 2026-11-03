@@ -283,7 +283,7 @@ func TestQuestionBecomesAttentionAndAnswerReachesClaude(t *testing.T) {
 	h.feed(head...)
 	items := h.transcript()
 	if len(items) != 1 || items[0].Kind != harness.KindAttention || items[0].Done || !items[0].Free ||
-		!slices.Equal(items[0].Choices, []string{"Red", "Blue"}) || items[0].Text != "Which color do you like, Red or Blue?" || !slices.Equal(items[0].Notes, []string{"Choose Red", "Choose Blue"}) {
+		items[0].Grant != "" || !slices.Equal(items[0].Choices, []string{"Red", "Blue"}) || items[0].Text != "Which color do you like, Red or Blue?" || !slices.Equal(items[0].Notes, []string{"Choose Red", "Choose Blue"}) {
 		t.Fatalf("%+v", items)
 	}
 	// The question is not also a tool call.
@@ -391,7 +391,7 @@ func TestToolPermissionPrompt(t *testing.T) {
 		t.Fatalf("%+v", items)
 	}
 	prompt := items[1]
-	if prompt.Kind != harness.KindAttention || !slices.Equal(prompt.Choices, []string{"Allow", "Deny"}) || !prompt.Free ||
+	if prompt.Kind != harness.KindAttention || prompt.Grant != "Bash" || !slices.Equal(prompt.Choices, []string{"Allow", "Deny"}) || !prompt.Free ||
 		!strings.HasPrefix(prompt.Text, "Allow Bash?") {
 		t.Fatalf("%+v", prompt)
 	}

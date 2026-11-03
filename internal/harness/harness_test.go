@@ -75,6 +75,8 @@ func TestDecodeChecksFinalItems(t *testing.T) {
 		"final without a state":  {line: `{"event":{"final":["a"]}}`, want: "without the idle state"},
 		"empty final ID":         {line: `{"event":{"state":"idle","final":[""]}}`, want: "without an ID"},
 		"state item from plugin": {line: `{"event":{"items":[{"id":"a","kind":"state"}]}}`, want: "unknown kind"},
+		"approval with a grant":  {line: `{"event":{"items":[{"id":"a","kind":"attention","choices":["Allow"],"grant":"Bash"}]}}`},
+		"grant without choices":  {line: `{"event":{"items":[{"id":"a","kind":"attention","grant":"Bash"}]}}`, want: "grant"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := decode([]byte(tc.line))

@@ -50,7 +50,10 @@ The types are in [protocol.go](../internal/harness/protocol.go).
 - **Attention requests.** An attention item is a prompt with optional choices,
   each with an optional description, and optional free text. The browser
   answers with the item's ID, and the plugin maps the answer to the native
-  reply. An answer to a finished request is an error.
+  reply. An answer to a finished request is an error. An approval's item names
+  the tool in `grant`, with the choice that allows it once first; the browser
+  offers to always allow that tool, and Hypercube then answers later approvals
+  for it with that first choice before showing them.
 
 A malformed record, or a reply to an unknown ID, ends the connection. The agent
 then follows the relaunch rule in [Architecture](architecture.md#ownership).
@@ -84,7 +87,8 @@ with `--resume`. A conversation Claude Code cannot resume fails the launch.
   started them.
 - **Permissions and questions.** A tool permission request becomes an attention
   request with the choices Allow and Deny; typed text without a choice denies the
-  tool and tells Claude the text. An `AskUserQuestion` call becomes one attention
+  tool and tells Claude the text. Its grant is the tool's name (`Bash`, `Edit`,
+  `mcp__server__tool`). An `AskUserQuestion` call becomes one attention
   request per question, with the options as choices and free text for another
   answer; Claude receives the answers once every question has one.
 - **Messages and interrupts.** Messages sent during a turn go to Claude at once,
@@ -152,11 +156,14 @@ private storage and resumes the same conversation ID.
 - **Approvals and questions.** A request the automatic reviewer does not settle
   becomes an attention request. A command, file change, or permission request
   offers Allow, Deny, and Allow for this session when Codex accepts it; Codex
-  cancels the turn on Deny when it offers no decline. Codex's questions become
+  cancels the turn on Deny when it offers no decline. Command and file change
+  approvals have the grants `commandExecution` and `fileChange`; network host,
+  write-root, and permission approvals have none. Codex's questions become
   one attention request per question, with the options as choices and free text
   where Codex allows it; Codex receives the answers once every question has one.
   An MCP server's request is Accept or Decline, or one attention request per
-  field of its form.
+  field of its form. An MCP tool approval offers no Always allow, because Codex
+  does not name the tool.
 - **Messages and interrupts.** A message sent during a turn steers it, and
   Codex reads it before its next step; a message sent when no turn is running
   starts one. Interrupt stops the turn and gives up any open request, and the

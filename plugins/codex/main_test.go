@@ -691,6 +691,24 @@ func TestApprovalDecisions(t *testing.T) {
 	}
 }
 
+func TestOnlyCommandAndFileRequestsCanBeAlwaysAllowed(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	h.feed(t,
+		`{"id":1,"method":"item/commandExecution/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"a","command":"ls"}}`,
+		`{"id":2,"method":"item/fileChange/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"b"}}`,
+		`{"id":3,"method":"item/commandExecution/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"c","networkApprovalContext":{"host":"example.com","protocol":"https"}}}`,
+		`{"id":4,"method":"item/fileChange/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"d","grantRoot":"/w"}}`,
+		`{"id":5,"method":"item/permissions/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"e","cwd":"/w","permissions":{}}}`,
+		`{"id":6,"method":"mcpServer/elicitation/request","params":{"serverName":"docs","threadId":"t1","turnId":"u1","mode":"form","message":"Allow?","requestedSchema":{"type":"object","properties":{}}}}`,
+		`{"id":7,"method":"item/tool/requestUserInput","params":{"threadId":"t1","turnId":"u1","itemId":"f","questions":[{"id":"q","header":"h","question":"Which?","options":[{"label":"A","description":"a"}]}]}}`)
+	for id, want := range map[string]string{"1": "commandExecution", "2": "fileChange", "3": "", "4": "", "5": "", "6": "", "7": ""} {
+		if got := h.item(t, "request:"+id+"/0").Grant; got != want {
+			t.Errorf("request %s grant %q, want %q", id, got, want)
+		}
+	}
+}
+
 func TestPermissionsRequest(t *testing.T) {
 	h := newAgent(t)
 	h.thread = "t1"

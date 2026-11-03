@@ -130,6 +130,11 @@ CREATE TABLE IF NOT EXISTS transcript (
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL, item TEXT NOT NULL, data TEXT NOT NULL,
   PRIMARY KEY (session, seq), UNIQUE (session, item));
+-- A grant with no session covers every session of its harness.
+CREATE TABLE IF NOT EXISTS grants (
+  session TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+  harness TEXT NOT NULL, tool TEXT NOT NULL);
+CREATE UNIQUE INDEX IF NOT EXISTS grants_unique ON grants (COALESCE(session, ''), harness, tool);
 `
 
 // DB is the open database.

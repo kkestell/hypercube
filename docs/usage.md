@@ -99,7 +99,12 @@ turn from another session shows its sender and first line; expand it to read
 the full message. A turn you interrupt, a turn that fails, a turn whose final
 response the harness cannot identify, and chats saved by earlier versions show every row. When an agent asks you a question or for approval, its
 chat shows the request with its choices and a field for typed text; answer
-there. An answered request shows its question and the answer beside a check.
+there. Supported tool approvals also offer Always allow in this session and
+Always allow in all sessions. Saved choices belong to that harness and survive
+restarts. Hypercube then allows that tool's later approvals without asking,
+and the tool's call still appears in the chat. There is currently no control
+for removing saved choices. An answered
+request shows its question and the answer beside a check.
 Each agent's unsent text stays in its
 box when you switch sessions or messages arrive.
 

@@ -1,11 +1,12 @@
 // The answers to an open attention request: content-sized choice buttons
 // with their notes, and a labeled reply field with a separate Send button
 // when the request takes typed text. The transcript and notification cards
-// both draw it, and answers go only through answerRequest. Its controls are
+// both draw it, and answers go only through answerRequest and alwaysAllow. An
+// approval request also offers to always allow its tool. Its controls are
 // disabled while an answer is sent and enabled again if the server refuses it.
 // A typed answer is a draft, so it survives the form closing.
 import {useId, useState} from 'preact/hooks';
-import {answerRequest} from '../api.js';
+import {alwaysAllow, answerRequest} from '../api.js';
 import {draftOf, typed} from '../agent/drafts.js';
 import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
@@ -18,12 +19,14 @@ export function AttentionForm({session, item}) {
   const key = `${session}/${item.id}`;
   const text = draftOf(state, key).text;
 
-  const send = async choice => {
+  const submit = async answer => {
     if (sending) return;
     setSending(true);
-    if (await answerRequest(store, session, item.id, choice, text)) store.update(s => typed(s, key, ''));
+    if (await answer()) store.update(s => typed(s, key, ''));
     else setSending(false);
   };
+  const send = choice => submit(() => answerRequest(store, session, item.id, choice, text));
+  const allowAlways = all => submit(() => alwaysAllow(store, session, item.id, all));
   const sendText = () => {
     if (text.trim()) send('');
   };
@@ -40,6 +43,12 @@ export function AttentionForm({session, item}) {
               {item.notes?.[i] && <span class="attention-form-note" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
             </div>
           ))}
+        </div>
+      )}
+      {item.grant && (
+        <div class="attention-form-choices" role="group" aria-label="Always allow">
+          <vscode-button secondary data-always="session" disabled={sending} onClick={() => allowAlways(false)}>Always allow in this session</vscode-button>
+          <vscode-button secondary data-always="all" disabled={sending} onClick={() => allowAlways(true)}>Always allow in all sessions</vscode-button>
         </div>
       )}
       {item.free && (

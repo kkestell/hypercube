@@ -115,6 +115,13 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.rt.Answer(id, q.Get("request"), q.Get("choice"), string(body))
+	case "allow":
+		scope := q.Get("scope")
+		if scope != "session" && scope != "all" {
+			http.Error(w, "unknown scope", http.StatusBadRequest)
+			return
+		}
+		err = s.rt.AlwaysAllow(id, q.Get("request"), scope == "all")
 	default:
 		http.Error(w, "unknown session action", http.StatusBadRequest)
 		return

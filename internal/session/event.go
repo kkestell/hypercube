@@ -72,7 +72,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	l.position = next
 	var completed []*pendingItem
 	var failures []string
-	var opened []harness.Item
+	var opened, allowed []harness.Item
 	at := time.Now().UnixMilli()
 	// A turn's work marker precedes the items the same event starts, and its
 	// idle marker follows the items the event finishes.
@@ -85,6 +85,24 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			it.Parent = l.prefix + it.Parent
 		}
 		p := l.pending[it.ID]
+		if p == nil && it.Kind == harness.KindAttention && it.Grant != "" {
+			// A granted request is answered without being shown, and its
+			// completion is not shown either.
+			if it.Done {
+				continue
+			}
+			granted := false
+			if !l.stopping {
+				var err error
+				if granted, err = r.granted(l, it.Grant); err != nil {
+					return err
+				}
+			}
+			if granted {
+				allowed = append(allowed, it)
+				continue
+			}
+		}
 		it.At = at
 		if p != nil {
 			it.At = p.item.At
@@ -124,7 +142,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(completed) == 0 && len(opened) == 0 && len(failures) == 0 && !changed {
+	if len(completed) == 0 && len(opened) == 0 && len(allowed) == 0 && len(failures) == 0 && !changed {
 		return nil
 	}
 	err := r.save(func(tx *write) error {
@@ -133,6 +151,11 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		}
 		for _, item := range opened {
 			if err := r.mirrorLocked(tx, l.id, item); err != nil {
+				return err
+			}
+		}
+		for _, item := range allowed {
+			if _, err := r.recordAllow(tx, l, item, false); err != nil {
 				return err
 			}
 		}
@@ -165,6 +188,9 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		return err
 	}
 	l.attention = attention
+	if len(allowed) > 0 {
+		go r.send(l)
+	}
 	if len(failures) > 0 {
 		r.kickFamilyLocked(l.root)
 	} else if ev.State == harness.Idle {

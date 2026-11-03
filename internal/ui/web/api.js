@@ -33,6 +33,13 @@ export async function answerRequest(store, session, request, choice, text) {
   return await post(store, 'session', {action: 'answer', id: session, request, choice}, text) !== null;
 }
 
+// alwaysAllow answers a session's approval request with its first choice and
+// always allows its tool in the session, or in all sessions when all is set. It
+// reports whether the server accepted it.
+export async function alwaysAllow(store, session, request, all) {
+  return await post(store, 'session', {action: 'allow', id: session, request, scope: all ? 'all' : 'session'}) !== null;
+}
+
 // listFiles returns a folder's entries, relative to the session's working
 // directory. A failure throws an error carrying the response status.
 export async function listFiles(session, dir) {

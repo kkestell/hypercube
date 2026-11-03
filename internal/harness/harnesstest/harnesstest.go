@@ -20,6 +20,7 @@
 //	!stream    text and tool items that replace and extend each other
 //	!early     events before the reply
 //	!ask       an attention request with the choices yes and no
+//	!approve   a tool call and an approval for the tool "Tool", choices Allow and Deny
 //	!usage     a usage event
 //	!fail      an error item
 //	!image     an assistant item that holds only an image
@@ -273,6 +274,9 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("ask"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Working, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Choices: []string{"yes", "no"}})
+	case has("approve"):
+		p.reply(cmd.ID, "")
+		p.state(harness.Working, harness.Item{ID: "tool-" + p.turn, Kind: harness.KindTool, Tool: "Tool"}, approval(p.turn, false, ""))
 	case has("usage"):
 		p.reply(cmd.ID, "")
 		p.event(harness.Event{Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
@@ -333,8 +337,19 @@ func (p *standIn) interrupt(cmd harness.Command) {
 	p.state(harness.Idle)
 }
 
+// approval is the stand-in's approval of the tool call in the turn.
+func approval(turn string, done bool, answer string) harness.Item {
+	return harness.Item{ID: "approval-" + turn, Kind: harness.KindAttention, Text: "Allow Tool?", Choices: []string{"Allow", "Deny"},
+		Grant: "Tool", Done: done, Answer: answer}
+}
+
 func (p *standIn) answer(cmd harness.Command) {
 	p.log(Entry{Kind: "answer", Request: cmd.Request, Choice: cmd.Choice, Text: cmd.Text})
+	if turn, ok := strings.CutPrefix(cmd.Request, "approval-"); ok {
+		p.reply(cmd.ID, "")
+		p.state(harness.Idle, approval(turn, true, cmd.Choice), harness.Item{ID: "tool-" + turn, Kind: harness.KindTool, Tool: "Tool", Output: cmd.Choice, Done: true})
+		return
+	}
 	if cmd.Request != "q" {
 		p.reply(cmd.ID, "no such request")
 		return

@@ -210,6 +210,24 @@ test('an attention request offers its choices, waits while sending, and opens ag
   expect(root.querySelector('.attention-item-answer').textContent).toBe('no');
 });
 
+test('an approval request offers to always allow its tool in either scope', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
+  spies.push(fetches);
+  for (const [i, scope] of ['session', 'all'].entries()) {
+    const {root} = setup([{id: 'q', kind: 'attention', text: 'Allow Bash?', choices: ['Allow', 'Deny'], grant: 'Bash'}]);
+    const buttons = [...root.querySelectorAll('vscode-button[data-always]')];
+    expect(buttons.map(b => b.textContent)).toEqual(['Always allow in this session', 'Always allow in all sessions']);
+    await act(async () => { buttons[i].click(); });
+    const url = new URL(fetches.mock.calls[i][0], 'http://x/');
+    expect(Object.fromEntries(url.searchParams)).toEqual({action: 'allow', id: 's', request: 'q', scope});
+  }
+});
+
+test('a request that is not an approval offers no always allow', () => {
+  const {root} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
+  expect(root.querySelector('vscode-button[data-always]')).toBeNull();
+});
+
 test('a choice shows its associated note', () => {
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Language?', choices: ['Python', 'Go'], notes: ['Readable', '']}]);
   const [python, go] = root.querySelectorAll('vscode-button[data-choice]');

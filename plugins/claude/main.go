@@ -606,7 +606,7 @@ func (c *claude) control(ev *harness.Event, m message) {
 		if req.Description != "" {
 			text += "\n\n" + req.Description
 		}
-		items = []harness.Item{{ID: m.RequestID, Kind: harness.KindAttention, Text: text, Choices: []string{allow, deny}, Free: true}}
+		items = []harness.Item{{ID: m.RequestID, Kind: harness.KindAttention, Text: text, Choices: []string{allow, deny}, Free: true, Grant: req.Tool}}
 	}
 	c.requests.Add(r, items)
 	ev.Items = append(ev.Items, items...)

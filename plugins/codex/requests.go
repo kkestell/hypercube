@@ -234,7 +234,11 @@ func commandRequest(params json.RawMessage) (*request, error) {
 		text += "\n\n" + p.Reason
 	}
 	choices, declinable := decisions(p.Decisions)
-	return &request{items: []harness.Item{{Text: text, Choices: choices}}, declinable: declinable}, nil
+	item := harness.Item{Text: text, Choices: choices}
+	if p.Network == nil {
+		item.Grant = "commandExecution"
+	}
+	return &request{items: []harness.Item{item}, declinable: declinable}, nil
 }
 
 func fileRequest(params json.RawMessage) (*request, error) {
@@ -254,7 +258,11 @@ func fileRequest(params json.RawMessage) (*request, error) {
 		text += "\n\n" + p.Reason
 	}
 	choices, declinable := decisions(p.Decisions)
-	return &request{items: []harness.Item{{Text: text, Choices: choices}}, declinable: declinable}, nil
+	item := harness.Item{Text: text, Choices: choices}
+	if p.GrantRoot == "" {
+		item.Grant = "fileChange"
+	}
+	return &request{items: []harness.Item{item}, declinable: declinable}, nil
 }
 
 func permissionsRequest(params json.RawMessage) (*request, error) {

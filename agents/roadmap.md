@@ -25,3 +25,11 @@ processes that Hypercube hosts. A running Hypercube-hosted process keeps its
 session alive, so the idle timeout no longer interrupts it. Because every
 agent can list every running process, agents also see what other agents are
 running and avoid stepping on each other's work.
+
+## Codex MCP tool approvals offer Always allow
+
+Codex's MCP tool approvals arrive as `mcpServer/elicitation/request` without
+the tool's name or the elicitation's own ID, so the adapter has no key to save
+and offers no Always allow for them.
+
+Offer Always allow once Codex includes a stable tool identifier in the request.
