@@ -127,11 +127,11 @@ highlight lines; the tab opens when you view its session.
 
 In the Hypercube window, each session's agent has a browser, which it loads
 pages in and runs scripts on with its `browser_navigate` and `browser_eval`
-tools. The session's Browser tab shows the page, with back, forward, reload,
+tools and closes with `browser_close`. The session's Browser tab shows the page, with back, forward, reload,
 an address field, and a button that opens the page in your default browser.
 The tab opens when the agent first loads a page and comes forward whenever the
-agent navigates. Closing it keeps the page; browsers last until Hypercube
-quits and share your logins.
+agent navigates. Closing the tab keeps the page; a browser lasts until its
+agent closes it or Hypercube quits, and browsers share your logins.
 
 The panel button shows or hides a terminal below the tabbed area. It
 runs your shell in the session's directory, one per session, and keeps running

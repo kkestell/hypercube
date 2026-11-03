@@ -200,6 +200,26 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
     }];
 }
 
+// close removes the session's browser and tells the page, which closes its
+// tab.
+- (void)close:(NSString *)session request:(uint64_t)request {
+    WKWebView *view = _views[session];
+    if (view) {
+        [_views removeObjectForKey:session];
+        for (NSString *key in reportedKeys()) [view removeObserver:self forKeyPath:key];
+        [view stopLoading];
+        view.navigationDelegate = nil;
+        view.UIDelegate = nil;
+        NSWindow *window = _window.window;
+        if ([window.firstResponder isKindOfClass:[NSView class]] && [(NSView *)window.firstResponder isDescendantOf:view]) {
+            [window makeFirstResponder:_window.webView];
+        }
+        [view removeFromSuperview];
+        [_window dispatch:@"hypercube-browser-closed" detail:@{@"session": session}];
+    }
+    succeed(request, @"");
+}
+
 // A page's new window opens in its own browser.
 - (WKWebView *)webView:(WKWebView *)view createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)action windowFeatures:(WKWindowFeatures *)features {
     [view loadRequest:action.request];
@@ -226,5 +246,12 @@ void hypercubeEval(const char *session, const char *script, uint64_t request) {
     NSString *s = @(session), *code = @(script);
     dispatch_async(dispatch_get_main_queue(), ^{
         [browsers eval:code in:s request:request];
+    });
+}
+
+void hypercubeClose(const char *session, uint64_t request) {
+    NSString *s = @(session);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [browsers close:s request:request];
     });
 }

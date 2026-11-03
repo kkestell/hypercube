@@ -18,6 +18,8 @@ type Browser interface {
 	// Eval runs script as the body of an async function in the main frame of
 	// the session's page, and returns JSON.stringify of the value it returns.
 	Eval(ctx context.Context, session, script string) (string, error)
+	// Close closes the session's browser, if it has one.
+	Close(ctx context.Context, session string) error
 }
 
 // browserTimeout bounds a page load and a script, so a page that never
@@ -73,5 +75,19 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 			return "", fmt.Errorf("the script did not finish within %v", browserTimeout)
 		}
 		return text, err
+	}))
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "browser_close",
+		Description: "Close your browser and its tab when you are done with it. The next browser_navigate opens a new one.",
+	}, result(func(ctx context.Context, _ struct{}) (string, error) {
+		if browser == nil {
+			return "", errNoWindow
+		}
+		ctx, cancel := context.WithTimeout(ctx, browserTimeout)
+		defer cancel()
+		if err := browser.Close(ctx, self); err != nil {
+			return "", err
+		}
+		return "closed", nil
 	}))
 }

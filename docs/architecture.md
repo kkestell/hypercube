@@ -40,9 +40,9 @@ plugins, because macOS delivers notifications only to a signed application
 bundle. `Runtime.WatchAlerts` reports each new request and finished turn, and
 the window turns it into a notification unless it has keyboard focus. Each session
 can have a browser, a second web view in that window, which the agent drives
-with `browser_navigate` and `browser_eval` and the user sees in the session's
+with `browser_navigate`, `browser_eval`, and `browser_close` and the user sees in the session's
 Browser tab. The page reports where the tab's body is, and the window places
-the session's browser over it. Browsers last until the app quits and share
+the session's browser over it. Browsers last until their agents close them or the app quits, and share
 one website data store, so logins persist across sessions and restarts.
 
 Child worktrees live inside the checkout so harnesses can inherit its folder

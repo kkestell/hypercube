@@ -4,8 +4,10 @@
 // a browser's state in a hypercube-browser event, {session, url, title,
 // loading, canGoBack, canGoForward, reveal}, and state.browsers keeps it by
 // session. The attached session's Browser tab opens when the page first
-// learns of its browser and whenever its agent navigates it.
-import {openBrowserTab} from '../editor/editor.js';
+// learns of its browser and whenever its agent navigates it. When the agent
+// closes its browser, the window sends a hypercube-browser-closed event,
+// {session}, and the tab closes.
+import {browserTabId, closeTab, openBrowserTab} from '../editor/editor.js';
 
 const handler = () => globalThis.webkit?.messageHandlers?.hypercube;
 
@@ -21,10 +23,19 @@ export function receivedBrowser(state, {session, reveal, ...page}) {
   return openBrowserTab(next, reveal);
 }
 
+// closedBrowser forgets a closed browser and closes its tab.
+export function closedBrowser(state, {session}) {
+  const browsers = {...state.browsers};
+  delete browsers[session];
+  const next = {...state, browsers};
+  return next.session?.id === session ? closeTab(next, browserTabId) : next;
+}
+
 // startBrowsers listens for the window's reports and asks for every
 // browser's state.
 export function startBrowsers(store) {
   if (!inWindow()) return;
   addEventListener('hypercube-browser', e => store.update(state => receivedBrowser(state, e.detail)));
+  addEventListener('hypercube-browser-closed', e => store.update(state => closedBrowser(state, e.detail)));
   post({type: 'ready'});
 }

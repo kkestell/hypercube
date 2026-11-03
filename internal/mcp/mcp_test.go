@@ -374,7 +374,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 8 || parentTools["open_file"] == nil || childTools["open_file"] == nil || parentTools["set_status"] != nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 9 || parentTools["open_file"] == nil || childTools["open_file"] == nil || parentTools["set_status"] != nil || len(childTools) != 7 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {

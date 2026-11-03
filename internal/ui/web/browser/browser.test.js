@@ -2,7 +2,7 @@ import {expect, test} from 'bun:test';
 import {browserTabId, closeTab, fileTabId} from '../editor/editor.js';
 import {findPane, moveTab, openTab, panes} from '../editor/tab-layout.js';
 import {emptySession, receivedWorkspaces, selectSession} from '../sessions/selection.js';
-import {receivedBrowser} from './browser.js';
+import {closedBrowser, receivedBrowser} from './browser.js';
 
 const page = {url: 'https://example.com/', title: 'Example', loading: false, canGoBack: false, canGoForward: false};
 const workspaces = [{id: 'w', sessions: [{id: 's', running: true, children: []}, {id: 'other', running: true, children: []}]}];
@@ -44,4 +44,13 @@ test('another session\'s browser opens its tab when that session is attached', (
   expect(tabsOf(state)).toEqual([['agent'], [browserTabId]]);
   state = receivedWorkspaces(state, workspaces);
   expect(tabsOf(state)).toEqual([['agent'], [browserTabId]]);
+});
+
+test('a closed browser closes its tab and stays closed when the session is attached again', () => {
+  let state = receivedBrowser(attached(), {session: 's', reveal: true, ...page});
+  state = closedBrowser(state, {session: 's'});
+  expect(state.browsers.s).toBeUndefined();
+  expect(tabsOf(state)).toEqual([['agent']]);
+  state = selectSession(selectSession(state, 'other'), 's');
+  expect(tabsOf(state)).toEqual([['agent']]);
 });

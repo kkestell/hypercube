@@ -5,6 +5,7 @@ package desktop
 #include <stdlib.h>
 void hypercubeNavigate(const char *session, const char *url, uint64_t request);
 void hypercubeEval(const char *session, const char *script, uint64_t request);
+void hypercubeClose(const char *session, uint64_t request);
 */
 import "C"
 
@@ -48,6 +49,16 @@ func (Browser) Eval(ctx context.Context, session, script string) (string, error)
 		defer C.free(unsafe.Pointer(cScript))
 		C.hypercubeEval(cSession, cScript, request)
 	})
+}
+
+// Close closes the session's browser and its tab, if it has one.
+func (Browser) Close(ctx context.Context, session string) error {
+	_, err := call(ctx, func(request C.uint64_t) {
+		cSession := C.CString(session)
+		defer C.free(unsafe.Pointer(cSession))
+		C.hypercubeClose(cSession, request)
+	})
+	return err
 }
 
 type reply struct {

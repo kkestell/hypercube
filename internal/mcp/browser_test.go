@@ -25,6 +25,11 @@ func (b *fakeBrowser) Eval(_ context.Context, session, script string) (string, e
 	return `"ran ` + script + `"`, nil
 }
 
+func (b *fakeBrowser) Close(_ context.Context, session string) error {
+	b.sessions = append(b.sessions, session)
+	return nil
+}
+
 func TestBrowserTools(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	browser := &fakeBrowser{}
@@ -43,8 +48,11 @@ func TestBrowserTools(t *testing.T) {
 		if text, failed := callTool(t, s, "browser_eval", map[string]any{"script": "throw"}); !failed || !strings.Contains(text, "ReferenceError") {
 			t.Errorf("%s: a throwing script = %q, failed %v", id, text, failed)
 		}
+		if text, failed := callTool(t, s, "browser_close", map[string]any{}); failed || text != "closed" {
+			t.Errorf("%s: browser_close = %q, failed %v", id, text, failed)
+		}
 	}
-	want := "session-1 session-1 session-1 b b b"
+	want := "session-1 session-1 session-1 session-1 b b b b"
 	if got := strings.Join(browser.sessions, " "); got != want {
 		t.Errorf("calls came from %q, want %q", got, want)
 	}
@@ -55,7 +63,7 @@ func TestBrowserToolsWithoutWindow(t *testing.T) {
 	server := httptest.NewServer(Handler(db, rt, nil))
 	defer server.Close()
 	s := connect(t, server.URL, "session-1")
-	for name, args := range map[string]map[string]any{"browser_navigate": {"url": "https://example.com"}, "browser_eval": {"script": "return 1"}} {
+	for name, args := range map[string]map[string]any{"browser_navigate": {"url": "https://example.com"}, "browser_eval": {"script": "return 1"}, "browser_close": {}} {
 		if text, failed := callTool(t, s, name, args); !failed || !strings.Contains(text, "hypercube ui --menu") {
 			t.Errorf("%s without the window = %q, failed %v", name, text, failed)
 		}
