@@ -30,13 +30,13 @@ choose a profile beneath the message box before sending the first prompt.
 
 Sessions you create with the workspace's **+** button are **top-level
 sessions**. Each works in the workspace's original folder unless you check
-**Worktree** beside the profile before the first prompt, which gives it its
+the **Worktree** switch beside the profile before the first prompt, which gives it its
 own worktree and branch. Separate chats do not give the sessions in the
 original folder separate copies of the project: they share files, the Git
 index (staged changes), and the checked-out branch. Changes made by one are
 visible to the others. A worktree session's work reaches the original
-checkout's branch when you press Merge above its message box and its agent
-merges it.
+checkout's branch when you press Merge beside its branch under the message
+box and its agent merges it.
 
 ## Parents and children
 
@@ -93,7 +93,7 @@ chat, file tree, and terminal to that session's work.
 | Left sidebar | Workspaces and their sessions, with children nested under parents. Use **Add Workspace** to add a project and **+** beside a workspace to begin a session. Select a row to open its chat; double-click its title to rename it. |
 | Central tab area | The session's chat alongside any open files. Drag tabs to arrange them in split panes, and drag dividers to resize them. |
 | Chat and message box | Your conversation with the agent. Follow reasoning and tool calls live; after a successful turn, expand its “Worked for …” row to inspect the activity. Send instructions or follow-ups from the box below the transcript, and attach images with the paperclip or by dropping them onto the chat. |
-| Right panel | **Files** shows a read-only tree of the session's directory, including a child's worktree. Click a file to preview it; double-click to keep its tab open. **Changes** is currently empty. |
+| Right panel | **Files** shows a read-only tree of the session's directory, including a child's worktree. Click a file to preview it; double-click to keep its tab open. **Changes** shows a worktree session's branch, merge state, and uncommitted file count. |
 | Bottom terminal panel | Your shell in the selected session's directory. Each session has its own shell, which keeps running when you hide the panel. |
 | Browser tab | In the Hypercube window, a page the session's agent can navigate and interact with. The tab appears when the agent first loads a page. You can also navigate it yourself or open the page in your default browser. |
 

@@ -268,7 +268,12 @@ func TestMergeStatus(t *testing.T) {
 		{"fresh", func() {}, Merge{}},
 		{"committed", func() { run(dir, "commit", "-q", "--allow-empty", "-m", "work") }, Merge{Unmerged: 1, Committed: true}},
 		{"untracked", func() { write(t, filepath.Join(dir, "scratch"), "") }, Merge{Unmerged: 1, Committed: true, Uncommitted: 1}},
-		{"merged", func() { run(root, "merge", "-q", branch) }, Merge{Committed: true, Uncommitted: 1}},
+		{"untracked folder", func() {
+			for _, name := range []string{"a.go", "b.go", "c.go"} {
+				write(t, filepath.Join(dir, "pkg", name), "")
+			}
+		}, Merge{Unmerged: 1, Committed: true, Uncommitted: 4}},
+		{"merged", func() { run(root, "merge", "-q", branch) }, Merge{Committed: true, Uncommitted: 4}},
 	} {
 		step.change()
 		step.want.Branch, step.want.Target = branch, "main"

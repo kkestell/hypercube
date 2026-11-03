@@ -125,31 +125,32 @@ test('the profile selector stays in place and disables while the first message s
 });
 
 const worktreeStore = (noGit, sessions = []) => {
-  const s = createStore({workspaces: [{id: 'w', path: '/repo', noGit, sessions}], selected: null, pending: null, drafts: {}, unsent: null, session: null});
+  const s = createStore({workspaces: [{id: 'w', path: '/repo', noGit, sessions}], selected: null, pending: null, drafts: {}, unsent: null, session: null, errors: []});
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
-const worktreeBox = root => root.querySelector('vscode-checkbox');
+const worktreeToggle = root => root.querySelector('vscode-checkbox');
 
-test('the unsent composer offers an unchecked Worktree checkbox only in a Git workspace', () => {
+test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', () => {
   fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
-  expect(worktreeBox(root).getAttribute('label')).toBe('Worktree');
-  expect(worktreeBox(root).hasAttribute('checked')).toBe(false);
-  expect(worktreeBox(root).hasAttribute('disabled')).toBe(false);
+  expect(worktreeToggle(root).hasAttribute('toggle')).toBe(true);
+  expect(worktreeToggle(root).getAttribute('label')).toBe('Worktree');
+  expect(worktreeToggle(root).hasAttribute('checked')).toBe(false);
+  expect(worktreeToggle(root).hasAttribute('disabled')).toBe(false);
   unmountAll();
   root = mount(worktreeStore(true), <Composer session={unsentSession} />);
-  expect(worktreeBox(root)).toBeNull();
+  expect(worktreeToggle(root)).toBeNull();
 });
 
-test('checking Worktree creates the session in a worktree and locks while sending', async () => {
+test('turning Worktree on creates the session in a worktree and locks while sending', async () => {
   fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
-  const box = worktreeBox(root);
-  box.checked = true;
-  act(() => box.dispatchEvent(new Event('change')));
+  const toggle = worktreeToggle(root);
+  toggle.checked = true;
+  act(() => toggle.dispatchEvent(new Event('change')));
   expect(s.get().unsent.worktree).toBe(true);
   let release;
   fetches.mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
@@ -157,9 +158,9 @@ test('checking Worktree creates the session in a worktree and locks while sendin
   field.value = 'hello';
   field.dispatchEvent(new Event('input'));
   act(() => root.querySelector('[title="Send"]').click());
-  expect(worktreeBox(root).hasAttribute('disabled')).toBe(true);
-  box.checked = false;
-  act(() => box.dispatchEvent(new Event('change')));
+  expect(worktreeToggle(root).hasAttribute('disabled')).toBe(true);
+  toggle.checked = false;
+  act(() => toggle.dispatchEvent(new Event('change')));
   expect(s.get().unsent.worktree).toBe(true);
   const params = new URL(fetches.mock.calls.at(-1)[0], 'http://x/').searchParams;
   expect(params.get('action')).toBe('new');
@@ -168,13 +169,48 @@ test('checking Worktree creates the session in a worktree and locks while sendin
   await settle();
 });
 
-test('an existing top-level session shows its worktree choice disabled, and a child shows none', () => {
-  const top = {...session, worktree: true, children: [{id: 'c', parent: 'a', activity: 'idle'}]};
-  const s = worktreeStore(false, [top]);
+const merge = extra => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: false, uncommitted: 0, ...extra});
+const existing = (extra = {}) => {
+  const top = {...session, running: true, worktree: true, merge: merge(), children: [{id: 'c', parent: 'a', activity: 'idle'}], ...extra};
+  return {top, store: worktreeStore(false, [top])};
+};
+const branch = root => root.querySelector('.composer-branch');
+const mergeButton = root => root.querySelector('.composer-merge');
+
+test('an existing worktree session shows its branch and no toggle; checkout sessions and children show neither', () => {
+  const {top, store: s} = existing();
   let root = mount(s, <Composer session={top} />);
-  expect(worktreeBox(root).hasAttribute('checked')).toBe(true);
-  expect(worktreeBox(root).hasAttribute('disabled')).toBe(true);
-  unmountAll();
-  root = mount(s, <Composer session={top.children[0]} />);
-  expect(worktreeBox(root)).toBeNull();
+  expect(worktreeToggle(root)).toBeNull();
+  expect(branch(root).querySelector('vscode-icon').getAttribute('name')).toBe('git-branch');
+  expect(branch(root).textContent).toBe('hypercube/session-a');
+  for (const shown of [{...top, worktree: false, merge: undefined}, top.children[0]]) {
+    unmountAll();
+    root = mount(s, <Composer session={shown} />);
+    expect(worktreeToggle(root)).toBeNull();
+    expect(branch(root)).toBeNull();
+  }
+});
+
+test('Merge shows only with unmerged commits and no error, and disables while stopped', () => {
+  for (const m of [merge(), merge({committed: true}), merge({uncommitted: 1}), merge({unmerged: 1, error: 'x'})]) {
+    const {top, store: s} = existing({merge: m});
+    expect(mergeButton(mount(s, <Composer session={top} />))).toBeNull();
+    unmountAll();
+  }
+  const {top, store: s} = existing({running: false, merge: merge({unmerged: 1, committed: true})});
+  expect(mergeButton(mount(s, <Composer session={top} />)).hasAttribute('disabled')).toBe(true);
+});
+
+test('Merge asks the agent to merge into the target in the checkout', async () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
+  const {top, store: s} = existing({merge: merge({unmerged: 2, committed: true})});
+  const root = mount(s, <Composer session={top} />);
+  expect(mergeButton(root).hasAttribute('disabled')).toBe(false);
+  await act(() => mergeButton(root).click());
+  const [url, init] = fetches.mock.calls[0];
+  expect(Object.fromEntries(new URL(url, 'http://x/').searchParams)).toEqual({action: 'input', id: 'a'});
+  expect(JSON.parse(init.body)).toEqual({
+    text: 'Commit any remaining work, then merge your branch into main in the checkout at /repo, resolving any conflicts, and report the result.',
+    images: [],
+  });
 });

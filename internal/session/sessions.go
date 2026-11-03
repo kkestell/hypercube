@@ -70,7 +70,7 @@ func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text st
 		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch); err != nil {
 			return store.Session{}, err
 		}
-		if s.Base, err = workspace.Head(w.Path); err != nil {
+		if s.Base, err = workspace.Head(s.Dir); err != nil {
 			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
 		}
 	}
@@ -268,6 +268,12 @@ func (r *Runtime) Delete(id string) error {
 	// A checkout that moved or disappeared took its worktrees with it.
 	_, statErr := os.Stat(root)
 	present := !errors.Is(statErr, os.ErrNotExist)
+	// Children's worktrees belong to the session's directory. When a worktree
+	// session's directory is gone, the checkout still holds their branches.
+	childRoot := s.Dir
+	if _, err := os.Stat(s.Dir); errors.Is(err, os.ErrNotExist) {
+		childRoot = root
+	}
 	var problems []string
 	if present {
 		if s.Base != "" {
@@ -276,7 +282,7 @@ func (r *Runtime) Delete(id string) error {
 			}
 		}
 		for _, c := range worktrees {
-			if err := workspace.Removable(s.Dir, c.Dir, c.Branch); err != nil {
+			if err := workspace.Removable(childRoot, c.Dir, c.Branch); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %v", c.Name, err))
 			}
 		}
@@ -300,7 +306,7 @@ func (r *Runtime) Delete(id string) error {
 	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
 	for _, c := range worktrees {
 		if present {
-			if err := workspace.RemoveWorktree(s.Dir, c.Dir, c.Branch); err != nil {
+			if err := workspace.RemoveWorktree(childRoot, c.Dir, c.Branch); err != nil {
 				return fmt.Errorf("%s: %w", c.Name, err)
 			}
 		}

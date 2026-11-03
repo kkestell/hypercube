@@ -1,0 +1,8 @@
+.changes-panel {
+  padding: 0 var(--size-content-inset);
+  overflow-wrap: anywhere;
+}
+
+.changes-panel p {
+  margin: 0 0 var(--size-space);
+}

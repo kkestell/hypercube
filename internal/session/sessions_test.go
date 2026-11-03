@@ -510,3 +510,28 @@ func TestWorktreeSessionChild(t *testing.T) {
 		}
 	}
 }
+
+// A worktree session whose worktree was removed still deletes with its child,
+// whose branch the checkout holds.
+func TestDeleteWorktreeSessionWithoutItsWorktree(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	child := f.child(s, "w1", "")
+	if err := f.rt.Stop(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(s.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Delete(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.family(s.ID)) != 0 {
+		t.Error("the family remains")
+	}
+	for _, branch := range []string{child.Branch, s.Branch} {
+		if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
+			t.Errorf("branch %s remains", branch)
+		}
+	}
+}

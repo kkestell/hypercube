@@ -259,9 +259,10 @@ func Removable(root, dir, branch string) error {
 	return nil
 }
 
-// uncommitted counts the changed and untracked files in the checkout in dir.
+// uncommitted counts the changed and untracked files in the checkout in dir,
+// listing each file in an untracked folder.
 func uncommitted(dir string) (int, error) {
-	status, err := git(dir, "status", "--porcelain")
+	status, err := git(dir, "status", "--porcelain", "--untracked-files=all")
 	if err != nil || status == "" {
 		return 0, err
 	}

@@ -1,6 +1,6 @@
-// A session's row: its title, dimmed for a stopped session, after a branch
-// icon for a worktree session, tinted while its branch has work outside the
-// checkout's branch and dimmed once merged; and its own state dot: amber while it waits on the user, blue for a reply not yet seen. A row
+// A session's row: its title, dimmed for a stopped session, followed for a
+// worktree session by a branch icon, tinted while its branch has work outside
+// the checkout's branch and dimmed once merged; and its own state dot: amber while it waits on the user, blue for a reply not yet seen. A row
 // without a dot shows a spinner while that session works.
 // Hovering shows its menu button in the indicator's place. Double-clicking
 // the title renames the session in place.
@@ -34,8 +34,8 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
         : (
           <button class="session-item-title" aria-current={selected ? 'true' : undefined} onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
-            {session.worktree && <BranchIcon session={session} />}
             <span class="session-item-text">{session.title}</span>
+            {session.worktree && <BranchIcon session={session} />}
           </button>
         )}
       <span class="session-item-status">
@@ -53,7 +53,8 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
 function BranchIcon({session}) {
   const tint = mergeTint(session.merge);
   const classes = ['session-item-branch', tint && `session-item-branch-${tint}`].filter(Boolean).join(' ');
-  return <vscode-icon class={classes} name="git-branch" title={session.merge?.branch} />;
+  // Slightly smaller than the row's other icons.
+  return <vscode-icon class={classes} name="git-branch" size="14" title={session.merge?.branch} />;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it

@@ -7,10 +7,12 @@
 ## Summary
 
 A top-level session can run in its own worktree, chosen with the composer's
-Worktree checkbox. The runtime measures its branch against the checkout after
-each finished turn, at creation, and at restore; the merge bar, Merge button,
-sidebar branch icon, Delete guard, agent instructions, and docs follow the
-plan. The plan's goal is met.
+Worktree switch. The runtime measures its branch against the checkout after
+each finished turn, at creation, and at restore; the composer's branch and
+Merge button, the Changes tab, the sidebar branch icon, the Delete guard,
+agent instructions, and docs follow the plan. The plan's goal is met. Review
+fixes from `agents/reviews/2026-11-03-003-worktree-sessions.md` (F1–F3) are
+applied with tests.
 
 ## Departures from the plan
 
@@ -27,8 +29,8 @@ plan. The plan's goal is met.
   session's title alongside any child problems.
 - The delete confirmation names the worktree by its directory and the branch
   from the merge status when present.
-- `mergeSummary` includes the uncommitted-file count, so the bar renders
-  `branch · summary`.
+- The profile select's dropdown list takes the select's width, so a profile
+  label longer than the selected one ends in an ellipsis in the list.
 
 ## Checks run
 
@@ -39,4 +41,4 @@ plan. The plan's goal is met.
 ## Follow-up work
 
 - Worktree sessions are not exercised in a live `make dev` session; the user
-  judges the checkbox, bar, and icon in the browser.
+  judges the switch, branch, Changes tab, and icon in the browser.

@@ -3,13 +3,15 @@
 ## Goal
 
 A new top-level session can run in its own Git worktree. The composer's
-Worktree checkbox, beside the Profile picker and off by default, chooses this
+Worktree switch, beside the Profile picker and off by default, chooses this
 before the first prompt. The session gets a branch from the checkout's current
 HEAD and a worktree under `.hypercube/`; the checkout's checked-out branch is
-its merge target. A one-line bar above the composer shows the branch's merge
-state, refreshed whenever a session in the workspace finishes a turn, and its
-Merge button asks the session's own agent to merge. The sidebar marks worktree
-sessions with a tinted branch icon. Delete refuses while the worktree has
+its merge target. Once created, the composer shows the branch beside the
+profile, with a Merge button that asks the session's own agent to merge while
+the branch has unmerged commits. The right panel's Changes tab shows the
+branch's merge state and uncommitted file count, refreshed whenever a session
+in the workspace finishes a turn. The sidebar marks worktree sessions with a
+tinted branch icon after the title. Delete refuses while the worktree has
 uncommitted files or unmerged commits, and otherwise removes the worktree,
 branch, and session. Stop and Start behave as for any session. Children of a
 worktree session branch from, and merge into, the parent's worktree, as they
@@ -75,7 +77,8 @@ Leave that work's changes in the shared files as they are.
   owning the `.hypercube/` layout and branch names.
 - **Create makes the worktree before the session row.** `Create` reads the
   workspace, refuses a worktree in a `NoGit` workspace, calls `AddWorktree`,
-  reads `Base` with `workspace.Head`, then inserts the row. A failure after
+  reads `Base` with `workspace.Head` from the new worktree (the checkout's
+  HEAD can move during setup), then inserts the row. A failure after
   `AddWorktree` succeeded removes the worktree with `RemoveWorktree` (a fresh
   worktree is clean and merged, so it passes). This way no session row exists
   without its worktree, and the sidebar never shows a half-made session.
@@ -100,11 +103,11 @@ Leave that work's changes in the shared files as they are.
     the git commands delay reading that agent's next record only while it is
     idle. `live` gains a `workspace` field, set in `decide` and `attach`, so
     the callback needs no database read.
-  - in `Create`, after the row is saved, so the bar appears at once;
+  - in `Create`, after the row is saved, so the status appears at once;
   - at the end of `Restore`, once per workspace, so status shows after the
     app starts.
   A `MergeStatus` failure for one session is stored as that session's entry,
-  `Merge{Branch: s.Branch, Error: err.Error()}`, and shown in the bar.
+  `Merge{Branch: s.Branch, Error: err.Error()}`, and shown in the Changes tab.
   `refreshMerges` returns nothing because it runs inside the reader, where a
   returned error would end the agent's launch; the error reaches the user
   through the snapshot instead. Entries for deleted sessions are not removed; the snapshot reads only
@@ -127,7 +130,8 @@ Leave that work's changes in the shared files as they are.
   ```
   `Target` is `Branch(root)`; `Unmerged` is `git rev-list --count
   HEAD..<branch>` in `root`; `Committed` is `git rev-parse <branch>` differing
-  from `base`; `Uncommitted` counts `git status --porcelain` lines in `dir`.
+  from `base`; `Uncommitted` counts `git status --porcelain
+  --untracked-files=all` lines in `dir`, so each file in a new folder counts.
   `isDirty` becomes `uncommitted(dir) (int, error)`, and `Removable` tests
   `n > 0`, so both share one status reader. `MergeStatus` serves display only;
   removal stays with `Removable`. The JSON tags let the snapshot
@@ -138,7 +142,9 @@ Leave that work's changes in the shared files as they are.
   child checks. `Removable` already checks the branch and the worktree's
   checked-out commit and passes a worktree or branch that no longer exists. Children are now checked and removed against `s.Dir`
   instead of `w.Path`; for a checkout session these are equal, and for a
-  worktree session it matches `CreateChild` and `EndChild`. After the child
+  worktree session it matches `CreateChild` and `EndChild`. When a worktree
+  session's directory no longer exists, children are checked and removed
+  against `w.Path`, which still holds their branches. After the child
   worktrees go (they nest inside the parent's), `RemoveWorktree(w.Path, s.Dir,
   s.Branch)` removes the session's worktree and branch, and only then is the
   row deleted, so a failed removal leaves the session for a retry, as for
@@ -146,38 +152,41 @@ Leave that work's changes in the shared files as they are.
 - **Stop, Start, and after merging** need no change. Stop leaves the worktree;
   Start relaunches in `s.Dir`; new commits make the status unmerged again on
   the next refresh.
-- **Snapshot fields.** `shownWorkspace.NoGit` (`noGit`) hides the checkbox.
+- **Snapshot fields.** `shownWorkspace.NoGit` (`noGit`) hides the switch.
   `shownSession.Worktree` (`worktree`, from `Base != ""`) drives the sidebar
-  icon and the locked checkbox even when status is missing.
+  icon even when status is missing.
   `shownSession.Merge *workspace.Merge` (`merge`, omitted when absent) drives
-  the bar and the icon's tint. `snapshot(db, merges)` takes `rt.Merges()`
+  the composer's branch, the Changes tab, and the icon's tint. `snapshot(db, merges)` takes `rt.Merges()`
   from `sendState`.
-- **The checkbox** is a `vscode-checkbox` labeled "Worktree" in
-  `composer-details` after `ProfileSelect`, in its own small component like
-  `ProfileSelect`. It renders only for a top-level session (or the unsent
-  session) whose workspace has `noGit` false. For the unsent session it is
-  enabled until sending and reflects `state.unsent.worktree` (`false` from
-  `openUnsent`); for an existing session it is disabled and reflects
-  `session.worktree`. `createSession` posts `worktree=1` when checked;
-  `sessionAction` passes `q.Get("worktree") == "1"` to `Create`.
-- **The bar** (`MergeBar`, `agent/merge-bar.jsx`) renders in `AgentPane`
-  between the transcript and the composer when `session.merge` is present:
-  the branch, then "N commits not merged into T", "Merged into T", or "No
-  commits yet", then "N uncommitted files" when nonzero, separated by " · ".
-  When `merge.error` is set, the branch is followed only by "Merge status
-  unavailable: <error>" and the Merge button is hidden.
-  The Merge button shows only when `unmerged > 0` and there is no error, is
-  disabled while the
-  session is not running, and posts the session's `input` action with the
-  text "Commit any remaining work, then merge your branch into <target> in the
-  checkout at <workspace path>, resolving any conflicts, and report the
-  result." `sessions/merge.js` holds `mergeSummary(merge)` (the bar's status
-  phrase, including the unavailable phrase) and `mergeTint(merge)` (`null`
-  with an error, `'modified'` when `unmerged > 0 || uncommitted > 0`,
-  `'merged'` when `committed` and neither, else `null`), so
-  the bar and the sidebar derive state one way.
-- **Sidebar icon.** `SessionItem` puts `<vscode-icon name="git-branch">` with
-  `title` set to the branch before the title text when `session.worktree`.
+- **The switch** (`WorktreeToggle`, `agent/worktree-toggle.jsx`) is a
+  `vscode-checkbox` with `toggle`, labeled "Worktree", in `composer-details`
+  after `ProfileSelect`. It renders only for the unsent session in a workspace
+  whose `noGit` is false, reflects `state.unsent.worktree` (`false` from
+  `openUnsent`), and disables while sending. `createSession` posts
+  `worktree=1` when on; `sessionAction` passes `q.Get("worktree") == "1"` to
+  `Create`.
+- **The branch** (`SessionBranch`, `agent/session-branch.jsx`) takes the
+  switch's place for an existing session with `session.merge`: a
+  `git-branch` icon and the branch name, then a Merge button shown only when
+  `unmerged > 0` and there is no error, disabled while the session is not
+  running. Merge posts the session's `input` action with the text "Commit any
+  remaining work, then merge your branch into <target> in the checkout at
+  <workspace path>, resolving any conflicts, and report the result."
+  Sessions in the checkout show nothing there.
+- **Profile select width.** `.composer-profile` sets `width: max-content`
+  within its `max-width`, so the select is as wide as its selected label.
+- **The Changes tab** (`ChangesPanel`, `changes/changes-panel.jsx`) shows
+  plain lines for the shown session's `merge`: the branch, the status phrase,
+  and the uncommitted file count; with an error, the branch and "Merge status
+  unavailable: <error>". It is empty without `merge`. `sessions/merge.js`
+  holds `mergeSummary(merge)` ("N commits not merged into T", "Merged into
+  T", "No commits yet", or the unavailable phrase), `uncommittedSummary`, and
+  `mergeTint(merge)` (`null` with an error, `'modified'` when `unmerged > 0 ||
+  uncommitted > 0`, `'merged'` when `committed` and neither, else `null`), so
+  the panel and the sidebar derive state one way.
+- **Sidebar icon.** `SessionItem` puts `<vscode-icon name="git-branch"
+  size="14">`, slightly smaller than the row's other icons, with `title` set
+  to the branch after the title text when `session.worktree`.
   Its class adds `session-item-branch-modified`
   (`--vscode-list-warningForeground`) or `session-item-branch-merged`
   (`--vscode-disabledForeground`) per `mergeTint`; otherwise it inherits the
@@ -221,16 +230,19 @@ Leave that work's changes in the shared files as they are.
    `internal/ui/snapshot.go`: add `NoGit`, `Worktree`, `Merge`; `snapshot`
    takes the merges map. `internal/ui/socket.go`: pass `d.rt.Merges()`.
 7. `internal/ui/web/elements.js`: import `vscode-checkbox`.
+   `agent/composer.css`: the profile select's width.
 8. `internal/ui/web/sessions/selection.js`: `openUnsent` sets
    `worktree: false`; add `unsentWorktree(state, worktree)`.
    `sessions/session-actions.js`: `createSession` sends `worktree`;
    add `requestMerge(store, session, target, path)`; `deleteSession`'s
    detail names the worktree and branch for a worktree session.
-9. `internal/ui/web/sessions/merge.js` (new): `mergeSummary`, `mergeTint`.
-10. `internal/ui/web/agent/worktree-checkbox.jsx` (new) and its use in
-    `composer.jsx`; update the composer's opening comment.
-11. `internal/ui/web/agent/merge-bar.jsx` and `merge-bar.css` (new), rendered
-    from `agent-pane.jsx`; update its opening comment.
+9. `internal/ui/web/sessions/merge.js` (new): `mergeSummary`,
+   `uncommittedSummary`, `mergeTint`.
+10. `internal/ui/web/agent/worktree-toggle.jsx` and `session-branch.jsx`
+    (new) and their use in `composer.jsx`; update the composer's opening
+    comment.
+11. `internal/ui/web/changes/changes-panel.jsx` and `changes-panel.css` (new),
+    rendered in the Changes tab of `app/right-panel.jsx`.
 12. `internal/ui/web/sidebar/session-item.jsx` and `session-item.css`: the
     branch icon and its tint classes; update the opening comment.
 13. Run the build so `internal/ui/dist` is regenerated.
@@ -240,11 +252,12 @@ Leave that work's changes in the shared files as they are.
 - `internal/workspace/workspace_test.go` `TestMergeStatus`, a table over one
   session worktree made with `AddWorktree`: fresh (not committed, 0
   unmerged, target `main`); after a commit in the worktree (committed, 1
-  unmerged); with an untracked file (1 uncommitted); after merging the branch
+  unmerged); with an untracked file (1 uncommitted); with three files in a
+  new folder (4 uncommitted); after merging the branch
   in the checkout (committed, 0 unmerged).
 - `internal/session/sessions_test.go`:
   - `TestWorktreeSession`: `Create` with a worktree puts `Dir` at
-    `SessionDir`, creates `SessionBranch`, sets `Base` to the checkout's HEAD,
+    `SessionDir`, creates `SessionBranch`, sets `Base` to the worktree's HEAD,
     and `Merges()` reports no commits. A commit in the worktree followed by a
     prompt that ends a turn makes `Merges()` report 1 unmerged. `Delete`
     refuses with `Removable`'s error and leaves the worktree and
@@ -260,30 +273,33 @@ Leave that work's changes in the shared files as they are.
     worktree, starting from the parent's HEAD; with the child's commit merged
     into the parent's branch and the parent's branch merged into `main`,
     `Delete` removes both worktrees and branches.
+  - A stopped worktree session whose directory was removed, with a child,
+    deletes with its child's and its own branches.
 - `internal/store/migrate_test.go`: a database whose `sessions` table lacks
   only `base` opens with `Base` empty and stays openable twice; the older
   upgrade test also drops `base`. `internal/store/store_test.go`: `Base`
   round-trips through `AddSession` and `Session`.
-- `internal/ui/ui_test.go`: `TestActions` creates a session with
+- `internal/ui/ui_test.go`: `TestNewWorktreeSession` creates a session with
   `worktree=1`; the state message shows it with `worktree: true` and a
   `merge`, the workspace with `noGit: false`.
-- `internal/ui/web/agent/composer.test.jsx`: the unsent composer shows an
-  unchecked Worktree checkbox in a Git workspace and none in a non-Git
-  workspace; checking it before sending posts `worktree=1`; it disables while
-  sending; an existing top-level session shows it disabled and reflecting
-  `worktree`; a child shows none.
-- `internal/ui/web/agent/merge-bar.test.jsx`: each status phrase with and
-  without uncommitted files; Merge appears only with unmerged commits and
-  posts the exact message with the target and workspace path; with an error
-  it shows "Merge status unavailable: <error>" and no Merge button.
+- `internal/ui/web/agent/composer.test.jsx`: the unsent composer shows a
+  Worktree switch, off, in a Git workspace and none in a non-Git workspace;
+  turning it on before sending posts `worktree=1`; it disables while sending.
+  An existing worktree session shows its branch and no switch; checkout
+  sessions and children show neither. Merge appears only with unmerged
+  commits and no error, disables while stopped, and posts the exact message
+  with the target and workspace path.
+- `internal/ui/web/app/right-panel.test.jsx`: Changes shows the branch, each
+  status phrase, and the uncommitted file count; with an error, "Merge status
+  unavailable: <error>"; nothing for a checkout session.
 - `internal/ui/web/sidebar/sidebar.test.jsx`: a worktree session's row shows
   the branch icon tinted modified while unmerged or uncommitted and merged
   once merged; a checkout session's row shows no icon.
 
 ## Documentation updates
 
-- `docs/usage.md`: the new-session composer's Worktree checkbox; the merge bar
-  and Merge button; the sidebar branch icon; Delete's guard for worktree
+- `docs/usage.md`: the new-session composer's Worktree switch; the branch and
+  Merge button beside the profile; the Changes tab; the sidebar branch icon; Delete's guard for worktree
   sessions and that Stop keeps the worktree; children of a worktree session
   merge into the parent's branch ("merged into the original checkout's HEAD"
   becomes the parent's checkout or worktree).

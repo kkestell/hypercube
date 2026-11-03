@@ -83,7 +83,7 @@
 
 .session-item-branch {
   flex-shrink: 0;
-  margin-right: var(--size-space);
+  margin-left: var(--size-space);
 }
 
 .session-item-branch-modified {

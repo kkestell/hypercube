@@ -1,5 +1,6 @@
 // The right panel: the shown session's Files and Changes, as icon
-// tabs. Changes is empty.
+// tabs.
+import {ChangesPanel} from '../changes/changes-panel.jsx';
 import {FilesPanel} from '../files/files-panel.jsx';
 import {useStore} from '../store.js';
 import '../shared/panel-tabs.css';
@@ -24,7 +25,7 @@ export function RightPanel() {
           </vscode-tab-header>
         ))}
         <vscode-tab-panel><FilesPanel key={state.session?.id} /></vscode-tab-panel>
-        <vscode-tab-panel />
+        <vscode-tab-panel><ChangesPanel /></vscode-tab-panel>
       </vscode-tabs>
     </aside>
   );

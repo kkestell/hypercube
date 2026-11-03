@@ -1,6 +1,5 @@
 // One session: its transcript above its composer, or the tesseract in place of
-// the transcript before its first prompt. A worktree session's merge bar sits
-// between the two. Images dropped anywhere on the
+// the transcript before its first prompt. Images dropped anywhere on the
 // pane attach to its draft; tab drags carry no files and pass through.
 import {useState} from 'preact/hooks';
 import {useStore} from '../store.js';
@@ -8,7 +7,6 @@ import {Tesseract} from '../tesseract/tesseract.jsx';
 import {Transcript} from '../transcript/transcript.jsx';
 import {Composer} from './composer.jsx';
 import {attachImages, unsentKey} from './drafts.js';
-import {MergeBar} from './merge-bar.jsx';
 import './agent-pane.css';
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
@@ -38,7 +36,6 @@ export function AgentPane({session}) {
   return (
     <article class={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} />}
-      {session.merge && <MergeBar session={session} />}
       <Composer session={session} />
     </article>
   );

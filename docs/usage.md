@@ -43,10 +43,9 @@ the sidebar to add a workspace. Click `+` beside a workspace's name to open a
 new session, with the animated hypercube above its composer.
 Its composer chooses the profile until the first prompt is sent,
 and sending that prompt creates the session. In a Git workspace, the Worktree
-checkbox beside the profile, off by default, runs the session in its own
+switch beside the profile, off by default, runs the session in its own
 worktree under `.hypercube/` on a new branch from the checkout's HEAD; the
-branch checked out in the checkout is its merge target. Once the session
-exists, the checkbox shows its choice and cannot change;
+branch checked out in the checkout is its merge target;
 selecting another session first discards it. More Actions, shown while hovering a workspace, or
 right-clicking a workspace, offers Show/Hide Stopped Sessions and Delete
 Workspace.
@@ -61,14 +60,13 @@ you have not seen. Each row spins only while its own session works.
 The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
 
-A worktree session's row shows a branch icon before its title, amber while
+A worktree session's row shows a branch icon after its title, amber while
 the branch has commits not merged into the checkout's branch or uncommitted
-files, and dimmed once its commits are merged. A line above its composer names
-the branch and its state: commits not merged, merged, or no commits yet, with
-any uncommitted files. It updates whenever a session in the workspace
-finishes a turn. While the branch has unmerged commits, Merge asks the
-session's agent to commit any remaining work and merge the branch into the
-checkout's branch, resolving conflicts.
+files, and dimmed once its commits are merged. Its composer shows the branch
+beside the profile. While the branch has unmerged commits, a Merge button
+follows it, which asks the session's agent to commit any remaining work and
+merge the branch into the checkout's branch, resolving conflicts. The merge
+state updates whenever a session in the workspace finishes a turn.
 
 A parent ends children with `end_session`. Ending removes a managed worktree
 and branch only when Git permits it, and stops the child for good. The ended
@@ -134,7 +132,10 @@ the sidebar.
 
 The buttons at the right of the header at the top of the window show or hide
 the sidebar, the terminal panel, and the right panel. The right panel's icon
-tabs select Files and Changes; Changes is blank for now. Files
+tabs select Files and Changes. For a worktree session, Changes shows its
+branch, its state against the checkout's branch (commits not merged, merged,
+or no commits yet), and its count of uncommitted files; for other sessions it
+is blank. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open. A Markdown file opens in

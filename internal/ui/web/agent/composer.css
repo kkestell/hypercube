@@ -86,11 +86,39 @@
   white-space: nowrap;
 }
 
+/* The select is as wide as its selected label. */
 .composer-profile {
   --vscode-settings-dropdownBorder: transparent;
   flex: 0 1 auto;
+  width: max-content;
   min-width: 0;
   max-width: 100%;
+}
+
+.composer-worktree {
+  flex: 0 0 auto;
+}
+
+.composer-branch {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--size-space);
+  min-width: 0;
+}
+
+.composer-branch > vscode-icon {
+  flex: 0 0 auto;
+}
+
+.composer-branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.composer-merge {
+  flex: 0 0 auto;
+  margin-left: var(--size-space);
 }
 
 /* The usage numbers yield to the ring before the label loses room. */

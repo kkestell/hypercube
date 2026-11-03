@@ -1,15 +1,17 @@
 // How a worktree session's branch stands against the checkout's branch, as
-// the merge bar and the sidebar show it.
+// the Changes tab and the sidebar show it.
 
-// mergeSummary is the bar's phrase for the branch's merge state.
+const count = (n, noun) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+
+// mergeSummary is the phrase for the branch's merge state.
 export function mergeSummary(merge) {
   if (merge.error) return `Merge status unavailable: ${merge.error}`;
-  const state = merge.unmerged > 0
-    ? `${merge.unmerged} ${merge.unmerged === 1 ? 'commit' : 'commits'} not merged into ${merge.target}`
-    : merge.committed ? `Merged into ${merge.target}` : 'No commits yet';
-  if (merge.uncommitted === 0) return state;
-  return `${state} · ${merge.uncommitted} uncommitted ${merge.uncommitted === 1 ? 'file' : 'files'}`;
+  if (merge.unmerged > 0) return `${count(merge.unmerged, 'commit')} not merged into ${merge.target}`;
+  return merge.committed ? `Merged into ${merge.target}` : 'No commits yet';
 }
+
+// uncommittedSummary counts the worktree's changed and untracked files.
+export const uncommittedSummary = merge => count(merge.uncommitted, 'uncommitted file');
 
 // mergeTint is 'modified' while the branch has work outside the target,
 // 'merged' once its commits are all in it, and otherwise null.
