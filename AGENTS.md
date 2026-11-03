@@ -15,30 +15,54 @@ browser shows each agent's transcript.
 
 ## Code style
 
-- Do less. Keep correct code simple, ordinary, and cheap to change. Measure
-  simplicity by what a reader must understand, not by the size of a diff.
-- Leave the code a change touches easy to follow. When you find code that is
-  hard to follow, or a change would make it so, stop and restructure it before
-  continuing: split it by concern, move code to where it belongs, delete what
-  is unused.
-- Write idiomatic Go. Prefer plain data and direct functions.
-- Give each concern a clear boundary and each lifecycle one owner. This holds
-  for browser code too: one ES module per concern, and HTML files hold markup
-  only.
+- Keep the codebase small enough to read once and understand. Prefer deleting
+  code. No speculative handling, defensive layers for unevidenced failures,
+  tests of things that cannot break, or abstractions with one caller. Choose
+  the simplest complete fix for correctness and readability, even when it adds
+  code. Judge the responsibilities a reader must understand, not line counts.
+- Judge whole touched files. Hard-to-follow code blocks completion without
+  needing a reproduction: split concerns, move code where it belongs, and
+  delete unused code before continuing.
+- Go uses plain data and direct functions, one named concern per package. No
+  `util` or `common` packages, internal reach-through, or workarounds for import
+  cycles. Prefer the standard library to dependencies.
+- Define interfaces at their use, with one or two methods, only for two real
+  implementations or a necessary test seam. Use useful zero values; avoid
+  default-only constructors, getters, setters, and options for one or two settings.
+- Give each goroutine one owner who starts it and knows when it ends. Locks
+  guard named fields, stay brief, and never pass from caller to callee. Prefer
+  channels or one owner over shared state. Pass context first for work that
+  can block or be cancelled; never store it for later.
+- Return errors instead of logging and ignoring them. Wrap once with context;
+  compare with `errors.Is` or `errors.As`, never text. No normal-path panics.
+  Use short names in short scopes and comments that explain why. Delete dead
+  code and just-in-case flags; use no fixed sleeps or timing guesses.
+- Go tests cover observable behavior through public entry points. Use tables
+  for repeated cases, `t.Helper`, `t.TempDir`, and `t.Cleanup`; wait on conditions
+  and pass under `-race`.
+- Preact components are small functions of props and the store. Derive what
+  can be computed. State has one owner and changes through pure functions.
+  No mutable module state outside the store except component-owned handles;
+  no prop drilling for values the store provides.
+- Effects serve real side effects, with correct dependencies and cleanup.
+  Prefer platform APIs: native dialogs, AbortController, URL, fetch, and CSS
+  container queries where they fit. No polyfills, manual DOM patching, or
+  timers to wait for rendering. HTML holds markup only.
+- Use vscode-elements controls and VS Code appearance and keyboard behavior.
+  Colors use only `--vscode-*` variables; define shared sizes once, avoid
+  repeated magic numbers, and prefix classes with their component's name.
+- Provide semantic elements, labels, correct focus order and returned focus.
+  Add accessibility handling where native semantics fall short. Each module
+  owns one concern, named for its behavior; remove duplication and split files
+  that are hard to follow. Browser tests check what users see and do.
 - Keep generated files apart from their source, never edit them by hand, and
   have `make check` fail when they are stale.
-- Let real needs earn abstractions, dependencies, and configuration.
-- Return clear errors for bad input. Test observable behavior; write comments
-  that explain why.
 
 ## Edge cases
 
 - Handle required behavior, normal use, and evidenced failures. Additional
   handling must justify its complexity. Validate external input; trust internal
   invariants and fail clearly when they break.
-- Tests address observable behavior and meaningful failures. Reviews address
-  those and whether the code is easy to follow. A change that leaves code hard
-  to follow does not pass review.
 
 ## Code
 
