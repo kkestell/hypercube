@@ -18,7 +18,7 @@ import (
 
 // live is an attachment to the durable launch named by prefix. The reader
 // owns its end; stopping never removes it before its last output is applied.
-// send serializes senders and guards sent; run closes done when it returns.
+// send serializes senders and guards sent; done is closed once the launch is over.
 type live struct {
 	id, root, prefix string
 	client           *harness.Client
