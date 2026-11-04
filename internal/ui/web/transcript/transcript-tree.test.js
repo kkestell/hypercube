@@ -25,7 +25,6 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle({server: 'hypercube', tool: 'end_session', input: {name: 'auditor'}})).toEqual(['End session', 'auditor']);
   expect(toolTitle({server: 'hypercube', tool: 'create_session', input: {name: 'w1', profile: 'claude', message: 'the brief'}})).toEqual(['Create session', 'w1']);
   expect(toolTitle({server: 'hypercube', tool: 'list_sessions', input: {}})).toEqual(['List sessions', '']);
-  expect(toolTitle({server: 'hypercube', tool: 'set_status', input: {text: 'Reading\n the code'}})).toEqual(['Set status', 'Reading the code']);
   expect(toolTitle({server: 'hypercube', tool: 'end_session'})).toEqual(['End session', '']);
   expect(toolTitle({server: 'context7', tool: 'query-docs', input: {query: 'go'}})).toEqual(['context7 - query-docs', 'go']);
   expect(toolTitle({tool: 'bash', input: {command: 'ls'}})).toEqual(['bash', 'ls']);
@@ -129,10 +128,10 @@ test('a working state of a new launch ends the old launch\'s turn without groupi
   expect(shape(result)).toEqual(['old', 'lost', 'answer']);
 });
 
-test('child status updates and state items stay hidden', () => {
-  const result = rows([user('ask', 1), working('w', 2), {id: 'status', kind: 'status', from: 'child', text: 'Working', at: 3}, call('a', 'read', 4), idle('i', 5)]);
+test('unknown items are ignored and state items stay hidden', () => {
+  const result = rows([user('ask', 1), working('w', 2), {id: 'unknown', kind: 'unknown', from: 'child', text: 'Working', at: 3}, call('a', 'read', 4), idle('i', 5)]);
   expect(result.map(row => row.item.id)).toEqual(['ask', 'a']);
-  expect(rows([{id: 'status', kind: 'status', text: 'Working'}])).toEqual([]);
+  expect(rows([{id: 'unknown', kind: 'unknown', text: 'Working'}])).toEqual([]);
 });
 
 test('nested items draw under their call, in order', () => {

@@ -25,7 +25,6 @@ const (
 // each change of work state.
 const (
 	KindUser      = "user"
-	KindStatus    = "status"
 	KindState     = "state"
 	KindText      = "text"
 	KindReasoning = "reasoning"

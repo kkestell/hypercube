@@ -53,7 +53,7 @@ func TestInstructions(t *testing.T) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}
 		}
-		for _, want := range []string{"child session of Hypercube session p", `titled "Build"`, "send_message to p", "Your parent merges it", "set_status", "not your parent's agent"} {
+		for _, want := range []string{"child session of Hypercube session p", `titled "Build"`, "send_message to p", "Your parent merges it"} {
 			if !strings.Contains(childText, want) {
 				t.Errorf("child missing %q: %s", want, childText)
 			}

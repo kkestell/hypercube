@@ -227,7 +227,7 @@ func TestBridge(t *testing.T) {
 		t.Setenv("HYPERCUBE_URL", url)
 		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}
 {"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"set_status","arguments":{"text":"Reading"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_sessions","arguments":{}}}
 {"jsonrpc":"2.0","id":3,"method":"no/such"}
 `
 		var out bytes.Buffer
@@ -247,9 +247,6 @@ func TestBridge(t *testing.T) {
 	answers := run("b", server.URL)
 	if len(answers) != 3 || answers[0]["id"] != 1.0 || answers[1]["id"] != 2.0 || answers[1]["result"].(map[string]any)["isError"] == true || answers[2]["id"] != 3.0 || answers[2]["error"] == nil {
 		t.Fatalf("answers = %v", answers)
-	}
-	if items, _ := rt.Transcript("session-1"); len(items) != 1 || items[0].Text != "Reading" {
-		t.Error("status did not reach parent transcript")
 	}
 	// A refused or unreachable app answers each request with an error.
 	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "bad app URL": run("b", ":invalid")} {
@@ -374,7 +371,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 9 || parentTools["open_file"] == nil || childTools["open_file"] == nil || parentTools["set_status"] != nil || len(childTools) != 7 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 9 || parentTools["open_file"] == nil || childTools["open_file"] == nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
@@ -438,16 +435,6 @@ func TestSessionBoundaries(t *testing.T) {
 		}
 		return nil
 	})
-	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " Reading\nthe code. "}); failed {
-		t.Fatal(text)
-	}
-	items, _ := rt.Transcript("session-1")
-	if len(items) != 1 || items[0].Text != "Reading the code." || items[0].From != "b" {
-		t.Fatalf("status=%+v", items)
-	}
-	if text, failed := callTool(t, child, "set_status", map[string]any{"text": " "}); !failed {
-		t.Fatal(text)
-	}
 	change(t, db, func(tx *store.Tx) error {
 		s, err := tx.Session("session-1")
 		if err != nil {
@@ -472,7 +459,7 @@ func TestBridgeWaitsForRestartingApp(t *testing.T) {
 	var out bytes.Buffer
 	done := make(chan error, 1)
 	go func() {
-		done <- Bridge(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"set_status","arguments":{"text":"after restart"}}}`+"\n"), &out)
+		done <- Bridge(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_sessions","arguments":{}}}`+"\n"), &out)
 	}()
 	// The first refused attempt has to wait for the replacement app.
 	select {
@@ -495,11 +482,7 @@ func TestBridgeWaitsForRestartingApp(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("bridge did not resume")
 	}
-	if !strings.Contains(out.String(), "Status set.") {
+	if !strings.Contains(out.String(), "session-1") {
 		t.Fatal(out.String())
-	}
-	items, err := rt.Transcript("session-1")
-	if err != nil || len(items) != 1 || items[0].Text != "after restart" {
-		t.Fatalf("%+v: %v", items, err)
 	}
 }
