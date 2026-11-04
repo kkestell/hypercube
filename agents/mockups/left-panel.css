@@ -174,3 +174,129 @@
   overflow: hidden;
   clip-path: inset(50%);
 }
+
+/* The Changes tab: the branch summary, then the uncommitted files as VS Code's
+   Source Control list. */
+.mockup-changes {
+  overflow: auto;
+}
+
+.mockup-changes-group,
+.mockup-changes-file {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  width: 100%;
+  height: var(--size-row-height);
+  padding: 0 calc(var(--size-space) * 3) 0 var(--size-space);
+}
+
+.mockup-changes-group {
+  margin-top: calc(var(--size-space) * 2);
+  font-weight: 600;
+}
+
+.mockup-changes-count {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 calc(var(--size-space) * 1.5);
+  border-radius: 11px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 18px;
+  text-align: center;
+}
+
+.mockup-changes-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mockup-changes-file {
+  padding-left: calc(var(--size-space) * 5);
+  color: inherit;
+  text-align: left;
+}
+
+.mockup-changes-file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mockup-changes-file[aria-current] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.mockup-changes-name,
+.mockup-changes-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mockup-changes-name {
+  flex-shrink: 0;
+}
+
+.mockup-changes-dir {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.mockup-changes-status {
+  width: var(--size-icon);
+  margin-left: auto;
+  text-align: center;
+}
+
+.mockup-changes-status-M { color: var(--vscode-charts-yellow); }
+.mockup-changes-status-U { color: var(--vscode-charts-green); }
+.mockup-changes-status-D { color: var(--vscode-charts-red); }
+
+.mockup-changes-file:has(.mockup-changes-status-D) .mockup-changes-name {
+  text-decoration: line-through;
+}
+
+.mockup-file-icon-markdown {
+  color: var(--vscode-charts-blue);
+}
+
+/* An inline diff: old and new line numbers, the change mark, then the line. */
+.mockup-diff {
+  overflow: auto;
+  padding-top: var(--size-space);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.5;
+}
+
+.mockup-diff-line {
+  display: grid;
+  grid-template-columns: 4ch 4ch 3ch 1fr;
+  white-space: pre;
+}
+
+.mockup-diff-line > span {
+  color: var(--vscode-editorLineNumber-foreground);
+  text-align: right;
+  user-select: none;
+}
+
+.mockup-diff-line > span:nth-child(3) {
+  text-align: center;
+}
+
+.mockup-diff-line > code {
+  font: inherit;
+}
+
+.mockup-diff-added {
+  background: var(--vscode-diffEditor-insertedLineBackground);
+}
+
+.mockup-diff-removed {
+  background: var(--vscode-diffEditor-removedLineBackground);
+}
