@@ -6,7 +6,7 @@ import {receivedWorkspaces} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {App} from './app.jsx';
 
-afterEach(unmountAll);
+afterEach(() => { delete globalThis.webkit; unmountAll(); });
 
 test('state arriving before passive effects reaches the page', async () => {
   const canvas = spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
@@ -103,6 +103,8 @@ test('the window header holds the three layout toggles and they hide and show th
 });
 
 test('shortcuts navigate visible sessions, toggle panels and leave terminal and editing keys alone', () => {
+  const messages = [];
+  globalThis.webkit = {messageHandlers: {window: {postMessage: message => messages.push(message)}}};
   const sessions = ['a', 'b'].map(id => ({id, title: id, running: id === 'b', activity: 'idle', children: []}));
   const store = createStore(receivedWorkspaces({
     workspaces: [], limits: [], requests: [], selected: 'a', pending: null, unsent: null,
@@ -124,13 +126,24 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   expect(store.get().selected).toBe('a');
   const field = root.querySelector('.composer-text');
   expect(send(field, 'b', {metaKey: true})).toBe(false);
-  expect(send(root.querySelector('.terminal-panel'), 'j', {metaKey: true})).toBe(false);
+  const terminal = root.querySelector('.terminal-panel');
+  expect(messages.some(message => message.type === 'shortcuts')).toBe(true);
+  expect(send(terminal, 'j', {metaKey: true})).toBe(false);
+  expect(send(terminal, 'k', {metaKey: true})).toBe(false);
+  expect(send(field, '0', {metaKey: true})).toBe(true);
+  expect(messages.at(-1)).toEqual({type: 'page-zoom', action: 'zoomReset'});
+  act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'help'}})));
+  const dialog = document.querySelector('[role=dialog]');
+  expect(send(dialog, 'j', {metaKey: true})).toBe(false);
+  act(() => dialog.querySelector('button').click());
   row().focus();
   send(row(), 'b', {metaKey: true});
   expect(store.get().workbench.sidebar).toBe(false);
   expect(document.activeElement).toBe(field);
   send(field, 'n', {metaKey: true});
   expect(store.get().unsent.workspace).toBe('w');
+  act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'sidebar'}})));
+  expect(store.get().workbench.sidebar).toBe(true);
 });
 
 test('composer shortcuts activate the chat when a file shares its pane', () => {

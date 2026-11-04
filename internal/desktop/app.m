@@ -7,6 +7,16 @@
 @property NSStatusItem *statusItem;
 @end
 
+// Menu shortcuts reach the web view so its normal keyboard handler can decide
+// whether the focused control owns them. Clicking a menu item still invokes it.
+@interface HCShortcutMenu : NSMenu
+@end
+@implementation HCShortcutMenu
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    return NO;
+}
+@end
+
 static HCApp *application;
 
 @implementation HCApp
@@ -87,7 +97,7 @@ void HCSetShortcuts(NSArray *items) {
     for (NSString *title in @[@"Session", @"View", @"Help"]) {
         NSMenuItem *old = [bar itemWithTitle:title];
         if (old) [bar removeItem:old];
-        NSMenu *menu = [[NSMenu alloc] initWithTitle:title];
+        NSMenu *menu = [[HCShortcutMenu alloc] initWithTitle:title];
         for (NSDictionary *entry in items) {
             if (![entry[@"section"] isEqual:title]) continue;
             NSArray *bindings = entry[@"bindings"];

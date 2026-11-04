@@ -78,7 +78,7 @@
 // with the title bar's height and the width of the window's buttons. A full
 // screen window has no title bar in the page.
 - (void)reportTitleBar:(BOOL)fullScreen {
-    [self dispatch:@"hypercube-title-bar" detail:fullScreen ? @{@"height": @0, @"inset": @0} : @{@"height": @(_titleBarHeight), @"inset": @(_titleBarInset)}];
+    [self dispatch:@"hypercube-title-bar" detail:fullScreen ? @{@"height": @0, @"inset": @0} : @{@"height": @(_titleBarHeight / _webView.pageZoom), @"inset": @(_titleBarInset / _webView.pageZoom)}];
 }
 
 - (void)windowWillEnterFullScreen:(NSNotification *)notification {
@@ -108,6 +108,7 @@
         if ([action isEqual:@"zoomIn"]) _webView.pageZoom *= 1.2;
         else if ([action isEqual:@"zoomOut"]) _webView.pageZoom /= 1.2;
         else if ([action isEqual:@"zoomReset"]) _webView.pageZoom = 1;
+        [self reportTitleBar:(_window.styleMask & NSWindowStyleMaskFullScreen) != 0];
     } else if ([type isEqual:@"drag"]) {
         NSEvent *down = ((HCPageView *)_webView).lastMouseDown;
         if (down && (NSEvent.pressedMouseButtons & 1)) [_window performWindowDragWithEvent:down];

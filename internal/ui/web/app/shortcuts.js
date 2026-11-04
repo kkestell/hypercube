@@ -34,16 +34,17 @@ export function matches(event, id) {
   const item = shortcuts.find(s => s.id === id);
   return item.keys.some(text => {
     const b = binding(text);
-    if (text === '⌘1–9') return event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key);
     const key = event.altKey && event.code === 'KeyB' ? 'b' : event.key.toLowerCase();
-    return key === b.key.toLowerCase() && !!event.metaKey === b.metaKey && !!event.altKey === b.altKey && !!event.ctrlKey === b.ctrlKey && !!event.shiftKey === b.shiftKey;
+    const range = b.key.match(/^(.)–(.)$/);
+    const keyMatches = range ? key.length === 1 && key >= range[1] && key <= range[2] : key === b.key.toLowerCase();
+    return keyMatches && !!event.metaKey === b.metaKey && !!event.altKey === b.altKey && !!event.ctrlKey === b.ctrlKey && !!event.shiftKey === b.shiftKey;
   });
 }
 
 export function shortcut(e, store, focusComposer, showHelp, id, openQuickOpen) {
   if (!id && (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing || (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]') || (e.target.closest('.terminal-panel') && !matches(e, 'quickOpen'))))) return;
   const state = store.get();
-  if (state.confirmation) return;
+  if (!id && state.confirmation) return;
   const is = name => id ? id === name : matches(e, name);
   const field = e.target.closest('input, textarea, [contenteditable="true"]');
   let action;
