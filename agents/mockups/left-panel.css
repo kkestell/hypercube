@@ -122,9 +122,9 @@
   flex: 1;
 }
 
-/* Seti's color for Python files. */
+/* Python file icon color. */
 .mockup-file-icon-python {
-  color: #519aba;
+  color: var(--vscode-charts-blue);
 }
 
 .mockup-dialog {
