@@ -1,12 +1,64 @@
+/* Rows follow VS Code's tree: 22px tall, 8px of indent per level, then a
+   16px twistie column and its 6px gap. */
+.sidebar {
+  --session-tree-indent: calc(var(--size-space) * 2);
+  --session-tree-twistie-gap: 6px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  height: var(--size-row-height);
+  padding-right: calc(var(--size-space) * 3);
+  padding-left: calc(var(--session-tree-indent) * var(--session-item-level));
+  cursor: pointer;
+  outline: none;
+}
+
+.session-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.session-item[aria-selected="true"] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.session-tree:focus-within .session-item[aria-selected="true"] {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.session-item:focus {
+  outline: var(--size-border) solid var(--vscode-list-focusOutline);
+  outline-offset: calc(var(--size-border) * -1);
+}
+
 /* Stopped sessions are dimmed, as VS Code dims ignored files. */
-.session-item-stopped:not([selected])::part(wrapper) {
+.session-item-stopped:not([aria-selected="true"]) {
   color: var(--vscode-disabledForeground);
+}
+
+.session-item-twistie {
+  display: flex;
+  flex: 0 0 var(--size-icon);
+  align-items: center;
+  margin-right: var(--session-tree-twistie-gap);
+}
+
+.session-item-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-item-decoration {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--size-space);
+  margin-left: calc(var(--size-space) * 2);
 }
 
 /* The status keeps its column when empty so branch icons line up. */
@@ -21,6 +73,11 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.session-item[aria-selected="true"] .session-item-branch,
+.session-item[aria-selected="true"] .session-item-busy {
+  color: inherit;
+}
+
 .session-item-branch-modified {
   color: var(--vscode-charts-purple);
 }
@@ -30,5 +87,6 @@
 }
 
 .session-item-rename {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
 }

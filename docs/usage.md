@@ -35,10 +35,12 @@ collapsible section, and its sessions form a tree with child sessions under
 their parent. Click a section header to collapse or expand it, and click a
 parent's chevron or double-click the parent to collapse or expand its
 children. Sessions within each workspace stay newest first, in creation order.
-Hovering a section header shows its actions: the history button shows or hides
-the workspace's stopped sessions, and More Actions (`…`) offers Show/Hide
-Stopped Sessions and Delete Workspace, which right-clicking the section also
-offers. Showing stopped sessions reveals the first five; Show more appears when
+Hovering or focusing a section header shows its actions: New Session (`+`)
+opens a new session in that workspace, the history button shows or hides the
+workspace's stopped sessions, and More Actions (`…`) offers Show/Hide Stopped
+Sessions and Delete Workspace, which right-clicking the section also offers.
+With the focus on a section header, Enter or Space toggles it, Left collapses
+it, and Right expands it. Showing stopped sessions reveals the first five; Show more appears when
 there are more. Showing them again starts at five. The selected session stays
 visible, even when stopped.
 
@@ -46,7 +48,8 @@ Children appear under their parent in creation order. Running children are
 always visible; Show Stopped Sessions in the parent's menu lists stopped
 children too, and Hide Stopped Sessions hides them again.
 
-The sidebar header's New Session button (`+`) opens a new session, with the
+The sidebar header's New Session button (`+`) opens a new session in the
+current session's workspace, with the
 animated hypercube above its composer. Choose its workspace below the composer;
 Add Workspace beside the selector adds a project and selects it. Add Workspace
 in the sidebar header adds a project too. Changing the
@@ -67,7 +70,9 @@ amber when usage is ahead of that pace. Claude Code and Codex report after
 each turn. A window past its reset time keeps its last reported percent,
 dimmed, until the harness reports again.
 
-Click a session to show its chat. Arrow keys move through the tree. Press F2,
+Click a session to show its chat. Up, Down, Home, and End move through the
+tree; Right expands a parent or moves to its first child, Left collapses it or
+moves from a child to its parent, and Enter or Space shows the session. Press F2,
 or choose Rename from a row's menu, to change a session's title. Right-click a
 row to open its menu. A top-level session's menu offers Start/Stop, Show/Hide
 Stopped Sessions when it has children, Rename, and Delete. Stopped rows are

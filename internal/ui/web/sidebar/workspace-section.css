@@ -1,12 +1,61 @@
-/* Rows are as tall as the Files panel's. */
-.workspace-section-tree vscode-tree-item::part(wrapper) {
+/* VS Code's view pane header. */
+.workspace-section-header {
+  display: flex;
   align-items: center;
-  min-height: var(--size-tree-row-height);
-  line-height: var(--size-tree-row-height);
+  height: var(--size-row-height);
+  border-top: var(--size-border) solid var(--vscode-sideBarSectionHeader-border);
+  background: var(--vscode-sideBarSectionHeader-background);
+  color: var(--vscode-sideBarSectionHeader-foreground);
 }
 
-.workspace-section-tree vscode-tree-item::part(content) {
-  line-height: var(--size-tree-row-height);
+.workspace-section:first-child .workspace-section-header {
+  border-top: 0;
+}
+
+.workspace-section-heading {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  font: inherit;
+}
+
+.workspace-section-toggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.workspace-section-toggle:focus-visible {
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
+}
+
+.workspace-section-toggle vscode-icon {
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.workspace-section-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Actions show while the header is hovered or holds the focus. */
+.workspace-section-actions {
+  display: none;
+  padding: 0 var(--size-space);
+}
+
+.workspace-section-header:is(:hover, :focus-within) .workspace-section-actions {
+  display: flex;
 }
 
 /* A link row after the tree, as VS Code's Load More rows. */
@@ -14,8 +63,8 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: var(--size-tree-row-height);
-  padding-left: calc(var(--size-icon) + var(--size-space) * 2);
+  height: var(--size-row-height);
+  padding-left: calc(var(--session-tree-indent) + var(--size-icon) + var(--session-tree-twistie-gap));
   color: var(--vscode-textLink-foreground);
   text-align: left;
 }

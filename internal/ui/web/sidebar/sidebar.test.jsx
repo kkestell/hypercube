@@ -28,7 +28,7 @@ function setup(sessions) {
 const click = element => act(() => element.click());
 const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row => row.dataset.session);
 const row = (root, id) => root.querySelector(`[data-session="${id}"]`);
-const select = (root, id) => act(() => row(root, id).closest('vscode-tree').dispatchEvent(new CustomEvent('vsc-tree-select', {detail: [row(root, id)]})));
+const select = (root, id) => click(row(root, id));
 const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] > .session-item-decoration .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
 const pick = (root, index) => act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
 const workspaceMenu = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [title="More Actions"]`));
@@ -63,8 +63,8 @@ test('the selected stopped session stays visible without replacing a started ses
   const {store, root} = setup(sessions);
   store.update(s => ({...s, selected: 's0'}));
   expect(sessionRows(root)).toEqual(['s6', 's0']);
-  expect(row(root, 's0').hasAttribute('selected')).toBe(true);
-  expect(row(root, 's6').hasAttribute('selected')).toBe(false);
+  expect(row(root, 's0').getAttribute('aria-selected')).toBe('true');
+  expect(row(root, 's6').getAttribute('aria-selected')).toBe('false');
   expect(root.querySelector('[data-session="s0"]').classList.contains('session-item-stopped')).toBe(true);
   expect(more(root)).toBeNull();
   toggleWorkspaceStopped(root);
@@ -393,12 +393,92 @@ test('each workspace has a section, with children inside their parent\'s row', (
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
   store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: [session('c')]}]}));
   expect(sessionRows(root)).toEqual(['a', 'child', 'b', 'c']);
-  expect([...root.querySelectorAll('vscode-collapsible')].map(section => [section.getAttribute('heading'), section.title])).toEqual([
+  expect([...root.querySelectorAll('.workspace-section-header')].map(header => [header.textContent, header.title])).toEqual([
     ['repo', '/repo'], ['other', '/other'],
   ]);
-  expect(row(root, 'child').parentElement).toBe(row(root, 'a'));
-  expect(row(root, 'a').hasAttribute('branch')).toBe(true);
-  expect(row(root, 'b').hasAttribute('branch')).toBe(false);
+  expect(['a', 'child', 'b'].map(id => row(root, id).getAttribute('aria-level'))).toEqual(['1', '2', '1']);
+  expect(row(root, 'a').getAttribute('aria-expanded')).toBe('true');
+  expect(row(root, 'b').hasAttribute('aria-expanded')).toBe(false);
+});
+
+test('a parent\'s chevron and double-click collapse and expand its children, and a click only selects', () => {
+  const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]})]);
+  const chevron = () => row(root, 'a').querySelector('.session-item-twistie');
+  click(chevron());
+  expect(sessionRows(root)).toEqual(['a']);
+  expect(row(root, 'a').getAttribute('aria-expanded')).toBe('false');
+  expect(store.get().selected).toBeNull();
+  act(() => row(root, 'a').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
+  expect(sessionRows(root)).toEqual(['a', 'child']);
+  select(root, 'a');
+  expect(sessionRows(root)).toEqual(['a', 'child']);
+  expect(store.get().selected).toBe('a');
+});
+
+test('a section header is a labelled toggle that Enter, Space, Left, and Right drive', () => {
+  const {root} = setup([session('a')]);
+  const toggle = root.querySelector('.workspace-section-toggle');
+  expect(toggle.tagName).toBe('BUTTON');
+  expect(root.querySelector('[data-workspace="w"]').getAttribute('aria-labelledby')).toBe(toggle.id);
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(sessionRows(root)).toEqual([]);
+  expect(root.querySelector('.workspace-section-actions')).toBeNull();
+  key(toggle, 'ArrowRight');
+  expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  expect(sessionRows(root)).toEqual(['a']);
+  key(toggle, 'ArrowLeft');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+});
+
+test('a section\'s New Session opens a new session in that workspace', () => {
+  const {root, store} = setup([session('a')]);
+  store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: []}]}));
+  click(root.querySelector('[data-workspace="other"] [title="New Session"]'));
+  expect(store.get().unsent).toMatchObject({workspace: 'other'});
+});
+
+test('only one row is tabbable, and the arrow keys move and open rows', () => {
+  const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
+  const tabbable = () => [...root.querySelectorAll('[role="treeitem"][tabindex="0"]')].map(r => r.dataset.session);
+  expect(tabbable()).toEqual(['a']);
+  row(root, 'a').focus();
+  key(row(root, 'a'), 'ArrowLeft');
+  expect(sessionRows(root)).toEqual(['a', 'b']);
+  key(row(root, 'a'), 'ArrowRight');
+  expect(sessionRows(root)).toEqual(['a', 'child', 'b']);
+  key(row(root, 'a'), 'ArrowRight');
+  expect(document.activeElement).toBe(row(root, 'child'));
+  expect(tabbable()).toEqual(['child']);
+  key(row(root, 'child'), 'ArrowLeft');
+  expect(document.activeElement).toBe(row(root, 'a'));
+  key(row(root, 'a'), 'End');
+  expect(document.activeElement).toBe(row(root, 'b'));
+  key(row(root, 'b'), 'Enter');
+  expect(store.get().selected).toBe('b');
+});
+
+test('when the focused row goes away, the focus moves to a remaining row', () => {
+  const {root, store} = setup([session('a'), session('b')]);
+  row(root, 'b').focus();
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a'), session('b', {running: false})]}]}));
+  expect(sessionRows(root)).toEqual(['a']);
+  expect(document.activeElement).toBe(row(root, 'a'));
+  expect(row(root, 'a').tabIndex).toBe(0);
+});
+
+test('Escape on a row reaches the app, and the rename field keeps its own', () => {
+  const {root} = setup([session('a')]);
+  const reached = [];
+  root.addEventListener('keydown', e => reached.push([e.key, e.defaultPrevented]));
+  row(root, 'a').focus();
+  key(row(root, 'a'), 'Escape');
+  expect(reached).toEqual([['Escape', false]]);
+  const field = rename(root, 'a');
+  reached.length = 0;
+  key(field, 'Escape');
+  expect(reached).toEqual([]);
 });
 
 test('Rename in a session\'s menu opens the rename field', () => {
