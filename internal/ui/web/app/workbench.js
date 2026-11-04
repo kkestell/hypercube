@@ -11,3 +11,14 @@ export const closePanel = state => state.workbench.panel ? {...state, workbench:
 export const setVisible = (state, visible) => ({...state, visible});
 
 export const toggleWrap = state => ({...state, workbench: {...state.workbench, wrap: !state.workbench.wrap}});
+
+export function startWrapStorage(store) {
+  const wrap = localStorage.getItem('hypercube.wrap') === 'true';
+  store.update(state => ({...state, workbench: {...state.workbench, wrap}}));
+  let saved = wrap;
+  return store.subscribe(state => {
+    if (state.workbench.wrap === saved) return;
+    saved = state.workbench.wrap;
+    localStorage.setItem('hypercube.wrap', String(saved));
+  });
+}

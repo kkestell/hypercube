@@ -40,18 +40,16 @@ function DiffLines({text, path, wrap}) {
 export function DiffView({id, path}) {
   const [state] = useStore();
   const view = useRef(null), list = useRef(null);
-  const current = useRef(-1);
   useScrollMemory(view, id);
   const diff = state.session.diffs[path];
   const move = direction => {
     const changes = [...list.current.querySelectorAll('[data-change]')];
     if (!changes.length) return;
-    current.current = current.current < 0 ? (direction > 0 ? 0 : changes.length - 1) : (current.current + direction + changes.length) % changes.length;
-    changes[current.current].scrollIntoView({block: 'center'});
+    const top = view.current.getBoundingClientRect().top;
+    const target = direction > 0 ? changes.find(row => row.getBoundingClientRect().top > top)
+      : changes.findLast(row => row.getBoundingClientRect().top < top);
+    (target ?? (direction > 0 ? changes[0] : changes.at(-1))).scrollIntoView({block: 'start'});
   };
-  useEffect(() => {
-    current.current = -1;
-  }, [diff?.text]);
   useEffect(() => {
     const keydown = event => {
       const pane = view.current.closest('.editor-pane');

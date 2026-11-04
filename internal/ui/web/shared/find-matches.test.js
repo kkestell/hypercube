@@ -9,5 +9,8 @@ test('finds case-insensitive text across inline markup without crossing blocks',
   expect(findMatches(root, 'word').map(range => range.toString())).toEqual(['word', 'WORD']);
   expect(findMatches(root, 'wordword')).toEqual([]);
   expect(findMatches(root, '')).toEqual([]);
+  root.textContent = 'İfoo FOO a.b';
+  expect(findMatches(root, 'foo').map(range => range.toString())).toEqual(['foo', 'FOO']);
+  expect(findMatches(root, 'a.b').map(range => range.toString())).toEqual(['a.b']);
   root.remove();
 });

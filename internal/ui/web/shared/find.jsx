@@ -5,8 +5,10 @@ import {Icon} from './icon.jsx';
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {matches} from '../app/shortcuts.js';
 import {findMatches} from './find-matches.js';
+import {useStore} from '../store.js';
 
 export function Find({list, view, scope = 'transcript'}) {
+  const [, store] = useStore();
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const [ranges, setRanges] = useState([]), [index, setIndex] = useState(0);
   const input = useRef(null), previousFocus = useRef(null);
@@ -19,9 +21,15 @@ export function Find({list, view, scope = 'transcript'}) {
   };
   useEffect(() => {
     const keydown = event => {
+      if (event.defaultPrevented) return;
       const focus = document.activeElement;
       const pane = view.current.closest(scope === 'transcript' ? '.agent-pane' : '.editor-pane');
-      if (focus !== document.body && focus !== document.documentElement && !(pane ?? view.current.parentElement).contains(focus)) return;
+      if (focus === document.body || focus === document.documentElement) {
+        const editor = view.current.closest('.editor-pane');
+        const active = store.get().workbench?.activePane;
+        const activePane = [...document.querySelectorAll('.editor-pane')].find(item => item.dataset.pane === String(active));
+        if (editor && editor !== (activePane ?? document.querySelector('.editor-pane'))) return;
+      } else if (!(pane ?? view.current.parentElement).contains(focus)) return;
       if (matches(event, 'find')) {
         event.preventDefault();
         if (!open) previousFocus.current = focus;
@@ -63,6 +71,8 @@ export function Find({list, view, scope = 'transcript'}) {
     const rect = range.getBoundingClientRect();
     const bounds = view.current.getBoundingClientRect();
     if (rect.top < bounds.top || rect.bottom > bounds.bottom) view.current.scrollTop += rect.top - bounds.top - bounds.height / 2;
+    if (rect.left < bounds.left) view.current.scrollLeft += rect.left - bounds.left;
+    else if (rect.right > bounds.right) view.current.scrollLeft += rect.right - bounds.right;
   }, [ranges, index]);
 
   const close = () => {

@@ -55,13 +55,20 @@ test('find and change navigation operate on the focused diff', () => {
   const session = {...emptySession('s'), diffs: {[path]: {text: '@@ -1,4 +1,4 @@\n-old\n+one\n context\n-before\n+one again\n', message: null}}};
   const root = mount(createStore({session, workspaces: [], workbench: {wrap: false}}), <div className="editor-pane"><DiffView id="diff:foo.py" path={path} /></div>);
   const scrolled = [];
-  for (const row of root.querySelectorAll('[data-change]')) row.scrollIntoView = () => scrolled.push(row);
   const view = root.querySelector('.diff-view');
+  const changes = [...root.querySelectorAll('[data-change]')];
+  view.getBoundingClientRect = () => ({top: 0});
+  changes.forEach((row, index) => {
+    row.getBoundingClientRect = () => ({top: 100 + index * 100 - view.scrollTop});
+    row.scrollIntoView = () => { scrolled.push(row); view.scrollTop = 100 + index * 100; };
+  });
   view.focus();
   act(() => view.dispatchEvent(new KeyboardEvent('keydown', {key: 'F5', altKey: true, bubbles: true, cancelable: true})));
   act(() => view.dispatchEvent(new KeyboardEvent('keydown', {key: 'F5', altKey: true, bubbles: true, cancelable: true})));
+  view.scrollTop = 50;
+  act(() => view.dispatchEvent(new KeyboardEvent('keydown', {key: 'F5', altKey: true, bubbles: true, cancelable: true})));
   act(() => view.dispatchEvent(new KeyboardEvent('keydown', {key: 'F5', altKey: true, shiftKey: true, bubbles: true, cancelable: true})));
-  expect(scrolled).toEqual([root.querySelectorAll('[data-change]')[0], root.querySelectorAll('[data-change]')[1], root.querySelectorAll('[data-change]')[0]]);
+  expect(scrolled).toEqual([changes[0], changes[1], changes[0], changes[1]]);
   act(() => view.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
   const input = root.querySelector('[role=search] input');
   act(() => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, 'one'); input.dispatchEvent(new Event('input', {bubbles: true})); });

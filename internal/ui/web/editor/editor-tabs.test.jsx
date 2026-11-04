@@ -160,3 +160,15 @@ test('diff tabs do not offer session-relative path copying', () => {
   act(() => tab.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
   expect(document.querySelector('[role=menu]')).toBeNull();
 });
+
+test('find on the page body opens only the last used split pane', () => {
+  const {store, root} = setup();
+  act(() => store.update(state => moveTab(state, 'file:one', state.session.tabs.root.id, 'right')));
+  const panes = [...root.querySelectorAll('.editor-pane')];
+  const lastView = panes[1].querySelector('.file-view');
+  act(() => lastView.focus());
+  act(() => lastView.blur());
+  act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
+  expect(root.querySelectorAll('[role=search]')).toHaveLength(1);
+  expect(panes[1].querySelector('[role=search]')).not.toBeNull();
+});

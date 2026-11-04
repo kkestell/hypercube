@@ -50,7 +50,9 @@ export function EditorPane({pane}) {
   };
 
   return (
-    <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+    <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-pane={pane.id}
+      onFocusCapture={() => store.update(s => s.workbench.activePane === pane.id ? s : {...s, workbench: {...s.workbench, activePane: pane.id}})}
+      onPointerDownCapture={() => store.update(s => s.workbench.activePane === pane.id ? s : {...s, workbench: {...s.workbench, activePane: pane.id}})} data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {drop && <Card aria-hidden="true" className={`pointer-events-none absolute z-10 opacity-50 ${
         drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}

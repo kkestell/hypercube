@@ -20,10 +20,10 @@ export function findMatches(list, query) {
     nodes.push({node, start: text.length});
     text += node.data;
   }
-  const ranges = [], needle = query.toLowerCase(), haystack = text.toLowerCase();
+  const ranges = [], pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
   let first = 0, last = 0;
-  for (let start = 0; (start = haystack.indexOf(needle, start)) !== -1; start += needle.length) {
-    const end = start + needle.length;
+  for (const match of text.matchAll(pattern)) {
+    const start = match.index, end = start + match[0].length;
     while (first + 1 < nodes.length && nodes[first + 1].start <= start) first++;
     if (last < first) last = first;
     while (last + 1 < nodes.length && nodes[last + 1].start < end) last++;
