@@ -17,3 +17,8 @@
 .status-dot-unseen {
   background: var(--vscode-notificationsInfoIcon-foreground);
 }
+
+.status-dot-busy {
+  box-sizing: border-box;
+  border: 1.5px solid var(--vscode-descriptionForeground);
+}

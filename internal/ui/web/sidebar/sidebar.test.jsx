@@ -319,17 +319,16 @@ test.each([
   ['idle', 'busy', ['child']],
   ['busy', 'idle', ['a']],
   ['busy', 'busy', ['a', 'child']],
-])('each row spins for its own activity: parent=%s, child=%s', (parent, child, expected) => {
+])('each row shows its own activity: parent=%s, child=%s', (parent, child, expected) => {
   const {root} = setup([session('a', {activity: parent, children: [session('child', {parent: 'a', activity: child})]})]);
-  const busy = [...root.querySelectorAll('[name="loading"]')].map(icon => icon.closest('[data-session]').dataset.session);
+  const busy = [...root.querySelectorAll('.status-dot-busy')].map(dot => dot.closest('[data-session]').dataset.session);
   expect(busy).toEqual(expected);
 });
 
-test('waiting and unseen indicators take priority over spinners', () => {
+test('waiting and unseen indicators take priority over the working indicator', () => {
   const {root} = setup([session('a', {activity: 'busy', unseen: true, children: [
     session('child', {parent: 'a', activity: 'busy', attention: true}),
   ]})]);
-  expect(root.querySelector('[name="loading"]')).toBeNull();
   expect(dots(root, 'a')).toEqual(['unseen']);
   expect(dots(root, 'child')).toEqual(['waiting']);
 });

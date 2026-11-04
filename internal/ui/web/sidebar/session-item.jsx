@@ -1,7 +1,8 @@
 // A session's row: its title, dimmed for a stopped session, followed for a
 // worktree session by a branch icon, tinted while its branch has work outside
-// the checkout's branch and dimmed once merged; and its own state dot: amber while it waits on the user, blue for a reply not yet seen. A row
-// without a dot shows a spinner while that session works.
+// the checkout's branch and dimmed once merged; and its own state dot: amber
+// while it waits on the user, blue for a reply not yet seen, and otherwise a
+// gray ring while that session works.
 // Hovering shows its menu button in the indicator's place. Double-clicking
 // the title renames the session in place.
 import {useEffect, useRef} from 'preact/hooks';
@@ -14,9 +15,7 @@ import './session-item.css';
 const dotOf = (session, selected) => {
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
-  if (session.activity === 'busy') {
-    return <vscode-icon class="session-item-busy" name="loading" spin role="img" title="Working" />;
-  }
+  if (session.activity === 'busy') return <StatusDot kind="busy" title="Working" />;
   return null;
 };
 
