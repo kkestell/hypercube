@@ -1,26 +1,40 @@
 .changes-panel-row {
-  display: flex;
-  align-items: center;
-  gap: var(--size-space-6);
   width: 100%;
-  height: var(--size-tree-row-height);
-  line-height: var(--size-tree-row-height);
-  padding: 0 var(--size-panel-inset);
   color: inherit;
   white-space: nowrap;
   text-align: left;
 }
 
 .changes-panel-branch {
-  margin-bottom: var(--size-space-4);
   color: var(--vscode-descriptionForeground);
 }
 
-.changes-panel-ahead {
+.changes-panel-details {
   display: flex;
-  align-items: center;
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
+  flex: 1;
+  min-width: 0;
+  gap: var(--size-space-6);
+}
+
+/* The list sizes the two count columns once for every file. Subgrids keep
+   native list items and buttons while sharing those columns. */
+.changes-panel-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
+  column-gap: var(--size-space-6);
+  list-style: none;
+}
+
+.changes-panel-list > li,
+.changes-panel-row.changes-panel-file {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+
+.changes-panel-entry {
+  display: flex;
+  min-width: 0;
 }
 
 .changes-panel-file:focus-visible {
@@ -43,45 +57,43 @@
 }
 
 .changes-panel-name {
-  flex-shrink: 0;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .changes-panel-description {
+  flex: 1;
   min-width: 0;
   color: var(--vscode-descriptionForeground);
   font-size: var(--size-font-label);
 }
 
-.changes-panel-list {
-  list-style: none;
-}
-
 .changes-panel-stat {
   display: flex;
   flex-shrink: 0;
+  align-items: center;
   gap: var(--size-space-4);
-  margin-left: auto;
+  margin-left: var(--size-space-6);
   color: var(--vscode-descriptionForeground);
   font-size: var(--size-font-label);
   font-variant-numeric: tabular-nums;
 }
 
-/* Status squares as Zed's Git panel draws them, in the editor gutter's change
-   colors. */
-.changes-panel-status {
-  flex-shrink: 0;
-  display: block;
-  width: var(--size-icon);
-  height: var(--size-icon);
+.changes-panel-file > .changes-panel-stat {
+  display: grid;
+  grid-column: 2 / span 2;
+  grid-template-columns: subgrid;
+  margin-left: 0;
+  text-align: right;
 }
 
-.changes-panel-modified > .changes-panel-status { color: var(--vscode-editorGutter-modifiedBackground); }
-.changes-panel-added > .changes-panel-status,
-.changes-panel-untracked > .changes-panel-status { color: var(--vscode-editorGutter-addedBackground); }
-.changes-panel-deleted > .changes-panel-status { color: var(--vscode-editorGutter-deletedBackground); }
+/* Status squares as Zed's Git panel draws them, in the editor gutter's change
+   colors. */
+.changes-panel-modified .changes-panel-status { color: var(--vscode-editorGutter-modifiedBackground); }
+.changes-panel-added .changes-panel-status,
+.changes-panel-untracked .changes-panel-status { color: var(--vscode-editorGutter-addedBackground); }
+.changes-panel-deleted .changes-panel-status { color: var(--vscode-editorGutter-deletedBackground); }
 
-.changes-panel-deleted > .changes-panel-name {
+.changes-panel-deleted .changes-panel-name {
   color: var(--vscode-descriptionForeground);
   text-decoration: line-through;
 }

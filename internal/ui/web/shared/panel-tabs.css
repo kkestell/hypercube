@@ -9,9 +9,44 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-top: var(--size-panel-inset);
+  padding: 0;
 }
 
 .panel-tabs-content[hidden] {
   display: none;
+}
+
+/* Side-panel rows start at the tab bar and share one inset, line box, and
+   icon column, including the Files tree's public shadow parts. */
+.panel-row,
+.panel-tabs-content vscode-tree-item::part(wrapper) {
+  display: flex;
+  align-items: center;
+  height: var(--size-tree-row-height);
+  min-height: var(--size-tree-row-height);
+  padding: 0 var(--size-panel-inset);
+  padding-left: calc(var(--size-panel-inset) + var(--panel-row-indent, 0px));
+  font-size: var(--size-font-body);
+  line-height: var(--size-tree-row-height);
+}
+
+.panel-row-icon,
+.panel-tabs-content vscode-tree-item::part(arrow-icon-container),
+.panel-tabs-content vscode-tree-item::part(icon-container) {
+  display: flex;
+  flex: 0 0 var(--size-icon-column);
+  align-items: center;
+  justify-content: flex-start;
+  width: var(--size-icon-column);
+  min-width: var(--size-icon-column);
+  max-width: var(--size-icon-column);
+  height: var(--size-tree-row-height);
+  min-height: var(--size-tree-row-height);
+  max-height: var(--size-tree-row-height);
+  margin: 0;
+  padding: 0;
+}
+
+.panel-tabs-content vscode-tree-item::part(content) {
+  line-height: inherit;
 }

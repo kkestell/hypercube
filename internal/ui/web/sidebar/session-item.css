@@ -2,11 +2,7 @@
    tree indent to the panel inset, as in Files. */
 
 .session-item {
-  display: flex;
-  align-items: center;
-  height: var(--size-tree-row-height);
-  padding-right: var(--size-panel-inset);
-  padding-left: calc(var(--size-panel-inset) + var(--size-tree-indent) * (var(--session-item-level) - 1));
+  --panel-row-indent: calc(var(--size-tree-indent) * (var(--session-item-level) - 1));
   cursor: pointer;
   outline: none;
 }
@@ -32,13 +28,6 @@
 /* Stopped sessions are dimmed, as VS Code dims ignored files. */
 .session-item-stopped:not([aria-selected="true"]) {
   color: var(--vscode-disabledForeground);
-}
-
-.session-item-twistie {
-  display: flex;
-  flex: 0 0 var(--size-icon);
-  align-items: center;
-  margin-right: var(--size-space-6);
 }
 
 .session-item-title {

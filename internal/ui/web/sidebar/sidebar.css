@@ -5,8 +5,3 @@
   background: var(--vscode-sideBar-background);
   color: var(--vscode-sideBar-foreground);
 }
-
-/* Workspace sections start directly below the tab bar. */
-.sidebar .panel-tabs-content {
-  padding-top: 0;
-}
