@@ -23,7 +23,7 @@ test('each harness shows its windows with the percent used and the time left', (
   expect(root.querySelector('.status-bar-window-reset')).toBeNull();
 });
 
-test('standard progress bars show usage and elapsed time, and a badge marks usage ahead of pace', () => {
+test('standard progress bars show usage and elapsed time, and an icon marks usage ahead of pace', () => {
   const root = render([
     // 3 of 5 hours elapsed: 60% is exact pace.
     {harness: 'claude', minutes: 300, used: 70, resets: now + 2 * hour},

@@ -15,7 +15,7 @@ function Source({file, lang}) {
     return () => { current = false; };
   }, [file.text, lang]);
   const html = highlighted?.text === file.text ? highlighted.lines : null;
-  return <div className="file-view-code grid min-w-full w-max grid-cols-[auto_1fr] font-mono text-sm leading-6">
+  return <div className="file-view-code grid min-w-full w-max grid-cols-[auto_1fr] font-mono text-sm leading-5">
     {file.text.split('\n').map((line, i) => {
       const selected = file.lines?.some(({start, end}) => i + 1 >= start && i + 1 <= end);
       return <Fragment key={i}>

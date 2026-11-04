@@ -86,12 +86,14 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   expect(send().hasAttribute('disabled')).toBe(false);
   const select = root.querySelector('.composer-profile');
   expect(select.disabled).toBe(false);
+  expect(select.textContent).toBe('Claude · Opus · High');
   clickControl(select);
   await settle();
-  const options = [...document.querySelectorAll('[role=option]')];
+  const options = [...document.querySelectorAll('[role=menuitemradio]')];
   expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Claude · Opus · High' : 'Codex · Sol · Medium'}${p.description}`));
   act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent.profile).toBe('codex');
+  expect(select.textContent).toBe('Codex · Sol · Medium');
   expect(s.get().drafts[unsentKey].text).toBe('hello');
 });
 
@@ -128,14 +130,14 @@ const worktreeStore = (noGit, sessions = []) => {
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
-const worktreeToggle = root => root.querySelector('[role=checkbox]');
+const worktreeToggle = root => root.querySelector('[aria-label=Worktree]');
 
 test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', () => {
   fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
-  expect(worktreeToggle(root).getAttribute('role')).toBe('checkbox');
+  expect(worktreeToggle(root).tagName).toBe('BUTTON');
   expect(worktreeToggle(root).getAttribute('aria-label')).toBe('Worktree');
-  expect(worktreeToggle(root).getAttribute('aria-checked')).toBe('false');
+  expect(worktreeToggle(root).getAttribute('aria-pressed')).toBe('false');
   expect(worktreeToggle(root).hasAttribute('disabled')).toBe(false);
   unmountAll();
   root = mount(worktreeStore(true), <Composer session={unsentSession} />);

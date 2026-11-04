@@ -45,7 +45,7 @@ function element(t, options) {
       return <Heading>{children()}</Heading>;
     }
     case 'code':
-      return options.flatten ? t.text : <div className="markdown-code-block relative"><pre>{options.preview ? <HighlightedCode text={t.text} lang={t.lang ?? ''} /> : <code>{t.text}</code>}</pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
+      return options.flatten ? t.text : <div className="markdown-code-block group relative"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children()}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {
@@ -91,7 +91,7 @@ function flatTokens(list = []) {
 
 // style is 'chat' or 'preview'.
 export function Markdown({text, style, imageSource}) {
-  return <div className={`markdown markdown-${style} prose dark:prose-invert max-w-none break-words`}>{tokens(lexer(text), {preview: style === 'preview', imageSource})}</div>;
+  return <div className={`markdown markdown-${style} prose ${style === 'chat' ? 'prose-sm' : ''} dark:prose-invert max-w-none break-words`}>{tokens(lexer(text), {preview: style === 'preview', imageSource})}</div>;
 }
 
 // MarkdownText is Markdown as inline text for a compact preview: headings,

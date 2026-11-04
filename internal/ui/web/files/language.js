@@ -14,7 +14,7 @@ const extensions = {
   mk: 'makefile', dockerfile: 'dockerfile', rs: 'rust', c: 'c', i: 'c',
   cpp: 'cpp', cc: 'cpp', cxx: 'cpp', hpp: 'cpp', hh: 'cpp', hxx: 'cpp', h: 'cpp',
   java: 'java', swift: 'swift', sql: 'sql', xml: 'xml', svg: 'xml', plist: 'xml',
-  diff: 'diff', patch: 'diff', ini: 'ini',
+  diff: 'diff', patch: 'diff', ini: 'ini', ml: 'ocaml', mli: 'ocaml',
 };
 
 export const hasPreview = name => language(name) === 'markdown';

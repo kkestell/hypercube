@@ -49,10 +49,10 @@ export function Transcript({session}) {
   }, []);
 
   return (
-    <div className="transcript-container relative flex min-h-0 flex-1 flex-col">
+    <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <TranscriptFind list={list} view={view} />
       <div ref={view} className="transcript min-h-0 flex-1 overflow-auto" onScroll={scrolled}>
-        <div ref={list} className="transcript-list flex flex-col gap-4 p-4">
+        <div ref={list} className="transcript-list flex flex-col gap-3 p-4">
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       </div>

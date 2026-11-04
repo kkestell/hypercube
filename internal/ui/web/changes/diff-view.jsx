@@ -1,6 +1,4 @@
 // A unified whole-file diff with separately highlighted old and new text.
-import {Table, TableBody, TableCell, TableRow} from '../components/ui/table';
-import {Badge} from '../components/ui/badge';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {language} from '../files/language.js';
@@ -24,15 +22,15 @@ function DiffLines({text, path}) {
   }, [rows, path]);
   if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
   const html = highlighted?.text === text ? highlighted : null;
-  return <Table className="diff-view-lines font-mono text-xs"><TableBody>{rows.map((row, i) => {
+  return <table className="diff-view-lines w-full border-collapse font-mono text-sm leading-5"><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
     return (
-      <TableRow key={i} className={`diff-view-line diff-view-${row.kind}`}>
-        <TableCell className="w-12 text-right text-muted-foreground">{row.old}</TableCell><TableCell className="w-12 text-right text-muted-foreground">{row.new}</TableCell><TableCell className="w-8">{row.kind !== 'context' && <Badge variant={row.kind === 'removed' ? 'destructive' : 'secondary'}>{row.kind === 'added' ? '+' : '−'}</Badge>}</TableCell>
-        <TableCell className="whitespace-pre">{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</TableCell>
-      </TableRow>
+      <tr key={i} className={`diff-view-line diff-view-${row.kind}`}>
+        <td className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.old}</td><td className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.new}</td><td className="w-6 px-1 py-0 text-center align-top text-muted-foreground">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</td>
+        <td className="whitespace-pre px-2 py-0 align-top">{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</td>
+      </tr>
     );
-  })}</TableBody></Table>;
+  })}</tbody></table>;
 }
 
 export function DiffView({id, path}) {

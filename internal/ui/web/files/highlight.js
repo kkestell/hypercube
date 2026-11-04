@@ -1,9 +1,10 @@
 // Syntax highlighting for files and Markdown code blocks: Shiki with its
-// JavaScript regular expression engine, GitHub's dark token colors, and the
+// JavaScript regular expression engine, After Dark's token colors, and the
 // languages below. The page loads this module on first use.
 import {createHighlighterCoreSync} from 'shiki/core';
 import {createJavaScriptRegexEngine} from 'shiki/engine/javascript';
-import githubDark from 'shiki/themes/github-dark-default.mjs';
+// After Dark 1.6.4: github.com/simeonkerkola/after-dark at b9c8ea9375ed.
+import afterDark from './after-dark/theme.json';
 import c from 'shiki/langs/c.mjs';
 import cpp from 'shiki/langs/cpp.mjs';
 import css from 'shiki/langs/css.mjs';
@@ -19,6 +20,8 @@ import jsonc from 'shiki/langs/jsonc.mjs';
 import jsonl from 'shiki/langs/jsonl.mjs';
 import jsx from 'shiki/langs/jsx.mjs';
 import makefile from 'shiki/langs/makefile.mjs';
+import markdown from 'shiki/langs/markdown.mjs';
+import ocaml from 'shiki/langs/ocaml.mjs';
 import python from 'shiki/langs/python.mjs';
 import rust from 'shiki/langs/rust.mjs';
 import scss from 'shiki/langs/scss.mjs';
@@ -32,9 +35,9 @@ import xml from 'shiki/langs/xml.mjs';
 import yaml from 'shiki/langs/yaml.mjs';
 
 const highlighter = createHighlighterCoreSync({
-  themes: [githubDark],
+  themes: [afterDark],
   langs: [c, cpp, css, diff, dockerfile, go, html, ini, java, javascript, json, jsonc, jsonl, jsx,
-    makefile, python, rust, scss, shellscript, sql, swift, toml, tsx, typescript, xml, yaml],
+    makefile, markdown, ocaml, python, rust, scss, shellscript, sql, swift, toml, tsx, typescript, xml, yaml],
   engine: createJavaScriptRegexEngine(),
 });
 
@@ -49,7 +52,7 @@ const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 export function highlight(text, lang) {
   lang = names[lang] ?? lang;
   if (!highlighter.getLoadedLanguages().includes(lang)) lang = 'text';
-  const {tokens} = highlighter.codeToTokens(text, {lang, theme: 'github-dark-default'});
+  const {tokens} = highlighter.codeToTokens(text, {lang, theme: afterDark.name});
   return tokens.map(line => line.map(t => {
     const style = (t.color ? `color:${t.color};` : '') + (t.fontStyle & 1 ? 'font-style:italic;' : '') +
       (t.fontStyle & 2 ? 'font-weight:bold;' : '') + (t.fontStyle & 4 ? 'text-decoration:underline;' : '');

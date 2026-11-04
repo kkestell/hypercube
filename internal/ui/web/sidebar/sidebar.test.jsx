@@ -32,7 +32,8 @@ const click = element => act(() => clickControl(element));
 const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row => row.dataset.session);
 const row = (root, id) => root.querySelector(`[data-session="${id}"]`);
 const select = (root, id) => click(row(root, id));
-const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] > .session-item-decoration [data-slot=badge]`)].filter(badge => !badge.classList.contains('session-item-branch')).map(badge => ({'Waiting on you': 'waiting', 'New reply': 'unseen', Exited: 'exited'})[badge.textContent]);
+const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] .session-item-status [role=img]`)]
+  .map(icon => ({'Waiting on you': 'waiting', 'New reply': 'unseen', Exited: 'exited'})[icon.getAttribute('aria-label')]).filter(Boolean);
 const pick = (root, index) => clickControl(document.querySelectorAll('[role=menuitem]')[index]);
 const workspaceMenu = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [title="More Actions"]`));
 test('all sessions remain visible in order as their state changes', () => {
@@ -190,6 +191,8 @@ test('each row shows only its own state, and nothing while idle', () => {
   expect(dots(root, 'asks')).toEqual(['waiting']);
   expect(dots(root, 'replied')).toEqual(['unseen']);
   expect(dots(root, 'exited')).toEqual(['exited']);
+  expect(row(root, 'exited').querySelector('.session-item-decoration').textContent).toBe('');
+  expect(root.querySelector('[data-variant=destructive]')).toBeNull();
   store.update(s => ({...s, selected: 'replied'}));
   expect(dots(root, 'replied')).toEqual([]);
 });
@@ -247,15 +250,17 @@ test('active nested sessions offer only Rename and ended ones also Delete Sessio
   expect(posted()).toEqual([{action: 'delete', id: 'ended'}]);
 });
 
-test('a worktree session reports its branch and merge state with a standard badge', () => {
+test('a worktree session reports its branch and merge state on an icon without visible status text', () => {
   const merge = extra => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: true, uncommitted: 0, ...extra});
   const {store, root} = setup([session('a', {worktree: true, merge: merge({unmerged: 1})}), session('b')]);
   const badge = () => root.querySelector('[data-session="a"] .session-item-branch');
   expect(badge().title).toContain('hypercube/session-a');
-  expect(badge().textContent).toBe('Changes');
+  expect(badge().textContent).toBe('');
+  expect(badge().title).toContain('1 commit not merged into main');
   expect(root.querySelector('[data-session="b"] .session-item-branch')).toBeNull();
   store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {worktree: true, merge: merge()})]}]}));
-  expect(badge().textContent).toBe('Merged');
+  expect(badge().textContent).toBe('');
+  expect(badge().title).toContain('Merged into main');
 });
 
 test('each workspace has a section, with children inside their parent\'s row', () => {

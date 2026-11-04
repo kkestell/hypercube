@@ -1,6 +1,8 @@
 // A new session chooses a configured profile; existing sessions show its label.
 import {useEffect, useState} from 'react';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
+import {Button} from '../components/ui/button';
+import {DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
+import {Icon} from '../shared/icon.jsx';
 import {fetchProfiles} from '../api.js';
 import {unsentProfile} from '../sessions/selection.js';
 import {useStore} from '../store.js';
@@ -27,12 +29,19 @@ export function ProfileSelect({session}) {
     if (profile) store.update(s => unsentProfile(s, profile));
   };
   if (!unsent) return <span className="composer-profile-label truncate text-muted-foreground">{profileLabel(session)}</span>;
-  return <Select value={unsent.profile || undefined} disabled={unsent.sending} onValueChange={choose}>
-    <SelectTrigger className="composer-profile" aria-label="Profile"><SelectValue placeholder="Select profile" /></SelectTrigger>
-    <SelectContent side="top">
-      {profiles.map(p => <SelectItem key={p.name} value={p.name} textValue={profileLabel(p)}>
-        <span>{profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
-      </SelectItem>)}
-    </SelectContent>
-  </Select>;
+  const selected = profiles.find(p => p.name === unsent.profile);
+  return <DropdownMenu>
+    <DropdownMenuTrigger asChild>
+      <Button type="button" variant="ghost" size="sm" className="composer-profile min-w-0 max-w-full" aria-label="Profile" disabled={unsent.sending}>
+        <span className="truncate">{selected ? profileLabel(selected) : 'Select profile'}</span><Icon name="chevron-down" />
+      </Button>
+    </DropdownMenuTrigger>
+    <DropdownMenuContent side="top" align="start">
+      <DropdownMenuRadioGroup value={unsent.profile ?? ''} onValueChange={choose}>
+        {profiles.map(p => <DropdownMenuRadioItem key={p.name} value={p.name}>
+          <span>{profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
+        </DropdownMenuRadioItem>)}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }

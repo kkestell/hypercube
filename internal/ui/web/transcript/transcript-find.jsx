@@ -74,7 +74,7 @@ export function TranscriptFind({list, view}) {
   return <div className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" role="search" aria-label="Find in transcript" onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }
   }}>
-    <Input ref={input} value={query} placeholder="Find" aria-label="Find in transcript" aria-invalid={!!query && !ranges.length} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
+    <Input ref={input} value={query} placeholder="Find" aria-label="Find in transcript" onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
       if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
     }} />
     <span className="transcript-find-count shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>

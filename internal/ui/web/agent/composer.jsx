@@ -79,9 +79,9 @@ export function Composer({session}) {
   };
 
   return (
-    <form className="composer m-2 shrink-0" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      <Card>
-        <CardContent className="flex flex-col gap-3">
+    <form className="composer m-4 shrink-0" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+      <Card className="py-3">
+        <CardContent className="flex flex-col gap-3 px-3">
           {draft.images.length > 0 && (
             <div className="composer-images flex flex-wrap gap-2">
               {draft.images.map((image, i) => (

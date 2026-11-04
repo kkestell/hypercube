@@ -1,9 +1,8 @@
 import {Icon} from '../shared/icon.jsx';
 // Subscription usage: standard progress bars compare usage to elapsed time,
-// with an Ahead badge when usage exceeds that pace. Expired windows retain
+// with an indicator when usage exceeds that pace. Expired windows retain
 // their last reported use until the next harness report.
 import {Progress} from '../components/ui/progress';
-import {Badge} from '../components/ui/badge';
 import {useEffect, useState} from 'react';
 import {displayName} from '../agent/profile-label.js';
 import {useStore} from '../store.js';
@@ -51,7 +50,7 @@ function LimitWindow({limit, now}) {
         {pace !== null && <Progress value={pace} aria-label={`${label} elapsed`} />}
       </span>
       {limit.used}%
-      {ahead && <Badge variant="secondary">Ahead</Badge>}
+      {ahead && <span title="Usage ahead of pace"><Icon name="arrow-up" role="img" title="Usage ahead of pace" /></span>}
       {pace !== null && <span className="status-bar-left flex items-center gap-1 text-muted-foreground"><Icon name="history" size="12" />{timeLeft(left)}</span>}
     </span>
   );

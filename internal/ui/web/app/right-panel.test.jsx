@@ -77,7 +77,8 @@ test('Changes rows show status, name, folder, counts, and open the selected diff
   expect(rows.map(row => row.title)).toEqual(['foo.py • Modified', 'utils/helpers.py • Untracked', 'README.md • Deleted']);
   expect(rows.map(row => row.querySelector('.changes-panel-status').getAttribute('aria-label'))).toEqual(['Modified', 'Untracked', 'Deleted']);
   expect(rows[1].querySelector('.changes-panel-name').textContent).toBe('helpers.py');
-  expect(rows[1].querySelector('.changes-panel-description').textContent).toBe('utils');
+  expect(rows[1].title).toContain('utils/helpers.py');
+  expect(rows[1].querySelector('.changes-panel-description')).toBeNull();
   expect(rows[0].querySelector('.changes-panel-stat').getAttribute('aria-label')).toBe('4 added, 3 removed');
   expect(rows[0].querySelector('.changes-panel-stat').textContent).toBe('+4−3');
   expect(root.querySelector('.changes-panel-ahead')).toBeNull();

@@ -24,8 +24,8 @@ export function ToolCall({call, session, expanded, setOpen}) {
       summary={<span className="tool-items-header flex min-w-0 items-center gap-2"><span className="tool-items-status shrink-0">{status}</span><Title item={item} /></span>}>
       {open && (
         <div className="tool-items-body space-y-2 pl-6">
-          {input && <Card><CardContent><pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre></CardContent></Card>}
-          {output && <Card><CardContent><pre className="tool-items-text overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre></CardContent></Card>}
+          {input && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre></CardContent></Card>}
+          {output && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre></CardContent></Card>}
           {children.length > 0 && (
             <div className="tool-items-children space-y-3 border-l pl-3">
               {children.map(row => <TranscriptRow key={row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}

@@ -1,4 +1,5 @@
 import {afterEach, expect, test} from 'bun:test';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -6,9 +7,9 @@ import {DiffView} from './diff-view.jsx';
 
 afterEach(unmountAll);
 
-function view(diff) {
-  const session = {...emptySession('s'), diffs: {'foo.py': diff}};
-  return mount(createStore({session, workspaces: []}), <DiffView id="diff:foo.py" path="foo.py" />);
+function view(diff, path = 'foo.py') {
+  const session = {...emptySession('s'), diffs: {[path]: diff}};
+  return mount(createStore({session, workspaces: []}), <DiffView id={"diff:" + path} path={path} />);
 }
 
 test('a diff shows both line numbers, change marks, and changed line classes', () => {
@@ -37,4 +38,13 @@ test.each([
 test('large line numbers are preserved on both sides', () => {
   const root = view({text: '@@ -9999 +100000 @@\n context\n', message: null});
   expect([...root.querySelectorAll('.diff-view-line td')].slice(0, 2).map(cell => cell.textContent)).toEqual(['9999', '100000']);
+});
+
+test('OCaml additions receive After Dark highlighting', async () => {
+  const root = view({text: '@@ -0,0 +1 @@\n+let value = "hello"\n', message: null}, 'checked.ml');
+  await act(async () => { await import('../files/highlight.js'); });
+  const code = root.querySelector('code');
+  expect(code.textContent).toBe('let value = "hello"');
+  expect(code.innerHTML).toContain('color:#E6AC6F');
+  expect(code.innerHTML).toContain('color:#98C379');
 });

@@ -3,19 +3,18 @@
 // chooses the session; a click on a parent's chevron, or a double-click on the
 // parent, collapses or expands its children.
 import {useEffect, useRef} from 'react';
-import {mergeSummary, mergeTint} from '../sessions/merge.js';
+import {mergeSummary} from '../sessions/merge.js';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
-import {StatusBadge} from '../shared/status-badge.jsx';
+import {StatusIcon} from '../shared/status-icon.jsx';
 import {useStore} from '../store.js';
-import {Badge} from '../components/ui/badge';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Icon} from '../shared/icon.jsx';
 
 const statusOf = (session, selected) => {
-  if (session.activity === 'exited') return <StatusBadge kind="exited" title="Exited" />;
-  if (session.attention) return <StatusBadge kind="waiting" title="Waiting on you" />;
-  if (session.unseen && !selected) return <StatusBadge kind="unseen" title="New reply" />;
+  if (session.activity === 'exited') return <StatusIcon kind="exited" title="Exited" />;
+  if (session.attention) return <StatusIcon kind="waiting" title="Waiting on you" />;
+  if (session.unseen && !selected) return <StatusIcon kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <Icon className="session-item-busy" name="loading" spin role="img" title="Working" />;
   return null;
 };
@@ -44,17 +43,17 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
         : <span className="session-item-title min-w-0 flex-1 truncate text-left">{session.title}</span>}
       <span className="session-item-decoration ml-auto flex items-center gap-2">
         {session.worktree && <BranchIcon session={session} />}
-        <span className="session-item-status">{statusOf(session, selected)}</span>
+        <span className="session-item-status inline-flex">{statusOf(session, selected)}</span>
       </span>
     </div></Button>
   );
 }
 
 function BranchIcon({session}) {
-  const tint = mergeTint(session.merge);
-  const label = tint === 'modified' ? 'Changes' : tint === 'merged' ? 'Merged' : 'Branch';
   const title = session.merge ? `${session.merge.branch}: ${mergeSummary(session.merge)}` : 'Worktree';
-  return <Badge className="session-item-branch" variant={tint === 'modified' ? 'default' : 'secondary'} title={title}><Icon name="git-branch" />{label}</Badge>;
+  return <span className="session-item-branch inline-flex text-muted-foreground" title={title}>
+    <Icon name="git-branch" title={title} role="img" />
+  </span>;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it
