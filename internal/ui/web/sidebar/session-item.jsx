@@ -22,7 +22,7 @@ const statusOf = (session, selected) => {
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}) {
   const [state, store] = useStore();
   const selected = session.id === state.selected;
-  const classes = `session-item w-full justify-start ${level === 2 ? 'pl-8' : ''} ${!session.running || session.ended ? 'opacity-60' : ''}`;
+  const classes = `session-item w-full justify-start ${level === 2 ? 'pl-7' : ''} ${!session.running || session.ended ? 'opacity-60' : ''}`;
   const toggle = e => {
     e.stopPropagation();
     onToggle();
@@ -41,9 +41,9 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       {session.id === renaming
         ? <RenameField session={session} onDone={() => onRenaming(null)} />
         : <span className="session-item-title min-w-0 flex-1 truncate text-left">{session.title}</span>}
-      <span className="session-item-decoration ml-auto grid w-10 shrink-0 grid-cols-2 items-center gap-2">
+      <span className="session-item-decoration ml-auto flex shrink-0 items-center gap-1.5">
         {session.worktree && <BranchIcon session={session} />}
-        <span className="session-item-status col-start-2 inline-flex size-4 items-center justify-center">{statusOf(session, selected)}</span>
+        <span className="session-item-status inline-flex size-4 items-center justify-center">{statusOf(session, selected)}</span>
       </span>
     </div></Button>
   );
@@ -51,7 +51,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
 
 function BranchIcon({session}) {
   const title = session.merge ? `${session.merge.branch}: ${mergeSummary(session.merge)}` : 'Worktree';
-  return <span className="session-item-branch col-start-1 inline-flex text-muted-foreground" title={title}>
+  return <span className="session-item-branch inline-flex text-muted-foreground" title={title}>
     <Icon name="git-branch" title={title} role="img" />
   </span>;
 }
