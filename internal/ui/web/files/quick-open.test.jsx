@@ -11,7 +11,7 @@ test('Quick Open filters session paths and opens a preview', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).startsWith('mention-files?')
     ? Response.json(['src/main.go', 'README.md']) : new Response('source'));
   try {
-    const store = createStore({session: emptySession('s'), workspaces: []});
+    const store = createStore({session: emptySession('s'), workspaces: [], overlays: {}});
     function Dialog() {
       const [open, setOpen] = useState(true);
       return <QuickOpen open={open} onOpenChange={setOpen} />;
@@ -32,7 +32,7 @@ test('Escape and selection restore previous focus', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).startsWith('mention-files?')
     ? Response.json(['src/main.go']) : new Response('source'));
   try {
-    const store = createStore({session: emptySession('s'), workspaces: []});
+    const store = createStore({session: emptySession('s'), workspaces: [], overlays: {}});
     function View() {
       const [open, setOpen] = useState(false);
       return <><button onClick={() => setOpen(true)}>Open picker</button><QuickOpen open={open} onOpenChange={setOpen} /></>;
@@ -56,7 +56,7 @@ test('Escape and selection restore previous focus', async () => {
 test('Command+P and Command+Shift+P prevent printing without changing selection', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(['alpha.go', 'beta.go', 'gamma.txt']));
   try {
-    const store = createStore({session: emptySession('s'), workspaces: []});
+    const store = createStore({session: emptySession('s'), workspaces: [], overlays: {}});
     mount(store, <QuickOpen open onOpenChange={() => {}} />);
     await act(async () => {});
     const input = document.querySelector('[aria-label="Search files"]');

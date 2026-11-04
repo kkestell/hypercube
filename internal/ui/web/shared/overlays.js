@@ -2,7 +2,7 @@
 // Hypercube window draws a session's browser above the whole page, so the
 // browser hides while an overlay covers it. state.overlays holds each mounted
 // overlay's rect by ID.
-import {useId, useLayoutEffect, useState} from 'react';
+import {useId, useLayoutEffect, useRef, useState} from 'react';
 import {useStore} from '../store.js';
 
 function overlayMoved(state, id, {left, top, right, bottom}) {
@@ -37,6 +37,22 @@ export function useOverlay() {
     };
   }, [element, id, store]);
   return setElement;
+}
+
+// useModal covers the window and returns focus to the element that opened it.
+export function useModal(open) {
+  const [, store] = useStore();
+  const id = useId();
+  const invoker = useRef(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    store.update(state => overlayMoved(state, id, {left: -Infinity, top: -Infinity, right: Infinity, bottom: Infinity}));
+    return () => store.update(state => overlayRemoved(state, id));
+  }, [open, id, store]);
+  return {
+    onOpenAutoFocus: () => { invoker.current = document.activeElement; },
+    onCloseAutoFocus: event => { event.preventDefault(); invoker.current?.focus(); },
+  };
 }
 
 // covered reports whether an overlay covers part of the rect, in CSS pixels.

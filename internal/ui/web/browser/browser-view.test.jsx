@@ -1,8 +1,9 @@
 import {setValue} from '../../test-render.jsx';
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {mount, unmountAll} from '../../test-render.jsx';
+import {mount, render, unmountAll} from '../../test-render.jsx';
 import {ContextMenu} from '../shared/context-menu.jsx';
+import {CommandDialog} from '../shared/command-dialog.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {BrowserView} from './browser-view.jsx';
@@ -105,4 +106,16 @@ test('the browser hides once a menu grows over the body', () => {
   } finally {
     globalThis.ResizeObserver = Observer;
   }
+});
+
+test('a modal hides the browser in another pane until it closes', () => {
+  const browserRect = {left: 10, top: 20, right: 410, bottom: 320, width: 400, height: 300};
+  const dialogRect = {left: 500, top: 350, right: 700, bottom: 500, width: 200, height: 150};
+  rect.mockImplementation(function () { return this.getAttribute('role') === 'dialog' ? dialogRect : browserRect; });
+  const {store} = setup();
+  expect(places().at(-1).session).toBe('s');
+  const root = mount(store, <CommandDialog open onOpenChange={() => {}} title="Search" description="Search files" />);
+  expect(places().at(-1)).toEqual({type: 'place', session: null, rect: null});
+  render(null, root);
+  expect(places().at(-1)).toEqual({type: 'place', session: 's', rect: {x: 10, y: 20, width: 400, height: 300}});
 });
