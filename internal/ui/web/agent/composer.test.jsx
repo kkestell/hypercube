@@ -45,7 +45,7 @@ test('a busy agent can be stopped until text or an image is added', async () => 
   setValue(field, 'hello');
   act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   expect(root.querySelector('[title="Send"]').disabled).toBe(false);
-  setValue(field, '');
+  setValue(field, '  \n ');
   act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   expect(root.querySelector('[title="Stop"]')).not.toBeNull();
   s.update(state => ({...state, drafts: {a: {text: '', images: [{mime_type: 'image/png', data: 'YQ=='}], reading: 0}}}));

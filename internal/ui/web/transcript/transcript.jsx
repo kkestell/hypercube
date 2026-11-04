@@ -3,6 +3,7 @@
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions.
 import {useCallback, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {focusComposerField} from '../agent/focus-composer.js';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.jsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
@@ -66,7 +67,7 @@ export function Transcript({session}) {
       </div>
       {away && (
         <Button type="button" variant="secondary" size="icon" className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
-          onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); }}><Icon name="arrow-down" /></Button>
+          onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
       )}
       {pending.length > 0 && (
         <section className="transcript-pending flex max-h-1/2 shrink-0 flex-col gap-4 overflow-y-auto border-t p-4" aria-label="Pending questions">

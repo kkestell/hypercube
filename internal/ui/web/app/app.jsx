@@ -7,6 +7,7 @@
 // browser.
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {post} from '../api.js';
+import {focusComposerField} from '../agent/focus-composer.js';
 import {agentTabId, selectTab} from '../editor/editor.js';
 import {findPane} from '../editor/tab-layout.js';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
@@ -46,11 +47,10 @@ export function App({store}) {
   useLayoutEffect(() => {
     if (!focusPending.current) return;
     focusPending.current = false;
-    document.querySelector('.composer-text')?.focus();
+    focusComposerField();
   }, [state]);
   const focusComposer = () => {
-    const field = document.querySelector('.composer-text');
-    if (field) { field.focus(); return; }
+    if (focusComposerField()) return;
     const session = store.get().session;
     const pane = session && findPane(session.tabs.root, agentTabId);
     if (!pane) return;

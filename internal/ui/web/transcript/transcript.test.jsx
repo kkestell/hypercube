@@ -346,8 +346,17 @@ test('the list follows its end until the user scrolls up', () => {
   height = 1200;
   send([{id: '3', kind: 'text', text: 'c'}]);
   expect(view.scrollTop).toBe(500);
-  clickControl(root.querySelector('[title="Scroll to newest output"]'));
+  const composer = document.createElement('textarea');
+  composer.className = 'composer-text';
+  root.append(composer);
+  const button = root.querySelector('[title="Scroll to newest output"]');
+  button.focus();
+  act(() => {
+    button.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+    button.click(); // The browser activates a focused button on Enter.
+  });
   expect(root.querySelector('[title="Scroll to newest output"]')).toBeNull();
+  expect(document.activeElement).toBe(composer);
   send([{id: '4', kind: 'text', text: 'd'}]);
   expect(view.scrollTop).toBe(1200);
 });
