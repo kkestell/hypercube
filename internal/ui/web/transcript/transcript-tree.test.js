@@ -1,5 +1,5 @@
 import {expect, test} from 'bun:test';
-import {ancestorKeys, toolSummary, toolTitle, transcriptRows} from './transcript-tree.js';
+import {toolSummary, toolTitle, transcriptRows} from './transcript-tree.js';
 
 const transcript = items => ({order: items.map(item => item.id), items: Object.fromEntries(items.map(item => [item.id, item]))});
 const rows = items => transcriptRows(transcript(items));
@@ -162,14 +162,12 @@ test('message calls draw as messages', () => {
   expect(rowsOfCalls.map(row => row.type)).toEqual(['tool', 'message']);
 });
 
-test('ancestorKeys names the activity around an item', () => {
-  const items = transcript([
-    user('ask', 1), working('w', 2), call('a', 'agent', 3), {id: 'q', parent: 'a', kind: 'attention', at: 4}, text('answer', 5), idle('i', 6, ['answer']),
-    user('next', 7), {id: 'raw', kind: 'attention', at: 8},
+test('history omits open requests and keeps answered requests under their calls', () => {
+  const [parent] = rows([
+    call('a', 'agent', 1),
+    {id: 'q', parent: 'a', kind: 'attention', at: 2},
+    {id: 'answered', parent: 'a', kind: 'attention', at: 3, done: true, answer: 'yes'},
+    {id: 'raw', kind: 'attention', at: 4},
   ]);
-  expect(ancestorKeys(items, 'q')).toEqual(['activity:L1:w']);
-  expect(ancestorKeys(items, 'a')).toEqual(['activity:L1:w']);
-  expect(ancestorKeys(items, 'answer')).toEqual([]);
-  expect(ancestorKeys(items, 'raw')).toEqual([]);
-  expect(ancestorKeys(items, 'missing')).toEqual([]);
+  expect(parent.children.map(row => row.item.id)).toEqual(['answered']);
 });

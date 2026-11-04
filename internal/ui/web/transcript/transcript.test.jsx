@@ -46,27 +46,35 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
     {id: 'r', kind: 'reasoning', text: '<i>thinking</i>'},
     {id: 'u', kind: 'user', text: '<a href=x>me</a>'},
   ]);
+  act(() => root.querySelector('.tool-items-call > summary').click());
   expect(root.querySelectorAll('b, script, img, u, i, a').length).toBe(0);
   for (const text of ['<b>tool</b>', '<img src=x onerror=1>', '<u>bad</u>', '<i>thinking</i>', '<a href=x>me</a>']) expect(root.textContent).toContain(text);
 });
 
-test('a tool call shows its title, status, input, output, and nested items', () => {
-  const {root, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
+test('a tool call starts collapsed and preserves expansion as its output arrives', () => {
+  const {root, store, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
   const call = () => root.querySelector('.tool-items-call');
   expect(call().querySelector('.tool-items-header').textContent).toContain('bash ls');
   expect(call().querySelector('[title="Running"]')).not.toBeNull();
+  expect(call().open).toBe(false);
+  expect(call().querySelector('.tool-items-body')).toBeNull();
+  act(() => call().querySelector('summary').click());
+  expect(store.get().session.expanded.c).toBe(true);
   expect(call().querySelector('pre').textContent).toBe('{\n  "command": "ls"\n}');
   send([{id: 'n', parent: 'c', kind: 'text', text: 'inside'}, {id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}, output: 'a.txt', done: true, failed: true}]);
   expect(call().querySelector('[title="Running"]')).toBeNull();
   expect(call().querySelector('[title="Failed"]')).not.toBeNull();
   expect(call().querySelectorAll('pre')[1].textContent).toBe('a.txt');
   expect(call().querySelector('.tool-items-children').textContent).toBe('inside');
+  act(() => call().querySelector('summary').click());
+  expect(call().querySelector('.tool-items-body')).toBeNull();
+  expect(store.get().session.expanded.c).toBeUndefined();
 });
 
 const marker = (id, state, at, final) => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
 const summaries = root => [...root.querySelectorAll('.activity-item > summary')];
 
-test('a running turn shows every row openly with no working summary', () => {
+test('a running turn shows its rows with collapsed tool details and no working summary', () => {
   const {root} = setup([
     {id: 'u', kind: 'user', text: 'Go', at: 1000},
     marker('w', 'working', 1100),
@@ -79,11 +87,12 @@ test('a running turn shows every row openly with no working summary', () => {
   expect(root.querySelector('.activity-item')).toBeNull();
   expect(root.textContent).not.toContain('Working');
   expect(root.querySelector('.reasoning-item').textContent).toBe('Considering the plan.\nSecond line.');
-  expect(root.querySelector('.tool-items-call').textContent).toContain('a.txt');
+  expect(root.querySelector('.tool-items-call').textContent).toContain('bash ls');
+  expect(root.querySelector('.tool-items-body')).toBeNull();
   expect(root.textContent).toContain('Progress update');
   expect(root.textContent).toContain('Peer says hello.\nMore detail.');
   expect(root.textContent).toContain('Reply body.');
-  expect(root.querySelector('details')).toBeNull();
+  expect(root.querySelector('details').open).toBe(false);
 });
 
 test('a successful turn collapses to its opener, one Worked row, and the whole response', () => {
@@ -273,8 +282,8 @@ test('the Send button beside the field sends the typed answer', async () => {
   expect(fetches.mock.calls[0][1].body).toBe('Grace');
 });
 
-test('a request inside a finished turn opens its activity', () => {
-  const {root} = setup([
+test('a nested request stays pinned outside a collapsed activity and returns to history when answered', () => {
+  const {root, send} = setup([
     {id: 'u', kind: 'user', text: 'Go', at: 1000},
     marker('w', 'working', 1100),
     {id: 'a', kind: 'tool', tool: 'agent', at: 1200},
@@ -283,8 +292,40 @@ test('a request inside a finished turn opens its activity', () => {
     marker('i', 'idle', 2000, ['t']),
   ]);
   const group = root.querySelector('.activity-item');
-  expect(group.open).toBe(true);
-  expect(group.querySelector('vscode-button[data-choice="ok"]')).not.toBeNull();
+  expect(group.open).toBe(false);
+  const pending = root.querySelector('[aria-label="Pending questions"]');
+  expect(pending.querySelector('vscode-button[data-choice="ok"]')).not.toBeNull();
+  expect(pending.closest('.transcript')).toBeNull();
+  expect(root.querySelector('.transcript .attention-item')).toBeNull();
+  send([{id: 'q', parent: 'a', kind: 'attention', text: 'Allow?', done: true, answer: 'ok', at: 1300}]);
+  expect(root.querySelector('.transcript-pending')).toBeNull();
+  act(() => group.querySelector('summary').click());
+  act(() => group.querySelector('.tool-items-call > summary').click());
+  expect(group.querySelector('.attention-item-answer').textContent).toBe('ok');
+});
+
+test('pending questions and their draft stay outside the scrolling history while output arrives', () => {
+  const {root, send} = setup([
+    {id: 'q1', kind: 'attention', text: 'First?', free: true},
+    {id: 'q2', kind: 'attention', text: 'Second?', choices: ['yes']},
+  ]);
+  const pending = root.querySelector('.transcript-pending');
+  const field = pending.querySelector('vscode-textfield');
+  field.value = 'My answer';
+  act(() => field.dispatchEvent(new Event('input')));
+  const view = root.querySelector('.transcript');
+  view.scrollTop = 0;
+  act(() => view.dispatchEvent(new Event('scroll')));
+  send([{id: 'output', kind: 'text', text: 'More work'}]);
+  expect(root.querySelector('.transcript-pending')).toBe(pending);
+  expect(pending.querySelector('vscode-textfield')).toBe(field);
+  expect(field.value).toBe('My answer');
+  expect([...pending.querySelectorAll('.attention-item-question')].map(item => item.textContent)).toEqual(['First?', 'Second?']);
+  expect(view.textContent).toBe('More work');
+  expect(view.nextElementSibling).toBe(pending);
+  send([{id: 'q1', kind: 'attention', text: 'First?', done: true, answer: 'My answer', seq: 0}]);
+  expect(view.querySelector('.attention-item-answer').textContent).toBe('My answer');
+  expect(pending.querySelectorAll('.attention-item').length).toBe(1);
 });
 
 test('the list follows its end until the user scrolls up', () => {
@@ -375,6 +416,7 @@ test('prompts, text, and tool calls show their images', () => {
     {id: 'x', kind: 'text', images: [{mime_type: 'image/gif', data: 'R0lGODlh'}]},
     {id: 'c', kind: 'tool', tool: 'screenshot', done: true, images: [{mime_type: 'image/png', data: png}, {mime_type: 'image/svg+xml', data: png}]},
   ]);
+  act(() => root.querySelector('.tool-items-call > summary').click());
   const sources = selector => [...root.querySelectorAll(selector + ' img')].map(img => img.getAttribute('src'));
   expect(sources('.message-item')).toEqual(['data:image/png;base64,' + png]);
   expect(sources('.transcript-text')).toEqual(['data:image/gif;base64,R0lGODlh']);

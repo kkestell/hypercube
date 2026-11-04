@@ -6,6 +6,7 @@ import {useCallback, useLayoutEffect, useMemo, useRef} from 'preact/hooks';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
 import {TranscriptFind} from './transcript-find.jsx';
+import {AttentionItem} from './attention-item.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
 import {emptyTranscript, setExpanded} from './transcripts.js';
@@ -16,6 +17,7 @@ export function Transcript({session}) {
   const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
+  const pending = transcript.order.map(id => transcript.items[id]).filter(item => item.kind === 'attention' && !item.done);
   const setOpen = useCallback((key, open) => store.update(s => setExpanded(s, key, open)), [store]);
 
   const view = useRef(null), list = useRef(null);
@@ -55,6 +57,11 @@ export function Transcript({session}) {
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       </div>
+      {pending.length > 0 && (
+        <section class="transcript-pending" aria-label="Pending questions">
+          {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
+        </section>
+      )}
     </div>
   );
 }

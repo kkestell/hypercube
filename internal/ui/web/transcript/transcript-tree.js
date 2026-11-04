@@ -69,6 +69,8 @@ export function transcriptRows({order, items}) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
+    // Open requests are pinned below the scrolling history.
+    if (item.kind === 'attention' && !item.done) continue;
     const parent = items[item.parent];
     const container = parent && parent.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     if (!containers.has(container)) containers.set(container, []);
@@ -145,12 +147,4 @@ function finishTurn(turn, idle, out) {
     out.push({type: 'activity', key: 'activity:' + turn.work.id, rows: activity, start, until: idle.at || 0});
   }
   out.push(...response);
-}
-
-// ancestorKeys are the expansion keys of the activity around an item, or []
-// if the item is not inside one.
-export function ancestorKeys(transcript, id) {
-  const holds = rows => rows.some(row => row.item.id === id || row.children && holds(row.children));
-  const activity = transcriptRows(transcript).find(row => row.type === 'activity' && holds(row.rows));
-  return activity ? [activity.key] : [];
 }
