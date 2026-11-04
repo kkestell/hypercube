@@ -101,6 +101,13 @@
     } else if ([type isEqual:@"badge"]) {
         NSNumber *count = body[@"count"];
         if ([count isKindOfClass:[NSNumber class]]) HCSetBadge(count.integerValue);
+    } else if ([type isEqual:@"shortcuts"]) {
+        HCSetShortcuts(body[@"items"]);
+    } else if ([type isEqual:@"page-zoom"]) {
+        NSString *action = body[@"action"];
+        if ([action isEqual:@"zoomIn"]) _webView.pageZoom *= 1.2;
+        else if ([action isEqual:@"zoomOut"]) _webView.pageZoom /= 1.2;
+        else if ([action isEqual:@"zoomReset"]) _webView.pageZoom = 1;
     } else if ([type isEqual:@"drag"]) {
         NSEvent *down = ((HCPageView *)_webView).lastMouseDown;
         if (down && (NSEvent.pressedMouseButtons & 1)) [_window performWindowDragWithEvent:down];

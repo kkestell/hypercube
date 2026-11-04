@@ -14,6 +14,10 @@ static HCApp *application;
     [_window show];
 }
 
+- (void)shortcut:(NSMenuItem *)sender {
+    [_window dispatch:@"hypercube-shortcut" detail:@{@"id": sender.representedObject}];
+}
+
 - (BOOL)applicationShouldHandleReopen:(NSApplication *)app hasVisibleWindows:(BOOL)visible {
     [_window show];
     return NO;
@@ -76,6 +80,38 @@ static NSMenu *mainMenu(void) {
     addSubmenu(bar, window);
     NSApp.windowsMenu = window;
     return bar;
+}
+
+void HCSetShortcuts(NSArray *items) {
+    NSMenu *bar = NSApp.mainMenu;
+    for (NSString *title in @[@"Session", @"View", @"Help"]) {
+        NSMenuItem *old = [bar itemWithTitle:title];
+        if (old) [bar removeItem:old];
+        NSMenu *menu = [[NSMenu alloc] initWithTitle:title];
+        for (NSDictionary *entry in items) {
+            if (![entry[@"section"] isEqual:title]) continue;
+            NSArray *bindings = entry[@"bindings"];
+            for (NSDictionary *b in bindings) {
+                NSString *key = b[@"key"];
+                if ([key isEqual:@"ArrowDown"]) key = [NSString stringWithCharacters:(unichar[]){NSDownArrowFunctionKey} length:1];
+                if ([key isEqual:@"ArrowUp"]) key = [NSString stringWithCharacters:(unichar[]){NSUpArrowFunctionKey} length:1];
+                NSEventModifierFlags mods = ([b[@"metaKey"] boolValue] ? NSEventModifierFlagCommand : 0) |
+                    ([b[@"altKey"] boolValue] ? NSEventModifierFlagOption : 0) |
+                    ([b[@"ctrlKey"] boolValue] ? NSEventModifierFlagControl : 0) |
+                    ([b[@"shiftKey"] boolValue] ? NSEventModifierFlagShift : 0);
+                NSMenuItem *item = [menu addItemWithTitle:entry[@"title"] action:@selector(shortcut:) keyEquivalent:key];
+                item.keyEquivalentModifierMask = mods;
+                item.alternate = b != bindings.firstObject;
+                item.target = application;
+                item.representedObject = entry[@"id"];
+            }
+        }
+        NSMenuItem *holder = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+        holder.submenu = menu;
+        NSInteger index = [bar indexOfItemWithTitle:@"Window"];
+        [bar insertItem:holder atIndex:[title isEqual:@"Help"] ? bar.numberOfItems : index];
+        if ([title isEqual:@"Help"]) NSApp.helpMenu = menu;
+    }
 }
 
 static NSStatusItem *statusItem(const void *icon, size_t iconLen) {

@@ -3,6 +3,7 @@ import {Input} from '../components/ui/input';
 import {Icon} from '../shared/icon.jsx';
 // The transcript's find widget follows rendered content as it changes.
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {matches} from '../app/shortcuts.js';
 import {transcriptMatches} from './transcript-matches.js';
 
 export function TranscriptFind({list, view}) {
@@ -21,16 +22,14 @@ export function TranscriptFind({list, view}) {
       const focus = document.activeElement;
       const pane = view.current.closest('.agent-pane');
       if (focus !== document.body && focus !== document.documentElement && !(pane ?? view.current.parentElement).contains(focus)) return;
-      if (event.altKey || event.ctrlKey) return;
-      const key = event.key.toLowerCase();
-      if (key === 'f' && event.metaKey && !event.shiftKey) {
+      if (matches(event, 'find')) {
         event.preventDefault();
         if (!open) previousFocus.current = focus;
         setOpen(true);
         if (open) selectInput();
-      } else if (open && ((key === 'g' && event.metaKey) || (key === 'f3' && !event.metaKey))) {
+      } else if (open && (matches(event, 'findNext') || matches(event, 'findPrevious'))) {
         event.preventDefault();
-        step(event.shiftKey ? -1 : 1);
+        step(matches(event, 'findPrevious') ? -1 : 1);
       }
     };
     document.addEventListener('keydown', keydown);

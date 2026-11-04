@@ -54,14 +54,11 @@ the profile, off by default, runs the session in its own worktree under
 in the checkout is its merge target. Selecting another session first discards
 the unsent session.
 
-Keyboard shortcuts use Command on macOS: Command+N opens a new session in the
-current workspace; Control+Tab and Control+Shift+Tab, or Command+Option+Down
-and Command+Option+Up, cycle through visible session rows; Command+1 through
-Command+9 select top-level sessions in sidebar order. Command+P searches the
-shown session's files by path and opens a preview. Command+L focuses the
-composer, Command+B toggles the sidebar, Command+J toggles the terminal, and
-Command+Option+B toggles the right panel. The terminal keeps its own keys except
-Command+P, and text fields keep their editing shortcuts.
+Choose Help > Keyboard Shortcuts or press Command+/ to see the keyboard
+shortcuts. In the native app, the Session and View menus also show shortcuts;
+View > Zoom In, Zoom Out, and Actual Size change the window's page size. The
+terminal keeps its own keys except Command+P, and text fields keep their editing
+shortcuts.
 
 The status bar along the bottom of the window shows each harness's
 subscription usage once an agent of that harness has reported it: for each

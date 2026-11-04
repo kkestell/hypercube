@@ -181,3 +181,26 @@ test('Command+P opens Quick Open from the terminal for the shown session', async
     expect(store.get().session.tabs.preview).toBe('file:src/main.go');
   } finally { unmountAll(); fetches.mockRestore(); }
 });
+
+test('keyboard shortcuts dialog opens from the keyboard and the native menu', () => {
+  const store = createStore({
+    workspaces: [], limits: [], requests: [], selected: null, pending: null, unsent: null,
+    visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+    workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
+  });
+  const root = mount(store, <App store={store} />);
+  const button = root.querySelector('header button');
+  button.focus();
+  act(() => button.dispatchEvent(new KeyboardEvent('keydown', {key: '/', metaKey: true, bubbles: true, cancelable: true})));
+  const dialog = document.querySelector('[role=dialog]');
+  expect(dialog.textContent).toContain('Keyboard shortcuts');
+  expect(dialog.textContent).toContain('New Session');
+  expect(dialog.textContent).toContain('Toggle Terminal');
+  act(() => dialog.querySelector('button').click());
+  expect(document.querySelector('[role=dialog]')).toBeNull();
+  act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'help'}})));
+  expect(document.querySelector('[role=dialog]').textContent).toContain('Keyboard shortcuts');
+  act(() => document.querySelector('[role=dialog] button').click());
+  act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'panel'}})));
+  expect(store.get().workbench.panel).toBe(true);
+});

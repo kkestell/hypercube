@@ -1,3 +1,4 @@
+import {shortcuts} from '../app/shortcuts.js';
 // The box below a transcript for the user's next message: its text, attached
 // images, attach and send buttons, and its profile and usage. A new session
 // chooses its profile and worktree there; after the first prompt the profile
@@ -100,7 +101,7 @@ export function Composer({session}) {
             </div>
           )}
           <MentionList mentions={mentions} />
-          <Textarea ref={field} rows={1} aria-label="Message" title="Focus Composer (⌘L)" className="composer-text max-h-40 resize-none" value={text}
+          <Textarea ref={field} rows={1} aria-label="Message" title={`Focus Composer (${shortcuts.find(s => s.id === 'composer').keys[0]})`} className="composer-text max-h-40 resize-none" value={text}
             role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
             aria-controls={mentions.choices.length || mentions.error ? mentions.listId : undefined}
             aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}

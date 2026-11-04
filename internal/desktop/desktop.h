@@ -24,3 +24,6 @@ void HCNotificationsStart(HCWindow *window);
 
 // HCSetBadge shows the number of sessions waiting on the user.
 void HCSetBadge(NSInteger count);
+
+// HCSetShortcuts builds the application menus from the page's bindings.
+void HCSetShortcuts(NSArray *items);

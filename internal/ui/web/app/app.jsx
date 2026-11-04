@@ -22,7 +22,9 @@ import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
 import {StatusBar} from './status-bar.jsx';
-import {shortcut} from './shortcuts.js';
+import {binding, matches, shortcut, shortcuts} from './shortcuts.js';
+import {ShortcutsDialog} from './shortcuts-dialog.jsx';
+import {windowHandler} from './window.js';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
 
 
@@ -45,6 +47,7 @@ function refuseStrayDrops(store) {
 export function App({store}) {
   const [state, setState] = useState(store.get());
   const [quickOpen, setQuickOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const focusPending = useRef(false);
   useLayoutEffect(() => {
     if (!focusPending.current) return;
@@ -66,6 +69,16 @@ export function App({store}) {
   }, [store]);
   useEffect(() => refuseStrayDrops(store), []);
   useEffect(() => { setQuickOpen(false); }, [state.session?.id, state.unsent]);
+  useEffect(() => {
+    const handler = windowHandler();
+    if (!handler) return;
+    handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, bindings: (s.menuAlternates ? s.keys : [s.keys[s.menuKey ?? 0]]).map(binding)}))});
+  }, []);
+  useEffect(() => {
+    const run = e => shortcut({target: document.activeElement, preventDefault() {}, stopPropagation() {}}, store, focusComposer, () => setShortcutsOpen(true), e.detail.id);
+    addEventListener('hypercube-shortcut', run);
+    return () => removeEventListener('hypercube-shortcut', run);
+  });
   const context = useMemo(() => [state, store], [state]);
 
   const title = pageTitle(state);
@@ -81,7 +94,7 @@ export function App({store}) {
 
   const {sidebar, rightPanel, panel} = state.workbench;
   const key = e => {
-    if (e.key !== 'Escape' || e.defaultPrevented || e.repeat || (e.isComposing || e.nativeEvent?.isComposing) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
     if (state.confirmation || e.target.closest('[role=menu], [role=dialog], [role=alertdialog], .terminal-panel')) return;
     const session = currentSession(state);
@@ -91,7 +104,7 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer, () => setQuickOpen(true))} onKeyDown={key}>
+      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer, () => setShortcutsOpen(true), null, () => setQuickOpen(true))} onKeyDown={key}>
         <header className="app-header flex shrink-0 items-center justify-end border-b px-2 py-1" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>
@@ -111,6 +124,7 @@ export function App({store}) {
         <NotificationStack />
         <ConfirmDialog />
         <QuickOpen key={state.session?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
     </StoreContext.Provider>
   );

@@ -92,7 +92,8 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
 - (void)place:(id)session rect:(id)rect {
     NSRect frame = NSZeroRect;
     if ([rect isKindOfClass:[NSDictionary class]]) {
-        NSRect inPage = NSMakeRect([rect[@"x"] doubleValue], [rect[@"y"] doubleValue], [rect[@"width"] doubleValue], [rect[@"height"] doubleValue]);
+        CGFloat zoom = _window.webView.pageZoom;
+        NSRect inPage = NSMakeRect([rect[@"x"] doubleValue] * zoom, [rect[@"y"] doubleValue] * zoom, [rect[@"width"] doubleValue] * zoom, [rect[@"height"] doubleValue] * zoom);
         frame = [_window.webView convertRect:inPage toView:_window.window.contentView];
     }
     NSWindow *window = _window.window;
