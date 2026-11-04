@@ -89,8 +89,8 @@
     [self reportTitleBar:NO];
 }
 
-// The page asks for the title bar, and moves or zooms the window from a mouse
-// down in its title bar row.
+// The page reports the badge count, asks for the title bar, and moves or zooms
+// the window from a mouse down in its title bar row.
 - (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
     if (!message.frameInfo.isMainFrame) return;
     NSDictionary *body = message.body;
@@ -100,7 +100,7 @@
         [self reportTitleBar:(_window.styleMask & NSWindowStyleMaskFullScreen) != 0];
     } else if ([type isEqual:@"badge"]) {
         NSNumber *count = body[@"count"];
-        if ([count isKindOfClass:[NSNumber class]] && count.integerValue >= 0 && count.doubleValue == count.integerValue) HCSetBadge(count.integerValue);
+        if ([count isKindOfClass:[NSNumber class]]) HCSetBadge(count.integerValue);
     } else if ([type isEqual:@"drag"]) {
         NSEvent *down = ((HCPageView *)_webView).lastMouseDown;
         if (down && (NSEvent.pressedMouseButtons & 1)) [_window performWindowDragWithEvent:down];

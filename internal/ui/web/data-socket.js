@@ -25,7 +25,7 @@ export function startDataSocket(store) {
       return;
     }
     build = message.build;
-    store.update(state => ({...receivedRequests(receivedWorkspaces(state, message.workspaces), message.requests), limits: message.limits}));
+    store.update(state => ({...receivedRequests(receivedWorkspaces(state, message.workspaces), message.requests), limits: message.limits, loaded: true}));
   };
 
   const received = message => {

@@ -46,6 +46,7 @@ test('state and transcript messages reach the store, and select follows the atta
   socket.open();
   expect(socket.sent).toEqual([{select: ''}]);
   socket.receive(state('b1'));
+  expect(store.get().loaded).toBe(true);
   expect(store.get().session.id).toBe('a');
   expect(socket.sent).toEqual([{select: ''}, {select: 'a'}]);
   socket.receive({type: 'transcript', session: 'a', reset: true, items: [{id: '1', seq: 1, kind: 'text', text: 'hi'}]});

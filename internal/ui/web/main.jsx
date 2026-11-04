@@ -1,5 +1,5 @@
 // Starts the page: the store, the data socket, file polling, the browsers'
-// reports, the window's notification clicks and title bar, and App.
+// reports, the window's notification clicks, badge and title bar, and App.
 import './base.css';
 import './elements.js';
 import {render} from 'preact';
@@ -15,6 +15,7 @@ import {createStore} from './store.js';
 
 const store = createStore({
   workspaces: [],
+  loaded: false,
   limits: [],
   requests: [],
   selected: decodeURIComponent(location.hash.slice(1)),

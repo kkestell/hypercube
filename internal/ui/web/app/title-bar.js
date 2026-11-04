@@ -3,18 +3,18 @@
 // hypercube-title-bar event, {height, inset}, and state.titleBar keeps it; a
 // page outside the window has none. A mouse down on the header outside its
 // buttons moves the window, and a double click zooms it, as on a title bar.
-const handler = () => globalThis.webkit?.messageHandlers?.window;
+import {windowHandler} from './window.js';
 
 export function startTitleBar(store) {
-  if (!handler()) return;
+  if (!windowHandler()) return;
   addEventListener('hypercube-title-bar', e => store.update(state => ({...state, titleBar: e.detail})));
-  handler().postMessage({type: 'title-bar'});
+  windowHandler().postMessage({type: 'title-bar'});
 }
 
 export function titleBarMouseDown(e) {
-  if (!handler() || e.button !== 0 || e.target.closest('vscode-toolbar-button')) return;
+  if (!windowHandler() || e.button !== 0 || e.target.closest('vscode-toolbar-button')) return;
   e.preventDefault();
-  handler().postMessage({type: e.detail === 2 ? 'zoom' : 'drag'});
+  windowHandler().postMessage({type: e.detail === 2 ? 'zoom' : 'drag'});
 }
 
 // titleBarStyle fits the header to the title bar, beside the window's buttons.

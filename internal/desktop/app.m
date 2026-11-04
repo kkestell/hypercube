@@ -96,11 +96,11 @@ static NSStatusItem *statusItem(const void *icon, size_t iconLen) {
 }
 
 void HCSetBadge(NSInteger count) {
-    NSString *label = count ? [NSString stringWithFormat:@"%ld", (long)count] : @"";
-    NSApp.dockTile.badgeLabel = count ? label : nil;
-    application.statusItem.button.title = label;
-    application.statusItem.button.accessibilityLabel = count
-        ? [NSString stringWithFormat:@"Hypercube, %ld sessions waiting on you", (long)count] : @"Hypercube";
+    NSString *label = count ? [NSString stringWithFormat:@"%ld", (long)count] : nil;
+    NSApp.dockTile.badgeLabel = label;
+    application.statusItem.button.title = label ?: @"";
+    application.statusItem.button.accessibilityLabel = label
+        ? [NSString stringWithFormat:@"Hypercube, %@ waiting on you", label] : @"Hypercube";
 }
 
 void hypercubeRun(const char *url, const void *icon, size_t iconLen) {
