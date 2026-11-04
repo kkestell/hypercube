@@ -192,6 +192,25 @@ func requestContext(t *testing.T) int {
 	return 0
 }
 
+func TestRateLimitEventReportsLimits(t *testing.T) {
+	h := newClaude()
+	h.feed(fixture(t, "limits")...)
+	if len(h.events) != 1 {
+		t.Fatalf("events = %+v", h.events)
+	}
+	got := h.events[0].Limits
+	for i := range got {
+		if got[i].At <= 0 {
+			t.Fatalf("limit without an observation time: %+v", got[i])
+		}
+		got[i].At = 0
+	}
+	want := []harness.Limit{{Minutes: 300, Used: 1, Resets: 1793767800}, {Minutes: 10080, Used: 39, Resets: 1794193200}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("limits = %+v, want %+v", got, want)
+	}
+}
+
 func TestSessionStateReportsWorkAndIdle(t *testing.T) {
 	h := newClaude()
 	h.feed(fixture(t, "interrupt")...)

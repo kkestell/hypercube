@@ -142,7 +142,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(completed) == 0 && len(opened) == 0 && len(allowed) == 0 && len(failures) == 0 && !changed {
+	if len(completed) == 0 && len(opened) == 0 && len(allowed) == 0 && len(failures) == 0 && len(ev.Limits) == 0 && !changed {
 		return nil
 	}
 	err := r.save(func(tx *write) error {
@@ -164,6 +164,11 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		s, err := tx.Session(l.id)
 		if err != nil {
 			return err
+		}
+		for _, limit := range ev.Limits {
+			if err := tx.PutLimit(s.Harness, limit); err != nil {
+				return err
+			}
 		}
 		if changed {
 			applyEvent(&s, ev)

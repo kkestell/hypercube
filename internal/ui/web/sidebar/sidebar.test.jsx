@@ -14,7 +14,7 @@ afterEach(() => {
 });
 
 const session = (id, extra = {}) => ({id, title: 'Session ' + id, running: true, unseen: false, children: [], activity: 'idle', ...extra});
-const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], selected: null, unsent: null, session: null, confirmation: null, overlays: {}});
+const state = sessions => ({workspaces: [{id: 'w', name: 'repo', path: '/repo', sessions}], limits: [], selected: null, unsent: null, session: null, confirmation: null, overlays: {}});
 
 function setup(sessions) {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));

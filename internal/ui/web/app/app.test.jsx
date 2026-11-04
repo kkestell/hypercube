@@ -14,7 +14,7 @@ test('state arriving before passive effects reaches the page', async () => {
   options.requestAnimationFrame = () => {};
   try {
     const store = createStore({
-      workspaces: [], requests: [], selected: '', pending: null, unsent: null,
+      workspaces: [], limits: [], requests: [], selected: '', pending: null, unsent: null,
       visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
       workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
     });
@@ -35,7 +35,7 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   try {
     const sessions = ['a', 'b'].map(id => ({id, title: id, running: true, activity: 'busy', children: []}));
     const store = createStore(receivedWorkspaces({
-      workspaces: [], requests: [], selected: 'a', pending: null, unsent: null,
+      workspaces: [], limits: [], requests: [], selected: 'a', pending: null, unsent: null,
       visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
       workbench: {sidebar: true, rightPanel: false, panel: false, rightTab: 'changes'},
     }, [{id: 'w', name: 'repo', path: '/repo', sessions}]));
@@ -81,7 +81,7 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
 
 test('the window header holds the three layout toggles and they hide and show their regions', () => {
   const store = createStore({
-    workspaces: [], requests: [], selected: null, pending: null, unsent: null,
+    workspaces: [], limits: [], requests: [], selected: null, pending: null, unsent: null,
     visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
     workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
   });

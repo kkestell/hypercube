@@ -109,6 +109,9 @@ type Event struct {
 	Final []string `json:"final,omitempty"`
 	Items []Item   `json:"items,omitempty"`
 	Usage *Usage   `json:"usage,omitempty"`
+	// Limits are the account's use of the harness's usage windows, for the
+	// windows the harness reported.
+	Limits []Limit `json:"limits,omitempty"`
 }
 
 // Usage is what the conversation has used: the tokens of its latest request,
@@ -117,6 +120,19 @@ type Usage struct {
 	Context int     `json:"context,omitempty"`
 	Window  int     `json:"window,omitempty"`
 	Cost    float64 `json:"cost,omitempty"`
+}
+
+// Limit is the account's use of one usage window of the harness, such as five
+// hours or seven days. Minutes is the window's length, which names it; Used is
+// the percent of the limit used; Resets is when the window resets, in Unix
+// seconds, or zero when unknown. At is when the plugin saw the harness's
+// report, in Unix milliseconds: Hypercube keeps the newest reading of each
+// window.
+type Limit struct {
+	Minutes int   `json:"minutes"`
+	Used    int   `json:"used"`
+	Resets  int64 `json:"resets,omitempty"`
+	At      int64 `json:"at"`
 }
 
 // Item is one entry of the transcript. A later item with the same ID replaces
@@ -210,6 +226,11 @@ func (e Event) check() error {
 	}
 	if slices.Contains(e.Final, "") {
 		return errors.New("final item without an ID")
+	}
+	for _, l := range e.Limits {
+		if l.Minutes <= 0 || l.Used < 0 || l.At <= 0 {
+			return fmt.Errorf("limit %+v needs a positive window, nonnegative use, and an observation time", l)
+		}
 	}
 	for _, it := range e.Items {
 		if it.ID == "" {

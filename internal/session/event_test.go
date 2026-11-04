@@ -24,6 +24,21 @@ func TestEventsWithoutStateKeepTheAgentWorking(t *testing.T) {
 	}
 }
 
+func TestLimitsAreSavedUnderTheSessionsHarness(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.input(s.ID, "!usage")
+	var limits []store.Limit
+	f.until("the limits", func() bool {
+		f.read(func(tx *store.Tx) (err error) { limits, err = tx.Limits(); return })
+		return len(limits) > 0
+	})
+	want := store.Limit{Harness: f.storedSession(s.ID).Harness, Limit: harness.Limit{Minutes: 300, Used: 42, Resets: 1793767800, At: 1793750712115}}
+	if len(limits) != 1 || limits[0] != want {
+		t.Fatalf("limits = %+v, want %+v", limits, want)
+	}
+}
+
 func TestFinishedTurnsMarkOnlyTheirOwnSessionUnseen(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()

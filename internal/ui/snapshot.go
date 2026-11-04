@@ -84,10 +84,16 @@ func show(tx *store.Tx, s store.Session, running bool) (shownSession, error) {
 
 // snapshot reads everything the view shows in one transaction: workspaces by
 // folder name, each with its sessions newest first, so a session keeps its
-// place. merges holds the worktree sessions' merge status by session ID.
-func snapshot(db *store.DB, merges map[string]workspace.Merge) ([]shownWorkspace, error) {
+// place, and the harnesses' usage limits. merges holds the worktree sessions'
+// merge status by session ID.
+func snapshot(db *store.DB, merges map[string]workspace.Merge) ([]shownWorkspace, []store.Limit, error) {
 	list := []shownWorkspace{}
+	var limits []store.Limit
 	err := db.Read(func(tx *store.Tx) error {
+		var err error
+		if limits, err = tx.Limits(); err != nil {
+			return err
+		}
 		workspaces, err := tx.Workspaces()
 		if err != nil {
 			return err
@@ -111,5 +117,5 @@ func snapshot(db *store.DB, merges map[string]workspace.Merge) ([]shownWorkspace
 		return nil
 	})
 	slices.SortStableFunc(list, func(a, b shownWorkspace) int { return cmp.Compare(a.Name, b.Name) })
-	return list, err
+	return list, limits, err
 }

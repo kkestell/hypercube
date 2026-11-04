@@ -279,7 +279,7 @@ func (ag *agent) threadIdle(thread string) bool {
 }
 
 func (ag *agent) send(ev harness.Event) {
-	if len(ev.Items) > 0 || ev.State != "" || ev.Usage != nil {
+	if len(ev.Items) > 0 || ev.State != "" || ev.Usage != nil || len(ev.Limits) > 0 {
 		ag.emit(ev)
 	}
 }

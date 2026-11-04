@@ -40,7 +40,12 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   hidden `state` item, in order with the other items, with the `final` IDs on an
   idle one. The browser draws a successful turn as its opening message, one
   closed activity row, and the `final` items. Usage: `context`, the tokens of the latest request, `window`, the model's
-  context window, and `cost`, in US dollars.
+  context window, and `cost`, in US dollars. `limits` lists the account's
+  use of the harness's subscription windows that the harness reported: each
+  has `minutes`, the window's length; `used`, the percent of the limit used;
+  `resets`, when the window resets in Unix seconds, or none when unknown; and
+  `at`, when the plugin saw the report, in Unix milliseconds. Hypercube keeps
+  the newest reading of each window of each harness.
 - **Items.** An item has an ID and a kind: text, reasoning, tool, error, or
   attention. A later event with the same item ID replaces the item, or extends
   its text when it sets `append`. A tool item carries the tool's name, input,
@@ -98,7 +103,9 @@ with `--resume`. A conversation Claude Code cannot resume fails the launch.
   idle. A successful result confirms the text of the main agent's newest message
   as the final response, which the idle event reports; a native subagent's
   text is never the final response. Context is the tokens of the latest
-  request; the context window and cost come from each turn's result.
+  request; the context window and cost come from each turn's result. Usage
+  limits come from the five-hour and seven-day windows of Claude's rate limit
+  event, which follows each turn's reply.
 
 ## OpenCode
 
@@ -171,7 +178,8 @@ private storage and resumes the same conversation ID.
 - **State and usage.** The agent is working from the start of a turn until it
   ends. A completed turn reports the main thread's messages that Codex marks as
   its final answer. Context is the tokens of the latest request, and the context window
-  comes from the model.
+  comes from the model. Usage limits come from the windows of the account's
+  general limit in Codex's rate limit updates, which follow each turn.
 
 ## Pi
 

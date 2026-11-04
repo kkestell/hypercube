@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"slices"
@@ -347,6 +348,12 @@ type message struct {
 	ModelUsage     map[string]struct {
 		ContextWindow int `json:"contextWindow"`
 	} `json:"modelUsage"`
+	RateLimitInfo struct {
+		UnifiedWindows map[string]struct {
+			Utilization float64 `json:"utilization"`
+			ResetsAt    int64   `json:"resetsAt"`
+		} `json:"unifiedWindows"`
+	} `json:"rate_limit_info"`
 }
 
 // block is a content block of an assistant or user message.
@@ -415,8 +422,10 @@ func (c *claude) line(line []byte) {
 		ev.Items = append(ev.Items, items...)
 	case "result":
 		c.result(&ev, m)
+	case "rate_limit_event":
+		ev.Limits = limits(m)
 	}
-	if ev.Conversation != "" || ev.State != "" || len(ev.Items) > 0 || ev.Usage != nil {
+	if ev.Conversation != "" || ev.State != "" || len(ev.Items) > 0 || ev.Usage != nil || len(ev.Limits) > 0 {
 		c.emit(ev)
 	}
 }
@@ -610,6 +619,25 @@ func (c *claude) control(ev *harness.Event, m message) {
 	}
 	c.requests.Add(r, items)
 	ev.Items = append(ev.Items, items...)
+}
+
+// windows are the lengths in minutes of the subscription windows claude
+// reports, by its name for each.
+var windows = []struct {
+	name    string
+	minutes int
+}{{"five_hour", 300}, {"seven_day", 10080}}
+
+// limits are the windows a rate limit event reports, as seen now.
+func limits(m message) []harness.Limit {
+	at := time.Now().UnixMilli()
+	var limits []harness.Limit
+	for _, w := range windows {
+		if u, ok := m.RateLimitInfo.UnifiedWindows[w.name]; ok {
+			limits = append(limits, harness.Limit{Minutes: w.minutes, Used: int(math.Round(u.Utilization * 100)), Resets: u.ResetsAt, At: at})
+		}
+	}
+	return limits
 }
 
 // summary is what a result line says about how its turn ended.

@@ -1,7 +1,8 @@
 // The Workspaces view lists every started session under its workspace.
-// The workspace menu reveals stopped sessions, five at a time; the selected session
-// stays visible. Add Workspace is pinned below the list. Started children are
-// always listed under their parent; its menu shows or hides stopped children.
+// The workspace menu reveals stopped sessions, five at a time; the selected
+// session stays visible. Add Workspace and the harnesses' usage limits are
+// pinned below the list. Started children are always listed under their
+// parent; its menu shows or hides stopped children.
 // The view holds still while a session is renamed, so the field keeps its
 // place and focus.
 import {Fragment} from 'preact';
@@ -13,6 +14,7 @@ import '../shared/panel-tabs.css';
 import {useStore} from '../store.js';
 import {SessionItem} from './session-item.jsx';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
+import {UsageLimits} from './usage-limits.jsx';
 import './sidebar.css';
 
 const pageSize = 5;
@@ -108,6 +110,7 @@ export function Sidebar() {
             <vscode-icon name="add" />
             Add Workspace
           </button>
+          <UsageLimits />
         </vscode-tab-panel>
       </vscode-tabs>
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}
