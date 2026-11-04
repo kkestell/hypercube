@@ -26,26 +26,18 @@ test('collapsing a pane keeps both panes mounted', () => {
   expect(mounts).toBe(2);
 });
 
-test('collapsed panes are inert and return focus to their toggle', () => {
-  const toggle = document.createElement('vscode-toolbar-button');
-  toggle.id = 'test-toggle';
-  const button = document.createElement('button');
-  toggle.attachShadow({mode: 'open'}).append(button);
-  document.body.append(toggle, root);
+test('collapsed panes are inert', () => {
   const draw = collapsed => act(() => render(
-    <Split size={50} collapsed={collapsed} focusToggle="test-toggle"><button>Start</button><button>End</button></Split>, root));
+    <Split size={50} collapsed={collapsed}><button>Start</button><button>End</button></Split>, root));
   for (const side of ['start', 'end']) {
     draw(null);
     const pane = root.querySelector(`[slot="${side}"]`);
-    pane.querySelector('button').focus();
     draw(side);
     expect(pane.hasAttribute('inert')).toBe(true);
-    expect(document.activeElement).toBe(toggle);
+    expect(root.querySelector(`[slot="${side === 'start' ? 'end' : 'start'}"]`).hasAttribute('inert')).toBe(false);
     draw(null);
     expect(pane.hasAttribute('inert')).toBe(false);
   }
-  toggle.remove();
-  root.remove();
 });
 
 test('real split panes stay collapsed after mounting inside a hidden parent and restore their sizes', () => {

@@ -18,7 +18,6 @@ export function LayoutToggles() {
         return (
           <vscode-toolbar-button
             key={region}
-            id={`layout-toggle-${region}`}
             toggleable
             checked={shown}
             icon={shown ? icon : icon + '-off'}

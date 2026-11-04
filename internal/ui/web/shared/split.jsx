@@ -21,7 +21,7 @@ handleStyles.replaceSync(`
   .handle-overlay.active + .handle { background-color: var(--vscode-sash-hoverBorder); }
 `);
 
-export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, focusToggle, onResize, children}) {
+export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, children}) {
   const [start, end] = toChildArray(children);
   const ref = useRef(null);
   // The fixed pane's size in pixels, or the start pane's percentage.
@@ -36,9 +36,6 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
 
   useLayoutEffect(() => {
     const element = ref.current;
-    if (collapsed && element.querySelector(`[slot="${collapsed}"]`).contains(document.activeElement)) {
-      document.getElementById(focusToggle)?.shadowRoot?.querySelector('button')?.focus();
-    }
     if (collapsed) element.handlePosition = collapsed === 'start' ? '0px' : '100%';
     else if (fixed === 'start') element.handlePosition = `${kept.current}px`;
     // The split has no width until it and the splits around it have rendered.

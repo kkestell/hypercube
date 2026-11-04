@@ -75,10 +75,10 @@ export function App({store}) {
           <LayoutToggles />
         </header>
         <div class="app-body">
-          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'} focusToggle="layout-toggle-sidebar">
+          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar />
-            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'} focusToggle="layout-toggle-rightPanel">
-              <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'} focusToggle="layout-toggle-panel">
+            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
+              <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main class="app-center"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.session?.id ?? ''} />
               </Split>
