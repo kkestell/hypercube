@@ -18,6 +18,18 @@
   display: block;
 }
 
+/* Side panel content starts --size-panel-inset from the edge. vscode-tabs
+   pads its header by 8px and each panel tab by 10px, so the first tab moves
+   left until its icon starts at the inset, and the addons end at the
+   header's own padding. */
+.panel-tabs > vscode-tab-header:first-of-type {
+  margin-left: calc(var(--size-panel-inset) - 18px);
+}
+
+.panel-tabs > [slot="addons"] {
+  padding: 0;
+}
+
 .panel-tabs > vscode-tab-panel {
   flex: 1;
   min-height: 0;

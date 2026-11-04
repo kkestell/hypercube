@@ -1,5 +1,7 @@
-// A session's own state sits at the far right, beside its worktree branch icon.
-// double-clicking a title renames it in place.
+// A session's tree row. Its right edge shows the worktree branch icon and,
+// only when there is something to say, the session's own state. A click
+// chooses the session; a click on a parent's chevron, or a double-click on the
+// parent, collapses or expands its children.
 import {useEffect, useRef} from 'preact/hooks';
 import {mergeTint} from '../sessions/merge.js';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
@@ -7,37 +9,39 @@ import {StatusDot} from '../shared/status-dot.jsx';
 import {useStore} from '../store.js';
 import './session-item.css';
 
-const dotOf = (session, selected) => {
+const statusOf = (session, selected) => {
+  if (session.activity === 'exited') return <StatusDot kind="exited" title="Exited" />;
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
-  if (session.activity === 'busy') return <StatusDot kind="busy" title="Working" />;
-  return <StatusDot kind="idle" title={session.running ? 'Idle' : 'Stopped'} />;
+  if (session.activity === 'busy') return <vscode-icon class="session-item-busy" name="loading" spin role="img" title="Working" />;
+  return null;
 };
 
-export function SessionItem({session, selected, renaming, onRenaming, hasChildren, expanded, onToggle}) {
-  const [, store] = useStore();
-  const classes = ['session-item', session.parent ? 'session-item-nested' : 'session-item-parent'];
-  const Title = renaming ? 'div' : 'button';
-  if (selected) classes.push('session-item-selected');
-  if (!session.running) classes.push('session-item-stopped');
+export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}) {
+  const [state, store] = useStore();
+  const selected = session.id === state.selected;
+  const classes = ['session-item', !session.running && 'session-item-stopped'].filter(Boolean).join(' ');
+  const toggle = e => {
+    e.stopPropagation();
+    onToggle();
+  };
 
   return (
-    <div class={classes.join(' ')} data-session={session.id}>
-      {hasChildren
-        ? <button class="session-item-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${session.title}`} aria-expanded={expanded} onClick={onToggle}><vscode-icon name={expanded ? 'chevron-down' : 'chevron-right'} /></button>
-        : <span class="session-item-toggle" />}
-      <Title class="session-item-title" aria-current={selected ? 'true' : undefined}
-        onClick={renaming ? undefined : () => chooseSession(store, session.id)}
-        ondblclick={renaming ? undefined : () => onRenaming(true)}>
-        <span class="session-item-title-line">
-          {renaming
-            ? <RenameField session={session} onDone={() => onRenaming(false)} />
-            : <span class="session-item-text">{session.title}</span>}
-        </span>
-      </Title>
-      <span class="session-item-actions">
-        <span class="session-item-branch-slot">{session.worktree && <BranchIcon session={session} />}</span>
-        <span class="session-item-status">{dotOf(session, selected)}</span>
+    <div
+      class={classes} role="treeitem" data-session={session.id} style={{'--session-item-level': level}}
+      aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
+      tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
+      onClick={() => chooseSession(store, session.id)} onDblClick={hasChildren ? toggle : undefined}
+    >
+      <span class="session-item-twistie" onClick={hasChildren ? toggle : undefined}>
+        {hasChildren && <vscode-icon name={expanded ? 'chevron-down' : 'chevron-right'} />}
+      </span>
+      {session.id === renaming
+        ? <RenameField session={session} onDone={() => onRenaming(null)} />
+        : <span class="session-item-title">{session.title}</span>}
+      <span class="session-item-decoration">
+        {session.worktree && <BranchIcon session={session} />}
+        <span class="session-item-status">{statusOf(session, selected)}</span>
       </span>
     </div>
   );
@@ -46,13 +50,12 @@ export function SessionItem({session, selected, renaming, onRenaming, hasChildre
 function BranchIcon({session}) {
   const tint = mergeTint(session.merge);
   const classes = ['session-item-branch', tint && `session-item-branch-${tint}`].filter(Boolean).join(' ');
-  // Slightly smaller than the row's other icons.
-  return <vscode-icon class={classes} name="git-branch" size="14" title={session.merge?.branch} />;
+  return <vscode-icon class={classes} name="git-branch" title={session.merge?.branch} />;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it
-// loses the focus, and cancels on Escape. It keeps its keys and clicks from
-// the sidebar.
+// loses the focus, and cancels on Escape. Enter and Escape return the focus
+// to the row. It keeps its keys and clicks from the tree.
 function RenameField({session, onDone}) {
   const [, store] = useStore();
   const ref = useRef(null);
@@ -74,8 +77,10 @@ function RenameField({session, onDone}) {
 
   const key = e => {
     e.stopPropagation();
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+    const row = ref.current.closest('[role="treeitem"]');
+    finish(e.key === 'Enter');
+    row.focus();
   };
 
   return (
@@ -86,6 +91,7 @@ function RenameField({session, onDone}) {
       value={session.title}
       onKeyDown={key}
       onClick={e => e.stopPropagation()}
+      onDblClick={e => e.stopPropagation()}
       onfocusout={() => finish(true)}
     />
   );

@@ -30,23 +30,29 @@ edits.
 
 ## Browser view
 
-The sidebar groups sessions under their workspace, with child sessions under
-their parent. Click a workspace or a parent's chevron to expand or collapse it.
-Sessions within each workspace stay newest first, in creation order. Workspace
-Actions (`…`) in the sidebar header offers each
-workspace's Show/Hide Stopped Sessions and Delete Workspace actions.
-Show Stopped Sessions reveals the first five stopped sessions; Show more
-appears when there are more. Showing them again starts at five. The selected
-session stays visible, even when stopped. You can also right-click a workspace
-label to open its actions.
+The sidebar lays out sessions as VS Code's Explorer does: each workspace is a
+collapsible section, and its sessions form a tree with child sessions under
+their parent. Click a section header to collapse or expand it, and click a
+parent's chevron or double-click the parent to collapse or expand its
+children. Sessions within each workspace stay newest first, in creation order.
+Hovering or focusing a section header shows its actions: New Session (`+`)
+opens a new session in that workspace, the history button shows or hides the
+workspace's stopped sessions, and More Actions (`…`) offers Show/Hide Stopped
+Sessions and Delete Workspace, which right-clicking the section also offers.
+With the focus on a section header, Enter or Space toggles it, Left collapses
+it, and Right expands it. Showing stopped sessions reveals the first five; Show more appears when
+there are more. Showing them again starts at five. The selected session stays
+visible, even when stopped.
 
 Children appear under their parent in creation order. Running children are
 always visible; Show Stopped Sessions in the parent's menu lists stopped
 children too, and Hide Stopped Sessions hides them again.
 
-Click New Session at the bottom of the sidebar to open a new session, with the
+The sidebar header's New Session button (`+`) opens a new session in the
+current session's workspace, with the
 animated hypercube above its composer. Choose its workspace below the composer;
-Add Workspace beside the selector adds a project and selects it. Changing the
+Add Workspace beside the selector adds a project and selects it. Add Workspace
+in the sidebar header adds a project too. Changing the
 workspace keeps your draft and profile, and resets the Worktree switch.
 The composer chooses the profile until the first prompt is sent, and sending
 that prompt creates the session. In a Git workspace, the Worktree switch beside
@@ -64,17 +70,20 @@ amber when usage is ahead of that pace. Claude Code and Codex report after
 each turn. A window past its reset time keeps its last reported percent,
 dimmed, until the harness reports again.
 
-Click a session to show its chat, and double-click it to change its title.
-Right-click a row to open its menu. A top-level session's menu offers Start/Stop,
-Show/Hide Stopped Sessions when it has children, and Delete. Stopped child rows
-are dimmed; clicking a child of a stopped parent starts the family. Each row's
-dot at the far right shows only its own session: amber means it awaits you, and blue marks a reply
-you have not seen. A gray dot marks an idle or stopped session. Each row spins
-only while its own session works.
+Click a session to show its chat. Up, Down, Home, and End move through the
+tree; Right expands a parent or moves to its first child, Left collapses it or
+moves from a child to its parent, and Enter or Space shows the session. Press F2,
+or choose Rename from a row's menu, to change a session's title. Right-click a
+row, or press Shift+F10 on it, to open its menu. A top-level session's menu offers Start/Stop, Show/Hide
+Stopped Sessions when it has children, Rename, and Delete. Stopped rows are
+dimmed; clicking a child of a stopped parent starts the family. The right edge
+of each row shows only its own session: a spinner while it works, an amber dot
+while it awaits you, a blue dot for a reply you have not seen, and a red dot
+after an unexpected exit. An idle session shows nothing there.
 The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
 
-A worktree session's row shows a branch icon just left of its status dot. The icon is
+A worktree session's row shows a branch icon just left of its status. The icon is
 purple while the branch has commits not merged into the checkout's branch or
 uncommitted files, and dimmed once its commits are merged. Its composer shows the branch
 beside the profile. While the branch has unmerged commits, a Merge button
@@ -85,7 +94,8 @@ state updates whenever a session in the workspace finishes a turn.
 A parent ends children with `end_session`. Ending removes a managed worktree
 and branch only when Git permits it, and stops the child for good. The ended
 row stays dimmed and opens its saved chat with sending disabled. Its menu offers
-Delete Session, which deletes its chat. An active child has no menu.
+Rename and Delete Session, which deletes its chat. An active child's menu
+offers Rename.
 
 Notification cards stack in the top right for unseen replies and open
 questions or approval requests from any session. A card names the workspace,

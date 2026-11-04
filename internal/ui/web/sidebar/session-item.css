@@ -1,101 +1,82 @@
-/* Session rows use the same height and selection colors as VS Code trees. */
+/* Rows are as tall as the Files panel's and start at the panel inset, 8px of indent per
+   level below the first, then a 16px twistie column and its 6px gap. Section
+   headers share the twistie column and gap, so header and row titles align. */
+.sidebar {
+  --session-tree-indent: calc(var(--size-space) * 2);
+  --session-tree-twistie-gap: 6px;
+}
+
 .session-item {
-  position: relative;
   display: flex;
   align-items: center;
   height: var(--size-tree-row-height);
-  padding-right: var(--size-content-inset);
-  padding-left: calc(var(--size-content-inset) + var(--size-icon));
-}
-
-.session-item-nested {
-  padding-left: calc(var(--size-content-inset) + var(--size-icon) * 2);
-}
-
-.session-item-stopped {
-  color: var(--vscode-disabledForeground);
+  padding-right: var(--size-panel-inset);
+  padding-left: calc(var(--size-panel-inset) + var(--session-tree-indent) * (var(--session-item-level) - 1));
+  cursor: pointer;
+  outline: none;
 }
 
 .session-item:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-.session-item-selected {
+.session-item[aria-selected="true"] {
   background: var(--vscode-list-inactiveSelectionBackground);
 }
 
-.session-item-selected .session-item-text {
+.session-tree:focus-within .session-item[aria-selected="true"] {
+  background: var(--vscode-list-activeSelectionBackground);
   color: var(--vscode-list-activeSelectionForeground);
 }
 
-.session-item:has(:focus-visible) {
-  outline: var(--size-border) solid var(--vscode-focusBorder);
+.session-item:focus {
+  outline: var(--size-border) solid var(--vscode-list-focusOutline);
   outline-offset: calc(var(--size-border) * -1);
 }
 
-.session-item button {
-  outline: none;
+/* Stopped sessions are dimmed, as VS Code dims ignored files. */
+.session-item-stopped:not([aria-selected="true"]) {
+  color: var(--vscode-disabledForeground);
 }
 
-.session-item-toggle {
-  position: relative;
-  z-index: 1;
+.session-item-twistie {
   display: flex;
   flex: 0 0 var(--size-icon);
   align-items: center;
-  justify-content: center;
-  height: var(--size-icon);
+  margin-right: var(--session-tree-twistie-gap);
 }
 
 .session-item-title {
-  display: flex;
   flex: 1;
   min-width: 0;
-  text-align: left;
-}
-
-button.session-item-title::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-}
-
-.session-item-title-line {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  width: 100%;
-  height: var(--size-tree-row-height);
-}
-
-@keyframes fade-title-end {
-  from, to {
-    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
-  }
-}
-
-.session-item-text {
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  animation: fade-title-end linear;
-  animation-timeline: scroll(self inline);
 }
 
-.session-item-actions {
-  position: relative;
+.session-item-decoration {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space);
   margin-left: calc(var(--size-space) * 2);
 }
 
-.session-item-status,
-.session-item-branch-slot {
+/* The status keeps its column when empty so branch icons line up. */
+.session-item-status {
   display: flex;
   flex: 0 0 var(--size-icon);
   align-items: center;
   justify-content: center;
-  height: var(--size-icon);
+}
+
+.session-item-busy {
+  color: var(--vscode-descriptionForeground);
+}
+
+.session-item[aria-selected="true"] .session-item-branch,
+.session-item[aria-selected="true"] .session-item-busy {
+  color: inherit;
 }
 
 .session-item-branch-modified {
