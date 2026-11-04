@@ -9,7 +9,7 @@ import (
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 )
 
-func TestServeConfigure(t *testing.T) {
+func TestServeConfigureAliasUsesResolvedModelWindow(t *testing.T) {
 	dir := t.TempDir()
 	script := `#!/bin/sh
 while IFS= read -r line; do
@@ -19,14 +19,18 @@ while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
   case "$line" in
   *'"model":"bad"'*) printf '{"type":"control_response","response":{"subtype":"error","request_id":"%s","error":"bad model"}}\n' "$id";;
-  *'"effortLevel":"max","model":"new"'*)
+  *'"effortLevel":"max","model":"haiku"'*)
    echo '{"type":"control_response","response":{"subtype":"error","request_id":"other","error":"unrelated"}}'
    printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
   *) exit 4;;
   esac;;
- *'"content":"work"'*) echo '{"type":"system","subtype":"session_state_changed","state":"running"}';;
+ *'"content":"work"'*)
+  echo '{"type":"result","modelUsage":{"claude-opus-resolved":{"contextWindow":100}}}'
+  echo '{"type":"system","subtype":"session_state_changed","state":"running"}';;
  *'"type":"user"'*)
-  echo '{"type":"result","modelUsage":{"old":{"contextWindow":100},"new":{"contextWindow":900}}}'
+  echo '{"type":"assistant","message":{"id":"main","model":"claude-haiku-resolved","content":[{"type":"text","text":"OK"}]}}'
+  echo '{"type":"assistant","parent_tool_use_id":"child","message":{"id":"subagent","model":"claude-opus-resolved","content":[{"type":"text","text":"child"}]}}'
+  echo '{"type":"result","modelUsage":{"claude-opus-resolved":{"contextWindow":100},"claude-haiku-resolved":{"contextWindow":900}}}'
   echo '{"type":"system","subtype":"session_state_changed","state":"idle"}';;
  esac
 done
@@ -36,7 +40,7 @@ done
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	c := harnesstest.Serve(t, serve)
-	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "old", Effort: "high", Dir: t.TempDir()}})
+	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "opus", Effort: "high", Dir: t.TempDir()}})
 	if r := c.Reply(1); r.Error != "" {
 		t.Fatal(r)
 	}
@@ -44,7 +48,7 @@ done
 	c.Send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "work"})
 	c.Reply(2)
 	c.Until(func(r harness.Record) bool { return r.Event != nil && r.Event.State == harness.Working })
-	selected := harness.Selection{Model: "new", Effort: "max"}
+	selected := harness.Selection{Model: "haiku", Effort: "max"}
 	c.Send(harness.Command{ID: 3, Command: harness.CmdConfigure, Selection: &selected})
 	// An unrelated control response must not settle the flag override.
 	if r := c.Reply(3); r.Error != "" || r.Selection == nil || *r.Selection != selected {

@@ -34,6 +34,7 @@ type message struct {
 	Event     json.RawMessage `json:"event"`
 	Message   struct {
 		ID      string          `json:"id"`
+		Model   string          `json:"model"`
 		Content json.RawMessage `json:"content"`
 		Usage   struct {
 			Input         int `json:"input_tokens"`
@@ -194,6 +195,9 @@ func (c *claude) assistant(ev *harness.Event, m message) {
 	}
 	if m.Parent == "" {
 		c.mainMessage(m.Message.ID)
+		if m.Message.Model != "" {
+			c.model = m.Message.Model
+		}
 	}
 	for _, b := range blocks {
 		id := fmt.Sprintf("%s:%d", m.Message.ID, c.blocks[m.Message.ID])

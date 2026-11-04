@@ -50,3 +50,22 @@ profiles. Stopped it with Ctrl-C and removed its temporary state. No browser
 rendering or visual check was performed; those belong to the user. Previously
 running sessions need restarting to load the plugin changes. The installed app
 and user workspaces were left alone.
+
+## Review correction
+
+Claude's configured aliases differ from the resolved model IDs in cumulative
+`modelUsage`. The usage lookup now takes the model ID from each main-thread
+assistant message; native subagent messages leave it alone. The serve regression
+switches aliases with two usage entries and a different subagent model. The
+assistant-message source leaves configure's result and partial-apply behavior
+unchanged.
+
+Verified installed Claude Code 2.1.318 with two tiny prompts in a temporary
+directory, with tools and session persistence disabled: `haiku` returned
+`message.model: claude-haiku-5-5`, `opus` returned `claude-opus-5-5`, and the
+second result's `modelUsage` contained both IDs.
+
+The Claude plugin race suite passed. After rebasing onto main `8ad8328` and
+regenerating browser assets, `make check` outside the sandbox passed, including
+333 browser tests and the complete Go race suite. Main is an ancestor of the
+final branch.
