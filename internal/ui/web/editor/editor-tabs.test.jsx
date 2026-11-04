@@ -153,3 +153,10 @@ test('file tab context menu copies its path', () => {
     expect(copy).toHaveBeenCalledWith('/repo/one');
   } finally { copy.mockRestore(); }
 });
+
+test('diff tabs do not offer session-relative path copying', () => {
+  const {root} = setup(state => openTestTab(state, 'diff:src/main.go'));
+  const tab = root.querySelector('[data-tab="diff:src/main.go"] [role=tab]');
+  act(() => tab.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+  expect(document.querySelector('[role=menu]')).toBeNull();
+});

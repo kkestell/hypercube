@@ -177,5 +177,8 @@ test('Command+P opens Quick Open from the terminal for the shown session', async
     expect(event.defaultPrevented).toBe(true);
     expect(document.querySelector('[aria-label="Search files"]')).not.toBeNull();
     expect(document.querySelector('[cmdk-item]').textContent).toBe('src/main.go');
+    act(() => document.querySelector('[aria-label="Search files"]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
+    await act(async () => new Promise(resolve => setTimeout(resolve)));
+    expect(document.activeElement).toBe(root.querySelector('[data-tab="file:src/main.go"] [role=tab]'));
   } finally { unmountAll(); fetches.mockRestore(); }
 });

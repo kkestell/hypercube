@@ -30,7 +30,7 @@ export function EditorTabs({pane, entries}) {
             e.dataTransfer.effectAllowed = 'move';
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
-          <TabsTrigger {...(entry.path ? menu.handlers(entry.path) : {})} className="min-w-0 max-w-64" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
+          <TabsTrigger {...(entry.path && !entry.diff ? menu.handlers(entry.path) : {})} className="min-w-0 max-w-64" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
             {entry.agent ? <Icon name="comment-discussion" /> : entry.browser ? <Icon name="globe" /> : <FileIcon name={entry.name} />}
             <span className={`editor-tabs-label min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
