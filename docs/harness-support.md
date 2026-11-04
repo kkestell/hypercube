@@ -168,7 +168,8 @@ private storage and resumes the same conversation ID.
   write-root, and permission approvals have none. Codex's questions become
   one attention request per question, with the options as choices and free text
   where Codex allows it. Blocking questions are answered together; async
-  questions send each answer as a message and remain open after the turn ends.
+  questions send each answer as a message. New input or a new turn closes any
+  remaining async questions for that thread.
   An MCP server's request is Accept or Decline, or one attention request per
   field of its form. An MCP tool approval offers no Always allow, because Codex
   does not name the tool.

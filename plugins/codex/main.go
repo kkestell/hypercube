@@ -61,17 +61,18 @@ type agent struct {
 
 	// mu guards the state below. Events are emitted with it held, so they keep
 	// the order of the notifications and of answers.
-	mu       sync.Mutex
-	thread   string
-	turn     string                  // the main turn in progress
-	ended    string                  // the last main turn that completed
-	final    []string                // the main turn's final answer messages so far
-	finished map[string]bool         // items that have completed
-	open     map[string]harness.Item // streamed items that have not completed
-	running  map[string]harness.Item // tool items that have not completed
-	children map[string]string       // subagent thread to the item that started it
-	requests plugin.Requests[request]
-	errs     plugin.Errors
+	mu        sync.Mutex
+	thread    string
+	turn      string                  // the main turn in progress
+	ended     string                  // the last main turn that completed
+	final     []string                // the main turn's final answer messages so far
+	finished  map[string]bool         // items that have completed
+	open      map[string]harness.Item // streamed items that have not completed
+	running   map[string]harness.Item // tool items that have not completed
+	children  map[string]string       // subagent thread to the item that started it
+	requests  plugin.Requests[request]
+	answering *request // async question whose answer is being sent
+	errs      plugin.Errors
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
@@ -231,6 +232,9 @@ func (ag *agent) input(text string, images []harness.Image) error {
 		err := ag.call(ctx, "turn/steer", map[string]any{"threadId": thread, "expectedTurnId": turn, "input": userInput(text, images)}, nil)
 		cancel()
 		if err == nil {
+			ag.mu.Lock()
+			ag.send(harness.Event{Items: ag.closeAsyncQuestions(thread)})
+			ag.mu.Unlock()
 			return nil
 		}
 		// Codex answers a steer after the turn ended with the invalid request
@@ -255,6 +259,7 @@ func (ag *agent) input(text string, images []harness.Image) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	var ev harness.Event
+	ev.Items = ag.closeAsyncQuestions(thread)
 	ag.startTurn(&ev, started.Turn.ID)
 	ag.send(ev)
 	return nil
@@ -289,7 +294,7 @@ func (ag *agent) interrupt() error {
 	thread, turn := ag.thread, ag.turn
 	var ev harness.Event
 	// Codex waits for the answers of requests it has sent.
-	ev.Items = ag.closeRequests(func(r *request) bool { return !r.async }, true)
+	ev.Items = ag.closeRequests(blockingRequest, true)
 	ag.send(ev)
 	ag.mu.Unlock()
 	if turn == "" {

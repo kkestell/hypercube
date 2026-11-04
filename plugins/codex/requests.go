@@ -49,7 +49,7 @@ type request struct {
 	questionIDs []string        // the ID of each question, by item
 	form        []formField     // the fields of a form, by item; nil without one
 	async       bool            // an async question answered by a user message
-	sending     bool            // its answer is being sent
+	thread      string          // async question's thread
 }
 
 // formField is a field of an elicitation's form.
@@ -411,19 +411,7 @@ func (ag *agent) answer(item, choice, text string) error {
 		answer = text
 	}
 	if r.async {
-		if r.sending {
-			return errors.New("the answer is being sent")
-		}
-		r.sending = true
-		ag.mu.Unlock()
-		err := ag.input(open.Item.Text+"\n\n"+answer, nil)
-		ag.mu.Lock()
-		r.sending = false
-		if err != nil {
-			return err
-		}
-		ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, answer)}})
-		return nil
+		return ag.answerAsync(open, answer)
 	}
 	// A form answer that cannot be converted is refused at once.
 	if r.form != nil {
@@ -443,6 +431,26 @@ func (ag *agent) answer(item, choice, text string) error {
 	}
 	ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, answer)}})
 	return nil
+}
+
+// answerAsync temporarily releases mu while input waits for Codex.
+func (ag *agent) answerAsync(open plugin.Open[request], answer string) error {
+	ag.answering = open.Request
+	ag.mu.Unlock()
+	err := ag.input(open.Item.Text+"\n\n"+answer, nil)
+	ag.mu.Lock()
+	ag.answering = nil
+	if err != nil {
+		return err
+	}
+	ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(open.Item.ID, answer)}})
+	return nil
+}
+
+func blockingRequest(r *request) bool { return !r.async }
+
+func (ag *agent) closeAsyncQuestions(thread string) []harness.Item {
+	return ag.closeRequests(func(r *request) bool { return r.async && r.thread == thread && r != ag.answering }, false)
 }
 
 // closeRequests finishes the items of the requests that match, which nobody
