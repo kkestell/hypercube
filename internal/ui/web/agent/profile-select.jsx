@@ -36,10 +36,10 @@ export function ProfileSelect({session}) {
         <span className="truncate">{selected ? profileLabel(selected) : 'Select profile'}</span><Icon name="chevron-down" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start">
+    <DropdownMenuContent side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
       <DropdownMenuRadioGroup value={unsent.profile ?? ''} onValueChange={choose}>
         {profiles.map(p => <DropdownMenuRadioItem key={p.name} value={p.name}>
-          <span>{profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
+          <span className="min-w-0 whitespace-normal break-words">{profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
         </DropdownMenuRadioItem>)}
       </DropdownMenuRadioGroup>
     </DropdownMenuContent>

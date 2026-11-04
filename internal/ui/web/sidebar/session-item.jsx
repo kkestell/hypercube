@@ -29,7 +29,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   };
 
   return (
-    <Button asChild variant={selected ? 'secondary' : 'ghost'}><div
+    <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm"><div
       className={classes} role="treeitem" data-session={session.id}
       aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
@@ -41,9 +41,9 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       {session.id === renaming
         ? <RenameField session={session} onDone={() => onRenaming(null)} />
         : <span className="session-item-title min-w-0 flex-1 truncate text-left">{session.title}</span>}
-      <span className="session-item-decoration ml-auto flex items-center gap-2">
+      <span className="session-item-decoration ml-auto grid w-10 shrink-0 grid-cols-2 items-center gap-2">
         {session.worktree && <BranchIcon session={session} />}
-        <span className="session-item-status inline-flex">{statusOf(session, selected)}</span>
+        <span className="session-item-status col-start-2 inline-flex size-4 items-center justify-center">{statusOf(session, selected)}</span>
       </span>
     </div></Button>
   );
@@ -51,7 +51,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
 
 function BranchIcon({session}) {
   const title = session.merge ? `${session.merge.branch}: ${mergeSummary(session.merge)}` : 'Worktree';
-  return <span className="session-item-branch inline-flex text-muted-foreground" title={title}>
+  return <span className="session-item-branch col-start-1 inline-flex text-muted-foreground" title={title}>
     <Icon name="git-branch" title={title} role="img" />
   </span>;
 }

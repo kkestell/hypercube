@@ -36,14 +36,25 @@ const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] .se
   .map(icon => ({'Waiting on you': 'waiting', 'New reply': 'unseen', Exited: 'exited'})[icon.getAttribute('aria-label')]).filter(Boolean);
 const pick = (root, index) => clickControl(document.querySelectorAll('[role=menuitem]')[index]);
 const workspaceMenu = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [title="More Actions"]`));
-test('all sessions remain visible in order as their state changes', () => {
+test('running sessions come before stopped sessions, preserving order within each group', () => {
   const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: i % 2 === 0}));
   const {store, root} = setup(sessions);
-  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
+  const running = sessions.filter(s => s.running).map(s => s.id);
+  const stopped = sessions.filter(s => !s.running).map(s => s.id);
+  expect(sessionRows(root)).toEqual([...running, ...stopped]);
   expect(row(root, 's21').classList.contains('opacity-60')).toBe(true);
   store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: sessions.map(item => ({...item, running: !item.running}))}]}));
-  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
+  expect(sessionRows(root)).toEqual([...stopped, ...running]);
   expect(row(root, 's22').classList.contains('opacity-60')).toBe(true);
+});
+
+test('a running child keeps its stopped parent ahead of stopped sessions', () => {
+  const {root} = setup([
+    session('stopped', {running: false}),
+    session('parent', {running: false, children: [session('child', {parent: 'parent'})]}),
+    session('running'),
+  ]);
+  expect(sessionRows(root)).toEqual(['parent', 'child', 'running', 'stopped']);
 });
 
 test('Add Workspace works even when no workspaces exist', () => {

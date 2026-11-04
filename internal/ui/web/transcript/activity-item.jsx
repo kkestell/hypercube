@@ -10,7 +10,7 @@ export function ActivityItem({row, session, expanded, setOpen}) {
   return (
     <Disclosure className="activity-item" open={open} onToggle={open => setOpen(row.key, open)} summary={summary}>
       {open && (
-        <div className="activity-item-rows space-y-4 border-l pl-4">
+        <div className="activity-item-rows space-y-1 border-l pl-4">
           {row.rows.map(inner => <TranscriptRow key={inner.item.id} row={inner} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       )}

@@ -103,7 +103,7 @@ test('the window header holds the three layout toggles and they hide and show th
 });
 
 test('shortcuts navigate visible sessions, toggle panels and leave terminal and editing keys alone', () => {
-  const sessions = ['a', 'b'].map(id => ({id, title: id, running: true, activity: 'idle', children: []}));
+  const sessions = ['a', 'b'].map(id => ({id, title: id, running: id === 'b', activity: 'idle', children: []}));
   const store = createStore(receivedWorkspaces({
     workspaces: [], limits: [], requests: [], selected: 'a', pending: null, unsent: null,
     visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
@@ -121,7 +121,7 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   send(row(), 'ArrowUp', {metaKey: true, altKey: true});
   expect(store.get().selected).toBe('a');
   send(row(), '2', {metaKey: true});
-  expect(store.get().selected).toBe('b');
+  expect(store.get().selected).toBe('a');
   const field = root.querySelector('.composer-text');
   expect(send(field, 'b', {metaKey: true})).toBe(false);
   expect(send(root.querySelector('.terminal-panel'), 'j', {metaKey: true})).toBe(false);

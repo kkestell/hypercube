@@ -3,6 +3,7 @@
 // renaming so the field keeps its place and focus.
 import {useCallback, useRef, useState} from 'react';
 import {addWorkspace} from '../sessions/session-actions.js';
+import {runningFirst} from '../sessions/selection.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
@@ -24,7 +25,10 @@ export function Sidebar() {
   const closeMenu = useCallback(() => setMenu(null), []);
   const frozen = useRef(state.workspaces);
 
-  if (!renaming) frozen.current = state.workspaces;
+  if (!renaming) frozen.current = state.workspaces.map(workspace => ({
+    ...workspace,
+    sessions: runningFirst(workspace.sessions),
+  }));
   const workspaces = frozen.current;
   const sessionById = id => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
 

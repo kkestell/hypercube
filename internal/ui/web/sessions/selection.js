@@ -9,6 +9,9 @@ import {agentTabs, openBrowserTab} from '../editor/editor.js';
 export const allSessions = state => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 export const waitingCount = state => allSessions(state).filter(s => s.attention).length;
 
+const hasRunningAgent = session => (session.running && !session.ended) || session.children.some(child => child.running && !child.ended);
+export const runningFirst = sessions => sessions.toSorted((a, b) => Number(hasRunningAgent(b)) - Number(hasRunningAgent(a)));
+
 export const currentSession = state => allSessions(state).find(s => s.id === state.selected);
 
 // sessionOf finds a session, its workspace, and its parent when it is a child.

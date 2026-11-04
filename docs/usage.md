@@ -31,8 +31,9 @@ edits.
 ## Browser view
 
 The sidebar lays out sessions as VS Code's Explorer does: each workspace is a
-collapsible section, with all its top-level sessions newest first. Children
-appear under their parent in creation order. Stopped and ended sessions are
+collapsible section, with running sessions ahead of stopped sessions, keeping
+creation order within each group. A parent with a running child stays in the
+running group. Children appear under their parent in creation order. Stopped and ended sessions are
 dimmed, and a long list scrolls. Click a section header to collapse or expand
 it, and click a parent's chevron or double-click the parent to collapse or
 expand its children. Hovering or focusing a section header shows New Session

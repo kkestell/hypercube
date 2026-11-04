@@ -19,18 +19,18 @@ export function EditorTabs({pane, entries}) {
     flushSync(() => store.update(s => closeTab(s, id)));
     (strip.current ?? area)?.querySelector('[role="tab"][data-state="active"]')?.focus();
   };
-  return <div className="editor-tabs-bar flex shrink-0 items-center justify-between gap-2 overflow-x-auto border-b p-2">
-    <Tabs value={pane?.active ?? ''} onValueChange={id => store.update(s => selectTab(s, pane.id, id))}>
-      <TabsList ref={strip} className="editor-tabs" aria-label="Open tabs">
-        {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex items-center"
+  return <div className="editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-2 border-b p-2">
+    <Tabs className="min-w-0 flex-1 overflow-x-auto" value={pane?.active ?? ''} onValueChange={id => store.update(s => selectTab(s, pane.id, id))}>
+      <TabsList ref={strip} className="editor-tabs max-w-full justify-start" aria-label="Open tabs">
+        {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex min-w-0 max-w-full shrink-0 items-center"
           onDragStart={e => {
             e.dataTransfer.setData('text/plain', entry.id);
             e.dataTransfer.effectAllowed = 'move';
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
-          <TabsTrigger value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
+          <TabsTrigger className="min-w-0 max-w-64" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
             {entry.agent ? <Icon name="comment-discussion" /> : entry.browser ? <Icon name="globe" /> : <FileIcon name={entry.name} />}
-            <span className={`editor-tabs-label ${entry.preview ? 'italic' : ''} ${entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
+            <span className={`editor-tabs-label min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
           {!entry.agent && <Button className="editor-tabs-close" variant="ghost" size="icon" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>}
         </div>)}

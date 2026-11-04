@@ -24,8 +24,8 @@ export function NotificationCard({card}) {
   }, [card.key]);
 
   return (
-    <Card className="notification-card" role="alert">
-      <CardHeader className="notification-card-header">
+    <Card className="notification-card gap-2 py-3" role="alert">
+      <CardHeader className="notification-card-header gap-1 px-3">
         <CardTitle className="min-w-0">
           {card.session
             ? <span className="notification-card-session min-w-0 truncate" title={card.session.title}>{card.session.title}</span>
@@ -36,12 +36,12 @@ export function NotificationCard({card}) {
           {card.parent && <><Icon name="chevron-right" /><span className="truncate" title={card.parent.title}>{card.parent.title}</span></>}
         </CardDescription>}
         <CardAction className="notification-card-actions flex items-center gap-1">
-          {card.session && <Button variant="ghost" size="icon" aria-label="View Session" title="View Session" onClick={() => chooseSession(store, card.session.id)}><Icon name="eye" /></Button>}
-          <Button variant="ghost" size="icon" aria-label="Close" title="Close" onClick={() => closeCard(store, card)}><Icon name="close" /></Button>
+          {card.session && <Button variant="ghost" size="icon-xs" aria-label="View Session" title="View Session" onClick={() => chooseSession(store, card.session.id)}><Icon name="eye" /></Button>}
+          <Button variant="ghost" size="icon-xs" aria-label="Close" title="Close" onClick={() => closeCard(store, card)}><Icon name="close" /></Button>
         </CardAction>
       </CardHeader>
       {card.session && (
-        <CardContent className="notification-card-details space-y-3">
+        <CardContent className="notification-card-details space-y-2 px-3">
           {card.kind === 'request' ? (
             <>
               <div className="notification-card-text whitespace-pre-wrap break-words">{card.item.text ?? ''}</div>

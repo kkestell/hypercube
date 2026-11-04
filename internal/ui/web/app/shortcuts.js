@@ -1,5 +1,5 @@
 import {chooseSession} from '../sessions/session-actions.js';
-import {openUnsent} from '../sessions/selection.js';
+import {openUnsent, runningFirst} from '../sessions/selection.js';
 import {toggle} from './workbench.js';
 
 // The tree renders only rows exposed by its workspace and parent sections.
@@ -14,7 +14,7 @@ export function shortcut(e, store, focusComposer) {
   if (command && !e.altKey && key === 'n') action = () => store.update(s => openUnsent(s));
   else if (command && !e.altKey && key === 'l') action = focusComposer;
   else if (command && !e.altKey && /^[1-9]$/.test(key)) {
-    const session = state.workspaces.flatMap(w => w.sessions)[Number(key) - 1];
+    const session = state.workspaces.flatMap(w => runningFirst(w.sessions))[Number(key) - 1];
     if (session) action = () => chooseSession(store, session.id);
   } else if ((!e.metaKey && e.ctrlKey && !e.altKey && key === 'tab') ||
              (command && e.altKey && (key === 'arrowdown' || key === 'arrowup'))) {

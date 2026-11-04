@@ -9,7 +9,7 @@ import {TranscriptRow} from './transcript-item.jsx';
 
 function Title({item}) {
   const [name, detail] = toolTitle(item);
-  return <span className="tool-items-title min-w-0 break-words text-sm"><span className="tool-items-name font-medium">{name}</span> {detail}</span>;
+  return <span className="tool-items-title min-w-0 truncate text-sm" title={[name, detail].filter(Boolean).join(' ')}><span className="tool-items-name font-medium">{name}</span> {detail}</span>;
 }
 
 export function ToolCall({call, session, expanded, setOpen}) {
@@ -21,13 +21,13 @@ export function ToolCall({call, session, expanded, setOpen}) {
     : <Icon name="check" role="img" title="Done" />;
   return (
     <Disclosure className="tool-items-call space-y-2" open={open} onToggle={open => setOpen(item.id, open)}
-      summary={<span className="tool-items-header flex min-w-0 items-center gap-2"><span className="tool-items-status shrink-0">{status}</span><Title item={item} /></span>}>
+      summary={<span className="tool-items-header flex min-w-0 flex-1 items-center gap-2"><span className="tool-items-status shrink-0">{status}</span><Title item={item} /></span>}>
       {open && (
         <div className="tool-items-body space-y-2 pl-6">
           {input && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre></CardContent></Card>}
           {output && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre></CardContent></Card>}
           {children.length > 0 && (
-            <div className="tool-items-children space-y-3 border-l pl-3">
+            <div className="tool-items-children space-y-1 border-l pl-3">
               {children.map(row => <TranscriptRow key={row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
             </div>
           )}
