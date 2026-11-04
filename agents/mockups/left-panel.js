@@ -63,12 +63,6 @@ changes.addEventListener('click', event => {
   if (row) openDiff(row);
 });
 
-document.querySelector('.mockup-scm-group').addEventListener('click', ({currentTarget: group}) => {
-  const open = group.ariaExpanded !== 'true';
-  group.ariaExpanded = open;
-  changes.hidden = !open;
-});
-
 tabs.addEventListener('click', event => {
   const tab = event.target.closest('.editor-tabs-tab');
   if (!tab) return;
