@@ -2,19 +2,19 @@
   display: flex;
   flex-direction: column;
   max-width: 100%;
-  gap: calc(var(--size-space) * 2);
-  padding: calc(var(--size-space) * 2.5) calc(var(--size-space) * 2);
-  border: var(--size-border) solid var(--vscode-notificationToast-border);
-  border-radius: var(--size-radius);
+  gap: var(--size-space-8);
+  padding: var(--size-space-8);
+  border: var(--size-border) solid var(--vscode-widget-border);
+  border-radius: var(--size-radius-control);
   background: var(--vscode-notifications-background);
   color: var(--vscode-notifications-foreground);
-  box-shadow: 0 0 calc(var(--size-space) * 2) var(--vscode-widget-shadow);
+  box-shadow: 0 0 var(--size-space-8) var(--vscode-widget-shadow);
 }
 
 .notification-card-header {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
 }
 
 .notification-card-error {
@@ -36,7 +36,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
   min-width: 0;
 }
 
@@ -62,7 +62,7 @@
 .notification-card-source {
   display: flex;
   flex-direction: column;
-  gap: var(--size-space);
+  gap: var(--size-space-4);
   min-width: 0;
 }
 
@@ -76,9 +76,9 @@
 .notification-card-context {
   display: flex;
   align-items: center;
-  gap: var(--size-space);
+  gap: var(--size-space-4);
   color: var(--vscode-descriptionForeground);
-  font-size: calc(var(--vscode-font-size) - 1px);
+  font-size: var(--size-font-label);
 }
 
 .notification-card-context vscode-icon {

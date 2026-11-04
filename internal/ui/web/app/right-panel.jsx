@@ -3,7 +3,7 @@
 import {ChangesPanel} from '../changes/changes-panel.jsx';
 import {FilesPanel} from '../files/files-panel.jsx';
 import {useStore} from '../store.js';
-import '../shared/panel-tabs.css';
+import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {selectRightTab} from './workbench.js';
 import './right-panel.css';
 
@@ -14,19 +14,13 @@ const tabs = [
 
 export function RightPanel() {
   const [state, store] = useStore();
-  const selected = tabs.findIndex(tab => tab.id === state.workbench.rightTab);
   return (
     <aside class="right-panel">
-      <vscode-tabs class="panel-tabs" panel selected-index={selected}
-        onvsc-tabs-select={e => store.update(s => selectRightTab(s, tabs[e.detail.selectedIndex].id))}>
-        {tabs.map(tab => (
-          <vscode-tab-header key={tab.id} slot="header" title={tab.title} aria-label={tab.title}>
-            <vscode-icon name={tab.icon} />
-          </vscode-tab-header>
-        ))}
-        <vscode-tab-panel><FilesPanel key={state.session?.id} /></vscode-tab-panel>
-        <vscode-tab-panel><ChangesPanel /></vscode-tab-panel>
-      </vscode-tabs>
+      <PanelTabs label="Session views" tabs={tabs} selected={state.workbench.rightTab}
+        onSelect={id => store.update(s => selectRightTab(s, id))}>
+        <FilesPanel key={state.session?.id} />
+        <ChangesPanel />
+      </PanelTabs>
     </aside>
   );
 }

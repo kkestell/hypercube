@@ -3,19 +3,52 @@
 :root {
   --vscode-font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
   --vscode-editor-font-family: "Iosevka Term Extended", Menlo, monospace;
-  --vscode-editor-font-size: 12px;
+  --vscode-editor-font-size: var(--size-font-label);
 
-  --size-border: 1px;
-  --size-scrollbar: 6px;
-  --size-space: 4px;
+  --size-space-2: 2px;
+  --size-space-4: 4px;
+  --size-space-6: 6px;
+  --size-space-8: 8px;
+  --size-space-12: 12px;
+  --size-space-16: 16px;
+  --size-space-20: 20px;
+  --size-space-24: 24px;
+  --size-space-28: 28px;
+  --size-space-32: 32px;
+  --size-space-40: 40px;
+
+  --size-panel-inset: var(--size-space-8);
+  --size-bar-height: 35px;
   --size-row-height: 22px;
   --size-tree-row-height: 24px;
-  --size-content-inset: 14px;
-  --size-panel-inset: 8px;
-  --size-bar-height: 35px;
+  --size-status-bar-height: 30px;
+  --size-tree-indent: var(--size-space-8);
   --size-icon: 16px;
+  --size-icon-column: calc(var(--size-icon) + var(--size-space-6));
+  --size-action: 20px;
   --size-dot: 8px;
-  --size-radius: 4px;
+  --size-border: 1px;
+  --size-scrollbar: 6px;
+
+  --size-radius-small: 2px;
+  --size-radius-control: 4px;
+  --size-radius-surface: 8px;
+  --size-radius-round: 50%;
+  --size-font-body: var(--vscode-font-size);
+  --size-font-label: 12px;
+  --size-font-heading: 18px;
+  --size-line-body: 1.5;
+  --size-line-heading: 1.25;
+
+  --size-thumbnail: 56px;
+  --size-composer-max-height: 160px;
+  --size-mentions-max-height: 200px;
+  --size-menu-min-width: 160px;
+  --size-tab-max-width: 220px;
+  --size-preview-max-height: calc(var(--size-row-height) * 12);
+  --size-find-width: calc(var(--size-row-height) * 8);
+  --size-notification-max-width: 448px;
+  --size-dialog-min-width: 500px;
 }
 
 *,
@@ -37,7 +70,7 @@ body {
   background: var(--vscode-editor-background);
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
+  font-size: var(--size-font-body);
   font-weight: var(--vscode-font-weight);
   -webkit-font-smoothing: antialiased;
 }
@@ -65,7 +98,7 @@ vscode-toolbar-container {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  padding: 0 calc(var(--size-space) * 2);
+  padding: 0 var(--size-space-8);
 }
 
 vscode-toolbar-container vscode-toolbar-button:focus-within {

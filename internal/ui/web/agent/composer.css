@@ -1,13 +1,12 @@
 .composer {
-  --composer-details-font-size: calc(var(--vscode-font-size) - var(--size-border) * 2);
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
-  gap: calc(var(--size-space) * 2);
-  margin: calc(var(--size-space) * 3) var(--size-content-inset) var(--size-content-inset);
-  padding: calc(var(--size-space) * 2);
-  border: var(--size-border) solid var(--vscode-input-border);
-  border-radius: calc(var(--size-radius) * 2);
+  gap: var(--size-space-8);
+  margin: var(--size-panel-inset);
+  padding: var(--size-space-8);
+  border: var(--size-border) solid var(--vscode-widget-border);
+  border-radius: var(--size-radius-surface);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
 }
@@ -25,7 +24,7 @@
 .composer-images {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
 }
 
 .composer-image {
@@ -34,22 +33,22 @@
 
 .composer-image img {
   display: block;
-  width: calc(var(--size-space) * 14);
-  height: calc(var(--size-space) * 14);
+  width: var(--size-thumbnail);
+  height: var(--size-thumbnail);
   object-fit: cover;
-  border-radius: var(--size-radius);
+  border-radius: var(--size-radius-control);
 }
 
 .composer-image-remove {
   position: absolute;
-  top: calc(var(--size-space) * -1);
-  right: calc(var(--size-space) * -1);
+  top: calc(var(--size-space-4) * -1);
+  right: calc(var(--size-space-4) * -1);
 }
 
 .composer-text {
-  min-height: calc(var(--size-space) * 7);
-  max-height: calc(var(--size-space) * 40);
-  padding: var(--size-space) calc(var(--size-space) * 2);
+  min-height: var(--size-space-28);
+  max-height: var(--size-composer-max-height);
+  padding: var(--size-space-4) var(--size-space-8);
   border: 0;
   outline: 0;
   resize: none;
@@ -67,7 +66,7 @@
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
   min-width: 0;
   container: composer-bar / inline-size;
 }
@@ -76,19 +75,17 @@
   flex: 0 0 auto;
 }
 
-/* The details and the controls among them share one smaller size and the
-   description color. The controls read --vscode-font-size, so the details
-   set it from --composer-details-font-size, which .composer resolves. */
+/* The controls read --vscode-font-size, so their details share the label size. */
 .composer-details {
-  --vscode-font-size: var(--composer-details-font-size);
+  --vscode-font-size: var(--size-font-label);
   --vscode-settings-dropdownForeground: var(--vscode-descriptionForeground);
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  gap: calc(var(--size-space) * 4);
+  gap: var(--size-space-16);
   min-width: 0;
   color: var(--vscode-descriptionForeground);
-  font-size: var(--vscode-font-size);
+  font-size: var(--size-font-label);
   white-space: nowrap;
 }
 
@@ -115,7 +112,7 @@
   display: flex;
   flex: 0 1 auto;
   align-items: center;
-  gap: var(--size-space);
+  gap: var(--size-space-4);
   min-width: 0;
 }
 
@@ -130,7 +127,7 @@
 
 .composer-merge {
   flex: 0 0 auto;
-  margin-left: var(--size-space);
+  margin-left: var(--size-space-4);
 }
 
 /* The usage numbers yield to the ring before the label loses room. */
@@ -142,15 +139,15 @@
 }
 
 .composer-mentions {
-  max-height: calc(var(--size-space) * 50);
+  max-height: var(--size-mentions-max-height);
   overflow: auto;
   background: var(--vscode-editorSuggestWidget-background);
   color: var(--vscode-editorSuggestWidget-foreground);
-  border: var(--size-border) solid var(--vscode-editorSuggestWidget-border);
+  border: var(--size-border) solid var(--vscode-widget-border);
 }
 
 .composer-mentions [role="option"] {
-  padding: var(--size-space) calc(var(--size-space) * 2);
+  padding: var(--size-space-4) var(--size-space-8);
 }
 
 .composer-mentions [aria-selected="true"] {

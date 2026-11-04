@@ -1,14 +1,14 @@
 .notification-stack {
   position: fixed;
-  top: calc(var(--size-bar-height) + var(--size-space) * 2);
-  right: calc(var(--size-space) * 3);
+  top: calc(var(--size-bar-height) + var(--size-space-8));
+  right: var(--size-space-12);
   z-index: 40;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
   width: max-content;
-  max-width: min(calc(var(--size-space) * 112), calc(100vw - var(--size-space) * 6));
-  max-height: calc(100vh - var(--size-bar-height) - var(--size-space) * 4);
+  max-width: min(var(--size-notification-max-width), calc(100vw - var(--size-space-24)));
+  max-height: calc(100vh - var(--size-bar-height) - var(--size-space-16));
   overflow-y: auto;
 }

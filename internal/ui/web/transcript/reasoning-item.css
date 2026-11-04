@@ -1,6 +1,6 @@
 .reasoning-item {
   color: var(--vscode-descriptionForeground);
-  line-height: 1.5;
+  line-height: var(--size-line-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

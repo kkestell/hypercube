@@ -2,7 +2,7 @@
 .workspace-section-header {
   display: flex;
   align-items: center;
-  height: var(--size-row-height);
+  height: var(--size-tree-row-height);
   padding: 0 var(--size-panel-inset);
   border-top: var(--size-border) solid var(--vscode-sideBarSectionHeader-border);
   background: var(--vscode-sideBarSectionHeader-background);
@@ -27,7 +27,7 @@
   width: 100%;
   height: 100%;
   padding: 0;
-  font-size: 11px;
+  font-size: var(--size-font-label);
   font-weight: 700;
   text-align: left;
   text-transform: uppercase;
@@ -40,7 +40,7 @@
 
 .workspace-section-toggle vscode-icon {
   flex-shrink: 0;
-  margin-right: var(--session-tree-twistie-gap);
+  margin-right: var(--size-space-6);
 }
 
 .workspace-section-name {
@@ -65,7 +65,7 @@
   align-items: center;
   width: 100%;
   height: var(--size-tree-row-height);
-  padding-left: calc(var(--size-panel-inset) + var(--size-icon) + var(--session-tree-twistie-gap));
+  padding-left: calc(var(--size-panel-inset) + var(--size-icon-column));
   color: var(--vscode-textLink-foreground);
   text-align: left;
 }

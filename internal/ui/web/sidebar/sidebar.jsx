@@ -5,7 +5,7 @@ import {useCallback, useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
 import {openUnsent} from '../sessions/selection.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
-import '../shared/panel-tabs.css';
+import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
 import {pageSize, WorkspaceSection} from './workspace-section.jsx';
@@ -62,15 +62,11 @@ export function Sidebar() {
 
   return (
     <div class="sidebar">
-      <vscode-tabs class="panel-tabs" panel selected-index="0">
-        <vscode-tab-header slot="header" title="Sessions" aria-label="Sessions">
-          <vscode-icon name="comment-discussion" />
-        </vscode-tab-header>
-        <vscode-toolbar-container slot="addons">
+      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
           <vscode-toolbar-button icon="add" label="New Session" title="New Session (⌘N)" onClick={() => store.update(s => openUnsent(s))} />
           <vscode-toolbar-button icon="new-folder" label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)} />
-        </vscode-toolbar-container>
-        <vscode-tab-panel class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>
+        </>}>
+        <div class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>
           {workspaces.map(workspace => (
             <WorkspaceSection
               key={workspace.id} workspace={workspace}
@@ -81,8 +77,8 @@ export function Sidebar() {
               showStopped={showStopped} renaming={renaming} onRenaming={setRenaming}
             />
           ))}
-        </vscode-tab-panel>
-      </vscode-tabs>
+        </div>
+      </PanelTabs>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );

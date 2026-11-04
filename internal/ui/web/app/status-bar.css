@@ -5,11 +5,11 @@
   flex-shrink: 0;
   justify-content: flex-end;
   align-items: center;
-  gap: calc(var(--size-space) * 8);
-  height: calc(var(--size-row-height) + var(--size-space) * 2);
-  padding: 0 var(--size-content-inset);
+  gap: var(--size-space-32);
+  height: var(--size-status-bar-height);
+  padding: 0 var(--size-panel-inset);
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--size-font-label);
   white-space: nowrap;
   background: var(--vscode-statusBar-background);
   color: var(--vscode-statusBar-foreground);
@@ -21,28 +21,28 @@
 .status-bar-left {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 2);
 }
 
 .status-bar-harness {
-  gap: calc(var(--size-space) * 4);
+  gap: var(--size-space-16);
 }
 
 .status-bar-window {
+  gap: var(--size-space-8);
   font-variant-numeric: tabular-nums;
 }
 
 .status-bar-left {
-  gap: var(--size-space);
+  gap: var(--size-space-4);
   color: var(--vscode-descriptionForeground);
 }
 
 /* The pace mark stands above and below the bar so it shows at either end. */
 .status-bar-meter {
   position: relative;
-  width: calc(var(--size-space) * 10);
-  height: var(--size-space);
-  border-radius: calc(var(--size-space) / 2);
+  width: var(--size-space-40);
+  height: var(--size-space-4);
+  border-radius: var(--size-radius-small);
   background: var(--vscode-input-background);
 }
 
@@ -59,10 +59,10 @@
 
 .status-bar-meter-pace {
   position: absolute;
-  top: calc(var(--size-space) * -0.75);
-  bottom: calc(var(--size-space) * -0.75);
+  top: 50%;
   width: var(--size-border);
-  margin-left: calc(var(--size-border) / -2);
+  height: calc(var(--size-space-8) + var(--size-space-2));
+  transform: translate(-50%, -50%);
   background: var(--vscode-statusBar-foreground);
 }
 
