@@ -1,0 +1,35 @@
+.transcript-container {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.transcript-find {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  right: calc(var(--size-space) * 3);
+  display: flex;
+  align-items: center;
+  gap: var(--size-space);
+  padding: calc(var(--size-space) * 2);
+  background: var(--vscode-editorWidget-background);
+  border: var(--size-border) solid var(--vscode-editorWidget-border);
+  box-shadow: 0 var(--size-space) calc(var(--size-space) * 3) var(--vscode-widget-shadow);
+}
+
+.transcript-find vscode-textfield { width: 180px; }
+.transcript-find-count { white-space: nowrap; color: var(--vscode-descriptionForeground); }
+.transcript-find button {
+  border: 0;
+  padding: var(--size-space);
+  color: var(--vscode-icon-foreground);
+  background: transparent;
+  cursor: pointer;
+}
+.transcript-find button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.transcript-find button:disabled { opacity: .4; }
+
+::highlight(transcript-find) { background: var(--vscode-editor-findMatchHighlightBackground); }
+::highlight(transcript-find-current) { background: var(--vscode-editor-findMatchBackground); }

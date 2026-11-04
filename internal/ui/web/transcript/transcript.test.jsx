@@ -411,3 +411,31 @@ test('saved completed child requests are hidden while the session\'s own answers
   expect(root.querySelector('.attention-item-answered').textContent).toBe('Own approval?');
   expect(root.querySelector('.attention-item-answer').textContent).toBe('Deny');
 });
+
+test('copy buttons copy the original message and code', async () => {
+  const copied = [];
+  spies.push(spyOn(navigator.clipboard, 'writeText').mockImplementation(async text => { copied.push(text); }));
+  const {root} = setup([{id: 'u', kind: 'user', text: '**question**'}, {id: 'a', kind: 'text', text: 'An **answer**\n\n```js\nlet x = 1;\n```'}]);
+  const buttons = [...root.querySelectorAll('button[aria-label^="Copy"]')];
+  await act(async () => { for (const button of buttons) button.click(); });
+  expect(copied).toEqual(['**question**', 'An **answer**\n\n```js\nlet x = 1;\n```', 'let x = 1;']);
+  expect(buttons.map(button => button.querySelector('vscode-icon').getAttribute('name'))).toEqual(['check', 'check', 'check']);
+});
+
+test('find opens with Cmd+F, steps through visible matches and restores focus', () => {
+  const {root} = setup([{id: 'u', kind: 'user', text: 'Hello'}, {id: 'a', kind: 'text', text: 'Hello **world** and hello again'}]);
+  const focus = root.querySelector('button[aria-label="Copy message"]');
+  focus.focus();
+  act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
+  const field = root.querySelector('.transcript-find vscode-textfield');
+  expect(field).not.toBeNull();
+  act(() => { field.value = 'hello'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', shiftKey: true, bubbles: true})));
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
+  expect(root.querySelector('.transcript-find')).toBeNull();
+  expect(document.activeElement).toBe(focus);
+});

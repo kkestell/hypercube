@@ -1,0 +1,20 @@
+.copy-button {
+  position: absolute;
+  top: var(--size-space);
+  right: var(--size-space);
+  border: 0;
+  border-radius: var(--size-radius);
+  padding: var(--size-space);
+  color: var(--vscode-icon-foreground);
+  background: var(--vscode-editor-background);
+  cursor: pointer;
+  opacity: 0;
+}
+
+*:hover > .copy-button, *:focus-within > .copy-button, .copy-button:focus-visible {
+  opacity: 1;
+}
+
+.copy-button:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}

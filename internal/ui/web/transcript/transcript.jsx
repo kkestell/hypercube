@@ -5,6 +5,7 @@
 import {useCallback, useLayoutEffect, useMemo, useRef} from 'preact/hooks';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
+import {TranscriptFind} from './transcript-find.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
 import {emptyTranscript, setExpanded} from './transcripts.js';
@@ -47,10 +48,13 @@ export function Transcript({session}) {
   }, []);
 
   return (
+    <div class="transcript-container">
+    <TranscriptFind list={list} view={view} rows={rows} expanded={expanded} />
     <div ref={view} class="transcript" onScroll={scrolled}>
       <div ref={list} class="transcript-list">
         {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
       </div>
+    </div>
     </div>
   );
 }
