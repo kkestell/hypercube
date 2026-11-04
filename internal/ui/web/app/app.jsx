@@ -72,7 +72,7 @@ export function App({store}) {
   useEffect(() => {
     const handler = windowHandler();
     if (!handler) return;
-    handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, bindings: (s.menuAlternates ? s.keys : [s.keys[s.menuKey ?? 0]]).map(binding)}))});
+    handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, binding: binding(s.keys[0])}))});
   }, []);
   const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), openQuickOpen: () => setQuickOpen(true)};
   useEffect(() => {

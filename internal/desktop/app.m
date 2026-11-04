@@ -100,21 +100,18 @@ void HCSetShortcuts(NSArray *items) {
         NSMenu *menu = [[HCShortcutMenu alloc] initWithTitle:title];
         for (NSDictionary *entry in items) {
             if (![entry[@"section"] isEqual:title]) continue;
-            NSArray *bindings = entry[@"bindings"];
-            for (NSDictionary *b in bindings) {
-                NSString *key = b[@"key"];
-                if ([key isEqual:@"ArrowDown"]) key = [NSString stringWithCharacters:(unichar[]){NSDownArrowFunctionKey} length:1];
-                if ([key isEqual:@"ArrowUp"]) key = [NSString stringWithCharacters:(unichar[]){NSUpArrowFunctionKey} length:1];
-                NSEventModifierFlags mods = ([b[@"metaKey"] boolValue] ? NSEventModifierFlagCommand : 0) |
-                    ([b[@"altKey"] boolValue] ? NSEventModifierFlagOption : 0) |
-                    ([b[@"ctrlKey"] boolValue] ? NSEventModifierFlagControl : 0) |
-                    ([b[@"shiftKey"] boolValue] ? NSEventModifierFlagShift : 0);
-                NSMenuItem *item = [menu addItemWithTitle:entry[@"title"] action:@selector(shortcut:) keyEquivalent:key];
-                item.keyEquivalentModifierMask = mods;
-                item.alternate = b != bindings.firstObject;
-                item.target = application;
-                item.representedObject = entry[@"id"];
-            }
+            NSDictionary *b = entry[@"binding"];
+            NSString *key = b[@"key"];
+            if ([key isEqual:@"ArrowDown"]) key = [NSString stringWithCharacters:(unichar[]){NSDownArrowFunctionKey} length:1];
+            if ([key isEqual:@"ArrowUp"]) key = [NSString stringWithCharacters:(unichar[]){NSUpArrowFunctionKey} length:1];
+            NSEventModifierFlags mods = ([b[@"metaKey"] boolValue] ? NSEventModifierFlagCommand : 0) |
+                ([b[@"altKey"] boolValue] ? NSEventModifierFlagOption : 0) |
+                ([b[@"ctrlKey"] boolValue] ? NSEventModifierFlagControl : 0) |
+                ([b[@"shiftKey"] boolValue] ? NSEventModifierFlagShift : 0);
+            NSMenuItem *item = [menu addItemWithTitle:entry[@"title"] action:@selector(shortcut:) keyEquivalent:key];
+            item.keyEquivalentModifierMask = mods;
+            item.target = application;
+            item.representedObject = entry[@"id"];
         }
         NSMenuItem *holder = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
         holder.submenu = menu;

@@ -6,8 +6,8 @@ import {windowHandler} from './window.js';
 // Bindings also supply the native menus and the keyboard reference.
 export const shortcuts = [
   {id: 'new', section: 'Session', title: 'New Session', keys: ['⌘N'], menu: true},
-  {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌃Tab', '⌘⌥↓'], menu: true, menuKey: 1},
-  {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌃⇧Tab', '⌘⌥↑'], menu: true, menuKey: 1},
+  {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌘⌥↓', '⌃Tab'], menu: true},
+  {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], menu: true},
   {id: 'select', section: 'Session', title: 'Select Session', keys: ['⌘1–9']},
   {id: 'interrupt', section: 'Session', title: 'Interrupt Agent', keys: ['Escape']},
   {id: 'quickOpen', section: 'Session', title: 'Quick Open', keys: ['⌘P']},
@@ -15,7 +15,7 @@ export const shortcuts = [
   {id: 'sidebar', section: 'View', title: 'Toggle Sidebar', keys: ['⌘B'], menu: true},
   {id: 'panel', section: 'View', title: 'Toggle Terminal', keys: ['⌘J'], menu: true},
   {id: 'rightPanel', section: 'View', title: 'Toggle Right Panel', keys: ['⌘⌥B'], menu: true},
-  {id: 'zoomIn', section: 'View', title: 'Zoom In', keys: ['⌘=', '⌘+'], menu: true, native: true, menuAlternates: true},
+  {id: 'zoomIn', section: 'View', title: 'Zoom In', keys: ['⌘=', '⌘+'], menu: true, native: true},
   {id: 'zoomOut', section: 'View', title: 'Zoom Out', keys: ['⌘-'], menu: true, native: true},
   {id: 'zoomReset', section: 'View', title: 'Actual Size', keys: ['⌘0'], menu: true, native: true},
   {id: 'find', section: 'View', title: 'Find in Transcript', keys: ['⌘F']},
