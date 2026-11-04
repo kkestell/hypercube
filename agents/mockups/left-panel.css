@@ -175,87 +175,99 @@
   clip-path: inset(50%);
 }
 
-/* The Changes tab: the branch summary, then the uncommitted files as VS Code's
-   Source Control list. */
-.mockup-changes {
+/* The Changes tab, as VS Code's Source Control view: the branch, then the
+   Changes group of uncommitted files. Rows match VS Code's tree metrics. */
+.mockup-scm {
   overflow: auto;
 }
 
-.mockup-changes-group,
-.mockup-changes-file {
+.mockup-scm-row {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space);
   width: 100%;
   height: var(--size-row-height);
-  padding: 0 calc(var(--size-space) * 3) 0 var(--size-space);
+  padding: 0 calc(var(--size-space) * 3) 0 calc(var(--size-space) * 2);
+  color: inherit;
+  white-space: nowrap;
+  text-align: left;
 }
 
-.mockup-changes-group {
-  margin-top: calc(var(--size-space) * 2);
-  font-weight: 600;
+button.mockup-scm-row:hover {
+  background: var(--vscode-list-hoverBackground);
 }
 
-.mockup-changes-count {
-  margin-left: auto;
+.mockup-scm-file[aria-current] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.mockup-scm-name,
+.mockup-scm-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mockup-scm-name {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.mockup-scm-description {
+  margin-left: calc(var(--size-space) / 2);
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.mockup-scm-group[aria-expanded="false"] > .codicon {
+  rotate: -90deg;
+}
+
+.mockup-scm-count {
+  box-sizing: border-box;
   min-width: 18px;
-  padding: 0 calc(var(--size-space) * 1.5);
+  margin-left: auto;
+  padding: 3px 6px;
   border-radius: 11px;
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   font-size: 11px;
-  font-weight: 400;
-  line-height: 18px;
+  line-height: 12px;
   text-align: center;
 }
 
-.mockup-changes-list {
+.mockup-scm-list {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.mockup-changes-file {
-  padding-left: calc(var(--size-space) * 5);
-  color: inherit;
-  text-align: left;
+.mockup-scm-list[hidden] {
+  display: none;
 }
 
-.mockup-changes-file:hover {
-  background: var(--vscode-list-hoverBackground);
+.mockup-scm-file {
+  gap: calc(var(--size-space) * 1.5);
+  padding-left: calc(var(--size-space) * 7);
 }
 
-.mockup-changes-file[aria-current] {
-  background: var(--vscode-list-inactiveSelectionBackground);
-}
-
-.mockup-changes-name,
-.mockup-changes-dir {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mockup-changes-name {
+.mockup-scm-status {
   flex-shrink: 0;
-}
-
-.mockup-changes-dir {
-  color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
-}
-
-.mockup-changes-status {
   width: var(--size-icon);
   margin-left: auto;
+  font-size: 12px;
   text-align: center;
 }
 
-.mockup-changes-status-M { color: var(--vscode-charts-yellow); }
-.mockup-changes-status-U { color: var(--vscode-charts-green); }
-.mockup-changes-status-D { color: var(--vscode-charts-red); }
+.mockup-scm-M { --mockup-scm-color: var(--vscode-charts-yellow); }
+.mockup-scm-U { --mockup-scm-color: var(--vscode-charts-green); }
+.mockup-scm-D { --mockup-scm-color: var(--vscode-charts-red); }
 
-.mockup-changes-file:has(.mockup-changes-status-D) .mockup-changes-name {
+.mockup-scm-file > .mockup-scm-name,
+.mockup-scm-status {
+  color: var(--mockup-scm-color);
+}
+
+.mockup-scm-D > .mockup-scm-name {
   text-decoration: line-through;
 }
 

@@ -15,7 +15,6 @@
   <link rel="stylesheet" href="../../internal/ui/web/editor/editor-tabs.css">
   <link rel="stylesheet" href="../../internal/ui/web/files/file-icon.css">
   <link rel="stylesheet" href="../../internal/ui/web/app/right-panel.css">
-  <link rel="stylesheet" href="../../internal/ui/web/changes/changes-panel.css">
   <link rel="stylesheet" href="left-panel.css">
   <script src="left-panel.js" defer></script>
 </head>
@@ -106,16 +105,13 @@
       <header class="mockup-panel-header">
         <span class="mockup-tab" title="Changes"><span class="codicon codicon-source-control" aria-hidden="true"></span><span class="mockup-sr-only">Changes</span></span>
       </header>
-      <div class="mockup-panel-body mockup-changes">
-        <div class="changes-panel">
-          <p>redesign-left-panel</p>
-          <p>2 commits not merged into main</p>
-        </div>
-        <div class="mockup-changes-group"><span class="codicon codicon-chevron-down" aria-hidden="true"></span><span>Changes</span><span class="mockup-changes-count" title="3 uncommitted files">3</span></div>
-        <ul class="mockup-changes-list" aria-label="Uncommitted files">
-          <li><button type="button" class="mockup-changes-file" data-panel="diff-foo" data-title="foo.py (Working Tree)"><span class="file-icon mockup-file-icon-python" aria-hidden="true">&#xE07B;</span><span class="mockup-changes-name">foo.py</span><span class="mockup-changes-status mockup-changes-status-M" title="Modified">M</span></button></li>
-          <li><button type="button" class="mockup-changes-file" data-panel="diff-helpers" data-title="helpers.py (Untracked)"><span class="file-icon mockup-file-icon-python" aria-hidden="true">&#xE07B;</span><span class="mockup-changes-name">helpers.py</span><span class="mockup-changes-dir">utils</span><span class="mockup-changes-status mockup-changes-status-U" title="Untracked">U</span></button></li>
-          <li><button type="button" class="mockup-changes-file" data-panel="diff-readme" data-title="README.md (Deleted)"><span class="file-icon mockup-file-icon-markdown" aria-hidden="true">&#xE060;</span><span class="mockup-changes-name">README.md</span><span class="mockup-changes-status mockup-changes-status-D" title="Deleted">D</span></button></li>
+      <div class="mockup-panel-body mockup-scm">
+        <div class="mockup-scm-row mockup-scm-branch" title="redesign-left-panel has 2 commits not merged into main"><span class="codicon codicon-git-branch" aria-hidden="true"></span><span class="mockup-scm-name">redesign-left-panel</span><span class="mockup-scm-description">2 ahead of main</span></div>
+        <button type="button" class="mockup-scm-row mockup-scm-group" aria-expanded="true" aria-controls="scm-changes"><span class="codicon codicon-chevron-down" aria-hidden="true"></span><span class="mockup-scm-name">Changes</span><span class="mockup-scm-count" title="3 uncommitted files">3</span></button>
+        <ul class="mockup-scm-list" id="scm-changes" aria-label="Changes">
+          <li><button type="button" class="mockup-scm-row mockup-scm-file mockup-scm-M" data-panel="diff-foo" data-title="foo.py (Working Tree)" title="foo.py • Modified"><span class="file-icon mockup-file-icon-python" aria-hidden="true">&#xE07B;</span><span class="mockup-scm-name">foo.py</span><span class="mockup-scm-status" aria-label="Modified">M</span></button></li>
+          <li><button type="button" class="mockup-scm-row mockup-scm-file mockup-scm-U" data-panel="diff-helpers" data-title="helpers.py (Untracked)" title="utils/helpers.py • Untracked"><span class="file-icon mockup-file-icon-python" aria-hidden="true">&#xE07B;</span><span class="mockup-scm-name">helpers.py</span><span class="mockup-scm-description">utils</span><span class="mockup-scm-status" aria-label="Untracked">U</span></button></li>
+          <li><button type="button" class="mockup-scm-row mockup-scm-file mockup-scm-D" data-panel="diff-readme" data-title="README.md (Deleted)" title="README.md • Deleted"><span class="file-icon mockup-file-icon-markdown" aria-hidden="true">&#xE060;</span><span class="mockup-scm-name">README.md</span><span class="mockup-scm-status" aria-label="Deleted">D</span></button></li>
         </ul>
       </div>
     </aside>

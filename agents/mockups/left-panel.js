@@ -30,7 +30,7 @@ dialog.addEventListener('close', () => {
 
 // Changed files open their diff in an editor tab, or select it if open.
 const tabs = document.querySelector('.editor-tabs');
-const changes = document.querySelector('.mockup-changes-list');
+const changes = document.querySelector('#scm-changes');
 
 function selectTab(tab) {
   tabs.querySelectorAll('.editor-tabs-tab').forEach(other => {
@@ -59,8 +59,14 @@ function openDiff(row) {
 }
 
 changes.addEventListener('click', event => {
-  const row = event.target.closest('.mockup-changes-file');
+  const row = event.target.closest('.mockup-scm-file');
   if (row) openDiff(row);
+});
+
+document.querySelector('.mockup-scm-group').addEventListener('click', ({currentTarget: group}) => {
+  const open = group.ariaExpanded !== 'true';
+  group.ariaExpanded = open;
+  changes.hidden = !open;
 });
 
 tabs.addEventListener('click', event => {
