@@ -6,6 +6,7 @@ import {startBadge} from './app/badge.js';
 import {startTitleBar} from './app/title-bar.js';
 import {setVisible} from './app/workbench.js';
 import {startBrowsers} from './browser/browser.js';
+import {startDraftStorage} from './agent/draft-storage.js';
 import {startDataSocket} from './data-socket.js';
 import {startFilePolling} from './files/file-polling.js';
 import {startNativeNotifications} from './notifications/notifications.js';
@@ -32,6 +33,7 @@ const store = createStore({
   titleBar: null,
 });
 
+startDraftStorage(store);
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
 startDataSocket(store);
 startFilePolling(store);

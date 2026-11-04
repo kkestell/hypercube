@@ -148,8 +148,9 @@ and the tool's call still appears in the chat. There is currently no control
 for removing saved choices. An answered
 request returns to its place in the chat, showing its question and the answer
 beside a check.
-Each agent's unsent text stays in its
-box when you switch sessions or messages arrive.
+Unsent text, including typed answers to requests and a new session's first
+prompt, is saved in the browser and restored after reloads and app restarts.
+Image attachments stay in memory and do not survive a reload.
 
 Below each message box, the profile selector shows the harness, model, and
 effort on the left. It is disabled after the first message is sent. Context use

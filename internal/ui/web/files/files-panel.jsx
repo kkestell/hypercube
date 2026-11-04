@@ -50,7 +50,7 @@ export function FilesPanel() {
   const entries = (dir, level) => (files?.listings[dir] ?? []).map(entry => {
     const path = dir ? dir + '/' + entry.name : entry.name;
     const props = {role: 'treeitem', 'data-path': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
-      onFocus: () => setFocused(path), size: 'sm', className: 'h-6 w-full justify-start px-2'};
+      onFocus: () => setFocused(path), size: 'sm', className: 'h-7 w-full justify-start px-2'};
     if (entry.dir) return <Collapsible key={path} open={!!files.expanded[path]} onOpenChange={open => setFolderOpen(store, path, open)}>
       <CollapsibleTrigger asChild><Button variant="ghost" {...props} data-dir="" aria-expanded={!!files.expanded[path]}>
         <Icon name={files.expanded[path] ? 'chevron-down' : 'chevron-right'} /><span className="truncate">{entry.name}</span>

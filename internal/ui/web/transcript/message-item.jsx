@@ -13,7 +13,7 @@ export function MessageItem({item, expanded, setOpen, inline}) {
   const [state] = useStore();
   const outgoing = item.kind === 'tool';
   if (!outgoing && !item.from) return (
-    <div className="message-item message-item-user flex justify-end">
+    <div className="message-item message-item-user my-3 flex justify-end">
       <div className="message-item-user-content group relative max-w-full pr-8">
         <Card className="message-item-bubble py-2"><CardContent className="px-3">
           <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
