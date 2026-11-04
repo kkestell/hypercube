@@ -90,3 +90,9 @@ crash is later accepted as complete. Copy to a temporary file and rename it.
 `files/highlighted-code.jsx` updates the DOM by hand; render from state
 instead. The line-number gutter in `files/file-view.jsx` needs
 `aria-hidden`.
+
+## A killed holder leaves its session running
+
+When an agent's holder process is killed from outside Hypercube, the session
+keeps showing as running and cannot be ended while its branch is unmerged.
+Hypercube should notice the holder's exit and mark the session exited.
