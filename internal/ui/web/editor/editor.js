@@ -86,7 +86,7 @@ function tabOpened(state, id, data) {
   return withSession(state, session => {
     if (layout.findPane(session.tabs.root, id)) return {...session, tabs: layout.openTab(session.tabs, id)};
     const preview = session.tabs.preview;
-    const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openBeside(session.tabs, id, agentTabId);
+    const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openTab(session.tabs, id);
     const kept = preview ? forgetTab(session, preview) : session;
     const path = tabPath(id);
     const contents = isDiffTab(id)
@@ -121,7 +121,7 @@ export function openRequestedFile(store, request) {
   }
   store.update(state => withSession(state, session => {
     const id = fileTabId(path);
-    const tabs = layout.openBeside(session.tabs, id, agentTabId);
+    const tabs = layout.openTab(session.tabs, id);
     const file = {...(session.files.open[path] ?? unread), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
     return {...session, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...session.files, open: {...session.files.open, [path]: file}}};
   }));
@@ -141,10 +141,10 @@ export function openPendingFiles(store) {
   for (const request of requests) openRequestedFile(store, request);
 }
 
-// openBrowserTab opens the browser's tab beside the agent, as a file opens,
+// openBrowserTab opens the browser's tab, as a file opens,
 // and selects it if select is set or it was closed.
 export const openBrowserTab = (state, select) => withTabs(state, tabs => {
-  if (!layout.findPane(tabs.root, browserTabId)) return layout.openBeside(tabs, browserTabId, agentTabId);
+  if (!layout.findPane(tabs.root, browserTabId)) return layout.openTab(tabs, browserTabId);
   return select ? layout.openTab(tabs, browserTabId) : tabs;
 });
 

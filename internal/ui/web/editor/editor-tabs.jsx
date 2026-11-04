@@ -23,7 +23,7 @@ export function EditorTabs({pane, entries}) {
     (strip.current ?? area)?.querySelector('[role="tab"][data-state="active"]')?.focus();
   };
   return <div className="editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-2 border-b p-2">
-    <Tabs className="min-w-0 flex-1 overflow-x-auto" value={pane?.active ?? ''} onValueChange={id => store.update(s => selectTab(s, pane.id, id))}>
+    <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden" value={pane?.active ?? ''} onValueChange={id => store.update(s => selectTab(s, pane.id, id))}>
       <TabsList ref={strip} className="editor-tabs max-w-full justify-start" aria-label="Open tabs">
         {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex min-w-0 max-w-full shrink-0 items-center"
           onDragStart={e => {

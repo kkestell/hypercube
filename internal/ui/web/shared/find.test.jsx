@@ -42,3 +42,13 @@ test('find reveals a match beyond the right edge', () => {
     Range.prototype.getBoundingClientRect = original;
   }
 });
+
+test('typing marks the match while focus stays in the field', () => {
+  const root = mount(createStore({workbench: {activePane: 1}}), <Pane id={1} active />);
+  key(document.body, 'f', {metaKey: true});
+  const input = root.querySelector('input');
+  act(() => { setValue(input, 't'); input.dispatchEvent(new Event('input', {bubbles: true})); });
+  expect(CSS.highlights.get('find').ranges[0].toString()).toBe('t');
+  expect(document.activeElement).toBe(input);
+  expect(window.getSelection().rangeCount).toBe(0);
+});

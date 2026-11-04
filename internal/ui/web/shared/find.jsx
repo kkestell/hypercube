@@ -49,12 +49,12 @@ export function Find({list, view, active, label, className}) {
     observer.observe(list.current, {childList: true, characterData: true, subtree: true});
     return () => observer.disconnect();
   }, [open, query]);
+  // A highlight marks the match without moving the selection, which would take
+  // focus from the find field in WebKit.
   useLayoutEffect(() => {
-    const selection = window.getSelection();
     if (!ranges[index]) return;
-    selection.removeAllRanges();
-    selection.addRange(ranges[index]);
-    return () => selection.removeAllRanges();
+    CSS.highlights.set('find', new Highlight(ranges[index]));
+    return () => CSS.highlights.delete('find');
   }, [ranges, index]);
   useLayoutEffect(() => {
     const range = ranges[index];

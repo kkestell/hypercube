@@ -28,7 +28,7 @@ export function NotificationCard({card}) {
       <CardHeader className="notification-card-header gap-1 px-3">
         <CardTitle className="min-w-0">
           {card.session
-            ? <span className="notification-card-session min-w-0 truncate" title={card.session.title}>{card.session.title}</span>
+            ? <span className="notification-card-session block truncate" title={card.session.title}>{card.session.title}</span>
             : <span className="notification-card-text whitespace-pre-wrap break-words">{card.text}</span>}
         </CardTitle>
         {card.session && <CardDescription className="notification-card-context col-start-1 flex min-w-0 items-center gap-1">

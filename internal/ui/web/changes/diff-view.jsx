@@ -9,6 +9,8 @@ import {language} from '../files/language.js';
 import {useStore} from '../store.js';
 import {diffNote, diffRows} from './diff.js';
 
+const background = {context: '', added: 'bg-green-500/15', removed: 'bg-red-500/15'};
+
 function DiffLines({text, path, wrap}) {
   const rows = useMemo(() => diffRows(text), [text]);
   const [highlighted, setHighlighted] = useState(null);
@@ -29,7 +31,7 @@ function DiffLines({text, path, wrap}) {
   return <table className={`diff-view-lines w-full border-collapse font-mono text-sm leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
     return (
-      <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={`diff-view-line diff-view-${row.kind}`}>
+      <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={`diff-view-line diff-view-${row.kind} ${background[row.kind]}`}>
         <td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.old}</td><td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.new}</td><td data-find-ignore className="w-6 px-1 py-0 text-center align-top text-muted-foreground">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</td>
         <td className={`${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"} px-2 py-0 align-top`}>{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</td>
       </tr>

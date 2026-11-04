@@ -40,19 +40,6 @@ export function openTab(layout, tab) {
   return {...layout, root: mapNode(layout.root, pane.id, () => ({...pane, tabs, active: tab}))};
 }
 
-// openBeside opens a tab in the first pane without the kept tab. With one
-// pane, the tab joins it unless the kept tab is alone there, in which case it
-// splits that pane to the right.
-export function openBeside(layout, tab, kept) {
-  const all = panes(layout.root);
-  if (all.some(pane => pane.tabs.includes(tab))) return openTab(layout, tab);
-  const other = all.find(pane => !pane.tabs.includes(kept));
-  if (other) return openTab({...layout, root: mapNode(layout.root, other.id, pane => ({...pane, tabs: [...pane.tabs, tab]}))}, tab);
-  const [only] = all;
-  if (only.tabs.length > 1) return openTab(layout, tab);
-  return moveTab(openTab(layout, tab), tab, only.id, 'right');
-}
-
 export function selectTab(layout, paneId, tab) {
   return {...layout, root: mapNode(layout.root, paneId, pane => ({...pane, active: tab}))};
 }
