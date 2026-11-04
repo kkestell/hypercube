@@ -13,9 +13,16 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 
 # bundle builds $(APP), the application bundle macOS notifications need, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
-# hoc. build also links them into bin/.
+# hoc, and the app icon rendered from cmd/hypercube/AppIcon.svg. build also
+# links them into bin/.
 bundle:
-	mkdir -p $(MACOS)
+	mkdir -p $(MACOS) $(APP)/Contents/Resources
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && mkdir "$$tmp/AppIcon.iconset" && \
+		for s in 16 32 128 256 512; do \
+			sips -s format png -z $$s $$s cmd/hypercube/AppIcon.svg --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s.png" >/dev/null && \
+			sips -s format png -z $$((s*2)) $$((s*2)) cmd/hypercube/AppIcon.svg --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s@2x.png" >/dev/null || exit 1; \
+		done && \
+		iconutil -c icns -o $(APP)/Contents/Resources/AppIcon.icns "$$tmp/AppIcon.iconset"
 	cp cmd/hypercube/Info.plist $(APP)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string $(APP_ID) $(APP)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(APP_NAME)" $(APP)/Contents/Info.plist

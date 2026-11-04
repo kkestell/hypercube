@@ -159,7 +159,7 @@ func serveUI(args []string) error {
 				os.Exit(1)
 			}
 		}()
-		desktop.Run(url, ui.Icon())
+		desktop.Run(url)
 		a.shutdown()
 		return nil
 	}

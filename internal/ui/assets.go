@@ -17,12 +17,6 @@ func assets() fs.FS {
 	return files
 }
 
-// Icon returns the Hypercube SVG shared by the browser and menu bar.
-func Icon() []byte {
-	icon, _ := fs.ReadFile(assets(), "favicon.svg")
-	return icon
-}
-
 // buildID identifies the embedded browser files, so an open page can tell
 // that the server now serves a different build.
 var buildID = sync.OnceValue(func() string {

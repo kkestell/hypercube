@@ -13,9 +13,15 @@ void hypercubeRun(const char *url, const void *icon, size_t iconLen);
 import "C"
 
 import (
+	_ "embed"
 	"runtime"
 	"unsafe"
 )
+
+// menuBarIcon is drawn as a template image, so only its shape matters.
+//
+//go:embed menubar.svg
+var menuBarIcon []byte
 
 func init() {
 	// Cocoa's application loop must stay on the main thread.
@@ -25,10 +31,10 @@ func init() {
 // Run shows the menu bar icon, loads the UI at url into the window, and runs
 // the application until the user quits, then returns. The window opens from
 // the menu bar icon or the Dock.
-func Run(url string, icon []byte) {
+func Run(url string) {
 	cURL := C.CString(url)
 	defer C.free(unsafe.Pointer(cURL))
-	cIcon := C.CBytes(icon)
+	cIcon := C.CBytes(menuBarIcon)
 	defer C.free(cIcon)
-	C.hypercubeRun(cURL, cIcon, C.size_t(len(icon)))
+	C.hypercubeRun(cURL, cIcon, C.size_t(len(menuBarIcon)))
 }

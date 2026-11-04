@@ -106,14 +106,11 @@ func TestProfiles(t *testing.T) {
 	}
 }
 
-func TestIcon(t *testing.T) {
+func TestFavicon(t *testing.T) {
 	res := httptest.NewRecorder()
 	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("favicon response = %d, %v", res.Code, res.Header())
-	}
-	if len(Icon()) == 0 || !bytes.Equal(res.Body.Bytes(), Icon()) {
-		t.Fatal("favicon differs from the menu bar icon")
 	}
 }
 
