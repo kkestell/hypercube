@@ -8,10 +8,8 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -147,82 +145,4 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write(content)
-}
-
-// mentionFiles lists files for the composer, excluding ignored files in Git worktrees.
-func (s *server) mentionFiles(w http.ResponseWriter, r *http.Request) {
-	var root *os.Root
-	var err error
-	if id := r.URL.Query().Get("workspace"); id != "" {
-		var dir string
-		err = s.db.Read(func(tx *store.Tx) error {
-			workspace, err := tx.Workspace(id)
-			if err == nil {
-				dir = workspace.Path
-			}
-			return err
-		})
-		if err == nil {
-			root, err = os.OpenRoot(dir)
-		}
-	} else {
-		root, err = s.sessionRoot(r.URL.Query().Get("session"))
-	}
-	if fileError(w, err) {
-		return
-	}
-	defer root.Close()
-	dir := root.Name()
-	files := []string{}
-	cmd := exec.CommandContext(r.Context(), "git", "-C", dir, "ls-files", "--cached", "--others", "--exclude-standard", "-z")
-	output, err := cmd.Output()
-	if err == nil {
-		for _, name := range strings.Split(string(output), "\x00") {
-			if name == "" {
-				continue
-			}
-			skip := false
-			for _, part := range strings.Split(name, "/") {
-				if hidden(part) {
-					skip = true
-					break
-				}
-			}
-			if skip {
-				continue
-			}
-			info, err := root.Stat(name)
-			if err == nil && !info.IsDir() {
-				files = append(files, name)
-			}
-		}
-	} else {
-		err = filepath.WalkDir(dir, func(name string, entry os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if name == dir {
-				return nil
-			}
-			if hidden(entry.Name()) {
-				if entry.IsDir() {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-			if !entry.IsDir() {
-				rel, err := filepath.Rel(dir, name)
-				if err != nil {
-					return err
-				}
-				files = append(files, filepath.ToSlash(rel))
-			}
-			return nil
-		})
-		if fileError(w, err) {
-			return
-		}
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(files)
 }

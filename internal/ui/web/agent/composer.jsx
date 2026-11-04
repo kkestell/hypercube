@@ -4,12 +4,15 @@
 // shows as text, and a worktree session shows its branch beside it. The text
 // takes focus on mount.
 import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
+import {mentionFiles} from '../api.js';
 import {imageSrc, imageTypes} from '../images.js';
 import {sendPrompt} from '../sessions/session-actions.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
 import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.js';
+import {promptHistory} from './history.js';
+import {insertMention, mentionAt, mentionChoices, prepareFiles} from './mention.js';
 import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
 import {SessionBranch} from './session-branch.jsx';
@@ -20,43 +23,50 @@ export function Composer({session}) {
   const [state, store] = useStore();
   const draft = draftOf(state, session.id);
   const field = useRef(null), picker = useRef(null);
-  const [historyIndex, setHistoryIndex] = useState(null);
+  const [history, setHistory] = useState(null);
   const [mention, setMention] = useState(null);
+  const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState([]);
-  const caret = useRef(null);
-  useLayoutEffect(() => { if (caret.current !== null) { field.current.setSelectionRange(caret.current, caret.current); caret.current = null; } });
-  const transcript = state.session?.id === session.id ? state.session.transcript : null;
-  const history = transcript ? transcript.order.map(id => transcript.items[id]).filter(item => item.kind === 'user' && !item.from && item.text).map(item => item.text) : [];
-  const text = historyIndex === null ? draft.text : history[historyIndex] ?? draft.text;
-  const choices = mention ? files.filter(path => {
-    let i = 0;
-    for (const c of path.toLowerCase()) if (c === mention.query[i]) i++;
-    return i === mention.query.length;
-  }).slice(0, 30) : [];
+  const [wantFiles, setWantFiles] = useState(false);
+  const caret = useRef(null), activeOption = useRef(null), suppressSelect = useRef(false);
+  const text = history === null ? draft.text : history.edits[history.index];
+  const choices = mention ? mentionChoices(files, mention.query) : [];
+  const active = choices.length ? Math.min(selected, choices.length - 1) : 0;
+  const workspace = session.id === unsentKey ? state.unsent?.workspace : null;
 
-  useEffect(() => { setHistoryIndex(null); setMention(null); setFiles([]); }, [session.id]);
+  useLayoutEffect(() => {
+    if (caret.current !== null) {
+      field.current.setSelectionRange(caret.current, caret.current);
+      caret.current = null;
+    }
+  });
+  useEffect(() => { activeOption.current?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active]]);
+  useEffect(() => { if (mention) setWantFiles(true); }, [!!mention]);
   useEffect(() => {
-    if (!mention || (session.id === unsentKey && !state.unsent?.workspace)) return;
+    if (!wantFiles || (session.id === unsentKey && !workspace)) return;
     const controller = new AbortController();
-    fetch('/mention-files?' + new URLSearchParams(session.id === unsentKey ? {workspace: state.unsent.workspace} : {session: session.id}), {signal: controller.signal})
-      .then(response => response.ok ? response.json() : []).then(setFiles).catch(() => {});
+    setFiles([]);
+    mentionFiles(session.id === unsentKey ? {workspace} : {session: session.id}, controller.signal)
+      .then(paths => { if (!controller.signal.aborted) setFiles(prepareFiles(paths)); }).catch(() => {});
     return () => controller.abort();
-  }, [session.id, state.unsent?.workspace, !!mention]);
+  }, [session.id, workspace, wantFiles]);
 
-  const input = e => {
-    const value = e.currentTarget.value;
-    setHistoryIndex(null);
-    store.update(s => typed(s, session.id, value));
-    const before = value.slice(0, e.currentTarget.selectionStart);
-    const match = before.match(/(?:^|\s)@([^\s@]*)$/);
-    setMention(match ? {start: before.length - match[1].length - 1, query: match[1].toLowerCase(), selected: 0} : null);
+  const updateMention = target => {
+    const next = mentionAt(target.value, target.selectionStart, target.selectionEnd);
+    setMention(next);
+    setSelected(0);
   };
+  const changeText = value => {
+    if (history === null) store.update(s => typed(s, session.id, value));
+    else setHistory({...history, edits: {...history.edits, [history.index]: value}});
+  };
+  const input = e => { suppressSelect.current = false; changeText(e.currentTarget.value); updateMention(e.currentTarget); };
   const choose = path => {
-    const end = field.current.selectionStart;
-    const value = text.slice(0, mention.start) + '@' + path + text.slice(end);
-    caret.current = mention.start + path.length + 1;
-    store.update(s => typed(s, session.id, value));
-    setHistoryIndex(null);
+    const current = mentionAt(field.current.value, field.current.selectionStart, field.current.selectionEnd);
+    if (!current) { setMention(null); return; }
+    suppressSelect.current = true;
+    changeText(insertMention(text, current, path));
+    caret.current = current.start + path.length + 1;
     setMention(null);
     field.current.focus();
   };
@@ -67,32 +77,40 @@ export function Composer({session}) {
   }, []);
 
   const send = () => {
-    if (historyIndex !== null) store.update(s => typed(s, session.id, text));
-    setHistoryIndex(null);
+    if (!canSend(state, session, text)) return;
+    if (history !== null) store.update(s => typed(s, session.id, text));
+    setHistory(null);
     setMention(null);
     sendPrompt(store, session);
   };
   const key = e => {
     if (e.isComposing) return;
-    if (mention) {
-      if (e.key === 'Escape') { e.preventDefault(); setMention(null); return; }
-      if (choices.length && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+    if (plain && mention && choices.length) {
+      if (e.key === 'Escape') { e.preventDefault(); suppressSelect.current = true; setMention(null); return; }
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-        const step = e.key === 'ArrowDown' ? 1 : -1;
-        setMention({...mention, selected: (mention.selected + step + choices.length) % choices.length});
+        setSelected((active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
         return;
       }
-      if (choices.length && (e.key === 'Enter' || e.key === 'Tab')) {
-        e.preventDefault(); choose(choices[mention.selected % choices.length]); return;
-      }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(choices[active]); return; }
     }
-    if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
+    if (plain && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
       const pos = e.currentTarget.selectionStart;
-      if (e.key === 'ArrowUp' && !text.slice(0, pos).includes('\n') && history.length) {
-        e.preventDefault(); setHistoryIndex(historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1)); return;
-      }
-      if (e.key === 'ArrowDown' && historyIndex !== null && !text.slice(pos).includes('\n')) {
-        e.preventDefault(); setHistoryIndex(historyIndex + 1 >= history.length ? null : historyIndex + 1); return;
+      const up = e.key === 'ArrowUp' && !text.slice(0, pos).includes('\n');
+      const down = e.key === 'ArrowDown' && history !== null && !text.slice(pos).includes('\n');
+      if (up || down) {
+        const transcript = state.session?.id === session.id ? state.session.transcript : null;
+        const prompts = promptHistory(transcript);
+        if (prompts.length) {
+          e.preventDefault();
+          const index = up ? (history === null ? prompts.length - 1 : Math.max(0, history.index - 1)) : history.index + 1;
+          suppressSelect.current = true;
+          setMention(null);
+          if (index >= prompts.length) setHistory(null);
+          else setHistory({index, edits: {...Object.fromEntries(prompts.map((value, i) => [i, value])), ...history?.edits}});
+          return;
+        }
       }
     }
     if (!submitsOnKey(e)) return;
@@ -118,14 +136,19 @@ export function Composer({session}) {
           ))}
         </div>
       )}
-      {mention && <div class="composer-mentions" role="listbox" id="composer-mentions" aria-label="Files">
-        {choices.map((path, i) => <div role="option" id={'composer-file-' + i} aria-selected={i === mention.selected}
+      {choices.length > 0 && <div class="composer-mentions" role="listbox" id="composer-mentions" aria-label="Files">
+        {choices.map((path, i) => <div role="option" ref={i === active ? activeOption : undefined} id={'composer-file-' + i} aria-selected={i === active}
           onMouseDown={e => { e.preventDefault(); choose(path); }}>{path}</div>)}
       </div>}
       <textarea ref={field} rows={1} aria-label="Message" class="composer-text" value={text}
-        role="combobox" aria-expanded={!!mention} aria-autocomplete="list" aria-controls={mention ? 'composer-mentions' : undefined}
-        aria-activedescendant={mention && choices.length ? 'composer-file-' + mention.selected : undefined}
-        onInput={input} onKeyDown={key} />
+        role="combobox" aria-expanded={choices.length ? 'true' : undefined} aria-autocomplete="list" aria-controls={choices.length ? 'composer-mentions' : undefined}
+        aria-activedescendant={choices.length ? 'composer-file-' + active : undefined}
+        onInput={input} onKeyDown={key} onBlur={() => setMention(null)}
+        onClick={e => { suppressSelect.current = false; updateMention(e.currentTarget); }} onSelect={e => { if (!suppressSelect.current) updateMention(e.currentTarget); }}
+        onKeyUp={e => {
+          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) suppressSelect.current = false;
+          if (!suppressSelect.current && !['Escape', 'Enter', 'Tab'].includes(e.key)) updateMention(e.currentTarget);
+        }} />
       <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
       <div class="composer-bar">
         <vscode-button icon-only secondary icon="attach" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current.click()} />
@@ -135,7 +158,7 @@ export function Composer({session}) {
           {session.id === unsentKey ? <WorktreeToggle /> : <SessionBranch session={session} />}
           <Usage usage={session.usage} />
         </div>
-        <vscode-button icon-only secondary icon="send" title="Send" aria-label="Send" disabled={!canSend({...state, drafts: {...state.drafts, [session.id]: {...draft, text}}}, session)} onClick={send} />
+        <vscode-button icon-only secondary icon="send" title="Send" aria-label="Send" disabled={!canSend(state, session, text)} onClick={send} />
       </div>
     </form>
   );

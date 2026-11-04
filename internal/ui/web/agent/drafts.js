@@ -18,8 +18,8 @@ const hasContent = draft => !draft.reading && (!!draft.text.trim() || draft.imag
 // A new session needs a workspace and profile before its first prompt can send.
 const unsentReady = state => !!state.unsent?.workspace && !!state.unsent.profile && !state.unsent.sending;
 
-export const canSend = (state, session) =>
-  !session.ended && hasContent(draftOf(state, session.id)) && session.activity !== 'exited' && (session.id !== unsentKey || unsentReady(state));
+export const canSend = (state, session, text = draftOf(state, session.id).text) =>
+  !session.ended && hasContent({...draftOf(state, session.id), text}) && session.activity !== 'exited' && (session.id !== unsentKey || unsentReady(state));
 
 function withDraft(state, key, change) {
   const draft = change(draftOf(state, key));
