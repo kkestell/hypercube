@@ -101,7 +101,7 @@ interface MarkdownProps extends Pick<Options, 'imageSource'> {
 
 export function Markdown({text, style, imageSource}: MarkdownProps) {
   return (
-    <div className={`markdown markdown-${style} prose ${style === 'chat' ? 'prose-sm' : ''} dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+    <div className={`markdown markdown-${style} prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
       {tokens(lexer(text), {preview: style === 'preview', imageSource})}
     </div>
   );

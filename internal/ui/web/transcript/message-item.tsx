@@ -1,5 +1,6 @@
 import type {ReactNode} from 'react';
 import {Card, CardContent} from '../components/ui/card';
+import {BusyDot} from '../shared/busy-dot.tsx';
 import {Icon} from '../shared/icon.tsx';
 // User prompts are bubbles. Messages between sessions show their sender or
 // recipient: a disclosure with a first-line preview until expanded, or, inline
@@ -31,7 +32,7 @@ function UserBubble({item}: {item: UserItem}) {
   return (
     <div className="message-item message-item-user my-3 flex justify-end">
       <div className="message-item-user-content group relative max-w-full">
-        <Card className="message-item-bubble py-2"><CardContent className="px-3">
+        <Card className="message-item-bubble py-3"><CardContent className="px-4">
           <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
         </CardContent></Card>
@@ -48,7 +49,7 @@ export function MessageItem({item, expanded, setOpen, inline}: MessageItemProps)
     const sent = sentMessage(item.input);
     heading = <>
       {'To ' + sent.to}
-      {!item.done && <Icon name="loading" spin role="img" title="Running" />}
+      {!item.done && <BusyDot title="Running" />}
       {item.failed && <Icon name="error" className="message-item-failure text-destructive" role="img" title="Failed" />}
     </>;
     text = sent.text;

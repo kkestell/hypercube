@@ -62,6 +62,8 @@ test.each([
   expect(timeLeft(ms)).toBe(text);
 });
 
-test('nothing shows without limits', () => {
-  expect(render([]).querySelector('.status-bar')).toBeNull();
+test('without limits the footer shows only the layout toggles', () => {
+  const root = render([]);
+  expect(root.querySelector('.status-bar-harness')).toBeNull();
+  expect(root.querySelectorAll('.status-bar .layout-toggles button')).toHaveLength(3);
 });

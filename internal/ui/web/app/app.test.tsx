@@ -108,10 +108,10 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   expect(requests).toHaveLength(1);
 });
 
-test('the tab bar holds the three layout toggles and they hide and show their regions', () => {
+test('the footer holds the three layout toggles and they hide and show their regions', () => {
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
-  const buttons = [...root.querySelectorAll('.editor-tabs-bar .layout-toggles button')];
+  const buttons = [...root.querySelectorAll('.status-bar .layout-toggles button')];
   expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
     'Toggle Primary Side Bar', 'Toggle Panel', 'Toggle Secondary Side Bar',
   ]);
@@ -121,10 +121,10 @@ test('the tab bar holds the three layout toggles and they hide and show their re
   for (const [index, region, selector] of regions) {
     const before = store.get().workbench[region];
     const split = find(root, selector).closest('.split');
-    act(() => { find(root, `.editor-tabs-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.status-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(!before);
     expect(split?.classList.contains('split-collapsed')).toBe(before);
-    act(() => { find(root, `.editor-tabs-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.status-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(before);
     expect(split?.classList.contains('split-collapsed')).toBe(!before);
   }
@@ -133,7 +133,7 @@ test('the tab bar holds the three layout toggles and they hide and show their re
 test('shortcuts navigate visible sessions, toggle panels and leave terminal and editing keys alone', async () => {
   const messages: object[] = [];
   globalThis.webkit = {messageHandlers: {window: {postMessage: message => { messages.push(message); }}}};
-  const sessions = ['a', 'b'].map(id => testSession({id, title: id, running: id === 'b'}));
+  const sessions = ['a', 'b'].map(id => testSession({id, title: id, running: true}));
   const store = appStore({selected: 'a'}, ...sessions);
   const root = mount(store, <App store={store} />);
   const send = (target: EventTarget, key: string, mods: KeyboardEventInit = {}) => keydown(target, key, mods).defaultPrevented;
@@ -143,7 +143,7 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   send(row(), 'ArrowUp', {metaKey: true, altKey: true});
   expect(store.get().selected).toBe('a');
   send(row(), '2', {metaKey: true});
-  expect(store.get().selected).toBe('a');
+  expect(store.get().selected).toBe('b');
   const field = find(root, '.composer-text');
   expect(send(field, 'b', {metaKey: true})).toBe(false);
   const terminal = find(root, '.terminal-panel');

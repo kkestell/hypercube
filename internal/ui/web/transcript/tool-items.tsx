@@ -1,4 +1,5 @@
 import {Card, CardContent} from '../components/ui/card';
+import {BusyDot} from '../shared/busy-dot.tsx';
 import {Icon} from '../shared/icon.tsx';
 // A collapsed tool call shows its status and title. Opening it reveals its
 // input, output, nested items, and images.
@@ -17,7 +18,7 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
   const {item, children} = call;
   const open = !!expanded[item.id];
   const input = toolInput(item.input), output = clip(item.output ?? '');
-  const status = !item.done ? <Icon name="loading" spin role="img" title="Running" />
+  const status = !item.done ? <BusyDot title="Running" />
     : item.failed ? <Icon name="error" className="tool-items-failed text-destructive" role="img" title="Failed" />
     : <Icon name="check" role="img" title="Done" />;
   return (

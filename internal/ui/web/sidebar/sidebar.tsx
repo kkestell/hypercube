@@ -1,9 +1,12 @@
 // The Sessions view: a collapsible section per
 // workspace, each holding a tree of its sessions. The list freezes during
-// renaming so the field keeps its place and focus.
+// renaming so the field keeps its place and focus. Stopped sessions stay
+// hidden until their workspace's or parent's menu shows them; archived
+// sessions stay hidden. A session shows anyway while it is selected or leads
+// to a child that shows, and a selected archived family shows whole.
 import {useCallback, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
 import {addWorkspace} from '../sessions/session-actions.ts';
-import {runningFirst} from '../sessions/selection.ts';
+import {runningFirst, sessionOf, stopped} from '../sessions/selection.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
 import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
 import {PanelTabs} from '../shared/panel-tabs.tsx';
@@ -37,17 +40,33 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
+  const [shownStopped, setShownStopped] = useState<Record<string, boolean>>({});
   const frozen = useRef(state.workspaces);
 
-  if (!renaming) frozen.current = state.workspaces.map(workspace => ({
-    ...workspace,
-    sessions: runningFirst(workspace.sessions.filter(session => !session.ended || session.id === state.selected || session.children.some(child => child.id === state.selected))),
-  }));
+  const selected = (session: Session) => session.id === state.selected;
+  const visible = (workspace: Workspace) => workspace.sessions.flatMap(top => {
+    const children = top.children.filter(child => !stopped(child) || shownStopped[top.id] || selected(child) || (top.ended && selected(top)));
+    const leads = children.some(child => !stopped(child) || selected(child));
+    const shown = top.ended ? selected(top) || children.some(selected) : !stopped(top) || shownStopped[workspace.id] || selected(top) || leads;
+    return shown ? [{...top, children}] : [];
+  });
+  if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: runningFirst(visible(workspace))}));
   const workspaces = frozen.current;
   const sessionById = (id: string | undefined) => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
 
-  const workspaceMenu = (workspace: Workspace) => workspaceItems(store, workspace);
-  const sessionMenu = (session: Session) => sessionItems(store, session, () => setRenaming(session.id));
+  // stoppedItems offers to show or hide the stopped sessions among sessions,
+  // which belong to the workspace or parent id.
+  const stoppedItems = (id: string, sessions: Session[]): ContextMenuItem[] => {
+    if (!sessions.some(stopped)) return [];
+    const shown = !!shownStopped[id];
+    return [{label: shown ? 'Hide Stopped Sessions' : 'Show Stopped Sessions', icon: shown ? 'eye-off' : 'eye', run: () => setShownStopped(s => ({...s, [id]: !shown}))}];
+  };
+  const workspaceMenu = (workspace: Workspace) => {
+    const sessions = state.workspaces.find(w => w.id === workspace.id)?.sessions.filter(s => !s.ended) ?? [];
+    return [stoppedItems(workspace.id, sessions), ...workspaceItems(store, workspace)];
+  };
+  const sessionMenu = (session: Session) =>
+    [stoppedItems(session.id, sessionOf(state, session.id)?.session.children ?? []), ...sessionItems(store, session, () => setRenaming(session.id))];
 
   const contextMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
@@ -75,7 +94,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
 
   return (
     <div className="sidebar flex h-full min-h-0 flex-col">
-      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
+      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>

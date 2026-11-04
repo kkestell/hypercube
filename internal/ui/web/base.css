@@ -89,8 +89,7 @@
 
 @layer base {
   * { @apply border-border outline-ring/50; }
-  html { font-size: 15px; }
-  body { @apply bg-background text-foreground; }
+  body { @apply bg-background text-neutral-700 dark:text-neutral-300; }
   * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
   *:hover { scrollbar-color: color-mix(in oklab, var(--muted-foreground) 50%, transparent) transparent; }
   ::highlight(find) { background-color: Highlight; color: HighlightText; }

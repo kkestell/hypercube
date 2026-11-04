@@ -8,7 +8,7 @@ import {agentTabs, resizeSplit} from './editor.ts';
 import {EditorPane} from './editor-pane.tsx';
 import type {LayoutNode, Placement} from './types.ts';
 
-const whole: Placement = {top: true, left: true, right: true};
+const whole: Placement = {top: true, left: true};
 
 function PaneTree({node, focused, placement}: {node: LayoutNode; focused: boolean; placement: Placement}) {
   const [, store] = useStore();
@@ -22,7 +22,7 @@ function PaneTree({node, focused, placement}: {node: LayoutNode; focused: boolea
       minEnd="15%"
       onResize={ratio => store.update(s => resizeSplit(s, node.id, ratio))}
     >
-      <PaneTree key={first.id} node={first} focused={focused} placement={node.axis === 'x' ? {...placement, right: false} : placement} />
+      <PaneTree key={first.id} node={first} focused={focused} placement={placement} />
       <PaneTree key={second.id} node={second} focused={focused} placement={node.axis === 'x' ? {...placement, left: false} : {...placement, top: false}} />
     </Split>
   );

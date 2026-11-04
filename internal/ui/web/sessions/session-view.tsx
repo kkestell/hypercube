@@ -17,5 +17,5 @@ export function SessionView() {
   }, [session?.id, session?.unseen, state.visible]);
 
   if (shownSession(state)) return <EditorArea />;
-  return <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />;
+  return <EditorTabs pane={null} entries={[]} placement={{top: true, left: true}} />;
 }

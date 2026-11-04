@@ -53,7 +53,7 @@ test('closing a tab focuses the next one, and closing a pane\'s last focuses ano
   expect(document.activeElement === tabs()[0]).toBe(true);
 });
 
-test('each pane shows the mode button only for its active Markdown file', () => {
+test('each pane\'s view menu offers the options of its active tab', async () => {
   const {store, root} = setup(state => ({
     ...state,
     browsers: {s: {url: 'https://example.com/', title: 'Example', loading: false, canGoBack: false, canGoForward: false}},
@@ -66,23 +66,39 @@ test('each pane shows the mode button only for its active Markdown file', () => 
       }},
     },
   }));
-  const buttons = () => [...root.querySelectorAll('.editor-tabs-actions')];
-  expect(buttons()).toHaveLength(0); // browser
+  const menus = () => [...root.querySelectorAll<HTMLElement>('.view-menu')];
+  const openItems = () => [...document.querySelectorAll<HTMLElement>('.view-menu-items [role^=menuitem]')];
+  // open shows the menu of the only pane and gives its item labels.
+  const open = async () => {
+    clickControl(find(root, '.view-menu'));
+    await frame();
+    return openItems().map(i => i.textContent);
+  };
+  const press = async (target: Element, key: string) => {
+    act(() => target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+    await frame();
+  };
+  const choose = (label: string) => press(openItems().find(i => i.textContent === label) ?? expect.unreachable(label), 'Enter');
+  const close = () => press(find(document.body, '.view-menu-items'), 'Escape');
+  expect(menus()).toHaveLength(0); // browser
   const select = (id: TabId) => act(() => store.update(state => selectTab(state, findPane(treeOf(state), id)?.id ?? expect.unreachable(id), id)));
   select('agent');
-  expect(buttons()).toHaveLength(0);
+  expect(await open()).toEqual(['Fixed Width']);
+  const fixedWidth = store.get().workbench.fixedWidth;
+  await choose('Fixed Width');
+  expect(store.get().workbench.fixedWidth).toBe(!fixedWidth);
   select('file:code.go');
-  expect(buttons()).toHaveLength(0);
+  expect(await open()).toEqual(['Word Wrap⌥Z']);
+  await close();
   select('file:guide.md');
-  expect(buttons()).toHaveLength(1);
-  expect(buttons()[0].getAttribute('aria-label')).toBe('Show Source');
-  clickControl(find(root, '.editor-tabs-actions'));
+  expect(await open()).toEqual(['Show Source', 'Word Wrap⌥Z', 'Fixed Width']);
+  await choose('Show Source');
   expect(attached(store.get()).files.open['guide.md'].source).toBe(true);
-  expect(buttons()[0].getAttribute('aria-label')).toBe('Show Preview');
-  clickControl(find(root, '.editor-tabs-actions'));
+  expect(await open()).toEqual(['Show Preview', 'Word Wrap⌥Z']);
+  await choose('Show Preview');
   expect(attached(store.get()).files.open['guide.md'].source).toBe(false);
   act(() => store.update(state => moveTab(state, 'file:notes.md', treeOf(state).id, 'right')));
-  expect(buttons()).toHaveLength(2);
+  expect(menus()).toHaveLength(2);
 });
 
 test('the arrow keys, Home, and End select tabs and keep the focus on them', async () => {

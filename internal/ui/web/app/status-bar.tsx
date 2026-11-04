@@ -5,6 +5,7 @@ import {Progress} from '../components/ui/progress';
 import {useEffect, useState} from 'react';
 import {displayName} from '../agent/profile-label.ts';
 import {useStore} from '../store.ts';
+import {LayoutToggles} from './layout-toggles.tsx';
 import type {Limit} from './types.ts';
 
 const minute = 60_000;
@@ -65,16 +66,18 @@ export function StatusBar() {
     const timer = setInterval(() => setNow(Date.now()), minute);
     return () => clearInterval(timer);
   }, []);
-  if (!state.limits.length) return null;
   const byHarness = Object.groupBy(state.limits, limit => limit.harness);
   return (
-    <footer className="status-bar flex shrink-0 flex-wrap items-center justify-end gap-6 border-t px-3 py-2 text-xs">
-      {Object.entries(byHarness).map(([harness, limits = []]) => (
-        <span key={harness} className="status-bar-harness flex items-center gap-4">
-          {displayName(harness)}
-          {limits.map(limit => <LimitWindow key={limit.minutes} limit={limit} now={now} />)}
-        </span>
-      ))}
+    <footer className="status-bar flex shrink-0 items-center gap-6 border-t py-1 pr-1 pl-3 text-xs">
+      <div className="status-bar-usage flex min-w-0 flex-1 flex-wrap items-center gap-6">
+        {Object.entries(byHarness).map(([harness, limits = []]) => (
+          <span key={harness} className="status-bar-harness flex items-center gap-4">
+            {displayName(harness)}
+            {limits.map(limit => <LimitWindow key={limit.minutes} limit={limit} now={now} />)}
+          </span>
+        ))}
+      </div>
+      <LayoutToggles />
     </footer>
   );
 }

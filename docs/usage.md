@@ -126,16 +126,19 @@ session's menu changes its title. Right-click a row for its menu; workspace
 and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
-Children appear under their parent. A spinner indicates work, an amber dot
-means an answer is needed, and a blue dot marks an unseen reply. Stopped and
-ended sessions are dimmed.
+Children appear under their parent. A breathing dot indicates work, an amber
+dot means an answer is needed, and a blue dot marks an unseen reply. Stopped
+sessions are hidden; **Show Stopped Sessions** in a workspace's menu shows its
+stopped sessions, and in a session's menu shows its stopped children. Shown
+stopped sessions are dimmed and carry no dots.
 
 ## Layout and shortcuts
 
 Drag tabs between panes, or onto a pane's edge to split it. Drag dividers to
-resize panes and panels. Header buttons toggle the sidebar, terminal, and
-right panel. Use **View → Zoom In**, **Zoom Out**, or **Actual Size** in the
-native window to change page size. The theme follows macOS appearance.
+resize panes and panels. Buttons at the right of the footer toggle the
+sidebar, terminal, and right panel. Use **View → Zoom In**, **Zoom Out**, or
+**Actual Size** in the native window to change page size. The theme follows
+macOS appearance.
 
 **Help → Keyboard Shortcuts** (**Command+/**) lists all shortcuts, including
 sidebar navigation. Text fields retain their editing keys. The terminal keeps

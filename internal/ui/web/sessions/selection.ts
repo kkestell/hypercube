@@ -12,7 +12,8 @@ import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
 export const allSessions = (state: State): Session[] => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 export const waitingCount = (state: State) => allSessions(state).filter(s => s.attention).length;
 
-const hasRunningAgent = (session: Session) => (session.running && !session.ended) || session.children.some(child => child.running && !child.ended);
+export const stopped = (session: Session) => !session.running || session.ended;
+const hasRunningAgent = (session: Session) => !stopped(session) || session.children.some(child => !stopped(child));
 export const runningFirst = (sessions: Session[]) => sessions.toSorted((a, b) => Number(hasRunningAgent(b)) - Number(hasRunningAgent(a)));
 
 export const currentSession = (state: State) => allSessions(state).find(s => s.id === state.selected);

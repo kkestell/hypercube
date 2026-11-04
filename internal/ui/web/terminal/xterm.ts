@@ -39,7 +39,9 @@ function editing(e: KeyboardEvent): string | undefined {
 // changes size. The editing keys arrive through term.onData like typing.
 export function createTerminal(box: HTMLElement) {
   const appearance = matchMedia('(prefers-color-scheme: dark)');
-  const theme = () => appearance.matches ? {} : {
+  // The backgrounds match the page's, so the panel's padding blends into the
+  // terminal.
+  const theme = () => appearance.matches ? {background: '#0a0a0a'} : {
     background: '#ffffff', foreground: '#252525', cursor: '#252525', cursorAccent: '#ffffff',
     selectionBackground: '#b5d5ff',
     black: '#000000', red: '#cd3131', green: '#00a000', yellow: '#795e00',

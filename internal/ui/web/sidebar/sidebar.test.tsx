@@ -56,9 +56,12 @@ const pick = (label: string) => {
   clickControl(item);
 };
 const workspaceMenu = (root: HTMLElement, id = 'w') => click(find(root, `[data-workspace="${id}"] [title="More Actions"]`));
+const showStopped = (root: HTMLElement, selector = '[data-workspace="w"] .workspace-section-header') =>
+  choose(root, selector, 'Show Stopped Sessions');
 test('running sessions come before stopped sessions, preserving order within each group', () => {
   const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: i % 2 === 0}));
   const {store, root} = setup(sessions);
+  showStopped(root);
   const running = sessions.filter(s => s.running).map(s => s.id);
   const stopped = sessions.filter(s => !s.running).map(s => s.id);
   expect(sessionRows(root)).toEqual([...running, ...stopped]);
@@ -74,7 +77,28 @@ test('a running child keeps its stopped parent ahead of stopped sessions', () =>
     session('parent', {running: false, children: [session('child', {parent: 'parent'})]}),
     session('running'),
   ]);
+  expect(sessionRows(root)).toEqual(['parent', 'child', 'running']);
+  showStopped(root);
   expect(sessionRows(root)).toEqual(['parent', 'child', 'running', 'stopped']);
+});
+
+test('stopped sessions hide until a menu shows them, and the menu hides them again', () => {
+  const {root} = setup([session('a', {children: [session('done', {parent: 'a', running: false})]}), session('stopped', {running: false})]);
+  expect(sessionRows(root)).toEqual(['a']);
+  showStopped(root, '[data-session="a"]');
+  expect(sessionRows(root)).toEqual(['a', 'done']);
+  showStopped(root);
+  expect(sessionRows(root)).toEqual(['a', 'done', 'stopped']);
+  choose(root, '[data-workspace="w"] .workspace-section-header', 'Hide Stopped Sessions');
+  choose(root, '[data-session="a"]', 'Hide Stopped Sessions');
+  expect(sessionRows(root)).toEqual(['a']);
+});
+
+test('stopped sessions show no attention dots', () => {
+  const {root} = setup([session('a', {running: false, attention: true}), session('b', {running: false, unseen: true})]);
+  showStopped(root);
+  expect(dots(root, 'a')).toEqual([]);
+  expect(dots(root, 'b')).toEqual([]);
 });
 
 test('Add Workspace works even when no workspaces exist', () => {
@@ -86,6 +110,7 @@ test('Add Workspace works even when no workspaces exist', () => {
 
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
+  showStopped(root);
   select(root, 'b');
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
@@ -144,10 +169,11 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     session('stopped', {running: false}),
     session('failed', {activity: 'exited'}),
   ]);
+  showStopped(root);
   choose(root, '[data-session="running"]', 'Stop Session');
   choose(root, '[data-session="stopped"]', 'Start Session');
   choose(root, '[data-session="failed"]', 'Start Session');
-  expect(posted()).toEqual([
+  expect(posted().slice(-3)).toEqual([
     {action: 'stop', id: 'running'},
     {action: 'start', id: 'stopped'},
     {action: 'start', id: 'failed'},
@@ -200,6 +226,8 @@ test('Escape cancels deleting a workspace', () => {
 test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), session('p0')]);
+  expect(sessionRows(root)).toEqual(['a', 'second', 'p0']);
+  showStopped(root, '[data-session="a"]');
   expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0']);
   expect(row(root, 'first').classList.contains('opacity-60')).toBe(true);
 });
@@ -212,9 +240,11 @@ test('clicking a parent selects it and keeps its children visible', () => {
   expect(posted()).toEqual([]);
 });
 
-test('all children show under a stopped parent and stopped and ended children dim', () => {
+test('a running child shows its stopped parent, and stopped and ended children dim once shown', () => {
   const children = [session('running', {parent: 'a'}), session('stopped', {parent: 'a', running: false}), session('ended', {parent: 'a', ended: true})];
   const {root} = setup([session('a', {running: false, children})]);
+  expect(sessionRows(root)).toEqual(['a', 'running']);
+  showStopped(root, '[data-session="a"]');
   expect(sessionRows(root)).toEqual(['a', 'running', 'stopped', 'ended']);
   for (const id of ['a', 'stopped', 'ended']) expect(row(root, id).classList.contains('opacity-60')).toBe(true);
   expect(row(root, 'running').classList.contains('opacity-60')).toBe(false);
@@ -241,9 +271,9 @@ test.each<[Activity, Activity, string[]]>([
   ['idle', 'busy', ['child']],
   ['busy', 'idle', ['a']],
   ['busy', 'busy', ['a', 'child']],
-])('each row spins only for its own work: parent=%s, child=%s', (parent, child, expected) => {
+])('each row breathes only for its own work: parent=%s, child=%s', (parent, child, expected) => {
   const {root} = setup([session('a', {activity: parent, children: [session('child', {parent: 'a', activity: child})]})]);
-  const busy = findAll(root, '.session-item-busy').map(icon => icon.closest<HTMLElement>('[data-session]')?.dataset.session);
+  const busy = findAll(root, '.busy-dot').map(icon => icon.closest<HTMLElement>('[data-session]')?.dataset.session);
   expect(busy).toEqual(expected);
 });
 
@@ -281,6 +311,7 @@ test('Escape closes a menu and returns the focus to its button', async () => {
 
 test('active nested sessions offer only Rename and ended ones also Delete Session', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
+  showStopped(root, '[data-session="a"]');
   contextMenu(find(root, '[data-session="active"]'));
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
   choose(root, '[data-session="ended"]', 'Delete Session');
