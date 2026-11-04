@@ -61,7 +61,7 @@ Choose a result to show its session.
 Choose Help > Keyboard Shortcuts or press Command+/ to see the keyboard
 shortcuts. In the native app, the Session and View menus also show shortcuts;
 View > Zoom In, Zoom Out, and Actual Size change the window's page size. The
-terminal keeps its own keys except Command+P, and text fields keep their editing
+terminal keeps its own keys except Command+P and Command+comma, and text fields keep their editing
 shortcuts.
 
 The status bar along the bottom of the window shows each harness's

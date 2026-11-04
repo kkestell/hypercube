@@ -5,14 +5,14 @@ import {windowHandler} from './window.js';
 
 // Bindings also supply the native menus and the keyboard reference.
 export const shortcuts = [
-  {id: 'settings', section: 'App', title: 'Settings…', keys: ['⌘,'], menu: true},
+  {id: 'settings', section: 'App', title: 'Settings…', keys: ['⌘,'], menu: true, terminal: true},
   {id: 'new', section: 'Session', title: 'New Session', keys: ['⌘N'], menu: true},
   {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌘⌥↓', '⌃Tab'], menu: true},
   {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], menu: true},
   {id: 'select', section: 'Session', title: 'Select Session', keys: ['⌘1–9']},
   {id: 'interrupt', section: 'Session', title: 'Interrupt Agent', keys: ['Escape']},
   {id: 'searchSessions', section: 'Session', title: 'Search Sessions', keys: ['⌘K']},
-  {id: 'quickOpen', section: 'Session', title: 'Quick Open', keys: ['⌘P']},
+  {id: 'quickOpen', section: 'Session', title: 'Quick Open', keys: ['⌘P'], terminal: true},
   {id: 'composer', section: 'Session', title: 'Focus Composer', keys: ['⌘L']},
   {id: 'sidebar', section: 'View', title: 'Toggle Sidebar', keys: ['⌘B'], menu: true},
   {id: 'panel', section: 'View', title: 'Toggle Terminal', keys: ['⌘J'], menu: true},
@@ -47,7 +47,7 @@ export function shortcut(e, store, {focusComposer, showHelp, showSettings, openQ
   if (!id) {
     if (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing) return;
     if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
-    if (e.target.closest('.terminal-panel') && !matches(e, 'quickOpen')) return;
+    if (e.target.closest('.terminal-panel') && !shortcuts.some(item => item.terminal && matches(e, item.id))) return;
   }
   const state = store.get();
   if (!id && state.confirmation) return;

@@ -261,7 +261,9 @@ test('Settings opens from the sidebar, shortcut and menu and removes saved choic
     expect(dialog.textContent).not.toContain('shell');
     expect(Object.fromEntries(new URL(fetches.mock.calls.at(-1)[0], 'http://x/').searchParams)).toEqual({session: '', harness: 'codex', tool: 'shell'});
     act(() => dialog.querySelector('[data-slot="dialog-close"]').click());
-    await act(async () => root.querySelector('header button').dispatchEvent(new KeyboardEvent('keydown', {key: ',', metaKey: true, bubbles: true})));
+    const event = new KeyboardEvent('keydown', {key: ',', metaKey: true, bubbles: true, cancelable: true});
+    await act(async () => root.querySelector('.terminal-panel').dispatchEvent(event));
+    expect(event.defaultPrevented).toBe(true);
     dialog = document.querySelector('[role=dialog]');
     expect(dialog.textContent).toContain('Settings');
     act(() => dialog.querySelector('[data-slot="dialog-close"]').click());
