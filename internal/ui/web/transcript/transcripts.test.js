@@ -35,20 +35,23 @@ const turn = (...items) => [
   {id: 'L1:i', seq: 99, kind: 'state', state: 'idle', done: true, final: ['t']},
 ];
 
-test('an open request inside a finished turn expands its activity', () => {
+test('an open request leaves activity expansion under the user\'s control', () => {
   const next = receivedTranscript(state(), message(turn(
     {id: 'a', seq: 3, kind: 'tool', tool: 'agent'},
     {id: 'q', seq: 4, parent: 'a', kind: 'attention', text: 'Allow?', choices: ['ok']},
     {id: 't', seq: 5, kind: 'text', text: 'Waiting'},
   ), true));
-  expect(next.session.expanded).toEqual({'activity:L1:w': true});
-  expect(setExpanded(next, 'activity:L1:w', false).session.expanded).toEqual({});
+  expect(next.session.expanded).toEqual({});
+  const expanded = setExpanded(next, 'activity:L1:w', true);
+  expect(expanded.session.expanded).toEqual({'activity:L1:w': true});
+  expect(receivedTranscript(expanded, message([])).session.expanded).toEqual({'activity:L1:w': true});
+  expect(setExpanded(expanded, 'activity:L1:w', false).session.expanded).toEqual({});
 });
 
-test('an open request reveals its activity when the turn ends later', () => {
+test('an open request leaves its activity collapsed when the turn ends later', () => {
   const [opener, work, ...rest] = turn({id: 'q', seq: 3, kind: 'attention', text: 'Allow?'}, {id: 't', seq: 4, kind: 'text', text: 'Waiting'});
   let next = receivedTranscript(state(), message([opener, work, rest[0], rest[1]], true));
   expect(next.session.expanded).toEqual({});
   next = receivedTranscript(next, message([rest[2]]));
-  expect(next.session.expanded).toEqual({'activity:L1:w': true});
+  expect(next.session.expanded).toEqual({});
 });
