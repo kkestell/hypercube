@@ -24,31 +24,31 @@ type ChangesResult struct {
 // Changes lists all staged, unstaged, and untracked files relative to root.
 func Changes(root string) (ChangesResult, error) {
 	result := ChangesResult{Files: []Change{}}
-	status, err := run(root, nil, "", 0, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z")
+	status, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z")
 	if err != nil {
 		return result, err
 	}
-	base := "HEAD"
 	for _, record := range strings.Split(status, "\x00") {
 		if branch, ok := strings.CutPrefix(record, "# branch.head "); ok && branch != "(detached)" {
 			result.Branch = branch
-		}
-		if record == "# branch.oid (initial)" {
-			base, err = emptyTree(root)
-			if err != nil {
-				return result, err
-			}
 		}
 		if path, ok := strings.CutPrefix(record, "? "); ok {
 			result.Files = append(result.Files, Change{Path: path, Status: "untracked"})
 		}
 	}
-	out, err := run(root, nil, "", 0, "diff", base, "--raw", "--numstat", "--no-renames", "-z")
+	base, err := diffBase(root)
 	if err != nil {
 		return result, err
 	}
+	// Diff can explicitly refresh the index even with optional locks disabled.
+	out, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "-c", "diff.autoRefreshIndex=false", "diff", base, "--raw", "--numstat", "--no-renames", "-z")
+	if err != nil {
+		return result, err
+	}
+	// Git emits raw records before numstat. Pair by path: without refreshing
+	// the index, raw can include stat-only changes that numstat omits.
 	records := strings.Split(out, "\x00")
-	var tracked []Change
+	statuses := map[string]string{}
 	i := 0
 	for i < len(records) && strings.HasPrefix(records[i], ":") {
 		fields := strings.Fields(records[i])
@@ -59,18 +59,22 @@ func Changes(root string) (ChangesResult, error) {
 		case "D":
 			status = "deleted"
 		}
-		tracked = append(tracked, Change{Path: records[i+1], Status: status})
+		statuses[records[i+1]] = status
 		i += 2
 	}
-	for j := range tracked {
-		fields := strings.SplitN(records[i+j], "\t", 3)
+	for _, record := range records[i:] {
+		if record == "" {
+			continue
+		}
+		fields := strings.SplitN(record, "\t", 3)
+		file := Change{Path: fields[2], Status: statuses[fields[2]]}
 		if fields[0] != "-" && fields[1] != "-" {
 			added, _ := strconv.Atoi(fields[0])
 			removed, _ := strconv.Atoi(fields[1])
-			tracked[j].Added, tracked[j].Removed = &added, &removed
+			file.Added, file.Removed = &added, &removed
 		}
+		result.Files = append(result.Files, file)
 	}
-	result.Files = append(result.Files, tracked...)
 	return result, nil
 }
 
@@ -91,15 +95,15 @@ func Diff(root, path string, limit int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := run(root, nil, "", limit, "--literal-pathspecs", "diff", base, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)
+	out, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff", base, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)
 	if err != nil || out != "" {
 		return out, err
 	}
-	untracked, err := git(root, "--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path)
+	untracked, err := gitWith(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", "--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path)
 	if err != nil || untracked == "" {
 		return "", err
 	}
-	out, err = run(root, nil, "", limit, "diff", "--no-index", "--no-color", "--no-ext-diff", "-U1000000", "--", "/dev/null", path)
+	out, err = run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "-c", "diff.autoRefreshIndex=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "-U1000000", "--", "/dev/null", path)
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
 		err = nil

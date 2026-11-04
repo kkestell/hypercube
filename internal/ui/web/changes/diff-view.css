@@ -12,7 +12,7 @@
 
 .diff-view-line {
   display: grid;
-  grid-template-columns: 4ch 4ch 3ch 1fr;
+  grid-template-columns: repeat(2, calc(var(--digits) * 1ch)) 3ch 1fr;
   white-space: pre;
 }
 

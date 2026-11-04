@@ -25,7 +25,7 @@ func (s *server) changesRoot(id string) (root string, ok bool, err error) {
 }
 
 func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
-	dir, ok, err := s.changesRoot(r.URL.Query().Get("session"))
+	top, ok, err := s.changesRoot(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}
@@ -35,26 +35,30 @@ func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nil)
 		return
 	}
-	changes, err := workspace.Changes(dir)
+	changes, err := workspace.Changes(top)
 	if fileError(w, err) {
 		return
 	}
-	root, err := os.OpenRoot(dir)
+	root, err := os.OpenRoot(top)
 	if fileError(w, err) {
 		return
 	}
 	defer root.Close()
-	for i := range changes.Files {
-		file := &changes.Files[i]
-		if file.Status != "untracked" {
-			continue
+	files := changes.Files[:0]
+	for _, file := range changes.Files {
+		if file.Status == "untracked" {
+			added, removed, err := untrackedLines(root, file.Path)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if fileError(w, err) {
+				return
+			}
+			file.Added, file.Removed = added, removed
 		}
-		added, removed, err := untrackedLines(root, file.Path)
-		if fileError(w, err) {
-			return
-		}
-		file.Added, file.Removed = added, removed
+		files = append(files, file)
 	}
+	changes.Files = files
 	json.NewEncoder(w).Encode(changes)
 }
 
@@ -62,6 +66,9 @@ func untrackedLines(root *os.Root, path string) (*int, *int, error) {
 	info, err := root.Lstat(path)
 	if err != nil {
 		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0 {
+		return nil, nil, nil
 	}
 	added, removed := 1, 0
 	if info.Mode()&os.ModeSymlink == 0 {
@@ -86,7 +93,7 @@ func untrackedLines(root *os.Root, path string) (*int, *int, error) {
 }
 
 func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
-	dir, ok, err := s.changesRoot(r.URL.Query().Get("session"))
+	top, ok, err := s.changesRoot(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}
@@ -99,7 +106,7 @@ func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "path must name a repository-relative file", http.StatusBadRequest)
 		return
 	}
-	patch, err := workspace.Diff(dir, path, maxFile)
+	patch, err := workspace.Diff(top, path, maxFile)
 	if fileError(w, err) {
 		return
 	}

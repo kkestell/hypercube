@@ -17,6 +17,8 @@ export const fileTabId = path => 'file:' + path;
 
 export const diffTabId = path => 'diff:' + path;
 
+export const isDiffTab = id => id.startsWith('diff:');
+
 // tabPath is a file or diff tab's path.
 export const tabPath = id => id.slice(id.indexOf(':') + 1);
 
@@ -40,7 +42,7 @@ export function tabEntry(state, id) {
   }
   const path = tabPath(id);
   const name = path.slice(path.lastIndexOf('/') + 1);
-  if (id.startsWith('diff:')) {
+  if (isDiffTab(id)) {
     const status = session.changes?.files?.find(file => file.path === path)?.status;
     const label = diffTitle(path, status);
     return {id, path, name, diff: true, label, title: label, preview: session.tabs.preview === id};
@@ -60,7 +62,7 @@ function forgetTab(session, id) {
   const path = tabPath(id);
   const scroll = {...session.scroll};
   delete scroll[id];
-  if (id.startsWith('diff:')) {
+  if (isDiffTab(id)) {
     const diffs = {...session.diffs};
     delete diffs[path];
     return {...session, diffs, scroll};
@@ -87,7 +89,7 @@ function tabOpened(state, id, data) {
     const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openBeside(session.tabs, id, agentTabId);
     const kept = preview ? forgetTab(session, preview) : session;
     const path = tabPath(id);
-    const contents = id.startsWith('diff:')
+    const contents = isDiffTab(id)
       ? {diffs: {...kept.diffs, [path]: data}}
       : {files: {...kept.files, open: {...kept.files.open, [path]: data}}};
     return {...kept, ...contents, tabs: {...tabs, preview: id}};

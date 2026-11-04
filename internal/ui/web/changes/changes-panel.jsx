@@ -21,7 +21,7 @@ export function ChangesPanel() {
     <div class="changes-panel">
       <div class="changes-panel-row changes-panel-branch">
         <span class="changes-panel-name">{changes.branch}</span>
-        {merge?.unmerged > 0 && <span class="changes-panel-ahead" title={mergeSummary(merge)} aria-label={mergeSummary(merge)}><vscode-icon name="arrow-up" aria-hidden="true" />{merge.unmerged}</span>}
+        {merge?.unmerged > 0 && <span class="changes-panel-ahead" role="img" title={mergeSummary(merge)} aria-label={mergeSummary(merge)}><vscode-icon name="arrow-up" aria-hidden="true" />{merge.unmerged}</span>}
       </div>
       <ul class="changes-panel-list" aria-label="Uncommitted files">
         {changes.files.map(file => {

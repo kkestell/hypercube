@@ -1,11 +1,13 @@
 package workspace
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestChanges(t *testing.T) {
@@ -125,5 +127,73 @@ func TestDiff(t *testing.T) {
 	patch, err = Diff(root, "x[1].txt", 4096)
 	if err != nil || patch != "" {
 		t.Fatalf("committed = %q, %v", patch, err)
+	}
+}
+
+func TestChangesAndDiffLeaveIndexUnchanged(t *testing.T) {
+	for _, operation := range []string{"changes", "diff"} {
+		t.Run(operation, func(t *testing.T) {
+			root, run := gitRepo(t)
+			write(t, filepath.Join(root, "same"), "unchanged\n")
+			write(t, filepath.Join(root, "changed"), "before\n")
+			run(root, "add", ".")
+			run(root, "commit", "-qm", "files")
+			index := filepath.Join(root, ".git", "index")
+			before, err := os.ReadFile(index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(filepath.Join(root, "same"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// A clean file with changed stat data makes Git refresh its index normally.
+			stamp := info.ModTime().Add(time.Second)
+			if err := os.Chtimes(filepath.Join(root, "same"), stamp, stamp); err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(root, "changed"), "after\n")
+			t.Setenv("GIT_OPTIONAL_LOCKS", "1")
+			if operation == "changes" {
+				var changes ChangesResult
+				changes, err = Changes(root)
+				if err == nil && (len(changes.Files) != 1 || changes.Files[0].Path != "changed") {
+					t.Fatalf("content changes = %+v; want only changed", changes.Files)
+				}
+			} else {
+				_, err = Diff(root, "same", 4096)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			after, err := os.ReadFile(index)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("read-only polling rewrote the index")
+			}
+		})
+	}
+}
+
+func TestDiffMetadataOnly(t *testing.T) {
+	root, run := gitRepo(t)
+	run(root, "config", "core.filemode", "true")
+	write(t, filepath.Join(root, "mode"), "contents\n")
+	run(root, "add", ".")
+	run(root, "commit", "-qm", "file")
+	if err := os.Chmod(filepath.Join(root, "mode"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(root, "empty"), "")
+	for _, tc := range []struct{ path, metadata string }{
+		{"mode", "old mode 100644\nnew mode 100755\n"},
+		{"empty", "new file mode 100644\n"},
+	} {
+		patch, err := Diff(root, tc.path, 4096)
+		if err != nil || !strings.Contains(patch, tc.metadata) || strings.Contains(patch, "\n@@ ") {
+			t.Errorf("%s patch = %q, %v", tc.path, patch, err)
+		}
 	}
 }

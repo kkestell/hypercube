@@ -46,6 +46,23 @@ func TestChangesRoutes(t *testing.T) {
 	if err := os.Symlink("missing", filepath.Join(dir, "link")); err != nil {
 		t.Fatal(err)
 	}
+	// Git lists an untracked nested repository as a directory, not its contents.
+	run("init", "-q", filepath.Join(dir, "nested"))
+	write("nested/file", "nested contents")
+	write("vanished", "temporary")
+	// Remove a file after status has listed it but before the HTTP route counts it.
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\ncase \"$*\" in *--raw*) rm -f \"$HYPERCUBE_TEST_VANISHED\";; esac\nexec \"$HYPERCUBE_TEST_GIT\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HYPERCUBE_TEST_GIT", realGit)
+	t.Setenv("HYPERCUBE_TEST_VANISHED", filepath.Join(dir, "vanished"))
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	outside := t.TempDir()
 	removed := filepath.Join(t.TempDir(), "removed")
 	if err := os.Mkdir(removed, 0o755); err != nil {
@@ -85,8 +102,14 @@ func TestChangesRoutes(t *testing.T) {
 	for _, file := range changes.Files {
 		files[file.Path] = file
 	}
-	if changes.Branch != "main" || len(files) != 6 {
+	if changes.Branch != "main" || len(files) != 7 {
 		t.Fatalf("changes = %+v", changes)
+	}
+	if file, ok := files["nested/"]; !ok || file.Status != "untracked" || file.Added != nil || file.Removed != nil {
+		t.Errorf("nested repository = %+v, %v", file, ok)
+	}
+	if _, ok := files["vanished"]; ok {
+		t.Error("disappearing untracked file was retained")
 	}
 	for path, count := range map[string]int{"sub/new.txt": 2, "link": 1} {
 		file := files[path]

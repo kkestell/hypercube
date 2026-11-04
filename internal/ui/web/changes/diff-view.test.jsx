@@ -25,3 +25,16 @@ test('an empty patch shows No changes and a refused file shows its message', () 
   expect(view({text: '', message: null}).querySelector('.diff-view-message').textContent).toBe('No changes');
   expect(view({text: null, message: 'Too large'}).querySelector('.diff-view-message').textContent).toBe('Too large');
 });
+
+
+test.each([
+  ['diff --git a/empty b/empty\nnew file mode 100644\nindex 0000000..e69de29\n', 'Empty file'],
+  ['diff --git a/script b/script\nold mode 100644\nnew mode 100755\n', 'File mode changed from 100644 to 100755'],
+])('metadata-only patches explain their change', (text, note) => {
+  expect(view({text, message: null}).querySelector('.diff-view-message').textContent).toBe(note);
+});
+
+test('the line-number gutters grow to fit either side of the diff', () => {
+  const root = view({text: '@@ -9999 +100000 @@\n context\n', message: null});
+  expect(root.querySelector('.diff-view-lines').style.getPropertyValue('--digits')).toBe('6');
+});

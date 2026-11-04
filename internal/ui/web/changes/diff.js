@@ -17,3 +17,11 @@ export function diffRows(patch) {
   }
   return rows;
 }
+
+// Metadata-only patches still explain the change without any text rows.
+export function diffNote(patch) {
+  const modes = /^old mode (\d+)\nnew mode (\d+)$/m.exec(patch);
+  if (modes) return `File mode changed from ${modes[1]} to ${modes[2]}`;
+  if (/^(?:new|deleted) file mode /m.test(patch)) return 'Empty file';
+  return 'No changes';
+}

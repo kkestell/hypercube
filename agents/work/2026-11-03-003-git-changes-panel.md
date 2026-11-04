@@ -17,12 +17,27 @@ existing preview tabs and visible-page poller own the new views and refreshes.
 - `/diff` rejects empty, absolute, and escaping paths with 400 to enforce the
   route's repository-relative file input.
 
+## Review corrections
+
+Addressed all nine review findings, including the nested-repository and
+vanishing-file cases, metadata-only diffs, wider line-number gutters, status
+refresh for active diffs, accessibility, documentation, and naming clarity.
+Added regressions for the failure cases and updated browser assertions.
+
+Apple Git 2.50.1 still rewrites the index during `diff` with
+`GIT_OPTIONAL_LOCKS=0`. The regression comparing index bytes demonstrated this;
+per-command `-c diff.autoRefreshIndex=false` is also necessary. With refresh
+disabled, raw output can contain stat-only changes absent from numstat, so the
+listing pairs records by path and omits those unchanged files. The regression
+also checks that only content changes remain listed. Neither setting changes
+the user's Git configuration.
+
 ## Checks run
 
 - `make ui` — passed; generated assets rebuilt.
 - `GOCACHE=/private/tmp/hypercube-shared-gocache make check` — stopped at
   `sips` while building the app icon: “Cannot extract image from file”, Error 13.
-- `bun test` in `internal/ui` — 271 passed, zero failures.
+- `bun test` in `internal/ui` — 275 passed, zero failures.
 - Fresh `bun build.js` into a temporary directory matched `internal/ui/dist`.
 - `GOCACHE=/private/tmp/hypercube-shared-gocache go vet ./...` — passed.
 - `GOCACHE=/private/tmp/hypercube-shared-gocache go test -race ./...` — passed.

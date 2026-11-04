@@ -51,6 +51,7 @@ test('only unmerged commits show an ahead count with the merge sentence as its l
   const {root} = changes({branch: 'feature', files: []}, {unmerged: 2, target: 'main'});
   const ahead = root.querySelector('.changes-panel-ahead');
   expect(ahead.textContent).toBe('2');
+  expect(ahead.getAttribute('role')).toBe('img');
   expect(ahead.getAttribute('aria-label')).toBe('2 commits not merged into main');
   expect(ahead.title).toBe('2 commits not merged into main');
 });

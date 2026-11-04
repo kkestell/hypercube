@@ -3,13 +3,14 @@ import {useEffect, useMemo, useRef, useState} from 'preact/hooks';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {language} from '../files/language.js';
 import {useStore} from '../store.js';
-import {diffRows} from './diff.js';
+import {diffNote, diffRows} from './diff.js';
 import './diff-view.css';
 
 function DiffLines({text, path}) {
   const rows = useMemo(() => diffRows(text), [text]);
   const [highlighted, setHighlighted] = useState(null);
   useEffect(() => {
+    if (!rows.length) return;
     let current = true;
     import('../files/highlight.js').then(({highlight}) => {
       if (!current) return;
@@ -20,9 +21,10 @@ function DiffLines({text, path}) {
     });
     return () => { current = false; };
   }, [rows, path]);
-  if (!rows.length) return <div class="diff-view-message">No changes</div>;
+  if (!rows.length) return <div class="diff-view-message">{diffNote(text)}</div>;
   const html = highlighted?.text === text ? highlighted : null;
-  return <div class="diff-view-lines">{rows.map((row, i) => {
+  const largest = rows.reduce((n, row) => Math.max(n, row.old ?? 0, row.new ?? 0), 0);
+  return <div class="diff-view-lines" style={{'--digits': Math.max(4, String(largest).length)}}>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
     return (
       <div key={i} class={`diff-view-line diff-view-${row.kind}`}>
