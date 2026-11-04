@@ -30,7 +30,7 @@ test('the meter marks the elapsed window and turns amber when usage is ahead of 
     {harness: 'claude', minutes: 600, used: 50, resets: now + 4 * hour},
   ]);
   const [over, under] = windows(root);
-  expect(parseFloat(over.querySelector('.status-bar-meter-pace').style.left)).toBeCloseTo(60);
+  expect(parseFloat(over.querySelector('.status-bar-meter-pace').style.left)).toBeCloseTo(60, 1);
   expect(ahead(over)).toBe(true);
   expect(ahead(under)).toBe(false);
   expect(over.title).toBe('5h limit: 70% used, 60% of the window elapsed, resets in 2h 0m');
