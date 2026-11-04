@@ -1,10 +1,12 @@
-import {afterEach, expect, test} from 'bun:test';
+import {afterEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
+import {emptySession} from '../sessions/selection.js';
 import {RightPanel} from './right-panel.jsx';
 
-afterEach(unmountAll);
+let fetchMock;
+afterEach(() => { unmountAll(); fetchMock?.mockRestore(); });
 
 test('the right sidebar offers Files and Changes, initially Files', () => {
   const store = createStore({workbench: {rightTab: 'files'}, session: null, workspaces: []});
@@ -16,24 +18,47 @@ test('the right sidebar offers Files and Changes, initially Files', () => {
   expect(store.get().workbench.rightTab).toBe('changes');
 });
 
-const merge = extra => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: false, uncommitted: 0, ...extra});
-const changes = shown => {
-  const store = createStore({workbench: {rightTab: 'changes'}, selected: 'a', session: null,
-    workspaces: [{id: 'w', sessions: [{id: 'a', children: [], ...shown}]}]});
-  const root = mount(store, <RightPanel />);
-  return [...root.querySelectorAll('.changes-panel p')].map(p => p.textContent);
-};
+const files = [
+  {path: 'foo.py', status: 'modified', added: 4, removed: 3},
+  {path: 'utils/helpers.py', status: 'untracked', added: 6, removed: 0},
+  {path: 'README.md', status: 'deleted', added: 0, removed: 3},
+];
 
-test.each([
-  [merge(), ['No commits yet', '0 uncommitted files']],
-  [merge({unmerged: 1, committed: true, uncommitted: 1}), ['1 commit not merged into main', '1 uncommitted file']],
-  [merge({unmerged: 3, committed: true, uncommitted: 2}), ['3 commits not merged into main', '2 uncommitted files']],
-  [merge({committed: true}), ['Merged into main', '0 uncommitted files']],
-  [merge({error: 'no such directory'}), ['Merge status unavailable: no such directory']],
-])('Changes shows a worktree session\'s branch and %o', (m, want) => {
-  expect(changes({worktree: true, merge: m})).toEqual(['hypercube/session-a', ...want]);
+function changes(data = {branch: 'feature', files}, merge = null) {
+  fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).startsWith('diff?') ? new Response('patch') : Response.json(data));
+  const store = createStore({workbench: {rightTab: 'changes'}, selected: 'a', session: {...emptySession('a'), changes: data},
+    workspaces: [{id: 'w', sessions: [{id: 'a', children: [], merge}]}]});
+  return {store, root: mount(store, <RightPanel />)};
+}
+
+test('Changes rows show status, name, folder, counts, and open the selected diff', () => {
+  const {root, store} = changes();
+  const rows = [...root.querySelectorAll('.changes-panel-file')];
+  expect(rows.map(row => row.title)).toEqual(['foo.py • Modified', 'utils/helpers.py • Untracked', 'README.md • Deleted']);
+  expect(rows.map(row => row.querySelector('.changes-panel-status').getAttribute('aria-label'))).toEqual(['Modified', 'Untracked', 'Deleted']);
+  expect(rows[1].querySelector('.changes-panel-name').textContent).toBe('helpers.py');
+  expect(rows[1].querySelector('.changes-panel-description').textContent).toBe('utils');
+  expect(rows[0].querySelector('.changes-panel-stat').getAttribute('aria-label')).toBe('4 added, 3 removed');
+  expect(rows[0].querySelector('.changes-panel-stat').textContent).toBe('+4−3');
+  expect(root.querySelector('.changes-panel-ahead')).toBeNull();
+  act(() => rows[1].click());
+  expect(store.get().session.tabs.preview).toBe('diff:utils/helpers.py');
+  expect(rows[1].getAttribute('aria-current')).toBe('true');
+  expect(rows[0].hasAttribute('aria-current')).toBe(false);
 });
 
-test('Changes is empty for a session in the checkout', () => {
-  expect(changes({})).toEqual([]);
+test('only unmerged commits show an ahead count with the merge sentence as its label', () => {
+  const {root} = changes({branch: 'feature', files: []}, {unmerged: 2, target: 'main'});
+  const ahead = root.querySelector('.changes-panel-ahead');
+  expect(ahead.textContent).toBe('2');
+  expect(ahead.getAttribute('aria-label')).toBe('2 commits not merged into main');
+  expect(ahead.title).toBe('2 commits not merged into main');
+});
+
+test('outside Git shows nothing, and missing folders replace the earlier list with a message', () => {
+  expect(changes(null).root.querySelector('.changes-panel')).toBeNull();
+  const {root, store} = changes();
+  act(() => store.update(state => ({...state, session: {...state.session, changes: {missing: true}}})));
+  expect(root.querySelector('.changes-panel-list')).toBeNull();
+  expect(root.querySelector('.changes-panel-message').textContent).toBe('The folder no longer exists.');
 });

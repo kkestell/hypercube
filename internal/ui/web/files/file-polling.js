@@ -1,7 +1,7 @@
-// While the page is visible, the Files tree and open files refresh once a
-// second from the store's state: the listed folders the tree shows, when the
-// right panel shows Files, and the active file tab of each pane. Requests go
-// one at a time, and a poll is skipped while the previous one runs.
+// While visible, refresh the shown Files or Changes list and each pane's
+// active file or diff once a second. Requests run one at a time; overlapping
+// polls are skipped.
+import {loadChanges, readOpenDiff} from '../changes/changes.js';
 import {tabPath} from '../editor/editor.js';
 import {panes} from '../editor/tab-layout.js';
 import {loadFolder, readOpenFile} from './files.js';
@@ -23,7 +23,10 @@ export function createFilePoller(store) {
       if (workbench.rightPanel && workbench.rightTab === 'files') {
         for (const dir of shownFolders(session.files)) await loadFolder(store, session.id, dir);
       }
+      if (workbench.rightPanel && workbench.rightTab === 'changes') await loadChanges(store);
       for (const pane of panes(session.tabs.root)) {
+        if (store.get().session?.id !== session.id) break;
+        if (pane.active.startsWith('diff:')) await readOpenDiff(store, tabPath(pane.active));
         if (pane.active.startsWith('file:')) await readOpenFile(store, tabPath(pane.active));
       }
     } finally {

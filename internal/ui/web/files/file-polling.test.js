@@ -50,7 +50,7 @@ test('only shown folders and the active file tab of each pane are polled', async
 
   const hidden = stubFetch({});
   await createFilePoller(createStore(state({workbench: {rightPanel: true, rightTab: 'changes'}})))();
-  expect(hidden).toEqual(['file:z.go', 'file:x.go']);
+  expect(hidden).toEqual(['changes:null', 'file:z.go', 'file:x.go']);
 });
 
 test('a browser tab polls no file', async () => {
@@ -89,4 +89,23 @@ test('results for a session the page left are dropped', async () => {
   }});
   await createFilePoller(store)();
   expect(store.get().session).toEqual(emptySession('other'));
+});
+
+
+test('Changes is polled only while shown and active diff tabs are re-read', async () => {
+  const session = emptySession('s');
+  session.diffs = {'a.go': {text: null, message: null}};
+  session.tabs = openTab(session.tabs, 'diff:a.go');
+  const requests = stubFetch({
+    'changes:null': () => Response.json({branch: 'main', files: []}),
+    'diff:a.go': () => new Response('patch'),
+  });
+  const store = createStore(state({session, workbench: {rightPanel: true, rightTab: 'changes'}}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['changes:null', 'diff:a.go']);
+  expect(store.get().session.diffs['a.go']).toEqual({text: 'patch', message: null});
+  requests.length = 0;
+  store.update(s => ({...s, workbench: {rightPanel: false, rightTab: 'changes'}}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['diff:a.go']);
 });

@@ -1,7 +1,7 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
-import {agentTabId, closeTab, fileTabId, keepOpen, openFileTab, openRequestedFile, rememberScroll, resizeSplit} from './editor.js';
+import {agentTabId, closeTab, diffTabId, fileTabId, keepOpen, openDiffTab, openFileTab, openRequestedFile, rememberScroll, resizeSplit, tabEntry} from './editor.js';
 import {moveTab, openTab, panes} from './tab-layout.js';
 
 let fetchMock;
@@ -94,4 +94,32 @@ test('an agent keeps an existing preview tab without replacing another preview',
   openRequestedFile(s, {session: 's', path: 'a.go', lines: []});
   expect(tabsOf(s)).toEqual([[agentTabId], [fileTabId('a.go'), fileTabId('b.go')]]);
   expect(s.get().session.tabs.preview).toBe(fileTabId('b.go'));
+});
+
+
+test('diff tabs share preview replacement and forget their data and scroll', () => {
+  fetchMock = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('patch'));
+  const s = store();
+  const id = diffTabId('foo.py');
+  openDiffTab(s, 'foo.py');
+  expect(tabsOf(s)).toEqual([[agentTabId], [id]]);
+  expect(s.get().session.tabs.preview).toBe(id);
+  expect(tabEntry(s.get(), id)).toMatchObject({diff: true, name: 'foo.py', label: 'foo.py (Working Tree)'});
+  s.update(state => ({...state, session: {...state.session, changes: {branch: 'main', files: [{path: 'foo.py', status: 'added'}]}}}));
+  expect(tabEntry(s.get(), id).label).toBe('foo.py (Added)');
+  s.update(state => keepOpen(state, id));
+  openDiffTab(s, 'other.py');
+  openDiffTab(s, 'foo.py');
+  expect(panes(s.get().session.tabs.root)[1].active).toBe(id);
+  expect(s.get().session.tabs.preview).toBe(diffTabId('other.py'));
+  const scroll = {top: 5, left: 3, following: false};
+  s.update(state => rememberScroll(state, 's', diffTabId('other.py'), scroll));
+  openFileTab(s, 'source.py');
+  expect(s.get().session.diffs['other.py']).toBeUndefined();
+  expect(s.get().session.scroll[diffTabId('other.py')]).toBeUndefined();
+  s.update(state => closeTab(state, id));
+  expect(s.get().session.diffs['foo.py']).toBeUndefined();
+  expect(s.get().session.scroll[id]).toBeUndefined();
+  openDiffTab(s, 'next.py');
+  expect(s.get().session.files.open['source.py']).toBeUndefined();
 });

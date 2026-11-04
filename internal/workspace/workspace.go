@@ -1,11 +1,13 @@
 // Package workspace finds the checkout, manages the branches and worktrees of
-// worktree sessions and child sessions, and measures their merge state.
+// worktree sessions and child sessions, measures their merge state, and lists
+// uncommitted files and their diffs.
 package workspace
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,17 +38,43 @@ func git(dir string, args ...string) (string, error) {
 // gitWith runs git in dir with extra environment variables and standard input,
 // and returns its trimmed output.
 func gitWith(dir string, env []string, stdin string, args ...string) (string, error) {
+	out, err := run(dir, env, stdin, 0, args...)
+	return strings.TrimSpace(out), err
+}
+
+// run preserves output, including on a nonzero exit, and bounds it when limit > 0.
+func run(dir string, env []string, stdin string, limit int, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	out, err := cmd.Output()
+	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return "", &gitError{args, strings.TrimSpace(stderr.String()), err}
+		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+	var reader io.Reader = pipe
+	if limit > 0 {
+		reader = io.LimitReader(pipe, int64(limit)+1)
+	}
+	out, readErr := io.ReadAll(reader)
+	if limit > 0 && len(out) > limit {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return "", ErrTooLarge
+	}
+	err = cmd.Wait()
+	if readErr != nil {
+		return "", readErr
+	}
+	if err != nil {
+		return string(out), &gitError{args, strings.TrimSpace(stderr.String()), err}
+	}
+	return string(out), nil
 }
 
 // Resolve returns dir as an absolute path. A leading ~/ is the home

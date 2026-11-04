@@ -146,10 +146,11 @@ the sidebar.
 
 The buttons at the right of the header at the top of the window show or hide
 the sidebar, the terminal panel, and the right panel. The right panel's icon
-tabs select Files and Changes. For a worktree session, Changes shows its
-branch, its state against the checkout's branch (commits not merged, merged,
-or no commits yet), and its count of uncommitted files; for other sessions it
-is blank. Files
+tabs select Files and Changes. Changes shows the branch and any commits not
+merged into the checkout's branch, followed by the repository's uncommitted
+files with their status and added and removed line counts. It covers the whole
+repository containing the session's folder. Click a file to open its unified
+diff in a preview tab; double-click the tab to keep it open. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open. A Markdown file opens in

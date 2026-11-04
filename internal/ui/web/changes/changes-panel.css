@@ -1,8 +1,97 @@
 .changes-panel {
-  padding: 0 var(--size-content-inset);
-  overflow-wrap: anywhere;
+  overflow: auto;
 }
 
-.changes-panel p {
-  margin: 0 0 var(--size-space);
+.changes-panel-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  width: 100%;
+  height: var(--size-row-height);
+  padding: 0 calc(var(--size-space) * 3) 0 var(--size-content-inset);
+  color: inherit;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.changes-panel-branch {
+  margin-bottom: var(--size-space);
+  color: var(--vscode-descriptionForeground);
+}
+
+.changes-panel-ahead {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.changes-panel-file:focus-visible {
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
+}
+
+.changes-panel-file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.changes-panel-file[aria-current] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.changes-panel-name,
+.changes-panel-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.changes-panel-name {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.changes-panel-description {
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.changes-panel-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.changes-panel-stat {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--size-space);
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status squares as Zed's Git panel draws them, in the editor gutter's change
+   colors. */
+.changes-panel-status {
+  flex-shrink: 0;
+  /* The codicon squares sit 1px above the label's optical center, which
+     lowercase letters pull below the line box's center. */
+  translate: 0 1px;
+}
+
+.changes-panel-modified > .changes-panel-status { color: var(--vscode-editorGutter-modifiedBackground); }
+.changes-panel-added > .changes-panel-status,
+.changes-panel-untracked > .changes-panel-status { color: var(--vscode-editorGutter-addedBackground); }
+.changes-panel-deleted > .changes-panel-status { color: var(--vscode-editorGutter-deletedBackground); }
+
+.changes-panel-deleted > .changes-panel-name {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+
+.changes-panel-message {
+  padding: 0 var(--size-content-inset);
+  overflow-wrap: anywhere;
 }

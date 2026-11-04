@@ -45,6 +45,8 @@ export const emptySession = id => ({
   expanded: {},
   tabs: agentTabs,
   scroll: {},
+  changes: null,
+  diffs: {},
   files: {listings: {}, expanded: {}, open: {}},
 });
 
