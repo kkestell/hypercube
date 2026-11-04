@@ -31,7 +31,7 @@ mock.module('./xterm.js', () => ({
       dispose() { this.disposed = true; },
     };
     terminals.push(term);
-    return {term, fit: {fit() {}}};
+    return {term, fit: {fit() {}}, dispose: () => term.dispose()};
   },
 }));
 const {TerminalPanel} = await import('./terminal-panel.jsx');

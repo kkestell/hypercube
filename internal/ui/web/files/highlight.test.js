@@ -10,9 +10,10 @@ test('files highlight in their language and unknown files as escaped plain text'
   expect(highlight('ls', 'shellscript')[0]).toContain('color:');
 });
 
-test('OCaml uses the After Dark keyword and string colors', () => {
+test('OCaml uses both light and dark keyword and string colors', () => {
   const [line] = highlight('let value = "hello"', 'ocaml');
-  expect(line).toContain('color:#E6AC6F');
-  expect(line).toContain('color:#98C379');
+  expect(line).toContain('--shiki-light:#D73A49');
+  expect(line).toContain('--shiki-dark:#E6AC6F');
+  expect(line).toContain('--shiki-dark:#98C379');
   expect(line.replace(/<[^>]*>/g, '')).toBe('let value = &#34;hello&#34;');
 });

@@ -1,5 +1,5 @@
-// A wireframe tesseract turning in 4D above a new session's composer. White
-// lines fade with depth, against the editor background. It animates while mounted.
+// A wireframe tesseract turning in 4D above a new session's composer.
+// Lines fade with depth. It animates while mounted.
 import {useEffect, useRef} from 'react';
 
 const vertexShader = `#version 300 es
@@ -8,13 +8,14 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-// Draws thin, antialiased white lines, dimmed by their depth.
+// Draws thin, antialiased lines, dimmed by their depth.
 const fragmentShader = `#version 300 es
 precision highp float;
 uniform vec2 resolution;
 uniform vec4 segments[32];  // endpoints in pixels from the center
 uniform float intensity[32];
 uniform float width;        // line half-width in pixels
+uniform float dark;
 out vec4 color;
 
 float sdSegment(vec2 p, vec2 a, vec2 b) {
@@ -31,7 +32,7 @@ void main() {
     float line = 1.0 - smoothstep(width - 0.5, width + 0.5, d);
     brightness = max(brightness, intensity[i] * line);
   }
-  color = vec4(vec3(brightness), brightness);
+  color = vec4(vec3(brightness * dark), brightness);
 }`;
 
 // The 16 corners of [-1, 1]^4, and the 32 edges joining corners that differ in
@@ -85,11 +86,12 @@ function animate(canvas) {
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(`Tesseract program: ${gl.getProgramInfoLog(program)}`);
   gl.useProgram(program);
   gl.bindVertexArray(gl.createVertexArray());
-  const uniform = Object.fromEntries(['resolution', 'segments', 'intensity', 'width']
+  const uniform = Object.fromEntries(['resolution', 'segments', 'intensity', 'width', 'dark']
     .map(name => [name, gl.getUniformLocation(program, name)]));
 
   const segments = new Float32Array(edges.length * 4);
   const intensity = new Float32Array(edges.length);
+  const appearance = matchMedia('(prefers-color-scheme: dark)');
   let frame = 0;
   const draw = ms => {
     const width = Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio));
@@ -111,6 +113,7 @@ function animate(canvas) {
     gl.uniform4fv(uniform.segments, segments);
     gl.uniform1fv(uniform.intensity, intensity);
     gl.uniform1f(uniform.width, 0.5 * devicePixelRatio);
+    gl.uniform1f(uniform.dark, appearance.matches ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     frame = requestAnimationFrame(draw);

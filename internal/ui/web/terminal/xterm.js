@@ -22,11 +22,23 @@ function editing(e) {
 // createTerminal opens a terminal that fills box. Call fit.fit() after box
 // changes size. The editing keys arrive through term.onData like typing.
 export function createTerminal(box) {
+  const appearance = matchMedia('(prefers-color-scheme: dark)');
+  const theme = () => appearance.matches ? {} : {
+    background: '#ffffff', foreground: '#252525', cursor: '#252525',
+    selectionBackground: '#b5d5ff',
+    black: '#000000', red: '#cd3131', green: '#00a000', yellow: '#795e00',
+    blue: '#0451a5', magenta: '#bc05bc', cyan: '#0598bc', white: '#555555',
+    brightBlack: '#666666', brightRed: '#cd3131', brightGreen: '#008000', brightYellow: '#795e00',
+    brightBlue: '#0451a5', brightMagenta: '#bc05bc', brightCyan: '#0598bc', brightWhite: '#000000',
+  };
   const term = new Terminal({
+    theme: theme(),
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
     fontSize: 13,
     cursorInactiveStyle: 'none',
   });
+  const updateTheme = () => { term.options.theme = theme(); };
+  appearance.addEventListener('change', updateTheme);
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(box);
@@ -54,5 +66,8 @@ export function createTerminal(box) {
       this.renderRows(0, term.rows - 1);
     };
   }
-  return {term, fit};
+  return {term, fit, dispose: () => {
+    appearance.removeEventListener('change', updateTheme);
+    term.dispose();
+  }};
 }

@@ -30,6 +30,8 @@ edits.
 
 ## Browser view
 
+The interface follows the system’s light or dark appearance.
+
 The sidebar lays out sessions as VS Code's Explorer does: each workspace is a
 collapsible section, with running sessions ahead of stopped sessions, keeping
 creation order within each group. A parent with a running child stays in the

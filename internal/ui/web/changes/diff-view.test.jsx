@@ -40,11 +40,12 @@ test('large line numbers are preserved on both sides', () => {
   expect([...root.querySelectorAll('.diff-view-line td')].slice(0, 2).map(cell => cell.textContent)).toEqual(['9999', '100000']);
 });
 
-test('OCaml additions receive After Dark highlighting', async () => {
+test('OCaml additions receive light and dark highlighting', async () => {
   const root = view({text: '@@ -0,0 +1 @@\n+let value = "hello"\n', message: null}, 'checked.ml');
   await act(async () => { await import('../files/highlight.js'); });
   const code = root.querySelector('code');
   expect(code.textContent).toBe('let value = "hello"');
-  expect(code.innerHTML).toContain('color:#E6AC6F');
-  expect(code.innerHTML).toContain('color:#98C379');
+  expect(code.innerHTML).toContain('--shiki-light:#D73A49');
+  expect(code.innerHTML).toContain('--shiki-dark:#E6AC6F');
+  expect(code.innerHTML).toContain('--shiki-dark:#98C379');
 });

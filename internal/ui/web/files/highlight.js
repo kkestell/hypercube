@@ -5,6 +5,7 @@ import {createHighlighterCoreSync} from 'shiki/core';
 import {createJavaScriptRegexEngine} from 'shiki/engine/javascript';
 // After Dark 1.6.4: github.com/simeonkerkola/after-dark at b9c8ea9375ed.
 import afterDark from './after-dark/theme.json';
+import githubLight from 'shiki/themes/github-light.mjs';
 import c from 'shiki/langs/c.mjs';
 import cpp from 'shiki/langs/cpp.mjs';
 import css from 'shiki/langs/css.mjs';
@@ -35,7 +36,7 @@ import xml from 'shiki/langs/xml.mjs';
 import yaml from 'shiki/langs/yaml.mjs';
 
 const highlighter = createHighlighterCoreSync({
-  themes: [afterDark],
+  themes: [afterDark, githubLight],
   langs: [c, cpp, css, diff, dockerfile, go, html, ini, java, javascript, json, jsonc, jsonl, jsx,
     makefile, markdown, ocaml, python, rust, scss, shellscript, sql, swift, toml, tsx, typescript, xml, yaml],
   engine: createJavaScriptRegexEngine(),
@@ -43,6 +44,13 @@ const highlighter = createHighlighterCoreSync({
 
 // Shiki names two of VS Code's languages differently.
 const names = {javascriptreact: 'jsx', typescriptreact: 'tsx'};
+
+const tokenClasses = [
+  '[color:var(--shiki-light)] dark:[color:var(--shiki-dark)]',
+  '[font-style:var(--shiki-light-font-style,normal)] dark:[font-style:var(--shiki-dark-font-style,normal)]',
+  '[font-weight:var(--shiki-light-font-weight,normal)] dark:[font-weight:var(--shiki-dark-font-weight,normal)]',
+  '[text-decoration:var(--shiki-light-text-decoration,none)] dark:[text-decoration:var(--shiki-dark-text-decoration,none)]',
+].join(' ');
 
 const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
@@ -52,10 +60,11 @@ const escape = text => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 export function highlight(text, lang) {
   lang = names[lang] ?? lang;
   if (!highlighter.getLoadedLanguages().includes(lang)) lang = 'text';
-  const {tokens} = highlighter.codeToTokens(text, {lang, theme: afterDark.name});
+  const {tokens} = highlighter.codeToTokens(text, {
+    lang, themes: {light: githubLight.name, dark: afterDark.name}, defaultColor: false,
+  });
   return tokens.map(line => line.map(t => {
-    const style = (t.color ? `color:${t.color};` : '') + (t.fontStyle & 1 ? 'font-style:italic;' : '') +
-      (t.fontStyle & 2 ? 'font-weight:bold;' : '') + (t.fontStyle & 4 ? 'text-decoration:underline;' : '');
-    return style ? `<span style="${style}">${escape(t.content)}</span>` : escape(t.content);
+    const style = Object.entries(t.htmlStyle || {}).map(([key, value]) => `${key}:${value}`).join(';');
+    return style ? `<span class="${tokenClasses}" style="${style}">${escape(t.content)}</span>` : escape(t.content);
   }).join(''));
 }

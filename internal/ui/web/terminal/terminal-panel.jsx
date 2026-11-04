@@ -11,7 +11,7 @@ import {createTerminal} from './xterm.js';
 // openShell connects a terminal in box to the session's shell, calling ended
 // when the shell exits or cannot connect.
 function openShell(box, session, ended) {
-  const {term, fit} = createTerminal(box);
+  const {term, fit, dispose} = createTerminal(box);
   const encoder = new TextEncoder();
   let socket = null, connected = false, exited = false, closed = false;
   const send = data => {
@@ -57,7 +57,7 @@ function openShell(box, session, ended) {
       closed = true;
       socket.close();
       observer.disconnect();
-      term.dispose();
+      dispose();
     },
   };
 }

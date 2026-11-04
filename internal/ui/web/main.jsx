@@ -2,6 +2,7 @@
 // reports, the window's notification clicks, badge and title bar, and App.
 import {createRoot} from 'react-dom/client';
 import {App} from './app/app.jsx';
+import {startAppearance} from './app/appearance.js';
 import {startBadge} from './app/badge.js';
 import {startTitleBar} from './app/title-bar.js';
 import {setVisible} from './app/workbench.js';
@@ -33,6 +34,7 @@ const store = createStore({
   titleBar: null,
 });
 
+startAppearance();
 startDraftStorage(store);
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
 startDataSocket(store);
