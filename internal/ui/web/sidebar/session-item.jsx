@@ -1,58 +1,49 @@
-// A session's own state sits at the far right, beside its worktree branch icon.
-// double-clicking a title renames it in place.
+// A session's tree row. Its right edge shows the worktree branch icon and,
+// only when there is something to say, the session's own state.
 import {useEffect, useRef} from 'preact/hooks';
 import {mergeTint} from '../sessions/merge.js';
-import {chooseSession, renameSession} from '../sessions/session-actions.js';
+import {renameSession} from '../sessions/session-actions.js';
 import {StatusDot} from '../shared/status-dot.jsx';
 import {useStore} from '../store.js';
 import './session-item.css';
 
-const dotOf = (session, selected) => {
+const statusOf = (session, selected) => {
+  if (session.activity === 'exited') return <StatusDot kind="exited" title="Exited" />;
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
-  if (session.activity === 'busy') return <StatusDot kind="busy" title="Working" />;
-  return <StatusDot kind="idle" title={session.running ? 'Idle' : 'Stopped'} />;
+  if (session.activity === 'busy') return <vscode-icon class="session-item-busy" name="loading" spin role="img" title="Working" />;
+  return null;
 };
 
-export function SessionItem({session, selected, renaming, onRenaming, hasChildren, expanded, onToggle}) {
-  const [, store] = useStore();
-  const classes = ['session-item', session.parent ? 'session-item-nested' : 'session-item-parent'];
-  const Title = renaming ? 'div' : 'button';
-  if (selected) classes.push('session-item-selected');
-  if (!session.running) classes.push('session-item-stopped');
+// nested lists the child rows to draw beneath a parent.
+export function SessionItem({session, nested = [], renaming, onRenaming}) {
+  const [state] = useStore();
+  const selected = session.id === state.selected;
+  const classes = ['session-item', !session.running && 'session-item-stopped'].filter(Boolean).join(' ');
 
   return (
-    <div class={classes.join(' ')} data-session={session.id}>
-      {hasChildren
-        ? <button class="session-item-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${session.title}`} aria-expanded={expanded} onClick={onToggle}><vscode-icon name={expanded ? 'chevron-down' : 'chevron-right'} /></button>
-        : <span class="session-item-toggle" />}
-      <Title class="session-item-title" aria-current={selected ? 'true' : undefined}
-        onClick={renaming ? undefined : () => chooseSession(store, session.id)}
-        ondblclick={renaming ? undefined : () => onRenaming(true)}>
-        <span class="session-item-title-line">
-          {renaming
-            ? <RenameField session={session} onDone={() => onRenaming(false)} />
-            : <span class="session-item-text">{session.title}</span>}
-        </span>
-      </Title>
-      <span class="session-item-actions">
-        <span class="session-item-branch-slot">{session.worktree && <BranchIcon session={session} />}</span>
-        <span class="session-item-status">{dotOf(session, selected)}</span>
+    <vscode-tree-item class={classes} data-session={session.id} branch={nested.length > 0} open selected={selected}>
+      {session.id === renaming
+        ? <RenameField session={session} onDone={() => onRenaming(null)} />
+        : session.title}
+      <span slot="decoration" class="session-item-decoration">
+        {session.worktree && <BranchIcon session={session} />}
+        <span class="session-item-status">{statusOf(session, selected)}</span>
       </span>
-    </div>
+      {nested.map(child => <SessionItem key={child.id} session={child} renaming={renaming} onRenaming={onRenaming} />)}
+    </vscode-tree-item>
   );
 }
 
 function BranchIcon({session}) {
   const tint = mergeTint(session.merge);
   const classes = ['session-item-branch', tint && `session-item-branch-${tint}`].filter(Boolean).join(' ');
-  // Slightly smaller than the row's other icons.
-  return <vscode-icon class={classes} name="git-branch" size="14" title={session.merge?.branch} />;
+  return <vscode-icon class={classes} name="git-branch" title={session.merge?.branch} />;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it
-// loses the focus, and cancels on Escape. It keeps its keys and clicks from
-// the sidebar.
+// loses the focus, and cancels on Escape. Enter and Escape return the focus
+// to the row. It keeps its keys and clicks from the tree.
 function RenameField({session, onDone}) {
   const [, store] = useStore();
   const ref = useRef(null);
@@ -74,8 +65,10 @@ function RenameField({session, onDone}) {
 
   const key = e => {
     e.stopPropagation();
-    if (e.key === 'Enter') finish(true);
-    else if (e.key === 'Escape') finish(false);
+    if (e.key !== 'Enter' && e.key !== 'Escape') return;
+    const row = ref.current.closest('vscode-tree-item');
+    finish(e.key === 'Enter');
+    row.focus();
   };
 
   return (

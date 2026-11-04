@@ -23,8 +23,7 @@ test('state arriving before passive effects reaches the page', async () => {
     render(<App store={store} />, root);
     store.update(state => receivedWorkspaces(state, [{id: 'w', name: 'New workspace', sessions: []}]));
     await act(async () => {});
-    await act(() => root.querySelector('[aria-label="Workspace Actions"]').click());
-    expect(root.querySelector('vscode-context-menu').data[0].label).toBe('New workspace');
+    expect(root.querySelector('[data-workspace="w"]').getAttribute('heading')).toBe('New workspace');
   } finally {
     options.requestAnimationFrame = originalSchedule;
     canvas.mockRestore();

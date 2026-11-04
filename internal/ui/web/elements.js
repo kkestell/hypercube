@@ -2,6 +2,7 @@
 // tests render them as plain elements.
 import '@vscode-elements/elements/dist/vscode-button/index.js';
 import '@vscode-elements/elements/dist/vscode-checkbox/index.js';
+import '@vscode-elements/elements/dist/vscode-collapsible/index.js';
 import '@vscode-elements/elements/dist/vscode-context-menu/index.js';
 import '@vscode-elements/elements/dist/vscode-icon/index.js';
 import '@vscode-elements/elements/dist/vscode-label/index.js';

@@ -1,101 +1,24 @@
-/* Session rows use the same height and selection colors as VS Code trees. */
-.session-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  height: var(--size-tree-row-height);
-  padding-right: var(--size-content-inset);
-  padding-left: calc(var(--size-content-inset) + var(--size-icon));
-}
-
-.session-item-nested {
-  padding-left: calc(var(--size-content-inset) + var(--size-icon) * 2);
-}
-
-.session-item-stopped {
+/* Stopped sessions are dimmed, as VS Code dims ignored files. */
+.session-item-stopped:not([selected])::part(wrapper) {
   color: var(--vscode-disabledForeground);
 }
 
-.session-item:hover {
-  background: var(--vscode-list-hoverBackground);
+.session-item-decoration {
+  display: flex;
+  align-items: center;
+  gap: var(--size-space);
 }
 
-.session-item-selected {
-  background: var(--vscode-list-inactiveSelectionBackground);
-}
-
-.session-item-selected .session-item-text {
-  color: var(--vscode-list-activeSelectionForeground);
-}
-
-.session-item:has(:focus-visible) {
-  outline: var(--size-border) solid var(--vscode-focusBorder);
-  outline-offset: calc(var(--size-border) * -1);
-}
-
-.session-item button {
-  outline: none;
-}
-
-.session-item-toggle {
-  position: relative;
-  z-index: 1;
+/* The status keeps its column when empty so branch icons line up. */
+.session-item-status {
   display: flex;
   flex: 0 0 var(--size-icon);
   align-items: center;
   justify-content: center;
-  height: var(--size-icon);
 }
 
-.session-item-title {
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-}
-
-button.session-item-title::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-}
-
-.session-item-title-line {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  width: 100%;
-  height: var(--size-tree-row-height);
-}
-
-@keyframes fade-title-end {
-  from, to {
-    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
-  }
-}
-
-.session-item-text {
-  overflow: hidden;
-  white-space: nowrap;
-  animation: fade-title-end linear;
-  animation-timeline: scroll(self inline);
-}
-
-.session-item-actions {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 2);
-  margin-left: calc(var(--size-space) * 2);
-}
-
-.session-item-status,
-.session-item-branch-slot {
-  display: flex;
-  flex: 0 0 var(--size-icon);
-  align-items: center;
-  justify-content: center;
-  height: var(--size-icon);
+.session-item-busy {
+  color: var(--vscode-descriptionForeground);
 }
 
 .session-item-branch-modified {
@@ -107,6 +30,5 @@ button.session-item-title::after {
 }
 
 .session-item-rename {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
 }

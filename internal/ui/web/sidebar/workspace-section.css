@@ -1,0 +1,30 @@
+/* Rows are as tall as the Files panel's. */
+.workspace-section-tree vscode-tree-item::part(wrapper) {
+  align-items: center;
+  min-height: var(--size-tree-row-height);
+  line-height: var(--size-tree-row-height);
+}
+
+.workspace-section-tree vscode-tree-item::part(content) {
+  line-height: var(--size-tree-row-height);
+}
+
+/* A link row after the tree, as VS Code's Load More rows. */
+.workspace-section-more {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--size-tree-row-height);
+  padding-left: calc(var(--size-icon) + var(--size-space) * 2);
+  color: var(--vscode-textLink-foreground);
+  text-align: left;
+}
+
+.workspace-section-more:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.workspace-section-more:focus-visible {
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
+}

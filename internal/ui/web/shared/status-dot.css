@@ -17,12 +17,3 @@
 .status-dot-unseen {
   background: var(--vscode-notificationsInfoIcon-foreground);
 }
-
-.status-dot-idle {
-  background: color-mix(in srgb, var(--vscode-disabledForeground) 50%, var(--vscode-sideBar-background));
-}
-
-.status-dot-busy {
-  box-sizing: border-box;
-  border: 1.5px solid var(--vscode-descriptionForeground);
-}
