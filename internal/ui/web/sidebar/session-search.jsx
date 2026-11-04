@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 import {Search} from 'lucide-react';
-import {Command, CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
+import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
+import {CommandDialog} from '../shared/command-dialog.jsx';
 import {Button} from '../components/ui/button';
 import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
@@ -49,23 +49,18 @@ export function SessionSearch() {
   };
   return <>
     <Button variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => setOpen(true)}><Search /></Button>
-    <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent className="overflow-hidden p-0" showCloseButton={false}>
-        <DialogHeader className="sr-only"><DialogTitle>Search sessions</DialogTitle><DialogDescription>Search session titles and conversations</DialogDescription></DialogHeader>
-        <Command shouldFilter={false}>
-          <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
-          <CommandList>
-            {query.trim() && <CommandEmpty>{error || 'No sessions found.'}</CommandEmpty>}
-            {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); chooseSession(store, result.id); }}>
-              <div className="flex min-w-0 flex-col gap-1">
-                <span className="truncate">{result.title}</span>
-                <span className="truncate text-xs text-muted-foreground">{result.workspace}</span>
-                {result.text && <span className="line-clamp-2 text-xs text-muted-foreground">{result.text}</span>}
-              </div>
-            </CommandItem>)}
-          </CommandList>
-        </Command>
-      </DialogContent>
-    </Dialog>
+    <CommandDialog open={open} onOpenChange={changeOpen} title="Search sessions" description="Search session titles and conversations" commandProps={{shouldFilter: false}}>
+      <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
+      <CommandList>
+        {query.trim() && <CommandEmpty>{error || 'No sessions found.'}</CommandEmpty>}
+        {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); chooseSession(store, result.id); }}>
+          <div className="flex min-w-0 flex-col gap-1">
+            <span className="truncate">{result.title}</span>
+            <span className="truncate text-xs text-muted-foreground">{result.workspace}</span>
+            {result.text && <span className="line-clamp-2 text-xs text-muted-foreground">{result.text}</span>}
+          </div>
+        </CommandItem>)}
+      </CommandList>
+    </CommandDialog>
   </>;
 }

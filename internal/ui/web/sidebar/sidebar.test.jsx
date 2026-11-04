@@ -414,3 +414,17 @@ test('search opens with Command+K and choosing a result shows its session', asyn
   expect(store.get().selected).toBe('ended');
 });
 
+test.each(['button', 'keyboard'])('closing search returns focus after opening with %s', async method => {
+  const {root, store} = setup([session('a')]);
+  const button = root.querySelector('[aria-label="Search sessions"]');
+  const previous = method === 'button' ? button : row(root, 'a');
+  act(() => previous.focus());
+  if (method === 'button') await act(async () => clickControl(button));
+  else await act(async () => previous.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', metaKey: true, bubbles: true, cancelable: true})));
+  const input = document.querySelector('[cmdk-input]');
+  expect(input).not.toBeNull();
+  expect(Object.keys(store.get().overlays)).toHaveLength(1);
+  await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
+  expect(document.activeElement).toBe(previous);
+  expect(Object.keys(store.get().overlays)).toHaveLength(0);
+});
