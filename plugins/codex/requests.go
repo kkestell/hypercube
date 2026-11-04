@@ -48,6 +48,8 @@ type request struct {
 	permissions json.RawMessage // the permissions asked for
 	questionIDs []string        // the ID of each question, by item
 	form        []formField     // the fields of a form, by item; nil without one
+	async       bool            // an async question answered by a user message
+	sending     bool            // its answer is being sent
 }
 
 // formField is a field of an elicitation's form.
@@ -407,6 +409,21 @@ func (ag *agent) answer(item, choice, text string) error {
 		return errors.New("the question needs one of its choices")
 	default:
 		answer = text
+	}
+	if r.async {
+		if r.sending {
+			return errors.New("the answer is being sent")
+		}
+		r.sending = true
+		ag.mu.Unlock()
+		err := ag.input(open.Item.Text+"\n\n"+answer, nil)
+		ag.mu.Lock()
+		r.sending = false
+		if err != nil {
+			return err
+		}
+		ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, answer)}})
+		return nil
 	}
 	// A form answer that cannot be converted is refused at once.
 	if r.form != nil {

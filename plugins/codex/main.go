@@ -289,7 +289,7 @@ func (ag *agent) interrupt() error {
 	thread, turn := ag.thread, ag.turn
 	var ev harness.Event
 	// Codex waits for the answers of requests it has sent.
-	ev.Items = ag.closeRequests(func(*request) bool { return true }, true)
+	ev.Items = ag.closeRequests(func(r *request) bool { return !r.async }, true)
 	ag.send(ev)
 	ag.mu.Unlock()
 	if turn == "" {

@@ -751,6 +751,36 @@ func TestPermissionsRequest(t *testing.T) {
 	}
 }
 
+func TestAsyncQuestions(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) { return map[string]any{"turnId": "u1"}, nil })
+	turnStart(h, "u2")
+	h.feed(t,
+		`{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}`,
+		`{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"agentMessage","id":"m1","text":"Please choose","delivery":"async","questions":[{"title":"Which size?","options":["Small","Large"]},{"title":"What name?","options":null}]}}}`)
+	size, name := h.item(t, "question:m1/0"), h.item(t, "question:m1/1")
+	if size.Text != "Which size?" || !size.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) || name.Text != "What name?" || !name.Free || len(name.Choices) != 0 {
+		t.Fatalf("%+v %+v", size, name)
+	}
+	if err := h.answer(size.ID, "Large", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputText(h.server.sent("turn/steer")[0]); got != "Which size?\n\nLarge" {
+		t.Fatal(got)
+	}
+	h.feed(t, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`)
+	if err := h.answer(name.ID, "", "Ada"); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputText(h.server.sent("turn/start")[0]); got != "What name?\n\nAda" {
+		t.Fatal(got)
+	}
+	if err := h.answer(name.ID, "", "Ada"); err == nil {
+		t.Fatal("answered a finished question")
+	}
+}
+
 func TestQuestionsAreAnsweredTogether(t *testing.T) {
 	h := newAgent(t)
 	h.thread = "t1"

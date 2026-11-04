@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -96,6 +97,11 @@ type threadItem struct {
 	AgentThreadID     string          `json:"agentThreadId"`
 	AgentPath         string          `json:"agentPath"`
 	Phase             string          `json:"phase"`
+	Delivery          string          `json:"delivery"`
+	Questions         []struct {
+		Title   string   `json:"title"`
+		Options []string `json:"options"`
+	} `json:"questions"`
 }
 
 type fileChange struct {
@@ -318,7 +324,7 @@ func (ag *agent) endTurn(ev *harness.Event, id, status, message string) {
 			ag.finished[id] = true
 			delete(ag.running, id)
 		}
-		ev.Items = append(ev.Items, ag.closeRequests(func(*request) bool { return true }, false)...)
+		ev.Items = append(ev.Items, ag.closeRequests(func(r *request) bool { return !r.async }, false)...)
 		ev.State = harness.Idle
 	}
 	if status == "failed" {
@@ -352,6 +358,14 @@ func (ag *agent) item(ev *harness.Event, parent string, it threadItem, completed
 	case "agentMessage":
 		if completed {
 			ag.complete(ev, harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindText, Text: it.Text})
+			if it.Delivery == "async" {
+				for i, q := range it.Questions {
+					item := harness.Item{ID: fmt.Sprintf("question:%s/%d", it.ID, i), Parent: parent, Kind: harness.KindAttention, Text: q.Title, Choices: q.Options, Free: true}
+					r := &request{async: true}
+					ag.requests.Add(r, []harness.Item{item})
+					ev.Items = append(ev.Items, item)
+				}
+			}
 		}
 	case "reasoning":
 		if completed {
