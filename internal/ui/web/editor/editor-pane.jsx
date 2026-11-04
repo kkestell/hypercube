@@ -4,6 +4,7 @@ import {Card} from '../components/ui/card';
 // tab under the pointer, or on the
 // body, where an edge within a quarter of the pane splits it.
 import {useRef, useState} from 'react';
+import {activatePane} from '../app/workbench.js';
 import {AgentPane} from '../agent/agent-pane.jsx';
 import {BrowserView} from '../browser/browser-view.jsx';
 import {shownSession} from '../sessions/selection.js';
@@ -34,6 +35,7 @@ export function EditorPane({pane, focused}) {
   const allPanes = panes(state.session?.tabs.root ?? agentTabs.root);
   const activePane = allPanes.find(item => item.id === state.workbench.activePane) ?? allPanes[0];
   const isActive = focused && activePane.id === pane.id;
+  const activate = () => store.update(s => activatePane(s, pane.id));
 
   const over = e => {
     if (!dragging) return;
@@ -55,8 +57,7 @@ export function EditorPane({pane, focused}) {
 
   return (
     <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-pane={pane.id}
-      onFocusCapture={() => store.update(s => s.workbench.activePane === pane.id ? s : {...s, workbench: {...s.workbench, activePane: pane.id}})}
-      onPointerDownCapture={() => store.update(s => s.workbench.activePane === pane.id ? s : {...s, workbench: {...s.workbench, activePane: pane.id}})} data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+      onFocusCapture={activate} onPointerDownCapture={activate} data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {drop && <Card aria-hidden="true" className={`pointer-events-none absolute z-10 opacity-50 ${
         drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}

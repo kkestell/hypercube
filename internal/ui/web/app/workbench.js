@@ -10,6 +10,8 @@ export const closePanel = state => state.workbench.panel ? {...state, workbench:
 
 export const setVisible = (state, visible) => ({...state, visible});
 
+export const activatePane = (state, id) => state.workbench.activePane === id ? state : {...state, workbench: {...state.workbench, activePane: id}};
+
 export const toggleWrap = state => ({...state, workbench: {...state.workbench, wrap: !state.workbench.wrap}});
 
 export function startWrapStorage(store) {
