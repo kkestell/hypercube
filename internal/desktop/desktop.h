@@ -21,3 +21,6 @@ void HCBrowsersStart(HCWindow *window);
 
 // HCNotificationsStart shows the window's alerts as macOS notifications.
 void HCNotificationsStart(HCWindow *window);
+
+// HCSetBadge shows the number of sessions waiting on the user.
+void HCSetBadge(NSInteger count);

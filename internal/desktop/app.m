@@ -79,11 +79,12 @@ static NSMenu *mainMenu(void) {
 }
 
 static NSStatusItem *statusItem(const void *icon, size_t iconLen) {
-    NSStatusItem *item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSSquareStatusItemLength];
+    NSStatusItem *item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
     NSImage *image = [[NSImage alloc] initWithData:[NSData dataWithBytes:icon length:iconLen]];
     image.template = YES;
     image.size = NSMakeSize(18, 18);
     item.button.image = image;
+    item.button.imagePosition = NSImageLeft;
     item.button.accessibilityLabel = @"Hypercube";
 
     NSMenu *menu = [[NSMenu alloc] init];
@@ -92,6 +93,14 @@ static NSStatusItem *statusItem(const void *icon, size_t iconLen) {
     [menu addItemWithTitle:@"Quit Hypercube" action:@selector(terminate:) keyEquivalent:@"q"];
     item.menu = menu;
     return item;
+}
+
+void HCSetBadge(NSInteger count) {
+    NSString *label = count ? [NSString stringWithFormat:@"%ld", (long)count] : @"";
+    NSApp.dockTile.badgeLabel = count ? label : nil;
+    application.statusItem.button.title = label;
+    application.statusItem.button.accessibilityLabel = count
+        ? [NSString stringWithFormat:@"Hypercube, %ld sessions waiting on you", (long)count] : @"Hypercube";
 }
 
 void hypercubeRun(const char *url, const void *icon, size_t iconLen) {
