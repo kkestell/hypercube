@@ -9,6 +9,7 @@ import {setSource} from '../files/files.js';
 import {FileIcon} from '../files/file-icon.jsx';
 import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
+import '../shared/tabs.css';
 import './editor-tabs.css';
 
 const keyMoves = {
@@ -47,11 +48,11 @@ export function EditorTabs({pane, entries}) {
   };
 
   return (
-    <div class="editor-tabs-bar">
-      <div ref={strip} class="editor-tabs" role="tablist" aria-label="Open tabs" onKeyDown={key}>
+    <div class="editor-tabs-bar tabs-bar">
+      <div ref={strip} class="editor-tabs tabs-strip" role="tablist" aria-label="Open tabs" onKeyDown={key}>
         {entries.map(entry => {
           const active = entry.id === pane.active;
-          const classes = ['editor-tabs-tab', active && 'editor-tabs-tab-active', entry.agent && 'editor-tabs-tab-agent', entry.preview && 'editor-tabs-tab-preview', entry.deleted && 'editor-tabs-tab-deleted'];
+          const classes = ['editor-tabs-tab', 'tabs-tab', active && 'editor-tabs-tab-active', active && 'tabs-tab-active', entry.preview && 'editor-tabs-tab-preview', entry.deleted && 'editor-tabs-tab-deleted'];
           return (
             <div
               key={entry.id}
@@ -68,7 +69,7 @@ export function EditorTabs({pane, entries}) {
               <button
                 type="button"
                 role="tab"
-                class="editor-tabs-select"
+                class="editor-tabs-select tabs-select"
                 aria-selected={active}
                 tabIndex={active ? 0 : -1}
                 title={entry.title}
@@ -88,7 +89,7 @@ export function EditorTabs({pane, entries}) {
         })}
       </div>
       {typeof active?.source === 'boolean' && (
-        <vscode-toolbar-container class="editor-tabs-actions">
+        <vscode-toolbar-container class="editor-tabs-actions tabs-actions">
           <vscode-toolbar-button
             icon={active.source ? 'open-preview' : 'go-to-file'}
             label={modeLabel}

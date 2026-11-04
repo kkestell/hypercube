@@ -11,11 +11,29 @@ afterEach(() => { unmountAll(); fetchMock?.mockRestore(); });
 test('the right sidebar offers Files and Changes, initially Files', () => {
   const store = createStore({workbench: {rightTab: 'files'}, session: null, workspaces: []});
   const root = mount(store, <RightPanel />);
-  expect([...root.querySelectorAll('vscode-tab-header')].map(tab => tab.title)).toEqual(['Files', 'Changes']);
-  const tabs = root.querySelector('vscode-tabs');
-  expect(tabs.getAttribute('selected-index')).toBe('0');
-  act(() => tabs.dispatchEvent(new CustomEvent('vsc-tabs-select', {detail: {selectedIndex: 1}})));
+  const tabs = [...root.querySelectorAll('[role="tab"]')];
+  expect(tabs.map(tab => tab.title)).toEqual(['Files', 'Changes']);
+  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+  act(() => tabs[1].click());
   expect(store.get().workbench.rightTab).toBe('changes');
+});
+
+test('side-panel tabs support arrow keys, Home, and End, retaining both views', () => {
+  const store = createStore({workbench: {rightTab: 'files'}, session: null, workspaces: []});
+  const root = mount(store, <RightPanel />);
+  const tabs = [...root.querySelectorAll('[role="tab"]')];
+  const panels = [...root.querySelectorAll('[role="tabpanel"]')];
+  tabs[0].focus();
+  for (const [key, index] of [['ArrowRight', 1], ['ArrowRight', 0], ['ArrowLeft', 1], ['Home', 0], ['End', 1]]) {
+    act(() => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+    expect(document.activeElement).toBe(tabs[index]);
+    expect(tabs[index].getAttribute('aria-selected')).toBe('true');
+    expect(panels[index].hidden).toBe(false);
+    expect(panels[1 - index].hidden).toBe(true);
+    expect(tabs[index].getAttribute('aria-controls')).toBe(panels[index].id);
+    expect(panels[index].getAttribute('aria-labelledby')).toBe(tabs[index].id);
+  }
+  expect([...root.querySelectorAll('[role="tabpanel"]')]).toEqual(panels);
 });
 
 const files = [

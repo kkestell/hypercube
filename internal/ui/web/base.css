@@ -5,6 +5,9 @@
   --vscode-editor-font-family: "Iosevka Term Extended", Menlo, monospace;
   --vscode-editor-font-size: 12px;
 
+  --size-font-body: var(--vscode-font-size);
+  --size-space-6: 6px;
+  --size-space-12: 12px;
   --size-border: 1px;
   --size-scrollbar: 6px;
   --size-space: 4px;

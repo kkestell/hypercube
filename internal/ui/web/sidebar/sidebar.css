@@ -6,8 +6,8 @@
   color: var(--vscode-sideBar-foreground);
 }
 
-/* VS Code's view panes start directly below the view's title. */
-.sidebar .sidebar-body {
+/* Workspace sections start directly below the tab bar. */
+.sidebar .panel-tabs-content {
   overflow: auto;
   padding-top: 0;
 }

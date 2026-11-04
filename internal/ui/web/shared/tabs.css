@@ -1,0 +1,71 @@
+/* All workbench tab bars share one geometry and theme treatment. */
+.tabs-bar {
+  display: flex;
+  flex-shrink: 0;
+  height: var(--size-bar-height);
+  border-bottom: var(--size-border) solid var(--vscode-panel-border);
+  background: var(--vscode-editorGroupHeader-tabsBackground);
+  font-size: var(--size-font-body);
+}
+
+.tabs-strip {
+  display: flex;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tabs-tab {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  background: var(--vscode-tab-inactiveBackground);
+  color: var(--vscode-tab-inactiveForeground);
+}
+
+.tabs-tab:hover {
+  background: var(--vscode-tab-hoverBackground);
+  color: var(--vscode-tab-hoverForeground);
+}
+
+.tabs-tab-active,
+.tabs-tab-active:hover {
+  background: var(--vscode-tab-activeBackground);
+  color: var(--vscode-tab-activeForeground);
+}
+
+.tabs-tab-active::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--size-border);
+  background: var(--vscode-tab-activeBorderTop);
+}
+
+.tabs-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--size-space-6);
+  height: 100%;
+  padding: 0 var(--size-panel-inset);
+  color: inherit;
+}
+
+.tabs-select > vscode-icon {
+  display: block;
+  flex-shrink: 0;
+  width: var(--size-icon);
+  height: var(--size-icon);
+  font-size: var(--size-icon);
+}
+
+.tabs-select:focus-visible {
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(-1 * var(--size-border));
+}
+
+.tabs-actions {
+  margin-left: auto;
+}

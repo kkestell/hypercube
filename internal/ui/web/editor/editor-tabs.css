@@ -1,62 +1,5 @@
-.editor-tabs-bar {
-  display: flex;
-  flex-shrink: 0;
-  height: var(--size-bar-height);
-  background: var(--vscode-editorGroupHeader-tabsBackground);
-}
-
-.editor-tabs {
-  display: flex;
-  min-width: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-
-.editor-tabs-tab {
-  position: relative;
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  border-right: var(--size-border) solid var(--vscode-tab-border);
-  background: var(--vscode-tab-inactiveBackground);
-  color: var(--vscode-tab-inactiveForeground);
-}
-
-.editor-tabs-tab:hover {
-  background: var(--vscode-tab-hoverBackground);
-}
-
-.editor-tabs-tab-active,
-.editor-tabs-tab-active:hover {
-  background: var(--vscode-tab-activeBackground);
-  color: var(--vscode-tab-activeForeground);
-}
-
-.editor-tabs-tab-active::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: var(--size-border);
-  background: var(--vscode-tab-activeBorderTop);
-}
-
 .editor-tabs-select {
-  display: flex;
-  align-items: center;
-  gap: calc(var(--size-space) * 1.5);
-  height: 100%;
-  max-width: calc(var(--size-space) * 55);
-  padding-left: calc(var(--size-space) * 2.5);
-  color: inherit;
-}
-
-.editor-tabs-tab-agent .editor-tabs-select {
-  padding-right: calc(var(--size-space) * 2.5);
-}
-
-.editor-tabs-select:focus-visible {
-  outline: var(--size-border) solid var(--vscode-focusBorder);
-  outline-offset: calc(var(--size-border) * -1);
+  max-width: 220px;
 }
 
 .editor-tabs-label {
@@ -92,8 +35,4 @@
 
 .editor-tabs-close:hover {
   background: var(--vscode-toolbar-hoverBackground);
-}
-
-.editor-tabs-actions {
-  margin-left: auto;
 }

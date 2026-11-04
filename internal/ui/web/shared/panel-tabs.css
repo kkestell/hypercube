@@ -1,6 +1,3 @@
-/* Both side panels share their tab and content spacing. Each tab header is as
-   tall as the center's tab bars, with its content centered, so the headers
-   across the window form one band with their icons level. */
 .panel-tabs {
   display: flex;
   flex: 1;
@@ -8,31 +5,12 @@
   min-height: 0;
 }
 
-.panel-tabs > vscode-tab-header {
-  display: flex;
-  align-items: center;
-  height: var(--size-bar-height);
-}
-
-.panel-tabs > vscode-tab-header > vscode-icon {
-  display: block;
-}
-
-/* Side panel content starts --size-panel-inset from the edge. vscode-tabs
-   pads its header by 8px and each panel tab by 10px, so the first tab moves
-   left until its icon starts at the inset, and the addons end at the
-   header's own padding. */
-.panel-tabs > vscode-tab-header:first-of-type {
-  margin-left: calc(var(--size-panel-inset) - 18px);
-}
-
-.panel-tabs > [slot="addons"] {
-  padding: 0;
-}
-
-.panel-tabs > vscode-tab-panel {
+.panel-tabs-content {
   flex: 1;
   min-height: 0;
-  border-top: var(--size-border) solid var(--vscode-sideBar-border);
-  padding-top: calc(var(--size-space) * 3);
+  padding-top: var(--size-space-12);
+}
+
+.panel-tabs-content[hidden] {
+  display: none;
 }
