@@ -49,6 +49,26 @@ function changes(data = {branch: 'feature', files}, merge = null) {
   return {store, root: mount(store, <RightPanel />)};
 }
 
+test.each([
+  ['file list', {branch: 'feature', files}],
+  ['empty list', {branch: 'feature', files: []}],
+  ['outside Git', null],
+  ['missing folder', {missing: true}],
+  ['error', {error: 'Cannot read repository changes.'}],
+])('Changes panel follows its selected tab in native tab order: %s', (_, data) => {
+  const {root} = changes(data);
+  const stops = [...root.querySelectorAll('[role="tab"], [role="tabpanel"]')]
+    .filter(element => !element.hidden && element.tabIndex === 0);
+  expect(stops.map(element => element.getAttribute('role'))).toEqual(['tab', 'tabpanel']);
+  const [tab, panel] = stops;
+  expect(panel.getAttribute('tabindex')).toBe('0');
+  expect(tab.getAttribute('aria-controls')).toBe(panel.id);
+  tab.focus();
+  expect(document.activeElement).toBe(tab);
+  panel.focus();
+  expect(document.activeElement).toBe(panel);
+});
+
 test('Changes rows show status, name, folder, counts, and open the selected diff', () => {
   const {root, store} = changes();
   const rows = [...root.querySelectorAll('.changes-panel-file')];

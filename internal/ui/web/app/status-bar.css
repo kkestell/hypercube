@@ -21,7 +21,6 @@
 .status-bar-left {
   display: flex;
   align-items: center;
-  gap: var(--size-space-8);
 }
 
 .status-bar-harness {
@@ -29,6 +28,7 @@
 }
 
 .status-bar-window {
+  gap: var(--size-space-8);
   font-variant-numeric: tabular-nums;
 }
 

@@ -39,7 +39,7 @@ export function PanelTabs({label, tabs, selected, onSelect, actions, children}) 
         {actions && <vscode-toolbar-container class="tabs-actions">{actions}</vscode-toolbar-container>}
       </div>
       {tabs.map((tab, index) => (
-        <div key={tab.id} class="panel-tabs-content" role="tabpanel" id={`${id}-${tab.id}-panel`}
+        <div key={tab.id} class="panel-tabs-content" role="tabpanel" tabIndex={0} id={`${id}-${tab.id}-panel`}
           aria-labelledby={`${id}-${tab.id}-tab`} hidden={tab.id !== selected}>
           {Array.isArray(children) ? children[index] : children}
         </div>
