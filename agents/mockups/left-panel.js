@@ -48,7 +48,7 @@ function openDiff(row) {
   if (!tab) {
     tab = document.querySelector('#tab-template').content.firstElementChild.cloneNode(true);
     tab.dataset.panel = row.dataset.panel;
-    tab.querySelector('.file-icon').replaceWith(row.querySelector('.file-icon').cloneNode(true));
+    tab.querySelector('.file-icon').classList.add(row.dataset.icon);
     tab.querySelector('.editor-tabs-label').textContent = row.dataset.title;
     tab.querySelector('.editor-tabs-select').title = row.dataset.title;
     const close = tab.querySelector('.editor-tabs-close');

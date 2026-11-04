@@ -122,8 +122,17 @@
   flex: 1;
 }
 
-/* Python file icon color. */
-.mockup-file-icon-python {
+/* Seti's Python and Markdown glyphs, in Seti's blue. */
+.mockup-file-icon-python::before {
+  content: "\E07B";
+}
+
+.mockup-file-icon-markdown::before {
+  content: "\E060";
+}
+
+.mockup-file-icon-python,
+.mockup-file-icon-markdown {
   color: var(--vscode-charts-blue);
 }
 
@@ -176,9 +185,7 @@
 }
 
 /* The Changes tab: the branch, then one row per uncommitted file with its
-   name, folder, line counts, and status marker, as VS Code's, GitHub
-   Desktop's, and Zed's change lists lay them out. The status marker is a
-   placeholder until its form is chosen. */
+   status square, name, folder, and line counts. */
 .mockup-scm {
   overflow: auto;
 }
@@ -248,21 +255,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Status squares as Zed's Git panel draws them, in the editor gutter's change
+   colors. */
 .mockup-scm-status {
   flex-shrink: 0;
-  width: var(--size-icon);
-  height: var(--size-icon);
-  border: var(--size-border) dashed var(--vscode-descriptionForeground);
-  border-radius: var(--size-radius);
 }
+
+.mockup-scm-M > .mockup-scm-status { color: var(--vscode-editorGutter-modifiedBackground); }
+.mockup-scm-U > .mockup-scm-status { color: var(--vscode-editorGutter-addedBackground); }
+.mockup-scm-D > .mockup-scm-status { color: var(--vscode-editorGutter-deletedBackground); }
 
 .mockup-scm-D > .mockup-scm-name {
   color: var(--vscode-descriptionForeground);
   text-decoration: line-through;
-}
-
-.mockup-file-icon-markdown {
-  color: var(--vscode-charts-blue);
 }
 
 /* An inline diff: old and new line numbers, the change mark, then the line. */
