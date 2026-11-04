@@ -1,9 +1,12 @@
 package store
 
-// migrate creates the current schema and resets attention for stopped sessions.
+// migrate creates the current schema and updates saved state.
 func (d *DB) migrate() error {
 	return d.Tx(func(tx *Tx) error {
 		if err := tx.exec(schema); err != nil {
+			return err
+		}
+		if err := tx.exec(`DELETE FROM transcript WHERE json_extract(data, '$.kind') = 'status'`); err != nil {
 			return err
 		}
 		// A session that is not running waits on nobody.

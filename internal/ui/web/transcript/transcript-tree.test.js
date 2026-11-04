@@ -128,10 +128,10 @@ test('a working state of a new launch ends the old launch\'s turn without groupi
   expect(shape(result)).toEqual(['old', 'lost', 'answer']);
 });
 
-test('unknown items are ignored and state items stay hidden', () => {
+test('unknown kinds draw as text and state items stay hidden', () => {
   const result = rows([user('ask', 1), working('w', 2), {id: 'unknown', kind: 'unknown', from: 'child', text: 'Working', at: 3}, call('a', 'read', 4), idle('i', 5)]);
-  expect(result.map(row => row.item.id)).toEqual(['ask', 'a']);
-  expect(rows([{id: 'unknown', kind: 'unknown', text: 'Working'}])).toEqual([]);
+  expect(result.map(row => row.item.id)).toEqual(['ask', 'unknown', 'a']);
+  expect(result[1].type).toBe('text');
 });
 
 test('nested items draw under their call, in order', () => {

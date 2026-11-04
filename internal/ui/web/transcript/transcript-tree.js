@@ -58,7 +58,6 @@ export const toolInput = input => input === undefined || input === null ? '' : c
 const isMessage = item => item.kind === 'tool' && item.server === 'hypercube' && item.tool === 'send_message';
 
 const types = new Set(['user', 'reasoning', 'error', 'attention']);
-const kinds = new Set([...types, 'text', 'tool', 'state']);
 
 // transcriptRows returns the rows of a transcript {order, items}:
 //   {type: 'user' | 'reasoning' | 'text' | 'error' | 'attention' | 'message', item},
@@ -70,7 +69,6 @@ export function transcriptRows({order, items}) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
-    if (!kinds.has(item.kind)) continue;
     const parent = items[item.parent];
     const container = parent && parent.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     if (!containers.has(container)) containers.set(container, []);

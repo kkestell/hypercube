@@ -9,7 +9,8 @@ import (
 	"strconv"
 )
 
-// statsID identifies the usage refresh sent without waiting on the output reader.
+// statsID identifies the stats request sent outside call: the same output reader
+// sends it and reads its response, so it cannot wait for the response in call.
 const statsID = "session-stats"
 
 // response is Pi's answer to a command.
