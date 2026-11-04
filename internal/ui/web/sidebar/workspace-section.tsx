@@ -26,13 +26,13 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault(); setOpen(e.key === 'ArrowRight');
           }}>
-            <span className="workspace-section-name min-w-0 truncate text-muted-foreground">{workspace.name}</span>
+            <span className="workspace-section-name min-w-0 truncate uppercase text-muted-foreground">{workspace.name}</span>
             <Icon name={open ? 'chevron-down' : 'chevron-right'} className="invisible group-hover/workspace:visible group-focus-within/workspace:visible" />
           </Button>
         </CollapsibleTrigger>
         {/* Keep the drawing layer stable when the fade reaches full opacity. */}
-        <Button variant="ghost" size="icon-sm" className="size-7 opacity-0 will-change-[opacity] group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
-        <Button variant="ghost" size="icon-sm" className="size-7 opacity-0 will-change-[opacity] group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>
+        <Button variant="ghost" size="icon-sm" className="size-7 opacity-0 will-change-[opacity] hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
+        <Button variant="ghost" size="icon-sm" className="size-7 opacity-0 will-change-[opacity] hover:bg-transparent dark:hover:bg-transparent group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>
       </div>
       <CollapsibleContent><SessionTree label={workspace.name} sessions={workspace.sessions} renaming={renaming} onRenaming={onRenaming} /></CollapsibleContent>
     </section>

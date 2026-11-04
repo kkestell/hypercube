@@ -97,8 +97,8 @@ export function FilesPanel() {
     </div>;
   });
   return <>
-    {gitChanges && 'error' in gitChanges && <p className="px-4 pt-2 text-sm text-muted-foreground">{gitChanges.error}</p>}
-    <div ref={tree} className="files-panel p-2" role="tree" aria-label="Files" onKeyDown={keyDown}>
+    {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}
+    <div ref={tree} className="files-panel p-2 pt-1" role="tree" aria-label="Files" onKeyDown={keyDown}>
     {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
     </div>{menu.element}
   </>;

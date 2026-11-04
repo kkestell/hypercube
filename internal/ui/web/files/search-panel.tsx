@@ -25,7 +25,7 @@ export function SearchPanel() {
       .catch((err: unknown) => { if (!controller.signal.aborted) setError('Could not search files: ' + (err instanceof Error ? err.message : String(err))); });
     return () => controller.abort();
   }, [session, query]);
-  return <div className="p-2">
+  return <div className="p-2 pt-1">
     <Input ref={input} aria-label="Search files contents" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
     {error && <p className="p-2 text-sm">{error}</p>}
     {session && results.map(file => <section key={file.path} className="mt-2">

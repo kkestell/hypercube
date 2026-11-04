@@ -26,7 +26,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
     (strip.current ?? area)?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')?.focus();
   };
   const start = placement.top && placement.left && !state.workbench.sidebar;
-  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 border-b px-2 py-1 ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
+  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 border-b border-black/12 bg-black/10 px-2 py-1 dark:border-white/7 ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
     onMouseDown={placement.top ? titleBarMouseDown : undefined}>
     <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
       <TabsList ref={strip} className={`editor-tabs max-w-full justify-start ${barTabs}`} aria-label="Open tabs">
