@@ -22,6 +22,6 @@ Archiving stops a family, removes its managed Git resources, and keeps its chats
 
 - `HYPERCUBE_DEV_DIR=/tmp/hypercube-archive-dev HYPERCUBE_DEV_PORT=4298 make dev` — serving http://localhost:4298/ for the user's visual check. No visual inspection was performed.
 
-## Follow-up work
+## Settings integration
 
-- Add the Archived Sessions section after the Settings branch merges.
+After Settings merged, added its archived family list and read-only opening and deletion. The selected archived family appears in the sidebar until another session is selected. Rebased onto main, regenerated assets, and ran `make check` outside the sandbox; it passed. Visual review is on main.

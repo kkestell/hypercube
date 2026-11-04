@@ -21,7 +21,7 @@ const confirmDelete = (store, name, detail, accept) =>
   askToConfirm(store, {message: `Are you sure you want to delete '${name}'?`, detail, primary: 'Delete', accept});
 
 const deleteDetail = session => {
-  if (session.ended) return "Its chat is deleted.";
+  if (session.ended) return session.parent ? "Its chat is deleted." : "Its chat and its children's chats are deleted.";
   if (session.worktree) {
     const branch = session.merge ? ` and branch ${session.merge.branch}` : '';
     return `Its agent stops, and its chat, its worktree ${session.dir}${branch}, and its children and their worktrees and branches are deleted.`;

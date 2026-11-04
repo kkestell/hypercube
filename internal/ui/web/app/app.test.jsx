@@ -271,3 +271,44 @@ test('Settings opens from the sidebar, shortcut and menu and removes saved choic
     expect(document.querySelector('[role=dialog]').textContent).toContain('Settings');
   } finally { unmountAll(); fetches.mockRestore(); }
 });
+
+test('Settings lists archived families and opens and deletes them', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => init?.method === 'POST' ? new Response('') : Response.json([]));
+  try {
+    const child = {id: 'child', parent: 'archived', title: 'Child chat', ended: true, running: false, activity: 'exited', children: []};
+    const archived = {id: 'archived', title: 'Finished work', ended: true, running: false, activity: 'exited', children: [child]};
+    const active = {id: 'active', title: 'Active work', running: true, activity: 'idle', children: []};
+    const store = createStore(receivedWorkspaces({
+      workspaces: [], limits: [], requests: [], selected: 'active', pending: null, unsent: null,
+      visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+      workbench: {sidebar: true, rightPanel: false, panel: false, rightTab: 'files'},
+    }, [{id: 'w', name: 'My workspace', path: '/repo', sessions: [active, archived]}]));
+    const root = mount(store, <App store={store} />);
+    expect(root.querySelector('[data-session="archived"]')).toBeNull();
+    await act(async () => root.querySelector('[aria-label="Settings"]').click());
+    let settings = document.querySelector('[role=dialog]');
+    expect(settings.textContent).toContain('Archived Sessions');
+    expect(settings.textContent).toContain('Finished work');
+    expect(settings.textContent).toContain('My workspace');
+    expect(settings.textContent).not.toContain('Active work');
+    await act(async () => settings.querySelector('[aria-label="Open Finished work, My workspace"]').click());
+    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(store.get().selected).toBe('archived');
+    expect(root.querySelector('[data-session="child"]')).not.toBeNull();
+    expect(root.querySelector('.composer [title=Send]').disabled).toBe(true);
+    act(() => root.querySelector('[data-session="child"]').click());
+    expect(store.get().selected).toBe('child');
+    expect(root.querySelector('.composer [title=Send]').disabled).toBe(true);
+    act(() => root.querySelector('[data-session="active"]').click());
+    expect(root.querySelector('[data-session="archived"]')).toBeNull();
+    await act(async () => root.querySelector('[aria-label="Settings"]').click());
+    settings = document.querySelector('[role=dialog]');
+    act(() => settings.querySelector('[aria-label="Delete Finished work, My workspace"]').click());
+    const confirmation = document.querySelector('[role=alertdialog]');
+    expect(confirmation.textContent).toContain("Its chat and its children's chats are deleted.");
+    expect(fetches.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
+    await act(async () => [...confirmation.querySelectorAll('button')].find(button => button.textContent === 'Delete').click());
+    const [url] = fetches.mock.calls.at(-1);
+    expect(Object.fromEntries(new URL(url, 'http://x/').searchParams)).toEqual({action: 'delete', id: 'archived'});
+  } finally { unmountAll(); fetches.mockRestore(); }
+});

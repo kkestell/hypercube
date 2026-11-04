@@ -80,7 +80,10 @@ export function receivedWorkspaces(state, workspaces) {
   // A session that stops while shown is deselected, and nothing takes its
   // place. Otherwise a selection naming no session moves to a running one.
   const chosen = currentSession(next);
-  if (chosen && !chosen.running && !chosen.ended && currentSession(state)?.running && next.session?.id === chosen.id) next = {...next, selected: null};
+  const family = sessionOf(next, next.selected);
+  const oldFamily = sessionOf(state, state.selected);
+  if (family && (family.parent ?? family.session).ended && !(oldFamily?.parent ?? oldFamily?.session)?.ended && next.session?.id === chosen.id) next = {...next, selected: null};
+  else if (chosen && !chosen.running && !chosen.ended && currentSession(state)?.running && next.session?.id === chosen.id) next = {...next, selected: null};
   else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => s.running)?.id ?? ''};
   return attach(next);
 }

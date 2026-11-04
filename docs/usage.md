@@ -207,7 +207,10 @@ stays exited, with the error in its chat. Stop and start the family to retry.
 Archiving a top-level session runs the same Git checks as deleting it, stops its
 family, and removes its managed worktrees and branches. It keeps the family’s
 chats read-only and removes the family from the sidebar. Search can open an
-archived chat.
+archived chat. Settings, opened from the sidebar or with Command-comma, lists
+archived sessions with their workspaces. Open one to see its read-only chat
+and its children in the sidebar, or delete it and its family's chats from
+Settings. The family leaves the sidebar again when you select another session.
 
 Deleting a top-level session deletes its children and their chats, managed
 worktrees, and branches, and a worktree session's own worktree and branch. Git

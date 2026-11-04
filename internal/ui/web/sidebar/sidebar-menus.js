@@ -10,6 +10,7 @@ const openItems = (store, kind, id) => [
 export const sessionItems = (store, session, rename) => {
   const renameItem = {label: 'Rename', run: rename};
   const deleteItem = {label: 'Delete Session', run: () => deleteSession(store, session)};
+  if (!session.parent && session.ended) return [deleteItem];
   if (session.parent) return [renameItem, ...(session.ended ? [deleteItem] : []), ...openItems(store, 'session', session.id)];
   return [
     session.running && !failed(session)
