@@ -1,6 +1,6 @@
 // A menu at a point, kept inside the window. It closes when an item is
 // chosen, on Escape, on a press outside it, or when the window loses focus.
-// Escape returns the focus to where it was before the menu took it.
+// Escape and selection return focus to where it was before the menu took it.
 // items are [{label, run}].
 import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
 import {useOverlay} from './overlays.js';
@@ -48,6 +48,7 @@ export function ContextMenu({x, y, items, onClose}) {
 
   const chosen = e => {
     onClose();
+    invoker.focus();
     items[Number(e.detail.value)].run();
   };
 

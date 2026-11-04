@@ -79,8 +79,8 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
       onPointerDownCapture={startDrag}
       onvsc-split-layout-change={resized}
     >
-      <div slot="start" class="split-pane">{start}</div>
-      <div slot="end" class="split-pane">{end}</div>
+      <div slot="start" class="split-pane" inert={collapsed === 'start'}>{start}</div>
+      <div slot="end" class="split-pane" inert={collapsed === 'end'}>{end}</div>
     </vscode-split-layout>
   );
 }

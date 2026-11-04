@@ -192,7 +192,6 @@ checkout's HEAD. Delete refuses, changing nothing, until they pass. Existing dir
 children are left alone. Failed cleanup stays recorded so deletion can be retried.
 Ended children can also be deleted individually.
 
-The cleanup check currently follows Git's display settings: hiding untracked
-files or ignoring submodule changes can make a dirty worktree pass. Keep those
-settings at their normal visibility and inspect child work before ending it.
+The cleanup check follows Git's submodule settings: ignoring submodule changes
+can make a dirty worktree pass. Inspect child work before ending it.
 The check is in [workspace.go](../internal/workspace/workspace.go).

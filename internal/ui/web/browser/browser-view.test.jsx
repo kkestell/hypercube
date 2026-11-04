@@ -55,6 +55,18 @@ test('the toolbar sends its buttons and the entered address to the window', () =
   ]);
 });
 
+test('Escape restores the address and is consumed before reaching the app', () => {
+  const {root} = setup();
+  const address = root.querySelector('vscode-textfield');
+  address.value = 'draft';
+  act(() => address.dispatchEvent(new Event('input')));
+  let prevented = false;
+  root.addEventListener('keydown', e => { prevented = e.defaultPrevented; });
+  act(() => address.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
+  expect(prevented).toBe(true);
+  expect(address.getAttribute('value')).toBe(page.url);
+});
+
 test('the browser shows over the body, and hides under the dialog, a menu, and once the tab closes', () => {
   const {store} = setup();
   const shown = {type: 'place', session: 's', rect: {x: 10, y: 20, width: 400, height: 300}};

@@ -26,6 +26,20 @@ test('collapsing a pane keeps both panes mounted', () => {
   expect(mounts).toBe(2);
 });
 
+test('collapsed panes are inert', () => {
+  const draw = collapsed => act(() => render(
+    <Split size={50} collapsed={collapsed}><button>Start</button><button>End</button></Split>, root));
+  for (const side of ['start', 'end']) {
+    draw(null);
+    const pane = root.querySelector(`[slot="${side}"]`);
+    draw(side);
+    expect(pane.hasAttribute('inert')).toBe(true);
+    expect(root.querySelector(`[slot="${side === 'start' ? 'end' : 'start'}"]`).hasAttribute('inert')).toBe(false);
+    draw(null);
+    expect(pane.hasAttribute('inert')).toBe(false);
+  }
+});
+
 test('real split panes stay collapsed after mounting inside a hidden parent and restore their sizes', () => {
   // Isolate custom-element registration from tests that use plain elements.
   const result = Bun.spawnSync([process.execPath, '-e', `

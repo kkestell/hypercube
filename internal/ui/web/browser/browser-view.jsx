@@ -22,6 +22,7 @@ function Page({session}) {
       send('navigate', {url: e.currentTarget.value});
       setAddress(null);
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       setAddress(null);
     }
   };

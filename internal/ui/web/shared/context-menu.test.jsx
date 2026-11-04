@@ -25,3 +25,15 @@ test('a menu near the bottom moves up once it draws its items', () => {
   act(() => resized.forEach(callback => callback()));
   expect(box.style.top).toBe(innerHeight - 100 + 'px');
 });
+
+test('selecting an item returns focus before running its action', () => {
+  const invoker = document.createElement('button');
+  document.body.append(invoker);
+  invoker.focus();
+  let focusedDuringAction = false;
+  const store = createStore({overlays: {}});
+  const root = mount(store, <ContextMenu x={0} y={0} items={[{label: 'Action', run: () => { focusedDuringAction = document.activeElement === invoker; }}]} onClose={() => {}} />);
+  root.querySelector('vscode-context-menu').focus();
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
+  expect(focusedDuringAction).toBe(true);
+});
