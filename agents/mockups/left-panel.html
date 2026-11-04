@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panels · Hypercube mockup</title>
+  <link rel="icon" href="../../internal/ui/dist/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../../internal/ui/dist/theme.css">
+  <link rel="stylesheet" href="../../internal/ui/dist/codicon.css">
+  <link rel="stylesheet" href="../../internal/ui/web/base.css">
+  <link rel="stylesheet" href="../../internal/ui/web/sidebar/sidebar.css">
+  <link rel="stylesheet" href="../../internal/ui/web/sidebar/session-item.css">
+  <link rel="stylesheet" href="../../internal/ui/web/shared/status-dot.css">
+  <link rel="stylesheet" href="../../internal/ui/web/editor/editor-area.css">
+  <link rel="stylesheet" href="../../internal/ui/web/editor/editor-tabs.css">
+  <link rel="stylesheet" href="../../internal/ui/web/files/file-icon.css">
+  <link rel="stylesheet" href="../../internal/ui/web/app/right-panel.css">
+  <link rel="stylesheet" href="../../internal/ui/web/changes/changes-panel.css">
+  <link rel="stylesheet" href="left-panel.css">
+  <script src="left-panel.js" defer></script>
+</head>
+<body>
+  <div class="mockup">
+    <aside class="sidebar mockup-panel" aria-label="Sessions">
+      <header class="mockup-panel-header">
+        <span class="mockup-tab" title="Sessions"><span class="codicon codicon-comment-discussion" aria-hidden="true"></span><span class="mockup-sr-only">Sessions</span></span>
+      </header>
+      <div class="sidebar-body mockup-panel-body">
+        <nav class="sidebar-list" aria-label="Sessions">
+          <section class="mockup-session-group" aria-label="Redesign the left panel">
+            <div class="session-item mockup-parent-session session-item-selected">
+              <button class="session-item-title" aria-current="true">
+                <span class="mockup-workspace-label" title="~/src/hypercube">hypercube</span>
+                <span class="session-item-text">Redesign the left panel</span>
+              </button>
+              <span class="session-item-status"><span class="status-dot status-dot-busy" role="img" aria-label="Working" title="Working"></span></span>
+            </div>
+            <div class="sidebar-nested">
+              <div class="session-item session-item-nested">
+                <button class="session-item-title"><span class="session-item-text">Explore navigation patterns for workspaces with multiple active sessions and nested agents</span></button>
+                <span class="codicon codicon-git-branch session-item-branch session-item-branch-modified" title="navigation-patterns" aria-label="Branch: navigation-patterns"></span>
+                <span class="session-item-status"><span class="status-dot status-dot-unseen" role="img" aria-label="New reply" title="New reply"></span></span>
+              </div>
+              <div class="session-item session-item-nested">
+                <button class="session-item-title"><span class="session-item-text">Review accessibility</span></button>
+                <span class="codicon codicon-git-branch session-item-branch" title="accessibility" aria-label="Branch: accessibility"></span>
+                <span class="session-item-status"><span class="status-dot status-dot-busy" role="img" aria-label="Working" title="Working"></span></span>
+              </div>
+            </div>
+          </section>
+          <section class="mockup-session-group" aria-label="Refine the review workflow">
+            <div class="session-item mockup-parent-session">
+              <button class="session-item-title">
+                <span class="mockup-workspace-label" title="~/src/skills">skills</span>
+                <span class="session-item-text">Refine the review workflow</span>
+              </button>
+              <span class="session-item-status"><span class="status-dot status-dot-waiting" role="img" aria-label="Waiting on you" title="Waiting on you"></span></span>
+            </div>
+          </section>
+        </nav>
+        <button class="sidebar-new-session" id="new-session"><span class="codicon codicon-add" aria-hidden="true"></span>New Session</button>
+      </div>
+    </aside>
+    <main class="editor-area mockup-editor">
+      <div class="editor-tabs-bar">
+        <div class="editor-tabs" role="tablist" aria-label="Open tabs">
+          <div class="editor-tabs-tab editor-tabs-tab-active">
+            <button type="button" role="tab" class="editor-tabs-select" aria-selected="true" title="foo.py"><span class="file-icon mockup-file-icon-python" aria-hidden="true">&#xE07B;</span><span class="editor-tabs-label">foo.py</span></button>
+            <button type="button" class="editor-tabs-close" title="Close foo.py" aria-label="Close foo.py"><span class="codicon codicon-close" aria-hidden="true"></span></button>
+          </div>
+        </div>
+      </div>
+      <div class="mockup-editor-content" role="tabpanel" aria-label="foo.py"></div>
+    </main>
+    <aside class="right-panel mockup-panel mockup-panel-right" aria-label="Changes">
+      <header class="mockup-panel-header">
+        <span class="mockup-tab" title="Changes"><span class="codicon codicon-source-control" aria-hidden="true"></span><span class="mockup-sr-only">Changes</span></span>
+      </header>
+      <div class="changes-panel mockup-panel-body">
+        <p>redesign-left-panel</p>
+        <p>2 commits not merged into main</p>
+        <p>3 uncommitted files</p>
+      </div>
+    </aside>
+  </div>
+  <dialog class="mockup-dialog" id="session-dialog">
+    <form method="dialog">
+      <label for="workspace-name">Workspace</label>
+      <input id="workspace-name" name="workspace" required autocomplete="off" list="workspace-options" placeholder="hypercube">
+      <datalist id="workspace-options"><option value="hypercube"></option><option value="skills"></option><option value="website"></option></datalist>
+      <div class="mockup-dialog-actions"><button value="cancel" formnovalidate>Cancel</button><button value="add">New Session</button></div>
+    </form>
+  </dialog>
+  <template id="session-template">
+    <section class="mockup-session-group" aria-label="New session">
+      <div class="session-item mockup-parent-session">
+        <button class="session-item-title">
+          <span class="mockup-workspace-label"></span>
+          <span class="session-item-text">New session</span>
+        </button>
+        <span class="session-item-status"></span>
+      </div>
+    </section>
+  </template>
+</body>
+</html>
