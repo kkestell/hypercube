@@ -21,6 +21,13 @@ Create `~/.config/hypercube/config.json`, or
       "effort": "medium"
     },
     {
+      "name": "codex-gpt-terra-high",
+      "description": "GPT Terra 6.1 at high effort for ordinary implementation, investigation, and review. Cheaper and faster than Sol high. Artificial Analysis: Terminal-Bench 4.0 41.9%, FrontierCode 2.0 37.5%, $0.26 per task.",
+      "harness": "codex",
+      "model": "gpt-6.1-terra",
+      "effort": "high"
+    },
+    {
       "name": "codex-gpt-sol-high",
       "description": "GPT Sol at high effort, only for code review and for implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Artificial Analysis: Terminal-Bench 4.0 51.5%, FrontierCode 2.0 36.7%, $0.59 per task.",
       "harness": "codex",
