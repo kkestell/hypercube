@@ -2,7 +2,7 @@
 # Run this checkout's hypercube in an isolated dev session, serving its browser
 # view on port 4281. The session has its own state, configuration, and scratch
 # repository under $DEV, so it never touches the installed hypercube's
-# workspaces. A stopped preview session opens the scratch repository's files.
+# workspaces.
 #
 #   scripts/dev [up]   build, serve the view, and watch sources until Ctrl-C
 #   scripts/dev up --app
@@ -141,15 +141,12 @@ JSON
 		{
 			find cmd internal plugins \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
 				-type f -exec cksum {} +
-			cksum go.mod go.sum Makefile scripts/dev scripts/dev-seed/main.go
+			cksum go.mod go.sum Makefile scripts/dev
 		} | LC_ALL=C sort | cksum
 	}
 	build() {
 		make ui && make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
 			/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
-	}
-	seed() {
-		"${DEV_ENV[@]}" go run ./scripts/dev-seed "$REPO"
 	}
 	start_view() {
 		"${DEV_ENV[@]}" "$BIN" ui "$PORT" $MENU &
@@ -170,7 +167,6 @@ JSON
 	}
 	revision=$(sources)
 	build
-	seed
 	start_view
 	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/)"
 	echo "Watching sources; Ctrl-C stops the dev session."
@@ -182,7 +178,6 @@ JSON
 		echo "Sources changed; rebuilding..."
 		if build; then
 			restart
-			seed
 			start_view
 		else
 			echo "Build failed; keeping the previous view. Waiting for changes." >&2
