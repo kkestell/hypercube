@@ -57,7 +57,7 @@ in the checkout is its merge target. Selecting another session first discards
 the unsent session.
 
 Search in the sidebar header or Command+K searches session titles and saved
-conversation text across all workspaces, including stopped and ended sessions.
+conversation text across all workspaces, including stopped, ended, and archived sessions.
 Choose a result to show its session.
 
 Choose Help > Keyboard Shortcuts or press Command+/ to see the keyboard
@@ -80,7 +80,7 @@ tree; Right expands a parent or moves to its first child, Left collapses it or
 moves from a child to its parent, and Enter or Space shows the session. Press F2,
 or choose Rename from a row's menu, to change a session's title. Right-click a
 row, or press Shift+F10 on it, to open its menu. A top-level session's menu
-offers Start/Stop, Rename, and Delete. Stopped rows are
+offers Start/Stop, Rename, Archive, and Delete. Stopped rows are
 dimmed; clicking a child of a stopped parent starts the family. The right edge
 of each row shows only its own session: a spinner while it works, an amber dot
 while it awaits you, a blue dot for a reply you have not seen, and a red dot
@@ -203,6 +203,11 @@ family member.
 A harness that exits after starting is relaunched with its saved conversation.
 Repeated quick exits stop automatic relaunches. A harness that fails to start
 stays exited, with the error in its chat. Stop and start the family to retry.
+
+Archiving a top-level session runs the same Git checks as deleting it, stops its
+family, and removes its managed worktrees and branches. It keeps the family’s
+chats read-only and removes the family from the sidebar. Search can open an
+archived chat.
 
 Deleting a top-level session deletes its children and their chats, managed
 worktrees, and branches, and a worktree session's own worktree and branch. Git

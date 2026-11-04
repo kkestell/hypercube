@@ -96,6 +96,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		err = s.rt.Stop(id)
 	case "delete":
 		err = s.rt.Delete(id)
+	case "archive":
+		err = s.rt.Archive(id)
 	case "rename":
 		err = s.rt.Rename(id, q.Get("title"))
 	case "seen":

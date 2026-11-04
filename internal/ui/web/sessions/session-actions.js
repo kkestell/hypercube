@@ -7,6 +7,7 @@ import {askToConfirm} from '../shared/confirm.js';
 import {allSessions, failed, openUnsent, selectSession, unsentSending} from './selection.js';
 
 export const startSession = (store, id) => post(store, 'session', {action: 'start', id});
+export const archiveSession = (store, id) => post(store, 'session', {action: 'archive', id});
 export const stopSession = (store, id) => post(store, 'session', {action: 'stop', id});
 export const renameSession = (store, id, title) => post(store, 'session', {action: 'rename', id, title});
 export const markSeen = (store, id) => post(store, 'session', {action: 'seen', id});

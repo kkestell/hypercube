@@ -133,6 +133,9 @@ func (r *Runtime) start(id string, fresh bool) error {
 		if err != nil {
 			return err
 		}
+		if s.Ended {
+			return errors.New("an archived session cannot be started")
+		}
 		s.Running, s.AwaitingUser = true, !fresh
 		// A worktree session's branch is fixed when it is created.
 		if s.Base == "" {
@@ -231,9 +234,18 @@ func (r *Runtime) stopLocked(id string) ([]*live, error) {
 // uncommitted changes or an unmerged branch. Children without worktrees have
 // their directories left alone.
 func (r *Runtime) Delete(id string) error {
+	return r.removeFamily(id, false)
+}
+
+// Archive stops a top-level family and removes its worktrees, keeping its chats.
+func (r *Runtime) Archive(id string) error {
+	return r.removeFamily(id, true)
+}
+
+func (r *Runtime) removeFamily(id string, archive bool) error {
 	var s store.Session
 	var root string
-	var worktrees []store.Session
+	var children, worktrees []store.Session
 	err := r.db.Read(func(tx *store.Tx) error {
 		var err error
 		s, err = tx.Session(id)
@@ -245,7 +257,7 @@ func (r *Runtime) Delete(id string) error {
 			return err
 		}
 		root = w.Path
-		children, err := tx.Children(id)
+		children, err = tx.Children(id)
 		if err != nil {
 			return err
 		}
@@ -260,8 +272,17 @@ func (r *Runtime) Delete(id string) error {
 		return err
 	}
 	if s.Parent != "" {
+		if archive {
+			return errors.New("only a top-level session can be archived")
+		}
 		if !s.Ended {
 			return errors.New("a child session must be ended before it can be deleted")
+		}
+		return r.save(func(tx *write) error { return tx.DeleteSession(id) })
+	}
+	if s.Ended {
+		if archive {
+			return errors.New("the session is already archived")
 		}
 		return r.save(func(tx *write) error { return tx.DeleteSession(id) })
 	}
@@ -295,12 +316,18 @@ func (r *Runtime) Delete(id string) error {
 	r.mu.Lock()
 	r.deleting[id] = true
 	lives := r.selectLaunches(func(l *live) bool { return l.root == id })
+	if archive {
+		_, err = r.stopLocked(id)
+	}
 	r.mu.Unlock()
 	defer func() {
 		r.mu.Lock()
 		delete(r.deleting, id)
 		r.mu.Unlock()
 	}()
+	if err != nil {
+		return err
+	}
 	r.stopLaunches(lives)
 	r.stopShells(id)
 	// A child can change its worktree before the family stops. That child stays, so that delete can run again after it is fixed.
@@ -310,7 +337,11 @@ func (r *Runtime) Delete(id string) error {
 				return fmt.Errorf("%s: %w", c.Name, err)
 			}
 		}
-		if err := r.save(func(tx *write) error { return tx.DeleteSession(c.ID) }); err != nil {
+		if archive {
+			if err := r.endArchived(c.ID); err != nil {
+				return err
+			}
+		} else if err := r.save(func(tx *write) error { return tx.DeleteSession(c.ID) }); err != nil {
 			return err
 		}
 	}
@@ -319,10 +350,34 @@ func (r *Runtime) Delete(id string) error {
 			return err
 		}
 	}
+	if archive {
+		for _, c := range children {
+			if c.Branch == "" && !c.Ended {
+				if err := r.endArchived(c.ID); err != nil {
+					return err
+				}
+			}
+		}
+		return r.endArchived(id)
+	}
 	err = r.save(func(tx *write) error { return tx.DeleteSession(id) })
 	// The session is gone, so its shell cannot restart.
 	r.Terminals.Stop(id)
 	return err
+}
+
+func (r *Runtime) endArchived(id string) error {
+	return r.save(func(tx *write) error {
+		s, err := tx.Session(id)
+		if err != nil {
+			return err
+		}
+		s.Ended, s.Attention = true, false
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		return tx.DropQueued(id)
+	})
 }
 
 // DeleteWorkspace deletes each of the workspace's sessions, then the

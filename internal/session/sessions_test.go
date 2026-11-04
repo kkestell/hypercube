@@ -535,3 +535,61 @@ func TestDeleteWorktreeSessionWithoutItsWorktree(t *testing.T) {
 		}
 	}
 }
+
+func TestArchiveFamily(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	child := f.child(s, "worker", "brief")
+	f.until("child reply", func() bool { return f.idle(child.ID) && len(f.transcript(child.ID)) > 0 })
+	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
+	if _, err := f.rt.Shell(child.ID, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	before := map[string]string{s.ID: f.summary(s.ID), child.ID: f.summary(child.ID)}
+	if err := f.rt.Archive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range []store.Session{s, child} {
+		if saved := f.storedSession(member.ID); !saved.Ended || saved.Running || f.summary(member.ID) != before[member.ID] {
+			t.Errorf("archived session = %+v, transcript = %s", saved, f.summary(member.ID))
+		}
+		if syscall.Kill(f.log(member.ID, "start")[0].Pid, 0) != syscall.ESRCH {
+			t.Errorf("agent %s remains", member.ID)
+		}
+		if _, err := os.Stat(member.Dir); !os.IsNotExist(err) {
+			t.Errorf("worktree %s remains: %v", member.Dir, err)
+		}
+		if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+member.Branch).Run() == nil {
+			t.Errorf("branch %s remains", member.Branch)
+		}
+		if err := f.rt.Input(member.ID, "again"); err == nil {
+			t.Error("archived session accepted input")
+		}
+	}
+	if !f.shellEnded(child.ID) {
+		t.Error("child shell remains")
+	}
+	if err := f.rt.Start(s.ID); err == nil {
+		t.Error("archived family started")
+	}
+}
+
+func TestArchiveRefusesDirtyWorktree(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	child := f.child(s, "worker", "")
+	if err := os.WriteFile(filepath.Join(child.Dir, "unfinished"), []byte("work"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Archive(s.ID); err == nil {
+		t.Fatal("archived a dirty worktree")
+	}
+	for _, member := range []store.Session{s, child} {
+		if f.storedSession(member.ID).Ended || syscall.Kill(f.log(member.ID, "start")[0].Pid, 0) == syscall.ESRCH {
+			t.Errorf("refusal changed %s", member.ID)
+		}
+		if _, err := os.Stat(member.Dir); err != nil {
+			t.Errorf("refusal removed %s: %v", member.Dir, err)
+		}
+	}
+}

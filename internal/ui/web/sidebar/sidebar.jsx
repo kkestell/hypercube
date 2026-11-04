@@ -28,7 +28,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}) {
 
   if (!renaming) frozen.current = state.workspaces.map(workspace => ({
     ...workspace,
-    sessions: runningFirst(workspace.sessions),
+    sessions: runningFirst(workspace.sessions.filter(session => !session.ended)),
   }));
   const workspaces = frozen.current;
   const sessionById = id => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);

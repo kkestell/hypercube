@@ -1,6 +1,6 @@
 // The sidebar's menus: a session's and a workspace's.
 import {post} from '../api.js';
-import {deleteSession, deleteWorkspace, startSession, stopSession} from '../sessions/session-actions.js';
+import {archiveSession, deleteSession, deleteWorkspace, startSession, stopSession} from '../sessions/session-actions.js';
 import {failed} from '../sessions/selection.js';
 
 const openItems = (store, kind, id) => [
@@ -16,6 +16,7 @@ export const sessionItems = (store, session, rename) => {
       ? {label: 'Stop Session', run: () => stopSession(store, session.id)}
       : {label: 'Start Session', run: () => startSession(store, session.id)},
     renameItem,
+    {label: 'Archive Session', run: () => archiveSession(store, session.id)},
     deleteItem,
     ...openItems(store, 'session', session.id),
   ];

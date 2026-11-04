@@ -15,7 +15,16 @@ func TestSearchSessions(t *testing.T) {
 			return err
 		}
 		s.Title = "Title needle"
+		s.Ended = true
 		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		child, err := tx.Session("a-child")
+		if err != nil {
+			return err
+		}
+		child.Ended = true
+		if err := tx.SaveSession(child); err != nil {
 			return err
 		}
 		items := []struct{ session, kind, text, extra string }{

@@ -144,7 +144,7 @@ const dialogButton = (root, label) => [...dialog(root).querySelectorAll('button'
 
 test('deleting a session asks first and posts only on Delete', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-session="a"]', 2);
+  choose(root, '[data-session="a"]', 3);
   expect(dialog(root).getAttribute('data-state')).toBe('open');
   expect(document.activeElement === dialogButton(root, 'Cancel')).toBe(true);
   expect(document.getElementById(dialog(root).getAttribute('aria-labelledby')).textContent).toBe("Are you sure you want to delete 'Session a'?");
@@ -154,7 +154,7 @@ test('deleting a session asks first and posts only on Delete', () => {
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-session="a"]', 2);
+  choose(root, '[data-session="a"]', 3);
   act(() => dialogButton(root, 'Delete').click());
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([{action: 'delete', id: 'a'}]);
@@ -376,7 +376,7 @@ test.each([
 ])('%o on a focused row opens its menu', init => {
   const {root} = setup([session('a')]);
   act(() => row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})));
-  expect([...document.querySelectorAll('[role=menuitem]')].map(item => item.textContent)).toEqual(['Stop Session', 'Rename', 'Delete Session', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
+  expect([...document.querySelectorAll('[role=menuitem]')].map(item => item.textContent)).toEqual(['Stop Session', 'Rename', 'Archive Session', 'Delete Session', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
 });
 
 test('workspace actions remain available while their menu is open', () => {
@@ -429,4 +429,17 @@ test('closing search returns focus to its button', async () => {
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
   expect(document.activeElement).toBe(button);
   expect(Object.keys(store.get().overlays)).toHaveLength(0);
+});
+
+
+test('archive menu hides the family while search can select its chat', async () => {
+  const child = session('child', {parent: 'archived', running: false, ended: true});
+  const {root, store, posted} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})]);
+  expect(sessionRows(root)).toEqual(['active']);
+  choose(root, '[data-session="active"]', 2);
+  expect(posted()).toEqual([{action: 'archive', id: 'active'}]);
+  const {chooseSession} = await import('../sessions/session-actions.js');
+  chooseSession(store, 'child');
+  expect(store.get().selected).toBe('child');
+  expect(posted()).toHaveLength(1);
 });
