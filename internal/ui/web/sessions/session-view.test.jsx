@@ -77,10 +77,8 @@ test('an unsent session shows the tesseract in place of its transcript', () => {
   expect(root.querySelector('.agent-pane .tesseract')).not.toBeNull();
   expect(root.querySelector('.transcript')).toBeNull();
   expect(root.querySelector('.composer textarea[aria-label="Message"]')).not.toBeNull();
-  expect(root.querySelector('.composer').nextElementSibling.className).toBe('workspace-select');
   expect(root.querySelector('[data-tab="agent"] .editor-tabs-label').textContent).toBe('New Session');
   s.update(state => selectSession(receivedWorkspaces(state, [{id: 'w', name: 'repo', path: '/repo', sessions: [session('a')]}]), 'a'));
   expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.transcript')).not.toBeNull();
-  expect(root.querySelector('.workspace-select')).toBeNull();
 });

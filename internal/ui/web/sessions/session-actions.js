@@ -4,13 +4,17 @@
 import {post} from '../api.js';
 import {canSend, cleared, draftOf, restored, unsentCreated, unsentKey} from '../agent/drafts.js';
 import {askToConfirm} from '../shared/confirm.js';
-import {allSessions, failed, selectSession, unsentSending} from './selection.js';
+import {allSessions, failed, openUnsent, selectSession, unsentSending} from './selection.js';
 
 export const startSession = (store, id) => post(store, 'session', {action: 'start', id});
 export const stopSession = (store, id) => post(store, 'session', {action: 'stop', id});
 export const renameSession = (store, id, title) => post(store, 'session', {action: 'rename', id, title});
 export const markSeen = (store, id) => post(store, 'session', {action: 'seen', id});
-export const addWorkspace = store => post(store, 'workspace', {action: 'new'});
+// addWorkspace opens a new session in the added workspace.
+export async function addWorkspace(store) {
+  const workspace = await post(store, 'workspace', {action: 'new'});
+  if (workspace) store.update(s => openUnsent(s, workspace));
+}
 
 const confirmDelete = (store, name, detail, accept) =>
   askToConfirm(store, {message: `Are you sure you want to delete '${name}'?`, detail, primary: 'Delete', accept});

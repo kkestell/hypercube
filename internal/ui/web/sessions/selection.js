@@ -101,11 +101,6 @@ export function openUnsent(state, workspace) {
   return attach({...next, unsent, selected: null, pending: null});
 }
 
-// Changing workspace keeps the draft and profile, and resets the worktree choice.
-export const unsentWorkspace = (state, workspace) => state.unsent && !state.unsent.sending && state.unsent.workspace !== workspace
-  ? {...state, unsent: {...state.unsent, workspace, worktree: false}}
-  : state;
-
 // unsentProfile sets the unsent session's profile.
 export const unsentProfile = (state, profile) => state.unsent
   ? {...state, unsent: {...state.unsent, profile: profile.name}}
