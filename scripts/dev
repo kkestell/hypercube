@@ -2,7 +2,7 @@
 # Run this checkout's hypercube in an isolated dev session, serving its browser
 # view on port 4281. The session has its own state, configuration, and scratch
 # repository under $DEV, so it never touches the installed hypercube's
-# workspaces. A stopped preview session opens the scratch repository's files.
+# workspaces. A test harness keeps the sample sessions visible without a model.
 #
 #   scripts/dev [up]   build, serve the view, and watch sources until Ctrl-C
 #   scripts/dev up --app
@@ -27,7 +27,7 @@ CONFIG=$DEV/config/hypercube/config.json
 # environment a fresh terminal gives it. Agents started by the dev session must
 # not inherit the environment of the agent running this script.
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
-	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
+	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config" HYPERCUBE_TEST_LOGS="$DEV/logs")
 
 # Wait for the app to finish detaching or quitting before starting its replacement.
 stop_app() {
@@ -80,19 +80,16 @@ up)
 	trap 'exit 130' INT
 	trap 'exit 143' TERM
 
-	mkdir -p "$DEV/state" "$(dirname "$CONFIG")"
+	mkdir -p "$DEV/state" "$DEV/logs" "$(dirname "$CONFIG")"
 	if [ ! -d "$REPO/.git" ]; then
 		mkdir -p "$REPO"
 		git -C "$REPO" init -q -b main
 	fi
-	# Use real source files as sample content, keeping any local edits.
-	for file in README.md docs/usage.md internal/ui/web/base.css internal/ui/web/sidebar/session-item.jsx internal/ui/web/sidebar/session-item.css; do
-		if [ ! -e "$REPO/$file" ]; then
+	if ! git -C "$REPO" rev-parse --verify HEAD >/dev/null 2>&1; then
+		for file in README.md docs/usage.md internal/ui/web/base.css internal/ui/web/sidebar/session-item.jsx internal/ui/web/sidebar/session-item.css; do
 			mkdir -p "$(dirname "$REPO/$file")"
 			cp "$ROOT/$file" "$REPO/$file"
-		fi
-	done
-	if ! git -C "$REPO" rev-parse --verify HEAD >/dev/null 2>&1; then
+		done
 		git -C "$REPO" add .
 		git -C "$REPO" -c user.name=hypercube-dev -c user.email=dev@localhost \
 			commit -q -m "Initial commit"
@@ -101,6 +98,13 @@ up)
 		cat >"$CONFIG" <<'JSON'
 {
   "profiles": [
+    {
+      "name": "preview",
+      "description": "Local test harness; no model is started.",
+      "harness": "test",
+      "model": "preview",
+      "effort": "low"
+    },
     {
       "name": "claude",
       "description": "Claude Code haiku, for smoke tests.",
@@ -146,6 +150,9 @@ JSON
 	}
 	build() {
 		make ui && make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
+			go test -c -o "$DEV/harness-test" ./internal/harness &&
+			printf '#!/bin/sh\nexport HYPERCUBE_STANDIN=1\nexec "%s" -test.run "^TestStandIn$" -- "$@"\n' "$DEV/harness-test" >"$APP/Contents/MacOS/hypercube-harness-test" &&
+			chmod +x "$APP/Contents/MacOS/hypercube-harness-test" &&
 			/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
 	}
 	seed() {
@@ -172,7 +179,7 @@ JSON
 	build
 	seed
 	start_view
-	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/)"
+	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/#dev-preview)"
 	echo "Watching sources; Ctrl-C stops the dev session."
 	while kill -0 "$view_pid" 2>/dev/null; do
 		sleep 1
