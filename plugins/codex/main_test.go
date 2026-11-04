@@ -421,6 +421,27 @@ func TestOtherItemKinds(t *testing.T) {
 	}
 }
 
+func TestHypercubeToolKeepsItsIdentityAsItCompletes(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	input := `{"to":"peer","text":"Done."}`
+	for _, method := range []string{"item/started", "item/completed"} {
+		status, result := "inProgress", "null"
+		completed := method == "item/completed"
+		if completed {
+			status, result = "completed", `{"content":[{"type":"text","text":"Message sent."}]}`
+		}
+		h.feed(t, `{"method":"`+method+`","params":{"threadId":"t1","turnId":"u1","item":{"type":"mcpToolCall","id":"m1","server":"hypercube","tool":"send_message","status":"`+status+`","arguments":`+input+`,"result":`+result+`,"error":null}}}`)
+		item := h.item(t, "m1")
+		if item.Kind != harness.KindTool || item.Server != "hypercube" || item.Tool != "send_message" || string(item.Input) != input || item.Done != completed || item.Failed {
+			t.Fatalf("%s: %+v", method, item)
+		}
+		if completed && item.Output != "Message sent." {
+			t.Fatalf("%+v", item)
+		}
+	}
+}
+
 func TestNativeSubagentItemsNestUnderTheirCall(t *testing.T) {
 	h := newAgent(t)
 	lines := fixture(t, "subagent")

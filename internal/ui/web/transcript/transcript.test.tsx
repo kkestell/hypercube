@@ -77,6 +77,17 @@ test('a tool call starts collapsed and preserves expansion as its output arrives
   expect(store.get().session?.expanded.c).toBeUndefined();
 });
 
+test('Hypercube tools show readable titles and retain their full input and result', () => {
+  const input = {path: 'main.go', lines: [{start: 10, end: 20}]};
+  const {root} = setup([{id: 'c', kind: 'tool', server: 'hypercube', tool: 'open_file', input, output: 'Opened main.go.', done: true}]);
+  const call = find(root, '.tool-items-call');
+  expect(find(call, '.tool-items-name').textContent).toBe('Open file');
+  expect(find(call, '.tool-items-detail').textContent).toBe('main.go');
+  expect(call.querySelector('.tool-items-body')).toBeNull();
+  act(() => clickControl(find(call, '[data-slot=collapsible-trigger]')));
+  expect(findAll(call, 'pre').map(pre => pre.textContent)).toEqual([JSON.stringify(input, null, 2), 'Opened main.go.']);
+});
+
 const marker = (id: string, state: WorkState, at: number, final?: string[]): Item => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
 const summaries = (root: ParentNode) => findAll(root, '.activity-item > [data-slot=collapsible-trigger]');
 

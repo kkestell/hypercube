@@ -32,20 +32,26 @@ export function toolSummary(input: unknown): string {
   return text.length > 120 ? text.slice(0, 119) + '…' : text;
 }
 
-// Hypercube's own tools, as what each call does. Their calls are told apart
-// by the input's name. send_message draws as a message instead.
-const hypercubeTools = new Map([
-  ['create_session', 'Create session'],
-  ['end_session', 'End session'],
-  ['list_sessions', 'List sessions'],
+// Hypercube's own tools: what each call does and the input field that tells
+// calls apart. send_message draws as a message instead.
+const hypercubeTools = new Map<string, [name: string, field?: string]>([
+  ['create_session', ['Create session', 'name']],
+  ['end_session', ['End session', 'name']],
+  ['list_sessions', ['List sessions']],
+  ['set_title', ['Set title', 'title']],
+  ['open_file', ['Open file', 'path']],
+  ['browser_navigate', ['Navigate browser', 'url']],
+  ['browser_eval', ['Run browser script', 'script']],
+  ['browser_close', ['Close browser']],
 ]);
 
 // toolTitle is a tool call's name and summary.
 export function toolTitle({server, tool, input}: ToolItem): [name: string, summary: string] {
   const named = server === 'hypercube' && tool !== undefined ? hypercubeTools.get(tool) : undefined;
   if (named !== undefined) {
-    const detail = typeof input === 'object' && input !== null && 'name' in input ? input.name : '';
-    return [named, toolSummary(typeof detail === 'string' ? detail : '')];
+    const [name, field] = named;
+    const detail = field && typeof input === 'object' && input !== null ? Reflect.get(input, field) : '';
+    return [name, toolSummary(typeof detail === 'string' ? detail : '')];
   }
   const name = server ? server + ' - ' + tool : tool ?? 'tool';
   return [name, toolSummary(input)];
