@@ -74,8 +74,9 @@ export function App({store}) {
     if (!handler) return;
     handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, bindings: (s.menuAlternates ? s.keys : [s.keys[s.menuKey ?? 0]]).map(binding)}))});
   }, []);
+  const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), openQuickOpen: () => setQuickOpen(true)};
   useEffect(() => {
-    const run = e => shortcut({target: document.activeElement, preventDefault() {}, stopPropagation() {}}, store, focusComposer, () => setShortcutsOpen(true), e.detail.id);
+    const run = e => shortcut({target: document.activeElement, preventDefault() {}, stopPropagation() {}}, store, shortcutActions, e.detail.id);
     addEventListener('hypercube-shortcut', run);
     return () => removeEventListener('hypercube-shortcut', run);
   });
@@ -104,7 +105,7 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer, () => setShortcutsOpen(true), null, () => setQuickOpen(true))} onKeyDown={key}>
+      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
         <header className="app-header flex shrink-0 items-center justify-end border-b px-2 py-1" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>

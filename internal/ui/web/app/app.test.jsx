@@ -5,6 +5,7 @@ import {mount, unmountAll} from '../../test-render.jsx';
 import {receivedWorkspaces} from '../sessions/selection.js';
 import {createStore} from '../store.js';
 import {App} from './app.jsx';
+import {covered} from '../shared/overlays.js';
 
 afterEach(() => { delete globalThis.webkit; unmountAll(); });
 
@@ -195,7 +196,7 @@ test('Command+P opens Quick Open from the terminal for the shown session', async
   } finally { unmountAll(); fetches.mockRestore(); }
 });
 
-test('keyboard shortcuts dialog opens from the keyboard and the native menu', () => {
+test('keyboard shortcuts dialog opens from the keyboard and the native menu', async () => {
   const store = createStore({
     workspaces: [], limits: [], requests: [], selected: null, pending: null, unsent: null,
     visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
@@ -209,8 +210,13 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', ()
   expect(dialog.textContent).toContain('Keyboard shortcuts');
   expect(dialog.textContent).toContain('New Session');
   expect(dialog.textContent).toContain('Toggle Terminal');
+  expect(covered(store.get(), {x: 10000, y: 10000, width: 100, height: 100})).toBe(true);
+  const focused = new Promise(resolve => button.addEventListener('focus', resolve, {once: true}));
   act(() => dialog.querySelector('button').click());
+  await focused;
   expect(document.querySelector('[role=dialog]')).toBeNull();
+  expect(covered(store.get(), {x: 10000, y: 10000, width: 100, height: 100})).toBe(false);
+  expect(document.activeElement === button).toBe(true);
   act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'help'}})));
   expect(document.querySelector('[role=dialog]').textContent).toContain('Keyboard shortcuts');
   act(() => document.querySelector('[role=dialog] button').click());

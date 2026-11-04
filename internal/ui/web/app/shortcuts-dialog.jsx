@@ -1,12 +1,12 @@
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Kbd, KbdGroup} from '../components/ui/kbd';
 import {shortcuts} from './shortcuts.js';
-import {useOverlay} from '../shared/overlays.js';
+import {useModal} from '../shared/overlays.js';
 
 export function ShortcutsDialog({open, onOpenChange}) {
-  const overlay = useOverlay();
+  const focus = useModal(open);
   return <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent ref={overlay} className="max-h-[80vh] overflow-y-auto">
+    <DialogContent {...focus} className="max-h-[80vh] overflow-y-auto">
       <DialogHeader><DialogTitle>Keyboard shortcuts</DialogTitle>
         <DialogDescription>Keyboard shortcuts available in Hypercube.</DialogDescription></DialogHeader>
       {['Session', 'View', 'Help'].map(section => <section key={section}>

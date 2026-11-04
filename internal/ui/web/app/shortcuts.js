@@ -41,8 +41,12 @@ export function matches(event, id) {
   });
 }
 
-export function shortcut(e, store, focusComposer, showHelp, id, openQuickOpen) {
-  if (!id && (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing || (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]') || (e.target.closest('.terminal-panel') && !matches(e, 'quickOpen'))))) return;
+export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen}, id) {
+  if (!id) {
+    if (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing) return;
+    if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
+    if (e.target.closest('.terminal-panel') && !matches(e, 'quickOpen')) return;
+  }
   const state = store.get();
   if (!id && state.confirmation) return;
   const is = name => id ? id === name : matches(e, name);
