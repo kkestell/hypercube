@@ -24,6 +24,21 @@ func TestOpenFile(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
 		t.Fatal(err)
 	}
+	// ".." after a symlink leaves the link's target, not the session directory.
+	target := t.TempDir()
+	if err := os.Mkdir(filepath.Join(target, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "target.txt"), []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(target, "sub"), filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	realTarget, err := filepath.EvalSymlinks(filepath.Join(target, "target.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	if err := os.WriteFile(filepath.Join(home, "notes"), []byte("notes"), 0o644); err != nil {
@@ -53,6 +68,7 @@ func TestOpenFile(t *testing.T) {
 		{name: "outside", path: outside, view: real, want: []session.LineRange{}},
 		{name: "parent", path: "../" + filepath.Base(filepath.Dir(outside)) + "/outside", view: real, want: []session.LineRange{}},
 		{name: "symlink outside", path: "escape", view: real, want: []session.LineRange{}},
+		{name: "dot dot after symlink", path: "link/../target.txt", view: realTarget, want: []session.LineRange{}},
 		{name: "home", path: "~/notes", view: filepath.Join(realHome, "notes"), want: []session.LineRange{}},
 		{name: "missing", path: "missing", fail: true},
 		{name: "folder", path: "docs", fail: true},

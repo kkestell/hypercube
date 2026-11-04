@@ -16,7 +16,8 @@ type openFileArgs struct {
 }
 
 // viewPath resolves path, which is relative to dir, absolute, or starts with
-// "~", through symlinks. It returns the file's real path and the path the
+// "~", through symlinks. Concatenation, not Join, keeps ".." after a symlink
+// for EvalSymlinks to resolve against the link's target. It returns the file's real path and the path the
 // browser view uses: relative to dir inside it, otherwise the real path.
 func viewPath(dir, path string) (real, view string, err error) {
 	if path == "~" || strings.HasPrefix(path, "~/") {
@@ -24,10 +25,10 @@ func viewPath(dir, path string) (real, view string, err error) {
 		if err != nil {
 			return "", "", err
 		}
-		path = filepath.Join(home, path[1:])
+		path = home + path[1:]
 	}
 	if !filepath.IsAbs(path) {
-		path = filepath.Join(dir, path)
+		path = dir + string(filepath.Separator) + path
 	}
 	real, err = filepath.EvalSymlinks(path)
 	if err != nil {
