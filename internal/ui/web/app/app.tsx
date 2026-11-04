@@ -26,7 +26,7 @@ import {binding, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActi
 import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
 import {windowHandler} from './window.ts';
-import {titleBarVars} from './title-bar.ts';
+import {titleBarVars, topRowHeight} from './title-bar.ts';
 
 function refuseStrayDrops(store: Store) {
   const refuse = (e: DragEvent) => {
@@ -109,9 +109,9 @@ export function App({store}: {store: Store}) {
     <StoreContext.Provider value={context}>
       <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)} onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
         <div className="app-body min-h-0 flex-1">
-          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
+          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'} handleTopInset={topRowHeight}>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
-            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
+            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'} handleTopInset={topRowHeight}>
               <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className="app-center flex h-full min-w-0 flex-col"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.session?.id ?? ''} />

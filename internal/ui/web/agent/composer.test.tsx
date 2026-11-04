@@ -51,7 +51,7 @@ test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(textarea(root));
   expect(profileButton(root).disabled).toBe(true);
-  expect(profileButton(root).textContent).toBe('Claude · Opus · High');
+  expect(profileButton(root).textContent).toBe('Opus · High');
 });
 
 test('a composer leaves the focus in a tab strip', () => {
@@ -131,14 +131,14 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   expect(control(root, 'Send').disabled).toBe(false);
   const select = profileButton(root);
   expect(select.disabled).toBe(false);
-  expect(select.textContent).toBe('Claude · Opus · High');
+  expect(select.textContent).toBe('Opus · High');
   clickControl(select);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Claude · Opus · High' : 'Codex · Sol · Medium'}${p.description}`));
+  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Opus · High' : 'Sol · Medium'}${p.description}`));
   act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.profile).toBe('codex');
-  expect(select.textContent).toBe('Codex · Sol · Medium');
+  expect(select.textContent).toBe('Sol · Medium');
   expect(s.get().drafts[unsentKey].text).toBe('hello');
 });
 
@@ -217,21 +217,16 @@ const existing = (extra: Partial<Session> = {}) => {
   const top = testSession({...session, running: true, worktree: true, merge: merge(), children: [testSession({id: 'c', parent: 'a'})], ...extra});
   return {top, store: worktreeStore(false, [top])};
 };
-const branch = (root: HTMLElement) => root.querySelector('.composer-branch');
 const mergeButton = (root: HTMLElement) => root.querySelector('.composer-merge');
 
-test('an existing worktree session shows its branch and no toggle; checkout sessions and children show neither', () => {
+test('existing sessions have no worktree toggle', () => {
   const {top, store: s} = existing();
   let root = mount(s, <Composer session={top} />);
   expect(worktreeToggle(root)).toBeNull();
-  const shownBranch = element(root, '.composer-branch', HTMLElement);
-  expect(element(shownBranch, 'svg[data-icon]', SVGElement).getAttribute('data-icon')).toBe('git-branch');
-  expect(shownBranch.textContent).toBe('hypercube/session-a');
   for (const shown of [{...top, worktree: false, merge: undefined}, top.children[0]]) {
     unmountAll();
     root = mount(s, <Composer session={shown} />);
     expect(worktreeToggle(root)).toBeNull();
-    expect(branch(root)).toBeNull();
   }
 });
 

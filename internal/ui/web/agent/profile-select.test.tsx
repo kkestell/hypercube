@@ -60,3 +60,17 @@ test('a rejected selection stays visible through the existing error notification
   expect(element(root, '[role=alert]', HTMLElement).textContent).toContain('effort refused');
   expect(element(root, '[aria-label=Profile]', HTMLElement).textContent).toBe('Test · Saved · Medium');
 });
+
+test.each([['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['pi', 'Pi']])('%s uses its icon in the selected profile and menu', async (harness, name) => {
+  stubFetch(() => Response.json([{...profiles[0], harness, model: 'saved', effort: 'medium'}]));
+  const root = mount(store({...session, harness}), <View />);
+  await settle();
+  const button = element(root, '[aria-label=Profile]', HTMLButtonElement);
+  expect(button.textContent).toBe('Saved · Medium');
+  expect(element(button, 'svg[role=img]', SVGElement).getAttribute('aria-label')).toBe(name);
+  clickControl(button);
+  await settle();
+  const option = element(document.body, '[role=menuitemradio]', HTMLElement);
+  expect(option.textContent).toBe('Saved · Medium');
+  expect(element(option, 'svg[role=img]', SVGElement).getAttribute('aria-label')).toBe(name);
+});

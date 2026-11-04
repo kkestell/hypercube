@@ -3,7 +3,6 @@ import {act} from 'react';
 import {clickControl, find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptySession} from '../sessions/selection.ts';
-import type {Merge} from '../sessions/types.ts';
 import {createStore} from '../store.ts';
 import {FilesPanel} from './files-panel.tsx';
 
@@ -68,7 +67,7 @@ test('tree row menus copy absolute and relative paths', () => {
   } finally { copy.mockRestore(); }
 });
 
-function changed(merge?: Merge) {
+function changed() {
   stubFetch(url => url.startsWith('diff?') ? new Response('patch') : url.startsWith('changes?') ? Response.json(changes) : Response.json([]));
   const session = emptySession('s');
   session.files.listings = {'': [{name: 'src', dir: true}, {name: 'README.md', dir: false}], src: [{name: 'main.go', dir: false}, {name: 'new.go', dir: false}]};
@@ -79,7 +78,7 @@ function changed(merge?: Merge) {
     {path: 'gone/old.go', status: 'deleted' as const, added: 0, removed: 2},
   ]};
   session.changes = changes;
-  const store = createStore(testState({session, selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 's', dir: '/repo', merge})]})]}));
+  const store = createStore(testState({session, selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 's', dir: '/repo'})]})]}));
   return {store, root: mount(store, <FilesPanel />)};
 }
 
@@ -111,14 +110,6 @@ test('deleted files stay in the tree, inside the folders that held them, and ope
   expect(store.get().session?.tabs.preview).toBe('diff:gone/old.go');
   expect(store.get().session?.files.expanded.gone).toBe(true);
   expect(store.get().session?.files.listings).not.toHaveProperty('gone');
-});
-
-test('the branch shows above the tree with its unmerged commit count', () => {
-  const {root} = changed({branch: 'feature', target: 'main', unmerged: 2, committed: true, uncommitted: 0});
-  expect(find(root, '.branch-row-name').textContent).toBe('feature');
-  const ahead = find(root, '.branch-row-ahead');
-  expect(ahead.textContent).toBe('2');
-  expect(ahead.getAttribute('aria-label')).toBe('2 commits not merged into main');
 });
 
 test('a changed file menu opens its changes', () => {

@@ -3,7 +3,7 @@ import {shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
 // images, attach and send buttons, and its profile and usage. A new session
 // chooses its profile and worktree there; a running session can choose a
-// profile of its harness, and a worktree shows its branch beside it. The text
+// profile of its harness. The text
 // takes focus on mount.
 import {useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent} from 'react';
 import {imageSrc, imageTypes} from '../images.ts';
@@ -17,7 +17,7 @@ import {promptHistory} from './history.ts';
 import {MentionList, useMentions} from './use-mentions.tsx';
 import {ProfileSelect} from './profile-select.tsx';
 import {Usage} from './usage.tsx';
-import {SessionBranch} from './session-branch.tsx';
+import {MergeButton} from './merge-button.tsx';
 import {WorktreeToggle} from './worktree-toggle.tsx';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
@@ -97,8 +97,7 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className={`composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      <SessionBranch session={session} />
+    <form className={`composer @container/composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
       <Card className="bg-transparent py-3 shadow-none dark:bg-input/30">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
@@ -114,7 +113,7 @@ export function Composer({session}: {session: Session}) {
           )}
           <MentionList mentions={mentions} />
           <div className="composer-input flex items-end gap-1">
-            <Button type="button" variant="ghost" size="icon-sm" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="attach" /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="add" /></Button>
             <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${focusShortcut.keys[0]})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
               role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
               aria-controls={suggesting ? mentions.listId : undefined}
@@ -133,6 +132,7 @@ export function Composer({session}: {session: Session}) {
         <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <ProfileSelect session={session} />
           {session.id === unsentKey && <WorktreeToggle />}
+          <MergeButton session={session} />
         </div>
         <Usage usage={session.usage} />
       </div>

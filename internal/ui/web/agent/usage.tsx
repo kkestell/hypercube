@@ -1,4 +1,5 @@
-// Context is a ring beside its token counts, and cost is text.
+// Narrow composers show just the context ring; its tooltip keeps the counts
+// and cost available.
 import type {Usage as SessionUsage} from '../sessions/types.ts';
 
 export function tokens(n: number): string {
@@ -25,11 +26,12 @@ function ContextRing({percent}: {percent: number}) {
 export function Usage({usage}: {usage: SessionUsage}) {
   const {context = 0, window = 0, cost: spent = 0} = usage;
   if (!window && !spent) return null;
-  return <span className="usage flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
-    {window > 0 && <span className="usage-context flex items-center gap-2" title={`${Math.round(context / window * 100)}% context used`}>
+  const title = [window > 0 && `${tokens(context)} / ${tokens(window)} tokens, ${Math.round(context / window * 100)}% context used`, spent > 0 && cost(spent)].filter(Boolean).join(' · ');
+  return <span className="usage flex shrink-0 items-center gap-2 whitespace-nowrap text-xs text-muted-foreground" title={title}>
+    {window > 0 && <span className="usage-context flex items-center gap-2">
       <ContextRing percent={Math.min(100, context / window * 100)} />
-      <span className="usage-tokens">{tokens(context)} / {tokens(window)}</span>
+      <span className="usage-tokens hidden @md/composer:inline">{tokens(context)} / {tokens(window)}</span>
     </span>}
-    {spent > 0 && <span className="usage-cost">{cost(spent)}</span>}
+    {spent > 0 && <span className={`usage-cost ${window > 0 ? 'hidden @md/composer:inline' : ''}`}>{cost(spent)}</span>}
   </span>;
 }

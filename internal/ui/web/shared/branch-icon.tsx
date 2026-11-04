@@ -12,10 +12,10 @@ const looks: Record<BranchState, {icon: IconName; color: string}> = {
   empty: {icon: 'git-branch', color: 'text-muted-foreground'},
 };
 
-export function BranchIcon({merge, className = '', iconClassName = ''}: {merge?: Merge; className?: string; iconClassName?: string}) {
+export function BranchIcon({merge, className = ''}: {merge?: Merge; className?: string}) {
   const {icon, color} = looks[merge ? branchState(merge) : 'empty'];
   const title = merge ? `${merge.branch}: ${branchSummary(merge)}` : 'Worktree';
   return <span className={`inline-flex ${className}`} title={title}>
-    <Icon name={icon} className={`${color} ${iconClassName}`} title={title} role="img" />
+    <Icon name={icon} className={color} title={title} role="img" />
   </span>;
 }

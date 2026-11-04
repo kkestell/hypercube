@@ -33,7 +33,10 @@ function modelName(model = ''): string {
   return displayName(provider < 0 ? model : model.slice(provider + 1));
 }
 
-export const profileLabel = (profile: Pick<Profile, 'harness' | 'model' | 'effort'>): string =>
-  [displayName(profile.harness), modelName(profile.model), displayName(profile.effort)]
+export const modelLabel = (profile: Pick<Profile, 'model' | 'effort'>): string =>
+  [modelName(profile.model), displayName(profile.effort)]
     .filter(Boolean)
     .join(' · ');
+
+export const profileLabel = (profile: Pick<Profile, 'harness' | 'model' | 'effort'>): string =>
+  [displayName(profile.harness), modelLabel(profile)].filter(Boolean).join(' · ');

@@ -15,11 +15,12 @@ interface SplitProps {
   minStart?: string;
   minEnd?: string;
   collapsed?: 'start' | 'end' | null;
+  handleTopInset?: string;
   onResize?: (percent: number) => void;
   children: [ReactNode, ReactNode];
 }
 
-export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, onResize, children}: SplitProps) {
+export function Split({split = 'vertical', fixed = 'none', size, minStart, minEnd, collapsed = null, handleTopInset, onResize, children}: SplitProps) {
   const [start, end] = Children.toArray(children);
   const id = useId();
   const first = useRef<PanelImperativeHandle>(null), last = useRef<PanelImperativeHandle>(null);
@@ -45,7 +46,7 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
       onResize={value => { if (fixed === 'start' && !collapsed && value.inPixels > 0) kept.current = value.inPixels; }}>
       <div className="split-pane h-full min-h-0 min-w-0 overflow-hidden" data-side="start" inert={collapsed === 'start'}>{start}</div>
     </ResizablePanel>
-    <ResizableHandle hidden={!!collapsed} />
+    <ResizableHandle hidden={!!collapsed} topInset={handleTopInset} />
     <ResizablePanel id={id + '-end'} panelRef={last} defaultSize={fixed === 'end' ? size : undefined}
       groupResizeBehavior={fixed === 'end' ? 'preserve-pixel-size' : 'preserve-relative-size'}
       collapsible={fixed === 'end'} minSize={minEnd}

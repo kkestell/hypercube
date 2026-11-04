@@ -2,7 +2,7 @@
 import {ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
   Clock, Copy, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
   Globe, Info, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
-  Archive, Code, FoldHorizontal, FolderOpen, Paperclip, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
+  Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
 
 const icons = {
   'arrow-down': ArrowDown, 'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'arrow-up': ArrowUp,
@@ -10,7 +10,7 @@ const icons = {
   error: CircleAlert, warning: TriangleAlert, info: Info, history: Clock,
   eye: Eye, 'eye-off': EyeOff, files: Files, 'source-control': GitCompare, 'git-branch': GitBranch, 'git-merge': GitMerge, 'git-pull-request-arrow': GitPullRequestArrow, globe: Globe,
   'comment-discussion': MessageSquare, 'new-folder': FolderPlus, add: Plus, ellipsis: MoreHorizontal,
-  search: Search, settings: Settings, attach: Paperclip, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
+  search: Search, settings: Settings, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,
   'open-preview': Eye, 'go-to-file': FileCode,
   play: Play, edit: Pencil, archive: Archive, trash: Trash2, code: Code, 'folder-open': FolderOpen, terminal: SquareTerminal,

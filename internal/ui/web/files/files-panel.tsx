@@ -6,20 +6,20 @@ import type {ChangeStatus} from '../changes/types.ts';
 import {fileTabId, keepOpen, openDiffTab, openFileTab} from '../editor/editor.ts';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
-import {BranchRow} from './branch-row.tsx';
 import {FileIcon} from './file-icon.tsx';
 import {loadFolder, setFolderOpen, treeEntries} from './files.ts';
 import {usePathMenu} from './path-menu.tsx';
 
 const statusColor: Record<ChangeStatus, string> = {
-  modified: 'text-amber-500', added: 'text-green-500', untracked: 'text-green-500', deleted: 'text-muted-foreground line-through',
+  modified: 'text-amber-500/70', added: 'text-green-500/70', untracked: 'text-green-500/70', deleted: 'text-muted-foreground',
 };
 
 export function FilesPanel() {
   const [state, store] = useStore();
   const files = state.session?.files ?? {listings: {}, expanded: {}, open: {}};
   const {listings, expanded} = files;
-  const changes = changeTree(state.session?.changes ?? null);
+  const gitChanges = state.session?.changes;
+  const changes = changeTree(gitChanges ?? null);
   const listing = (dir: string) => treeEntries(files, changes, dir);
   const menu = usePathMenu();
   const tree = useRef<HTMLDivElement>(null);
@@ -70,28 +70,36 @@ export function FilesPanel() {
     const path = dir ? dir + '/' + entry.name : entry.name;
     const change = entry.dir ? undefined : changes.files.get(path);
     const status = entry.dir ? changes.folders.get(path) : change?.status;
+    const color = status ? statusColor[status] : '';
     const props = {role: 'treeitem', 'data-path': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
       ...menu.handlers(path), onFocus: () => setFocused(path), title: status && `${path} • ${statusLabel(status)}`,
-      className: `h-7 min-w-0 flex-1 justify-start px-2 font-normal ${status ? statusColor[status] : ''}`};
-    const name = <><span className="truncate">{entry.name}</span>{status && <span className="sr-only">, {statusLabel(status)}</span>}</>;
+      className: 'h-7 min-w-0 flex-1 justify-start px-2 font-normal'};
+    const label = <span className={`flex min-w-0 items-center gap-1.5 ${color}`}>
+      {entry.dir ? <Icon name={expanded[path] ? 'chevron-down' : 'chevron-right'} /> : <FileIcon name={entry.name} />}
+      <span className={`truncate ${status === 'deleted' ? 'line-through' : ''}`}>{entry.name}</span>
+      {status && <span className="sr-only">, {statusLabel(status)}</span>}
+    </span>;
     if (entry.dir) return <Collapsible key={path} open={!!expanded[path]} onOpenChange={open => setFolderOpen(store, path, open)}>
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm" {...props} data-dir="" aria-expanded={!!expanded[path]} className={`${props.className} w-full`}>
-        <Icon name={expanded[path] ? 'chevron-down' : 'chevron-right'} />{name}
+        {label}
       </Button></CollapsibleTrigger>
       <CollapsibleContent role="group" className="pl-4">{entries(path, level + 1)}</CollapsibleContent>
     </Collapsible>;
     const deleted = change?.status === 'deleted';
-    return <div key={path} className="flex items-center">
-      <Button variant="ghost" size="sm" {...props} data-file={path} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
-        onDoubleClick={() => { if (!deleted) store.update(s => keepOpen(s, fileTabId(path))); }}><FileIcon name={entry.name} />{name}</Button>
+    return <div key={path} className="flex items-center rounded-md hover:bg-accent dark:hover:bg-accent/50">
+      <Button variant="ghost" size="sm" {...props} className={`${props.className} hover:bg-transparent dark:hover:bg-transparent`} data-file={path} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
+        onDoubleClick={() => { if (!deleted) store.update(s => keepOpen(s, fileTabId(path))); }}>{label}</Button>
       {change?.added !== undefined && change.removed !== undefined && <Button variant="ghost" size="sm" tabIndex={-1}
-        className="files-panel-stat h-7 shrink-0 gap-1 px-2 text-xs font-normal tabular-nums text-muted-foreground"
+        className="files-panel-stat h-7 shrink-0 px-2 text-xs font-normal tabular-nums hover:bg-transparent dark:hover:bg-transparent"
         title="Open Changes" aria-label={`Open changes: ${change.added} added, ${change.removed} removed`} onClick={() => openDiffTab(store, path)}>
-        <span>+{change.added}</span><span>−{change.removed}</span>
+        <span className="flex gap-1 text-muted-foreground"><span>+{change.added}</span><span>−{change.removed}</span></span>
       </Button>}
     </div>;
   });
-  return <><BranchRow /><div ref={tree} className="files-panel p-2" role="tree" aria-label="Files" onKeyDown={keyDown}>
+  return <>
+    {gitChanges && 'error' in gitChanges && <p className="px-4 pt-2 text-sm text-muted-foreground">{gitChanges.error}</p>}
+    <div ref={tree} className="files-panel p-2" role="tree" aria-label="Files" onKeyDown={keyDown}>
     {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
-  </div>{menu.element}</>;
+    </div>{menu.element}
+  </>;
 }
