@@ -38,7 +38,8 @@ func TestFiles(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for name, target := range map[string]string{"link": "sub", "escape": filepath.Join(t.TempDir(), "outside"), "broken": "missing"} {
+	outside := filepath.Join(t.TempDir(), "outside")
+	for name, target := range map[string]string{"link": "sub", "escape": outside, "broken": "missing"} {
 		if name == "escape" {
 			if err := os.WriteFile(target, []byte("outside"), 0o644); err != nil {
 				t.Fatal(err)
@@ -138,14 +139,14 @@ func TestFiles(t *testing.T) {
 		status               int
 	}{
 		{"file", "s", "..", 409}, {"files", "s", "..", 409},
-		{"file", "s", "/etc/passwd", 409}, {"files", "s", "/etc", 409},
+		{"file", "s", outside, 200}, {"file", "s", filepath.Join(dir, "a.go"), 200}, {"files", "s", "/etc", 409},
 		{"file", "s", "escape", 409}, {"files", "s", "escape", 409},
 		{"file", "s", "missing", 404}, {"files", "s", "missing", 404},
 		{"file", "s", "binary", 415}, {"file", "s", "large", 413},
 		{"file", "s", "over-limit", 413}, {"file", "s", "sub", 400},
 		{"file", "unknown", "a.go", 404}, {"files", "unknown", "", 404},
 		{"file", "s", "limit", 200}, {"file", "s", ".git/config", 200},
-		{"image", "s", "../outside.png", 409}, {"image", "s", "/etc/passwd", 409},
+		{"image", "s", "../outside.png", 409}, {"image", "s", filepath.Join(dir, "sub", "drawing.svg"), 200}, {"image", "s", outside, 415},
 		{"image", "s", "escape", 409}, {"image", "s", "missing.png", 404},
 		{"image", "s", "sub", 400}, {"image", "s", "a.go", 415},
 		{"image", "unknown", "sub/drawing.svg", 404},

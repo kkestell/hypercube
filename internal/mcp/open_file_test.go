@@ -24,21 +24,52 @@ func TestOpenFile(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(dir, "escape")); err != nil {
 		t.Fatal(err)
 	}
+	// ".." after a symlink leaves the link's target, not the session directory.
+	target := t.TempDir()
+	if err := os.Mkdir(filepath.Join(target, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "target.txt"), []byte("target"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(target, "sub"), filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	realTarget, err := filepath.EvalSymlinks(filepath.Join(target, "target.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.WriteFile(filepath.Join(home, "notes"), []byte("notes"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	real, err := filepath.EvalSymlinks(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	realHome, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
 	db, rt := family(t, false, dir, "")
 	client := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, tc := range []struct {
 		name, path string
 		lines      []map[string]int
 		want       []session.LineRange
+		view       string
 		fail       bool
 	}{
 		{name: "relative", path: "docs/../docs/guide.md", want: []session.LineRange{}},
 		{name: "absolute", path: filepath.Join(dir, "docs", "guide.md"), want: []session.LineRange{}},
 		{name: "omitted end", path: "docs/guide.md", lines: []map[string]int{{"start": 1}}, want: []session.LineRange{{Start: 1, End: 1}}},
 		{name: "ranges", path: "docs/guide.md", lines: []map[string]int{{"start": 1, "end": 2}, {"start": 3, "end": 3}}, want: []session.LineRange{{Start: 1, End: 2}, {Start: 3, End: 3}}},
-		{name: "parent", path: "../outside", fail: true},
-		{name: "outside", path: outside, fail: true},
-		{name: "symlink outside", path: "escape", fail: true},
+		{name: "outside", path: outside, view: real, want: []session.LineRange{}},
+		{name: "parent", path: "../" + filepath.Base(filepath.Dir(outside)) + "/outside", view: real, want: []session.LineRange{}},
+		{name: "symlink outside", path: "escape", view: real, want: []session.LineRange{}},
+		{name: "dot dot after symlink", path: "link/../target.txt", view: realTarget, want: []session.LineRange{}},
+		{name: "home", path: "~/notes", view: filepath.Join(realHome, "notes"), want: []session.LineRange{}},
 		{name: "missing", path: "missing", fail: true},
 		{name: "folder", path: "docs", fail: true},
 		{name: "zero start", path: "docs/guide.md", lines: []map[string]int{{"start": 0, "end": 1}}, fail: true},
@@ -61,7 +92,10 @@ func TestOpenFile(t *testing.T) {
 				}
 				return
 			}
-			want := []session.FileOpen{{Path: "docs/guide.md", Lines: tc.want}}
+			if tc.view == "" {
+				tc.view = "docs/guide.md"
+			}
+			want := []session.FileOpen{{Path: tc.view, Lines: tc.want}}
 			if !reflect.DeepEqual(opens, want) {
 				t.Fatalf("opens = %+v, want %+v", opens, want)
 			}

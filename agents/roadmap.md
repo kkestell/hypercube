@@ -19,16 +19,6 @@ and offers no Always allow for them.
 
 Offer Always allow once Codex includes a stable tool identifier in the request.
 
-## open_file opens files anywhere on the filesystem
-
-The `open_file` MCP tool reads through `os.OpenRoot` on the calling session's
-directory, so it refuses absolute paths outside that directory, `..` paths
-that escape it, and symlinks that point outside it. `~` is not expanded.
-
-Allow `open_file` to open any file the user can read, including absolute paths
-outside the workspace and `~`-prefixed paths, so an agent can show the user a
-file from anywhere on the machine.
-
 ## Show Claude Code and Codex usage limits
 
 Display the user's Claude Code and Codex usage against their limits,

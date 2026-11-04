@@ -7,15 +7,10 @@ import (
 	"strings"
 )
 
-// readImage serves preview images within the same directory boundary as files.
+// readImage serves preview images by the same rules as files.
 func (s *server) readImage(w http.ResponseWriter, r *http.Request) {
-	root, err := s.sessionRoot(r.URL.Query().Get("session"))
-	if fileError(w, err) {
-		return
-	}
-	defer root.Close()
 	name := r.URL.Query().Get("path")
-	file, err := root.Open(name)
+	file, err := s.openFile(r.URL.Query().Get("session"), name)
 	if fileError(w, err) {
 		return
 	}
