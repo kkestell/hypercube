@@ -18,7 +18,7 @@ const below = button => {
   return {x: rect.left, y: rect.bottom};
 };
 
-export function Sidebar({searchOpen, onSearchOpenChange}) {
+export function Sidebar({searchOpen, onSearchOpenChange, onSettings}) {
   const [state, store] = useStore();
   const [renaming, setRenaming] = useState(null);
   // menu.workspace names the section whose More Actions opened the menu.
@@ -59,6 +59,7 @@ export function Sidebar({searchOpen, onSearchOpenChange}) {
     <div className="sidebar flex h-full min-h-0 flex-col">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
+          <Button variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
         <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>

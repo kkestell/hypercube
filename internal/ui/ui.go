@@ -31,6 +31,8 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /profiles", profiles)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
+	mux.HandleFunc("GET /grants", s.grants)
+	mux.HandleFunc("POST /grants", s.deleteGrant)
 	mux.Handle("POST /mcp", mcp.Handler(db, rt, browser))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)

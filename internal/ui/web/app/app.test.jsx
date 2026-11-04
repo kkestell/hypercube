@@ -238,3 +238,34 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', as
   act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'panel'}})));
   expect(store.get().workbench.panel).toBe(true);
 });
+
+test('Settings opens from the sidebar, shortcut and menu and removes saved choices', async () => {
+  const choices = [{session: '', title: '', harness: 'codex', tool: 'shell'}, {session: 'a', title: 'My session', harness: 'claude', tool: 'Bash'}];
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+    if (init?.method === 'POST') return new Response('');
+    return Response.json(choices);
+  });
+  try {
+    const store = createStore({
+      workspaces: [], limits: [], requests: [], selected: null, pending: null, unsent: null,
+      visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+      workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
+    });
+    const root = mount(store, <App store={store} />);
+    await act(async () => root.querySelector('[aria-label="Settings"]').click());
+    let dialog = document.querySelector('[role=dialog]');
+    expect(dialog.textContent).toContain('Always Allowed Tools');
+    expect(dialog.textContent).toContain('codex · All sessions');
+    expect(dialog.textContent).toContain('claude · My session');
+    await act(async () => dialog.querySelector('[aria-label="Remove shell, codex, all sessions"]').click());
+    expect(dialog.textContent).not.toContain('shell');
+    expect(Object.fromEntries(new URL(fetches.mock.calls.at(-1)[0], 'http://x/').searchParams)).toEqual({session: '', harness: 'codex', tool: 'shell'});
+    act(() => dialog.querySelector('[data-slot="dialog-close"]').click());
+    await act(async () => root.querySelector('header button').dispatchEvent(new KeyboardEvent('keydown', {key: ',', metaKey: true, bubbles: true})));
+    dialog = document.querySelector('[role=dialog]');
+    expect(dialog.textContent).toContain('Settings');
+    act(() => dialog.querySelector('[data-slot="dialog-close"]').click());
+    await act(async () => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'settings'}})));
+    expect(document.querySelector('[role=dialog]').textContent).toContain('Settings');
+  } finally { unmountAll(); fetches.mockRestore(); }
+});

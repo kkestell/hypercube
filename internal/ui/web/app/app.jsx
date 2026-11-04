@@ -23,6 +23,7 @@ import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
 import {StatusBar} from './status-bar.jsx';
 import {binding, matches, shortcut, shortcuts} from './shortcuts.js';
+import {SettingsDialog} from './settings-dialog.jsx';
 import {ShortcutsDialog} from './shortcuts-dialog.jsx';
 import {windowHandler} from './window.js';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
@@ -48,6 +49,7 @@ export function App({store}) {
   const [state, setState] = useState(store.get());
   const [quickOpen, setQuickOpen] = useState(false);
   const [sessionSearch, setSessionSearch] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const focusPending = useRef(false);
   useLayoutEffect(() => {
@@ -75,7 +77,7 @@ export function App({store}) {
     if (!handler) return;
     handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, binding: binding(s.keys[0])}))});
   }, []);
-  const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
+  const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), showSettings: () => setSettingsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
   useEffect(() => {
     const run = e => shortcut({target: document.activeElement, preventDefault() {}, stopPropagation() {}}, store, shortcutActions, e.detail.id);
     addEventListener('hypercube-shortcut', run);
@@ -112,7 +114,7 @@ export function App({store}) {
         </header>
         <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
-            <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} />
+            <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
             <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className="app-center flex h-full min-w-0 flex-col"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
@@ -126,6 +128,7 @@ export function App({store}) {
         <NotificationStack />
         <ConfirmDialog />
         <QuickOpen key={state.session?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
     </StoreContext.Provider>

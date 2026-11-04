@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/store"
 )
 
 // approve asks the session's agent to request approval and waits for the
@@ -100,6 +101,10 @@ func TestAlwaysAllowInAllSessions(t *testing.T) {
 	if len(f.rt.Requests()) != 0 {
 		t.Fatalf("requests = %+v", f.rt.Requests())
 	}
+	if err := f.db.Tx(func(tx *store.Tx) error { return tx.DeleteGrant("", "test", "Tool") }); err != nil {
+		t.Fatal(err)
+	}
+	f.approve(b.ID)
 }
 
 func TestAlwaysAllowNeedsAnOpenApproval(t *testing.T) {

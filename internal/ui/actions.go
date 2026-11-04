@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/store"
 )
 
 // maxInput is the largest input body: 10 MiB of images in base64, and text.
@@ -127,4 +128,28 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refused(w, err)
+}
+
+// grants returns saved always-allow choices.
+func (s *server) grants(w http.ResponseWriter, r *http.Request) {
+	var grants []store.Grant
+	err := s.db.Read(func(tx *store.Tx) (err error) { grants, err = tx.Grants(); return })
+	if refused(w, err) {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if grants == nil {
+		grants = []store.Grant{}
+	}
+	_ = json.NewEncoder(w).Encode(grants)
+}
+
+// deleteGrant removes one choice; approvals read grants from the database.
+func (s *server) deleteGrant(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	if q.Get("harness") == "" || q.Get("tool") == "" {
+		http.Error(w, "missing grant", http.StatusBadRequest)
+		return
+	}
+	refused(w, s.db.Tx(func(tx *store.Tx) error { return tx.DeleteGrant(q.Get("session"), q.Get("harness"), q.Get("tool")) }))
 }

@@ -9,7 +9,7 @@ export function ShortcutsDialog({open, onOpenChange}) {
     <DialogContent {...focus} className="max-h-[80vh] overflow-y-auto">
       <DialogHeader><DialogTitle>Keyboard shortcuts</DialogTitle>
         <DialogDescription>Keyboard shortcuts available in Hypercube.</DialogDescription></DialogHeader>
-      {['Session', 'View', 'Help'].map(section => <section key={section}>
+      {['App', 'Session', 'View', 'Help'].map(section => <section key={section}>
         <h2 className="mb-2 font-semibold">{section}</h2>
         <dl className="space-y-2">{shortcuts.filter(s => s.section === section && (!s.native || globalThis.webkit?.messageHandlers?.window)).map(s =>
           <div key={s.id} className="flex items-center justify-between gap-4">

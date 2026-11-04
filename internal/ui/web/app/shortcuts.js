@@ -5,6 +5,7 @@ import {windowHandler} from './window.js';
 
 // Bindings also supply the native menus and the keyboard reference.
 export const shortcuts = [
+  {id: 'settings', section: 'App', title: 'Settings…', keys: ['⌘,'], menu: true},
   {id: 'new', section: 'Session', title: 'New Session', keys: ['⌘N'], menu: true},
   {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌘⌥↓', '⌃Tab'], menu: true},
   {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], menu: true},
@@ -42,7 +43,7 @@ export function matches(event, id) {
   });
 }
 
-export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen, openSessionSearch}, id) {
+export function shortcut(e, store, {focusComposer, showHelp, showSettings, openQuickOpen, openSessionSearch}, id) {
   if (!id) {
     if (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing) return;
     if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
@@ -73,7 +74,8 @@ export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen, open
       if (state.workbench[region] && e.target.closest(selector)) focusComposer();
       store.update(s => toggle(s, region));
     };
-  } else if (is('help')) action = showHelp;
+  } else if (is('settings')) action = showSettings;
+  else if (is('help')) action = showHelp;
   else if (windowHandler() && ['zoomIn', 'zoomOut', 'zoomReset'].some(is)) {
     const zoom = ['zoomIn', 'zoomOut', 'zoomReset'].find(is);
     action = () => windowHandler().postMessage({type: 'page-zoom', action: zoom});

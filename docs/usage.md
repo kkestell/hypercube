@@ -146,8 +146,7 @@ typed text. It stays there as output arrives and you scroll through the chat;
 answer there. Supported tool approvals also offer Always allow in this session and
 Always allow in all sessions. Saved choices belong to that harness and survive
 restarts. Hypercube then allows that tool's later approvals without asking,
-and the tool's call still appears in the chat. There is currently no control
-for removing saved choices. An answered
+and the tool's call still appears in the chat. Remove saved choices in Settings, opened from the sidebar or with Command-comma. An answered
 request returns to its place in the chat, showing its question and the answer
 beside a check.
 Unsent text, including typed answers to requests and a new session's first

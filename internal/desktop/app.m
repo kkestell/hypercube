@@ -17,6 +17,15 @@
 }
 @end
 
+@interface HCAppMenu : NSMenu
+@end
+@implementation HCAppMenu
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if ([event.charactersIgnoringModifiers isEqual:@","] && (event.modifierFlags & NSEventModifierFlagCommand)) return NO;
+    return [super performKeyEquivalent:event];
+}
+@end
+
 static HCApp *application;
 
 @implementation HCApp
@@ -63,7 +72,7 @@ static NSMenu *mainMenu(void) {
     NSEventModifierFlags command = NSEventModifierFlagCommand;
     NSMenu *bar = [[NSMenu alloc] init];
 
-    NSMenu *app = [[NSMenu alloc] initWithTitle:@"Hypercube"];
+    NSMenu *app = [[HCAppMenu alloc] initWithTitle:@"Hypercube"];
     addItem(app, @"Hide Hypercube", @selector(hide:), @"h", command);
     addItem(app, @"Hide Others", @selector(hideOtherApplications:), @"h", command | NSEventModifierFlagOption);
     addItem(app, @"Show All", @selector(unhideAllApplications:), @"", 0);
@@ -94,7 +103,23 @@ static NSMenu *mainMenu(void) {
 
 void HCSetShortcuts(NSArray *items) {
     NSMenu *bar = NSApp.mainMenu;
-    for (NSString *title in @[@"Session", @"View", @"Help"]) {
+    for (NSString *title in @[@"App", @"Session", @"View", @"Help"]) {
+        if ([title isEqual:@"App"]) {
+            NSMenu *app = [bar itemWithTitle:@"Hypercube"].submenu;
+            NSMenuItem *old = [app itemWithTag:1];
+            if (old) { [app removeItemAtIndex:[app indexOfItem:old] + 1]; [app removeItem:old]; }
+            for (NSDictionary *entry in items) {
+                if (![entry[@"section"] isEqual:title]) continue;
+                NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:entry[@"title"] action:@selector(shortcut:) keyEquivalent:entry[@"binding"][@"key"]];
+                item.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+                item.target = application;
+                item.representedObject = entry[@"id"];
+                item.tag = 1;
+                [app insertItem:item atIndex:0];
+                [app insertItem:[NSMenuItem separatorItem] atIndex:1];
+            }
+            continue;
+        }
         NSMenuItem *old = [bar itemWithTitle:title];
         if (old) [bar removeItem:old];
         NSMenu *menu = [[HCShortcutMenu alloc] initWithTitle:title];

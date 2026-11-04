@@ -27,6 +27,8 @@ export const post = (store, path, params, body) =>
 // fetchProfiles returns the profiles, or null after showing why it failed.
 export const fetchProfiles = store => request(store, 'profiles', undefined, response => response.json());
 
+export const fetchGrants = store => request(store, 'grants', undefined, response => response.json());
+
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.
 export async function answerRequest(store, session, request, choice, text) {
