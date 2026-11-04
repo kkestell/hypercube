@@ -122,8 +122,17 @@
   flex: 1;
 }
 
-/* Python file icon color. */
-.mockup-file-icon-python {
+/* Seti's Python and Markdown glyphs, in Seti's blue. */
+.mockup-file-icon-python::before {
+  content: "\E07B";
+}
+
+.mockup-file-icon-markdown::before {
+  content: "\E060";
+}
+
+.mockup-file-icon-python,
+.mockup-file-icon-markdown {
   color: var(--vscode-charts-blue);
 }
 
@@ -173,4 +182,131 @@
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+}
+
+/* The Changes tab: the branch, then one row per uncommitted file with its
+   status square, name, folder, and line counts. */
+.mockup-scm {
+  overflow: auto;
+}
+
+.mockup-scm-row {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 1.5);
+  width: 100%;
+  height: var(--size-row-height);
+  padding: 0 calc(var(--size-space) * 3) 0 var(--size-content-inset);
+  color: inherit;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.mockup-scm-branch {
+  margin-bottom: var(--size-space);
+  color: var(--vscode-descriptionForeground);
+}
+
+.mockup-scm-ahead {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.mockup-scm-file:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mockup-scm-file[aria-current] {
+  background: var(--vscode-list-inactiveSelectionBackground);
+}
+
+.mockup-scm-name,
+.mockup-scm-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mockup-scm-name {
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.mockup-scm-description {
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+.mockup-scm-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mockup-scm-stat {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--size-space);
+  margin-left: auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Status squares as Zed's Git panel draws them, in the editor gutter's change
+   colors. */
+.mockup-scm-status {
+  flex-shrink: 0;
+  /* The codicon squares sit 1px above the label's optical center, which
+     lowercase letters pull below the line box's center. */
+  translate: 0 1px;
+}
+
+.mockup-scm-M > .mockup-scm-status { color: var(--vscode-editorGutter-modifiedBackground); }
+.mockup-scm-U > .mockup-scm-status { color: var(--vscode-editorGutter-addedBackground); }
+.mockup-scm-D > .mockup-scm-status { color: var(--vscode-editorGutter-deletedBackground); }
+
+.mockup-scm-D > .mockup-scm-name {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: line-through;
+}
+
+/* An inline diff: old and new line numbers, the change mark, then the line. */
+.mockup-diff {
+  overflow: auto;
+  padding-top: var(--size-space);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-editor-font-family);
+  font-size: var(--vscode-editor-font-size);
+  line-height: 1.5;
+}
+
+.mockup-diff-line {
+  display: grid;
+  grid-template-columns: 4ch 4ch 3ch 1fr;
+  white-space: pre;
+}
+
+.mockup-diff-line > span {
+  color: var(--vscode-editorLineNumber-foreground);
+  text-align: right;
+  user-select: none;
+}
+
+.mockup-diff-line > span:nth-child(3) {
+  text-align: center;
+}
+
+.mockup-diff-line > code {
+  font: inherit;
+}
+
+.mockup-diff-added {
+  background: var(--vscode-diffEditor-insertedLineBackground);
+}
+
+.mockup-diff-removed {
+  background: var(--vscode-diffEditor-removedLineBackground);
 }

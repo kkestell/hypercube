@@ -27,3 +27,50 @@ dialog.addEventListener('close', () => {
   button.focus();
   dialog.querySelector('form').reset();
 });
+
+// Changed files open their diff in an editor tab, or select it if open.
+const tabs = document.querySelector('.editor-tabs');
+const changes = document.querySelector('#scm-changes');
+
+function selectTab(tab) {
+  tabs.querySelectorAll('.editor-tabs-tab').forEach(other => {
+    const active = other === tab;
+    other.classList.toggle('editor-tabs-tab-active', active);
+    other.querySelector('.editor-tabs-select').setAttribute('aria-selected', active);
+    document.getElementById(other.dataset.panel).hidden = !active;
+  });
+  changes.querySelectorAll('[aria-current]').forEach(row => row.removeAttribute('aria-current'));
+  changes.querySelector(`[data-panel="${tab.dataset.panel}"]`)?.setAttribute('aria-current', 'true');
+}
+
+function openDiff(row) {
+  let tab = tabs.querySelector(`[data-panel="${row.dataset.panel}"]`);
+  if (!tab) {
+    tab = document.querySelector('#tab-template').content.firstElementChild.cloneNode(true);
+    tab.dataset.panel = row.dataset.panel;
+    tab.querySelector('.file-icon').classList.add(row.dataset.icon);
+    tab.querySelector('.editor-tabs-label').textContent = row.dataset.title;
+    tab.querySelector('.editor-tabs-select').title = row.dataset.title;
+    const close = tab.querySelector('.editor-tabs-close');
+    close.title = close.ariaLabel = `Close ${row.dataset.title}`;
+    tabs.append(tab);
+  }
+  selectTab(tab);
+}
+
+changes.addEventListener('click', event => {
+  const row = event.target.closest('.mockup-scm-file');
+  if (row) openDiff(row);
+});
+
+tabs.addEventListener('click', event => {
+  const tab = event.target.closest('.editor-tabs-tab');
+  if (!tab) return;
+  if (!event.target.closest('.editor-tabs-close')) return selectTab(tab);
+  const wasActive = tab.classList.contains('editor-tabs-tab-active');
+  document.getElementById(tab.dataset.panel).hidden = true;
+  tab.remove();
+  const next = tabs.querySelector('.editor-tabs-tab:last-child');
+  if (wasActive && next) selectTab(next);
+  if (!tabs.children.length) changes.querySelectorAll('[aria-current]').forEach(row => row.removeAttribute('aria-current'));
+});
