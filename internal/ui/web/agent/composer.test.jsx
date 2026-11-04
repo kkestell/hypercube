@@ -383,3 +383,34 @@ test('clearing the new session workspace removes its file suggestions', async ()
   await settle();
   expect(root.textContent).not.toContain('old.go');
 });
+
+test('history ending in a mention keeps the picker closed for navigation and sending', async () => {
+  const sent = [], listings = [];
+  fetches.mockImplementation(async (url, init) => {
+    if (String(url).startsWith('mention-files?')) { listings.push(url); return Response.json(['a.go', 'another.go']); }
+    sent.push(JSON.parse(init.body)); return new Response('');
+  });
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1', '2'], items: {
+    1: {kind: 'user', text: 'older'}, 2: {kind: 'user', text: 'see @a.go'},
+  }}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const key = name => act(() => {
+    field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+    field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true, cancelable: true}));
+  });
+  key('ArrowUp');
+  expect(field.value).toBe('see @a.go');
+  expect(field.selectionStart).toBe(field.value.length);
+  await settle();
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+  expect(listings).toHaveLength(0);
+  key('ArrowUp');
+  expect(field.value).toBe('older');
+  key('ArrowDown');
+  expect(field.value).toBe('see @a.go');
+  key('Enter');
+  await settle();
+  expect(sent.map(prompt => prompt.text)).toEqual(['see @a.go']);
+});

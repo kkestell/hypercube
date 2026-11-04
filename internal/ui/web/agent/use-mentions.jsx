@@ -8,7 +8,7 @@ import {insertMention, mentionAt, mentionChoices, prepareFiles} from './mention.
 export function useMentions(field, text, replace, session, workspace) {
   const [selection, setSelection] = useState(null);
   const [dismissed, setDismissed] = useState(null);
-  const [selected, setSelected] = useState({key: '', index: 0});
+  const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
   const caret = useRef(null), activeOption = useRef(null);
@@ -17,7 +17,7 @@ export function useMentions(field, text, replace, session, workspace) {
   const mention = selection?.text === text && token !== dismissed ? candidate : null;
   const key = mention ? `${mention.start}:${mention.query}` : '';
   const choices = useMemo(() => mention ? mentionChoices(files, mention.query) : [], [files, mention?.query]);
-  const active = selected.key === key ? Math.min(selected.index, choices.length - 1) : 0;
+  const active = Math.min(selected, Math.max(0, choices.length - 1));
   const open = !!mention;
 
   useLayoutEffect(() => {
@@ -36,7 +36,7 @@ export function useMentions(field, text, replace, session, workspace) {
       caret.current = null;
     }
   });
-  useLayoutEffect(() => { setSelected({key, index: 0}); }, [key]);
+  useLayoutEffect(() => { setSelected(0); }, [key]);
   useEffect(() => { activeOption.current?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active]]);
 
   const sync = target => {
@@ -47,6 +47,11 @@ export function useMentions(field, text, replace, session, workspace) {
     setSelection(next);
   };
   const close = () => { setDismissed(token); setSelection(null); };
+  const dismiss = value => {
+    const found = mentionAt(value, value.length, value.length);
+    setDismissed(found ? `${found.start}:${value}` : null);
+    setSelection(null);
+  };
   const blur = () => { setSelection(null); setDismissed(null); };
   const choose = path => {
     if (!mention) return;
@@ -64,13 +69,13 @@ export function useMentions(field, text, replace, session, workspace) {
     if (!choices.length) return false;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelected({key, index: (active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length});
+      setSelected((active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
       return true;
     }
     if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(choices[active]); return true; }
     return false;
   };
-  return {choices, active, activeOption, error: open ? error : '', sync, close, blur, choose, keydown};
+  return {choices, active, activeOption, error: open ? error : '', sync, close, dismiss, blur, choose, keydown};
 }
 
 export function MentionList({mentions}) {

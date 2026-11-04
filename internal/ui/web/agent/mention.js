@@ -12,22 +12,20 @@ export function prepareFiles(paths) {
   return paths.map(path => ({path, lower: path.toLowerCase()})).sort((a, b) => a.path.length - b.path.length || a.path.localeCompare(b.path));
 }
 
-// Scan the best match category first; prepared paths already put shorter paths first.
+// Paths are already sorted by length; retain that order within each rank.
 export function mentionChoices(files, query, limit = 30) {
-  const result = [];
-  for (let rank = 0; rank < 3 && result.length < limit; rank++) {
-    for (const file of files) {
-      const base = file.lower.slice(file.lower.lastIndexOf('/') + 1);
-      const contiguous = file.lower.includes(query);
-      let i = 0;
-      for (const c of file.lower) if (c === query[i]) i++;
-      if (i !== query.length) continue;
-      const category = base.includes(query) ? 0 : contiguous ? 1 : 2;
-      if (category === rank) result.push(file.path);
-      if (result.length === limit) break;
-    }
+  const buckets = [[], [], []];
+  for (const file of files) {
+    const base = file.lower.slice(file.lower.lastIndexOf('/') + 1);
+    const contiguous = file.lower.includes(query);
+    let i = 0;
+    for (const c of file.lower) if (c === query[i]) i++;
+    if (i !== query.length) continue;
+    const rank = base.includes(query) ? 0 : contiguous ? 1 : 2;
+    if (buckets[rank].length < limit) buckets[rank].push(file.path);
+    if (buckets[0].length === limit) break;
   }
-  return result;
+  return buckets.flat().slice(0, limit);
 }
 
 export function insertMention(text, mention, path) {

@@ -57,9 +57,10 @@ export function Composer({session}) {
         if (prompts.length) {
           e.preventDefault();
           const index = up ? (history === null ? prompts.length - 1 : Math.max(0, history.index - 1)) : history.index + 1;
-          mentions.close();
+          const edits = {...Object.fromEntries(prompts.map((value, i) => [i, value])), ...history?.edits};
+          mentions.dismiss(index >= prompts.length ? draft.text : edits[index]);
           if (index >= prompts.length) setHistory(null);
-          else setHistory({index, edits: {...Object.fromEntries(prompts.map((value, i) => [i, value])), ...history?.edits}});
+          else setHistory({index, edits});
           return;
         }
       }
