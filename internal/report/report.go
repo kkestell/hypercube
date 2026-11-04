@@ -109,7 +109,7 @@ Your working directory is not a Git checkout. Each child session works directly 
 		} else {
 			fmt.Fprintf(&b, "\nYou work in your own worktree on branch %s, made from the original checkout at %s. Your child sessions' branches merge into your branch. Your work reaches the original checkout's branch when the user asks you to merge it.", s.Branch, w.Path)
 		}
-		b.WriteString(` Unless the user says otherwise, give a child session its own worktree, by omitting dir, when it will change files. It commits on its own branch in its worktree. Merge its branch into your branch from your checkout, then end the child session when its work is merged. A child session that will not change files, such as one doing research or review, needs no worktree: pass dir "." to run it in your checkout, and end it when it is done. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. You decide how to divide the work, coordinate the children, and judge when it is done. The user talks to you in this session.
+		b.WriteString(` Do the work yourself unless it splits into long, independent parts that gain from running in parallel, or the user asks for a team. A child session that changes files alongside other work gets its own worktree: omit dir. Any other child session runs in your checkout: pass dir ".". A child commits on its own branch. Merge child branches, and commit in your checkout, only when the user asks. End a child session when its work is merged or no longer needed. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. The user talks to you in this session.
 `)
 	}
 	writeTeamwork(&b, profiles)
@@ -131,12 +131,12 @@ const reportBack = ` When you finish, or need something, send your parent a shor
 func writeTeamwork(b *strings.Builder, profiles []harness.Profile) {
 	b.WriteString(`
 Teamwork:
-- Do small or tightly coupled tasks yourself. Create child sessions when the work splits into long, self-contained parts. A team uses several times the tokens of a single agent.
+- Do small and tightly coupled work yourself. A child session costs a fresh context, and often a worktree and a build. A team uses several times the tokens of one agent.
 - Run independent work in parallel and coupled work in sequence. Give each file that several tasks touch to one child session.
-- A child session's first message states the objective, the expected result, the files and sources to start from, and the boundaries: what to leave alone and when to stop and report.
-- Choose the cheapest profile that fits the task. When a child session's result fails its checks, give the task to a stronger profile.
-- Before you merge a change, run the build and tests. A non-trivial change also needs a review by a child session that did not write it. A trivial change needs none.
-- Ask child sessions for conclusions, not transcripts, to keep your context for coordination.
+- A child session's first message states the objective, the expected result, where to start, and the boundaries: what to leave alone and when to stop and report.
+- The user's choices of harness, model, or budget override the profile descriptions. Otherwise choose the cheapest profile that fits, and move to a stronger one when a result fails its checks.
+- Match checks to the change. Run the build and tests before reporting work as done. A substantial change gets one review from a session that did not write it. A small change gets none.
+- Ask child sessions for conclusions, not transcripts.
 
 Profiles. Choose the profile whose description fits the task, and pass its name to create_session as profile:
 `)

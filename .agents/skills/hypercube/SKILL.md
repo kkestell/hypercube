@@ -6,7 +6,9 @@ description: Required workflow for nontrivial Hypercube changes, including archi
 # Hypercube
 
 Follow the workspace's `AGENTS.md`. Its Code style section is the standard for
-plans, architectural reviews, implementations, and code reviews.
+plans, architectural reviews, implementations, and code reviews. Scale each
+step below to the change, and follow any workflow, model, or budget the user
+specifies.
 
 ## When to use this workflow
 
@@ -25,43 +27,30 @@ restart, using the criteria in `AGENTS.md`.
 
 ## Planning
 
-For nontrivial work, establish assumptions that materially affect scope with the
-user, then delegate planning to an Opus 5.5 child session using `/kplan`. Give it the
-user's requirements, confirmed assumptions, and the `AGENTS.md` standard. The
-plan must show the least costly complete implementation and justify additions
-against current requirements. Ask about each material assumption separately,
-wait for its answer, then ask the next; give the assumption and plausible
-alternatives. Resolve ordinary details without expanding scope.
-
-When the user specifies a review or implementation workflow, follow it. An
-explicit invocation for a simple change does not require delegation.
+For nontrivial work, write a plan with `/kplan`, or delegate it. Confirm
+assumptions with the user only when they would change the scope; ask about
+each one separately, with plausible alternatives. Resolve ordinary details
+without expanding scope. The plan shows the least costly complete
+implementation and justifies additions against current requirements.
 
 ## Architectural review
 
-Before implementing a new subsystem, large feature, or architectural change,
-have an independent child session review the plan against `AGENTS.md`. It must
-neither author the plan nor implement it. Judge the proposal in the context of
-the whole system and compare it with the plan's simpler baseline.
-
-The top-level agent verifies findings and resolves justified concerns in the
-plan before assigning implementation to an appropriate child session.
+Before implementing a new subsystem or an architectural change, have a session
+that did not write the plan review it against `AGENTS.md`, in the context of
+the whole system and against the plan's simpler baseline. Verify its findings
+and resolve justified concerns in the plan. Features that fit the existing
+design skip this step.
 
 ## Code review and completion
 
-Have a child session from a different model family review the implementation
-using `/kreview`, applying the `AGENTS.md` standard to whole touched files. For
-architectural work, also check the architectural review's conclusions.
+A substantial change gets one review with `/kreview` from a session that did
+not write it, applying the `AGENTS.md` standard to whole touched files. The
+review reports findings only, overriding `/kreview`'s default fixes and
+staging. Verify each finding and fix those the user approves.
 
-Require findings before edits, overriding `/kreview`'s default fixes and staging.
-The top-level agent verifies each finding and decides which warrant fixes under
-`AGENTS.md`. Fix, stage, and commit only when authorized by the user. When fixes
-are authorized, assign them and have the reviewer confirm they are resolved.
+Complete the checks in `AGENTS.md`. For browser changes, use the running
+`make dev` server, or start one if none is running, and give the user its
+address for their visual checks. Leave the installed app alone.
 
-Complete the checks in `AGENTS.md`. For browser changes, start an isolated
-`make dev` preview and give the user its address for their visual checks. Leave
-other sessions' dev servers and the installed app alone. Clean up the preview
-and its isolated state when finished; iterate if the user provides feedback.
-
-The top-level agent owns integration and the final commit, including only task
-changes. Offer `make install-service` after completion and repeat any required
-restart warning.
+Commit and merge only when the user asks. Offer `make install-service` after
+completion and repeat any required restart warning.
