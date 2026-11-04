@@ -28,14 +28,14 @@ test('Quick Open filters session paths and opens a preview', async () => {
   } finally { fetches.mockRestore(); }
 });
 
-test('Escape restores focus and selection focuses the opened file tab', async () => {
+test('Escape and selection restore previous focus', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).startsWith('mention-files?')
     ? Response.json(['src/main.go']) : new Response('source'));
   try {
     const store = createStore({session: emptySession('s'), workspaces: []});
     function View() {
       const [open, setOpen] = useState(false);
-      return <><button onClick={() => setOpen(true)}>Open picker</button><div data-tab="file:src/main.go"><button role="tab">main.go</button></div><QuickOpen open={open} onOpenChange={setOpen} /></>;
+      return <><button onClick={() => setOpen(true)}>Open picker</button><QuickOpen open={open} onOpenChange={setOpen} /></>;
     }
     const root = mount(store, <View />);
     const button = root.querySelector('button');
@@ -49,11 +49,11 @@ test('Escape restores focus and selection focuses the opened file tab', async ()
     await act(async () => {});
     clickControl(document.querySelector('[cmdk-item]'));
     await act(async () => new Promise(resolve => setTimeout(resolve, 0)));
-    expect(document.activeElement).toBe(root.querySelector('[role=tab]'));
+    expect(document.activeElement).toBe(button);
   } finally { fetches.mockRestore(); }
 });
 
-test('Command+P and Command+Shift+P move through filtered results', async () => {
+test('Command+P and Command+Shift+P prevent printing without changing selection', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(['alpha.go', 'beta.go', 'gamma.txt']));
   try {
     const store = createStore({session: emptySession('s'), workspaces: []});
@@ -69,7 +69,7 @@ test('Command+P and Command+Shift+P move through filtered results', async () => 
       expect(event.defaultPrevented).toBe(true);
     };
     press(false);
-    expect(selected()).toBe('beta.go');
+    expect(selected()).toBe('alpha.go');
     press(true);
     expect(selected()).toBe('alpha.go');
   } finally { fetches.mockRestore(); }
