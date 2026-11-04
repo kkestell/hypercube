@@ -1,8 +1,8 @@
-// The attached session's repository changes and open diffs. Paths are relative
-// to the repository root, independently of file tabs' session-relative paths.
+// The attached session's Git changes and open diffs, by path relative to the
+// session's working directory.
 import {fetchChanges, HttpError, readDiff} from '../api.ts';
 import type {Store} from '../store.ts';
-import type {ChangeStatus, Changes, DiffRead, OpenDiff} from './types.ts';
+import type {ChangeStatus, ChangeTree, Changes, DiffRead, OpenDiff} from './types.ts';
 
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 
@@ -12,6 +12,26 @@ export const statusLabel = (status: ChangeStatus) => statusLabels[status];
 
 export const diffTitle = (path: string, status?: ChangeStatus) =>
   `${path.slice(path.lastIndexOf('/') + 1)} (${status && status !== 'modified' ? statusLabel(status) : 'Working Tree'})`;
+
+// changeTree indexes the changes for the Files tree. A folder takes the status
+// its changes share, or modified when they differ. Git names an untracked
+// nested repository by its folder, with a trailing slash.
+export function changeTree(changes: Changes): ChangeTree {
+  const tree: ChangeTree = {files: new Map(), folders: new Map()};
+  if (!changes || !('files' in changes)) return tree;
+  const mark = (folder: string, status: ChangeStatus) => {
+    const current = tree.folders.get(folder);
+    tree.folders.set(folder, current && current !== status ? 'modified' : status);
+  };
+  for (const change of changes.files) {
+    const path = change.path.replace(/\/$/, '');
+    if (path === change.path) tree.files.set(path, change);
+    else mark(path, change.status);
+    const parts = path.split('/');
+    for (let i = 1; i < parts.length; i++) mark(parts.slice(0, i).join('/'), change.status);
+  }
+  return tree;
+}
 
 export async function loadChanges(store: Store) {
   const session = store.get().session;

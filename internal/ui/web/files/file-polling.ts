@@ -1,19 +1,19 @@
-// While visible, refresh the shown Files or Changes list and each pane's
-// active file or diff once a second. An active diff also refreshes Changes
-// so its tab title follows the current status. Requests run one at a time;
-// overlapping polls are skipped.
+// While visible, refresh the shown Files tree and its Git changes, and each
+// pane's active file or diff, once a second. An active diff also refreshes the
+// changes so its tab title follows the current status. Requests run one at a
+// time; overlapping polls are skipped.
 import {loadChanges, readOpenDiff} from '../changes/changes.ts';
 import {isDiffTab, tabPath} from '../editor/editor.ts';
 import {panes} from '../editor/tab-layout.ts';
 import type {Store} from '../store.ts';
-import {loadFolder, readOpenFile} from './files.ts';
+import {listedFolder, loadFolder, readOpenFile} from './files.ts';
 import type {SessionFiles} from './types.ts';
 
-// shownFolders are the root and each expanded folder whose ancestors are all
-// expanded.
+// shownFolders are the root and each listed, expanded folder whose ancestors
+// are all expanded.
 function shownFolders(files: SessionFiles): string[] {
   const shown = (dir: string): boolean => dir === '' || (dir in files.expanded && shown(dir.slice(0, Math.max(0, dir.lastIndexOf('/')))));
-  return ['', ...Object.keys(files.expanded).filter(shown)];
+  return ['', ...Object.keys(files.expanded).filter(dir => shown(dir) && listedFolder(files, dir))];
 }
 
 export function createFilePoller(store: Store) {
@@ -23,15 +23,15 @@ export function createFilePoller(store: Store) {
     if (running || !visible || !session) return;
     running = true;
     try {
-      if (workbench.rightPanel && workbench.rightTab === 'files') {
+      const tree = workbench.rightPanel && workbench.rightTab === 'files';
+      if (tree) {
         for (const dir of shownFolders(session.files)) await loadFolder(store, session.id, dir);
       }
       const shownPanes = panes(session.tabs.root);
-      if ((workbench.rightPanel && workbench.rightTab === 'changes') || shownPanes.some(pane => isDiffTab(pane.active))) {
-        await loadChanges(store);
-      }
+      const left = () => store.get().session?.id !== session.id;
+      if (!left() && (tree || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
       for (const pane of shownPanes) {
-        if (store.get().session?.id !== session.id) break;
+        if (left()) break;
         if (isDiffTab(pane.active)) await readOpenDiff(store, tabPath(pane.active));
         if (pane.active.startsWith('file:')) await readOpenFile(store, tabPath(pane.active));
       }

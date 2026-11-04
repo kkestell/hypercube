@@ -76,7 +76,7 @@ test('state arriving before passive effects reaches the page', async () => {
 test('Escape interrupts only the shown busy session and leaves other Escape actions alone', () => {
   const requests = answer(() => new Response(''));
   const sessions = ['a', 'b'].map(id => testSession({id, title: id, running: true, activity: 'busy'}));
-  const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, rightTab: 'changes'})}, ...sessions);
+  const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, rightTab: 'search'})}, ...sessions);
   const root = mount(store, <App store={store} />);
   requests.length = 0;
   const field = find(root, '.composer textarea');

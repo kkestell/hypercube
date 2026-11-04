@@ -1,6 +1,6 @@
 // The page's layout and the window and account details it shows.
 
-export type RightTab = 'files' | 'changes' | 'search';
+export type RightTab = 'files' | 'search';
 
 // Workbench is which regions show, the right panel's tab, the focused editor
 // pane, whether file views wrap lines, and whether chats and Markdown

@@ -73,7 +73,7 @@ func TestChangesRoutes(t *testing.T) {
 		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
 			return err
 		}
-		for id, path := range map[string]string{"sub": filepath.Join(dir, "sub"), "outside": outside, "removed": removed} {
+		for id, path := range map[string]string{"root": dir, "sub": filepath.Join(dir, "sub"), "outside": outside, "removed": removed} {
 			if err := tx.AddSession(store.Session{ID: id, Workspace: "w", Dir: path}); err != nil {
 				return err
 			}
@@ -90,20 +90,25 @@ func TestChangesRoutes(t *testing.T) {
 		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/"+route+"?"+url.Values{"session": {session}, "path": {path}}.Encode(), nil))
 		return res
 	}
-	res := get("changes", "sub", "")
-	if res.Code != 200 {
-		t.Fatalf("changes = %d %s", res.Code, res.Body)
+	list := func(session string) (string, map[string]workspace.Change) {
+		t.Helper()
+		res := get("changes", session, "")
+		if res.Code != 200 {
+			t.Fatalf("changes = %d %s", res.Code, res.Body)
+		}
+		var changes workspace.ChangesResult
+		if err := json.Unmarshal(res.Body.Bytes(), &changes); err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]workspace.Change{}
+		for _, file := range changes.Files {
+			files[file.Path] = file
+		}
+		return changes.Branch, files
 	}
-	var changes workspace.ChangesResult
-	if err := json.Unmarshal(res.Body.Bytes(), &changes); err != nil {
-		t.Fatal(err)
-	}
-	files := map[string]workspace.Change{}
-	for _, file := range changes.Files {
-		files[file.Path] = file
-	}
-	if changes.Branch != "main" || len(files) != 7 {
-		t.Fatalf("changes = %+v", changes)
+	branch, files := list("root")
+	if branch != "main" || len(files) != 7 {
+		t.Fatalf("changes = %s %+v", branch, files)
 	}
 	if file, ok := files["nested/"]; !ok || file.Status != "untracked" || file.Added != nil || file.Removed != nil {
 		t.Errorf("nested repository = %+v, %v", file, ok)
@@ -120,14 +125,17 @@ func TestChangesRoutes(t *testing.T) {
 	if file := files["sub/new.bin"]; file.Added != nil || file.Removed != nil {
 		t.Errorf("binary counts = %+v", file)
 	}
+	if _, sub := list("sub"); len(sub) != 2 || sub["new.txt"].Status != "untracked" || sub["new.bin"].Status != "untracked" {
+		t.Errorf("subfolder changes = %+v", sub)
+	}
 	for _, tc := range []struct {
 		route, session, path string
 		status               int
 	}{
 		{"changes", "outside", "", 200}, {"changes", "removed", "", 404},
-		{"diff", "sub", "tracked", 200}, {"diff", "sub", "binary", 415},
-		{"diff", "sub", "large", 413}, {"file", "sub", "new.bin", 415},
-		{"diff", "removed", "tracked", 404},
+		{"diff", "root", "tracked", 200}, {"diff", "root", "binary", 415},
+		{"diff", "root", "large", 413}, {"file", "sub", "new.bin", 415},
+		{"diff", "sub", "new.txt", 200}, {"diff", "removed", "tracked", 404},
 		{"diff", "sub", "../tracked", 400}, {"diff", "sub", "", 400},
 	} {
 		res := get(tc.route, tc.session, tc.path)
@@ -137,7 +145,7 @@ func TestChangesRoutes(t *testing.T) {
 		if tc.route == "changes" && tc.session == "outside" && res.Body.String() != "null\n" {
 			t.Errorf("outside = %s", res.Body)
 		}
-		if tc.route == "diff" && tc.session == "sub" && tc.path == "tracked" && (!strings.Contains(res.Body.String(), "-before\n+after\n") || res.Header().Get("Cache-Control") != "no-cache") {
+		if tc.route == "diff" && tc.session == "root" && tc.path == "tracked" && (!strings.Contains(res.Body.String(), "-before\n+after\n") || res.Header().Get("Cache-Control") != "no-cache") {
 			t.Errorf("patch = %s", res.Body)
 		}
 	}

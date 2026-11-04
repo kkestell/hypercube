@@ -1,6 +1,6 @@
 // Lucide icons shared by the application actions.
 import {ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
-  Clock, Copy, Eye, File, FileCode, FileMinus, FilePlus, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
+  Clock, Copy, Eye, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
   Globe, Info, LoaderCircle, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
   Archive, Code, FoldHorizontal, FolderOpen, Paperclip, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
 
@@ -12,7 +12,7 @@ const icons = {
   'comment-discussion': MessageSquare, 'new-folder': FolderPlus, add: Plus, ellipsis: MoreHorizontal,
   search: Search, settings: Settings, attach: Paperclip, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,
-  'open-preview': Eye, 'go-to-file': FileCode, 'diff-modified': File, 'diff-added': FilePlus, 'diff-removed': FileMinus,
+  'open-preview': Eye, 'go-to-file': FileCode,
   play: Play, edit: Pencil, archive: Archive, trash: Trash2, code: Code, 'folder-open': FolderOpen, terminal: SquareTerminal,
 };
 

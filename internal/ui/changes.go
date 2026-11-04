@@ -12,20 +12,22 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-func (s *server) changesRoot(id string) (root string, ok bool, err error) {
-	dir, err := s.sessionDir(id)
+// gitDir returns the session's folder and whether it is inside a Git
+// repository.
+func (s *server) gitDir(id string) (dir string, ok bool, err error) {
+	dir, err = s.sessionDir(id)
 	if err != nil {
 		return "", false, err
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return "", false, err
 	}
-	root, err = workspace.Root(dir)
-	return root, err == nil, nil
+	_, err = workspace.Root(dir)
+	return dir, err == nil, nil
 }
 
 func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
-	top, ok, err := s.changesRoot(r.URL.Query().Get("session"))
+	dir, ok, err := s.gitDir(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}
@@ -35,11 +37,11 @@ func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nil)
 		return
 	}
-	changes, err := workspace.Changes(top)
+	changes, err := workspace.Changes(dir)
 	if fileError(w, err) {
 		return
 	}
-	root, err := os.OpenRoot(top)
+	root, err := os.OpenRoot(dir)
 	if fileError(w, err) {
 		return
 	}
@@ -93,7 +95,7 @@ func untrackedLines(root *os.Root, path string) (*int, *int, error) {
 }
 
 func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
-	top, ok, err := s.changesRoot(r.URL.Query().Get("session"))
+	dir, ok, err := s.gitDir(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}
@@ -103,10 +105,10 @@ func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Query().Get("path")
 	if !filepath.IsLocal(path) || filepath.Clean(path) == "." {
-		http.Error(w, "path must name a repository-relative file", http.StatusBadRequest)
+		http.Error(w, "path must name a file in the session folder", http.StatusBadRequest)
 		return
 	}
-	patch, err := workspace.Diff(top, path, maxFile)
+	patch, err := workspace.Diff(dir, path, maxFile)
 	if fileError(w, err) {
 		return
 	}

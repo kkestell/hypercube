@@ -27,11 +27,19 @@ func TestChanges(t *testing.T) {
 	write(t, filepath.Join(root, "added"), "staged\n")
 	run(root, "add", "added")
 	write(t, filepath.Join(root, "folder/untracked"), "new")
-	changes, err := Changes(root)
+	write(t, filepath.Join(root, "folder/nested/untracked"), "new")
+	changes, err := Changes(filepath.Join(root, "folder"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changes.Branch != "main" || len(changes.Files) != 5 {
+	if len(changes.Files) != 2 || changes.Files[0].Path != "nested/untracked" || changes.Files[1].Path != "untracked" {
+		t.Fatalf("folder changes = %+v", changes)
+	}
+	changes, err = Changes(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changes.Branch != "main" || len(changes.Files) != 6 {
 		t.Fatalf("changes = %+v", changes)
 	}
 	got := map[string]Change{}

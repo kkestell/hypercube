@@ -32,7 +32,8 @@ function attached(id = 's'): AttachedSession {
   let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce(openTab, session.tabs);
   tabs = moveTab(tabs, fileTabId('x.go'), panes(tabs.root)[0].id, 'right');
   const open = {'x.go': unread, 'y.go': unread, 'z.go': {...unread, text: 'z', etag: '"z"'}};
-  return {...session, tabs, files: {listings: {}, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
+  const listings = {'': [{name: 'a', dir: true}, {name: 'c', dir: true}], a: [{name: 'b', dir: true}], c: [{name: 'd', dir: true}]};
+  return {...session, tabs, files: {listings, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
 }
 
 const workbench = (rightPanel: boolean, rightTab: RightTab): Workbench => ({...testState().workbench, rightPanel, rightTab});
@@ -46,16 +47,23 @@ test('nothing is polled while the page is hidden or unattached', async () => {
   expect(requests).toEqual([]);
 });
 
-test('only shown folders and the active file tab of each pane are polled', async () => {
+test('only shown folders, their changes, and the active file tab of each pane are polled', async () => {
   const {requests, fetches} = stubRoutes({});
   await createFilePoller(createStore(state()))();
-  expect(requests).toEqual(['files:', 'files:a', 'files:a/b', 'file:z.go', 'file:x.go']);
-  expect(fetches.mock.calls[3]?.[1]?.headers).toEqual({'If-None-Match': '"z"'});
+  expect(requests).toEqual(['files:', 'files:a', 'files:a/b', 'changes:null', 'file:z.go', 'file:x.go']);
+  expect(fetches.mock.calls[4]?.[1]?.headers).toEqual({'If-None-Match': '"z"'});
 
   mock.restore();
   const hidden = stubRoutes({}).requests;
-  await createFilePoller(createStore(state({workbench: workbench(true, 'changes')})))();
-  expect(hidden).toEqual(['changes:null', 'file:z.go', 'file:x.go']);
+  await createFilePoller(createStore(state({workbench: workbench(true, 'search')})))();
+  expect(hidden).toEqual(['file:z.go', 'file:x.go']);
+});
+
+test('a folder shown only through its deleted files is not listed', async () => {
+  const {requests} = stubRoutes({});
+  const session = {...emptySession('s'), files: {listings: {'': []}, expanded: {gone: true as const}, open: {}}};
+  await createFilePoller(createStore(state({session})))();
+  expect(requests).toEqual(['files:', 'changes:null']);
 });
 
 test('a browser tab polls no file', async () => {
@@ -76,7 +84,7 @@ test('requests go one at a time and a poll is skipped while one runs', async () 
   expect(requests).toEqual(['files:']);
   release();
   await first;
-  expect(requests.length).toBe(5);
+  expect(requests.length).toBe(6);
 });
 
 test('a missing folder collapses', async () => {
@@ -105,12 +113,12 @@ test('Changes refreshes with an active diff even while hidden', async () => {
     'changes:null': () => Response.json({branch: 'main', files: []}),
     'diff:a.go': () => new Response('patch'),
   });
-  const store = createStore(state({session, workbench: workbench(true, 'changes')}));
+  const store = createStore(state({session, workbench: workbench(true, 'search')}));
   await createFilePoller(store)();
   expect(requests).toEqual(['changes:null', 'diff:a.go']);
   expect(store.get().session?.diffs['a.go']).toEqual({text: 'patch', message: null});
   requests.length = 0;
-  store.update(s => ({...s, workbench: workbench(false, 'changes')}));
+  store.update(s => ({...s, workbench: workbench(false, 'search')}));
   await createFilePoller(store)();
   expect(requests).toEqual(['changes:null', 'diff:a.go']);
 });

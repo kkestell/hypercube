@@ -3,6 +3,7 @@
 // the session's working directory ('' is the directory itself). Results that
 // arrive after the page attached to another session are dropped.
 import {HttpError, listFiles, readFile} from '../api.ts';
+import type {ChangeTree} from '../changes/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import type {FileEntry, FileRead, OpenFile, SessionFiles} from './types.ts';
@@ -11,6 +12,29 @@ const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base
 
 // sortEntries puts folders first, then orders by name as VS Code does.
 const sortEntries = (entries: FileEntry[]) => [...entries].sort((a, b) => Number(b.dir) - Number(a.dir) || collator.compare(a.name, b.name));
+
+// listedFolder is whether a folder appears in its parent's listing, rather
+// than only through its deleted files.
+export function listedFolder(files: SessionFiles, path: string): boolean {
+  const slash = path.lastIndexOf('/');
+  const name = path.slice(slash + 1);
+  return !!files.listings[slash < 0 ? '' : path.slice(0, slash)]?.some(entry => entry.dir && entry.name === name);
+}
+
+// treeEntries is a folder's listing with its deleted files added, so the tree
+// still shows them and the folders that held them.
+export function treeEntries(files: SessionFiles, changes: ChangeTree, dir: string): FileEntry[] {
+  const entries = files.listings[dir] ?? [];
+  const deleted = new Map<string, FileEntry>();
+  for (const [path, change] of changes.files) {
+    if (change.status !== 'deleted' || (dir && !path.startsWith(dir + '/'))) continue;
+    const rest = dir ? path.slice(dir.length + 1) : path;
+    const slash = rest.indexOf('/');
+    const name = slash < 0 ? rest : rest.slice(0, slash);
+    if (!entries.some(entry => entry.name === name)) deleted.set(name, {name, dir: slash >= 0});
+  }
+  return deleted.size ? sortEntries([...entries, ...deleted.values()]) : entries;
+}
 
 function withFiles(state: State, sessionId: string, change: (files: SessionFiles) => SessionFiles): State {
   if (state.session?.id !== sessionId) return state;
@@ -92,7 +116,8 @@ export async function readOpenFile(store: Store, path: string) {
   store.update(state => fileRead(state, session.id, path, result));
 }
 
-// setFolderOpen expands or collapses a folder, listing it when it first opens.
+// setFolderOpen expands or collapses a folder, listing it when it first opens
+// unless it exists only through deleted files.
 export function setFolderOpen(store: Store, path: string, open: boolean) {
   const session = store.get().session;
   if (!session || !!session.files.expanded[path] === open) return;
@@ -102,5 +127,5 @@ export function setFolderOpen(store: Store, path: string, open: boolean) {
     else delete expanded[path];
     return {...files, expanded};
   }));
-  if (open && !(path in session.files.listings)) loadFolder(store, session.id, path);
+  if (open && !(path in session.files.listings) && listedFolder(session.files, path)) loadFolder(store, session.id, path);
 }

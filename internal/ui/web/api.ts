@@ -90,7 +90,7 @@ export const searchFiles = (session: string, query: string, signal: AbortSignal)
 export const searchSessions = (query: string, signal: AbortSignal): Promise<SessionSearchResult[]> =>
   get<SessionSearchResult[] | null>('search-sessions', {q: query}, signal).then(results => results ?? []);
 
-// fetchChanges lists repository-relative changes for the session's folder, or
+// fetchChanges lists the changes within the session's folder, or
 // returns null for a folder outside a repository.
 export const fetchChanges = (session: string) => get<ChangesResult | null>('changes', {session});
 

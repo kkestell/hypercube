@@ -21,27 +21,30 @@ type ChangesResult struct {
 	Files  []Change `json:"files"`
 }
 
-// Changes lists all staged, unstaged, and untracked files relative to root.
-func Changes(root string) (ChangesResult, error) {
+// Changes lists the staged, unstaged, and untracked files within dir, by path
+// relative to dir, and the branch checked out there.
+func Changes(dir string) (ChangesResult, error) {
 	result := ChangesResult{Files: []Change{}}
-	status, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "status", "--porcelain=v2", "--branch", "--untracked-files=all", "-z")
+	branch, err := Branch(dir)
 	if err != nil {
 		return result, err
 	}
-	for _, record := range strings.Split(status, "\x00") {
-		if branch, ok := strings.CutPrefix(record, "# branch.head "); ok && branch != "(detached)" {
-			result.Branch = branch
-		}
-		if path, ok := strings.CutPrefix(record, "? "); ok {
+	result.Branch = branch
+	untracked, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "ls-files", "--others", "--exclude-standard", "-z")
+	if err != nil {
+		return result, err
+	}
+	for _, path := range strings.Split(untracked, "\x00") {
+		if path != "" {
 			result.Files = append(result.Files, Change{Path: path, Status: "untracked"})
 		}
 	}
-	base, err := diffBase(root)
+	base, err := diffBase(dir)
 	if err != nil {
 		return result, err
 	}
 	// Diff can explicitly refresh the index even with optional locks disabled.
-	out, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "-c", "diff.autoRefreshIndex=false", "diff", base, "--raw", "--numstat", "--no-renames", "-z")
+	out, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "-c", "diff.autoRefreshIndex=false", "diff", base, "--raw", "--numstat", "--no-renames", "--relative", "-z")
 	if err != nil {
 		return result, err
 	}
@@ -89,21 +92,21 @@ func diffBase(root string) (string, error) {
 	return emptyTree(root)
 }
 
-// Diff returns Git's whole-file patch for one literal repository-relative path.
-func Diff(root, path string, limit int) (string, error) {
-	base, err := diffBase(root)
+// Diff returns Git's whole-file patch for one literal path relative to dir.
+func Diff(dir, path string, limit int) (string, error) {
+	base, err := diffBase(dir)
 	if err != nil {
 		return "", err
 	}
-	out, err := run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff", base, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)
+	out, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff", base, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)
 	if err != nil || out != "" {
 		return out, err
 	}
-	untracked, err := gitWith(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", "--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path)
+	untracked, err := gitWith(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", "--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path)
 	if err != nil || untracked == "" {
 		return "", err
 	}
-	out, err = run(root, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "-c", "diff.autoRefreshIndex=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "-U1000000", "--", "/dev/null", path)
+	out, err = run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, "-c", "diff.autoRefreshIndex=false", "diff", "--no-index", "--no-color", "--no-ext-diff", "-U1000000", "--", "/dev/null", path)
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
 		err = nil

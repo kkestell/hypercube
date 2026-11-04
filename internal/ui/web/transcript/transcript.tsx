@@ -80,7 +80,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
         <div ref={list} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-10 py-4 ${state.workbench.fixedWidth ? 'max-w-[53.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
-        <div ref={bottom} className="transcript-bottom sticky bottom-0 flow-root shrink-0 bg-surface">
+        <div ref={bottom} className="transcript-bottom sticky bottom-0 flow-root shrink-0 bg-background">
           {away && (
             <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
               onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>

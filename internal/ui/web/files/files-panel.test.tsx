@@ -3,6 +3,7 @@ import {act} from 'react';
 import {clickControl, find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptySession} from '../sessions/selection.ts';
+import type {Merge} from '../sessions/types.ts';
 import {createStore} from '../store.ts';
 import {FilesPanel} from './files-panel.tsx';
 
@@ -65,4 +66,66 @@ test('tree row menus copy absolute and relative paths', () => {
       expect(copy).toHaveBeenLastCalledWith(expected);
     }
   } finally { copy.mockRestore(); }
+});
+
+function changed(merge?: Merge) {
+  stubFetch(url => url.startsWith('diff?') ? new Response('patch') : url.startsWith('changes?') ? Response.json(changes) : Response.json([]));
+  const session = emptySession('s');
+  session.files.listings = {'': [{name: 'src', dir: true}, {name: 'README.md', dir: false}], src: [{name: 'main.go', dir: false}, {name: 'new.go', dir: false}]};
+  session.files.expanded = {src: true};
+  const changes = {branch: 'feature', files: [
+    {path: 'src/main.go', status: 'modified' as const, added: 4, removed: 3},
+    {path: 'src/new.go', status: 'untracked' as const, added: 6, removed: 0},
+    {path: 'gone/old.go', status: 'deleted' as const, added: 0, removed: 2},
+  ]};
+  session.changes = changes;
+  const store = createStore(testState({session, selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 's', dir: '/repo', merge})]})]}));
+  return {store, root: mount(store, <FilesPanel />)};
+}
+
+test('changed files show their status and line counts, which open the diff', () => {
+  const {store, root} = changed();
+  const main = find(root, '[data-file="src/main.go"]');
+  expect(main.textContent).toBe('main.go, Modified');
+  expect(main.title).toBe('src/main.go • Modified');
+  expect(find(root, '[data-file="src/new.go"]').textContent).toBe('new.go, Untracked');
+  expect(find(root, '[data-file="README.md"]').textContent).toBe('README.md');
+  expect(find(root, '[data-path="src"]').textContent).toBe('src, Modified');
+  const stat = find(main.parentElement!, '.files-panel-stat');
+  expect(stat.textContent).toBe('+4−3');
+  expect(stat.getAttribute('aria-label')).toBe('Open changes: 4 added, 3 removed');
+  act(() => clickControl(stat));
+  expect(store.get().session?.tabs.preview).toBe('diff:src/main.go');
+  act(() => clickControl(main));
+  expect(store.get().session?.tabs.preview).toBe('file:src/main.go');
+});
+
+test('deleted files stay in the tree, inside the folders that held them, and open their diff', () => {
+  const {store, root} = changed();
+  const folder = find(root, '[data-path="gone"]');
+  expect(folder.textContent).toBe('gone, Deleted');
+  act(() => clickControl(folder));
+  const file = find(root, '[data-file="gone/old.go"]');
+  expect(file.textContent).toBe('old.go, Deleted');
+  act(() => clickControl(file));
+  expect(store.get().session?.tabs.preview).toBe('diff:gone/old.go');
+  expect(store.get().session?.files.expanded.gone).toBe(true);
+  expect(store.get().session?.files.listings).not.toHaveProperty('gone');
+});
+
+test('the branch shows above the tree with its unmerged commit count', () => {
+  const {root} = changed({branch: 'feature', target: 'main', unmerged: 2, committed: true, uncommitted: 0});
+  expect(find(root, '.branch-row-name').textContent).toBe('feature');
+  const ahead = find(root, '.branch-row-ahead');
+  expect(ahead.textContent).toBe('2');
+  expect(ahead.getAttribute('aria-label')).toBe('2 commits not merged into main');
+});
+
+test('a changed file menu opens its changes', () => {
+  const {store, root} = changed();
+  act(() => find(root, '[data-file="src/new.go"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+  const item = [...document.querySelectorAll<HTMLElement>('[role=menuitem]')].find(item => item.textContent === 'Open Changes');
+  if (!item) throw new Error('No Open Changes item');
+  clickControl(item);
+  expect(store.get().session?.tabs.preview).toBe('diff:src/new.go');
 });

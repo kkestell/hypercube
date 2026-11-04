@@ -1,8 +1,9 @@
-// The attached session's repository changes and open diffs.
+// The attached session's Git changes and open diffs.
 
 export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
 
-// Change is an uncommitted file. Added and removed line counts are absent for
+// Change is an uncommitted file, by path relative to the session's working
+// directory. Added and removed line counts are absent for
 // a binary file.
 export interface Change {
   path: string;
@@ -17,7 +18,13 @@ export interface ChangesResult {
   files: Change[];
 }
 
-// Changes is what the Changes panel shows: the changes, a folder that no
+// ChangeTree holds each changed file's change and each folder's status.
+export interface ChangeTree {
+  files: Map<string, Change>;
+  folders: Map<string, ChangeStatus>;
+}
+
+// Changes is the Git state the Files tree shows: the changes, a folder that no
 // longer exists, or why the changes could not be read. It is null before the
 // first read and for a folder outside a repository.
 export type Changes = ChangesResult | {missing: true} | {error: string} | null;
