@@ -29,6 +29,7 @@ export type LayoutNode = Pane | Split;
 export interface Placement {
   top: boolean;
   left: boolean;
+  right: boolean;
 }
 
 // Edge is where a dragged tab drops on a pane: into it, or beside it as a new pane.

@@ -2,6 +2,7 @@
 import {useRef} from 'react';
 import {flushSync} from 'react-dom';
 import {barTabs, titleBarMouseDown, topRow, topRowStart} from '../app/title-bar.ts';
+import {LayoutToggles} from '../app/layout-toggles.tsx';
 import {Button} from '../components/ui/button';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {FileIcon} from '../files/file-icon.tsx';
@@ -26,7 +27,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
     (strip.current ?? area)?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')?.focus();
   };
   const start = placement.top && placement.left && !state.workbench.sidebar;
-  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 border-b border-black/12 bg-black/10 px-2 py-1 dark:border-white/7 ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
+  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 border-b border-black/12 bg-[color-mix(in_srgb,var(--background)_90%,black)] px-2 py-1 dark:border-white/7 ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
     onMouseDown={placement.top ? titleBarMouseDown : undefined}>
     <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
       <TabsList ref={strip} className={`editor-tabs max-w-full justify-start ${barTabs}`} aria-label="Open tabs">
@@ -45,6 +46,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
       </TabsList>
     </Tabs>
     <ViewMenu active={active} />
+    {placement.top && placement.right && <LayoutToggles />}
     {menu.element}
   </div>;
 }

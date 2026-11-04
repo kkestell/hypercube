@@ -108,10 +108,10 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   expect(requests).toHaveLength(1);
 });
 
-test('the footer holds the three layout toggles and they hide and show their regions', () => {
+test('the header holds the three layout toggles and they hide and show their regions', () => {
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
-  const buttons = [...root.querySelectorAll('.status-bar .layout-toggles button')];
+  const buttons = [...root.querySelectorAll('.layout-toggles button')];
   expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
     'Toggle Primary Side Bar', 'Toggle Panel', 'Toggle Secondary Side Bar',
   ]);
@@ -121,10 +121,10 @@ test('the footer holds the three layout toggles and they hide and show their reg
   for (const [index, region, selector] of regions) {
     const before = store.get().workbench[region];
     const split = find(root, selector).closest('.split');
-    act(() => { find(root, `.status-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(!before);
     expect(split?.classList.contains('split-collapsed')).toBe(before);
-    act(() => { find(root, `.status-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(before);
     expect(split?.classList.contains('split-collapsed')).toBe(!before);
   }

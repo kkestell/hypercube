@@ -5,6 +5,7 @@
 // sessions stay hidden. A session shows anyway while it is selected or leads
 // to a child that shows, and a selected archived family shows whole.
 import {useCallback, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
+import {harnessIcon} from '../agent/harness-icon.tsx';
 import {addWorkspace} from '../sessions/session-actions.ts';
 import {runningFirst, sessionOf, stopped} from '../sessions/selection.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
@@ -16,6 +17,7 @@ import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
+import {Progress} from '../components/ui/progress';
 import {Icon} from '../shared/icon.tsx';
 
 const below = (button: HTMLElement) => {
@@ -99,7 +101,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
-        <div className="sidebar-body min-h-0 flex-1 space-y-3 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
+        <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
           {workspaces.map(workspace => (
             <WorkspaceSection
               key={workspace.id} workspace={workspace}
@@ -109,6 +111,23 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
           ))}
         </div>
       </PanelTabs>
+      <section aria-label="Sample usage" tabIndex={0} className="group/usage @container shrink-0 space-y-2 border-t p-4 text-xs">
+        {[
+          {harness: 'claude', limits: [{window: '5d', used: 36, elapsed: 45, left: '22h'}, {window: '7d', used: 78, elapsed: 65, left: '5d 2h'}]},
+          {harness: 'codex', limits: [{window: '5d', used: 42, elapsed: 35, left: '1d 8h'}, {window: '7d', used: 92, elapsed: 72, left: '2d 4h'}]},
+        ].map(({harness, limits}) => <div key={harness} className="flex items-center gap-2">
+          {harnessIcon(harness)}
+          {limits.map((limit, index) => <div key={limit.window} className={`min-w-0 flex-1 items-center gap-1 ${index === 0 ? 'flex group-hover/usage:hidden group-focus/usage:hidden' : 'hidden group-hover/usage:flex group-focus/usage:flex'}`}>
+            <span className="w-5 shrink-0">{limit.window}</span>
+            <span className="relative min-w-0 flex-1">
+              <Progress value={limit.used} aria-label={`${harness} ${limit.window} sample usage`} className={`bg-neutral-500/20 ${limit.used >= 90 ? '[&_[data-slot=progress-indicator]]:bg-red-500' : limit.used >= 75 ? '[&_[data-slot=progress-indicator]]:bg-amber-500' : '[&_[data-slot=progress-indicator]]:bg-neutral-500'}`} />
+              <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${limit.elapsed}%`}} />
+            </span>
+            <span className="w-8 shrink-0 text-right tabular-nums">{limit.used}%</span>
+            <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{limit.left}</span>
+          </div>)}
+        </div>)}
+      </section>
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );

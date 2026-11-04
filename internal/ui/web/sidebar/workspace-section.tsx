@@ -19,7 +19,7 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
   const [open, setOpen] = useState(true);
   const headingId = `workspace-section-${workspace.id}`;
   return <Collapsible open={open} onOpenChange={setOpen} asChild>
-    <section className="workspace-section" data-workspace={workspace.id} aria-labelledby={headingId}>
+    <section className={`workspace-section ${workspace.sessions.length ? 'mb-2 last:mb-0' : ''}`} data-workspace={workspace.id} aria-labelledby={headingId}>
       <div className="workspace-section-header group/workspace relative flex items-center" title={workspace.path}>
         <CollapsibleTrigger asChild>
           <Button id={headingId} variant="ghost" size="sm" className="workspace-section-toggle h-7 min-w-0 flex-1 justify-start px-2 font-normal has-[>svg]:px-2 hover:bg-transparent dark:hover:bg-transparent" onKeyDown={e => {

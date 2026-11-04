@@ -22,7 +22,6 @@ import type {State} from '../state.ts';
 import {StoreContext, type Store} from '../store.ts';
 import {TerminalPanel} from '../terminal/terminal-panel.tsx';
 import {RightPanel} from './right-panel.tsx';
-import {StatusBar} from './status-bar.tsx';
 import {binding, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActions} from './shortcuts.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
@@ -110,9 +109,9 @@ export function App({store}: {store: Store}) {
     <StoreContext.Provider value={context}>
       <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)} onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
         <div className="app-body min-h-0 flex-1">
-          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
+          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'} hideHeaderDivider>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
-            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
+            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'} hideHeaderDivider>
               <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.session?.id ?? ''} />
@@ -121,7 +120,6 @@ export function App({store}: {store: Store}) {
             </Split>
           </Split>
         </div>
-        <StatusBar />
         <NotificationStack />
         <ConfirmDialog />
         <QuickOpen key={state.session?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
