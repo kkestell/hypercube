@@ -171,12 +171,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 		if _, err := os.Stat(state.SessionFile); err != nil {
 			return fmt.Errorf("Pi has no saved session %s", a.Conversation)
 		}
-		var stats struct {
-			Cost         float64 `json:"cost"`
-			ContextUsage *struct {
-				Tokens int `json:"tokens"`
-			} `json:"contextUsage"`
-		}
+		var stats sessionStats
 		if err := ag.call(ctx, "get_session_stats", nil, &stats); err != nil {
 			return err
 		}

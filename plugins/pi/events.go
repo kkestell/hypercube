@@ -10,6 +10,14 @@ import (
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
+// sessionStats is Pi's total usage, including compaction and tool results.
+type sessionStats struct {
+	Cost         float64 `json:"cost"`
+	ContextUsage *struct {
+		Tokens int `json:"tokens"`
+	} `json:"contextUsage"`
+}
+
 // block is a text or reasoning block of an assistant message. It is shown
 // once it has text beyond whitespace.
 type block struct {
@@ -104,6 +112,27 @@ func (ag *agent) settled(ev *harness.Event, line []byte) {
 		ev.Final = last.texts
 	}
 	ev.State = harness.Idle
+	// The reader must keep draining Pi's output to receive the response.
+	if err := ag.write(map[string]any{"id": statsID, "type": "get_session_stats"}); err != nil {
+		ag.fail(ev, err.Error())
+	}
+}
+
+// stats refreshes the total after a run, including usage outside assistant messages.
+func (ag *agent) stats(r response) {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	var ev harness.Event
+	var stats sessionStats
+	if r.err != "" {
+		ag.fail(&ev, "get_session_stats: "+r.err)
+	} else if err := json.Unmarshal(r.data, &stats); err != nil {
+		ag.fail(&ev, "get_session_stats: "+err.Error())
+	} else {
+		ag.cost = stats.Cost
+		ev.Usage = &harness.Usage{Context: ag.context, Window: ag.window, Cost: ag.cost}
+	}
+	ag.send(ev)
 }
 
 // update shows text and reasoning as they arrive.

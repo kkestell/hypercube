@@ -9,6 +9,9 @@ import (
 	"strconv"
 )
 
+// statsID identifies the usage refresh sent without waiting on the output reader.
+const statsID = "session-stats"
+
 // response is Pi's answer to a command.
 type response struct {
 	err  string
@@ -85,6 +88,17 @@ func (ag *agent) response(line []byte, id string) {
 	if err := json.Unmarshal(line, &m); err != nil {
 		return
 	}
+	r := response{data: m.Data}
+	if !m.Success {
+		r.err = m.Error
+		if r.err == "" {
+			r.err = "failed"
+		}
+	}
+	if id == statsID {
+		ag.stats(r)
+		return
+	}
 	ag.callMu.Lock()
 	reply := ag.calls[id]
 	delete(ag.calls, id)
@@ -95,13 +109,6 @@ func (ag *agent) response(line []byte, id string) {
 			fmt.Fprintf(os.Stderr, "hypercube-harness-pi: pi rejected a command: %s\n", m.Error)
 		}
 		return
-	}
-	r := response{data: m.Data}
-	if !m.Success {
-		r.err = m.Error
-		if r.err == "" {
-			r.err = "failed"
-		}
 	}
 	reply <- r
 }

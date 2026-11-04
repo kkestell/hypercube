@@ -65,7 +65,7 @@ func (p *piUnderTest) Write(b []byte) (int, error) {
 	p.mu.Lock()
 	p.sent = append(p.sent, m)
 	p.mu.Unlock()
-	if id, ok := m["id"].(string); ok && m["type"] != "extension_ui_response" {
+	if id, ok := m["id"].(string); ok && m["type"] != "extension_ui_response" && m["type"] != "get_session_stats" {
 		r := map[string]any{"id": id, "type": "response", "command": m["type"], "success": true}
 		if e := p.fail[m["type"].(string)]; e != "" {
 			r["success"], r["error"] = false, e
@@ -580,11 +580,12 @@ func fakePi(t *testing.T, env map[string]string) (args string) {
 	script := `#!/bin/sh
 echo "$@" > "$FAKE_ARGS"
 echo "$HYPERCUBE_MCP" > "$FAKE_ARGS.mcp"
+cost=0.5
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   case "$line" in
     *'"type":"get_state"'*) printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{"model":{"provider":"%s","id":"%s","contextWindow":1000},"sessionFile":"%s","sessionId":"session-1"}}\n' "$id" "$FAKE_PROVIDER" "$FAKE_MODEL" "$FAKE_SESSION_FILE";;
-    *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":0.5,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id";;
+    *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":%s,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id" "$cost";;
     *'"type":"prompt"'*)
       if [ -n "$FAKE_EXIT" ]; then echo boom >&2; exit 3; fi
       if [ -n "$FAKE_PENDING" ]; then
@@ -593,6 +594,7 @@ while IFS= read -r line; do
         continue
       fi
       printf '{"id":"%s","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}\n' "$id"
+      cost=0.75
       cat "$FAKE_STREAM";;
   esac
 done
@@ -887,5 +889,33 @@ func TestResponseDoesNotCarryToTheNextRun(t *testing.T) {
 	p.feed(`{"type":"agent_settled","aborted":false}`, `{"type":"agent_start"}`, `{"type":"agent_settled","aborted":false}`)
 	if got := p.finals(); len(got) != 2 || len(got[0]) != 1 || got[1] != nil {
 		t.Errorf("finals %v", got)
+	}
+}
+
+func TestSettledRefreshesCostFromSessionStats(t *testing.T) {
+	p := newPi()
+	p.feed(fixture(t, "tool")...)
+	before := p.lastUsage()
+	commands := p.commands("get_session_stats")
+	if len(commands) != 1 {
+		t.Fatalf("stats requests = %v", commands)
+	}
+	// Pi's total includes the assistant calls above, compaction and tool usage.
+	p.feed(fmt.Sprintf(`{"type":"response","id":%q,"success":true,"data":{"cost":0.75,"contextUsage":{"tokens":42}}}`, commands[0]["id"]))
+	if got := p.lastUsage(); got.Cost != 0.75 || got.Cost <= before.Cost || got.Context != before.Context || got.Window != before.Window {
+		t.Fatalf("usage after stats = %+v, before = %+v", got, before)
+	}
+	// Later assistant usage adds to the refreshed total.
+	p.feed(`{"type":"message_end","message":{"role":"assistant","usage":{"cost":{"total":0.1}}}}`)
+	if got := p.lastUsage().Cost; got != 0.85 {
+		t.Fatalf("cost after another message = %v", got)
+	}
+}
+
+func TestSessionStatsFailureIsReported(t *testing.T) {
+	p := newPi()
+	p.feed(`{"type":"agent_settled"}`, `{"type":"response","id":"session-stats","success":false,"error":"cannot read usage"}`)
+	if item := p.item(t, harness.KindError); item.Text != "get_session_stats: cannot read usage" {
+		t.Fatalf("error = %+v", item)
 	}
 }
