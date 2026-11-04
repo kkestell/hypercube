@@ -15,8 +15,8 @@ export const draftOf = (state, key) => state.drafts[key] ?? emptyDraft;
 // A prompt has text, images, or both, and waits for images still being read.
 const hasContent = draft => !draft.reading && (!!draft.text.trim() || draft.images.length > 0);
 
-// The unsent session sends once it has a profile, and not while its prompt is being sent.
-const unsentReady = state => !!state.unsent?.profile && !state.unsent.sending;
+// A new session needs a workspace and profile before its first prompt can send.
+const unsentReady = state => !!state.unsent?.workspace && !!state.unsent.profile && !state.unsent.sending;
 
 export const canSend = (state, session) =>
   !session.ended && hasContent(draftOf(state, session.id)) && session.activity !== 'exited' && (session.id !== unsentKey || unsentReady(state));

@@ -1,10 +1,7 @@
-// The Workspaces view lists every started session under its workspace.
-// The workspace menu reveals stopped sessions, five at a time; the selected
-// session stays visible. Add Workspace and the harnesses' usage limits are
-// pinned below the list. Started children are always listed under their
-// parent; its menu shows or hides stopped children.
-// The view holds still while a session is renamed, so the field keeps its
-// place and focus.
+// Sessions form a flat list, each parent labeled with its workspace. Running
+// children stay beneath their parent. Workspace actions reveal stopped parents
+// five at a time; the selected family stays visible. Freeze the list during
+// renaming so the field keeps its place and focus.
 import {Fragment} from 'preact';
 import {useCallback, useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
@@ -48,14 +45,22 @@ export function Sidebar() {
     if (!session && !workspace) return;
     e.preventDefault();
     const point = {x: e.clientX, y: e.clientY};
-    showMenu(point, session ? itemsOf(session) : workspaceItemsOf(workspace));
+    showMenu(point, session && !e.target.closest('.session-item-workspace') ? itemsOf(session) : workspaceItemsOf(workspace));
   };
 
-  const sessionRow = session => {
+  const workspaceMenu = button => {
+    const point = below(button);
+    showMenu(point, [
+      ...workspaces.map(workspace => ({label: workspace.name, run: () => showMenu(point, workspaceItemsOf(workspace))})),
+      {label: 'Add Workspace', run: () => addWorkspace(store)},
+    ]);
+  };
+
+  const sessionRow = (session, workspace) => {
     const items = itemsOf(session);
     return (
       <SessionItem
-        key={session.id} session={session} selected={session.id === state.selected}
+        key={session.id} session={session} workspace={workspace} selected={session.id === state.selected}
         onMenu={items.length ? button => showMenu(below(button), items) : null}
         renaming={session.id === renaming} onRenaming={on => setRenaming(on ? session.id : null)}
       />
@@ -68,6 +73,11 @@ export function Sidebar() {
         <vscode-tab-header slot="header" title="Sessions" aria-label="Sessions">
           <vscode-icon name="comment-discussion" />
         </vscode-tab-header>
+        <div slot="addons" class="sidebar-actions">
+          <button class="sidebar-icon-button" title="Workspace Actions" aria-label="Workspace Actions" onClick={e => workspaceMenu(e.currentTarget)}>
+            <vscode-icon name="ellipsis" />
+          </button>
+        </div>
         <vscode-tab-panel class="sidebar-body">
           <div class="sidebar-list" onContextMenu={contextMenu}>
             {workspaces.map(workspace => {
@@ -76,38 +86,28 @@ export function Sidebar() {
               const sessions = workspace.sessions.filter(s => s.running || stopped.includes(s)
                 || s.id === state.selected || s.children.some(c => c.id === state.selected));
               return (
-                <div key={workspace.id} class="sidebar-workspace" data-workspace={workspace.id}>
-                  <div class="sidebar-workspace-header">
-                    <span class="sidebar-workspace-name" title={workspace.path}>{workspace.name}</span>
-                    <button class="sidebar-icon-button sidebar-workspace-menu" title="More Actions" aria-label="More Actions" onClick={e => showMenu(below(e.currentTarget), workspaceItemsOf(workspace))}>
-                      <vscode-icon name="ellipsis" />
-                    </button>
-                    <button class="sidebar-icon-button" title="New Session" aria-label="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}>
-                      <vscode-icon name="add" />
-                    </button>
-                  </div>
-                  {workspace.sessions.length === 0 && <div class="sidebar-empty">No sessions</div>}
+                <Fragment key={workspace.id}>
                   {sessions.map(session => {
                     // A parent's running children, the selected one, and
                     // stopped children when the parent's menu reveals them.
                     const nested = session.children.filter(s => s.running || showStopped[session.id] || s.id === state.selected);
                     return (
-                      <Fragment key={session.id}>
-                        {sessionRow(session)}
-                        {nested.length > 0 && <div class="sidebar-nested">{nested.map(sessionRow)}</div>}
-                      </Fragment>
+                      <div key={session.id} class="sidebar-session-group" data-workspace={workspace.id}>
+                        {sessionRow(session, workspace)}
+                        {nested.length > 0 && <div class="sidebar-nested">{nested.map(child => sessionRow(child))}</div>}
+                      </div>
                     );
                   })}
                   {limit > 0 && sessions.length < workspace.sessions.length && (
-                    <button class="sidebar-show-more" onClick={() => setStoppedLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more</button>
+                    <button class="sidebar-show-more" data-workspace={workspace.id} onClick={() => setStoppedLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more in {workspace.name}</button>
                   )}
-                </div>
+                </Fragment>
               );
             })}
           </div>
-          <button class="sidebar-add-workspace" onClick={() => addWorkspace(store)}>
+          <button class="sidebar-new-session" title="New Session" onClick={() => store.update(s => openUnsent(s))}>
             <vscode-icon name="add" />
-            Add Workspace
+            New Session
           </button>
         </vscode-tab-panel>
       </vscode-tabs>

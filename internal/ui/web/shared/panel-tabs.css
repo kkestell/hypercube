@@ -21,5 +21,6 @@
 .panel-tabs > vscode-tab-panel {
   flex: 1;
   min-height: 0;
+  border-top: var(--size-border) solid var(--vscode-sideBar-border);
   padding-top: calc(var(--size-space) * 3);
 }

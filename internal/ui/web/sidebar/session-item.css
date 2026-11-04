@@ -10,6 +10,34 @@
   padding-right: var(--size-content-inset);
 }
 
+.session-item-parent {
+  height: calc(var(--size-tree-row-height) + var(--size-icon) + var(--size-space) * 2);
+  align-items: flex-end;
+}
+
+.session-item-parent .session-item-title {
+  flex-direction: column;
+  align-items: stretch;
+  padding-block: var(--size-space);
+  line-height: var(--size-tree-row-height);
+}
+
+.session-item-workspace {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+  font-size: calc(var(--vscode-font-size) - 2px);
+  line-height: var(--size-icon);
+}
+
+.session-item-parent .session-item-status,
+.session-item-parent .session-item-branch {
+  margin-bottom: calc(var(--size-space) * 2);
+}
+
 .session-item-nested {
   --session-title-inset: calc(var(--size-content-inset) + var(--size-space) * 4);
   font-size: calc(var(--vscode-font-size) - 1px);
@@ -27,12 +55,11 @@
 .session-item-selected,
 .session-item-selected:hover {
   color: var(--vscode-foreground);
-  background: var(--vscode-list-inactiveSelectionBackground);
+  background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground) 25%, var(--vscode-sideBar-background));
 }
 
-.sidebar-list:focus-within .session-item-selected {
+.session-item-selected .session-item-text {
   color: var(--vscode-list-activeSelectionForeground);
-  background: var(--vscode-list-activeSelectionBackground);
 }
 
 .session-item:has(:focus-visible) {
@@ -46,11 +73,12 @@
 
 .session-item-title {
   display: flex;
-  flex: 0 1 auto;
+  flex: 1;
   align-items: center;
   min-width: 0;
   height: 100%;
   padding-left: var(--session-title-inset);
+  text-align: left;
 }
 
 .session-item-title::after {
@@ -83,11 +111,12 @@
 
 .session-item-branch {
   flex-shrink: 0;
-  margin-left: var(--size-space);
+  width: var(--size-icon);
+  margin-inline: calc(var(--size-space) * 2);
 }
 
 .session-item-branch-modified {
-  color: var(--vscode-list-warningForeground);
+  color: var(--vscode-charts-purple);
 }
 
 .session-item-branch-merged {
@@ -104,16 +133,10 @@
 .session-item-status {
   position: relative;
   display: flex;
-  flex-shrink: 0;
+  flex: 0 0 var(--size-icon);
   align-items: center;
   justify-content: center;
   height: var(--size-icon);
-  margin-left: auto;
-}
-
-.session-item-status:has(> :not(.session-item-menu)),
-.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) {
-  width: var(--size-icon);
 }
 
 .session-item-menu {

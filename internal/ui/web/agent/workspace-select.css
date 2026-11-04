@@ -1,0 +1,15 @@
+.workspace-select {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+  margin: 0 var(--size-content-inset) var(--size-content-inset);
+}
+
+.workspace-select-control {
+  flex: 1;
+  min-width: 0;
+}
+
+.workspace-select > vscode-button {
+  flex-shrink: 0;
+}

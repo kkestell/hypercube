@@ -16,8 +16,8 @@ the agents' Browser tabs require the Hypercube window.
 
 A **workspace** is a project folder and the sessions associated with it. For a
 Git project, the workspace folder is the top level of the checkout. A folder
-outside Git can also be a workspace. The sidebar groups sessions by workspace,
-so you can move between projects without mixing their conversations.
+outside Git can also be a workspace. The sidebar labels each top-level session
+with its workspace above its title.
 
 A **session** holds one agent and its conversation. It has its own chat history,
 working directory, and title. You can keep separate sessions for different
@@ -28,8 +28,8 @@ An **agent** is the coding assistant doing the work in a session. Its
 selects the harness, model, and reasoning effort. When starting a session, you
 choose a profile beneath the message box before sending the first prompt.
 
-Sessions you create with the workspace's **+** button are **top-level
-sessions**. Each works in the workspace's original folder unless you check
+Sessions you create with **New Session** are **top-level sessions**. Each works
+in the workspace's original folder unless you check
 the **Worktree** switch beside the profile before the first prompt, which gives it its
 own worktree and branch. Separate chats do not give the sessions in the
 original folder separate copies of the project: they share files, the Git
@@ -90,7 +90,7 @@ chat, file tree, and terminal to that session's work.
 
 | Area | What it shows and does |
 | --- | --- |
-| Left sidebar | Workspaces and their sessions, with children nested under parents. Use **Add Workspace** to add a project and **+** beside a workspace to begin a session. Select a row to open its chat; double-click its title to rename it. |
+| Left sidebar | Sessions labeled with their workspace, with children nested under parents. Use **New Session** to begin a session; choose or add its workspace below the composer. Select a row to open its chat; double-click its title to rename it. |
 | Central tab area | The session's chat alongside any open files. Drag tabs to arrange them in split panes, and drag dividers to resize them. |
 | Chat and message box | Your conversation with the agent. Follow reasoning and tool calls live; after a successful turn, expand its “Worked for …” row to inspect the activity. Send instructions or follow-ups from the box below the transcript, and attach images with the paperclip or by dropping them onto the chat. |
 | Right panel | **Files** shows a read-only tree of the session's directory, including a child's worktree. Click a file to preview it; double-click to keep its tab open. **Changes** shows a worktree session's branch, merge state, and uncommitted file count. |

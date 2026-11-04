@@ -30,25 +30,29 @@ edits.
 
 ## Browser view
 
-The sidebar lists top-level sessions newest first, in the order they were
-created, so a session keeps its place. Each workspace shows all started
-sessions. Show Stopped Sessions in a workspace's menu reveals the first five
-stopped sessions; Show more appears when there are more to display. Hide
-Stopped Sessions hides them again. Showing them again starts at five. The
-selected session stays visible, even when stopped.
+The sidebar lists top-level sessions with their workspace names in smaller text
+above their titles. Sessions within each workspace stay newest first, in
+creation order. Workspace Actions (`…`) in the sidebar header offers each
+workspace's Show/Hide Stopped Sessions and Delete Workspace actions.
+Show Stopped Sessions reveals the first five stopped sessions; Show more
+appears when there are more. Showing them again starts at five. The selected
+session stays visible, even when stopped. You can also right-click a workspace
+label to open its actions.
+
 Children appear under their parent in creation order. Running children are
 always visible; Show Stopped Sessions in the parent's menu lists stopped
-children too, and Hide Stopped Sessions hides them again. Click Add Workspace at the bottom of
-the sidebar to add a workspace. Click `+` beside a workspace's name to open a
-new session, with the animated hypercube above its composer.
-Its composer chooses the profile until the first prompt is sent,
-and sending that prompt creates the session. In a Git workspace, the Worktree
-switch beside the profile, off by default, runs the session in its own
-worktree under `.hypercube/` on a new branch from the checkout's HEAD; the
-branch checked out in the checkout is its merge target;
-selecting another session first discards it. More Actions, shown while hovering a workspace, or
-right-clicking a workspace, offers Show/Hide Stopped Sessions and Delete
-Workspace.
+children too, and Hide Stopped Sessions hides them again.
+
+Click New Session at the bottom of the sidebar to open a new session, with the
+animated hypercube above its composer. Choose its workspace below the composer;
+Add Workspace beside the selector adds a project and selects it. Changing the
+workspace keeps your draft and profile, and resets the Worktree switch.
+The composer chooses the profile until the first prompt is sent, and sending
+that prompt creates the session. In a Git workspace, the Worktree switch beside
+the profile, off by default, runs the session in its own worktree under
+`.hypercube/` on a new branch from the checkout's HEAD; the branch checked out
+in the checkout is its merge target. Selecting another session first discards
+the unsent session.
 
 The status bar along the bottom of the window shows each harness's
 subscription usage once an agent of that harness has reported it: for each
@@ -69,9 +73,9 @@ you have not seen. Each row spins only while its own session works.
 The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
 
-A worktree session's row shows a branch icon after its title, amber while
-the branch has commits not merged into the checkout's branch or uncommitted
-files, and dimmed once its commits are merged. Its composer shows the branch
+A worktree session's row shows a branch icon in a column before its status dot,
+purple while the branch has commits not merged into the checkout's branch or
+uncommitted files, and dimmed once its commits are merged. Its composer shows the branch
 beside the profile. While the branch has unmerged commits, a Merge button
 follows it, which asks the session's agent to commit any remaining work and
 merge the branch into the checkout's branch, resolving conflicts. The merge

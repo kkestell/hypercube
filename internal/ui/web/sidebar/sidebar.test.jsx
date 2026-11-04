@@ -30,8 +30,13 @@ const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row
 const title = (root, id) => root.querySelector(`[data-session="${id}"] .session-item-title`);
 const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
 const pick = (root, index) => act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
-const toggleWorkspaceStopped = (root, id = 'w') => {
-  click(root.querySelector(`[data-workspace="${id}"] .sidebar-workspace-menu`));
+const workspaceMenu = (root, name = 'repo') => {
+  click(root.querySelector('[aria-label="Workspace Actions"]'));
+  const choices = root.querySelector('vscode-context-menu').data;
+  pick(root, choices.findIndex(item => item.label === name));
+};
+const toggleWorkspaceStopped = (root, name) => {
+  workspaceMenu(root, name);
   pick(root, 0);
 };
 
@@ -100,12 +105,12 @@ test('hiding stopped sessions resets the next view to five', () => {
   click(root.querySelector('.sidebar-show-more'));
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
   expect(root.querySelector('.sidebar-show-more')).toBeNull();
-  click(root.querySelector('.sidebar-workspace-menu'));
+  workspaceMenu(root);
   expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Hide Stopped Sessions');
   pick(root, 0);
   expect(sessionRows(root)).toEqual(['running']);
   expect(root.querySelector('.sidebar-show-more')).toBeNull();
-  click(root.querySelector('.sidebar-workspace-menu'));
+  workspaceMenu(root);
   expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Show Stopped Sessions');
   pick(root, 0);
   expect(sessionRows(root)).toEqual(['running', 's0', 's1', 's2', 's3', 's4']);
@@ -126,16 +131,18 @@ test('workspace stopped-session visibility and pagination are independent', () =
   store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: sessions('b')}]}));
   toggleWorkspaceStopped(root);
   expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4']);
-  click(root.querySelector('[data-workspace="w"] .sidebar-show-more'));
+  click(root.querySelector('.sidebar-show-more[data-workspace="w"]'));
   toggleWorkspaceStopped(root, 'other');
   expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'b0', 'b1', 'b2', 'b3', 'b4']);
   toggleWorkspaceStopped(root);
   expect(sessionRows(root)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4']);
 });
 
-test('Add Workspace adds a workspace', () => {
-  const {root, posted} = setup([]);
-  click(root.querySelector('.sidebar-add-workspace'));
+test('workspace actions can add a workspace even when none exist', () => {
+  const {root, store, posted} = setup([]);
+  store.update(s => ({...s, workspaces: []}));
+  click(root.querySelector('[aria-label="Workspace Actions"]'));
+  pick(root, 0);
   expect(posted()).toEqual([{action: 'new'}]);
 });
 
@@ -245,7 +252,7 @@ test('Escape cancels deleting a workspace', () => {
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
 
-test('New Session opens the unsent session at once, replacing another, without fetching profiles', () => {
+test('New Session opens the unsent session directly without fetching profiles', () => {
   const {store, root, fetches} = setup([session('a')]);
   store.update(s => ({...s, selected: 'a'}));
   click(root.querySelector('[title="New Session"]'));
@@ -333,13 +340,13 @@ test('waiting and unseen indicators take priority over the working indicator', (
   expect(dots(root, 'child')).toEqual(['waiting']);
 });
 
-test('a row\'s More Actions button opens its menu, and the workspace\'s opens the workspace menu', () => {
+test('session actions and workspace actions open their respective menus', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'})]})]);
   expect(root.querySelector('[data-session="active"] .session-item-menu')).toBeNull();
   click(root.querySelector('[data-session="a"] .session-item-menu'));
   act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
   expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
-  click(root.querySelector('.sidebar-workspace-menu'));
+  workspaceMenu(root);
   pick(root, 1);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
 });
@@ -383,4 +390,33 @@ test('a worktree session shows a branch icon tinted by its merge state', () => {
   expect(icon('a').classList.contains('session-item-branch-merged')).toBe(true);
   shown(merge({committed: false}));
   expect(icon('a').className).toBe('session-item-branch');
+});
+
+
+test('each parent has its own workspace label above its title and children stay underneath', () => {
+  const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
+  store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: [session('c')]}]}));
+  expect(sessionRows(root)).toEqual(['a', 'child', 'b', 'c']);
+  expect([...root.querySelectorAll('.session-item-workspace')].map(label => [label.textContent, label.title])).toEqual([
+    ['repo', '/repo'], ['repo', '/repo'], ['other', '/other'],
+  ]);
+  expect(title(root, 'a').firstElementChild.className).toBe('session-item-workspace');
+  expect(title(root, 'child').querySelector('.session-item-workspace')).toBeNull();
+  expect(root.querySelector('[data-session="a"]').parentElement).toBe(root.querySelector('[data-session="child"]').closest('.sidebar-session-group'));
+  expect(root.querySelector('.sidebar-workspace-header')).toBeNull();
+});
+
+test('New Session opens without any workspaces', () => {
+  const {root, store} = setup([]);
+  store.update(s => ({...s, workspaces: []}));
+  click(root.querySelector('.sidebar-new-session'));
+  expect(store.get().unsent).toMatchObject({workspace: null, profile: null});
+});
+
+test('workspace labels offer the workspace context menu', () => {
+  const {root, posted} = setup([session('a')]);
+  choose(root, '.session-item-workspace', 1);
+  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe("Are you sure you want to delete 'repo'?");
+  click(dialogButton(root, 'Delete'));
+  expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });

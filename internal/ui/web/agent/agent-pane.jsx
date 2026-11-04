@@ -7,6 +7,7 @@ import {Tesseract} from '../tesseract/tesseract.jsx';
 import {Transcript} from '../transcript/transcript.jsx';
 import {Composer} from './composer.jsx';
 import {attachImages, unsentKey} from './drafts.js';
+import {WorkspaceSelect} from './workspace-select.jsx';
 import './agent-pane.css';
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
@@ -37,6 +38,7 @@ export function AgentPane({session}) {
     <article class={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} />}
       <Composer session={session} />
+      {unsent && <WorkspaceSelect />}
     </article>
   );
 }

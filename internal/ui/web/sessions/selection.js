@@ -68,7 +68,7 @@ function attach(state) {
 // receivedWorkspaces applies a state message's workspaces.
 export function receivedWorkspaces(state, workspaces) {
   let next = {...state, workspaces};
-  if (next.unsent && !workspaces.some(w => w.id === next.unsent.workspace)) next = discardUnsent(next);
+  if (next.unsent?.workspace && !workspaces.some(w => w.id === next.unsent.workspace)) next = discardUnsent(next);
   const sessions = allSessions(next);
   if (next.pending && sessions.some(s => s.id === next.pending)) next = {...next, selected: next.pending, pending: null};
   // A session that stops while shown is deselected, and nothing takes its
@@ -91,11 +91,17 @@ export function selectSession(state, id) {
 // session. It has no profile until the composer chooses one, and runs in the
 // checkout unless the composer chooses a worktree.
 export function openUnsent(state, workspace) {
+  workspace ??= state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id ?? state.workspaces[0]?.id ?? null;
   const next = discardUnsent(state);
   // Identity survives immutable updates to the sending flag.
   const unsent = {identity: {}, workspace, profile: null, worktree: false, sending: false};
   return attach({...next, unsent, selected: null, pending: null});
 }
+
+// Changing workspace keeps the draft and profile, and resets the worktree choice.
+export const unsentWorkspace = (state, workspace) => state.unsent && !state.unsent.sending && state.unsent.workspace !== workspace
+  ? {...state, unsent: {...state.unsent, workspace, worktree: false}}
+  : state;
 
 // unsentProfile sets the unsent session's profile.
 export const unsentProfile = (state, profile) => state.unsent

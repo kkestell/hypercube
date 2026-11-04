@@ -20,10 +20,9 @@ const dotOf = (session, selected) => {
 };
 
 // onMenu is called with the menu button when the session has a menu.
-export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
+export function SessionItem({session, workspace, selected, renaming, onRenaming, onMenu}) {
   const [, store] = useStore();
-  const classes = ['session-item'];
-  if (session.parent) classes.push('session-item-nested');
+  const classes = ['session-item', session.parent ? 'session-item-nested' : 'session-item-parent'];
   if (selected) classes.push('session-item-selected');
   if (!session.running) classes.push('session-item-stopped');
 
@@ -33,10 +32,11 @@ export function SessionItem({session, selected, renaming, onRenaming, onMenu}) {
         ? <RenameField session={session} onDone={() => onRenaming(false)} />
         : (
           <button class="session-item-title" aria-current={selected ? 'true' : undefined} onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
+            {workspace && <span class="session-item-workspace" title={workspace.path}>{workspace.name}</span>}
             <span class="session-item-text">{session.title}</span>
-            {session.worktree && <BranchIcon session={session} />}
           </button>
         )}
+      {session.worktree && <BranchIcon session={session} />}
       <span class="session-item-status">
         {dotOf(session, selected)}
         {onMenu && (
