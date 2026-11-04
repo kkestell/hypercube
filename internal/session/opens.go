@@ -6,7 +6,8 @@ type LineRange struct {
 	End   int `json:"end,omitempty"`
 }
 
-// FileOpen is a request to open a file relative to a session's directory.
+// FileOpen is a request to open a file. Path is relative to the session's
+// directory for a file inside it, and absolute for any other.
 type FileOpen struct {
 	Path  string      `json:"path"`
 	Lines []LineRange `json:"lines"`

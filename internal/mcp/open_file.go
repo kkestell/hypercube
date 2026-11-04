@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kkestell/hypercube/internal/session"
 )
@@ -14,21 +15,41 @@ type openFileArgs struct {
 	Lines []session.LineRange `json:"lines,omitempty"`
 }
 
-func openFile(rt *session.Runtime, dir, self string, args openFileArgs) (string, error) {
-	path := args.Path
-	if filepath.IsAbs(path) {
-		var err error
-		path, err = filepath.Rel(dir, path)
+// viewPath resolves path, which is relative to dir, absolute, or starts with
+// "~", through symlinks. It returns the file's real path and the path the
+// browser view uses: relative to dir inside it, otherwise the real path.
+func viewPath(dir, path string) (real, view string, err error) {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
+		path = filepath.Join(home, path[1:])
 	}
-	root, err := os.OpenRoot(dir)
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	real, err = filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", "", err
+	}
+	base, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", "", err
+	}
+	rel, err := filepath.Rel(base, real)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return real, real, nil
+	}
+	return real, filepath.ToSlash(rel), nil
+}
+
+func openFile(rt *session.Runtime, dir, self string, args openFileArgs) (string, error) {
+	real, path, err := viewPath(dir, args.Path)
 	if err != nil {
 		return "", err
 	}
-	defer root.Close()
-	content, err := root.ReadFile(path)
+	content, err := os.ReadFile(real)
 	if err != nil {
 		return "", err
 	}
@@ -45,7 +66,6 @@ func openFile(rt *session.Runtime, dir, self string, args openFileArgs) (string,
 			return "", fmt.Errorf("line range %d-%d is outside the file's %d lines", line.Start, line.End, count)
 		}
 	}
-	path = filepath.ToSlash(filepath.Clean(path))
 	rt.OpenFile(self, session.FileOpen{Path: path, Lines: args.Lines})
 	return fmt.Sprintf("%s opens in a tab in your session's view.", path), nil
 }

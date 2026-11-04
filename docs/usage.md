@@ -140,8 +140,8 @@ shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open. A Markdown file opens in
 its preview; the button at the right of its tab bar switches to its source and
-back. An agent can use `open_file` to open a file from its directory and
-highlight lines; the tab opens when you view its session.
+back. An agent can use `open_file` to open any file you can read, in or
+outside its directory, and highlight lines; the tab opens when you view its session.
 
 In the Hypercube window, each session's agent has a browser, which it loads
 pages in and runs scripts on with its `browser_navigate` and `browser_eval`

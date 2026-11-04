@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -38,6 +39,20 @@ func (s *server) sessionRoot(id string) (*os.Root, error) {
 		return nil, err
 	}
 	return os.OpenRoot(dir)
+}
+
+// openFile opens a file of the session: a relative path within its directory,
+// or an absolute path anywhere, which an agent can ask the view to show.
+func (s *server) openFile(id, name string) (*os.File, error) {
+	root, err := s.sessionRoot(id)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	if filepath.IsAbs(name) {
+		return os.Open(name)
+	}
+	return root.Open(name)
 }
 
 func fileError(w http.ResponseWriter, err error) bool {
@@ -89,16 +104,16 @@ func (s *server) listFiles(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
-	root, err := s.sessionRoot(r.URL.Query().Get("session"))
-	if fileError(w, err) {
-		return
-	}
-	defer root.Close()
 	name := r.URL.Query().Get("path")
 	if name == "" {
 		name = "."
 	}
-	info, err := root.Stat(name)
+	file, err := s.openFile(r.URL.Query().Get("session"), name)
+	if fileError(w, err) {
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
 	if fileError(w, err) {
 		return
 	}
@@ -116,11 +131,6 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	file, err := root.Open(name)
-	if fileError(w, err) {
-		return
-	}
-	defer file.Close()
 	content, err := io.ReadAll(io.LimitReader(file, maxFile+1))
 	if fileError(w, err) {
 		return
