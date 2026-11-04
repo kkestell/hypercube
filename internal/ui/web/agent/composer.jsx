@@ -5,6 +5,7 @@
 // takes focus on mount.
 import {useEffect, useRef, useState} from 'react';
 import {imageSrc, imageTypes} from '../images.js';
+import {post} from '../api.js';
 import {sendPrompt} from '../sessions/session-actions.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
 import {submitsOnKey} from '../shared/submit-key.js';
@@ -72,6 +73,11 @@ export function Composer({session}) {
     e.preventDefault();
     send();
   };
+  const stop = session.running && !session.ended && session.activity === 'busy' && !text && !draft.images.length && !draft.reading;
+  const paste = e => {
+    const files = [...e.clipboardData.files].filter(file => file.type.startsWith('image/'));
+    if (files.length) attachImages(store, session.id, files);
+  };
   const picked = e => {
     const files = [...e.currentTarget.files];
     e.currentTarget.value = '';
@@ -98,7 +104,7 @@ export function Composer({session}) {
             role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
             aria-controls={mentions.choices.length || mentions.error ? mentions.listId : undefined}
             aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}
-            onChange={input} onKeyDown={key} onBlur={mentions.blur}
+            onChange={input} onKeyDown={key} onBlur={mentions.blur} onPaste={paste}
             onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
             onKeyUp={e => mentions.sync(e.currentTarget)} />
           <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
@@ -110,7 +116,9 @@ export function Composer({session}) {
               {session.id === unsentKey ? <WorktreeToggle /> : <SessionBranch session={session} />}
               <Usage usage={session.usage} />
             </div>
-            <Button type="submit" size="icon" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>
+            {stop
+              ? <Button type="button" size="icon" title="Stop" aria-label="Stop" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})}><Icon name="stop" /></Button>
+              : <Button type="submit" size="icon" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>}
           </div>
         </CardContent>
       </Card>

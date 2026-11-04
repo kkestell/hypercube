@@ -36,19 +36,39 @@ test('a composer leaves the focus in a tab strip', () => {
   expect(document.activeElement).toBe(tab);
 });
 
-test('send is disabled without content and no stop button shows while the agent works', () => {
+test('a busy agent can be stopped until text or an image is added', async () => {
   const s = store();
-  let root = mount(s, <Composer session={session} />);
-  const send = () => root.querySelector('[title="Send"]');
-  expect(send().hasAttribute('disabled')).toBe(true);
-  expect(root.querySelector('[title="Stop"]')).toBeNull();
+  const root = mount(s, <Composer session={{...session, running: true, activity: 'busy'}} />);
   const field = root.querySelector('textarea');
+  clickControl(root.querySelector('[title="Stop"]'));
+  expect(Object.fromEntries(new URL(fetches.mock.calls[0][0], 'http://x/').searchParams)).toEqual({action: 'interrupt', id: 'a'});
   setValue(field, 'hello');
-  field.dispatchEvent(new Event('input', {bubbles: true}));
-  expect(send().hasAttribute('disabled')).toBe(false);
-  unmountAll();
-  root = mount(s, <Composer session={{...session, activity: 'busy'}} />);
-  expect(root.querySelector('[title="Stop"]')).toBeNull();
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
+  expect(root.querySelector('[title="Send"]').disabled).toBe(false);
+  setValue(field, '');
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
+  expect(root.querySelector('[title="Stop"]')).not.toBeNull();
+  s.update(state => ({...state, drafts: {a: {text: '', images: [{mime_type: 'image/png', data: 'YQ=='}], reading: 0}}}));
+  expect(root.querySelector('[title="Send"]').disabled).toBe(false);
+});
+
+test('pasting images attaches them and leaves text paste alone', async () => {
+  const root = mount(store(), <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const paste = files => {
+    const event = new Event('paste', {bubbles: true, cancelable: true});
+    Object.defineProperty(event, 'clipboardData', {value: {files}});
+    act(() => field.dispatchEvent(event));
+    return event;
+  };
+  expect(paste([]).defaultPrevented).toBe(false);
+  let reader;
+  const read = spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function() { reader = this; });
+  expect(paste([new File(['image'], 'image.png', {type: 'image/png'})]).defaultPrevented).toBe(false);
+  Object.defineProperty(reader, 'result', {value: 'data:image/png;base64,YQ=='});
+  await act(async () => reader.onload());
+  read.mockRestore();
+  expect(root.querySelector('img[alt="Attached image"]')).not.toBeNull();
 });
 
 test('an ended session cannot send and shows no exited dot', () => {

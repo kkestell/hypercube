@@ -2,7 +2,9 @@
 // the user scrolls up, and follows again once they scroll back to the end.
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions.
-import {useCallback, useLayoutEffect, useMemo, useRef} from 'react';
+import {useCallback, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {Button} from '../components/ui/button';
+import {Icon} from '../shared/icon.jsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
 import {TranscriptFind} from './transcript-find.jsx';
@@ -22,15 +24,18 @@ export function Transcript({session}) {
   const view = useRef(null), list = useRef(null);
   const memory = useScrollMemory(view, session.id);
   const lastTop = useRef(memory.current.top);
+  const [away, setAway] = useState(false);
 
   const followEnd = () => {
     if (!memory.current.following) return;
     view.current.scrollTop = view.current.scrollHeight;
     lastTop.current = view.current.scrollTop;
+    setAway(false);
   };
 
   const scrolled = () => {
     const {scrollTop, clientHeight, scrollHeight} = view.current;
+    setAway(scrollHeight - scrollTop - clientHeight >= 2);
     let following = memory.current.following;
     if (scrollHeight - scrollTop - clientHeight < 2) following = true;
     else if (scrollTop < lastTop.current) following = false;
@@ -40,7 +45,10 @@ export function Transcript({session}) {
 
   // New items, opened details, a resized pane, and a view shown again all
   // keep a following list at its end.
-  useLayoutEffect(followEnd);
+  useLayoutEffect(() => {
+    followEnd();
+    scrolled();
+  });
   useLayoutEffect(() => {
     const observer = new ResizeObserver(followEnd);
     observer.observe(view.current);
@@ -56,6 +64,10 @@ export function Transcript({session}) {
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       </div>
+      {away && (
+        <Button type="button" variant="secondary" size="icon" className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
+          onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); }}><Icon name="arrow-down" /></Button>
+      )}
       {pending.length > 0 && (
         <section className="transcript-pending flex max-h-1/2 shrink-0 flex-col gap-4 overflow-y-auto border-t p-4" aria-label="Pending questions">
           {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}

@@ -121,11 +121,11 @@ parent's transcript and remain in the child's chat.
 A chat shows everything the agent does in order, with a
 box below it for your next message. Press Enter to send it and Shift+Enter to
 start a new line. A message goes to the agent at once, even while it works.
-Attach PNG, JPEG, GIF, or WebP images with the paperclip button or by dropping
+Attach PNG, JPEG, GIF, or WebP images with the paperclip button, by pasting into the composer, or by dropping
 files anywhere on the chat; they total at most 10 MiB, appear as thumbnails with
 a remove button, and can be sent without text. Images from the agent or its
 tools appear in the transcript. Press Escape to interrupt the shown agent's
-current turn; the turn stays in the chat.
+current turn, or click Stop in an empty composer while it works; the turn stays in the chat. Scroll up to read earlier output and click the down arrow above the composer to return to the newest output.
 
 A message you send, or one from another session, while the agent is idle begins a
 turn. While the agent works, the chat shows its reasoning in full, each tool

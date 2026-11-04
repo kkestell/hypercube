@@ -341,11 +341,13 @@ test('the list follows its end until the user scrolls up', () => {
   };
   send([{id: '2', kind: 'text', text: 'b'}]);
   expect(view.scrollTop).toBe(1000);
-  scroll(500);
+  act(() => scroll(500));
+  expect(root.querySelector('[title="Scroll to newest output"]')).not.toBeNull();
   height = 1200;
   send([{id: '3', kind: 'text', text: 'c'}]);
   expect(view.scrollTop).toBe(500);
-  scroll(899);
+  clickControl(root.querySelector('[title="Scroll to newest output"]'));
+  expect(root.querySelector('[title="Scroll to newest output"]')).toBeNull();
   send([{id: '4', kind: 'text', text: 'd'}]);
   expect(view.scrollTop).toBe(1200);
 });
