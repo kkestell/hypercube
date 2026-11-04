@@ -49,13 +49,13 @@
   white-space: nowrap;
 }
 
-/* Actions show while the header is hovered or holds the focus. */
+/* Actions show while the header is hovered, holds the focus, or has its menu open. */
 .workspace-section-actions {
   display: none;
   padding: 0;
 }
 
-.workspace-section-header:is(:hover, :focus-within) .workspace-section-actions {
+.workspace-section-header:is(:hover, :focus-within, .workspace-section-header-menu-open) .workspace-section-actions {
   display: flex;
 }
 

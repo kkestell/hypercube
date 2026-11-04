@@ -15,11 +15,14 @@ export function SessionTree({label, sessions, nestedOf, renaming, onRenaming}) {
   const ref = useRef(null);
   const hadFocus = useRef(false);
 
-  const rows = sessions.flatMap(session => {
+  // The rows are flat, so each carries its level and its place among its
+  // siblings for assistive technology.
+  const rows = sessions.flatMap((session, index) => {
     const nested = nestedOf(session);
     const expanded = !collapsed[session.id];
-    const row = {session, level: 1, hasChildren: nested.length > 0, expanded};
-    return [row, ...expanded ? nested.map(child => ({session: child, level: 2, parent: session.id})) : []];
+    const row = {session, level: 1, position: index + 1, siblings: sessions.length, hasChildren: nested.length > 0, expanded};
+    const children = nested.map((child, i) => ({session: child, level: 2, position: i + 1, siblings: nested.length, parent: session.id}));
+    return [row, ...expanded ? children : []];
   });
   const ids = rows.map(row => row.session.id);
   const active = [focused, state.selected].find(id => ids.includes(id)) ?? ids[0];

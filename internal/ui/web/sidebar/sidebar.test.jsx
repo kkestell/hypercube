@@ -481,6 +481,31 @@ test('Escape on a row reaches the app, and the rename field keeps its own', () =
   expect(reached).toEqual([]);
 });
 
+test.each([
+  [{key: 'F10', shiftKey: true}],
+  [{key: 'ContextMenu'}],
+])('%o on a focused row opens its menu', init => {
+  const {root} = setup([session('a')]);
+  act(() => row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})));
+  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Stop Session', 'Rename', 'Delete Session']);
+});
+
+test('a section\'s actions stay shown while its More Actions menu is open', () => {
+  const {root} = setup([session('a')]);
+  const header = () => root.querySelector('[data-workspace="w"] .workspace-section-header');
+  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(false);
+  workspaceMenu(root);
+  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(true);
+  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
+  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(false);
+});
+
+test('rows carry their place among their siblings', () => {
+  const {root} = setup([session('a', {children: [session('c1', {parent: 'a'}), session('c2', {parent: 'a'})]}), session('b')]);
+  const place = id => [row(root, id).getAttribute('aria-posinset'), row(root, id).getAttribute('aria-setsize')];
+  expect(['a', 'c1', 'c2', 'b'].map(place)).toEqual([['1', '2'], ['1', '2'], ['2', '2'], ['2', '2']]);
+});
+
 test('Rename in a session\'s menu opens the rename field', () => {
   const {root} = setup([session('a')]);
   choose(root, '[data-session="a"]', 1);

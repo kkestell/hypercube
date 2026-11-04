@@ -17,7 +17,7 @@ const statusOf = (session, selected) => {
   return null;
 };
 
-export function SessionItem({session, level, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}) {
+export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}) {
   const [state, store] = useStore();
   const selected = session.id === state.selected;
   const classes = ['session-item', !session.running && 'session-item-stopped'].filter(Boolean).join(' ');
@@ -29,7 +29,7 @@ export function SessionItem({session, level, hasChildren, expanded, tabbable, on
   return (
     <div
       class={classes} role="treeitem" data-session={session.id} style={{'--session-item-level': level}}
-      aria-level={level} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
+      aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
       onClick={() => chooseSession(store, session.id)} onDblClick={hasChildren ? toggle : undefined}
     >

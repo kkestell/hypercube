@@ -23,6 +23,7 @@ export function Sidebar() {
   const [showStopped, setShowStopped] = useState({});
   const [stoppedLimits, setStoppedLimits] = useState({});
   const [renaming, setRenaming] = useState(null);
+  // menu.workspace names the section whose More Actions opened the menu.
   const [menu, setMenu] = useState(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const frozen = useRef(state.workspaces);
@@ -48,12 +49,15 @@ export function Sidebar() {
     setMenu({x: e.clientX, y: e.clientY, items: session ? sessionMenu(session) : workspaceMenu(workspace)});
   };
 
-  // F2 renames the focused session, as in VS Code's Explorer.
+  // On a focused row, F2 renames its session, and Shift+F10 or the menu key
+  // opens its menu below the row, as in VS Code's lists.
   const keyDown = e => {
-    const id = e.key === 'F2' && e.target.closest('[data-session]')?.dataset.session;
-    if (!id) return;
+    const row = e.target.closest('[data-session]');
+    const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
+    if (!row || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
-    setRenaming(id);
+    if (e.key === 'F2') setRenaming(row.dataset.session);
+    else setMenu({...below(row), items: sessionMenu(sessionById(row.dataset.session))});
   };
 
   return (
@@ -72,13 +76,14 @@ export function Sidebar() {
               key={workspace.id} workspace={workspace}
               limit={stoppedLimits[workspace.id] ?? 0} onLimit={limit => setLimit(workspace, limit)}
               onToggleStopped={() => toggleStopped(workspace)}
-              onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
+              menuOpen={menu?.workspace === workspace.id}
+              onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace), workspace: workspace.id})}
               showStopped={showStopped} renaming={renaming} onRenaming={setRenaming}
             />
           ))}
         </vscode-tab-panel>
       </vscode-tabs>
-      {menu && <ContextMenu {...menu} onClose={closeMenu} />}
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );
 }

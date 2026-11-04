@@ -1,7 +1,9 @@
 // A workspace's section of the Sessions view, as a VS Code view pane: a header
 // that collapses the section and shows its actions on hover or focus, over a
-// tree of its sessions. Running sessions always show. Stopped ones show limit
-// at a time once revealed, and the selected session's family stays visible.
+// tree of its sessions. The actions also stay shown while their menu is open,
+// so Escape can return the focus to More Actions. Running sessions always
+// show. Stopped ones show limit at a time once revealed, and the selected
+// session's family stays visible.
 import {useState} from 'preact/hooks';
 import {openUnsent} from '../sessions/selection.js';
 import {useStore} from '../store.js';
@@ -10,7 +12,7 @@ import './workspace-section.css';
 
 export const pageSize = 5;
 
-export function WorkspaceSection({workspace, limit, onLimit, onToggleStopped, onMenu, showStopped, renaming, onRenaming}) {
+export function WorkspaceSection({workspace, limit, onLimit, onToggleStopped, onMenu, menuOpen, showStopped, renaming, onRenaming}) {
   const [state, store] = useStore();
   const [open, setOpen] = useState(true);
   const stopped = workspace.sessions.filter(s => !s.running).slice(0, limit);
@@ -29,7 +31,7 @@ export function WorkspaceSection({workspace, limit, onLimit, onToggleStopped, on
 
   return (
     <section class="workspace-section" data-workspace={workspace.id} aria-labelledby={headingId}>
-      <div class="workspace-section-header" title={workspace.path}>
+      <div class={`workspace-section-header${menuOpen ? ' workspace-section-header-menu-open' : ''}`} title={workspace.path}>
         <h3 class="workspace-section-heading">
           <button id={headingId} class="workspace-section-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)} onKeyDown={headerKey}>
             <vscode-icon name={open ? 'chevron-down' : 'chevron-right'} />

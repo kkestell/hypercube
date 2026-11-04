@@ -74,7 +74,7 @@ Click a session to show its chat. Up, Down, Home, and End move through the
 tree; Right expands a parent or moves to its first child, Left collapses it or
 moves from a child to its parent, and Enter or Space shows the session. Press F2,
 or choose Rename from a row's menu, to change a session's title. Right-click a
-row to open its menu. A top-level session's menu offers Start/Stop, Show/Hide
+row, or press Shift+F10 on it, to open its menu. A top-level session's menu offers Start/Stop, Show/Hide
 Stopped Sessions when it has children, Rename, and Delete. Stopped rows are
 dimmed; clicking a child of a stopped parent starts the family. The right edge
 of each row shows only its own session: a spinner while it works, an amber dot
