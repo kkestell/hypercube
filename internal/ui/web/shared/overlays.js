@@ -2,7 +2,7 @@
 // Hypercube window draws a session's browser above the whole page, so the
 // browser hides while an overlay covers it. state.overlays holds each mounted
 // overlay's rect by ID.
-import {useId, useLayoutEffect} from 'preact/hooks';
+import {useId, useLayoutEffect, useState} from 'react';
 import {useStore} from '../store.js';
 
 function overlayMoved(state, id, {left, top, right, bottom}) {
@@ -17,13 +17,14 @@ function overlayRemoved(state, id) {
   return {...state, overlays};
 }
 
-// useOverlay keeps the rect of the element in ref in the state while it is
+// useOverlay returns a ref that keeps the element’s rect in state while it is
 // mounted, as its contents resize it and the window moves it.
-export function useOverlay(ref) {
+export function useOverlay() {
+  const [element, setElement] = useState(null);
   const [, store] = useStore();
   const id = useId();
   useLayoutEffect(() => {
-    const element = ref.current;
+    if (!element) return;
     const measure = () => store.update(state => overlayMoved(state, id, element.getBoundingClientRect()));
     measure();
     const observer = new ResizeObserver(measure);
@@ -34,7 +35,8 @@ export function useOverlay(ref) {
       removeEventListener('resize', measure);
       store.update(state => overlayRemoved(state, id));
     };
-  }, []);
+  }, [element, id, store]);
+  return setElement;
 }
 
 // covered reports whether an overlay covers part of the rect, in CSS pixels.

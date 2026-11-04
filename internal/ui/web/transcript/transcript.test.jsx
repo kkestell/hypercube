@@ -1,5 +1,6 @@
+import {setValue, clickControl} from '../../test-render.jsx';
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -64,7 +65,7 @@ test('a tool call shows its title, status, input, output, and nested items', () 
 });
 
 const marker = (id, state, at, final) => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
-const summaries = root => [...root.querySelectorAll('.activity-item > summary')];
+const summaries = root => [...root.querySelectorAll('.activity-item > [data-slot=collapsible-trigger]')];
 
 test('a running turn shows every row openly with no working summary', () => {
   const {root} = setup([
@@ -103,20 +104,20 @@ test('a successful turn collapses to its opener, one Worked row, and the whole r
   expect([...list.children].map(row => row.className.split(' ')[0])).toEqual(['message-item', 'disclosure', 'transcript-text', 'transcript-text']);
   const [summary] = summaries(root);
   expect(summary.textContent).toBe('Worked for 2m 12s');
-  expect(summary.parentElement.open).toBe(false);
+  expect(summary.parentElement.getAttribute('data-state') === 'open').toBe(false);
   expect(summary.parentElement.querySelector('.activity-item-rows')).toBeNull();
   expect(list.children[0].textContent).toBe('Go');
   expect(list.children[2].textContent).toBe('First part.');
   expect(list.children[3].textContent).toBe('Second part.');
   expect(root.textContent).not.toContain('Thinking it over.');
 
-  act(() => summary.click());
+  act(() => clickControl(summary));
   const rows = [...summary.parentElement.querySelectorAll('.activity-item-rows > *')];
   expect(rows.map(row => row.textContent)).toEqual([
     'Thinking it over.', expect.stringContaining('bash ls'), 'Also check b', expect.stringContaining('Peer detail'), 'Almost done.',
   ]);
   expect(store.get().session.expanded['activity:L1:w']).toBe(true);
-  act(() => summary.click());
+  act(() => clickControl(summary));
   expect(summary.parentElement.querySelector('.activity-item-rows')).toBeNull();
 });
 
@@ -179,7 +180,7 @@ test('a later launch cannot hide what an earlier launch left unfinished', () => 
 });
 
 const choose = (root, choice) => {
-  act(() => root.querySelector(`vscode-button[data-choice="${choice}"]`).click());
+  act(() => clickControl(root.querySelector(`button[data-choice="${choice}"]`)));
 };
 
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
@@ -187,11 +188,11 @@ test('an attention request offers its choices, waits while sending, and opens ag
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => { answer = resolve; }));
   spies.push(fetches);
   const {root, send} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
-  const rows = () => [...root.querySelectorAll('vscode-button[data-choice]')];
+  const rows = () => [...root.querySelectorAll('button[data-choice]')];
   const list = () => root.querySelector('[role="group"]');
   expect(list().getAttribute('aria-label')).toBe('Choices');
   expect(rows().map(r => r.textContent)).toEqual(['yes', 'no']);
-  expect(root.querySelector('vscode-textfield')).toBeNull();
+  expect(root.querySelector('input')).toBeNull();
   choose(root, 'yes');
   const url = new URL(fetches.mock.calls[0][0], 'http://x/');
   expect(Object.fromEntries(url.searchParams)).toEqual({action: 'answer', id: 's', request: 'q', choice: 'yes'});
@@ -215,9 +216,9 @@ test('an approval request offers to always allow its tool in either scope', asyn
   spies.push(fetches);
   for (const [i, scope] of ['session', 'all'].entries()) {
     const {root} = setup([{id: 'q', kind: 'attention', text: 'Allow Bash?', choices: ['Allow', 'Deny'], grant: 'Bash'}]);
-    const buttons = [...root.querySelectorAll('vscode-button[data-always]')];
+    const buttons = [...root.querySelectorAll('button[data-always]')];
     expect(buttons.map(b => b.textContent)).toEqual(['Always allow in this session', 'Always allow in all sessions']);
-    await act(async () => { buttons[i].click(); });
+    await act(async () => { clickControl(buttons[i]); });
     const url = new URL(fetches.mock.calls[i][0], 'http://x/');
     expect(Object.fromEntries(url.searchParams)).toEqual({action: 'allow', id: 's', request: 'q', scope});
   }
@@ -225,12 +226,12 @@ test('an approval request offers to always allow its tool in either scope', asyn
 
 test('a request that is not an approval offers no always allow', () => {
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
-  expect(root.querySelector('vscode-button[data-always]')).toBeNull();
+  expect(root.querySelector('button[data-always]')).toBeNull();
 });
 
 test('a choice shows its associated note', () => {
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Language?', choices: ['Python', 'Go'], notes: ['Readable', '']}]);
-  const [python, go] = root.querySelectorAll('vscode-button[data-choice]');
+  const [python, go] = root.querySelectorAll('button[data-choice]');
   expect(python.textContent).toBe('Python');
   expect(document.getElementById(python.getAttribute('aria-describedby')).textContent).toBe('Readable');
   expect(go.hasAttribute('aria-describedby')).toBe(false);
@@ -240,22 +241,22 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true, choices: ['Ada']}]);
-  const field = root.querySelector('vscode-textfield');
-  const sendButton = root.querySelector('.attention-form-entry vscode-button');
-  const label = root.querySelector('vscode-label');
+  const field = root.querySelector('input');
+  const sendButton = root.querySelector('.attention-form-entry button');
+  const label = root.querySelector('label');
   expect(label.textContent).toBe('Other response');
   expect(label.getAttribute('for')).toBe(field.id);
-  expect(field.querySelector('vscode-button')).toBeNull();
+  expect(field.querySelector('button')).toBeNull();
   expect(sendButton.textContent).toBe('Send');
   expect(sendButton.hasAttribute('disabled')).toBe(true);
-  act(() => sendButton.click());
+  act(() => clickControl(sendButton));
   expect(fetches).not.toHaveBeenCalled();
-  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'})));
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(fetches).not.toHaveBeenCalled();
-  field.value = 'Ada';
-  act(() => field.dispatchEvent(new Event('input')));
+  setValue(field, 'Ada');
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   expect(sendButton.hasAttribute('disabled')).toBe(false);
-  await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'})));
+  await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   const [url, options] = fetches.mock.calls[0];
   expect(new URL(url, 'http://x/').searchParams.get('choice')).toBe('');
   expect(options.body).toBe('Ada');
@@ -265,11 +266,11 @@ test('the Send button beside the field sends the typed answer', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true}]);
-  const field = root.querySelector('vscode-textfield');
-  expect(root.querySelector('vscode-label').textContent).toBe('Your response');
-  field.value = 'Grace';
-  act(() => field.dispatchEvent(new Event('input')));
-  await act(async () => root.querySelector('.attention-form-entry vscode-button').click());
+  const field = root.querySelector('input');
+  expect(root.querySelector('label').textContent).toBe('Your response');
+  setValue(field, 'Grace');
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
+  await act(async () => clickControl(root.querySelector('.attention-form-entry button')));
   expect(fetches.mock.calls[0][1].body).toBe('Grace');
 });
 
@@ -283,8 +284,8 @@ test('a request inside a finished turn opens its activity', () => {
     marker('i', 'idle', 2000, ['t']),
   ]);
   const group = root.querySelector('.activity-item');
-  expect(group.open).toBe(true);
-  expect(group.querySelector('vscode-button[data-choice="ok"]')).not.toBeNull();
+  expect(group.getAttribute('data-state') === 'open').toBe(true);
+  expect(group.querySelector('button[data-choice="ok"]')).not.toBeNull();
 });
 
 test('the list follows its end until the user scrolls up', () => {
@@ -320,16 +321,16 @@ test('a message that begins a turn shows its sender and first line, and expands 
   expect(incoming.querySelector('.message-item-bubble')).toBeNull();
   expect(incoming.querySelector('.disclosure-preview').textContent).toBe('line 0');
   expect(incoming.querySelector('.message-item-text')).toBeNull();
-  act(() => incoming.querySelector('summary').click());
-  expect(incoming.open).toBe(true);
+  act(() => incoming.querySelector('[data-slot=collapsible-trigger]').click());
+  expect(incoming.getAttribute('data-state') === 'open').toBe(true);
   expect(incoming.querySelector('.disclosure-preview')).toBeNull();
   expect(incoming.querySelector('.message-item-text').textContent).toBe(longText);
-  act(() => incoming.querySelector('summary').click());
-  expect(incoming.open).toBe(false);
+  act(() => incoming.querySelector('[data-slot=collapsible-trigger]').click());
+  expect(incoming.getAttribute('data-state') === 'open').toBe(false);
   expect(incoming.querySelector('.disclosure-preview').textContent).toBe('line 0');
   expect(own.querySelector('.message-item-bubble')).not.toBeNull();
   expect(own.querySelector('.message-item-text').textContent).toBe(longText);
-  expect(own.querySelector('summary')).toBeNull();
+  expect(own.querySelector('[data-slot=collapsible-trigger]')).toBeNull();
 });
 
 test('messages sent by the agent show their recipient and whole body', () => {
@@ -339,7 +340,7 @@ test('messages sent by the agent show their recipient and whole body', () => {
   expect(outgoing.querySelector('.message-item-heading').textContent).toBe('To c1');
   expect(outgoing.querySelector('[title="Running"]')).not.toBeNull();
   expect(outgoing.querySelector('.message-item-text').textContent).toBe(longText);
-  expect(outgoing.querySelector('summary')).toBeNull();
+  expect(outgoing.querySelector('[data-slot=collapsible-trigger]')).toBeNull();
   send([{...sent, done: true, failed: true, output: 'Delivery failed'}]);
   expect(outgoing.querySelector('[title="Running"]')).toBeNull();
   expect(outgoing.querySelector('[title="Failed"]')).not.toBeNull();
@@ -351,7 +352,7 @@ test('short agent messages also expand, including their attached images', () => 
   const message = root.querySelector('.message-item-agent');
   expect(message.querySelector('.disclosure-preview').textContent).toBe('One line');
   expect(message.querySelector('img')).toBeNull();
-  act(() => message.querySelector('summary').click());
+  act(() => message.querySelector('[data-slot=collapsible-trigger]').click());
   expect(message.querySelector('.message-item-text').textContent).toBe('One line');
   expect(message.querySelector('img').getAttribute('src')).toBe('data:image/png;base64,iVBORw0KGgo=');
 });
@@ -360,7 +361,7 @@ test('Thinking shows its full text as it streams', () => {
   const {root, send} = setup([{id: 't', kind: 'reasoning', text: longText, at: 1000, seq: 1}]);
   const item = root.querySelector('.reasoning-item');
   expect(item.textContent).toBe(longText);
-  expect(root.querySelector('summary')).toBeNull();
+  expect(root.querySelector('[data-slot=collapsible-trigger]')).toBeNull();
   send([{id: 't', kind: 'reasoning', text: longText + '\nmore', at: 1000, seq: 1}]);
   expect(item.textContent).toEndWith('more');
   send([{id: 'e', kind: 'reasoning', at: 1100, seq: 2}]);
@@ -414,9 +415,9 @@ test('copy buttons copy the original message and code', async () => {
   spies.push(spyOn(navigator.clipboard, 'writeText').mockImplementation(async text => { copied.push(text); }));
   const {root} = setup([{id: 'u', kind: 'user', text: '**question**'}, {id: 'a', kind: 'text', text: 'An **answer**\n\n```js\nlet x = 1;\n```'}]);
   const buttons = [...root.querySelectorAll('button[aria-label^="Copy"]')];
-  await act(async () => { for (const button of buttons) button.click(); });
+  await act(async () => { for (const button of buttons) clickControl(button); });
   expect(copied).toEqual(['**question**', 'let x = 1;', 'An **answer**\n\n```js\nlet x = 1;\n```']);
-  expect(buttons.map(button => button.querySelector('vscode-icon').getAttribute('name'))).toEqual(['check', 'check', 'check']);
+  expect(buttons.map(button => button.querySelector('svg[data-icon]').getAttribute('data-icon'))).toEqual(['check', 'check', 'check']);
 });
 
 test('find opens with Cmd+F, steps through visible matches and restores focus', () => {
@@ -424,9 +425,9 @@ test('find opens with Cmd+F, steps through visible matches and restores focus', 
   const focus = root.querySelector('button[aria-label="Copy message"]');
   focus.focus();
   act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
-  const field = root.querySelector('.transcript-find vscode-textfield');
+  const field = root.querySelector('.transcript-find input');
   expect(field).not.toBeNull();
-  act(() => { field.value = 'hello'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  act(() => { setValue(field, 'hello'); field.dispatchEvent(new Event('input', {bubbles: true})); });
   expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
@@ -442,8 +443,8 @@ test('find preserves the selected match as the transcript streams and clamps it 
   const focus = root.querySelector('button[aria-label="Copy message"]');
   focus.focus();
   act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
-  const field = root.querySelector('.transcript-find vscode-textfield');
-  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  const field = root.querySelector('.transcript-find input');
+  act(() => { setValue(field, 'one'); field.dispatchEvent(new Event('input', {bubbles: true})); });
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
   send([{id: 'a', kind: 'text', text: 'one one one one'}]);
@@ -459,14 +460,14 @@ test('Enter on find buttons is not intercepted as find navigation', () => {
   const focus = root.querySelector('button[aria-label="Copy message"]');
   focus.focus();
   act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true})));
-  const field = root.querySelector('.transcript-find vscode-textfield');
-  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  const field = root.querySelector('.transcript-find input');
+  act(() => { setValue(field, 'one'); field.dispatchEvent(new Event('input', {bubbles: true})); });
   const close = root.querySelector('button[aria-label="Close find"]');
   const enter = new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true});
   act(() => close.dispatchEvent(enter));
   expect(enter.defaultPrevented).toBe(false);
   expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 2');
-  act(() => close.click());
+  act(() => clickControl(close));
   expect(root.querySelector('.transcript-find')).toBeNull();
 });
 
@@ -485,8 +486,8 @@ test('find shortcuts stay in the chat and navigate in both directions', () => {
   focus.focus();
   expect(key(focus, 'f', {metaKey: true, shiftKey: true}).defaultPrevented).toBe(false);
   key(focus, 'f', {metaKey: true});
-  const field = root.querySelector('.transcript-find vscode-textfield');
-  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  const field = root.querySelector('.transcript-find input');
+  act(() => { setValue(field, 'one'); field.dispatchEvent(new Event('input', {bubbles: true})); });
   key(field, 'g', {metaKey: true});
   expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
   key(field, 'F3', {shiftKey: true});

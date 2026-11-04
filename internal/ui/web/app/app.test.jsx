@@ -1,6 +1,6 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {options, render} from 'preact';
-import {act} from 'preact/test-utils';
+import {render} from '../../test-render.jsx';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {receivedWorkspaces} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -9,9 +9,7 @@ import {App} from './app.jsx';
 afterEach(unmountAll);
 
 test('state arriving before passive effects reaches the page', async () => {
-  const originalSchedule = options.requestAnimationFrame;
   const canvas = spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
-  options.requestAnimationFrame = () => {};
   try {
     const store = createStore({
       workspaces: [], limits: [], requests: [], selected: '', pending: null, unsent: null,
@@ -25,7 +23,6 @@ test('state arriving before passive effects reaches the page', async () => {
     await act(async () => {});
     expect(root.querySelector('[data-workspace="w"] .workspace-section-name').textContent).toBe('New workspace');
   } finally {
-    options.requestAnimationFrame = originalSchedule;
     canvas.mockRestore();
   }
 });
@@ -61,12 +58,12 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
     expect(fetches).toHaveBeenCalledTimes(1);
 
     act(() => root.querySelector('[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-    escape(root.querySelector('.context-menu'));
-    expect(root.querySelector('.context-menu')).toBeNull();
+    escape(document.querySelector('.context-menu'));
+    expect(document.querySelector('.context-menu')).toBeNull();
     expect(fetches).toHaveBeenCalledTimes(1);
 
     store.update(state => ({...state, confirmation: {message: 'Confirm?', primary: 'OK', accept() {}}}));
-    escape(root.querySelector('dialog'));
+    escape(document.querySelector('[role=alertdialog]'));
     expect(store.get().confirmation).toBeNull();
     expect(fetches).toHaveBeenCalledTimes(1);
 
@@ -86,8 +83,8 @@ test('the window header holds the three layout toggles and they hide and show th
     workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
   });
   const root = mount(store, <App store={store} />);
-  const buttons = [...root.querySelectorAll('header.app-header vscode-toolbar-button')];
-  expect(buttons.map(button => button.getAttribute('label'))).toEqual([
+  const buttons = [...root.querySelectorAll('header.app-header button')];
+  expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
     'Toggle Primary Side Bar', 'Toggle Panel', 'Toggle Secondary Side Bar',
   ]);
   expect(root.querySelectorAll('.editor-tabs-bar .layout-toggles')).toHaveLength(0);
@@ -95,11 +92,11 @@ test('the window header holds the three layout toggles and they hide and show th
     [0, 'sidebar', '.sidebar'], [1, 'panel', '.terminal-panel'], [2, 'rightPanel', '.right-panel'],
   ]) {
     const before = store.get().workbench[region];
-    const split = root.querySelector(selector).closest('vscode-split-layout');
-    act(() => buttons[index].dispatchEvent(new Event('change')));
+    const split = root.querySelector(selector).closest('.split');
+    act(() => buttons[index].click());
     expect(store.get().workbench[region]).toBe(!before);
     expect(split.classList.contains('split-collapsed')).toBe(before);
-    act(() => buttons[index].dispatchEvent(new Event('change')));
+    act(() => buttons[index].click());
     expect(store.get().workbench[region]).toBe(before);
     expect(split.classList.contains('split-collapsed')).toBe(!before);
   }

@@ -2,14 +2,13 @@
 // the user scrolls up, and follows again once they scroll back to the end.
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions.
-import {useCallback, useLayoutEffect, useMemo, useRef} from 'preact/hooks';
+import {useCallback, useLayoutEffect, useMemo, useRef} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
 import {TranscriptFind} from './transcript-find.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
 import {emptyTranscript, setExpanded} from './transcripts.js';
-import './transcript.css';
 
 export function Transcript({session}) {
   const [state, store] = useStore();
@@ -48,10 +47,10 @@ export function Transcript({session}) {
   }, []);
 
   return (
-    <div class="transcript-container">
+    <div className="transcript-container relative flex min-h-0 flex-1 flex-col">
       <TranscriptFind list={list} view={view} />
-      <div ref={view} class="transcript" onScroll={scrolled}>
-        <div ref={list} class="transcript-list">
+      <div ref={view} className="transcript min-h-0 flex-1 overflow-auto" onScroll={scrolled}>
+        <div ref={list} className="transcript-list flex flex-col gap-4 p-4">
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       </div>

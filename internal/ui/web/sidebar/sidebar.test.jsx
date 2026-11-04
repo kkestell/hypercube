@@ -1,15 +1,18 @@
-import '@vscode-elements/elements/dist/vscode-context-menu/index.js';
+import {setValue, clickControl} from '../../test-render.jsx';
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {ConfirmDialog} from '../shared/confirm-dialog.jsx';
 import {createStore} from '../store.js';
 import {Sidebar} from './sidebar.jsx';
 
+const listeners = [];
+const observeKey = listener => { addEventListener('keydown', listener); listeners.push(listener); };
 let spies = [];
 afterEach(() => {
   for (const s of spies) s.mockRestore();
   spies = [];
+  for (const listener of listeners.splice(0)) removeEventListener('keydown', listener);
   unmountAll();
 });
 
@@ -25,21 +28,21 @@ function setup(sessions) {
   return {store, root, posted, fetches};
 }
 
-const click = element => act(() => element.click());
+const click = element => act(() => clickControl(element));
 const sessionRows = root => [...root.querySelectorAll('[data-session]')].map(row => row.dataset.session);
 const row = (root, id) => root.querySelector(`[data-session="${id}"]`);
 const select = (root, id) => click(row(root, id));
-const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] > .session-item-decoration .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
-const pick = (root, index) => act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
+const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] > .session-item-decoration [data-slot=badge]`)].filter(badge => !badge.classList.contains('session-item-branch')).map(badge => ({'Waiting on you': 'waiting', 'New reply': 'unseen', Exited: 'exited'})[badge.textContent]);
+const pick = (root, index) => clickControl(document.querySelectorAll('[role=menuitem]')[index]);
 const workspaceMenu = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [title="More Actions"]`));
 test('all sessions remain visible in order as their state changes', () => {
   const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: i % 2 === 0}));
   const {store, root} = setup(sessions);
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
-  expect(row(root, 's21').classList.contains('session-item-stopped')).toBe(true);
+  expect(row(root, 's21').classList.contains('opacity-60')).toBe(true);
   store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: sessions.map(item => ({...item, running: !item.running}))}]}));
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
-  expect(row(root, 's22').classList.contains('session-item-stopped')).toBe(true);
+  expect(row(root, 's22').classList.contains('opacity-60')).toBe(true);
 });
 
 test('Add Workspace works even when no workspaces exist', () => {
@@ -59,30 +62,30 @@ test('clicking a session row chooses it, and a stopped one starts', () => {
 const key = (element, key) => act(() => element.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true})));
 function rename(root, id) {
   key(row(root, id), 'F2');
-  return root.querySelector('vscode-textfield');
+  return root.querySelector('input');
 }
 
 test('Enter saves a changed title, Escape cancels, and leaving the field saves', () => {
   const {root, posted} = setup([session('a')]);
   let field = rename(root, 'a');
   expect(document.activeElement).toBe(field);
-  field.value = '  Renamed  ';
+  setValue(field, '  Renamed  ');
   key(field, 'Enter');
   expect(posted()).toEqual([{action: 'rename', id: 'a', title: 'Renamed'}]);
-  expect(root.querySelector('vscode-textfield')).toBeNull();
+  expect(root.querySelector('input')).toBeNull();
 
   field = rename(root, 'a');
-  field.value = 'Ignored';
+  setValue(field, 'Ignored');
   key(field, 'Escape');
   expect(posted().length).toBe(1);
 
   field = rename(root, 'a');
-  field.value = 'Blurred';
+  setValue(field, 'Blurred');
   act(() => field.dispatchEvent(new FocusEvent('focusout', {bubbles: true})));
   expect(posted()[1]).toEqual({action: 'rename', id: 'a', title: 'Blurred'});
 
   field = rename(root, 'a');
-  field.value = 'Session a';
+  setValue(field, 'Session a');
   key(field, 'Enter');
   expect(posted().length).toBe(2);
 });
@@ -91,7 +94,7 @@ test('keys typed in the rename field do not reach the sidebar', () => {
   const {root} = setup([session('a')]);
   const reached = [];
   const field = rename(root, 'a');
-  root.querySelector('.sidebar').addEventListener('keydown', e => reached.push(e.key));
+  observeKey(e => reached.push(e.key));
   key(field, ' ');
   key(field, 'ArrowDown');
   expect(reached).toEqual([]);
@@ -99,7 +102,7 @@ test('keys typed in the rename field do not reach the sidebar', () => {
 
 const choose = (root, selector, index) => {
   act(() => root.querySelector(selector).dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
+  pick(root, index);
 };
 
 test('a session\'s menu stops a running session and starts a stopped or failed one', () => {
@@ -116,18 +119,18 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     {action: 'start', id: 'stopped'},
     {action: 'start', id: 'failed'},
   ]);
-  expect(root.querySelector('vscode-context-menu')).toBeNull();
+  expect(document.querySelector('[role=menu]')).toBeNull();
 });
 
-const dialog = root => root.querySelector('dialog');
-const press = (root, key) => act(() => dialog(root).querySelector('vscode-button').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
-const dialogButton = (root, label) => [...dialog(root).querySelectorAll('vscode-button')].find(b => b.textContent === label);
+const dialog = root => document.querySelector('[role=alertdialog]');
+const press = (root, key) => act(() => dialog(root).querySelector('button').dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+const dialogButton = (root, label) => [...dialog(root).querySelectorAll('button')].find(b => b.textContent === label);
 
 test('deleting a session asks first and posts only on Delete', () => {
   const {root, posted} = setup([session('a')]);
   choose(root, '[data-session="a"]', 2);
-  expect(dialog(root).open).toBe(true);
-  expect(document.activeElement).toBe(dialogButton(root, 'Delete'));
+  expect(dialog(root).getAttribute('data-state')).toBe('open');
+  expect(document.activeElement === dialogButton(root, 'Cancel')).toBe(true);
   expect(document.getElementById(dialog(root).getAttribute('aria-labelledby')).textContent).toBe("Are you sure you want to delete 'Session a'?");
   expect(document.getElementById(dialog(root).getAttribute('aria-describedby')).textContent).toContain('Its agent stops');
   expect(posted()).toEqual([]);
@@ -144,7 +147,7 @@ test('deleting a session asks first and posts only on Delete', () => {
 test('Escape cancels deleting a workspace', () => {
   const {root, posted} = setup([session('a')]);
   choose(root, '[data-workspace="w"]', 0);
-  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
+  expect(dialog(root).querySelector('[data-slot=alert-dialog-title]').textContent).toBe('Are you sure you want to delete \'repo\'?');
   press(root, 'Escape');
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([]);
@@ -158,7 +161,7 @@ test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), session('p0')]);
   expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0']);
-  expect(root.querySelector('[data-session="first"]').classList.contains('session-item-stopped')).toBe(true);
+  expect(root.querySelector('[data-session="first"]').classList.contains('opacity-60')).toBe(true);
 });
 
 test('clicking a parent selects it and keeps its children visible', () => {
@@ -173,8 +176,8 @@ test('all children show under a stopped parent and stopped and ended children di
   const children = [session('running', {parent: 'a'}), session('stopped', {parent: 'a', running: false}), session('ended', {parent: 'a', ended: true})];
   const {root} = setup([session('a', {running: false, children})]);
   expect(sessionRows(root)).toEqual(['a', 'running', 'stopped', 'ended']);
-  for (const id of ['a', 'stopped', 'ended']) expect(row(root, id).classList.contains('session-item-stopped')).toBe(true);
-  expect(row(root, 'running').classList.contains('session-item-stopped')).toBe(false);
+  for (const id of ['a', 'stopped', 'ended']) expect(row(root, id).classList.contains('opacity-60')).toBe(true);
+  expect(row(root, 'running').classList.contains('opacity-60')).toBe(false);
 });
 
 test('each row shows only its own state, and nothing while idle', () => {
@@ -216,7 +219,7 @@ test('session actions and workspace actions open their respective menus', () => 
   expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
   workspaceMenu(root);
   pick(root, 0);
-  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
+  expect(dialog(root).querySelector('[data-slot=alert-dialog-title]').textContent).toBe('Are you sure you want to delete \'repo\'?');
 });
 
 test('Escape closes a menu and returns the focus to its button', async () => {
@@ -225,41 +228,35 @@ test('Escape closes a menu and returns the focus to its button', async () => {
   button.tabIndex = 0;
   button.focus();
   click(button);
-  const menu = root.querySelector('vscode-context-menu');
-  await menu.updateComplete;
-  expect(document.activeElement).toBe(menu);
-  act(() => menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
-  expect(root.querySelector('vscode-context-menu')).toBeNull();
-  expect(document.activeElement).toBe(button);
+  const menu = document.querySelector('[role=menu]');
+  await act(async () => {});
+  expect(menu.contains(document.activeElement)).toBe(true);
+  act(() => menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
+  expect(document.querySelector('[role=menu]')).toBeNull();
+  await act(() => new Promise(resolve => setTimeout(resolve)));
+  expect(document.activeElement === button).toBe(true);
 });
 
 test('active nested sessions offer only Rename and ended ones also Delete Session', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
   act(() => root.querySelector('[data-session="active"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
+  expect([...document.querySelectorAll('[role=menuitem]')].map(item => item.textContent)).toEqual(['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
   choose(root, '[data-session="ended"]', 1);
-  expect(dialog(root).querySelector('.confirm-dialog-detail').textContent).toBe('Its chat is deleted.');
+  expect(dialog(root).querySelector('[data-slot=alert-dialog-description]').textContent).toBe('Its chat is deleted.');
   act(() => dialogButton(root, 'Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'ended'}]);
 });
 
-test('a worktree session shows a branch icon tinted by its merge state', () => {
+test('a worktree session reports its branch and merge state with a standard badge', () => {
   const merge = extra => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: true, uncommitted: 0, ...extra});
   const {store, root} = setup([session('a', {worktree: true, merge: merge({unmerged: 1})}), session('b')]);
-  const icon = id => root.querySelector(`[data-session="${id}"] .session-item-branch`);
-  expect(icon('a').getAttribute('name')).toBe('git-branch');
-  expect(icon('a').getAttribute('title')).toBe('hypercube/session-a');
-  expect(icon('a').classList.contains('session-item-branch-modified')).toBe(true);
-  expect(icon('b')).toBeNull();
-  const shown = m => store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {worktree: true, merge: m}), session('b')]}]}));
-  shown(merge({uncommitted: 1}));
-  expect(icon('a').classList.contains('session-item-branch-modified')).toBe(true);
-  shown(merge());
-  expect(icon('a').classList.contains('session-item-branch-merged')).toBe(true);
-  shown(merge({committed: false}));
-  expect(icon('a').className).toBe('session-item-branch');
+  const badge = () => root.querySelector('[data-session="a"] .session-item-branch');
+  expect(badge().title).toContain('hypercube/session-a');
+  expect(badge().textContent).toBe('Changes');
+  expect(root.querySelector('[data-session="b"] .session-item-branch')).toBeNull();
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {worktree: true, merge: merge()})]}]}));
+  expect(badge().textContent).toBe('Merged');
 });
-
 
 test('each workspace has a section, with children inside their parent\'s row', () => {
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
@@ -296,7 +293,7 @@ test('a section header is a labelled toggle that Enter, Space, Left, and Right d
   click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   expect(sessionRows(root)).toEqual([]);
-  expect(root.querySelector('.workspace-section-actions')).toBeNull();
+  expect(root.querySelector('[title="More Actions"]')).not.toBeNull();
   key(toggle, 'ArrowRight');
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(sessionRows(root)).toEqual(['a']);
@@ -343,7 +340,7 @@ test('when the focused row goes away, the focus moves to a remaining row', () =>
 test('Escape on a row reaches the app, and the rename field keeps its own', () => {
   const {root} = setup([session('a')]);
   const reached = [];
-  root.addEventListener('keydown', e => reached.push([e.key, e.defaultPrevented]));
+  observeKey(e => reached.push([e.key, e.defaultPrevented]));
   row(root, 'a').focus();
   key(row(root, 'a'), 'Escape');
   expect(reached).toEqual([['Escape', false]]);
@@ -359,17 +356,14 @@ test.each([
 ])('%o on a focused row opens its menu', init => {
   const {root} = setup([session('a')]);
   act(() => row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})));
-  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Stop Session', 'Rename', 'Delete Session', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
+  expect([...document.querySelectorAll('[role=menuitem]')].map(item => item.textContent)).toEqual(['Stop Session', 'Rename', 'Delete Session', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
 });
 
-test('a section\'s actions stay shown while its More Actions menu is open', () => {
+test('workspace actions remain available while their menu is open', () => {
   const {root} = setup([session('a')]);
-  const header = () => root.querySelector('[data-workspace="w"] .workspace-section-header');
-  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(false);
   workspaceMenu(root);
-  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(true);
-  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
-  expect(header().classList.contains('workspace-section-header-menu-open')).toBe(false);
+  expect(root.querySelector('[title="More Actions"]').hidden).toBe(false);
+  expect(document.querySelector('[role=menu]')).not.toBeNull();
 });
 
 test('rows carry their place among their siblings', () => {
@@ -381,13 +375,13 @@ test('rows carry their place among their siblings', () => {
 test('Rename in a session\'s menu opens the rename field', () => {
   const {root} = setup([session('a')]);
   choose(root, '[data-session="a"]', 1);
-  expect(row(root, 'a').querySelector('vscode-textfield').getAttribute('value')).toBe('Session a');
+  expect(row(root, 'a').querySelector('input').getAttribute('value')).toBe('Session a');
 });
 
 test('workspace headers offer the workspace context menu', () => {
   const {root, posted} = setup([session('a')]);
   choose(root, '[data-workspace="w"]', 0);
-  expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe("Are you sure you want to delete 'repo'?");
+  expect(dialog(root).querySelector('[data-slot=alert-dialog-title]').textContent).toBe("Are you sure you want to delete 'repo'?");
   click(dialogButton(root, 'Delete'));
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });

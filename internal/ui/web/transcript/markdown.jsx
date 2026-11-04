@@ -1,12 +1,11 @@
-// Markdown as Preact elements. Text from models reaches the page only as text
+// Markdown as React elements. Text from models reaches the page only as text
 // and as attributes of the elements built here, so it never becomes HTML: raw
 // HTML in Markdown shows as text, and links keep only http, https, and mailto
-// addresses. The chat style is for transcripts; the preview style follows VS
-// Code's Markdown preview and highlights its code blocks.
+// addresses. File previews also highlight their code blocks.
+import {Fragment} from 'react';
 import {lexer} from 'marked';
 import {CopyButton} from './copy-button.jsx';
 import {HighlightedCode} from '../files/highlighted-code.jsx';
-import './markdown.css';
 
 // safeHref returns the address of a link the page may follow, or null.
 export function safeHref(href) {
@@ -25,7 +24,7 @@ function Link({href, children}) {
 }
 
 function tokens(list = [], options) {
-  return list.map(token => element(token, options));
+  return list.map((token, i) => <Fragment key={i}>{element(token, options)}</Fragment>);
 }
 
 // joined puts a separator between rendered tokens without dropping empty ones.
@@ -46,12 +45,12 @@ function element(t, options) {
       return <Heading>{children()}</Heading>;
     }
     case 'code':
-      return options.flatten ? t.text : <div class="markdown-code-block"><pre>{options.preview ? <HighlightedCode text={t.text} lang={t.lang ?? ''} /> : <code>{t.text}</code>}</pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
+      return options.flatten ? t.text : <div className="markdown-code-block relative"><pre>{options.preview ? <HighlightedCode text={t.text} lang={t.lang ?? ''} /> : <code>{t.text}</code>}</pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children()}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {
       if (options.flatten) return joined(t.items.map(item => flatTokens(item.tokens)), '\n');
-      const items = t.items.map(item => <li>{tokens(item.tokens, options)}</li>);
+      const items = t.items.map((item, i) => <li key={i}>{tokens(item.tokens, options)}</li>);
       return t.ordered ? <ol start={t.start === '' || t.start === 1 ? undefined : t.start}>{items}</ol> : <ul>{items}</ul>;
     }
     case 'checkbox': return options.flatten ? null : <><input type="checkbox" checked={t.checked} disabled />{' '}</>;
@@ -60,11 +59,11 @@ function element(t, options) {
         const rows = [t.header, ...t.rows].map(cells => joined(cells.map(cell => tokens(cell.tokens, options)), ' '));
         return joined(rows, '\n');
       }
-      const cell = (Tag, c) => <Tag style={c.align ? {textAlign: c.align} : undefined}>{tokens(c.tokens, options)}</Tag>;
+      const cell = (Tag, c, i) => <Tag key={i} style={c.align ? {textAlign: c.align} : undefined}>{tokens(c.tokens, options)}</Tag>;
       return (
         <table>
-          <thead><tr>{t.header.map(c => cell('th', c))}</tr></thead>
-          <tbody>{t.rows.map(row => <tr>{row.map(c => cell('td', c))}</tr>)}</tbody>
+          <thead><tr>{t.header.map((c, i) => cell('th', c, i))}</tr></thead>
+          <tbody>{t.rows.map((row, i) => <tr key={i}>{row.map((c, i) => cell('td', c, i))}</tr>)}</tbody>
         </table>
       );
     }
@@ -87,17 +86,17 @@ function element(t, options) {
 
 // flatTokens renders block tokens as plain text, keeping inline marks.
 function flatTokens(list = []) {
-  return joined(list.map(token => element(token, {flatten: true})).filter(node => node != null), '\n');
+  return joined(list.map(token => element(token, {flatten: true})).filter(node => node != null).map((node, i) => <Fragment key={i}>{node}</Fragment>), '\n');
 }
 
 // style is 'chat' or 'preview'.
 export function Markdown({text, style, imageSource}) {
-  return <div class={`markdown markdown-${style}`}>{tokens(lexer(text), {preview: style === 'preview', imageSource})}</div>;
+  return <div className={`markdown markdown-${style} prose dark:prose-invert max-w-none break-words`}>{tokens(lexer(text), {preview: style === 'preview', imageSource})}</div>;
 }
 
 // MarkdownText is Markdown as inline text for a compact preview: headings,
 // lists, quotes, code blocks, and images flatten to their text, while inline
 // marks, inline code, and links remain.
 export function MarkdownText({text}) {
-  return <span class="markdown markdown-inline">{flatTokens(lexer(text))}</span>;
+  return <span className="markdown markdown-inline">{flatTokens(lexer(text))}</span>;
 }

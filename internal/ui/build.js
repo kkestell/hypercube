@@ -1,11 +1,11 @@
 // Builds the browser view into the directory given as the only argument: the
-// bundles of web/, the page, the theme stylesheet, and the license of every
+// bundles of web/, the page, the Tailwind stylesheet, and the license of every
 // package the bundle includes. Its output depends only on the sources and the
 // locked dependencies, so make check can compare it with the committed dist/.
 // Run `bun install --frozen-lockfile` before it: the bundler resolves packages
 // from the node_modules that exists when this script starts.
-import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
-import {basename, dirname, join, resolve} from 'node:path';
+import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync} from 'node:fs';
+import {join, resolve} from 'node:path';
 
 const root = import.meta.dir;
 const outdir = process.argv[2] && resolve(process.argv[2]);
@@ -28,37 +28,43 @@ mkdirSync(outdir, {recursive: true});
 // names its inputs relative to it.
 process.chdir(root);
 const inputs = new Set();
-// A CSS entry in the split JavaScript build makes Bun emit an empty JS chunk.
-for (const [entrypoint, splitting] of [['web/main.jsx', true], ['web/codicon.css', false]]) {
-  const result = await Bun.build({
-    entrypoints: [entrypoint],
-    outdir,
-    target: 'browser',
-    minify: true,
-    splitting,
-    sourcemap: 'none',
-    metafile: true,
-    naming: {entry: '[name].[ext]', chunk: '[name]-[hash].[ext]', asset: '[name]-[hash].[ext]'},
-  });
-  if (!result.success) {
-    for (const log of result.logs) console.error(log);
-    process.exit(1);
-  }
-  for (const input of Object.keys(result.metafile.inputs)) inputs.add(input);
+const result = await Bun.build({
+  entrypoints: ['web/main.jsx'],
+  outdir,
+  target: 'browser',
+  minify: true,
+  define: {'process.env.NODE_ENV': '"production"'},
+  jsx: {development: false},
+  splitting: true,
+  sourcemap: 'none',
+  metafile: true,
+  naming: {entry: '[name].[ext]', chunk: '[name]-[hash].[ext]', asset: '[name]-[hash].[ext]'},
+});
+if (!result.success) {
+  for (const log of result.logs) console.error(log);
+  process.exit(1);
 }
+for (const input of Object.keys(result.metafile.inputs)) inputs.add(input);
 
-const {theme} = await import('@vscode-elements/webview-playground/dist/themes/dark-v2.js');
-writeFileSync(join(outdir, 'theme.css'), `:root {\n${theme.map(([name, value]) => `  ${name}: ${value};\n`).join('')}}\n`);
+const css = Bun.spawnSync([process.execPath, 'node_modules/@tailwindcss/cli/dist/index.mjs',
+  '-i', 'web/base.css', '-o', join(outdir, 'styles.css'), '--minify'], {stdout: 'inherit', stderr: 'inherit'});
+if (css.exitCode !== 0) process.exit(css.exitCode);
 for (const file of ['index.html', 'favicon.svg']) cpSync(join('web', file), join(outdir, file));
 
-// Every bundled package ships its license, and so does the vendored Seti font.
-const licenses = new Map([['@vscode-elements/webview-playground', 'node_modules/@vscode-elements/webview-playground']]);
+// Every bundled package ships its license, including the upstream UI sources.
+const licenses = new Map([
+  ['shadcn-ui', 'web/components/ui'],
+  ['tailwindcss', 'node_modules/tailwindcss'],
+  ['@tailwindcss/typography', 'node_modules/@tailwindcss/typography'],
+  ['tw-animate-css', 'node_modules/tw-animate-css'],
+]);
 for (const input of inputs) {
   const match = input.match(/^(.*node_modules\/)((?:@[^/]+\/)?[^/]+)/);
   if (match) licenses.set(match[2], match[1] + match[2]);
-  else if (input.startsWith('web/') && existsSync(join(dirname(input), 'LICENSE'))) licenses.set(basename(dirname(input)), dirname(input));
 }
-for (const [name, dir] of [...licenses].sort(([a], [b]) => a.localeCompare(b))) {
+for (const [name, packageDir] of [...licenses].sort(([a], [b]) => a.localeCompare(b))) {
+  // A few Radix dependencies omit their license in the npm archive.
+  const dir = existsSync(join('licenses', name)) ? join('licenses', name) : packageDir;
   const files = readdirSync(dir).filter(file => /^licen[cs]e/i.test(file));
   if (!files.length) {
     console.error(`${dir} has no license file`);

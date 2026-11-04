@@ -1,5 +1,6 @@
-import {useEffect, useRef, useState} from 'preact/hooks';
-import './copy-button.css';
+import {useEffect, useRef, useState} from 'react';
+import {Button} from '../components/ui/button';
+import {Icon} from '../shared/icon.jsx';
 
 export function CopyButton({text, label}) {
   const [copied, setCopied] = useState(false);
@@ -11,5 +12,6 @@ export function CopyButton({text, label}) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);
   };
-  return <button class="copy-button" type="button" aria-label={copied ? 'Copied' : label} title={copied ? 'Copied' : label} onClick={copy}><vscode-icon name={copied ? 'check' : 'copy'} /></button>;
+  return <Button className="copy-button" variant="ghost" size="icon" type="button" aria-label={copied ? 'Copied' : label}
+    title={copied ? 'Copied' : label} onClick={copy}><Icon name={copied ? 'check' : 'copy'} /></Button>;
 }

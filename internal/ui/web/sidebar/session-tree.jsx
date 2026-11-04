@@ -1,9 +1,9 @@
-// A workspace's sessions as a VS Code tree, with each parent's visible
+// A workspace's sessions as a keyboard-navigable tree, with each parent's visible
 // children one level in. One row is tabbable: the focused row, else the
 // selected one, else the first. The arrow keys, Home, and End move through
-// and open rows as in VS Code; Enter and Space choose the row; other keys,
+// and open rows; Enter and Space choose the row; other keys,
 // such as Escape, pass on to the app.
-import {useLayoutEffect, useRef, useState} from 'preact/hooks';
+import {useLayoutEffect, useRef, useState} from 'react';
 import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
 import {SessionItem} from './session-item.jsx';
@@ -55,7 +55,7 @@ export function SessionTree({label, sessions, renaming, onRenaming}) {
   };
 
   return (
-    <div ref={ref} class="session-tree" role="tree" aria-label={label} onKeyDown={keyDown}>
+    <div ref={ref} className="session-tree" role="tree" aria-label={label} onKeyDown={keyDown}>
       {rows.map(row => (
         <SessionItem
           key={row.session.id} {...row} tabbable={row.session.id === active}

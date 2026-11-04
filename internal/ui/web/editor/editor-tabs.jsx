@@ -1,103 +1,42 @@
-// A pane's tab strip, as VS Code's: click or the arrow keys, Home, and End
-// select a tab; a file's or the browser's close button closes it, and the
-// agent's tab has none;
-// a tab drags to another strip or a pane's edge; double-clicking a preview tab
-// keeps it open. A preview tab's label is italic and a deleted file's is
-// struck through.
-import {useRef} from 'preact/hooks';
+// Stock tabs with a separate close action and the existing drag/drop behavior.
+import {useRef} from 'react';
+import {flushSync} from 'react-dom';
+import {Button} from '../components/ui/button';
+import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {setSource} from '../files/files.js';
 import {FileIcon} from '../files/file-icon.jsx';
+import {Icon} from '../shared/icon.jsx';
 import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
-import '../shared/tabs.css';
-import './editor-tabs.css';
-
-const keyMoves = {
-  ArrowRight: (index, count) => (index + 1) % count,
-  ArrowLeft: (index, count) => (index + count - 1) % count,
-  Home: () => 0,
-  End: (index, count) => count - 1,
-};
 
 export function EditorTabs({pane, entries}) {
   const [, store] = useStore();
   const strip = useRef(null);
-  const active = entries.find(entry => entry.id === pane.active);
+  const active = entries.find(entry => entry.id === pane?.active);
   const modeLabel = active?.source ? 'Show Preview' : 'Show Source';
-
-  // The store redraws the page after a handler returns, so the focus moves
-  // once the new tabs are drawn. A closed pane's strip is gone; the focus
-  // goes to another pane's active tab, and the agent's pane never closes.
-  const focusActiveTab = () => {
-    const area = strip.current.closest('.editor-area');
-    requestAnimationFrame(() => (strip.current ?? area).querySelector('.editor-tabs-tab-active > .editor-tabs-select').focus());
-  };
-
   const close = id => {
-    focusActiveTab();
-    store.update(s => closeTab(s, id));
+    const area = strip.current.closest('.editor-area');
+    flushSync(() => store.update(s => closeTab(s, id)));
+    (strip.current ?? area)?.querySelector('[role="tab"][data-state="active"]')?.focus();
   };
-
-  const key = e => {
-    const move = keyMoves[e.key];
-    if (!move) return;
-    e.preventDefault();
-    const next = pane.tabs[move(pane.tabs.indexOf(pane.active), pane.tabs.length)];
-    focusActiveTab();
-    store.update(s => selectTab(s, pane.id, next));
-  };
-
-  return (
-    <div class="editor-tabs-bar tabs-bar">
-      <div ref={strip} class="editor-tabs tabs-strip" role="tablist" aria-label="Open tabs" onKeyDown={key}>
-        {entries.map(entry => {
-          const active = entry.id === pane.active;
-          const classes = ['editor-tabs-tab', 'tabs-tab', active && 'editor-tabs-tab-active', active && 'tabs-tab-active', entry.preview && 'editor-tabs-tab-preview', entry.deleted && 'editor-tabs-tab-deleted'];
-          return (
-            <div
-              key={entry.id}
-              class={classes.filter(Boolean).join(' ')}
-              data-tab={entry.id}
-              draggable
-              onDragStart={e => {
-                e.dataTransfer.setData('text/plain', entry.id);
-                e.dataTransfer.effectAllowed = 'move';
-                store.update(s => setDragging(s, entry.id));
-              }}
-              onDragEnd={() => store.update(s => setDragging(s, null))}
-            >
-              <button
-                type="button"
-                role="tab"
-                class="editor-tabs-select tabs-select"
-                aria-selected={active}
-                tabIndex={active ? 0 : -1}
-                title={entry.title}
-                onClick={() => store.update(s => selectTab(s, pane.id, entry.id))}
-                onDblClick={() => store.update(s => keepOpen(s, entry.id))}
-              >
-                {entry.agent ? <vscode-icon name="comment-discussion" /> : entry.browser ? <vscode-icon name="globe" /> : <FileIcon name={entry.name} />}
-                <span class="editor-tabs-label">{entry.label}</span>
-              </button>
-              {!entry.agent && (
-                <button type="button" class="editor-tabs-close" title={`Close ${entry.label}`} aria-label={`Close ${entry.label}`} onClick={() => close(entry.id)}>
-                  <vscode-icon name="close" />
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {typeof active?.source === 'boolean' && (
-        <vscode-toolbar-container class="editor-tabs-actions tabs-actions">
-          <vscode-toolbar-button
-            icon={active.source ? 'open-preview' : 'go-to-file'}
-            label={modeLabel}
-            title={modeLabel}
-            onClick={() => store.update(state => setSource(state, active.path, !active.source))}
-          />
-        </vscode-toolbar-container>
-      )}
-    </div>
-  );
+  return <div className="editor-tabs-bar flex shrink-0 items-center justify-between gap-2 overflow-x-auto border-b p-2">
+    <Tabs value={pane?.active ?? ''} onValueChange={id => store.update(s => selectTab(s, pane.id, id))}>
+      <TabsList ref={strip} className="editor-tabs" aria-label="Open tabs">
+        {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex items-center"
+          onDragStart={e => {
+            e.dataTransfer.setData('text/plain', entry.id);
+            e.dataTransfer.effectAllowed = 'move';
+            store.update(s => setDragging(s, entry.id));
+          }} onDragEnd={() => store.update(s => setDragging(s, null))}>
+          <TabsTrigger value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
+            {entry.agent ? <Icon name="comment-discussion" /> : entry.browser ? <Icon name="globe" /> : <FileIcon name={entry.name} />}
+            <span className={`editor-tabs-label ${entry.preview ? 'italic' : ''} ${entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
+          </TabsTrigger>
+          {!entry.agent && <Button className="editor-tabs-close" variant="ghost" size="icon" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>}
+        </div>)}
+      </TabsList>
+    </Tabs>
+    {typeof active?.source === 'boolean' && <Button className="editor-tabs-actions" variant="ghost" size="icon" aria-label={modeLabel} title={modeLabel}
+      onClick={() => store.update(s => setSource(s, active.path, !active.source))}><Icon name={active.source ? 'open-preview' : 'go-to-file'} /></Button>}
+  </div>;
 }

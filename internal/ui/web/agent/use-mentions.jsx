@@ -1,4 +1,5 @@
-import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'preact/hooks';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {Command, CommandItem, CommandList} from '../components/ui/command';
 import {mentionFiles} from '../api.js';
 import {unsentKey} from './drafts.js';
 import {insertMention, mentionAt, mentionChoices, prepareFiles} from './mention.js';
@@ -11,7 +12,8 @@ export function useMentions(field, text, replace, session, workspace) {
   const [selected, setSelected] = useState(0);
   const [files, setFiles] = useState([]);
   const [error, setError] = useState('');
-  const caret = useRef(null), activeOption = useRef(null);
+  const caret = useRef(null);
+  const [activeOption, setActiveOption] = useState(null), [list, setList] = useState(null);
   const candidate = selection && mentionAt(selection.text, selection.start, selection.end);
   const token = candidate && `${candidate.start}:${selection.text}`;
   const mention = selection?.text === text && token !== dismissed ? candidate : null;
@@ -37,7 +39,7 @@ export function useMentions(field, text, replace, session, workspace) {
     }
   });
   useLayoutEffect(() => { setSelected(0); }, [key]);
-  useEffect(() => { activeOption.current?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active]]);
+  useEffect(() => { activeOption?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active], activeOption]);
 
   const sync = target => {
     const next = {text: target.value, start: target.selectionStart, end: target.selectionEnd};
@@ -75,15 +77,21 @@ export function useMentions(field, text, replace, session, workspace) {
     if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(choices[active]); return true; }
     return false;
   };
-  return {choices, active, activeOption, error: open ? error : '', sync, close, dismiss, blur, choose, keydown};
+  return {
+    choices, active, optionRef: setActiveOption, listRef: setList,
+    optionId: activeOption?.id, listId: list?.id, error: open ? error : '',
+    sync, close, dismiss, blur, choose, keydown,
+  };
 }
 
 export function MentionList({mentions}) {
-  const {choices, active, activeOption, error, choose} = mentions;
+  const {choices, active, optionRef, listRef, error, choose} = mentions;
   if (!choices.length && !error) return null;
-  return <div class="composer-mentions" role="listbox" id="composer-mentions" aria-label="Files">
-    {error && <div role="option" aria-disabled="true">{error}</div>}
-    {choices.map((path, i) => <div role="option" ref={i === active ? activeOption : undefined} id={'composer-file-' + i} aria-selected={i === active}
-      onMouseDown={e => { e.preventDefault(); choose(path); }}>{path}</div>)}
-  </div>;
+  return <Command shouldFilter={false} value={choices[active] ?? ''} className="composer-mentions">
+    <CommandList ref={listRef} aria-label="Files">
+      {error && <CommandItem disabled>{error}</CommandItem>}
+      {choices.map((path, i) => <CommandItem key={path} value={path} ref={i === active ? optionRef : undefined}
+        onMouseDown={e => e.preventDefault()} onSelect={() => choose(path)}>{path}</CommandItem>)}
+    </CommandList>
+  </Command>;
 }

@@ -1,8 +1,9 @@
+import {Card} from '../components/ui/card';
 // A pane of the tabbed area: its tab strip and its active tab's view, the
 // agent, browser, file, or diff. A dragged tab drops on the strip, before the
 // tab under the pointer, or on the
 // body, where an edge within a quarter of the pane splits it.
-import {useRef, useState} from 'preact/hooks';
+import {useRef, useState} from 'react';
 import {AgentPane} from '../agent/agent-pane.jsx';
 import {BrowserView} from '../browser/browser-view.jsx';
 import {shownSession} from '../sessions/selection.js';
@@ -11,7 +12,7 @@ import {FileView} from '../files/file-view.jsx';
 import {useStore} from '../store.js';
 import {moveTab, tabEntry} from './editor.js';
 import {EditorTabs} from './editor-tabs.jsx';
-import './editor-pane.css';
+
 
 function edgeAt(e, body) {
   if (!body.contains(e.target)) return 'center';
@@ -49,9 +50,12 @@ export function EditorPane({pane}) {
   };
 
   return (
-    <div class="editor-pane" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+    <div className="editor-pane relative flex h-full min-h-0 min-w-0 flex-col" data-drop={drop ?? undefined} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+      {drop && <Card aria-hidden="true" className={`pointer-events-none absolute z-10 opacity-50 ${
+        drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
+        drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} />
-      <div ref={body} class="editor-pane-body">
+      <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
         {active.agent ? <AgentPane key={shown.id} session={shown} />
           : active.browser ? <BrowserView key={shown.id} session={shown.id} />
           : active.diff ? <DiffView key={active.id} id={active.id} path={active.path} />

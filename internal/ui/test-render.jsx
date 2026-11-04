@@ -1,13 +1,29 @@
-// Renders a component for a test with a store, as App provides it. Each
-// store update redraws the page before update returns.
-import {render} from 'preact';
-import {useEffect, useState} from 'preact/hooks';
-import {act} from 'preact/test-utils';
+// React roots and store updates stay synchronous for behavior tests.
+import {act, useLayoutEffect, useState} from 'react';
+import {createRoot} from 'react-dom/client';
+import {flushSync} from 'react-dom';
 import {StoreContext} from './web/store.js';
+
+const roots = new Map();
+
+export function render(element, container) {
+  if (element === null) {
+    const root = roots.get(container);
+    if (root) act(() => root.unmount());
+    roots.delete(container);
+    return;
+  }
+  let root = roots.get(container);
+  if (!root) {
+    root = createRoot(container);
+    roots.set(container, root);
+  }
+  act(() => flushSync(() => root.render(element)));
+}
 
 function Provider({store, children}) {
   const [state, setState] = useState(store.get());
-  useEffect(() => store.subscribe(next => act(() => setState(next))), []);
+  useLayoutEffect(() => store.subscribe(next => act(() => setState(next))), [store]);
   return <StoreContext.Provider value={[state, store]}>{children}</StoreContext.Provider>;
 }
 
@@ -19,6 +35,22 @@ export function mount(store, element) {
 }
 
 export function unmountAll() {
-  for (const root of document.body.children) render(null, root);
+  for (const [container] of roots) render(null, container);
   document.body.replaceChildren();
+}
+
+// React tracks assignments to value; typing changes the underlying DOM value.
+export function setValue(field, value) {
+  const prototype = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  Object.getOwnPropertyDescriptor(prototype, 'value').set.call(field, value);
+}
+
+export function clickControl(element) {
+  act(() => {
+    element.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true, cancelable: true, button: 0, pointerType: 'mouse', ctrlKey: false}));
+    element.dispatchEvent(new MouseEvent('mousedown', {bubbles: true, cancelable: true, button: 0, ctrlKey: false}));
+    element.dispatchEvent(new PointerEvent('pointerup', {bubbles: true, cancelable: true, button: 0, pointerType: 'mouse'}));
+    element.dispatchEvent(new MouseEvent('mouseup', {bubbles: true, button: 0}));
+    element.click();
+  });
 }

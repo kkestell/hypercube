@@ -1,6 +1,6 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {render} from 'preact';
-import {act} from 'preact/test-utils';
+import {render} from '../../test-render.jsx';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {setSource} from './files.js';
 import {emptySession} from '../sessions/selection.js';
@@ -64,9 +64,8 @@ test('source highlights reveal once after text arrives, across refreshes and rem
     act(() => text('# Title\nline\nlast'));
     expect(root.querySelector('.markdown-preview')).toBeNull();
     const highlights = root.querySelectorAll('.file-view-highlight');
-    expect(highlights).toHaveLength(2);
-    expect(highlights[0].style.getPropertyValue('--start')).toBe('1');
-    expect(highlights[0].style.getPropertyValue('--count')).toBe('2');
+    expect(highlights).toHaveLength(3);
+    expect([...highlights].map(line => line.textContent)).toEqual(['# Title', 'line', 'last']);
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll.mock.contexts[0] === highlights[0]).toBe(true);
     expect(scroll.mock.calls[0][0]).toEqual({block: 'center'});

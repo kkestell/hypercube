@@ -4,12 +4,12 @@ import {toggle} from './workbench.js';
 
 // The tree renders only rows exposed by its workspace and parent sections.
 export function shortcut(e, store, focusComposer) {
-  if (e.defaultPrevented || e.repeat || e.isComposing || e.target.closest('.terminal-panel, .context-menu, dialog')) return;
+  if (e.defaultPrevented || e.repeat || (e.isComposing || e.nativeEvent?.isComposing) || e.target.closest('.terminal-panel, [role=menu], [role=dialog], [role=alertdialog]')) return;
   const state = store.get();
   if (state.confirmation) return;
   const key = e.altKey && e.code === 'KeyB' ? 'b' : e.key.toLowerCase();
   const command = e.metaKey && !e.ctrlKey && !e.shiftKey;
-  const field = e.target.closest('input, textarea, [contenteditable="true"], vscode-textfield, vscode-textarea');
+  const field = e.target.closest('input, textarea, [contenteditable="true"]');
   let action;
   if (command && !e.altKey && key === 'n') action = () => store.update(s => openUnsent(s));
   else if (command && !e.altKey && key === 'l') action = focusComposer;

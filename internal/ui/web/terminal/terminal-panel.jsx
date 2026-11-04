@@ -1,13 +1,12 @@
 // The panel's shell for the attached session. The server starts it when the
 // panel first shows and keeps it running until it exits or the session stops,
 // so hiding the panel leaves it running. The server replays the shell's recent
-// output on every connection, so a reconnect starts the terminal over. As in
-// VS Code, the panel closes when its shell exits or cannot connect.
-import {useEffect, useRef} from 'preact/hooks';
+// output on every connection, so a reconnect starts the terminal over. The
+// panel closes when its shell exits or cannot connect.
+import {useEffect, useRef} from 'react';
 import {closePanel} from '../app/workbench.js';
 import {useStore} from '../store.js';
 import {createTerminal} from './xterm.js';
-import './terminal-panel.css';
 
 // openShell connects a terminal in box to the session's shell, calling ended
 // when the shell exits or cannot connect.
@@ -82,5 +81,5 @@ export function TerminalPanel() {
 
   useEffect(() => () => shell.current?.close(), []);
 
-  return <div ref={box} class="terminal-panel" />;
+  return <div ref={box} className="terminal-panel h-full min-h-0 overflow-hidden p-2" />;
 }

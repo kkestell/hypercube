@@ -1,10 +1,11 @@
 // A unified whole-file diff with separately highlighted old and new text.
-import {useEffect, useMemo, useRef, useState} from 'preact/hooks';
+import {Table, TableBody, TableCell, TableRow} from '../components/ui/table';
+import {Badge} from '../components/ui/badge';
+import {useEffect, useMemo, useRef, useState} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {language} from '../files/language.js';
 import {useStore} from '../store.js';
 import {diffNote, diffRows} from './diff.js';
-import './diff-view.css';
 
 function DiffLines({text, path}) {
   const rows = useMemo(() => diffRows(text), [text]);
@@ -21,18 +22,17 @@ function DiffLines({text, path}) {
     });
     return () => { current = false; };
   }, [rows, path]);
-  if (!rows.length) return <div class="diff-view-message">{diffNote(text)}</div>;
+  if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
   const html = highlighted?.text === text ? highlighted : null;
-  const largest = rows.reduce((n, row) => Math.max(n, row.old ?? 0, row.new ?? 0), 0);
-  return <div class="diff-view-lines" style={{'--digits': Math.max(4, String(largest).length)}}>{rows.map((row, i) => {
+  return <Table className="diff-view-lines font-mono text-xs"><TableBody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
     return (
-      <div key={i} class={`diff-view-line diff-view-${row.kind}`}>
-        <span>{row.old}</span><span>{row.new}</span><span>{row.kind === 'added' ? '+' : row.kind === 'removed' ? '-' : ''}</span>
-        {line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}
-      </div>
+      <TableRow key={i} className={`diff-view-line diff-view-${row.kind}`}>
+        <TableCell className="w-12 text-right text-muted-foreground">{row.old}</TableCell><TableCell className="w-12 text-right text-muted-foreground">{row.new}</TableCell><TableCell className="w-8">{row.kind !== 'context' && <Badge variant={row.kind === 'removed' ? 'destructive' : 'secondary'}>{row.kind === 'added' ? '+' : '−'}</Badge>}</TableCell>
+        <TableCell className="whitespace-pre">{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</TableCell>
+      </TableRow>
     );
-  })}</div>;
+  })}</TableBody></Table>;
 }
 
 export function DiffView({id, path}) {
@@ -41,8 +41,8 @@ export function DiffView({id, path}) {
   useScrollMemory(view, id);
   const diff = state.session.diffs[path];
   return (
-    <div ref={view} class="diff-view">
-      {diff && (diff.message !== null ? <div class="diff-view-message">{diff.message}</div>
+    <div ref={view} className="diff-view min-h-0 flex-1 overflow-auto">
+      {diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
         : diff.text !== null ? <DiffLines text={diff.text} path={path} /> : null)}
     </div>
   );

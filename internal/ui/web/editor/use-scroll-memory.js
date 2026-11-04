@@ -3,7 +3,7 @@
 // records the scroll as the user scrolls, and saves it to the store when it
 // unmounts. It returns the record, {top, left, following}, which a transcript
 // also uses to follow its end.
-import {useLayoutEffect, useRef} from 'preact/hooks';
+import {useLayoutEffect, useRef} from 'react';
 import {useStore} from '../store.js';
 import {rememberScroll} from './editor.js';
 

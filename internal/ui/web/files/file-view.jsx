@@ -1,33 +1,32 @@
-// An open file, as VS Code's editor shows it: a centered message for a file it
-// does not display, the Markdown preview, or highlighted source with line
-// numbers. A deleted file keeps its contents, and a refresh keeps the scroll.
-import {useLayoutEffect, useRef} from 'preact/hooks';
+// Source line selection uses the same theme tokens as the standard controls.
+import {Fragment, useLayoutEffect, useRef, useState} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
 import {Markdown} from '../transcript/markdown.jsx';
-import {HighlightedCode} from './highlighted-code.jsx';
 import {revealed} from './files.js';
 import {hasPreview, language} from './language.js';
 import {markdownImageURL} from './markdown-image.js';
-import './file-view.css';
 
-function Contents({file, lang, session, path}) {
-  if (file.message !== null) return <div class="file-view-message">{file.message}</div>;
-  if (file.text === null) return null;
-  if (hasPreview(path) && !file.source) return <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, session, path)} />;
-  const lines = file.text.split('\n').length;
-  return (
-    <>
-      {(file.lines ?? []).map(({start, end}) => <div class="file-view-highlight" style={{'--start': start, '--count': end - start + 1}} />)}
-      <div class="file-view-gutter" style={{'--digits': Math.max(5, String(lines).length)}}>
-        {Array.from({length: lines}, (_, i) => i + 1).join('\n')}
-      </div>
-      <pre class="file-view-code"><HighlightedCode text={file.text} lang={lang} /></pre>
-    </>
-  );
+function Source({file, lang}) {
+  const [highlighted, setHighlighted] = useState(null);
+  useLayoutEffect(() => {
+    let current = true;
+    import('./highlight.js').then(({highlight}) => { if (current) setHighlighted({text: file.text, lines: highlight(file.text, lang)}); });
+    return () => { current = false; };
+  }, [file.text, lang]);
+  const html = highlighted?.text === file.text ? highlighted.lines : null;
+  return <div className="file-view-code grid min-w-full w-max grid-cols-[auto_1fr] font-mono text-sm leading-6">
+    {file.text.split('\n').map((line, i) => {
+      const selected = file.lines?.some(({start, end}) => i + 1 >= start && i + 1 <= end);
+      return <Fragment key={i}>
+        <span aria-hidden="true" className={`file-view-gutter sticky left-0 select-none px-4 text-right text-muted-foreground ${selected ? 'bg-accent' : 'bg-background'}`}>{i + 1}</span>
+        <code className={`whitespace-pre pr-4 ${selected ? 'file-view-highlight bg-accent' : ''}`}
+          {...(html ? {dangerouslySetInnerHTML: {__html: html[i] || ' '}} : {children: line || ' '})} />
+      </Fragment>;
+    })}
+  </div>;
 }
 
-// id is the file's tab, under which its scroll is kept.
 export function FileView({id, path}) {
   const [state, store] = useStore();
   const view = useRef(null);
@@ -41,9 +40,10 @@ export function FileView({id, path}) {
     highlight.scrollIntoView({block: 'center'});
     store.update(state => revealed(state, sessionId, path));
   }, [file?.text, file?.reveal, file?.source]);
-  return (
-    <div ref={view} class="file-view">
-      {file && <Contents file={file} lang={language(path.slice(path.lastIndexOf('/') + 1))} session={state.session.id} path={path} />}
-    </div>
-  );
+  return <div ref={view} className="file-view min-h-0 flex-1 overflow-auto">
+    {file && (file.message != null ? <div className="file-view-message p-6 text-center text-muted-foreground">{file.message}</div>
+      : file.text == null ? null
+      : hasPreview(path) && !file.source ? <div className="p-6"><Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} /></div>
+      : <Source file={file} lang={language(path.slice(path.lastIndexOf('/') + 1))} />)}
+  </div>;
 }

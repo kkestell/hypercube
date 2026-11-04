@@ -40,7 +40,7 @@ browser shows each agent's transcript.
 - Go tests cover observable behavior through public entry points. Use tables
   for repeated cases, `t.Helper`, `t.TempDir`, and `t.Cleanup`; wait on conditions
   and pass under `-race`.
-- Preact components are small functions of props and the store. Derive what
+- React components are small functions of props and the store. Derive what
   can be computed. State has one owner and changes through pure functions.
   No mutable module state outside the store except component-owned handles;
   no prop drilling for values the store provides.
@@ -48,9 +48,9 @@ browser shows each agent's transcript.
   Prefer platform APIs: native dialogs, AbortController, URL, fetch, and CSS
   container queries where they fit. No polyfills, manual DOM patching, or
   timers to wait for rendering. HTML holds markup only.
-- Use vscode-elements controls and VS Code appearance and keyboard behavior.
-  Colors use only `--vscode-*` variables; define shared sizes once, avoid
-  repeated magic numbers, and prefix classes with their component's name.
+- Use stock shadcn components and theme styles, Lucide icons, and Tailwind
+  utilities for layout. Keep component styling in the upstream shadcn source;
+  do not add custom component CSS or theme overrides.
 - Provide semantic elements, labels, correct focus order and returned focus.
   Add accessibility handling where native semantics fall short. Each module
   owns one concern, named for its behavior; remove duplication and split files

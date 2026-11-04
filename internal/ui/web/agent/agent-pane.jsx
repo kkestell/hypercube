@@ -1,13 +1,13 @@
 // One session: its transcript above its composer, or the tesseract in place of
 // the transcript before its first prompt. Images dropped anywhere on the
 // pane attach to its draft; tab drags carry no files and pass through.
-import {useState} from 'preact/hooks';
+import {useState} from 'react';
 import {useStore} from '../store.js';
 import {Tesseract} from '../tesseract/tesseract.jsx';
 import {Transcript} from '../transcript/transcript.jsx';
 import {Composer} from './composer.jsx';
 import {attachImages, unsentKey} from './drafts.js';
-import './agent-pane.css';
+
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
 
@@ -32,9 +32,9 @@ export function AgentPane({session}) {
     attachImages(store, session.id, [...e.dataTransfer.files]);
   };
 
-  const classes = ['agent-pane', dropping && 'agent-pane-dropping'].filter(Boolean).join(' ');
+  const classes = `agent-pane flex h-full min-h-0 flex-col ${dropping ? 'ring-2 ring-ring ring-inset' : ''}`;
   return (
-    <article class={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
+    <article className={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
       {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} />}
       <Composer session={session} />
     </article>

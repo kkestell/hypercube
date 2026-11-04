@@ -2,7 +2,7 @@
 // browser above the whole page, so it hides while hidden is set, while an
 // overlay covers the body, and once the body unmounts. Only changes reach the
 // window.
-import {useLayoutEffect, useRef} from 'preact/hooks';
+import {useLayoutEffect, useRef} from 'react';
 import {covered} from '../shared/overlays.js';
 import {useStore} from '../store.js';
 import {post} from './browser.js';

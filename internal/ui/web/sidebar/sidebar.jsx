@@ -1,14 +1,15 @@
-// The Sessions view, laid out as VS Code's Explorer: a collapsible section per
+// The Sessions view: a collapsible section per
 // workspace, each holding a tree of its sessions. The list freezes during
 // renaming so the field keeps its place and focus.
-import {useCallback, useRef, useState} from 'preact/hooks';
+import {useCallback, useRef, useState} from 'react';
 import {addWorkspace} from '../sessions/session-actions.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
 import {WorkspaceSection} from './workspace-section.jsx';
-import './sidebar.css';
+import {Button} from '../components/ui/button';
+import {Icon} from '../shared/icon.jsx';
 
 const below = button => {
   const rect = button.getBoundingClientRect();
@@ -39,7 +40,7 @@ export function Sidebar() {
   };
 
   // On a focused row, F2 renames its session, and Shift+F10 or the menu key
-  // opens its menu below the row, as in VS Code's lists.
+  // opens its menu below the row.
   const keyDown = e => {
     const row = e.target.closest('[data-session]');
     const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
@@ -50,11 +51,11 @@ export function Sidebar() {
   };
 
   return (
-    <div class="sidebar">
+    <div className="sidebar flex h-full min-h-0 flex-col">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
-          <vscode-toolbar-button icon="new-folder" label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)} />
+          <Button variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
-        <div class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>
+        <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>
           {workspaces.map(workspace => (
             <WorkspaceSection
               key={workspace.id} workspace={workspace}

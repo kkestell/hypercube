@@ -12,7 +12,7 @@ export function startTitleBar(store) {
 }
 
 export function titleBarMouseDown(e) {
-  if (!windowHandler() || e.button !== 0 || e.target.closest('vscode-toolbar-button')) return;
+  if (!windowHandler() || e.button !== 0 || e.target.closest('button')) return;
   e.preventDefault();
   windowHandler().postMessage({type: e.detail === 2 ? 'zoom' : 'drag'});
 }

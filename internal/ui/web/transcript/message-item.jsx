@@ -1,3 +1,5 @@
+import {Card, CardContent} from '../components/ui/card';
+import {Icon} from '../shared/icon.jsx';
 // User prompts are bubbles. Messages between sessions show their sender or
 // recipient: a disclosure with a first-line preview until expanded, or, inline
 // within a turn's activity, the whole message.
@@ -6,19 +8,18 @@ import {sessionOf} from '../sessions/selection.js';
 import {CopyButton} from './copy-button.jsx';
 import {Disclosure} from './disclosure.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
-import './message-item.css';
 
 export function MessageItem({item, expanded, setOpen, inline}) {
   const [state] = useStore();
   const outgoing = item.kind === 'tool';
   if (!outgoing && !item.from) return (
-    <div class="message-item message-item-user">
-      <div class="message-item-user-content">
-        <div class="message-item-bubble">
-          <div class="message-item-text">{item.text ?? ''}</div>
+    <div className="message-item message-item-user flex justify-end">
+      <div className="message-item-user-content max-w-full space-y-1">
+        <Card className="message-item-bubble"><CardContent>
+          <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
-        </div>
-        <div class="copy-button-actions"><CopyButton text={item.text ?? ''} label="Copy message" /></div>
+        </CardContent></Card>
+        <div className="copy-button-actions flex justify-end"><CopyButton text={item.text ?? ''} label="Copy message" /></div>
       </div>
     </div>
   );
@@ -26,25 +27,25 @@ export function MessageItem({item, expanded, setOpen, inline}) {
   const input = item.input && typeof item.input === 'object' ? item.input : {};
   const heading = <>
     {outgoing ? 'To ' + (input.to ?? '') : 'From ' + (sessionOf(state, item.from)?.session.title || item.from)}
-    {outgoing && !item.done && <vscode-icon name="loading" spin role="img" title="Running" />}
-    {outgoing && item.failed && <vscode-icon name="error" class="message-item-failure" role="img" title="Failed" />}
+    {outgoing && !item.done && <Icon name="loading" spin role="img" title="Running" />}
+    {outgoing && item.failed && <Icon name="error" className="message-item-failure text-destructive" role="img" title="Failed" />}
   </>;
   const text = outgoing ? (typeof input.text === 'string' ? input.text : '') : item.text ?? '';
   const body = (
-    <div class="message-item-body">
-      <div class="message-item-text">{text}</div>
-      {outgoing && item.failed && <div class="message-item-failure">{item.output ?? ''}</div>}
+    <div className="message-item-body space-y-2 p-3">
+      <div className="message-item-text whitespace-pre-wrap break-words">{text}</div>
+      {outgoing && item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>}
       {!outgoing && <TranscriptImages images={item.images} />}
     </div>
   );
   if (inline) return (
-    <div class="message-item message-item-agent">
-      <div class="message-item-heading">{heading}</div>
+    <div className="message-item message-item-agent space-y-2">
+      <div className="message-item-heading flex items-center gap-2 font-medium">{heading}</div>
       {body}
     </div>
   );
   return (
-    <Disclosure class="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={heading} preview={text.split(/\r?\n/, 1)[0]}>
+    <Disclosure className="message-item message-item-agent space-y-2" open={expanded} onToggle={open => setOpen(item.id, open)} summary={heading} preview={text.split(/\r?\n/, 1)[0]}>
       {expanded && body}
     </Disclosure>
   );

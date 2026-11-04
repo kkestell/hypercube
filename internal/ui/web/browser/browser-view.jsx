@@ -1,11 +1,13 @@
-// A session's Browser tab: VS Code's Simple Browser toolbar, and below it the
+import {Button} from '../components/ui/button';
+import {Input} from '../components/ui/input';
+import {Icon} from '../shared/icon.jsx';
+// A session's Browser tab: its navigation toolbar, and below it the
 // body, over which the window shows the session's browser. Enter in the
 // address field loads the address, and Escape restores the page's URL.
-import {useRef, useState} from 'preact/hooks';
+import {useRef, useState} from 'react';
 import {useStore} from '../store.js';
 import {inWindow, post} from './browser.js';
 import {useBrowserPlacement} from './placement.js';
-import './browser-view.css';
 
 const blank = {url: '', title: '', loading: false, canGoBack: false, canGoForward: false};
 
@@ -28,26 +30,26 @@ function Page({session}) {
   };
 
   return (
-    <div class="browser-view">
-      <header class="browser-view-header">
-        <vscode-button icon-only secondary icon="arrow-left" title="Back" aria-label="Back" disabled={!page.canGoBack} onClick={() => send('back')} />
-        <vscode-button icon-only secondary icon="arrow-right" title="Forward" aria-label="Forward" disabled={!page.canGoForward} onClick={() => send('forward')} />
-        <vscode-button icon-only secondary icon="refresh" title="Reload" aria-label="Reload" onClick={() => send('reload')} />
-        <vscode-textfield
-          class="browser-view-address"
-          label="Address"
+    <div className="browser-view flex min-h-0 flex-1 flex-col">
+      <header className="browser-view-header flex shrink-0 items-center gap-2 border-b p-2">
+        <Button variant="ghost" size="icon" title="Back" aria-label="Back" disabled={!page.canGoBack} onClick={() => send('back')}><Icon name="arrow-left" /></Button>
+        <Button variant="ghost" size="icon" title="Forward" aria-label="Forward" disabled={!page.canGoForward} onClick={() => send('forward')}><Icon name="arrow-right" /></Button>
+        <Button variant="ghost" size="icon" title="Reload" aria-label="Reload" onClick={() => send('reload')}><Icon name="refresh" /></Button>
+        <Input
+          className="browser-view-address flex-1"
+          aria-label="Address"
           value={address ?? page.url}
-          onInput={e => setAddress(e.currentTarget.value)}
+          onChange={e => setAddress(e.currentTarget.value)}
           onKeyDown={key}
         />
-        <vscode-button icon-only secondary icon="link-external" title="Open in browser" aria-label="Open in browser" onClick={() => send('external')} />
+        <Button variant="ghost" size="icon" title="Open in browser" aria-label="Open in browser" onClick={() => send('external')}><Icon name="link-external" /></Button>
       </header>
-      <div ref={body} class="browser-view-body" aria-busy={page.loading} />
+      <div ref={body} className="browser-view-body min-h-0 flex-1" aria-busy={page.loading} />
     </div>
   );
 }
 
 export function BrowserView({session}) {
-  if (!inWindow()) return <div class="browser-view-message">The browser needs the Hypercube window.</div>;
+  if (!inWindow()) return <div className="browser-view-message m-auto p-6 text-center text-muted-foreground">The browser needs the Hypercube window.</div>;
   return <Page session={session} />;
 }

@@ -1,29 +1,18 @@
 import {afterEach, expect, test} from 'bun:test';
-import {act} from 'preact/test-utils';
-import {mount, unmountAll} from '../../test-render.jsx';
+import {useState} from 'react';
+import {clickControl, mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
 import {ContextMenu} from './context-menu.jsx';
 
-const Observer = globalThis.ResizeObserver;
-afterEach(() => {
-  unmountAll();
-  globalThis.ResizeObserver = Observer;
-});
+afterEach(unmountAll);
 
-test('a menu near the bottom moves up once it draws its items', () => {
-  const resized = [];
-  globalThis.ResizeObserver = class {
-    constructor(callback) { resized.push(callback); }
-    observe() {}
-    disconnect() {}
-  };
+test('a menu uses stock menu items and reports its bounds for browser placement', () => {
   const store = createStore({overlays: {}});
-  const root = mount(store, <ContextMenu x={0} y={innerHeight - 10} items={[]} onClose={() => {}} />);
-  const box = root.querySelector('.context-menu');
-  expect(box.style.top).toBe(innerHeight - 10 + 'px');
-  Object.defineProperty(box, 'offsetHeight', {value: 100});
-  act(() => resized.forEach(callback => callback()));
-  expect(box.style.top).toBe(innerHeight - 100 + 'px');
+  mount(store, <ContextMenu x={0} y={innerHeight - 10} items={[{label: 'Action', run() {}}]} onClose={() => {}} />);
+  expect(document.querySelector('[role=menuitem]').textContent).toBe('Action');
+  expect(Object.keys(store.get().overlays)).toHaveLength(1);
+  unmountAll();
+  expect(Object.keys(store.get().overlays)).toHaveLength(0);
 });
 
 test('selecting an item returns focus before running its action', () => {
@@ -32,8 +21,11 @@ test('selecting an item returns focus before running its action', () => {
   invoker.focus();
   let focusedDuringAction = false;
   const store = createStore({overlays: {}});
-  const root = mount(store, <ContextMenu x={0} y={0} items={[{label: 'Action', run: () => { focusedDuringAction = document.activeElement === invoker; }}]} onClose={() => {}} />);
-  root.querySelector('vscode-context-menu').focus();
-  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
+  function Menu() {
+    const [open, setOpen] = useState(true);
+    return open && <ContextMenu x={0} y={0} items={[{label: 'Action', run: () => { focusedDuringAction = document.activeElement === invoker; }}]} onClose={() => setOpen(false)} />;
+  }
+  mount(store, <Menu />);
+  clickControl(document.querySelector('[role=menuitem]'));
   expect(focusedDuringAction).toBe(true);
 });

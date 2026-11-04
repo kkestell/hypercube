@@ -5,7 +5,7 @@ import {FilesPanel} from '../files/files-panel.jsx';
 import {useStore} from '../store.js';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {selectRightTab} from './workbench.js';
-import './right-panel.css';
+
 
 const tabs = [
   {id: 'files', icon: 'files', title: 'Files'},
@@ -15,7 +15,7 @@ const tabs = [
 export function RightPanel() {
   const [state, store] = useStore();
   return (
-    <aside class="right-panel">
+    <aside className="right-panel h-full min-w-0">
       <PanelTabs label="Session views" tabs={tabs} selected={state.workbench.rightTab}
         onSelect={id => store.update(s => selectRightTab(s, id))}>
         <FilesPanel key={state.session?.id} />

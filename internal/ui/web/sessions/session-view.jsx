@@ -1,7 +1,7 @@
 // The center: the shown session's tabbed area of its agent and open files, or
 // an empty tab strip when no session shows. While the page is visible, a
 // shown session's unseen reply is seen.
-import {useEffect} from 'preact/hooks';
+import {useEffect} from 'react';
 import {EditorArea} from '../editor/editor-area.jsx';
 import {EditorTabs} from '../editor/editor-tabs.jsx';
 import {useStore} from '../store.js';

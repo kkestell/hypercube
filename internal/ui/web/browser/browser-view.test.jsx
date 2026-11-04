@@ -1,5 +1,6 @@
+import {setValue} from '../../test-render.jsx';
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import {emptySession} from '../sessions/selection.js';
@@ -42,11 +43,11 @@ test('the toolbar sends its buttons and the entered address to the window', () =
   act(() => button('Back').click());
   act(() => button('Reload').click());
   act(() => button('Open in browser').click());
-  const address = root.querySelector('vscode-textfield');
+  const address = root.querySelector('input');
   expect(address.getAttribute('value')).toBe(page.url);
-  address.value = 'example.org';
-  act(() => address.dispatchEvent(new Event('input')));
-  act(() => address.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter'})));
+  setValue(address, 'example.org');
+  act(() => address.dispatchEvent(new Event('input', {bubbles: true})));
+  act(() => address.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(posted.filter(m => m.type !== 'place')).toEqual([
     {type: 'back', session: 's'},
     {type: 'reload', session: 's'},
@@ -57,9 +58,9 @@ test('the toolbar sends its buttons and the entered address to the window', () =
 
 test('Escape restores the address and is consumed before reaching the app', () => {
   const {root} = setup();
-  const address = root.querySelector('vscode-textfield');
-  address.value = 'draft';
-  act(() => address.dispatchEvent(new Event('input')));
+  const address = root.querySelector('input');
+  setValue(address, 'draft');
+  act(() => address.dispatchEvent(new Event('input', {bubbles: true})));
   let prevented = false;
   root.addEventListener('keydown', e => { prevented = e.defaultPrevented; });
   act(() => address.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
@@ -95,10 +96,11 @@ test('the browser hides once a menu grows over the body', () => {
   rect.mockImplementation(function () { return this.classList.contains('context-menu') ? menuRect : bodyRect; });
   try {
     const {store} = setup();
-    const menu = mount(store, <ContextMenu x={150} y={0} items={[]} onClose={() => {}} />).firstElementChild;
+    mount(store, <ContextMenu x={150} y={0} items={[]} onClose={() => {}} />);
+    const menu = document.querySelector('.context-menu');
     expect(places().at(-1).session).toBe('s');
     menuRect = {...menuRect, bottom: 70, height: 70};
-    act(() => resized.get(menu)());
+    act(() => resized.get(menu)([{target: menu, borderBoxSize: [{inlineSize: menuRect.width, blockSize: menuRect.height}], contentRect: menuRect}]));
     expect(places().at(-1)).toEqual({type: 'place', session: null, rect: null});
   } finally {
     globalThis.ResizeObserver = Observer;

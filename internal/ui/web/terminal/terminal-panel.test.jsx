@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, jest, mock, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {createStore} from '../store.js';
 

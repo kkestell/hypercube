@@ -1,7 +1,9 @@
+import {Button} from '../components/ui/button';
+import {Input} from '../components/ui/input';
+import {Icon} from '../shared/icon.jsx';
 // The transcript's find widget follows rendered content as it changes.
-import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {transcriptMatches} from './transcript-matches.js';
-import './transcript-find.css';
 
 export function TranscriptFind({list, view}) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
@@ -12,7 +14,7 @@ export function TranscriptFind({list, view}) {
   const selectInput = () => {
     const field = input.current;
     field?.focus();
-    field?.updateComplete?.then(() => field.wrappedElement.select());
+    field?.select();
   };
   useEffect(() => {
     const keydown = event => {
@@ -50,13 +52,11 @@ export function TranscriptFind({list, view}) {
     return () => observer.disconnect();
   }, [open, query]);
   useLayoutEffect(() => {
-    if (!globalThis.CSS?.highlights || !globalThis.Highlight) return;
-    CSS.highlights.set('transcript-find', new Highlight(...ranges));
-    CSS.highlights.set('transcript-find-current', new Highlight(...(ranges[index] ? [ranges[index]] : [])));
-    return () => {
-      CSS.highlights.delete('transcript-find');
-      CSS.highlights.delete('transcript-find-current');
-    };
+    const selection = window.getSelection();
+    if (!ranges[index]) return;
+    selection.removeAllRanges();
+    selection.addRange(ranges[index]);
+    return () => selection.removeAllRanges();
   }, [ranges, index]);
   useLayoutEffect(() => {
     const range = ranges[index];
@@ -71,15 +71,15 @@ export function TranscriptFind({list, view}) {
     previousFocus.current?.focus();
   };
   if (!open) return null;
-  return <div class="transcript-find" role="search" aria-label="Find in transcript" onKeyDown={event => {
+  return <div className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" role="search" aria-label="Find in transcript" onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }
   }}>
-    <vscode-textfield ref={input} value={query} placeholder="Find" label="Find in transcript" class={query && !ranges.length ? 'transcript-find-empty' : undefined} onInput={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
+    <Input ref={input} value={query} placeholder="Find" aria-label="Find in transcript" aria-invalid={!!query && !ranges.length} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
       if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
     }} />
-    <span class="transcript-find-count" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>
-    <button type="button" aria-label="Previous match" title="Previous match" onClick={() => step(-1)} disabled={!ranges.length}><vscode-icon name="arrow-up" /></button>
-    <button type="button" aria-label="Next match" title="Next match" onClick={() => step(1)} disabled={!ranges.length}><vscode-icon name="arrow-down" /></button>
-    <button type="button" aria-label="Close find" title="Close" onClick={close}><vscode-icon name="close" /></button>
+    <span className="transcript-find-count shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>
+    <Button variant="ghost" size="icon" type="button" aria-label="Previous match" title="Previous match" onClick={() => step(-1)} disabled={!ranges.length}><Icon name="arrow-up" /></Button>
+    <Button variant="ghost" size="icon" type="button" aria-label="Next match" title="Next match" onClick={() => step(1)} disabled={!ranges.length}><Icon name="arrow-down" /></Button>
+    <Button variant="ghost" size="icon" type="button" aria-label="Close find" title="Close" onClick={close}><Icon name="close" /></Button>
   </div>;
 }

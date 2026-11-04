@@ -4,6 +4,8 @@
 // stopped.
 import {sessionOf} from '../sessions/selection.js';
 import {requestMerge} from '../sessions/session-actions.js';
+import {Button} from '../components/ui/button';
+import {Icon} from '../shared/icon.jsx';
 import {useStore} from '../store.js';
 
 export function SessionBranch({session}) {
@@ -13,14 +15,14 @@ export function SessionBranch({session}) {
   const workspace = sessionOf(state, session.id)?.workspace;
 
   return (
-    <span class="composer-branch">
-      <vscode-icon name="git-branch" />
-      <span class="composer-branch-name">{merge.branch}</span>
+    <span className="composer-branch flex min-w-0 items-center gap-2">
+      <Icon name="git-branch" />
+      <span className="composer-branch-name truncate">{merge.branch}</span>
       {merge.unmerged > 0 && !merge.error && (
-        <vscode-button secondary class="composer-merge" disabled={!session.running}
+        <Button type="button" variant="secondary" size="sm" className="composer-merge" disabled={!session.running}
           onClick={() => requestMerge(store, session, merge.target, workspace.path)}>
           Merge
-        </vscode-button>
+        </Button>
       )}
     </span>
   );

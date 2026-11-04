@@ -1,18 +1,15 @@
-// A transcript row that opens like a tree item: a one-line summary ending in a
-// chevron, an optional preview line while closed, and its contents once open.
-import './disclosure.css';
+import {Button} from '../components/ui/button';
+import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
+import {Icon} from '../shared/icon.jsx';
 
-export function Disclosure({class: className, open, onToggle, title, summary, preview, children}) {
-  return (
-    <details class={className ? 'disclosure ' + className : 'disclosure'} open={open} onToggle={e => onToggle(e.currentTarget.open)}>
-      <summary class="disclosure-summary" title={title}>
-        <span class="disclosure-heading">
-          {summary}
-          <vscode-icon name="chevron-right" class="disclosure-chevron" />
-        </span>
-        {!open && preview && <span class="disclosure-preview">{preview}</span>}
-      </summary>
-      {children}
-    </details>
-  );
+export function Disclosure({className = '', open, onToggle, title, summary, preview, children}) {
+  return <Collapsible className={`disclosure ${className}`} open={open} onOpenChange={onToggle}>
+    <CollapsibleTrigger asChild><Button variant="ghost" className="h-auto w-full justify-start whitespace-normal text-left" title={title}>
+      <Icon name={open ? 'chevron-down' : 'chevron-right'} />
+      <span className="min-w-0"><span className="disclosure-heading flex items-center gap-2">{summary}</span>
+        {!open && preview && <span className="disclosure-preview block truncate text-muted-foreground">{preview}</span>}
+      </span>
+    </Button></CollapsibleTrigger>
+    <CollapsibleContent>{children}</CollapsibleContent>
+  </Collapsible>;
 }

@@ -1,5 +1,6 @@
+import {clickControl} from '../../test-render.jsx';
 import {afterEach, expect, jest, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {post} from '../api.js';
 import {createStore} from '../store.js';
@@ -22,7 +23,7 @@ test('cards show their source and request answers', () => {
   const [request, reply] = root.querySelectorAll('.notification-card');
   expect(request.querySelector('.notification-card-header .notification-card-session').textContent).toBe('auditor');
   expect([...request.querySelectorAll('.notification-card-context span')].map(span => span.textContent)).toEqual(['repo', 'Ask']);
-  expect(request.querySelector('vscode-button[data-choice]').textContent).toBe('Yes');
+  expect(request.querySelector('button[data-choice]').textContent).toBe('Yes');
   expect(reply.querySelector('.notification-card-header .notification-card-session').textContent).toBe('Fix it');
   expect(reply.querySelector('.notification-card-context').textContent).toBe('repo');
   expect(reply.querySelector('.notification-card-text').textContent).toBe('Done.\nAll tests pass.');
@@ -110,7 +111,7 @@ test('a refused action shows an error card, newest first, until it is closed', a
   const texts = () => [...root.querySelectorAll('.notification-card')].map(card => card.textContent);
   expect(texts()).toEqual(['no such session', 'session is busy']);
   expect(root.querySelector('[title="View Session"]')).toBeNull();
-  act(() => root.querySelector('[title="Close"]').click());
+  act(() => clickControl(root.querySelector('[title="Close"]')));
   expect(texts()).toEqual(['session is busy']);
   fetches.mockRestore();
 });

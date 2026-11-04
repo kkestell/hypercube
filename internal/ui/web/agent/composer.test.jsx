@@ -1,5 +1,6 @@
+import {setValue, clickControl} from '../../test-render.jsx';
 import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'preact/test-utils';
+import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {openUnsent} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -20,7 +21,7 @@ const store = () => createStore({workspaces: [], selected: null, pending: null, 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
-  expect(root.querySelector('vscode-single-select')).toBeNull();
+  expect(root.querySelector('.composer-profile')).toBeNull();
   expect(root.querySelector('.composer-profile-label').textContent).toBe('Claude · Opus · High');
 });
 
@@ -42,8 +43,8 @@ test('send is disabled without content and no stop button shows while the agent 
   expect(send().hasAttribute('disabled')).toBe(true);
   expect(root.querySelector('[title="Stop"]')).toBeNull();
   const field = root.querySelector('textarea');
-  field.value = 'hello';
-  field.dispatchEvent(new Event('input'));
+  setValue(field, 'hello');
+  field.dispatchEvent(new Event('input', {bubbles: true}));
   expect(send().hasAttribute('disabled')).toBe(false);
   unmountAll();
   root = mount(s, <Composer session={{...session, activity: 'busy'}} />);
@@ -75,22 +76,21 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   const field = root.querySelector('textarea');
-  field.value = 'hello';
-  field.dispatchEvent(new Event('input'));
+  setValue(field, 'hello');
+  field.dispatchEvent(new Event('input', {bubbles: true}));
   const send = () => root.querySelector('[title="Send"]');
   expect(send().hasAttribute('disabled')).toBe(true);
   await settle();
 
   expect(s.get().unsent.profile).toBe('claude');
   expect(send().hasAttribute('disabled')).toBe(false);
-  const options = [...root.querySelectorAll('vscode-option')];
-  expect(options.map(o => o.textContent)).toEqual(['Claude · Opus · High', 'Codex · Sol · Medium']);
-  expect(options.map(o => o.getAttribute('description'))).toEqual(profiles.map(p => p.description));
-  expect(root.querySelector('vscode-single-select').hasAttribute('disabled')).toBe(false);
-
-  const select = root.querySelector('vscode-single-select');
-  select.value = 'codex';
-  act(() => select.dispatchEvent(new Event('change')));
+  const select = root.querySelector('.composer-profile');
+  expect(select.disabled).toBe(false);
+  clickControl(select);
+  await settle();
+  const options = [...document.querySelectorAll('[role=option]')];
+  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Claude · Opus · High' : 'Codex · Sol · Medium'}${p.description}`));
+  act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent.profile).toBe('codex');
   expect(s.get().drafts[unsentKey].text).toBe('hello');
 });
@@ -115,12 +115,11 @@ test('the profile selector stays in place and disables while the first message s
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
-  const select = root.querySelector('vscode-single-select');
+  const select = root.querySelector('.composer-profile');
   s.update(state => ({...state, unsent: {...state.unsent, sending: true}}));
-  expect(root.querySelector('vscode-single-select')).toBe(select);
+  expect(root.querySelector('.composer-profile')).toBe(select);
   expect(select.hasAttribute('disabled')).toBe(true);
-  select.value = 'codex';
-  act(() => select.dispatchEvent(new Event('change')));
+  clickControl(select);
   expect(s.get().unsent.profile).toBe('claude');
 });
 
@@ -129,14 +128,14 @@ const worktreeStore = (noGit, sessions = []) => {
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
-const worktreeToggle = root => root.querySelector('vscode-checkbox');
+const worktreeToggle = root => root.querySelector('[role=checkbox]');
 
 test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', () => {
   fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(profiles));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
-  expect(worktreeToggle(root).hasAttribute('toggle')).toBe(true);
-  expect(worktreeToggle(root).getAttribute('label')).toBe('Worktree');
-  expect(worktreeToggle(root).hasAttribute('checked')).toBe(false);
+  expect(worktreeToggle(root).getAttribute('role')).toBe('checkbox');
+  expect(worktreeToggle(root).getAttribute('aria-label')).toBe('Worktree');
+  expect(worktreeToggle(root).getAttribute('aria-checked')).toBe('false');
   expect(worktreeToggle(root).hasAttribute('disabled')).toBe(false);
   unmountAll();
   root = mount(worktreeStore(true), <Composer session={unsentSession} />);
@@ -149,18 +148,16 @@ test('turning Worktree on creates the session in a worktree and locks while send
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
   const toggle = worktreeToggle(root);
-  toggle.checked = true;
-  act(() => toggle.dispatchEvent(new Event('change')));
+  clickControl(toggle);
   expect(s.get().unsent.worktree).toBe(true);
   let release;
   fetches.mockImplementation(() => new Promise(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
   const field = root.querySelector('textarea');
-  field.value = 'hello';
-  field.dispatchEvent(new Event('input'));
-  act(() => root.querySelector('[title="Send"]').click());
+  setValue(field, 'hello');
+  field.dispatchEvent(new Event('input', {bubbles: true}));
+  act(() => clickControl(root.querySelector('[title="Send"]')));
   expect(worktreeToggle(root).hasAttribute('disabled')).toBe(true);
-  toggle.checked = false;
-  act(() => toggle.dispatchEvent(new Event('change')));
+  clickControl(toggle);
   expect(s.get().unsent.worktree).toBe(true);
   const params = new URL(fetches.mock.calls.at(-1)[0], 'http://x/').searchParams;
   expect(params.get('action')).toBe('new');
@@ -181,7 +178,7 @@ test('an existing worktree session shows its branch and no toggle; checkout sess
   const {top, store: s} = existing();
   let root = mount(s, <Composer session={top} />);
   expect(worktreeToggle(root)).toBeNull();
-  expect(branch(root).querySelector('vscode-icon').getAttribute('name')).toBe('git-branch');
+  expect(branch(root).querySelector('svg[data-icon]').getAttribute('data-icon')).toBe('git-branch');
   expect(branch(root).textContent).toBe('hypercube/session-a');
   for (const shown of [{...top, worktree: false, merge: undefined}, top.children[0]]) {
     unmountAll();
@@ -222,7 +219,7 @@ test('prompt history returns to the unsent draft', () => {
   }}}}));
   const root = mount(s, <Composer session={session} />);
   const field = root.querySelector('textarea');
-  field.value = 'draft'; field.dispatchEvent(new Event('input'));
+  setValue(field, 'draft'); field.dispatchEvent(new Event('input', {bubbles: true}));
   const press = key => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
   press('ArrowUp'); expect(field.value).toBe('last');
   press('ArrowUp'); expect(field.value).toBe('first');
@@ -234,10 +231,12 @@ test('file mentions filter paths and insert the selected file', async () => {
   fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(['internal/ui/files.go', 'README.md']));
   const root = mount(store(), <Composer session={session} />);
   const field = root.querySelector('textarea');
-  field.value = 'look @iuf'; field.setSelectionRange(field.value.length, field.value.length);
-  act(() => field.dispatchEvent(new Event('input')));
+  setValue(field, 'look @iuf'); field.setSelectionRange(field.value.length, field.value.length);
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   await settle();
   expect([...root.querySelectorAll('[role=option]')].map(e => e.textContent)).toEqual(['internal/ui/files.go']);
+  expect(root.querySelector('[role=option]').id).toBe(field.getAttribute('aria-activedescendant'));
+  expect(root.querySelector('[role=listbox]').id).toBe(field.getAttribute('aria-controls'));
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true})));
   expect(field.value).toBe('look @internal/ui/files.go');
   expect(root.querySelector('[role=listbox]')).toBeNull();
@@ -248,7 +247,7 @@ test('mention follows the caret, replaces the whole token, and Escape closes it'
   const root = mount(store(), <Composer session={session} />);
   await settle();
   const field = root.querySelector('textarea');
-  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const input = value => { setValue(field, value); field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input', {bubbles: true}))); };
   const press = (key, options = {}) => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...options})));
   input('hello @src');
   await settle();
@@ -272,7 +271,7 @@ test('mention keys respect modifiers and Enter sends only without a selection', 
   const root = mount(store(), <Composer session={session} />);
   await settle();
   const field = root.querySelector('textarea');
-  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const input = value => { setValue(field, value); field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input', {bubbles: true}))); };
   const press = (key, options = {}) => { const e = new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...options}); act(() => field.dispatchEvent(e)); return e.defaultPrevented; };
   input('@src');
   await settle();
@@ -292,7 +291,7 @@ test('multiline history preserves the draft and edits recalled copies', () => {
   s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1'], items: {'1': {kind: 'user', text: 'old\nsecond'}}}}}));
   const root = mount(s, <Composer session={session} />);
   const field = root.querySelector('textarea');
-  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const input = value => { setValue(field, value); field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input', {bubbles: true}))); };
   const press = key => { const e = new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}); act(() => field.dispatchEvent(e)); return e.defaultPrevented; };
   input('draft\nline');
   expect(press('ArrowUp')).toBe(false);
@@ -313,7 +312,7 @@ test('sending an edited history copy clears the saved draft', async () => {
   s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1'], items: {'1': {kind: 'user', text: 'old'}}}}}));
   const root = mount(s, <Composer session={session} />);
   const field = root.querySelector('textarea');
-  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const input = value => { setValue(field, value); field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input', {bubbles: true}))); };
   const press = key => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
   input('draft'); press('ArrowUp'); input('edited');
   expect(s.get().drafts.a.text).toBe('draft');
@@ -331,8 +330,8 @@ test('arrow keyup keeps the selected file and scrolls it into view', async () =>
   try {
     const root = mount(store(), <Composer session={session} />);
     const field = root.querySelector('textarea');
-    field.value = '@'; field.setSelectionRange(1, 1);
-    act(() => field.dispatchEvent(new Event('input')));
+    setValue(field, '@'); field.setSelectionRange(1, 1);
+    act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
     await settle();
     const key = name => act(() => {
       field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
@@ -351,7 +350,7 @@ test('opening mentions refreshes files, keeps old results while loading, and rep
   fetches.mockImplementation((url, init) => new Promise((resolve, reject) => requests.push({resolve, reject, signal: init.signal})));
   const root = mount(store(), <Composer session={session} />);
   const field = root.querySelector('textarea');
-  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const input = value => { setValue(field, value); field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input', {bubbles: true}))); };
   const key = name => act(() => { field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true})); field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true})); });
   input('@'); await settle();
   expect(requests).toHaveLength(1);
@@ -375,8 +374,8 @@ test('clearing the new session workspace removes its file suggestions', async ()
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   const field = root.querySelector('textarea');
-  field.value = '@'; field.setSelectionRange(1, 1);
-  act(() => field.dispatchEvent(new Event('input')));
+  setValue(field, '@'); field.setSelectionRange(1, 1);
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   await settle();
   expect(root.textContent).toContain('old.go');
   act(() => s.update(state => ({...state, unsent: {...state.unsent, workspace: null}})));
@@ -413,4 +412,15 @@ test('history ending in a mention keeps the picker closed for navigation and sen
   key('Enter');
   await settle();
   expect(sent.map(prompt => prompt.text)).toEqual(['see @a.go']);
+});
+
+test('Enter while composing text does not send a prompt', () => {
+  const s = store();
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  setValue(field, 'こんにちは');
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', isComposing: true, bubbles: true, cancelable: true})));
+  expect(fetches).not.toHaveBeenCalled();
+  expect(s.get().drafts.a.text).toBe('こんにちは');
 });

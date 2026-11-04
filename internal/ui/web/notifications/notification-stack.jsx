@@ -1,15 +1,12 @@
 // The notification cards, stacked in the top right corner below the tab bars.
-import {useRef} from 'preact/hooks';
 import {useOverlay} from '../shared/overlays.js';
 import {useStore} from '../store.js';
 import {NotificationCard} from './notification-card.jsx';
 import {cards} from './notifications.js';
-import './notification-stack.css';
 
 function Stack({shown}) {
-  const ref = useRef(null);
-  useOverlay(ref);
-  return <div ref={ref} class="notification-stack">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
+  const ref = useOverlay();
+  return <div ref={ref} className="notification-stack fixed right-4 top-16 z-50 flex max-h-3/4 w-sm max-w-full flex-col gap-3 overflow-auto">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
 }
 
 export function NotificationStack() {

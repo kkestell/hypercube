@@ -1,6 +1,7 @@
+import {Alert, AlertDescription} from '../components/ui/alert';
 // Draws one transcript row with the component for its kind, and draws text
 // and error items, which need no component of their own.
-import {memo} from 'preact/compat';
+import {memo} from 'react';
 import {CopyButton} from './copy-button.jsx';
 import {ActivityItem} from './activity-item.jsx';
 import {AttentionItem} from './attention-item.jsx';
@@ -9,17 +10,16 @@ import {MessageItem} from './message-item.jsx';
 import {ReasoningItem} from './reasoning-item.jsx';
 import {ToolCall} from './tool-items.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
-import './transcript-item.css';
 
 const TextItem = memo(({item}) => (
-  <div class="transcript-text">
+  <div className="transcript-text space-y-3">
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
-    {item.text && <div class="copy-button-actions"><CopyButton text={item.text} label="Copy message" /></div>}
+    {item.text && <div className="copy-button-actions flex justify-end"><CopyButton text={item.text} label="Copy message" /></div>}
   </div>
 ));
 
-const ErrorItem = memo(({item}) => <div class="transcript-error">{item.text ?? ''}</div>);
+const ErrorItem = memo(({item}) => <Alert className="transcript-error" variant="destructive"><AlertDescription className="whitespace-pre-wrap">{item.text ?? ''}</AlertDescription></Alert>);
 
 // TranscriptRow draws a row of transcriptRows. expanded holds the keys the
 // user opened, and setOpen(key, open) changes one.

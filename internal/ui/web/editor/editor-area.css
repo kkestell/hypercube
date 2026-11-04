@@ -1,9 +1,0 @@
-.editor-area {
-  --editor-area-background: color-mix(in srgb, var(--vscode-editor-background) 50%, var(--vscode-sideBar-background));
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-width: 0;
-  min-height: 0;
-  background: var(--editor-area-background);
-}

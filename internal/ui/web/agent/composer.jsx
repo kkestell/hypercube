@@ -3,7 +3,7 @@
 // chooses its profile and worktree there; after the first prompt the profile
 // shows as text, and a worktree session shows its branch beside it. The text
 // takes focus on mount.
-import {useEffect, useRef, useState} from 'preact/hooks';
+import {useEffect, useRef, useState} from 'react';
 import {imageSrc, imageTypes} from '../images.js';
 import {sendPrompt} from '../sessions/session-actions.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
@@ -16,7 +16,10 @@ import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
 import {SessionBranch} from './session-branch.jsx';
 import {WorktreeToggle} from './worktree-toggle.jsx';
-import './composer.css';
+import {Button} from '../components/ui/button';
+import {Card, CardContent} from '../components/ui/card';
+import {Textarea} from '../components/ui/textarea';
+import {Icon} from '../shared/icon.jsx';
 
 export function Composer({session}) {
   const [state, store] = useStore();
@@ -44,7 +47,7 @@ export function Composer({session}) {
     sendPrompt(store, session);
   };
   const key = e => {
-    if (e.isComposing) return;
+    if (e.isComposing || e.nativeEvent?.isComposing) return;
     const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
     if (mentions.keydown(e)) return;
     if (plain && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
@@ -76,37 +79,41 @@ export function Composer({session}) {
   };
 
   return (
-    <form class="composer" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      {draft.images.length > 0 && (
-        <div class="composer-images">
-          {draft.images.map(image => (
-            <div class="composer-image">
-              <img src={imageSrc(image)} alt="Attached image" />
-              <vscode-button icon-only secondary icon="close" class="composer-image-remove" title="Remove Image" aria-label="Remove Image"
-                onClick={() => store.update(s => removeImage(s, session.id, image))} />
+    <form className="composer m-2 shrink-0" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          {draft.images.length > 0 && (
+            <div className="composer-images flex flex-wrap gap-2">
+              {draft.images.map((image, i) => (
+                <div key={i} className="composer-image relative">
+                  <img className="size-16 object-cover" src={imageSrc(image)} alt="Attached image" />
+                  <Button type="button" variant="secondary" size="icon" className="composer-image-remove absolute right-0 top-0" title="Remove Image" aria-label="Remove Image"
+                    onClick={() => store.update(s => removeImage(s, session.id, image))}><Icon name="close" /></Button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-      <MentionList mentions={mentions} />
-      <textarea ref={field} rows={1} aria-label="Message" title="Focus Composer (⌘L)" class="composer-text" value={text}
-        role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
-        aria-controls={mentions.choices.length || mentions.error ? 'composer-mentions' : undefined}
-        aria-activedescendant={mentions.choices.length ? 'composer-file-' + mentions.active : undefined}
-        onInput={input} onKeyDown={key} onBlur={mentions.blur}
-        onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
-        onKeyUp={e => mentions.sync(e.currentTarget)} />
-      <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
-      <div class="composer-bar">
-        <vscode-button icon-only secondary icon="attach" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current.click()} />
-        <div class="composer-details">
-          <AgentStatus session={session} />
-          <ProfileSelect session={session} />
-          {session.id === unsentKey ? <WorktreeToggle /> : <SessionBranch session={session} />}
-          <Usage usage={session.usage} />
-        </div>
-        <vscode-button icon-only secondary icon="send" title="Send" aria-label="Send" disabled={!canSend(state, session, text)} onClick={send} />
-      </div>
+          )}
+          <MentionList mentions={mentions} />
+          <Textarea ref={field} rows={1} aria-label="Message" title="Focus Composer (⌘L)" className="composer-text max-h-40 resize-none" value={text}
+            role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
+            aria-controls={mentions.choices.length || mentions.error ? mentions.listId : undefined}
+            aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}
+            onChange={input} onKeyDown={key} onBlur={mentions.blur}
+            onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
+            onKeyUp={e => mentions.sync(e.currentTarget)} />
+          <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
+          <div className="composer-bar flex items-center gap-2">
+            <Button type="button" variant="ghost" size="icon" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current.click()}><Icon name="attach" /></Button>
+            <div className="composer-details flex min-w-0 flex-1 flex-wrap items-center gap-3 text-sm">
+              <AgentStatus session={session} />
+              <ProfileSelect session={session} />
+              {session.id === unsentKey ? <WorktreeToggle /> : <SessionBranch session={session} />}
+              <Usage usage={session.usage} />
+            </div>
+            <Button type="submit" size="icon" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>
+          </div>
+        </CardContent>
+      </Card>
     </form>
   );
 }

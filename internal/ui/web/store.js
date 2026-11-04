@@ -1,7 +1,7 @@
 // The one owner of the page's shared state. Changes go through update with a
 // pure function of the state; App redraws from each new state.
-import {createContext} from 'preact';
-import {useContext} from 'preact/hooks';
+import {createContext} from 'react';
+import {useContext} from 'react';
 
 export function createStore(initial) {
   let state = initial;

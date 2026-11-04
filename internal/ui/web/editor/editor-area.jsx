@@ -5,13 +5,13 @@ import {Split} from '../shared/split.jsx';
 import {useStore} from '../store.js';
 import {agentTabs, resizeSplit} from './editor.js';
 import {EditorPane} from './editor-pane.jsx';
-import './editor-area.css';
+
 
 function Node({node}) {
   const [, store] = useStore();
   if (node.tabs) return <EditorPane pane={node} />;
   return (
-    <Split
+    <Split key={node.id}
       split={node.axis === 'x' ? 'vertical' : 'horizontal'}
       size={node.ratio}
       minStart="15%"
@@ -26,5 +26,5 @@ function Node({node}) {
 export function EditorArea() {
   const [state] = useStore();
   const {root} = state.session?.tabs ?? agentTabs;
-  return <div class="editor-area"><Node node={root} /></div>;
+  return <div className="editor-area h-full min-h-0 min-w-0"><Node node={root} /></div>;
 }

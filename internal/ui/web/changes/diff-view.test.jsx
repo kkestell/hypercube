@@ -15,7 +15,7 @@ test('a diff shows both line numbers, change marks, and changed line classes', (
   const root = view({text: '@@ -1,2 +1,2 @@\n context\n-old\n+new\n', message: null});
   const rows = [...root.querySelectorAll('.diff-view-line')];
   expect(rows.map(row => [...row.children].map(cell => cell.textContent))).toEqual([
-    ['1', '1', '', 'context'], ['2', '', '-', 'old'], ['', '2', '+', 'new'],
+    ['1', '1', '', 'context'], ['2', '', '−', 'old'], ['', '2', '+', 'new'],
   ]);
   expect(rows[1].classList.contains('diff-view-removed')).toBe(true);
   expect(rows[2].classList.contains('diff-view-added')).toBe(true);
@@ -34,7 +34,7 @@ test.each([
   expect(view({text, message: null}).querySelector('.diff-view-message').textContent).toBe(note);
 });
 
-test('the line-number gutters grow to fit either side of the diff', () => {
+test('large line numbers are preserved on both sides', () => {
   const root = view({text: '@@ -9999 +100000 @@\n context\n', message: null});
-  expect(root.querySelector('.diff-view-lines').style.getPropertyValue('--digits')).toBe('6');
+  expect([...root.querySelectorAll('.diff-view-line td')].slice(0, 2).map(cell => cell.textContent)).toEqual(['9999', '100000']);
 });

@@ -5,7 +5,7 @@
 // would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
-import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'preact/hooks';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {post} from '../api.js';
 import {agentTabId, selectTab} from '../editor/editor.js';
 import {findPane} from '../editor/tab-layout.js';
@@ -22,7 +22,7 @@ import {RightPanel} from './right-panel.jsx';
 import {StatusBar} from './status-bar.jsx';
 import {shortcut} from './shortcuts.js';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
-import './app.css';
+
 
 function refuseStrayDrops(store) {
   const refuse = e => {
@@ -78,9 +78,9 @@ export function App({store}) {
 
   const {sidebar, rightPanel, panel} = state.workbench;
   const key = e => {
-    if (e.key !== 'Escape' || e.defaultPrevented || e.repeat || e.isComposing || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (e.key !== 'Escape' || e.defaultPrevented || e.repeat || (e.isComposing || e.nativeEvent?.isComposing) || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
-    if (state.confirmation || e.target.closest('.context-menu, .terminal-panel')) return;
+    if (state.confirmation || e.target.closest('[role=menu], [role=dialog], [role=alertdialog], .terminal-panel')) return;
     const session = currentSession(state);
     if (!session?.running || session.ended || session.activity !== 'busy' || state.unsent) return;
     e.preventDefault();
@@ -88,16 +88,16 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div class="app" onKeyDownCapture={e => shortcut(e, store, focusComposer)} onKeyDown={key}>
-        <header class="app-header" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
+      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer)} onKeyDown={key}>
+        <header className="app-header flex shrink-0 items-center justify-end border-b px-2 py-1" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>
-        <div class="app-body">
+        <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar />
             <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
-                <main class="app-center"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
+                <main className="app-center flex h-full min-w-0 flex-col"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.session?.id ?? ''} />
               </Split>
               <RightPanel />

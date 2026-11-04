@@ -1,8 +1,6 @@
 // Starts the page: the store, the data socket, file polling, the browsers'
 // reports, the window's notification clicks, badge and title bar, and App.
-import './base.css';
-import './elements.js';
-import {render} from 'preact';
+import {createRoot} from 'react-dom/client';
 import {App} from './app/app.jsx';
 import {startBadge} from './app/badge.js';
 import {startTitleBar} from './app/title-bar.js';
@@ -41,4 +39,4 @@ startBrowsers(store);
 startNativeNotifications(store);
 startBadge(store);
 startTitleBar(store);
-render(<App store={store} />, document.getElementById('app'));
+createRoot(document.getElementById('app')).render(<App store={store} />);

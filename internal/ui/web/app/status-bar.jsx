@@ -1,14 +1,12 @@
-// The window's status bar, showing the harnesses' subscription usage: for
-// each harness that has reported it, each window's length, a meter of the
-// percent used, and the time left until the window resets. The meter marks
-// how much of the window has elapsed, the pace that would use exactly all of
-// it, and turns amber when usage runs ahead of that pace. Past its reset time
-// a window keeps its last reported percent, dimmed, until the harness reports
-// again.
-import {useEffect, useState} from 'preact/hooks';
+import {Icon} from '../shared/icon.jsx';
+// Subscription usage: standard progress bars compare usage to elapsed time,
+// with an Ahead badge when usage exceeds that pace. Expired windows retain
+// their last reported use until the next harness report.
+import {Progress} from '../components/ui/progress';
+import {Badge} from '../components/ui/badge';
+import {useEffect, useState} from 'react';
 import {displayName} from '../agent/profile-label.js';
 import {useStore} from '../store.js';
-import './status-bar.css';
 
 const minute = 60_000;
 
@@ -39,21 +37,22 @@ function LimitWindow({limit, now}) {
   // The percent of the window elapsed: the usage that keeps exact pace.
   const pace = known && !passed ? Math.min(100, Math.max(0, 100 - left / (limit.minutes * minute) * 100)) : null;
   const ahead = pace !== null && limit.used > pace;
-  const classes = ['status-bar-window'];
-  if (passed) classes.push('status-bar-window-reset');
+  const classes = ['status-bar-window flex items-center gap-2'];
+  if (passed) classes.push('status-bar-window-reset opacity-60');
   if (ahead) classes.push('status-bar-window-ahead');
   let title = `${label} limit: ${limit.used}% used`;
   if (pace !== null) title += `, ${Math.round(pace)}% of the window elapsed, resets in ${timeLeft(left)}`;
   if (passed) title += ', reset';
   return (
-    <span class={classes.join(' ')} title={title}>
+    <span className={classes.join(' ')} title={title}>
       {label}
-      <span class="status-bar-meter" aria-hidden="true">
-        <span class="status-bar-meter-used" style={{width: `${Math.min(100, limit.used)}%`}} />
-        {pace !== null && <span class="status-bar-meter-pace" style={{left: `${pace}%`}} />}
+      <span className="status-bar-meter flex w-16 flex-col gap-1">
+        <Progress value={Math.min(100, limit.used)} aria-label={`${label} used`} />
+        {pace !== null && <Progress value={pace} aria-label={`${label} elapsed`} />}
       </span>
       {limit.used}%
-      {pace !== null && <span class="status-bar-left"><vscode-icon name="history" size="12" />{timeLeft(left)}</span>}
+      {ahead && <Badge variant="secondary">Ahead</Badge>}
+      {pace !== null && <span className="status-bar-left flex items-center gap-1 text-muted-foreground"><Icon name="history" size="12" />{timeLeft(left)}</span>}
     </span>
   );
 }
@@ -69,9 +68,9 @@ export function StatusBar() {
   if (!state.limits.length) return null;
   const byHarness = Object.groupBy(state.limits, limit => limit.harness);
   return (
-    <footer class="status-bar">
+    <footer className="status-bar flex shrink-0 flex-wrap items-center justify-end gap-6 border-t px-3 py-2 text-xs">
       {Object.entries(byHarness).map(([harness, limits]) => (
-        <span key={harness} class="status-bar-harness">
+        <span key={harness} className="status-bar-harness flex items-center gap-4">
           {displayName(harness)}
           {limits.map(limit => <LimitWindow key={limit.minutes} limit={limit} now={now} />)}
         </span>
