@@ -23,14 +23,16 @@ test('each harness shows its windows with the percent used and the time left', (
   expect(root.querySelector('.status-bar-window-reset')).toBeNull();
 });
 
-test('standard progress bars show usage and elapsed time, and an icon marks usage ahead of pace', () => {
+test('usage bars mark elapsed time, and an icon marks usage ahead of pace', () => {
   const root = render([
     // 3 of 5 hours elapsed: 60% is exact pace.
     {harness: 'claude', minutes: 300, used: 70, resets: now + 2 * hour},
     {harness: 'claude', minutes: 600, used: 50, resets: now + 4 * hour},
   ]);
   const [over, under] = windows(root);
-  expect(Number(over.querySelector('[aria-label="5h elapsed"]').getAttribute('aria-valuenow'))).toBeCloseTo(60, 1);
+  expect(over.querySelectorAll('[role="progressbar"]')).toHaveLength(1);
+  expect(over.querySelector('[aria-label="5h elapsed: 60%"]')).not.toBeNull();
+  expect(over.querySelector('.status-bar-meter-pace').style.left).toContain('60');
   expect(ahead(over)).toBe(true);
   expect(ahead(under)).toBe(false);
   expect(over.title).toBe('5h limit: 70% used, 60% of the window elapsed, resets in 2h 0m');
