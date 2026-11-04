@@ -1,5 +1,5 @@
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {fileTabId, openBrowserTab} from '../editor/editor.js';
+import {fileTabId, openBrowserTab, tabEntry} from '../editor/editor.js';
 import {moveTab, openTab} from '../editor/tab-layout.js';
 import {emptySession} from '../sessions/selection.js';
 import {createStore} from '../store.js';
@@ -50,7 +50,7 @@ test('only shown folders and the active file tab of each pane are polled', async
 
   const hidden = stubFetch({});
   await createFilePoller(createStore(state({workbench: {rightPanel: true, rightTab: 'changes'}})))();
-  expect(hidden).toEqual(['file:z.go', 'file:x.go']);
+  expect(hidden).toEqual(['changes:null', 'file:z.go', 'file:x.go']);
 });
 
 test('a browser tab polls no file', async () => {
@@ -89,4 +89,41 @@ test('results for a session the page left are dropped', async () => {
   }});
   await createFilePoller(store)();
   expect(store.get().session).toEqual(emptySession('other'));
+});
+
+
+test('Changes refreshes with an active diff even while hidden', async () => {
+  const session = emptySession('s');
+  session.diffs = {'a.go': {text: null, message: null}};
+  session.tabs = openTab(session.tabs, 'diff:a.go');
+  const requests = stubFetch({
+    'changes:null': () => Response.json({branch: 'main', files: []}),
+    'diff:a.go': () => new Response('patch'),
+  });
+  const store = createStore(state({session, workbench: {rightPanel: true, rightTab: 'changes'}}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['changes:null', 'diff:a.go']);
+  expect(store.get().session.diffs['a.go']).toEqual({text: 'patch', message: null});
+  requests.length = 0;
+  store.update(s => ({...s, workbench: {rightPanel: false, rightTab: 'changes'}}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['changes:null', 'diff:a.go']);
+});
+
+
+test('a diff title follows its status while the right panel shows Files', async () => {
+  const session = emptySession('s');
+  session.diffs = {'a.go': {text: '', message: null}};
+  session.tabs = openTab(session.tabs, 'diff:a.go');
+  session.changes = {branch: 'main', files: [{path: 'a.go', status: 'untracked'}]};
+  const requests = stubFetch({
+    'files:': () => Response.json([]),
+    'changes:null': () => Response.json({branch: 'main', files: [{path: 'a.go', status: 'added'}]}),
+    'diff:a.go': () => new Response('patch'),
+  });
+  const store = createStore(state({session}));
+  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Untracked)');
+  await createFilePoller(store)();
+  expect(requests).toEqual(['files:', 'changes:null', 'diff:a.go']);
+  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Added)');
 });

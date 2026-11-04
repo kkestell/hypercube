@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 // maxFile keeps a warm syntax highlight near 100 ms.
@@ -25,7 +26,7 @@ func hidden(name string) bool {
 	return false
 }
 
-func (s *server) sessionRoot(id string) (*os.Root, error) {
+func (s *server) sessionDir(id string) (string, error) {
 	var dir string
 	err := s.db.Read(func(tx *store.Tx) error {
 		session, err := tx.Session(id)
@@ -36,9 +37,37 @@ func (s *server) sessionRoot(id string) (*os.Root, error) {
 		return nil
 	})
 	if err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+func (s *server) sessionRoot(id string) (*os.Root, error) {
+	dir, err := s.sessionDir(id)
+	if err != nil {
 		return nil, err
 	}
 	return os.OpenRoot(dir)
+}
+
+var errTooLarge = errors.New("file is too large")
+var errBinary = errors.New("file is binary or uses an unsupported text encoding")
+
+func readText(file *os.File, size int64) ([]byte, error) {
+	if size > maxFile {
+		return nil, errTooLarge
+	}
+	content, err := io.ReadAll(io.LimitReader(file, maxFile+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxFile {
+		return nil, errTooLarge
+	}
+	if bytes.IndexByte(content[:min(len(content), 8000)], 0) >= 0 {
+		return nil, errBinary
+	}
+	return content, nil
 }
 
 // openFile opens a file of the session: a relative path within its directory,
@@ -56,6 +85,14 @@ func (s *server) openFile(id, name string) (*os.File, error) {
 }
 
 func fileError(w http.ResponseWriter, err error) bool {
+	if errors.Is(err, errTooLarge) || errors.Is(err, workspace.ErrTooLarge) {
+		http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
+		return true
+	}
+	if errors.Is(err, errBinary) {
+		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
+		return true
+	}
 	if errors.Is(err, os.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return true
@@ -122,7 +159,7 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if info.Size() > maxFile {
-		http.Error(w, "file is too large", http.StatusRequestEntityTooLarge)
+		fileError(w, errTooLarge)
 		return
 	}
 	etag := fmt.Sprintf(`"%d-%d"`, info.Size(), info.ModTime().UnixNano())
@@ -131,16 +168,8 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	content, err := io.ReadAll(io.LimitReader(file, maxFile+1))
+	content, err := readText(file, info.Size())
 	if fileError(w, err) {
-		return
-	}
-	if len(content) > maxFile {
-		http.Error(w, "file is too large", http.StatusRequestEntityTooLarge)
-		return
-	}
-	if bytes.IndexByte(content[:min(len(content), 8000)], 0) >= 0 {
-		http.Error(w, "file is binary or uses an unsupported text encoding", http.StatusUnsupportedMediaType)
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")

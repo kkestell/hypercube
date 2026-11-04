@@ -71,3 +71,23 @@ export async function readFile(session, path, etag) {
   if (!response.ok) return {error: await response.text()};
   return {text: await response.text(), etag: response.headers.get('ETag')};
 }
+
+// fetchChanges lists repository-relative changes for the session's folder.
+export async function fetchChanges(session) {
+  const response = await fetch(url('changes', {session}), {cache: 'no-store'});
+  if (!response.ok) {
+    const error = new Error(await response.text());
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+// readDiff reads a whole-file patch, with the text viewer's size and binary messages.
+export async function readDiff(session, path) {
+  const response = await fetch(url('diff', {session, path}), {cache: 'no-store'});
+  if (response.status === 413) return {message: 'The file is not displayed in the text editor because it is very large.'};
+  if (response.status === 415) return {message: 'The file is not displayed in the text editor because it is either binary or uses an unsupported text encoding.'};
+  if (!response.ok) return {error: await response.text()};
+  return {text: await response.text()};
+}

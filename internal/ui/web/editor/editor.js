@@ -1,9 +1,6 @@
-// The tabbed area of the attached session: its tabs, the preview tab, and each
-// view's remembered scroll. One tab is the session's agent, which never
-// closes; one can be its browser; every other tab is a file, by fileTabId.
-// As in VS Code, a file
-// opened with one click shows in the preview tab, which the next file opened
-// replaces until it is kept open.
+// The attached session's tabs, preview, and remembered scroll. File and diff
+// tabs share one preview tab, replaced on the next click until kept open.
+import {diffTitle, readOpenDiff} from '../changes/changes.js';
 import {hasPreview} from '../files/language.js';
 import {readOpenFile} from '../files/files.js';
 import {shownSession} from '../sessions/selection.js';
@@ -18,8 +15,12 @@ export const browserTabId = 'browser';
 
 export const fileTabId = path => 'file:' + path;
 
-// tabPath is a file tab's path.
-export const tabPath = id => id.slice('file:'.length);
+export const diffTabId = path => 'diff:' + path;
+
+export const isDiffTab = id => id.startsWith('diff:');
+
+// tabPath is a file or diff tab's path.
+export const tabPath = id => id.slice(id.indexOf(':') + 1);
 
 function withSession(state, change) {
   return state.session ? {...state, session: change(state.session)} : state;
@@ -40,54 +41,72 @@ export function tabEntry(state, id) {
     return {id, browser: true, label, title: page?.url || label, preview: false, deleted: false};
   }
   const path = tabPath(id);
+  const name = path.slice(path.lastIndexOf('/') + 1);
+  if (isDiffTab(id)) {
+    const status = session.changes?.files?.find(file => file.path === path)?.status;
+    const label = diffTitle(path, status);
+    return {id, path, name, diff: true, label, title: label, preview: session.tabs.preview === id};
+  }
   const deleted = !!session.files.open[path]?.deleted;
   return {
-    id, path, deleted,
+    id, path, name, deleted,
     source: hasPreview(path) ? session.files.open[path]?.source ?? false : null,
-    label: path.slice(path.lastIndexOf('/') + 1),
+    label: name,
     title: path + (deleted ? ' (deleted)' : ''),
     preview: session.tabs.preview === id,
   };
 }
 
-// closeTab closes a file and forgets its scroll, or closes the browser's tab.
+// forgetTab drops a file or diff's data and scroll when closed or replaced.
+function forgetTab(session, id) {
+  const path = tabPath(id);
+  const scroll = {...session.scroll};
+  delete scroll[id];
+  if (isDiffTab(id)) {
+    const diffs = {...session.diffs};
+    delete diffs[path];
+    return {...session, diffs, scroll};
+  }
+  const open = {...session.files.open};
+  delete open[path];
+  return {...session, files: {...session.files, open}, scroll};
+}
+
 export function closeTab(state, id) {
   if (id === browserTabId) return withTabs(state, tabs => layout.closeTab(tabs, id));
   return withSession(state, session => {
-    const path = tabPath(id);
-    const open = {...session.files.open};
-    delete open[path];
-    const scroll = {...session.scroll};
-    delete scroll[id];
     const preview = session.tabs.preview === id ? null : session.tabs.preview;
-    return {...session, tabs: {...layout.closeTab(session.tabs, id), preview}, files: {...session.files, open}, scroll};
+    return {...forgetTab(session, id), tabs: {...layout.closeTab(session.tabs, id), preview}};
   });
 }
 
 const unread = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
 
-function fileTabOpened(state, path) {
-  const id = fileTabId(path);
+function tabOpened(state, id, data) {
   return withSession(state, session => {
     if (layout.findPane(session.tabs.root, id)) return {...session, tabs: layout.openTab(session.tabs, id)};
     const preview = session.tabs.preview;
     const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openBeside(session.tabs, id, agentTabId);
-    const open = {...session.files.open, [path]: unread};
-    const scroll = {...session.scroll};
-    if (preview) {
-      delete open[tabPath(preview)];
-      delete scroll[preview];
-    }
-    return {...session, tabs: {...tabs, preview: id}, files: {...session.files, open}, scroll};
+    const kept = preview ? forgetTab(session, preview) : session;
+    const path = tabPath(id);
+    const contents = isDiffTab(id)
+      ? {diffs: {...kept.diffs, [path]: data}}
+      : {files: {...kept.files, open: {...kept.files.open, [path]: data}}};
+    return {...kept, ...contents, tabs: {...tabs, preview: id}};
   });
 }
 
-// openFileTab shows a file in the preview tab, or selects its open tab, and
-// reads it.
+// File and diff clicks open the shared preview, or select an existing tab.
 export function openFileTab(store, path) {
   if (!store.get().session) return;
-  store.update(state => fileTabOpened(state, path));
+  store.update(state => tabOpened(state, fileTabId(path), unread));
   readOpenFile(store, path);
+}
+
+export function openDiffTab(store, path) {
+  if (!store.get().session) return;
+  store.update(state => tabOpened(state, diffTabId(path), {text: null, message: null}));
+  readOpenDiff(store, path);
 }
 
 // openRequestedFile keeps and selects an agent's file. A late socket message

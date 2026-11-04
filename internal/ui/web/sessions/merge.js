@@ -10,9 +10,6 @@ export function mergeSummary(merge) {
   return merge.committed ? `Merged into ${merge.target}` : 'No commits yet';
 }
 
-// uncommittedSummary counts the worktree's changed and untracked files.
-export const uncommittedSummary = merge => count(merge.uncommitted, 'uncommitted file');
-
 // mergeTint is 'modified' while the branch has work outside the target,
 // 'merged' once its commits are all in it, and otherwise null.
 export function mergeTint(merge) {

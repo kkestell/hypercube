@@ -75,7 +75,7 @@ export function EditorTabs({pane, entries}) {
                 onClick={() => store.update(s => selectTab(s, pane.id, entry.id))}
                 onDblClick={() => store.update(s => keepOpen(s, entry.id))}
               >
-                {entry.agent ? <vscode-icon name="comment-discussion" /> : entry.browser ? <vscode-icon name="globe" /> : <FileIcon name={entry.label} />}
+                {entry.agent ? <vscode-icon name="comment-discussion" /> : entry.browser ? <vscode-icon name="globe" /> : <FileIcon name={entry.name} />}
                 <span class="editor-tabs-label">{entry.label}</span>
               </button>
               {!entry.agent && (
