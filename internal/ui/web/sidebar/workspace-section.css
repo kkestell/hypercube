@@ -3,6 +3,7 @@
   display: flex;
   align-items: center;
   height: var(--size-row-height);
+  padding: 0 var(--size-panel-inset);
   border-top: var(--size-border) solid var(--vscode-sideBarSectionHeader-border);
   background: var(--vscode-sideBarSectionHeader-background);
   color: var(--vscode-sideBarSectionHeader-foreground);
@@ -39,7 +40,7 @@
 
 .workspace-section-toggle vscode-icon {
   flex-shrink: 0;
-  margin: 0 2px;
+  margin-right: var(--session-tree-twistie-gap);
 }
 
 .workspace-section-name {
@@ -51,7 +52,7 @@
 /* Actions show while the header is hovered or holds the focus. */
 .workspace-section-actions {
   display: none;
-  padding: 0 var(--size-space);
+  padding: 0;
 }
 
 .workspace-section-header:is(:hover, :focus-within) .workspace-section-actions {
@@ -63,8 +64,8 @@
   display: flex;
   align-items: center;
   width: 100%;
-  height: var(--size-row-height);
-  padding-left: calc(var(--session-tree-indent) + var(--size-icon) + var(--session-tree-twistie-gap));
+  height: var(--size-tree-row-height);
+  padding-left: calc(var(--size-panel-inset) + var(--size-icon) + var(--session-tree-twistie-gap));
   color: var(--vscode-textLink-foreground);
   text-align: left;
 }

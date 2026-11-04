@@ -1,5 +1,6 @@
-/* Rows follow VS Code's tree: 22px tall, 8px of indent per level, then a
-   16px twistie column and its 6px gap. */
+/* Rows are as tall as the Files panel's and start at the panel inset, 8px of indent per
+   level below the first, then a 16px twistie column and its 6px gap. Section
+   headers share the twistie column and gap, so header and row titles align. */
 .sidebar {
   --session-tree-indent: calc(var(--size-space) * 2);
   --session-tree-twistie-gap: 6px;
@@ -8,9 +9,9 @@
 .session-item {
   display: flex;
   align-items: center;
-  height: var(--size-row-height);
-  padding-right: calc(var(--size-space) * 3);
-  padding-left: calc(var(--session-tree-indent) * var(--session-item-level));
+  height: var(--size-tree-row-height);
+  padding-right: var(--size-panel-inset);
+  padding-left: calc(var(--size-panel-inset) + var(--session-tree-indent) * (var(--session-item-level) - 1));
   cursor: pointer;
   outline: none;
 }

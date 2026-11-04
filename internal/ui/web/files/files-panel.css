@@ -6,19 +6,19 @@
   user-select: none;
 }
 
-/* Both edges use the shared content inset. Each level adds an indent before a
+/* Both edges use the side panels' inset. Each level adds an indent before a
    fixed 22px icon column. Items set padding and guide positions inline,
    so these overrides need !important. */
 .files-panel vscode-tree-item::part(wrapper) {
   align-items: center;
   min-height: var(--size-tree-row-height);
   line-height: var(--size-tree-row-height);
-  padding: 0 var(--size-content-inset) 0
-    calc(var(--size-content-inset) + var(--level) * var(--files-panel-indent)) !important;
+  padding: 0 var(--size-panel-inset) 0
+    calc(var(--size-panel-inset) + var(--level) * var(--files-panel-indent)) !important;
 }
 
 .files-panel vscode-tree-item::part(children) {
-  --indentation-guide-left: calc(var(--size-content-inset) + (var(--level) + 1) * var(--files-panel-indent)) !important;
+  --indentation-guide-left: calc(var(--size-panel-inset) + (var(--level) + 1) * var(--files-panel-indent)) !important;
 }
 
 .files-panel vscode-tree-item::part(content) {
