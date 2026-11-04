@@ -13,8 +13,8 @@ test('the right sidebar offers Files and Changes, initially Files', () => {
   const store = createStore({workbench: {rightTab: 'files'}, session: null, workspaces: []});
   const root = mount(store, <RightPanel />);
   const tabs = [...root.querySelectorAll('[role="tab"]')];
-  expect(tabs.map(tab => tab.title)).toEqual(['Files', 'Changes']);
-  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+  expect(tabs.map(tab => tab.title)).toEqual(['Files', 'Changes', 'Search']);
+  expect(tabs.map(tab => tab.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false']);
   act(() => clickControl(tabs[1]));
   expect(store.get().workbench.rightTab).toBe('changes');
 });
@@ -25,13 +25,13 @@ test('side-panel tabs support arrow keys, Home, and End, retaining both views', 
   const tabs = [...root.querySelectorAll('[role="tab"]')];
   const panels = [...root.querySelectorAll('[role="tabpanel"]')];
   act(() => tabs[0].focus());
-  for (const [key, index] of [['ArrowRight', 1], ['ArrowRight', 0], ['ArrowLeft', 1], ['Home', 0], ['End', 1]]) {
+  for (const [key, index] of [['ArrowRight', 1], ['ArrowRight', 2], ['ArrowRight', 0], ['ArrowLeft', 2], ['Home', 0], ['End', 2]]) {
     act(() => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
     await act(() => new Promise(resolve => setTimeout(resolve)));
     expect(document.activeElement === tabs[index]).toBe(true);
     expect(tabs[index].getAttribute('aria-selected')).toBe('true');
     expect(panels[index].hidden).toBe(false);
-    expect(panels[1 - index].hidden).toBe(true);
+    expect(panels.filter((_, i) => i !== index).every(panel => panel.hidden)).toBe(true);
     expect(tabs[index].getAttribute('aria-controls')).toBe(panels[index].id);
     expect(panels[index].getAttribute('aria-labelledby')).toBe(tabs[index].id);
   }

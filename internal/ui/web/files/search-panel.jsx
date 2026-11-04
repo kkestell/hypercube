@@ -1,0 +1,38 @@
+import {useEffect, useLayoutEffect, useRef, useState} from 'react';
+import {searchFiles} from '../api.js';
+import {Button} from '../components/ui/button';
+import {Input} from '../components/ui/input';
+import {openRequestedFile} from '../editor/editor.js';
+import {useStore} from '../store.js';
+
+export function SearchPanel() {
+  const [state, store] = useStore();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+  const [error, setError] = useState('');
+  const input = useRef(null);
+  const session = state.session?.id;
+  useLayoutEffect(() => {
+    if (state.workbench.rightPanel && state.workbench.rightTab === 'search') input.current?.focus();
+  }, [state.workbench.rightPanel, state.workbench.rightTab]);
+  useEffect(() => {
+    if (!session || !query) { setResults([]); setError(''); return; }
+    const controller = new AbortController();
+    setResults([]); setError('');
+    searchFiles(session, query, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setResults(data); })
+      .catch(err => { if (!controller.signal.aborted) setError('Could not search files: ' + err.message); });
+    return () => controller.abort();
+  }, [session, query]);
+  return <div className="p-2">
+    <Input ref={input} aria-label="Search files contents" placeholder="Search" value={query} onChange={e => setQuery(e.target.value)} />
+    {error && <p className="p-2 text-sm">{error}</p>}
+    {results.map(file => <section key={file.path} className="mt-2">
+      <h3 className="truncate px-2 text-sm font-medium" title={file.path}>{file.path}</h3>
+      {file.lines.map(line => <Button key={line.line} variant="ghost" className="h-auto w-full justify-start overflow-hidden px-2 py-1 text-left font-mono text-xs"
+        onClick={() => openRequestedFile(store, {session, path: file.path, lines: [{start: line.line, end: line.line}]})}>
+        <span className="text-muted-foreground">{line.line}</span><span className="truncate">{line.parts.map((part, i) => i % 2 ? <mark key={i}>{part}</mark> : part)}</span>
+      </Button>)}
+    </section>)}
+  </div>;
+}

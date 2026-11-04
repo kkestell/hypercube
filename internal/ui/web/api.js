@@ -61,6 +61,12 @@ export async function mentionFiles(params, signal) {
   return response.json();
 }
 
+export async function searchFiles(session, query, signal) {
+  const response = await fetch(url('search-files', {session, q: query}), {signal, cache: 'no-store'});
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 // searchSessions finds session titles and conversation text across workspaces.
 export async function searchSessions(query, signal) {
   const response = await fetch(url('search-sessions', {q: query}), {signal, cache: 'no-store'});

@@ -12,6 +12,7 @@ export const shortcuts = [
   {id: 'select', section: 'Session', title: 'Select Session', keys: ['⌘1–9']},
   {id: 'interrupt', section: 'Session', title: 'Interrupt Agent', keys: ['Escape']},
   {id: 'searchSessions', section: 'Session', title: 'Search Sessions', keys: ['⌘K']},
+  {id: 'searchFiles', section: 'Session', title: 'Search Files', keys: ['⌘⇧F'], terminal: true},
   {id: 'quickOpen', section: 'Session', title: 'Quick Open', keys: ['⌘P'], terminal: true},
   {id: 'composer', section: 'Session', title: 'Focus Composer', keys: ['⌘L']},
   {id: 'sidebar', section: 'View', title: 'Toggle Sidebar', keys: ['⌘B'], menu: true},
@@ -59,6 +60,10 @@ export function shortcut(e, store, {focusComposer, showHelp, showSettings, openQ
   let action;
   if (is('wrap') && !field) action = () => store.update(toggleWrap);
   else if (is('searchSessions')) action = openSessionSearch;
+  else if (is('searchFiles') && state.session && !state.unsent) action = () => {
+    store.update(s => ({...s, workbench: {...s.workbench, rightPanel: true, rightTab: 'search'}}));
+    if (state.workbench.rightPanel && state.workbench.rightTab === 'search') document.querySelector('[aria-label="Search files contents"]')?.focus();
+  };
   else if (is('quickOpen') && state.session && !state.unsent) action = openQuickOpen;
   else if (is('new')) action = () => store.update(s => openUnsent(s));
   else if (is('composer')) action = focusComposer;

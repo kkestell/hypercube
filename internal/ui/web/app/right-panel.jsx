@@ -1,6 +1,7 @@
 // The right panel: the shown session's Files and Changes, as icon
 // tabs.
 import {ChangesPanel} from '../changes/changes-panel.jsx';
+import {SearchPanel} from '../files/search-panel.jsx';
 import {FilesPanel} from '../files/files-panel.jsx';
 import {useStore} from '../store.js';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
@@ -10,6 +11,7 @@ import {selectRightTab} from './workbench.js';
 const tabs = [
   {id: 'files', icon: 'files', title: 'Files'},
   {id: 'changes', icon: 'source-control', title: 'Changes'},
+  {id: 'search', icon: 'search', title: 'Search'},
 ];
 
 export function RightPanel() {
@@ -20,6 +22,7 @@ export function RightPanel() {
         onSelect={id => store.update(s => selectRightTab(s, id))}>
         <FilesPanel key={state.session?.id} />
         <ChangesPanel />
+        <SearchPanel key={state.session?.id} />
       </PanelTabs>
     </aside>
   );

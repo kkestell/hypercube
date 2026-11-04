@@ -135,19 +135,21 @@ func (s *server) mentionFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer root.Close()
-	inGit, err := gitWorktree(root.Name())
-	if fileError(w, err) {
-		return
-	}
-	var files []string
-	if inGit {
-		files, err = gitMentionFiles(r.Context(), root)
-	} else {
-		files, err = walkMentionFiles(r.Context(), root)
-	}
+	files, err := mentionFileList(r.Context(), root)
 	if fileError(w, err) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(files)
+}
+
+func mentionFileList(ctx context.Context, root *os.Root) ([]string, error) {
+	inGit, err := gitWorktree(root.Name())
+	if err != nil {
+		return nil, err
+	}
+	if inGit {
+		return gitMentionFiles(ctx, root)
+	}
+	return walkMentionFiles(ctx, root)
 }
