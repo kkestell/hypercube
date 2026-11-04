@@ -3,6 +3,7 @@ import {Fragment, useLayoutEffect, useRef, useState} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
+import {tabBackground} from '../shared/tab-background.ts';
 import {Markdown} from '../transcript/markdown.tsx';
 import {revealed} from './files.ts';
 import {hasPreview, language} from './language.ts';
@@ -28,7 +29,7 @@ function Source({text, lines, lang, wrap}: SourceProps) {
     {text.split('\n').map((line, i) => {
       const selected = lines.some(({start, end = start}) => i + 1 >= start && i + 1 <= end);
       return <Fragment key={i}>
-        <span data-find-ignore aria-hidden="true" className={`file-view-gutter sticky left-0 select-none px-4 text-right text-muted-foreground ${selected ? 'bg-accent' : 'bg-background'}`}>{i + 1}</span>
+        <span data-find-ignore aria-hidden="true" className={`file-view-gutter sticky left-0 select-none px-4 text-right text-muted-foreground ${selected ? 'bg-accent' : tabBackground}`}>{i + 1}</span>
         <code className={`block ${wrap ? 'whitespace-pre-wrap break-all' : 'whitespace-pre'} pr-4 ${selected ? 'file-view-highlight bg-accent' : ''}`}
           {...(html ? {dangerouslySetInnerHTML: {__html: html[i] || ' '}} : {children: line || ' '})} />
       </Fragment>;

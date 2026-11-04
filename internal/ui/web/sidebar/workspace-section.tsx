@@ -20,12 +20,15 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
   const headingId = `workspace-section-${workspace.id}`;
   return <Collapsible open={open} onOpenChange={setOpen} asChild>
     <section className="workspace-section" data-workspace={workspace.id} aria-labelledby={headingId}>
-      <div className="workspace-section-header group/workspace flex items-center gap-1 rounded-md hover:bg-accent dark:hover:bg-accent/50" title={workspace.path}>
+      <div className="workspace-section-header group/workspace flex items-center gap-1" title={workspace.path}>
         <CollapsibleTrigger asChild>
-          <Button id={headingId} variant="ghost" size="sm" className="workspace-section-toggle h-7 min-w-0 flex-1 justify-start px-2 font-normal hover:bg-transparent dark:hover:bg-transparent" onKeyDown={e => {
+          <Button id={headingId} variant="ghost" size="sm" className="workspace-section-toggle h-7 min-w-0 flex-1 justify-start px-2 font-normal has-[>svg]:px-2 hover:bg-transparent dark:hover:bg-transparent" onKeyDown={e => {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
             e.preventDefault(); setOpen(e.key === 'ArrowRight');
-          }}><Icon name={open ? 'chevron-down' : 'chevron-right'} /><span className="workspace-section-name truncate text-muted-foreground">{workspace.name}</span></Button>
+          }}>
+            <span className="workspace-section-name min-w-0 truncate text-muted-foreground">{workspace.name}</span>
+            <Icon name={open ? 'chevron-down' : 'chevron-right'} className="invisible group-hover/workspace:visible group-focus-within/workspace:visible" />
+          </Button>
         </CollapsibleTrigger>
         {/* Keep the drawing layer stable when the fade reaches full opacity. */}
         <Button variant="ghost" size="icon-sm" className="size-7 opacity-0 will-change-[opacity] group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>

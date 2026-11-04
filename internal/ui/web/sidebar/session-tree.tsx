@@ -75,7 +75,7 @@ export function SessionTree({label, sessions, renaming, onRenaming}: SessionTree
   };
 
   return (
-    <div ref={ref} className="session-tree flex flex-col pl-4" role="tree" aria-label={label} onKeyDown={keyDown}>
+    <div ref={ref} className="session-tree flex flex-col" role="tree" aria-label={label} onKeyDown={keyDown}>
       {rows.map(row => (
         <SessionItem
           key={row.session.id} {...row} tabbable={row.session.id === active}

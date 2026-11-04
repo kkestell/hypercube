@@ -36,9 +36,6 @@ export function titleBarVars(titleBar: TitleBar | null): CSSProperties | undefin
 export const topRow = 'min-h-[var(--title-bar-height,0px)]';
 export const topRowStart = 'pl-[var(--title-bar-inset,0.5rem)]';
 
-// The controls are 1.75rem tall, with 0.5rem vertical padding and a 1px border.
-export const topRowHeight = 'max(calc(2.25rem + 1px), var(--title-bar-height, 0px))';
-
 // barButton and barTabs size the controls of a top-row bar, which is only a
 // little taller than they are.
 export const barButton = 'size-7';

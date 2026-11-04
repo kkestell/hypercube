@@ -14,7 +14,7 @@ const tabs: PanelTab<RightTab>[] = [
 export function RightPanel() {
   const [state, store] = useStore();
   return (
-    <aside className="right-panel h-full min-w-0">
+    <aside className="right-panel h-full min-w-0 bg-card">
       <PanelTabs label="Session views" tabs={tabs} selected={state.workbench.rightTab}
         onSelect={id => store.update(s => selectRightTab(s, id))}>
         <FilesPanel key={state.session?.id} />

@@ -260,7 +260,7 @@ test('each row shows only its own state, and nothing while idle', () => {
   expect(dots(root, 'asks')).toEqual(['waiting']);
   expect(dots(root, 'replied')).toEqual(['unseen']);
   expect(dots(root, 'exited')).toEqual([]);
-  expect(find(row(root, 'exited'), '.session-item-decoration').textContent).toBe('');
+  expect(row(root, 'exited').querySelector('.session-item-decoration')).toBeNull();
   expect(root.querySelector('[data-variant=destructive]')).toBeNull();
   store.update(s => ({...s, selected: 'replied'}));
   expect(dots(root, 'replied')).toEqual([]);

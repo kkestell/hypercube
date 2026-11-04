@@ -39,29 +39,32 @@ interface SessionItemProps {
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}: SessionItemProps) {
   const [state, store] = useStore();
   const selected = session.id === state.selected;
-  const classes = `session-item h-7 justify-start pl-2 pr-0 font-normal ${level === 2 ? 'ml-4' : ''} ${stopped(session) ? 'opacity-60' : ''}`;
+  const status = statusOf(session, selected);
+  const classes = `session-item group/session h-7 justify-start px-2 font-normal ${level === 2 ? 'ml-4' : ''} ${stopped(session) ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();
   };
 
   return (
-    <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm"><div
-      className={classes} role="treeitem" data-session={session.id}
+    <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm" className={classes}><div
+      role="treeitem" data-session={session.id}
       aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
-      <span className="session-item-twistie flex size-4 shrink-0 items-center" onClick={hasChildren ? toggle : undefined}>
-        {hasChildren && <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />}
+      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+        {session.id === renaming
+          ? <RenameField session={session} onDone={() => onRenaming(null)} />
+          : <span className={`session-item-title min-w-0 truncate text-left ${level === 2 ? 'text-xs' : ''} ${session.activity === 'busy' ? 'text-foreground' : 'text-neutral-500'}`}>{session.title}</span>}
+        {hasChildren && <span className="session-item-twistie invisible flex size-4 shrink-0 items-center group-hover/session:visible group-focus-within/session:visible" onClick={toggle}>
+          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
+        </span>}
       </span>
-      {session.id === renaming
-        ? <RenameField session={session} onDone={() => onRenaming(null)} />
-        : <span className={`session-item-title min-w-0 flex-1 truncate text-left ${level === 2 ? 'text-xs' : ''} ${session.activity === 'busy' ? 'text-foreground' : 'text-neutral-500'}`}>{session.title}</span>}
-      <span className="session-item-decoration ml-auto flex shrink-0 items-center gap-1">
-        {session.worktree && <BranchIcon className="session-item-branch w-7 justify-center" merge={session.merge} />}
-        <span className="session-item-status inline-flex h-4 w-7 items-center justify-center">{statusOf(session, selected)}</span>
-      </span>
+      {(session.worktree || status) && <span className="session-item-decoration ml-auto flex shrink-0 items-center gap-1">
+        {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
+        {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
+      </span>}
     </div></Button>
   );
 }

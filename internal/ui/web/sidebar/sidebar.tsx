@@ -93,7 +93,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   };
 
   return (
-    <div className="sidebar flex h-full min-h-0 flex-col">
+    <div className="sidebar flex h-full min-h-0 flex-col bg-card">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
