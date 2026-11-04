@@ -5,7 +5,6 @@
 // sessions stay hidden. A session shows anyway while it is selected or leads
 // to a child that shows, and a selected archived family shows whole.
 import {useCallback, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
-import {harnessIcon} from '../agent/harness-icon.tsx';
 import {addWorkspace} from '../sessions/session-actions.ts';
 import {runningFirst, sessionOf, stopped} from '../sessions/selection.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
@@ -13,11 +12,11 @@ import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
 import {PanelTabs} from '../shared/panel-tabs.tsx';
 import {useStore} from '../store.ts';
 import {sessionItems, workspaceItems} from './sidebar-menus.ts';
+import {Usage} from './usage.tsx';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
-import {Progress} from '../components/ui/progress';
 import {Icon} from '../shared/icon.tsx';
 
 const below = (button: HTMLElement) => {
@@ -35,11 +34,6 @@ interface SidebarProps {
   searchOpen: boolean;
   onSearchOpenChange: (open: boolean) => void;
   onSettings: () => void;
-}
-
-// timeLeft formats a number of hours as days and hours, or hours alone.
-function timeLeft(hours: number) {
-  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
 export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarProps) {
@@ -116,23 +110,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
           ))}
         </div>
       </PanelTabs>
-      <section aria-label="Sample usage" tabIndex={0} className="group/usage @container shrink-0 space-y-2 border-t p-4 text-xs">
-        {[
-          {harness: 'claude', limits: [{window: 5, used: 36, left: 22}, {window: 7, used: 78, left: 122}]},
-          {harness: 'codex', limits: [{window: 5, used: 42, left: 32}, {window: 7, used: 92, left: 52}]},
-        ].map(({harness, limits}) => <div key={harness} className="flex items-center gap-2">
-          {harnessIcon(harness)}
-          {limits.map((limit, index) => <div key={limit.window} className={`min-w-0 flex-1 items-center gap-1 ${index === 0 ? 'flex group-hover/usage:hidden group-focus/usage:hidden' : 'hidden group-hover/usage:flex group-focus/usage:flex'}`}>
-            <span className="w-5 shrink-0">{limit.window}d</span>
-            <span className="relative min-w-0 flex-1">
-              <Progress value={limit.used} aria-label={`${harness} ${limit.window}d sample usage`} className={`bg-neutral-500/20 ${limit.used >= 90 ? '[&_[data-slot=progress-indicator]]:bg-red-500' : limit.used >= 75 ? '[&_[data-slot=progress-indicator]]:bg-amber-500' : '[&_[data-slot=progress-indicator]]:bg-neutral-500'}`} />
-              <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${100 - limit.left / (limit.window * 24) * 100}%`}} />
-            </span>
-            <span className="w-8 shrink-0 text-right tabular-nums">{limit.used}%</span>
-            <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{timeLeft(limit.left)}</span>
-          </div>)}
-        </div>)}
-      </section>
+      <Usage />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );
