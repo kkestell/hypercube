@@ -3,7 +3,7 @@ import {openUnsent} from '../sessions/selection.js';
 import {toggle} from './workbench.js';
 
 // The tree renders only rows exposed by its workspace and parent sections.
-export function shortcut(e, store) {
+export function shortcut(e, store, focusComposer) {
   if (e.defaultPrevented || e.repeat || e.isComposing || e.target.closest('.terminal-panel, .context-menu, dialog')) return;
   const state = store.get();
   if (state.confirmation) return;
@@ -12,7 +12,7 @@ export function shortcut(e, store) {
   const field = e.target.closest('input, textarea, [contenteditable="true"], vscode-textfield, vscode-textarea');
   let action;
   if (command && !e.altKey && key === 'n') action = () => store.update(s => openUnsent(s));
-  else if (command && !e.altKey && key === 'l') action = () => document.querySelector('.composer-text')?.focus();
+  else if (command && !e.altKey && key === 'l') action = focusComposer;
   else if (command && !e.altKey && /^[1-9]$/.test(key)) {
     const session = state.workspaces.flatMap(w => w.sessions)[Number(key) - 1];
     if (session) action = () => chooseSession(store, session.id);
@@ -27,7 +27,7 @@ export function shortcut(e, store) {
     const region = key === 'j' ? 'panel' : e.altKey ? 'rightPanel' : 'sidebar';
     const selector = {sidebar: '.sidebar', panel: '.terminal-panel', rightPanel: '.right-panel'}[region];
     action = () => {
-      if (state.workbench[region] && e.target.closest(selector)) document.querySelector('.composer-text')?.focus();
+      if (state.workbench[region] && e.target.closest(selector)) focusComposer();
       store.update(s => toggle(s, region));
     };
   }

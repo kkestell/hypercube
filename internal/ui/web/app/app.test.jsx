@@ -135,3 +135,32 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   send(field, 'n', {metaKey: true});
   expect(store.get().unsent.workspace).toBe('w');
 });
+
+test('composer shortcuts activate the chat when a file shares its pane', () => {
+  const sessions = [{id: 'a', title: 'a', running: true, activity: 'idle', children: []}];
+  const store = createStore(receivedWorkspaces({
+    workspaces: [], limits: [], requests: [], selected: 'a', pending: null, unsent: null,
+    visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+    workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
+  }, [{id: 'w', name: 'repo', path: '/repo', sessions}]));
+  const showFile = () => store.update(s => ({...s, session: {...s.session,
+    tabs: {...s.session.tabs, root: {id: 1, tabs: ['agent', 'file:test.txt'], active: 'file:test.txt'}},
+    files: {...s.session.files, open: {'test.txt': {text: 'hello', lines: []}}},
+  }}));
+  showFile();
+  const root = mount(store, <App store={store} />);
+  const send = (target, key) => act(() => target.dispatchEvent(new KeyboardEvent('keydown', {key, metaKey: true, bubbles: true, cancelable: true})));
+  const fileTab = root.querySelector('[data-tab="file:test.txt"]');
+  fileTab.focus();
+  send(fileTab, 'l');
+  expect(store.get().session.tabs.root.active).toBe('agent');
+  expect(document.activeElement).toBe(root.querySelector('.composer-text'));
+
+  act(showFile);
+  const row = root.querySelector('.session-item');
+  row.focus();
+  send(row, 'b');
+  expect(store.get().workbench.sidebar).toBe(false);
+  expect(store.get().session.tabs.root.active).toBe('agent');
+  expect(document.activeElement).toBe(root.querySelector('.composer-text'));
+});
