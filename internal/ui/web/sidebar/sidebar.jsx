@@ -8,7 +8,7 @@ import {ContextMenu} from '../shared/context-menu.jsx';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
-import {pageSize, WorkspaceSection} from './workspace-section.jsx';
+import {WorkspaceSection} from './workspace-section.jsx';
 import './sidebar.css';
 
 const below = button => {
@@ -18,10 +18,6 @@ const below = button => {
 
 export function Sidebar() {
   const [state, store] = useStore();
-  // showStopped is per parent session; stoppedLimits is per workspace, and 0
-  // hides the workspace's stopped sessions.
-  const [showStopped, setShowStopped] = useState({});
-  const [stoppedLimits, setStoppedLimits] = useState({});
   const [renaming, setRenaming] = useState(null);
   // menu.workspace names the section whose More Actions opened the menu.
   const [menu, setMenu] = useState(null);
@@ -32,14 +28,8 @@ export function Sidebar() {
   const workspaces = frozen.current;
   const sessionById = id => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
 
-  const setLimit = (workspace, limit) => setStoppedLimits(l => ({...l, [workspace.id]: limit}));
-  const toggleStopped = workspace => setLimit(workspace, stoppedLimits[workspace.id] ? 0 : pageSize);
-  const workspaceMenu = workspace => workspaceItems(store, workspace, !!stoppedLimits[workspace.id], () => toggleStopped(workspace));
-  const sessionMenu = session => sessionItems(store, session, {
-    stoppedShown: showStopped[session.id],
-    toggleStopped: () => setShowStopped(s => ({...s, [session.id]: !s[session.id]})),
-    rename: () => setRenaming(session.id),
-  });
+  const workspaceMenu = workspace => workspaceItems(store, workspace);
+  const sessionMenu = session => sessionItems(store, session, () => setRenaming(session.id));
 
   const contextMenu = e => {
     const session = sessionById(e.target.closest('[data-session]')?.dataset.session);
@@ -70,11 +60,9 @@ export function Sidebar() {
           {workspaces.map(workspace => (
             <WorkspaceSection
               key={workspace.id} workspace={workspace}
-              limit={stoppedLimits[workspace.id] ?? 0} onLimit={limit => setLimit(workspace, limit)}
-              onToggleStopped={() => toggleStopped(workspace)}
               menuOpen={menu?.workspace === workspace.id}
               onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace), workspace: workspace.id})}
-              showStopped={showStopped} renaming={renaming} onRenaming={setRenaming}
+              renaming={renaming} onRenaming={setRenaming}
             />
           ))}
         </div>
