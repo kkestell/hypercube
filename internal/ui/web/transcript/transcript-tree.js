@@ -35,7 +35,6 @@ const hypercubeTools = {
   create_session: input => ['Create session', input.name],
   end_session: input => ['End session', input.name],
   list_sessions: () => ['List sessions', ''],
-  set_status: input => ['Set status', input.text],
 };
 
 // toolTitle is a tool call's name and summary.
@@ -70,8 +69,6 @@ export function transcriptRows({order, items}) {
   const containers = new Map();
   for (const id of order) {
     const item = items[id];
-    // Keep status updates in the transcript state without displaying them.
-    if (item.kind === 'status') continue;
     const parent = items[item.parent];
     const container = parent && parent.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     if (!containers.has(container)) containers.set(container, []);

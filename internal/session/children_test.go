@@ -118,28 +118,6 @@ func TestChildFailureReachesItsParent(t *testing.T) {
 	}
 }
 
-func TestSetStatus(t *testing.T) {
-	f := newFixture(t)
-	parent := f.session()
-	child := f.child(parent, "child", "")
-	if err := f.rt.SetStatus(child.ID, "  Reading\nthe code. "); err != nil {
-		t.Fatal(err)
-	}
-	items := f.transcript(parent.ID)
-	item := items[len(items)-1]
-	if item.Kind != harness.KindStatus || item.From != child.ID || item.Text != "Reading the code." || item.At == 0 {
-		t.Fatalf("status=%+v", item)
-	}
-	if len(f.transcript(child.ID)) != 0 || len(f.inputs(parent.ID)) != 1 {
-		t.Fatal("status reached a plugin or child transcript")
-	}
-	for _, c := range []struct{ id, text string }{{parent.ID, "Planning"}, {child.ID, " \n"}, {"missing", "Working"}} {
-		if err := f.rt.SetStatus(c.id, c.text); err == nil {
-			t.Fatalf("accepted status %+v", c)
-		}
-	}
-}
-
 func TestChildDirectoriesAndScope(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()

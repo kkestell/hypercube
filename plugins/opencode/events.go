@@ -1,0 +1,278 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
+)
+
+// tool is a tool call and the session that made it.
+type tool struct {
+	item    harness.Item
+	session string
+}
+
+// ended finishes a turn: nothing is left streaming or waiting. The agent is
+// idle once no prompt is in flight and no input waits.
+func (ag *agent) ended(stopReason string, err error) {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	var ev harness.Event
+	for id, it := range ag.open {
+		it.Append, it.Done = true, true
+		ev.Items = append(ev.Items, it)
+		delete(ag.open, id)
+	}
+	ev.Items = append(ev.Items, ag.closeRequests()...)
+	stopping := ag.ctx.Err() != nil
+	select {
+	case <-ag.rpc.Done():
+		stopping = true // Serve reports the process's exit reason.
+	default:
+	}
+	// A cancelled turn is the user's own doing.
+	text := ""
+	switch {
+	case stopping:
+		// The agent is stopping.
+	case err != nil:
+		text = err.Error()
+	case stopReason == "max_tokens":
+		text = "The model stopped at its output limit."
+	case stopReason == "refusal":
+		text = "The model refused the request."
+	}
+	if text != "" {
+		ev.Items = append(ev.Items, ag.errors.Item(text))
+	}
+	if len(ag.queued) > 0 {
+		blocks := ag.queued
+		ag.queued = nil
+		ag.prompt(blocks)
+	} else {
+		ag.busy = false
+		ev.State = harness.Idle
+		// The message the turn ended on is its response.
+		if !stopping && err == nil && stopReason == "end_turn" && ag.last != "" {
+			ev.Final = []string{ag.last}
+		}
+	}
+	ag.emit(ev)
+}
+
+// handle takes what opencode sends: updates, permission requests, and questions
+// for the user. It runs on the connection's reading goroutine, so it answers
+// what it can at once and leaves a form to be answered by the user.
+func (ag *agent) handle(m plugin.Message) {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	var ev harness.Event
+	switch {
+	case m.Method == "session/update":
+		ag.update(&ev, m.Params)
+	case m.Method == "$/cancel_request":
+		ag.withdraw(m.Params)
+	case m.ID == nil:
+		// Other notifications carry nothing the plugin shows.
+	case m.Method == "session/request_permission":
+		result, err := permission(m.Params)
+		if err != nil {
+			_ = ag.rpc.RespondError(m.ID, -32602, err.Error())
+		} else {
+			_ = ag.rpc.Respond(m.ID, result)
+		}
+	case m.Method == "elicitation/create":
+		ag.form(&ev, m.ID, m.Params)
+	default:
+		_ = ag.rpc.RespondError(m.ID, -32601, "Method not found")
+	}
+	if len(ev.Items) > 0 || ev.Usage != nil {
+		ag.emit(ev)
+	}
+}
+
+// childSession is OpenCode's note on an update from a native subagent's
+// session.
+type childSession struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parentID"`
+	Title    string `json:"title"`
+}
+
+// sessionUpdate is the part of a session/update notification that the plugin
+// reads. Content is one content block for a chunk and a list of tool call
+// content for a tool call.
+type sessionUpdate struct {
+	SessionID string `json:"sessionId"`
+	Update    struct {
+		SessionUpdate string          `json:"sessionUpdate"`
+		MessageID     string          `json:"messageId"`
+		Content       json.RawMessage `json:"content"`
+		ToolCallID    string          `json:"toolCallId"`
+		Name          string          `json:"name"`
+		Status        string          `json:"status"`
+		RawInput      json.RawMessage `json:"rawInput"`
+		Used          int             `json:"used"`
+		Size          int             `json:"size"`
+		Cost          *struct {
+			Amount float64 `json:"amount"`
+		} `json:"cost"`
+		Meta struct {
+			Child *childSession `json:"opencode/child-session"`
+		} `json:"_meta"`
+	} `json:"update"`
+}
+
+// contentBlock is a block of a message or of a tool's result.
+type contentBlock struct {
+	Type     string `json:"type"`
+	Text     string `json:"text"`
+	Data     string `json:"data"`
+	MIMEType string `json:"mimeType"`
+}
+
+// toolContent is an entry of a tool call's content: a content block, or
+// another type such as a diff.
+type toolContent struct {
+	Type    string       `json:"type"`
+	Content contentBlock `json:"content"`
+}
+
+func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
+	var p sessionUpdate
+	if json.Unmarshal(params, &p) != nil || p.SessionID != ag.session {
+		return
+	}
+	u := p.Update
+	switch u.SessionUpdate {
+	case "agent_message_chunk", "agent_thought_chunk":
+		kind := harness.KindText
+		if u.SessionUpdate == "agent_thought_chunk" {
+			kind = harness.KindReasoning
+		}
+		var content contentBlock
+		if json.Unmarshal(u.Content, &content) != nil {
+			return
+		}
+		ag.chunk(ev, kind, u.MessageID, content, u.Meta.Child)
+	case "tool_call", "tool_call_update":
+		var content []toolContent
+		if len(u.Content) > 0 && json.Unmarshal(u.Content, &content) != nil {
+			return
+		}
+		ag.toolCall(ev, u.ToolCallID, u.Name, u.Status, u.RawInput, content, u.Meta.Child)
+	case "usage_update":
+		// A native subagent's requests do not count toward the agent's context.
+		if u.Meta.Child != nil || u.Used == 0 {
+			return
+		}
+		usage := harness.Usage{Context: u.Used, Window: u.Size}
+		if u.Cost != nil {
+			usage.Cost = u.Cost.Amount
+		}
+		ev.Usage = &usage
+	}
+}
+
+// chunk extends a streamed message or reasoning item.
+func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content contentBlock, c *childSession) {
+	if content.Type != "text" || content.Text == "" {
+		return
+	}
+	id := fmt.Sprintf("%s:%d", kind, ag.turn)
+	if messageID != "" {
+		id = messageID
+	}
+	if c == nil && kind == harness.KindText {
+		ag.last = messageID
+	}
+	parent := ag.parent(c)
+	ev.Items = append(ev.Items, harness.Item{ID: id, Parent: parent, Kind: kind, Text: content.Text, Append: true})
+	ag.open[id] = harness.Item{ID: id, Parent: parent, Kind: kind}
+}
+
+// toolCall reports a tool call or an update to it. OpenCode names the tool in
+// a field of its own, and its input is kept as OpenCode wrote it.
+func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json.RawMessage, content []toolContent, c *childSession) {
+	if id == "" {
+		return
+	}
+	t := ag.tools[id]
+	if t == nil {
+		t = &tool{item: harness.Item{ID: id, Parent: ag.parent(c), Kind: harness.KindTool}, session: ag.session}
+		if c != nil {
+			t.session = c.ID
+		}
+		ag.tools[id] = t
+		if c == nil {
+			// Text before a main tool call is progress.
+			ag.last = ""
+		}
+	}
+	if t.item.Done {
+		return
+	}
+	if name != "" {
+		t.item.Tool = name
+		// OpenCode names an MCP tool <server>_<tool>. Only the server this
+		// plugin configures has a known name to split at.
+		if tool, ok := strings.CutPrefix(name, "hypercube_"); ok {
+			t.item.Server, t.item.Tool = "hypercube", tool
+		}
+	}
+	if len(input) > 0 {
+		t.item.Input = input
+	}
+	if status == "completed" || status == "failed" {
+		t.item.Done, t.item.Failed = true, status == "failed"
+		t.item.Output, t.item.Images = toolOutput(content)
+	}
+	ev.Items = append(ev.Items, t.item)
+}
+
+// toolOutput is the text and images of a tool's result. An edit is shown as a
+// diff, which has neither.
+func toolOutput(content []toolContent) (string, []harness.Image) {
+	var parts []string
+	var images []harness.Image
+	for _, c := range content {
+		if c.Type != "content" {
+			continue
+		}
+		switch b := c.Content; b.Type {
+		case "text":
+			parts = append(parts, b.Text)
+		case "image":
+			images = append(images, harness.Image{MIMEType: b.MIMEType, Data: b.Data})
+		}
+	}
+	return strings.Join(parts, "\n"), images
+}
+
+// parent is the tool item that started the subagent session an update came
+// from. OpenCode names the child session after the tool call's description
+// and gives no call ID while the child runs; the call's result names the
+// session only once the child has finished. The title is therefore the only
+// link, and the call is still running when the session starts.
+func (ag *agent) parent(c *childSession) string {
+	if c == nil {
+		return ""
+	}
+	if id, ok := ag.children[c.ID]; ok {
+		return id
+	}
+	var found string
+	for id, t := range ag.tools {
+		var in struct {
+			Description string `json:"description"`
+		}
+		if t.session == c.ParentID && !t.item.Done && json.Unmarshal(t.item.Input, &in) == nil && in.Description == c.Title && c.Title != "" {
+			found = id
+		}
+	}
+	ag.children[c.ID] = found
+	return found
+}

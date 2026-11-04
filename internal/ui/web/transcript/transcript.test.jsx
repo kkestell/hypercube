@@ -381,17 +381,14 @@ test('prompts, text, and tool calls show their images', () => {
   expect(sources('.tool-items-call')).toEqual(['data:image/png;base64,' + png]);
 });
 
-test('mirrored requests name their sender and answer at its session ID; child status stays hidden', async () => {
+test('mirrored requests name their sender and answer at its session ID', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const {store, root, send} = setup([
-    {id: 'status', kind: 'status', from: 'child', text: 'Reading.', at: 1},
     {id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', choices: ['yes']},
     {id: 'message', kind: 'user', from: 'child', text: 'Result.'},
   ]);
   store.update(state => ({...state, workspaces: [{sessions: [{id: 's', children: [{id: 'child', parent: 's', title: 'Builder', children: []}]}]}]}));
-  expect(root.textContent).not.toContain('Reading.');
-  expect(store.get().session.transcript.items.status.text).toBe('Reading.');
   expect(root.querySelector('.attention-item-source').textContent).toBe('Builder');
   expect(root.querySelector('.disclosure-heading').textContent).toBe('From Builder');
   await act(async () => choose(root, 'yes'));

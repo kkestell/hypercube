@@ -20,12 +20,10 @@ const (
 	CmdAnswer    = "answer"
 )
 
-// Item kinds. Plugins send every kind but User, Status, and State, which
-// Hypercube writes for the text and images it delivers, a child's status, and
-// each change of work state.
+// Item kinds. Plugins send every kind but User and State, which Hypercube
+// writes for the text and images it delivers and each change of work state.
 const (
 	KindUser      = "user"
-	KindStatus    = "status"
 	KindState     = "state"
 	KindText      = "text"
 	KindReasoning = "reasoning"
@@ -162,10 +160,7 @@ type Limit struct {
 // names that session's ID in From, and Text is the message alone.
 type Item struct {
 	// At is when Hypercube first received the item, in Unix milliseconds.
-	At int64 `json:"at,omitempty"`
-	// End is when Hypercube received the item's completion, in Unix
-	// milliseconds. Items saved by earlier versions have none.
-	End     int64           `json:"end,omitempty"`
+	At      int64           `json:"at,omitempty"`
 	ID      string          `json:"id"`
 	Parent  string          `json:"parent,omitempty"`
 	Kind    string          `json:"kind"`

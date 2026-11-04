@@ -123,7 +123,7 @@ func onBranch(branch string) string {
 	return " on branch " + branch
 }
 
-const reportBack = ` Use the hypercube set_status tool often to keep the user up to date: when you start, when you move to a new step, and when you find something that changes the plan, say in a sentence or two what you are doing now. When you finish, or need something, send your parent a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files. set_status reaches the user in your parent's session, not your parent's agent. A message you send is the only way your parent's agent sees your work's status.
+const reportBack = ` When you finish, or need something, send your parent a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files.
 `
 
 // writeTeamwork writes the top-level session's guidance on parallel work and the

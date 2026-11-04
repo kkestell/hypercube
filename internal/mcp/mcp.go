@@ -32,10 +32,6 @@ type sendMessageArgs struct {
 	Text string `json:"text"`
 }
 
-type setStatusArgs struct {
-	Text string `json:"text"`
-}
-
 type createSessionArgs struct {
 	Name    string `json:"name"`
 	Title   string `json:"title"`
@@ -92,10 +88,6 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 	addBrowserTools(server, browser, self)
 	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
-		mcp.AddTool(server, &mcp.Tool{
-			Name:        "set_status",
-			Description: "Tell the user in a sentence or two what you are doing now. It appears in your parent session's transcript for the user; your parent's agent does not see it.",
-		}, result(func(_ context.Context, a setStatusArgs) (string, error) { return setStatus(rt, self, a.Text) }))
 		return server
 	}
 	mcp.AddTool(server, &mcp.Tool{
@@ -316,13 +308,6 @@ func sendMessage(rt *session.Runtime, self, to, text string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Message queued for %s.", to), nil
-}
-
-func setStatus(rt *session.Runtime, self, text string) (string, error) {
-	if err := rt.SetStatus(self, text); err != nil {
-		return "", err
-	}
-	return "Status set.", nil
 }
 
 func createSession(rt *session.Runtime, self string, cfg harness.Config, args createSessionArgs) (string, error) {

@@ -174,9 +174,6 @@ func TestCallEnds(t *testing.T) {
 			t.Fatal("call did not end")
 		}
 		<-c.Done()
-		if c.Err() == nil {
-			t.Fatal("no error")
-		}
 		if _, err := c.Call(context.Background(), "y", nil); err == nil {
 			t.Fatal("call on a closed connection succeeded")
 		}

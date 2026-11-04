@@ -166,26 +166,3 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 	r.Terminals.Stop(child.ID)
 	return child, err
 }
-
-// SetStatus writes a child's account of its work into its parent's transcript.
-func (r *Runtime) SetStatus(id, text string) error {
-	text = strings.Join(strings.Fields(text), " ")
-	if text == "" {
-		return errors.New("text is required")
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.save(func(tx *write) error {
-		child, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		if child.Parent == "" {
-			return errors.New("only child sessions have a status")
-		}
-		if err := r.loadSeq(tx.Tx, child.Parent); err != nil {
-			return err
-		}
-		return tx.putItem(child.Parent, r.nextSeq(child.Parent), harness.Item{ID: "status-" + store.NewID(), Kind: harness.KindStatus, From: id, Text: text, Done: true})
-	})
-}

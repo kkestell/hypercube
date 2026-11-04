@@ -122,9 +122,6 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			merged.Done = it.Done
 			it = merged
 		}
-		if it.Done {
-			it.End = at
-		}
 		p.item = it
 		if it.Done {
 			delete(l.pending, it.ID)
@@ -205,7 +202,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 // stateMarker is the saved record of an event's work state. Its ID names the
 // source record's position, so a record read again replaces its marker.
 func (r *Runtime) stateMarker(l *live, ev harness.Event, next, at int64) *pendingItem {
-	item := harness.Item{ID: fmt.Sprintf("%sstate-%d", l.prefix, next), Kind: harness.KindState, State: ev.State, Done: true, At: at, End: at}
+	item := harness.Item{ID: fmt.Sprintf("%sstate-%d", l.prefix, next), Kind: harness.KindState, State: ev.State, Done: true, At: at}
 	for _, id := range ev.Final {
 		item.Final = append(item.Final, l.prefix+id)
 	}

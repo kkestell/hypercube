@@ -326,9 +326,8 @@ func (r *Runtime) endLocked(l *live, cause error) (*live, bool) {
 // drain takes the launch's unfinished items as finished items.
 func (l *live) drain() []*pendingItem {
 	items := make([]*pendingItem, 0, len(l.pending))
-	end := time.Now().UnixMilli()
 	for id, p := range l.pending {
-		p.item.Done, p.item.End = true, end
+		p.item.Done = true
 		items = append(items, p)
 		delete(l.pending, id)
 	}
