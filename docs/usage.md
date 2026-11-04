@@ -45,11 +45,10 @@ Open in Terminal. These open the workspace folder or the session’s directory,
 including its worktree when it has one.
 
 The sidebar header's New Session button (`+`) opens a new session in the
-current session's workspace, with the
-animated hypercube above its composer. Choose its workspace below the composer;
-Add Workspace beside the selector adds a project and selects it. Add Workspace
-in the sidebar header adds a project too. Changing the
-workspace keeps your draft and profile, and resets the Worktree switch.
+current session's workspace, with the animated hypercube above its composer.
+The button appears when at least one workspace exists. Add Workspace in the
+sidebar header adds a project. Choose a workspace below the composer; changing
+it keeps your draft and profile, and resets the Worktree switch.
 The composer chooses the profile until the first prompt is sent, and sending
 that prompt creates the session. In a Git workspace, the Worktree switch beside
 the profile, off by default, runs the session in its own worktree under

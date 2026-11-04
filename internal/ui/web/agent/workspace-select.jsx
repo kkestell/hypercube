@@ -1,6 +1,4 @@
-// Workspace selection below the new session's composer. Adding a workspace
-// selects it without replacing the draft or profile.
-import {addWorkspace} from '../sessions/session-actions.js';
+// Workspace selection below the new session's composer.
 import {unsentWorkspace} from '../sessions/selection.js';
 import {useStore} from '../store.js';
 import './workspace-select.css';
@@ -11,12 +9,6 @@ export function WorkspaceSelect() {
   const choose = e => {
     const workspace = workspaces.find(w => w.id === e.currentTarget.value);
     if (workspace) store.update(s => unsentWorkspace(s, workspace.id));
-  };
-  const add = async () => {
-    const workspace = await addWorkspace(store);
-    if (workspace && store.get().unsent?.identity === unsent.identity) {
-      store.update(s => unsentWorkspace(s, workspace));
-    }
   };
 
   return (
@@ -29,7 +21,6 @@ export function WorkspaceSelect() {
           </vscode-option>
         ))}
       </vscode-single-select>
-      <vscode-button secondary icon="add" disabled={unsent.sending} onClick={add}>Add Workspace</vscode-button>
     </div>
   );
 }

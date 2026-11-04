@@ -53,7 +53,7 @@ export function Sidebar() {
   return (
     <div class="sidebar">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
-          <vscode-toolbar-button icon="add" label="New Session" title="New Session (⌘N)" onClick={() => store.update(s => openUnsent(s))} />
+          {state.workspaces.length > 0 && <vscode-toolbar-button icon="add" label="New Session" title="New Session (⌘N)" onClick={() => store.update(s => openUnsent(s))} />}
           <vscode-toolbar-button icon="new-folder" label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)} />
         </>}>
         <div class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>

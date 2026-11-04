@@ -394,11 +394,12 @@ test('Rename in a session\'s menu opens the rename field', () => {
   expect(row(root, 'a').querySelector('vscode-textfield').getAttribute('value')).toBe('Session a');
 });
 
-test('New Session opens without any workspaces', () => {
+test('New Session is shown only when a workspace exists', () => {
   const {root, store} = setup([]);
+  expect(root.querySelector('[title="New Session (⌘N)"]')).not.toBeNull();
   store.update(s => ({...s, workspaces: []}));
-  click(root.querySelector('[title="New Session (⌘N)"]'));
-  expect(store.get().unsent).toMatchObject({workspace: null, profile: null});
+  expect(root.querySelector('[title="New Session (⌘N)"]')).toBeNull();
+  expect(root.querySelector('[title="Add Workspace"]')).not.toBeNull();
 });
 
 test('workspace headers offer the workspace context menu', () => {
