@@ -101,9 +101,6 @@ func (c *RPC) End(err error) {
 // Done is closed when the connection has ended.
 func (c *RPC) Done() <-chan struct{} { return c.done }
 
-// Err says why the connection ended. It is valid once Done is closed.
-func (c *RPC) Err() error { return c.err }
-
 func (c *RPC) write(v any) error {
 	line, err := json.Marshal(v)
 	if err != nil {
