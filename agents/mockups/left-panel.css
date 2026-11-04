@@ -200,6 +200,13 @@
   color: var(--vscode-descriptionForeground);
 }
 
+.mockup-scm-ahead {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
 .mockup-scm-file:hover {
   background: var(--vscode-list-hoverBackground);
 }
