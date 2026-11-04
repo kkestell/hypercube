@@ -30,9 +30,10 @@ edits.
 
 ## Browser view
 
-The sidebar lists top-level sessions with their workspace names in smaller text
-above their titles. Sessions within each workspace stay newest first, in
-creation order. Workspace Actions (`…`) in the sidebar header offers each
+The sidebar groups sessions under their workspace, with child sessions under
+their parent. Click a workspace or a parent's chevron to expand or collapse it.
+Sessions within each workspace stay newest first, in creation order. Workspace
+Actions (`…`) in the sidebar header offers each
 workspace's Show/Hide Stopped Sessions and Delete Workspace actions.
 Show Stopped Sessions reveals the first five stopped sessions; Show more
 appears when there are more. Showing them again starts at five. The selected
@@ -64,16 +65,16 @@ each turn. A window past its reset time keeps its last reported percent,
 dimmed, until the harness reports again.
 
 Click a session to show its chat, and double-click it to change its title.
-Hovering a row shows More Actions in place of its dot, which opens the same
-menu as right-clicking it. A top-level session's menu offers Start/Stop,
+Right-click a row to open its menu. A top-level session's menu offers Start/Stop,
 Show/Hide Stopped Sessions when it has children, and Delete. Stopped child rows
 are dimmed; clicking a child of a stopped parent starts the family. Each row's
-dot shows only its own session: amber means it awaits you, and blue marks a reply
-you have not seen. Each row spins only while its own session works.
+dot at the far right shows only its own session: amber means it awaits you, and blue marks a reply
+you have not seen. A gray dot marks an idle or stopped session. Each row spins
+only while its own session works.
 The composer shows the agent's spinner, waiting dot, or red
 dot after an unexpected exit.
 
-A worktree session's row shows a branch icon in a column before its status dot,
+A worktree session's row shows a branch icon just left of its status dot. The icon is
 purple while the branch has commits not merged into the checkout's branch or
 uncommitted files, and dimmed once its commits are merged. Its composer shows the branch
 beside the profile. While the branch has unmerged commits, a Merge button

@@ -15,7 +15,6 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: calc(var(--size-space) * 4);
   min-height: 0;
   overflow: auto;
 }
@@ -24,6 +23,34 @@
   display: flex;
   flex-shrink: 0;
   flex-direction: column;
+}
+
+.sidebar-workspace {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: var(--size-tree-row-height);
+  padding-left: var(--size-content-inset);
+  text-align: left;
+}
+
+.sidebar-workspace:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.sidebar-workspace:focus-visible {
+  outline: var(--size-border) solid var(--vscode-focusBorder);
+  outline-offset: calc(var(--size-border) * -1);
+}
+
+.sidebar-workspace vscode-icon {
+  flex: 0 0 var(--size-icon);
+}
+
+.sidebar-workspace span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-actions {
@@ -42,24 +69,8 @@
 }
 
 .sidebar-nested {
-  position: relative;
   display: flex;
   flex-direction: column;
-}
-
-.sidebar-nested::after {
-  content: "";
-  position: absolute;
-  z-index: 1;
-  top: 0;
-  bottom: calc(var(--size-tree-row-height) / 2);
-  left: calc(var(--size-content-inset) + var(--size-space) / 2);
-  width: calc(var(--size-space) * 2);
-  border-left: var(--size-border) solid;
-  border-bottom: var(--size-border) solid;
-  border-color: color-mix(in srgb, var(--vscode-tree-indentGuidesStroke) 70%, var(--vscode-sideBar-background));
-  border-bottom-left-radius: calc(var(--size-space) * 2);
-  pointer-events: none;
 }
 
 .sidebar-show-more,
@@ -82,7 +93,7 @@
 
 .sidebar-show-more {
   height: var(--size-tree-row-height);
-  padding-left: var(--size-content-inset);
+  padding-left: calc(var(--size-content-inset) + var(--size-icon) * 2);
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 60%, var(--vscode-sideBar-background));
 }
 

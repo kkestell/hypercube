@@ -61,7 +61,7 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
     act(() => field.dispatchEvent(handled));
     expect(fetches).toHaveBeenCalledTimes(1);
 
-    act(() => root.querySelector('.session-item-menu').click());
+    act(() => root.querySelector('[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
     escape(root.querySelector('.context-menu'));
     expect(root.querySelector('.context-menu')).toBeNull();
     expect(fetches).toHaveBeenCalledTimes(1);

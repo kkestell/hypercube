@@ -1,8 +1,7 @@
-// Sessions form a flat list, each parent labeled with its workspace. Running
-// children stay beneath their parent. Workspace actions reveal stopped parents
+// Sessions are grouped by workspace, with children beneath their parent.
+// Workspace actions reveal stopped parents
 // five at a time; the selected family stays visible. Freeze the list during
 // renaming so the field keeps its place and focus.
-import {Fragment} from 'preact';
 import {useCallback, useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
 import {openUnsent} from '../sessions/selection.js';
@@ -23,6 +22,7 @@ const below = button => {
 export function Sidebar() {
   const [state, store] = useStore();
   const [showStopped, setShowStopped] = useState({});
+  const [collapsed, setCollapsed] = useState({});
   const [stoppedLimits, setStoppedLimits] = useState({});
   const [renaming, setRenaming] = useState(null);
   const [menu, setMenu] = useState(null);
@@ -45,7 +45,7 @@ export function Sidebar() {
     if (!session && !workspace) return;
     e.preventDefault();
     const point = {x: e.clientX, y: e.clientY};
-    showMenu(point, session && !e.target.closest('.session-item-workspace') ? itemsOf(session) : workspaceItemsOf(workspace));
+    showMenu(point, session ? itemsOf(session) : workspaceItemsOf(workspace));
   };
 
   const workspaceMenu = button => {
@@ -56,12 +56,12 @@ export function Sidebar() {
     ]);
   };
 
-  const sessionRow = (session, workspace) => {
-    const items = itemsOf(session);
+  const toggle = id => setCollapsed(c => ({...c, [id]: !c[id]}));
+  const sessionRow = (session, hasChildren = false) => {
     return (
       <SessionItem
-        key={session.id} session={session} workspace={workspace} selected={session.id === state.selected}
-        onMenu={items.length ? button => showMenu(below(button), items) : null}
+        key={session.id} session={session} selected={session.id === state.selected}
+        hasChildren={hasChildren} expanded={!collapsed[`session:${session.id}`]} onToggle={() => toggle(`session:${session.id}`)}
         renaming={session.id === renaming} onRenaming={on => setRenaming(on ? session.id : null)}
       />
     );
@@ -86,22 +86,26 @@ export function Sidebar() {
               const sessions = workspace.sessions.filter(s => s.running || stopped.includes(s)
                 || s.id === state.selected || s.children.some(c => c.id === state.selected));
               return (
-                <Fragment key={workspace.id}>
-                  {sessions.map(session => {
+                <div key={workspace.id} data-workspace={workspace.id}>
+                  <button class="sidebar-workspace" title={workspace.path} aria-expanded={!collapsed[`workspace:${workspace.id}`]} onClick={() => toggle(`workspace:${workspace.id}`)}>
+                    <vscode-icon name={collapsed[`workspace:${workspace.id}`] ? 'chevron-right' : 'chevron-down'} />
+                    <span>{workspace.name}</span>
+                  </button>
+                  {!collapsed[`workspace:${workspace.id}`] && sessions.map(session => {
                     // A parent's running children, the selected one, and
                     // stopped children when the parent's menu reveals them.
                     const nested = session.children.filter(s => s.running || showStopped[session.id] || s.id === state.selected);
                     return (
                       <div key={session.id} class="sidebar-session-group" data-workspace={workspace.id}>
-                        {sessionRow(session, workspace)}
-                        {nested.length > 0 && <div class="sidebar-nested">{nested.map(child => sessionRow(child))}</div>}
+                        {sessionRow(session, nested.length > 0)}
+                        {nested.length > 0 && !collapsed[`session:${session.id}`] && <div class="sidebar-nested">{nested.map(child => sessionRow(child))}</div>}
                       </div>
                     );
                   })}
-                  {limit > 0 && sessions.length < workspace.sessions.length && (
+                  {!collapsed[`workspace:${workspace.id}`] && limit > 0 && sessions.length < workspace.sessions.length && (
                     <button class="sidebar-show-more" data-workspace={workspace.id} onClick={() => setStoppedLimits(l => ({...l, [workspace.id]: limit + pageSize}))}>Show more in {workspace.name}</button>
                   )}
-                </Fragment>
+                </div>
               );
             })}
           </div>

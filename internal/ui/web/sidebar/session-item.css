@@ -1,61 +1,27 @@
-/* The title button covers the row, so a click anywhere selects it; the status
-   column sits above it. */
+/* Session rows use the same height and selection colors as VS Code trees. */
 .session-item {
-  --session-title-inset: var(--size-content-inset);
   position: relative;
   display: flex;
-  flex-shrink: 0;
   align-items: center;
   height: var(--size-tree-row-height);
   padding-right: var(--size-content-inset);
-}
-
-.session-item-parent {
-  height: calc(var(--size-tree-row-height) + var(--size-icon) + var(--size-space) * 2);
-  align-items: flex-end;
-}
-
-.session-item-parent .session-item-title {
-  flex-direction: column;
-  align-items: stretch;
-  padding-block: var(--size-space);
-  line-height: var(--size-tree-row-height);
-}
-
-.session-item-workspace {
-  position: relative;
-  z-index: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--vscode-descriptionForeground);
-  font-size: calc(var(--vscode-font-size) - 2px);
-  line-height: var(--size-icon);
-}
-
-.session-item-parent .session-item-status,
-.session-item-parent .session-item-branch {
-  margin-bottom: calc(var(--size-space) * 2);
+  padding-left: calc(var(--size-content-inset) + var(--size-icon));
 }
 
 .session-item-nested {
-  --session-title-inset: calc(var(--size-content-inset) + var(--size-space) * 4);
-  font-size: calc(var(--vscode-font-size) - 1px);
-  color: var(--vscode-descriptionForeground);
+  padding-left: calc(var(--size-content-inset) + var(--size-icon) * 2);
 }
 
 .session-item-stopped {
-  color: color-mix(in srgb, var(--vscode-descriptionForeground) 80%, var(--vscode-sideBar-background));
+  color: var(--vscode-disabledForeground);
 }
 
 .session-item:hover {
   background: var(--vscode-list-hoverBackground);
 }
 
-.session-item-selected,
-.session-item-selected:hover {
-  color: var(--vscode-foreground);
-  background: color-mix(in srgb, var(--vscode-list-inactiveSelectionBackground) 25%, var(--vscode-sideBar-background));
+.session-item-selected {
+  background: var(--vscode-list-inactiveSelectionBackground);
 }
 
 .session-item-selected .session-item-text {
@@ -71,48 +37,65 @@
   outline: none;
 }
 
+.session-item-toggle {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 0 0 var(--size-icon);
+  align-items: center;
+  justify-content: center;
+  height: var(--size-icon);
+}
+
 .session-item-title {
   display: flex;
   flex: 1;
-  align-items: center;
   min-width: 0;
-  height: 100%;
-  padding-left: var(--session-title-inset);
   text-align: left;
 }
 
-.session-item-title::after {
+button.session-item-title::after {
   content: "";
   position: absolute;
   inset: 0;
-  border-radius: inherit;
 }
 
-/* A title that overflows fades out gently toward the row's right edge. Beside
-   a dot, spinner, or menu button it fades sooner and fully, so the text clears
-   the icon. The scroll timeline runs only while the text has something to
-   scroll, so short titles are not masked. */
+.session-item-title-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  height: var(--size-tree-row-height);
+}
+
 @keyframes fade-title-end {
   from, to {
-    mask-image: linear-gradient(to right, #000 calc(100% - var(--title-fade)), transparent calc(100% - var(--title-fade-gap)));
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
   }
 }
 
-.session-item {
-  --title-fade: 32px;
-  --title-fade-gap: 0px;
+.session-item-text {
+  overflow: hidden;
+  white-space: nowrap;
+  animation: fade-title-end linear;
+  animation-timeline: scroll(self inline);
 }
 
-.session-item:has(.session-item-status > :not(.session-item-menu)),
-.session-item:is(:hover, :focus-within):has(.session-item-menu) {
-  --title-fade: 28px;
-  --title-fade-gap: 6px;
+.session-item-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+  margin-left: calc(var(--size-space) * 2);
 }
 
-.session-item-branch {
-  flex-shrink: 0;
-  width: var(--size-icon);
-  margin-inline: calc(var(--size-space) * 2);
+.session-item-status,
+.session-item-branch-slot {
+  display: flex;
+  flex: 0 0 var(--size-icon);
+  align-items: center;
+  justify-content: center;
+  height: var(--size-icon);
 }
 
 .session-item-branch-modified {
@@ -123,39 +106,7 @@
   color: var(--vscode-disabledForeground);
 }
 
-.session-item-text {
-  overflow: hidden;
-  white-space: nowrap;
-  animation: fade-title-end linear;
-  animation-timeline: scroll(self inline);
-}
-
-.session-item-status {
-  position: relative;
-  display: flex;
-  flex: 0 0 var(--size-icon);
-  align-items: center;
-  justify-content: center;
-  height: var(--size-icon);
-}
-
-.session-item-menu {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--size-icon);
-  height: var(--size-icon);
-}
-
-.session-item:is(:hover, :focus-within) .session-item-menu {
-  display: flex;
-}
-
-.session-item:is(:hover, :focus-within) .session-item-status:has(.session-item-menu) .status-dot {
-  display: none;
-}
-
 .session-item-rename {
   flex: 1;
-  margin-left: var(--session-title-inset);
+  min-width: 0;
 }

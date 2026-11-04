@@ -1,10 +1,5 @@
-// A session's row: its title, dimmed for a stopped session, followed for a
-// worktree session by a branch icon, tinted while its branch has work outside
-// the checkout's branch and dimmed once merged; and its own state dot: amber
-// while it waits on the user, blue for a reply not yet seen, and otherwise a
-// gray ring while that session works.
-// Hovering shows its menu button in the indicator's place. Double-clicking
-// the title renames the session in place.
+// A session's own state sits at the far right, beside its worktree branch icon.
+// double-clicking a title renames it in place.
 import {useEffect, useRef} from 'preact/hooks';
 import {mergeTint} from '../sessions/merge.js';
 import {chooseSession, renameSession} from '../sessions/session-actions.js';
@@ -16,34 +11,33 @@ const dotOf = (session, selected) => {
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <StatusDot kind="busy" title="Working" />;
-  return null;
+  return <StatusDot kind="idle" title={session.running ? 'Idle' : 'Stopped'} />;
 };
 
-// onMenu is called with the menu button when the session has a menu.
-export function SessionItem({session, workspace, selected, renaming, onRenaming, onMenu}) {
+export function SessionItem({session, selected, renaming, onRenaming, hasChildren, expanded, onToggle}) {
   const [, store] = useStore();
   const classes = ['session-item', session.parent ? 'session-item-nested' : 'session-item-parent'];
+  const Title = renaming ? 'div' : 'button';
   if (selected) classes.push('session-item-selected');
   if (!session.running) classes.push('session-item-stopped');
 
   return (
     <div class={classes.join(' ')} data-session={session.id}>
-      {renaming
-        ? <RenameField session={session} onDone={() => onRenaming(false)} />
-        : (
-          <button class="session-item-title" aria-current={selected ? 'true' : undefined} onClick={() => chooseSession(store, session.id)} ondblclick={() => onRenaming(true)}>
-            {workspace && <span class="session-item-workspace" title={workspace.path}>{workspace.name}</span>}
-            <span class="session-item-text">{session.title}</span>
-          </button>
-        )}
-      {session.worktree && <BranchIcon session={session} />}
-      <span class="session-item-status">
-        {dotOf(session, selected)}
-        {onMenu && (
-          <button class="session-item-menu" title="More Actions" aria-label="More Actions" onClick={e => onMenu(e.currentTarget)}>
-            <vscode-icon name="ellipsis" />
-          </button>
-        )}
+      {hasChildren
+        ? <button class="session-item-toggle" aria-label={`${expanded ? 'Collapse' : 'Expand'} ${session.title}`} aria-expanded={expanded} onClick={onToggle}><vscode-icon name={expanded ? 'chevron-down' : 'chevron-right'} /></button>
+        : <span class="session-item-toggle" />}
+      <Title class="session-item-title" aria-current={selected ? 'true' : undefined}
+        onClick={renaming ? undefined : () => chooseSession(store, session.id)}
+        ondblclick={renaming ? undefined : () => onRenaming(true)}>
+        <span class="session-item-title-line">
+          {renaming
+            ? <RenameField session={session} onDone={() => onRenaming(false)} />
+            : <span class="session-item-text">{session.title}</span>}
+        </span>
+      </Title>
+      <span class="session-item-actions">
+        <span class="session-item-branch-slot">{session.worktree && <BranchIcon session={session} />}</span>
+        <span class="session-item-status">{dotOf(session, selected)}</span>
       </span>
     </div>
   );

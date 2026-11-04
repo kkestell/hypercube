@@ -41,7 +41,7 @@ const toggleWorkspaceStopped = (root, name) => {
 };
 
 const toggleStopped = root => {
-  click(root.querySelector('[data-session="a"] .session-item-menu'));
+  act(() => root.querySelector('[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
   pick(root, 1);
 };
 
@@ -163,6 +163,8 @@ const key = (element, key) => act(() => element.dispatchEvent(new KeyboardEvent(
 test('Enter saves a changed title, Escape cancels, and leaving the field saves', () => {
   const {root, posted} = setup([session('a')]);
   let field = rename(root, 'a');
+  expect(field.closest('button')).toBeNull();
+  expect(root.querySelector('.sidebar-workspace').textContent).toBe('repo');
   field.value = '  Renamed  ';
   key(field, 'Enter');
   expect(posted()).toEqual([{action: 'rename', id: 'a', title: 'Renamed'}]);
@@ -314,11 +316,12 @@ test('each row shows only its own state', () => {
     session('asks', {parent: 'a', attention: true, activity: 'busy'}),
     session('replied', {parent: 'a', unseen: true}),
   ]})]);
-  expect(dots(root, 'a')).toEqual([]);
+  expect(dots(root, 'a')).toEqual(['idle']);
+  expect(root.querySelector('[data-session="a"] .session-item-branch-slot').nextElementSibling.className).toBe('session-item-status');
   expect(dots(root, 'asks')).toEqual(['waiting']);
   expect(dots(root, 'replied')).toEqual(['unseen']);
   store.update(s => ({...s, selected: 'replied'}));
-  expect(dots(root, 'replied')).toEqual([]);
+  expect(dots(root, 'replied')).toEqual(['idle']);
 });
 
 test.each([
@@ -342,9 +345,8 @@ test('waiting and unseen indicators take priority over the working indicator', (
 
 test('session actions and workspace actions open their respective menus', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'})]})]);
-  expect(root.querySelector('[data-session="active"] .session-item-menu')).toBeNull();
-  click(root.querySelector('[data-session="a"] .session-item-menu'));
-  act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: '0'}})));
+  expect(root.querySelector('.session-item-menu')).toBeNull();
+  choose(root, '[data-session="a"]', 0);
   expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
   workspaceMenu(root);
   pick(root, 1);
@@ -353,7 +355,7 @@ test('session actions and workspace actions open their respective menus', () => 
 
 test('Escape closes a menu and returns the focus to its button', async () => {
   const {root} = setup([session('a')]);
-  const button = root.querySelector('[data-session="a"] .session-item-menu');
+  const button = root.querySelector('[aria-label="Workspace Actions"]');
   button.focus();
   click(button);
   const menu = root.querySelector('vscode-context-menu');
@@ -393,17 +395,21 @@ test('a worktree session shows a branch icon tinted by its merge state', () => {
 });
 
 
-test('each parent has its own workspace label above its title and children stay underneath', () => {
+test('workspaces group sessions and the tree can be collapsed', () => {
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
   store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: [session('c')]}]}));
   expect(sessionRows(root)).toEqual(['a', 'child', 'b', 'c']);
-  expect([...root.querySelectorAll('.session-item-workspace')].map(label => [label.textContent, label.title])).toEqual([
-    ['repo', '/repo'], ['repo', '/repo'], ['other', '/other'],
+  expect([...root.querySelectorAll('.sidebar-workspace')].map(label => [label.textContent, label.title])).toEqual([
+    ['repo', '/repo'], ['other', '/other'],
   ]);
-  expect(title(root, 'a').firstElementChild.className).toBe('session-item-workspace');
-  expect(title(root, 'child').querySelector('.session-item-workspace')).toBeNull();
   expect(root.querySelector('[data-session="a"]').parentElement).toBe(root.querySelector('[data-session="child"]').closest('.sidebar-session-group'));
-  expect(root.querySelector('.sidebar-workspace-header')).toBeNull();
+  click(root.querySelector('[aria-label="Collapse Session a"]'));
+  expect(sessionRows(root)).toEqual(['a', 'b', 'c']);
+  click(root.querySelector('[aria-label="Expand Session a"]'));
+  click(root.querySelector('.sidebar-workspace'));
+  expect(sessionRows(root)).toEqual(['c']);
+  click(root.querySelector('.sidebar-workspace'));
+  expect(sessionRows(root)).toEqual(['a', 'child', 'b', 'c']);
 });
 
 test('New Session opens without any workspaces', () => {
@@ -415,7 +421,7 @@ test('New Session opens without any workspaces', () => {
 
 test('workspace labels offer the workspace context menu', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '.session-item-workspace', 1);
+  choose(root, '.sidebar-workspace', 1);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe("Are you sure you want to delete 'repo'?");
   click(dialogButton(root, 'Delete'));
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
