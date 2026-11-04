@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,5 +181,146 @@ func TestChildFilesUseItsDirectory(t *testing.T) {
 	}
 	if res := get("files"); res.Code != 404 {
 		t.Fatalf("removed directory=%d %s", res.Code, res.Body)
+	}
+}
+
+func TestMentionFiles(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git: %s: %v", out, err)
+		}
+	}
+	git("init", "-q")
+	for name, content := range map[string]string{".gitignore": "ignored/\n*.tmp\n", "src/a.go": "a", "ignored/a": "b", "skip.tmp": "c", "other.txt": "d"} {
+		name = filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", "src/a.go")
+	if err := os.WriteFile(filepath.Join(dir, "conflict.go"), []byte("conflict"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	hash, err := exec.Command("git", "-C", dir, "hash-object", "-w", "conflict.go").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := exec.Command("git", "-C", dir, "update-index", "--index-info")
+	h := strings.TrimSpace(string(hash))
+	index.Stdin = strings.NewReader("100644 " + h + " 1\tconflict.go\n100644 " + h + " 2\tconflict.go\n100644 " + h + " 3\tconflict.go\n")
+	if out, err := index.CombinedOutput(); err != nil {
+		t.Fatalf("index: %s: %v", out, err)
+	}
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	handler := handler(t, db)
+	for _, query := range []string{"session=s", "workspace=w"} {
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/mention-files?"+query, nil))
+		var files []string
+		if res.Code != 200 {
+			t.Fatalf("%s: %d %s", query, res.Code, res.Body)
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &files); err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(files, ",")
+		if got != ".gitignore,other.txt,conflict.go,src/a.go" {
+			t.Errorf("%s: %s", query, got)
+		}
+	}
+}
+
+func TestMentionFilesOutsideGit(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"visible/a.go", ".hypercube/secret", ".svn/config", "visible/Thumbs.db"} {
+		name = filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte("x"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(dir, "unreadable"), 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "unreadable"), 0700) })
+	if err := os.Symlink(t.TempDir(), filepath.Join(dir, "directory-link")); err != nil {
+		t.Fatal(err)
+	}
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	h := handler(t, db)
+	request := func() *httptest.ResponseRecorder {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/mention-files?session=s", nil))
+		return res
+	}
+	res := request()
+	if res.Code != 200 || strings.TrimSpace(res.Body.String()) != `["visible/a.go"]` {
+		t.Fatalf("fallback = %d %s", res.Code, res.Body)
+	}
+	// A broken worktree marker is a Git error, not permission to fall back.
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("invalid"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if res := request(); res.Code == 200 {
+		t.Fatalf("broken Git returned fallback: %s", res.Body)
+	}
+}
+
+func TestMentionFilesCapsGitResults(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: elsewhere"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("a"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	output := filepath.Join(bin, "output")
+	if err := os.WriteFile(output, []byte(strings.Repeat("a\x00", maxMentionFiles+1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n/bin/cat \"$MENTION_TEST_OUTPUT\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("MENTION_TEST_OUTPUT", output)
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	res := httptest.NewRecorder()
+	handler(t, db).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/mention-files?session=s", nil))
+	if res.Code != 200 {
+		t.Fatalf("listing = %d %s", res.Code, res.Body)
+	}
+	var files []string
+	if err := json.Unmarshal(res.Body.Bytes(), &files); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != maxMentionFiles {
+		t.Fatalf("got %d files, want %d", len(files), maxMentionFiles)
 	}
 }

@@ -1,4 +1,4 @@
-import {afterEach, expect, spyOn, test} from 'bun:test';
+import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'preact/test-utils';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {openUnsent} from '../sessions/selection.js';
@@ -7,6 +7,7 @@ import {Composer} from './composer.jsx';
 import {unsentKey} from './drafts.js';
 
 let fetches;
+beforeEach(() => { fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json([])); });
 afterEach(() => {
   fetches?.mockRestore();
   fetches = null;
@@ -96,7 +97,7 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
 
 test('profiles that arrive for a replaced unsent session are ignored', async () => {
   const answers = [];
-  fetches = spyOn(globalThis, 'fetch').mockImplementation(() => new Promise(resolve => answers.push(resolve)));
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(url => String(url).startsWith('mention-files?') ? Promise.resolve(Response.json([])) : new Promise(resolve => answers.push(resolve)));
   const s = unsentStore();
   mount(s, <Composer session={unsentSession} />);
   s.update(state => openUnsent(state, 'other'));
@@ -206,10 +207,210 @@ test('Merge asks the agent to merge into the target in the checkout', async () =
   const root = mount(s, <Composer session={top} />);
   expect(mergeButton(root).hasAttribute('disabled')).toBe(false);
   await act(() => mergeButton(root).click());
-  const [url, init] = fetches.mock.calls[0];
+  const [url, init] = fetches.mock.calls.find(([url]) => String(url).startsWith('session?'));
   expect(Object.fromEntries(new URL(url, 'http://x/').searchParams)).toEqual({action: 'input', id: 'a'});
   expect(JSON.parse(init.body)).toEqual({
     text: 'Commit any remaining work, then merge your branch into main in the checkout at /repo, resolving any conflicts, and report the result.',
     images: [],
   });
+});
+
+test('prompt history returns to the unsent draft', () => {
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1', '2', '3'], items: {
+    1: {kind: 'user', text: 'first'}, 2: {kind: 'user', from: 'peer', text: 'peer'}, 3: {kind: 'user', text: 'last'},
+  }}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  field.value = 'draft'; field.dispatchEvent(new Event('input'));
+  const press = key => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+  press('ArrowUp'); expect(field.value).toBe('last');
+  press('ArrowUp'); expect(field.value).toBe('first');
+  press('ArrowDown'); expect(field.value).toBe('last');
+  press('ArrowDown'); expect(field.value).toBe('draft');
+});
+
+test('file mentions filter paths and insert the selected file', async () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(['internal/ui/files.go', 'README.md']));
+  const root = mount(store(), <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  field.value = 'look @iuf'; field.setSelectionRange(field.value.length, field.value.length);
+  act(() => field.dispatchEvent(new Event('input')));
+  await settle();
+  expect([...root.querySelectorAll('[role=option]')].map(e => e.textContent)).toEqual(['internal/ui/files.go']);
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true})));
+  expect(field.value).toBe('look @internal/ui/files.go');
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+});
+
+test('mention follows the caret, replaces the whole token, and Escape closes it', async () => {
+  fetches.mockImplementation(async () => Response.json(['src/file.go']));
+  const root = mount(store(), <Composer session={session} />);
+  await settle();
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const press = (key, options = {}) => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...options})));
+  input('hello @src');
+  await settle();
+  act(() => { field.setSelectionRange(0, 0); field.dispatchEvent(new KeyboardEvent('keyup', {key: 'Home', bubbles: true})); });
+  expect([field.selectionStart, root.querySelector('[role=listbox]')?.textContent]).toEqual([0, undefined]);
+  input('@sr');
+  act(() => { field.setSelectionRange(2, 2); field.dispatchEvent(new KeyboardEvent('keyup', {key: 'ArrowLeft', bubbles: true})); });
+  press('Enter');
+  expect(field.value).toBe('@src/file.go');
+  expect(field.selectionStart).toBe(field.value.length);
+  input('@src'); press('Escape');
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+});
+
+test('mention keys respect modifiers and Enter sends only without a selection', async () => {
+  const calls = [];
+  fetches.mockImplementation(async (url, init) => {
+    if (String(url).startsWith('mention-files?')) return Response.json(['src/a.go']);
+    calls.push(init); return new Response('');
+  });
+  const root = mount(store(), <Composer session={session} />);
+  await settle();
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const press = (key, options = {}) => { const e = new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...options}); act(() => field.dispatchEvent(e)); return e.defaultPrevented; };
+  input('@src');
+  await settle();
+  expect(press('Enter', {shiftKey: true})).toBe(false);
+  expect(press('Tab', {shiftKey: true})).toBe(false);
+  expect(press('Enter')).toBe(true);
+  expect(field.value).toBe('@src/a.go');
+  expect(calls).toHaveLength(0);
+  input('@missing');
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+  expect(press('Enter')).toBe(true);
+  expect(calls).toHaveLength(1);
+});
+
+test('multiline history preserves the draft and edits recalled copies', () => {
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1'], items: {'1': {kind: 'user', text: 'old\nsecond'}}}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const press = key => { const e = new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true}); act(() => field.dispatchEvent(e)); return e.defaultPrevented; };
+  input('draft\nline');
+  expect(press('ArrowUp')).toBe(false);
+  field.setSelectionRange(0, 0); expect(press('ArrowUp')).toBe(true);
+  expect(field.value).toBe('old\nsecond');
+  input('edited');
+  expect(s.get().drafts.a.text).toBe('draft\nline');
+  expect(press('ArrowDown')).toBe(true);
+  expect(field.value).toBe('draft\nline');
+  field.setSelectionRange(0, 0); press('ArrowUp');
+  expect(field.value).toBe('old\nsecond');
+});
+
+test('sending an edited history copy clears the saved draft', async () => {
+  let sent;
+  fetches.mockImplementation(async (url, init) => { sent = JSON.parse(init.body); return new Response(''); });
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1'], items: {'1': {kind: 'user', text: 'old'}}}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const press = key => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+  input('draft'); press('ArrowUp'); input('edited');
+  expect(s.get().drafts.a.text).toBe('draft');
+  press('Enter');
+  await settle();
+  expect(sent.text).toBe('edited');
+  expect(s.get().drafts.a).toBeUndefined();
+  expect(field.value).toBe('');
+});
+
+test('arrow keyup keeps the selected file and scrolls it into view', async () => {
+  fetches.mockImplementation(async () => Response.json(['a.go', 'b.go', 'c.go']));
+  const scrolled = [];
+  const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function(options) { scrolled.push([this.textContent, options]); });
+  try {
+    const root = mount(store(), <Composer session={session} />);
+    const field = root.querySelector('textarea');
+    field.value = '@'; field.setSelectionRange(1, 1);
+    act(() => field.dispatchEvent(new Event('input')));
+    await settle();
+    const key = name => act(() => {
+      field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+      field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true, cancelable: true}));
+    });
+    key('ArrowDown'); key('ArrowDown');
+    expect(root.querySelector('[aria-selected=true]').textContent).toBe('c.go');
+    expect(scrolled.some(([name, options]) => name === 'c.go' && options?.block === 'nearest')).toBe(true);
+    key('Enter');
+    expect(field.value).toBe('@c.go');
+  } finally { scroll.mockRestore(); }
+});
+
+test('opening mentions refreshes files, keeps old results while loading, and reports errors', async () => {
+  const requests = [];
+  fetches.mockImplementation((url, init) => new Promise((resolve, reject) => requests.push({resolve, reject, signal: init.signal})));
+  const root = mount(store(), <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const key = name => act(() => { field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true})); field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true})); });
+  input('@'); await settle();
+  expect(requests).toHaveLength(1);
+  requests[0].resolve(Response.json(['old.go'])); await settle();
+  input('@o'); await settle();
+  expect(requests).toHaveLength(1);
+  key('Escape');
+  input('x @'); await settle();
+  expect(requests).toHaveLength(2);
+  expect(root.textContent).toContain('old.go');
+  key('Escape');
+  expect(requests[1].signal.aborted).toBe(true);
+  input('y @'); await settle();
+  expect(requests).toHaveLength(3);
+  requests[2].reject(new Error('offline')); await settle();
+  expect(root.textContent).toContain('Could not list files: offline');
+});
+
+test('clearing the new session workspace removes its file suggestions', async () => {
+  fetches.mockImplementation(async url => Response.json(String(url).startsWith('mention-files?') ? ['old.go'] : profiles));
+  const s = unsentStore();
+  const root = mount(s, <Composer session={unsentSession} />);
+  const field = root.querySelector('textarea');
+  field.value = '@'; field.setSelectionRange(1, 1);
+  act(() => field.dispatchEvent(new Event('input')));
+  await settle();
+  expect(root.textContent).toContain('old.go');
+  act(() => s.update(state => ({...state, unsent: {...state.unsent, workspace: null}})));
+  await settle();
+  expect(root.textContent).not.toContain('old.go');
+});
+
+test('history ending in a mention keeps the picker closed for navigation and sending', async () => {
+  const sent = [], listings = [];
+  fetches.mockImplementation(async (url, init) => {
+    if (String(url).startsWith('mention-files?')) { listings.push(url); return Response.json(['a.go', 'another.go']); }
+    sent.push(JSON.parse(init.body)); return new Response('');
+  });
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1', '2'], items: {
+    1: {kind: 'user', text: 'older'}, 2: {kind: 'user', text: 'see @a.go'},
+  }}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const key = name => act(() => {
+    field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+    field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true, cancelable: true}));
+  });
+  key('ArrowUp');
+  expect(field.value).toBe('see @a.go');
+  expect(field.selectionStart).toBe(field.value.length);
+  await settle();
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+  expect(listings).toHaveLength(0);
+  key('ArrowUp');
+  expect(field.value).toBe('older');
+  key('ArrowDown');
+  expect(field.value).toBe('see @a.go');
+  key('Enter');
+  await settle();
+  expect(sent.map(prompt => prompt.text)).toEqual(['see @a.go']);
 });
