@@ -18,6 +18,7 @@ import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
 import {StatusBar} from './status-bar.jsx';
+import {shortcut} from './shortcuts.js';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
 import './app.css';
 
@@ -70,7 +71,7 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div class="app" onKeyDown={key}>
+      <div class="app" onKeyDownCapture={e => shortcut(e, store)} onKeyDown={key}>
         <header class="app-header" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>

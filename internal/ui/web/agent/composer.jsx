@@ -89,7 +89,7 @@ export function Composer({session}) {
         </div>
       )}
       <MentionList mentions={mentions} />
-      <textarea ref={field} rows={1} aria-label="Message" class="composer-text" value={text}
+      <textarea ref={field} rows={1} aria-label="Message" title="Focus Composer (⌘L)" class="composer-text" value={text}
         role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
         aria-controls={mentions.choices.length || mentions.error ? 'composer-mentions' : undefined}
         aria-activedescendant={mentions.choices.length ? 'composer-file-' + mentions.active : undefined}

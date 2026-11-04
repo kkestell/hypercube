@@ -44,6 +44,10 @@ it, and Right expands it. Showing stopped sessions reveals the first five; Show 
 there are more. Showing them again starts at five. The selected session stays
 visible, even when stopped.
 
+Workspace and session menus also offer Open in VS Code, Reveal in Finder, and
+Open in Terminal. These open the workspace folder or the session’s directory,
+including its worktree when it has one.
+
 Children appear under their parent in creation order. Running children are
 always visible; Show Stopped Sessions in the parent's menu lists stopped
 children too, and Hide Stopped Sessions hides them again.
@@ -60,6 +64,14 @@ the profile, off by default, runs the session in its own worktree under
 `.hypercube/` on a new branch from the checkout's HEAD; the branch checked out
 in the checkout is its merge target. Selecting another session first discards
 the unsent session.
+
+Keyboard shortcuts use Command on macOS: Command+N opens a new session in the
+current workspace; Control+Tab and Control+Shift+Tab, or Command+Option+Down
+and Command+Option+Up, cycle through visible session rows; Command+1 through
+Command+9 select top-level sessions in sidebar order. Command+L focuses the
+composer, Command+B toggles the sidebar, Command+J toggles the terminal, and
+Command+Option+B toggles the right panel. The terminal keeps its own keys,
+and text fields keep their editing shortcuts.
 
 The status bar along the bottom of the window shows each harness's
 subscription usage once an agent of that harness has reported it: for each
