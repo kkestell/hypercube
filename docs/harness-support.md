@@ -167,7 +167,9 @@ private storage and resumes the same conversation ID.
   approvals have the grants `commandExecution` and `fileChange`; network host,
   write-root, and permission approvals have none. Codex's questions become
   one attention request per question, with the options as choices and free text
-  where Codex allows it; Codex receives the answers once every question has one.
+  where Codex allows it. Blocking questions are answered together; async
+  questions send each answer as a message. New input or a new turn closes any
+  remaining async questions for that thread.
   An MCP server's request is Accept or Decline, or one attention request per
   field of its form. An MCP tool approval offers no Always allow, because Codex
   does not name the tool.

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -96,6 +97,11 @@ type threadItem struct {
 	AgentThreadID     string          `json:"agentThreadId"`
 	AgentPath         string          `json:"agentPath"`
 	Phase             string          `json:"phase"`
+	Delivery          string          `json:"delivery"`
+	Questions         []struct {
+		Title   string   `json:"title"`
+		Options []string `json:"options"`
+	} `json:"questions"`
 }
 
 type fileChange struct {
@@ -240,6 +246,9 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	}
 	switch m.Method {
 	case "turn/started":
+		if n.Turn != nil {
+			ev.Items = append(ev.Items, ag.closeAsyncQuestions(n.ThreadID)...)
+		}
 		if main && n.Turn != nil {
 			ag.startTurn(ev, n.Turn.ID)
 		}
@@ -254,11 +263,14 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 		}
 	case "item/started":
 		if n.Item != nil {
-			ag.item(ev, parent, *n.Item, false)
+			ag.item(ev, n.ThreadID, parent, *n.Item, false)
 		}
 	case "item/completed":
 		if n.Item != nil {
-			ag.item(ev, parent, *n.Item, true)
+			if n.Item.Type == "userMessage" {
+				ev.Items = append(ev.Items, ag.closeAsyncQuestions(n.ThreadID)...)
+			}
+			ag.item(ev, n.ThreadID, parent, *n.Item, true)
 			ag.answered(main, n.TurnID, *n.Item)
 		}
 	case "item/agentMessage/delta":
@@ -318,7 +330,7 @@ func (ag *agent) endTurn(ev *harness.Event, id, status, message string) {
 			ag.finished[id] = true
 			delete(ag.running, id)
 		}
-		ev.Items = append(ev.Items, ag.closeRequests(func(*request) bool { return true }, false)...)
+		ev.Items = append(ev.Items, ag.closeRequests(blockingRequest, false)...)
 		ev.State = harness.Idle
 	}
 	if status == "failed" {
@@ -344,14 +356,14 @@ func (ag *agent) stream(ev *harness.Event, parent, kind, id, delta string) {
 
 // item translates an item that started or completed. Codex may report an
 // item's completion more than once; the first one counts.
-func (ag *agent) item(ev *harness.Event, parent string, it threadItem, completed bool) {
+func (ag *agent) item(ev *harness.Event, thread, parent string, it threadItem, completed bool) {
 	if it.ID == "" || ag.finished[it.ID] {
 		return
 	}
 	switch it.Type {
 	case "agentMessage":
 		if completed {
-			ag.complete(ev, harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindText, Text: it.Text})
+			ag.agentMessage(ev, thread, parent, it)
 		}
 	case "reasoning":
 		if completed {
@@ -380,6 +392,19 @@ func (ag *agent) item(ev *harness.Event, parent string, it threadItem, completed
 		}
 	case "commandExecution", "fileChange", "mcpToolCall", "dynamicToolCall", "webSearch", "imageView":
 		ag.tool(ev, parent, it, completed)
+	}
+}
+
+func (ag *agent) agentMessage(ev *harness.Event, thread, parent string, it threadItem) {
+	ag.complete(ev, harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindText, Text: it.Text})
+	if it.Delivery != "async" {
+		return
+	}
+	for i, q := range it.Questions {
+		item := harness.Item{ID: fmt.Sprintf("question:%s/%d", it.ID, i), Parent: parent, Kind: harness.KindAttention, Text: q.Title, Choices: q.Options, Free: true}
+		r := &request{async: true, thread: thread}
+		ag.requests.Add(r, []harness.Item{item})
+		ev.Items = append(ev.Items, item)
 	}
 }
 
