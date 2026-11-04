@@ -22,6 +22,7 @@ type stateMessage struct {
 	Build      string            `json:"build"`
 	Workspaces []shownWorkspace  `json:"workspaces"`
 	Requests   []session.Request `json:"requests"`
+	Limits     []store.Limit     `json:"limits"`
 }
 
 type transcriptMessage struct {
@@ -97,7 +98,8 @@ type dataSocket struct {
 	rt   *session.Runtime
 
 	workspaces []shownWorkspace
-	// stale marks workspaces out of date with the database.
+	limits     []store.Limit
+	// stale marks workspaces and limits out of date with the database.
 	stale bool
 	sent  []byte
 
@@ -110,13 +112,13 @@ type dataSocket struct {
 // state sent, rereading the view data first when it is stale.
 func (d *dataSocket) sendState() error {
 	if d.stale {
-		workspaces, err := snapshot(d.db, d.rt.Merges())
+		workspaces, limits, err := snapshot(d.db, d.rt.Merges())
 		if err != nil {
 			return err
 		}
-		d.workspaces, d.stale = workspaces, false
+		d.workspaces, d.limits, d.stale = workspaces, limits, false
 	}
-	data, err := json.Marshal(stateMessage{"state", buildID(), d.workspaces, d.rt.Requests()})
+	data, err := json.Marshal(stateMessage{"state", buildID(), d.workspaces, d.rt.Requests(), d.limits})
 	if err != nil || bytes.Equal(data, d.sent) {
 		return err
 	}

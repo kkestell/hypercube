@@ -21,7 +21,7 @@
 //	!early     events before the reply
 //	!ask       an attention request with the choices yes and no
 //	!approve   a tool call and an approval for the tool "Tool", choices Allow and Deny
-//	!usage     a usage event
+//	!usage     a usage and limits event
 //	!fail      an error item
 //	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
@@ -279,7 +279,10 @@ func (p *standIn) input(cmd harness.Command) {
 		p.state(harness.Working, harness.Item{ID: "tool-" + p.turn, Kind: harness.KindTool, Tool: "Tool"}, approval(p.turn, false, ""))
 	case has("usage"):
 		p.reply(cmd.ID, "")
-		p.event(harness.Event{Usage: &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31}})
+		p.event(harness.Event{
+			Usage:  &harness.Usage{Context: 45200, Window: 200000, Cost: 0.31},
+			Limits: []harness.Limit{{Minutes: 300, Used: 42, Resets: 1793767800, At: 1793750712115}},
+		})
 	case has("fail"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Idle, harness.Item{ID: p.turn, Kind: harness.KindError, Text: "test provider failure", Done: true})

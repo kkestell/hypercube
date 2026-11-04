@@ -14,6 +14,7 @@ import {createStore} from './store.js';
 
 const store = createStore({
   workspaces: [],
+  limits: [],
   requests: [],
   selected: decodeURIComponent(location.hash.slice(1)),
   pending: null,

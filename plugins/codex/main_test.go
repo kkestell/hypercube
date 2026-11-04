@@ -292,6 +292,24 @@ func TestTextAndTool(t *testing.T) {
 	}
 }
 
+func TestRateLimitUpdatesReportTheGeneralLimit(t *testing.T) {
+	h := newAgent(t)
+	line := fixture(t, "limits")[0]
+	h.feed(t, line, strings.Replace(line, `"limitId":"codex"`, `"limitId":"codex_other_model"`, 1))
+	events := h.snapshot()
+	if len(events) != 1 {
+		t.Fatalf("events = %+v", events)
+	}
+	got := events[0].Limits
+	if len(got) != 1 || got[0].At <= 0 {
+		t.Fatalf("limits = %+v", got)
+	}
+	got[0].At = 0
+	if want := (harness.Limit{Minutes: 10080, Used: 48, Resets: 1793792440}); got[0] != want {
+		t.Fatalf("limit = %+v, want %+v", got[0], want)
+	}
+}
+
 // Codex may report a completion more than once; later reports change nothing.
 func TestDuplicateCompletedItems(t *testing.T) {
 	h := newAgent(t)

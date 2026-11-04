@@ -18,8 +18,3 @@ the tool's name or the elicitation's own ID, so the adapter has no key to save
 and offers no Always allow for them.
 
 Offer Always allow once Codex includes a stable tool identifier in the request.
-
-## Show Claude Code and Codex usage limits
-
-Display the user's Claude Code and Codex usage against their limits,
-including the 5-hour and 7-day session windows.

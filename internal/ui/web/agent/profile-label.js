@@ -16,7 +16,7 @@ const titleCase = word => properNames[word.toLowerCase()] ?? word.charAt(0).toUp
 
 // displayName turns a raw ID into words, keeping the hyphen in a versioned
 // acronym such as GPT-6.1.
-function displayName(value = '') {
+export function displayName(value = '') {
   const words = value.split(/[\s/_-]+/).filter(Boolean);
   const names = words.map(titleCase);
   return names.map((name, i) => {

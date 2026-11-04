@@ -143,6 +143,21 @@ func TestStateStreamsSnapshots(t *testing.T) {
 	})
 }
 
+func TestStateCarriesLimits(t *testing.T) {
+	a := newApp(t)
+	p := a.page()
+	p.until("the first state", func() bool { return p.state.Limits != nil })
+	if len(p.state.Limits) != 0 {
+		t.Fatalf("limits before any report = %+v", p.state.Limits)
+	}
+	a.input("!usage", http.StatusOK)
+	p.until("the limits", func() bool { return len(p.state.Limits) == 1 })
+	want := store.Limit{Harness: "test", Limit: harness.Limit{Minutes: 300, Used: 42, Resets: 1793767800, At: 1793750712115}}
+	if p.state.Limits[0] != want {
+		t.Fatalf("limits = %+v, want %+v", p.state.Limits, want)
+	}
+}
+
 func TestRoutesRefuseOtherSites(t *testing.T) {
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {
@@ -829,7 +844,7 @@ func TestSnapshotOrder(t *testing.T) {
 		}
 		return nil
 	})
-	list, err := snapshot(db, nil)
+	list, _, err := snapshot(db, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

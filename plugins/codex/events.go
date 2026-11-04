@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
@@ -24,6 +25,40 @@ func (ag *agent) handle(m plugin.Message) {
 		ag.notification(&ev, m)
 	}
 	ag.send(ev)
+}
+
+// rateLimits are the windows of the account's general limit that a rate
+// limit update reports, as seen now. An update names only the windows that
+// changed; a model-specific quota has its own limit ID and is left out.
+func rateLimits(params json.RawMessage) []harness.Limit {
+	type window struct {
+		UsedPercent        int    `json:"usedPercent"`
+		WindowDurationMins *int   `json:"windowDurationMins"`
+		ResetsAt           *int64 `json:"resetsAt"`
+	}
+	var p struct {
+		RateLimits struct {
+			LimitID   *string `json:"limitId"`
+			Primary   *window `json:"primary"`
+			Secondary *window `json:"secondary"`
+		} `json:"rateLimits"`
+	}
+	if json.Unmarshal(params, &p) != nil || p.RateLimits.LimitID != nil && *p.RateLimits.LimitID != "codex" {
+		return nil
+	}
+	at := time.Now().UnixMilli()
+	var limits []harness.Limit
+	for _, w := range []*window{p.RateLimits.Primary, p.RateLimits.Secondary} {
+		if w == nil || w.WindowDurationMins == nil {
+			continue
+		}
+		l := harness.Limit{Minutes: *w.WindowDurationMins, Used: w.UsedPercent, At: at}
+		if w.ResetsAt != nil {
+			l.Resets = *w.ResetsAt
+		}
+		limits = append(limits, l)
+	}
+	return limits
 }
 
 // threadItem is the part of an item the translation reads. Fields that differ
@@ -151,7 +186,8 @@ func blocksImages(blocks []contentBlock) []harness.Image {
 }
 
 func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
-	if m.Method == "mcpServer/startupStatus/updated" {
+	switch m.Method {
+	case "mcpServer/startupStatus/updated":
 		var p struct {
 			Name   string `json:"name"`
 			Status string `json:"status"`
@@ -161,6 +197,9 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 		if json.Unmarshal(m.Params, &p) == nil && p.Name == "hypercube" && p.Status == "failed" {
 			ag.fail(ev, "The hypercube MCP server failed to start: "+p.Error)
 		}
+		return
+	case "account/rateLimits/updated":
+		ev.Limits = rateLimits(m.Params)
 		return
 	}
 	var n struct {
