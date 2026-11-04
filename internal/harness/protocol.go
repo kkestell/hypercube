@@ -164,7 +164,6 @@ type Item struct {
 	At int64 `json:"at,omitempty"`
 	// End is when Hypercube received the item's completion, in Unix
 	// milliseconds. Items saved by earlier versions have none.
-	End     int64           `json:"end,omitempty"`
 	ID      string          `json:"id"`
 	Parent  string          `json:"parent,omitempty"`
 	Kind    string          `json:"kind"`
