@@ -259,6 +259,9 @@
    colors. */
 .mockup-scm-status {
   flex-shrink: 0;
+  /* The codicon squares sit 1px above the label's optical center, which
+     lowercase letters pull below the line box's center. */
+  translate: 0 1px;
 }
 
 .mockup-scm-M > .mockup-scm-status { color: var(--vscode-editorGutter-modifiedBackground); }
