@@ -14,7 +14,6 @@ import '../shared/panel-tabs.css';
 import {useStore} from '../store.js';
 import {SessionItem} from './session-item.jsx';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
-import {UsageLimits} from './usage-limits.jsx';
 import './sidebar.css';
 
 const pageSize = 5;
@@ -110,7 +109,6 @@ export function Sidebar() {
             <vscode-icon name="add" />
             Add Workspace
           </button>
-          <UsageLimits />
         </vscode-tab-panel>
       </vscode-tabs>
       {menu && <ContextMenu {...menu} onClose={closeMenu} />}

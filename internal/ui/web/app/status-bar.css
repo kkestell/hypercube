@@ -1,0 +1,71 @@
+/* A band of 12px text along the window's bottom in VS Code's status bar
+   colors, its items spaced apart rather than separated. */
+.status-bar {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  align-items: center;
+  gap: calc(var(--size-space) * 8);
+  height: calc(var(--size-row-height) + var(--size-space) * 2);
+  padding: 0 var(--size-content-inset);
+  overflow: hidden;
+  font-size: 12px;
+  white-space: nowrap;
+  background: var(--vscode-statusBar-background);
+  color: var(--vscode-statusBar-foreground);
+  border-top: var(--size-border) solid var(--vscode-statusBar-border);
+}
+
+.status-bar-harness,
+.status-bar-window,
+.status-bar-left {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--size-space) * 2);
+}
+
+.status-bar-harness {
+  gap: calc(var(--size-space) * 4);
+}
+
+.status-bar-window {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-bar-left {
+  gap: var(--size-space);
+  color: var(--vscode-descriptionForeground);
+}
+
+/* The pace mark stands above and below the bar so it shows at either end. */
+.status-bar-meter {
+  position: relative;
+  width: calc(var(--size-space) * 10);
+  height: var(--size-space);
+  border-radius: calc(var(--size-space) / 2);
+  background: var(--vscode-input-background);
+}
+
+.status-bar-meter-used {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--vscode-progressBar-background);
+}
+
+.status-bar-window-ahead .status-bar-meter-used {
+  background: var(--vscode-editorWarning-foreground);
+}
+
+.status-bar-meter-pace {
+  position: absolute;
+  top: calc(var(--size-space) * -0.75);
+  bottom: calc(var(--size-space) * -0.75);
+  width: var(--size-border);
+  margin-left: calc(var(--size-border) / -2);
+  background: var(--vscode-statusBar-foreground);
+}
+
+.status-bar-window-reset {
+  opacity: 0.6;
+}

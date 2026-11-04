@@ -50,11 +50,14 @@ selecting another session first discards it. More Actions, shown while hovering 
 right-clicking a workspace, offers Show/Hide Stopped Sessions and Delete
 Workspace.
 
-Below Add Workspace, the sidebar shows each harness's subscription usage once
-an agent of that harness has reported it, such as `Claude 5h 42% · 7d 18%`:
-the percent of each usage window used. Claude Code and Codex report after each
-turn. Hovering a window shows when it resets. A window past its reset time
-keeps its last reported percent, dimmed, until the harness reports again.
+The status bar along the bottom of the window shows each harness's
+subscription usage once an agent of that harness has reported it: for each
+usage window, its length, a meter of the percent used, and the time left
+until it resets, such as `2d 4h`. A mark on the meter shows how much of the
+window has elapsed, the pace that would use exactly all of it; the meter turns
+amber when usage is ahead of that pace. Claude Code and Codex report after
+each turn. A window past its reset time keeps its last reported percent,
+dimmed, until the harness reports again.
 
 Click a session to show its chat, and double-click it to change its title.
 Hovering a row shows More Actions in place of its dot, which opens the same

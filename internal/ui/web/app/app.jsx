@@ -1,6 +1,6 @@
-// The page frame: the sidebar, the center with the
-// terminal panel below it, and the right panel, with the notification cards
-// and the confirmation dialog over them. App draws from the store's state,
+// The page frame: the sidebar, the center with the terminal panel below it,
+// the right panel, and the status bar, with the notification cards and the
+// confirmation dialog over them. App draws from the store's state,
 // keeps the page title and URL hash in step with it, and refuses drops that
 // would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
@@ -17,6 +17,7 @@ import {StoreContext} from '../store.js';
 import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
+import {StatusBar} from './status-bar.jsx';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
 import './app.css';
 
@@ -85,6 +86,7 @@ export function App({store}) {
             </Split>
           </Split>
         </div>
+        <StatusBar />
         <NotificationStack />
         <ConfirmDialog />
       </div>
