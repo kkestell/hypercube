@@ -6,10 +6,12 @@ import {Icon} from '../shared/icon.jsx';
 import {useStore} from '../store.js';
 import {FileIcon} from './file-icon.jsx';
 import {loadFolder, setFolderOpen} from './files.js';
+import {usePathMenu} from './path-menu.jsx';
 
 export function FilesPanel() {
   const [state, store] = useStore();
   const files = state.session?.files;
+  const menu = usePathMenu();
   const tree = useRef(null);
   const [focused, setFocused] = useState(null);
   const visible = [];
@@ -50,7 +52,7 @@ export function FilesPanel() {
   const entries = (dir, level) => (files?.listings[dir] ?? []).map(entry => {
     const path = dir ? dir + '/' + entry.name : entry.name;
     const props = {role: 'treeitem', 'data-path': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
-      onFocus: () => setFocused(path), size: 'sm', className: 'h-7 w-full justify-start px-2'};
+      ...menu.handlers(path), onFocus: () => setFocused(path), size: 'sm', className: 'h-7 w-full justify-start px-2'};
     if (entry.dir) return <Collapsible key={path} open={!!files.expanded[path]} onOpenChange={open => setFolderOpen(store, path, open)}>
       <CollapsibleTrigger asChild><Button variant="ghost" {...props} data-dir="" aria-expanded={!!files.expanded[path]}>
         <Icon name={files.expanded[path] ? 'chevron-down' : 'chevron-right'} /><span className="truncate">{entry.name}</span>
@@ -60,7 +62,7 @@ export function FilesPanel() {
     return <Button key={path} variant="ghost" {...props} data-file={path} onClick={() => openFileTab(store, path)}
       onDoubleClick={() => store.update(s => keepOpen(s, fileTabId(path)))}><FileIcon name={entry.name} /><span className="truncate">{entry.name}</span></Button>;
   });
-  return <div ref={tree} className="files-panel p-2" role="tree" aria-label="Files" onKeyDown={keyDown}>
+  return <><div ref={tree} className="files-panel p-2" role="tree" aria-label="Files" onKeyDown={keyDown}>
     {files?.listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
-  </div>;
+  </div>{menu.element}</>;
 }

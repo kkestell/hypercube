@@ -1,5 +1,5 @@
 import {clickControl} from '../../test-render.jsx';
-import {afterEach, expect, test} from 'bun:test';
+import {afterEach, expect, spyOn, test} from 'bun:test';
 import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {emptySession} from '../sessions/selection.js';
@@ -16,7 +16,7 @@ const openTestTab = (state, id) => ({...state, session: {...state.session, tabs:
 
 function setup(change = state => openTestTab(openTestTab(state, 'file:one'), 'file:two')) {
   const store = createStore(change({
-    selected: 's', workspaces: [{sessions: [{id: 's', title: 'Chat', children: [], activity: 'idle'}]}], drafts: {}, unsent: null,
+    overlays: {}, selected: 's', workspaces: [{sessions: [{id: 's', dir: '/repo', title: 'Chat', children: [], activity: 'idle'}]}], drafts: {}, unsent: null,
     workbench: {sidebar: true, rightPanel: true, panel: false}, session: emptySession('s'),
   }));
   const root = mount(store, <EditorArea />);
@@ -141,4 +141,15 @@ test('the browser\'s tab shows its page\'s title and closes without ending the b
   act(() => clickControl(root.querySelector('[aria-label="Close Example"]')));
   expect(labels()).toEqual(['Chat']);
   expect(store.get().browsers.s.title).toBe('Example');
+});
+
+test('file tab context menu copies its path', () => {
+  const copy = spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+  try {
+    const {root} = setup();
+    const tab = root.querySelector('[data-tab="file:one"] [role=tab]');
+    act(() => tab.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+    clickControl([...document.querySelectorAll('[role=menuitem]')].find(item => item.textContent === 'Copy Path'));
+    expect(copy).toHaveBeenCalledWith('/repo/one');
+  } finally { copy.mockRestore(); }
 });

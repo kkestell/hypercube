@@ -57,10 +57,11 @@ the unsent session.
 Keyboard shortcuts use Command on macOS: Command+N opens a new session in the
 current workspace; Control+Tab and Control+Shift+Tab, or Command+Option+Down
 and Command+Option+Up, cycle through visible session rows; Command+1 through
-Command+9 select top-level sessions in sidebar order. Command+L focuses the
+Command+9 select top-level sessions in sidebar order. Command+P searches the
+shown session's files by path and opens a preview. Command+L focuses the
 composer, Command+B toggles the sidebar, Command+J toggles the terminal, and
-Command+Option+B toggles the right panel. The terminal keeps its own keys,
-and text fields keep their editing shortcuts.
+Command+Option+B toggles the right panel. The terminal keeps its own keys except
+Command+P, and text fields keep their editing shortcuts.
 
 The status bar along the bottom of the window shows each harness's
 subscription usage once an agent of that harness has reported it: for each
@@ -168,8 +169,9 @@ repository containing the session's folder. Click a file to open its unified
 diff in a preview tab; double-click the tab to keep it open. Files
 shows the session's directory as a read-only tree, including a child's worktree.
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
-the tab area, and double-click it to keep its tab open. A Markdown file opens in
-its preview; the button at the right of its tab bar switches to its source and
+the tab area, and double-click it to keep its tab open. Right-click a tree row
+or file tab to copy its absolute or relative path. A Markdown file opens in its
+preview; the button at the right of its tab bar switches to its source and
 back. An agent can use `open_file` to open any file you can read, in or
 outside its directory, and highlight lines; the tab opens when you view its session.
 

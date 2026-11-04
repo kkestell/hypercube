@@ -10,6 +10,7 @@ import {post} from '../api.js';
 import {focusComposerField} from '../agent/focus-composer.js';
 import {agentTabId, selectTab} from '../editor/editor.js';
 import {findPane} from '../editor/tab-layout.js';
+import {QuickOpen} from '../files/quick-open.jsx';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
 import {currentSession, pageTitle} from '../sessions/selection.js';
 import {SessionView} from '../sessions/session-view.jsx';
@@ -43,6 +44,7 @@ function refuseStrayDrops(store) {
 
 export function App({store}) {
   const [state, setState] = useState(store.get());
+  const [quickOpen, setQuickOpen] = useState(false);
   const focusPending = useRef(false);
   useLayoutEffect(() => {
     if (!focusPending.current) return;
@@ -63,6 +65,7 @@ export function App({store}) {
     return unsubscribe;
   }, [store]);
   useEffect(() => refuseStrayDrops(store), []);
+  useEffect(() => { setQuickOpen(false); }, [state.session?.id, state.unsent]);
   const context = useMemo(() => [state, store], [state]);
 
   const title = pageTitle(state);
@@ -88,7 +91,7 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer)} onKeyDown={key}>
+      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, focusComposer, () => setQuickOpen(true))} onKeyDown={key}>
         <header className="app-header flex shrink-0 items-center justify-end border-b px-2 py-1" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>
@@ -107,6 +110,7 @@ export function App({store}) {
         <StatusBar />
         <NotificationStack />
         <ConfirmDialog />
+        <QuickOpen key={state.session?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
       </div>
     </StoreContext.Provider>
   );

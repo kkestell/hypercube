@@ -161,3 +161,21 @@ test('composer shortcuts activate the chat when a file shares its pane', () => {
   expect(store.get().session.tabs.root.active).toBe('agent');
   expect(document.activeElement).toBe(root.querySelector('.composer-text'));
 });
+
+test('Command+P opens Quick Open from the terminal for the shown session', async () => {
+  const fetches = spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).startsWith('mention-files?') ? Response.json(['src/main.go']) : new Response(''));
+  try {
+    const store = createStore(receivedWorkspaces({
+      workspaces: [], limits: [], requests: [], selected: 'a', pending: null, unsent: null,
+      visible: true, drafts: {}, dismissed: {}, errors: [], confirmation: null, session: null, overlays: {},
+      workbench: {sidebar: true, rightPanel: false, panel: false, rightTab: 'files'},
+    }, [{id: 'w', name: 'repo', path: '/repo', sessions: [{id: 'a', dir: '/repo', title: 'a', running: true, activity: 'idle', children: []}]}]));
+    const root = mount(store, <App store={store} />);
+    const event = new KeyboardEvent('keydown', {key: 'p', metaKey: true, bubbles: true, cancelable: true});
+    act(() => root.querySelector('.terminal-panel').dispatchEvent(event));
+    await act(async () => {});
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.querySelector('[aria-label="Search files"]')).not.toBeNull();
+    expect(document.querySelector('[cmdk-item]').textContent).toBe('src/main.go');
+  } finally { unmountAll(); fetches.mockRestore(); }
+});

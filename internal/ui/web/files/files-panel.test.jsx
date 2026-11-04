@@ -16,7 +16,7 @@ function setup() {
   });
   const session = emptySession('s');
   session.files.listings[''] = [{name: 'src', dir: true}, {name: 'README.md', dir: false}];
-  const store = createStore({session, workspaces: []});
+  const store = createStore({session, selected: 's', workspaces: [{sessions: [{id: 's', dir: '/repo', children: []}]}], overlays: {}});
   return {store, root: mount(store, <FilesPanel />)};
 }
 
@@ -51,4 +51,17 @@ test('removing the focused file returns focus to a remaining row', () => {
   store.update(s => ({...s, session: {...s.session, files: {...s.session.files, listings: {'': [{name: 'src', dir: true}]}}}}));
   expect(document.activeElement === root.querySelector('[data-dir]')).toBe(true);
   expect(root.querySelectorAll('[role=treeitem][tabindex="0"]')).toHaveLength(1);
+});
+
+test('tree row menus copy absolute and relative paths', () => {
+  const copy = spyOn(navigator.clipboard, 'writeText').mockResolvedValue();
+  try {
+    const {root} = setup();
+    const row = root.querySelector('[data-file="README.md"]');
+    for (const [label, expected] of [['Copy Path', '/repo/README.md'], ['Copy Relative Path', 'README.md']]) {
+      act(() => row.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+      clickControl([...document.querySelectorAll('[role=menuitem]')].find(item => item.textContent === label));
+      expect(copy).toHaveBeenLastCalledWith(expected);
+    }
+  } finally { copy.mockRestore(); }
 });

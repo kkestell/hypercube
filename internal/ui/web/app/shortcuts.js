@@ -3,15 +3,17 @@ import {openUnsent, runningFirst} from '../sessions/selection.js';
 import {toggle} from './workbench.js';
 
 // The tree renders only rows exposed by its workspace and parent sections.
-export function shortcut(e, store, focusComposer) {
-  if (e.defaultPrevented || e.repeat || (e.isComposing || e.nativeEvent?.isComposing) || e.target.closest('.terminal-panel, [role=menu], [role=dialog], [role=alertdialog]')) return;
+export function shortcut(e, store, focusComposer, openQuickOpen) {
+  if (e.defaultPrevented || e.repeat || (e.isComposing || e.nativeEvent?.isComposing) || e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
+  if (e.target.closest('.terminal-panel') && !(e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'p')) return;
   const state = store.get();
   if (state.confirmation) return;
   const key = e.altKey && e.code === 'KeyB' ? 'b' : e.key.toLowerCase();
   const command = e.metaKey && !e.ctrlKey && !e.shiftKey;
   const field = e.target.closest('input, textarea, [contenteditable="true"]');
   let action;
-  if (command && !e.altKey && key === 'n') action = () => store.update(s => openUnsent(s));
+  if (command && !e.altKey && key === 'p' && state.session && !state.unsent) action = openQuickOpen;
+  else if (command && !e.altKey && key === 'n') action = () => store.update(s => openUnsent(s));
   else if (command && !e.altKey && key === 'l') action = focusComposer;
   else if (command && !e.altKey && /^[1-9]$/.test(key)) {
     const session = state.workspaces.flatMap(w => runningFirst(w.sessions))[Number(key) - 1];

@@ -5,6 +5,7 @@ import {Button} from '../components/ui/button';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {setSource} from '../files/files.js';
 import {FileIcon} from '../files/file-icon.jsx';
+import {usePathMenu} from '../files/path-menu.jsx';
 import {Icon} from '../shared/icon.jsx';
 import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
@@ -12,6 +13,7 @@ import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
 export function EditorTabs({pane, entries}) {
   const [, store] = useStore();
   const strip = useRef(null);
+  const menu = usePathMenu();
   const active = entries.find(entry => entry.id === pane?.active);
   const modeLabel = active?.source ? 'Show Preview' : 'Show Source';
   const close = id => {
@@ -28,7 +30,7 @@ export function EditorTabs({pane, entries}) {
             e.dataTransfer.effectAllowed = 'move';
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
-          <TabsTrigger className="min-w-0 max-w-64" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
+          <TabsTrigger {...(entry.path ? menu.handlers(entry.path) : {})} className="min-w-0 max-w-64" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
             {entry.agent ? <Icon name="comment-discussion" /> : entry.browser ? <Icon name="globe" /> : <FileIcon name={entry.name} />}
             <span className={`editor-tabs-label min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
@@ -38,5 +40,6 @@ export function EditorTabs({pane, entries}) {
     </Tabs>
     {typeof active?.source === 'boolean' && <Button className="editor-tabs-actions" variant="ghost" size="icon" aria-label={modeLabel} title={modeLabel}
       onClick={() => store.update(s => setSource(s, active.path, !active.source))}><Icon name={active.source ? 'open-preview' : 'go-to-file'} /></Button>}
+    {menu.element}
   </div>;
 }
