@@ -3,7 +3,6 @@
 // renaming so the field keeps its place and focus.
 import {useCallback, useRef, useState} from 'preact/hooks';
 import {addWorkspace} from '../sessions/session-actions.js';
-import {openUnsent} from '../sessions/selection.js';
 import {ContextMenu} from '../shared/context-menu.jsx';
 import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
@@ -53,7 +52,6 @@ export function Sidebar() {
   return (
     <div class="sidebar">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
-          {state.workspaces.length > 0 && <vscode-toolbar-button icon="add" label="New Session" title="New Session (⌘N)" onClick={() => store.update(s => openUnsent(s))} />}
           <vscode-toolbar-button icon="new-folder" label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)} />
         </>}>
         <div class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>

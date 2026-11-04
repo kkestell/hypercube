@@ -154,16 +154,6 @@ test('Escape cancels deleting a workspace', () => {
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
 
-test('New Session opens the unsent session directly without fetching profiles', () => {
-  const {store, root, fetches} = setup([session('a')]);
-  store.update(s => ({...s, selected: 'a'}));
-  click(root.querySelector('[title="New Session (⌘N)"]'));
-  expect(store.get().unsent).toMatchObject({workspace: 'w', profile: null, sending: false});
-  expect(store.get().selected).toBeNull();
-  expect(fetches).not.toHaveBeenCalled();
-  expect(root.querySelector('.context-menu')).toBeNull();
-});
-
 test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), session('p0')]);
@@ -392,14 +382,6 @@ test('Rename in a session\'s menu opens the rename field', () => {
   const {root} = setup([session('a')]);
   choose(root, '[data-session="a"]', 1);
   expect(row(root, 'a').querySelector('vscode-textfield').getAttribute('value')).toBe('Session a');
-});
-
-test('New Session is shown only when a workspace exists', () => {
-  const {root, store} = setup([]);
-  expect(root.querySelector('[title="New Session (⌘N)"]')).not.toBeNull();
-  store.update(s => ({...s, workspaces: []}));
-  expect(root.querySelector('[title="New Session (⌘N)"]')).toBeNull();
-  expect(root.querySelector('[title="Add Workspace"]')).not.toBeNull();
 });
 
 test('workspace headers offer the workspace context menu', () => {
