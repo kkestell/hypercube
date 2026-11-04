@@ -13,6 +13,11 @@ import (
 func open(t *testing.T) *DB {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", filepath.Join(t.TempDir(), "state with spaces"))
+	return reopen(t)
+}
+
+func reopen(t *testing.T) *DB {
+	t.Helper()
 	db, err := Open()
 	if err != nil {
 		t.Fatal(err)

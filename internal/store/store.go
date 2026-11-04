@@ -147,9 +147,9 @@ CREATE TABLE IF NOT EXISTS limits (
 // DB is the open database.
 type DB struct{ sql *sql.DB }
 
-// Open opens the database in Dir, creating its tables if they are missing
-// and upgrading a database from an older version. Writes take the database
-// lock when they begin and wait up to five seconds for it.
+// Open opens the database in Dir, creating its tables if they are missing.
+// Writes take the database lock when they begin and wait up to five seconds
+// for it.
 func Open() (*DB, error) {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return nil, err
