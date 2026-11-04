@@ -1,5 +1,6 @@
 import {useEffect, useState} from 'react';
 import {Search} from 'lucide-react';
+import {searchSessions} from '../api.js';
 import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {CommandDialog} from '../shared/command-dialog.jsx';
 import {Button} from '../components/ui/button';
@@ -33,13 +34,9 @@ export function SessionSearch() {
     const controller = new AbortController();
     setResults([]);
     setError('');
-    fetch('search-sessions?' + new URLSearchParams({q: query}), {signal: controller.signal})
-      .then(response => {
-        if (!response.ok) throw new Error('Could not search sessions');
-        return response.json();
-      })
-      .then(data => setResults(data ?? []))
-      .catch(err => { if (err.name !== 'AbortError') setError(err.message); });
+    searchSessions(query, controller.signal)
+      .then(data => { if (!controller.signal.aborted) setResults(data ?? []); })
+      .catch(err => { if (!controller.signal.aborted) setError('Could not search sessions: ' + err.message); });
     return () => controller.abort();
   }, [open, query]);
 

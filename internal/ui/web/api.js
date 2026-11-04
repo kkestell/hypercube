@@ -59,6 +59,13 @@ export async function mentionFiles(params, signal) {
   return response.json();
 }
 
+// searchSessions finds session titles and conversation text across workspaces.
+export async function searchSessions(query, signal) {
+  const response = await fetch(url('search-sessions', {q: query}), {signal, cache: 'no-store'});
+  if (!response.ok) throw new Error(await response.text());
+  return response.json();
+}
+
 // readFile reads a file, or reports that it is unchanged since the read that
 // returned etag, deleted, or not shown, with VS Code's reasons.
 export async function readFile(session, path, etag) {

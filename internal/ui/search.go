@@ -33,6 +33,7 @@ func (s *server) searchSessions(w http.ResponseWriter, r *http.Request) {
 }
 
 func searchSnippet(text, query string) string {
+	// Match SQLite lower(), which folds ASCII only and preserves byte offsets.
 	lower := func(s string) string {
 		return strings.Map(func(r rune) rune {
 			if r >= 'A' && r <= 'Z' {
