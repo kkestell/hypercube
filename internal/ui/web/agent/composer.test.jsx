@@ -213,3 +213,31 @@ test('Merge asks the agent to merge into the target in the checkout', async () =
     images: [],
   });
 });
+
+test('prompt history returns to the unsent draft', () => {
+  const s = store();
+  s.update(state => ({...state, session: {id: 'a', transcript: {order: ['1', '2', '3'], items: {
+    1: {kind: 'user', text: 'first'}, 2: {kind: 'user', from: 'peer', text: 'peer'}, 3: {kind: 'user', text: 'last'},
+  }}}}));
+  const root = mount(s, <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  field.value = 'draft'; field.dispatchEvent(new Event('input'));
+  const press = key => act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})));
+  press('ArrowUp'); expect(field.value).toBe('last');
+  press('ArrowUp'); expect(field.value).toBe('first');
+  press('ArrowDown'); expect(field.value).toBe('last');
+  press('ArrowDown'); expect(field.value).toBe('draft');
+});
+
+test('file mentions filter paths and insert the selected file', async () => {
+  fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => Response.json(['internal/ui/files.go', 'README.md']));
+  const root = mount(store(), <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  field.value = 'look @iuf'; field.setSelectionRange(field.value.length, field.value.length);
+  act(() => field.dispatchEvent(new Event('input')));
+  await settle();
+  expect([...root.querySelectorAll('[role=option]')].map(e => e.textContent)).toEqual(['internal/ui/files.go']);
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Tab', bubbles: true, cancelable: true})));
+  expect(field.value).toBe('look @internal/ui/files.go');
+  expect(root.querySelector('[role=listbox]')).toBeNull();
+});

@@ -35,6 +35,7 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.HandleFunc("POST /session", s.sessionAction)
 	mux.HandleFunc("GET /terminal", s.terminal)
 	mux.HandleFunc("GET /files", s.listFiles)
+	mux.HandleFunc("GET /mention-files", s.mentionFiles)
 	mux.HandleFunc("GET /file", s.readFile)
 	mux.HandleFunc("GET /image", s.readImage)
 	return localOnly(mux)

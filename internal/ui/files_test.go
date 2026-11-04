@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -180,5 +181,50 @@ func TestChildFilesUseItsDirectory(t *testing.T) {
 	}
 	if res := get("files"); res.Code != 404 {
 		t.Fatalf("removed directory=%d %s", res.Code, res.Body)
+	}
+}
+
+func TestMentionFiles(t *testing.T) {
+	dir := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git: %s: %v", out, err)
+		}
+	}
+	git("init", "-q")
+	for name, content := range map[string]string{".gitignore": "ignored/\n*.tmp\n", "src/a.go": "a", "ignored/a": "b", "skip.tmp": "c", "other.txt": "d"} {
+		name = filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", "src/a.go")
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	h := handler(t, db)
+	for _, query := range []string{"session=s", "workspace=w"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/mention-files?"+query, nil))
+		var files []string
+		if res.Code != 200 {
+			t.Fatalf("%s: %d %s", query, res.Code, res.Body)
+		}
+		if err := json.Unmarshal(res.Body.Bytes(), &files); err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(files, ",")
+		if got != ".gitignore,other.txt,src/a.go" {
+			t.Errorf("%s: %s", query, got)
+		}
 	}
 }
