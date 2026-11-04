@@ -1,3 +1,10 @@
+.transcript-container {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
 .transcript {
   flex: 1;
   min-height: 0;

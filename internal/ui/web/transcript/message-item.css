@@ -7,13 +7,16 @@
   justify-content: flex-end;
 }
 
+.message-item-user-content {
+  min-width: 0;
+  max-width: 85%;
+}
+
 .message-item-bubble {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: calc(var(--size-space) * 2);
   min-width: 0;
-  max-width: 85%;
   padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
   border-radius: calc(var(--size-radius) * 2);
   background: var(--vscode-chat-requestBubbleBackground);

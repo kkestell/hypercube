@@ -13,9 +13,9 @@ import './transcript-item.css';
 
 const TextItem = memo(({item}) => (
   <div class="transcript-text">
-    {item.text && <CopyButton text={item.text} label="Copy message" />}
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
+    {item.text && <div class="copy-button-actions"><CopyButton text={item.text} label="Copy message" /></div>}
   </div>
 ));
 

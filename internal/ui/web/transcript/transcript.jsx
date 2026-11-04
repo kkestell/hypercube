@@ -49,12 +49,12 @@ export function Transcript({session}) {
 
   return (
     <div class="transcript-container">
-    <TranscriptFind list={list} view={view} rows={rows} expanded={expanded} />
-    <div ref={view} class="transcript" onScroll={scrolled}>
-      <div ref={list} class="transcript-list">
-        {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
+      <TranscriptFind list={list} view={view} />
+      <div ref={view} class="transcript" onScroll={scrolled}>
+        <div ref={list} class="transcript-list">
+          {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
+        </div>
       </div>
-    </div>
     </div>
   );
 }

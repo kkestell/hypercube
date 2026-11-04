@@ -18,8 +18,11 @@
   padding: 0 var(--size-space);
 }
 
-.markdown pre {
+.markdown-code-block {
   position: relative;
+}
+
+.markdown pre {
   overflow-x: auto;
   padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
   background: var(--vscode-textCodeBlock-background);

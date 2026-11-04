@@ -1,10 +1,3 @@
-.transcript-container {
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
 .transcript-find {
   position: absolute;
   z-index: 1;
@@ -19,7 +12,8 @@
   box-shadow: 0 var(--size-space) calc(var(--size-space) * 3) var(--vscode-widget-shadow);
 }
 
-.transcript-find vscode-textfield { width: 180px; }
+.transcript-find vscode-textfield { width: calc(var(--size-row-height) * 8); }
+.transcript-find-empty { outline: var(--size-border) solid var(--vscode-inputValidation-errorBorder); }
 .transcript-find-count { white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .transcript-find button {
   border: 0;
@@ -29,7 +23,7 @@
   cursor: pointer;
 }
 .transcript-find button:hover { background: var(--vscode-toolbar-hoverBackground); }
-.transcript-find button:disabled { opacity: .4; }
+.transcript-find button:disabled { color: var(--vscode-disabledForeground); }
 
 ::highlight(transcript-find) { background: var(--vscode-editor-findMatchHighlightBackground); }
 ::highlight(transcript-find-current) { background: var(--vscode-editor-findMatchBackground); }

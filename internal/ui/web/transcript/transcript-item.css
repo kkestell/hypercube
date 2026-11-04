@@ -1,5 +1,4 @@
 .transcript-text {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: calc(var(--size-space) * 2);

@@ -46,7 +46,7 @@ function element(t, options) {
       return <Heading>{children()}</Heading>;
     }
     case 'code':
-      return options.flatten ? t.text : <pre>{options.preview ? <HighlightedCode text={t.text} lang={t.lang ?? ''} /> : <code>{t.text}</code>}{!options.preview && <CopyButton text={t.text} label="Copy code" />}</pre>;
+      return options.flatten ? t.text : <div class="markdown-code-block"><pre>{options.preview ? <HighlightedCode text={t.text} lang={t.lang ?? ''} /> : <code>{t.text}</code>}</pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children()}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {

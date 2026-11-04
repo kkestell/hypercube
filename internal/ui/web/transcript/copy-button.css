@@ -1,7 +1,4 @@
 .copy-button {
-  position: absolute;
-  top: var(--size-space);
-  right: var(--size-space);
   border: 0;
   border-radius: var(--size-radius);
   padding: var(--size-space);
@@ -11,10 +8,23 @@
   opacity: 0;
 }
 
-*:hover > .copy-button, *:focus-within > .copy-button, .copy-button:focus-visible {
+.markdown-code-block:hover > .copy-button, .markdown-code-block:focus-within > .copy-button,
+.message-item-user-content:hover .copy-button, .message-item-user-content:focus-within .copy-button,
+.transcript-text:hover > .copy-button-actions .copy-button, .transcript-text:focus-within > .copy-button-actions .copy-button {
   opacity: 1;
 }
 
 .copy-button:hover {
   background: var(--vscode-toolbar-hoverBackground);
+}
+
+.markdown-code-block > .copy-button {
+  position: absolute;
+  top: var(--size-space);
+  right: var(--size-space);
+}
+
+.copy-button-actions {
+  display: flex;
+  justify-content: flex-end;
 }
