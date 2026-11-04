@@ -24,7 +24,7 @@ function editing(e) {
 export function createTerminal(box) {
   const appearance = matchMedia('(prefers-color-scheme: dark)');
   const theme = () => appearance.matches ? {} : {
-    background: '#ffffff', foreground: '#252525', cursor: '#252525',
+    background: '#ffffff', foreground: '#252525', cursor: '#252525', cursorAccent: '#ffffff',
     selectionBackground: '#b5d5ff',
     black: '#000000', red: '#cd3131', green: '#00a000', yellow: '#795e00',
     blue: '#0451a5', magenta: '#bc05bc', cyan: '#0598bc', white: '#555555',
