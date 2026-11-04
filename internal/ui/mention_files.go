@@ -84,6 +84,9 @@ func gitMentionFiles(ctx context.Context, root *os.Root) ([]string, error) {
 		}
 		if !skip && regularFile(root, name) {
 			files = append(files, name)
+			if len(files) == maxMentionFiles {
+				break
+			}
 		}
 	}
 	return files, nil

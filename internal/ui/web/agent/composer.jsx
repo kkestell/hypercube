@@ -3,8 +3,7 @@
 // chooses its profile and worktree there; after the first prompt the profile
 // shows as text, and a worktree session shows its branch beside it. The text
 // takes focus on mount.
-import {useEffect, useLayoutEffect, useRef, useState} from 'preact/hooks';
-import {mentionFiles} from '../api.js';
+import {useEffect, useRef, useState} from 'preact/hooks';
 import {imageSrc, imageTypes} from '../images.js';
 import {sendPrompt} from '../sessions/session-actions.js';
 import {AgentStatus} from '../shared/agent-status.jsx';
@@ -12,7 +11,7 @@ import {submitsOnKey} from '../shared/submit-key.js';
 import {useStore} from '../store.js';
 import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.js';
 import {promptHistory} from './history.js';
-import {insertMention, mentionAt, mentionChoices, prepareFiles} from './mention.js';
+import {MentionList, useMentions} from './use-mentions.jsx';
 import {ProfileSelect} from './profile-select.jsx';
 import {Usage} from './usage.jsx';
 import {SessionBranch} from './session-branch.jsx';
@@ -24,52 +23,13 @@ export function Composer({session}) {
   const draft = draftOf(state, session.id);
   const field = useRef(null), picker = useRef(null);
   const [history, setHistory] = useState(null);
-  const [mention, setMention] = useState(null);
-  const [selected, setSelected] = useState(0);
-  const [files, setFiles] = useState([]);
-  const [wantFiles, setWantFiles] = useState(false);
-  const caret = useRef(null), activeOption = useRef(null), suppressSelect = useRef(false);
   const text = history === null ? draft.text : history.edits[history.index];
-  const choices = mention ? mentionChoices(files, mention.query) : [];
-  const active = choices.length ? Math.min(selected, choices.length - 1) : 0;
-  const workspace = session.id === unsentKey ? state.unsent?.workspace : null;
-
-  useLayoutEffect(() => {
-    if (caret.current !== null) {
-      field.current.setSelectionRange(caret.current, caret.current);
-      caret.current = null;
-    }
-  });
-  useEffect(() => { activeOption.current?.scrollIntoView?.({block: 'nearest'}); }, [active, choices[active]]);
-  useEffect(() => { if (mention) setWantFiles(true); }, [!!mention]);
-  useEffect(() => {
-    if (!wantFiles || (session.id === unsentKey && !workspace)) return;
-    const controller = new AbortController();
-    setFiles([]);
-    mentionFiles(session.id === unsentKey ? {workspace} : {session: session.id}, controller.signal)
-      .then(paths => { if (!controller.signal.aborted) setFiles(prepareFiles(paths)); }).catch(() => {});
-    return () => controller.abort();
-  }, [session.id, workspace, wantFiles]);
-
-  const updateMention = target => {
-    const next = mentionAt(target.value, target.selectionStart, target.selectionEnd);
-    setMention(next);
-    setSelected(0);
-  };
   const changeText = value => {
     if (history === null) store.update(s => typed(s, session.id, value));
     else setHistory({...history, edits: {...history.edits, [history.index]: value}});
   };
-  const input = e => { suppressSelect.current = false; changeText(e.currentTarget.value); updateMention(e.currentTarget); };
-  const choose = path => {
-    const current = mentionAt(field.current.value, field.current.selectionStart, field.current.selectionEnd);
-    if (!current) { setMention(null); return; }
-    suppressSelect.current = true;
-    changeText(insertMention(text, current, path));
-    caret.current = current.start + path.length + 1;
-    setMention(null);
-    field.current.focus();
-  };
+  const mentions = useMentions(field, text, changeText, session.id, state.unsent?.workspace);
+  const input = e => { changeText(e.currentTarget.value); mentions.sync(e.currentTarget); };
 
   // Preserve keyboard focus in the file tab strip when a session mounts.
   useEffect(() => {
@@ -80,21 +40,13 @@ export function Composer({session}) {
     if (!canSend(state, session, text)) return;
     if (history !== null) store.update(s => typed(s, session.id, text));
     setHistory(null);
-    setMention(null);
+    mentions.close();
     sendPrompt(store, session);
   };
   const key = e => {
     if (e.isComposing) return;
     const plain = !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
-    if (plain && mention && choices.length) {
-      if (e.key === 'Escape') { e.preventDefault(); suppressSelect.current = true; setMention(null); return; }
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelected((active + (e.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length);
-        return;
-      }
-      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); choose(choices[active]); return; }
-    }
+    if (mentions.keydown(e)) return;
     if (plain && e.currentTarget.selectionStart === e.currentTarget.selectionEnd) {
       const pos = e.currentTarget.selectionStart;
       const up = e.key === 'ArrowUp' && !text.slice(0, pos).includes('\n');
@@ -105,8 +57,7 @@ export function Composer({session}) {
         if (prompts.length) {
           e.preventDefault();
           const index = up ? (history === null ? prompts.length - 1 : Math.max(0, history.index - 1)) : history.index + 1;
-          suppressSelect.current = true;
-          setMention(null);
+          mentions.close();
           if (index >= prompts.length) setHistory(null);
           else setHistory({index, edits: {...Object.fromEntries(prompts.map((value, i) => [i, value])), ...history?.edits}});
           return;
@@ -136,19 +87,14 @@ export function Composer({session}) {
           ))}
         </div>
       )}
-      {choices.length > 0 && <div class="composer-mentions" role="listbox" id="composer-mentions" aria-label="Files">
-        {choices.map((path, i) => <div role="option" ref={i === active ? activeOption : undefined} id={'composer-file-' + i} aria-selected={i === active}
-          onMouseDown={e => { e.preventDefault(); choose(path); }}>{path}</div>)}
-      </div>}
+      <MentionList mentions={mentions} />
       <textarea ref={field} rows={1} aria-label="Message" class="composer-text" value={text}
-        role="combobox" aria-expanded={choices.length ? 'true' : undefined} aria-autocomplete="list" aria-controls={choices.length ? 'composer-mentions' : undefined}
-        aria-activedescendant={choices.length ? 'composer-file-' + active : undefined}
-        onInput={input} onKeyDown={key} onBlur={() => setMention(null)}
-        onClick={e => { suppressSelect.current = false; updateMention(e.currentTarget); }} onSelect={e => { if (!suppressSelect.current) updateMention(e.currentTarget); }}
-        onKeyUp={e => {
-          if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) suppressSelect.current = false;
-          if (!suppressSelect.current && !['Escape', 'Enter', 'Tab'].includes(e.key)) updateMention(e.currentTarget);
-        }} />
+        role="combobox" aria-expanded={mentions.choices.length || mentions.error ? 'true' : undefined} aria-autocomplete="list"
+        aria-controls={mentions.choices.length || mentions.error ? 'composer-mentions' : undefined}
+        aria-activedescendant={mentions.choices.length ? 'composer-file-' + mentions.active : undefined}
+        onInput={input} onKeyDown={key} onBlur={mentions.blur}
+        onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
+        onKeyUp={e => mentions.sync(e.currentTarget)} />
       <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
       <div class="composer-bar">
         <vscode-button icon-only secondary icon="attach" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current.click()} />

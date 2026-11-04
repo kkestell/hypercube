@@ -323,3 +323,63 @@ test('sending an edited history copy clears the saved draft', async () => {
   expect(s.get().drafts.a).toBeUndefined();
   expect(field.value).toBe('');
 });
+
+test('arrow keyup keeps the selected file and scrolls it into view', async () => {
+  fetches.mockImplementation(async () => Response.json(['a.go', 'b.go', 'c.go']));
+  const scrolled = [];
+  const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(function(options) { scrolled.push([this.textContent, options]); });
+  try {
+    const root = mount(store(), <Composer session={session} />);
+    const field = root.querySelector('textarea');
+    field.value = '@'; field.setSelectionRange(1, 1);
+    act(() => field.dispatchEvent(new Event('input')));
+    await settle();
+    const key = name => act(() => {
+      field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true}));
+      field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true, cancelable: true}));
+    });
+    key('ArrowDown'); key('ArrowDown');
+    expect(root.querySelector('[aria-selected=true]').textContent).toBe('c.go');
+    expect(scrolled.some(([name, options]) => name === 'c.go' && options?.block === 'nearest')).toBe(true);
+    key('Enter');
+    expect(field.value).toBe('@c.go');
+  } finally { scroll.mockRestore(); }
+});
+
+test('opening mentions refreshes files, keeps old results while loading, and reports errors', async () => {
+  const requests = [];
+  fetches.mockImplementation((url, init) => new Promise((resolve, reject) => requests.push({resolve, reject, signal: init.signal})));
+  const root = mount(store(), <Composer session={session} />);
+  const field = root.querySelector('textarea');
+  const input = value => { field.value = value; field.setSelectionRange(value.length, value.length); act(() => field.dispatchEvent(new Event('input'))); };
+  const key = name => act(() => { field.dispatchEvent(new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true})); field.dispatchEvent(new KeyboardEvent('keyup', {key: name, bubbles: true})); });
+  input('@'); await settle();
+  expect(requests).toHaveLength(1);
+  requests[0].resolve(Response.json(['old.go'])); await settle();
+  input('@o'); await settle();
+  expect(requests).toHaveLength(1);
+  key('Escape');
+  input('x @'); await settle();
+  expect(requests).toHaveLength(2);
+  expect(root.textContent).toContain('old.go');
+  key('Escape');
+  expect(requests[1].signal.aborted).toBe(true);
+  input('y @'); await settle();
+  expect(requests).toHaveLength(3);
+  requests[2].reject(new Error('offline')); await settle();
+  expect(root.textContent).toContain('Could not list files: offline');
+});
+
+test('clearing the new session workspace removes its file suggestions', async () => {
+  fetches.mockImplementation(async url => Response.json(String(url).startsWith('mention-files?') ? ['old.go'] : profiles));
+  const s = unsentStore();
+  const root = mount(s, <Composer session={unsentSession} />);
+  const field = root.querySelector('textarea');
+  field.value = '@'; field.setSelectionRange(1, 1);
+  act(() => field.dispatchEvent(new Event('input')));
+  await settle();
+  expect(root.textContent).toContain('old.go');
+  act(() => s.update(state => ({...state, unsent: {...state.unsent, workspace: null}})));
+  await settle();
+  expect(root.textContent).not.toContain('old.go');
+});

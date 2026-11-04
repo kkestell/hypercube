@@ -285,3 +285,42 @@ func TestMentionFilesOutsideGit(t *testing.T) {
 		t.Fatalf("broken Git returned fallback: %s", res.Body)
 	}
 }
+
+func TestMentionFilesCapsGitResults(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".git"), []byte("gitdir: elsewhere"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "a"), []byte("a"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	output := filepath.Join(bin, "output")
+	if err := os.WriteFile(output, []byte(strings.Repeat("a\x00", maxMentionFiles+1)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n/bin/cat \"$MENTION_TEST_OUTPUT\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("MENTION_TEST_OUTPUT", output)
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	res := httptest.NewRecorder()
+	handler(t, db).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/mention-files?session=s", nil))
+	if res.Code != 200 {
+		t.Fatalf("listing = %d %s", res.Code, res.Body)
+	}
+	var files []string
+	if err := json.Unmarshal(res.Body.Bytes(), &files); err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != maxMentionFiles {
+		t.Fatalf("got %d files, want %d", len(files), maxMentionFiles)
+	}
+}
