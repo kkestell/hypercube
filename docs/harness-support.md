@@ -82,8 +82,15 @@ first message, so a Pi session with no saved conversation cannot resume.
 Hypercube keeps its Codex conversations under its own state directory, outside
 the normal Codex Recents list. It links known configuration, credentials,
 instructions, skills, and plugins from the inherited `CODEX_HOME` or `~/.codex`.
+When `CODEX_HOME` is unset, an optional Neuron account selection in
+`~/.config/neuron/codex-profile.zsh` chooses the source for new conversations.
+Without Neuron, the default stays `~/.codex`. The default private home is
+`codex/` under Hypercube's state directory; other source homes use separate
+`codex/homes/<source-path-hash>/` directories. Existing private conversations
+resume in their original home and account, regardless of the current selection.
 An older conversation's first resume copies its native rollout into that
-storage while keeping its conversation ID.
+storage while keeping its conversation ID. Its source account must be selected
+for that first import; Hypercube does not search other accounts' history.
 
 ## Plugin protocol
 

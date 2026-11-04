@@ -1104,17 +1104,23 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 // The agent talks to a real process: initialize, a thread, a turn, and an
 // exit that the serve loop reports.
 func TestServeDrivesAProcess(t *testing.T) {
-	t.Setenv("CODEX_HOME", t.TempDir())
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("CODEX_HOME", "")
+	writeStorageFile(t, filepath.Join(user, ".config", "neuron", "codex-profile.zsh"), []byte("export CODEX_HOME=\"$HOME/.codex-strib\"\n"))
+	writeStorageFile(t, filepath.Join(user, ".codex-strib", "auth.json"), []byte("selected account"))
 	stateDir := t.TempDir()
-	t.Setenv("EXPECTED_CODEX_HOME", filepath.Join(stateDir, "codex"))
+	t.Setenv("EXPECTED_STATE_DIR", stateDir)
+	t.Setenv("EXPECTED_SOURCE", filepath.Join(user, ".codex-strib"))
 	t.Setenv("EXPECTED_HOME", os.Getenv("HOME"))
 	bin := t.TempDir()
 	script := `#!/bin/sh
 case "$1" in app-server) ;; *) exit 9;; esac
-[ "$CODEX_HOME" = "$EXPECTED_CODEX_HOME" ] || exit 10
+case "$CODEX_HOME" in "$EXPECTED_STATE_DIR"/codex/homes/*) ;; *) exit 10;; esac
 [ "$HOME" = "$EXPECTED_HOME" ] || exit 11
 [ "$2" = '-c' ] || exit 12
 [ "$3" = "sqlite_home=\"$CODEX_HOME\"" ] || exit 13
+[ "$(readlink "$CODEX_HOME/auth.json")" = "$EXPECTED_SOURCE/auth.json" ] || exit 14
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p')
   case "$line" in

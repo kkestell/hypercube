@@ -45,6 +45,37 @@ const hypercubeTools = new Map<string, [name: string, field?: string]>([
   ['browser_close', ['Close browser']],
 ]);
 
+// Native calls have no MCP server. Keep tool identities in the transcript;
+// these labels also apply when displaying calls saved before this UI build.
+const nativeTools = new Map([
+  ['shell', 'Run command'],
+  ['bash', 'Run command'],
+  ['exec_command', 'Run command'],
+  ['write_stdin', 'Continue command'],
+  ['apply_patch', 'Edit files'],
+  ['web_search', 'Search web'],
+  ['view_image', 'View image'],
+  ['subagent', 'Run agent'],
+  ['agent_spawn_agent', 'Start agent'],
+  ['agent_send_input', 'Send agent input'],
+  ['agent_wait', 'Wait for agents'],
+  ['agent_resume_agent', 'Resume agent'],
+  ['agent_close_agent', 'Close agent'],
+]);
+
+function nativeSummary(tool: string, input: unknown): string {
+  if (['shell', 'bash', 'exec_command'].includes(tool) && typeof input === 'object' && input !== null) {
+    const command = Reflect.get(input, 'command') ?? Reflect.get(input, 'cmd');
+    if (typeof command === 'string') {
+      // Codex reports a shell invocation with a single-quoted command. Show
+      // the command itself; the expanded input retains the exact invocation.
+      const wrapped = command.match(/^(?:\/[\w/.-]+\/)?(?:bash|zsh|sh) -l?c '([\s\S]*)'$/);
+      return toolSummary(wrapped ? wrapped[1].replace(/'\\''|'"'"'/g, "'") : command);
+    }
+  }
+  return toolSummary(input);
+}
+
 // toolTitle is a tool call's name and summary.
 export function toolTitle({server, tool, input}: ToolItem): [name: string, summary: string] {
   const named = server === 'hypercube' && tool !== undefined ? hypercubeTools.get(tool) : undefined;
@@ -53,8 +84,10 @@ export function toolTitle({server, tool, input}: ToolItem): [name: string, summa
     const detail = field && typeof input === 'object' && input !== null ? Reflect.get(input, field) : '';
     return [name, toolSummary(typeof detail === 'string' ? detail : '')];
   }
-  const name = server ? server + ' - ' + tool : tool ?? 'tool';
-  return [name, toolSummary(input)];
+  if (server) return [server + ' - ' + tool, toolSummary(input)];
+  const words = (tool ?? 'tool').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ');
+  const name = nativeTools.get(tool ?? '') ?? words.charAt(0).toUpperCase() + words.slice(1);
+  return [name, nativeSummary(tool ?? '', input)];
 }
 
 // A tool's input and output show this many characters.

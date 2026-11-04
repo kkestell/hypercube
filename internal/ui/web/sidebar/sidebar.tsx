@@ -99,7 +99,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
-        <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>
+        <div className="sidebar-body min-h-0 flex-1 space-y-3 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>
           {workspaces.map(workspace => (
             <WorkspaceSection
               key={workspace.id} workspace={workspace}

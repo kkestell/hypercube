@@ -21,16 +21,173 @@ func writeStorageFile(t *testing.T, path string, data []byte) {
 }
 
 func TestSourceHome(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("CODEX_HOME", "")
-	if got, err := sourceHome(); err != nil || got != filepath.Join(home, ".codex") {
-		t.Fatalf("%q: %v", got, err)
+	for _, tc := range []struct {
+		name, selection, override, want string
+		fail                            bool
+	}{
+		{name: "no switcher", want: ".codex"},
+		{name: "default", selection: "unset CODEX_HOME\n", want: ".codex"},
+		{name: "Star Tribune", selection: "export CODEX_HOME=\"$HOME/.codex-strib\"\n", want: ".codex-strib"},
+		{name: "explicit override", selection: "export CODEX_HOME=\"$HOME/.codex-strib\"\n", override: "explicit", want: "explicit"},
+		{name: "override ignores invalid selection", selection: "invalid", override: "explicit", want: "explicit"},
+		{name: "invalid selection", selection: "invalid", fail: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("CODEX_HOME", "")
+			if tc.selection != "" {
+				writeStorageFile(t, filepath.Join(home, ".config", "neuron", "codex-profile.zsh"), []byte(tc.selection))
+			}
+			if tc.override != "" {
+				t.Setenv("CODEX_HOME", filepath.Join(home, tc.override))
+			}
+			got, err := sourceHome()
+			if tc.fail {
+				if err == nil {
+					t.Fatal("invalid selection accepted")
+				}
+			} else if err != nil || got != filepath.Join(home, tc.want) {
+				t.Fatalf("%q: %v", got, err)
+			}
+		})
 	}
-	inherited := t.TempDir()
-	t.Setenv("CODEX_HOME", inherited)
-	if got, err := sourceHome(); err != nil || got != inherited {
-		t.Fatalf("%q: %v", got, err)
+	t.Run("relative override", func(t *testing.T) {
+		t.Setenv("CODEX_HOME", "relative-codex")
+		want, err := filepath.Abs("relative-codex")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, err := sourceHome(); err != nil || got != want {
+			t.Fatalf("%q: %v", got, err)
+		}
+	})
+	t.Run("selection read failure", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("CODEX_HOME", "")
+		if err := os.MkdirAll(filepath.Join(home, ".config", "neuron", "codex-profile.zsh"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := sourceHome(); err == nil {
+			t.Fatal("selection read failure ignored")
+		}
+	})
+}
+
+func TestDefaultStorageWithoutSwitcherKeepsLegacyHome(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("CODEX_HOME", "")
+	source := filepath.Join(user, ".codex")
+	writeStorageFile(t, filepath.Join(source, "auth.json"), []byte("default account"))
+	args := harness.StartArgs{StateDir: t.TempDir()}
+	home, err := prepareStorage(args)
+	if err != nil || home != filepath.Join(args.StateDir, "codex") {
+		t.Fatalf("%q: %v", home, err)
+	}
+	if target, err := os.Readlink(filepath.Join(home, "auth.json")); err != nil || target != filepath.Join(source, "auth.json") {
+		t.Fatalf("%q: %v", target, err)
+	}
+}
+
+func TestAccountSelectionKeepsSeparateHomesAndPrivateResumes(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("CODEX_HOME", "")
+	selection := filepath.Join(user, ".config", "neuron", "codex-profile.zsh")
+	for _, name := range []string{".codex", ".codex-strib"} {
+		writeStorageFile(t, filepath.Join(user, name, "auth.json"), []byte(name))
+		writeStorageFile(t, filepath.Join(user, name, "config.toml"), []byte(name))
+	}
+	args := harness.StartArgs{StateDir: t.TempDir()}
+	defaultHome, err := prepareStorage(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStorageFile(t, selection, []byte("export CODEX_HOME=\"$HOME/.codex-strib\"\n"))
+	stribHome, err := prepareStorage(args)
+	if err != nil || stribHome == defaultHome {
+		t.Fatalf("account homes not separated: %q: %v", stribHome, err)
+	}
+	writeStorageFile(t, selection, []byte("unset CODEX_HOME\n"))
+	if home, err := prepareStorage(args); err != nil || home != defaultHome {
+		t.Fatalf("default home changed: %q: %v", home, err)
+	}
+	for _, tc := range []struct{ home, source, id string }{
+		{defaultHome, ".codex", "default-thread"},
+		{stribHome, ".codex-strib", "strib-thread"},
+	} {
+		for _, name := range []string{"auth.json", "config.toml"} {
+			if target, err := os.Readlink(filepath.Join(tc.home, name)); err != nil || target != filepath.Join(user, tc.source, name) {
+				t.Fatalf("account link changed: %q: %v", target, err)
+			}
+		}
+		writeStorageFile(t, filepath.Join(tc.home, "sessions", "2026", "11", "04", "rollout-"+tc.id+".jsonl"), []byte(tc.id))
+	}
+	// Private resumes must not consult the selection for new conversations.
+	writeStorageFile(t, selection, []byte("invalid selection"))
+	t.Setenv("CODEX_HOME", filepath.Join(user, "explicit-other-account"))
+	for _, tc := range []struct{ id, home string }{{"default-thread", defaultHome}, {"strib-thread", stribHome}} {
+		args.Conversation = tc.id
+		if home, err := prepareStorage(args); err != nil || home != tc.home {
+			t.Fatalf("private resume changed account: %q: %v", home, err)
+		}
+	}
+	t.Setenv("CODEX_HOME", "")
+	if _, err := prepareStorage(args); err != nil {
+		t.Fatalf("invalid selection broke private resume: %v", err)
+	}
+}
+
+func TestDefaultLaunchDoesNotChangeLegacyOverrideLinks(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("CODEX_HOME", "")
+	args := harness.StartArgs{StateDir: t.TempDir()}
+	legacy := filepath.Join(args.StateDir, "codex")
+	otherAuth := filepath.Join(t.TempDir(), "auth.json")
+	writeStorageFile(t, otherAuth, []byte("existing account"))
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(otherAuth, filepath.Join(legacy, "auth.json")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"config.toml", "auth.json"} {
+		writeStorageFile(t, filepath.Join(user, ".codex", name), []byte("default account"))
+	}
+	home, err := prepareStorage(args)
+	if err != nil || home == legacy {
+		t.Fatalf("legacy override home reused: %q: %v", home, err)
+	}
+	if target, err := os.Readlink(filepath.Join(legacy, "auth.json")); err != nil || target != otherAuth {
+		t.Fatalf("legacy credential link changed: %q: %v", target, err)
+	}
+	if _, err := os.Lstat(filepath.Join(legacy, "config.toml")); !os.IsNotExist(err) {
+		t.Fatalf("legacy home polluted with another account's config: %v", err)
+	}
+	writeStorageFile(t, filepath.Join(legacy, "sessions", "2026", "11", "04", "rollout-legacy-thread.jsonl"), []byte("legacy history"))
+	args.Conversation = "legacy-thread"
+	if got, err := prepareStorage(args); err != nil || got != legacy {
+		t.Fatalf("legacy override resume changed: %q: %v", got, err)
+	}
+}
+
+func TestNativeResumeDoesNotSearchAnotherAccount(t *testing.T) {
+	user := t.TempDir()
+	t.Setenv("HOME", user)
+	t.Setenv("CODEX_HOME", "")
+	writeStorageFile(t, filepath.Join(user, ".codex", "sessions", "2026", "11", "04", "rollout-personal-thread.jsonl"), []byte("personal history"))
+	selection := filepath.Join(user, ".config", "neuron", "codex-profile.zsh")
+	writeStorageFile(t, selection, []byte("export CODEX_HOME=\"$HOME/.codex-strib\"\n"))
+	args := harness.StartArgs{StateDir: t.TempDir(), Conversation: "personal-thread"}
+	if _, err := prepareStorage(args); err == nil {
+		t.Fatal("imported another account's native conversation")
+	}
+	writeStorageFile(t, selection, []byte("unset CODEX_HOME\n"))
+	if _, err := prepareStorage(args); err != nil {
+		t.Fatalf("native resume with its own account failed: %v", err)
 	}
 }
 
@@ -116,9 +273,14 @@ func TestStorageReportsSetupFailures(t *testing.T) {
 		t.Fatal("unwritable storage accepted")
 	}
 	state = t.TempDir()
+	args := harness.StartArgs{StateDir: state}
+	home, err := prepareStorage(args)
+	if err != nil {
+		t.Fatal(err)
+	}
 	writeStorageFile(t, filepath.Join(source, "config.toml"), []byte("user config"))
-	writeStorageFile(t, filepath.Join(state, "codex", "config.toml"), []byte("unexpected file"))
-	if _, err := prepareStorage(harness.StartArgs{StateDir: state}); err == nil {
+	writeStorageFile(t, filepath.Join(home, "config.toml"), []byte("unexpected file"))
+	if _, err := prepareStorage(args); err == nil {
 		t.Fatal("overwrote existing input")
 	}
 }

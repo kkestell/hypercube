@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,20 +28,49 @@ func sourceHome() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".codex"), nil
+	selection, err := os.ReadFile(filepath.Join(home, ".config", "neuron", "codex-profile.zsh"))
+	if errors.Is(err, os.ErrNotExist) {
+		return filepath.Join(home, ".codex"), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	switch string(selection) {
+	case "unset CODEX_HOME\n":
+		return filepath.Join(home, ".codex"), nil
+	case "export CODEX_HOME=\"$HOME/.codex-strib\"\n":
+		return filepath.Join(home, ".codex-strib"), nil
+	default:
+		return "", errors.New("unsupported Neuron Codex selection: expected Default or Star Tribune")
+	}
 }
 
 func prepareStorage(a harness.StartArgs) (string, error) {
 	if a.StateDir == "" {
 		return "", fmt.Errorf("Codex requires an agent state directory")
 	}
+	base, err := filepath.Abs(filepath.Join(a.StateDir, "codex"))
+	if err != nil {
+		return "", err
+	}
+	if a.Conversation != "" {
+		if home, err := privateConversationHome(base, a.Conversation); err != nil || home != "" {
+			return home, err
+		}
+	}
 	source, err := sourceHome()
 	if err != nil {
 		return "", err
 	}
-	home, err := filepath.Abs(filepath.Join(a.StateDir, "codex"))
-	if err != nil {
-		return "", err
+	home := filepath.Join(base, "homes", fmt.Sprintf("%x", sha256.Sum256([]byte(source))))
+	if source == filepath.Join(os.Getenv("HOME"), ".codex") {
+		compatible, err := matchingInputs(base, source)
+		if err != nil {
+			return "", err
+		}
+		if compatible {
+			home = base
+		}
 	}
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", err
@@ -68,6 +99,41 @@ func prepareStorage(a harness.StartArgs) (string, error) {
 		}
 	}
 	return home, nil
+}
+
+// The legacy home can already belong to an explicit source override. Check
+// all its links before writing anything, so a new account never changes it.
+func matchingInputs(home, source string) (bool, error) {
+	for _, name := range sharedInputs {
+		target, err := os.Readlink(filepath.Join(home, name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return false, err
+		}
+		if target != filepath.Join(source, name) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// A private conversation keeps its original home and account when resumed,
+// regardless of the selection for new conversations.
+func privateConversationHome(base, id string) (string, error) {
+	homes, err := filepath.Glob(filepath.Join(base, "homes", "*"))
+	if err != nil {
+		return "", err
+	}
+	for _, home := range append([]string{base}, homes...) {
+		if path, err := rollout(home, id); err != nil {
+			return "", err
+		} else if path != "" {
+			return home, nil
+		}
+	}
+	return "", nil
 }
 
 func rollout(home, id string) (string, error) {

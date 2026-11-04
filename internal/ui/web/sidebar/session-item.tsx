@@ -57,7 +57,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       </span>
       {session.id === renaming
         ? <RenameField session={session} onDone={() => onRenaming(null)} />
-        : <span className={`session-item-title min-w-0 flex-1 truncate text-left ${level === 2 ? 'text-xs' : ''} ${session.activity === 'busy' ? 'text-foreground' : ''}`}>{session.title}</span>}
+        : <span className={`session-item-title min-w-0 flex-1 truncate text-left ${level === 2 ? 'text-xs' : ''} ${session.activity === 'busy' ? 'text-foreground' : 'text-neutral-500'}`}>{session.title}</span>}
       <span className="session-item-decoration ml-auto flex shrink-0 items-center gap-1">
         {session.worktree && <BranchIcon className="session-item-branch w-7 justify-center" merge={session.merge} />}
         <span className="session-item-status inline-flex h-4 w-7 items-center justify-center">{statusOf(session, selected)}</span>

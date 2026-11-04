@@ -60,7 +60,7 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
 test('a tool call starts collapsed and preserves expansion as its output arrives', () => {
   const {root, store, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'ls'}}]);
   const call = () => find(root, '.tool-items-call');
-  expect(find(call(), '.tool-items-title').textContent).toContain('bash ls');
+  expect(find(call(), '.tool-items-title').textContent).toContain('Run command ls');
   expect(call().querySelector('[title="Running"]')).not.toBeNull();
   expect(call().getAttribute('data-state') === 'open').toBe(false);
   expect(call().querySelector('.tool-items-body')).toBeNull();
@@ -88,6 +88,23 @@ test('Hypercube tools show readable titles and retain their full input and resul
   expect(findAll(call, 'pre').map(pre => pre.textContent)).toEqual([JSON.stringify(input, null, 2), 'Opened main.go.']);
 });
 
+test.each([
+  ['shell', {command: "/bin/zsh -lc 'git status --short'", cwd: '/repo'}, 'Run command', 'git status --short'],
+  ['apply_patch', {path: '/repo/main.go', changes: [{path: '/repo/main.go', diff: '+hello'}]}, 'Edit files', '/repo/main.go'],
+  ['web_search', {query: 'Go documentation'}, 'Search web', 'Go documentation'],
+  ['view_image', {path: '/repo/preview.png'}, 'View image', '/repo/preview.png'],
+] as const)('Codex %s calls keep readable labels while running, completed, and expanded', (tool, input, name, detail) => {
+  const {root, send} = setup([{id: 'c', kind: 'tool', tool, input}]);
+  const call = () => find(root, '.tool-items-call');
+  expect(find(call(), '.tool-items-name').textContent).toBe(name);
+  expect(find(call(), '.tool-items-detail').textContent).toBe(detail);
+  send([{id: 'c', kind: 'tool', tool, input, output: 'Result', done: true}]);
+  expect(find(call(), '.tool-items-name').textContent).toBe(name);
+  expect(find(call(), '.tool-items-detail').textContent).toBe(detail);
+  act(() => clickControl(find(call(), '[data-slot=collapsible-trigger]')));
+  expect(findAll(call(), 'pre').map(pre => pre.textContent)).toEqual([JSON.stringify(input, null, 2), 'Result']);
+});
+
 const marker = (id: string, state: WorkState, at: number, final?: string[]): Item => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
 const summaries = (root: ParentNode) => findAll(root, '.activity-item > [data-slot=collapsible-trigger]');
 
@@ -104,7 +121,7 @@ test('a running turn shows its rows with collapsed tool details and no working s
   expect(root.querySelector('.activity-item')).toBeNull();
   expect(root.textContent).not.toContain('Working');
   expect(find(root, '.reasoning-item').textContent).toBe('Considering the plan.\nSecond line.');
-  expect(find(root, '.tool-items-call').textContent).toContain('bash ls');
+  expect(find(root, '.tool-items-call').textContent).toContain('Run command ls');
   expect(root.querySelector('.tool-items-body')).toBeNull();
   expect(root.textContent).toContain('Progress update');
   expect(root.textContent).toContain('Peer says hello.\nMore detail.');
@@ -140,7 +157,7 @@ test('a successful turn collapses to its opener, one Worked row, and the whole r
   act(() => clickControl(summary));
   const rows = findAll(group, '.activity-item-rows > *');
   expect(rows.map(row => row.textContent)).toEqual([
-    'Thinking it over.', expect.stringContaining('bash ls'), 'Also check b', expect.stringContaining('Peer detail'), 'Almost done.',
+    'Thinking it over.', expect.stringContaining('Run command ls'), 'Also check b', expect.stringContaining('Peer detail'), 'Almost done.',
   ]);
   expect(store.get().session?.expanded['activity:L1:w']).toBe(true);
   act(() => clickControl(summary));
@@ -158,7 +175,7 @@ test('a finished turn keeps its summary while the next turn runs', () => {
   send([{id: 'v', kind: 'user', text: 'Two', at: 6000}, marker('w2', 'working', 6100), {id: 'd', kind: 'tool', tool: 'read', at: 6200}]);
   expect(summaries(root).map(s => s.textContent)).toEqual(['Worked for 4s']);
   expect(root.querySelectorAll('.tool-items-call').length).toBe(1);
-  expect(find(root, '.tool-items-call').textContent).toContain('read');
+  expect(find(root, '.tool-items-call').textContent).toContain('Read');
 });
 
 test.each([

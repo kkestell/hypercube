@@ -66,7 +66,7 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. Use list_sessions to find running addressable recipients, including their workspace paths and parent IDs.\n")
 		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
 	}
-	b.WriteString("Reach Hypercube sessions only with the hypercube tools. Any other agent tools you have manage only your own subagents. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
+	b.WriteString("Do not use built-in subagent tools. Delegate work only to Hypercube workers (child sessions), managed through the hypercube tools. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n", s.Dir, onBranch(s.Branch))
 	if s.Parent != "" {
 		if s.Branch != "" {
