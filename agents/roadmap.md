@@ -29,11 +29,6 @@ Allow `open_file` to open any file the user can read, including absolute paths
 outside the workspace and `~`-prefixed paths, so an agent can show the user a
 file from anywhere on the machine.
 
-## Dock icon and menu bar icon polish
-
-Give the app a proper dock icon, and adjust the menu bar icon so it is easier
-on the eyes.
-
 ## Show Claude Code and Codex usage limits
 
 Display the user's Claude Code and Codex usage against their limits,

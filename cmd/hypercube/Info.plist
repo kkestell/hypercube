@@ -6,6 +6,8 @@
 	<string>com.github.kkestell.hypercube</string>
 	<key>CFBundleName</key>
 	<string>Hypercube</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleExecutable</key>
 	<string>hypercube</string>
 	<key>CFBundlePackageType</key>
