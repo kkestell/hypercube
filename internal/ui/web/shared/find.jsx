@@ -1,14 +1,12 @@
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Icon} from './icon.jsx';
-// The transcript's find widget follows rendered content as it changes.
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {matches} from '../app/shortcuts.js';
 import {findMatches} from './find-matches.js';
-import {useStore} from '../store.js';
 
-export function Find({list, view, scope = 'transcript'}) {
-  const [, store] = useStore();
+// Find and navigate matches in rendered content as it changes.
+export function Find({list, view, active, label, className}) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const [ranges, setRanges] = useState([]), [index, setIndex] = useState(0);
   const input = useRef(null), previousFocus = useRef(null);
@@ -21,15 +19,8 @@ export function Find({list, view, scope = 'transcript'}) {
   };
   useEffect(() => {
     const keydown = event => {
-      if (event.defaultPrevented) return;
+      if (!active || event.defaultPrevented) return;
       const focus = document.activeElement;
-      const pane = view.current.closest(scope === 'transcript' ? '.agent-pane' : '.editor-pane');
-      if (focus === document.body || focus === document.documentElement) {
-        const editor = view.current.closest('.editor-pane');
-        const active = store.get().workbench?.activePane;
-        const activePane = [...document.querySelectorAll('.editor-pane')].find(item => item.dataset.pane === String(active));
-        if (editor && editor !== (activePane ?? document.querySelector('.editor-pane'))) return;
-      } else if (!(pane ?? view.current.parentElement).contains(focus)) return;
       if (matches(event, 'find')) {
         event.preventDefault();
         if (!open) previousFocus.current = focus;
@@ -42,7 +33,7 @@ export function Find({list, view, scope = 'transcript'}) {
     };
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
-  }, [open, ranges]);
+  }, [active, open, ranges]);
 
   useLayoutEffect(() => { if (open) selectInput(); }, [open]);
   useLayoutEffect(() => {
@@ -80,10 +71,10 @@ export function Find({list, view, scope = 'transcript'}) {
     previousFocus.current?.focus();
   };
   if (!open) return null;
-  return <div className={scope === 'transcript' ? 'transcript-find flex shrink-0 items-center gap-2 border-b p-2' : 'absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md'} role="search" aria-label={`Find in ${scope}`} onKeyDown={event => {
+  return <div className={className} role="search" aria-label={label} onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }
   }}>
-    <Input ref={input} value={query} placeholder="Find" aria-label={`Find in ${scope}`} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
+    <Input ref={input} value={query} placeholder="Find" aria-label={label} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
       if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
     }} />
     <span className="transcript-find-count shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>

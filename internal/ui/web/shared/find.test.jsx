@@ -6,10 +6,10 @@ import {Find} from './find.jsx';
 
 afterEach(unmountAll);
 
-function Pane({id}) {
+function Pane({id, active}) {
   const view = useRef(null), list = useRef(null);
   return <div className="editor-pane" data-pane={id}>
-    <Find view={view} list={list} scope="file" />
+    <Find view={view} list={list} active={active} label="Find in file" />
     <div ref={view} tabIndex={0}><div ref={list}>some text</div></div>
   </div>;
 }
@@ -20,14 +20,14 @@ function key(target, key, options = {}) {
 
 test('body-focused find opens only the last used pane in a split', () => {
   const store = createStore({workbench: {activePane: 2}});
-  const root = mount(store, <><Pane id={1} /><Pane id={2} /></>);
+  const root = mount(store, <><Pane id={1} active={false} /><Pane id={2} active /></>);
   key(document.body, 'f', {metaKey: true});
   expect(root.querySelectorAll('[role=search]')).toHaveLength(1);
   expect(root.querySelector('[data-pane="2"] [role=search]')).not.toBeNull();
 });
 
 test('find reveals a match beyond the right edge', () => {
-  const root = mount(createStore({workbench: {activePane: 1}}), <Pane id={1} />);
+  const root = mount(createStore({workbench: {activePane: 1}}), <Pane id={1} active />);
   const view = root.querySelector('[tabindex]');
   view.getBoundingClientRect = () => ({top: 0, bottom: 100, left: 0, right: 100, height: 100});
   const original = Range.prototype.getBoundingClientRect;

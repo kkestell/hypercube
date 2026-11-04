@@ -14,7 +14,7 @@ import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
 import {emptyTranscript, setExpanded} from './transcripts.js';
 
-export function Transcript({session}) {
+export function Transcript({session, active = true}) {
   const [state, store] = useStore();
   const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
@@ -59,7 +59,7 @@ export function Transcript({session}) {
 
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
-      <Find list={list} view={view} />
+      <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript min-h-0 flex-1 overflow-auto" onScroll={scrolled}>
         <div ref={list} className="transcript-list flex flex-col gap-1 p-4">
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}

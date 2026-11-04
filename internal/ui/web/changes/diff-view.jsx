@@ -37,7 +37,7 @@ function DiffLines({text, path, wrap}) {
   })}</tbody></table>;
 }
 
-export function DiffView({id, path}) {
+export function DiffView({id, path, active = true}) {
   const [state] = useStore();
   const view = useRef(null), list = useRef(null);
   useScrollMemory(view, id);
@@ -67,7 +67,7 @@ export function DiffView({id, path}) {
         <Button variant="ghost" size="icon" aria-label="Previous change" title="Previous change (Shift+Option+F5)" disabled={!hasChanges} onClick={() => move(-1)}><Icon name="arrow-up" /></Button>
         <Button variant="ghost" size="icon" aria-label="Next change" title="Next change (Option+F5)" disabled={!hasChanges} onClick={() => move(1)}><Icon name="arrow-down" /></Button>
       </div>
-      <Find list={list} view={view} scope="diff" />
+      <Find list={list} view={view} active={active} label="Find in diff" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />
     <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">
       <div ref={list}>{diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
         : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench?.wrap} /> : null)}</div>

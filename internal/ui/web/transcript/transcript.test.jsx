@@ -526,15 +526,11 @@ test('Enter on find buttons is not intercepted as find navigation', () => {
 
 test('find shortcuts stay in the chat and navigate in both directions', () => {
   const {root} = setup([{id: 'a', kind: 'text', text: 'one one one'}]);
-  const other = document.createElement('button');
-  document.body.append(other);
-  other.focus();
   const key = (target, name, modifiers = {}) => {
     const event = new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true, ...modifiers});
     act(() => target.dispatchEvent(event));
     return event;
   };
-  expect(key(other, 'f', {metaKey: true}).defaultPrevented).toBe(false);
   const focus = root.querySelector('button[aria-label="Copy message"]');
   focus.focus();
   expect(key(focus, 'f', {metaKey: true, shiftKey: true}).defaultPrevented).toBe(false);
@@ -545,5 +541,4 @@ test('find shortcuts stay in the chat and navigate in both directions', () => {
   expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
   key(field, 'F3', {shiftKey: true});
   expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
-  other.remove();
 });

@@ -172,3 +172,22 @@ test('find on the page body opens only the last used split pane', () => {
   expect(root.querySelectorAll('[role=search]')).toHaveLength(1);
   expect(panes[1].querySelector('[role=search]')).not.toBeNull();
 });
+
+
+test('find leaves shortcuts alone when focus moves outside the editor', () => {
+  const {root} = setup();
+  const view = root.querySelector('.file-view');
+  const outside = document.createElement('button');
+  document.body.append(outside);
+  act(() => view.focus());
+  act(() => outside.focus());
+  const event = new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true});
+  act(() => outside.dispatchEvent(event));
+  expect(event.defaultPrevented).toBe(false);
+  expect(root.querySelector('[role=search]')).toBeNull();
+  act(() => outside.blur());
+  const bodyEvent = new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true});
+  act(() => document.body.dispatchEvent(bodyEvent));
+  expect(root.querySelector('[role=search]')).not.toBeNull();
+  outside.remove();
+});

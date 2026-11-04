@@ -28,7 +28,7 @@ function Source({file, lang, wrap}) {
   </div>;
 }
 
-export function FileView({id, path}) {
+export function FileView({id, path, active = true}) {
   const [state, store] = useStore();
   const view = useRef(null), list = useRef(null);
   useScrollMemory(view, id);
@@ -41,7 +41,7 @@ export function FileView({id, path}) {
     highlight.scrollIntoView({block: 'center'});
     store.update(state => revealed(state, sessionId, path));
   }, [file?.text, file?.reveal, file?.source]);
-  return <div className="relative flex min-h-0 flex-1 flex-col"><Find list={list} view={view} scope="file" /><div ref={view} tabIndex={0} className="file-view min-h-0 flex-1 overflow-auto"><div ref={list}>
+  return <div className="relative flex min-h-0 flex-1 flex-col"><Find list={list} view={view} active={active} label="Find in file" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" /><div ref={view} tabIndex={0} className="file-view min-h-0 flex-1 overflow-auto"><div ref={list}>
     {file && (file.message != null ? <div className="file-view-message p-6 text-center text-muted-foreground">{file.message}</div>
       : file.text == null ? null
       : hasPreview(path) && !file.source ? <div className="p-6"><Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} /></div>

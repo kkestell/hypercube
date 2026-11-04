@@ -10,7 +10,8 @@ import {shownSession} from '../sessions/selection.js';
 import {DiffView} from '../changes/diff-view.jsx';
 import {FileView} from '../files/file-view.jsx';
 import {useStore} from '../store.js';
-import {moveTab, tabEntry} from './editor.js';
+import {agentTabs, moveTab, tabEntry} from './editor.js';
+import {panes} from './tab-layout.js';
 import {EditorTabs} from './editor-tabs.jsx';
 
 
@@ -22,7 +23,7 @@ function edgeAt(e, body) {
   return distance < 0.25 ? edge : 'center';
 }
 
-export function EditorPane({pane}) {
+export function EditorPane({pane, focused}) {
   const [state, store] = useStore();
   const [drop, setDrop] = useState(null);
   const body = useRef(null);
@@ -30,6 +31,9 @@ export function EditorPane({pane}) {
   const dragging = state.session?.tabs.dragging;
   const entries = pane.tabs.map(id => tabEntry(state, id));
   const active = entries.find(entry => entry.id === pane.active);
+  const allPanes = panes(state.session?.tabs.root ?? agentTabs.root);
+  const activePane = allPanes.find(item => item.id === state.workbench.activePane) ?? allPanes[0];
+  const isActive = focused && activePane.id === pane.id;
 
   const over = e => {
     if (!dragging) return;
@@ -58,10 +62,10 @@ export function EditorPane({pane}) {
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} />
       <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
-        {active.agent ? <AgentPane key={shown.id} session={shown} />
+        {active.agent ? <AgentPane key={shown.id} session={shown} active={isActive} />
           : active.browser ? <BrowserView key={shown.id} session={shown.id} />
-          : active.diff ? <DiffView key={active.id} id={active.id} path={active.path} />
-          : <FileView key={active.id} id={active.id} path={active.path} />}
+          : active.diff ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
+          : <FileView key={active.id} id={active.id} path={active.path} active={isActive} />}
       </div>
     </div>
   );

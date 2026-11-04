@@ -11,7 +11,7 @@ import {attachImages, unsentKey} from './drafts.js';
 
 const hasFiles = e => e.dataTransfer?.types.includes('Files');
 
-export function AgentPane({session}) {
+export function AgentPane({session, active}) {
   const [state, store] = useStore();
   const [dropping, setDropping] = useState(false);
   const unsent = session.id === unsentKey;
@@ -35,7 +35,7 @@ export function AgentPane({session}) {
   const classes = `agent-pane flex h-full min-h-0 flex-col ${dropping ? 'ring-2 ring-ring ring-inset' : ''}`;
   return (
     <article className={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} />}
+      {unsent ? <Tesseract fading={state.unsent.sending} /> : <Transcript session={session} active={active} />}
       <Composer session={session} />
     </article>
   );
