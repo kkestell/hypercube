@@ -31,26 +31,18 @@ edits.
 ## Browser view
 
 The sidebar lays out sessions as VS Code's Explorer does: each workspace is a
-collapsible section, and its sessions form a tree with child sessions under
-their parent. Click a section header to collapse or expand it, and click a
-parent's chevron or double-click the parent to collapse or expand its
-children. Sessions within each workspace stay newest first, in creation order.
-Hovering or focusing a section header shows its actions: New Session (`+`)
-opens a new session in that workspace, the history button shows or hides the
-workspace's stopped sessions, and More Actions (`…`) offers Show/Hide Stopped
-Sessions and Delete Workspace, which right-clicking the section also offers.
-With the focus on a section header, Enter or Space toggles it, Left collapses
-it, and Right expands it. Showing stopped sessions reveals the first five; Show more appears when
-there are more. Showing them again starts at five. The selected session stays
-visible, even when stopped.
+collapsible section, with all its top-level sessions newest first. Children
+appear under their parent in creation order. Stopped and ended sessions are
+dimmed, and a long list scrolls. Click a section header to collapse or expand
+it, and click a parent's chevron or double-click the parent to collapse or
+expand its children. Hovering or focusing a section header shows New Session
+(`+`) and More Actions (`…`), which offers Delete Workspace; right-clicking the
+section also opens its menu. With the focus on a section header, Enter or Space
+toggles it, Left collapses it, and Right expands it.
 
 Workspace and session menus also offer Open in VS Code, Reveal in Finder, and
 Open in Terminal. These open the workspace folder or the session’s directory,
 including its worktree when it has one.
-
-Children appear under their parent in creation order. Running children are
-always visible; Show Stopped Sessions in the parent's menu lists stopped
-children too, and Hide Stopped Sessions hides them again.
 
 The sidebar header's New Session button (`+`) opens a new session in the
 current session's workspace, with the
@@ -86,8 +78,8 @@ Click a session to show its chat. Up, Down, Home, and End move through the
 tree; Right expands a parent or moves to its first child, Left collapses it or
 moves from a child to its parent, and Enter or Space shows the session. Press F2,
 or choose Rename from a row's menu, to change a session's title. Right-click a
-row, or press Shift+F10 on it, to open its menu. A top-level session's menu offers Start/Stop, Show/Hide
-Stopped Sessions when it has children, Rename, and Delete. Stopped rows are
+row, or press Shift+F10 on it, to open its menu. A top-level session's menu
+offers Start/Stop, Rename, and Delete. Stopped rows are
 dimmed; clicking a child of a stopped parent starts the family. The right edge
 of each row shows only its own session: a spinner while it works, an amber dot
 while it awaits you, a blue dot for a reply you have not seen, and a red dot

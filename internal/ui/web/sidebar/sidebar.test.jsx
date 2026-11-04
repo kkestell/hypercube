@@ -32,105 +32,14 @@ const select = (root, id) => click(row(root, id));
 const dots = (root, id) => [...root.querySelectorAll(`[data-session="${id}"] > .session-item-decoration .status-dot`)].map(dot => dot.className.replace('status-dot status-dot-', ''));
 const pick = (root, index) => act(() => root.querySelector('vscode-context-menu').dispatchEvent(new CustomEvent('vsc-context-menu-select', {detail: {value: String(index)}})));
 const workspaceMenu = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [title="More Actions"]`));
-const toggleWorkspaceStopped = (root, id = 'w') => click(root.querySelector(`[data-workspace="${id}"] [icon="history"]`));
-const more = root => root.querySelector('.workspace-section-more');
-
-const toggleStopped = root => {
-  act(() => root.querySelector('[data-session="a"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-  pick(root, 1);
-};
-
-test.each([true, false, null])('all started sessions show and Show more adds five stopped sessions, running=%s', running => {
-  const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: running ?? i % 2 === 0}));
-  const {root} = setup(sessions);
-  const started = sessions.filter(s => s.running);
-  const stopped = sessions.filter(s => !s.running);
-  expect(sessionRows(root)).toEqual(started.map(s => s.id));
-  expect(more(root)).toBeNull();
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(sessions.filter(s => s.running || stopped.slice(0, 5).includes(s)).map(s => s.id));
-  for (let limit = 10; limit < stopped.length + 5; limit += 5) {
-    click(more(root));
-    const visible = sessions.filter(s => s.running || stopped.indexOf(s) < limit);
-    expect(sessionRows(root)).toEqual(visible.map(s => s.id));
-  }
-  expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
-  expect(more(root)).toBeNull();
-});
-
-test('the selected stopped session stays visible without replacing a started session', () => {
-  const sessions = Array.from({length: 8}, (_, i) => session('s' + (7 - i), {running: i === 1}));
+test('all sessions remain visible in order as their state changes', () => {
+  const sessions = Array.from({length: 23}, (_, i) => session('s' + (22 - i), {running: i % 2 === 0}));
   const {store, root} = setup(sessions);
-  store.update(s => ({...s, selected: 's0'}));
-  expect(sessionRows(root)).toEqual(['s6', 's0']);
-  expect(row(root, 's0').getAttribute('aria-selected')).toBe('true');
-  expect(row(root, 's6').getAttribute('aria-selected')).toBe('false');
-  expect(root.querySelector('[data-session="s0"]').classList.contains('session-item-stopped')).toBe(true);
-  expect(more(root)).toBeNull();
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(['s7', 's6', 's5', 's4', 's3', 's2', 's0']);
-  click(more(root));
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
-  expect(more(root)).toBeNull();
-});
-
-test('selecting a child of a stopped parent keeps the family visible', () => {
-  const {store, root} = setup([session('a', {running: false, children: [session('child', {parent: 'a', running: false})]})]);
-  expect(sessionRows(root)).toEqual([]);
-  store.update(s => ({...s, selected: 'child'}));
-  expect(sessionRows(root)).toEqual(['a', 'child']);
-  expect(more(root)).toBeNull();
-});
-
-test('stopping and starting sessions updates the default list', () => {
-  const {store, root} = setup([session('a'), session('b', {running: false})]);
-  expect(sessionRows(root)).toEqual(['a']);
-  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {running: false}), session('b')]}]}));
-  expect(sessionRows(root)).toEqual(['b']);
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(['a', 'b']);
-});
-
-test('hiding stopped sessions resets the next view to five', () => {
-  const sessions = [session('running'), ...Array.from({length: 12}, (_, i) => session('s' + i, {running: false}))];
-  const {root} = setup(sessions);
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(['running', 's0', 's1', 's2', 's3', 's4']);
-  click(more(root));
-  click(more(root));
+  expect(row(root, 's21').classList.contains('session-item-stopped')).toBe(true);
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: sessions.map(item => ({...item, running: !item.running}))}]}));
   expect(sessionRows(root)).toEqual(sessions.map(s => s.id));
-  expect(more(root)).toBeNull();
-  workspaceMenu(root);
-  expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Hide Stopped Sessions');
-  pick(root, 0);
-  expect(sessionRows(root)).toEqual(['running']);
-  expect(more(root)).toBeNull();
-  workspaceMenu(root);
-  expect(root.querySelector('vscode-context-menu').data[0].label).toBe('Show Stopped Sessions');
-  pick(root, 0);
-  expect(sessionRows(root)).toEqual(['running', 's0', 's1', 's2', 's3', 's4']);
-  expect(more(root)).not.toBeNull();
-});
-
-test.each([0, 1, 5])('Show more is absent with %s stopped sessions', count => {
-  const {root} = setup(Array.from({length: count}, (_, i) => session('s' + i, {running: false})));
-  expect(more(root)).toBeNull();
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toHaveLength(count);
-  expect(more(root)).toBeNull();
-});
-
-test('workspace stopped-session visibility and pagination are independent', () => {
-  const sessions = prefix => Array.from({length: 6}, (_, i) => session(prefix + i, {running: false}));
-  const {root, store} = setup(sessions('a'));
-  store.update(s => ({...s, workspaces: [...s.workspaces, {id: 'other', name: 'other', path: '/other', sessions: sessions('b')}]}));
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4']);
-  click(root.querySelector('[data-workspace="w"] .workspace-section-more'));
-  toggleWorkspaceStopped(root, 'other');
-  expect(sessionRows(root)).toEqual(['a0', 'a1', 'a2', 'a3', 'a4', 'a5', 'b0', 'b1', 'b2', 'b3', 'b4']);
-  toggleWorkspaceStopped(root);
-  expect(sessionRows(root)).toEqual(['b0', 'b1', 'b2', 'b3', 'b4']);
+  expect(row(root, 's22').classList.contains('session-item-stopped')).toBe(true);
 });
 
 test('Add Workspace works even when no workspaces exist', () => {
@@ -142,7 +51,6 @@ test('Add Workspace works even when no workspaces exist', () => {
 
 test('clicking a session row chooses it, and a stopped one starts', () => {
   const {store, root, posted} = setup([session('a'), session('b', {running: false})]);
-  toggleWorkspaceStopped(root);
   select(root, 'b');
   expect(store.get().selected).toBe('b');
   expect(posted()).toEqual([{action: 'start', id: 'b'}]);
@@ -200,7 +108,6 @@ test('a session\'s menu stops a running session and starts a stopped or failed o
     session('stopped', {running: false}),
     session('failed', {activity: 'exited'}),
   ]);
-  toggleWorkspaceStopped(root);
   choose(root, '[data-session="running"]', 0);
   choose(root, '[data-session="stopped"]', 0);
   choose(root, '[data-session="failed"]', 0);
@@ -236,13 +143,13 @@ test('deleting a session asks first and posts only on Delete', () => {
 
 test('Escape cancels deleting a workspace', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-workspace="w"]', 1);
+  choose(root, '[data-workspace="w"]', 0);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
   press(root, 'Escape');
   expect(dialog(root)).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-workspace="w"]', 1);
+  choose(root, '[data-workspace="w"]', 0);
   act(() => dialogButton(root, 'Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
@@ -260,7 +167,6 @@ test('New Session opens the unsent session directly without fetching profiles', 
 test('nested sessions stay in creation order and ended ones dim', () => {
   const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
   const {root} = setup([session('a', {children}), session('p0')]);
-  toggleStopped(root);
   expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0']);
   expect(root.querySelector('[data-session="first"]').classList.contains('session-item-stopped')).toBe(true);
 });
@@ -273,35 +179,12 @@ test('clicking a parent selects it and keeps its children visible', () => {
   expect(posted()).toEqual([]);
 });
 
-test('started children stay visible and stopped children are hidden by default', () => {
-  const nested = (id, extra) => session(id, {parent: 'a', ...extra});
-  const {root} = setup([session('a', {children: [
-    nested('one', {unseen: true}), nested('asks', {attention: true}), nested('stopped', {running: false}),
-  ]})]);
-  expect(sessionRows(root)).toEqual(['a', 'one', 'asks']);
-});
-
-test('a parent\'s menu shows and hides its stopped nested sessions', () => {
-  const nested = (id, extra) => session(id, {parent: 'a', ...extra});
-  const stopped = {running: false, ended: true};
-  const {store, root} = setup([session('a', {children: [nested('one', stopped), nested('run'), nested('two', stopped)]})]);
-  expect(sessionRows(root)).toEqual(['a', 'run']);
-
-  toggleStopped(root);
-  expect(sessionRows(root)).toEqual(['a', 'one', 'run', 'two']);
-
-  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a', {children: [nested('one', stopped), nested('run'), nested('three', stopped)]})]}]}));
-  expect(sessionRows(root)).toEqual(['a', 'one', 'run', 'three']);
-
-  toggleStopped(root);
-  expect(sessionRows(root)).toEqual(['a', 'run']);
-});
-
-test('the selected stopped session stays visible while stopped sessions are hidden', () => {
-  const stopped = {running: false, ended: true};
-  const {store, root} = setup([session('a', {children: [session('one', {parent: 'a', ...stopped}), session('two', {parent: 'a', ...stopped})]})]);
-  store.update(s => ({...s, selected: 'two'}));
-  expect(sessionRows(root)).toEqual(['a', 'two']);
+test('all children show under a stopped parent and stopped and ended children dim', () => {
+  const children = [session('running', {parent: 'a'}), session('stopped', {parent: 'a', running: false}), session('ended', {parent: 'a', ended: true})];
+  const {root} = setup([session('a', {running: false, children})]);
+  expect(sessionRows(root)).toEqual(['a', 'running', 'stopped', 'ended']);
+  for (const id of ['a', 'stopped', 'ended']) expect(row(root, id).classList.contains('session-item-stopped')).toBe(true);
+  expect(row(root, 'running').classList.contains('session-item-stopped')).toBe(false);
 });
 
 test('each row shows only its own state, and nothing while idle', () => {
@@ -342,7 +225,7 @@ test('session actions and workspace actions open their respective menus', () => 
   choose(root, '[data-session="a"]', 0);
   expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
   workspaceMenu(root);
-  pick(root, 1);
+  pick(root, 0);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe('Are you sure you want to delete \'repo\'?');
 });
 
@@ -364,7 +247,6 @@ test('active nested sessions offer only Rename and ended ones also Delete Sessio
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
   act(() => root.querySelector('[data-session="active"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
   expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
-  toggleStopped(root);
   choose(root, '[data-session="ended"]', 1);
   expect(dialog(root).querySelector('.confirm-dialog-detail').textContent).toBe('Its chat is deleted.');
   act(() => dialogButton(root, 'Delete').click());
@@ -462,7 +344,7 @@ test('only one row is tabbable, and the arrow keys move and open rows', () => {
 test('when the focused row goes away, the focus moves to a remaining row', () => {
   const {root, store} = setup([session('a'), session('b')]);
   row(root, 'b').focus();
-  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a'), session('b', {running: false})]}]}));
+  store.update(s => ({...s, workspaces: [{...s.workspaces[0], sessions: [session('a')]}]}));
   expect(sessionRows(root)).toEqual(['a']);
   expect(document.activeElement).toBe(row(root, 'a'));
   expect(row(root, 'a').tabIndex).toBe(0);
@@ -521,7 +403,7 @@ test('New Session opens without any workspaces', () => {
 
 test('workspace headers offer the workspace context menu', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-workspace="w"]', 1);
+  choose(root, '[data-workspace="w"]', 0);
   expect(dialog(root).querySelector('.confirm-dialog-message').textContent).toBe("Are you sure you want to delete 'repo'?");
   click(dialogButton(root, 'Delete'));
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);

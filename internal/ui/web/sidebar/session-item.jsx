@@ -20,7 +20,7 @@ const statusOf = (session, selected) => {
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}) {
   const [state, store] = useStore();
   const selected = session.id === state.selected;
-  const classes = ['session-item', !session.running && 'session-item-stopped'].filter(Boolean).join(' ');
+  const classes = ['session-item', 'panel-row', (!session.running || session.ended) && 'session-item-stopped'].filter(Boolean).join(' ');
   const toggle = e => {
     e.stopPropagation();
     onToggle();
@@ -33,7 +33,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
       onClick={() => chooseSession(store, session.id)} onDblClick={hasChildren ? toggle : undefined}
     >
-      <span class="session-item-twistie" onClick={hasChildren ? toggle : undefined}>
+      <span class="session-item-twistie panel-row-icon" onClick={hasChildren ? toggle : undefined}>
         {hasChildren && <vscode-icon name={expanded ? 'chevron-down' : 'chevron-right'} />}
       </span>
       {session.id === renaming

@@ -8,7 +8,7 @@ import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
 import {SessionItem} from './session-item.jsx';
 
-export function SessionTree({label, sessions, nestedOf, renaming, onRenaming}) {
+export function SessionTree({label, sessions, renaming, onRenaming}) {
   const [state, store] = useStore();
   const [collapsed, setCollapsed] = useState({});
   const [focused, setFocused] = useState(null);
@@ -18,7 +18,7 @@ export function SessionTree({label, sessions, nestedOf, renaming, onRenaming}) {
   // The rows are flat, so each carries its level and its place among its
   // siblings for assistive technology.
   const rows = sessions.flatMap((session, index) => {
-    const nested = nestedOf(session);
+    const nested = session.children;
     const expanded = !collapsed[session.id];
     const row = {session, level: 1, position: index + 1, siblings: sessions.length, hasChildren: nested.length > 0, expanded};
     const children = nested.map((child, i) => ({session: child, level: 2, position: i + 1, siblings: nested.length, parent: session.id}));
