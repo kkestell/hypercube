@@ -87,7 +87,7 @@ up)
 		git -C "$REPO" init -q -b main
 	fi
 	# Use real source files as sample content, keeping any local edits.
-	for file in README.md docs/usage.md internal/ui/web/base.css internal/ui/web/sidebar/session-item.jsx; do
+	for file in README.md docs/usage.md internal/ui/web/base.css internal/ui/web/sidebar/session-item.tsx; do
 		if [ ! -e "$REPO/$file" ]; then
 			mkdir -p "$(dirname "$REPO/$file")"
 			cp "$ROOT/$file" "$REPO/$file"

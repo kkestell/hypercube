@@ -47,9 +47,9 @@ build: bundle
 check:
 	go build ./cmd/... ./plugins/...
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd internal/ui && \
-		bun install --frozen-lockfile && bun build.js "$$tmp" && \
+		bun install --frozen-lockfile && bun build.ts "$$tmp" && \
 		{ diff -rq dist "$$tmp" || { echo "internal/ui/dist is stale; run make ui"; exit 1; }; }
-	cd internal/ui && bun test
+	cd internal/ui && bunx tsc -p . && bun test
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal plugins)" || { gofmt -l cmd internal plugins; exit 1; }
 	go test -race ./...
@@ -71,7 +71,7 @@ install-service: install
 # ui builds the browser view into internal/ui/dist, which is committed and
 # embedded, so go build needs no bun.
 ui:
-	cd internal/ui && bun install --frozen-lockfile && bun build.js dist
+	cd internal/ui && bun install --frozen-lockfile && bun build.ts dist
 
 dev:
 	scripts/dev up

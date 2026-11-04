@@ -49,8 +49,8 @@ review reports findings only, overriding `/kreview`'s default fixes and
 staging. Verify each finding and fix those the user approves.
 
 Complete the checks in `AGENTS.md`. For browser changes, use the running
-`make dev` server, or start one if none is running, and give the user its
-address for their visual checks. Leave the installed app alone.
+`make dev` server, or start one if none is running, and open its address in
+the user's browser with `open` for their visual checks. Leave the installed app alone.
 
 Commit and merge only when the user asks. Offer `make install-service` after
 completion and repeat any required restart warning.
