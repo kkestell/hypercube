@@ -3,6 +3,7 @@
 // within a turn's activity, the whole message.
 import {useStore} from '../store.js';
 import {sessionOf} from '../sessions/selection.js';
+import {CopyButton} from './copy-button.jsx';
 import {Disclosure} from './disclosure.jsx';
 import {TranscriptImages} from './transcript-images.jsx';
 import './message-item.css';
@@ -12,9 +13,12 @@ export function MessageItem({item, expanded, setOpen, inline}) {
   const outgoing = item.kind === 'tool';
   if (!outgoing && !item.from) return (
     <div class="message-item message-item-user">
-      <div class="message-item-bubble">
-        <div class="message-item-text">{item.text ?? ''}</div>
-        <TranscriptImages images={item.images} />
+      <div class="message-item-user-content">
+        <div class="message-item-bubble">
+          <div class="message-item-text">{item.text ?? ''}</div>
+          <TranscriptImages images={item.images} />
+        </div>
+        <div class="copy-button-actions"><CopyButton text={item.text ?? ''} label="Copy message" /></div>
       </div>
     </div>
   );

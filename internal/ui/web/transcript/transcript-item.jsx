@@ -1,6 +1,7 @@
 // Draws one transcript row with the component for its kind, and draws text
 // and error items, which need no component of their own.
 import {memo} from 'preact/compat';
+import {CopyButton} from './copy-button.jsx';
 import {ActivityItem} from './activity-item.jsx';
 import {AttentionItem} from './attention-item.jsx';
 import {Markdown} from './markdown.jsx';
@@ -14,6 +15,7 @@ const TextItem = memo(({item}) => (
   <div class="transcript-text">
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
+    {item.text && <div class="copy-button-actions"><CopyButton text={item.text} label="Copy message" /></div>}
   </div>
 ));
 

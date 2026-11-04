@@ -11,7 +11,7 @@ const tags = root => [...root.querySelectorAll('*')].map(e => e.tagName.toLowerC
 
 test('blocks and inline marks', () => {
   const root = markdown('# Title\n\nFirst **bold** *it* ~~gone~~ `code`\n\n> quoted\n\n---\n\n```js\nlet a = 1;\n```');
-  expect(tags(root)).toEqual(['h1', 'p', 'strong', 'em', 'del', 'code', 'blockquote', 'p', 'hr', 'pre', 'code']);
+  expect(tags(root)).toEqual(['h1', 'p', 'strong', 'em', 'del', 'code', 'blockquote', 'p', 'hr', 'div', 'pre', 'code', 'button', 'vscode-icon']);
   expect(root.querySelector('pre').textContent).toBe('let a = 1;');
 });
 
@@ -53,7 +53,7 @@ test('chat images keep their existing link or text presentation', () => {
 test('Markdown from a model never becomes HTML', () => {
   const hostile = '<img src=x onerror=alert(1)> <script>alert(2)</script> **bold** [click](javascript:alert(3)) [ok](https://example.com/?q=<b>)\n\n```\n<iframe></iframe>\n```\n\n# <h1>';
   const root = markdown(hostile);
-  const allowed = new Set(['p', 'strong', 'em', 'span', 'a', 'br', 'code', 'pre', 'h1']);
+  const allowed = new Set(['p', 'strong', 'em', 'span', 'a', 'br', 'code', 'pre', 'h1', 'div', 'button', 'vscode-icon']);
   expect(tags(root).filter(t => !allowed.has(t))).toEqual([]);
   expect(root.textContent).toContain('<img src=x onerror=alert(1)> <script>alert(2)</script>');
   expect(root.textContent).toContain('<iframe></iframe>');

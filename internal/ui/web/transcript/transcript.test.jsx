@@ -411,3 +411,88 @@ test('saved completed child requests are hidden while the session\'s own answers
   expect(root.querySelector('.attention-item-answered').textContent).toBe('Own approval?');
   expect(root.querySelector('.attention-item-answer').textContent).toBe('Deny');
 });
+
+test('copy buttons copy the original message and code', async () => {
+  const copied = [];
+  spies.push(spyOn(navigator.clipboard, 'writeText').mockImplementation(async text => { copied.push(text); }));
+  const {root} = setup([{id: 'u', kind: 'user', text: '**question**'}, {id: 'a', kind: 'text', text: 'An **answer**\n\n```js\nlet x = 1;\n```'}]);
+  const buttons = [...root.querySelectorAll('button[aria-label^="Copy"]')];
+  await act(async () => { for (const button of buttons) button.click(); });
+  expect(copied).toEqual(['**question**', 'let x = 1;', 'An **answer**\n\n```js\nlet x = 1;\n```']);
+  expect(buttons.map(button => button.querySelector('vscode-icon').getAttribute('name'))).toEqual(['check', 'check', 'check']);
+});
+
+test('find opens with Cmd+F, steps through visible matches and restores focus', () => {
+  const {root} = setup([{id: 'u', kind: 'user', text: 'Hello'}, {id: 'a', kind: 'text', text: 'Hello **world** and hello again'}]);
+  const focus = root.querySelector('button[aria-label="Copy message"]');
+  focus.focus();
+  act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
+  const field = root.querySelector('.transcript-find vscode-textfield');
+  expect(field).not.toBeNull();
+  act(() => { field.value = 'hello'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', shiftKey: true, bubbles: true})));
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
+  expect(root.querySelector('.transcript-find')).toBeNull();
+  expect(document.activeElement).toBe(focus);
+});
+
+test('find preserves the selected match as the transcript streams and clamps it when matches disappear', async () => {
+  const {root, send} = setup([{id: 'a', kind: 'text', text: 'one one one'}]);
+  const focus = root.querySelector('button[aria-label="Copy message"]');
+  focus.focus();
+  act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true, cancelable: true})));
+  const field = root.querySelector('.transcript-find vscode-textfield');
+  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
+  send([{id: 'a', kind: 'text', text: 'one one one one'}]);
+  await act(async () => { await window.happyDOM.whenAsyncComplete(); });
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 4');
+  send([{id: 'a', kind: 'text', text: 'one'}]);
+  await act(async () => { await window.happyDOM.whenAsyncComplete(); });
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 1');
+});
+
+test('Enter on find buttons is not intercepted as find navigation', () => {
+  const {root} = setup([{id: 'a', kind: 'text', text: 'one one'}]);
+  const focus = root.querySelector('button[aria-label="Copy message"]');
+  focus.focus();
+  act(() => focus.dispatchEvent(new KeyboardEvent('keydown', {key: 'f', metaKey: true, bubbles: true})));
+  const field = root.querySelector('.transcript-find vscode-textfield');
+  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  const close = root.querySelector('button[aria-label="Close find"]');
+  const enter = new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true});
+  act(() => close.dispatchEvent(enter));
+  expect(enter.defaultPrevented).toBe(false);
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 2');
+  act(() => close.click());
+  expect(root.querySelector('.transcript-find')).toBeNull();
+});
+
+test('find shortcuts stay in the chat and navigate in both directions', () => {
+  const {root} = setup([{id: 'a', kind: 'text', text: 'one one one'}]);
+  const other = document.createElement('button');
+  document.body.append(other);
+  other.focus();
+  const key = (target, name, modifiers = {}) => {
+    const event = new KeyboardEvent('keydown', {key: name, bubbles: true, cancelable: true, ...modifiers});
+    act(() => target.dispatchEvent(event));
+    return event;
+  };
+  expect(key(other, 'f', {metaKey: true}).defaultPrevented).toBe(false);
+  const focus = root.querySelector('button[aria-label="Copy message"]');
+  focus.focus();
+  expect(key(focus, 'f', {metaKey: true, shiftKey: true}).defaultPrevented).toBe(false);
+  key(focus, 'f', {metaKey: true});
+  const field = root.querySelector('.transcript-find vscode-textfield');
+  act(() => { field.value = 'one'; field.dispatchEvent(new Event('input', {bubbles: true})); });
+  key(field, 'g', {metaKey: true});
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('2 of 3');
+  key(field, 'F3', {shiftKey: true});
+  expect(root.querySelector('.transcript-find-count').textContent).toBe('1 of 3');
+  other.remove();
+});
