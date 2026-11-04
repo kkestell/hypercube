@@ -15,20 +15,23 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
 # hoc, and the app icon rendered from cmd/hypercube/AppIcon.svg. build also
 # links them into bin/.
-bundle:
-	mkdir -p $(MACOS) $(APP)/Contents/Resources
-	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && mkdir "$$tmp/AppIcon.iconset" && \
-		for s in 16 32 128 256 512; do \
-			sips -s format png -z $$s $$s cmd/hypercube/AppIcon.svg --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s.png" >/dev/null && \
-			sips -s format png -z $$((s*2)) $$((s*2)) cmd/hypercube/AppIcon.svg --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s@2x.png" >/dev/null || exit 1; \
-		done && \
-		iconutil -c icns -o $(APP)/Contents/Resources/AppIcon.icns "$$tmp/AppIcon.iconset"
+bundle: $(APP)/Contents/Resources/AppIcon.icns
+	mkdir -p $(MACOS)
 	cp cmd/hypercube/Info.plist $(APP)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string $(APP_ID) $(APP)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(APP_NAME)" $(APP)/Contents/Info.plist
 	$(MAKE) binaries OUT=$(MACOS)
 	for p in $(PLUGINS); do codesign --force --sign - $(MACOS)/hypercube-harness-$$p || exit 1; done
 	codesign --force --sign - $(APP)
+
+$(APP)/Contents/Resources/AppIcon.icns: cmd/hypercube/AppIcon.svg
+	mkdir -p $(APP)/Contents/Resources
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && mkdir "$$tmp/AppIcon.iconset" && \
+		for s in 16 32 128 256 512; do \
+			sips -s format png -z $$s $$s "$<" --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s.png" >/dev/null && \
+			sips -s format png -z $$((s*2)) $$((s*2)) "$<" --out "$$tmp/AppIcon.iconset/icon_$${s}x$$s@2x.png" >/dev/null || exit 1; \
+		done && \
+		iconutil -c icns -o "$@" "$$tmp/AppIcon.iconset"
 
 # binaries builds hypercube and the harness plugins side by side in $(OUT).
 binaries:
@@ -39,9 +42,10 @@ build: bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
 	for p in $(PLUGINS); do ln -sf Hypercube.app/Contents/MacOS/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 
-# check runs every check, and fails when internal/ui/dist differs from a fresh
-# build of its sources.
-check: build
+# check compiles the programs without packaging the app, and fails when
+# internal/ui/dist differs from a fresh build of its sources.
+check:
+	go build ./cmd/... ./plugins/...
 	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd internal/ui && \
 		bun install --frozen-lockfile && bun build.js "$$tmp" && \
 		{ diff -rq dist "$$tmp" || { echo "internal/ui/dist is stale; run make ui"; exit 1; }; }

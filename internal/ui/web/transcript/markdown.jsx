@@ -91,7 +91,11 @@ function flatTokens(list = []) {
 
 // style is 'chat' or 'preview'.
 export function Markdown({text, style, imageSource}) {
-  return <div className={`markdown markdown-${style} prose ${style === 'chat' ? 'prose-sm' : ''} dark:prose-invert max-w-none break-words`}>{tokens(lexer(text), {preview: style === 'preview', imageSource})}</div>;
+  return (
+    <div className={`markdown markdown-${style} prose ${style === 'chat' ? 'prose-sm' : ''} dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+      {tokens(lexer(text), {preview: style === 'preview', imageSource})}
+    </div>
+  );
 }
 
 // MarkdownText is Markdown as inline text for a compact preview: headings,
