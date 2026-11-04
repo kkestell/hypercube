@@ -16,7 +16,7 @@ export function WorktreeToggle() {
     if (!unsent.sending) store.update(s => unsentWorktree(s, pressed));
   };
 
-  return <Toggle className="composer-worktree" size="sm" aria-label="Worktree" title="Run in a worktree"
+  return <Toggle className="composer-worktree h-6 min-w-6" size="sm" aria-label="Worktree" title="Run in a worktree"
     pressed={!!unsent.worktree} disabled={unsent.sending} onPressedChange={toggle}>
     <Icon name="git-branch" />
   </Toggle>;

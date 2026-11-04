@@ -3,9 +3,9 @@
 // chooses the session; a click on a parent's chevron, or a double-click on the
 // parent, collapses or expands its children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
-import {mergeSummary} from '../sessions/merge.ts';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
+import {BranchIcon} from '../shared/branch-icon.tsx';
 import {StatusDot} from '../shared/status-dot.tsx';
 import {useStore} from '../store.ts';
 import {Button} from '../components/ui/button';
@@ -13,7 +13,6 @@ import {Input} from '../components/ui/input';
 import {Icon} from '../shared/icon.tsx';
 
 const statusOf = (session: Session, selected: boolean) => {
-  if (session.activity === 'exited') return <StatusDot kind="exited" title="Exited" />;
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <Icon className="session-item-busy" name="loading" spin role="img" title="Working" />;
@@ -57,18 +56,11 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
         ? <RenameField session={session} onDone={() => onRenaming(null)} />
         : <span className="session-item-title min-w-0 flex-1 truncate text-left">{session.title}</span>}
       <span className="session-item-decoration ml-auto flex shrink-0 items-center gap-1">
-        {session.worktree && <BranchIcon session={session} />}
+        {session.worktree && <BranchIcon className="session-item-branch w-7 justify-center" merge={session.merge} />}
         <span className="session-item-status inline-flex h-4 w-7 items-center justify-center">{statusOf(session, selected)}</span>
       </span>
     </div></Button>
   );
-}
-
-function BranchIcon({session}: {session: Session}) {
-  const title = session.merge ? `${session.merge.branch}: ${mergeSummary(session.merge)}` : 'Worktree';
-  return <span className="session-item-branch inline-flex w-7 justify-center text-muted-foreground" title={title}>
-    <Icon name="git-branch" title={title} role="img" />
-  </span>;
 }
 
 // RenameField saves a trimmed, nonempty, changed title on Enter or when it

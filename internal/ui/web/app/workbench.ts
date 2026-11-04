@@ -21,8 +21,9 @@ export const toggleWrap = (state: State): State => ({...state, workbench: {...st
 export const toggleFixedWidth = (state: State): State => ({...state, workbench: {...state.workbench, fixedWidth: !state.workbench.fixedWidth}});
 
 // column is the class that gives the composer and pending questions the chat's
-// fixed reading width, centered with a margin to the pane's edges.
-export const column = (state: State): string => state.workbench.fixedWidth ? 'mx-auto w-[min(calc(100%-2rem),44rem)]' : '';
+// fixed reading width, centered between the gutters that hold the messages'
+// copy buttons.
+export const column = (state: State): string => state.workbench.fixedWidth ? 'mx-auto w-[min(calc(100%-5rem),48.6rem)]' : 'mx-10';
 
 // startWorkbenchStorage restores the saved wrap and fixed-width settings and
 // saves each change.

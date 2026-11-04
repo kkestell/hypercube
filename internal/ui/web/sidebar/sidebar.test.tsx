@@ -47,7 +47,7 @@ const click = (element: HTMLElement) => act(() => clickControl(element));
 const sessionRows = (root: HTMLElement) => findAll(root, '[data-session]').map(row => row.dataset.session);
 const row = (root: HTMLElement, id: string) => find(root, `[data-session="${id}"]`);
 const select = (root: HTMLElement, id: string) => click(row(root, id));
-const statusLabels: Record<string, string> = {'Waiting on you': 'waiting', 'New reply': 'unseen', Exited: 'exited'};
+const statusLabels: Record<string, string> = {'Waiting on you': 'waiting', 'New reply': 'unseen'};
 const dots = (root: HTMLElement, id: string) => findAll(root, `[data-session="${id}"] .session-item-status [role=img]`)
   .map(icon => statusLabels[icon.getAttribute('aria-label') ?? '']).filter(Boolean);
 const pick = (label: string) => {
@@ -229,7 +229,7 @@ test('each row shows only its own state, and nothing while idle', () => {
   expect(dots(root, 'a')).toEqual([]);
   expect(dots(root, 'asks')).toEqual(['waiting']);
   expect(dots(root, 'replied')).toEqual(['unseen']);
-  expect(dots(root, 'exited')).toEqual(['exited']);
+  expect(dots(root, 'exited')).toEqual([]);
   expect(find(row(root, 'exited'), '.session-item-decoration').textContent).toBe('');
   expect(root.querySelector('[data-variant=destructive]')).toBeNull();
   store.update(s => ({...s, selected: 'replied'}));

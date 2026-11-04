@@ -1,5 +1,5 @@
 // A workspace's sessions as a keyboard-navigable tree, with each parent's visible
-// children one level in. One row is tabbable: the focused row, else the
+// children following it. One row is tabbable: the focused row, else the
 // selected one, else the first. The arrow keys, Home, and End move through
 // and open rows; Enter and Space choose the row; other keys,
 // such as Escape, pass on to the app.

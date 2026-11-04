@@ -75,7 +75,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
 
   return (
     <div className="sidebar flex h-full min-h-0 flex-col">
-      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
+      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>

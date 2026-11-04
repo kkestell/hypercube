@@ -127,8 +127,8 @@ and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
 Children appear under their parent. A spinner indicates work, an amber dot
-means an answer is needed, a blue dot marks an unseen reply, and a red dot marks
-an unexpected exit. Stopped and ended sessions are dimmed.
+means an answer is needed, and a blue dot marks an unseen reply. Stopped and
+ended sessions are dimmed.
 
 ## Layout and shortcuts
 

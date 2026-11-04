@@ -77,7 +77,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
-        <div ref={list} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 p-4 ${state.workbench.fixedWidth ? 'max-w-[46rem]' : ''}`}>
+        <div ref={list} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-10 py-4 ${state.workbench.fixedWidth ? 'max-w-[53.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
         <div ref={bottom} className="transcript-bottom sticky bottom-0 flow-root shrink-0 bg-surface">
@@ -86,7 +86,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
               onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
           )}
           {pending.length > 0 && (
-            <section className={`transcript-pending m-4 flex flex-col gap-4 ${column(state)}`} aria-label="Pending questions">
+            <section className={`transcript-pending my-4 flex flex-col gap-4 ${column(state)}`} aria-label="Pending questions">
               {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
             </section>
           )}

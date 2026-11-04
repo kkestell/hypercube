@@ -97,9 +97,10 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className={`composer m-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      <Card className="py-3">
-        <CardContent className="flex flex-col gap-3 px-3">
+    <form className={`composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+      <SessionBranch session={session} />
+      <Card className="bg-transparent py-3 shadow-none dark:bg-input/30">
+        <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
             <div className="composer-images flex flex-wrap gap-2">
               {draft.images.map((image, i) => (
@@ -112,27 +113,29 @@ export function Composer({session}: {session: Session}) {
             </div>
           )}
           <MentionList mentions={mentions} />
-          <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${focusShortcut.keys[0]})`} className="composer-text max-h-40 resize-none" value={text}
-            role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
-            aria-controls={suggesting ? mentions.listId : undefined}
-            aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}
-            onChange={input} onKeyDown={key} onBlur={mentions.blur} onPaste={paste}
-            onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
-            onKeyUp={e => mentions.sync(e.currentTarget)} />
-          <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
-          <div className="composer-bar flex items-center gap-2">
+          <div className="composer-input flex items-end gap-1">
             <Button type="button" variant="ghost" size="icon-sm" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="attach" /></Button>
-            <div className="composer-details flex min-w-0 flex-1 flex-wrap items-center gap-3 text-sm">
-              <ProfileSelect session={session} />
-              {session.id === unsentKey ? <WorktreeToggle /> : <SessionBranch session={session} />}
-            </div>
-            <Usage usage={session.usage} />
+            <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${focusShortcut.keys[0]})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
+              role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
+              aria-controls={suggesting ? mentions.listId : undefined}
+              aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}
+              onChange={input} onKeyDown={key} onBlur={mentions.blur} onPaste={paste}
+              onClick={e => mentions.sync(e.currentTarget)} onSelect={e => mentions.sync(e.currentTarget)}
+              onKeyUp={e => mentions.sync(e.currentTarget)} />
             {stop
-              ? <Button type="button" size="icon-sm" title="Stop" aria-label="Stop" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})}><Icon name="stop" /></Button>
-              : <Button type="submit" size="icon-sm" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>}
+              ? <Button type="button" variant="ghost" size="icon-sm" title="Stop" aria-label="Stop" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})}><Icon name="stop" /></Button>
+              : <Button type="submit" variant="ghost" size="icon-sm" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>}
           </div>
+          <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
         </CardContent>
       </Card>
+      <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <ProfileSelect session={session} />
+          {session.id === unsentKey && <WorktreeToggle />}
+        </div>
+        <Usage usage={session.usage} />
+      </div>
     </form>
   );
 }

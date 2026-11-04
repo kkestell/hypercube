@@ -15,10 +15,10 @@ import type {Row} from './transcript-tree.ts';
 import type {ErrorItem, TextItem} from './types.ts';
 
 const TextBlock = memo(({item}: {item: TextItem}) => (
-  <div className="transcript-text group relative my-2 flex flex-col gap-3 pr-8">
+  <div className="transcript-text group relative my-2 flex flex-col gap-3">
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
-    {item.text && <CopyButton text={item.text} label="Copy message" />}
+    {item.text && <CopyButton text={item.text} label="Copy message" gutter />}
   </div>
 ));
 

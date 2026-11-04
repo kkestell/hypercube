@@ -36,7 +36,7 @@ export function ProfileSelect({session}: {session: Session}) {
   const selected = unsent ? profiles.find(p => p.name === unsent.profile) : choices.find(p => p.model === session.model && p.effort === session.effort);
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>
-      <Button type="button" variant="ghost" size="sm" className="composer-profile min-w-0 max-w-full font-normal" aria-label="Profile" disabled={unsent ? unsent.sending : !session.ready}>
+      <Button type="button" variant="ghost" size="sm" className="composer-profile h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground" aria-label="Profile" disabled={unsent ? unsent.sending : !session.ready}>
         <span className="truncate">{unsent ? (selected ? profileLabel(selected) : 'Select profile') : profileLabel(session)}</span><Icon name="chevron-down" />
       </Button>
     </DropdownMenuTrigger>

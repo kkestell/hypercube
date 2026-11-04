@@ -30,12 +30,12 @@ interface MessageItemProps {
 function UserBubble({item}: {item: UserItem}) {
   return (
     <div className="message-item message-item-user my-3 flex justify-end">
-      <div className="message-item-user-content group relative max-w-full pr-8">
+      <div className="message-item-user-content group relative max-w-full">
         <Card className="message-item-bubble py-2"><CardContent className="px-3">
           <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
         </CardContent></Card>
-        <CopyButton text={item.text ?? ''} label="Copy message" />
+        <CopyButton text={item.text ?? ''} label="Copy message" gutter />
       </div>
     </div>
   );
