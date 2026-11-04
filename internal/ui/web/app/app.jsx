@@ -5,8 +5,10 @@
 // would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
-import {useEffect, useLayoutEffect, useMemo, useState} from 'preact/hooks';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'preact/hooks';
 import {post} from '../api.js';
+import {agentTabId, selectTab} from '../editor/editor.js';
+import {findPane} from '../editor/tab-layout.js';
 import {NotificationStack} from '../notifications/notification-stack.jsx';
 import {currentSession, pageTitle} from '../sessions/selection.js';
 import {SessionView} from '../sessions/session-view.jsx';
@@ -18,6 +20,7 @@ import {TerminalPanel} from '../terminal/terminal-panel.jsx';
 import {LayoutToggles} from './layout-toggles.jsx';
 import {RightPanel} from './right-panel.jsx';
 import {StatusBar} from './status-bar.jsx';
+import {shortcut} from './shortcuts.js';
 import {titleBarMouseDown, titleBarStyle} from './title-bar.js';
 import './app.css';
 
@@ -39,6 +42,21 @@ function refuseStrayDrops(store) {
 
 export function App({store}) {
   const [state, setState] = useState(store.get());
+  const focusPending = useRef(false);
+  useLayoutEffect(() => {
+    if (!focusPending.current) return;
+    focusPending.current = false;
+    document.querySelector('.composer-text')?.focus();
+  }, [state]);
+  const focusComposer = () => {
+    const field = document.querySelector('.composer-text');
+    if (field) { field.focus(); return; }
+    const session = store.get().session;
+    const pane = session && findPane(session.tabs.root, agentTabId);
+    if (!pane) return;
+    focusPending.current = true;
+    store.update(s => selectTab(s, pane.id, agentTabId));
+  };
   useLayoutEffect(() => {
     const unsubscribe = store.subscribe(setState);
     setState(store.get());
@@ -70,7 +88,7 @@ export function App({store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div class="app" onKeyDown={key}>
+      <div class="app" onKeyDownCapture={e => shortcut(e, store, focusComposer)} onKeyDown={key}>
         <header class="app-header" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
           <LayoutToggles />
         </header>

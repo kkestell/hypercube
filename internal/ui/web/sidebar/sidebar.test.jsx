@@ -250,7 +250,7 @@ test('Escape cancels deleting a workspace', () => {
 test('New Session opens the unsent session directly without fetching profiles', () => {
   const {store, root, fetches} = setup([session('a')]);
   store.update(s => ({...s, selected: 'a'}));
-  click(root.querySelector('[title="New Session"]'));
+  click(root.querySelector('[title="New Session (⌘N)"]'));
   expect(store.get().unsent).toMatchObject({workspace: 'w', profile: null, sending: false});
   expect(store.get().selected).toBeNull();
   expect(fetches).not.toHaveBeenCalled();
@@ -363,7 +363,7 @@ test('Escape closes a menu and returns the focus to its button', async () => {
 test('active nested sessions offer only Rename and ended ones also Delete Session', () => {
   const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'}), session('ended', {parent: 'a', ended: true, running: false})]})]);
   act(() => root.querySelector('[data-session="active"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
-  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Rename']);
+  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
   toggleStopped(root);
   choose(root, '[data-session="ended"]', 1);
   expect(dialog(root).querySelector('.confirm-dialog-detail').textContent).toBe('Its chat is deleted.');
@@ -487,7 +487,7 @@ test.each([
 ])('%o on a focused row opens its menu', init => {
   const {root} = setup([session('a')]);
   act(() => row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})));
-  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Stop Session', 'Rename', 'Delete Session']);
+  expect(root.querySelector('vscode-context-menu').data.map(item => item.label)).toEqual(['Stop Session', 'Rename', 'Delete Session', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal']);
 });
 
 test('a section\'s actions stay shown while its More Actions menu is open', () => {
@@ -515,7 +515,7 @@ test('Rename in a session\'s menu opens the rename field', () => {
 test('New Session opens without any workspaces', () => {
   const {root, store} = setup([]);
   store.update(s => ({...s, workspaces: []}));
-  click(root.querySelector('[title="New Session"]'));
+  click(root.querySelector('[title="New Session (⌘N)"]'));
   expect(store.get().unsent).toMatchObject({workspace: null, profile: null});
 });
 

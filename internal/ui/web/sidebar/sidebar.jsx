@@ -67,7 +67,7 @@ export function Sidebar() {
           <vscode-icon name="comment-discussion" />
         </vscode-tab-header>
         <vscode-toolbar-container slot="addons">
-          <vscode-toolbar-button icon="add" label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s))} />
+          <vscode-toolbar-button icon="add" label="New Session" title="New Session (⌘N)" onClick={() => store.update(s => openUnsent(s))} />
           <vscode-toolbar-button icon="new-folder" label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)} />
         </vscode-toolbar-container>
         <vscode-tab-panel class="sidebar-body" onContextMenu={contextMenu} onKeyDown={keyDown}>
