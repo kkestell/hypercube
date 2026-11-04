@@ -295,8 +295,8 @@ test('a nested request stays pinned outside a collapsed activity and returns to 
   expect(group.getAttribute('data-state') === 'open').toBe(false);
   const pending = find(root, '[aria-label="Pending questions"]');
   expect(pending.querySelector('button[data-choice="ok"]')).not.toBeNull();
-  expect(pending.closest('.transcript')).toBeNull();
-  expect(root.querySelector('.transcript .attention-item')).toBeNull();
+  expect(pending.closest('.transcript-list')).toBeNull();
+  expect(root.querySelector('.transcript-list .attention-item')).toBeNull();
   send([{id: 'q', parent: 'a', kind: 'attention', text: 'Allow?', done: true, answer: 'ok', at: 1300}]);
   expect(root.querySelector('.transcript-pending')).toBeNull();
   act(() => find(group, '[data-slot=collapsible-trigger]').click());
@@ -304,7 +304,7 @@ test('a nested request stays pinned outside a collapsed activity and returns to 
   expect(find(group, '.attention-item-answer').textContent).toBe('ok');
 });
 
-test('pending questions and their draft stay outside the scrolling history while output arrives', () => {
+test('pending questions and their draft stay outside the history list while output arrives', () => {
   const {root, send} = setup([
     {id: 'q1', kind: 'attention', text: 'First?', free: true},
     {id: 'q2', kind: 'attention', text: 'Second?', choices: ['yes']},
@@ -321,8 +321,8 @@ test('pending questions and their draft stay outside the scrolling history while
   expect(find(pending, 'input') === field).toBe(true);
   expect(field.value).toBe('My answer');
   expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['First?', 'Second?']);
-  expect(view.textContent).toBe('More work');
-  expect(view.nextElementSibling === pending).toBe(true);
+  expect(find(view, '.transcript-list').textContent).toBe('More work');
+  expect(pending.parentElement === find(view, '.transcript-bottom')).toBe(true);
   send([{id: 'q1', kind: 'attention', text: 'First?', done: true, answer: 'My answer', seq: 0}]);
   expect(find(view, '.attention-item-answer').textContent).toBe('My answer');
   expect(pending.querySelectorAll('.attention-item').length).toBe(1);
@@ -432,33 +432,6 @@ test('prompts, text, and tool calls show their images', () => {
   expect(sources('.message-item')).toEqual(['data:image/png;base64,' + png]);
   expect(sources('.transcript-text')).toEqual(['data:image/gif;base64,R0lGODlh']);
   expect(sources('.tool-items-call')).toEqual(['data:image/png;base64,' + png]);
-});
-
-test('mirrored requests name their sender and answer at its session ID', async () => {
-  const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
-  const {store, root, send} = setup([
-    {id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', choices: ['yes']},
-    {id: 'message', kind: 'user', from: 'child', text: 'Result.'},
-  ]);
-  store.update(state => ({...state, workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 's', children: [testSession({id: 'child', parent: 's', title: 'Builder'})]})]})]}));
-  expect(find(root, '.attention-item-source').textContent).toBe('Builder');
-  expect(find(root, '.disclosure-heading').textContent).toBe('From Builder');
-  await act(async () => choose(root, 'yes'));
-  expect(requestParams(fetches.mock.calls, 0).get('id')).toBe('child');
-  send([{id: 'request', kind: 'attention', from: 'child', text: 'Proceed?', done: true, answer: 'yes'}]);
-  expect(root.querySelector('.attention-item')).toBeNull();
-  expect(root.textContent).toContain('Result.');
-});
-
-test('saved completed child requests are hidden while the session\'s own answers remain', () => {
-  const {root} = setup([
-    {id: 'child-request', kind: 'attention', from: 'child', text: 'Child approval?', done: true, answer: 'Allow'},
-    {id: 'own-request', kind: 'attention', text: 'Own approval?', done: true, answer: 'Deny'},
-  ]);
-  expect(root.textContent).not.toContain('Child approval?');
-  expect(root.textContent).not.toContain('Allow');
-  expect(find(root, '.attention-item-answered').textContent).toBe('Own approval?');
-  expect(find(root, '.attention-item-answer').textContent).toBe('Deny');
 });
 
 test('copy buttons copy the original message and code', async () => {

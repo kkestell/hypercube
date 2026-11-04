@@ -14,7 +14,7 @@ import {useStore} from '../store.ts';
 import {agentTabs, moveTab, tabEntry} from './editor.ts';
 import {EditorTabs} from './editor-tabs.tsx';
 import {panes} from './tab-layout.ts';
-import type {Edge, Pane} from './types.ts';
+import type {Edge, Pane, Placement} from './types.ts';
 
 function edgeAt(e: DragEvent, body: HTMLElement): Edge {
   if (!(e.target instanceof Node) || !body.contains(e.target)) return 'center';
@@ -25,7 +25,7 @@ function edgeAt(e: DragEvent, body: HTMLElement): Edge {
   return distance < 0.25 ? edge : 'center';
 }
 
-export function EditorPane({pane, focused}: {pane: Pane; focused: boolean}) {
+export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boolean; placement: Placement}) {
   const [state, store] = useStore();
   const [drop, setDrop] = useState<Edge | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -63,7 +63,7 @@ export function EditorPane({pane, focused}: {pane: Pane; focused: boolean}) {
       {drop && <Card aria-hidden="true" className={`pointer-events-none absolute z-10 opacity-50 ${
         drop === 'left' ? 'inset-y-0 left-0 w-1/2' : drop === 'right' ? 'inset-y-0 right-0 w-1/2' :
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
-      <EditorTabs pane={pane} entries={entries} />
+      <EditorTabs pane={pane} entries={entries} placement={placement} />
       <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
         {active.kind === 'agent' ? shown && <AgentPane key={shown.id} session={shown} active={isActive} />
           : active.kind === 'browser' ? shown && <BrowserView key={shown.id} session={shown.id} />

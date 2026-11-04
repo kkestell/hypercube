@@ -11,6 +11,7 @@ import {useStore} from '../store.ts';
 import {sessionItems, workspaceItems} from './sidebar-menus.ts';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
+import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
 
@@ -74,10 +75,10 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
 
   return (
     <div className="sidebar flex h-full min-h-0 flex-col">
-      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
+      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
-          <Button variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
-          <Button variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
+          <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
+          <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
         <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>
           {workspaces.map(workspace => (

@@ -6,11 +6,13 @@ import {Split} from '../shared/split.tsx';
 import {useStore} from '../store.ts';
 import {agentTabs, resizeSplit} from './editor.ts';
 import {EditorPane} from './editor-pane.tsx';
-import type {LayoutNode} from './types.ts';
+import type {LayoutNode, Placement} from './types.ts';
 
-function PaneTree({node, focused}: {node: LayoutNode; focused: boolean}) {
+const whole: Placement = {top: true, left: true, right: true};
+
+function PaneTree({node, focused, placement}: {node: LayoutNode; focused: boolean; placement: Placement}) {
   const [, store] = useStore();
-  if ('tabs' in node) return <EditorPane pane={node} focused={focused} />;
+  if ('tabs' in node) return <EditorPane pane={node} focused={focused} placement={placement} />;
   const [first, second] = node.children;
   return (
     <Split key={node.id}
@@ -20,8 +22,8 @@ function PaneTree({node, focused}: {node: LayoutNode; focused: boolean}) {
       minEnd="15%"
       onResize={ratio => store.update(s => resizeSplit(s, node.id, ratio))}
     >
-      <PaneTree key={first.id} node={first} focused={focused} />
-      <PaneTree key={second.id} node={second} focused={focused} />
+      <PaneTree key={first.id} node={first} focused={focused} placement={node.axis === 'x' ? {...placement, right: false} : placement} />
+      <PaneTree key={second.id} node={second} focused={focused} placement={node.axis === 'x' ? {...placement, left: false} : {...placement, top: false}} />
     </Split>
   );
 }
@@ -45,6 +47,6 @@ export function EditorArea() {
   }, []);
   const {root} = state.session?.tabs ?? agentTabs;
   return <div ref={area} className="editor-area h-full min-h-0 min-w-0">
-    {root && <PaneTree node={root} focused={focused} />}
+    {root && <PaneTree node={root} focused={focused} placement={whole} />}
   </div>;
 }

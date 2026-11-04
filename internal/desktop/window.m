@@ -12,6 +12,10 @@
 }
 @end
 
+// The title bar is a compact toolbar row plus this much, which the window's
+// buttons are centered in by moving them down half of it.
+static const CGFloat HCTitleBarExtra = 6;
+
 @implementation HCWindow {
     NSURL *_home;
     // The title bar's height and the width its buttons take from the left.
@@ -30,7 +34,7 @@
     [_webView.configuration.userContentController addScriptMessageHandler:self name:@"window"];
 
     // The page fills the window, title bar included, and draws the title bar's
-    // row beside the window's buttons.
+    // row, its tab bars, beside the window's buttons.
     NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable | NSWindowStyleMaskFullSizeContentView;
     _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1280, 800) styleMask:style backing:NSBackingStoreBuffered defer:NO];
     _window.releasedWhenClosed = NO;
@@ -38,19 +42,44 @@
     _window.title = @"Hypercube";
     _window.titlebarAppearsTransparent = YES;
     _window.titleVisibility = NSWindowTitleHidden;
+    // An empty compact toolbar makes the title bar as tall as a toolbar row and
+    // centers the window's buttons in it, so the page's tab bars fill that row.
+    _window.toolbar = [[NSToolbar alloc] initWithIdentifier:@"HypercubeTitleBar"];
+    _window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
     _window.contentMinSize = NSMakeSize(640, 400);
     _webView.frame = _window.contentView.bounds;
     [_window.contentView addSubview:_webView];
     [_window center];
     [_window setFrameUsingName:@"Hypercube"];
     [_window setFrameAutosaveName:@"Hypercube"];
-    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect);
+    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect) + HCTitleBarExtra;
     // The buttons get the same margin on their right as on their left.
     NSButton *close = [_window standardWindowButton:NSWindowCloseButton], *zoom = [_window standardWindowButton:NSWindowZoomButton];
     _titleBarInset = NSMaxX([zoom convertRect:zoom.bounds toView:nil]) + NSMinX([close convertRect:close.bounds toView:nil]);
+    [self centerWindowButtons];
     [_webView loadRequest:[NSURLRequest requestWithURL:url]];
     return self;
 }
+
+// centerWindowButtons moves the window's buttons down to the middle of the
+// taller title bar. The window puts them back when it lays out its title bar,
+// so this runs again after each change of size or state.
+- (void)centerWindowButtons {
+    if (_window.styleMask & NSWindowStyleMaskFullScreen) return;
+    for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
+        NSButton *button = [_window standardWindowButton:(NSWindowButton)kind.integerValue];
+        NSView *bar = button.superview;
+        if (!button || !bar) continue;
+        NSPoint origin = button.frame.origin;
+        CGFloat middle = (NSHeight(bar.frame) - NSHeight(button.frame)) / 2;
+        origin.y = bar.isFlipped ? middle + HCTitleBarExtra / 2 : middle - HCTitleBarExtra / 2;
+        [button setFrameOrigin:origin];
+    }
+}
+
+- (void)windowDidResize:(NSNotification *)notification { [self centerWindowButtons]; }
+- (void)windowDidBecomeKey:(NSNotification *)notification { [self centerWindowButtons]; }
+- (void)windowDidExitFullScreen:(NSNotification *)notification { [self centerWindowButtons]; }
 
 // The app is in the Dock and the app switcher only while the window shows.
 - (void)show {

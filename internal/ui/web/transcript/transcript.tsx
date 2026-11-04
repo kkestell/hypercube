@@ -1,8 +1,10 @@
 // A session's transcript in a scrolling list. The list follows its end until
 // the user scrolls up, and follows again once they scroll back to the end.
 // Growing content leaves scrollTop alone, so only a scroll upward stops
-// following; the end allows for fractional scroll positions.
-import {useCallback, useLayoutEffect, useMemo, useRef, useState} from 'react';
+// following; the end allows for fractional scroll positions. The footer sticks
+// to the bottom of the scrolling view, so the scrollbar spans the whole pane.
+import {useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from 'react';
+import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
@@ -18,9 +20,10 @@ import {emptyTranscript, setExpanded} from './transcripts.ts';
 interface TranscriptProps {
   session: Pick<Session, 'id'>;
   active?: boolean;
+  footer?: ReactNode;
 }
 
-export function Transcript({session, active = true}: TranscriptProps) {
+export function Transcript({session, active = true, footer}: TranscriptProps) {
   const [state, store] = useStore();
   const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
@@ -31,7 +34,7 @@ export function Transcript({session, active = true}: TranscriptProps) {
   });
   const setOpen = useCallback((key: string, open: boolean) => store.update(s => setExpanded(s, key, open)), [store]);
 
-  const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
+  const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null), bottom = useRef<HTMLDivElement>(null);
   const memory = useScrollMemory(view, session.id);
   const lastTop = useRef(memory.current.top);
   const [away, setAway] = useState(false);
@@ -66,26 +69,30 @@ export function Transcript({session, active = true}: TranscriptProps) {
     const observer = new ResizeObserver(followEnd);
     observer.observe(view.current);
     observer.observe(list.current);
+    if (bottom.current) observer.observe(bottom.current);
     return () => observer.disconnect();
   }, []);
 
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
-      <div ref={view} className="transcript min-h-0 flex-1 overflow-auto" onScroll={scrolled}>
-        <div ref={list} className="transcript-list flex flex-col gap-3 p-4">
+      <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
+        <div ref={list} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 p-4 ${state.workbench.fixedWidth ? 'max-w-[46rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
+        <div ref={bottom} className="transcript-bottom sticky bottom-0 flow-root shrink-0 bg-surface">
+          {away && (
+            <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
+              onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
+          )}
+          {pending.length > 0 && (
+            <section className={`transcript-pending m-4 flex flex-col gap-4 ${column(state)}`} aria-label="Pending questions">
+              {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
+            </section>
+          )}
+          {footer}
+        </div>
       </div>
-      {away && (
-        <Button type="button" variant="secondary" size="icon" className="absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
-          onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
-      )}
-      {pending.length > 0 && (
-        <section className="transcript-pending flex max-h-1/2 shrink-0 flex-col gap-4 overflow-y-auto border-t p-4" aria-label="Pending questions">
-          {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
-        </section>
-      )}
     </div>
   );
 }

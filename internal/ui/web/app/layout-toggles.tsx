@@ -1,6 +1,7 @@
 import {Button} from '../components/ui/button';
 import {Icon, type IconName} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
+import {barButton} from './title-bar.ts';
 import {toggle} from './workbench.ts';
 import {firstKeys} from './shortcuts.ts';
 import type {Region} from './types.ts';
@@ -12,8 +13,8 @@ const toggles: {region: Region; icon: IconName; title: string}[] = [
 ];
 export function LayoutToggles() {
   const [state, store] = useStore();
-  return <div className="layout-toggles flex items-center gap-1">
-    {toggles.map(({region, icon, title}) => <Button key={region} variant="ghost" size="icon"
+  return <div className="layout-toggles flex items-center">
+    {toggles.map(({region, icon, title}) => <Button key={region} className={barButton} variant="ghost" size="icon"
       aria-label={title} title={`${title} (${firstKeys(region)})`} aria-pressed={state.workbench[region]}
       onClick={() => store.update(s => toggle(s, region))}><Icon name={icon} /></Button>)}
   </div>;

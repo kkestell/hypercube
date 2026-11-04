@@ -48,8 +48,7 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 	return nil
 }
 
-// checkpoint saves streaming items as unfinished, without mirroring already
-// opened attention requests a second time.
+// checkpoint saves streaming items as unfinished.
 func (r *Runtime) checkpoint(tx *write, l *live, next int64) error {
 	for _, p := range l.pending {
 		data, err := json.Marshal(p.item)
@@ -72,7 +71,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	l.position = next
 	var completed []*pendingItem
 	var failures []string
-	var opened, allowed []harness.Item
+	var allowed []harness.Item
 	at := time.Now().UnixMilli()
 	// A turn's work marker precedes the items the same event starts, and its
 	// idle marker follows the items the event finishes.
@@ -108,9 +107,6 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			it.At = p.item.At
 		}
 		if p == nil {
-			if it.Kind == harness.KindAttention {
-				opened = append(opened, it)
-			}
 			p = &pendingItem{seq: r.nextSeq(l.id)}
 			l.pending[it.ID] = p
 			if it.Kind == harness.KindError {
@@ -139,15 +135,10 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
 	}
 	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(completed) == 0 && len(opened) == 0 && len(allowed) == 0 && len(failures) == 0 && len(ev.Limits) == 0 && !changed {
+	if len(completed) == 0 && len(allowed) == 0 && len(failures) == 0 && len(ev.Limits) == 0 && !changed {
 		return nil
 	}
 	err := r.save(func(tx *write) error {
-		for _, item := range opened {
-			if err := r.mirrorLocked(tx, l.id, item); err != nil {
-				return err
-			}
-		}
 		for _, item := range allowed {
 			if _, err := r.recordAllow(tx, l, item, false); err != nil {
 				return err

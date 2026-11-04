@@ -108,24 +108,23 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   expect(requests).toHaveLength(1);
 });
 
-test('the window header holds the three layout toggles and they hide and show their regions', () => {
+test('the tab bar holds the three layout toggles and they hide and show their regions', () => {
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
-  const buttons = [...root.querySelectorAll('header.app-header button')];
+  const buttons = [...root.querySelectorAll('.editor-tabs-bar .layout-toggles button')];
   expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual([
     'Toggle Primary Side Bar', 'Toggle Panel', 'Toggle Secondary Side Bar',
   ]);
-  expect(root.querySelectorAll('.editor-tabs-bar .layout-toggles')).toHaveLength(0);
   const regions: [number, Region, string][] = [
     [0, 'sidebar', '.sidebar'], [1, 'panel', '.terminal-panel'], [2, 'rightPanel', '.right-panel'],
   ];
   for (const [index, region, selector] of regions) {
     const before = store.get().workbench[region];
     const split = find(root, selector).closest('.split');
-    act(() => { find(root, `header.app-header button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.editor-tabs-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(!before);
     expect(split?.classList.contains('split-collapsed')).toBe(before);
-    act(() => { find(root, `header.app-header button:nth-child(${index + 1})`).click(); });
+    act(() => { find(root, `.editor-tabs-bar .layout-toggles button:nth-child(${index + 1})`).click(); });
     expect(store.get().workbench[region]).toBe(before);
     expect(split?.classList.contains('split-collapsed')).toBe(!before);
   }
@@ -221,7 +220,7 @@ test('Command+P opens Quick Open from the terminal for the shown session', async
 test('keyboard shortcuts dialog opens from the keyboard and the native menu', async () => {
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
-  const button = find(root, 'header button');
+  const button = find(root, '.layout-toggles button');
   button.focus();
   keydown(button, '/', {metaKey: true});
   const dialog = find(document, '[role=dialog]');

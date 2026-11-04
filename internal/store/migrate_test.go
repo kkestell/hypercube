@@ -82,3 +82,42 @@ func TestOpenClearsAttentionOfSessionsThatAreNotRunning(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOpenDeletesRequestsMirroredIntoParents(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s", "child")
+	items := map[string]string{
+		"mirror":  `{"id":"mirror","kind":"attention","from":"s-child","text":"Proceed?"}`,
+		"own":     `{"id":"own","kind":"attention","text":"Allow?"}`,
+		"message": `{"id":"message","kind":"user","from":"s-child","text":"Done."}`,
+	}
+	tx(t, db, func(tx *Tx) error {
+		seq := int64(0)
+		for _, id := range []string{"mirror", "own", "message"} {
+			seq++
+			if _, err := tx.PutEntry("s", Entry{Seq: seq, Item: id, Data: []byte(items[id])}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopen(t).Read(func(tx *Tx) error {
+		entries, err := tx.Transcript("s")
+		if err != nil {
+			return err
+		}
+		var got []string
+		for _, e := range entries {
+			got = append(got, e.Item)
+		}
+		if len(got) != 2 || got[0] != "own" || got[1] != "message" {
+			t.Errorf("items after reopening = %v, want [own message]", got)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

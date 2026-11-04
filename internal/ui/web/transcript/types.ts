@@ -61,7 +61,7 @@ export interface ErrorItem extends ItemBase {
 // AttentionItem asks the user: text is the prompt, choices the options,
 // notes[i] describes choices[i], and free allows typed text. It stays open
 // until done, with the answer when there is one. An approval names the tool it
-// asks to use in grant. A request forwarded from a child names it in from.
+// asks to use in grant.
 export interface AttentionItem extends ItemBase {
   kind: 'attention';
   text?: string;
@@ -70,7 +70,6 @@ export interface AttentionItem extends ItemBase {
   free?: boolean;
   answer?: string;
   grant?: string;
-  from?: string;
 }
 
 export type Item = UserItem | StateItem | TextItem | ReasoningItem | ToolItem | ErrorItem | AttentionItem;

@@ -1,7 +1,7 @@
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Label} from '../components/ui/label';
-// The answers to an open attention request: content-sized choice buttons
+// The answers to an open attention request: full-width choice rows
 // with their notes, and a labeled reply field with a separate Send button
 // when the request takes typed text. The transcript and notification cards
 // both draw it, and answers go only through answerRequest and alwaysAllow. An
@@ -14,6 +14,10 @@ import {draftOf, typed} from '../agent/drafts.ts';
 import {submitsOnKey} from '../shared/submit-key.ts';
 import {useStore} from '../store.ts';
 import type {AttentionItem} from './types.ts';
+
+// Answers fill the form's width as left-aligned rows that wrap their text, so
+// an answer of any length reads in full.
+const choiceClass = 'h-auto min-h-8 w-full justify-start whitespace-normal py-1.5 text-left font-normal';
 
 interface AttentionFormProps {
   session: string;
@@ -42,21 +46,21 @@ export function AttentionForm({session, item}: AttentionFormProps) {
   return (
     <div className="attention-form space-y-3">
       {item.choices && item.choices.length > 0 && (
-        <div className="attention-form-choices flex flex-wrap gap-2" role="group" aria-label="Choices">
+        <div className="attention-form-choices flex flex-col gap-2" role="group" aria-label="Choices">
           {item.choices.map((choice, i) => (
             <div className="attention-form-choice flex flex-col gap-1" key={choice}>
-              <Button type="button" variant="secondary" data-choice={choice} disabled={sending} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
+              <Button type="button" variant="secondary" size="sm" className={choiceClass} data-choice={choice} disabled={sending} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
                 {choice}
               </Button>
-              {item.notes?.[i] && <span className="attention-form-note text-xs text-muted-foreground" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
+              {item.notes?.[i] && <span className="attention-form-note px-3 text-xs text-muted-foreground" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
             </div>
           ))}
         </div>
       )}
       {item.grant && (
-        <div className="attention-form-choices flex flex-wrap gap-2" role="group" aria-label="Always allow">
-          <Button type="button" variant="secondary" data-always="session" disabled={sending} onClick={() => allowAlways(false)}>Always allow in this session</Button>
-          <Button type="button" variant="secondary" data-always="all" disabled={sending} onClick={() => allowAlways(true)}>Always allow in all sessions</Button>
+        <div className="attention-form-choices flex flex-col gap-2" role="group" aria-label="Always allow">
+          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="session" disabled={sending} onClick={() => allowAlways(false)}>Always allow in this session</Button>
+          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="all" disabled={sending} onClick={() => allowAlways(true)}>Always allow in all sessions</Button>
         </div>
       )}
       {item.free && (
@@ -65,13 +69,14 @@ export function AttentionForm({session, item}: AttentionFormProps) {
           <div className="attention-form-entry flex items-center gap-2">
             <Input
               id={`${id}-reply`}
+              className="h-8"
               aria-label={item.choices?.length ? 'Other response' : 'Your response'}
               value={text}
               disabled={sending}
               onChange={e => store.update(s => typed(s, key, e.currentTarget.value))}
               onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
             />
-            <Button type="button" variant="secondary" disabled={sending || !text.trim()} onClick={sendText}>Send</Button>
+            <Button type="button" variant="secondary" size="sm" disabled={sending || !text.trim()} onClick={sendText}>Send</Button>
           </div>
         </div>
       )}

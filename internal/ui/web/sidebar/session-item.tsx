@@ -6,16 +6,16 @@ import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {mergeSummary} from '../sessions/merge.ts';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
-import {StatusIcon} from '../shared/status-icon.tsx';
+import {StatusDot} from '../shared/status-dot.tsx';
 import {useStore} from '../store.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Icon} from '../shared/icon.tsx';
 
 const statusOf = (session: Session, selected: boolean) => {
-  if (session.activity === 'exited') return <StatusIcon kind="exited" title="Exited" />;
-  if (session.attention) return <StatusIcon kind="waiting" title="Waiting on you" />;
-  if (session.unseen && !selected) return <StatusIcon kind="unseen" title="New reply" />;
+  if (session.activity === 'exited') return <StatusDot kind="exited" title="Exited" />;
+  if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
+  if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <Icon className="session-item-busy" name="loading" spin role="img" title="Working" />;
   return null;
 };

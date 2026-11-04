@@ -35,8 +35,7 @@ export function AgentPane({session, active}: {session: Session; active: boolean}
   const classes = `agent-pane flex h-full min-h-0 flex-col bg-surface ${dropping ? 'ring-2 ring-ring ring-inset' : ''}`;
   return (
     <article className={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      {unsent ? <Tesseract fading={state.unsent?.sending ?? false} /> : <Transcript session={session} active={active} />}
-      <Composer session={session} />
+      {unsent ? <><Tesseract fading={state.unsent?.sending ?? false} /><Composer session={session} /></> : <Transcript session={session} active={active} footer={<Composer session={session} />} />}
     </article>
   );
 }

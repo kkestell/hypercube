@@ -18,13 +18,23 @@ export const activatePane = (state: State, id: number | null): State => state.wo
 
 export const toggleWrap = (state: State): State => ({...state, workbench: {...state.workbench, wrap: !state.workbench.wrap}});
 
-export function startWrapStorage(store: Store) {
-  const wrap = localStorage.getItem('hypercube.wrap') === 'true';
-  store.update(state => ({...state, workbench: {...state.workbench, wrap}}));
-  let saved = wrap;
+export const toggleFixedWidth = (state: State): State => ({...state, workbench: {...state.workbench, fixedWidth: !state.workbench.fixedWidth}});
+
+// column is the class that gives the composer and pending questions the chat's
+// fixed reading width, centered with a margin to the pane's edges.
+export const column = (state: State): string => state.workbench.fixedWidth ? 'mx-auto w-[min(calc(100%-2rem),44rem)]' : '';
+
+// startWorkbenchStorage restores the saved wrap and fixed-width settings and
+// saves each change.
+export function startWorkbenchStorage(store: Store) {
+  const keys = {wrap: 'hypercube.wrap', fixedWidth: 'hypercube.fixedWidth'} as const;
+  const saved = {wrap: localStorage.getItem(keys.wrap) === 'true', fixedWidth: localStorage.getItem(keys.fixedWidth) !== 'false'};
+  store.update(state => ({...state, workbench: {...state.workbench, ...saved}}));
   return store.subscribe(state => {
-    if (state.workbench.wrap === saved) return;
-    saved = state.workbench.wrap;
-    localStorage.setItem('hypercube.wrap', String(saved));
+    for (const name of ['wrap', 'fixedWidth'] as const) {
+      if (state.workbench[name] === saved[name]) continue;
+      saved[name] = state.workbench[name];
+      localStorage.setItem(keys[name], String(saved[name]));
+    }
   });
 }

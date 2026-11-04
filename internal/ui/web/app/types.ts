@@ -3,7 +3,8 @@
 export type RightTab = 'files' | 'changes' | 'search';
 
 // Workbench is which regions show, the right panel's tab, the focused editor
-// pane, and whether file views wrap lines.
+// pane, whether file views wrap lines, and whether chats and Markdown
+// previews use a fixed reading width.
 export interface Workbench {
   sidebar: boolean;
   rightPanel: boolean;
@@ -11,6 +12,7 @@ export interface Workbench {
   rightTab: RightTab;
   activePane: number | null;
   wrap: boolean;
+  fixedWidth: boolean;
 }
 
 export type Region = 'sidebar' | 'rightPanel' | 'panel';

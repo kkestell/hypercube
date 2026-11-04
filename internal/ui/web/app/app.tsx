@@ -20,14 +20,13 @@ import {Sidebar} from '../sidebar/sidebar.tsx';
 import type {State} from '../state.ts';
 import {StoreContext, type Store} from '../store.ts';
 import {TerminalPanel} from '../terminal/terminal-panel.tsx';
-import {LayoutToggles} from './layout-toggles.tsx';
 import {RightPanel} from './right-panel.tsx';
 import {StatusBar} from './status-bar.tsx';
 import {binding, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActions} from './shortcuts.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
 import {windowHandler} from './window.ts';
-import {titleBarMouseDown, titleBarStyle} from './title-bar.ts';
+import {titleBarVars} from './title-bar.ts';
 
 function refuseStrayDrops(store: Store) {
   const refuse = (e: DragEvent) => {
@@ -108,10 +107,7 @@ export function App({store}: {store: Store}) {
   };
   return (
     <StoreContext.Provider value={context}>
-      <div className="app flex h-full flex-col" onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
-        <header className="app-header flex shrink-0 items-center justify-end border-b px-2 py-1" style={titleBarStyle(state.titleBar)} onMouseDown={titleBarMouseDown}>
-          <LayoutToggles />
-        </header>
+      <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)} onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
         <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />

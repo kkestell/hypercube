@@ -108,21 +108,5 @@ func (w *write) putItem(id string, seq int64, item harness.Item) error {
 		return err
 	}
 	w.items = append(w.items, Change{Session: id, Seq: seq, Item: item})
-	return w.runtime.mirrorLocked(w, id, item)
-}
-
-// mirrorLocked writes only opening and saved attention items. The caller holds mu.
-func (r *Runtime) mirrorLocked(tx *write, id string, item harness.Item) error {
-	if item.Kind != harness.KindAttention {
-		return nil
-	}
-	s, err := tx.Session(id)
-	if err != nil || s.Parent == "" {
-		return err
-	}
-	if err := r.loadSeq(tx.Tx, s.Parent); err != nil {
-		return err
-	}
-	item.From, item.Parent = id, ""
-	return tx.putItem(s.Parent, r.nextSeq(s.Parent), item)
+	return nil
 }

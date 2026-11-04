@@ -126,8 +126,8 @@ session's menu changes its title. Right-click a row for its menu; workspace
 and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
-Children appear under their parent. A spinner indicates work, a question icon
-means an answer is needed, a dot marks an unseen reply, and a stop icon marks
+Children appear under their parent. A spinner indicates work, an amber dot
+means an answer is needed, a blue dot marks an unseen reply, and a red dot marks
 an unexpected exit. Stopped and ended sessions are dimmed.
 
 ## Layout and shortcuts

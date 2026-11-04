@@ -35,11 +35,11 @@ test('a running session shows its agent in a tab named for it', () => {
   expect(find(root, '[data-tab="agent"] .editor-tabs-label').textContent).toBe('Session a');
 });
 
-test('with no session shown, the tab strip is empty', () => {
+test('with no session shown, the tab strip is empty but for the layout toggles', () => {
   const root = mount(store(null, []), <SessionView />);
   expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.editor-tabs-bar')).not.toBeNull();
-  expect(root.querySelector('.layout-toggles')).toBeNull();
+  expect(root.querySelectorAll('.layout-toggles button')).toHaveLength(3);
   expect(root.querySelector('[role="tab"]')).toBeNull();
 });
 

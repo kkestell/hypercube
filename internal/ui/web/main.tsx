@@ -5,7 +5,7 @@ import {App} from './app/app.tsx';
 import {startAppearance} from './app/appearance.ts';
 import {startBadge} from './app/badge.ts';
 import {startTitleBar} from './app/title-bar.ts';
-import {setVisible, startWrapStorage} from './app/workbench.ts';
+import {setVisible, startWorkbenchStorage} from './app/workbench.ts';
 import {startBrowsers} from './browser/browser.ts';
 import {startDraftStorage} from './agent/draft-storage.ts';
 import {startDataSocket} from './data-socket.ts';
@@ -18,7 +18,7 @@ const store = createStore(initialState(decodeURIComponent(location.hash.slice(1)
 
 startAppearance();
 startDraftStorage(store);
-startWrapStorage(store);
+startWorkbenchStorage(store);
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
 startDataSocket(store);
 startFilePolling(store);

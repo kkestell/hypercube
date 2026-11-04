@@ -1,3 +1,4 @@
+import {column} from '../app/workbench.ts';
 import {shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
 // images, attach and send buttons, and its profile and usage. A new session
@@ -96,7 +97,7 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className="composer m-4 shrink-0" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+    <form className={`composer m-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
       <Card className="py-3">
         <CardContent className="flex flex-col gap-3 px-3">
           {draft.images.length > 0 && (

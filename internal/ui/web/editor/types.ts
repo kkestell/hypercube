@@ -23,6 +23,15 @@ export interface Split {
 
 export type LayoutNode = Pane | Split;
 
+// Placement says which edges of the tabbed area a pane touches: the top row
+// sits in the window's title bar, and the left and right edges are where the
+// window's buttons and the layout toggles go.
+export interface Placement {
+  top: boolean;
+  left: boolean;
+  right: boolean;
+}
+
 // Edge is where a dragged tab drops on a pane: into it, or beside it as a new pane.
 export type Edge = 'center' | 'left' | 'right' | 'top' | 'bottom';
 

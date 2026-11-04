@@ -50,7 +50,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   dismissed: {},
   errors: [],
   confirmation: null,
-  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files', activePane: null, wrap: false},
+  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files', activePane: null, wrap: false, fixedWidth: true},
   session: null,
   browsers: {},
   fileOpens: {},
