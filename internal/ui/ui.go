@@ -30,6 +30,7 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.Handle("GET /", http.FileServerFS(assets()))
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /profiles", profiles)
+	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.Handle("POST /mcp", mcp.Handler(db, rt, browser))
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)

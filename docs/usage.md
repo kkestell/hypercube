@@ -54,6 +54,10 @@ the profile, off by default, runs the session in its own worktree under
 in the checkout is its merge target. Selecting another session first discards
 the unsent session.
 
+Search in the sidebar header or Command+K searches session titles and saved
+conversation text across all workspaces, including stopped and ended sessions.
+Choose a result to show its session.
+
 Choose Help > Keyboard Shortcuts or press Command+/ to see the keyboard
 shortcuts. In the native app, the Session and View menus also show shortcuts;
 View > Zoom In, Zoom Out, and Actual Size change the window's page size. The

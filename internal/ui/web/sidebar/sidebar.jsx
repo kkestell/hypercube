@@ -9,6 +9,7 @@ import {PanelTabs} from '../shared/panel-tabs.jsx';
 import {useStore} from '../store.js';
 import {sessionItems, workspaceItems} from './sidebar-menus.js';
 import {WorkspaceSection} from './workspace-section.jsx';
+import {SessionSearch} from './session-search.jsx';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.jsx';
 
@@ -57,6 +58,7 @@ export function Sidebar() {
   return (
     <div className="sidebar flex h-full min-h-0 flex-col">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" actions={<>
+          <SessionSearch />
           <Button variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
         <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2" onContextMenu={contextMenu} onKeyDown={keyDown}>
