@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -122,6 +123,17 @@ func (c *claude) line(line []byte) {
 		c.assistant(&ev, m)
 	case "user":
 		c.toolResults(&ev, m)
+	case "control_response":
+		if pending := c.configuring; pending != nil && m.Response.RequestID == pending.id {
+			var err error
+			if m.Response.Subtype == "error" {
+				err = errors.New(m.Response.Error)
+			} else {
+				c.model = pending.model
+			}
+			pending.reply <- err
+			c.configuring = nil
+		}
 	case "control_request":
 		c.control(&ev, m)
 	case "control_cancel_request":

@@ -23,6 +23,7 @@ type shownSession struct {
 	ID        string        `json:"id"`
 	Parent    string        `json:"parent"`
 	Title     string        `json:"title"`
+	Ready     bool          `json:"ready"`
 	Running   bool          `json:"running"`
 	Ended     bool          `json:"ended"`
 	Unseen    bool          `json:"unseen"`
@@ -70,7 +71,7 @@ func showSession(tx *store.Tx, s store.Session, merges map[string]workspace.Merg
 // show shows one session. An unseen idle session carries its last reply.
 func show(tx *store.Tx, s store.Session, running bool) (shownSession, error) {
 	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
-		Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
+		Ready: running && !s.Ended && s.Ready != 0, Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
 		Activity: s.Activity, Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 	if s.Unseen && s.Activity == store.Idle {
 		var err error

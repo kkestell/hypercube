@@ -38,7 +38,7 @@ func serve(in io.Reader, out io.Writer) error {
 		}
 		return plugin.Agent{
 			Process: c.proc, Conversation: a.Conversation,
-			Input: c.input, Interrupt: c.interrupt, Answer: c.answer, Stop: c.proc.Stop,
+			Configure: c.configure, Input: c.input, Interrupt: c.interrupt, Answer: c.answer, Stop: c.proc.Stop,
 		}, nil
 	})
 }
@@ -57,6 +57,7 @@ type claude struct {
 	mu           sync.Mutex
 	conversation string
 	model        string
+	configuring  *configuration
 	blocks       map[string]int          // content blocks seen per assistant message
 	open         map[string]harness.Item // streamed items that no complete block has finished
 	tools        map[string]harness.Item // tool items, by tool use ID
@@ -92,7 +93,7 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 		return nil, err
 	}
 	c := &claude{
-		proc: p, stdin: p.Stdin, emit: emit, conversation: a.Conversation,
+		proc: p, stdin: p.Stdin, emit: emit, conversation: a.Conversation, model: a.Model,
 		blocks: map[string]int{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{},
 	}
 	ready := make(chan error, 1)

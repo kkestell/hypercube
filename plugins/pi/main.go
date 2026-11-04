@@ -49,7 +49,7 @@ func serve(in io.Reader, out io.Writer) error {
 		}
 		return plugin.Agent{
 			Process: ag.proc, Conversation: ag.conversation(),
-			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
+			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
 		}, nil
 	})
 }
@@ -144,15 +144,7 @@ func (ag *agent) stop() {
 // another when the requested name is partial, and a resumed session, which
 // Pi has saved once it holds a message.
 func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
-	var state struct {
-		Model *struct {
-			Provider      string `json:"provider"`
-			ID            string `json:"id"`
-			ContextWindow int    `json:"contextWindow"`
-		} `json:"model"`
-		SessionFile string `json:"sessionFile"`
-		SessionID   string `json:"sessionId"`
-	}
+	var state sessionState
 	if err := ag.call(ctx, "get_state", nil, &state); err != nil {
 		return err
 	}

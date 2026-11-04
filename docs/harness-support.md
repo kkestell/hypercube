@@ -30,7 +30,11 @@ The types are in [protocol.go](../internal/harness/protocol.go).
   its `mime_type` and base64 `data`, 10 MiB decoded at most in all. Its reply
   means the harness accepted the input, including into its own queue, and an
   error means it did not. `interrupt` stops the current turn. `answer` replies
-  to an attention request. Closing input ends the plugin.
+  to an attention request. `configure` carries `selection`, a model and effort
+  pair, and replies after applying native controls. Its reply includes the
+  resulting `selection` when accepted, including alongside an error after a
+  partial change; without it, the saved selection stays unchanged. Commands
+  are handled in ID order. Closing input ends the plugin.
 - **Events.** The plugin reports the native conversation ID to resume later,
   the main agent's work state (`working` or `idle`), transcript items, and
   usage. An idle event after a successful turn also lists `final`, the IDs of
@@ -63,7 +67,17 @@ The types are in [protocol.go](../internal/harness/protocol.go).
 A malformed record, or a reply to an unknown ID, ends the connection. The agent
 then follows the relaunch rule in [Architecture](architecture.md#ownership).
 
-The plugins are in [plugins](../plugins).
+The plugins are in [plugins](../plugins). Previously running sessions need to
+restart to load the updated configure command. A ready session can change
+model and effort within its harness, even while working: Claude Code applies
+an in-process `apply_flag_settings` override, which may affect its next model
+call; Codex retains both values for subsequent `turn/start` requests, while
+`turn/steer` keeps the current turn's settings; OpenCode uses
+`session/set_config_option`, selecting the model before its effort; Pi uses
+`set_model` and `set_thinking_level` and reads back the actual thinking level,
+which Pi can clamp. OpenCode and Pi apply their native controls when called.
+Hypercube saves the reported pair in the reply transaction, even after a
+partial failure, and keeps errors visible.
 
 ## Messages and native subagents
 

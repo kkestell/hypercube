@@ -45,7 +45,7 @@ func serve(in io.Reader, out io.Writer) error {
 		}
 		return plugin.Agent{
 			Process: ag.proc, Conversation: ag.thread,
-			Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
+			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
 		}, nil
 	})
 }
@@ -62,6 +62,7 @@ type agent struct {
 	// mu guards the state below. Events are emitted with it held, so they keep
 	// the order of the notifications and of answers.
 	mu        sync.Mutex
+	selection harness.Selection
 	thread    string
 	turn      string                  // the main turn in progress
 	ended     string                  // the last main turn that completed
@@ -88,7 +89,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 		return nil, err
 	}
 	ag := &agent{
-		proc: p, emit: emit, finished: map[string]bool{},
+		proc: p, emit: emit, selection: harness.Selection{Model: a.Model, Effort: a.Effort}, finished: map[string]bool{},
 		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]string{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
@@ -215,6 +216,15 @@ func userInput(text string, images []harness.Image) []map[string]any {
 	return input
 }
 
+// configure retains the settings for the next turn/start; steering keeps the
+// current turn's settings.
+func (ag *agent) configure(selection harness.Selection) (*harness.Selection, error) {
+	ag.mu.Lock()
+	ag.selection = selection
+	ag.mu.Unlock()
+	return &selection, nil
+}
+
 // input steers the turn in progress, or starts a turn. A steer can arrive after
 // the turn has ended but before its completion reaches us; the input then
 // starts a turn.
@@ -225,7 +235,7 @@ func (ag *agent) input(text string, images []harness.Image) error {
 	default:
 	}
 	ag.mu.Lock()
-	thread, turn := ag.thread, ag.turn
+	thread, turn, selection := ag.thread, ag.turn, ag.selection
 	ag.mu.Unlock()
 	if turn != "" {
 		ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
@@ -253,7 +263,7 @@ func (ag *agent) input(text string, images []harness.Image) error {
 	}
 	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
 	defer cancel()
-	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": userInput(text, images)}, &started); err != nil {
+	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": userInput(text, images), "model": selection.Model, "effort": selection.Effort}, &started); err != nil {
 		return err
 	}
 	ag.mu.Lock()

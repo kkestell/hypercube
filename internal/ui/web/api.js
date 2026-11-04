@@ -29,6 +29,9 @@ export const fetchProfiles = store => request(store, 'profiles', undefined, resp
 
 export const fetchGrants = store => request(store, 'grants', undefined, response => response.json());
 
+// selectProfile applies a configured profile to a ready session.
+export const selectProfile = (store, session, profile) => post(store, 'session', {action: 'profile', id: session, profile});
+
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.
 export async function answerRequest(store, session, request, choice, text) {

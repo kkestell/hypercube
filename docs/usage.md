@@ -49,7 +49,7 @@ including its worktree when it has one.
 
 A new session shows the animated hypercube above its composer. Add Workspace
 in the sidebar header adds a project and opens a new session in it.
-The composer chooses the profile until the first prompt is sent, and sending
+The composer chooses the initial profile before the first prompt, and sending
 that prompt creates the session. In a Git workspace, the Worktree switch beside
 the profile, off by default, runs the session in its own worktree under
 `.hypercube/` on a new branch from the checkout's HEAD; the branch checked out
@@ -156,8 +156,20 @@ prompt, is saved in the browser and restored after reloads and app restarts.
 Image attachments stay in memory and do not survive a reload.
 
 Below each message box, the profile selector shows the harness, model, and
-effort on the left. It is disabled after the first message is sent. Context use
-and cost appear on the right. Codex reports no cost. Drag a tab,
+effort on the left. A ready session can select another configured profile with
+its current harness, including while working. The saved model and effort stay
+visible if a profile is renamed or removed, and carry forward to later turns
+and resumes. A session cannot change harness.
+
+Changes follow the harness's native timing: Claude Code may use the new model
+on its next model call, Codex uses the selection on its next turn start, and
+OpenCode and Pi apply their controls when selected. Pi may choose a supported
+thinking level instead of the requested one; the selector shows the resulting
+level. Errors stay visible, including when the model changed but the effort
+was refused. Sessions running before this update need restarting to load the
+updated plugins.
+
+Context use and cost appear on the right. Codex reports no cost. Drag a tab,
 including the chat's, to another pane's tab bar to move it there, or to a pane's
 left, right, top, or bottom edge to split it. Drag dividers to resize panes and
 the sidebar.

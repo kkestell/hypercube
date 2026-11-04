@@ -1,8 +1,8 @@
 import {shortcuts} from '../app/shortcuts.js';
 // The box below a transcript for the user's next message: its text, attached
 // images, attach and send buttons, and its profile and usage. A new session
-// chooses its profile and worktree there; after the first prompt the profile
-// shows as text, and a worktree session shows its branch beside it. The text
+// chooses its profile and worktree there; a running session can choose a
+// profile of its harness, and a worktree shows its branch beside it. The text
 // takes focus on mount.
 import {useEffect, useRef, useState} from 'react';
 import {imageSrc, imageTypes} from '../images.js';

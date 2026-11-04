@@ -108,6 +108,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.rt.Input(id, in.Text, in.Images...)
+	case "profile":
+		err = s.rt.SelectProfile(id, q.Get("profile"))
 	case "interrupt":
 		err = s.rt.Interrupt(id)
 	case "answer":

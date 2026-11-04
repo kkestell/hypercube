@@ -71,7 +71,9 @@ const startCrashDelay = 100 * time.Millisecond
 
 // Entry is one line of an agent's log. Which fields are set depends on Kind.
 type Entry struct {
-	Kind string `json:"kind"`
+	Kind   string `json:"kind"`
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 	// start
 	Conversation string            `json:"conversation,omitempty"`
 	Dir          string            `json:"dir,omitempty"`
@@ -147,9 +149,10 @@ type standIn struct {
 	enc   *json.Encoder
 	agent string
 	// held holds the IDs of inputs that wait for an interrupt.
-	onclose []int64
-	held    []int64
-	turns   int
+	onclose    []int64
+	held       []int64
+	heldConfig []harness.Reply
+	turns      int
 	// turn names the items of the input being handled.
 	turn string
 }
@@ -177,6 +180,8 @@ func serve(in io.Reader, out io.Writer) {
 			p.interrupt(cmd)
 		case harness.CmdAnswer:
 			p.answer(cmd)
+		case harness.CmdConfigure:
+			p.configure(cmd)
 		}
 	}
 	for _, id := range p.onclose {
@@ -220,7 +225,7 @@ func (p *standIn) start(cmd harness.Command) {
 	s := cmd.Start
 	p.agent = s.Session
 	p.log(Entry{Kind: "start", Conversation: s.Conversation, Dir: s.Dir, Instructions: s.Instructions,
-		Env: s.Env, Pid: os.Getpid(), Pgid: syscall.Getpgrp()})
+		Model: s.Model, Effort: s.Effort, Env: s.Env, Pid: os.Getpid(), Pgid: syscall.Getpgrp()})
 	if s.Conversation == "unresumable" {
 		p.reply(cmd.ID, "cannot resume conversation unresumable")
 		return
@@ -336,6 +341,10 @@ func (p *standIn) interrupt(cmd harness.Command) {
 		p.reply(id, "")
 	}
 	p.held = nil
+	for _, reply := range p.heldConfig {
+		_ = p.enc.Encode(harness.Record{Reply: &reply})
+	}
+	p.heldConfig = nil
 	p.reply(cmd.ID, "")
 	p.state(harness.Idle)
 }
@@ -359,4 +368,21 @@ func (p *standIn) answer(cmd harness.Command) {
 	}
 	p.reply(cmd.ID, "")
 	p.state(harness.Idle, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Done: true, Answer: cmd.Choice + cmd.Text})
+}
+
+// configure accepts a selection, or simulates a native refusal or partial change.
+func (p *standIn) configure(cmd harness.Command) {
+	selected := *cmd.Selection
+	p.log(Entry{Kind: "configure", Model: selected.Model, Effort: selected.Effort})
+	reply := harness.Reply{ID: cmd.ID, Selection: &selected}
+	switch selected.Model {
+	case "reject":
+		reply.Selection, reply.Error = nil, "model rejected"
+	case "partial":
+		selected.Effort, reply.Error = "low", "effort rejected"
+	case "hold":
+		p.heldConfig = append(p.heldConfig, reply)
+		return
+	}
+	_ = p.enc.Encode(harness.Record{Reply: &reply})
 }

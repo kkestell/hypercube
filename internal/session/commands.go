@@ -102,6 +102,16 @@ func (r *Runtime) wait(l *live, id int64, timeout time.Duration) error {
 // waiting. The output position is committed by apply in this transaction.
 func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 	c := l.commands[reply.ID]
+	if c.Command == harness.CmdConfigure && reply.Selection != nil {
+		s, err := tx.Session(l.id)
+		if err != nil {
+			return err
+		}
+		s.Model, s.Effort = reply.Selection.Model, reply.Selection.Effort
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+	}
 	var failure error
 	if reply.Error != "" {
 		failure = errors.New(reply.Error)

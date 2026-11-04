@@ -18,6 +18,7 @@ type Agent struct {
 	Input        func(text string, images []harness.Image) error
 	Interrupt    func() error
 	Answer       func(request, choice, text string) error
+	Configure    func(harness.Selection) (*harness.Selection, error)
 	Stop         func()
 }
 
@@ -70,8 +71,8 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 				continue
 			}
 			last = cmd.ID
-			err := s.handle(cmd, start)
-			s.reply(cmd.ID, err)
+			selection, err := s.handle(cmd, start)
+			s.reply(cmd.ID, selection, err)
 			if err == nil && cmd.Command == harness.CmdStart {
 				s.write(harness.Record{Event: &harness.Event{Conversation: s.agent.Conversation, State: harness.Idle}})
 				exited = s.agent.Process.Done()
@@ -95,39 +96,44 @@ func (s *server) write(r harness.Record) {
 	_ = s.enc.Encode(r)
 }
 
-func (s *server) reply(id int64, err error) {
-	r := harness.Reply{ID: id}
+func (s *server) reply(id int64, selection *harness.Selection, err error) {
+	r := harness.Reply{ID: id, Selection: selection}
 	if err != nil {
 		r.Error = err.Error()
 	}
 	s.write(harness.Record{Reply: &r})
 }
 
-func (s *server) handle(cmd harness.Command, start Start) error {
+func (s *server) handle(cmd harness.Command, start Start) (*harness.Selection, error) {
 	if cmd.Command == harness.CmdStart {
 		if s.agent != nil {
-			return errors.New("already started")
+			return nil, errors.New("already started")
 		}
 		if cmd.Start == nil {
-			return errors.New("start without arguments")
+			return nil, errors.New("start without arguments")
 		}
 		a, err := start(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) })
 		if err != nil {
-			return err
+			return nil, err
 		}
 		s.agent = &a
-		return nil
+		return nil, nil
 	}
 	if s.agent == nil {
-		return errors.New("not started")
+		return nil, errors.New("not started")
 	}
 	switch cmd.Command {
+	case harness.CmdConfigure:
+		if cmd.Selection == nil {
+			return nil, errors.New("configure without selection")
+		}
+		return s.agent.Configure(*cmd.Selection)
 	case harness.CmdInput:
-		return s.agent.Input(cmd.Text, cmd.Images)
+		return nil, s.agent.Input(cmd.Text, cmd.Images)
 	case harness.CmdInterrupt:
-		return s.agent.Interrupt()
+		return nil, s.agent.Interrupt()
 	case harness.CmdAnswer:
-		return s.agent.Answer(cmd.Request, cmd.Choice, cmd.Text)
+		return nil, s.agent.Answer(cmd.Request, cmd.Choice, cmd.Text)
 	}
-	return fmt.Errorf("unknown command %q", cmd.Command)
+	return nil, fmt.Errorf("unknown command %q", cmd.Command)
 }

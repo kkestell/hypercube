@@ -21,8 +21,8 @@ const store = () => createStore({workspaces: [], selected: null, pending: null, 
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(root.querySelector('textarea'));
-  expect(root.querySelector('.composer-profile')).toBeNull();
-  expect(root.querySelector('.composer-profile-label').textContent).toBe('Claude · Opus · High');
+  expect(root.querySelector('.composer-profile').disabled).toBe(true);
+  expect(root.querySelector('.composer-profile').textContent).toBe('Claude · Opus · High');
 });
 
 test('a composer leaves the focus in a tab strip', () => {

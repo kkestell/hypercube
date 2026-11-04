@@ -18,6 +18,7 @@ const (
 	CmdInput     = "input"
 	CmdInterrupt = "interrupt"
 	CmdAnswer    = "answer"
+	CmdConfigure = "configure"
 )
 
 // Item kinds. Plugins send every kind but User and State, which Hypercube
@@ -42,15 +43,16 @@ const (
 // carrying the same ID. Resent commands whose ID is not greater than the last
 // ID read are ignored. IDs increase across launches. Start is set for
 // CmdStart, Text and Images for CmdInput, and Request, Choice, and Text for
-// CmdAnswer. An input has text, images, or both.
+// CmdAnswer, and Selection for CmdConfigure. An input has text, images, or both.
 type Command struct {
-	ID      int64      `json:"id"`
-	Command string     `json:"command"`
-	Start   *StartArgs `json:"start,omitempty"`
-	Text    string     `json:"text,omitempty"`
-	Images  []Image    `json:"images,omitempty"`
-	Request string     `json:"request,omitempty"`
-	Choice  string     `json:"choice,omitempty"`
+	ID        int64      `json:"id"`
+	Command   string     `json:"command"`
+	Start     *StartArgs `json:"start,omitempty"`
+	Text      string     `json:"text,omitempty"`
+	Images    []Image    `json:"images,omitempty"`
+	Request   string     `json:"request,omitempty"`
+	Choice    string     `json:"choice,omitempty"`
+	Selection *Selection `json:"selection,omitempty"`
 }
 
 // Image is a picture in a prompt or in the transcript: its MIME type and its
@@ -80,11 +82,20 @@ type StartArgs struct {
 	StateDir string `json:"state_dir"`
 }
 
+// Selection is a model and effort selected within the session's harness.
+type Selection struct {
+	Model  string `json:"model"`
+	Effort string `json:"effort"`
+}
+
 // Reply answers a command: success, or the reason it failed. A reply to input
 // means the native harness accepted the text, including into its own queue.
 type Reply struct {
 	ID    int64  `json:"id"`
 	Error string `json:"error,omitempty"`
+	// Selection reports the accepted settings, including after a partial failure.
+	// When absent, the selection did not change.
+	Selection *Selection `json:"selection,omitempty"`
 }
 
 // Record is one line from the plugin. Exactly one field is set.
