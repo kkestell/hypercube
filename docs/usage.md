@@ -164,7 +164,7 @@ the sidebar.
 
 The buttons at the right of the header at the top of the window show or hide
 the sidebar, the terminal panel, and the right panel. The right panel's icon
-tabs select Files, Changes, and Search. Search (⌘⇧F) finds case-insensitive plain text in the same files as Quick Open, showing up to 1,000 matching lines. Select a result to open its file at that line. Changes shows the branch and any commits not
+tabs select Files, Changes, and Search. Search (⌘⇧F) finds case-insensitive plain text in the same files as Quick Open, skipping files larger than the editor limit (256 KiB) and showing up to 1,000 matching lines. Select a result to open its file at that line. Changes shows the branch and any commits not
 merged into the checkout's branch, followed by the repository's uncommitted
 files with their status and added and removed line counts. It covers the whole
 repository containing the session's folder. Click a file to open its unified

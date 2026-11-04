@@ -1,12 +1,11 @@
 package ui
 
 import (
-	"bufio"
 	"encoding/json"
-	"io"
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 const maxSearchLines = 1000
@@ -49,43 +48,29 @@ func (s *server) searchFiles(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			continue
 		}
-		reader := bufio.NewReaderSize(f, 8000)
-		prefix, _ := reader.Peek(8000)
-		if strings.ContainsRune(string(prefix), 0) {
+		info, err := f.Stat()
+		if err != nil {
 			f.Close()
 			continue
 		}
+		content, err := readText(f, info.Size())
+		f.Close()
+		if err != nil {
+			continue
+		}
 		var lines []searchLine
-		for n := 1; ; n++ {
-			text, readErr := reader.ReadString('\n')
-			if readErr != nil && readErr != io.EOF {
-				break
-			}
-			if text == "" && readErr == io.EOF {
-				break
-			}
-			text = strings.TrimSuffix(strings.TrimSuffix(text, "\n"), "\r")
-			indexes := pattern.FindAllStringIndex(text, -1)
-			if len(indexes) == 0 {
-				if readErr == io.EOF {
-					break
-				}
+		for n, text := range strings.Split(string(content), "\n") {
+			text = strings.TrimSuffix(text, "\r")
+			match := pattern.FindStringIndex(text)
+			if match == nil {
 				continue
 			}
-			parts := []string{}
-			last := 0
-			for _, m := range indexes {
-				parts = append(parts, text[last:m[0]], text[m[0]:m[1]])
-				last = m[1]
-			}
-			parts = append(parts, text[last:])
-			lines = append(lines, searchLine{Line: n, Parts: parts})
+			lines = append(lines, searchLine{Line: n + 1, Parts: searchPreview(text, pattern, match)})
 			count++
 			if count == maxSearchLines {
 				break
 			}
 		}
-		f.Close()
 		if len(lines) > 0 {
 			results = append(results, searchFile{Path: path, Lines: lines})
 		}
@@ -95,4 +80,22 @@ func (s *server) searchFiles(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+// searchPreview limits both the displayed text and the number of marked matches.
+func searchPreview(text string, pattern *regexp.Regexp, first []int) []string {
+	runes := []rune(text)
+	matchStart := utf8.RuneCountInString(text[:first[0]])
+	matchEnd := utf8.RuneCountInString(text[:first[1]])
+	start := max(0, matchStart-100)
+	end := min(len(runes), start+200)
+	matchEnd = min(matchEnd, end)
+	parts := []string{string(runes[start:matchStart]), string(runes[matchStart:matchEnd])}
+	rest := string(runes[matchEnd:end])
+	last := 0
+	for _, match := range pattern.FindAllStringIndex(rest, -1) {
+		parts = append(parts, rest[last:match[0]], rest[match[0]:match[1]])
+		last = match[1]
+	}
+	return append(parts, rest[last:])
 }
