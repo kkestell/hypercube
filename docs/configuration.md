@@ -1,7 +1,54 @@
 # Configuration
 
-Create `~/.config/hypercube/config.json`, or
-`$XDG_CONFIG_HOME/hypercube/config.json` when that variable is non-empty:
+Create `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set, the path
+is `$XDG_CONFIG_HOME/hypercube/config.json` instead.
+
+## Profiles
+
+Each entry in `profiles` is a harness, model, and effort combination. It appears
+in the selector below the message box. A parent agent also receives the list
+when choosing how to run a child, so the description should tell it which work
+the profile is suitable for.
+
+All five fields are required. Names must be unique, and the file must contain
+at least one profile.
+
+| Field | Value |
+| --- | --- |
+| `name` | The name shown in the selector and used by agents. |
+| `description` | When to choose this profile. |
+| `harness` | `claude`, `opencode`, `codex`, or `pi`; its plugin must be installed. |
+| `model` | A model ID accepted by the harness. |
+| `effort` | A reasoning level or model variant accepted by that harness. |
+
+Copy the [example below](#example-configuration) and remove profiles you do not
+use. Accepted model and effort values differ
+[by harness](harness-support.md#requirements); Hypercube's schema is defined in
+[config.go](../internal/harness/config.go).
+
+Profile edits affect subsequent choices. An existing session keeps its saved
+model and effort until you change its selection, even if you edit or remove
+the original profile. Profiles are reread when the selector loads and when
+session tools or startup instructions request them.
+
+## Local files in worktrees
+
+A new worktree contains committed files and initialized submodules. It may also
+need ignored files from your checkout, such as environment configuration or
+installed dependencies.
+
+Put `.worktreeinclude` at the checkout root, using Git ignore patterns:
+
+```gitignore
+.env
+node_modules/
+```
+
+Hypercube copies matching paths only if Git also ignores them. The copies are
+independent APFS clones made when the worktree is created. Changes in either
+checkout do not update the other copy.
+
+## Example configuration
 
 ```json
 {
@@ -72,39 +119,3 @@ Create `~/.config/hypercube/config.json`, or
   ]
 }
 ```
-
-Every field shown is required. Provide at least one profile, with unique names.
-Remove the profiles for harnesses and models you don't use.
-
-A new session's composer lists every profile with its harness, model, effort,
-and description. Top-level sessions choose among the same profiles for their
-children. Each description says which kind of work the profile suits and when
-to use it.
-Existing agents keep their saved settings across restarts.
-Changes affect subsequently created agents, and profiles are reread when the
-session menu, tools, and startup context are requested.
-
-`harness` names an installed [harness plugin](harness-support.md). Model
-and effort values are interpreted by the selected harness. Claude Code
-receives them as its model and effort; OpenCode uses effort as the model's
-variant. Consult the harness for accepted values. Hypercube's exact schema
-and validation are maintained in [config.go](../internal/harness/config.go).
-
-## Files needed by worktrees
-
-A new managed worktree, for a worktree session or a child, starts at the HEAD
-of the checkout or worktree it branches from and initializes submodules.
-Uncommitted changes there are absent.
-
-To supply ignored local files, add a `.worktreeinclude` file at the checkout
-root using Git ignore patterns, for example:
-
-```gitignore
-.env
-node_modules/
-```
-
-Only paths also ignored by Git are copied. Copies are independent APFS
-clones, so sessions can change them without modifying the originals. They are
-made when the worktree is created, not kept in sync. The implementation is
-in [workspace.go](../internal/workspace/workspace.go).

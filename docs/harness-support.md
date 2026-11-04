@@ -1,228 +1,99 @@
-# Harness support
+# Harness differences
 
-Each harness is supported by a plugin: an executable named
-`hypercube-harness-<name>` installed beside `hypercube`. The `harness` value in
-the [configuration](configuration.md) is that name. `make install` installs
-the plugins for Claude Code (`claude`), OpenCode (`opencode`), Codex
-(`codex`), and Pi (`pi`). The plugins configure each launch without rewriting
-user or project settings or changing HOME, and the harnesses keep their own
-conversations, credentials, and delegation. Neither Hypercube's core nor the
-browser view names a harness; native protocols live in the plugins.
+Profiles select a native coding tool through the `harness` field. Install and
+authenticate that tool before launching a session. Hypercube configures each
+launch without rewriting your global or project settings or changing `HOME`.
+
+## Requirements
+
+| Harness | Executable | Model and effort |
+| --- | --- | --- |
+| Claude Code (`claude`) | `claude`; works with a Claude Team login | Claude's model and effort values. |
+| OpenCode (`opencode`) | OpenCode 2.x | A `provider/model` from `opencode models`; a level offered for that model, or `default` if none. |
+| Codex (`codex`) | `codex` | Codex's model and reasoning effort values. |
+| Pi (`pi`) | Pi 1.4 or later | A full `provider/id` from `pi --list-models`; effort is its thinking level. |
+
+OpenCode rejects an unsupported model or effort at launch. Use full Pi model
+IDs: Pi may substitute a different model for a partial ID, and Hypercube fails
+the launch if the selected model differs from the requested one.
+
+## Messages and model changes
+
+A follow-up during work does not have identical timing across harnesses.
+Neither does changing the profile selection:
+
+| Harness | Follow-up during a turn | Model or effort change |
+| --- | --- | --- |
+| Claude Code | Read before its next step. | May affect its next model call. |
+| OpenCode | Queued for the next turn, with other waiting messages. | Native controls applied when selected. |
+| Codex | Steers the current turn before its next step. | Used at the next turn start; steering keeps the current settings. |
+| Pi | Read after the current step's tool calls, before the next model request. | Native controls applied when selected. |
+
+Pi can adjust a requested thinking level to one the model supports. The profile
+selector shows the result. A partially failed change can leave the model
+changed and the effort unchanged; the error remains visible.
+
+Interrupt ends the current turn and leaves its output in chat. OpenCode, Codex,
+and Pi also give up pending questions or dialogs when interrupted.
+
+## Permissions
+
+**Claude Code** runs in auto permission mode. Tool requests that reach Hypercube
+offer Allow and Deny. Typing a response without choosing Allow denies the tool
+and gives Claude the text. Saved permission choices use Claude's tool names.
+
+**OpenCode** allows permissions it asks about once, as with `opencode --auto`.
+A permission denied by OpenCode's own configuration stays denied.
+
+**Codex** runs in a workspace-write sandbox with network access and an automatic
+approval reviewer. Git directories are writable, allowing child sessions to
+commit. Hypercube's MCP tools need no approval. Requests the reviewer does not
+settle appear in chat, with Allow, Deny, and session permission where supported.
+If Codex offers cancellation without decline, choosing Deny cancels the turn.
+
+Codex can save command and file-change approvals. Network-host, write-root, and
+permission requests have no persistent Hypercube grant. MCP tool approvals have
+no Always allow option because Codex does not identify the tool in that request.
+
+**Pi** extension dialogs appear as choices, Yes/No, or a text field according
+to the dialog. A timed-out dialog closes; extension errors appear in chat.
+
+Claude Code and OpenCode send answers to a group of questions once all are
+answered. Codex does the same for blocking questions; its async questions send
+each answer as a message, and new input closes unanswered async questions.
+
+## Usage reports
+
+Context use is the latest request's token count. Other reports vary:
+
+| Harness | Cost | Subscription usage |
+| --- | --- | --- |
+| Claude Code | Reported with the turn result. | Five-hour and seven-day windows, after turns. |
+| OpenCode | Reported for the main conversation. | Not reported. |
+| Codex | Not reported. | Account limit windows, after turns. |
+| Pi | Session total, including before a resume. | Not reported. |
+
+## Conversation storage
+
+Sessions resume their saved native conversation. A failed resume stays failed
+rather than silently opening a new conversation. Pi starts saving with the
+first message, so a Pi session with no saved conversation cannot resume.
+
+Hypercube keeps its Codex conversations under its own state directory, outside
+the normal Codex Recents list. It links known configuration, credentials,
+instructions, skills, and plugins from the inherited `CODEX_HOME` or `~/.codex`.
+An older conversation's first resume copies its native rollout into that
+storage while keeping its conversation ID.
 
 ## Plugin protocol
 
-Hypercube runs `<plugin> serve` for each agent and keeps it running. The two
-exchange JSON Lines on the plugin's standard input and output, and the plugin
-writes diagnostics to standard error. The plugin ends when its input closes.
-The types are in [protocol.go](../internal/harness/protocol.go).
+Each `hypercube-harness-<name>` executable runs beside `hypercube`. The app
+starts it with `serve` and exchanges commands and events as JSON Lines. The
+plugin owns the native protocol; the core and browser interface do not name
+individual harnesses.
 
-- **Commands.** Each carries an integer ID, and the plugin replies with the same
-  ID: a success or an error. IDs increase, including across launches. Hypercube
-  resends unanswered commands after restarting; a plugin ignores any ID not
-  greater than the last one it read. `start` gives the plugin the agent's launch
-  information:
-  the hypercube executable path, an environment for Hypercube processes the
-  harness starts, the agent's ID, model, effort, saved conversation,
-  working directory, runtime instructions, and the state directory. The
-  plugin replies once the harness is ready for input, and the harness loads
-  `hypercube mcp` as an MCP server with that environment. `input` carries text,
-  images, or both for the harness; each image is a PNG, JPEG, GIF, or WebP with
-  its `mime_type` and base64 `data`, 10 MiB decoded at most in all. Its reply
-  means the harness accepted the input, including into its own queue, and an
-  error means it did not. `interrupt` stops the current turn. `answer` replies
-  to an attention request. `configure` carries `selection`, a model and effort
-  pair, and replies after applying native controls. Its reply includes the
-  resulting `selection` when accepted, including alongside an error after a
-  partial change; without it, the saved selection stays unchanged. Commands
-  are handled in ID order. Closing input ends the plugin.
-- **Events.** The plugin reports the native conversation ID to resume later,
-  the main agent's work state (`working` or `idle`), transcript items, and
-  usage. An idle event after a successful turn also lists `final`, the IDs of
-  the main agent's text and image items that are the turn's response; the
-  plugin leaves `final` out for an interrupted or failed turn and for a turn
-  with no identifiable response. Hypercube saves each work state change as a
-  hidden `state` item, in order with the other items, with the `final` IDs on an
-  idle one. The browser draws a successful turn as its opening message, one
-  closed activity row, and the `final` items. Usage: `context`, the tokens of the latest request, `window`, the model's
-  context window, and `cost`, in US dollars. `limits` lists the account's
-  use of the harness's subscription windows that the harness reported: each
-  has `minutes`, the window's length; `used`, the percent of the limit used;
-  `resets`, when the window resets in Unix seconds, or none when unknown; and
-  `at`, when the plugin saw the report, in Unix milliseconds. Hypercube keeps
-  the newest reading of each window of each harness.
-- **Items.** An item has an ID and a kind: text, reasoning, tool, error, or
-  attention. A later event with the same item ID replaces the item, or extends
-  its text when it sets `append`. A tool item carries the tool's name, input,
-  output, and whether it failed. Any item can carry images in the same form,
-  which the browser shows with the item. A native subagent's items name the
-  item that started it as their parent.
-- **Attention requests.** An attention item is a prompt with optional choices,
-  each with an optional description, and optional free text. The browser
-  answers with the item's ID, and the plugin maps the answer to the native
-  reply. An answer to a finished request is an error. An approval's item names
-  the tool in `grant`, with the choice that allows it once first; the browser
-  offers to always allow that tool, and Hypercube then answers later approvals
-  for it with that first choice before showing them.
-
-A malformed record, or a reply to an unknown ID, ends the connection. The agent
-then follows the relaunch rule in [Architecture](architecture.md#ownership).
-
-The plugins are in [plugins](../plugins). Previously running sessions need to
-restart to load the updated configure command. A ready session can change
-model and effort within its harness, even while working: Claude Code applies
-an in-process `apply_flag_settings` override, which may affect its next model
-call; Codex retains both values for subsequent `turn/start` requests, while
-`turn/steer` keeps the current turn's settings; OpenCode uses
-`session/set_config_option`, selecting the model before its effort; Pi uses
-`set_model` and `set_thinking_level` and reads back the actual thinking level,
-which Pi can clamp. OpenCode and Pi apply their native controls when called.
-Hypercube saves the reported pair in the reply transaction, even after a
-partial failure, and keeps errors visible.
-
-## Messages and native subagents
-
-Hypercube sends each queued message as an `input` command, one at a time, and
-removes it when the plugin replies with success. Messages go out whether the
-agent is idle or working; the plugin steers or queues them with the native
-harness. A failed child turn preserves its queued messages and sends its
-parent a bounded error summary. A top-level session's own failures stay in its
-chat.
-
-Native subagents are separate from the Hypercube agent's main conversation.
-Their items appear nested in the main agent's transcript, and they never take
-the parent's messages or change its saved conversation or work state.
-
-## Claude Code
-
-The plugin keeps one `claude -p` process running per agent, with stream-JSON
-input and output, and works on a Claude Team login. The process runs in auto
-permission mode, with the model and effort from the agent's profile and the
-`hypercube mcp` server in its MCP configuration. The runtime instructions are
-appended to the system prompt on every launch, and a saved conversation resumes
-with `--resume`. A conversation Claude Code cannot resume fails the launch.
-
-- **Text.** Assistant text and reasoning stream into the transcript as Claude
-  writes them. Native subagents' tool calls appear nested under the call that
-  started them.
-- **Permissions and questions.** A tool permission request becomes an attention
-  request with the choices Allow and Deny; typed text without a choice denies the
-  tool and tells Claude the text. Its grant is the tool's name (`Bash`, `Edit`,
-  `mcp__server__tool`). An `AskUserQuestion` call becomes one attention
-  request per question, with the options as choices and free text for another
-  answer; Claude receives the answers once every question has one.
-- **Messages and interrupts.** Messages sent during a turn go to Claude at once,
-  and it reads them before its next step. Interrupt stops the turn the way Esc
-  does, and the stopped turn stays in the transcript.
-- **State and usage.** Claude reports when it starts working and when it is
-  idle. A successful result confirms the text of the main agent's newest message
-  as the final response, which the idle event reports; a native subagent's
-  text is never the final response. Context is the tokens of the latest
-  request; the context window and cost come from each turn's result. Usage
-  limits come from the five-hour and seven-day windows of Claude's rate limit
-  event, which follows each turn's reply.
-
-## OpenCode
-
-OpenCode 2.x is required. The plugin keeps one `opencode acp` process running
-per agent and speaks the Agent Client Protocol to it. The process runs in the
-agent's working directory with the `hypercube mcp` server as an MCP server of
-its session. The runtime instructions are loaded as an OpenCode instructions
-file on every launch, and a saved conversation resumes with `session/resume`.
-A conversation OpenCode cannot resume fails the launch. A permission that
-OpenCode asks about is allowed once, as with `opencode --auto`; a permission
-that OpenCode's configuration denies stays denied.
-
-The model must be a `provider/model` ID from `opencode models`, and the effort
-one of the levels OpenCode offers for that model (`default` for a model without
-levels); a launch with any other value fails and names it.
-
-- **Text and tools.** Text and reasoning stream into the transcript as OpenCode
-  writes them. A subagent's text and tool calls appear nested under the call
-  that started it.
-- **Questions.** OpenCode's question tool becomes one attention request per
-  question, with the options as choices and free text for another answer;
-  OpenCode receives the answers once every question has one.
-- **Messages and interrupts.** OpenCode runs one prompt at a time, so a message
-  sent during a turn waits in the plugin and starts the next turn when the
-  current one ends, together with any other waiting messages. Interrupt cancels
-  the turn and any open questions, and the stopped turn stays in the transcript.
-- **State and usage.** The agent is working from the start of a turn until its
-  last prompt has finished. A prompt that ends normally with the main
-  conversation's text as its last output, after any tool call, reports that
-  message as the final response when no prompt is waiting. Context and cost come from OpenCode's usage updates
-  for the main conversation, and the context window from the model.
-
-## Codex
-
-The plugin keeps one `codex app-server` process running per agent and speaks
-its JSON-RPC protocol to it. The agent's thread runs with an automatic reviewer
-answering approval requests, in a workspace-write sandbox with network access,
-in a trusted folder, with the `hypercube mcp` server as an MCP server whose
-tools need no approval. The agent's Git directories are writable, so a child session
-can commit in its worktree. The runtime instructions are the thread's developer
-instructions on every launch, and a saved conversation resumes with
-`thread/resume`. A conversation Codex cannot resume fails the launch.
-Hypercube agents share a separate Codex home and SQLite directory under
-Hypercube's state directory, so their conversations stay out of the normal
-Codex Recents list. Known user configuration, credentials, instructions, skills,
-and plugins are linked from the inherited `CODEX_HOME` or `~/.codex`; `HOME`
-stays unchanged. On the first
-resume of an older conversation, the plugin copies only its native rollout into
-private storage and resumes the same conversation ID.
-
-- **Text and tools.** Text and reasoning summaries stream into the transcript
-  as Codex writes them. Commands, file changes, MCP and other tool calls, and
-  web searches appear as tool calls. A native subagent's items appear nested
-  under the call that started it.
-- **Approvals and questions.** A request the automatic reviewer does not settle
-  becomes an attention request. A command, file change, or permission request
-  offers Allow, Deny, and Allow for this session when Codex accepts it; Codex
-  cancels the turn on Deny when it offers no decline. Command and file change
-  approvals have the grants `commandExecution` and `fileChange`; network host,
-  write-root, and permission approvals have none. Codex's questions become
-  one attention request per question, with the options as choices and free text
-  where Codex allows it. Blocking questions are answered together; async
-  questions send each answer as a message. New input or a new turn closes any
-  remaining async questions for that thread.
-  An MCP server's request is Accept or Decline, or one attention request per
-  field of its form. An MCP tool approval offers no Always allow, because Codex
-  does not name the tool.
-- **Messages and interrupts.** A message sent during a turn steers it, and
-  Codex reads it before its next step; a message sent when no turn is running
-  starts one. Interrupt stops the turn and gives up any open request, and the
-  stopped turn stays in the transcript.
-- **State and usage.** The agent is working from the start of a turn until it
-  ends. A completed turn reports the main thread's messages that Codex marks as
-  its final answer. Context is the tokens of the latest request, and the context window
-  comes from the model. Usage limits come from the windows of the account's
-  general limit in Codex's rate limit updates, which follow each turn.
-
-## Pi
-
-Pi 1.4 or later is required. The plugin keeps one `pi --mode rpc` process
-running per agent and speaks its JSON Lines protocol to it. A small extension
-loaded with the process registers the `hypercube mcp` server, and the runtime
-instructions are appended to Pi's system prompt on every launch.
-
-The model is a `provider/id` from `pi --list-models`, and effort is Pi's
-thinking level. Pi replaces a partial model ID with another model; a launch
-whose model Pi did not select fails and names both. Pi saves a conversation from
-its first message, and a saved conversation resumes by its Pi session ID. A
-conversation without a saved Pi session fails the launch.
-
-- **Text and tools.** Text and reasoning stream into the transcript as Pi writes
-  them. Tool calls appear with their output.
-- **Dialogs.** An extension's select, confirm, input, and editor dialogs become
-  attention requests: a select's options are the choices, a confirm offers Yes
-  and No, and input and editor take text. A dialog that Pi gives up on after its
-  timeout ends. An extension's error notification appears as an error.
-- **Messages and interrupts.** A message sent during a run steers it, and Pi
-  reads it after the current step's tool calls, before its next model request; a
-  message sent when Pi is idle starts a run. Interrupt gives up open dialogs and
-  aborts the run, and the stopped run stays in the transcript.
-- **State and usage.** The agent is working from the start of a run until Pi
-  settles, with no retry, compaction, or queued message left. A run whose last
-  message ended normally reports that message's text as the final response.
-  Context is the
-  tokens of the latest request, the context window comes from the model, and
-  cost is the session's total, including its cost before a resume.
+The [protocol types](../internal/harness/protocol.go) define commands, replies,
+transcript items, and usage fields. Native mappings live in the
+[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode),
+[Codex](../plugins/codex), and [Pi](../plugins/pi) plugins. Restart a session to
+load a newly installed plugin.

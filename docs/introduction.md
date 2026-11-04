@@ -1,132 +1,80 @@
-# Introduction to Hypercube
+# Sessions, context, and working copies
 
-Hypercube is a macOS app for working with teams of local coding agents. You
-give an agent a task, follow its work in a chat, and steer it as it reads and
-changes files, runs commands, and checks results. For work that benefits from
-parallel effort, that agent can bring in other agents and coordinate their
-contributions.
+A session has its own conversation and working directory. Two sessions can have
+separate histories while editing exactly the same files. Starting another chat
+does not create another checkout.
 
-Hypercube runs existing coding tools—Claude Code, OpenCode, Codex, and Pi—and
-adds a shared interface for their conversations, coordination, files, and
-terminals. The agents run locally with your credentials and access to your
-files. You can use the interface in the Hypercube window or in your web browser;
-the agents' Browser tabs require the Hypercube window.
+## Working in the same checkout
 
-## Workspaces, sessions, and agents
+Sessions you create yourself are top-level sessions. They use the workspace's
+original folder by default. A workspace is a project folder; for Git projects,
+it is the top level of the checkout.
+Sessions using that folder share files, staged changes, and the current branch.
+If one changes a file or switches branches, the others see that change.
 
-A **workspace** is a project folder and the sessions associated with it. For a
-Git project, the workspace folder is the top level of the checkout. A folder
-outside Git can also be a workspace. The sidebar labels each top-level session
-with its workspace above its title.
+This is useful for reviewing work that has not been committed. For example,
+ask an agent:
 
-A **session** holds one agent and its conversation. It has its own chat history,
-working directory, and title. You can keep separate sessions for different
-tasks in the same project and return to their conversations later.
+> Have another agent review the uncommitted changes in this checkout.
+> Ask it to report findings without editing files.
 
-An **agent** is the coding assistant doing the work in a session. Its
-**harness** is the tool running it, such as Claude Code or Codex. A **profile**
-selects the harness, model, and reasoning effort. When starting a session, you
-choose a profile beneath the message box before sending the first prompt.
+The agent can create a child in the same directory. Your original session is
+its parent. That reviewer sees the actual working files, including changes
+absent from Git history. Its chat appears beneath the parent in the sidebar.
 
-Sessions you create with **New Session** are **top-level sessions**. Each works
-in the workspace's original folder unless you check
-the **Worktree** switch beside the profile before the first prompt, which gives it its
-own worktree and branch. Separate chats do not give the sessions in the
-original folder separate copies of the project: they share files, the Git
-index (staged changes), and the checked-out branch. Changes made by one are
-visible to the others. A worktree session's work reaches the original
-checkout's branch when you press Merge beside its branch under the message
-box and its agent merges it.
+## Working on separate branches
 
-## Parents and children
+For independent edits, a child can have its own Git worktree: another checkout
+on its own branch. The parent can keep working without sharing staged files
+or mixing the child's edits into its own working copy.
 
-A top-level session can create **child sessions** to handle parts of a task.
-It becomes their **parent**: it assigns work, exchanges messages, and brings
-the results together. A parent and its children form a **family**. Children
-appear beneath their parent in the sidebar, and each has its own agent,
-profile, conversation, and working directory. Children cannot create further
-child sessions.
+A parent might therefore use both arrangements:
 
-For example, you might ask a parent to add a feature. It could ask one child
-to implement a self-contained part and another to review the result. You can
-follow the overall task in the parent's chat, or select a child to inspect its
-work and speak to it directly.
+```text
+Parent session         original checkout
+├── Review child       same checkout, including uncommitted edits
+└── Implementation     separate worktree and branch
+```
 
-### Worktrees keep file changes separate
+A new worktree starts at the parent's current commit. It does **not** include
+the parent's uncommitted changes. If a child's work depends on those changes,
+they need to be committed first, or the child needs to use the existing checkout.
+Ignored local files such as `.env` can be supplied through
+[`.worktreeinclude`](configuration.md#local-files-in-worktrees).
 
-In a Git workspace, a child normally gets a **worktree**: another checkout of
-the same repository in a separate folder, on its own branch. This lets it
-change files without changing the parent's working files. The new branch
-starts from the parent's current commit; it does not include the parent's
-uncommitted changes. The child commits its work, and the parent merges the
-branch into its own branch, in the original checkout or in the parent's
-worktree.
+Work from a child's branch reaches the parent through a Git merge. The child
+is instructed to commit on its branch; the parent merges it when asked. Ending
+the child removes its managed worktree only after Git confirms that its changes
+are committed and merged.
 
-A child can instead work in an existing directory. This is useful for tasks
-such as reading code or reviewing changes in the parent's checkout. Children
-given the same directory share its files and Git state. Outside Git, children
-must use existing directories because Hypercube cannot create worktrees there.
+You can also give a session you create its own worktree: turn on **Worktree**
+before its first prompt. Its children's branches merge into that session's
+branch. The **Merge** button below its message box asks the agent to integrate
+its work into the original checkout.
 
-Worktrees separate working files; agents still have access to the local
-filesystem. The parent coordinates which agent edits which files.
+Outside Git, children need an existing directory because Hypercube cannot
+create worktrees. Worktrees separate working files; agents still have access
+to the rest of your local filesystem.
 
-### Messaging connects separate conversations
+## What the other agent knows
 
-Agents do not automatically see each other's chats. They use explicit
-messages to share instructions, findings, and results. A parent can message
-its children and other running top-level sessions, including those in other
-workspaces. A child can message only its parent. Stopped or ended sessions
-cannot receive agent messages.
+A child receives its assignment, not a copy of the parent's conversation. The
+parent needs to pass the relevant decisions, file locations, and expected
+result. Each agent can read the files in its working directory, but information
+from another chat reaches it only through explicit messages.
 
-Messages between agents appear in the transcript with their sender or
-recipient. A message that starts a turn has an expandable preview; messages
-received during work appear in full. The child sends its parent a message to
-report results or ask for help.
+Writing a final response in the child's chat does not by itself inform the
+parent. The child reports back through Hypercube's messaging tools. Messages
+appear in both conversations, so you can see what was actually communicated.
+You can also speak to a child directly.
 
-## Finding your way around the UI
+A parent can message its children and other running top-level sessions, even
+in another workspace. A child can message only its parent and cannot create
+children of its own. Stopped and ended sessions cannot receive agent messages.
 
-The interface follows the selected session. Switching sessions changes the
-chat, file tree, and terminal to that session's work.
+The parent and its children form a family. Starting or stopping the parent
+affects that family; see [session lifecycle](usage.md#resume-and-cleanup).
 
-| Area | What it shows and does |
-| --- | --- |
-| Left sidebar | Sessions labeled with their workspace, with children nested under parents. Use **New Session** to begin a session; choose or add its workspace below the composer. Select a row to open its chat; double-click its title to rename it. |
-| Central tab area | The session's chat alongside any open files. Drag tabs to arrange them in split panes, and drag dividers to resize them. |
-| Chat and message box | Your conversation with the agent. Follow reasoning and tool calls live; after a successful turn, expand its “Worked for …” row to inspect the activity. Send instructions or follow-ups from the box below the transcript, and attach images with the paperclip or by dropping them onto the chat. |
-| Right panel | **Files** shows a read-only tree of the session's directory, including a child's worktree. Click a file to preview it; double-click to keep its tab open. **Changes** shows the branch, commits not merged into the checkout's branch, and the repository's uncommitted files with their status and added and removed line counts. Click a file to preview its diff; double-click the tab to keep it open. |
-| Bottom terminal panel | Your shell in the selected session's directory. Each session has its own shell, which keeps running when you hide the panel. |
-| Browser tab | In the Hypercube window, a page the session's agent can navigate and interact with. The tab appears when the agent first loads a page. You can also navigate it yourself or open the page in your default browser. |
-
-The layout buttons in the header at the top of the window show or hide the sidebar,
-terminal panel, and right panel.
-
-### Steering work and answering requests
-
-Press **Enter** in the message box to send, or **Shift+Enter** for a new line.
-You can send a follow-up while the agent is working. Press **Escape** in the
-chat to interrupt its current turn; the conversation remains available.
-
-A spinning indicator means the session is working, an amber dot means it is
-waiting on you, and a blue dot marks an unseen reply. Notification cards at
-the top right bring replies, questions, and approval requests from other
-sessions to your attention. You can answer requests in their chat or on a
-notification card. A child's requests also appear in the parent's chat, so
-you can answer them while following the overall task. When Hypercube is not
-the app you are using, macOS notifications bring the same requests and replies
-to you, and clicking one opens its session.
-
-## Pausing and finishing work
-
-Stopping a top-level session stops its family and keeps the conversations so
-you can resume later. Use its sidebar menu to start or stop it. Closing the
-interface leaves agents running until you stop them. See
-[Resume and cleanup](usage.md#resume-and-cleanup) for the details.
-
-Ending a child is permanent. The parent ends it when its work is done;
-Hypercube checks that a managed worktree is clean and its commits are merged
-before removing the worktree and branch. The ended child's saved chat remains
-readable. Deleting a session removes its chat; deleting a parent also removes
-its children.
-
-For detailed controls and session behavior, continue with the
-[usage guide](usage.md).
+Native subagents created by a harness are separate from Hypercube children.
+Their activity appears inside a tool call in the existing chat rather than as
+another session in the sidebar.
