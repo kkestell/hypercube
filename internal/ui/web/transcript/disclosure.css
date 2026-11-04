@@ -22,7 +22,7 @@
 .disclosure-heading {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space-6);
   min-width: 0;
 }
 

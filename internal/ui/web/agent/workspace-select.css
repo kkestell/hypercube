@@ -1,8 +1,8 @@
 .workspace-select {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 2);
-  margin: 0 var(--size-content-inset) var(--size-content-inset);
+  gap: var(--size-space-8);
+  margin: 0 var(--size-panel-inset) var(--size-panel-inset);
 }
 
 .workspace-select-control {

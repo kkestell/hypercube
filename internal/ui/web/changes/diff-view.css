@@ -3,11 +3,11 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding-top: var(--size-space);
+  padding-top: var(--size-space-4);
   color: var(--vscode-editor-foreground);
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
-  line-height: 1.5;
+  line-height: var(--size-line-body);
 }
 
 .diff-view-line {
@@ -48,8 +48,8 @@
 
 .diff-view-message {
   margin: auto;
-  padding: calc(var(--size-space) * 6);
+  padding: var(--size-space-24);
   text-align: center;
   font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
+  font-size: var(--size-font-body);
 }

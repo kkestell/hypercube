@@ -58,7 +58,7 @@
   flex-shrink: 0;
   width: var(--size-icon);
   height: var(--size-icon);
-  font-size: var(--size-icon);
+  color: inherit;
 }
 
 .tabs-select:focus-visible {

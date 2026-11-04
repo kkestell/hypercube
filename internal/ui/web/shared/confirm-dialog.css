@@ -2,15 +2,15 @@
 .confirm-dialog {
   flex-direction: column;
   width: min-content;
-  min-width: 500px;
+  min-width: var(--size-dialog-min-width);
   max-width: 90vw;
   margin: auto;
-  padding: calc(var(--size-space) * 2.5);
+  padding: var(--size-space-8);
   border: 0;
-  border-radius: var(--size-radius);
+  border-radius: var(--size-radius-control);
   background: var(--vscode-editorWidget-background);
   color: var(--vscode-editorWidget-foreground);
-  box-shadow: 0 0 calc(var(--size-space) * 2) calc(var(--size-space) / 2) var(--vscode-widget-shadow);
+  box-shadow: 0 0 var(--size-space-8) var(--size-space-2) var(--vscode-widget-shadow);
 }
 
 .confirm-dialog[open] {
@@ -21,13 +21,13 @@
   display: flex;
   justify-content: flex-end;
   height: var(--size-row-height);
-  padding-bottom: var(--size-space);
+  padding-bottom: var(--size-space-4);
 }
 
 .confirm-dialog-message-row {
   display: flex;
   align-items: center;
-  padding: 0 calc(var(--size-space) * 2.5);
+  padding: 0 var(--size-space-8);
 }
 
 .confirm-dialog-icon {
@@ -39,14 +39,14 @@
 .confirm-dialog-text {
   display: flex;
   flex-direction: column;
-  padding-left: calc(var(--size-space) * 6);
+  padding-left: var(--size-space-24);
   overflow-wrap: anywhere;
   user-select: text;
 }
 
 .confirm-dialog-message {
-  margin-bottom: calc(var(--size-space) * 2);
-  font-size: 18px;
+  margin-bottom: var(--size-space-8);
+  font-size: var(--size-font-heading);
   line-height: var(--size-row-height);
 }
 
@@ -57,7 +57,7 @@
 .confirm-dialog-buttons {
   display: flex;
   justify-content: flex-end;
-  gap: calc(var(--size-space) * 2.5);
-  margin-top: calc(var(--size-space) * 5);
-  padding: var(--size-space) calc(var(--size-space) * 1.25);
+  gap: var(--size-space-8);
+  margin-top: var(--size-space-20);
+  padding: var(--size-space-4);
 }

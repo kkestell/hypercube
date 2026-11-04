@@ -3,7 +3,7 @@
   flex-shrink: 0;
   width: var(--size-dot);
   height: var(--size-dot);
-  border-radius: 50%;
+  border-radius: var(--size-radius-round);
 }
 
 .status-dot-waiting {

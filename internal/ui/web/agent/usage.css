@@ -2,7 +2,7 @@
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: calc(var(--size-space) * 3);
+  gap: var(--size-space-12);
   margin-left: auto;
   white-space: nowrap;
 }
@@ -10,12 +10,12 @@
 .usage-context {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space-6);
 }
 
 .usage-ring {
-  width: calc(var(--size-icon) - var(--size-border) * 2);
-  height: calc(var(--size-icon) - var(--size-border) * 2);
+  width: var(--size-icon);
+  height: var(--size-icon);
   transform: rotate(-90deg);
 }
 

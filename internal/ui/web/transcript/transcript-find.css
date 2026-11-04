@@ -2,22 +2,22 @@
   position: absolute;
   z-index: 1;
   top: 0;
-  right: calc(var(--size-space) * 3);
+  right: var(--size-space-12);
   display: flex;
   align-items: center;
-  gap: var(--size-space);
-  padding: calc(var(--size-space) * 2);
+  gap: var(--size-space-4);
+  padding: var(--size-space-8);
   background: var(--vscode-editorWidget-background);
   border: var(--size-border) solid var(--vscode-editorWidget-border);
-  box-shadow: 0 var(--size-space) calc(var(--size-space) * 3) var(--vscode-widget-shadow);
+  box-shadow: 0 var(--size-space-4) var(--size-space-12) var(--vscode-widget-shadow);
 }
 
-.transcript-find vscode-textfield { width: calc(var(--size-row-height) * 8); }
+.transcript-find vscode-textfield { width: var(--size-find-width); }
 .transcript-find-empty { outline: var(--size-border) solid var(--vscode-inputValidation-errorBorder); }
 .transcript-find-count { white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .transcript-find button {
   border: 0;
-  padding: var(--size-space);
+  padding: var(--size-space-4);
   color: var(--vscode-icon-foreground);
   background: transparent;
   cursor: pointer;

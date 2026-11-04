@@ -1,15 +1,15 @@
 .attention-item {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--size-space) * 2);
-  line-height: 1.5;
+  gap: var(--size-space-8);
+  line-height: var(--size-line-body);
 }
 
 .attention-item-open {
   width: fit-content;
   max-width: 100%;
-  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
-  border-radius: var(--size-radius);
+  padding: var(--size-space-8) var(--size-space-12);
+  border-radius: var(--size-radius-control);
   border: var(--size-border) solid var(--vscode-widget-border);
   background: var(--vscode-editorWidget-background);
 }
@@ -26,7 +26,7 @@
 .attention-item-answer {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space-6);
 }
 
 .attention-item-source {

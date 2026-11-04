@@ -8,7 +8,7 @@
 .panel-tabs-content {
   flex: 1;
   min-height: 0;
-  padding-top: var(--size-space-12);
+  padding-top: var(--size-panel-inset);
 }
 
 .panel-tabs-content[hidden] {

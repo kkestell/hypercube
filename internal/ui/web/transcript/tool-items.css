@@ -1,7 +1,6 @@
 /* Each row is one row height tall. A call's status icon sits in a fixed
    column, and what the call shows starts at its title. */
 .tool-items-call {
-  --tool-items-status-width: calc(var(--size-icon) + var(--size-space) * 1.5);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -10,7 +9,7 @@
 .tool-items-header {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space-6);
   min-width: 0;
   line-height: var(--size-row-height);
   color: var(--vscode-descriptionForeground);
@@ -40,23 +39,23 @@
 .tool-items-body {
   display: flex;
   flex-direction: column;
-  gap: var(--size-space);
+  gap: var(--size-space-4);
 }
 
 .tool-items-body,
 .tool-items-call > .transcript-images {
-  padding: var(--size-space) 0 var(--size-space) var(--tool-items-status-width);
+  padding: var(--size-space-4) 0 var(--size-space-4) var(--size-icon-column);
 }
 
 .tool-items-text {
-  max-height: calc(var(--size-row-height) * 12);
+  max-height: var(--size-preview-max-height);
   overflow: auto;
-  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
-  border-radius: var(--size-radius);
+  padding: var(--size-space-8) var(--size-space-12);
+  border-radius: var(--size-radius-control);
   background: var(--vscode-textCodeBlock-background);
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
-  line-height: 1.5;
+  line-height: var(--size-line-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -68,6 +67,6 @@
 .tool-items-children {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--size-space) * 3);
-  padding-top: calc(var(--size-space) * 2);
+  gap: var(--size-space-12);
+  padding-top: var(--size-space-8);
 }

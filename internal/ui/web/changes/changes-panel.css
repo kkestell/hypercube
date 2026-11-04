@@ -5,17 +5,17 @@
 .changes-panel-row {
   display: flex;
   align-items: center;
-  gap: calc(var(--size-space) * 1.5);
+  gap: var(--size-space-6);
   width: 100%;
-  height: var(--size-row-height);
-  padding: 0 calc(var(--size-space) * 3) 0 var(--size-content-inset);
+  height: var(--size-tree-row-height);
+  padding: 0 var(--size-panel-inset);
   color: inherit;
   white-space: nowrap;
   text-align: left;
 }
 
 .changes-panel-branch {
-  margin-bottom: var(--size-space);
+  margin-bottom: var(--size-space-4);
   color: var(--vscode-descriptionForeground);
 }
 
@@ -53,7 +53,7 @@
 .changes-panel-description {
   min-width: 0;
   color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
+  font-size: var(--size-font-label);
 }
 
 .changes-panel-list {
@@ -65,10 +65,10 @@
 .changes-panel-stat {
   display: flex;
   flex-shrink: 0;
-  gap: var(--size-space);
+  gap: var(--size-space-4);
   margin-left: auto;
   color: var(--vscode-descriptionForeground);
-  font-size: 0.9em;
+  font-size: var(--size-font-label);
   font-variant-numeric: tabular-nums;
 }
 
@@ -92,6 +92,6 @@
 }
 
 .changes-panel-message {
-  padding: 0 var(--size-content-inset);
+  padding: 0 var(--size-panel-inset);
   overflow-wrap: anywhere;
 }

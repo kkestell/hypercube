@@ -17,7 +17,7 @@
 
 .file-view-message {
   margin: auto;
-  padding: calc(var(--size-space) * 6);
+  padding: var(--size-space-24);
   text-align: center;
 }
 
@@ -27,7 +27,7 @@
   margin: 0;
   font-family: var(--vscode-editor-font-family);
   font-size: var(--vscode-editor-font-size);
-  line-height: 1.5;
+  line-height: var(--size-line-body);
   white-space: pre;
 }
 
@@ -37,7 +37,7 @@
   flex-shrink: 0;
   box-sizing: content-box;
   width: calc(var(--digits) * 1ch);
-  padding: 0 calc(var(--size-space) * 6.5) 0 calc(var(--size-space) * 4.5);
+  padding: 0 var(--size-space-24) 0 var(--size-panel-inset);
   background: var(--editor-area-background);
   color: var(--vscode-editorLineNumber-foreground);
   text-align: right;
@@ -45,7 +45,7 @@
 }
 
 .file-view-code {
-  padding-right: calc(var(--size-space) * 3.5);
+  padding-right: var(--size-panel-inset);
   tab-size: 4;
 }
 

@@ -1,7 +1,7 @@
 .copy-button {
   border: 0;
-  border-radius: var(--size-radius);
-  padding: var(--size-space);
+  border-radius: var(--size-radius-control);
+  padding: var(--size-space-4);
   color: var(--vscode-icon-foreground);
   background: var(--vscode-editor-background);
   cursor: pointer;
@@ -20,8 +20,8 @@
 
 .markdown-code-block > .copy-button {
   position: absolute;
-  top: var(--size-space);
-  right: var(--size-space);
+  top: var(--size-space-4);
+  right: var(--size-space-4);
 }
 
 .copy-button-actions {

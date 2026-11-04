@@ -1,16 +1,16 @@
 .transcript-text {
   display: flex;
   flex-direction: column;
-  gap: calc(var(--size-space) * 2);
+  gap: var(--size-space-8);
   min-width: 0;
 }
 
 .transcript-error {
-  padding: calc(var(--size-space) * 2) calc(var(--size-space) * 3);
+  padding: var(--size-space-8) var(--size-space-12);
   border: var(--size-border) solid var(--vscode-inputValidation-errorBorder);
-  border-radius: calc(var(--size-radius) * 2);
+  border-radius: var(--size-radius-surface);
   background: var(--vscode-inputValidation-errorBackground);
-  line-height: 1.5;
+  line-height: var(--size-line-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

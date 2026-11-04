@@ -1,5 +1,5 @@
 .editor-tabs-select {
-  max-width: 220px;
+  max-width: var(--size-tab-max-width);
 }
 
 .editor-tabs-label {
@@ -20,10 +20,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--size-icon) + var(--size-space));
-  height: calc(var(--size-icon) + var(--size-space));
-  margin: 0 var(--size-space);
-  border-radius: var(--size-radius);
+  width: var(--size-action);
+  height: var(--size-action);
+  margin: 0 var(--size-space-4);
+  border-radius: var(--size-radius-control);
   color: inherit;
   visibility: hidden;
 }
