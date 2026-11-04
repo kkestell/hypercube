@@ -170,6 +170,8 @@ files with their status and added and removed line counts. It covers the whole
 repository containing the session's folder. Click a file to open its unified
 diff in a preview tab; double-click the tab to keep it open. Files
 shows the session's directory as a read-only tree, including a child's worktree.
+In a file or diff, Command+F opens find; Enter and Shift+Enter move between matches, and Escape closes it. Toggle word wrap for all files and diffs with the tab bar button or Option+Z. In a diff, the arrow buttons or Option+F5 and Shift+Option+F5 move between changes.
+
 After an ended child's worktree is removed, it says the folder no longer exists. Click a file to preview it in
 the tab area, and double-click it to keep its tab open. Right-click a tree row
 or file tab to copy its absolute or relative path. A Markdown file opens in its

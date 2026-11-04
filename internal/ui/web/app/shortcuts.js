@@ -1,6 +1,6 @@
 import {chooseSession} from '../sessions/session-actions.js';
 import {openUnsent, runningFirst} from '../sessions/selection.js';
-import {toggle} from './workbench.js';
+import {toggle, toggleWrap} from './workbench.js';
 import {windowHandler} from './window.js';
 
 // Bindings also supply the native menus and the keyboard reference.
@@ -20,7 +20,10 @@ export const shortcuts = [
   {id: 'zoomIn', section: 'View', title: 'Zoom In', keys: ['⌘=', '⌘+'], menu: true, native: true},
   {id: 'zoomOut', section: 'View', title: 'Zoom Out', keys: ['⌘-'], menu: true, native: true},
   {id: 'zoomReset', section: 'View', title: 'Actual Size', keys: ['⌘0'], menu: true, native: true},
-  {id: 'find', section: 'View', title: 'Find in Transcript', keys: ['⌘F']},
+  {id: 'wrap', section: 'View', title: 'Toggle Word Wrap', keys: ['⌥Z']},
+  {id: 'nextChange', section: 'View', title: 'Next Change', keys: ['⌥F5']},
+  {id: 'previousChange', section: 'View', title: 'Previous Change', keys: ['⌥⇧F5']},
+  {id: 'find', section: 'View', title: 'Find', keys: ['⌘F']},
   {id: 'findNext', section: 'View', title: 'Next Match', keys: ['⌘G', 'F3']},
   {id: 'findPrevious', section: 'View', title: 'Previous Match', keys: ['⌘⇧G', '⇧F3']},
   {id: 'help', section: 'Help', title: 'Keyboard Shortcuts', keys: ['⌘/'], menu: true},
@@ -36,7 +39,7 @@ export function matches(event, id) {
   const item = shortcuts.find(s => s.id === id);
   return item.keys.some(text => {
     const b = binding(text);
-    const key = event.altKey && event.code === 'KeyB' ? 'b' : event.key.toLowerCase();
+    const key = event.altKey && ['KeyB', 'KeyZ'].includes(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
     const range = b.key.match(/^(.)–(.)$/);
     const keyMatches = range ? key.length === 1 && key >= range[1] && key <= range[2] : key === b.key.toLowerCase();
     return keyMatches && !!event.metaKey === b.metaKey && !!event.altKey === b.altKey && !!event.ctrlKey === b.ctrlKey && !!event.shiftKey === b.shiftKey;
@@ -54,7 +57,8 @@ export function shortcut(e, store, {focusComposer, showHelp, showSettings, openQ
   const is = name => id ? id === name : matches(e, name);
   const field = e.target.closest('input, textarea, [contenteditable="true"]');
   let action;
-  if (is('searchSessions')) action = openSessionSearch;
+  if (is('wrap') && !field) action = () => store.update(toggleWrap);
+  else if (is('searchSessions')) action = openSessionSearch;
   else if (is('quickOpen') && state.session && !state.unsent) action = openQuickOpen;
   else if (is('new')) action = () => store.update(s => openUnsent(s));
   else if (is('composer')) action = focusComposer;

@@ -1,12 +1,12 @@
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
-import {Icon} from '../shared/icon.jsx';
+import {Icon} from './icon.jsx';
 // The transcript's find widget follows rendered content as it changes.
 import {useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {matches} from '../app/shortcuts.js';
-import {transcriptMatches} from './transcript-matches.js';
+import {findMatches} from './find-matches.js';
 
-export function TranscriptFind({list, view}) {
+export function Find({list, view, scope = 'transcript'}) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState('');
   const [ranges, setRanges] = useState([]), [index, setIndex] = useState(0);
   const input = useRef(null), previousFocus = useRef(null);
@@ -20,7 +20,7 @@ export function TranscriptFind({list, view}) {
   useEffect(() => {
     const keydown = event => {
       const focus = document.activeElement;
-      const pane = view.current.closest('.agent-pane');
+      const pane = view.current.closest(scope === 'transcript' ? '.agent-pane' : '.editor-pane');
       if (focus !== document.body && focus !== document.documentElement && !(pane ?? view.current.parentElement).contains(focus)) return;
       if (matches(event, 'find')) {
         event.preventDefault();
@@ -41,7 +41,7 @@ export function TranscriptFind({list, view}) {
     setIndex(0);
     if (!open) { setRanges([]); return; }
     const update = () => {
-      const found = transcriptMatches(list.current, query);
+      const found = findMatches(list.current, query);
       setRanges(found);
       setIndex(i => Math.min(i, Math.max(0, found.length - 1)));
     };
@@ -70,10 +70,10 @@ export function TranscriptFind({list, view}) {
     previousFocus.current?.focus();
   };
   if (!open) return null;
-  return <div className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" role="search" aria-label="Find in transcript" onKeyDown={event => {
+  return <div className={scope === 'transcript' ? 'transcript-find flex shrink-0 items-center gap-2 border-b p-2' : 'absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md'} role="search" aria-label={`Find in ${scope}`} onKeyDown={event => {
     if (event.key === 'Escape') { event.preventDefault(); close(); }
   }}>
-    <Input ref={input} value={query} placeholder="Find" aria-label="Find in transcript" onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
+    <Input ref={input} value={query} placeholder="Find" aria-label={`Find in ${scope}`} onChange={event => setQuery(event.currentTarget.value)} onKeyDown={event => {
       if (event.key === 'Enter') { event.preventDefault(); step(event.shiftKey ? -1 : 1); }
     }} />
     <span className="transcript-find-count shrink-0 text-xs text-muted-foreground" aria-live="polite">{ranges.length ? `${index + 1} of ${ranges.length}` : 'No results'}</span>

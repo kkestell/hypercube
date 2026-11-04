@@ -9,3 +9,5 @@ export const selectRightTab = (state, tab) => ({...state, workbench: {...state.w
 export const closePanel = state => state.workbench.panel ? {...state, workbench: {...state.workbench, panel: false}} : state;
 
 export const setVisible = (state, visible) => ({...state, visible});
+
+export const toggleWrap = state => ({...state, workbench: {...state.workbench, wrap: !state.workbench.wrap}});

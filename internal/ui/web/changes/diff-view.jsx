@@ -1,11 +1,15 @@
 // A unified whole-file diff with separately highlighted old and new text.
 import {useEffect, useMemo, useRef, useState} from 'react';
+import {matches} from '../app/shortcuts.js';
+import {Button} from '../components/ui/button';
+import {Find} from '../shared/find.jsx';
+import {Icon} from '../shared/icon.jsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {language} from '../files/language.js';
 import {useStore} from '../store.js';
 import {diffNote, diffRows} from './diff.js';
 
-function DiffLines({text, path}) {
+function DiffLines({text, path, wrap}) {
   const rows = useMemo(() => diffRows(text), [text]);
   const [highlighted, setHighlighted] = useState(null);
   useEffect(() => {
@@ -22,12 +26,12 @@ function DiffLines({text, path}) {
   }, [rows, path]);
   if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
   const html = highlighted?.text === text ? highlighted : null;
-  return <table className="diff-view-lines w-full border-collapse font-mono text-sm leading-5"><tbody>{rows.map((row, i) => {
+  return <table className={`diff-view-lines w-full border-collapse font-mono text-sm leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
     return (
-      <tr key={i} className={`diff-view-line diff-view-${row.kind}`}>
-        <td className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.old}</td><td className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.new}</td><td className="w-6 px-1 py-0 text-center align-top text-muted-foreground">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</td>
-        <td className="whitespace-pre px-2 py-0 align-top">{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</td>
+      <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={`diff-view-line diff-view-${row.kind}`}>
+        <td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.old}</td><td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.new}</td><td data-find-ignore className="w-6 px-1 py-0 text-center align-top text-muted-foreground">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</td>
+        <td className={`${wrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"} px-2 py-0 align-top`}>{line === undefined ? <code>{row.text}</code> : <code dangerouslySetInnerHTML={{__html: line}} />}</td>
       </tr>
     );
   })}</tbody></table>;
@@ -35,13 +39,40 @@ function DiffLines({text, path}) {
 
 export function DiffView({id, path}) {
   const [state] = useStore();
-  const view = useRef(null);
+  const view = useRef(null), list = useRef(null);
+  const current = useRef(-1);
   useScrollMemory(view, id);
   const diff = state.session.diffs[path];
+  const move = direction => {
+    const changes = [...list.current.querySelectorAll('[data-change]')];
+    if (!changes.length) return;
+    current.current = current.current < 0 ? (direction > 0 ? 0 : changes.length - 1) : (current.current + direction + changes.length) % changes.length;
+    changes[current.current].scrollIntoView({block: 'center'});
+  };
+  useEffect(() => {
+    current.current = -1;
+  }, [diff?.text]);
+  useEffect(() => {
+    const keydown = event => {
+      const pane = view.current.closest('.editor-pane');
+      if (!pane?.contains(document.activeElement) || !(matches(event, 'nextChange') || matches(event, 'previousChange'))) return;
+      event.preventDefault();
+      move(matches(event, 'previousChange') ? -1 : 1);
+    };
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [diff?.text]);
+  const hasChanges = diff?.text && diffRows(diff.text).some(row => row.kind !== 'context');
   return (
-    <div ref={view} className="diff-view min-h-0 flex-1 overflow-auto">
-      {diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
-        : diff.text !== null ? <DiffLines text={diff.text} path={path} /> : null)}
-    </div>
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div className="flex justify-end border-b p-1">
+        <Button variant="ghost" size="icon" aria-label="Previous change" title="Previous change (Shift+Option+F5)" disabled={!hasChanges} onClick={() => move(-1)}><Icon name="arrow-up" /></Button>
+        <Button variant="ghost" size="icon" aria-label="Next change" title="Next change (Option+F5)" disabled={!hasChanges} onClick={() => move(1)}><Icon name="arrow-down" /></Button>
+      </div>
+      <Find list={list} view={view} scope="diff" />
+    <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">
+      <div ref={list}>{diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
+        : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench?.wrap} /> : null)}</div>
+    </div></div>
   );
 }

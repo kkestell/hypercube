@@ -1,7 +1,7 @@
 // Find text across inline markup, keeping separate rendered blocks apart.
-export function transcriptMatches(list, query) {
+export function findMatches(list, query) {
   if (!query) return [];
-  const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(list, NodeFilter.SHOW_TEXT, {acceptNode: node => node.parentElement.closest('[data-find-ignore]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
   const blocks = new Map();
   const blockOf = element => {
     if (!element || element === list) return list;

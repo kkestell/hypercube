@@ -26,7 +26,7 @@ const store = createStore({
   dismissed: {},
   errors: [],
   confirmation: null,
-  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files'},
+  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: localStorage.getItem('hypercube.wrap') === 'true'},
   session: null,
   browsers: {},
   fileOpens: {},
@@ -36,6 +36,12 @@ const store = createStore({
 
 startAppearance();
 startDraftStorage(store);
+let savedWrap = store.get().workbench.wrap;
+store.subscribe(state => {
+  if (state.workbench.wrap === savedWrap) return;
+  savedWrap = state.workbench.wrap;
+  localStorage.setItem('hypercube.wrap', String(savedWrap));
+});
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
 startDataSocket(store);
 startFilePolling(store);

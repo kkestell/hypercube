@@ -1,6 +1,7 @@
 // Stock tabs with a separate close action and the existing drag/drop behavior.
 import {useRef} from 'react';
 import {flushSync} from 'react-dom';
+import {toggleWrap} from '../app/workbench.js';
 import {Button} from '../components/ui/button';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {setSource} from '../files/files.js';
@@ -11,7 +12,7 @@ import {useStore} from '../store.js';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.js';
 
 export function EditorTabs({pane, entries}) {
-  const [, store] = useStore();
+  const [state, store] = useStore();
   const strip = useRef(null);
   const menu = usePathMenu();
   const active = entries.find(entry => entry.id === pane?.active);
@@ -40,6 +41,7 @@ export function EditorTabs({pane, entries}) {
     </Tabs>
     {typeof active?.source === 'boolean' && <Button className="editor-tabs-actions" variant="ghost" size="icon" aria-label={modeLabel} title={modeLabel}
       onClick={() => store.update(s => setSource(s, active.path, !active.source))}><Icon name={active.source ? 'open-preview' : 'go-to-file'} /></Button>}
+    {active && !active.agent && !active.browser && <Button variant="ghost" size="icon" aria-label="Toggle Word Wrap" title="Toggle Word Wrap (Option+Z)" aria-pressed={!!state.workbench?.wrap} onClick={() => store.update(toggleWrap)}><Icon name="wrap" /></Button>}
     {menu.element}
   </div>;
 }

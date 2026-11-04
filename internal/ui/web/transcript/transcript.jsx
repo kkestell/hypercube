@@ -8,7 +8,7 @@ import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.jsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.js';
 import {useStore} from '../store.js';
-import {TranscriptFind} from './transcript-find.jsx';
+import {Find} from '../shared/find.jsx';
 import {AttentionItem} from './attention-item.jsx';
 import {TranscriptRow} from './transcript-item.jsx';
 import {transcriptRows} from './transcript-tree.js';
@@ -59,7 +59,7 @@ export function Transcript({session}) {
 
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
-      <TranscriptFind list={list} view={view} />
+      <Find list={list} view={view} />
       <div ref={view} className="transcript min-h-0 flex-1 overflow-auto" onScroll={scrolled}>
         <div ref={list} className="transcript-list flex flex-col gap-1 p-4">
           {rows.map(row => <TranscriptRow key={row.key ?? row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
