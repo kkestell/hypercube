@@ -408,8 +408,9 @@ test('search opens with Command+K and choosing a result shows its session', asyn
   await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', metaKey: true, bubbles: true})));
   const input = document.querySelector('[cmdk-input]');
   expect(input).not.toBeNull();
-  await act(async () => { setValue(input, 'matching'); input.dispatchEvent(new Event('input', {bubbles: true})); });
+  await act(async () => { setValue(input, 'matching '); input.dispatchEvent(new Event('input', {bubbles: true})); });
   expect(document.body.textContent).toContain('matching words');
   await act(async () => clickControl(document.querySelector('[cmdk-item]')));
   expect(store.get().selected).toBe('ended');
 });
+

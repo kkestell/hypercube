@@ -21,6 +21,7 @@ func TestSearchSessions(t *testing.T) {
 		items := []struct{ session, kind, text, extra string }{
 			{"a-child", "user", "Message needle", ""},
 			{"b", "text", "Response needle", ""},
+			{"b", "text", "Latest needle", ""},
 			{"b", "reasoning", "hiddenreason", ""},
 			{"b", "tool", "hiddentool", `,"output":"hiddenoutput"`},
 			{"b", "tool", "", `,"server":"hypercube","tool":"send_message","input":{"text":"outgoingword","to":"targetword"}`},
@@ -44,6 +45,15 @@ func TestSearchSessions(t *testing.T) {
 		}
 		if len(got) != c.want {
 			t.Errorf("search %q returned %v, want %d", c.query, got, c.want)
+		}
+	}
+	var matches []SearchResult
+	if err := db.Read(func(tx *Tx) error { var err error; matches, err = tx.SearchSessions("needle"); return err }); err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range matches {
+		if result.ID == "a" && result.Text != "" || result.ID == "b" && result.Text != "Latest needle" {
+			t.Errorf("unexpected match: %+v", result)
 		}
 	}
 }
