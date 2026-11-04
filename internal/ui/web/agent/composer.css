@@ -5,7 +5,7 @@
   gap: var(--size-space-8);
   margin: var(--size-panel-inset);
   padding: var(--size-space-8);
-  border: var(--size-border) solid var(--vscode-input-border);
+  border: var(--size-border) solid var(--vscode-widget-border);
   border-radius: var(--size-radius-surface);
   background: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
@@ -143,7 +143,7 @@
   overflow: auto;
   background: var(--vscode-editorSuggestWidget-background);
   color: var(--vscode-editorSuggestWidget-foreground);
-  border: var(--size-border) solid var(--vscode-editorSuggestWidget-border);
+  border: var(--size-border) solid var(--vscode-widget-border);
 }
 
 .composer-mentions [role="option"] {

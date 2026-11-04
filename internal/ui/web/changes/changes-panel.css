@@ -1,13 +1,10 @@
-.changes-panel {
-  overflow: auto;
-}
-
 .changes-panel-row {
   display: flex;
   align-items: center;
   gap: var(--size-space-6);
   width: 100%;
   height: var(--size-tree-row-height);
+  line-height: var(--size-tree-row-height);
   padding: 0 var(--size-panel-inset);
   color: inherit;
   white-space: nowrap;
@@ -57,8 +54,6 @@
 }
 
 .changes-panel-list {
-  margin: 0;
-  padding: 0;
   list-style: none;
 }
 
@@ -76,9 +71,9 @@
    colors. */
 .changes-panel-status {
   flex-shrink: 0;
-  /* The codicon squares sit 1px above the label's optical center, which
-     lowercase letters pull below the line box's center. */
-  translate: 0 1px;
+  display: block;
+  width: var(--size-icon);
+  height: var(--size-icon);
 }
 
 .changes-panel-modified > .changes-panel-status { color: var(--vscode-editorGutter-modifiedBackground); }

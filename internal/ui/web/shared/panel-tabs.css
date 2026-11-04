@@ -8,6 +8,7 @@
 .panel-tabs-content {
   flex: 1;
   min-height: 0;
+  overflow: auto;
   padding-top: var(--size-panel-inset);
 }
 

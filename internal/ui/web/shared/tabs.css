@@ -53,11 +53,13 @@
   color: inherit;
 }
 
-.tabs-select > vscode-icon {
+.tabs-select > :is(vscode-icon, .file-icon) {
   display: block;
   flex-shrink: 0;
   width: var(--size-icon);
   height: var(--size-icon);
+  font-size: var(--size-icon);
+  line-height: var(--size-icon);
   color: inherit;
 }
 

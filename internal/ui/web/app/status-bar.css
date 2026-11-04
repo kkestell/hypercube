@@ -59,10 +59,10 @@
 
 .status-bar-meter-pace {
   position: absolute;
-  top: calc(var(--size-space-4) * -0.75);
-  bottom: calc(var(--size-space-4) * -0.75);
+  top: 50%;
   width: var(--size-border);
-  margin-left: calc(var(--size-border) / -2);
+  height: calc(var(--size-space-8) + var(--size-space-2));
+  transform: translate(-50%, -50%);
   background: var(--vscode-statusBar-foreground);
 }
 

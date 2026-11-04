@@ -3,8 +3,8 @@
   flex-direction: column;
   max-width: 100%;
   gap: var(--size-space-8);
-  padding: var(--size-space-8) var(--size-space-8);
-  border: var(--size-border) solid var(--vscode-notificationToast-border);
+  padding: var(--size-space-8);
+  border: var(--size-border) solid var(--vscode-widget-border);
   border-radius: var(--size-radius-control);
   background: var(--vscode-notifications-background);
   color: var(--vscode-notifications-foreground);

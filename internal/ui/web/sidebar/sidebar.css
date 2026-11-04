@@ -8,6 +8,5 @@
 
 /* Workspace sections start directly below the tab bar. */
 .sidebar .panel-tabs-content {
-  overflow: auto;
   padding-top: 0;
 }

@@ -32,7 +32,6 @@
 
 .confirm-dialog-icon {
   flex-shrink: 0;
-  align-self: baseline;
   color: var(--vscode-problemsWarningIcon-foreground);
 }
 
