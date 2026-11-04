@@ -4,7 +4,8 @@
 # repository under $DEV, so it never touches the installed hypercube's
 # workspaces.
 #
-#   scripts/dev [up]   build, serve the view, and watch sources until Ctrl-C
+#   scripts/dev [up]   build the server, serve the view, and watch sources
+#                      until Ctrl-C
 #   scripts/dev up --app
 #                      also run the native app, with its own menu bar icon
 #                      and window
@@ -15,10 +16,10 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
-# The dev session runs as its own application, so its notifications and their
-# clicks never reach the installed Hypercube.
+# With --app, the dev session runs as its own application, so its
+# notifications and their clicks never reach the installed Hypercube. Otherwise
+# it is only the server, built into bin/dev.
 APP=$ROOT/bin/HypercubeDev.app
-BIN=$APP/Contents/MacOS/hypercube
 PORT=${HYPERCUBE_DEV_PORT:-4281}
 REPO=$DEV/repo
 CONFIG=$DEV/config/hypercube/config.json
@@ -71,8 +72,8 @@ case "${1:-up}" in
 up)
 	cd "$ROOT"
 	case "${2:-}" in
-		"") MENU= ;;
-		--app) MENU=--menu ;;
+		"") MENU= BIN=$ROOT/bin/dev/hypercube ;;
+		--app) MENU=--menu BIN=$APP/Contents/MacOS/hypercube ;;
 		*) echo "usage: scripts/dev up [--app]" >&2; exit 2 ;;
 	esac
 	restart
@@ -145,8 +146,13 @@ JSON
 		} | LC_ALL=C sort | cksum
 	}
 	build() {
-		make ui && make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
-			/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
+		make ui || return 1
+		if [ -n "$MENU" ]; then
+			make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
+				/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
+		else
+			make binaries OUT="$ROOT/bin/dev"
+		fi
 	}
 	start_view() {
 		"${DEV_ENV[@]}" "$BIN" ui "$PORT" $MENU &

@@ -9,7 +9,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: build bundle check install install-service dev dev-app dev-stop dev-clean ui
+.PHONY: binaries build bundle check install install-service dev dev-app dev-stop dev-clean ui
 
 # bundle builds $(APP), the application bundle macOS notifications need, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -26,9 +26,14 @@ bundle:
 	cp cmd/hypercube/Info.plist $(APP)/Contents/Info.plist
 	plutil -replace CFBundleIdentifier -string $(APP_ID) $(APP)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(APP_NAME)" $(APP)/Contents/Info.plist
-	go build -o $(MACOS)/hypercube ./cmd/hypercube
-	for p in $(PLUGINS); do go build -o $(MACOS)/hypercube-harness-$$p ./plugins/$$p && codesign --force --sign - $(MACOS)/hypercube-harness-$$p || exit 1; done
+	$(MAKE) binaries OUT=$(MACOS)
+	for p in $(PLUGINS); do codesign --force --sign - $(MACOS)/hypercube-harness-$$p || exit 1; done
 	codesign --force --sign - $(APP)
+
+# binaries builds hypercube and the harness plugins side by side in $(OUT).
+binaries:
+	go build -o $(OUT)/hypercube ./cmd/hypercube
+	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
 build: bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
