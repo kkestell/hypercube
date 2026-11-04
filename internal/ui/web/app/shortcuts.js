@@ -10,6 +10,7 @@ export const shortcuts = [
   {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], menu: true},
   {id: 'select', section: 'Session', title: 'Select Session', keys: ['⌘1–9']},
   {id: 'interrupt', section: 'Session', title: 'Interrupt Agent', keys: ['Escape']},
+  {id: 'searchSessions', section: 'Session', title: 'Search Sessions', keys: ['⌘K']},
   {id: 'quickOpen', section: 'Session', title: 'Quick Open', keys: ['⌘P']},
   {id: 'composer', section: 'Session', title: 'Focus Composer', keys: ['⌘L']},
   {id: 'sidebar', section: 'View', title: 'Toggle Sidebar', keys: ['⌘B'], menu: true},
@@ -41,7 +42,7 @@ export function matches(event, id) {
   });
 }
 
-export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen}, id) {
+export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen, openSessionSearch}, id) {
   if (!id) {
     if (e.defaultPrevented || e.repeat || e.isComposing || e.nativeEvent?.isComposing) return;
     if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
@@ -52,7 +53,8 @@ export function shortcut(e, store, {focusComposer, showHelp, openQuickOpen}, id)
   const is = name => id ? id === name : matches(e, name);
   const field = e.target.closest('input, textarea, [contenteditable="true"]');
   let action;
-  if (is('quickOpen') && state.session && !state.unsent) action = openQuickOpen;
+  if (is('searchSessions')) action = openSessionSearch;
+  else if (is('quickOpen') && state.session && !state.unsent) action = openQuickOpen;
   else if (is('new')) action = () => store.update(s => openUnsent(s));
   else if (is('composer')) action = focusComposer;
   else if (is('select')) {

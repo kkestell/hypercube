@@ -103,7 +103,7 @@ test('the window header holds the three layout toggles and they hide and show th
   }
 });
 
-test('shortcuts navigate visible sessions, toggle panels and leave terminal and editing keys alone', () => {
+test('shortcuts navigate visible sessions, toggle panels and leave terminal and editing keys alone', async () => {
   const messages = [];
   globalThis.webkit = {messageHandlers: {window: {postMessage: message => messages.push(message)}}};
   const sessions = ['a', 'b'].map(id => ({id, title: id, running: id === 'b', activity: 'idle', children: []}));
@@ -131,6 +131,21 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   expect(messages.some(message => message.type === 'shortcuts')).toBe(true);
   expect(send(terminal, 'j', {metaKey: true})).toBe(false);
   expect(send(terminal, 'k', {metaKey: true})).toBe(false);
+  expect(document.querySelector('[cmdk-input]')).toBeNull();
+  act(() => row().focus());
+  let searchHandled;
+  await act(async () => { searchHandled = send(row(), 'k', {metaKey: true}); });
+  expect(searchHandled).toBe(true);
+  const search = document.querySelector('[cmdk-input]');
+  expect(search).not.toBeNull();
+  expect(send(search, 'k', {metaKey: true})).toBe(false);
+  await act(async () => search.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
+  expect(document.activeElement).toBe(row());
+  act(() => row().dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true})));
+  const menu = document.querySelector('[role=menu]');
+  expect(send(menu, 'k', {metaKey: true})).toBe(false);
+  expect(document.querySelector('[cmdk-input]')).toBeNull();
+  act(() => menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
   expect(send(field, '0', {metaKey: true})).toBe(true);
   expect(messages.at(-1)).toEqual({type: 'page-zoom', action: 'zoomReset'});
   act(() => dispatchEvent(new CustomEvent('hypercube-shortcut', {detail: {id: 'help'}})));

@@ -7,23 +7,11 @@ import {Button} from '../components/ui/button';
 import {chooseSession} from '../sessions/session-actions.js';
 import {useStore} from '../store.js';
 
-export function SessionSearch() {
+export function SessionSearch({open, onOpenChange}) {
   const [, store] = useStore();
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    const key = event => {
-      if (event.metaKey && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setOpen(true);
-      }
-    };
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  }, []);
 
   useEffect(() => {
     if (!open || !query.trim()) {
@@ -41,11 +29,11 @@ export function SessionSearch() {
   }, [open, query]);
 
   const changeOpen = next => {
-    setOpen(next);
+    onOpenChange(next);
     if (!next) setQuery('');
   };
   return <>
-    <Button variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => setOpen(true)}><Search /></Button>
+    <Button variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => onOpenChange(true)}><Search /></Button>
     <CommandDialog open={open} onOpenChange={changeOpen} title="Search sessions" description="Search session titles and conversations" commandProps={{shouldFilter: false}}>
       <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
       <CommandList>

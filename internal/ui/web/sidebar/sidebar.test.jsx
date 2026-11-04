@@ -1,6 +1,6 @@
 import {setValue, clickControl} from '../../test-render.jsx';
 import {afterEach, expect, spyOn, test} from 'bun:test';
-import {act} from 'react';
+import {act, useState} from 'react';
 import {mount, unmountAll} from '../../test-render.jsx';
 import {ConfirmDialog} from '../shared/confirm-dialog.jsx';
 import {createStore} from '../store.js';
@@ -23,7 +23,11 @@ function setup(sessions) {
   const fetches = spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(''));
   spies.push(fetches);
   const store = createStore(state(sessions));
-  const root = mount(store, <><Sidebar /><ConfirmDialog /></>);
+  function View() {
+    const [searchOpen, setSearchOpen] = useState(false);
+    return <><Sidebar searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} /><ConfirmDialog /></>;
+  }
+  const root = mount(store, <View />);
   const posted = () => fetches.mock.calls.map(([url]) => Object.fromEntries(new URL(url, 'http://x/').searchParams));
   return {store, root, posted, fetches};
 }
@@ -402,10 +406,10 @@ test('workspace headers offer the workspace context menu', () => {
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
 
-test('search opens with Command+K and choosing a result shows its session', async () => {
-  const {store, fetches} = setup([session('a'), session('ended', {ended: true, running: false})]);
+test('search opens from the sidebar and choosing a result shows its session', async () => {
+  const {root, store, fetches} = setup([session('a'), session('ended', {ended: true, running: false})]);
   fetches.mockImplementation(async () => Response.json([{id: 'ended', title: 'Session ended', workspace: 'repo', text: 'matching words'}]));
-  await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', metaKey: true, bubbles: true})));
+  await act(async () => clickControl(root.querySelector('[aria-label="Search sessions"]')));
   const input = document.querySelector('[cmdk-input]');
   expect(input).not.toBeNull();
   await act(async () => { setValue(input, 'matching '); input.dispatchEvent(new Event('input', {bubbles: true})); });
@@ -414,17 +418,15 @@ test('search opens with Command+K and choosing a result shows its session', asyn
   expect(store.get().selected).toBe('ended');
 });
 
-test.each(['button', 'keyboard'])('closing search returns focus after opening with %s', async method => {
+test('closing search returns focus to its button', async () => {
   const {root, store} = setup([session('a')]);
   const button = root.querySelector('[aria-label="Search sessions"]');
-  const previous = method === 'button' ? button : row(root, 'a');
-  act(() => previous.focus());
-  if (method === 'button') await act(async () => clickControl(button));
-  else await act(async () => previous.dispatchEvent(new KeyboardEvent('keydown', {key: 'k', metaKey: true, bubbles: true, cancelable: true})));
+  act(() => button.focus());
+  await act(async () => clickControl(button));
   const input = document.querySelector('[cmdk-input]');
   expect(input).not.toBeNull();
   expect(Object.keys(store.get().overlays)).toHaveLength(1);
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
-  expect(document.activeElement).toBe(previous);
+  expect(document.activeElement).toBe(button);
   expect(Object.keys(store.get().overlays)).toHaveLength(0);
 });

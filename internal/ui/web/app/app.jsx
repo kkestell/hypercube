@@ -47,6 +47,7 @@ function refuseStrayDrops(store) {
 export function App({store}) {
   const [state, setState] = useState(store.get());
   const [quickOpen, setQuickOpen] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const focusPending = useRef(false);
   useLayoutEffect(() => {
@@ -74,7 +75,7 @@ export function App({store}) {
     if (!handler) return;
     handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, binding: binding(s.keys[0])}))});
   }, []);
-  const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), openQuickOpen: () => setQuickOpen(true)};
+  const shortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
   useEffect(() => {
     const run = e => shortcut({target: document.activeElement, preventDefault() {}, stopPropagation() {}}, store, shortcutActions, e.detail.id);
     addEventListener('hypercube-shortcut', run);
@@ -111,7 +112,7 @@ export function App({store}) {
         </header>
         <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
-            <Sidebar />
+            <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} />
             <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className="app-center flex h-full min-w-0 flex-col"><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
