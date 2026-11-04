@@ -37,6 +37,11 @@ interface SidebarProps {
   onSettings: () => void;
 }
 
+// timeLeft formats a number of hours as days and hours, or hours alone.
+function timeLeft(hours: number) {
+  return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d ${hours % 24}h`;
+}
+
 export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarProps) {
   const [state, store] = useStore();
   const [renaming, setRenaming] = useState<string | null>(null);
@@ -113,18 +118,18 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
       </PanelTabs>
       <section aria-label="Sample usage" tabIndex={0} className="group/usage @container shrink-0 space-y-2 border-t p-4 text-xs">
         {[
-          {harness: 'claude', limits: [{window: '5d', used: 36, elapsed: 45, left: '22h'}, {window: '7d', used: 78, elapsed: 65, left: '5d 2h'}]},
-          {harness: 'codex', limits: [{window: '5d', used: 42, elapsed: 35, left: '1d 8h'}, {window: '7d', used: 92, elapsed: 72, left: '2d 4h'}]},
+          {harness: 'claude', limits: [{window: 5, used: 36, left: 22}, {window: 7, used: 78, left: 122}]},
+          {harness: 'codex', limits: [{window: 5, used: 42, left: 32}, {window: 7, used: 92, left: 52}]},
         ].map(({harness, limits}) => <div key={harness} className="flex items-center gap-2">
           {harnessIcon(harness)}
           {limits.map((limit, index) => <div key={limit.window} className={`min-w-0 flex-1 items-center gap-1 ${index === 0 ? 'flex group-hover/usage:hidden group-focus/usage:hidden' : 'hidden group-hover/usage:flex group-focus/usage:flex'}`}>
-            <span className="w-5 shrink-0">{limit.window}</span>
+            <span className="w-5 shrink-0">{limit.window}d</span>
             <span className="relative min-w-0 flex-1">
-              <Progress value={limit.used} aria-label={`${harness} ${limit.window} sample usage`} className={`bg-neutral-500/20 ${limit.used >= 90 ? '[&_[data-slot=progress-indicator]]:bg-red-500' : limit.used >= 75 ? '[&_[data-slot=progress-indicator]]:bg-amber-500' : '[&_[data-slot=progress-indicator]]:bg-neutral-500'}`} />
-              <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${limit.elapsed}%`}} />
+              <Progress value={limit.used} aria-label={`${harness} ${limit.window}d sample usage`} className={`bg-neutral-500/20 ${limit.used >= 90 ? '[&_[data-slot=progress-indicator]]:bg-red-500' : limit.used >= 75 ? '[&_[data-slot=progress-indicator]]:bg-amber-500' : '[&_[data-slot=progress-indicator]]:bg-neutral-500'}`} />
+              <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${100 - limit.left / (limit.window * 24) * 100}%`}} />
             </span>
             <span className="w-8 shrink-0 text-right tabular-nums">{limit.used}%</span>
-            <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{limit.left}</span>
+            <span className="w-12 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{timeLeft(limit.left)}</span>
           </div>)}
         </div>)}
       </section>
