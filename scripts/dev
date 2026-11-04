@@ -155,6 +155,11 @@ JSON
 		fi
 	}
 	start_view() {
+		# The readiness check below cannot tell another server from this one.
+		if curl -fs --max-time 1 -o /dev/null "http://localhost:$PORT/" 2>/dev/null; then
+			echo "Port $PORT is already in use: $(lsof -tiTCP:"$PORT" -sTCP:LISTEN | xargs ps -o command= -p)" >&2
+			return 1
+		fi
 		"${DEV_ENV[@]}" "$BIN" ui "$PORT" $MENU &
 		view_pid=$!
 		echo "$view_pid" >"$DEV/ui.pid"
