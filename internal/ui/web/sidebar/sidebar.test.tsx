@@ -477,10 +477,10 @@ test.each([
   {id: 'active', view: 'Sessions', other: 'Archived'},
 ])('search reveals an already selected $id session after switching tabs', async ({id, view, other}) => {
   const {root, store, answer} = setup([session('active'), session('archived', {ended: true, running: false})], id);
-  const tabs = find(root, '[aria-label="Session list"]');
-  expect(find(tabs, '[data-state=active]').textContent).toBe(view);
+  const tabs = find(root, '[role=tablist][aria-label="Sidebar"]');
+  expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(view);
   click(find(tabs, '[data-state=inactive]'));
-  expect(find(tabs, '[data-state=active]').textContent).toBe(other);
+  expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(other);
   expect(root.querySelector(`[data-session="${id}"]`)).toBeNull();
   answer(() => Response.json([{id, title: 'Session ' + id, workspace: 'repo', text: 'matching words'}]));
   await act(async () => clickControl(find(root, '[aria-label="Search sessions"]')));
@@ -488,7 +488,7 @@ test.each([
   await act(async () => { setValue(input, 'matching '); input.dispatchEvent(new Event('input', {bubbles: true})); });
   await act(async () => clickControl(find(document, '[cmdk-item]')));
   expect(store.get().selected).toBe(id);
-  expect(find(tabs, '[data-state=active]').textContent).toBe(view);
+  expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(view);
   expect(root.querySelector(`[data-session="${id}"]`)).not.toBeNull();
 });
 
@@ -508,6 +508,9 @@ test('archive menu hides the family while search can select its chat', () => {
   const child = session('child', {parent: 'archived', running: false, ended: true});
   const {root, store, posted} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})]);
   expect(sessionRows(root)).toEqual(['active']);
+  const tablists = findAll(root, '[role=tablist]');
+  expect(tablists).toHaveLength(1);
+  expect(findAll(tablists[0], '[role=tab]').map(tab => tab.getAttribute('aria-label'))).toEqual(['Sessions', 'Archived']);
   choose(root, '[data-session="active"]', 'Archive Session');
   expect(posted()).toEqual([{action: 'archive', id: 'active'}]);
   chooseSession(store, 'child');
@@ -525,5 +528,5 @@ test('an initially selected archived child opens its family in Archived', () => 
   const child = session('child', {parent: 'archived', running: false, ended: true});
   const {root} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})], 'child');
   expect(sessionRows(root)).toEqual(['archived', 'child']);
-  expect(find(root, '[aria-label="Session list"] [data-state=active]').textContent).toBe('Archived');
+  expect(find(root, '[role=tablist][aria-label="Sidebar"] [data-state=active]').getAttribute('aria-label')).toBe('Archived');
 });

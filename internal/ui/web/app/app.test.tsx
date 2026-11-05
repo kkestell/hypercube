@@ -276,7 +276,7 @@ test('archived families open from the sidebar and can be deleted', async () => {
     [testWorkspace({id: 'w', name: 'My workspace', path: '/repo', sessions: [active, archived]})]));
   const root = mount(store, <App store={store} />);
   expect(root.querySelector('[data-session="archived"]')).toBeNull();
-  act(() => { clickControl(find(root, '[aria-label="Session list"] [role=tab][data-state=inactive]')); });
+  act(() => { clickControl(find(root, '[aria-label="Sidebar"] [role=tab][aria-label="Archived"]')); });
   expect(root.querySelector('[data-session="active"]')).toBeNull();
   act(() => { find(root, '[data-session="archived"]').click(); });
   expect(store.get().selected).toBe('archived');

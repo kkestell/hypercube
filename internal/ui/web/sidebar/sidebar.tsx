@@ -12,7 +12,6 @@ import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
-import {Tabs, TabsContent, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {Icon} from '../shared/icon.tsx';
 
 const below = (button: HTMLElement) => {
@@ -104,28 +103,26 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     } else setMenu({...below(row), items: sessionMenu(session)});
   };
 
+  const tree = <div className="sidebar-body min-h-0 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
+    {workspaces.map(workspace => (
+      <WorkspaceSection
+        key={workspace.id} workspace={workspace}
+        onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
+        renaming={renaming} onRenaming={setRenaming}
+      />
+    ))}
+  </div>;
+
   return (
     <div className="sidebar flex h-full min-h-0 flex-col bg-card">
-      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
+      <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}, {id: 'archived', title: 'Archived', icon: 'archive'}]}
+        selected={view} onSelect={value => { setRenaming(null); setView(value); }} clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={selectSearchResult} />
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
-        <Tabs value={view} onValueChange={value => { setRenaming(null); setView(value); }} className="min-h-0 flex-1 gap-0">
-          <TabsList aria-label="Session list" className="mx-2 mt-1">
-            <TabsTrigger value="sessions">Sessions</TabsTrigger>
-            <TabsTrigger value="archived">Archived</TabsTrigger>
-          </TabsList>
-          <TabsContent value={view} className="sidebar-body min-h-0 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
-            {workspaces.map(workspace => (
-              <WorkspaceSection
-                key={workspace.id} workspace={workspace}
-                onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
-                renaming={renaming} onRenaming={setRenaming}
-              />
-            ))}
-          </TabsContent>
-        </Tabs>
+        <>{view === 'sessions' && tree}</>
+        <>{view === 'archived' && tree}</>
       </PanelTabs>
       <Usage />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
