@@ -59,7 +59,7 @@ export function tabEntry(state: State, id: TabId): TabEntry {
   const deleted = !!open?.deleted;
   return {
     kind: 'file', id, path, name, deleted,
-    source: hasPreview(path) ? open?.source ?? false : null,
+    source: hasPreview(path) && (!open?.preview || open.text !== null) ? open?.source ?? false : null,
     label: name,
     title: path + (deleted ? ' (deleted)' : ''),
     preview,

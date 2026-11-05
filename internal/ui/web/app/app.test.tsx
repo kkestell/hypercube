@@ -25,6 +25,18 @@ const workspaces = (...sessions: Session[]) => [testWorkspace({id: 'w', name: 'r
 const appStore = (overrides: Partial<State> = {}, ...sessions: Session[]) =>
   createStore(receivedWorkspaces(testState(overrides), workspaces(...sessions)));
 
+test('an empty workspace view offers to add a project without an empty tab list', async () => {
+  const store = createStore(testState({workspaces: [], selected: null}));
+  const requests = answer(() => new Response('new-workspace'));
+  const root = mount(store, <App store={store} />);
+  const empty = find(root, 'section[aria-label="No workspaces"]');
+  expect(empty.textContent).toContain('Choose a project folder');
+  expect(root.querySelector('.editor-tabs[role=tablist]')).toBeNull();
+  await act(async () => find(empty, 'button').click());
+  expect(requests).toContainEqual({params: {action: 'new'}, method: 'POST'});
+  expect(store.get().unsent?.workspace).toBe('new-workspace');
+});
+
 interface Sent {
   params: Record<string, string>;
   method?: string;

@@ -71,10 +71,29 @@ test('a tool call starts collapsed and preserves expansion as its output arrives
   expect(call().querySelector('[title="Running"]')).toBeNull();
   expect(call().querySelector('[title="Failed"]')).not.toBeNull();
   expect(call().querySelectorAll('pre')[1].textContent).toBe('a.txt');
+  expect(call().querySelectorAll('.tool-items-body > [data-slot=card]')).toHaveLength(1);
+  expect(findAll(call(), 'h4').map(header => header.textContent)).toEqual(['Arguments', 'Output']);
   expect(find(call(), '.tool-items-children').textContent).toBe('inside');
   act(() => find(call(), '[data-slot=collapsible-trigger]').click());
   expect(call().querySelector('.tool-items-body')).toBeNull();
   expect(store.get().session?.expanded.c).toBeUndefined();
+});
+
+test('a question renders once with choices while pending, then with its answer in a card', () => {
+  const {root, send} = setup([
+    {id: 'copy', kind: 'text', text: 'Which format?\n- PDF\n- HTML', done: true},
+    {id: 'q', kind: 'attention', text: 'Which format?', choices: ['PDF', 'HTML'], free: true},
+  ]);
+  expect(findAll(root, '.attention-item-question').map(question => question.textContent)).toEqual(['Which format?']);
+  expect(root.querySelector('.transcript-text')).toBeNull();
+  expect(findAll(root, '[data-choice]').map(button => button.textContent)).toEqual(['PDF', 'HTML']);
+  send([{id: 'q', kind: 'attention', text: 'Which format?', choices: ['PDF', 'HTML'], done: true, answer: 'PDF'}]);
+  const card = find(root, '.attention-item[data-slot=card]');
+  expect(card.textContent).toContain('Answered');
+  expect(find(card, '.attention-item-answer').textContent).toBe('PDF');
+  expect(root.querySelector('.transcript-text')).toBeNull();
+  expect(root.querySelector('[data-choice]')).toBeNull();
+  expect(card.textContent).not.toContain('HTML');
 });
 
 test('Hypercube tools show readable titles and retain their full input and result', () => {

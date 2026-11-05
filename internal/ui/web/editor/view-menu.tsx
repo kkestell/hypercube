@@ -14,9 +14,10 @@ export function ViewMenu({active}: {active: TabEntry | undefined}) {
   const [state, store] = useStore();
   const overlay = useOverlay();
   const file = active?.kind === 'file' ? active : null;
+  const browserPreview = file && state.session?.files.open[file.path]?.preview && !file.source;
   const mode = file && file.source !== null;
-  const wrap = active?.kind === 'file' || active?.kind === 'diff';
-  const fixedWidth = active?.kind === 'agent' || file?.source === false;
+  const wrap = (file && !browserPreview) || active?.kind === 'diff';
+  const fixedWidth = active?.kind === 'agent' || (file?.source === false && !browserPreview);
   if (!mode && !wrap && !fixedWidth) return null;
   return <DropdownMenu>
     <DropdownMenuTrigger asChild>

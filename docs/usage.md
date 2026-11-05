@@ -45,9 +45,15 @@ The right panel follows the selected session's working directory:
 
 | View | Use |
 | --- | --- |
-| **Files** | Open a read-only file preview. Double-click to keep the tab open. Markdown has preview and source views. |
+| **Files** | Open a read-only file preview. Double-click to keep the tab open. Markdown, HTML, and SVG have preview and source views. |
 | **Changes** | Inspect uncommitted files and unified diffs, plus commits not merged into the original checkout's branch. |
 | **Search** | Find case-insensitive plain text and open a matching line. |
+
+Images, audio, video, and PDFs use the browser's built-in viewers without the
+text viewer's 256 KiB limit. HTML previews load relative resources with scripts
+disabled. Media support depends on the browser's formats and codecs. Source
+view is available for HTML and SVG with supported text encodings within the
+text size limit.
 
 Changes covers the whole repository containing the session directory. Search
 uses the same file list as Quick Open: in Git, tracked and untracked files that
@@ -91,12 +97,13 @@ parent to merge the work.
 
 ## Context and subscription use
 
-Context use and cost appear below the message box. The bottom status bar shows
+Context use and cost appear below the message box. The sidebar shows
 subscription usage reported by the harness: percent used and time until reset.
-The meter's mark shows how much of the time window has elapsed; amber means
-usage is ahead of that pace. A reading stays dimmed after reset until the
-harness reports again. See [usage reports](harness-support.md#usage-reports)
-for what each harness supplies.
+It shows the shortest reported window normally and the longest on hover or
+keyboard focus. When the harness reports only one window, that window stays
+visible. The meter's mark shows how much of the time window has elapsed.
+Expired readings disappear until the harness reports again. See
+[usage reports](harness-support.md#usage-reports) for what each harness supplies.
 
 ## Answer a request
 

@@ -1,11 +1,10 @@
 // Syntax highlighting for files and Markdown code blocks: Shiki with its
-// JavaScript regular expression engine, After Dark's token colors, and the
+// JavaScript regular expression engine, GitHub's default token colors, and the
 // languages below. The page loads this module on first use.
-import {createHighlighterCoreSync, type ThemeRegistration} from 'shiki/core';
+import {createHighlighterCoreSync} from 'shiki/core';
 import {createJavaScriptRegexEngine} from 'shiki/engine/javascript';
-// After Dark 1.6.4: github.com/simeonkerkola/after-dark at b9c8ea9375ed.
-import afterDarkTheme from './after-dark/theme.json';
-import githubLight from 'shiki/themes/github-light.mjs';
+import githubDark from 'shiki/themes/github-dark-default.mjs';
+import githubLight from 'shiki/themes/github-light-default.mjs';
 import c from 'shiki/langs/c.mjs';
 import cpp from 'shiki/langs/cpp.mjs';
 import css from 'shiki/langs/css.mjs';
@@ -35,10 +34,8 @@ import typescript from 'shiki/langs/typescript.mjs';
 import xml from 'shiki/langs/xml.mjs';
 import yaml from 'shiki/langs/yaml.mjs';
 
-const afterDark: ThemeRegistration = {...afterDarkTheme, type: 'dark'};
-
 const highlighter = createHighlighterCoreSync({
-  themes: [afterDark, githubLight],
+  themes: [githubDark, githubLight],
   langs: [c, cpp, css, diff, dockerfile, go, html, ini, java, javascript, json, jsonc, jsonl, jsx,
     makefile, markdown, ocaml, python, rust, scss, shellscript, sql, swift, toml, tsx, typescript, xml, yaml],
   engine: createJavaScriptRegexEngine(),
@@ -62,7 +59,7 @@ const escape = (text: string) => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt
 export function highlight(text: string, lang: string): string[] {
   const named = names[lang] ?? lang;
   const {tokens} = highlighter.codeToTokens(text, {
-    lang: highlighter.getLoadedLanguages().includes(named) ? named : 'text', themes: {light: githubLight.name, dark: afterDark.name}, defaultColor: false,
+    lang: highlighter.getLoadedLanguages().includes(named) ? named : 'text', themes: {light: githubLight.name, dark: githubDark.name}, defaultColor: false,
   });
   return tokens.map(line => line.map(t => {
     const style = Object.entries(t.htmlStyle || {}).map(([key, value]) => `${key}:${value}`).join(';');

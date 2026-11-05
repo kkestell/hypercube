@@ -50,9 +50,9 @@ test('OCaml additions receive light and dark highlighting', async () => {
   await act(async () => { await import('../files/highlight.ts'); });
   const code = find(root, 'code');
   expect(code.textContent).toBe('let value = "hello"');
-  expect(code.innerHTML).toContain('--shiki-light:#D73A49');
-  expect(code.innerHTML).toContain('--shiki-dark:#E6AC6F');
-  expect(code.innerHTML).toContain('--shiki-dark:#98C379');
+  expect(code.innerHTML).toContain('--shiki-light:#CF222E');
+  expect(code.innerHTML).toContain('--shiki-dark:#FF7B72');
+  expect(code.innerHTML).toContain('--shiki-dark:#A5D6FF');
 });
 
 test('find and change navigation operate on the focused diff', () => {

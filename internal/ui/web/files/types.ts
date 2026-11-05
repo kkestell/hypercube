@@ -13,17 +13,24 @@ export interface LineRange {
   end?: number;
 }
 
-// OpenFile is a file open in a tab. It holds its text, or the message shown in
-// its place, and the ETag of the read that returned the text. source shows a
-// previewable file as source; reveal scrolls its lines into view once.
+// OpenFile holds text or browser preview metadata, or a message in their place,
+// and the ETag of that read. source shows a textual preview as source; reveal
+// scrolls its lines into view once.
 export interface OpenFile {
   text: string | null;
+  preview?: FilePreview;
   message: string | null;
   etag: string | null;
   deleted: boolean;
   source: boolean;
   lines: LineRange[];
   reveal: boolean;
+}
+
+// FilePreview points to content the browser displays without text highlighting.
+export interface FilePreview {
+  mime: string;
+  url: string;
 }
 
 // SessionFiles holds each listed folder's entries, null for a missing folder,
@@ -40,7 +47,7 @@ export type FileRead =
   | {deleted: true}
   | {message: string}
   | {error: string}
-  | {text: string; etag: string | null};
+  | {text: string | null; preview?: FilePreview; etag: string | null};
 
 // SearchFile is a file whose lines match a search; each line's parts
 // alternate between unmatched and matched text.

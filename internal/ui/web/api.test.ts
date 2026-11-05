@@ -56,6 +56,12 @@ test('readFile reports other failures with their text', async () => {
   expect(await readFile('s', 'a.go')).toEqual({error: 'permission denied'});
 });
 
+test('readFile reads browser preview metadata without downloading media bytes', async () => {
+  const preview = {mime: 'image/png', url: '/preview/s/repo/picture.png?v=1'};
+  spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({text: null, preview}, {headers: {ETag: '"1"'}}));
+  expect(await readFile('s', 'picture.png')).toEqual({text: null, preview, etag: '"1"'});
+});
+
 test('post returns the response text', async () => {
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('ok'));
   expect(await post(createStore(testState()), 'session', {action: 'input'}, 'body')).toBe('ok');

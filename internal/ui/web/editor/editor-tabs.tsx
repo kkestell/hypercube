@@ -30,7 +30,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
   const start = placement.top && placement.left && !state.workbench.sidebar;
   return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 px-2 py-1 ${tabBackground} ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
     onMouseDown={placement.top ? titleBarMouseDown : undefined}>
-    <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
+    {entries.length > 0 ? <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
       <TabsList ref={strip} className={`editor-tabs max-w-full justify-start ${barTabs}`} aria-label="Open tabs">
         {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex min-w-24 max-w-64 items-center"
           onDragStart={e => {
@@ -45,7 +45,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
           {entry.kind !== 'agent' && <Button className="editor-tabs-close" variant="ghost" size="icon-xs" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>}
         </div>)}
       </TabsList>
-    </Tabs>
+    </Tabs> : <div className="flex-1" />}
     <ViewMenu active={active} />
     {placement.top && placement.right && <LayoutToggles />}
     {menu.element}
