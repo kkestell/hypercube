@@ -20,6 +20,29 @@ Localized fixes, copy, styling, documentation, and small refactors that fit the
 existing design may be done directly. Inspect enough code to decide; switch to
 this workflow if the work grows beyond a contained change.
 
+## Design against the whole codebase
+
+Judge every nontrivial change against the rest of the codebase, not only the
+code it touches. The goal is less code, less to hold in your head, and a
+codebase that stays easy to maintain. The smallest diff does not always get
+there. Before planning, answer these:
+
+- Does the codebase already do this, wholly or in part? Reuse it, or replace
+  the duplicates with one implementation.
+- Does the change expose a flaw in an existing abstraction: a wrong boundary,
+  a concern split across modules, a concept that no longer fits? Rewrite the
+  abstraction so the new behavior is its natural case.
+- Is this a natural extension of the architecture, or does it feel bolted on?
+  New behavior belongs in the module that owns its concern. When none does,
+  give it a module of its own rather than stretching an unrelated one.
+- What can the change delete? Obsolete code, special cases, and parallel paths
+  that it makes redundant go in the same change.
+- Would a reader of the result understand one coherent design, or a core plus
+  exceptions?
+
+Refactoring existing code to fit the change is part of the change. The plan
+states what is rewritten and deleted, and why the result is simpler overall.
+
 ## Restarting active sessions
 
 Before starting work, explain whether loading it requires active sessions to
@@ -30,16 +53,17 @@ restart, using the criteria in `AGENTS.md`.
 For nontrivial work, write a plan with `/kplan`, or delegate it. Confirm
 assumptions with the user only when they would change the scope; ask about
 each one separately, with plausible alternatives. Resolve ordinary details
-without expanding scope. The plan shows the least costly complete
-implementation and justifies additions against current requirements.
+without expanding scope. The plan shows the design that leaves the codebase
+simplest overall, including any abstraction it rewrites and any code it
+deletes, and justifies additions against current requirements.
 
 ## Architectural review
 
 Before implementing a new subsystem or an architectural change, have a session
 that did not write the plan review it against `AGENTS.md`, in the context of
 the whole system and against the plan's simpler baseline. Verify its findings
-and resolve justified concerns in the plan. Features that fit the existing
-design skip this step.
+and resolve justified concerns in the plan. Changes that add no new subsystem
+and rewrite no abstraction skip this step.
 
 ## Code review and completion
 
