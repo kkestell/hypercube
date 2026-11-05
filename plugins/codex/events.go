@@ -28,10 +28,9 @@ func (ag *agent) handle(m plugin.Message) {
 	ag.send(ev)
 }
 
-// rateLimits are the windows of the account's general limit that a rate
-// limit update reports, as seen now. An update names only the windows that
-// changed; a model-specific quota has its own limit ID and is left out.
-func rateLimits(params json.RawMessage) []harness.Limit {
+// rateLimits merges sparse updates into the account's general windows.
+// A model-specific quota has its own limit ID and is left out.
+func (ag *agent) rateLimits(params json.RawMessage) []harness.Limit {
 	type window struct {
 		UsedPercent        int    `json:"usedPercent"`
 		WindowDurationMins *int   `json:"windowDurationMins"`
@@ -49,15 +48,25 @@ func rateLimits(params json.RawMessage) []harness.Limit {
 	}
 	at := time.Now().UnixMilli()
 	var limits []harness.Limit
-	for _, w := range []*window{p.RateLimits.Primary, p.RateLimits.Secondary} {
-		if w == nil || w.WindowDurationMins == nil {
+	for i, w := range []*window{p.RateLimits.Primary, p.RateLimits.Secondary} {
+		if w == nil {
 			continue
 		}
-		l := harness.Limit{Minutes: *w.WindowDurationMins, Used: w.UsedPercent, At: at}
+		l := ag.limits[i]
+		if w.WindowDurationMins != nil {
+			if l.Minutes != 0 && l.Minutes != *w.WindowDurationMins {
+				l.Resets = 0
+			}
+			l.Minutes = *w.WindowDurationMins
+		}
+		l.Used, l.At = w.UsedPercent, at
 		if w.ResetsAt != nil {
 			l.Resets = *w.ResetsAt
 		}
-		limits = append(limits, l)
+		ag.limits[i] = l
+		if l.Minutes > 0 {
+			limits = append(limits, l)
+		}
 	}
 	return limits
 }
@@ -205,7 +214,7 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 		}
 		return
 	case "account/rateLimits/updated":
-		ev.Limits = rateLimits(m.Params)
+		ev.Limits = ag.rateLimits(m.Params)
 		return
 	}
 	var n struct {

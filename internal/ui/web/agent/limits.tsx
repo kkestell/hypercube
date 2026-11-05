@@ -4,6 +4,7 @@
 // hover or focus. Both readings fill the same grid row, the hidden one
 // invisible, so its columns fit the wider of the two and nothing moves when
 // they switch. Harnesses that report no limits show nothing.
+import {useEffect, useReducer} from 'react';
 import type {Limit} from '../app/types.ts';
 import {Progress} from '../components/ui/progress';
 import {useStore} from '../store.ts';
@@ -24,8 +25,17 @@ const bar = (used: number) => used >= 90 ? '[&_[data-slot=progress-indicator]]:b
   : used >= 75 ? '[&_[data-slot=progress-indicator]]:bg-amber-500' : '[&_[data-slot=progress-indicator]]:bg-neutral-500';
 
 function LimitRow({harness, limit, className = ''}: {harness: string; limit: Limit; className?: string}) {
+  const [, refresh] = useReducer(n => n + 1, 0);
+  const now = Date.now();
+  useEffect(() => {
+    const remaining = (limit.resets ?? 0) * 1000 - Date.now();
+    if (remaining <= 0) return;
+    // Refresh when the displayed minute changes, including the reset itself.
+    const timer = setTimeout(refresh, remaining % 60000 || 60000);
+    return () => clearTimeout(timer);
+  }, [limit.resets, now]);
   const label = windowLabel(limit.minutes);
-  const left = limit.resets ? Math.max(0, Math.ceil((limit.resets * 1000 - Date.now()) / 60000)) : null;
+  const left = limit.resets ? Math.max(0, Math.ceil((limit.resets * 1000 - now) / 60000)) : null;
   const expired = left === 0;
   const elapsed = left === null ? null : Math.min(100, Math.max(0, 100 - left / limit.minutes * 100));
   const waiting = `${limit.used}% last reported; this window reset. Waiting for a new reading from ${harness}.`;

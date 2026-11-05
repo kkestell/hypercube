@@ -310,6 +310,75 @@ func TestRateLimitUpdatesReportTheGeneralLimit(t *testing.T) {
 	}
 }
 
+func TestRateLimitUpdatesMergeWindowMetadata(t *testing.T) {
+	h := newAgent(t)
+	for _, tc := range []struct {
+		name   string
+		report string
+		want   []harness.Limit
+	}{
+		{
+			name:   "metadata before the duration is known",
+			report: `{"primary":{"usedPercent":40,"resetsAt":1000}}`,
+		},
+		{
+			name:   "both windows",
+			report: `{"primary":{"usedPercent":40,"windowDurationMins":300},"secondary":{"usedPercent":20,"windowDurationMins":10080,"resetsAt":2000}}`,
+			want:   []harness.Limit{{Minutes: 300, Used: 40, Resets: 1000}, {Minutes: 10080, Used: 20, Resets: 2000}},
+		},
+		{
+			name:   "missing duration",
+			report: `{"primary":{"usedPercent":41,"windowDurationMins":null,"resetsAt":null}}`,
+			want:   []harness.Limit{{Minutes: 300, Used: 41, Resets: 1000}},
+		},
+		{
+			name:   "missing reset",
+			report: `{"primary":{"usedPercent":42,"windowDurationMins":300}}`,
+			want:   []harness.Limit{{Minutes: 300, Used: 42, Resets: 1000}},
+		},
+		{
+			name:   "secondary retains its own metadata",
+			report: `{"secondary":{"usedPercent":21}}`,
+			want:   []harness.Limit{{Minutes: 10080, Used: 21, Resets: 2000}},
+		},
+		{
+			name:   "reset changes without duration",
+			report: `{"primary":{"usedPercent":1,"resetsAt":3000}}`,
+			want:   []harness.Limit{{Minutes: 300, Used: 1, Resets: 3000}},
+		},
+		{
+			name:   "different window does not inherit the old reset",
+			report: `{"primary":{"usedPercent":10,"windowDurationMins":1440}}`,
+			want:   []harness.Limit{{Minutes: 1440, Used: 10}},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := len(h.snapshot())
+			h.feed(t, `{"method":"account/rateLimits/updated","params":{"rateLimits":`+tc.report+`}}`)
+			events := h.snapshot()
+			if len(tc.want) == 0 {
+				if len(events) != before {
+					t.Fatal("reported a window without a duration")
+				}
+				return
+			}
+			if len(events) != before+1 {
+				t.Fatalf("got %d new events, want 1", len(events)-before)
+			}
+			got := events[before].Limits
+			for i := range got {
+				if got[i].At <= 0 {
+					t.Fatal("missing observation time")
+				}
+				got[i].At = 0
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("limits = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
 // Codex may report a completion more than once; later reports change nothing.
 func TestDuplicateCompletedItems(t *testing.T) {
 	h := newAgent(t)

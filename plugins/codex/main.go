@@ -73,6 +73,7 @@ type agent struct {
 	open      map[string]harness.Item // streamed items that have not completed
 	running   map[string]harness.Item // tool items that have not completed
 	children  map[string]childThread  // native subagents, by thread ID
+	limits    [2]harness.Limit        // general primary and secondary windows
 	requests  plugin.Requests[request]
 	answering *request // async question whose answer is being sent
 	errs      plugin.Errors
