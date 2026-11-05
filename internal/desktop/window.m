@@ -48,9 +48,13 @@
     [_window center];
     [_window setFrameUsingName:@"Hypercube"];
     [_window setFrameAutosaveName:@"Hypercube"];
-    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect);
-    // The buttons get the same margin on their right as on their left.
+    // The toolbar row centers the window's buttons, so the row is as tall as
+    // the buttons plus twice their margin above. The content layout rect's
+    // top inset is taller than that row.
     NSButton *close = [_window standardWindowButton:NSWindowCloseButton], *zoom = [_window standardWindowButton:NSWindowZoomButton];
+    NSRect button = [close convertRect:close.bounds toView:nil];
+    _titleBarHeight = 2 * (NSHeight(_window.frame) - NSMaxY(button)) + NSHeight(button);
+    // The buttons get the same margin on their right as on their left.
     _titleBarInset = NSMaxX([zoom convertRect:zoom.bounds toView:nil]) + NSMinX([close convertRect:close.bounds toView:nil]);
     [_webView loadRequest:[NSURLRequest requestWithURL:url]];
     return self;
