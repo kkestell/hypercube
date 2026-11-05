@@ -20,6 +20,6 @@ test('search shows matching lines and opens the selected line', async () => {
   expect(String(fetches.mock.calls[0]?.[0])).toContain('q=match');
   expect(find(root, 'h3').textContent).toBe('src/a.go');
   expect(find(root, 'mark').textContent).toBe('MATCH');
-  act(() => clickControl(find(root, 'button')));
+  await act(async () => { clickControl(find(root, 'button')); });
   expect(store.get().session?.files.open['src/a.go']?.lines).toEqual([{start: 3, end: 3}]);
 });

@@ -10,11 +10,14 @@ import {createStore, type Store} from '../store.ts';
 import {App} from './app.tsx';
 import type {Grant, Region, Workbench} from './types.ts';
 
+const originalSocket = globalThis.WebSocket;
 beforeEach(() => {
   stubFetch(() => Response.json([]));
+  Object.defineProperty(globalThis, 'WebSocket', {value: class {close() {}}, configurable: true, writable: true});
 });
 afterEach(() => {
   delete globalThis.webkit;
+  Object.defineProperty(globalThis, 'WebSocket', {value: originalSocket, configurable: true, writable: true});
   mock.restore();
   unmountAll();
 });
@@ -78,20 +81,22 @@ test('state arriving before passive effects reaches the page', async () => {
   const store = createStore(testState());
   const root = document.createElement('div');
   document.body.append(root);
-  render(<App store={store} />, root);
-  store.update(state => receivedWorkspaces(state, [testWorkspace({id: 'w', name: 'New workspace'})]));
+  act(() => {
+    render(<App store={store} />, root);
+    store.update(state => receivedWorkspaces(state, [testWorkspace({id: 'w', name: 'New workspace'})]));
+  });
   await act(async () => {});
   expect(find(root, '[data-workspace="w"] .workspace-section-name').textContent).toBe('New workspace');
 });
 
-test('Escape interrupts only the shown busy session and leaves other Escape actions alone', () => {
+test('Escape interrupts only the shown busy session and leaves other Escape actions alone', async () => {
   const requests = answer(() => new Response(''));
   const sessions = ['a', 'b'].map(id => testSession({id, title: id, running: true, activity: 'busy'}));
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, rightTab: 'search'})}, ...sessions);
   const root = mount(store, <App store={store} />);
   requests.length = 0;
   const field = find(root, '.composer textarea');
-  expect(keydown(field, 'Escape').defaultPrevented).toBe(true);
+  await act(async () => { expect(keydown(field, 'Escape').defaultPrevented).toBe(true); });
   expect(requests).toHaveLength(1);
   expect(requests[0].params).toEqual({action: 'interrupt', id: 'a'});
 
@@ -109,12 +114,12 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   expect(document.querySelector('.context-menu')).toBeNull();
   expect(requests).toHaveLength(1);
 
-  store.update(state => ({...state, confirmation: {message: 'Confirm?', detail: '', primary: 'OK', accept() {}}}));
+  act(() => store.update(state => ({...state, confirmation: {message: 'Confirm?', detail: '', primary: 'OK', accept() {}}})));
   keydown(find(document, '[role=alertdialog]'), 'Escape');
   expect(store.get().confirmation).toBeNull();
   expect(requests).toHaveLength(1);
 
-  store.update(state => receivedWorkspaces(state, workspaces({...sessions[0], activity: 'idle'}, sessions[1])));
+  act(() => store.update(state => receivedWorkspaces(state, workspaces({...sessions[0], activity: 'idle'}, sessions[1]))));
   keydown(field, 'Escape');
   expect(requests).toHaveLength(1);
 });
@@ -181,7 +186,7 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   const dialog = find(document, '[role=dialog]');
   expect(send(dialog, 'j', {metaKey: true})).toBe(false);
   act(() => { find(dialog, 'button').click(); });
-  row().focus();
+  act(() => row().focus());
   send(row(), 'b', {metaKey: true});
   expect(store.get().workbench.sidebar).toBe(false);
   expect(document.activeElement).toBe(field);
@@ -191,25 +196,25 @@ test('shortcuts navigate visible sessions, toggle panels and leave terminal and 
   expect(store.get().workbench.sidebar).toBe(true);
 });
 
-test('composer shortcuts activate the chat when a file shares its pane', () => {
+test('composer shortcuts activate the chat when a file shares its pane', async () => {
   const store = appStore({selected: 'a'}, testSession({id: 'a', title: 'a', running: true}));
-  const showFile = () => store.update(s => s.session ? {...s, session: {...s.session,
+  const showFile = () => act(() => store.update(s => s.session ? {...s, session: {...s.session,
     tabs: {...s.session.tabs, root: {id: 1, tabs: ['agent', 'file:test.txt'], active: 'file:test.txt'}},
     files: {...s.session.files, open: {'test.txt': {...unread, text: 'hello'}}},
-  }} : s);
+  }} : s));
   showFile();
   const root = mount(store, <App store={store} />);
   const send = (target: EventTarget, key: string) => keydown(target, key, {metaKey: true});
   const fileTab = find(root, '[data-tab="file:test.txt"]');
-  fileTab.focus();
-  send(fileTab, 'l');
+  act(() => fileTab.focus());
+  await act(async () => { send(fileTab, 'l'); });
   expect(activeTab(store)).toBe('agent');
   expect(document.activeElement).toBe(find(root, '.composer-text'));
 
-  act(showFile);
+  showFile();
   const row = find(root, '.session-item');
-  row.focus();
-  send(row, 'b');
+  act(() => row.focus());
+  await act(async () => { send(row, 'b'); });
   expect(store.get().workbench.sidebar).toBe(false);
   expect(activeTab(store)).toBe('agent');
   expect(document.activeElement).toBe(find(root, '.composer-text'));
@@ -224,7 +229,7 @@ test('Command+P opens Quick Open from the terminal for the shown session', async
   expect(event.defaultPrevented).toBe(true);
   const search = find(document, '[aria-label="Search files"]');
   expect(find(document, '[cmdk-item]').textContent).toBe('src/main.go');
-  keydown(search, 'Enter');
+  await act(async () => { keydown(search, 'Enter'); });
   expect(store.get().session?.tabs.preview).toBe('file:src/main.go');
 });
 
@@ -232,7 +237,7 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', as
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
   const button = find(root, '.layout-toggles button');
-  button.focus();
+  act(() => button.focus());
   keydown(button, '/', {metaKey: true});
   const dialog = find(document, '[role=dialog]');
   expect(dialog.textContent).toContain('Keyboard shortcuts');

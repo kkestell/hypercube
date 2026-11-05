@@ -60,7 +60,9 @@ test.each([
   const session = emptySession('s');
   const url = '/preview/s/repo/' + path + '?v=1';
   session.files.open[path] = {...unread, preview: {mime, url}};
-  const root = mount(createStore(testState({session})), <FileView id={'file:' + path} path={path} />);
+  const store = createStore(testState({session}));
+  const root = document.createElement('div');
+  render(<StoreContext.Provider value={[store.get(), store]}><FileView id={'file:' + path} path={path} /></StoreContext.Provider>, root);
   const viewer = root.querySelector(tag);
   expect(viewer?.getAttribute(attribute)).toBe(url);
   if (tag === 'iframe') expect(viewer?.getAttribute('sandbox')).toBe('');
@@ -85,7 +87,7 @@ test('textual browser previews switch to highlighted source, then refresh the na
   expect(root.querySelector('img')?.getAttribute('src')).toBe('/preview/s/repo/drawing.svg?v=2');
 });
 
-test('source scrolling after a preview switch is remembered across remounts', () => {
+test('source scrolling after a preview switch is remembered across remounts', async () => {
   const path = 'drawing.svg', id = 'file:' + path;
   const session = emptySession('s');
   session.tabs = openTab(session.tabs, id);
@@ -101,6 +103,7 @@ test('source scrolling after a preview switch is remembered across remounts', ()
   render(null, root);
   expect(store.get().session?.scroll[id]?.top).toBe(500);
   const restored = mount(store, <FileView id={id} path={path} />);
+  await act(async () => {});
   expect(restored.querySelector('.file-view')?.scrollTop).toBe(500);
 });
 
@@ -114,7 +117,7 @@ test('a browser decoding error offers the file directly', () => {
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/preview/s/repo/unsupported.png?v=1');
 });
 
-test('source highlights reveal once after text arrives, across refreshes and remounts', () => {
+test('source highlights reveal once after text arrives, across refreshes and remounts', async () => {
   const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   try {
     const session = emptySession('s');
@@ -138,7 +141,7 @@ test('source highlights reveal once after text arrives, across refreshes and rem
     expect(store.get().session?.files.open['a.md']?.reveal).toBe(false);
     act(() => text('# Changed'));
     act(() => render(null, root));
-    mount(store, <FileView id="file:a.md" path="a.md" />);
+    await act(async () => { mount(store, <FileView id="file:a.md" path="a.md" />); });
     expect(scroll).toHaveBeenCalledTimes(1);
   } finally { scroll.mockRestore(); }
 });

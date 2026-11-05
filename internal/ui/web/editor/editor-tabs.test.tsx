@@ -101,7 +101,7 @@ test('each pane\'s view menu offers the options of its active tab', async () => 
 
 test('the arrow keys, Home, and End select tabs and keep the focus on them', async () => {
   const {store, tabs} = setup();
-  tabs()[2].focus();
+  act(() => tabs()[2].focus());
   const press = async (key: string) => {
     act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true})); });
     await frame();
@@ -133,7 +133,7 @@ test('splitting a pane restores the scroll saved by the departing view', () => {
   expect(attached(store.get()).scroll['file:one'].top).toBe(500);
 });
 
-test('a preview tab is italic until double-clicked, and a deleted file is struck through', () => {
+test('double-clicking keeps a preview tab, and a deleted file reports its status', () => {
   const {store, root} = setup(state => ({
     ...state,
     session: {
@@ -143,12 +143,10 @@ test('a preview tab is italic until double-clicked, and a deleted file is struck
     },
   }));
   const tab = (path: string) => find(root, `[data-tab="${fileTabId(path)}"]`);
-  expect(find(tab('a.go'), '.editor-tabs-label').classList.contains('line-through')).toBe(true);
   expect(find(tab('a.go'), '[role="tab"]').title).toBe('a.go (deleted)');
-  expect(find(tab('b.go'), '.editor-tabs-label').classList.contains('italic')).toBe(true);
+  expect(attached(store.get()).tabs.preview).toBe(fileTabId('b.go'));
   act(() => { find(tab('b.go'), '[role="tab"]').dispatchEvent(new MouseEvent('dblclick', {bubbles: true})); });
   expect(attached(store.get()).tabs.preview).toBeNull();
-  expect(find(tab('b.go'), '.editor-tabs-label').classList.contains('italic')).toBe(false);
 });
 
 

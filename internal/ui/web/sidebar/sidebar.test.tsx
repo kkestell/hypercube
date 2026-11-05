@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
-import {clickControl, element, find, findAll, mount, setValue, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import type {Activity, Merge, Session} from '../sessions/types.ts';
@@ -10,27 +10,22 @@ import {Sidebar} from './sidebar.tsx';
 
 const listeners: ((event: KeyboardEvent) => void)[] = [];
 const observeKey = (listener: (event: KeyboardEvent) => void) => { addEventListener('keydown', listener); listeners.push(listener); };
-const originalFetch = globalThis.fetch;
 afterEach(() => {
   mock.restore();
-  Object.defineProperty(globalThis, 'fetch', {value: originalFetch, configurable: true, writable: true});
   for (const listener of listeners.splice(0)) removeEventListener('keydown', listener);
   unmountAll();
 });
 
 const session = (id: string, extra: Partial<Session> = {}) => testSession({id, title: 'Session ' + id, running: true, ...extra});
 const setSessions = (store: Store, sessions: Session[]) =>
-  store.update(s => ({...s, workspaces: s.workspaces.map(w => w.id === 'w' ? {...w, sessions} : w)}));
+  act(() => store.update(s => ({...s, workspaces: s.workspaces.map(w => w.id === 'w' ? {...w, sessions} : w)})));
 
 function setup(sessions: Session[]) {
   let respond = () => new Response('');
   const requests: URL[] = [];
-  Object.defineProperty(globalThis, 'fetch', {
-    configurable: true, writable: true,
-    value: async (input: string | URL | Request) => {
-      requests.push(new URL(input instanceof Request ? input.url : input, 'http://x/'));
-      return respond();
-    },
+  stubFetch(url => {
+    requests.push(new URL(url, 'http://x/'));
+    return respond();
   });
   const store = createStore(testState({selected: null, workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]}));
   function View() {
@@ -41,7 +36,6 @@ function setup(sessions: Session[]) {
   const posted = () => requests.map(url => Object.fromEntries(url.searchParams));
   return {store, root, posted, answer: (next: () => Response) => { respond = next; }};
 }
-
 
 const click = (element: HTMLElement) => act(() => clickControl(element));
 const sessionRows = (root: HTMLElement) => findAll(root, '[data-session]').map(row => row.dataset.session);
@@ -65,21 +59,25 @@ test('running sessions come before stopped sessions, preserving order within eac
   const running = sessions.filter(s => s.running).map(s => s.id);
   const stopped = sessions.filter(s => !s.running).map(s => s.id);
   expect(sessionRows(root)).toEqual([...running, ...stopped]);
-  expect(row(root, 's21').classList.contains('opacity-60')).toBe(true);
   setSessions(store, sessions.map(item => ({...item, running: !item.running})));
   expect(sessionRows(root)).toEqual([...stopped, ...running]);
-  expect(row(root, 's22').classList.contains('opacity-60')).toBe(true);
 });
 
-test('a running child keeps its stopped parent ahead of stopped sessions', () => {
+test('a running child keeps its stopped parent visible, with stopped children shown in creation order on request', () => {
   const {root} = setup([
     session('stopped', {running: false}),
-    session('parent', {running: false, children: [session('child', {parent: 'parent'})]}),
+    session('parent', {running: false, children: [
+      session('child', {parent: 'parent'}),
+      session('second', {parent: 'parent', running: false}),
+      session('first', {parent: 'parent', running: false, ended: true}),
+    ]}),
     session('running'),
   ]);
   expect(sessionRows(root)).toEqual(['parent', 'child', 'running']);
+  showStopped(root, '[data-session="parent"]');
+  expect(sessionRows(root)).toEqual(['parent', 'child', 'second', 'first', 'running']);
   showStopped(root);
-  expect(sessionRows(root)).toEqual(['parent', 'child', 'running', 'stopped']);
+  expect(sessionRows(root)).toEqual(['parent', 'child', 'second', 'first', 'running', 'stopped']);
 });
 
 test('stopped sessions hide until a menu shows them, and the menu hides them again', () => {
@@ -103,7 +101,7 @@ test('stopped sessions show no attention dots', () => {
 
 test('Add Workspace works even when no workspaces exist', () => {
   const {root, store, posted} = setup([]);
-  store.update(s => ({...s, workspaces: []}));
+  act(() => store.update(s => ({...s, workspaces: []})));
   click(find(root, '[title="Add Workspace"]'));
   expect(posted()).toEqual([{action: 'new'}]);
 });
@@ -210,44 +208,18 @@ test('deleting a session asks first and posts only on Delete', () => {
   expect(posted()).toEqual([{action: 'delete', id: 'a'}]);
 });
 
-test('Escape cancels deleting a workspace', () => {
+test('workspace header and action menus ask before deletion, which Escape cancels and Delete confirms', () => {
   const {root, posted} = setup([session('a')]);
-  choose(root, '[data-workspace="w"]', 'Delete Workspace');
+  choose(root, '[data-workspace="w"] .workspace-section-header', 'Delete Workspace');
   expect(dialogText('[data-slot=alert-dialog-title]')).toBe('Are you sure you want to delete \'repo\'?');
   press('Escape');
   expect(dialog()).toBeNull();
   expect(posted()).toEqual([]);
 
-  choose(root, '[data-workspace="w"]', 'Delete Workspace');
+  workspaceMenu(root);
+  pick('Delete Workspace');
   act(() => dialogButton('Delete').click());
   expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
-});
-
-test('nested sessions stay in creation order and ended ones dim', () => {
-  const children = [session('second', {parent: 'a'}), session('first', {parent: 'a', running: false, ended: true})];
-  const {root} = setup([session('a', {children}), session('p0')]);
-  expect(sessionRows(root)).toEqual(['a', 'second', 'p0']);
-  showStopped(root, '[data-session="a"]');
-  expect(sessionRows(root)).toEqual(['a', 'second', 'first', 'p0']);
-  expect(row(root, 'first').classList.contains('opacity-60')).toBe(true);
-});
-
-test('clicking a parent selects it and keeps its children visible', () => {
-  const {store, root, posted} = setup([session('a', {children: [session('child', {parent: 'a'})]})]);
-  select(root, 'a');
-  expect(store.get().selected).toBe('a');
-  expect(sessionRows(root)).toEqual(['a', 'child']);
-  expect(posted()).toEqual([]);
-});
-
-test('a running child shows its stopped parent, and stopped and ended children dim once shown', () => {
-  const children = [session('running', {parent: 'a'}), session('stopped', {parent: 'a', running: false}), session('ended', {parent: 'a', ended: true})];
-  const {root} = setup([session('a', {running: false, children})]);
-  expect(sessionRows(root)).toEqual(['a', 'running']);
-  showStopped(root, '[data-session="a"]');
-  expect(sessionRows(root)).toEqual(['a', 'running', 'stopped', 'ended']);
-  for (const id of ['a', 'stopped', 'ended']) expect(row(root, id).classList.contains('opacity-60')).toBe(true);
-  expect(row(root, 'running').classList.contains('opacity-60')).toBe(false);
 });
 
 test('each row shows only its own state, and nothing while idle', () => {
@@ -262,7 +234,7 @@ test('each row shows only its own state, and nothing while idle', () => {
   expect(dots(root, 'exited')).toEqual([]);
   expect(row(root, 'exited').querySelector('.session-item-decoration')).toBeNull();
   expect(root.querySelector('[data-variant=destructive]')).toBeNull();
-  store.update(s => ({...s, selected: 'replied'}));
+  act(() => store.update(s => ({...s, selected: 'replied'})));
   expect(dots(root, 'replied')).toEqual([]);
 });
 
@@ -283,15 +255,6 @@ test('waiting and unseen indicators take priority over the working indicator', (
   ]})]);
   expect(dots(root, 'a')).toEqual(['unseen']);
   expect(dots(root, 'child')).toEqual(['waiting']);
-});
-
-test('session actions and workspace actions open their respective menus', () => {
-  const {root, posted} = setup([session('a', {children: [session('active', {parent: 'a'})]})]);
-  choose(root, '[data-session="a"]', 'Stop Session');
-  expect(posted()).toEqual([{action: 'stop', id: 'a'}]);
-  workspaceMenu(root);
-  pick('Delete Workspace');
-  expect(dialogText('[data-slot=alert-dialog-title]')).toBe('Are you sure you want to delete \'repo\'?');
 });
 
 test('Escape closes a menu and returns the focus to its button', async () => {
@@ -335,7 +298,7 @@ test('a worktree session reports its branch and merge state on an icon without v
 
 test('each workspace has a section, with children inside their parent\'s row', () => {
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
-  store.update(s => ({...s, workspaces: [...s.workspaces, testWorkspace({id: 'other', name: 'other', path: '/other', sessions: [session('c')]})]}));
+  act(() => store.update(s => ({...s, workspaces: [...s.workspaces, testWorkspace({id: 'other', name: 'other', path: '/other', sessions: [session('c')]})]})));
   expect(sessionRows(root)).toEqual(['a', 'child', 'b', 'c']);
   expect(findAll(root, '.workspace-section-header').map(header => [header.textContent, header.title])).toEqual([
     ['repo', '/repo'], ['other', '/other'],
@@ -346,7 +309,7 @@ test('each workspace has a section, with children inside their parent\'s row', (
 });
 
 test('a parent\'s chevron and double-click collapse and expand its children, and a click only selects', () => {
-  const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]})]);
+  const {root, store, posted} = setup([session('a', {children: [session('child', {parent: 'a'})]})]);
   click(find(row(root, 'a'), '.session-item-twistie'));
   expect(sessionRows(root)).toEqual(['a']);
   expect(row(root, 'a').getAttribute('aria-expanded')).toBe('false');
@@ -356,6 +319,7 @@ test('a parent\'s chevron and double-click collapse and expand its children, and
   select(root, 'a');
   expect(sessionRows(root)).toEqual(['a', 'child']);
   expect(store.get().selected).toBe('a');
+  expect(posted()).toEqual([]);
 });
 
 test('a section header is a labelled toggle that Enter, Space, Left, and Right drive', () => {
@@ -377,7 +341,7 @@ test('a section header is a labelled toggle that Enter, Space, Left, and Right d
 
 test('a section\'s New Session opens a new session in that workspace', () => {
   const {root, store} = setup([session('a')]);
-  store.update(s => ({...s, workspaces: [...s.workspaces, testWorkspace({id: 'other', name: 'other', path: '/other'})]}));
+  act(() => store.update(s => ({...s, workspaces: [...s.workspaces, testWorkspace({id: 'other', name: 'other', path: '/other'})]})));
   click(find(root, '[data-workspace="other"] [title="New Session"]'));
   expect(store.get().unsent).toMatchObject({workspace: 'other'});
 });
@@ -386,7 +350,7 @@ test('only one row is tabbable, and the arrow keys move and open rows', () => {
   const {root, store} = setup([session('a', {children: [session('child', {parent: 'a'})]}), session('b')]);
   const tabbable = () => findAll(root, '[role="treeitem"][tabindex="0"]').map(r => r.dataset.session);
   expect(tabbable()).toEqual(['a']);
-  row(root, 'a').focus();
+  act(() => row(root, 'a').focus());
   key(row(root, 'a'), 'ArrowLeft');
   expect(sessionRows(root)).toEqual(['a', 'b']);
   key(row(root, 'a'), 'ArrowRight');
@@ -404,7 +368,7 @@ test('only one row is tabbable, and the arrow keys move and open rows', () => {
 
 test('when the focused row goes away, the focus moves to a remaining row', () => {
   const {root, store} = setup([session('a'), session('b')]);
-  row(root, 'b').focus();
+  act(() => row(root, 'b').focus());
   setSessions(store, [session('a')]);
   expect(sessionRows(root)).toEqual(['a']);
   expect(document.activeElement).toBe(row(root, 'a'));
@@ -415,7 +379,7 @@ test('Escape on a row reaches the app, and the rename field keeps its own', () =
   const {root} = setup([session('a')]);
   const reached: [string, boolean][] = [];
   observeKey(e => reached.push([e.key, e.defaultPrevented]));
-  row(root, 'a').focus();
+  act(() => row(root, 'a').focus());
   key(row(root, 'a'), 'Escape');
   expect(reached).toEqual([['Escape', false]]);
   const field = rename(root, 'a');
@@ -427,15 +391,15 @@ test('Escape on a row reaches the app, and the rename field keeps its own', () =
 test.each([
   [{key: 'F10', shiftKey: true}],
   [{key: 'ContextMenu'}],
-])('%o on a focused row opens its menu', init => {
+])('%o on a focused row opens its menu', async init => {
   const {root} = setup([session('a')]);
-  act(() => row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})));
+  await act(async () => { row(root, 'a').dispatchEvent(new KeyboardEvent('keydown', {...init, bubbles: true, cancelable: true})); });
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Stop Session', 'Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal', 'Archive Session', 'Delete Session']);
 });
 
-test('workspace actions remain available while their menu is open', () => {
+test('workspace actions remain available while their menu is open', async () => {
   const {root} = setup([session('a')]);
-  workspaceMenu(root);
+  await act(async () => { workspaceMenu(root); });
   expect(find(root, '[title="More Actions"]').hidden).toBe(false);
   expect(document.querySelector('[role=menu]')).not.toBeNull();
 });
@@ -450,14 +414,6 @@ test('Rename in a session\'s menu opens the rename field', () => {
   const {root} = setup([session('a')]);
   choose(root, '[data-session="a"]', 'Rename');
   expect(element(row(root, 'a'), 'input', HTMLInputElement).getAttribute('value')).toBe('Session a');
-});
-
-test('workspace headers offer the workspace context menu', () => {
-  const {root, posted} = setup([session('a')]);
-  choose(root, '[data-workspace="w"]', 'Delete Workspace');
-  expect(dialogText('[data-slot=alert-dialog-title]')).toBe("Are you sure you want to delete 'repo'?");
-  click(dialogButton('Delete'));
-  expect(posted()).toEqual([{action: 'delete', id: 'w'}]);
 });
 
 test('search opens from the sidebar and choosing a result shows its session', async () => {
@@ -487,7 +443,7 @@ test('archive menu hides the family while search can select its chat', () => {
   expect(sessionRows(root)).toEqual(['active']);
   choose(root, '[data-session="active"]', 'Archive Session');
   expect(posted()).toEqual([{action: 'archive', id: 'active'}]);
-  chooseSession(store, 'child');
+  act(() => chooseSession(store, 'child'));
   expect(store.get().selected).toBe('child');
   expect(posted()).toHaveLength(1);
 });

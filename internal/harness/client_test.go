@@ -2,11 +2,9 @@ package harness_test
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -30,22 +28,15 @@ func until(t *testing.T, what string, check func() bool) {
 
 type connection struct {
 	*harness.Client
+	t       *testing.T
 	logs    string
-	mu      sync.Mutex
-	got     []harness.Event
-	next    int64
-	pending map[int64]chan error
+	records chan harness.Record
 	exit    chan error
-	ended   error
 }
 
-func (c *connection) events() []harness.Event {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return append([]harness.Event(nil), c.got...)
-}
-func connect(t *testing.T) *connection {
+func connect(t *testing.T, handle func(harness.Record) error) *connection {
 	t.Helper()
+	// Keep holder socket paths below macOS's length limit.
 	dir, err := os.MkdirTemp("", "hc")
 	if err != nil {
 		t.Fatal(err)
@@ -57,72 +48,75 @@ func connect(t *testing.T) *connection {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &connection{Client: client, logs: dir, exit: make(chan error, 1), pending: map[int64]chan error{}}
+	c := &connection{Client: client, t: t, logs: dir, records: make(chan harness.Record, 8), exit: make(chan error, 1)}
 	go func() {
-		err := client.Read(0, func(rec harness.Record, _ int64) error {
-			c.mu.Lock()
-			defer c.mu.Unlock()
-			if rec.Event != nil {
-				c.got = append(c.got, *rec.Event)
-				return nil
+		defer close(c.exit)
+		c.exit <- client.Read(0, func(rec harness.Record, _ int64) error {
+			if handle != nil {
+				if err := handle(rec); err != nil {
+					return err
+				}
 			}
-			ch := c.pending[rec.Reply.ID]
-			if ch == nil {
-				return fmt.Errorf("reply to unknown request %d", rec.Reply.ID)
-			}
-			delete(c.pending, rec.Reply.ID)
-			var err error
-			if rec.Reply.Error != "" {
-				err = errors.New(rec.Reply.Error)
-			}
-			ch <- err
+			c.records <- rec
 			return nil
 		})
-		c.mu.Lock()
-		c.ended = err
-		for _, ch := range c.pending {
-			ch <- err
-		}
-		c.mu.Unlock()
-		c.exit <- err
 	}()
-	t.Cleanup(func() { _ = client.Stop(); _ = client.Remove() })
+	t.Cleanup(func() {
+		_ = client.Stop()
+		_ = client.Close()
+		select {
+		case <-c.exit:
+		case <-time.After(5 * time.Second):
+			t.Error("client reader did not stop")
+		}
+		_ = client.Remove()
+	})
 	return c
 }
-func (c *connection) send(cmd harness.Command) error {
+
+func (c *connection) send(cmd harness.Command) {
+	c.t.Helper()
 	line, err := cmd.Line()
 	if err != nil {
-		return err
+		c.t.Fatal(err)
 	}
-	return c.Send(line)
+	if err := c.Send(line); err != nil {
+		c.t.Fatal(err)
+	}
 }
-func (c *connection) do(cmd harness.Command) error {
-	c.mu.Lock()
-	if c.ended != nil {
-		c.mu.Unlock()
-		return c.ended
-	}
-	c.next++
-	cmd.ID = c.next
-	ch := make(chan error, 1)
-	c.pending[cmd.ID] = ch
-	c.mu.Unlock()
-	if err := c.send(cmd); err != nil {
-		return err
-	}
+
+func (c *connection) next() harness.Record {
+	c.t.Helper()
 	select {
-	case err := <-ch:
-		return err
+	case rec := <-c.records:
+		return rec
 	case <-time.After(5 * time.Second):
-		return errors.New("reply timed out")
+		c.t.Fatal("timed out waiting for a record")
+		return harness.Record{}
 	}
 }
-func (c *connection) start() error {
-	return c.do(harness.Command{Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}})
+
+func (c *connection) reply(id int64, problem string) {
+	c.t.Helper()
+	if rec := c.next(); rec.Reply == nil || rec.Reply.ID != id || rec.Reply.Error != problem {
+		c.t.Fatalf("record = %+v, want reply %d with error %q", rec, id, problem)
+	}
 }
-func (c *connection) input(text string) error {
-	return c.do(harness.Command{Command: harness.CmdInput, Text: text})
+
+func (c *connection) state(want string) {
+	c.t.Helper()
+	if rec := c.next(); rec.Event == nil || rec.Event.State != want {
+		c.t.Fatalf("record = %+v, want state %q", rec, want)
+	}
 }
+
+func (c *connection) start() {
+	c.t.Helper()
+	c.send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}})
+	c.reply(1, "")
+	c.state(harness.Idle)
+}
+
 func TestFindNeedsPlugin(t *testing.T) {
 	_, err := harness.Find(t.TempDir(), "pi")
 	if err == nil || !strings.Contains(err.Error(), "hypercube-harness-pi") {
@@ -130,31 +124,25 @@ func TestFindNeedsPlugin(t *testing.T) {
 	}
 }
 func TestConversation(t *testing.T) {
-	c := connect(t)
-	if err := c.start(); err != nil {
-		t.Fatal(err)
-	}
-	until(t, "idle", func() bool { return len(c.events()) == 1 })
-	if err := c.input("!early"); err != nil {
-		t.Fatal(err)
-	}
-	until(t, "early events", func() bool { return len(c.events()) == 3 })
-	if err := c.input("!reject"); err == nil || err.Error() != "rejected" {
-		t.Fatal(err)
-	}
-	if err := c.input("again"); err != nil {
-		t.Fatal(err)
-	}
-	until(t, "turn", func() bool { return len(c.events()) == 5 })
+	c := connect(t, nil)
+	c.start()
+	c.send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "!early"})
+	c.state(harness.Working)
+	c.reply(2, "")
+	c.state(harness.Idle)
+	c.send(harness.Command{ID: 3, Command: harness.CmdInput, Text: "!reject"})
+	c.reply(3, "rejected")
+	c.send(harness.Command{ID: 4, Command: harness.CmdInput, Text: "again"})
+	c.reply(4, "")
+	c.state(harness.Working)
+	c.state(harness.Idle)
 }
+
 func TestStopEndsTheProcessGroup(t *testing.T) {
-	c := connect(t)
-	if err := c.start(); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.input("!child"); err != nil {
-		t.Fatal(err)
-	}
+	c := connect(t, nil)
+	c.start()
+	c.send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "!child"})
+	c.reply(2, "")
 	child := harnesstest.Log(t, c.logs, "a", "child")[0].Pid
 	_ = c.Stop()
 	select {
@@ -164,18 +152,31 @@ func TestStopEndsTheProcessGroup(t *testing.T) {
 	}
 	until(t, "child gone", func() bool { return syscall.Kill(child, 0) == syscall.ESRCH })
 }
-func TestBrokenProtocolEndsTheConnection(t *testing.T) {
-	for word, want := range map[string]string{"!malformed": "malformed record", "!stray": "reply to unknown request 999"} {
-		t.Run(word, func(t *testing.T) {
-			c := connect(t)
-			if err := c.start(); err != nil {
-				t.Fatal(err)
+
+func TestReadStopsOnProtocolOrHandlerError(t *testing.T) {
+	refused := errors.New("handler refused the record")
+	for _, tc := range []struct {
+		name   string
+		input  string
+		handle func(harness.Record) error
+		want   string
+	}{
+		{name: "malformed record", input: "!malformed", want: "malformed record"},
+		{name: "handler error", input: "again", want: refused.Error(), handle: func(rec harness.Record) error {
+			if rec.Reply != nil && rec.Reply.ID == 2 {
+				return refused
 			}
-			_ = c.input(word)
+			return nil
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := connect(t, tc.handle)
+			c.start()
+			c.send(harness.Command{ID: 2, Command: harness.CmdInput, Text: tc.input})
 			select {
 			case err := <-c.exit:
-				if !strings.Contains(err.Error(), want) {
-					t.Fatal(err)
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("Read error = %v, want %q", err, tc.want)
 				}
 			case <-time.After(5 * time.Second):
 				t.Fatal("connection stayed open")
@@ -183,6 +184,7 @@ func TestBrokenProtocolEndsTheConnection(t *testing.T) {
 		})
 	}
 }
+
 func TestPluginThatEndsReportsItsDiagnostics(t *testing.T) {
 	dir, err := os.MkdirTemp("", "hc")
 	if err != nil {
@@ -201,26 +203,5 @@ func TestPluginThatEndsReportsItsDiagnostics(t *testing.T) {
 	err = c.Read(0, func(harness.Record, int64) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "exit status 1: unsupported") {
 		t.Fatal(err)
-	}
-}
-func TestStandInIgnoresResentCommands(t *testing.T) {
-	c := connect(t)
-	if err := c.start(); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a"}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.input("one"); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "one"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.input("two"); err != nil {
-		t.Fatal(err)
-	}
-	if got := harnesstest.Log(t, c.logs, "a", "input"); len(got) != 2 {
-		t.Fatal(got)
 	}
 }

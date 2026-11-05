@@ -27,7 +27,6 @@
 //	!child     start a child process in the plugin's group
 //	!crash     reply, then exit
 //	!malformed reply, then write a bad line
-//	!stray     reply, then write a reply nobody asked for
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
 // fails. With HYPERCUBE_TEST_CRASH set the plugin exits shortly after starting.
@@ -302,9 +301,6 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("malformed"):
 		p.reply(cmd.ID, "")
 		fmt.Fprintln(p.out, "not json")
-	case has("stray"):
-		p.reply(cmd.ID, "")
-		p.reply(999, "")
 	default:
 		p.reply(cmd.ID, "")
 		p.state(harness.Working)

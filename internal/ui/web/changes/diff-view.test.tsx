@@ -12,14 +12,13 @@ afterEach(unmountAll);
 
 const session = (path: string, diff: OpenDiff) => ({...emptySession('s'), diffs: {[path]: diff}});
 
-function view(diff: OpenDiff, path = 'foo.py') {
-  return mount(createStore(testState({session: session(path, diff)})), <DiffView id={'diff:' + path} path={path} />);
-}
+const view = (diff: OpenDiff, path = 'foo.py') => act(async () =>
+  mount(createStore(testState({session: session(path, diff)})), <DiffView id={'diff:' + path} path={path} />));
 
-const message = (diff: OpenDiff) => view(diff).querySelector('.diff-view-message')?.textContent;
+const message = async (diff: OpenDiff) => (await view(diff)).querySelector('.diff-view-message')?.textContent;
 
-test('a diff shows both line numbers, change marks, and changed line classes', () => {
-  const root = view({text: '@@ -1,2 +1,2 @@\n context\n-old\n+new\n', message: null});
+test('a diff shows both line numbers, change marks, and changed line classes', async () => {
+  const root = await view({text: '@@ -1,2 +1,2 @@\n context\n-old\n+new\n', message: null});
   const rows = [...root.querySelectorAll('.diff-view-line')];
   expect(rows.map(row => [...row.children].map(cell => cell.textContent))).toEqual([
     ['1', '1', '', 'context'], ['2', '', '−', 'old'], ['', '2', '+', 'new'],
@@ -28,25 +27,25 @@ test('a diff shows both line numbers, change marks, and changed line classes', (
   expect(rows[2].classList.contains('diff-view-added')).toBe(true);
 });
 
-test('an empty patch shows No changes and a refused file shows its message', () => {
-  expect(message({text: '', message: null})).toBe('No changes');
-  expect(message({text: null, message: 'Too large'})).toBe('Too large');
+test('an empty patch shows No changes and a refused file shows its message', async () => {
+  expect(await message({text: '', message: null})).toBe('No changes');
+  expect(await message({text: null, message: 'Too large'})).toBe('Too large');
 });
 
 test.each([
   ['diff --git a/empty b/empty\nnew file mode 100644\nindex 0000000..e69de29\n', 'Empty file'],
   ['diff --git a/script b/script\nold mode 100644\nnew mode 100755\n', 'File mode changed from 100644 to 100755'],
-])('metadata-only patches explain their change', (text, note) => {
-  expect(message({text, message: null})).toBe(note);
+])('metadata-only patches explain their change', async (text, note) => {
+  expect(await message({text, message: null})).toBe(note);
 });
 
-test('large line numbers are preserved on both sides', () => {
-  const root = view({text: '@@ -9999 +100000 @@\n context\n', message: null});
+test('large line numbers are preserved on both sides', async () => {
+  const root = await view({text: '@@ -9999 +100000 @@\n context\n', message: null});
   expect([...root.querySelectorAll('.diff-view-line td')].slice(0, 2).map(cell => cell.textContent)).toEqual(['9999', '100000']);
 });
 
 test('OCaml additions receive light and dark highlighting', async () => {
-  const root = view({text: '@@ -0,0 +1 @@\n+let value = "hello"\n', message: null}, 'checked.ml');
+  const root = await view({text: '@@ -0,0 +1 @@\n+let value = "hello"\n', message: null}, 'checked.ml');
   await act(async () => { await import('../files/highlight.ts'); });
   const code = find(root, 'code');
   expect(code.textContent).toBe('let value = "hello"');
@@ -55,10 +54,11 @@ test('OCaml additions receive light and dark highlighting', async () => {
   expect(code.innerHTML).toContain('--shiki-dark:#A5D6FF');
 });
 
-test('find and change navigation operate on the focused diff', () => {
+test('find and change navigation operate on the focused diff', async () => {
   const path = 'foo.py';
   const diff = {text: '@@ -1,4 +1,4 @@\n-old\n+one\n context\n-before\n+one again\n', message: null};
   const root = mount(createStore(testState({session: session(path, diff)})), <div className="editor-pane"><DiffView id="diff:foo.py" path={path} /></div>);
+  await act(async () => {});
   const scrolled: Element[] = [];
   const view = find(root, '.diff-view');
   const changes = [...root.querySelectorAll<HTMLElement>('[data-change]')];
@@ -86,10 +86,11 @@ test('find and change navigation operate on the focused diff', () => {
   expect(document.activeElement).toBe(view);
 });
 
-test('the shared wrap preference changes diff line wrapping', () => {
+test('the shared wrap preference changes diff line wrapping', async () => {
   const path = 'foo.py';
   const store = createStore(testState({session: session(path, {text: '@@ -1 +1 @@\n-old\n+new\n', message: null})}));
   const root = mount(store, <DiffView id="diff:foo.py" path={path} />);
+  await act(async () => {});
   expect(find(root, '.diff-view-line td:last-child').className).toContain('whitespace-pre ');
   act(() => store.update(state => ({...state, workbench: {...state.workbench, wrap: true}})));
   expect(find(root, '.diff-view-line td:last-child').className).toContain('whitespace-pre-wrap');

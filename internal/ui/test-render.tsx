@@ -1,4 +1,4 @@
-// React roots and store updates stay synchronous for behavior tests.
+// React roots render synchronously; tests wrap updates in act.
 import {mock, spyOn, type Mock} from 'bun:test';
 import {act, useLayoutEffect, useState, type ReactNode} from 'react';
 import {createRoot, type Root} from 'react-dom/client';
@@ -22,7 +22,7 @@ export function render(element: ReactNode | null, container: Element) {
 
 function Provider({store, children}: {store: Store; children: ReactNode}) {
   const [state, setState] = useState(store.get());
-  useLayoutEffect(() => store.subscribe(next => act(() => setState(next))), [store]);
+  useLayoutEffect(() => store.subscribe(setState), [store]);
   return <StoreContext.Provider value={[state, store]}>{children}</StoreContext.Provider>;
 }
 

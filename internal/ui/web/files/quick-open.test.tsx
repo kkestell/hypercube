@@ -22,7 +22,7 @@ test('Quick Open filters session paths and opens a preview', async () => {
   const input = element(document, '[aria-label="Search files"]', HTMLInputElement);
   act(() => { setValue(input, 'smg'); input.dispatchEvent(new Event('input', {bubbles: true})); });
   expect(find(document, '[cmdk-item]').textContent).toBe('src/main.go');
-  clickControl(find(document, '[cmdk-item]'));
+  await act(async () => { clickControl(find(document, '[cmdk-item]')); });
   expect(store.get().session?.tabs.preview).toBe('file:src/main.go');
   expect(document.querySelector('[role=dialog]')).toBeNull();
 });

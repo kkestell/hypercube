@@ -1,4 +1,5 @@
 import {afterEach, beforeEach, expect, mock, spyOn, test} from 'bun:test';
+import {act} from 'react';
 import {find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import type {Profile} from '../agent/types.ts';
@@ -58,7 +59,7 @@ test('a hidden page marks the reply seen once it shows', () => {
   const s = store('a', [session('a', {unseen: true})], false);
   mount(s, <SessionView />);
   expect(posted()).toEqual([]);
-  s.update(state => ({...state, visible: true}));
+  act(() => s.update(state => ({...state, visible: true})));
   expect(posted()).toEqual([{action: 'seen', id: 'a'}]);
 });
 
@@ -77,7 +78,7 @@ test('an unsent session shows the tesseract in place of its transcript', () => {
   expect(root.querySelector('.transcript')).toBeNull();
   expect(root.querySelector('.composer textarea[aria-label="Message"]')).not.toBeNull();
   expect(find(root, '[data-tab="agent"] .editor-tabs-label').textContent).toBe('New Session');
-  s.update(state => selectSession(receivedWorkspaces(state, workspaces([session('a')])), 'a'));
+  act(() => s.update(state => selectSession(receivedWorkspaces(state, workspaces([session('a')])), 'a')));
   expect(root.querySelector('.tesseract')).toBeNull();
   expect(root.querySelector('.transcript')).not.toBeNull();
 });

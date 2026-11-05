@@ -1,6 +1,7 @@
 package session
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -104,8 +105,9 @@ func TestSendMessageAcrossWorkspaces(t *testing.T) {
 	if _, err := f.rt.SendMessage(parent.ID, peer.ID, "across workspaces"); err != nil {
 		t.Fatal(err)
 	}
-	f.until("cross-workspace delivery", func() bool {
-		return strings.Contains(strings.Join(f.inputs(peer.ID), "\n"), "across workspaces") && len(f.queued(peer.ID)) == 0
+	want := fmt.Sprintf("Message from %s (%q, workspace %s):\nacross workspaces", parent.ID, parent.Title, f.workspace.Path)
+	f.until("cross-workspace delivery with the sender's identity", func() bool {
+		return strings.Contains(strings.Join(f.inputs(peer.ID), "\n"), want) && len(f.queued(peer.ID)) == 0
 	})
 	if err := f.rt.Stop(peer.ID); err != nil {
 		t.Fatal(err)

@@ -75,7 +75,7 @@ test('a busy agent can be stopped until text or an image is added', () => {
   expect(control(root, 'Send').disabled).toBe(false);
   typeInto(field, '  \n ');
   expect(control(root, 'Stop')).not.toBeNull();
-  s.update(state => ({...state, drafts: {a: {text: '', images: [{mime_type: 'image/png', data: 'YQ=='}], reading: 0}}}));
+  act(() => s.update(state => ({...state, drafts: {a: {text: '', images: [{mime_type: 'image/png', data: 'YQ=='}], reading: 0}}})));
   expect(control(root, 'Send').disabled).toBe(false);
 });
 
@@ -123,7 +123,7 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   const root = mount(s, <Composer session={unsentSession} />);
   const field = textarea(root);
   setValue(field, 'hello');
-  field.dispatchEvent(new Event('input', {bubbles: true}));
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   expect(control(root, 'Send').disabled).toBe(true);
   await settle();
 
@@ -147,7 +147,7 @@ test('profiles that arrive for a replaced unsent session are ignored', async () 
   fetches = stubFetch(url => url.startsWith('mention-files?') ? Response.json([]) : new Promise<Response>(resolve => { answers.push(resolve); }));
   const s = unsentStore();
   mount(s, <Composer session={unsentSession} />);
-  s.update(state => openUnsent(state, 'other'));
+  act(() => s.update(state => openUnsent(state, 'other')));
   expect(answers.length).toBe(2);
   answers[0](Response.json([profiles[1]]));
   await settle();
@@ -163,10 +163,10 @@ test('the profile selector stays in place and disables while the first message s
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
   const select = profileButton(root);
-  s.update(state => unsentSending(state, true));
+  act(() => s.update(state => unsentSending(state, true)));
   expect(profileButton(root)).toBe(select);
   expect(select.disabled).toBe(true);
-  clickControl(select);
+  await act(async () => { clickControl(select); });
   expect(s.get().unsent?.profile).toBe('claude');
 });
 
@@ -177,14 +177,15 @@ const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
 };
 const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label=Worktree]');
 
-test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', () => {
+test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json(profiles));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
+  await act(async () => {});
   const toggle = element(root, '[aria-label=Worktree]', HTMLButtonElement);
   expect(toggle.getAttribute('aria-pressed')).toBe('false');
   expect(toggle.disabled).toBe(false);
   unmountAll();
-  root = mount(worktreeStore(true), <Composer session={unsentSession} />);
+  await act(async () => { root = mount(worktreeStore(true), <Composer session={unsentSession} />); });
   expect(worktreeToggle(root)).toBeNull();
 });
 
@@ -200,7 +201,7 @@ test('turning Worktree on creates the session in a worktree and locks while send
   fetches.mockImplementation(() => new Promise<Response>(resolve => { releases.push(() => resolve(Response.json({session: 'n'}))); }));
   const field = textarea(root);
   setValue(field, 'hello');
-  field.dispatchEvent(new Event('input', {bubbles: true}));
+  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
   act(() => clickControl(control(root, 'Send')));
   expect(toggle.disabled).toBe(true);
   clickControl(toggle);
@@ -262,7 +263,7 @@ test('prompt history returns to the unsent draft', () => {
   s.update(state => withHistory(state, prompt('1', 'first'), prompt('2', 'peer', 'peer'), prompt('3', 'last')));
   const root = mount(s, <Composer session={session} />);
   const field = textarea(root);
-  setValue(field, 'draft'); field.dispatchEvent(new Event('input', {bubbles: true}));
+  typeInto(field, 'draft');
   press(field, 'ArrowUp'); expect(field.value).toBe('last');
   press(field, 'ArrowUp'); expect(field.value).toBe('first');
   press(field, 'ArrowDown'); expect(field.value).toBe('last');

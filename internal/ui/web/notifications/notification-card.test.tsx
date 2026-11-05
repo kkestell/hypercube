@@ -106,9 +106,9 @@ test('a refused action shows an error card, newest first, until it is closed', a
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('session is busy', {status: 409}));
   const store = createStore({...state, workspaces: [], requests: []});
   const root = mount(store, <NotificationStack />);
-  expect(await post(store, 'session', {action: 'stop', id: 'a'})).toBeNull();
+  await act(async () => { expect(await post(store, 'session', {action: 'stop', id: 'a'})).toBeNull(); });
   fetches.mockResolvedValue(new Response('no such session', {status: 404}));
-  await post(store, 'session', {action: 'stop', id: 'b'});
+  await act(async () => { await post(store, 'session', {action: 'stop', id: 'b'}); });
   const texts = () => [...root.querySelectorAll('.notification-card')].map(card => card.textContent);
   expect(texts()).toEqual(['no such session', 'session is busy']);
   expect(root.querySelector('[title="View Session"]')).toBeNull();
