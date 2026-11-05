@@ -34,7 +34,7 @@ const chooseNext = async (root: HTMLElement) => {
 };
 
 test.each<Activity>(['idle', 'busy'])('a ready %s session selects only profiles of its harness and displays saved values', async activity => {
-  const fetches = stubFetch(url => url === 'profiles' ? Response.json(profiles) : new Response(''));
+  const fetches = stubFetch(url => url === 'config' ? Response.json({default_profile: 'first', profiles}) : new Response(''));
   const s = store({...session, activity});
   const root = mount(s, <View />);
   await settle();
@@ -53,7 +53,7 @@ test.each<Activity>(['idle', 'busy'])('a ready %s session selects only profiles 
 });
 
 test('a rejected selection stays visible through the existing error notification', async () => {
-  stubFetch(url => url === 'profiles' ? Response.json(profiles) : new Response('effort refused', {status: 400}));
+  stubFetch(url => url === 'config' ? Response.json({default_profile: 'first', profiles}) : new Response('effort refused', {status: 400}));
   const root = mount(store(session), <View />);
   await settle();
   await chooseNext(root);
@@ -62,7 +62,7 @@ test('a rejected selection stays visible through the existing error notification
 });
 
 test.each([['claude', 'Claude'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['pi', 'Pi']])('%s uses its icon in the selected profile and menu', async (harness, name) => {
-  stubFetch(() => Response.json([{...profiles[0], harness, model: 'saved', effort: 'medium'}]));
+  stubFetch(() => Response.json({default_profile: 'first', profiles: [{...profiles[0], harness, model: 'saved', effort: 'medium'}]}));
   const root = mount(store({...session, harness}), <View />);
   await settle();
   const button = element(root, '[aria-label=Profile]', HTMLButtonElement);

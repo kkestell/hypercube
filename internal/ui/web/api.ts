@@ -1,6 +1,5 @@
 // Every HTTP call the page makes to the server.
-import type {Profile} from './agent/types.ts';
-import type {Grant} from './app/types.ts';
+import type {Config, Grant} from './app/types.ts';
 import type {ChangesResult, DiffRead} from './changes/types.ts';
 import type {FileEntry, FileRead, SearchFile} from './files/types.ts';
 import {showError} from './notifications/errors.ts';
@@ -50,9 +49,14 @@ async function request<T>(store: Store, path: string, init: RequestInit | undefi
 export const post = (store: Store, path: string, params: Record<string, string>, body?: string) =>
   request(store, url(path, params), {method: 'POST', body}, response => response.text());
 
-// fetchProfiles returns the profiles, or null after showing why it failed.
-export const fetchProfiles = (store: Store) =>
-  request<Profile[]>(store, 'profiles', undefined, response => response.json());
+export const fetchConfig = (store: Store) =>
+  request<Config>(store, 'config', {cache: 'no-store'}, response => response.json());
+
+// saveConfig throws so the modal can show a failed save beside its draft.
+export async function saveConfig(config: Config): Promise<void> {
+  const response = await fetch('config', {method: 'POST', body: JSON.stringify(config)});
+  if (!response.ok) throw new HttpError(await response.text(), response.status);
+}
 
 export const fetchGrants = (store: Store) =>
   request<Grant[]>(store, 'grants', undefined, response => response.json());

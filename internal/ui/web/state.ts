@@ -1,7 +1,7 @@
 // The page's state, which the store holds: the server's workspaces, requests,
 // and limits, and what the page itself keeps.
 import type {Draft} from './agent/types.ts';
-import type {Limit, TitleBar, Workbench} from './app/types.ts';
+import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
 import type {BrowserPage} from './browser/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
@@ -14,9 +14,11 @@ import type {Confirmation, Rect} from './shared/types.ts';
 // workspaces arrive. drafts are keyed by draft key, dismissed by card key,
 // and browsers and fileOpens by session ID; overlays hold each mounted
 // overlay's rect by ID. titleBar is null outside the Hypercube window.
+// config is the most recently fetched or saved configuration.
 export interface State {
   workspaces: Workspace[];
   loaded: boolean;
+  config: Config | null;
   limits: Limit[];
   requests: AttentionRequest[];
   selected: string | null;
@@ -40,6 +42,7 @@ export interface State {
 export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
   loaded: false,
+  config: null,
   limits: [],
   requests: [],
   selected,

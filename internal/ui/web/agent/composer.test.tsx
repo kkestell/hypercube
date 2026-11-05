@@ -117,8 +117,8 @@ const unsentStore = () => {
   return s;
 };
 
-test('the unsent composer lists profiles, defaults to the first, and keeps the draft when another is chosen', async () => {
-  fetches = stubFetch(() => Response.json(profiles));
+test('the unsent composer uses the configured default and keeps the draft when another is chosen', async () => {
+  fetches = stubFetch(() => Response.json({default_profile: 'codex', profiles}));
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   const field = textarea(root);
@@ -127,18 +127,18 @@ test('the unsent composer lists profiles, defaults to the first, and keeps the d
   expect(control(root, 'Send').disabled).toBe(true);
   await settle();
 
-  expect(s.get().unsent?.profile).toBe('claude');
+  expect(s.get().unsent?.profile).toBe('codex');
   expect(control(root, 'Send').disabled).toBe(false);
   const select = profileButton(root);
   expect(select.disabled).toBe(false);
-  expect(select.textContent).toBe('Opus · High');
+  expect(select.textContent).toBe('Sol · Medium');
   clickControl(select);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
   expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Opus · High' : 'Sol · Medium'}${p.description}`));
-  act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
-  expect(s.get().unsent?.profile).toBe('codex');
-  expect(select.textContent).toBe('Sol · Medium');
+  act(() => options[0].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
+  expect(s.get().unsent?.profile).toBe('claude');
+  expect(select.textContent).toBe('Opus · High');
   expect(s.get().drafts[unsentKey].text).toBe('hello');
 });
 
@@ -149,16 +149,31 @@ test('profiles that arrive for a replaced unsent session are ignored', async () 
   mount(s, <Composer session={unsentSession} />);
   s.update(state => openUnsent(state, 'other'));
   expect(answers.length).toBe(2);
-  answers[0](Response.json([profiles[1]]));
+  answers[0](Response.json({default_profile: 'codex', profiles: [profiles[1]]}));
   await settle();
   expect(s.get().unsent).toMatchObject({workspace: 'other', profile: null});
-  answers[1](Response.json(profiles));
+  answers[1](Response.json({default_profile: 'claude', profiles}));
   await settle();
   expect(s.get().unsent?.profile).toBe('claude');
 });
 
+test('opening the selector uses saved profiles and replaces a removed draft choice with the default', async () => {
+  let config = {default_profile: 'claude', profiles};
+  fetches = stubFetch(() => Response.json(config));
+  const s = unsentStore();
+  const root = mount(s, <Composer session={unsentSession} />);
+  await settle();
+  typeInto(textarea(root), 'Keep this draft');
+  config = {default_profile: 'codex', profiles: [profiles[1]]};
+  clickControl(profileButton(root));
+  await settle();
+  expect(s.get().unsent?.profile).toBe('codex');
+  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['Sol · MediumCodex for ordinary tasks']);
+  expect(textarea(root).value).toBe('Keep this draft');
+});
+
 test('the profile selector stays in place and disables while the first message sends', async () => {
-  fetches = stubFetch(() => Response.json(profiles));
+  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
@@ -178,7 +193,7 @@ const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
 const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label=Worktree]');
 
 test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', () => {
-  fetches = stubFetch(() => Response.json(profiles));
+  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   const toggle = element(root, '[aria-label=Worktree]', HTMLButtonElement);
   expect(toggle.getAttribute('aria-pressed')).toBe('false');
@@ -189,7 +204,7 @@ test('the unsent composer offers a Worktree toggle, off, only in a Git workspace
 });
 
 test('turning Worktree on creates the session in a worktree and locks while sending', async () => {
-  fetches = stubFetch(() => Response.json(profiles));
+  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
@@ -397,7 +412,7 @@ test('opening mentions refreshes files, keeps old results while loading, and rep
 });
 
 test('clearing the new session workspace removes its file suggestions', async () => {
-  fetches.mockImplementation(url => Response.json(url.startsWith('mention-files?') ? ['old.go'] : profiles));
+  fetches.mockImplementation(url => Response.json(url.startsWith('mention-files?') ? ['old.go'] : {default_profile: 'claude', profiles}));
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   const field = textarea(root);

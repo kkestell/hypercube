@@ -9,10 +9,14 @@ import {covered} from '../shared/overlays.ts';
 import type {State} from '../state.ts';
 import {createStore, type Store} from '../store.ts';
 import {App} from './app.tsx';
-import type {Grant, Region, Workbench} from './types.ts';
+import type {Config, Grant, Region, Workbench} from './types.ts';
+
+const config: Config = {default_profile: 'lead', profiles: [
+  {name: 'lead', description: 'Tasks', harness: 'claude', model: 'opus', effort: 'high'},
+]};
 
 beforeEach(() => {
-  stubFetch(() => Response.json([]));
+  stubFetch(url => Response.json(url === 'config' ? config : []));
 });
 afterEach(() => {
   delete globalThis.webkit;
@@ -244,18 +248,20 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', as
 test('Settings opens from the sidebar, shortcut and menu and removes saved choices', async () => {
   const choices: Grant[] = [{session: '', title: '', harness: 'codex', tool: 'shell'}, {session: 'a', title: 'My session', harness: 'claude', tool: 'Bash'}];
   const version = 'Hypercube v0.1.0-beta.1+dirty (abc123)';
-  const requests = answer((url, init) => url === 'version' ? new Response(version) : init?.method === 'POST' ? new Response('') : Response.json(choices));
+  const requests = answer((url, init) => url === 'version' ? new Response(version) : init?.method === 'POST' ? new Response('') : Response.json(url === 'config' ? config : choices));
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
   await act(async () => { find(root, '[aria-label="Settings"]').click(); });
   let dialog = find(document, '[role=dialog]');
+  await act(async () => { buttonNamed(dialog, 'Permissions').click(); });
   expect(dialog.textContent).toContain('Always Allowed Tools');
   expect(dialog.textContent).toContain('codex · All sessions');
   expect(dialog.textContent).toContain('claude · My session');
-  expect(find(dialog, '[aria-label="Build"]').textContent).toContain(version);
   await act(async () => { find(dialog, '[aria-label="Remove shell, codex, all sessions"]').click(); });
   expect(dialog.textContent).not.toContain('shell');
   expect(requests.at(-1)?.params).toEqual({session: '', harness: 'codex', tool: 'shell'});
+  act(() => { buttonNamed(dialog, 'About').click(); });
+  expect(find(dialog, '[aria-label="Build"]').textContent).toContain(version);
   act(() => { find(dialog, '[data-slot="dialog-close"]').click(); });
   const event = new KeyboardEvent('keydown', {key: ',', metaKey: true, bubbles: true, cancelable: true});
   await act(async () => { find(root, '.terminal-panel').dispatchEvent(event); });

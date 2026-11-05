@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Profile names a harness, model, and effort for an agent, and its
@@ -18,7 +19,8 @@ type Profile struct {
 }
 
 type Config struct {
-	Profiles []Profile `json:"profiles"`
+	DefaultProfile string    `json:"default_profile"`
+	Profiles       []Profile `json:"profiles"`
 }
 
 func configPath() string {
@@ -41,25 +43,70 @@ func LoadConfig() (Config, error) {
 	if err := json.Unmarshal(data, &c); err != nil {
 		return c, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := c.Validate(); err != nil {
+		return c, fmt.Errorf("%s: %w", path, err)
+	}
+	return c, nil
+}
+
+// Validate checks the configuration and resolves an omitted default to the
+// first profile, as files written before default_profile did.
+func (c *Config) Validate() error {
+	if len(c.Profiles) == 0 {
+		return fmt.Errorf("at least one profile is required")
+	}
 	seen := map[string]bool{}
 	for i, p := range c.Profiles {
 		switch {
-		case p.Name == "":
-			return c, fmt.Errorf("%s: profile %d: missing name", path, i+1)
+		case strings.TrimSpace(p.Name) == "":
+			return fmt.Errorf("profile %d: missing name", i+1)
 		case seen[p.Name]:
-			return c, fmt.Errorf("%s: duplicate profile %q", path, p.Name)
-		case p.Description == "":
-			return c, fmt.Errorf("%s: profile %q: missing description", path, p.Name)
+			return fmt.Errorf("duplicate profile %q", p.Name)
+		case strings.TrimSpace(p.Description) == "":
+			return fmt.Errorf("profile %q: missing description", p.Name)
 		}
 		if err := p.check(); err != nil {
-			return c, fmt.Errorf("%s: profile %q: %w", path, p.Name, err)
+			return fmt.Errorf("profile %q: %w", p.Name, err)
 		}
 		seen[p.Name] = true
 	}
-	if len(c.Profiles) == 0 {
-		return c, fmt.Errorf("%s: at least one profile is required", path)
+	if c.DefaultProfile == "" {
+		c.DefaultProfile = c.Profiles[0].Name
 	}
-	return c, nil
+	if !seen[c.DefaultProfile] {
+		return fmt.Errorf("default profile %q does not exist", c.DefaultProfile)
+	}
+	return nil
+}
+
+// SaveConfig validates and replaces the config as a complete document. Readers
+// keep using LoadConfig; direct file edits while the app runs are unsupported.
+func SaveConfig(c Config) error {
+	if err := c.Validate(); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	path := configPath()
+	f, err := os.CreateTemp(filepath.Dir(path), ".config-*")
+	if err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+	defer os.Remove(f.Name())
+	_, err = f.Write(append(data, '\n'))
+	closeErr := f.Close()
+	if err != nil {
+		return fmt.Errorf("writing config: %w", err)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("closing config: %w", closeErr)
+	}
+	if err := os.Rename(f.Name(), path); err != nil {
+		return fmt.Errorf("replacing config: %w", err)
+	}
+	return nil
 }
 
 // Profile returns the profile with the given name.
@@ -74,11 +121,11 @@ func (c Config) Profile(name string) (Profile, error) {
 
 func (p Profile) check() error {
 	switch {
-	case p.Harness == "":
+	case strings.TrimSpace(p.Harness) == "":
 		return fmt.Errorf("missing harness")
-	case p.Model == "":
+	case strings.TrimSpace(p.Model) == "":
 		return fmt.Errorf("missing model")
-	case p.Effort == "":
+	case strings.TrimSpace(p.Effort) == "":
 		return fmt.Errorf("missing effort")
 	}
 	return nil
