@@ -10,7 +10,6 @@ import {sessionItems, workspaceItems} from './sidebar-menus.ts';
 import {Usage} from './usage.tsx';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
-import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
 
@@ -118,8 +117,8 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}, {id: 'archived', title: 'Archived', icon: 'archive'}]}
         selected={view} onSelect={value => { setRenaming(null); setView(value); }} clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={selectSearchResult} />
-          <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
-          <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
+          <Button className="size-7" variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
+          <Button className="size-7" variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
         <>{view === 'sessions' && tree}</>
         <>{view === 'archived' && tree}</>

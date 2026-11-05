@@ -25,6 +25,16 @@ const toolAt = (list: Row[], index: number): ToolRow => {
   return row;
 };
 
+test('only exact adjacent text copies of structured questions are omitted', () => {
+  const question = attention('q', 2, {text: 'Which size?', choices: ['Small', 'Large'], done: true, answer: 'Small'});
+  const copy: TextItem & {seq: number} = {id: 'copy', kind: 'text', seq: 0, text: 'Which size?\n- Small\n- Large'};
+  expect(ids(rows([copy, question]))).toEqual(['q']);
+  expect(ids(rows([{...copy, text: 'Context.\n' + copy.text}, question]))).toEqual(['copy', 'q']);
+  expect(ids(rows([{...copy, images: [{mime_type: 'image/png', data: 'x'}]}, question]))).toEqual(['copy', 'q']);
+  expect(ids(rows([copy, {...question, parent: 'other'}]))).toEqual(['copy', 'q']);
+  expect(ids(rows([copy, text('between', 2), question]))).toEqual(['copy', 'between', 'q']);
+});
+
 test('toolSummary picks the telling text of a call', () => {
   expect(toolSummary({command: 'ls -la\n  /tmp', timeout: 5})).toBe('ls -la /tmp');
   expect(toolSummary({file_path: '/a/b.go', content: 'x'})).toBe('/a/b.go');

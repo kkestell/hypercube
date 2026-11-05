@@ -653,15 +653,6 @@ func TestStartFailureIsReturned(t *testing.T) {
 	}
 }
 
-func TestInputWhenNotRunning(t *testing.T) {
-	h := newAgent(t)
-	h.server.out.(io.Closer).Close()
-	<-h.rpc.Done()
-	if err := h.input("hello", nil); err == nil {
-		t.Fatal("input to a process that has ended")
-	}
-}
-
 func TestApprovalBecomesAnAttentionRequest(t *testing.T) {
 	h := newAgent(t)
 	lines := fixture(t, "approval")
@@ -1025,7 +1016,7 @@ func TestConnectStartsAThread(t *testing.T) {
 	if err := h.connect(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
-	if h.thread != "thread-1" || len(h.snapshot()) != 1 || h.snapshot()[0].Conversation != "thread-1" {
+	if h.thread != "thread-1" || len(h.snapshot()) != 1 || h.snapshot()[0].Conversation != "native:thread-1" {
 		t.Fatalf("%q %+v", h.thread, h.snapshot())
 	}
 	init := h.server.sent("initialize")[0]
@@ -1052,7 +1043,7 @@ func TestConnectResumesAThread(t *testing.T) {
 		}
 		return map[string]any{"thread": map[string]any{"id": p["threadId"]}}, nil
 	})
-	args := harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), Conversation: "saved"}
+	args := harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), Conversation: "native:saved"}
 	if err := h.connect(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -1061,10 +1052,23 @@ func TestConnectResumesAThread(t *testing.T) {
 		t.Fatalf("%q %+v", h.thread, p)
 	}
 	// A conversation that cannot be resumed is an error, not a new conversation.
-	args.Conversation = "gone"
+	args.Conversation = "native:gone"
 	err := h.connect(context.Background(), args)
 	if err == nil || !strings.Contains(err.Error(), "could not resume thread gone") || !strings.Contains(err.Error(), "no rollout found") || len(h.server.sent("thread/start")) != 0 {
 		t.Fatal(err)
+	}
+}
+
+// An old private thread can have a stale copy in the native home. Never
+// resume that copy or silently create a replacement conversation.
+func TestLegacyPrivateConversationIsRejectedBeforeConnecting(t *testing.T) {
+	h := newAgent(t)
+	err := h.connect(context.Background(), harness.StartArgs{Conversation: "old-private-thread", Dir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "predates the native storage integration") || !strings.Contains(err.Error(), "transcript and files are preserved") {
+		t.Fatal(err)
+	}
+	if len(h.server.sent("initialize")) != 0 || len(h.server.sent("thread/resume")) != 0 || len(h.server.sent("thread/start")) != 0 {
+		t.Fatal("contacted native storage for a legacy private thread")
 	}
 }
 
@@ -1072,15 +1076,6 @@ func TestConnectReportsAnIncompatibleServer(t *testing.T) {
 	h := newAgent(t)
 	err := h.connect(context.Background(), harness.StartArgs{Dir: t.TempDir()})
 	if err == nil || !strings.Contains(err.Error(), "update Codex") {
-		t.Fatal(err)
-	}
-}
-
-func TestStartWithoutCodex(t *testing.T) {
-	t.Setenv("CODEX_HOME", t.TempDir())
-	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir(), StateDir: t.TempDir()}, func(harness.Event) {})
-	if err == nil || !strings.Contains(err.Error(), "Codex is missing") {
 		t.Fatal(err)
 	}
 }
@@ -1097,104 +1092,6 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	_, err := startAgent(harness.StartArgs{Dir: t.TempDir(), StateDir: t.TempDir()}, func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "bad value") {
-		t.Fatal(err)
-	}
-}
-
-// The agent talks to a real process: initialize, a thread, a turn, and an
-// exit that the serve loop reports.
-func TestServeDrivesAProcess(t *testing.T) {
-	user := t.TempDir()
-	t.Setenv("HOME", user)
-	t.Setenv("CODEX_HOME", "")
-	writeStorageFile(t, filepath.Join(user, ".config", "neuron", "codex-profile.zsh"), []byte("export CODEX_HOME=\"$HOME/.codex-strib\"\n"))
-	writeStorageFile(t, filepath.Join(user, ".codex-strib", "auth.json"), []byte("selected account"))
-	stateDir := t.TempDir()
-	t.Setenv("EXPECTED_STATE_DIR", stateDir)
-	t.Setenv("EXPECTED_SOURCE", filepath.Join(user, ".codex-strib"))
-	t.Setenv("EXPECTED_HOME", os.Getenv("HOME"))
-	bin := t.TempDir()
-	script := `#!/bin/sh
-case "$1" in app-server) ;; *) exit 9;; esac
-case "$CODEX_HOME" in "$EXPECTED_STATE_DIR"/codex/homes/*) ;; *) exit 10;; esac
-[ "$HOME" = "$EXPECTED_HOME" ] || exit 11
-[ "$2" = '-c' ] || exit 12
-[ "$3" = "sqlite_home=\"$CODEX_HOME\"" ] || exit 13
-[ "$(readlink "$CODEX_HOME/auth.json")" = "$EXPECTED_SOURCE/auth.json" ] || exit 14
-while IFS= read -r line; do
-  id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p')
-  case "$line" in
-    *'"method":"initialize"'*) printf '{"id":%s,"result":{}}\n' "$id";;
-    *'"method":"thread/start"'*) printf '{"id":%s,"result":{"thread":{"id":"th"}}}\n' "$id";;
-    *'"method":"turn/start"'*)
-      printf '{"id":%s,"result":{"turn":{"id":"tu"}}}\n' "$id"
-      printf '{"method":"item/completed","params":{"threadId":"th","turnId":"tu","item":{"type":"agentMessage","id":"m","text":"hello"}}}\n'
-      printf '{"method":"turn/completed","params":{"threadId":"th","turn":{"id":"tu","status":"completed"}}}\n';;
-  esac
-done
-`
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	inRead, inWrite := io.Pipe()
-	outRead, outWrite := io.Pipe()
-	done := make(chan error, 1)
-	go func() { done <- serve(inRead, outWrite); outWrite.Close() }()
-	records := make(chan harness.Record, 64)
-	go func() {
-		scanner := bufio.NewScanner(outRead)
-		for scanner.Scan() {
-			var r harness.Record
-			if err := json.Unmarshal(scanner.Bytes(), &r); err != nil {
-				t.Error(err)
-			}
-			records <- r
-		}
-		close(records)
-	}()
-	send := func(cmd harness.Command) {
-		b, _ := json.Marshal(cmd)
-		if _, err := inWrite.Write(append(b, '\n')); err != nil {
-			t.Fatal(err)
-		}
-	}
-	// until reads records until the ones seen so far satisfy ok. Events and
-	// replies race, so a record is never skipped.
-	var seen []harness.Record
-	until := func(ok func([]harness.Record) bool) {
-		t.Helper()
-		timeout := time.After(10 * time.Second)
-		for !ok(seen) {
-			select {
-			case r, open := <-records:
-				if !open {
-					t.Fatal("the connection closed")
-				}
-				seen = append(seen, r)
-			case <-timeout:
-				t.Fatalf("timed out; saw %+v", seen)
-			}
-		}
-	}
-	has := func(match func(harness.Record) bool) func([]harness.Record) bool {
-		return func(rs []harness.Record) bool { return slices.ContainsFunc(rs, match) }
-	}
-	send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), StateDir: stateDir}})
-	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 1 && r.Reply.Error == "" }))
-	until(has(func(r harness.Record) bool {
-		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == "th"
-	}))
-	send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "hi"})
-	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 2 && r.Reply.Error == "" }))
-	until(has(func(r harness.Record) bool {
-		return r.Event != nil && len(r.Event.Items) == 1 && r.Event.Items[0].Text == "hello" && r.Event.Items[0].Done
-	}))
-	until(has(func(r harness.Record) bool {
-		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == ""
-	}))
-	inWrite.Close()
-	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 }

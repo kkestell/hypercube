@@ -4,7 +4,7 @@
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
 import {unsentKey} from '../agent/drafts.ts';
-import {agentTabs, openBrowserTab} from '../editor/editor.ts';
+import {agentTabs} from '../editor/editor.ts';
 import type {Profile} from '../agent/types.ts';
 import type {State} from '../state.ts';
 import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
@@ -69,15 +69,12 @@ function discardUnsent(state: State): State {
   return {...state, unsent: null, drafts: omit(state.drafts, [unsentKey])};
 }
 
-// attach replaces the session state when the shown session changes. The page
-// attaches to the selected session in any state, with its browser's tab open
-// if it has a browser.
+// attach replaces the session state when the shown session changes.
 function attach(state: State): State {
   const shown = currentSession(state);
   const id = shown?.id ?? null;
   if (id === (state.session?.id ?? null)) return state;
-  const next = {...state, session: id ? emptySession(id) : null};
-  return id && state.browsers[id] ? openBrowserTab(next, false) : next;
+  return {...state, session: id ? emptySession(id) : null};
 }
 
 // receivedWorkspaces applies a state message's workspaces.

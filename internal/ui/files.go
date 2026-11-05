@@ -158,14 +158,34 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cannot read a folder", http.StatusBadRequest)
 		return
 	}
-	if info.Size() > maxFile {
-		fileError(w, errTooLarge)
-		return
-	}
 	etag := fmt.Sprintf(`"%d-%d"`, info.Size(), info.ModTime().UnixNano())
 	w.Header().Set("ETag", etag)
 	if r.Header.Get("If-None-Match") == etag {
 		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	if typ := previewMIME(name); typ != "" {
+		address, err := s.previewURL(r.URL.Query().Get("session"), name, etag)
+		if fileError(w, err) {
+			return
+		}
+		var text *string
+		if (typ == "text/html" || typ == "image/svg+xml") && info.Size() <= maxFile {
+			content, err := readText(file, info.Size())
+			switch {
+			case err == nil:
+				value := string(content)
+				text = &value
+			case !errors.Is(err, errBinary):
+				fileError(w, err)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(struct {
+			Text    *string     `json:"text"`
+			Preview filePreview `json:"preview"`
+		}{text, filePreview{typ, address}})
 		return
 	}
 	content, err := readText(file, info.Size())

@@ -48,6 +48,7 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.HandleFunc("GET /mention-files", s.mentionFiles)
 	mux.HandleFunc("GET /search-files", s.searchFiles)
 	mux.HandleFunc("GET /file", s.readFile)
+	mux.HandleFunc("GET /preview/{session}/{path...}", s.readPreview)
 	mux.HandleFunc("GET /changes", s.listChanges)
 	mux.HandleFunc("GET /diff", s.readDiff)
 	mux.HandleFunc("GET /image", s.readImage)

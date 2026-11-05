@@ -33,7 +33,7 @@ func (r *Runtime) refreshMerges(workspaceID string) {
 	}
 	merges := map[string]workspace.Merge{}
 	for _, s := range sessions {
-		if s.Base == "" {
+		if s.Base == "" || s.Ended {
 			continue
 		}
 		m, err := workspace.MergeStatus(root, s.Dir, s.Branch, s.Base)

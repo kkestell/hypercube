@@ -45,9 +45,15 @@ The right panel follows the selected session's working directory:
 
 | View | Use |
 | --- | --- |
-| **Files** | Open a read-only file preview. Double-click to keep the tab open. Markdown has preview and source views. |
+| **Files** | Open a read-only file preview. Double-click to keep the tab open. Markdown, HTML, and SVG have preview and source views. |
 | **Changes** | Inspect uncommitted files and unified diffs, plus commits not merged into the original checkout's branch. |
 | **Search** | Find case-insensitive plain text and open a matching line. |
+
+Images, audio, video, and PDFs use the browser's built-in viewers without the
+text viewer's 256 KiB limit. HTML previews load relative resources with scripts
+disabled. Media support depends on the browser's formats and codecs. Source
+view is available for HTML and SVG with supported text encodings within the
+text size limit.
 
 Changes covers the whole repository containing the session directory. Search
 uses the same file list as Quick Open: in Git, tracked and untracked files that
@@ -72,10 +78,11 @@ The terminal panel is your shell in the selected session's directory. Each
 session has its own shell. Hiding the panel or closing the interface leaves it
 running; stopping the session or quitting Hypercube ends it.
 
-In the native window, an agent's first page navigation opens its **Browser**
-tab. You can navigate that page yourself or open it in your default browser.
-Closing the tab keeps the page alive; the agent can close it, or quitting
-Hypercube ends it. Session browsers share website logins.
+With the native app, an agent's page navigation opens its own browser window.
+Its controls let you navigate or open the page in your default browser. The
+**Window** menu lists open browser windows. Closing the window or the agent's
+`browser_close` ends that browser; quitting Hypercube ends them all. Session
+browsers share website logins.
 
 ### Merge a worktree session
 
@@ -91,12 +98,14 @@ parent to merge the work.
 
 ## Context and subscription use
 
-Context use and cost appear below the message box. The bottom status bar shows
+Context use and cost appear below the message box. The sidebar shows
 subscription usage reported by the harness: percent used and time until reset.
-The meter's mark shows how much of the time window has elapsed; amber means
-usage is ahead of that pace. A reading stays dimmed after reset until the
-harness reports again. See [usage reports](harness-support.md#usage-reports)
-for what each harness supplies.
+It shows the shortest reported window normally and the longest on hover or
+keyboard focus. When the harness reports only one window, that window stays
+visible. The meter's mark shows how much of the time window has elapsed.
+After a window resets, its last reading stays dimmed and marked **Waiting**
+until the harness reports again. See
+[usage reports](harness-support.md#usage-reports) for what each harness supplies.
 
 ## Answer a request
 

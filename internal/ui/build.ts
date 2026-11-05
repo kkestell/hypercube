@@ -53,7 +53,6 @@ for (const file of ['index.html', 'favicon.svg']) cpSync(join('web', file), join
 // Every bundled package ships its license, including the upstream UI sources.
 const licenses = new Map([
   ['shadcn-ui', 'web/components/ui'],
-  ['after-dark', 'web/files/after-dark'],
   ['tailwindcss', 'node_modules/tailwindcss'],
   ['@tailwindcss/typography', 'node_modules/@tailwindcss/typography'],
   ['tw-animate-css', 'node_modules/tw-animate-css'],

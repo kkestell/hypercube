@@ -1,12 +1,13 @@
 // Source line selection uses the same theme tokens as the standard controls.
-import {Fragment, useLayoutEffect, useRef, useState} from 'react';
+import {Fragment, useLayoutEffect, useRef, useState, type ReactNode} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
 import {Markdown} from '../transcript/markdown.tsx';
 import {revealed} from './files.ts';
-import {hasPreview, language} from './language.ts';
+import {BrowserPreview} from './browser-preview.tsx';
+import {language} from './language.ts';
 import {markdownImageURL} from './markdown-image.ts';
 import type {LineRange} from './types.ts';
 
@@ -58,10 +59,21 @@ export function FileView({id, path, active = true}: FileViewProps) {
     store.update(state => revealed(state, sessionId, path));
   }, [file?.text, file?.reveal, file?.source]);
   if (!sessionId) return null;
-  return <div className="relative flex min-h-0 flex-1 flex-col"><Find list={list} view={view} active={active} label="Find in file" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" /><div ref={view} tabIndex={0} className="file-view min-h-0 flex-1 overflow-auto"><div ref={list}>
-    {file && (file.message !== null ? <div className="file-view-message p-6 text-center text-muted-foreground">{file.message}</div>
-      : file.text === null ? null
-      : hasPreview(path) && !file.source ? <div className={`mx-auto p-6 ${state.workbench.fixedWidth ? 'max-w-[51.7rem]' : ''}`}><Markdown text={file.text} style="preview" imageSource={(href: string) => markdownImageURL(href, sessionId, path)} /></div>
-      : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} />)}
-  </div></div></div>;
+  const preview = file?.preview && (!file.source || file.text === null) ? file.preview : undefined;
+  let content: ReactNode = null;
+  if (preview) content = <BrowserPreview key={preview.url} preview={preview} path={path} />;
+  else if (file?.message) content = <div className="file-view-message p-6 text-center text-muted-foreground">{file.message}</div>;
+  else if (file?.text !== null && file?.text !== undefined) {
+    content = language(path) === 'markdown' && !file.source
+      ? <div className={`mx-auto p-6 ${state.workbench.fixedWidth ? 'max-w-[51.7rem]' : ''}`}>
+        <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} />
+      </div>
+      : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} />;
+  }
+  return <div className="relative flex min-h-0 flex-1 flex-col">
+    {!preview && <Find list={list} view={view} active={active} label="Find in file" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />}
+    <div ref={view} tabIndex={0} className={`file-view min-h-0 flex-1 overflow-auto ${preview ? 'flex flex-col' : ''}`}>
+      {preview ? content : <div ref={list}>{content}</div>}
+    </div>
+  </div>;
 }

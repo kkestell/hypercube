@@ -16,8 +16,6 @@ export const agentTabId = 'agent';
 // agentTabs is the layout a session starts with: its agent alone.
 export const agentTabs: TabLayout = {root: {id: 1, tabs: [agentTabId], active: agentTabId}, preview: null, dragging: null, nextId: 2};
 
-export const browserTabId = 'browser';
-
 export const fileTabId = (path: string): TabId => 'file:' + path;
 
 export const diffTabId = (path: string): TabId => 'diff:' + path;
@@ -41,11 +39,6 @@ export function tabEntry(state: State, id: TabId): TabEntry {
   }
   const {session} = state;
   if (!session) throw new Error(`Tab ${id} has no attached session.`);
-  if (id === browserTabId) {
-    const page = state.browsers[session.id];
-    const label = page?.title || 'Browser';
-    return {kind: 'browser', id, label, title: page?.url || label, preview: false};
-  }
   const path = tabPath(id);
   const name = path.slice(path.lastIndexOf('/') + 1);
   const preview = session.tabs.preview === id;
@@ -59,7 +52,7 @@ export function tabEntry(state: State, id: TabId): TabEntry {
   const deleted = !!open?.deleted;
   return {
     kind: 'file', id, path, name, deleted,
-    source: hasPreview(path) ? open?.source ?? false : null,
+    source: hasPreview(path) && (!open?.preview || open.text !== null) ? open?.source ?? false : null,
     label: name,
     title: path + (deleted ? ' (deleted)' : ''),
     preview,
@@ -82,7 +75,6 @@ function forgetTab(session: AttachedSession, id: TabId): AttachedSession {
 }
 
 export function closeTab(state: State, id: TabId): State {
-  if (id === browserTabId) return withTabs(state, tabs => layout.closeTab(tabs, id));
   return withSession(state, session => {
     const preview = session.tabs.preview === id ? null : session.tabs.preview;
     return {...forgetTab(session, id), tabs: {...layout.closeTab(session.tabs, id), preview}};
@@ -152,17 +144,6 @@ export function openPendingFiles(store: Store) {
   });
   for (const request of requests) openRequestedFile(store, request);
 }
-
-// openBrowserTab opens the browser's tab, as a file opens, and selects it if
-// select is set or it was closed. A shown chat stays shown, keeping the
-// composer and its focus, with the browser's tab behind it.
-export const openBrowserTab = (state: State, select: boolean) => withTabs(state, tabs => {
-  if (layout.findPane(tabs.root, browserTabId) && !select) return tabs;
-  const next = layout.openTab(tabs, browserTabId);
-  const pane = layout.findPane(next.root, browserTabId);
-  const chatShown = pane && layout.panes(tabs.root).some(p => p.id === pane.id && p.active === agentTabId);
-  return chatShown ? layout.selectTab(next, pane.id, agentTabId) : next;
-});
 
 export const keepOpen = (state: State, id: TabId) =>
   withTabs(state, tabs => tabs.preview === id ? {...tabs, preview: null} : tabs);

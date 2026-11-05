@@ -1,17 +1,19 @@
 #import "desktop.h"
 #include "_cgo_export.h"
 
-// HCBrowsers keeps each session's browser: a web view over the Browser tab's
-// body, where the page places it. The views live until the app quits and use
-// the default website data store, so they share logins, which last across
-// restarts.
-@interface HCBrowsers : NSObject <WKScriptMessageHandler, WKNavigationDelegate, WKUIDelegate>
+// Each session owns an ordinary native browser window. AppKit lays out its
+// controls and web view; the Hypercube page has no browser placement state.
+@interface HCBrowser : NSObject <NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, NSTextFieldDelegate>
+- (instancetype)initWithSession:(NSString *)session;
+- (void)navigate:(NSString *)address request:(uint64_t)request;
+- (void)eval:(NSString *)script request:(uint64_t)request;
+- (void)close;
 @end
 
-static HCBrowsers *browsers;
+static NSMutableDictionary<NSString *, HCBrowser *> *browsers;
 
-static NSArray<NSString *> *reportedKeys(void) {
-    return @[@"URL", @"title", @"loading", @"canGoBack", @"canGoForward"];
+static NSArray<NSString *> *observedKeys(void) {
+    return @[@"URL", @"title", @"canGoBack", @"canGoForward"];
 }
 
 static void succeed(uint64_t request, NSString *text) {
@@ -22,10 +24,8 @@ static void fail(uint64_t request, NSString *message) {
     hypercubeDone(request, NULL, (char *)message.UTF8String);
 }
 
-// addressURL reads an address as a browser's address bar does: one without
-// a scheme is an https URL.
+// An address without a scheme uses https, as in an ordinary address bar.
 static NSURL *addressURL(NSString *address) {
-    if (![address isKindOfClass:[NSString class]]) return nil;
     address = [address stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
     if (![address containsString:@"://"] && ![address hasPrefix:@"about:"]) address = [@"https://" stringByAppendingString:address];
     return [NSURL URLWithString:address];
@@ -40,131 +40,140 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
     return [current.URL isEqual:target.URL];
 }
 
-@implementation HCBrowsers {
-    HCWindow *_window;
-    NSMutableDictionary<NSString *, WKWebView *> *_views;
-    // The agents' navigations that have yet to finish, to their requests.
+@implementation HCBrowser {
+    NSString *_session;
+    NSWindow *_window;
+    WKWebView *_view;
+    NSTextField *_address;
+    NSButton *_back, *_forward;
+    // Agent navigations waiting for WebKit's completion notification.
     NSMapTable<WKNavigation *, NSNumber *> *_navigations;
 }
 
-- (instancetype)initWithWindow:(HCWindow *)window {
+- (NSButton *)button:(NSString *)symbol label:(NSString *)label action:(SEL)action {
+    NSButton *button = [NSButton buttonWithImage:[NSImage imageWithSystemSymbolName:symbol accessibilityDescription:label]
+                                        target:self action:action];
+    button.bezelStyle = NSBezelStyleTexturedRounded;
+    button.accessibilityLabel = label;
+    button.toolTip = label;
+    return button;
+}
+
+- (instancetype)initWithSession:(NSString *)session {
     self = [super init];
-    _window = window;
-    _views = [NSMutableDictionary dictionary];
+    _session = session;
     _navigations = [NSMapTable strongToStrongObjectsMapTable];
-    [window.webView.configuration.userContentController addScriptMessageHandler:self name:@"hypercube"];
+    WKWebViewConfiguration *configuration = [[WKWebViewConfiguration alloc] init];
+    configuration.websiteDataStore = WKWebsiteDataStore.defaultDataStore;
+    _view = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:configuration];
+    _view.navigationDelegate = self;
+    _view.UIDelegate = self;
+    if (@available(macOS 13.3, *)) _view.inspectable = YES;
+
+    NSWindowStyleMask style = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+    _window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1000, 720) styleMask:style backing:NSBackingStoreBuffered defer:NO];
+    _window.releasedWhenClosed = NO;
+    _window.delegate = self;
+    _window.contentMinSize = NSMakeSize(500, 300);
+    [_window center];
+
+    _back = [self button:@"chevron.left" label:@"Back" action:@selector(back:)];
+    _forward = [self button:@"chevron.right" label:@"Forward" action:@selector(forward:)];
+    NSButton *reload = [self button:@"arrow.clockwise" label:@"Reload" action:@selector(reload:)];
+    NSButton *external = [self button:@"safari" label:@"Open in default browser" action:@selector(external:)];
+    _address = [[NSTextField alloc] initWithFrame:NSZeroRect];
+    _address.placeholderString = @"Address";
+    _address.accessibilityLabel = @"Address";
+    _address.target = self;
+    _address.action = @selector(enteredAddress:);
+    _address.delegate = self;
+    [_address setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSStackView *bar = [NSStackView stackViewWithViews:@[_back, _forward, reload, _address, external]];
+    bar.spacing = 8;
+    bar.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
+    bar.alignment = NSLayoutAttributeCenterY;
+
+    NSView *content = _window.contentView;
+    bar.translatesAutoresizingMaskIntoConstraints = NO;
+    _view.translatesAutoresizingMaskIntoConstraints = NO;
+    [content addSubview:bar];
+    [content addSubview:_view];
+    [NSLayoutConstraint activateConstraints:@[
+        [bar.topAnchor constraintEqualToAnchor:content.topAnchor],
+        [bar.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+        [bar.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [_view.topAnchor constraintEqualToAnchor:bar.bottomAnchor],
+        [_view.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+        [_view.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [_view.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
+    ]];
+    for (NSString *key in observedKeys()) [_view addObserver:self forKeyPath:key options:0 context:nil];
+    [self updateControls];
     return self;
 }
 
-- (WKWebView *)viewFor:(NSString *)session {
-    WKWebView *view = _views[session];
-    if (view) return view;
-    view = [[WKWebView alloc] initWithFrame:NSZeroRect configuration:[[WKWebViewConfiguration alloc] init]];
-    view.navigationDelegate = self;
-    view.UIDelegate = self;
-    view.hidden = YES;
-    if (@available(macOS 13.3, *)) view.inspectable = YES;
-    _views[session] = view;
-    for (NSString *key in reportedKeys()) [view addObserver:self forKeyPath:key options:0 context:nil];
-    [_window.window.contentView addSubview:view positioned:NSWindowAbove relativeTo:_window.webView];
-    return view;
+- (void)show {
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    if (_window.miniaturized) [_window deminiaturize:nil];
+    [_window makeKeyAndOrderFront:nil];
 }
 
-// report sends the page a browser's state. reveal asks the page to show it.
-- (void)report:(WKWebView *)view reveal:(BOOL)reveal {
-    [_window dispatch:@"hypercube-browser" detail:@{
-        @"session": [_views allKeysForObject:view].firstObject,
-        @"url": view.URL.absoluteString ?: @"",
-        @"title": view.title ?: @"",
-        @"loading": @(view.loading),
-        @"canGoBack": @(view.canGoBack),
-        @"canGoForward": @(view.canGoForward),
-        @"reveal": @(reveal),
-    }];
+- (void)updateControls {
+    _window.title = [NSString stringWithFormat:@"%@ — %@", _view.title.length ? _view.title : @"Browser", _session];
+    // Keep an address being typed while the page changes in the background.
+    if (!_address.currentEditor) _address.stringValue = _view.URL.absoluteString ?: @"";
+    _back.enabled = _view.canGoBack;
+    _forward.enabled = _view.canGoForward;
 }
 
 - (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change context:(void *)context {
-    [self report:object reveal:NO];
+    [self updateControls];
 }
 
-// place shows the session's view at rect, in the page's CSS pixels, and hides
-// every other view. A hidden view gives up the keyboard to the page.
-- (void)place:(id)session rect:(id)rect {
-    NSRect frame = NSZeroRect;
-    if ([rect isKindOfClass:[NSDictionary class]]) {
-        CGFloat zoom = _window.webView.pageZoom;
-        NSRect inPage = NSMakeRect([rect[@"x"] doubleValue] * zoom, [rect[@"y"] doubleValue] * zoom, [rect[@"width"] doubleValue] * zoom, [rect[@"height"] doubleValue] * zoom);
-        frame = [_window.webView convertRect:inPage toView:_window.window.contentView];
-    }
-    NSWindow *window = _window.window;
-    [_views enumerateKeysAndObjectsUsingBlock:^(NSString *key, WKWebView *view, BOOL *stop) {
-        BOOL shown = [key isEqual:session];
-        if (shown) view.frame = frame;
-        if (!shown && [window.firstResponder isKindOfClass:[NSView class]] && [(NSView *)window.firstResponder isDescendantOf:view]) {
-            [window makeFirstResponder:self->_window.webView];
-        }
-        view.hidden = !shown;
-    }];
+- (void)back:(id)sender { [_view goBack]; }
+- (void)forward:(id)sender { [_view goForward]; }
+- (void)reload:(id)sender { [_view reload]; }
+- (void)external:(id)sender {
+    if (_view.URL) [[NSWorkspace sharedWorkspace] openURL:_view.URL];
+}
+- (void)enteredAddress:(id)sender {
+    NSURL *url = addressURL(_address.stringValue);
+    if (url) [_view loadRequest:[NSURLRequest requestWithURL:url]];
+    [_window makeFirstResponder:_view];
+    [self updateControls];
+}
+- (BOOL)control:(NSControl *)control textView:(NSTextView *)textView doCommandBySelector:(SEL)selector {
+    if (selector != @selector(cancelOperation:)) return NO;
+    [_window makeFirstResponder:_view];
+    [self updateControls];
+    return YES;
 }
 
-// A page that loads has placed no browser yet and asks for every browser's
-// state. It then places the shown browser and passes on the toolbar's buttons
-// and address.
-- (void)userContentController:(WKUserContentController *)controller didReceiveScriptMessage:(WKScriptMessage *)message {
-    // Only the UI page may control browsers; embedded frames must not.
-    if (!message.frameInfo.isMainFrame) return;
-    NSDictionary *body = message.body;
-    if (![body isKindOfClass:[NSDictionary class]]) return;
-    NSString *type = body[@"type"], *session = body[@"session"];
-    if ([type isEqual:@"ready"]) {
-        [self place:nil rect:nil];
-        for (WKWebView *view in _views.allValues) [self report:view reveal:NO];
-        return;
-    }
-    if ([type isEqual:@"place"]) {
-        [self place:session rect:body[@"rect"]];
-        return;
-    }
-    if (![session isKindOfClass:[NSString class]]) return;
-    if ([type isEqual:@"navigate"]) {
-        NSURL *url = addressURL(body[@"url"]);
-        if (url) [[self viewFor:session] loadRequest:[NSURLRequest requestWithURL:url]];
-        return;
-    }
-    WKWebView *view = _views[session];
-    if ([type isEqual:@"back"]) [view goBack];
-    else if ([type isEqual:@"forward"]) [view goForward];
-    else if ([type isEqual:@"reload"]) [view reload];
-    else if ([type isEqual:@"external"] && view.URL) [[NSWorkspace sharedWorkspace] openURL:view.URL];
-}
-
-- (void)navigate:(NSString *)session to:(NSString *)address request:(uint64_t)request {
+- (void)navigate:(NSString *)address request:(uint64_t)request {
     NSURL *url = addressURL(address);
     if (!url) {
         fail(request, [NSString stringWithFormat:@"%@ is not a URL", address]);
         return;
     }
-    WKWebView *view = [self viewFor:session];
+    [self show];
     // WebKit does not call didFinishNavigation for a fragment change.
-    if (isFragmentNavigation(view.URL, url)) {
-        [view callAsyncJavaScript:@"location.hash = new URL(url).hash; return JSON.stringify({url: location.href, title: document.title});"
-                       arguments:@{@"url": url.absoluteString}
-                         inFrame:nil
-                  inContentWorld:WKContentWorld.pageWorld
-               completionHandler:^(id result, NSError *error) {
+    if (isFragmentNavigation(_view.URL, url)) {
+        [_view callAsyncJavaScript:@"location.hash = new URL(url).hash; return JSON.stringify({url: location.href, title: document.title});"
+                        arguments:@{@"url": url.absoluteString}
+                          inFrame:nil
+                   inContentWorld:WKContentWorld.pageWorld
+                completionHandler:^(id result, NSError *error) {
             if (error) fail(request, error.localizedDescription);
             else succeed(request, result);
         }];
-        [self report:view reveal:YES];
         return;
     }
-    WKNavigation *navigation = [view loadRequest:[NSURLRequest requestWithURL:url]];
+    WKNavigation *navigation = [_view loadRequest:[NSURLRequest requestWithURL:url]];
     if (!navigation) {
         fail(request, [NSString stringWithFormat:@"%@ could not be loaded", address]);
         return;
     }
     [_navigations setObject:@(request) forKey:navigation];
-    [self report:view reveal:YES];
 }
 
 - (NSNumber *)takeRequest:(WKNavigation *)navigation {
@@ -176,9 +185,14 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
 - (void)webView:(WKWebView *)view didFinishNavigation:(WKNavigation *)navigation {
     NSNumber *request = [self takeRequest:navigation];
     if (!request) return;
-    NSDictionary *page = @{@"url": view.URL.absoluteString ?: @"", @"title": view.title ?: @""};
-    NSData *json = [NSJSONSerialization dataWithJSONObject:page options:0 error:nil];
-    succeed(request.unsignedLongLongValue, [[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding]);
+    // WebKit's title property can lag behind didFinishNavigation. Read the
+    // loaded document to return its title with the navigation result.
+    [view callAsyncJavaScript:@"return JSON.stringify({url: location.href, title: document.title});"
+                   arguments:nil inFrame:nil inContentWorld:WKContentWorld.pageWorld
+           completionHandler:^(id result, NSError *error) {
+        if (error) fail(request.unsignedLongLongValue, error.localizedDescription);
+        else succeed(request.unsignedLongLongValue, result);
+    }];
 }
 
 - (void)webView:(WKWebView *)view didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
@@ -190,9 +204,9 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
     [self webView:view didFailNavigation:navigation withError:error];
 }
 
-- (void)eval:(NSString *)script in:(NSString *)session request:(uint64_t)request {
+- (void)eval:(NSString *)script request:(uint64_t)request {
     NSString *body = [NSString stringWithFormat:@"const value = await (async () => {\n%@\n})();\nreturn JSON.stringify(value) ?? 'undefined';", script];
-    [[self viewFor:session] callAsyncJavaScript:body arguments:nil inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id result, NSError *error) {
+    [_view callAsyncJavaScript:body arguments:nil inFrame:nil inContentWorld:WKContentWorld.pageWorld completionHandler:^(id result, NSError *error) {
         if (error) {
             fail(request, error.userInfo[@"WKJavaScriptExceptionMessage"] ?: error.localizedDescription);
             return;
@@ -201,58 +215,58 @@ static BOOL isFragmentNavigation(NSURL *from, NSURL *to) {
     }];
 }
 
-// close removes the session's browser and tells the page, which closes its
-// tab.
-- (void)close:(NSString *)session request:(uint64_t)request {
-    WKWebView *view = _views[session];
-    if (view) {
-        [_views removeObjectForKey:session];
-        for (NSString *key in reportedKeys()) [view removeObserver:self forKeyPath:key];
-        [view stopLoading];
-        view.navigationDelegate = nil;
-        view.UIDelegate = nil;
-        NSWindow *window = _window.window;
-        if ([window.firstResponder isKindOfClass:[NSView class]] && [(NSView *)window.firstResponder isDescendantOf:view]) {
-            [window makeFirstResponder:_window.webView];
-        }
-        [view removeFromSuperview];
-        [_window dispatch:@"hypercube-browser-closed" detail:@{@"session": session}];
-    }
-    succeed(request, @"");
+- (void)close { [_window close]; }
+
+- (void)windowWillClose:(NSNotification *)notification {
+    // Removal releases the manager's ownership after this delegate returns.
+    for (NSString *key in observedKeys()) [_view removeObserver:self forKeyPath:key];
+    _view.navigationDelegate = nil;
+    _view.UIDelegate = nil;
+    [_view stopLoading];
+    for (NSNumber *request in _navigations.objectEnumerator) fail(request.unsignedLongLongValue, @"The browser was closed");
+    [_navigations removeAllObjects];
+    HCHideFromDockIfNoWindows(_window);
+    [browsers removeObjectForKey:_session];
 }
 
-// A page's new window opens in its own browser.
+// Preserve the existing single-page behavior for links opening new windows.
 - (WKWebView *)webView:(WKWebView *)view createWebViewWithConfiguration:(WKWebViewConfiguration *)configuration forNavigationAction:(WKNavigationAction *)action windowFeatures:(WKWindowFeatures *)features {
     [view loadRequest:action.request];
     return nil;
 }
 
 - (void)webView:(WKWebView *)view runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters initiatedByFrame:(WKFrameInfo *)frame completionHandler:(void (^)(NSArray<NSURL *> *))completionHandler {
-    HCRunOpenPanel(parameters, _window.window, completionHandler);
+    HCRunOpenPanel(parameters, _window, completionHandler);
 }
 @end
 
-void HCBrowsersStart(HCWindow *window) {
-    browsers = [[HCBrowsers alloc] initWithWindow:window];
+static HCBrowser *browserFor(NSString *session) {
+    HCBrowser *browser = browsers[session];
+    if (!browser) {
+        browser = [[HCBrowser alloc] initWithSession:session];
+        browsers[session] = browser;
+    }
+    return browser;
+}
+
+void HCBrowsersStart(void) {
+    browsers = [NSMutableDictionary dictionary];
 }
 
 void hypercubeNavigate(const char *session, const char *url, uint64_t request) {
     NSString *s = @(session), *u = @(url);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [browsers navigate:s to:u request:request];
-    });
+    dispatch_async(dispatch_get_main_queue(), ^{ [browserFor(s) navigate:u request:request]; });
 }
 
 void hypercubeEval(const char *session, const char *script, uint64_t request) {
     NSString *s = @(session), *code = @(script);
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [browsers eval:code in:s request:request];
-    });
+    dispatch_async(dispatch_get_main_queue(), ^{ [browserFor(s) eval:code request:request]; });
 }
 
 void hypercubeClose(const char *session, uint64_t request) {
     NSString *s = @(session);
     dispatch_async(dispatch_get_main_queue(), ^{
-        [browsers close:s request:request];
+        [browsers[s] close];
+        succeed(request, @"");
     });
 }

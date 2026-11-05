@@ -80,9 +80,10 @@ With `--menu`, the app also owns the macOS window, menu bar icon, and
 notifications. Its signed application bundle contains `hypercube` and the
 plugins; macOS notifications require that bundle.
 
-Each session's browser is a separate web view placed over the Browser tab's
-reported bounds. Browsers share one website data store, retaining logins across
-sessions and restarts. They last until the agent closes them or the app quits.
+Each session's browser has its own native window, navigation controls, and web
+view. AppKit owns their layout. Browsers share the default website data store,
+retaining logins across sessions and restarts. Closing the window, calling
+`browser_close`, or quitting the app ends a browser.
 The implementation is in [desktop](../internal/desktop/desktop.go).
 
 [Panel terminals](../internal/terminal/terminal.go) start on demand, one per

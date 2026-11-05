@@ -76,3 +76,26 @@ test('a read preserves the file mode and requested highlights', async () => {
   expect(await read(s, text('one'))).toMatchObject({...flags, text: 'one'});
   expect(await read(s, new Response(null, {status: 413}))).toMatchObject({...flags, text: null});
 });
+
+test('browser previews refresh, survive deletion and failed reads, and yield to text or unsupported files', async () => {
+  const s = store(unread);
+  const preview = {mime: 'image/png', url: '/preview/s/repo/picture.png?v=1'};
+  await read(s, Response.json({text: null, preview}, {headers: {ETag: '"1"'}}));
+  expect(opened(s)).toMatchObject({text: null, preview, etag: '"1"'});
+  const before = s.get();
+  await read(s, new Response(null, {status: 304}));
+  expect(s.get()).toBe(before);
+  await read(s, new Response('denied', {status: 409}));
+  expect(s.get()).toBe(before);
+  await read(s, new Response(null, {status: 404}));
+  expect(opened(s)).toMatchObject({preview, deleted: true});
+  const changed = {...preview, url: '/preview/s/repo/picture.png?v=2'};
+  await read(s, Response.json({text: null, preview: changed}, {headers: {ETag: '"2"'}}));
+  expect(opened(s)).toMatchObject({preview: changed, deleted: false, etag: '"2"'});
+  await read(s, text('new text'));
+  expect(opened(s)?.preview).toBeUndefined();
+  await read(s, Response.json({text: null, preview}));
+  await read(s, new Response(null, {status: 415}));
+  expect(opened(s)?.preview).toBeUndefined();
+  expect(opened(s)?.message).toContain('binary');
+});

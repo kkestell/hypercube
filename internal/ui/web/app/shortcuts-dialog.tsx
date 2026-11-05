@@ -1,12 +1,12 @@
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Kbd, KbdGroup} from '../components/ui/kbd';
 import {shortcuts, type Section} from './shortcuts.ts';
-import {useModal} from '../shared/overlays.ts';
+import {useDialogFocus} from '../shared/focus.ts';
 
 const sections: Section[] = ['App', 'Session', 'View', 'Help'];
 
 export function ShortcutsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
-  const focus = useModal(open);
+  const focus = useDialogFocus(open);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent {...focus} className="max-h-[80vh] overflow-y-auto">
       <DialogHeader><DialogTitle>Keyboard shortcuts</DialogTitle>

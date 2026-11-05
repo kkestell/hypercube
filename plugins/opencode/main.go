@@ -69,8 +69,7 @@ type agent struct {
 	turn     int
 	last     string                  // the main session's latest text message, unless a tool call has followed it
 	open     map[string]harness.Item // streamed items that the turn's end has not finished
-	tools    map[string]*tool        // by tool call ID
-	children map[string]string       // child session ID to the tool item that started it
+	tools    map[string]harness.Item // by tool call ID
 	requests plugin.Requests[request]
 	forms    int
 	errors   plugin.Errors
@@ -114,7 +113,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 func newAgent(a harness.StartArgs, emit func(harness.Event)) *agent {
 	ag := &agent{
 		emit: emit, session: a.Conversation,
-		open: map[string]harness.Item{}, tools: map[string]*tool{}, children: map[string]string{},
+		open: map[string]harness.Item{}, tools: map[string]harness.Item{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	return ag

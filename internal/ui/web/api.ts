@@ -101,8 +101,8 @@ export const searchSessions = (query: string, signal: AbortSignal): Promise<Sess
 // returns null for a folder outside a repository.
 export const fetchChanges = (session: string) => get<ChangesResult | null>('changes', {session});
 
-// readFile reads a file, or reports that it is unchanged since the read that
-// returned etag, deleted, or not shown, with VS Code's reasons.
+// readFile reads text or browser preview metadata, or reports an unchanged,
+// deleted, or unsupported file.
 export async function readFile(session: string, path: string, etag?: string | null): Promise<FileRead> {
   const headers: Record<string, string> = etag ? {'If-None-Match': etag} : {};
   const response = await fetch(url('file', {session, path}), {headers, cache: 'no-store'});
@@ -111,6 +111,7 @@ export async function readFile(session: string, path: string, etag?: string | nu
   if (response.status === 413) return {message: tooLarge};
   if (response.status === 415) return {message: unsupported};
   if (!response.ok) return {error: await response.text()};
+  if (response.headers.get('Content-Type') === 'application/json') return {...await response.json(), etag: response.headers.get('ETag')};
   return {text: await response.text(), etag: response.headers.get('ETag')};
 }
 

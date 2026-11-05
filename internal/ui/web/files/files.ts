@@ -72,13 +72,13 @@ function fileRead(state: State, sessionId: string, path: string, result: FileRea
       if (file.deleted) return files;
       next = {...file, deleted: true, etag: null};
     } else if ('error' in result) {
-      if (file.text !== null || file.message !== null) return files;
+      if (file.text !== null || file.preview || file.message !== null) return files;
       next = {...file, message: result.error};
     } else if ('message' in result) {
       if (result.message === file.message && !file.deleted) return files;
-      next = {...file, text: null, message: result.message, etag: null, deleted: false};
+      next = {...file, text: null, preview: undefined, message: result.message, etag: null, deleted: false};
     } else {
-      next = {...file, text: result.text, message: null, etag: result.etag, deleted: false};
+      next = {...file, text: result.text, preview: result.preview, message: null, etag: result.etag, deleted: false};
     }
     return {...files, open: {...files.open, [path]: next}};
   });

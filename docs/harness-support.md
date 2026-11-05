@@ -79,18 +79,22 @@ Sessions resume their saved native conversation. A failed resume stays failed
 rather than silently opening a new conversation. Pi starts saving with the
 first message, so a Pi session with no saved conversation cannot resume.
 
-Hypercube keeps its Codex conversations under its own state directory, outside
-the normal Codex Recents list. It links known configuration, credentials,
-instructions, skills, and plugins from the inherited `CODEX_HOME` or `~/.codex`.
-When `CODEX_HOME` is unset, an optional Neuron account selection in
-`~/.config/neuron/codex-profile.zsh` chooses the source for new conversations.
-Without Neuron, the default stays `~/.codex`. The default private home is
-`codex/` under Hypercube's state directory; other source homes use separate
-`codex/homes/<source-path-hash>/` directories. Existing private conversations
-resume in their original home and account, regardless of the current selection.
-An older conversation's first resume copies its native rollout into that
-storage while keeping its conversation ID. Its source account must be selected
-for that first import; Hypercube does not search other accounts' history.
+Codex uses its native conversation storage, configuration, and credentials:
+`CODEX_HOME` from Hypercube's launch environment, or Codex's default home.
+Conversations appear in Codex's normal history. Hypercube does not inspect
+Neuron's account-selection script or select an account itself.
+
+Earlier versions stored Codex conversations in `codex/` under Hypercube's state
+directory, including `codex/homes/` for additional accounts. Those files and
+Hypercube's transcripts are preserved. Codex has no supported cross-home import,
+so existing private conversations cannot resume through this integration. An
+older copy in the native home is never resumed in their place. Their saved
+chats remain readable; start a new session to use the native integration. A
+failed resume never silently starts a new conversation.
+
+OpenCode shows the parent tool's result for native subagents. Their live child
+transcripts are not displayed because ACP does not identify the launching tool.
+Other harnesses retain child transcripts where their protocols supply that ID.
 
 ## Plugin protocol
 

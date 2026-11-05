@@ -24,27 +24,27 @@ const bar = (used: number) => used >= 90 ? '[&_[data-slot=progress-indicator]]:b
 function LimitRow({harness, limit, className}: {harness: string; limit: Limit; className: string}) {
   const label = windowLabel(limit.minutes);
   const left = limit.resets ? Math.max(0, Math.ceil((limit.resets * 1000 - Date.now()) / 60000)) : null;
+  const expired = left === 0;
   const elapsed = left === null ? null : Math.min(100, Math.max(0, 100 - left / limit.minutes * 100));
-  return <div className={`min-w-0 flex-1 items-center gap-1 ${className}`}>
+  const waiting = `${limit.used}% last reported; this window reset. Waiting for a new reading from ${harness}.`;
+  return <div className={`min-w-0 flex-1 items-center gap-1 ${expired ? 'opacity-50' : ''} ${className}`} title={expired ? waiting : undefined}>
     <span className="w-5 shrink-0">{label}</span>
     <span className="relative min-w-0 flex-1">
-      <Progress value={limit.used} aria-label={`${harness} ${label} usage`} className={`bg-neutral-500/20 ${bar(limit.used)}`} />
+      <Progress value={limit.used} aria-label={`${harness} ${label} usage`} aria-valuetext={expired ? waiting : undefined} className={`bg-neutral-500/20 ${bar(limit.used)}`} />
       {elapsed !== null && <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${elapsed}%`}} />}
     </span>
     <span className="w-8 shrink-0 text-right tabular-nums">{limit.used}%</span>
-    <span className="w-14 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{left === null ? '' : timeLeft(left)}</span>
+    <span className="w-14 shrink-0 text-right tabular-nums text-muted-foreground @max-[220px]:hidden">{expired ? 'Waiting' : left === null ? '' : timeLeft(left)}</span>
   </div>;
 }
 
 export function Usage() {
   const [{limits}] = useStore();
-  const now = Date.now() / 1000;
-  const live = limits.filter(l => !l.resets || l.resets > now);
-  const harnesses = [...new Set(live.map(l => l.harness))];
+  const harnesses = [...new Set(limits.map(l => l.harness))];
   if (harnesses.length === 0) return null;
   return <section aria-label="Usage" tabIndex={0} className="group/usage @container shrink-0 space-y-2 border-t p-4 text-xs">
     {harnesses.map(harness => {
-      const own = live.filter(l => l.harness === harness).sort((a, b) => a.minutes - b.minutes);
+      const own = limits.filter(l => l.harness === harness).sort((a, b) => a.minutes - b.minutes);
       const first = own[0], last = own[own.length - 1];
       return <div key={harness} className="flex items-center gap-2">
         {harnessIcon(harness)}

@@ -4,7 +4,7 @@ import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Label} from '../components/ui/label';
 import {NativeSelect, NativeSelectOption} from '../components/ui/native-select';
-import {useModal} from '../shared/overlays.ts';
+import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
@@ -14,7 +14,7 @@ const sections = ['General', 'Agent profiles', 'Permissions', 'About'] as const;
 type Section = typeof sections[number];
 
 export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
-  const focus = useModal(open);
+  const focus = useDialogFocus(open);
   const [saving, setSaving] = useState(false);
   return <Dialog open={open} onOpenChange={next => { if (!saving) onOpenChange(next); }}>
     <DialogContent {...focus} showCloseButton={!saving} className="flex h-[min(790px,90dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">

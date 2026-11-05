@@ -129,11 +129,27 @@ export type Row = TurnRow | ActivityRow;
 
 const isMessage = (item: ToolItem): boolean => item.server === 'hypercube' && item.tool === 'send_message';
 
+// Some harnesses send a text copy of a question and its options immediately
+// before its structured form. The form owns that content, even while pending.
+function repeatsQuestions(item: Item, index: number, {order, items}: Transcript): boolean {
+  if (item.kind !== 'text' || !item.text || item.images?.length) return false;
+  const questions: string[] = [];
+  for (let i = index + 1; i < order.length; i++) {
+    const next = items[order[i]];
+    if (next.kind !== 'attention' || next.parent !== item.parent) break;
+    questions.push([next.text ?? '', ...(next.choices ?? []).map(choice => '- ' + choice)].join('\n'));
+    if (item.text.trim() === questions.join('\n\n').trim()) return true;
+  }
+  return false;
+}
+
 // transcriptRows returns the rows of a transcript.
-export function transcriptRows({order, items}: Transcript): Row[] {
+export function transcriptRows(transcript: Transcript): Row[] {
+  const {order, items} = transcript;
   const containers = new Map<string, Item[]>();
-  for (const id of order) {
-    const item = items[id];
+  for (let i = 0; i < order.length; i++) {
+    const item = items[order[i]];
+    if (repeatsQuestions(item, i, transcript)) continue;
     // Open requests are pinned below the scrolling history.
     if (item.kind === 'attention' && !item.done) continue;
     const parent = item.parent === undefined ? undefined : items[item.parent];

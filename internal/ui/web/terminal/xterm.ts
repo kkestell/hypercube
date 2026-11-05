@@ -1,24 +1,8 @@
-// The panel's terminal: xterm.js with its WebGL renderer, which draws box and
-// block characters to fill their cells, the fit add-on, standard terminal
-// colors, and the macOS text editing keys.
+// The panel's terminal: stock xterm.js, the fit add-on, standard terminal
+// colors, and macOS text editing keys.
 import {FitAddon} from '@xterm/addon-fit';
-import {WebglAddon} from '@xterm/addon-webgl';
 import {Terminal} from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
-
-// WebglRenderer is the part of xterm.js's WebGL renderer, which the add-on
-// keeps in a private field, that the terminal repaints through.
-interface WebglRenderer {
-  handleResize(cols: number, rows: number): void;
-  _setCanvasDevicePixelDimensions(width: number, height: number): void;
-  renderRows(start: number, end: number): void;
-}
-
-declare module '@xterm/addon-webgl' {
-  interface WebglAddon {
-    _renderer: WebglRenderer;
-  }
-}
 
 // editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
 // which xterm.js leaves to the browser.
@@ -67,23 +51,6 @@ export function createTerminal(box: HTMLElement) {
     term.input(text);
     return false;
   });
-  const webgl = new WebglAddon();
-  webgl.onContextLoss(() => webgl.dispose());
-  term.loadAddon(webgl);
-  // The renderer clears its canvas when the terminal resizes and in its
-  // device-pixel ResizeObserver, then schedules the repaint with
-  // requestAnimationFrame. Resize observers run after animation callbacks, so
-  // the repaint lands a frame late and the terminal flashes blank. xterm.js
-  // has no public way to repaint synchronously, so repaint right after either
-  // clear.
-  const repainting = <Args extends unknown[]>(clear: (this: WebglRenderer, ...args: Args) => void) =>
-    function(this: WebglRenderer, ...args: Args) {
-      clear.apply(this, args);
-      this.renderRows(0, term.rows - 1);
-    };
-  const renderer = webgl._renderer;
-  renderer.handleResize = repainting(renderer.handleResize);
-  renderer._setCanvasDevicePixelDimensions = repainting(renderer._setCanvasDevicePixelDimensions);
   return {term, fit, dispose: () => {
     appearance.removeEventListener('change', updateTheme);
     term.dispose();

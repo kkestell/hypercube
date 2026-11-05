@@ -26,8 +26,16 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
       marker={<span className="tool-items-status">{status}</span>} summary={<Title item={item} />}>
       {open && (
         <div className="tool-items-body mt-2 space-y-2 pl-6">
-          {input && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre></CardContent></Card>}
-          {output && <Card className="py-2"><CardContent className="px-3"><pre className="tool-items-text overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre></CardContent></Card>}
+          {(input || output) && <Card className="gap-0 overflow-hidden py-0">
+            {input && <CardContent className="space-y-2 px-3 py-2">
+              <h4 className="text-xs font-medium text-muted-foreground">Arguments</h4>
+              <pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre>
+            </CardContent>}
+            {output && <CardContent className={`space-y-2 px-3 py-2 ${input ? 'border-t' : ''}`}>
+              <h4 className="text-xs font-medium text-muted-foreground">Output</h4>
+              <pre className="tool-items-text overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{output}</pre>
+            </CardContent>}
+          </Card>}
           {children.length > 0 && (
             <div className="tool-items-children flex flex-col gap-3 border-l pl-3">
               {children.map(row => <TranscriptRow key={row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}

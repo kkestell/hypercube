@@ -3,7 +3,6 @@ import {Search} from 'lucide-react';
 import {searchSessions} from '../api.ts';
 import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {CommandDialog} from '../shared/command-dialog.tsx';
-import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
 import type {SessionSearchResult} from '../sessions/types.ts';
 
@@ -38,7 +37,7 @@ export function SessionSearch({open, onOpenChange, onSelect}: SessionSearchProps
     if (!next) setQuery('');
   };
   return <>
-    <Button className={barButton} variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => onOpenChange(true)}><Search /></Button>
+    <Button className="size-7" variant="ghost" size="icon" aria-label="Search sessions" title="Search sessions" onClick={() => onOpenChange(true)}><Search /></Button>
     <CommandDialog open={open} onOpenChange={changeOpen} title="Search sessions" description="Search session titles and conversations" commandProps={{shouldFilter: false}}>
       <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
       <CommandList>

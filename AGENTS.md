@@ -40,6 +40,12 @@ browser shows each agent's transcript.
 - Go tests cover observable behavior through public entry points. Use tables
   for repeated cases, `t.Helper`, `t.TempDir`, and `t.Cleanup`; wait on conditions
   and pass under `-race`.
+- Choose test responsibilities by consequence and maintenance cost. Existing
+  assertions are not requirements: remove low-value tests and their machinery
+  without automatically replacing their coverage. Prefer one suitable boundary
+  over repeating behavior at every layer. Stand-ins must earn their cost through
+  the behavior they protect. Assert observable results; specify styling, markup,
+  or private state only when that detail is the behavior being protected.
 - React components are small functions of props and the store. Derive what
   can be computed. State has one owner and changes through pure functions.
   No mutable module state outside the store except component-owned handles;

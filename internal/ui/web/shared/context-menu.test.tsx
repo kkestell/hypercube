@@ -8,13 +8,11 @@ import {ContextMenu} from './context-menu.tsx';
 afterEach(unmountAll);
 
 
-test('a menu uses stock menu items and reports its bounds for browser placement', () => {
+test('a menu uses stock menu items', () => {
   const store = createStore(testState());
   mount(store, <ContextMenu x={0} y={innerHeight - 10} items={[[{label: 'Action', icon: 'check', run() {}}]]} onClose={() => {}} />);
   expect(find(document, '[role=menuitem]').textContent).toBe('Action');
-  expect(Object.keys(store.get().overlays)).toHaveLength(1);
   unmountAll();
-  expect(Object.keys(store.get().overlays)).toHaveLength(0);
 });
 
 test('selecting an item returns focus before running its action', () => {

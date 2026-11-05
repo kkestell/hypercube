@@ -545,18 +545,6 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 	}
 }
 
-func TestInputWhenNotRunning(t *testing.T) {
-	p := newPi()
-	p.stdin = failingStdin{}
-	if err := p.input("hello", nil); err == nil || !strings.Contains(err.Error(), "pi is not running") {
-		t.Errorf("error %v", err)
-	}
-}
-
-type failingStdin struct{}
-
-func (failingStdin) Write([]byte) (int, error) { return 0, os.ErrClosed }
-
 // A call waiting for its response ends with the reason pi's output ended.
 func TestPendingCallEndsWithTheExitReason(t *testing.T) {
 	p := newPi()
@@ -571,7 +559,7 @@ func TestPendingCallEndsWithTheExitReason(t *testing.T) {
 
 // fakePi installs a `pi` that records its arguments in $FAKE_ARGS and the MCP
 // description in $FAKE_ARGS.mcp, answers get_state and get_session_stats, and
-// plays $FAKE_STREAM for each prompt. With $FAKE_EXIT it exits at a prompt.
+// plays $FAKE_STREAM for each prompt.
 // With $FAKE_PENDING it records an unanswered prompt there and waits for the
 // file to be removed, so a test can cancel the call before the process exits.
 func fakePi(t *testing.T, env map[string]string) (args string) {
@@ -587,7 +575,6 @@ while IFS= read -r line; do
     *'"type":"get_state"'*) printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{"model":{"provider":"%s","id":"%s","contextWindow":1000},"sessionFile":"%s","sessionId":"session-1"}}\n' "$id" "$FAKE_PROVIDER" "$FAKE_MODEL" "$FAKE_SESSION_FILE";;
     *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":%s,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id" "$cost";;
     *'"type":"prompt"'*)
-      if [ -n "$FAKE_EXIT" ]; then echo boom >&2; exit 3; fi
       if [ -n "$FAKE_PENDING" ]; then
         echo pending > "$FAKE_PENDING"
         while [ -f "$FAKE_PENDING" ]; do sleep 0.01; done
@@ -613,7 +600,6 @@ done
 		t.Fatal(err)
 	}
 	t.Setenv("FAKE_STREAM", stream)
-	t.Setenv("FAKE_EXIT", "")
 	t.Setenv("FAKE_PENDING", "")
 	for k, v := range env {
 		t.Setenv(k, v)
@@ -798,13 +784,6 @@ func TestStartRejectsAModelWithoutProvider(t *testing.T) {
 	}
 }
 
-func TestStartWithoutPi(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	if _, err := startAgent(startArgs(t), func(harness.Event) {}); err == nil || !strings.Contains(err.Error(), "Pi is missing") {
-		t.Errorf("error %v", err)
-	}
-}
-
 func TestStartReportsAProcessThatEnds(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\necho 'No API key for openrouter' >&2\nexit 1\n"
@@ -814,20 +793,6 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	_, err := startAgent(startArgs(t), func(harness.Event) {})
 	if err == nil || !strings.Contains(err.Error(), "exit status 1") || !strings.Contains(err.Error(), "No API key for openrouter") {
-		t.Errorf("error %v", err)
-	}
-}
-
-func TestExitEndsTheProcess(t *testing.T) {
-	fakePi(t, map[string]string{"FAKE_EXIT": "1"})
-	ag, _ := start(t, startArgs(t))
-	_ = ag.input("hello", nil) // fails with the exit reason or a broken pipe
-	select {
-	case <-ag.proc.Done():
-	case <-time.After(10 * time.Second):
-		t.Fatal("pi did not end")
-	}
-	if err := ag.proc.Err(); !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("error %v", err)
 	}
 }

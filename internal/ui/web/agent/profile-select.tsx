@@ -3,7 +3,6 @@ import {useEffect, useState} from 'react';
 import {Button} from '../components/ui/button';
 import {DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
 import {Icon} from '../shared/icon.tsx';
-import {useOverlay} from '../shared/overlays.ts';
 import {fetchConfig, selectProfile} from '../api.ts';
 import {receivedConfig} from '../app/config.ts';
 import {unsentProfile} from '../sessions/selection.ts';
@@ -15,7 +14,6 @@ import type {Session} from '../sessions/types.ts';
 
 export function ProfileSelect({session}: {session: Session}) {
   const [state, store] = useStore();
-  const overlay = useOverlay();
   const unsent = session.id === unsentKey ? state.unsent : null;
   const profiles = state.config?.profiles ?? [];
   const [revision, refresh] = useState(0);
@@ -45,7 +43,7 @@ export function ProfileSelect({session}: {session: Session}) {
         {icon}<span className="truncate">{shown ? (icon ? modelLabel(shown) : profileLabel(shown)) : 'Select profile'}</span><Icon name="chevron-down" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent ref={overlay} side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
+    <DropdownMenuContent side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
       <DropdownMenuRadioGroup value={selected?.name ?? ''} onValueChange={choose}>
         {choices.map(p => {
           const icon = harnessIcon(p.harness);

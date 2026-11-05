@@ -39,12 +39,18 @@ ALTER TABLE transcript RENAME TO old_transcript;`); err != nil {
 				return err
 			}
 		}
-		if err := tx.exec(`DELETE FROM transcript WHERE json_extract(data, '$.kind') = 'status'`); err != nil {
+		var version int
+		if err := tx.tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 			return err
 		}
-		// A child's requests belong to its own transcript alone.
-		if err := tx.exec(`DELETE FROM transcript WHERE json_extract(data, '$.kind') = 'attention' AND json_extract(data, '$.from') IS NOT NULL`); err != nil {
-			return err
+		if version < 1 {
+			if err := tx.exec(`
+DELETE FROM transcript WHERE json_extract(data, '$.kind') = 'status';
+-- A child's requests belong to its own transcript alone.
+DELETE FROM transcript WHERE json_extract(data, '$.kind') = 'attention' AND json_extract(data, '$.from') IS NOT NULL;
+PRAGMA user_version = 1;`); err != nil {
+				return err
+			}
 		}
 		// A session that is not running waits on nobody.
 		return tx.exec(`

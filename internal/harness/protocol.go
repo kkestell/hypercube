@@ -107,7 +107,7 @@ type Record struct {
 // Event reports what happened in the native conversation. Each field is
 // optional.
 type Event struct {
-	// Conversation is the native conversation ID to resume later.
+	// Conversation is a harness-owned saved reference to resume later.
 	Conversation string `json:"conversation,omitempty"`
 	// State is the main agent's work state. Native subagents do not change it.
 	State string `json:"state,omitempty"`

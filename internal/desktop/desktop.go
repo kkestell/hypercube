@@ -1,7 +1,7 @@
 // Package desktop runs Hypercube's macOS application: the menu bar icon, the
-// window that shows the Hypercube UI, and each session's browser in that
-// window. Cocoa runs on the main thread; Go reaches it through C functions
-// that dispatch to the main queue.
+// window that shows the Hypercube UI, and each session's browser window.
+// Cocoa runs on the main thread; Go reaches it through C functions that
+// dispatch to the main queue.
 package desktop
 
 /*

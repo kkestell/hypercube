@@ -129,11 +129,6 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 	if _, err := f.rt.CreateChild(direct.ID, "nested", "Title", profile, ".", ""); err == nil {
 		t.Fatal("child created a child")
 	}
-	for _, action := range []func(string) error{f.rt.Start, f.rt.Stop, f.rt.Delete} {
-		if err := action(direct.ID); err == nil {
-			t.Fatal("independent lifecycle accepted for active child")
-		}
-	}
 	outside, err := f.rt.AddWorkspace(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

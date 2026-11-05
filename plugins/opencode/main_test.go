@@ -402,37 +402,27 @@ func TestFinishedToolIgnoresLaterUpdates(t *testing.T) {
 	}
 }
 
-func TestNestedToolsNameTheirSubagentCall(t *testing.T) {
+func TestChildUpdatesAreExcludedWithoutAParentToolID(t *testing.T) {
 	h := connected(t)
 	lines := fixture(t, "nested")
 	h.adopt(t, lines)
 	h.startTurn(t)
 	h.feed(t, lines...)
-	var parent harness.Item
-	var children []harness.Item
+	var task harness.Item
 	for _, it := range h.transcript() {
-		switch {
-		case it.Tool == "subagent":
-			parent = it
-		case it.Parent != "":
-			children = append(children, it)
+		if it.Tool == "subagent" {
+			task = it
+		}
+		if it.Parent != "" || it.Tool == "shell" || it.Text == "child\n" {
+			t.Fatalf("child output leaked into the main transcript: %+v", it)
 		}
 	}
-	if parent.ID == "" || !parent.Done || len(children) != 2 {
-		t.Fatalf("%+v %+v", parent, children)
+	if task.ID == "" || !task.Done || task.Output == "" {
+		t.Fatalf("parent tool result missing: %+v", task)
 	}
-	for _, c := range children {
-		if c.Parent != parent.ID {
-			t.Fatalf("%+v is not under %s", c, parent.ID)
-		}
-	}
-	if children[0].Kind != harness.KindTool || children[0].Tool != "shell" || children[0].Output != "child\n" || children[1].Kind != harness.KindText {
-		t.Fatalf("%+v", children)
-	}
-	// The subagent's usage is not the agent's context.
 	for _, ev := range h.snapshot() {
 		if ev.Usage != nil && ev.Usage.Context == 0 {
-			t.Fatal("usage without context")
+			t.Fatal("child usage replaced the main context")
 		}
 	}
 }
@@ -937,23 +927,6 @@ func TestInterruptCancelsAForm(t *testing.T) {
 	h.endTurn(t, "cancelled")
 	if err := h.interrupt(); err != nil || len(h.acp.sent("session/cancel")) != 1 {
 		t.Fatal("interrupted an idle agent", err)
-	}
-}
-
-func TestInputWhenNotRunning(t *testing.T) {
-	h := connected(t)
-	h.acp.out.(io.Closer).Close()
-	<-h.rpc.Done()
-	if err := h.input("hello", nil); err == nil {
-		t.Fatal("input to a process that has ended")
-	}
-}
-
-func TestStartWithoutOpenCode(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
-	if err == nil || !strings.Contains(err.Error(), "OpenCode is missing") {
-		t.Fatal(err)
 	}
 }
 

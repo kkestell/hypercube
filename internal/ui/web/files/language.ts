@@ -17,7 +17,7 @@ const extensions: Record<string, string> = {
   diff: 'diff', patch: 'diff', ini: 'ini', ml: 'ocaml', mli: 'ocaml',
 };
 
-export const hasPreview = (name: string) => language(name) === 'markdown';
+export const hasPreview = (name: string) => ['markdown', 'html'].includes(language(name)) || name.toLowerCase().endsWith('.svg');
 
 export function language(name: string): string {
   const lower = name.toLowerCase();

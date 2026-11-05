@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +23,9 @@ import (
 const (
 	startTimeout = 60 * time.Second
 	callTimeout  = 30 * time.Second
+	// Older unprefixed references belong to the retired private home. The
+	// native home may contain a stale source copy with the same thread ID.
+	nativeConversationPrefix = "native:"
 )
 
 func main() {
@@ -44,7 +46,7 @@ func serve(in io.Reader, out io.Writer) error {
 			return plugin.Agent{}, err
 		}
 		return plugin.Agent{
-			Process: ag.proc, Conversation: ag.thread,
+			Process: ag.proc, Conversation: nativeConversationPrefix + ag.thread,
 			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
 		}, nil
 	})
@@ -83,12 +85,7 @@ type childThread struct {
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
-	home, err := prepareStorage(a)
-	if err != nil {
-		return nil, fmt.Errorf("prepare Codex storage: %w", err)
-	}
-	cmd := exec.Command("codex", "app-server", "-c", "sqlite_home="+strconv.Quote(home))
-	cmd.Env = append(os.Environ(), "CODEX_HOME="+home)
+	cmd := exec.Command("codex", "app-server")
 	cmd.Dir = a.Dir
 	p, err := plugin.StartProcess("Codex", cmd)
 	if err != nil {
@@ -115,6 +112,14 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 // with network access, in a trusted folder, and with its Git directories
 // writable so that a child session can commit.
 func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
+	thread := ""
+	if a.Conversation != "" {
+		var native bool
+		thread, native = strings.CutPrefix(a.Conversation, nativeConversationPrefix)
+		if !native {
+			return errors.New("this saved Codex conversation predates the native storage integration and cannot resume safely; its transcript and files are preserved; start a new session")
+		}
+	}
 	// Experimental methods include the questions Codex asks the user.
 	if err := ag.call(ctx, "initialize", map[string]any{
 		"clientInfo":   map[string]any{"name": "hypercube", "version": "1"},
@@ -149,7 +154,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	method := "thread/start"
 	if a.Conversation != "" {
 		method = "thread/resume"
-		params["threadId"] = a.Conversation
+		params["threadId"] = thread
 		params["excludeTurns"] = true
 	}
 	var opened struct {
@@ -159,7 +164,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	}
 	if err := ag.call(ctx, method, params, &opened); err != nil {
 		if a.Conversation != "" {
-			return fmt.Errorf("Codex could not resume thread %s: %w", a.Conversation, err)
+			return fmt.Errorf("Codex could not resume thread %s: %w", thread, err)
 		}
 		return err
 	}
@@ -169,7 +174,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ag.thread = opened.Thread.ID
-	ag.emit(harness.Event{Conversation: ag.thread})
+	ag.emit(harness.Event{Conversation: nativeConversationPrefix + ag.thread})
 	return nil
 }
 

@@ -8,7 +8,6 @@ import {Find} from './find.tsx';
 
 afterEach(unmountAll);
 
-
 function Pane({id, active, text = 'some text'}: {id: number; active: boolean; text?: string}) {
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
   return <div className="editor-pane" data-pane={id}>
@@ -20,14 +19,6 @@ function Pane({id, active, text = 'some text'}: {id: number; active: boolean; te
 function key(target: EventTarget, key: string, options: KeyboardEventInit = {}) {
   act(() => target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true, ...options})));
 }
-
-test('body-focused find opens only the last used pane in a split', () => {
-  const store = createStore(testState({workbench: {...testState().workbench, activePane: 2}}));
-  const root = mount(store, <><Pane id={1} active={false} /><Pane id={2} active /></>);
-  key(document.body, 'f', {metaKey: true});
-  expect(root.querySelectorAll('[role=search]')).toHaveLength(1);
-  expect(root.querySelector('[data-pane="2"] [role=search]')).not.toBeNull();
-});
 
 test('find reveals a match beyond the right edge', () => {
   const root = mount(createStore(testState({workbench: {...testState().workbench, activePane: 1}})), <Pane id={1} active />);

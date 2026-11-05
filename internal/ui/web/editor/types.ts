@@ -2,7 +2,7 @@
 // remembered scroll of each tab's view.
 import type {LineRange} from '../files/types.ts';
 
-// A tab ID is 'agent', 'browser', 'file:<path>', or 'diff:<path>'.
+// A tab ID is 'agent', 'file:<path>', or 'diff:<path>'.
 export type TabId = string;
 
 // Pane is a group of tabs with one active tab.
@@ -23,9 +23,8 @@ export interface Split {
 
 export type LayoutNode = Pane | Split;
 
-// Placement says which edges of the tabbed area a pane touches: the top row
-// sits in the window's title bar, and the left edge is where the window's
-// buttons go.
+// Placement says which edges of the tabbed area a pane touches. The top-left
+// pane clears the native window buttons when the sidebar is hidden.
 export interface Placement {
   top: boolean;
   left: boolean;
@@ -58,10 +57,6 @@ export interface AgentTabEntry extends TabEntryBase {
   kind: 'agent';
 }
 
-export interface BrowserTabEntry extends TabEntryBase {
-  kind: 'browser';
-}
-
 export interface DiffTabEntry extends TabEntryBase {
   kind: 'diff';
   path: string;
@@ -76,7 +71,7 @@ export interface FileTabEntry extends TabEntryBase {
   source: boolean | null;
 }
 
-export type TabEntry = AgentTabEntry | BrowserTabEntry | DiffTabEntry | FileTabEntry;
+export type TabEntry = AgentTabEntry | DiffTabEntry | FileTabEntry;
 
 // ScrollMemory is a view's scroll, and whether it follows its end.
 export interface ScrollMemory {
