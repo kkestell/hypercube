@@ -23,6 +23,7 @@ test('Markdown file previews render images relative to the file and session', ()
 ![SVG](drawing.svg#part)
 ![Remote](https://example.com/picture.png?size=2)
 ![Blocked](javascript:alert%281%29)
+![Encoded](jav&#x61;script:alert%281%29)
 ![File](file:///etc/passwd)
 ![HTML](data:text/html,hello)
 <img src=x onerror=alert(1)>

@@ -226,11 +226,11 @@ func copyIncluded(root, dir string) error {
 	if _, err := os.Stat(filepath.Join(root, ".worktreeinclude")); err != nil {
 		return nil
 	}
-	matched, err := git(root, "ls-files", "--others", "--ignored", "--exclude-from=.worktreeinclude", "--directory")
+	matched, err := run(root, nil, "", 0, "ls-files", "--others", "--ignored", "--exclude-from=.worktreeinclude", "--directory", "-z")
 	if err != nil || matched == "" {
 		return err
 	}
-	ignored, err := gitWith(root, nil, matched, "check-ignore", "--stdin")
+	ignored, err := run(root, nil, matched, 0, "check-ignore", "--stdin", "-z")
 	// check-ignore exits 1 when it matches nothing.
 	var exit *exec.ExitError
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
@@ -240,7 +240,7 @@ func copyIncluded(root, dir string) error {
 	}
 	// With --directory, Git lists a directory and also the files in it.
 	var copied []string
-	for _, p := range strings.Split(ignored, "\n") {
+	for p := range strings.SplitSeq(strings.TrimSuffix(ignored, "\x00"), "\x00") {
 		if slices.ContainsFunc(copied, func(d string) bool { return strings.HasPrefix(p, d) }) {
 			continue
 		}

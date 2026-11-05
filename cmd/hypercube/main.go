@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
 
+	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/mcp"
@@ -23,7 +25,7 @@ import (
 	"github.com/kkestell/hypercube/internal/ui"
 )
 
-const usage = "usage: hypercube ui [port] [--menu] | mcp | hold [-terminal -cols N -rows N] <dir> <command> [args...]"
+const usage = "usage: hypercube [version | ui [port] [--menu] | mcp | hold [-terminal -cols N -rows N] <dir> <command> [args...]]"
 
 func main() {
 	var err error
@@ -31,7 +33,9 @@ func main() {
 	case len(os.Args) > 1 && os.Args[1] == "hold":
 		err = hold.Main(os.Args[2:])
 	case len(os.Args) == 1:
-		err = errors.New(usage)
+		err = launchApp()
+	case len(os.Args) == 2 && os.Args[1] == "version":
+		fmt.Println(buildinfo.String())
 	case len(os.Args) <= 4 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
@@ -43,6 +47,29 @@ func main() {
 		fmt.Fprintln(os.Stderr, "hypercube:", err)
 		os.Exit(1)
 	}
+}
+
+// Finder starts the bundle without arguments or a login environment. Re-exec
+// through the user's shell, as the service does, so harnesses are on PATH.
+func launchApp() error {
+	exe, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell, err = desktop.LoginShell()
+		if err != nil {
+			return err
+		}
+	}
+	if err := os.Setenv("HYPERCUBE_APP_EXECUTABLE", exe); err != nil {
+		return err
+	}
+	// A leading dash in argv[0] selects login mode across the standard macOS
+	// shells; tcsh does not accept the service's combined -lic flags. An
+	// environment variable avoids their different positional-argument syntax.
+	return syscall.Exec(shell, []string{"-" + filepath.Base(shell), "-i", "-c", `exec "$HYPERCUBE_APP_EXECUTABLE" ui --menu`}, os.Environ())
 }
 
 func parseUIArgs(args []string) (port string, withMenu bool, err error) {
@@ -146,7 +173,7 @@ func serveUI(args []string) error {
 		return err
 	}
 	url := "http://localhost:" + port + "/"
-	fmt.Printf("Serving the Hypercube UI at %s\n", url)
+	fmt.Printf("%s; serving at %s\n", buildinfo.String(), url)
 	if withMenu {
 		go func() {
 			select {

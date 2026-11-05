@@ -70,10 +70,16 @@ type agent struct {
 	finished  map[string]bool         // items that have completed
 	open      map[string]harness.Item // streamed items that have not completed
 	running   map[string]harness.Item // tool items that have not completed
-	children  map[string]string       // subagent thread to the item that started it
+	children  map[string]childThread  // native subagents, by thread ID
 	requests  plugin.Requests[request]
 	answering *request // async question whose answer is being sent
 	errs      plugin.Errors
+}
+
+type childThread struct {
+	parent string // the transcript item that started it
+	turn   string // its current turn, if any
+	ended  string // its most recently completed turn
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
@@ -90,7 +96,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	}
 	ag := &agent{
 		proc: p, emit: emit, selection: harness.Selection{Model: a.Model, Effort: a.Effort}, finished: map[string]bool{},
-		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]string{},
+		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]childThread{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)
@@ -225,17 +231,28 @@ func (ag *agent) configure(selection harness.Selection) (*harness.Selection, err
 	return &selection, nil
 }
 
-// input steers the turn in progress, or starts a turn. A steer can arrive after
-// the turn has ended but before its completion reaches us; the input then
-// starts a turn.
 func (ag *agent) input(text string, images []harness.Image) error {
+	ag.mu.Lock()
+	thread := ag.thread
+	ag.mu.Unlock()
+	return ag.inputThread(thread, text, images)
+}
+
+// inputThread steers the named thread's turn in progress, or starts a turn. A
+// steer can arrive after the turn has ended but before its completion reaches
+// us; the input then starts a turn.
+func (ag *agent) inputThread(thread, text string, images []harness.Image) error {
 	select {
 	case <-ag.rpc.Done():
 		return errors.New("codex is not running")
 	default:
 	}
 	ag.mu.Lock()
-	thread, turn, selection := ag.thread, ag.turn, ag.selection
+	main := thread == ag.thread
+	turn, selection := ag.turn, ag.selection
+	if !main {
+		turn = ag.children[thread].turn
+	}
 	ag.mu.Unlock()
 	if turn != "" {
 		ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
@@ -251,6 +268,9 @@ func (ag *agent) input(text string, images []harness.Image) error {
 		// error that its other refusals use too, so the thread's status decides.
 		ag.mu.Lock()
 		current := ag.turn
+		if !main {
+			current = ag.children[thread].turn
+		}
 		ag.mu.Unlock()
 		if current == turn && !ag.threadIdle(thread) {
 			return err
@@ -263,14 +283,26 @@ func (ag *agent) input(text string, images []harness.Image) error {
 	}
 	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
 	defer cancel()
-	if err := ag.call(ctx, "turn/start", map[string]any{"threadId": thread, "input": userInput(text, images), "model": selection.Model, "effort": selection.Effort}, &started); err != nil {
+	params := map[string]any{"threadId": thread, "input": userInput(text, images)}
+	if main {
+		params["model"], params["effort"] = selection.Model, selection.Effort
+	}
+	if err := ag.call(ctx, "turn/start", params, &started); err != nil {
 		return err
 	}
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	var ev harness.Event
 	ev.Items = ag.closeAsyncQuestions(thread)
-	ag.startTurn(&ev, started.Turn.ID)
+	if main {
+		ag.startTurn(&ev, started.Turn.ID)
+	} else {
+		child := ag.children[thread]
+		if started.Turn.ID != child.ended {
+			child.turn = started.Turn.ID
+			ag.children[thread] = child
+		}
+	}
 	ag.send(ev)
 	return nil
 }

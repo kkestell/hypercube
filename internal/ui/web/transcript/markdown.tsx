@@ -4,6 +4,7 @@
 // addresses. File previews also highlight their code blocks.
 import {createElement, Fragment, type ReactNode} from 'react';
 import {lexer, type Token, type Tokens} from 'marked';
+import {decodeHTMLStrict} from 'entities/decode';
 import {CopyButton} from './copy-button.tsx';
 import {HighlightedCode} from '../files/highlighted-code.tsx';
 
@@ -76,13 +77,15 @@ function element(t: Token, options: Options): ReactNode {
     case 'del': return <del>{children(t.tokens)}</del>;
     case 'codespan': return <code>{t.text}</code>;
     case 'br': return <br />;
-    case 'link': return <Link href={t.href}>{children(t.tokens)}</Link>;
+    case 'link': return <Link href={decodeHTMLStrict(t.href)}>{children(t.tokens)}</Link>;
     case 'image': {
-      if (options.flatten) return t.text || null;
-      const src = options.imageSource?.(t.href);
-      return src ? <img src={src} alt={t.text} title={t.title || undefined} /> : <Link href={t.href}>{t.text || t.href}</Link>;
+      const text = decodeHTMLStrict(t.text), href = decodeHTMLStrict(t.href);
+      if (options.flatten) return text || null;
+      const src = options.imageSource?.(href);
+      return src ? <img src={src} alt={text} title={t.title ? decodeHTMLStrict(t.title) : undefined} /> : <Link href={href}>{text || href}</Link>;
     }
-    case 'text': return t.tokens ? children(t.tokens) : t.text;
+    // Decode only parsed text and attributes: code and raw HTML stay literal.
+    case 'text': return t.tokens ? children(t.tokens) : decodeHTMLStrict(t.text);
     case 'escape': return t.text;
     default: return t.raw ?? '';
   }

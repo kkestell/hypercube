@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -124,19 +125,81 @@ func TestAccountSelectionKeepsSeparateHomesAndPrivateResumes(t *testing.T) {
 			}
 		}
 		writeStorageFile(t, filepath.Join(tc.home, "sessions", "2026", "11", "04", "rollout-"+tc.id+".jsonl"), []byte(tc.id))
+		writeStorageFile(t, filepath.Join(user, tc.source, "skills", "new", "SKILL.md"), []byte(tc.source))
 	}
 	// Private resumes must not consult the selection for new conversations.
 	writeStorageFile(t, selection, []byte("invalid selection"))
 	t.Setenv("CODEX_HOME", filepath.Join(user, "explicit-other-account"))
-	for _, tc := range []struct{ id, home string }{{"default-thread", defaultHome}, {"strib-thread", stribHome}} {
+	for _, tc := range []struct{ id, home, source string }{{"default-thread", defaultHome, ".codex"}, {"strib-thread", stribHome, ".codex-strib"}} {
 		args.Conversation = tc.id
 		if home, err := prepareStorage(args); err != nil || home != tc.home {
 			t.Fatalf("private resume changed account: %q: %v", home, err)
+		}
+		if skill, err := os.ReadFile(filepath.Join(tc.home, "skills", "new", "SKILL.md")); err != nil || string(skill) != tc.source {
+			t.Fatalf("resumed skill from wrong account: %q: %v", skill, err)
 		}
 	}
 	t.Setenv("CODEX_HOME", "")
 	if _, err := prepareStorage(args); err != nil {
 		t.Fatalf("invalid selection broke private resume: %v", err)
+	}
+}
+
+func TestPrivateResumeRemembersAnInitiallyEmptySource(t *testing.T) {
+	source := t.TempDir()
+	t.Setenv("CODEX_HOME", source)
+	args := harness.StartArgs{StateDir: t.TempDir()}
+	home, err := prepareStorage(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeStorageFile(t, filepath.Join(home, "sessions", "2026", "11", "04", "rollout-thread.jsonl"), []byte("history"))
+	writeStorageFile(t, filepath.Join(source, "skills", "new", "SKILL.md"), []byte("original source"))
+	other := t.TempDir()
+	writeStorageFile(t, filepath.Join(other, "skills", "new", "SKILL.md"), []byte("other account"))
+	t.Setenv("CODEX_HOME", other)
+	args.Conversation = "thread"
+	if got, err := prepareStorage(args); err != nil || got != home {
+		t.Fatalf("private resume changed home: %q: %v", got, err)
+	}
+	if skill, err := os.ReadFile(filepath.Join(home, "skills", "new", "SKILL.md")); err != nil || string(skill) != "original source" {
+		t.Fatalf("resumed skill = %q: %v", skill, err)
+	}
+}
+
+func TestLegacyEmptyPrivateHomeUsesOnlyAMatchingSource(t *testing.T) {
+	for _, matching := range []bool{true, false} {
+		t.Run(fmt.Sprint(matching), func(t *testing.T) {
+			source := t.TempDir()
+			t.Setenv("CODEX_HOME", source)
+			args := harness.StartArgs{StateDir: t.TempDir()}
+			home, err := prepareStorage(args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Older empty homes did not record their source directory.
+			if err := os.Remove(filepath.Join(home, ".hypercube-source")); err != nil {
+				t.Fatal(err)
+			}
+			writeStorageFile(t, filepath.Join(home, "sessions", "2026", "11", "04", "rollout-thread.jsonl"), []byte("history"))
+			writeStorageFile(t, filepath.Join(source, "skills", "new", "SKILL.md"), []byte("original source"))
+			if !matching {
+				other := t.TempDir()
+				writeStorageFile(t, filepath.Join(other, "skills", "new", "SKILL.md"), []byte("other account"))
+				t.Setenv("CODEX_HOME", other)
+			}
+			args.Conversation = "thread"
+			if got, err := prepareStorage(args); err != nil || got != home {
+				t.Fatalf("private resume changed home: %q: %v", got, err)
+			}
+			skill, err := os.ReadFile(filepath.Join(home, "skills", "new", "SKILL.md"))
+			if matching && (err != nil || string(skill) != "original source") {
+				t.Fatalf("matching source not shared: %q: %v", skill, err)
+			}
+			if !matching && !os.IsNotExist(err) {
+				t.Fatalf("unidentified home rebound to another account: %q: %v", skill, err)
+			}
+		})
 	}
 }
 

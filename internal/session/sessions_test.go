@@ -540,7 +540,7 @@ func TestArchiveFamily(t *testing.T) {
 	f := newFixture(t)
 	s := f.worktreeSession()
 	child := f.child(s, "worker", "brief")
-	f.until("child reply", func() bool { return f.idle(child.ID) && len(f.transcript(child.ID)) > 0 })
+	f.until("child reply", func() bool { return f.summary(child.ID) == "user:brief|text:ack" && f.idle(child.ID) })
 	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
 	if _, err := f.rt.Shell(child.ID, 80, 24); err != nil {
 		t.Fatal(err)

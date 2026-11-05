@@ -62,10 +62,11 @@ export function Find({list, view, active, label, className}: FindProps) {
   // A highlight marks the match without moving the selection, which would take
   // focus from the find field in WebKit.
   useLayoutEffect(() => {
-    if (!ranges[index]) return;
-    CSS.highlights.set('find', new Highlight(ranges[index]));
-    return () => { CSS.highlights.delete('find'); };
-  }, [ranges, index]);
+    if (!active || !open || !ranges[index]) return;
+    const highlight = new Highlight(ranges[index]);
+    CSS.highlights.set('find', highlight);
+    return () => { if (CSS.highlights.get('find') === highlight) CSS.highlights.delete('find'); };
+  }, [active, open, ranges, index]);
   useLayoutEffect(() => {
     const range = ranges[index], scroller = view.current;
     if (!range || !scroller) return;

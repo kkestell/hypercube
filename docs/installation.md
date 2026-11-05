@@ -1,11 +1,47 @@
 # Installation
 
-Hypercube builds from source on macOS. You need Git, the Go version in
-[go.mod](../go.mod), and at least one installed, authenticated coding harness:
+Hypercube runs on macOS. Install at least one authenticated coding harness:
 `claude`, `opencode`, `codex`, or `pi`. Check
 [harness requirements](harness-support.md) before configuring profiles.
 
-## Install and launch
+## Download a beta
+
+Download the ZIP and `SHA256SUMS` from a
+[beta release](https://github.com/kkestell/hypercube/releases). Initial downloads
+are Apple Silicon builds, checked on macOS 15. In the download folder, verify:
+
+```sh
+shasum -a 256 -c SHA256SUMS
+```
+
+Extract the ZIP and move `Hypercube.app` to `~/Applications`. Create
+[your configuration](configuration.md), then open the app. Choose **Show
+Hypercube** from its menu bar icon if the window is closed. It launches through
+your interactive login shell so agents receive your login environment.
+
+Beta apps are ad hoc signed and **not notarized by Apple**. If macOS blocks the
+first launch, open **System Settings → Privacy & Security → Open Anyway**, then
+confirm. See [Apple's instructions](https://support.apple.com/102445). You do
+not need to disable Gatekeeper globally.
+
+To run a downloaded app at login without building from source:
+
+```sh
+APPDIR="$HOME/Applications" SERVICE=com.github.kkestell.hypercube PORT=4280 \
+  "$HOME/Applications/Hypercube.app/Contents/Resources/install-service"
+```
+
+For an upgrade, replace the app and run that command again. Agents and terminal
+shells keep running; the plugin restart rules below still apply. Use the full
+executable path for CLI commands, for example:
+
+```sh
+~/Applications/Hypercube.app/Contents/MacOS/hypercube version
+```
+
+## Build and install from a checkout
+
+Source builds need Git and the Go version in [go.mod](../go.mod).
 
 From this checkout:
 
@@ -60,6 +96,9 @@ rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 
 Run `make install-service` again. It replaces the installed build and restarts
 the window and menu bar icon, while agents and terminal shells keep running.
+This remains the everyday development workflow: it builds your checkout,
+including uncommitted changes, without requiring a release tag or running
+the full checks.
 
 Those agents still use the plugins they launched with. Restart their sessions
 to use a new plugin build. A holder-directory or plugin-protocol change requires
@@ -67,6 +106,19 @@ quitting Hypercube before installation.
 
 State migrates on startup. Upgrading from the earlier leads/workers version
 also restarts agents and panel shells once.
+
+## Identify a build
+
+**Settings → Build** identifies the running app. `hypercube version` identifies
+the executable on your PATH; these may differ before you reload the service.
+The running server also reports its identity at http://localhost:4280/version
+and writes it to the service log at startup.
+
+Go embeds the release tag or a version containing the commit, followed by
+`+dirty` when the checkout has uncommitted changes. The full commit is included
+when available. A build without Git metadata reports `devel`. The app bundle
+also records the full identity in `CFBundleGetInfoString`; its numeric version
+fields contain the version's three-number core.
 
 ## Files on disk
 
@@ -105,3 +157,26 @@ Sessions remain marked running for the next development launch. See
 For a build alone, run `make` and use `bin/hypercube` or
 `bin/Hypercube.app`. Code changes require `make check`, which also needs Bun.
 Tests use local harness stand-ins; live model behavior needs a smoke test.
+
+## Prepare an official beta
+
+GitHub Actions runs `make check` on main-branch pushes and pull requests, using
+the Go and Bun versions declared in the repository. Beta tags run those same
+checks before packaging an ad hoc signed Apple Silicon app.
+
+Once the intended changes are committed and checked, create and push an
+annotated tag such as `v0.1.0-beta.1`. The **Beta release** workflow builds the
+ZIP and `SHA256SUMS`, then creates a **draft prerelease** with generated notes.
+Inspect the notes, test the downloaded app, and publish the draft when ready.
+No Apple account or signing secrets are required. GitHub Actions must be enabled
+and permitted to create releases in the repository.
+
+To check and package locally on Apple Silicon:
+
+```sh
+make check
+make release
+```
+
+Only release packaging requires a clean checkout at a beta tag. Its outputs
+are under `bin/release/`; it does not install the app or restart the service.

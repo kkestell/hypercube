@@ -240,7 +240,8 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 		return
 	}
 	main := n.ThreadID == ag.thread
-	parent, known := ag.children[n.ThreadID]
+	child, known := ag.children[n.ThreadID]
+	parent := child.parent
 	if !main && !known {
 		return
 	}
@@ -248,9 +249,12 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	case "turn/started":
 		if n.Turn != nil {
 			ev.Items = append(ev.Items, ag.closeAsyncQuestions(n.ThreadID)...)
-		}
-		if main && n.Turn != nil {
-			ag.startTurn(ev, n.Turn.ID)
+			if main {
+				ag.startTurn(ev, n.Turn.ID)
+			} else if n.Turn.ID != child.ended {
+				child.turn = n.Turn.ID
+				ag.children[n.ThreadID] = child
+			}
 		}
 	case "turn/completed":
 		// A native subagent's turns do not change the agent's state.
@@ -260,6 +264,12 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 				msg = strings.TrimSpace(e.Message + "\n" + e.Details)
 			}
 			ag.endTurn(ev, n.Turn.ID, n.Turn.Status, msg)
+		} else if n.Turn != nil {
+			child.ended = n.Turn.ID
+			if child.turn == n.Turn.ID {
+				child.turn = ""
+			}
+			ag.children[n.ThreadID] = child
 		}
 	case "item/started":
 		if n.Item != nil {
@@ -378,12 +388,16 @@ func (ag *agent) item(ev *harness.Event, thread, parent string, it threadItem, c
 	case "subAgentActivity":
 		// The subagent's thread reports its items under this one.
 		if it.Kind == "started" && it.AgentThreadID != "" {
-			ag.children[it.AgentThreadID] = it.ID
+			child := ag.children[it.AgentThreadID]
+			child.parent = it.ID
+			ag.children[it.AgentThreadID] = child
 			ag.tool(ev, parent, it, completed)
 		}
 	case "collabAgentToolCall":
 		for _, thread := range it.ReceiverThreadIDs {
-			ag.children[thread] = it.ID
+			child := ag.children[thread]
+			child.parent = it.ID
+			ag.children[thread] = child
 		}
 		ag.tool(ev, parent, it, completed)
 	case "imageGeneration":

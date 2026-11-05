@@ -1,7 +1,9 @@
 import {afterEach, beforeEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {element, mount, render, setValue, unmountAll} from '../../test-render.tsx';
-import {testState} from '../../test-state.ts';
+import {clickControl, element, find, mount, render, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
+import {testSession, testState} from '../../test-state.ts';
+import {ProfileSelect} from '../agent/profile-select.tsx';
+import {ViewMenu} from '../editor/view-menu.tsx';
 import {emptySession} from '../sessions/selection.ts';
 import {CommandDialog} from '../shared/command-dialog.tsx';
 import {ContextMenu} from '../shared/context-menu.tsx';
@@ -120,4 +122,23 @@ test('a modal hides the browser in another pane until it closes', () => {
   expect(places().at(-1)).toEqual(hidden);
   render(null, root);
   expect(places().at(-1)).toEqual({type: 'place', session: 's', rect: {x: 10, y: 20, width: 400, height: 300}});
+});
+
+test.each(['profile', 'view'])('the %s dropdown hides an overlapping browser until it closes', async kind => {
+  stubFetch(() => Response.json([{name: 'p', harness: 'test', model: 'm', effort: '', description: ''}]));
+  const {store} = setup();
+  const root = mount(store, kind === 'profile'
+    ? <ProfileSelect session={testSession({id: 's', harness: 'test', ready: true})} />
+    : <ViewMenu active={{kind: 'agent', id: 'agent', label: 'Agent', title: 'Agent', preview: false}} />);
+  await act(async () => {});
+  expect(places().at(-1)).toMatchObject({session: 's'});
+  clickControl(find(root, 'button'));
+  await act(async () => {});
+  expect(document.querySelector('[role=menu]')).not.toBeNull();
+  expect(places().at(-1)).toEqual(hidden);
+  await act(async () => {
+    find(document, '[role=menu]').dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}));
+  });
+  expect(document.querySelector('[role=menu]')).toBeNull();
+  expect(places().at(-1)).toMatchObject({session: 's'});
 });

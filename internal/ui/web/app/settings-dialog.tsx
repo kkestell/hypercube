@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {fetchGrants, post} from '../api.ts';
+import {fetchGrants, fetchVersion, post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {chooseSession, deleteSession} from '../sessions/session-actions.ts';
@@ -11,12 +11,15 @@ export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChang
   const [state, store] = useStore();
   const archived = state.workspaces.flatMap(workspace => workspace.sessions.filter(session => session.ended).map(session => ({workspace, session})));
   const [grants, setGrants] = useState<Grant[]>([]);
+  const [version, setVersion] = useState('');
   const focus = useModal(open);
   useEffect(() => {
     if (!open) return;
     let active = true;
     setGrants([]);
+    setVersion('');
     fetchGrants(store).then(result => { if (active && result) setGrants(result); });
+    fetchVersion(store).then(result => { if (active && result) setVersion(result); });
     return () => { active = false; };
   }, [open, store]);
   const remove = async (grant: Grant) => {
@@ -46,6 +49,9 @@ export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChang
             <Button variant="outline" size="sm" aria-label={`Remove ${grant.tool}, ${grant.harness}, ${grant.session ? grant.title : 'all sessions'}`} onClick={() => remove(grant)}>Remove</Button>
           </li>)}
         </ul>}
+      </section>
+      <section aria-label="Build"><h2 className="mb-2 font-semibold">Build</h2>
+        <p className="break-all text-sm text-muted-foreground">{version}</p>
       </section>
     </DialogContent>
   </Dialog>;

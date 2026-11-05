@@ -243,7 +243,8 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', as
 
 test('Settings opens from the sidebar, shortcut and menu and removes saved choices', async () => {
   const choices: Grant[] = [{session: '', title: '', harness: 'codex', tool: 'shell'}, {session: 'a', title: 'My session', harness: 'claude', tool: 'Bash'}];
-  const requests = answer((_, init) => init?.method === 'POST' ? new Response('') : Response.json(choices));
+  const version = 'Hypercube v0.1.0-beta.1+dirty (abc123)';
+  const requests = answer((url, init) => url === 'version' ? new Response(version) : init?.method === 'POST' ? new Response('') : Response.json(choices));
   const store = createStore(testState({selected: null}));
   const root = mount(store, <App store={store} />);
   await act(async () => { find(root, '[aria-label="Settings"]').click(); });
@@ -251,6 +252,7 @@ test('Settings opens from the sidebar, shortcut and menu and removes saved choic
   expect(dialog.textContent).toContain('Always Allowed Tools');
   expect(dialog.textContent).toContain('codex · All sessions');
   expect(dialog.textContent).toContain('claude · My session');
+  expect(find(dialog, '[aria-label="Build"]').textContent).toContain(version);
   await act(async () => { find(dialog, '[aria-label="Remove shell, codex, all sessions"]').click(); });
   expect(dialog.textContent).not.toContain('shell');
   expect(requests.at(-1)?.params).toEqual({session: '', harness: 'codex', tool: 'shell'});

@@ -7,9 +7,11 @@ package ui
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 
+	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
@@ -28,6 +30,11 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	s := &server{db: db, rt: rt}
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(assets()))
+	mux.HandleFunc("GET /version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		fmt.Fprintln(w, buildinfo.String())
+	})
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /profiles", profiles)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)

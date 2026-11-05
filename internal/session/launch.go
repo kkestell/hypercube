@@ -275,7 +275,7 @@ func (r *Runtime) endLocked(l *live, cause error) (*live, bool) {
 		if err != nil {
 			return err
 		}
-		suppress := r.closing || l.stopping || !running || r.deleting[l.root]
+		suppress := r.closing || l.stopping || !running
 		lost := errors.Is(cause, hold.ErrLost)
 		failed := l.ready == 0
 		reason := cmp.Or(l.cause, cause, errStopped)

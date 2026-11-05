@@ -204,6 +204,31 @@ func TestWorktreeSetUp(t *testing.T) {
 	}
 }
 
+func TestWorktreeIncludesLiteralPaths(t *testing.T) {
+	for _, name := range []string{
+		"café.local", `quote"name.local`, "tab\tname.local",
+		"line\nname.local", " leading.local", "café/config",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, run := gitRepo(t)
+			patterns := "*.local\ncafé/\n"
+			write(t, filepath.Join(root, ".gitignore"), patterns)
+			write(t, filepath.Join(root, ".worktreeinclude"), patterns)
+			write(t, filepath.Join(root, name), "local contents")
+			run(root, "add", ".gitignore", ".worktreeinclude")
+			run(root, "commit", "-qm", "include local files")
+			dir := SessionDir(root, "literal")
+			if err := AddWorktree(root, dir, SessionBranch("literal")); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(filepath.Join(dir, name))
+			if err != nil || string(data) != "local contents" {
+				t.Fatalf("included %q = %q, %v", name, data, err)
+			}
+		})
+	}
+}
+
 func TestRemoveMissingWorktree(t *testing.T) {
 	root, run := gitRepo(t)
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")

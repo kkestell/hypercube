@@ -103,7 +103,7 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 	}
 	err := r.db.Read(func(tx *store.Tx) error {
 		s, err := tx.Root(l.id)
-		if err != nil || s.AwaitingUser || !s.Running || r.deleting[l.root] {
+		if err != nil || s.AwaitingUser || !s.Running {
 			return err
 		}
 		queued, err := tx.Queued(l.id)

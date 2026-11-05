@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -197,8 +198,11 @@ func formValue(f plugin.Field, answer string) (any, error) {
 		return answer == "Yes", nil
 	case "number", "integer":
 		n, err := strconv.ParseFloat(strings.TrimSpace(answer), 64)
-		if err != nil {
-			return nil, errors.New("the answer must be a number")
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return nil, errors.New("the answer must be a finite number")
+		}
+		if f.Type == "integer" && math.Trunc(n) != n {
+			return nil, errors.New("the answer must be an integer")
 		}
 		return n, nil
 	case "array":
@@ -437,7 +441,7 @@ func (ag *agent) answer(item, choice, text string) error {
 func (ag *agent) answerAsync(open plugin.Open[request], answer string) error {
 	ag.answering = open.Request
 	ag.mu.Unlock()
-	err := ag.input(open.Item.Text+"\n\n"+answer, nil)
+	err := ag.inputThread(open.Request.thread, open.Item.Text+"\n\n"+answer, nil)
 	ag.mu.Lock()
 	ag.answering = nil
 	if err != nil {

@@ -9,7 +9,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: binaries build bundle check install install-service dev dev-app dev-stop dev-clean ui
+.PHONY: binaries build bundle check release install install-service dev dev-app dev-stop dev-clean ui
 
 # bundle builds $(APP), the application bundle macOS notifications need, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -21,6 +21,13 @@ bundle: $(APP)/Contents/Resources/AppIcon.icns
 	plutil -replace CFBundleIdentifier -string $(APP_ID) $(APP)/Contents/Info.plist
 	plutil -replace CFBundleName -string "$(APP_NAME)" $(APP)/Contents/Info.plist
 	$(MAKE) binaries OUT=$(MACOS)
+	cp scripts/install-service $(APP)/Contents/Resources/install-service
+	@info=$$("$(MACOS)/hypercube" version) && \
+		version=$$(printf '%s\n' "$$info" | awk '{print $$2}' | sed -E 's/^v//; s/[-+].*//') && \
+		{ [ "$$version" != devel ] || version=0.0.0; } && \
+		plutil -replace CFBundleShortVersionString -string "$$version" $(APP)/Contents/Info.plist && \
+		plutil -replace CFBundleVersion -string "$$version" $(APP)/Contents/Info.plist && \
+		plutil -replace CFBundleGetInfoString -string "$$info" $(APP)/Contents/Info.plist
 	for p in $(PLUGINS); do codesign --force --sign - $(MACOS)/hypercube-harness-$$p || exit 1; done
 	codesign --force --sign - $(APP)
 
@@ -53,6 +60,10 @@ check:
 	go vet ./...
 	@test -z "$$(gofmt -l cmd internal plugins)" || { gofmt -l cmd internal plugins; exit 1; }
 	go test -race ./...
+
+# Official packaging has stricter requirements than checkout builds/installs.
+release:
+	scripts/release
 
 # install puts the bundle in APPDIR and links hypercube and the plugins into
 # BINDIR, replacing the executables of earlier installs.

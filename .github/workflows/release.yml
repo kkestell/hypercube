@@ -1,0 +1,46 @@
+name: Beta release
+
+on:
+  push:
+    tags: ['v*-beta.*']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+
+  release:
+    needs: check
+    runs-on: macos-15
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Package beta
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: scripts/release "$RELEASE_TAG"
+      - name: Prepare draft prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          Apple Silicon beta. This app is ad hoc signed and is not notarized by Apple.
+          After opening it once, use System Settings → Privacy & Security → Open Anyway if macOS blocks it.
+
+          See the [installation guide](https://github.com/kkestell/hypercube/blob/main/docs/installation.md)
+          for configuration, launch-at-login, and upgrade instructions. SHA256SUMS verifies the ZIP download.
+          NOTES
+          gh release create "$RELEASE_TAG" bin/release/*.zip bin/release/SHA256SUMS \
+            --verify-tag --draft --prerelease --title "Hypercube $RELEASE_TAG" \
+            --generate-notes --notes-file "$RUNNER_TEMP/release-notes.md"

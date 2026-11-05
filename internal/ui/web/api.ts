@@ -57,6 +57,9 @@ export const fetchProfiles = (store: Store) =>
 export const fetchGrants = (store: Store) =>
   request<Grant[]>(store, 'grants', undefined, response => response.json());
 
+export const fetchVersion = (store: Store) =>
+  request<string>(store, 'version', {cache: 'no-store'}, async response => (await response.text()).trim());
+
 // selectProfile applies a configured profile to a ready session.
 export const selectProfile = (store: Store, session: string, profile: string) =>
   post(store, 'session', {action: 'profile', id: session, profile});

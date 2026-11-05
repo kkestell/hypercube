@@ -54,15 +54,36 @@ func prepareStorage(a harness.StartArgs) (string, error) {
 		return "", err
 	}
 	if a.Conversation != "" {
-		if home, err := privateConversationHome(base, a.Conversation); err != nil || home != "" {
-			return home, err
+		home, err := privateConversationHome(base, a.Conversation)
+		if err != nil {
+			return "", err
+		}
+		if home != "" {
+			source, err := sharedSource(home)
+			if err != nil {
+				return "", err
+			}
+			if source == "" {
+				// A previously empty source left no links. Its path hash can
+				// identify the current selection, but never a different account.
+				selected, err := sourceHome()
+				if err == nil && home == filepath.Join(base, "homes", sourceHash(selected)) {
+					source = selected
+				}
+			}
+			if source != "" {
+				if err := shareInputs(home, source); err != nil {
+					return "", err
+				}
+			}
+			return home, nil
 		}
 	}
 	source, err := sourceHome()
 	if err != nil {
 		return "", err
 	}
-	home := filepath.Join(base, "homes", fmt.Sprintf("%x", sha256.Sum256([]byte(source))))
+	home := filepath.Join(base, "homes", sourceHash(source))
 	if source == filepath.Join(os.Getenv("HOME"), ".codex") {
 		compatible, err := matchingInputs(base, source)
 		if err != nil {
@@ -75,23 +96,8 @@ func prepareStorage(a harness.StartArgs) (string, error) {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return "", err
 	}
-	for _, name := range sharedInputs {
-		target := filepath.Join(source, name)
-		if _, err := os.Lstat(target); os.IsNotExist(err) {
-			continue
-		} else if err != nil {
-			return "", err
-		}
-		link := filepath.Join(home, name)
-		if err := os.Symlink(target, link); err != nil {
-			// Several agents can launch against the same private home at once.
-			if os.IsExist(err) {
-				if existing, readErr := os.Readlink(link); readErr == nil && existing == target {
-					continue
-				}
-			}
-			return "", fmt.Errorf("share Codex input %s: %w", name, err)
-		}
+	if err := shareInputs(home, source); err != nil {
+		return "", err
 	}
 	if a.Conversation != "" {
 		if err := importConversation(source, home, a.Conversation); err != nil {
@@ -99,6 +105,64 @@ func prepareStorage(a harness.StartArgs) (string, error) {
 		}
 	}
 	return home, nil
+}
+
+func sourceHash(source string) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(source)))
+}
+
+// sharedSource recovers the original source from its input links. A home
+// created with no inputs keeps a directory link until inputs become available.
+func sharedSource(home string) (string, error) {
+	for _, name := range sharedInputs {
+		target, err := os.Readlink(filepath.Join(home, name))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		return filepath.Dir(target), nil
+	}
+	target, err := os.Readlink(filepath.Join(home, ".hypercube-source"))
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	return target, err
+}
+
+func shareInputs(home, source string) error {
+	shared := false
+	for _, name := range sharedInputs {
+		target := filepath.Join(source, name)
+		if _, err := os.Lstat(target); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return err
+		}
+		if err := sharePath(home, name, target); err != nil {
+			return err
+		}
+		shared = true
+	}
+	if !shared {
+		return sharePath(home, ".hypercube-source", source)
+	}
+	return nil
+}
+
+func sharePath(home, name, target string) error {
+	link := filepath.Join(home, name)
+	if err := os.Symlink(target, link); err != nil {
+		// Several agents can launch against the same private home at once.
+		if os.IsExist(err) {
+			if existing, readErr := os.Readlink(link); readErr == nil && existing == target {
+				return nil
+			}
+		}
+		return fmt.Errorf("share Codex input %s: %w", name, err)
+	}
+	return nil
 }
 
 // The legacy home can already belong to an explicit source override. Check

@@ -60,7 +60,7 @@ func newAgent(t *testing.T) *agentUnderTest {
 	h := &agentUnderTest{server: &appServer{t: t, out: peerOut, handlers: map[string]func(map[string]any) (any, *plugin.RPCError){}}}
 	h.agent = &agent{
 		finished: map[string]bool{}, open: map[string]harness.Item{}, running: map[string]harness.Item{},
-		children: map[string]string{},
+		children: map[string]childThread{},
 	}
 	h.ctx, h.cancel = context.WithCancel(context.Background())
 	h.emit = func(ev harness.Event) {

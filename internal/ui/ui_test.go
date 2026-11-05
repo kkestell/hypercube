@@ -18,6 +18,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
@@ -111,6 +112,14 @@ func TestFavicon(t *testing.T) {
 	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("favicon response = %d, %v", res.Code, res.Header())
+	}
+}
+
+func TestVersion(t *testing.T) {
+	res := httptest.NewRecorder()
+	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/version", nil))
+	if res.Code != http.StatusOK || res.Body.String() != buildinfo.String()+"\n" || res.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("version response = %d, %v, %s", res.Code, res.Header(), res.Body)
 	}
 }
 

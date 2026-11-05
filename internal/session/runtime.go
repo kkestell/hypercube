@@ -61,7 +61,8 @@ type Runtime struct {
 	// closing is set by Quit or Detach, after which no agent launches.
 	closing  bool
 	detached bool
-	// deleting holds the sessions Delete is ending, which cannot start.
+	// deleting claims family or child cleanup, blocking starts, children, and
+	// shell admission until the initial checks refuse or cleanup finishes.
 	deleting map[string]bool
 	// merges holds each worktree session's merge status, by session ID.
 	merges map[string]workspace.Merge

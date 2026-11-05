@@ -7,16 +7,29 @@ package desktop
 /*
 #cgo CFLAGS: -fobjc-arc
 #cgo LDFLAGS: -framework Cocoa -framework UserNotifications -framework WebKit
+#include <pwd.h>
 #include <stdlib.h>
+#include <unistd.h>
 void hypercubeRun(const char *url, const void *icon, size_t iconLen);
 */
 import "C"
 
 import (
 	_ "embed"
+	"errors"
 	"runtime"
 	"unsafe"
 )
+
+// LoginShell looks up the account's shell when Finder supplies no SHELL.
+// It is called before starting the application or its background work.
+func LoginShell() (string, error) {
+	account := C.getpwuid(C.getuid())
+	if account == nil || account.pw_shell == nil || C.GoString(account.pw_shell) == "" {
+		return "", errors.New("cannot find the current account's login shell")
+	}
+	return C.GoString(account.pw_shell), nil
+}
 
 // menuBarIcon is drawn as a template image, so only its shape matters.
 //

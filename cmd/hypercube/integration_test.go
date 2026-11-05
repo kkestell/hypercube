@@ -578,8 +578,48 @@ func TestAppProcess(t *testing.T) {
 	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
-	if out, err := exec.Command(binary).CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
-		t.Fatalf("no arguments should print the usage: %v %s", err, out)
+	if out, err := exec.Command(binary, "unknown").CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
+		t.Fatalf("unknown commands should print the usage: %v %s", err, out)
+	}
+	version, err := exec.Command(binary, "version").CombinedOutput()
+	if err != nil || !strings.HasPrefix(string(version), "Hypercube v") && strings.TrimSpace(string(version)) != "Hypercube devel" {
+		t.Fatalf("version: %v %s", err, version)
+	}
+	// Finder supplies no arguments. A stand-in login shell captures the launch
+	// without touching the user's shell configuration or starting a native app.
+	shell := filepath.Join(w.dir, "login shell")
+	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" \"$HYPERCUBE_APP_EXECUTABLE\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	launch := exec.Command(binary)
+	launch.Env = append(os.Environ(), "SHELL="+shell)
+	wantLaunch := "-i\n-c\nexec \"$HYPERCUBE_APP_EXECUTABLE\" ui --menu\n" + binary + "\n"
+	if out, err := launch.CombinedOutput(); err != nil || string(out) != wantLaunch {
+		t.Fatalf("Finder launch = %q, %v; want %q", out, err, wantLaunch)
+	}
+	// Exercise actual login shells with disposable homes. Their login files
+	// redirect the native launch to a stand-in, so no window or agent starts.
+	for _, shell := range []struct{ path, profile, setup string }{
+		{"/bin/zsh", ".zprofile", `export HYPERCUBE_APP_EXECUTABLE="$HYPERCUBE_TEST_APP"`},
+		{"/bin/bash", ".bash_profile", `export HYPERCUBE_APP_EXECUTABLE="$HYPERCUBE_TEST_APP"`},
+		{"/bin/tcsh", ".login", `setenv HYPERCUBE_APP_EXECUTABLE "$HYPERCUBE_TEST_APP"`},
+	} {
+		t.Run(filepath.Base(shell.path), func(t *testing.T) {
+			home := t.TempDir()
+			target := filepath.Join(home, "native app stand-in")
+			if err := os.WriteFile(target, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(home, shell.profile), []byte(shell.setup+"\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command(binary)
+			cmd.Env = append(os.Environ(), "SHELL="+shell.path, "HOME="+home, "ZDOTDIR="+home, "HYPERCUBE_TEST_APP="+target)
+			out, err := cmd.Output()
+			if err != nil || string(out) != "ui\n--menu\n" {
+				t.Fatalf("login shell launch = %q, %v", out, err)
+			}
+		})
 	}
 	ws, err := session.New(w.db, "").AddWorkspace(w.root)
 	if err != nil {
@@ -613,6 +653,15 @@ func TestAppProcess(t *testing.T) {
 		}
 	})
 	start()
+	res, err := http.Get(c.base + "/version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverVersion, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil || !bytes.Equal(serverVersion, version) {
+		t.Fatalf("running server version = %q, %v; CLI = %q", serverVersion, err, version)
+	}
 	parent := w.session(c.newSession(ws.ID, "first"))
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.

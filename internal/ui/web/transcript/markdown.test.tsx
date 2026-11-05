@@ -1,6 +1,6 @@
 import {expect, test} from 'bun:test';
 import {render} from '../../test-render.tsx';
-import {Markdown, safeHref} from './markdown.tsx';
+import {Markdown, MarkdownText, safeHref} from './markdown.tsx';
 
 const markdown = (text: string): Element => {
   const root = document.createElement('div');
@@ -43,6 +43,39 @@ test('safeHref allows only web and mail addresses', () => {
   for (const bad of ['javascript:alert(1)', ' JaVaScRiPt:alert(1)', '\tjavascript:alert(1)', 'data:text/html,<b>', 'file:///etc/passwd', '/relative', '//example.com', '']) {
     expect(safeHref(bad)).toBeNull();
   }
+});
+
+test('Markdown text decodes named and numeric entities once and keeps escaped ampersands', () => {
+  const text = String.raw`Tom &amp; Jerry &#35; &#x1F600; &amp;lt; \&amp; &copy &unknown;`;
+  const expected = 'Tom & Jerry # 😀 &lt; &amp; &copy &unknown;';
+  expect(markdown(text).textContent).toBe(expected);
+  const root = document.createElement('div');
+  render(<MarkdownText text={text} />, root);
+  expect(root.textContent).toBe(expected);
+});
+
+test('entity decoding leaves code and raw HTML literal', () => {
+  const root = markdown('`&amp; &#65;`\n\n```\n&amp; &#65;\n```\n\n<div title="&amp;">\n&copy;\n</div>');
+  expect([...root.querySelectorAll('code')].map(code => code.textContent)).toEqual(['&amp; &#65;', '&amp; &#65;']);
+  expect(root.textContent).toContain('<div title="&amp;">\n&copy;\n</div>');
+  expect(root.querySelector('div[title]')).toBeNull();
+});
+
+test('link destinations decode entities before URL validation', () => {
+  const root = markdown('[safe](https://example.com/?a=1&amp;b=2) [blocked](jav&#x61;script:alert%281%29)');
+  const links = [...root.querySelectorAll('a')];
+  expect(links.map(link => link.getAttribute('href'))).toEqual(['https://example.com/?a=1&b=2']);
+  expect(root.textContent).toBe('safe blocked');
+});
+
+test('preview images decode their path, alternative text, and title', () => {
+  const root = document.createElement('div');
+  const paths: string[] = [];
+  render(<Markdown text={'![A &amp; B](images/a&amp;b.png "T &quot;Q&quot;")'} style="preview" imageSource={href => { paths.push(href); return '/image'; }} />, root);
+  expect(paths).toEqual(['images/a&b.png']);
+  const image = root.querySelector('img');
+  expect(image?.alt).toBe('A & B');
+  expect(image?.title).toBe('T "Q"');
 });
 
 test('chat images keep their existing link or text presentation', () => {

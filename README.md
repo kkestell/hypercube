@@ -22,8 +22,8 @@ children.
   worktrees.
 - [Harness differences](docs/harness-support.md) — follow-ups, permissions,
   model changes, and version requirements.
-- [Installation](docs/installation.md) — builds, the login service, upgrades,
-  and development.
+- [Installation](docs/installation.md) — beta downloads, checkout builds, the
+  login service, upgrades, and releases.
 - [Architecture](docs/architecture.md) — process boundaries and saved state.
 
 [AGENTS.md](AGENTS.md) contains contributor instructions.

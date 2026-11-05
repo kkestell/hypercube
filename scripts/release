@@ -1,0 +1,38 @@
+#!/bin/bash
+# Package a clean, tagged Apple Silicon beta without touching the installed app.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+tag=${1:-$(git describe --tags --exact-match --match 'v[0-9]*' HEAD)}
+if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[1-9][0-9]*$ ]]; then
+	echo "release: expected a beta tag such as v0.1.0-beta.1" >&2
+	exit 1
+fi
+commit=$(git rev-parse HEAD)
+if [ "$(git rev-parse "$tag^{commit}")" != "$commit" ]; then
+	echo "release: $tag does not identify HEAD" >&2
+	exit 1
+fi
+if [ -n "$(git status --porcelain)" ]; then
+	echo "release: commit or remove checkout changes before packaging" >&2
+	exit 1
+fi
+if [ "$(go env GOOS)/$(go env GOARCH)" != darwin/arm64 ]; then
+	echo "release: build on macOS for Apple Silicon (darwin/arm64)" >&2
+	exit 1
+fi
+
+rm -rf bin/release
+make bundle APP=bin/release/Hypercube.app
+app=bin/release/Hypercube.app
+identity=$("$app/Contents/MacOS/hypercube" version)
+if [ "$identity" != "Hypercube $tag ($commit)" ]; then
+	echo "release: unexpected build identity: $identity" >&2
+	exit 1
+fi
+codesign --verify --deep --strict "$app"
+archive=Hypercube-$tag-macos-arm64.zip
+ditto -c -k --sequesterRsrc --keepParent "$app" "bin/release/$archive"
+cd bin/release
+shasum -a 256 "$archive" > SHA256SUMS
+echo "Packaged $identity: bin/release/$archive"

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -33,6 +32,10 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
 		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
 	r.mu.Lock()
+	if r.deleting[parentID] {
+		r.mu.Unlock()
+		return store.Session{}, errDeleting
+	}
 	if r.live[parentID] == nil || r.live[parentID].stopping || r.closing {
 		r.mu.Unlock()
 		return store.Session{}, errors.New("the session is not running")
@@ -105,64 +108,4 @@ func (r *Runtime) CreateChild(parentID, name, title string, profile harness.Prof
 		return store.Session{}, discard(err)
 	}
 	return child, nil
-}
-
-// EndChild removes its worktree before stopping the agent, keeping its chat.
-func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
-	var parent, child store.Session
-	err := r.db.Read(func(tx *store.Tx) error {
-		var err error
-		parent, err = tx.Session(parentID)
-		if err != nil {
-			return err
-		}
-		if parent.Parent != "" {
-			return errors.New("only a top-level session can do this")
-		}
-		children, err := tx.Children(parent.ID)
-		if err != nil {
-			return err
-		}
-		i := slices.IndexFunc(children, func(c store.Session) bool { return c.Name == name })
-		if i < 0 {
-			return fmt.Errorf("you have no child session named %s", name)
-		}
-		child = children[i]
-		if child.Ended {
-			return errors.New("the child session has already ended")
-		}
-		return nil
-	})
-	if err != nil {
-		return child, err
-	}
-	r.mu.Lock()
-	running := r.live[parentID] != nil
-	r.mu.Unlock()
-	if !running {
-		return child, errors.New("the session is not running")
-	}
-	if child.Branch != "" {
-		if err := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); err != nil {
-			return child, err
-		}
-	}
-	r.mu.Lock()
-	lives := r.selectLaunches(func(l *live) bool { return l.id == child.ID })
-	err = r.save(func(tx *write) error {
-		var err error
-		child, err = tx.Session(child.ID)
-		if err != nil {
-			return err
-		}
-		child.Ended, child.Attention = true, false
-		if err := tx.SaveSession(child); err != nil {
-			return err
-		}
-		return tx.DropQueued(child.ID)
-	})
-	r.mu.Unlock()
-	r.stopLaunches(lives)
-	r.Terminals.Stop(child.ID)
-	return child, err
 }
