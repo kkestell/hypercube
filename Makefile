@@ -66,7 +66,7 @@ binaries:
 	go build -o $(OUT)/hypercube ./cmd/hypercube
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
-build: bundle
+build: ui bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
 	for p in $(PLUGINS); do ln -sf Hypercube.app/Contents/MacOS/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 

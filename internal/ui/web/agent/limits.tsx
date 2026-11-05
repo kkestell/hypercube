@@ -34,7 +34,7 @@ function LimitRow({harness, limit, className = ''}: {harness: string; limit: Lim
   return <>
     <span className={`col-start-1 ${cell}`} title={title}>{label}</span>
     <span className={`relative col-start-2 w-16 ${cell}`} title={title}>
-      <Progress value={limit.used} aria-label={`${harness} ${label} usage`} aria-valuetext={expired ? waiting : undefined} className={`bg-neutral-500/20 ${bar(limit.used)}`} />
+      <Progress value={limit.used} aria-label={`${harness} ${label} usage`} aria-valuetext={expired ? waiting : undefined} className={`bg-neutral-500/20 [&_[data-slot=progress-indicator]]:transition-none ${bar(limit.used)}`} />
       {elapsed !== null && <span className="absolute inset-y-0 w-0.5 bg-neutral-200" style={{left: `${elapsed}%`}} />}
     </span>
     <span className={`col-start-3 justify-self-end tabular-nums ${cell}`} title={title}>{limit.used}%</span>

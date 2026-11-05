@@ -1,8 +1,8 @@
 // A session's transcript in a scrolling list. The list follows its end until
 // the user scrolls up, and follows again once they scroll back to the end.
 // Growing content leaves scrollTop alone, so only a scroll upward stops
-// following; the end allows for fractional scroll positions. The footer sticks
-// to the bottom of the scrolling view, so the scrollbar spans the whole pane.
+// following; the end allows for fractional scroll positions. The footer sits
+// below the scrolling view, so the scrollbar stops above it.
 // The list's sides line up with the composer's attach and send icons: the
 // column's 16px plus the composer box's 21px to its icons. Expanding or
 // collapsing an item keeps its heading where it was on screen, and the list
@@ -99,17 +99,19 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} response />)}
         </div>
         <div ref={bottom} className={`transcript-bottom sticky bottom-0 flow-root shrink-0 ${tabBackground}`}>
-          {away && (
-            <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
-              onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
-          )}
           {pending.length > 0 && (
             <section className={`transcript-pending my-4 flex flex-col gap-4 ${column(state)}`} aria-label="Pending questions">
               {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
             </section>
           )}
-          {footer}
         </div>
+      </div>
+      <div className={`transcript-footer relative shrink-0 ${tabBackground}`}>
+        {away && (
+          <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
+            onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
+        )}
+        {footer}
       </div>
     </div>
   );
