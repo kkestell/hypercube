@@ -1,4 +1,10 @@
 // The page's layout and the window and account details it shows.
+import type {Profile} from '../agent/types.ts';
+
+export interface Config {
+  default_profile: string;
+  profiles: Profile[];
+}
 
 export type RightTab = 'files' | 'search';
 

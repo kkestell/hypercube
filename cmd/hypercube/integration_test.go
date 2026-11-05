@@ -639,7 +639,7 @@ func TestAppProcess(t *testing.T) {
 		}
 		c = client{t, fmt.Sprintf("http://127.0.0.1:%d", port)}
 		w.until("the app serving", func() bool {
-			res, err := http.Get(c.base + "/profiles")
+			res, err := http.Get(c.base + "/config")
 			if err == nil {
 				res.Body.Close()
 			}

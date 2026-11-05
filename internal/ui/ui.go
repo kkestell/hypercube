@@ -6,13 +6,11 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
-	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -36,7 +34,8 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 		fmt.Fprintln(w, buildinfo.String())
 	})
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /profiles", profiles)
+	mux.HandleFunc("GET /config", config)
+	mux.HandleFunc("POST /config", saveConfig)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.HandleFunc("GET /grants", s.grants)
 	mux.HandleFunc("POST /grants", s.deleteGrant)
@@ -53,17 +52,6 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.HandleFunc("GET /diff", s.readDiff)
 	mux.HandleFunc("GET /image", s.readImage)
 	return localOnly(mux)
-}
-
-// profiles rereads the profiles so config edits appear in the next session menu.
-func profiles(w http.ResponseWriter, r *http.Request) {
-	cfg, err := harness.LoadConfig()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(cfg.Profiles)
 }
 
 // localOnly refuses other hosts' names, so a rebound DNS name cannot reach the

@@ -4,30 +4,30 @@ import {Button} from '../components/ui/button';
 import {DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
 import {Icon} from '../shared/icon.tsx';
 import {useOverlay} from '../shared/overlays.ts';
-import {fetchProfiles, selectProfile} from '../api.ts';
+import {fetchConfig, selectProfile} from '../api.ts';
+import {receivedConfig} from '../app/config.ts';
 import {unsentProfile} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
 import {unsentKey} from './drafts.ts';
 import {modelLabel, profileLabel} from './profile-label.ts';
 import {harnessIcon} from './harness-icon.tsx';
-import type {Profile} from './types.ts';
 import type {Session} from '../sessions/types.ts';
 
 export function ProfileSelect({session}: {session: Session}) {
   const [state, store] = useStore();
   const overlay = useOverlay();
   const unsent = session.id === unsentKey ? state.unsent : null;
-  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const profiles = state.config?.profiles ?? [];
+  const [revision, refresh] = useState(0);
   useEffect(() => {
     if (!unsent && !session.ready) return;
     let current = true;
-    fetchProfiles(store).then(fetched => {
-      if (!current || !fetched?.length) return;
-      setProfiles(fetched);
-      if (unsent) store.update(s => s.unsent?.profile ? s : unsentProfile(s, fetched[0]));
+    fetchConfig(store).then(config => {
+      if (!current || !config) return;
+      store.update(s => receivedConfig(s, config));
     });
     return () => { current = false; };
-  }, [store, session.id, session.ready, unsent?.identity]);
+  }, [store, session.id, session.ready, unsent?.identity, revision]);
   const choose = (value: string) => {
     if (unsent ? unsent.sending : !session.ready) return;
     const profile = profiles.find(p => p.name === value);
@@ -39,7 +39,7 @@ export function ProfileSelect({session}: {session: Session}) {
   const selected = unsent ? profiles.find(p => p.name === unsent.profile) : choices.find(p => p.model === session.model && p.effort === session.effort);
   const shown = unsent ? selected : session;
   const icon = shown && harnessIcon(shown.harness);
-  return <DropdownMenu>
+  return <DropdownMenu onOpenChange={open => { if (open) refresh(value => value + 1); }}>
     <DropdownMenuTrigger asChild>
       <Button type="button" variant="ghost" size="sm" className="composer-profile h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground" aria-label="Profile" disabled={unsent ? unsent.sending : !session.ready}>
         {icon}<span className="truncate">{shown ? (icon ? modelLabel(shown) : profileLabel(shown)) : 'Select profile'}</span><Icon name="chevron-down" />

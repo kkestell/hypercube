@@ -3,6 +3,23 @@
 Create `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set, the path
 is `$XDG_CONFIG_HOME/hypercube/config.json` instead.
 
+Open Settings (`⌘,`) to select the default agent profile or add, edit, and
+remove profiles. **Save changes** validates and writes the configuration;
+closing the modal without saving discards profile edits. At least one complete
+profile must remain. Renaming the default profile keeps it selected; removing
+it selects the first remaining profile.
+
+The optional top-level `default_profile` field names the profile selected for a
+new session. If omitted in an existing file, it uses the first profile. Saving
+from Settings writes an explicit default. The composer can override this
+choice for each session.
+
+After saving, an open session draft keeps its selected profile if that name
+still exists; otherwise it switches to the saved default.
+
+Editing the file directly while Hypercube is running is unsupported. To edit
+it by hand, stop Hypercube first; a settings save replaces the file.
+
 ## Profiles
 
 Each entry in `profiles` is a harness, model, and effort combination. It appears
@@ -28,7 +45,7 @@ use. Accepted model and effort values differ
 
 Profile edits affect subsequent choices. An existing session keeps its saved
 model and effort until you change its selection, even if you edit or remove
-the original profile. Profiles are reread when the selector loads and when
+the original profile. Profiles are reread when the selector loads or opens and when
 session tools or startup instructions request them.
 
 ## Local files in worktrees

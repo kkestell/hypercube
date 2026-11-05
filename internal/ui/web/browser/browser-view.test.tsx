@@ -125,7 +125,7 @@ test('a modal hides the browser in another pane until it closes', () => {
 });
 
 test.each(['profile', 'view'])('the %s dropdown hides an overlapping browser until it closes', async kind => {
-  stubFetch(() => Response.json([{name: 'p', harness: 'test', model: 'm', effort: '', description: ''}]));
+  stubFetch(() => Response.json({default_profile: 'p', profiles: [{name: 'p', harness: 'test', model: 'm', effort: '', description: ''}]}));
   const {store} = setup();
   const root = mount(store, kind === 'profile'
     ? <ProfileSelect session={testSession({id: 's', harness: 'test', ready: true})} />

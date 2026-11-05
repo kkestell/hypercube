@@ -63,7 +63,7 @@ func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
 	}
 }
 
-func TestProfiles(t *testing.T) {
+func TestConfig(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	path := filepath.Join(dir, "hypercube/config.json")
@@ -82,22 +82,26 @@ func TestProfiles(t *testing.T) {
 	get := func() *httptest.ResponseRecorder {
 		t.Helper()
 		res := httptest.NewRecorder()
-		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/profiles", nil))
+		handler.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/config", nil))
 		return res
 	}
 	res := get()
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("profiles response = %d %s", res.Code, res.Body)
 	}
-	type profile struct{ Name, Description, Harness, Model, Effort string }
-	var got []profile
+	var got harness.Config
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got, []profile{{"first", "First lead", "claude", "opus", "high"}, {"worker", "Worker", "codex", "sol", "high"}, {"second", "Second lead", "codex", "sol", "high"}}) {
+	want := []harness.Profile{
+		{Name: "first", Description: "First lead", Harness: "claude", Model: "opus", Effort: "high"},
+		{Name: "worker", Description: "Worker", Harness: "codex", Model: "sol", Effort: "high"},
+		{Name: "second", Description: "Second lead", Harness: "codex", Model: "sol", Effort: "high"},
+	}
+	if got.DefaultProfile != "first" || !slices.Equal(got.Profiles, want) {
 		t.Fatalf("profiles = %+v", got)
 	}
-	// The same handler reads config edits instead of keeping a cached list.
+	// A malformed config is reported instead of returning an empty list.
 	if err := os.WriteFile(path, []byte(`{`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +190,7 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 		return res.Code
 	}
 	for name, got := range map[string]int{
-		"foreign host":          send("GET", "example.com", "", "/profiles"),
+		"foreign host":          send("GET", "example.com", "", "/config"),
 		"rebound host":          send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
 		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/session?action=input&id=a"),
 		"input without origin":  send("POST", "localhost:4280", "", "/session?action=input&id=a"),

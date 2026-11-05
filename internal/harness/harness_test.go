@@ -30,6 +30,13 @@ func TestLoadConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if c.DefaultProfile != "first" {
+		t.Fatalf("legacy default = %q", c.DefaultProfile)
+	}
+	explicit, err := load(strings.Replace(valid, `{`, `{"default_profile":"fast",`, 1))
+	if err != nil || explicit.DefaultProfile != "fast" {
+		t.Fatalf("explicit default = %+v, %v", explicit, err)
+	}
 	for _, name := range []string{"first", "fast", "second"} {
 		if p, err := c.Profile(name); err != nil || p.Name != name {
 			t.Errorf("Profile(%q) = %+v, %v", name, p, err)
@@ -56,6 +63,8 @@ func TestLoadConfig(t *testing.T) {
 		"missing effort":      strings.Replace(valid, `"low"`, `""`, 1),
 		"missing profiles":    `{}`,
 		"broken JSON":         `{`,
+		"unknown default":     strings.Replace(valid, `{`, `{"default_profile":"missing",`, 1),
+		"blank model":         strings.Replace(valid, `"opus"`, `"  "`, 1),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := load(source); err == nil {
