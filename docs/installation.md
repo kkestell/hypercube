@@ -70,7 +70,7 @@ without the native window, or pass a port to use another address:
 hypercube ui 4282
 ```
 
-The native window is required for agents' Browser tabs and macOS notifications.
+The native app is required for agents' browser windows and macOS notifications.
 
 ## Run at login
 

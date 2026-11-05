@@ -5,7 +5,6 @@ import {testSession, testState, testWorkspace, unread} from '../../test-state.ts
 import {panes} from '../editor/tab-layout.ts';
 import {receivedWorkspaces} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
-import {covered} from '../shared/overlays.ts';
 import type {State} from '../state.ts';
 import {createStore, type Store} from '../store.ts';
 import {App} from './app.tsx';
@@ -239,12 +238,10 @@ test('keyboard shortcuts dialog opens from the keyboard and the native menu', as
   expect(dialog.textContent).toContain('Keyboard shortcuts');
   expect(dialog.textContent).toContain('New Session');
   expect(dialog.textContent).toContain('Toggle Terminal');
-  expect(covered(store.get(), {x: 10000, y: 10000, width: 100, height: 100})).toBe(true);
   const focused = new Promise(resolve => button.addEventListener('focus', resolve, {once: true}));
   act(() => { find(dialog, 'button').click(); });
   await focused;
   expect(document.querySelector('[role=dialog]')).toBeNull();
-  expect(covered(store.get(), {x: 10000, y: 10000, width: 100, height: 100})).toBe(false);
   expect(document.activeElement === button).toBe(true);
   nativeShortcut('help');
   expect(find(document, '[role=dialog]').textContent).toContain('Keyboard shortcuts');

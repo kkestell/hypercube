@@ -1,7 +1,7 @@
 import type {ComponentProps, ReactNode} from 'react';
 import {Command} from '../components/ui/command';
 import {Dialog, DialogContent, DialogDescription, DialogTitle} from '../components/ui/dialog';
-import {useModal} from './overlays.ts';
+import {useDialogFocus} from './focus.ts';
 
 interface CommandDialogProps {
   open: boolean;
@@ -13,7 +13,7 @@ interface CommandDialogProps {
 }
 
 export function CommandDialog({open, onOpenChange, title, description, commandProps, children}: CommandDialogProps) {
-  const modal = useModal(open);
+  const modal = useDialogFocus(open);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent className="overflow-hidden p-0" showCloseButton={false} {...modal}>
       <DialogTitle className="sr-only">{title}</DialogTitle>

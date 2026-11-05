@@ -7,7 +7,7 @@ import type {AttachedSession} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
 import {EditorArea} from './editor-area.tsx';
-import {browserTabId, fileTabId, moveTab, selectTab} from './editor.ts';
+import {fileTabId, moveTab, selectTab} from './editor.ts';
 import {findPane, openTab} from './tab-layout.ts';
 import type {LayoutNode, TabId} from './types.ts';
 
@@ -56,10 +56,9 @@ test('closing a tab focuses the next one, and closing a pane\'s last focuses ano
 test('each pane\'s view menu offers the options of its active tab', async () => {
   const {store, root} = setup(state => ({
     ...state,
-    browsers: {s: {url: 'https://example.com/', title: 'Example', loading: false, canGoBack: false, canGoForward: false}},
     session: {
       ...attached(state),
-      tabs: ['file:guide.md', 'file:notes.md', 'file:code.go', browserTabId].reduce(openTab, attached(state).tabs),
+      tabs: ['file:guide.md', 'file:notes.md', 'file:code.go'].reduce(openTab, attached(state).tabs),
       files: {...attached(state).files, open: {
         'guide.md': {...unread, text: '# Title'},
         'notes.md': {...unread, text: '# Notes'},
@@ -80,7 +79,6 @@ test('each pane\'s view menu offers the options of its active tab', async () => 
   };
   const choose = (label: string) => press(openItems().find(i => i.textContent === label) ?? expect.unreachable(label), 'Enter');
   const close = () => press(find(document.body, '.view-menu-items'), 'Escape');
-  expect(menus()).toHaveLength(0); // browser
   const select = (id: TabId) => act(() => store.update(state => selectTab(state, findPane(treeOf(state), id)?.id ?? expect.unreachable(id), id)));
   select('agent');
   expect(await open()).toEqual(['Fixed Width']);
@@ -153,19 +151,7 @@ test('a preview tab is italic until double-clicked, and a deleted file is struck
   expect(find(tab('b.go'), '.editor-tabs-label').classList.contains('italic')).toBe(false);
 });
 
-test('the browser\'s tab shows its page\'s title and closes without ending the browser', () => {
-  const {store, root, labels} = setup(state => ({
-    ...openTestTab(state, browserTabId),
-    browsers: {s: {url: 'https://example.com/', title: 'Example', loading: false, canGoBack: false, canGoForward: false}},
-  }));
-  const tab = find(root, `[data-tab="${browserTabId}"]`);
-  expect(labels()).toEqual(['Chat', 'Example']);
-  expect(element(tab, 'svg[data-icon]', SVGElement).getAttribute('data-icon')).toBe('globe');
-  expect(find(tab, '[role="tab"]').title).toBe('https://example.com/');
-  clickControl(find(root, '[aria-label="Close Example"]'));
-  expect(labels()).toEqual(['Chat']);
-  expect(store.get().browsers.s.title).toBe('Example');
-});
+
 
 test('file tab context menu copies its path', () => {
   const copy = spyOn(navigator.clipboard, 'writeText').mockResolvedValue();

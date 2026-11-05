@@ -36,7 +36,5 @@ export function titleBarVars(titleBar: TitleBar | null): CSSProperties | undefin
 export const topRow = 'min-h-[var(--title-bar-height,0px)]';
 export const topRowStart = 'pl-[var(--title-bar-inset,0.5rem)]';
 
-// barButton and barTabs size the controls of a top-row bar, which is only a
-// little taller than they are.
-export const barButton = 'size-7';
+// Keep tab controls compact enough to fit the native title-bar row.
 export const barTabs = 'group-data-[orientation=horizontal]/tabs:h-7';

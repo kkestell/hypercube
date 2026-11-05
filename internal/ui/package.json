@@ -4,7 +4,6 @@
   "packageManager": "bun@1.4.2",
   "dependencies": {
     "@xterm/addon-fit": "0.11.0",
-    "@xterm/addon-webgl": "0.19.0",
     "@xterm/xterm": "6.0.0",
     "class-variance-authority": "0.7.1",
     "cmdk": "1.1.1",

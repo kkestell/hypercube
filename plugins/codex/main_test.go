@@ -1025,7 +1025,7 @@ func TestConnectStartsAThread(t *testing.T) {
 	if err := h.connect(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
-	if h.thread != "thread-1" || len(h.snapshot()) != 1 || h.snapshot()[0].Conversation != "thread-1" {
+	if h.thread != "thread-1" || len(h.snapshot()) != 1 || h.snapshot()[0].Conversation != "native:thread-1" {
 		t.Fatalf("%q %+v", h.thread, h.snapshot())
 	}
 	init := h.server.sent("initialize")[0]
@@ -1052,7 +1052,7 @@ func TestConnectResumesAThread(t *testing.T) {
 		}
 		return map[string]any{"thread": map[string]any{"id": p["threadId"]}}, nil
 	})
-	args := harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), Conversation: "saved"}
+	args := harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), Conversation: "native:saved"}
 	if err := h.connect(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -1061,10 +1061,23 @@ func TestConnectResumesAThread(t *testing.T) {
 		t.Fatalf("%q %+v", h.thread, p)
 	}
 	// A conversation that cannot be resumed is an error, not a new conversation.
-	args.Conversation = "gone"
+	args.Conversation = "native:gone"
 	err := h.connect(context.Background(), args)
 	if err == nil || !strings.Contains(err.Error(), "could not resume thread gone") || !strings.Contains(err.Error(), "no rollout found") || len(h.server.sent("thread/start")) != 0 {
 		t.Fatal(err)
+	}
+}
+
+// An old private thread can have a stale copy in the native home. Never
+// resume that copy or silently create a replacement conversation.
+func TestLegacyPrivateConversationIsRejectedBeforeConnecting(t *testing.T) {
+	h := newAgent(t)
+	err := h.connect(context.Background(), harness.StartArgs{Conversation: "old-private-thread", Dir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "predates the native storage integration") || !strings.Contains(err.Error(), "transcript and files are preserved") {
+		t.Fatal(err)
+	}
+	if len(h.server.sent("initialize")) != 0 || len(h.server.sent("thread/resume")) != 0 || len(h.server.sent("thread/start")) != 0 {
+		t.Fatal("contacted native storage for a legacy private thread")
 	}
 }
 
@@ -1104,23 +1117,15 @@ func TestStartReportsAProcessThatEnds(t *testing.T) {
 // The agent talks to a real process: initialize, a thread, a turn, and an
 // exit that the serve loop reports.
 func TestServeDrivesAProcess(t *testing.T) {
-	user := t.TempDir()
-	t.Setenv("HOME", user)
-	t.Setenv("CODEX_HOME", "")
-	writeStorageFile(t, filepath.Join(user, ".config", "neuron", "codex-profile.zsh"), []byte("export CODEX_HOME=\"$HOME/.codex-strib\"\n"))
-	writeStorageFile(t, filepath.Join(user, ".codex-strib", "auth.json"), []byte("selected account"))
+	nativeHome := t.TempDir()
+	t.Setenv("CODEX_HOME", nativeHome)
+	t.Setenv("EXPECTED_CODEX_HOME", nativeHome)
 	stateDir := t.TempDir()
-	t.Setenv("EXPECTED_STATE_DIR", stateDir)
-	t.Setenv("EXPECTED_SOURCE", filepath.Join(user, ".codex-strib"))
-	t.Setenv("EXPECTED_HOME", os.Getenv("HOME"))
 	bin := t.TempDir()
 	script := `#!/bin/sh
 case "$1" in app-server) ;; *) exit 9;; esac
-case "$CODEX_HOME" in "$EXPECTED_STATE_DIR"/codex/homes/*) ;; *) exit 10;; esac
-[ "$HOME" = "$EXPECTED_HOME" ] || exit 11
-[ "$2" = '-c' ] || exit 12
-[ "$3" = "sqlite_home=\"$CODEX_HOME\"" ] || exit 13
-[ "$(readlink "$CODEX_HOME/auth.json")" = "$EXPECTED_SOURCE/auth.json" ] || exit 14
+[ "$CODEX_HOME" = "$EXPECTED_CODEX_HOME" ] || exit 10
+[ "$#" = 1 ] || exit 11
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\),.*/\1/p')
   case "$line" in
@@ -1183,7 +1188,7 @@ done
 	send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), StateDir: stateDir}})
 	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 1 && r.Reply.Error == "" }))
 	until(has(func(r harness.Record) bool {
-		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == "th"
+		return r.Event != nil && r.Event.State == harness.Idle && r.Event.Conversation == "native:th"
 	}))
 	send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "hi"})
 	until(has(func(r harness.Record) bool { return r.Reply != nil && r.Reply.ID == 2 && r.Reply.Error == "" }))

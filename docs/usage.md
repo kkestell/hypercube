@@ -78,10 +78,11 @@ The terminal panel is your shell in the selected session's directory. Each
 session has its own shell. Hiding the panel or closing the interface leaves it
 running; stopping the session or quitting Hypercube ends it.
 
-In the native window, an agent's first page navigation opens its **Browser**
-tab. You can navigate that page yourself or open it in your default browser.
-Closing the tab keeps the page alive; the agent can close it, or quitting
-Hypercube ends it. Session browsers share website logins.
+With the native app, an agent's page navigation opens its own browser window.
+Its controls let you navigate or open the page in your default browser. The
+**Window** menu lists open browser windows. Closing the window or the agent's
+`browser_close` ends that browser; quitting Hypercube ends them all. Session
+browsers share website logins.
 
 ### Merge a worktree session
 

@@ -10,7 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Browser is the web browser each session has in the Hypercube window.
+// Browser drives each session's native browser window.
 type Browser interface {
 	// Navigate loads url in the session's browser, creating the browser if it
 	// has none, and returns the page's URL and title once it has loaded.
@@ -41,7 +41,7 @@ type evalArgs struct {
 func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "browser_navigate",
-		Description: "Load a URL in your browser and wait until the page finishes loading. Your browser is a web page in a tab beside your chat, which the user sees; it keeps the user's logins. Returns the final URL and the page's title.",
+		Description: "Load a URL in your browser and wait until the page finishes loading. Your browser is a web page in its own native window, which the user sees; it keeps the user's logins. Returns the final URL and the page's title.",
 	}, result(func(ctx context.Context, a navigateArgs) (string, error) {
 		if browser == nil {
 			return "", errNoWindow
@@ -78,7 +78,7 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 	}))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "browser_close",
-		Description: "Close your browser and its tab when you are done with it. The next browser_navigate opens a new one.",
+		Description: "Close your browser window when you are done with it. The next browser_navigate opens a new one.",
 	}, result(func(ctx context.Context, _ struct{}) (string, error) {
 		if browser == nil {
 			return "", errNoWindow

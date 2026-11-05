@@ -17,8 +17,7 @@ export interface Workbench {
 
 export type Region = 'sidebar' | 'rightPanel' | 'panel';
 
-// TitleBar is the window's title bar height and the width of its buttons, in
-// CSS pixels.
+// TitleBar is the native title-bar height and button inset in CSS pixels.
 export interface TitleBar {
   height: number;
   inset: number;

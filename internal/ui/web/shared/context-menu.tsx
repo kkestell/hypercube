@@ -5,7 +5,6 @@ import {flushSync} from 'react-dom';
 import {DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator} from '../components/ui/dropdown-menu';
 import {focusedElement} from './focus.ts';
 import {Icon, type IconName} from './icon.tsx';
-import {useOverlay} from './overlays.ts';
 
 // ContextMenuItem is one choice of a context menu.
 export interface ContextMenuItem {
@@ -22,9 +21,8 @@ interface ItemsProps {
 }
 
 function Items({items, onClose, invoker}: ItemsProps) {
-  const ref = useOverlay();
   const selected = useRef(false);
-  return <DropdownMenuContent ref={ref} className="context-menu" align="start" sideOffset={0}
+  return <DropdownMenuContent className="context-menu" align="start" sideOffset={0}
     onCloseAutoFocus={e => { e.preventDefault(); if (!selected.current) invoker?.focus(); }}>
     {items.filter(group => group.length).map((group, i) => <Fragment key={group[0].label}>
       {i > 0 && <DropdownMenuSeparator />}

@@ -39,7 +39,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
             store.update(s => setDragging(s, entry.id));
           }} onDragEnd={() => store.update(s => setDragging(s, null))}>
           <TabsTrigger {...(entry.kind === 'file' ? menu.handlers(entry.path) : {})} className="min-w-0" value={entry.id} title={entry.title} onDoubleClick={() => store.update(s => keepOpen(s, entry.id))}>
-            {entry.kind === 'agent' ? <Icon name="comment-discussion" /> : entry.kind === 'browser' ? <Icon name="globe" /> : <FileIcon name={entry.name} />}
+            {entry.kind === 'agent' ? <Icon name="comment-discussion" /> : <FileIcon name={entry.name} />}
             <span className={`editor-tabs-label min-w-0 truncate ${entry.preview ? 'italic' : ''} ${entry.kind === 'file' && entry.deleted ? 'line-through' : ''}`}>{entry.label}</span>
           </TabsTrigger>
           {entry.kind !== 'agent' && <Button className="editor-tabs-close" variant="ghost" size="icon-xs" aria-label={`Close ${entry.label}`} title={`Close ${entry.label}`} onClick={() => close(entry.id)}><Icon name="close" /></Button>}

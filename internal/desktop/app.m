@@ -28,6 +28,14 @@
 
 static HCApp *application;
 
+void HCHideFromDockIfNoWindows(NSWindow *closing) {
+    for (NSWindow *window in NSApp.windows) {
+        // The status item's window stays visible while the app runs.
+        if (window != closing && window.canBecomeMainWindow && window.visible) return;
+    }
+    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+}
+
 @implementation HCApp
 - (void)show:(id)sender {
     [_window show];
@@ -179,7 +187,7 @@ void hypercubeRun(const char *url, const void *icon, size_t iconLen) {
         app.delegate = application;
         app.mainMenu = mainMenu();
         application.window = [[HCWindow alloc] initWithURL:[NSURL URLWithString:@(url)]];
-        HCBrowsersStart(application.window);
+        HCBrowsersStart();
         HCNotificationsStart(application.window);
         application.statusItem = statusItem(icon, iconLen);
         [app run];

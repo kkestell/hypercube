@@ -9,12 +9,6 @@ import (
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
-// tool is a tool call and the session that made it.
-type tool struct {
-	item    harness.Item
-	session string
-}
-
 // ended finishes a turn: nothing is left streaming or waiting. The agent is
 // idle once no prompt is in flight and no input waits.
 func (ag *agent) ended(stopReason string, err error) {
@@ -94,14 +88,6 @@ func (ag *agent) handle(m plugin.Message) {
 	}
 }
 
-// childSession is OpenCode's note on an update from a native subagent's
-// session.
-type childSession struct {
-	ID       string `json:"id"`
-	ParentID string `json:"parentID"`
-	Title    string `json:"title"`
-}
-
 // sessionUpdate is the part of a session/update notification that the plugin
 // reads. Content is one content block for a chunk and a list of tool call
 // content for a tool call.
@@ -121,7 +107,7 @@ type sessionUpdate struct {
 			Amount float64 `json:"amount"`
 		} `json:"cost"`
 		Meta struct {
-			Child *childSession `json:"opencode/child-session"`
+			Child json.RawMessage `json:"opencode/child-session"`
 		} `json:"_meta"`
 	} `json:"update"`
 }
@@ -147,6 +133,11 @@ func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
 		return
 	}
 	u := p.Update
+	// ACP does not identify the tool that launched a child. Keep its output
+	// out of the main transcript rather than guessing its parent from a title.
+	if len(u.Meta.Child) > 0 && string(u.Meta.Child) != "null" {
+		return
+	}
 	switch u.SessionUpdate {
 	case "agent_message_chunk", "agent_thought_chunk":
 		kind := harness.KindText
@@ -157,16 +148,15 @@ func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
 		if json.Unmarshal(u.Content, &content) != nil {
 			return
 		}
-		ag.chunk(ev, kind, u.MessageID, content, u.Meta.Child)
+		ag.chunk(ev, kind, u.MessageID, content)
 	case "tool_call", "tool_call_update":
 		var content []toolContent
 		if len(u.Content) > 0 && json.Unmarshal(u.Content, &content) != nil {
 			return
 		}
-		ag.toolCall(ev, u.ToolCallID, u.Name, u.Status, u.RawInput, content, u.Meta.Child)
+		ag.toolCall(ev, u.ToolCallID, u.Name, u.Status, u.RawInput, content)
 	case "usage_update":
-		// A native subagent's requests do not count toward the agent's context.
-		if u.Meta.Child != nil || u.Used == 0 {
+		if u.Used == 0 {
 			return
 		}
 		usage := harness.Usage{Context: u.Used, Window: u.Size}
@@ -178,7 +168,7 @@ func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
 }
 
 // chunk extends a streamed message or reasoning item.
-func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content contentBlock, c *childSession) {
+func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content contentBlock) {
 	if content.Type != "text" || content.Text == "" {
 		return
 	}
@@ -186,51 +176,44 @@ func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content conten
 	if messageID != "" {
 		id = messageID
 	}
-	if c == nil && kind == harness.KindText {
+	if kind == harness.KindText {
 		ag.last = messageID
 	}
-	parent := ag.parent(c)
-	ev.Items = append(ev.Items, harness.Item{ID: id, Parent: parent, Kind: kind, Text: content.Text, Append: true})
-	ag.open[id] = harness.Item{ID: id, Parent: parent, Kind: kind}
+	ev.Items = append(ev.Items, harness.Item{ID: id, Kind: kind, Text: content.Text, Append: true})
+	ag.open[id] = harness.Item{ID: id, Kind: kind}
 }
 
 // toolCall reports a tool call or an update to it. OpenCode names the tool in
 // a field of its own, and its input is kept as OpenCode wrote it.
-func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json.RawMessage, content []toolContent, c *childSession) {
+func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json.RawMessage, content []toolContent) {
 	if id == "" {
 		return
 	}
-	t := ag.tools[id]
-	if t == nil {
-		t = &tool{item: harness.Item{ID: id, Parent: ag.parent(c), Kind: harness.KindTool}, session: ag.session}
-		if c != nil {
-			t.session = c.ID
-		}
-		ag.tools[id] = t
-		if c == nil {
-			// Text before a main tool call is progress.
-			ag.last = ""
-		}
+	t, known := ag.tools[id]
+	if !known {
+		t = harness.Item{ID: id, Kind: harness.KindTool}
+		// Text before a tool call is progress.
+		ag.last = ""
 	}
-	if t.item.Done {
+	if t.Done {
 		return
 	}
 	if name != "" {
-		t.item.Tool = name
-		// OpenCode names an MCP tool <server>_<tool>. Only the server this
-		// plugin configures has a known name to split at.
+		t.Tool = name
+		// OpenCode names an MCP tool <server>_<tool>.
 		if tool, ok := strings.CutPrefix(name, "hypercube_"); ok {
-			t.item.Server, t.item.Tool = "hypercube", tool
+			t.Server, t.Tool = "hypercube", tool
 		}
 	}
 	if len(input) > 0 {
-		t.item.Input = input
+		t.Input = input
 	}
 	if status == "completed" || status == "failed" {
-		t.item.Done, t.item.Failed = true, status == "failed"
-		t.item.Output, t.item.Images = toolOutput(content)
+		t.Done, t.Failed = true, status == "failed"
+		t.Output, t.Images = toolOutput(content)
 	}
-	ev.Items = append(ev.Items, t.item)
+	ag.tools[id] = t
+	ev.Items = append(ev.Items, t)
 }
 
 // toolOutput is the text and images of a tool's result. An edit is shown as a
@@ -250,29 +233,4 @@ func toolOutput(content []toolContent) (string, []harness.Image) {
 		}
 	}
 	return strings.Join(parts, "\n"), images
-}
-
-// parent is the tool item that started the subagent session an update came
-// from. OpenCode names the child session after the tool call's description
-// and gives no call ID while the child runs; the call's result names the
-// session only once the child has finished. The title is therefore the only
-// link, and the call is still running when the session starts.
-func (ag *agent) parent(c *childSession) string {
-	if c == nil {
-		return ""
-	}
-	if id, ok := ag.children[c.ID]; ok {
-		return id
-	}
-	var found string
-	for id, t := range ag.tools {
-		var in struct {
-			Description string `json:"description"`
-		}
-		if t.session == c.ParentID && !t.item.Done && json.Unmarshal(t.item.Input, &in) == nil && in.Description == c.Title && c.Title != "" {
-			found = id
-		}
-	}
-	ag.children[c.ID] = found
-	return found
 }

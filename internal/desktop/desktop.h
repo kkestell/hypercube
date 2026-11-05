@@ -16,14 +16,17 @@
 // HCRunOpenPanel answers a web page's file input with an open panel.
 void HCRunOpenPanel(WKOpenPanelParameters *parameters, NSWindow *window, void (^completion)(NSArray<NSURL *> *));
 
-// HCBrowsersStart gives the window's page the sessions' browsers.
-void HCBrowsersStart(HCWindow *window);
+// HCBrowsersStart owns the sessions' native browser windows.
+void HCBrowsersStart(void);
 
 // HCNotificationsStart shows the window's alerts as macOS notifications.
 void HCNotificationsStart(HCWindow *window);
 
 // HCSetBadge shows the number of sessions waiting on the user.
 void HCSetBadge(NSInteger count);
+
+// Hide the Dock icon when the last window hides or closes.
+void HCHideFromDockIfNoWindows(NSWindow *closing);
 
 // HCSetShortcuts builds the application menus from the page's bindings.
 void HCSetShortcuts(NSArray *items);

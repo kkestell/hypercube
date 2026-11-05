@@ -3,7 +3,7 @@ import {fetchGrants, fetchVersion, post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {chooseSession, deleteSession} from '../sessions/session-actions.ts';
-import {useModal} from '../shared/overlays.ts';
+import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import type {Grant} from './types.ts';
 
@@ -12,7 +12,7 @@ export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChang
   const archived = state.workspaces.flatMap(workspace => workspace.sessions.filter(session => session.ended).map(session => ({workspace, session})));
   const [grants, setGrants] = useState<Grant[]>([]);
   const [version, setVersion] = useState('');
-  const focus = useModal(open);
+  const focus = useDialogFocus(open);
   useEffect(() => {
     if (!open) return;
     let active = true;

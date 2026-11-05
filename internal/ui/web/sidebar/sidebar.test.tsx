@@ -477,10 +477,8 @@ test('closing search returns focus to its button', async () => {
   act(() => button.focus());
   await act(async () => clickControl(button));
   const input = element(document, '[cmdk-input]', HTMLInputElement);
-  expect(Object.keys(store.get().overlays)).toHaveLength(1);
   await act(async () => input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true})));
   expect(document.activeElement).toBe(button);
-  expect(Object.keys(store.get().overlays)).toHaveLength(0);
 });
 
 test('archive menu hides the family while search can select its chat', () => {

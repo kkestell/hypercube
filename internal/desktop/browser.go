@@ -17,7 +17,7 @@ import (
 	"unsafe"
 )
 
-// Browser drives the sessions' browsers in the window. Its calls finish only
+// Browser drives the sessions' native browser windows. Its calls finish only
 // while Run's application loop runs.
 type Browser struct{}
 
@@ -51,7 +51,7 @@ func (Browser) Eval(ctx context.Context, session, script string) (string, error)
 	})
 }
 
-// Close closes the session's browser and its tab, if it has one.
+// Close closes the session's browser window, if it has one.
 func (Browser) Close(ctx context.Context, session string) error {
 	_, err := call(ctx, func(request C.uint64_t) {
 		cSession := C.CString(session)

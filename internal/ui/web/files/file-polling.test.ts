@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
-import {fileTabId, openBrowserTab, tabEntry} from '../editor/editor.ts';
+import {fileTabId, tabEntry} from '../editor/editor.ts';
 import {moveTab, openTab, panes} from '../editor/tab-layout.ts';
 import {emptySession} from '../sessions/selection.ts';
 import type {RightTab, Workbench} from '../app/types.ts';
@@ -66,13 +66,7 @@ test('a folder shown only through its deleted files is not listed', async () => 
   expect(requests).toEqual(['files:', 'changes:null']);
 });
 
-test('a browser tab polls no file', async () => {
-  const {requests} = stubRoutes({});
-  const session = {...emptySession('s'), files: {listings: {}, expanded: {}, open: {er: unread}}};
-  const store = createStore(openBrowserTab(testState({session, workbench: workbench(false, 'files')}), true));
-  await createFilePoller(store)();
-  expect(requests).toEqual([]);
-});
+
 
 test('requests go one at a time and a poll is skipped while one runs', async () => {
   let release = () => {};

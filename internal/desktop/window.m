@@ -12,10 +12,6 @@
 }
 @end
 
-// The title bar is a compact toolbar row plus this much, which the window's
-// buttons are centered in by moving them down half of it.
-static const CGFloat HCTitleBarExtra = 6;
-
 @implementation HCWindow {
     NSURL *_home;
     // The title bar's height and the width its buttons take from the left.
@@ -52,36 +48,15 @@ static const CGFloat HCTitleBarExtra = 6;
     [_window center];
     [_window setFrameUsingName:@"Hypercube"];
     [_window setFrameAutosaveName:@"Hypercube"];
-    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect) + HCTitleBarExtra;
+    _titleBarHeight = NSHeight(_window.frame) - NSHeight(_window.contentLayoutRect);
     // The buttons get the same margin on their right as on their left.
     NSButton *close = [_window standardWindowButton:NSWindowCloseButton], *zoom = [_window standardWindowButton:NSWindowZoomButton];
     _titleBarInset = NSMaxX([zoom convertRect:zoom.bounds toView:nil]) + NSMinX([close convertRect:close.bounds toView:nil]);
-    [self centerWindowButtons];
     [_webView loadRequest:[NSURLRequest requestWithURL:url]];
     return self;
 }
 
-// centerWindowButtons moves the window's buttons down to the middle of the
-// taller title bar. The window puts them back when it lays out its title bar,
-// so this runs again after each change of size or state.
-- (void)centerWindowButtons {
-    if (_window.styleMask & NSWindowStyleMaskFullScreen) return;
-    for (NSNumber *kind in @[@(NSWindowCloseButton), @(NSWindowMiniaturizeButton), @(NSWindowZoomButton)]) {
-        NSButton *button = [_window standardWindowButton:(NSWindowButton)kind.integerValue];
-        NSView *bar = button.superview;
-        if (!button || !bar) continue;
-        NSPoint origin = button.frame.origin;
-        CGFloat middle = (NSHeight(bar.frame) - NSHeight(button.frame)) / 2;
-        origin.y = bar.isFlipped ? middle + HCTitleBarExtra / 2 : middle - HCTitleBarExtra / 2;
-        [button setFrameOrigin:origin];
-    }
-}
-
-- (void)windowDidResize:(NSNotification *)notification { [self centerWindowButtons]; }
-- (void)windowDidBecomeKey:(NSNotification *)notification { [self centerWindowButtons]; }
-- (void)windowDidExitFullScreen:(NSNotification *)notification { [self centerWindowButtons]; }
-
-// The app is in the Dock and the app switcher only while the window shows.
+// Showing the main window brings the application into the Dock and app switcher.
 - (void)show {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     if (_window.miniaturized) [_window deminiaturize:nil];
@@ -91,7 +66,7 @@ static const CGFloat HCTitleBarExtra = 6;
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
     [_window orderOut:nil];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    HCHideFromDockIfNoWindows(nil);
     return NO;
 }
 
