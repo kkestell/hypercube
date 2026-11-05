@@ -3,8 +3,10 @@
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions. The footer sticks
 // to the bottom of the scrolling view, so the scrollbar spans the whole pane.
-// Expanding or collapsing an item keeps its heading where it was on screen,
-// and the list follows its end again only if that leaves it there.
+// The list's sides line up with the composer's attach and send icons: the
+// column's 16px plus the composer box's 21px to its icons. Expanding or
+// collapsing an item keeps its heading where it was on screen, and the list
+// follows its end again only if that leaves it there.
 import {useCallback, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode} from 'react';
 import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
@@ -93,7 +95,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
-        <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-4 py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
+        <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-[37px] py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} response />)}
         </div>
         <div ref={bottom} className={`transcript-bottom sticky bottom-0 flow-root shrink-0 ${tabBackground}`}>

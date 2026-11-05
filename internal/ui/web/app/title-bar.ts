@@ -30,10 +30,10 @@ export function titleBarVars(titleBar: TitleBar | null): CSSProperties | undefin
   return {'--title-bar-height': titleBar.height + 'px', '--title-bar-inset': titleBar.inset + 'px'} as CSSProperties;
 }
 
-// topRow is the class of a tab bar in the window's top row, as tall as the
-// title bar. topRowStart also clears the window's buttons, for the bar at the
-// window's left edge.
-export const topRow = 'min-h-[var(--title-bar-height,0px)]';
+// topRow is the class of a tab bar in the window's top row: its padding, and
+// at least the title bar's height. topRowStart also clears the window's
+// buttons, for the bar at the window's left edge.
+export const topRow = 'min-h-[var(--title-bar-height,0px)] py-2';
 export const topRowStart = 'pl-[var(--title-bar-inset,0.5rem)]';
 
 // Keep tab controls compact enough to fit the native title-bar row.

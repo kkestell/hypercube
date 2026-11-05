@@ -12,7 +12,7 @@ import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {closeTab, keepOpen, selectTab, setDragging} from './editor.ts';
 import type {Pane, Placement, TabEntry, TabId} from './types.ts';
-import {ViewMenu} from './view-menu.tsx';
+import {ViewOptions} from './view-options.tsx';
 
 // With no pane, the bar is empty: no session is shown. A pane on the top row
 // is in the window's title bar, so it is as tall as the title bar; the one at
@@ -28,7 +28,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
     (strip.current ?? area)?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')?.focus();
   };
   const start = placement.top && placement.left && !state.workbench.sidebar;
-  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 px-2 py-1 ${tabBackground} ${placement.top ? topRow : ''} ${start ? topRowStart : ''}`}
+  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 px-2 ${tabBackground} ${placement.top ? `${topRow} border-b` : 'py-1'} ${start ? topRowStart : ''}`}
     onMouseDown={placement.top ? titleBarMouseDown : undefined}>
     {entries.length > 0 ? <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
       <TabsList ref={strip} className={`editor-tabs max-w-full justify-start ${barTabs}`} aria-label="Open tabs">
@@ -46,7 +46,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
         </div>)}
       </TabsList>
     </Tabs> : <div className="flex-1" />}
-    <ViewMenu active={active} />
+    <ViewOptions active={active} />
     {placement.top && placement.right && <LayoutToggles />}
     {menu.element}
   </div>;

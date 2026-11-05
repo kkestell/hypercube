@@ -38,10 +38,10 @@
     _window.title = @"Hypercube";
     _window.titlebarAppearsTransparent = YES;
     _window.titleVisibility = NSWindowTitleHidden;
-    // An empty compact toolbar makes the title bar as tall as a toolbar row and
+    // An empty unified toolbar makes the title bar as tall as a toolbar row and
     // centers the window's buttons in it, so the page's tab bars fill that row.
     _window.toolbar = [[NSToolbar alloc] initWithIdentifier:@"HypercubeTitleBar"];
-    _window.toolbarStyle = NSWindowToolbarStyleUnifiedCompact;
+    _window.toolbarStyle = NSWindowToolbarStyleUnified;
     _window.contentMinSize = NSMakeSize(640, 400);
     _webView.frame = _window.contentView.bounds;
     [_window.contentView addSubview:_webView];

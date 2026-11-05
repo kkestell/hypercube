@@ -26,7 +26,7 @@ interface PanelTabsProps<Id extends string> {
 export function PanelTabs<Id extends string>({label, tabs, selected, onSelect, actions, clearsWindowButtons, children}: PanelTabsProps<Id>) {
   const views = Children.toArray(children);
   return <Tabs value={selected} onValueChange={value => { const tab = tabs.find(t => t.id === value); if (tab) onSelect?.(tab.id); }} className="panel-tabs flex h-full min-h-0 flex-col gap-0">
-    <div className={`flex shrink-0 items-center justify-between gap-1 px-2 py-1 ${topRow} ${clearsWindowButtons ? topRowStart : ''}`} onMouseDown={titleBarMouseDown}>
+    <div className={`flex shrink-0 items-center justify-between gap-1 px-2 ${topRow} ${clearsWindowButtons ? topRowStart : ''}`} onMouseDown={titleBarMouseDown}>
       <TabsList aria-label={label} className={barTabs}>
         {tabs.map(tab => <TabsTrigger key={tab.id} value={tab.id} title={tab.title} aria-label={tab.title}>
           <Icon name={tab.icon} />
