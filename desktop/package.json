@@ -1,0 +1,12 @@
+{
+  "name": "hypercube-desktop",
+  "productName": "Hypercube",
+  "private": true,
+  "version": "0.0.0",
+  "main": "main.js",
+  "packageManager": "bun@1.4.2",
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "electron": "45.2.3"
+  }
+}

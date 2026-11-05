@@ -57,15 +57,3 @@ func TestBrowserTools(t *testing.T) {
 		t.Errorf("calls came from %q, want %q", got, want)
 	}
 }
-
-func TestBrowserToolsWithoutWindow(t *testing.T) {
-	db, rt := family(t, false, t.TempDir(), "")
-	server := httptest.NewServer(Handler(db, rt, nil))
-	defer server.Close()
-	s := connect(t, server.URL, "session-1")
-	for name, args := range map[string]map[string]any{"browser_navigate": {"url": "https://example.com"}, "browser_eval": {"script": "return 1"}, "browser_close": {}} {
-		if text, failed := callTool(t, s, name, args); !failed || !strings.Contains(text, "hypercube ui --menu") {
-			t.Errorf("%s without the window = %q, failed %v", name, text, failed)
-		}
-	}
-}

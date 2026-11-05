@@ -3,7 +3,7 @@ import {chooseSession} from '../sessions/session-actions.ts';
 import {openUnsent, runningFirst} from '../sessions/selection.ts';
 import {toggle, toggleWrap} from './workbench.ts';
 import type {Store} from '../store.ts';
-import {windowHandler} from './window.ts';
+import {hypercube} from './window.ts';
 import type {Region} from './types.ts';
 
 export type ShortcutId = 'settings' | 'new' | 'next' | 'previous' | 'select' | 'interrupt' | 'searchSessions'
@@ -12,9 +12,9 @@ export type ShortcutId = 'settings' | 'new' | 'next' | 'previous' | 'select' | '
 
 export type Section = 'App' | 'Session' | 'View' | 'Help';
 
-// Shortcut is one key binding. menu puts it in the native menus, native has
-// the window handle it, and terminal keeps it working while a terminal has
-// focus.
+// Shortcut is one key binding. menu puts it in the desktop app's menus, which
+// then own every key of it, native has the app handle it, and terminal keeps
+// it working while a terminal has focus.
 interface Shortcut {
   id: ShortcutId;
   section: Section;
@@ -25,7 +25,7 @@ interface Shortcut {
   terminal?: boolean;
 }
 
-// Bindings also supply the native menus and the keyboard reference.
+// Bindings also supply the desktop app's menus and the keyboard reference.
 export const shortcuts: Shortcut[] = [
   {id: 'settings', section: 'App', title: 'Settings…', keys: ['⌘,'], menu: true, terminal: true},
   {id: 'new', section: 'Session', title: 'New Session', keys: ['⌘N'], menu: true},
@@ -146,12 +146,6 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
       return actions.showSettings;
     case 'help':
       return actions.showHelp;
-    case 'zoomIn':
-    case 'zoomOut':
-    case 'zoomReset': {
-      const handler = windowHandler();
-      return handler && (() => handler.postMessage({type: 'page-zoom', action: id}));
-    }
     default:
       return undefined;
   }
@@ -159,13 +153,15 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
 
 const editingTarget = (target: Element) => !!target.closest('input, textarea, [contenteditable="true"]');
 
-// shortcut runs the shortcut that a key press in the page names.
+// shortcut runs the shortcut that a key press in the page names. In the
+// desktop app the menus run the shortcuts they own.
 export function shortcut(e: ReactKeyboardEvent, store: Store, actions: ShortcutActions) {
   if (e.defaultPrevented || e.repeat || e.nativeEvent.isComposing || !(e.target instanceof Element)) return;
   if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
   if (e.target.closest('.terminal-panel') && !shortcuts.some(item => item.terminal && matches(e, item.id))) return;
   if (store.get().confirmation) return;
   const item = shortcuts.find(s => matches(e, s.id));
+  if (item?.menu && hypercube()) return;
   const action = item && shortcutAction(item.id, e.target, editingTarget(e.target), e.key, store, actions);
   if (!action) return;
   e.preventDefault();
@@ -173,8 +169,8 @@ export function shortcut(e: ReactKeyboardEvent, store: Store, actions: ShortcutA
   action();
 }
 
-// nativeShortcut runs the shortcut that the window's menu names, for the
-// element that has focus.
+// nativeShortcut runs the shortcut that the app's menu names, for the element
+// that has focus.
 export function nativeShortcut(id: string, store: Store, actions: ShortcutActions) {
   const item = shortcuts.find(s => s.id === id);
   if (item) shortcutAction(item.id, document.activeElement ?? document.body, false, '', store, actions)?.();

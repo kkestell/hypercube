@@ -1,19 +1,25 @@
 #!/bin/sh
-# Run the browser view as a launchd user agent. The agent starts the view
-# through the user's interactive login shell, so the view and the agents it
-# launches get the user's login environment. Run by `make install-service`
-# after installing the build; SERVICE is the agent's label. The agent runs
-# the executable inside Hypercube.app, which macOS notifications require.
+# Run the Hypercube backend as a launchd user agent that starts at login. The
+# agent starts the backend through the user's interactive login shell, so the
+# backend and the agents it launches get the user's login environment. Run by
+# `make install-service` and by the desktop app's Set Up Background Service
+# button. APP is the Hypercube.app bundle, SERVICE the agent's label, PORT the
+# backend's port, and SHELL the user's login shell. The installer replaces a
+# loaded copy of the agent with SIGTERM, so running agents keep running.
 set -eu
 
-APPDIR=${APPDIR:-$HOME/Applications}
+: "${APP:?APP is required}"
 : "${SERVICE:?SERVICE is required}"
 : "${PORT:?PORT is required}"
+SHELL=${SHELL:-/bin/zsh}
 PLIST=$HOME/Library/LaunchAgents/$SERVICE.plist
 LOG=${XDG_STATE_HOME:-$HOME/.local/state}/hypercube/ui.log
 DOMAIN=gui/$(id -u)
 
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
+# The shell is a login shell by its argv[0], which names it with a leading
+# dash; -i makes it interactive, so it reads the user's interactive
+# configuration. The command is the same in tcsh, bash, zsh, and fish.
 cat >"$PLIST" <<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -21,12 +27,22 @@ cat >"$PLIST" <<XML
 <dict>
 	<key>Label</key>
 	<string>$SERVICE</string>
+	<key>Program</key>
+	<string>$SHELL</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>${SHELL:-/bin/zsh}</string>
-		<string>-lic</string>
-		<string>exec "$APPDIR/Hypercube.app/Contents/MacOS/hypercube" ui $PORT --menu</string>
+		<string>-$(basename "$SHELL")</string>
+		<string>-i</string>
+		<string>-c</string>
+		<string>exec "\$HYPERCUBE_APP_EXECUTABLE" ui "\$HYPERCUBE_PORT"</string>
 	</array>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>HYPERCUBE_APP_EXECUTABLE</key>
+		<string>$APP/Contents/MacOS/hypercube</string>
+		<key>HYPERCUBE_PORT</key>
+		<string>$PORT</string>
+	</dict>
 	<key>RunAtLoad</key>
 	<true/>
 	<key>KeepAlive</key>
@@ -45,7 +61,7 @@ XML
 # A loaded copy holds the port, so unload it before checking the port.
 launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null || true
 
-# The old view can hold the port for a moment after it is unloaded.
+# The old backend can hold the port for a moment after it is unloaded.
 pid=
 for _ in 1 2 3 4 5 6 7 8 9 10; do
 	pid=$(lsof -nP -iTCP:$PORT -sTCP:LISTEN -t 2>/dev/null | head -n 1)

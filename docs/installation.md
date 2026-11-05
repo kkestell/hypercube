@@ -14,26 +14,38 @@ are Apple Silicon builds, checked on macOS 15. In the download folder, verify:
 shasum -a 256 -c SHA256SUMS
 ```
 
-Extract the ZIP and move `Hypercube.app` to `~/Applications`. Create
-[your configuration](configuration.md), then open the app. Choose **Show
-Hypercube** from its menu bar icon if the window is closed. It launches through
-your interactive login shell so agents receive your login environment.
+Extract the ZIP and move `Hypercube.app` to `~/Applications` before opening it,
+so the background service names a stable location. Create
+[your configuration](configuration.md), then open the app. The first time, its
+window says it is waiting for the Hypercube service. Choose **Set Up Background
+Service**: it installs the login service that runs the app's backend at login
+through your interactive login shell, so agents receive your login environment,
+and the window then shows Hypercube. Choose **Show Hypercube** from the menu bar
+icon if the window is closed.
+
+The backend and the desktop app are separate. The backend starts at login and
+keeps agents running; the desktop app, which shows the window, menu bar icon,
+notifications, and agents' browsers, starts when you open it. Hypercube does not
+add itself to Login Items; add it in **System Settings → General → Login Items**
+to have the desktop app open at login too. Quitting the desktop app leaves the
+backend and its agents running.
 
 Beta apps are ad hoc signed and **not notarized by Apple**. If macOS blocks the
 first launch, open **System Settings → Privacy & Security → Open Anyway**, then
 confirm. See [Apple's instructions](https://support.apple.com/102445). You do
 not need to disable Gatekeeper globally.
 
-To run a downloaded app at login without building from source:
+The button runs the app's installer, which you can also run by hand:
 
 ```sh
-APPDIR="$HOME/Applications" SERVICE=com.github.kkestell.hypercube PORT=4280 \
+APP="$HOME/Applications/Hypercube.app" SERVICE=com.github.kkestell.hypercube PORT=4280 \
   "$HOME/Applications/Hypercube.app/Contents/Resources/install-service"
 ```
 
-For an upgrade, replace the app and run that command again. Agents and terminal
-shells keep running; the plugin restart rules below still apply. Use the full
-executable path for CLI commands, for example:
+For an upgrade, quit the desktop app, replace the app, run that command again,
+and open the app. Agents and terminal shells keep running; the plugin restart
+rules below still apply. Use the full executable path for CLI commands, for
+example:
 
 ```sh
 ~/Applications/Hypercube.app/Contents/MacOS/hypercube version
@@ -41,7 +53,8 @@ executable path for CLI commands, for example:
 
 ## Build and install from a checkout
 
-Source builds need Git and the Go version in [go.mod](../go.mod).
+Source builds need Git, the Go version in [go.mod](../go.mod), and Bun. Packaging
+downloads the Electron runtime the first time.
 
 From this checkout:
 
@@ -53,24 +66,27 @@ This installs `~/Applications/Hypercube.app` and links `hypercube` and its
 plugins into `~/.local/bin`. Put that directory on your PATH. Use
 `APPDIR=<dir>` and `BINDIR=<dir>` to change the destinations.
 
-Create [your configuration](configuration.md), then run:
+Create [your configuration](configuration.md), then start the backend in a
+terminal:
 
 ```sh
-hypercube ui --menu
+hypercube ui
 ```
 
-This starts the menu bar icon and native window. Choose **Show Hypercube** from
-the icon if the window is closed. The first launch asks for notification
-permission.
+Open `~/Applications/Hypercube.app` to show it in the desktop app. The window
+connects to the backend on port 4280, or waits until one answers. Choose
+**Show Hypercube** from the menu bar icon if the window is closed. The first
+launch asks for notification permission.
 
-The same interface is available at http://localhost:4280/. Omit `--menu` to run
-without the native window, or pass a port to use another address:
+The same interface is available at http://localhost:4280/. Pass a port to the
+backend to use another address, and the same port to the desktop app:
 
 ```sh
 hypercube ui 4282
+~/Applications/Hypercube.app/Contents/MacOS/Hypercube\ Desktop --port=4282
 ```
 
-The native app is required for agents' browser windows and macOS notifications.
+The desktop app is required for agents' browser windows and macOS notifications.
 
 ## Run at login
 
@@ -78,14 +94,22 @@ The native app is required for agents' browser windows and macOS notifications.
 make install-service
 ```
 
-This installs the build and loads a launchd user agent. It runs through your
-interactive login shell, giving agents your login environment.
+This installs the build, loads a launchd user agent that runs the backend at
+login through your interactive login shell, and opens the desktop app. The
+service gives agents your login environment.
 
-Closing the window leaves Hypercube running. **Quit Hypercube** ends the app,
-agents, and terminal shells until the next login. Saved conversations remain;
-[resume behavior](usage.md#resume-and-cleanup) explains when work starts again.
+Closing the window leaves Hypercube running, and **Quit Hypercube** quits only
+the desktop app. To start the backend again if it is stopped, run
+`launchctl kickstart gui/$(id -u)/com.github.kkestell.hypercube`.
 
-To remove the service, choose **Quit Hypercube**, then run:
+To end every agent and terminal shell, send the service SIGINT:
+
+```sh
+launchctl kill SIGINT gui/$(id -u)/com.github.kkestell.hypercube
+```
+
+Saved conversations remain; [resume behavior](usage.md#resume-and-cleanup)
+explains when work starts again. To remove the service, run:
 
 ```sh
 launchctl bootout gui/$(id -u)/com.github.kkestell.hypercube
@@ -94,15 +118,16 @@ rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 
 ## Upgrade
 
-Run `make install-service` again. It replaces the installed build and restarts
-the window and menu bar icon, while agents and terminal shells keep running.
+Run `make install-service` again. It quits the desktop app if it is open,
+replaces the installed build, restarts the backend, and opens the app, while
+agents and terminal shells keep running.
 This remains the everyday development workflow: it builds your checkout,
 including uncommitted changes, without requiring a release tag or running
 the full checks.
 
 Those agents still use the plugins they launched with. Restart their sessions
 to use a new plugin build. A holder-directory or plugin-protocol change requires
-quitting Hypercube before installation.
+ending the agents with SIGINT before installation.
 
 State migrates on startup. Upgrading from the earlier leads/workers version
 also restarts agents and panel shells once.
@@ -116,9 +141,11 @@ This procedure restores a backup on the same machine at the original paths.
 Record the [build identity](#identify-a-build), harness versions, and any XDG
 or harness storage overrides before starting.
 
-1. Choose **Quit Hypercube** and wait for it to finish. For a foreground
-   browser-only server, use **Ctrl-C** (SIGINT). Closing the window or stopping
-   the service leaves agents running. Stop other processes writing to the
+1. Quit the desktop app, then end the backend and its agents: run the SIGINT
+   command above for the service, or use **Ctrl-C** (SIGINT) for a foreground
+   `hypercube ui`, and wait for it to finish. Quitting the desktop app,
+   closing the window, or stopping the service with SIGTERM leaves agents
+   running. Stop other processes writing to the
    repositories or native harness storage you will copy.
 2. Copy these together into a private backup outside the directories being
    copied, preserving dotfiles and symlinks:
@@ -169,6 +196,7 @@ fields contain the version's three-number core.
 | Saved-state directory | `~/.local/state/hypercube/` |
 | Database | `~/.local/state/hypercube/hypercube.db` |
 | Service log | `~/.local/state/hypercube/ui.log` |
+| Desktop app profile: website logins and window position | `~/.local/state/hypercube/chromium/` |
 | Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` |
 
 Configuration follows `XDG_CONFIG_HOME`; saved state follows `XDG_STATE_HOME`.
@@ -182,13 +210,15 @@ make dev
 Open http://localhost:4281/. This uses separate configuration and state, with a
 scratch repository under `~/projects/hypercube-dev/repo`. Its stopped preview
 session has sample files and starts no model. Use `make dev-app` when testing
-native-window behavior.
+desktop app behavior; it also runs a development desktop app connected to the
+development backend.
 
 Source changes rebuild the development app and reload the interface. A failed
 build leaves the previous build running. Successful rebuilds preserve agents
 and terminal shells.
 
-- **Ctrl-C** or `make dev-stop` ends the development app and its processes.
+- **Ctrl-C** or `make dev-stop` ends the development backend, desktop app, and
+  their processes.
 - `make dev-clean` also removes disposable resources and native development
   conversations, including holders left by a crash.
 - `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.

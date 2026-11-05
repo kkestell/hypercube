@@ -207,14 +207,15 @@ func (c client) newSession(workspace, profile string) string {
 	return created.Session
 }
 
-// listen returns a free local address.
-func listen(t *testing.T) net.Listener {
+// freePort returns a local port that nothing is listening on.
+func freePort(t *testing.T) int {
 	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return l
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 // ready reports whether the agent's plugin has started and the agent is idle.
@@ -236,42 +237,6 @@ func TestAppProcess(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(version), "Hypercube v") && strings.TrimSpace(string(version)) != "Hypercube devel" {
 		t.Fatalf("version: %v %s", err, version)
 	}
-	// Finder supplies no arguments. A stand-in login shell captures the launch
-	// without touching the user's shell configuration or starting a native app.
-	shell := filepath.Join(w.dir, "login shell")
-	if err := os.WriteFile(shell, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" \"$HYPERCUBE_APP_EXECUTABLE\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	launch := exec.Command(binary)
-	launch.Env = append(os.Environ(), "SHELL="+shell)
-	wantLaunch := "-i\n-c\nexec \"$HYPERCUBE_APP_EXECUTABLE\" ui --menu\n" + binary + "\n"
-	if out, err := launch.CombinedOutput(); err != nil || string(out) != wantLaunch {
-		t.Fatalf("Finder launch = %q, %v; want %q", out, err, wantLaunch)
-	}
-	// Exercise actual login shells with disposable homes. Their login files
-	// redirect the native launch to a stand-in, so no window or agent starts.
-	for _, shell := range []struct{ path, profile, setup string }{
-		{"/bin/zsh", ".zprofile", `export HYPERCUBE_APP_EXECUTABLE="$HYPERCUBE_TEST_APP"`},
-		{"/bin/bash", ".bash_profile", `export HYPERCUBE_APP_EXECUTABLE="$HYPERCUBE_TEST_APP"`},
-		{"/bin/tcsh", ".login", `setenv HYPERCUBE_APP_EXECUTABLE "$HYPERCUBE_TEST_APP"`},
-	} {
-		t.Run(filepath.Base(shell.path), func(t *testing.T) {
-			home := t.TempDir()
-			target := filepath.Join(home, "native app stand-in")
-			if err := os.WriteFile(target, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\"\n"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(home, shell.profile), []byte(shell.setup+"\n"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			cmd := exec.Command(binary)
-			cmd.Env = append(os.Environ(), "SHELL="+shell.path, "HOME="+home, "ZDOTDIR="+home, "HYPERCUBE_TEST_APP="+target)
-			out, err := cmd.Output()
-			if err != nil || string(out) != "ui\n--menu\n" {
-				t.Fatalf("login shell launch = %q, %v", out, err)
-			}
-		})
-	}
 	ws, err := session.New(w.db, "").AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
@@ -280,9 +245,7 @@ func TestAppProcess(t *testing.T) {
 	var c client
 	start := func() {
 		t.Helper()
-		l := listen(t)
-		port := l.Addr().(*net.TCPAddr).Port
-		l.Close()
+		port := freePort(t)
 		app = exec.Command(binary, "ui", fmt.Sprint(port))
 		app.Stderr = os.Stderr
 		if err := app.Start(); err != nil {
@@ -316,12 +279,14 @@ func TestAppProcess(t *testing.T) {
 	parent := w.session(c.newSession(ws.ID, "first"))
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
-	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-		"params": map[string]any{"name": "create_session", "arguments": map[string]string{"name": "w1", "title": "Title", "profile": "worker", "message": "brief"}}})
-	bridge := exec.Command(binary, "mcp")
-	bridge.Env = append(os.Environ(), "HYPERCUBE_SESSION_ID="+parent.ID, "HYPERCUBE_URL="+c.base)
-	bridge.Stdin = bytes.NewReader(append(body, '\n'))
-	out, err := bridge.CombinedOutput()
+	bridge := func(tool string, args map[string]string) *exec.Cmd {
+		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
+		cmd := exec.Command(binary, "mcp")
+		cmd.Env = append(os.Environ(), "HYPERCUBE_SESSION_ID="+parent.ID, "HYPERCUBE_URL="+c.base)
+		cmd.Stdin = bytes.NewReader(append(body, '\n'))
+		return cmd
+	}
+	out, err := bridge("create_session", map[string]string{"name": "w1", "title": "Title", "profile": "worker", "message": "brief"}).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "Created w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
@@ -330,6 +295,44 @@ func TestAppProcess(t *testing.T) {
 		return w.got(child.ID, "brief") && w.session(child.ID).Activity == store.Idle
 	})
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
+
+	// The desktop app connects and disconnects without affecting the backend or
+	// its agents; browser calls work only while it is connected.
+	browserEval := func() string {
+		out, _ := bridge("browser_eval", map[string]string{"script": "return 1"}).CombinedOutput()
+		return string(out)
+	}
+	if got := browserEval(); !strings.Contains(got, "open it") {
+		t.Fatalf("browser call without the desktop app = %s", got)
+	}
+	desktop, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(c.base, "http")+"/desktop", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evaluated := make(chan string, 1)
+	go func() { evaluated <- browserEval() }()
+	_, request, err := desktop.Read(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var eval struct {
+		ID   int
+		Type string
+	}
+	if err := json.Unmarshal(request, &eval); err != nil || eval.Type != "eval" {
+		t.Fatalf("desktop request = %s, %v", request, err)
+	}
+	if err := desktop.Write(t.Context(), websocket.MessageText, fmt.Appendf(nil, `{"id":%d,"result":"\"from the app\""}`, eval.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-evaluated; !strings.Contains(got, "from the app") {
+		t.Fatalf("browser call = %s", got)
+	}
+	desktop.Close(websocket.StatusNormalClosure, "")
+	w.until("browser calls failing after the desktop app disconnects", func() bool { return strings.Contains(browserEval(), "open it") })
+	if w.session(parent.ID).Activity != store.Idle || gone(w.lastPid(parent.ID)) || gone(w.lastPid(child.ID)) {
+		t.Fatal("desktop disconnect disturbed the agents")
+	}
 
 	panelURL := func() string { return "ws" + strings.TrimPrefix(c.base, "http") + "/terminal?session=" + parent.ID }
 	panel, _, err := websocket.Dial(t.Context(), panelURL(), nil)

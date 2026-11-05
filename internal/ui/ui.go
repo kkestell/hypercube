@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -22,9 +23,9 @@ type server struct {
 }
 
 // Handler serves the page, its data socket, its actions, and the agents'
-// tools; browser drives the sessions' browsers, and is nil without the
-// Hypercube window.
-func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handler {
+// tools; desktop is the Electron app's connection, which drives the sessions'
+// browsers.
+func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.Handler {
 	s := &server{db: db, rt: rt}
 	mux := http.NewServeMux()
 	mux.Handle("GET /", http.FileServerFS(assets()))
@@ -39,7 +40,8 @@ func Handler(db *store.DB, rt *session.Runtime, browser mcp.Browser) http.Handle
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.HandleFunc("GET /grants", s.grants)
 	mux.HandleFunc("POST /grants", s.deleteGrant)
-	mux.Handle("POST /mcp", mcp.Handler(db, rt, browser))
+	mux.Handle("POST /mcp", mcp.Handler(db, rt, desktop))
+	mux.Handle("GET /desktop", desktop)
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)
 	mux.HandleFunc("POST /open", s.openInApp)

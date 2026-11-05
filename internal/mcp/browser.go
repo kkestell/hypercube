@@ -26,8 +26,6 @@ type Browser interface {
 // finishes does not hold the agent's tool call forever.
 const browserTimeout = 30 * time.Second
 
-var errNoWindow = errors.New("the browser needs the Hypercube window, which the app shows when it runs as `hypercube ui --menu`")
-
 type navigateArgs struct {
 	URL string `json:"url"`
 }
@@ -36,16 +34,12 @@ type evalArgs struct {
 	Script string `json:"script"`
 }
 
-// addBrowserTools gives the session its browser's tools. With no browser,
-// they fail with errNoWindow.
+// addBrowserTools gives the session its browser's tools.
 func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "browser_navigate",
 		Description: "Load a URL in your browser and wait until the page finishes loading. Your browser is a web page in its own native window, which the user sees; it keeps the user's logins. Returns the final URL and the page's title.",
 	}, result(func(ctx context.Context, a navigateArgs) (string, error) {
-		if browser == nil {
-			return "", errNoWindow
-		}
 		ctx, cancel := context.WithTimeout(ctx, browserTimeout)
 		defer cancel()
 		finalURL, title, err := browser.Navigate(ctx, self, a.URL)
@@ -65,9 +59,6 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 		Name:        "browser_eval",
 		Description: "Run JavaScript in your browser's page, as the body of an async function in its main frame: it can await and must return a value. Returns JSON.stringify of the returned value, and a thrown exception as an error. Use it to read the page, change it, and click its elements.",
 	}, result(func(ctx context.Context, a evalArgs) (string, error) {
-		if browser == nil {
-			return "", errNoWindow
-		}
 		ctx, cancel := context.WithTimeout(ctx, browserTimeout)
 		defer cancel()
 		text, err := browser.Eval(ctx, self, a.Script)
@@ -80,9 +71,6 @@ func addBrowserTools(server *mcp.Server, browser Browser, self string) {
 		Name:        "browser_close",
 		Description: "Close your browser window when you are done with it. The next browser_navigate opens a new one.",
 	}, result(func(ctx context.Context, _ struct{}) (string, error) {
-		if browser == nil {
-			return "", errNoWindow
-		}
 		ctx, cancel := context.WithTimeout(ctx, browserTimeout)
 		defer cancel()
 		if err := browser.Close(ctx, self); err != nil {

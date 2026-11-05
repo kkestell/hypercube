@@ -73,7 +73,8 @@ browser shows each agent's transcript.
 
 ## Code
 
-- `cmd/hypercube/` — the command line and the app process.
+- `cmd/hypercube/` — the command line and the backend process.
+- `desktop/` — the Electron desktop app, a client of the backend.
 - `internal/` — one package per concern: `desktop`, `harness`, `hold`, `mcp`,
   `report`, `session`, `store`, `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
@@ -96,9 +97,9 @@ browser shows each agent's transcript.
 - Use `make dev` for a live smoke test, and clean up what you start.
 - One `make dev` server serves the checkout and rebuilds on changes. Reuse it;
   start another only on a separate port and state folder when two checkouts
-  must be compared. It serves the browser view without the native app; open
+  must be compared. It serves the browser view without the desktop app; open
   its URL in the user's browser with `open`. Use `make dev-app` only to test
-  native app behavior.
+  desktop app behavior.
 - The user judges how the browser view looks. Leave rendering, screenshots,
   and visual checks of it to them.
 - `make install-service` loads a merged change into the installed app. Run it

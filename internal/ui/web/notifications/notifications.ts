@@ -54,8 +54,8 @@ export function closeCard(store: Store, card: Card) {
 }
 
 // startNativeNotifications shows the session of a macOS notification the user
-// clicks. The window reports the click in a hypercube-notification event,
-// {session}.
+// clicks. The desktop app reports the click in a hypercube-notification
+// event, {session}.
 export function startNativeNotifications(store: Store) {
   window.addEventListener('hypercube-notification', e => chooseSession(store, e.detail.session));
 }

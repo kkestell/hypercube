@@ -25,6 +25,9 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: internal/ui/package.json
       - name: Package beta
         env:
           RELEASE_TAG: ${{ github.ref_name }}
@@ -39,7 +42,7 @@ jobs:
           After opening it once, use System Settings → Privacy & Security → Open Anyway if macOS blocks it.
 
           See the [installation guide](https://github.com/kkestell/hypercube/blob/main/docs/installation.md)
-          for configuration, launch-at-login, and upgrade instructions. SHA256SUMS verifies the ZIP download.
+          for configuration, the background service, and upgrade instructions. SHA256SUMS verifies the ZIP download.
           NOTES
           gh release create "$RELEASE_TAG" bin/release/*.zip bin/release/SHA256SUMS \
             --verify-tag --draft --prerelease --title "Hypercube $RELEASE_TAG" \

@@ -2,26 +2,21 @@ package main
 
 import "testing"
 
-func TestParseUIArgs(t *testing.T) {
+func TestParsePort(t *testing.T) {
 	for _, tt := range []struct {
 		args []string
 		port string
-		menu bool
 	}{
-		{nil, "4280", false},
-		{[]string{"5000"}, "5000", false},
-		{[]string{"--menu"}, "4280", true},
-		{[]string{"5000", "--menu"}, "5000", true},
-		{[]string{"--menu", "5000"}, "5000", true},
+		{nil, "4280"},
+		{[]string{"5000"}, "5000"},
 	} {
-		port, menu, err := parseUIArgs(tt.args)
-		if err != nil || port != tt.port || menu != tt.menu {
-			t.Errorf("parseUIArgs(%v) = %q, %v, %v; want %q, %v", tt.args, port, menu, err, tt.port, tt.menu)
+		if port, err := parsePort(tt.args); err != nil || port != tt.port {
+			t.Errorf("parsePort(%v) = %q, %v; want %q", tt.args, port, err, tt.port)
 		}
 	}
-	for _, args := range [][]string{{"0"}, {"70000"}, {"abc"}, {"5000", "6000"}, {"--bogus"}} {
-		if _, _, err := parseUIArgs(args); err == nil {
-			t.Errorf("parseUIArgs(%v) succeeded", args)
+	for _, args := range [][]string{{"0"}, {"70000"}, {"abc"}, {"5000", "6000"}} {
+		if _, err := parsePort(args); err == nil {
+			t.Errorf("parsePort(%v) succeeded", args)
 		}
 	}
 }

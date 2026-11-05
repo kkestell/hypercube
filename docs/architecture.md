@@ -5,7 +5,7 @@ harnesses execute the agents' work. Plugins connect the two, translating each
 harness's protocol into Hypercube commands and transcript events.
 
 ```text
-Browser interface ←→ hypercube ui ←→ SQLite
+Desktop app or browser ←→ hypercube ui ←→ SQLite
                           ↕
                     hypercube hold
                           ↕
@@ -24,9 +24,10 @@ restart, development rebuild, SIGTERM, or app crash therefore leaves those
 processes alive. On startup, the app attaches to surviving launches, finishes
 those that exited, and restarts lost ones.
 
-Quit and SIGINT deliberately end agents and shells. A family's running mark
-remains, so its sessions launch again next time, awaiting a prompt. Stopping
-a family also ends its processes but clears that mark.
+SIGINT to the backend deliberately ends agents and shells. A family's running
+mark remains, so its sessions launch again next time, awaiting a prompt.
+Stopping a family also ends its processes but clears that mark. Quitting the
+desktop app does neither.
 
 An agent whose plugin exits after starting is relaunched with its saved
 conversation. Three quick exits—within ten seconds of starting—stop automatic
@@ -74,22 +75,35 @@ Requests to open a file wait until a page views that session.
 See [transcripts](../internal/session/transcript.go) and
 [the browser interface](../internal/ui/ui.go).
 
-## Native views and terminals
+## Backend, desktop app, and terminals
 
-With `--menu`, the app also owns the macOS window, menu bar icon, and
-notifications. Its signed application bundle contains `hypercube` and the
-plugins; macOS notifications require that bundle.
+`hypercube ui` is the backend: a background process that serves the interface
+and runs the agents, with no window of its own. It runs as a login service or
+in a terminal. The Electron app, `Hypercube Desktop`, is a client of the
+backend. It shows the interface in a window, with the menus, menu bar icon,
+Dock badge, notifications, and agents' browsers. Quitting, restarting, or
+losing the desktop app leaves the backend, agents, messaging, and coordination
+running. Its signed application bundle, `Hypercube.app`, contains the desktop
+app, `hypercube`, and the plugins; macOS notifications require that bundle.
 
-Each session's browser has its own native window, navigation controls, and web
-view. AppKit owns their layout. Browsers share the default website data store,
-retaining logins across sessions and restarts. Closing the window, calling
-`browser_close`, or quitting the app ends a browser.
-The implementation is in [desktop](../internal/desktop/desktop.go).
+The desktop app connects to the backend's loopback `/desktop` WebSocket and
+dials again after a restart. The backend sends navigate, eval, and close
+requests for agents' browsers and an alert for each new request or reply; the
+app answers each request with its ID. Without a desktop app, browser calls
+fail with a message asking the user to open it, and alerts are dropped. The
+page shows current requests when the app opens. The backend's side is in
+[internal/desktop](../internal/desktop/desktop.go) and the app in
+[desktop](../desktop/main.js).
+
+Each session's browser is a desktop window with a toolbar page above the
+site. The site page has no access to the app, and every browser shares one
+persistent profile, retaining logins across sessions and restarts. Closing the
+window, calling `browser_close`, or quitting the desktop app ends a browser.
 
 [Panel terminals](../internal/terminal/terminal.go) start on demand, one per
 session, in its working directory. Their holders own the pseudo-terminals and
 bounded scrollback, which browser connections read directly. A shell ends on
-exit, session stop or deletion, or Quit.
+exit, session stop or deletion, or the backend's SIGINT.
 
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without

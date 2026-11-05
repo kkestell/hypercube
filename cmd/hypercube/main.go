@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"syscall"
@@ -25,18 +24,16 @@ import (
 	"github.com/kkestell/hypercube/internal/ui"
 )
 
-const usage = "usage: hypercube [version | ui [port] [--menu] | mcp | hold [-terminal -cols N -rows N] <dir> <command> [args...]]"
+const usage = "usage: hypercube [version | ui [port] | mcp | hold [-terminal -cols N -rows N] <dir> <command> [args...]]"
 
 func main() {
 	var err error
 	switch {
 	case len(os.Args) > 1 && os.Args[1] == "hold":
 		err = hold.Main(os.Args[2:])
-	case len(os.Args) == 1:
-		err = launchApp()
 	case len(os.Args) == 2 && os.Args[1] == "version":
 		fmt.Println(buildinfo.String())
-	case len(os.Args) <= 4 && os.Args[1] == "ui":
+	case len(os.Args) > 1 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
 		err = mcp.Bridge(os.Stdin, os.Stdout)
@@ -49,56 +46,28 @@ func main() {
 	}
 }
 
-// Finder starts the bundle without arguments or a login environment. Re-exec
-// through the user's shell, as the service does, so harnesses are on PATH.
-func launchApp() error {
-	exe, err := os.Executable()
-	if err != nil {
-		return err
+func parsePort(args []string) (string, error) {
+	if len(args) == 0 {
+		return "4280", nil
 	}
-	shell := os.Getenv("SHELL")
-	if shell == "" {
-		shell, err = desktop.LoginShell()
-		if err != nil {
-			return err
-		}
+	if len(args) > 1 {
+		return "", errors.New("ui accepts only one port")
 	}
-	if err := os.Setenv("HYPERCUBE_APP_EXECUTABLE", exe); err != nil {
-		return err
+	n, err := strconv.Atoi(args[0])
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("invalid port %q", args[0])
 	}
-	// A leading dash in argv[0] selects login mode across the standard macOS
-	// shells; tcsh does not accept the service's combined -lic flags. An
-	// environment variable avoids their different positional-argument syntax.
-	return syscall.Exec(shell, []string{"-" + filepath.Base(shell), "-i", "-c", `exec "$HYPERCUBE_APP_EXECUTABLE" ui --menu`}, os.Environ())
-}
-
-func parseUIArgs(args []string) (port string, withMenu bool, err error) {
-	port = "4280"
-	havePort := false
-	for _, arg := range args {
-		if arg == "--menu" {
-			withMenu = true
-			continue
-		}
-		if havePort {
-			return "", false, errors.New("ui accepts only one port")
-		}
-		n, err := strconv.Atoi(arg)
-		if err != nil || n < 1 || n > 65535 {
-			return "", false, fmt.Errorf("invalid port %q", arg)
-		}
-		port, havePort = arg, true
-	}
-	return port, withMenu, nil
+	return args[0], nil
 }
 
 // app is the app process: the database, the runtime that owns the agents, and
 // the HTTP server.
 type app struct {
-	db     *store.DB
-	rt     *session.Runtime
-	server *http.Server
-	cancel context.CancelFunc
+	db      *store.DB
+	rt      *session.Runtime
+	server  *http.Server
+	desktop *desktop.Desktop
+	cancel  context.CancelFunc
 	// done receives the server's result.
 	done chan error
 	once sync.Once
@@ -106,9 +75,9 @@ type app struct {
 
 // startApp serves HTTP on the listener, then restores the sessions the user
 // left running. Harness plugins are in plugins, or beside the executable when
-// it is empty. browser drives the sessions' browsers and notify shows alerts;
-// both are nil without the window.
-func startApp(listener net.Listener, plugins string, browser mcp.Browser, notify func(session.Alert)) (*app, error) {
+// it is empty. The desktop app's connection, when it has one, drives the
+// sessions' browsers and shows their alerts.
+func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
 	db, err := store.Open()
 	if err != nil {
 		return nil, err
@@ -116,24 +85,27 @@ func startApp(listener net.Listener, plugins string, browser mcp.Browser, notify
 	rt := session.New(db, "http://"+listener.Addr().String())
 	rt.PluginDir = plugins
 	ctx, cancel := context.WithCancel(context.Background())
-	a := &app{db: db, rt: rt, cancel: cancel, done: make(chan error, 1)}
-	a.server = &http.Server{Handler: ui.Handler(db, rt, browser)}
+	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1)}
+	a.server = &http.Server{Handler: ui.Handler(db, rt, desktop)}
 	go func() { a.done <- a.server.Serve(listener) }()
 	rt.Restore()
-	if notify != nil {
-		go func() {
-			if err := rt.WatchAlerts(ctx, notify); err != nil {
-				fmt.Fprintln(os.Stderr, "hypercube: watching alerts:", err)
+	go func() {
+		err := rt.WatchAlerts(ctx, func(alert session.Alert) {
+			// A failed alert is reported and the watch goes on.
+			if err := desktop.Alert(alert); err != nil {
+				fmt.Fprintln(os.Stderr, "hypercube: alerting the desktop app:", err)
 			}
-		}()
-	}
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "hypercube: watching alerts:", err)
+		}
+	}()
 	return a, nil
 }
 
-// shutdown ends every agent, then the server. Sessions keep their running
-// mark, so the next start restores them.
-func (a *app) shutdown() { a.close(true) }
-func (a *app) detach()   { a.close(false) }
+// close ends the app. With quit it ends every agent first; without it the
+// agents keep running for the next start. Sessions keep their running mark
+// either way, so the next start restores them.
 func (a *app) close(quit bool) {
 	a.once.Do(func() {
 		if quit {
@@ -141,6 +113,7 @@ func (a *app) close(quit bool) {
 		} else {
 			a.rt.Detach()
 		}
+		a.desktop.Shutdown()
 		_ = a.server.Close()
 		a.cancel()
 		_ = a.db.Close()
@@ -148,10 +121,10 @@ func (a *app) close(quit bool) {
 }
 
 // serveUI serves the browser view on the optional port, default 4280, until
-// Quit, SIGINT, or SIGTERM. With --menu, it also runs the macOS application,
-// whose window shows the view.
+// SIGINT or SIGTERM. SIGINT ends the agents; SIGTERM leaves them running. The
+// desktop app connects to the same server.
 func serveUI(args []string) error {
-	port, withMenu, err := parseUIArgs(args)
+	port, err := parsePort(args)
 	if err != nil {
 		return err
 	}
@@ -163,39 +136,17 @@ func serveUI(args []string) error {
 	// Signals received during restore are handled after its attachments exist.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	var browser mcp.Browser
-	var notify func(session.Alert)
-	if withMenu {
-		browser, notify = desktop.Browser{}, desktop.Notify
-	}
-	a, err := startApp(listener, "", browser, notify)
+	a, err := startApp(listener, "", &desktop.Desktop{})
 	if err != nil {
 		return err
 	}
-	url := "http://localhost:" + port + "/"
-	fmt.Printf("%s; serving at %s\n", buildinfo.String(), url)
-	if withMenu {
-		go func() {
-			select {
-			case sig := <-signals:
-				a.close(sig == syscall.SIGINT)
-				os.Exit(0)
-			case err := <-a.done:
-				a.detach()
-				fmt.Fprintln(os.Stderr, "hypercube:", err)
-				os.Exit(1)
-			}
-		}()
-		desktop.Run(url)
-		a.shutdown()
-		return nil
-	}
+	fmt.Printf("%s; serving at http://localhost:%s/\n", buildinfo.String(), port)
 	select {
 	case sig := <-signals:
 		a.close(sig == syscall.SIGINT)
 		return nil
 	case err := <-a.done:
-		a.detach()
+		a.close(false)
 		return err
 	}
 }

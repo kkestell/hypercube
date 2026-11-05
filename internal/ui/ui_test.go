@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
@@ -52,7 +53,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, ""), nil)
+	return Handler(db, session.New(db, ""), &desktop.Desktop{})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -165,7 +166,7 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	for _, path := range []string{"/state", "/terminal?session=s"} {
+	for _, path := range []string{"/state", "/terminal?session=s", "/desktop"} {
 		if _, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+path, &websocket.DialOptions{
 			HTTPHeader: http.Header{"Origin": {"http://example.com"}},
 		}); err == nil || res == nil || res.StatusCode != http.StatusForbidden {
@@ -306,7 +307,7 @@ func newApp(t *testing.T) *app {
 		time.Sleep(5 * time.Millisecond)
 	}
 	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(db, rt, nil))
+	a.server = httptest.NewServer(Handler(db, rt, &desktop.Desktop{}))
 	t.Cleanup(a.server.Close)
 	return a
 }

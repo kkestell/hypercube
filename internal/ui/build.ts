@@ -1,6 +1,7 @@
 // Builds the browser view into the directory given as the only argument: the
-// bundles of web/, the page, the Tailwind stylesheet, and the license of every
-// package the bundle includes. Its output depends only on the sources and the
+// bundles of web/, the page, the desktop app's waiting page and browser
+// toolbar, the Tailwind stylesheet, and the license of every package the
+// bundle includes. Its output depends only on the sources and the
 // locked dependencies, so make check can compare it with the committed dist/.
 // Run `bun install --frozen-lockfile` before it: the bundler resolves packages
 // from the node_modules that exists when this script starts.
@@ -29,7 +30,7 @@ mkdirSync(outdir, {recursive: true});
 // names its inputs relative to it.
 process.chdir(root);
 const result = await Bun.build({
-  entrypoints: ['web/main.tsx'],
+  entrypoints: ['web/main.tsx', 'web/desktop/waiting.tsx', 'web/desktop/toolbar.tsx'],
   outdir,
   target: 'browser',
   minify: true,
@@ -48,7 +49,7 @@ if (!result.success || !result.metafile) {
 const css = Bun.spawnSync([process.execPath, 'node_modules/@tailwindcss/cli/dist/index.mjs',
   '-i', 'web/base.css', '-o', join(outdir, 'styles.css'), '--minify'], {stdout: 'inherit', stderr: 'inherit'});
 if (css.exitCode !== 0) process.exit(css.exitCode);
-for (const file of ['index.html', 'favicon.svg']) cpSync(join('web', file), join(outdir, file));
+for (const file of ['index.html', 'waiting.html', 'toolbar.html', 'favicon.svg']) cpSync(join('web', file), join(outdir, file));
 
 // Every bundled package ships its license, including the upstream UI sources.
 const licenses = new Map([

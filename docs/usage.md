@@ -75,14 +75,23 @@ its working directory; those tabs appear when you view its session.
 ### Terminal and browser
 
 The terminal panel is your shell in the selected session's directory. Each
-session has its own shell. Hiding the panel or closing the interface leaves it
-running; stopping the session or quitting Hypercube ends it.
+session has its own shell. Hiding the panel, closing the interface, or quitting
+the desktop app leaves it running; stopping the session or ending the backend
+ends it.
 
-With the native app, an agent's page navigation opens its own browser window.
-Its controls let you navigate or open the page in your default browser. The
-**Window** menu lists open browser windows. Closing the window or the agent's
-`browser_close` ends that browser; quitting Hypercube ends them all. Session
-browsers share website logins.
+With the desktop app open, an agent's page navigation opens its own browser
+window. The toolbar above the page has back, forward, reload, an address field,
+and a button that opens the page in your default browser. The **Window** menu
+lists open browser windows. Closing the window or the agent's `browser_close`
+ends that browser; quitting the desktop app closes them all and fails their
+pending calls. With the app closed, an agent's browser calls fail with a
+message asking you to open it. Session browsers share website logins.
+
+Quitting the desktop app, from ⌘Q, the menu bar icon, or the Dock, ends only
+the app. Agents, shells, and messaging keep running in the background service.
+Ending every agent at once is a service command:
+`launchctl kill SIGINT gui/$(id -u)/com.github.kkestell.hypercube`, or Ctrl-C
+for a `hypercube ui` in a terminal.
 
 ### Merge a worktree session
 
@@ -125,8 +134,10 @@ button to open the chat. Closing a request card hides it without answering.
 Closing a reply card hides it without marking the reply seen; reply cards also
 close after 15 seconds or when the agent works again.
 
-When the native window lacks focus, macOS notifications announce requests and
-replies. Clicking one opens its session.
+While the desktop app is open and its window lacks focus, macOS notifications
+announce requests and replies. Clicking one opens its session. Requests and
+replies that arrive while the app is closed are not announced later; the badge
+and the page show the current requests when it opens.
 
 ## Find a conversation
 
@@ -147,8 +158,10 @@ stopped sessions are dimmed and carry no dots.
 Drag tabs between panes, or onto a pane's edge to split it. Drag dividers to
 resize panes and panels. Buttons at the right of the footer toggle the
 sidebar, terminal, and right panel. Use **View → Zoom In**, **Zoom Out**, or
-**Actual Size** in the native window to change page size. The theme follows
-macOS appearance.
+**Actual Size** in the desktop app to change page size. The theme follows macOS
+appearance. In the desktop app, the menus own the shortcuts they show, so ⌘N,
+⌘B, ⌘J, ⌘⌥B, ⌘⌥↑/↓, ⌘,, ⌘/, and zoom work wherever focus is, including text
+fields, terminals, and dialogs.
 
 **Help → Keyboard Shortcuts** (**Command+/**) lists all shortcuts, including
 sidebar navigation. Text fields retain their editing keys. The terminal keeps
@@ -163,8 +176,9 @@ while keeping their conversations, queued messages, branches, and worktrees.
 you send a prompt to a family member. Clicking a child of a stopped parent also
 starts the family.
 
-After an app restart, Hypercube reconnects to agents that survived. If every
-agent in a running family was lost, or you quit Hypercube or rebooted, the
+After a backend restart, Hypercube reconnects to agents that survived. If every
+agent in a running family was lost, or you ended the backend with SIGINT or
+rebooted, the
 family starts awaiting your prompt. A harness that exits unexpectedly is
 relaunched with its conversation; repeated quick failures stop relaunches.
 For a failed start, the error stays in chat. Stop and start the family to retry.

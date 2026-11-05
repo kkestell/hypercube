@@ -25,7 +25,7 @@ import {RightPanel} from './right-panel.tsx';
 import {binding, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActions} from './shortcuts.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
-import {windowHandler} from './window.ts';
+import {hypercube} from './window.ts';
 import {titleBarVars} from './title-bar.ts';
 
 function refuseStrayDrops(store: Store) {
@@ -72,9 +72,7 @@ export function App({store}: {store: Store}) {
   useEffect(() => refuseStrayDrops(store), []);
   useEffect(() => { setQuickOpen(false); }, [state.session?.id, state.unsent]);
   useEffect(() => {
-    const handler = windowHandler();
-    if (!handler) return;
-    handler.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({...s, binding: binding(s.keys[0])}))});
+    hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: s.keys.map(binding)}))});
   }, []);
   const shortcutActions: ShortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), showSettings: () => setSettingsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
   useEffect(() => {

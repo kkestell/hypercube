@@ -5,7 +5,7 @@ import {startBadge} from './badge.ts';
 
 test('the native badge follows the number of waiting sessions', () => {
   const posted: object[] = [];
-  globalThis.webkit = {messageHandlers: {window: {postMessage: message => posted.push(message)}}};
+  globalThis.hypercube = {postMessage: message => posted.push(message), onEvent: () => {}};
   try {
     const store = createStore(testState());
     startBadge(store);
@@ -22,19 +22,19 @@ test('the native badge follows the number of waiting sessions', () => {
       {type: 'badge', count: 0},
     ]);
   } finally {
-    delete globalThis.webkit;
+    delete globalThis.hypercube;
   }
 });
 
 test('the first loaded state clears a stale badge when no sessions are waiting', () => {
   const posted: object[] = [];
-  globalThis.webkit = {messageHandlers: {window: {postMessage: message => posted.push(message)}}};
+  globalThis.hypercube = {postMessage: message => posted.push(message), onEvent: () => {}};
   try {
     const store = createStore(testState());
     startBadge(store);
     store.update(state => ({...state, loaded: true}));
     expect(posted).toEqual([{type: 'badge', count: 0}]);
   } finally {
-    delete globalThis.webkit;
+    delete globalThis.hypercube;
   }
 });

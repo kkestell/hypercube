@@ -2,7 +2,7 @@
 import {useRef} from 'react';
 import {flushSync} from 'react-dom';
 import {tabBackground} from '../shared/tab-background.ts';
-import {barTabs, titleBarMouseDown, topRow, topRowStart} from '../app/title-bar.ts';
+import {barTabs, topRow, topRowStart} from '../app/title-bar.ts';
 import {LayoutToggles} from '../app/layout-toggles.tsx';
 import {Button} from '../components/ui/button';
 import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
@@ -28,8 +28,7 @@ export function EditorTabs({pane, entries, placement}: {pane: Pane | null; entri
     (strip.current ?? area)?.querySelector<HTMLElement>('[role="tab"][data-state="active"]')?.focus();
   };
   const start = placement.top && placement.left && !state.workbench.sidebar;
-  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 px-2 ${tabBackground} ${placement.top ? `${topRow} border-b` : 'py-1'} ${start ? topRowStart : ''}`}
-    onMouseDown={placement.top ? titleBarMouseDown : undefined}>
+  return <div className={`editor-tabs-bar flex min-w-0 shrink-0 items-center justify-between gap-1 px-2 ${tabBackground} ${placement.top ? `${topRow} border-b` : 'py-1'} ${start ? topRowStart : ''}`}>
     {entries.length > 0 ? <Tabs className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]" value={pane?.active ?? ''} onValueChange={id => { if (pane) store.update(s => selectTab(s, pane.id, id)); }}>
       <TabsList ref={strip} className={`editor-tabs max-w-full justify-start ${barTabs}`} aria-label="Open tabs">
         {entries.map(entry => <div key={entry.id} data-tab={entry.id} draggable className="flex min-w-24 max-w-64 items-center"

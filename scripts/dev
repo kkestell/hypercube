@@ -7,18 +7,18 @@
 #   scripts/dev [up]   build the server, serve the view, and watch sources
 #                      until Ctrl-C
 #   scripts/dev up --app
-#                      also run the native app, with its own menu bar icon
-#                      and window
-#   scripts/dev stop   stop the app; the sessions stay marked running, so `up`
-#                      resumes them
-#   scripts/dev clean  stop it and delete everything it left
+#                      also run the desktop app, with its own menu bar icon
+#                      and window, connected to the dev backend
+#   scripts/dev stop   stop the backend and the desktop app; the sessions stay
+#                      marked running, so `up` resumes them
+#   scripts/dev clean  stop them and delete everything they left
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 DEV=${HYPERCUBE_DEV_DIR:-$HOME/projects/hypercube-dev}
-# With --app, the dev session runs as its own application, so its
+# With --app, the dev session also runs as its own application, so its
 # notifications and their clicks never reach the installed Hypercube. Otherwise
-# it is only the server, built into bin/dev.
+# it is only the backend, built into bin/dev.
 APP=$ROOT/bin/HypercubeDev.app
 PORT=${HYPERCUBE_DEV_PORT:-4281}
 REPO=$DEV/repo
@@ -30,7 +30,24 @@ CONFIG=$DEV/config/hypercube/config.json
 DEV_ENV=(env -i HOME="$HOME" USER="${USER:-$(id -un)}" PATH="$PATH" LANG="${LANG:-en_US.UTF-8}" TERM="${TERM:-xterm-256color}"
 	XDG_STATE_HOME="$DEV/state" XDG_CONFIG_HOME="$DEV/config")
 
-# Wait for the app to finish detaching or quitting before starting its replacement.
+# stop_desktop quits the desktop app, which leaves the backend running.
+stop_desktop() {
+	if [ -f "$DEV/desktop.pid" ]; then
+		pid=$(cat "$DEV/desktop.pid")
+		if ps -p "$pid" -o command= | grep -q 'Hypercube Desktop'; then
+			kill -TERM "$pid" || true
+			wait "$pid" 2>/dev/null || true
+			for _ in $(seq 200); do
+				kill -0 "$pid" 2>/dev/null || break
+				sleep 0.1
+			done
+			kill -9 "$pid" 2>/dev/null || true
+		fi
+		rm -f "$DEV/desktop.pid"
+	fi
+}
+
+# Wait for the backend to finish detaching or quitting before starting its replacement.
 stop_app() {
 	if [ -f "$DEV/ui.pid" ]; then
 		pid=$(cat "$DEV/ui.pid")
@@ -49,7 +66,7 @@ stop_app() {
 }
 
 restart() { stop_app TERM; }
-quit() { stop_app INT; }
+quit() { stop_desktop; stop_app INT; }
 
 # A crashed dev app can leave holders behind. They belong to this dev state.
 stop_holders() {
@@ -72,8 +89,8 @@ case "${1:-up}" in
 up)
 	cd "$ROOT"
 	case "${2:-}" in
-		"") MENU= BIN=$ROOT/bin/dev/hypercube ;;
-		--app) MENU=--menu BIN=$APP/Contents/MacOS/hypercube ;;
+		"") DESKTOP= BIN=$ROOT/bin/dev/hypercube ;;
+		--app) DESKTOP=1 BIN=$APP/Contents/MacOS/hypercube ;;
 		*) echo "usage: scripts/dev up [--app]" >&2; exit 2 ;;
 	esac
 	restart
@@ -140,14 +157,15 @@ JSON
 	# trigger builds.
 	sources() {
 		{
-			find cmd internal plugins \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
+			find cmd desktop internal plugins \( -type d -name node_modules -o -path internal/ui/dist \) -prune -o \
 				-type f -exec cksum {} +
-			cksum go.mod go.sum Makefile scripts/dev
+			cksum go.mod go.sum Makefile scripts/dev scripts/install-service
 		} | LC_ALL=C sort | cksum
 	}
 	build() {
 		make ui || return 1
-		if [ -n "$MENU" ]; then
+		if [ -n "$DESKTOP" ]; then
+			stop_desktop
 			make bundle APP="$APP" APP_ID=com.github.kkestell.hypercube.dev APP_NAME="Hypercube Dev" &&
 				/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"
 		else
@@ -160,7 +178,7 @@ JSON
 			echo "Port $PORT is already in use: $(lsof -tiTCP:"$PORT" -sTCP:LISTEN | xargs ps -o command= -p)" >&2
 			return 1
 		fi
-		"${DEV_ENV[@]}" "$BIN" ui "$PORT" $MENU &
+		"${DEV_ENV[@]}" "$BIN" ui "$PORT" &
 		view_pid=$!
 		echo "$view_pid" >"$DEV/ui.pid"
 		for _ in $(seq 50); do
@@ -176,9 +194,17 @@ JSON
 		echo "Dev view did not start on port $PORT" >&2
 		return 1
 	}
+	# The desktop app connects to the dev backend and finds it again after a
+	# restart; it has its own profile under the dev state.
+	start_desktop() {
+		[ -n "$DESKTOP" ] || return 0
+		"${DEV_ENV[@]}" "$APP/Contents/MacOS/Hypercube Desktop" --port="$PORT" &
+		echo "$!" >"$DEV/desktop.pid"
+	}
 	revision=$(sources)
 	build
 	start_view
+	start_desktop
 	echo "Dev repository: $REPO (config $CONFIG, view http://localhost:$PORT/)"
 	echo "Watching sources; Ctrl-C stops the dev session."
 	while kill -0 "$view_pid" 2>/dev/null; do
@@ -190,6 +216,7 @@ JSON
 		if build; then
 			restart
 			start_view
+			start_desktop
 		else
 			echo "Build failed; keeping the previous view. Waiting for changes." >&2
 		fi

@@ -1,10 +1,11 @@
-// Starts the page: the store, data socket, file polling, native notifications,
+// Starts the page: the store, data socket, file polling, desktop app events,
 // badge, title bar, and App.
 import {createRoot} from 'react-dom/client';
 import {App} from './app/app.tsx';
 import {startAppearance} from './app/appearance.ts';
 import {startBadge} from './app/badge.ts';
 import {startTitleBar} from './app/title-bar.ts';
+import {startWindowEvents} from './app/window.ts';
 import {setVisible, startWorkbenchStorage} from './app/workbench.ts';
 import {startDraftStorage} from './agent/draft-storage.ts';
 import {startDataSocket} from './data-socket.ts';
@@ -19,6 +20,7 @@ startAppearance();
 startDraftStorage(store);
 startWorkbenchStorage(store);
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
+startWindowEvents();
 startDataSocket(store);
 startFilePolling(store);
 startNativeNotifications(store);
