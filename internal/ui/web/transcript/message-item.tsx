@@ -3,8 +3,7 @@ import {Card, CardContent} from '../components/ui/card';
 import {BusyDot} from '../shared/busy-dot.tsx';
 import {Icon} from '../shared/icon.tsx';
 // User prompts are bubbles. Messages between sessions show their sender or
-// recipient: a disclosure with a first-line preview until expanded, or, inline
-// within a turn's activity, the whole message.
+// recipient, as a disclosure with a first-line preview until expanded.
 import {useStore} from '../store.ts';
 import {sessionOf} from '../sessions/selection.ts';
 import {CopyButton} from './copy-button.tsx';
@@ -25,24 +24,23 @@ interface MessageItemProps {
   item: UserItem | ToolItem;
   expanded: boolean;
   setOpen: (key: string, open: boolean) => void;
-  inline?: boolean;
 }
 
 function UserBubble({item}: {item: UserItem}) {
   return (
     <div className="message-item message-item-user my-3 flex justify-end">
-      <div className="message-item-user-content group relative max-w-full">
-        <Card className="message-item-bubble py-3"><CardContent className="px-4">
+      <div className="message-item-user-content group relative max-w-full [--copy-bg:var(--card)]">
+        <Card className="message-item-bubble border-0 py-3"><CardContent className="px-4">
           <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
         </CardContent></Card>
-        <CopyButton text={item.text ?? ''} label="Copy message" gutter />
+        <CopyButton text={item.text ?? ''} label="Copy message" />
       </div>
     </div>
   );
 }
 
-export function MessageItem({item, expanded, setOpen, inline}: MessageItemProps) {
+export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
   const [state] = useStore();
   let heading: ReactNode, text: string, details: ReactNode;
   if (item.kind === 'tool') {
@@ -65,12 +63,6 @@ export function MessageItem({item, expanded, setOpen, inline}: MessageItemProps)
     <div className="message-item-body space-y-2">
       <div className="message-item-text"><Markdown text={text} style="chat" /></div>
       {details}
-    </div>
-  );
-  if (inline) return (
-    <div className="message-item message-item-agent space-y-2">
-      <div className="message-item-heading flex items-center gap-2 font-medium">{heading}</div>
-      {body}
     </div>
   );
   return (

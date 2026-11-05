@@ -15,14 +15,14 @@ import type {Row} from './transcript-tree.ts';
 import type {ErrorItem, TextItem} from './types.ts';
 
 const TextBlock = memo(({item, response}: {item: TextItem; response?: boolean}) => (
-  <div className={`transcript-text group relative my-2 flex flex-col gap-3 ${response ? '[&_.prose]:text-foreground' : ''}`}>
+  <div className={`transcript-text group relative my-2 [--copy-bg:color-mix(in_oklab,var(--background),var(--card))] flex flex-col gap-3 ${response ? '[&_.prose]:text-foreground' : ''}`}>
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
-    {item.text && <CopyButton text={item.text} label="Copy message" gutter />}
+    {item.text && <CopyButton text={item.text} label="Copy message" />}
   </div>
 ));
 
-const ErrorAlert = memo(({item}: {item: ErrorItem}) => <Alert className="transcript-error" variant="destructive"><AlertDescription className="whitespace-pre-wrap">{item.text ?? ''}</AlertDescription></Alert>);
+const ErrorAlert = memo(({item}: {item: ErrorItem}) => <Alert className="transcript-error border-0" variant="destructive"><AlertDescription className="whitespace-pre-wrap">{item.text ?? ''}</AlertDescription></Alert>);
 
 // RowControls are what a row needs besides its data: the session, the keys
 // the user opened in expanded, and setOpen(key, open) to change one.
@@ -37,9 +37,9 @@ export function TranscriptRow({row, session, expanded, setOpen, response}: RowCo
   switch (row.type) {
     case 'activity': return <ActivityItem row={row} session={session} expanded={expanded} setOpen={setOpen} />;
     case 'tool': return <ToolCall call={row} session={session} expanded={expanded} setOpen={setOpen} />;
-    case 'message': return <MessageItem item={row.item} expanded={!!expanded[row.item.id]} setOpen={setOpen} inline />;
+    case 'message': return <MessageItem item={row.item} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'reasoning': return <ReasoningItem item={row.item} />;
-    case 'user': return <MessageItem item={row.item} inline={row.inline} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
+    case 'user': return <MessageItem item={row.item} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={row.item} session={session} />;
     case 'error': return <ErrorAlert item={row.item} />;
     case 'text': return <TextBlock item={row.item} response={response} />;

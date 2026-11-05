@@ -4,7 +4,7 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components
 import {changeTree, loadChanges, statusLabel} from '../changes/changes.ts';
 import type {ChangeStatus} from '../changes/types.ts';
 import {fileTabId, keepOpen, openDiffTab, openFileTab} from '../editor/editor.ts';
-import {Icon} from '../shared/icon.tsx';
+import {Chevron} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {FileIcon} from './file-icon.tsx';
 import {loadFolder, setFolderOpen, treeEntries} from './files.ts';
@@ -75,7 +75,7 @@ export function FilesPanel() {
       ...menu.handlers(path), onFocus: () => setFocused(path), title: status && `${path} • ${statusLabel(status)}`,
       className: 'h-7 min-w-0 flex-1 justify-start px-2 font-normal'};
     const label = <span className={`flex min-w-0 items-center gap-1.5 ${color}`}>
-      {entry.dir ? <Icon name={expanded[path] ? 'chevron-down' : 'chevron-right'} /> : <FileIcon name={entry.name} />}
+      {entry.dir ? <Chevron open={expanded[path]} /> : <FileIcon name={entry.name} />}
       <span className={`truncate ${status === 'deleted' ? 'line-through' : ''}`}>{entry.name}</span>
       {status && <span className="sr-only">, {statusLabel(status)}</span>}
     </span>;

@@ -31,15 +31,19 @@ export function sessionOf(state: State, id: string | null): {workspace: Workspac
 
 export const failed = (session: Session) => !session.parent && session.running && session.activity === 'exited';
 
-const unsentSession = (sending: boolean): Session => ({
+// The unsent session takes the harness of its chosen profile.
+const unsentSession = (sending: boolean, harness = ''): Session => ({
   id: unsentKey, parent: '', title: 'New Session', ready: false, running: false, ended: false, unseen: false,
-  harness: '', model: '', effort: '', dir: '', activity: sending ? 'busy' : 'idle', attention: false, usage: {},
+  harness, model: '', effort: '', dir: '', activity: sending ? 'busy' : 'idle', attention: false, usage: {},
   worktree: false, children: [],
 });
 
 // shownSession is the unsent placeholder or the attached session.
 export function shownSession(state: State): Session | null {
-  if (state.unsent) return unsentSession(state.unsent.sending);
+  if (state.unsent) {
+    const {sending, profile} = state.unsent;
+    return unsentSession(sending, state.config?.profiles.find(p => p.name === profile)?.harness);
+  }
   return state.session ? currentSession(state) ?? null : null;
 }
 

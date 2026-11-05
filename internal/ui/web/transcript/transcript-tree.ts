@@ -96,10 +96,9 @@ export const clip = (text: string): string => text.length > shownLimit ? text.sl
 
 export const toolInput = (input: unknown): string => input === undefined || input === null ? '' : clip(typeof input === 'string' ? input : JSON.stringify(input, null, 2));
 
-// A row is what the page draws for an item. A user row inside a turn's
-// activity has inline set.
+// A row is what the page draws for an item.
 export type ItemRow =
-  | {type: 'user'; item: UserItem; inline?: boolean}
+  | {type: 'user'; item: UserItem}
   | {type: 'reasoning'; item: ReasoningItem}
   | {type: 'text'; item: TextItem}
   | {type: 'error'; item: ErrorItem}
@@ -202,7 +201,7 @@ function turns(items: Item[], rowOf: (item: Exclude<Item, StateItem>) => TurnRow
   for (const item of items) {
     if (item.kind !== 'state') {
       const row = rowOf(item);
-      if (turn) turn.rows.push(inline(row));
+      if (turn) turn.rows.push(row);
       else out.push(row);
       continue;
     }
@@ -219,9 +218,6 @@ function turns(items: Item[], rowOf: (item: Exclude<Item, StateItem>) => TurnRow
   return out;
 }
 
-// A user row inside a turn is shown with its text, as the opener is not.
-const inline = (row: TurnRow): TurnRow => row.type === 'user' ? {...row, inline: true} : row;
-
 // startTurn begins a turn at a working state. Its opener is the first of the
 // user messages just before the state, which stays in out; later ones were sent
 // while the turn began.
@@ -230,7 +226,7 @@ function startTurn(work: StateItem, out: Row[], floor: number): Turn {
   while (first > floor && out[first - 1].type === 'user') first--;
   const opener = out[first];
   const openedAt = opener?.type === 'user' ? opener.item.at : undefined;
-  return {launch: launchOf(work), work, start: openedAt || work.at || 0, rows: out.splice(first + 1).filter(isTurnRow).map(inline)};
+  return {launch: launchOf(work), work, start: openedAt || work.at || 0, rows: out.splice(first + 1).filter(isTurnRow)};
 }
 
 const isTurnRow = (row: Row): row is TurnRow => row.type !== 'activity';

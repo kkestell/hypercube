@@ -12,7 +12,7 @@ import {useStore} from '../store.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {BusyDot} from '../shared/busy-dot.tsx';
-import {Icon} from '../shared/icon.tsx';
+import {Chevron} from '../shared/icon.tsx';
 
 const statusOf = (session: Session, selected: boolean) => {
   if (stopped(session)) return null;
@@ -64,7 +64,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       </span>
       {session.id !== renaming && (hasChildren || session.worktree || status) && <span className={`absolute inset-y-0 right-0 flex items-center gap-1 rounded-r-md bg-linear-to-r from-transparent via-(--row-bg) via-[length:1.5rem] to-(--row-bg) pl-8 pr-2 ${!session.worktree && !status ? 'invisible group-hover/session:visible group-focus-within/session:visible' : ''}`}>
         {hasChildren && <span className="session-item-twistie hidden size-4 shrink-0 items-center group-hover/session:flex group-focus-within/session:flex" onClick={toggle}>
-          <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
+          <Chevron open={expanded} />
         </span>}
         {(session.worktree || status) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
           {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}

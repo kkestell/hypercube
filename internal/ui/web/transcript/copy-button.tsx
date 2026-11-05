@@ -2,13 +2,15 @@ import {useEffect, useRef, useState} from 'react';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
 
+// CopyButton shows in the top right corner of its group on hover, over a fade
+// into the --copy-bg color its container sets, so text beneath it stays clear.
+
 interface CopyButtonProps {
   text: string;
   label: string;
-  gutter?: boolean;
 }
 
-export function CopyButton({text, label, gutter}: CopyButtonProps) {
+export function CopyButton({text, label}: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -18,6 +20,8 @@ export function CopyButton({text, label, gutter}: CopyButtonProps) {
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setCopied(false), 1500);
   };
-  return <Button className={`copy-button absolute top-0 ${gutter ? 'left-full' : 'right-0'} opacity-0 group-hover:opacity-100 group-focus-within:opacity-100`} variant="ghost" size="icon-xs" type="button" aria-label={copied ? 'Copied' : label}
-    title={copied ? 'Copied' : label} onClick={copy}><Icon name={copied ? 'check' : 'copy'} /></Button>;
+  return <span className="copy-button absolute right-0 top-0 flex bg-linear-to-r from-transparent via-(--copy-bg) via-[length:1rem] to-(--copy-bg) pl-6 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
+    <Button variant="ghost" size="icon-xs" type="button" aria-label={copied ? 'Copied' : label}
+      title={copied ? 'Copied' : label} onClick={copy}><Icon name={copied ? 'check' : 'copy'} /></Button>
+  </span>;
 }

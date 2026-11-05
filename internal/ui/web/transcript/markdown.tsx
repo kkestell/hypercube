@@ -50,7 +50,7 @@ function element(t: Token, options: Options): ReactNode {
     case 'paragraph': return options.flatten ? children(t.tokens) : <p>{children(t.tokens)}</p>;
     case 'heading': return options.flatten ? children(t.tokens) : createElement('h' + t.depth, null, children(t.tokens));
     case 'code':
-      return options.flatten ? t.text : <div className="markdown-code-block group relative"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
+      return options.flatten ? t.text : <div className="markdown-code-block group relative [--copy-bg:var(--tw-prose-pre-bg)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children(t.tokens)}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {

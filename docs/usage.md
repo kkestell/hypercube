@@ -98,10 +98,11 @@ parent to merge the work.
 
 ## Context and subscription use
 
-Context use and cost appear below the message box. The sidebar shows
-subscription usage reported by the harness: percent used and time until reset.
-It shows the shortest reported window normally and the longest on hover or
-keyboard focus. When the harness reports only one window, that window stays
+Below the message box, a ring shows the session's context use; hover over it
+for token counts and cost. Beside it, sessions whose harness reports
+subscription usage show the percent used and, in a wide enough pane, the time
+until reset. It shows the shortest reported window normally and the longest on
+hover or keyboard focus. When the harness reports only one window, that window stays
 visible. The meter's mark shows how much of the time window has elapsed.
 After a window resets, its last reading stays dimmed and marked **Waiting**
 until the harness reports again. See

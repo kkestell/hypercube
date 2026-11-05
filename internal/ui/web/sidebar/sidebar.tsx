@@ -7,7 +7,6 @@ import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
 import {PanelTabs} from '../shared/panel-tabs.tsx';
 import {useStore} from '../store.ts';
 import {sessionItems, workspaceItems} from './sidebar-menus.ts';
-import {Usage} from './usage.tsx';
 import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {Button} from '../components/ui/button';
@@ -123,7 +122,6 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
         <>{view === 'sessions' && tree}</>
         <>{view === 'archived' && tree}</>
       </PanelTabs>
-      <Usage />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}
     </div>
   );

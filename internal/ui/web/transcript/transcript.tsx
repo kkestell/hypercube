@@ -3,7 +3,9 @@
 // Growing content leaves scrollTop alone, so only a scroll upward stops
 // following; the end allows for fractional scroll positions. The footer sticks
 // to the bottom of the scrolling view, so the scrollbar spans the whole pane.
-import {useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode} from 'react';
+// Expanding or collapsing an item keeps its heading where it was on screen,
+// and the list follows its end again only if that leaves it there.
+import {useCallback, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode} from 'react';
 import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {Button} from '../components/ui/button';
@@ -39,6 +41,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const memory = useScrollMemory(view, session.id);
   const lastTop = useRef(memory.current.top);
   const [away, setAway] = useState(false);
+  const held = useRef<{trigger: Element; top: number} | null>(null);
 
   const followEnd = () => {
     const container = view.current;
@@ -59,10 +62,22 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     memory.current = {...memory.current, following};
   };
 
-  // New items, opened details, a resized pane, and a view shown again all
-  // keep a following list at its end.
+  // Every expand and collapse trigger in the list toggles through setOpen, so
+  // the render that follows a click on one finds it held.
+  const holdTrigger = (e: MouseEvent) => {
+    const trigger = e.target instanceof Element && e.target.closest('[data-slot=collapsible-trigger]');
+    if (trigger) held.current = {trigger, top: trigger.getBoundingClientRect().top};
+  };
+
+  // New items, a resized pane, and a view shown again keep a following list
+  // at its end. A toggled item instead keeps its trigger in place.
   useLayoutEffect(() => {
-    followEnd();
+    const hold = held.current;
+    held.current = null;
+    if (hold && view.current) {
+      view.current.scrollTop += hold.trigger.getBoundingClientRect().top - hold.top;
+      memory.current = {...memory.current, following: false};
+    } else followEnd();
     scrolled();
   });
   useLayoutEffect(() => {
@@ -78,7 +93,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
-        <div ref={list} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-6 py-4 @min-[640px]/chat:px-10 ${state.workbench.fixedWidth ? 'max-w-[53.6rem]' : ''}`}>
+        <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-4 py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} response />)}
         </div>
         <div ref={bottom} className={`transcript-bottom sticky bottom-0 flow-root shrink-0 ${tabBackground}`}>

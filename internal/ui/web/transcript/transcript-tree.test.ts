@@ -88,7 +88,6 @@ test('a successful turn is its opener, one activity, and its response', () => {
   ]);
   expect(shape(result)).toEqual(['ask', ['activity', ['think', 'read', 'progress']], 'answer']);
   expect(result[1]).toMatchObject({key: 'activity:L1:w', start: 1000, until: 9000});
-  expect(result[0]).not.toHaveProperty('inline');
 });
 
 test('every final block follows the activity, and a response alone has no activity', () => {
@@ -111,12 +110,10 @@ test.each([['the user', undefined], ['another session', 'child']])('a message fr
   const items = [user('ask', 1), working('w', 2), call('a', 'read', 3, {done: true}), user('more', 4, {from}), call('b', 'bash', 5, {done: true}), text('answer', 6), idle('i', 7, ['answer'])];
   const result = rows(items);
   expect(shape(result)).toEqual(['ask', ['activity', ['a', 'more', 'b']], 'answer']);
-  expect(activityAt(result, 1).rows[1]).toMatchObject({type: 'user', inline: true});
+  expect(activityAt(result, 1).rows[1]).toMatchObject({type: 'user'});
   // While the turn runs, the message draws in place among the other rows.
   const running = rows(items.slice(0, 5));
   expect(ids(running)).toEqual(['ask', 'a', 'more', 'b']);
-  expect(running[2]).toMatchObject({inline: true});
-  expect(running[0]).not.toHaveProperty('inline');
 });
 
 test('an idle state outside a turn leaves the message that will begin the next one', () => {

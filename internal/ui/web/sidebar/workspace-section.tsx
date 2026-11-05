@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {Icon} from '../shared/icon.tsx';
+import {Chevron, Icon} from '../shared/icon.tsx';
 import {openUnsent} from '../sessions/selection.ts';
 import type {Workspace} from '../sessions/types.ts';
 import {useStore} from '../store.ts';
@@ -31,7 +31,7 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
         </CollapsibleTrigger>
         <div className="invisible absolute inset-y-0 right-0 flex items-center bg-linear-to-r from-transparent via-card via-25% to-card pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
           {workspace.sessions.length > 0 && <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="icon-sm" tabIndex={-1} aria-label={open ? 'Collapse workspace' : 'Expand workspace'} className="size-6 hover:bg-transparent dark:hover:bg-transparent"><Icon name={open ? 'chevron-down' : 'chevron-right'} /></Button>
+            <Button variant="ghost" size="icon-sm" tabIndex={-1} aria-label={open ? 'Collapse workspace' : 'Expand workspace'} className="size-6 hover:bg-transparent dark:hover:bg-transparent"><Chevron open={open} /></Button>
           </CollapsibleTrigger>}
           <Button variant="ghost" size="icon-sm" className="size-6 hover:bg-transparent dark:hover:bg-transparent" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
           <Button variant="ghost" size="icon-sm" className="size-6 hover:bg-transparent dark:hover:bg-transparent" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>

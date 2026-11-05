@@ -1,10 +1,9 @@
 import {column} from '../app/workbench.ts';
 import {shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
-// images, attach and send buttons, and its profile and usage. A new session
-// chooses its profile and worktree there; a running session can choose a
-// profile of its harness. The text
-// takes focus on mount.
+// images, and attach and send buttons, and below them its profile and usage.
+// A new session chooses its profile and worktree there; a running session can
+// choose a profile of its harness. The text takes focus on mount.
 import {useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent} from 'react';
 import {imageSrc, imageTypes} from '../images.ts';
 import {post} from '../api.ts';
@@ -17,6 +16,7 @@ import {promptHistory} from './history.ts';
 import {MentionList, useMentions} from './use-mentions.tsx';
 import {ProfileSelect} from './profile-select.tsx';
 import {Usage} from './usage.tsx';
+import {Limits} from './limits.tsx';
 import {MergeButton} from './merge-button.tsx';
 import {WorktreeToggle} from './worktree-toggle.tsx';
 import {Button} from '../components/ui/button';
@@ -98,7 +98,9 @@ export function Composer({session}: {session: Session}) {
 
   return (
     <form className={`composer @container/composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      <Card className="bg-transparent py-3 shadow-none dark:bg-input/30">
+      {/* One line of text makes the box 50px tall: its border, padding, and the
+          text's line; half that rounds its ends into half circles. */}
+      <Card className="rounded-[25px] bg-transparent py-2 shadow-none dark:bg-input/30">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
             <div className="composer-images flex flex-wrap gap-2">
@@ -113,7 +115,7 @@ export function Composer({session}: {session: Session}) {
           )}
           <MentionList mentions={mentions} />
           <div className="composer-input flex items-end gap-1">
-            <Button type="button" variant="ghost" size="icon-sm" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="add" /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="attach" /></Button>
             <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${focusShortcut.keys[0]})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
               role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
               aria-controls={suggesting ? mentions.listId : undefined}
@@ -123,18 +125,26 @@ export function Composer({session}: {session: Session}) {
               onKeyUp={e => mentions.sync(e.currentTarget)} />
             {stop
               ? <Button type="button" variant="ghost" size="icon-sm" title="Stop" aria-label="Stop" onClick={() => post(store, 'session', {action: 'interrupt', id: session.id})}><Icon name="stop" /></Button>
-              : <Button type="submit" variant="ghost" size="icon-sm" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" /></Button>}
+              // The paper plane's weight sits above its box's center; a pixel
+              // down centers it by eye.
+              : <Button type="submit" variant="ghost" size="icon-sm" title="Send" aria-label="Send" disabled={!canSend(state, session, text)}><Icon name="send" className="translate-y-px" /></Button>}
           </div>
           <input ref={picker} type="file" accept={imageTypes.join(',')} multiple hidden onChange={picked} />
         </CardContent>
       </Card>
-      <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+      {/* The box's icons sit 21px in from its edges: its border, padding, and
+          half the button around each icon. The profile button pads its icon
+          10px and the 14px ring is centered on the send icon. */}
+      <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[11px] pr-[22px]">
         <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <ProfileSelect session={session} />
           {session.id === unsentKey && <WorktreeToggle />}
           <MergeButton session={session} />
         </div>
-        <Usage usage={session.usage} />
+        <div className="flex items-center gap-4">
+          <Limits harness={session.harness} />
+          <Usage usage={session.usage} />
+        </div>
       </div>
     </form>
   );

@@ -1,7 +1,7 @@
 // Lucide icons shared by the application actions.
 import {ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
   Clock, Copy, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
-  Globe, Info, MessageSquare, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
+  Globe, Info, MessageSquare, Paperclip, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
   Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
 
 const icons = {
@@ -9,7 +9,7 @@ const icons = {
   wrap: WrapText, 'fold-horizontal': FoldHorizontal, check: Check, 'chevron-down': ChevronDown, 'chevron-right': ChevronRight, close: X, copy: Copy,
   error: CircleAlert, warning: TriangleAlert, info: Info, history: Clock,
   eye: Eye, 'eye-off': EyeOff, files: Files, 'source-control': GitCompare, 'git-branch': GitBranch, 'git-merge': GitMerge, 'git-pull-request-arrow': GitPullRequestArrow, globe: Globe,
-  'comment-discussion': MessageSquare, 'new-folder': FolderPlus, add: Plus, ellipsis: MoreHorizontal,
+  'comment-discussion': MessageSquare, 'new-folder': FolderPlus, add: Plus, attach: Paperclip, ellipsis: MoreHorizontal,
   search: Search, settings: Settings, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,
   'open-preview': Eye, 'go-to-file': FileCode,
@@ -26,4 +26,9 @@ interface IconProps extends Omit<LucideProps, 'name'> {
 export function Icon({name, className = '', title, ...props}: IconProps) {
   const Component = icons[name];
   return <Component className={`size-4 shrink-0 ${className}`} data-icon={name} {...{title}} aria-label={title} aria-hidden={title || props['aria-label'] ? undefined : true} {...props} />;
+}
+
+// Chevron marks an expandable item, turning to point down as it opens.
+export function Chevron({open}: {open: boolean}) {
+  return <Icon name="chevron-right" className={`transition-transform motion-reduce:transition-none ${open ? 'rotate-90' : ''}`} />;
 }

@@ -26,7 +26,7 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
       marker={<span className="tool-items-status">{status}</span>} summary={<Title item={item} />}>
       {open && (
         <div className="tool-items-body mt-2 space-y-2 pl-6">
-          {(input || output) && <Card className="gap-0 overflow-hidden py-0">
+          {(input || output) && <Card className="gap-0 overflow-hidden border-0 py-0">
             {input && <CardContent className="space-y-2 px-3 py-2">
               <h4 className="text-xs font-medium text-muted-foreground">Arguments</h4>
               <pre className="tool-items-text tool-items-input overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{input}</pre>
