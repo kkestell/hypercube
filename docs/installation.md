@@ -107,6 +107,47 @@ quitting Hypercube before installation.
 State migrates on startup. Upgrading from the earlier leads/workers version
 also restarts agents and panel shells once.
 
+To preserve a way back to the previous build, take a
+[backup](#backup-and-recovery) before installing.
+
+## Backup and recovery
+
+This procedure restores a backup on the same machine at the original paths.
+Record the [build identity](#identify-a-build), harness versions, and any XDG
+or harness storage overrides before starting.
+
+1. Choose **Quit Hypercube** and wait for it to finish. For a foreground
+   browser-only server, use **Ctrl-C** (SIGINT). Closing the window or stopping
+   the service leaves agents running. Stop other processes writing to the
+   repositories or native harness storage you will copy.
+2. Copy these together into a private backup outside the directories being
+   copied, preserving dotfiles and symlinks:
+
+   - The current app bundle, including its plugins, or the current executable
+     and sibling plugins for an installation without a bundle.
+   - The configuration and entire saved-state directory listed below. The
+     state directory includes Codex conversations and plugin files alongside
+     SQLite; copying only `hypercube.db` omits them.
+   - Each workspace directory, including `.git`, managed worktrees, and
+     modified, untracked, and ignored files. Include the main checkout when
+     backing up a linked worktree.
+   - Native conversation storage outside Hypercube for the harnesses you use.
+     Claude Code, OpenCode, and Pi keep their own histories. See
+     [conversation storage](harness-support.md#conversation-storage) for
+     Codex's account links; their source settings and credentials must remain
+     available at their original paths.
+3. To recover, quit the app and other writers again. Preserve any newer work
+   separately, then replace the saved directories with the backup at their
+   original paths. Restore the matching previous app and plugins together
+   with its saved state. Start it with the same storage overrides, inspect
+   the conversations and repository changes, and send a prompt to verify
+   native conversation resume.
+
+Same-path backup, upgrade, and recovery have been exercised with Codex,
+including committed work and modified and untracked files in the main
+checkout and a managed worktree. Recovery of Claude Code, OpenCode, and Pi
+native histories has not been exercised.
+
 ## Identify a build
 
 **Settings → Build** identifies the running app. `hypercube version` identifies
@@ -125,6 +166,7 @@ fields contain the version's three-number core.
 | File | Default location |
 | --- | --- |
 | Configuration | `~/.config/hypercube/config.json` |
+| Saved-state directory | `~/.local/state/hypercube/` |
 | Database | `~/.local/state/hypercube/hypercube.db` |
 | Service log | `~/.local/state/hypercube/ui.log` |
 | Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` |
