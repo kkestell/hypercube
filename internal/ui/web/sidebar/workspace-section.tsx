@@ -30,9 +30,9 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
           </Button>
         </CollapsibleTrigger>
         <div className="invisible absolute inset-y-0 right-0 flex items-center bg-linear-to-r from-transparent via-card via-25% to-card pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
-          <CollapsibleTrigger asChild>
+          {workspace.sessions.length > 0 && <CollapsibleTrigger asChild>
             <Button variant="ghost" size="icon-sm" tabIndex={-1} aria-label={open ? 'Collapse workspace' : 'Expand workspace'} className="size-6 hover:bg-transparent dark:hover:bg-transparent"><Icon name={open ? 'chevron-down' : 'chevron-right'} /></Button>
-          </CollapsibleTrigger>
+          </CollapsibleTrigger>}
           <Button variant="ghost" size="icon-sm" className="size-6 hover:bg-transparent dark:hover:bg-transparent" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
           <Button variant="ghost" size="icon-sm" className="size-6 hover:bg-transparent dark:hover:bg-transparent" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>
         </div>

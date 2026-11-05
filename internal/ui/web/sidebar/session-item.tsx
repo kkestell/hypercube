@@ -56,12 +56,13 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
+      {level === 2 && <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-2 rounded-bl-lg border-b' : 'bottom-0'}`} />}
       <span className="flex min-w-0 flex-1 items-center">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
           : <span className={`session-item-title min-w-0 truncate text-left ${level === 2 ? 'text-xs' : ''}`}>{session.title}</span>}
       </span>
-      {session.id !== renaming && (hasChildren || session.worktree || status) && <span className={`absolute inset-y-0 right-0 flex items-center gap-1 rounded-r-md bg-linear-to-r from-transparent via-(--row-bg) via-25% to-(--row-bg) pl-4 pr-2 ${!session.worktree && !status ? 'invisible group-hover/session:visible group-focus-within/session:visible' : ''}`}>
+      {session.id !== renaming && (hasChildren || session.worktree || status) && <span className={`absolute inset-y-0 right-0 flex items-center gap-1 rounded-r-md bg-linear-to-r from-transparent via-(--row-bg) via-[length:1.5rem] to-(--row-bg) pl-8 pr-2 ${!session.worktree && !status ? 'invisible group-hover/session:visible group-focus-within/session:visible' : ''}`}>
         {hasChildren && <span className="session-item-twistie hidden size-4 shrink-0 items-center group-hover/session:flex group-focus-within/session:flex" onClick={toggle}>
           <Icon name={expanded ? 'chevron-down' : 'chevron-right'} />
         </span>}
