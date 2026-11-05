@@ -43,6 +43,10 @@ harness reports; when both are present, show the shortest normally and the
 longest on hover or keyboard focus. Tests cover both-window and weekly-only
 readings. Revisit if Codex supplies a five-hour window that does not appear.
 
+Claude did report both windows. Its five-hour reading disappeared because the
+sidebar filtered out readings after their reset time. Keep the last reading
+visible, dimmed and marked Waiting, until the harness reports again.
+
 ## Codex MCP tool approvals offer Always allow
 
 Codex's MCP tool approvals arrive as `mcpServer/elicitation/request` without

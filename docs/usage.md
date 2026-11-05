@@ -102,7 +102,8 @@ subscription usage reported by the harness: percent used and time until reset.
 It shows the shortest reported window normally and the longest on hover or
 keyboard focus. When the harness reports only one window, that window stays
 visible. The meter's mark shows how much of the time window has elapsed.
-Expired readings disappear until the harness reports again. See
+After a window resets, its last reading stays dimmed and marked **Waiting**
+until the harness reports again. See
 [usage reports](harness-support.md#usage-reports) for what each harness supplies.
 
 ## Answer a request
