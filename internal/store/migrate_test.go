@@ -21,7 +21,8 @@ func TestOpenDeletesLegacyStatusItems(t *testing.T) {
 				return err
 			}
 		}
-		return nil
+		// This state predates the transcript cleanup.
+		return tx.exec(`PRAGMA user_version = 0`)
 	})
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -99,7 +100,8 @@ func TestOpenDeletesRequestsMirroredIntoParents(t *testing.T) {
 				return err
 			}
 		}
-		return nil
+		// This state predates the transcript cleanup.
+		return tx.exec(`PRAGMA user_version = 0`)
 	})
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
@@ -117,6 +119,27 @@ func TestOpenDeletesRequestsMirroredIntoParents(t *testing.T) {
 			t.Errorf("items after reopening = %v, want [own message]", got)
 		}
 		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyTranscriptCleanupRunsOnce(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		_, err := tx.PutEntry("s", Entry{Seq: 1, Item: "status", Data: []byte(`{"kind":"status"}`)})
+		return err
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopen(t).Read(func(tx *Tx) error {
+		entries, err := tx.Transcript("s")
+		if err == nil && len(entries) != 1 {
+			t.Error("reopening repeated the historical transcript cleanup")
+		}
+		return err
 	}); err != nil {
 		t.Fatal(err)
 	}

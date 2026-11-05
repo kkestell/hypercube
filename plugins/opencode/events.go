@@ -212,7 +212,12 @@ func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json
 		t.Done, t.Failed = true, status == "failed"
 		t.Output, t.Images = toolOutput(content)
 	}
-	ag.tools[id] = t
+	if t.Done {
+		// Remember completion to ignore later updates without retaining payloads.
+		ag.tools[id] = harness.Item{Done: true}
+	} else {
+		ag.tools[id] = t
+	}
 	ev.Items = append(ev.Items, t)
 }
 

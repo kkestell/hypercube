@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,11 +51,33 @@ func openFile(rt *session.Runtime, dir, self string, args openFileArgs) (string,
 	if err != nil {
 		return "", err
 	}
-	content, err := os.ReadFile(real)
+	file, err := os.Open(real)
 	if err != nil {
 		return "", err
 	}
-	count := bytes.Count(content, []byte("\n")) + 1
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return "", err
+	}
+	if info.IsDir() {
+		return "", fmt.Errorf("%s is a directory", path)
+	}
+	var count int
+	if len(args.Lines) > 0 {
+		count = 1
+		buf := make([]byte, 32<<10)
+		for {
+			n, err := file.Read(buf)
+			count += bytes.Count(buf[:n], []byte("\n"))
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return "", err
+			}
+		}
+	}
 	if args.Lines == nil {
 		args.Lines = []session.LineRange{}
 	}
