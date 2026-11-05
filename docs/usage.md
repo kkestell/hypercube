@@ -178,6 +178,5 @@ worktree's commits must be merged into the original checkout's HEAD. Deletion
 refuses without changing anything until its checks pass. The checks honor Git's
 submodule settings, including settings that ignore submodule changes.
 
-Open archived chats through Search or **Settings**, which lists archived
-families by workspace and also lets you delete them. An archived family appears
-in the sidebar while selected, then leaves it when you choose another session.
+Open archived chats through Search or the sidebar’s **Archived** tab, which lists
+archived families by workspace and also lets you delete them.

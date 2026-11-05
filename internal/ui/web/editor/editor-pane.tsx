@@ -44,8 +44,11 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
     e.dataTransfer.dropEffect = 'move';
     setDrop(edgeAt(e, body.current));
   };
+  // dragleave fires as the pointer crosses each child; only leaving the
+  // pane's rectangle ends the drop.
   const left = (e: DragEvent<HTMLDivElement>) => {
-    if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) setDrop(null);
+    const r = e.currentTarget.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX >= r.right || e.clientY < r.top || e.clientY >= r.bottom) setDrop(null);
   };
   const dropped = (e: DragEvent) => {
     if (!dragging || !body.current) return;

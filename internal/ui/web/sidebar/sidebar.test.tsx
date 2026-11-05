@@ -22,7 +22,7 @@ const session = (id: string, extra: Partial<Session> = {}) => testSession({id, t
 const setSessions = (store: Store, sessions: Session[]) =>
   store.update(s => ({...s, workspaces: s.workspaces.map(w => w.id === 'w' ? {...w, sessions} : w)}));
 
-function setup(sessions: Session[]) {
+function setup(sessions: Session[], selected: string | null = null) {
   let respond = () => new Response('');
   const requests: URL[] = [];
   Object.defineProperty(globalThis, 'fetch', {
@@ -32,7 +32,7 @@ function setup(sessions: Session[]) {
       return respond();
     },
   });
-  const store = createStore(testState({selected: null, workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]}));
+  const store = createStore(testState({selected, workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]}));
   function View() {
     const [searchOpen, setSearchOpen] = useState(false);
     return <><Sidebar searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} onSettings={() => {}} /><ConfirmDialog /></>;
@@ -469,6 +469,27 @@ test('search opens from the sidebar and choosing a result shows its session', as
   expect(document.body.textContent).toContain('matching words');
   await act(async () => clickControl(find(document, '[cmdk-item]')));
   expect(store.get().selected).toBe('ended');
+  expect(sessionRows(root)).toEqual(['ended']);
+});
+
+test.each([
+  {id: 'archived', view: 'Archived', other: 'Sessions'},
+  {id: 'active', view: 'Sessions', other: 'Archived'},
+])('search reveals an already selected $id session after switching tabs', async ({id, view, other}) => {
+  const {root, store, answer} = setup([session('active'), session('archived', {ended: true, running: false})], id);
+  const tabs = find(root, '[aria-label="Session list"]');
+  expect(find(tabs, '[data-state=active]').textContent).toBe(view);
+  click(find(tabs, '[data-state=inactive]'));
+  expect(find(tabs, '[data-state=active]').textContent).toBe(other);
+  expect(root.querySelector(`[data-session="${id}"]`)).toBeNull();
+  answer(() => Response.json([{id, title: 'Session ' + id, workspace: 'repo', text: 'matching words'}]));
+  await act(async () => clickControl(find(root, '[aria-label="Search sessions"]')));
+  const input = element(document, '[cmdk-input]', HTMLInputElement);
+  await act(async () => { setValue(input, 'matching '); input.dispatchEvent(new Event('input', {bubbles: true})); });
+  await act(async () => clickControl(find(document, '[cmdk-item]')));
+  expect(store.get().selected).toBe(id);
+  expect(find(tabs, '[data-state=active]').textContent).toBe(view);
+  expect(root.querySelector(`[data-session="${id}"]`)).not.toBeNull();
 });
 
 test('closing search returns focus to its button', async () => {
@@ -491,5 +512,18 @@ test('archive menu hides the family while search can select its chat', () => {
   expect(posted()).toEqual([{action: 'archive', id: 'active'}]);
   chooseSession(store, 'child');
   expect(store.get().selected).toBe('child');
+  expect(sessionRows(root)).toEqual(['archived', 'child']);
+  click(find(root, '[role=tab][data-state=inactive]'));
+  expect(sessionRows(root)).toEqual(['active']);
+  click(find(root, '[role=tab][data-state=inactive]'));
+  expect(sessionRows(root)).toEqual(['archived', 'child']);
   expect(posted()).toHaveLength(1);
+});
+
+
+test('an initially selected archived child opens its family in Archived', () => {
+  const child = session('child', {parent: 'archived', running: false, ended: true});
+  const {root} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})], 'child');
+  expect(sessionRows(root)).toEqual(['archived', 'child']);
+  expect(find(root, '[aria-label="Session list"] [data-state=active]').textContent).toBe('Archived');
 });

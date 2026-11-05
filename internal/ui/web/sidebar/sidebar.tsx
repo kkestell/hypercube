@@ -1,11 +1,6 @@
-// The Sessions view: a collapsible section per
-// workspace, each holding a tree of its sessions. The list freezes during
-// renaming so the field keeps its place and focus. Stopped sessions stay
-// hidden until their workspace's or parent's menu shows them; archived
-// sessions stay hidden. A session shows anyway while it is selected or leads
-// to a child that shows, and a selected archived family shows whole.
-import {useCallback, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
-import {addWorkspace} from '../sessions/session-actions.ts';
+// Workspace groups show either active sessions or archived families.
+import {useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
+import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
 import {runningFirst, sessionOf, stopped} from '../sessions/selection.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
 import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
@@ -17,6 +12,7 @@ import {WorkspaceSection} from './workspace-section.tsx';
 import {SessionSearch} from './session-search.tsx';
 import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
+import {Tabs, TabsContent, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {Icon} from '../shared/icon.tsx';
 
 const below = (button: HTMLElement) => {
@@ -42,13 +38,27 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const [menu, setMenu] = useState<Menu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
   const [shownStopped, setShownStopped] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState('sessions');
   const frozen = useRef(state.workspaces);
+  const family = sessionOf(state, state.selected);
+  const selectedView = family ? ((family.parent ?? family.session).ended ? 'archived' : 'sessions') : null;
+  useEffect(() => {
+    if (selectedView) setView(selectedView);
+  }, [state.selected, selectedView]);
+
+  const selectSearchResult = (id: string) => {
+    const family = sessionOf(state, id);
+    if (family) setView((family.parent ?? family.session).ended ? 'archived' : 'sessions');
+    chooseSession(store, id);
+  };
 
   const selected = (session: Session) => session.id === state.selected;
   const visible = (workspace: Workspace) => workspace.sessions.flatMap(top => {
-    const children = top.children.filter(child => !stopped(child) || shownStopped[top.id] || selected(child) || (top.ended && selected(top)));
+    if (view === 'archived') return top.ended ? [top] : [];
+    if (top.ended) return [];
+    const children = top.children.filter(child => !stopped(child) || shownStopped[top.id] || selected(child));
     const leads = children.some(child => !stopped(child) || selected(child));
-    const shown = top.ended ? selected(top) || children.some(selected) : !stopped(top) || shownStopped[workspace.id] || selected(top) || leads;
+    const shown = !stopped(top) || shownStopped[workspace.id] || selected(top) || leads;
     return shown ? [{...top, children}] : [];
   });
   if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: runningFirst(visible(workspace))}));
@@ -64,10 +74,10 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   };
   const workspaceMenu = (workspace: Workspace) => {
     const sessions = state.workspaces.find(w => w.id === workspace.id)?.sessions.filter(s => !s.ended) ?? [];
-    return [stoppedItems(workspace.id, sessions), ...workspaceItems(store, workspace)];
+    return [view === 'sessions' ? stoppedItems(workspace.id, sessions) : [], ...workspaceItems(store, workspace)];
   };
   const sessionMenu = (session: Session) =>
-    [stoppedItems(session.id, sessionOf(state, session.id)?.session.children ?? []), ...sessionItems(store, session, () => setRenaming(session.id))];
+    [view === 'sessions' ? stoppedItems(session.id, sessionOf(state, session.id)?.session.children ?? []) : [], ...sessionItems(store, session, () => setRenaming(session.id))];
 
   const contextMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
@@ -89,26 +99,33 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     const menuKey = e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey);
     if (!row || !session || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
-    if (e.key === 'F2') setRenaming(session.id);
-    else setMenu({...below(row), items: sessionMenu(session)});
+    if (e.key === 'F2') {
+      if (session.parent || !session.ended) setRenaming(session.id);
+    } else setMenu({...below(row), items: sessionMenu(session)});
   };
 
   return (
     <div className="sidebar flex h-full min-h-0 flex-col bg-card">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}]} selected="sessions" clearsWindowButtons actions={<>
-          <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} />
+          <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={selectSearchResult} />
           <Button className={barButton} variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
           <Button className={barButton} variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
         </>}>
-        <div className="sidebar-body min-h-0 flex-1 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
-          {workspaces.map(workspace => (
-            <WorkspaceSection
-              key={workspace.id} workspace={workspace}
-              onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
-              renaming={renaming} onRenaming={setRenaming}
-            />
-          ))}
-        </div>
+        <Tabs value={view} onValueChange={value => { setRenaming(null); setView(value); }} className="min-h-0 flex-1 gap-0">
+          <TabsList aria-label="Session list" className="mx-2 mt-1">
+            <TabsTrigger value="sessions">Sessions</TabsTrigger>
+            <TabsTrigger value="archived">Archived</TabsTrigger>
+          </TabsList>
+          <TabsContent value={view} className="sidebar-body min-h-0 overflow-auto p-2 pt-1" onContextMenu={contextMenu} onKeyDown={keyDown}>
+            {workspaces.map(workspace => (
+              <WorkspaceSection
+                key={workspace.id} workspace={workspace}
+                onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
+                renaming={renaming} onRenaming={setRenaming}
+              />
+            ))}
+          </TabsContent>
+        </Tabs>
       </PanelTabs>
       <Usage />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={closeMenu} />}

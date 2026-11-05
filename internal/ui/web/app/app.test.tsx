@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {find, mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, find, mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace, unread} from '../../test-state.ts';
 import {panes} from '../editor/tab-layout.ts';
 import {receivedWorkspaces} from '../sessions/selection.ts';
@@ -267,7 +267,7 @@ test('Settings opens from the sidebar, shortcut and menu and removes saved choic
   expect(find(document, '[role=dialog]').textContent).toContain('Settings');
 });
 
-test('Settings lists archived families and opens and deletes them', async () => {
+test('archived families open from the sidebar and can be deleted', async () => {
   const requests = answer((_, init) => init?.method === 'POST' ? new Response('') : Response.json([]));
   const child = testSession({id: 'child', parent: 'archived', title: 'Child chat', ended: true, activity: 'exited'});
   const archived = testSession({id: 'archived', title: 'Finished work', ended: true, activity: 'exited', children: [child]});
@@ -276,25 +276,16 @@ test('Settings lists archived families and opens and deletes them', async () => 
     [testWorkspace({id: 'w', name: 'My workspace', path: '/repo', sessions: [active, archived]})]));
   const root = mount(store, <App store={store} />);
   expect(root.querySelector('[data-session="archived"]')).toBeNull();
-  await act(async () => { find(root, '[aria-label="Settings"]').click(); });
-  let settings = find(document, '[role=dialog]');
-  expect(settings.textContent).toContain('Archived Sessions');
-  expect(settings.textContent).toContain('Finished work');
-  expect(settings.textContent).toContain('My workspace');
-  expect(settings.textContent).not.toContain('Active work');
-  await act(async () => { find(settings, '[aria-label="Open Finished work, My workspace"]').click(); });
-  expect(document.querySelector('[role=dialog]')).toBeNull();
+  act(() => { clickControl(find(root, '[aria-label="Session list"] [role=tab][data-state=inactive]')); });
+  expect(root.querySelector('[data-session="active"]')).toBeNull();
+  act(() => { find(root, '[data-session="archived"]').click(); });
   expect(store.get().selected).toBe('archived');
-  expect(root.querySelector('[data-session="child"]')).not.toBeNull();
   expect(sendDisabled(root)).toBe(true);
   act(() => { find(root, '[data-session="child"]').click(); });
   expect(store.get().selected).toBe('child');
   expect(sendDisabled(root)).toBe(true);
-  act(() => { find(root, '[data-session="active"]').click(); });
-  expect(root.querySelector('[data-session="archived"]')).toBeNull();
-  await act(async () => { find(root, '[aria-label="Settings"]').click(); });
-  settings = find(document, '[role=dialog]');
-  act(() => { find(settings, '[aria-label="Delete Finished work, My workspace"]').click(); });
+  act(() => { find(root, '[data-session="archived"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
+  act(() => { clickControl(find(document, '[role=menuitem]')); });
   const confirmation = find(document, '[role=alertdialog]');
   expect(confirmation.textContent).toContain("Its chat and its children's chats are deleted.");
   expect(requests.filter(request => request.method === 'POST')).toHaveLength(0);

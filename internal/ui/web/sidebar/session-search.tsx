@@ -5,17 +5,15 @@ import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../component
 import {CommandDialog} from '../shared/command-dialog.tsx';
 import {barButton} from '../app/title-bar.ts';
 import {Button} from '../components/ui/button';
-import {chooseSession} from '../sessions/session-actions.ts';
 import type {SessionSearchResult} from '../sessions/types.ts';
-import {useStore} from '../store.ts';
 
 interface SessionSearchProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSelect: (id: string) => void;
 }
 
-export function SessionSearch({open, onOpenChange}: SessionSearchProps) {
-  const [, store] = useStore();
+export function SessionSearch({open, onOpenChange, onSelect}: SessionSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SessionSearchResult[]>([]);
   const [error, setError] = useState('');
@@ -45,7 +43,7 @@ export function SessionSearch({open, onOpenChange}: SessionSearchProps) {
       <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
       <CommandList>
         {query.trim() && <CommandEmpty>{error || 'No sessions found.'}</CommandEmpty>}
-        {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); chooseSession(store, result.id); }}>
+        {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); onSelect(result.id); }}>
           <div className="flex min-w-0 flex-col gap-1">
             <span className="truncate">{result.title}</span>
             <span className="truncate text-xs text-muted-foreground">{result.workspace}</span>
