@@ -3,7 +3,7 @@
 // not showing. A request comes from the state message's requests, newest
 // first; a reply from a session's reply and replySeq. Closing an error card
 // removes the error; closing another card dismisses it in this page.
-import {chooseSession, markSeen} from '../sessions/session-actions.ts';
+import {chooseSession} from '../sessions/session-actions.ts';
 import {allSessions, sessionOf} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -44,15 +44,13 @@ export function cards(state: State): Card[] {
 
 export const dismiss = (state: State, key: string): State => ({...state, dismissed: {...state.dismissed, [key]: true}});
 
-// closeCard removes an error card and dismisses another. Closing a reply's card
-// also marks it seen, which lasts across reloads.
+// closeCard removes an error card and dismisses another.
 export function closeCard(store: Store, card: Card) {
   if (card.kind === 'error') {
     store.update(state => closeError(state, card.key));
     return;
   }
   store.update(state => dismiss(state, card.key));
-  if (card.kind === 'reply') markSeen(store, card.session.id);
 }
 
 // startNativeNotifications shows the session of a macOS notification the user

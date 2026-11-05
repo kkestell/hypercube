@@ -14,8 +14,8 @@ import {TranscriptImages} from './transcript-images.tsx';
 import type {Row} from './transcript-tree.ts';
 import type {ErrorItem, TextItem} from './types.ts';
 
-const TextBlock = memo(({item}: {item: TextItem}) => (
-  <div className="transcript-text group relative my-2 flex flex-col gap-3">
+const TextBlock = memo(({item, response}: {item: TextItem; response?: boolean}) => (
+  <div className={`transcript-text group relative my-2 flex flex-col gap-3 ${response ? '[&_.prose]:text-foreground' : ''}`}>
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
     {item.text && <CopyButton text={item.text} label="Copy message" gutter />}
@@ -33,7 +33,7 @@ export interface RowControls {
 }
 
 // TranscriptRow draws a row of transcriptRows.
-export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {row: Row}) {
+export function TranscriptRow({row, session, expanded, setOpen, response}: RowControls & {row: Row; response?: boolean}) {
   switch (row.type) {
     case 'activity': return <ActivityItem row={row} session={session} expanded={expanded} setOpen={setOpen} />;
     case 'tool': return <ToolCall call={row} session={session} expanded={expanded} setOpen={setOpen} />;
@@ -42,6 +42,6 @@ export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {
     case 'user': return <MessageItem item={row.item} inline={row.inline} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={row.item} session={session} />;
     case 'error': return <ErrorAlert item={row.item} />;
-    case 'text': return <TextBlock item={row.item} />;
+    case 'text': return <TextBlock item={row.item} response={response} />;
   }
 }

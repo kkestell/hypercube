@@ -73,11 +73,14 @@ test('a reply preview renders inline Markdown and flattens blocks', () => {
   ].join('\n'));
 });
 
-test('closing a reply card marks the reply seen', () => {
+test('closing a reply card leaves the reply unseen', () => {
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
-  const root = mount(createStore(state), <NotificationStack />);
+  const store = createStore(state);
+  const root = mount(store, <NotificationStack />);
   act(() => root.querySelectorAll<HTMLElement>('[title="Close"]')[1].click());
-  expect(fetches.mock.calls.map(([path]) => path)).toEqual(['session?action=seen&id=a']);
+  expect(root.querySelectorAll('.notification-card').length).toBe(1);
+  expect(store.get().workspaces[0].sessions[0].unseen).toBe(true);
+  expect(fetches).not.toHaveBeenCalled();
 });
 
 test('View Session shows the card\'s session', () => {
@@ -89,7 +92,7 @@ test('View Session shows the card\'s session', () => {
   expect(root.querySelectorAll('.notification-card').length).toBe(1);
 });
 
-test('a reply card closes after 15 seconds and marks the reply seen', () => {
+test('a reply card closes after 15 seconds and leaves the reply unseen', () => {
   jest.useFakeTimers();
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
   const store = createStore(state);
@@ -99,7 +102,8 @@ test('a reply card closes after 15 seconds and marks the reply seen', () => {
   act(() => jest.advanceTimersByTime(1));
   expect(root.querySelectorAll('.notification-card').length).toBe(1);
   expect(store.get().dismissed).toEqual({'reply:a:4': true});
-  expect(fetches.mock.calls.map(([path]) => path)).toEqual(['session?action=seen&id=a']);
+  expect(store.get().workspaces[0].sessions[0].unseen).toBe(true);
+  expect(fetches).not.toHaveBeenCalled();
 });
 
 test('a refused action shows an error card, newest first, until it is closed', async () => {

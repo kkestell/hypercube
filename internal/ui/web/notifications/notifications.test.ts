@@ -48,15 +48,15 @@ test('dismissals are forgotten once the request is answered or the reply seen', 
   expect(next.dismissed).toEqual({});
 });
 
-test('closing a reply card marks it seen; closing a request card does not', () => {
+test('closing reply and request cards dismisses them without marking replies seen', () => {
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
   const s = createStore(state());
   const [request, , reply] = cards(s.get());
   closeCard(s, request);
   expect(fetchMock).not.toHaveBeenCalled();
   closeCard(s, reply);
-  const url = new URL(String(fetchMock.mock.calls[0][0]), 'http://x/');
-  expect([url.pathname, url.searchParams.get('action'), url.searchParams.get('id')]).toEqual(['/session', 'seen', 'a']);
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(s.get().workspaces[0].sessions[0].unseen).toBe(true);
   expect(cards(s.get()).map(c => c.key)).toEqual(['request:a-w:q1', 'reply:a-w:4', 'reply:b:3']);
 });
 

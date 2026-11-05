@@ -112,8 +112,8 @@ saved choices in **Settings** (**Command+,**). Available approval choices vary
 
 For requests from other sessions, answer the notification card or use its eye
 button to open the chat. Closing a request card hides it without answering.
-Closing a reply card marks the reply seen; reply cards also close after
-15 seconds or when the agent works again.
+Closing a reply card hides it without marking the reply seen; reply cards also
+close after 15 seconds or when the agent works again.
 
 When the native window lacks focus, macOS notifications announce requests and
 replies. Clicking one opens its session.
