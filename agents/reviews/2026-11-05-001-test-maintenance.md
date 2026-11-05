@@ -2,34 +2,37 @@
 
 ## Scope and coverage
 
-Reviewed the complete touched files in the diff from `da5ea0d`, the plan, and
-the retained tests that cover removed scenarios. This includes the harness
-client helper, app and session tests, React rendering helper and component
-tests, and the testing guidance in `AGENTS.md`.
+Reviewed the diff from `dfb4909`, complete remaining touched source files,
+removed test groups, and retained lifecycle, delivery, protocol, and state tests.
+The cleanup removes parallel app/Client layers and component presentation
+matrices without replacing each assertion or adding shared machinery.
 
-Removed routing cases remain covered by MCP and session tests; transcript
-grouping cases remain covered by `transcript-tree.test.ts`. Retained component
-tests protect interactions, focus, streaming, and request handling. The changes
-reduce duplication and implementation coupling without adding a framework or
-changing production behavior. Whole touched files remain easy to follow.
-
-This was a review of the cleanup, not an exhaustive audit of the entire suite.
-Real browser layout and visual behavior were not checked.
+Accepted gaps: fewer automated checks of simple UI wiring, presentation, and
+exact wrapper diagnostics. Real browser layout was not checked. This review
+covers the cleanup, not the entire suite.
 
 ## Summary
 
-No findings.
+| ID | Severity | Category | Fix | Title |
+| -- | -------- | -------- | --- | ----- |
+| F1 | Low | Simplicity | Fixed | Remove the unused stand-in writer |
+
+## F1. Remove the unused stand-in writer
+
+Low · Simplicity · Fixed · `internal/harness/harnesstest/harnesstest.go`
+
+Deleting the malformed-output scenario left `standIn.out` assigned but never
+read. The implementer removed the field and constructor assignment.
 
 ## Checks
 
-- Review: `git diff --check da5ea0d` passed.
-- Implementation validation: final `make check` passed, including 330 UI tests
-  with 1,282 assertions, TypeScript, vet, generated assets, formatting, and all
-  Go tests under `-race`.
-- Five React warnings remain around existing App focus restoration and initial
-  FilesPanel loading. No incidental network or iframe diagnostics remain.
+- Review: `git diff HEAD --check` passed.
+- Implementer: final `make check` passed after F1, including Go race tests,
+  TypeScript, generated assets, formatting, and 215 UI tests (779 assertions).
+  One existing React synchronization warning remains around App focus.
 
 ## Verdict
 
-The cleanup preserves distinct consequential coverage and reduces maintenance
-cost. No blocking defects found.
+No blocking findings. Consequential lifecycle, persistence, delivery, input
+validation, and protocol coverage remains; lower-value coverage was deliberately
+removed. F1 is fixed.

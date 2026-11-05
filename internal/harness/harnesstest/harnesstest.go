@@ -18,7 +18,6 @@
 //	!finish    end that turn with its text
 //	!answer    a turn of progress text and a final answer
 //	!stream    text and tool items that replace and extend each other
-//	!early     events before the reply
 //	!ask       an attention request with the choices yes and no
 //	!approve   a tool call and an approval for the tool "Tool", choices Allow and Deny
 //	!usage     a usage and limits event
@@ -26,7 +25,6 @@
 //	!image     an assistant item that holds only an image
 //	!child     start a child process in the plugin's group
 //	!crash     reply, then exit
-//	!malformed reply, then write a bad line
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
 // fails. With HYPERCUBE_TEST_CRASH set the plugin exits shortly after starting.
@@ -144,7 +142,6 @@ func Run() {
 
 // standIn is the state of one plugin process.
 type standIn struct {
-	out   io.Writer
 	enc   *json.Encoder
 	agent string
 	// held holds the IDs of inputs that wait for an interrupt.
@@ -157,7 +154,7 @@ type standIn struct {
 }
 
 func serve(in io.Reader, out io.Writer) {
-	p := &standIn{out: out, enc: json.NewEncoder(out)}
+	p := &standIn{enc: json.NewEncoder(out)}
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 1<<20), 64<<20)
 	var last int64
@@ -271,10 +268,6 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("stream"):
 		p.reply(cmd.ID, "")
 		p.stream()
-	case has("early"):
-		p.state(harness.Working, text(p.turn, "early", true))
-		p.reply(cmd.ID, "")
-		p.state(harness.Idle)
 	case has("ask"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Working, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Choices: []string{"yes", "no"}})
@@ -298,9 +291,6 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("crash"):
 		p.reply(cmd.ID, "")
 		os.Exit(exitCrash)
-	case has("malformed"):
-		p.reply(cmd.ID, "")
-		fmt.Fprintln(p.out, "not json")
 	default:
 		p.reply(cmd.ID, "")
 		p.state(harness.Working)

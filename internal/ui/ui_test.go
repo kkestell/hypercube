@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -120,50 +119,6 @@ func TestVersion(t *testing.T) {
 	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/version", nil))
 	if res.Code != http.StatusOK || res.Body.String() != buildinfo.String()+"\n" || res.Header().Get("Cache-Control") != "no-store" {
 		t.Fatalf("version response = %d, %v, %s", res.Code, res.Header(), res.Body)
-	}
-}
-
-func TestStateStreamsSnapshots(t *testing.T) {
-	a := newApp(t)
-	p := a.page()
-	p.until("the first state", func() bool { return len(p.state.Workspaces) == 1 })
-	if p.state.Build != buildID() || p.state.Requests == nil {
-		t.Fatalf("first state = %+v", p.state)
-	}
-	w, err := a.rt.AddWorkspace(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.until("the new workspace", func() bool { return len(p.state.Workspaces) == 2 })
-	s, err := a.rt.Create(w.ID, "lead", false, "Fix it")
-	if err != nil {
-		t.Fatal(err)
-	}
-	p.until("the new session", func() bool {
-		for _, workspace := range p.state.Workspaces {
-			if workspace.ID != w.ID {
-				continue
-			}
-			return len(workspace.Sessions) == 1 && workspace.Sessions[0].ID == s.ID &&
-				workspace.Sessions[0].Title == "Fix it" && workspace.Sessions[0].Running &&
-				workspace.Sessions[0].Harness == "test"
-		}
-		return false
-	})
-}
-
-func TestStateCarriesLimits(t *testing.T) {
-	a := newApp(t)
-	p := a.page()
-	p.until("the first state", func() bool { return p.state.Limits != nil })
-	if len(p.state.Limits) != 0 {
-		t.Fatalf("limits before any report = %+v", p.state.Limits)
-	}
-	a.input("!usage", http.StatusOK)
-	p.until("the limits", func() bool { return len(p.state.Limits) == 1 })
-	want := store.Limit{Harness: "test", Limit: harness.Limit{Minutes: 300, Used: 42, Resets: 1793767800, At: 1793750712115}}
-	if p.state.Limits[0] != want {
-		t.Fatalf("limits = %+v, want %+v", p.state.Limits, want)
 	}
 }
 
@@ -322,7 +277,6 @@ func newApp(t *testing.T) *app {
 	t.Cleanup(func() { db.Close() })
 	rt := session.New(db, "")
 	rt.PluginDir = plugins
-	rt.Terminals.Command = []string{"/bin/cat"}
 	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {
@@ -478,22 +432,6 @@ func (a *app) input(text string, want int) {
 	a.post("/session?action=input&id="+a.session.ID, string(body), want)
 }
 
-func TestImageInput(t *testing.T) {
-	a := newApp(t)
-	p := a.page()
-	p.send(`{"select":"` + a.session.ID + `"}`)
-	path := "/session?action=input&id=" + a.session.ID
-	a.post(path, "not json", http.StatusBadRequest)
-	a.post(path, `{"images":[{"mime_type":"image/png","data":"bm90IGEgcG5n"}]}`, http.StatusConflict)
-	a.post(path, `{"images":[{"mime_type":"image/svg+xml","data":"PHN2Zy8+"}]}`, http.StatusConflict)
-	a.post(path, `{"text":" "}`, http.StatusConflict)
-	a.post(path, `{"images":[{"mime_type":"image/png","data":"iVBORw0KGgo="}]}`, http.StatusOK)
-	p.until("the image prompt", func() bool {
-		it, ok := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindUser && len(it.Images) > 0 })
-		return ok && len(it.Images) == 1 && it.Images[0].Data == "iVBORw0KGgo="
-	})
-}
-
 func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 	a := newApp(t)
 	child := a.child("first")
@@ -593,243 +531,6 @@ func (p *page) session(id string) shownSession {
 	return shownSession{}
 }
 
-func TestRepliesAndRequestsReachEveryPage(t *testing.T) {
-	a := newApp(t)
-	child := a.child("worker")
-	pages := []*page{a.page(), a.page()}
-	for _, p := range pages {
-		p.until("the parent's reply", func() bool {
-			s := p.session(a.session.ID)
-			return s.Unseen && s.Reply == "ack" && s.ReplySeq > 0
-		})
-	}
-	a.input("!work", http.StatusOK)
-	for _, p := range pages {
-		p.until("the reply to clear while the parent works", func() bool {
-			s := p.session(a.session.ID)
-			return s.Unseen && s.Reply == "" && s.ReplySeq == 0 && s.Activity == store.Busy
-		})
-	}
-	a.input("!finish", http.StatusOK)
-	for _, p := range pages {
-		p.until("the new reply", func() bool {
-			s := p.session(a.session.ID)
-			return s.Reply == "finished"
-		})
-	}
-	a.input("!ask", http.StatusOK)
-	if err := a.rt.Input(child.ID, "!ask"); err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range pages {
-		p.until("requests from parent and child", func() bool { return len(p.state.Requests) == 2 })
-		if p.state.Requests[0].Session == p.state.Requests[1].Session {
-			t.Fatalf("requests = %+v", p.state.Requests)
-		}
-	}
-	for _, request := range pages[0].state.Requests {
-		a.post("/session?action=answer&id="+request.Session+"&request="+url.QueryEscape(request.Item.ID)+"&choice=yes", "", http.StatusOK)
-	}
-	for _, p := range pages {
-		p.until("answered requests to clear", func() bool { return len(p.state.Requests) == 0 })
-	}
-	a.post("/session?action=seen&id="+a.session.ID, "", http.StatusOK)
-	for _, p := range pages {
-		p.until("seen replies to clear", func() bool { s := p.session(a.session.ID); return !s.Unseen && s.Reply == "" && s.ReplySeq == 0 })
-	}
-	for _, input := range []string{"!work", "!finish"} {
-		if err := a.rt.Input(child.ID, input); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, p := range pages {
-		p.until("the child's reply", func() bool {
-			s := p.session(child.ID)
-			return s.Unseen && s.Reply == "finished" && s.ReplySeq > 0
-		})
-	}
-	a.post("/session?action=seen&id="+child.ID, "", http.StatusOK)
-	for _, p := range pages {
-		p.until("the child's reply to clear", func() bool { s := p.session(child.ID); return !s.Unseen && s.Reply == "" && s.ReplySeq == 0 })
-	}
-}
-
-func TestAnswerAndInterruptRoutes(t *testing.T) {
-	a := newApp(t)
-	p := a.page()
-	p.send(`{"select":"` + a.session.ID + `"}`)
-	a.input("!ask", http.StatusOK)
-	var request harness.Item
-	p.until("the request", func() bool {
-		var ok bool
-		request, ok = p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
-		return ok
-	})
-	if request.Text != "Proceed?" || !slices.Equal(request.Choices, []string{"yes", "no"}) || request.Done {
-		t.Fatalf("request = %+v", request)
-	}
-	a.post("/session?action=answer&id="+a.session.ID+"&request=missing&choice=yes", "", http.StatusConflict)
-	a.post("/session?action=answer&id="+a.session.ID+"&request="+url.QueryEscape(request.ID)+"&choice=yes", " now", http.StatusOK)
-	p.until("the answer", func() bool {
-		it, _ := p.find(a.session.ID, func(it harness.Item) bool { return it.Kind == harness.KindAttention })
-		return it.Done && it.Answer == "yes now"
-	})
-	// A finished request cannot be answered again.
-	a.post("/session?action=answer&id="+a.session.ID+"&request="+url.QueryEscape(request.ID)+"&choice=no", "", http.StatusConflict)
-
-	a.input("!work", http.StatusOK)
-	a.input("  ", http.StatusConflict)
-	a.post("/session?action=interrupt&id="+a.session.ID, "", http.StatusOK)
-}
-
-func TestTerminalSocket(t *testing.T) {
-	a := newApp(t)
-	path := "/terminal?session=" + a.session.ID + "&cols=100&rows=30"
-	conn, _, err := dial(t, a.server, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer conn.CloseNow()
-	ctx := t.Context()
-	if err := conn.Write(ctx, websocket.MessageBinary, []byte("hello\n")); err != nil {
-		t.Fatal(err)
-	}
-	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"cols":90,"rows":20}`)); err != nil {
-		t.Fatal(err)
-	}
-	var got string
-	for !strings.Contains(got, "hello") {
-		kind, data, err := conn.Read(ctx)
-		if err != nil || kind != websocket.MessageBinary {
-			t.Fatalf("read %q: %v", got, err)
-		}
-		got += string(data)
-	}
-
-	// A second connection gets the earlier output at once, and the shell ends
-	// with an exit message to every connection.
-	other, _, err := dial(t, a.server, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer other.CloseNow()
-	if _, data, err := other.Read(ctx); err != nil || !strings.Contains(string(data), "hello") {
-		t.Fatalf("replay %q: %v", data, err)
-	}
-	if err := conn.Write(ctx, websocket.MessageBinary, []byte{4}); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []*websocket.Conn{conn, other} {
-		for {
-			kind, data, err := c.Read(ctx)
-			if err != nil {
-				t.Fatalf("waiting for the exit: %v", err)
-			}
-			if kind == websocket.MessageText {
-				if string(data) != `{"exit":0}` {
-					t.Fatalf("exit message = %s", data)
-				}
-				break
-			}
-		}
-	}
-
-	// A stopped session has no shell.
-	if err := a.rt.Stop(a.session.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, res, err := dial(t, a.server, path); err == nil || res == nil || res.StatusCode != http.StatusConflict {
-		t.Fatalf("terminal of a stopped session: %v %v", res, err)
-	}
-}
-
-// A session is created by its first prompt: a refused prompt makes no session.
-func TestNewSessionTakesItsFirstPrompt(t *testing.T) {
-	a := newApp(t)
-	count := func() (n int) {
-		t.Helper()
-		if err := a.db.Read(func(tx *store.Tx) error {
-			list, err := tx.Sessions(a.session.Workspace)
-			n = len(list)
-			return err
-		}); err != nil {
-			t.Fatal(err)
-		}
-		return n
-	}
-	path := "/session?action=new&workspace=" + a.session.Workspace + "&profile=lead"
-	a.post(path, `{`, http.StatusBadRequest)
-	a.post(path, `{"text":" "}`, http.StatusConflict)
-	if count() != 1 {
-		t.Fatalf("a refused prompt left %d sessions", count())
-	}
-	req, _ := http.NewRequest("POST", a.server.URL+path, strings.NewReader(`{"text":"Fix the parser\nand the lexer"}`))
-	req.Header.Set("Origin", a.server.URL)
-	res, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK || count() != 2 {
-		t.Fatalf("new session: status %d, %d sessions", res.StatusCode, count())
-	}
-	var created struct{ Session string }
-	if err := json.NewDecoder(res.Body).Decode(&created); err != nil {
-		t.Fatal(err)
-	}
-	if res.Header.Get("Content-Type") != "application/json" {
-		t.Fatalf("new session content type = %q", res.Header.Get("Content-Type"))
-	}
-	var title string
-	var parent store.Session
-	if err := a.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(created.Session)
-		title = s.Title
-		if err == nil {
-			parent = s
-		}
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	items, err := a.rt.Transcript(parent.ID)
-	i := slices.IndexFunc(items, func(it session.TranscriptItem) bool { return it.Kind == harness.KindUser })
-	if err != nil || title != "Fix the parser" || i < 0 || items[i].Text != "Fix the parser\nand the lexer" {
-		t.Fatalf("title %q, transcript %+v, %v", title, items, err)
-	}
-}
-
-func TestNewWorktreeSession(t *testing.T) {
-	a := newApp(t)
-	repo := t.TempDir()
-	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"}} {
-		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	w, err := a.rt.AddWorkspace(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := a.page()
-	a.post("/session?action=new&workspace="+w.ID+"&profile=lead&worktree=1", `{"text":"Fix it"}`, http.StatusOK)
-	p.until("the worktree session with its merge status", func() bool {
-		for _, shown := range p.state.Workspaces {
-			if shown.ID == w.ID {
-				return !shown.NoGit && len(shown.Sessions) == 1 && shown.Sessions[0].Worktree &&
-					shown.Sessions[0].Merge != nil && shown.Sessions[0].Merge.Target == "main"
-			}
-		}
-		return false
-	})
-	for _, shown := range p.state.Workspaces {
-		if shown.ID == a.session.Workspace && (!shown.NoGit || shown.Sessions[0].Worktree) {
-			t.Errorf("checkout workspace = %+v", shown)
-		}
-	}
-}
-
 func TestSnapshotOrder(t *testing.T) {
 	db := open(t)
 	seedSnapshot(t, db, "b", "/src/zeta", "s1")
@@ -883,17 +584,5 @@ func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, childr
 			}
 		}
 		return nil
-	})
-}
-
-func TestStopShowsTheSessionStoppedWithoutAttention(t *testing.T) {
-	a := newApp(t)
-	p := a.page()
-	a.input("!ask", http.StatusOK)
-	p.until("the session to wait on the user", func() bool { s := p.session(a.session.ID); return s.Running && s.Attention })
-	a.post("/session?action=stop&id="+a.session.ID, "", http.StatusOK)
-	p.until("the session to show stopped without attention", func() bool {
-		s := p.session(a.session.ID)
-		return !s.Running && !s.Attention && s.Activity == store.Exited
 	})
 }

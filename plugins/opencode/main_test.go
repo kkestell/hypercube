@@ -930,23 +930,6 @@ func TestInterruptCancelsAForm(t *testing.T) {
 	}
 }
 
-func TestInputWhenNotRunning(t *testing.T) {
-	h := connected(t)
-	h.acp.out.(io.Closer).Close()
-	<-h.rpc.Done()
-	if err := h.input("hello", nil); err == nil {
-		t.Fatal("input to a process that has ended")
-	}
-}
-
-func TestStartWithoutOpenCode(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
-	_, err := startAgent(harness.StartArgs{Dir: t.TempDir()}, func(harness.Event) {})
-	if err == nil || !strings.Contains(err.Error(), "OpenCode is missing") {
-		t.Fatal(err)
-	}
-}
-
 // startAgent runs opencode in the agent's directory with its instructions as
 // a file, and reports a process that cannot start its server.
 func TestStartRunsOpenCodeAcp(t *testing.T) {

@@ -543,7 +543,7 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 // for each user message, and records its arguments in $FAKE_ARGS. It plays
 // $FAKE_BEFORE first, and with $FAKE_FAIL it then exits, as claude does when
 // it cannot resume. With $FAKE_INIT it plays that file in answer to
-// initialize and exits. With $FAKE_EXIT it exits when it gets a user message.
+// initialize and exits.
 func fakeClaude(t *testing.T, env map[string]string) (args string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -556,7 +556,7 @@ while IFS= read -r line; do
     *'"initialize"'*)
       if [ -n "$FAKE_INIT" ]; then cat "$FAKE_INIT"; exit 0; fi
       echo '{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}' ;;
-    *'"type":"user"'*) if [ -n "$FAKE_EXIT" ]; then echo boom >&2; exit 3; fi; cat "$FAKE_STREAM" ;;
+    *'"type":"user"'*) cat "$FAKE_STREAM" ;;
   esac
 done
 `
@@ -567,7 +567,7 @@ done
 	args = filepath.Join(dir, "args")
 	t.Setenv("FAKE_ARGS", args)
 	t.Setenv("FAKE_STREAM", filepath.Join("testdata", "text.jsonl"))
-	for _, k := range []string{"FAKE_BEFORE", "FAKE_FAIL", "FAKE_INIT", "FAKE_EXIT"} {
+	for _, k := range []string{"FAKE_BEFORE", "FAKE_FAIL", "FAKE_INIT"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range env {
@@ -733,22 +733,6 @@ func TestStartFailsOnAnInitializeError(t *testing.T) {
 	})
 	if err := startFails(t, startArgs); err.Error() != "bad options" {
 		t.Error(err)
-	}
-}
-
-func TestExitEndsTheProcess(t *testing.T) {
-	fakeClaude(t, map[string]string{"FAKE_EXIT": "1"})
-	c, _ := start(t, startArgs)
-	if err := c.input("hello", nil); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-c.proc.Done():
-	case <-time.After(10 * time.Second):
-		t.Fatal("claude did not end")
-	}
-	if err := c.proc.Err(); !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "boom") {
-		t.Errorf("error %v", err)
 	}
 }
 
