@@ -44,9 +44,11 @@ function start() {
     },
   });
 
-  // The menus run the page's shortcuts in its window; zoom is the app's.
+  // The menus run the page's shortcuts in its window; zoom and About are the
+  // app's.
   const zooms = {zoomIn: 1, zoomOut: -1, zoomReset: 0};
   const run = id => {
+    if (id === 'about') return showAbout(origin);
     if (id in zooms) return win.zoom(zooms[id]);
     win.show();
     win.send('hypercube-shortcut', {id});
@@ -113,4 +115,14 @@ function start() {
 
   app.on('activate', win.show);
   app.on('second-instance', win.show);
+}
+
+// showAbout shows the standard About panel with the running backend's build,
+// which can be newer than this app until the app restarts after a reinstall.
+async function showAbout(origin) {
+  const identity = await fetch(`${origin}/version`).then(response => response.text(), () => 'Hypercube unavailable');
+  // "Hypercube v0.1.0 (commit)" shows as "Version 0.1.0 (commit)".
+  const [, version, commit] = identity.trim().split(' ');
+  app.setAboutPanelOptions({applicationVersion: version.replace(/^v/, ''), ...(commit && {version: commit.slice(1, -1)})});
+  app.showAboutPanel();
 }

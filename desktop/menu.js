@@ -2,7 +2,7 @@
 // items, each with its key bindings, and the menus own those keys wherever
 // focus is in the window. An item's first binding shows in the menu; the others
 // are hidden items. Zoom items are the app's; the others go to the page.
-const {Menu} = require('electron');
+const {app, Menu} = require('electron');
 const {accelerator} = require('./accelerator.js');
 
 // setMenu installs the menu with the page's items. run is called with each
@@ -12,7 +12,7 @@ function setMenu(items, run) {
     ({label: item.title, accelerator: accelerator(binding), visible: i === 0, click: () => run(item.id)})));
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     {role: 'appMenu', submenu: [
-      {role: 'about'},
+      {label: `About ${app.name}`, click: () => run('about')},
       {type: 'separator'},
       ...section('App'),
       {type: 'separator'},

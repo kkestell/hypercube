@@ -163,7 +163,7 @@ or harness storage overrides before starting.
 
 ## Identify a build
 
-**Settings → Build** identifies the running app. `hypercube version` identifies
+**Hypercube → About Hypercube** identifies the running app. `hypercube version` identifies
 the executable on your PATH; these may differ before you reload the service.
 The running server also reports its identity at http://localhost:4280/version
 and writes it to the service log at startup.

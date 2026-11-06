@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {fetchConfig, fetchVersion, saveConfig} from '../api.ts';
+import {fetchConfig, saveConfig} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Label} from '../components/ui/label';
@@ -10,7 +10,7 @@ import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
 import {SettingsProfiles, type ProfileDraft} from './settings-profiles.tsx';
 
-const sections = ['General', 'Agent profiles', 'Permissions', 'About'] as const;
+const sections = ['General', 'Agent profiles', 'Permissions'] as const;
 type Section = typeof sections[number];
 
 export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
@@ -29,7 +29,6 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
   const [draft, setDraft] = useState<ProfileDraft | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
-  const [version, setVersion] = useState('');
   useEffect(() => {
     let active = true;
     fetchConfig(store).then(config => {
@@ -37,7 +36,6 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
       if (config) setDraft({profiles: config.profiles, defaultIndex: config.profiles.findIndex(p => p.name === config.default_profile)});
       else setLoadFailed(true);
     });
-    fetchVersion(store).then(result => { if (active && result) setVersion(result); });
     return () => { active = false; };
   }, [store]);
   const save = async () => {
@@ -65,7 +63,7 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
           aria-current={section === name ? 'page' : undefined} onClick={() => setSection(name)}>{name}</Button>)}
       </nav>
       <div className="min-w-0 flex-1 overflow-y-auto p-6">
-        <h2 className="mb-2 text-xl font-semibold">{section === 'About' ? 'About Hypercube' : section}</h2>
+        <h2 className="mb-2 text-xl font-semibold">{section}</h2>
         <div className="mt-5">
           {(section === 'General' || section === 'Agent profiles') && !draft && <p>{loadFailed ? 'Could not load settings. Close and reopen to try again.' : 'Loading settings…'}</p>}
           <fieldset disabled={saving} className="min-w-0">
@@ -80,7 +78,6 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
             {section === 'Agent profiles' && draft && <SettingsProfiles draft={draft} onChange={setDraft} />}
           </fieldset>
           {section === 'Permissions' && <SettingsPermissions />}
-          {section === 'About' && <section aria-label="Build" className="grid gap-3"><h3 className="font-semibold">Build</h3><p className="break-all text-sm text-muted-foreground">{version}</p></section>}
         </div>
       </div>
     </div>
