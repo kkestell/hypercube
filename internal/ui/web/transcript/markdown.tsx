@@ -96,15 +96,18 @@ function flatTokens(list: Token[] = []): ReactNode[] {
   return joined(list.map(token => element(token, {flatten: true})).filter(node => node != null).map((node, i) => <Fragment key={i}>{node}</Fragment>), '\n');
 }
 
-// style is 'chat' or 'preview'.
+// style is 'chat' or 'preview'. Text is content in the foreground color, or
+// supporting information, such as reasoning, in the muted color. Every text
+// element takes that color; list markers and captions are always muted.
 interface MarkdownProps extends Pick<Options, 'imageSource'> {
   text: string;
   style: 'chat' | 'preview';
+  muted?: boolean;
 }
 
-export function Markdown({text, style, imageSource}: MarkdownProps) {
+export function Markdown({text, style, muted, imageSource}: MarkdownProps) {
   return (
-    <div className={`markdown markdown-${style} prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+    <div className={`markdown markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
       {tokens(lexer(text), {preview: style === 'preview', imageSource})}
     </div>
   );

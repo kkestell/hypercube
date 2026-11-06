@@ -22,10 +22,10 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
     : item.failed ? <Icon name="error" className="tool-items-failed text-destructive" role="img" title="Failed" />
     : <Icon name="check" role="img" title="Done" />;
   return (
-    <Disclosure className="tool-items-call [.tool-items-call+&]:-mt-3" open={open} onToggle={open => setOpen(item.id, open)}
+    <Disclosure className="tool-items-call [.tool-items-call[data-state=closed]+&]:-mt-3" open={open} onToggle={open => setOpen(item.id, open)}
       marker={<span className="tool-items-status">{status}</span>} summary={<Title item={item} />}>
       {open && (
-        <div className="tool-items-body mt-2 space-y-2 pl-6">
+        <div className="tool-items-body mt-2 space-y-2">
           {(input || output) && <Card className="gap-0 overflow-hidden border-0 py-0">
             {input && <CardContent className="space-y-2 px-3 py-2">
               <h4 className="text-xs font-medium text-muted-foreground">Arguments</h4>
@@ -37,7 +37,7 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
             </CardContent>}
           </Card>}
           {children.length > 0 && (
-            <div className="tool-items-children flex flex-col gap-3 border-l pl-3">
+            <div className="tool-items-children flex flex-col gap-3">
               {children.map(row => <TranscriptRow key={row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
             </div>
           )}

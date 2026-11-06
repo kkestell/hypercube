@@ -70,7 +70,9 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
   );
   return (
     <Disclosure className="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={heading} preview={text.split(/\r?\n/, 1)[0]}>
-      {expanded && <div className="pl-8 pr-3">{body}</div>}
+      {/* The body's first line takes the preview's place, which sits inside
+          the trigger's bottom padding. */}
+      {expanded && <div className="-mt-1 pr-3">{body}</div>}
     </Disclosure>
   );
 }

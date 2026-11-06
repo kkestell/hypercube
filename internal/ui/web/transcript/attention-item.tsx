@@ -20,7 +20,7 @@ export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {i
   return (
     <Card className="attention-item gap-0 border-0 py-3"><CardContent className="space-y-2 px-4">
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground"><Icon name="check" />{item.answer ? 'Answered' : 'Closed'}</div>
-      <div className="attention-item-question attention-item-answered text-muted-foreground"><Markdown text={item.text ?? ''} style="chat" /></div>
+      <div className="attention-item-question attention-item-answered"><Markdown text={item.text ?? ''} style="chat" muted /></div>
       {item.answer && (
         <div className="attention-item-answer whitespace-pre-wrap break-words">{item.answer}</div>
       )}

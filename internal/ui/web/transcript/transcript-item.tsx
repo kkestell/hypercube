@@ -15,8 +15,8 @@ import {TranscriptImages} from './transcript-images.tsx';
 import type {Row} from './transcript-tree.ts';
 import type {ErrorItem, TextItem} from './types.ts';
 
-const TextBlock = memo(({item, response}: {item: TextItem; response?: boolean}) => (
-  <div className={`transcript-text group relative my-2 [--copy-bg:color-mix(in_oklab,var(--background),var(--card))] flex flex-col gap-3 ${response ? '[&_.prose]:text-foreground' : ''}`}>
+const TextBlock = memo(({item}: {item: TextItem}) => (
+  <div className="transcript-text group relative my-2 [--copy-bg:color-mix(in_oklab,var(--background),var(--card))] flex flex-col gap-3">
     {item.text && <Markdown text={item.text} style="chat" />}
     <TranscriptImages images={item.images} />
     {item.text && <CopyButton text={item.text} label="Copy message" />}
@@ -34,7 +34,7 @@ export interface RowControls {
 }
 
 // TranscriptRow draws a row of transcriptRows.
-export function TranscriptRow({row, session, expanded, setOpen, response}: RowControls & {row: Row; response?: boolean}) {
+export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {row: Row}) {
   switch (row.type) {
     case 'activity': return <ActivityItem row={row} session={session} expanded={expanded} setOpen={setOpen} />;
     case 'tool': return <ToolCall call={row} session={session} expanded={expanded} setOpen={setOpen} />;
@@ -44,6 +44,6 @@ export function TranscriptRow({row, session, expanded, setOpen, response}: RowCo
     case 'attention': return <AttentionItem item={row.item} session={session} />;
     case 'proposal': return <ProposalItem item={row.item} session={session.id} />;
     case 'error': return <ErrorAlert item={row.item} />;
-    case 'text': return <TextBlock item={row.item} response={response} />;
+    case 'text': return <TextBlock item={row.item} />;
   }
 }

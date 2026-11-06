@@ -1,7 +1,8 @@
-// A session's tree row. Its right edge shows the worktree branch icon and,
-// only when there is something to say, the session's own state. A click
-// chooses the session; a click on a parent's chevron, or a double-click on the
-// parent, collapses or expands its children.
+// A session's tree row. A parent shows a chevron after its title on hover or
+// focus. The row's right edge shows the worktree branch icon and, only when
+// there is something to say, the session's own state. A click chooses the
+// session; a click on a parent's chevron, or a double-click on the parent,
+// collapses or expands its children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
@@ -39,10 +40,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const [state, store] = useStore();
   const selected = session.id === state.selected;
   const status = statusOf(session, selected);
-  const background = selected
-    ? '[--row-bg:var(--secondary)] hover:bg-secondary'
-    : '[--row-bg:var(--card)] hover:bg-transparent dark:hover:bg-transparent';
-  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${background} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
+  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();
@@ -56,19 +54,17 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
       {level === 2 && <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-2 rounded-bl-lg border-b' : 'bottom-0'}`} />}
-      <span className="flex min-w-0 flex-1 items-center">
+      <span className="flex min-w-0 flex-1 items-center gap-2">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
           : <span className={`session-item-title min-w-0 truncate text-left ${level === 2 ? 'text-xs' : ''}`}>{session.title}</span>}
-      </span>
-      {session.id !== renaming && (hasChildren || session.worktree || status) && <span className={`absolute inset-y-0 right-0 flex items-center gap-1 rounded-r-md bg-linear-to-r from-transparent via-(--row-bg) via-[length:1.5rem] to-(--row-bg) pl-8 pr-2 ${!session.worktree && !status ? 'invisible group-hover/session:visible group-focus-within/session:visible' : ''}`}>
-        {hasChildren && <span className="session-item-twistie hidden size-4 shrink-0 items-center group-hover/session:flex group-focus-within/session:flex" onClick={toggle}>
+        {session.id !== renaming && hasChildren && <span className="session-item-twistie invisible flex size-4 shrink-0 items-center group-hover/session:visible group-focus-within/session:visible" onClick={toggle}>
           <Chevron open={expanded} />
         </span>}
-        {(session.worktree || status) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
-          {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
-          {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
-        </span>}
+      </span>
+      {session.id !== renaming && (session.worktree || status) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
+        {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
+        {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}
     </div></Button>
   );

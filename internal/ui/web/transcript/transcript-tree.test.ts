@@ -3,7 +3,7 @@ import {toolSummary, toolTitle, transcriptRows, type ActivityRow, type Row, type
 import type {AttentionItem, TextItem, ToolItem, TranscriptItem, UserItem} from './types.ts';
 
 const transcript = (items: TranscriptItem[]) => ({order: items.map(item => item.id), items: Object.fromEntries(items.map(item => [item.id, item]))});
-const rows = (items: TranscriptItem[], running = false) => transcriptRows(transcript(items), running);
+const rows = (items: TranscriptItem[]) => transcriptRows(transcript(items));
 const tool = (extra: Partial<ToolItem>): ToolItem => ({id: 'tool', kind: 'tool', ...extra});
 const call = (id: string, tool: string, at: number, extra: Partial<ToolItem> & {seq?: number} = {}): TranscriptItem => ({id, kind: 'tool', tool, at, seq: 0, ...extra});
 const text = (id: string, at: number, extra: Partial<TextItem> = {}): TranscriptItem => ({id, kind: 'text', text: id, at, seq: 0, ...extra});
@@ -103,21 +103,17 @@ test('the duration starts at the working state when no input began the turn', ()
   expect(activity).toMatchObject({type: 'activity', start: 1500, until: 7500});
 });
 
-test('a running turn is its opener and one running activity holding every row', () => {
-  const items = [user('ask', 1), working('w', 2), {id: 'think', kind: 'reasoning', text: 'hm', at: 3, seq: 0} as TranscriptItem, call('c', 'read', 4), text('progress', 5)];
-  const result = rows(items, true);
-  expect(shape(result)).toEqual(['ask', ['activity', ['think', 'c', 'progress']]]);
-  expect(result[1]).toMatchObject({key: 'activity:L1:w', start: 1, until: 0, running: true});
-  // A turn left working by an agent that no longer runs draws every row as it is.
-  expect(ids(rows(items))).toEqual(['ask', 'think', 'c', 'progress']);
+test('a running turn draws every row as it is, with no activity', () => {
+  const result = rows([user('ask', 1), working('w', 2), {id: 'think', kind: 'reasoning', text: 'hm', at: 3, seq: 0}, call('c', 'read', 4), text('progress', 5)]);
+  expect(result.map(row => row.type)).toEqual(['user', 'reasoning', 'tool', 'text']);
 });
 
-test.each([['the user', undefined], ['another session', 'child']])('a message from %s during the turn is activity, in order', (_source, from) => {
+test.each([['the user', undefined], ['another session', 'child']])('a message from %s during the turn stays in place between activities', (_source, from) => {
   const items = [user('ask', 1), working('w', 2), call('a', 'read', 3, {done: true}), user('more', 4, {from}), call('b', 'bash', 5, {done: true}), text('answer', 6), idle('i', 7, ['answer'])];
   const result = rows(items);
-  expect(shape(result)).toEqual(['ask', ['activity', ['a', 'more', 'b']], 'answer']);
-  expect(activityAt(result, 1).rows[1]).toMatchObject({type: 'user'});
-  expect(shape(rows(items.slice(0, 5), true))).toEqual(['ask', ['activity', ['a', 'more', 'b']]]);
+  expect(shape(result)).toEqual(['ask', ['activity', ['a']], 'more', ['activity', ['b']], 'answer']);
+  expect(result[1]).toMatchObject({key: 'activity:L1:w', start: 1, until: 4});
+  expect(result[3]).toMatchObject({key: 'activity:more', start: 4, until: 7});
 });
 
 test('an idle state outside a turn leaves the message that will begin the next one', () => {
@@ -127,10 +123,10 @@ test('an idle state outside a turn leaves the message that will begin the next o
   expect(ids([answer])).toEqual(['answer']);
 });
 
-test('of several messages before the working state, the first begins the turn', () => {
-  const result = rows([user('first', 1), user('second', 2), working('w', 3), text('answer', 4), idle('i', 5, ['answer'])]);
-  expect(shape(result)).toEqual(['first', ['activity', ['second']], 'answer']);
-  expect(activityAt(result, 1).start).toBe(1);
+test('of several messages before the working state, the first begins the turn and the last its activity', () => {
+  const result = rows([user('first', 1), user('second', 2), working('w', 3), call('c', 'read', 4), text('answer', 5), idle('i', 6, ['answer'])]);
+  expect(shape(result)).toEqual(['first', 'second', ['activity', ['c']], 'answer']);
+  expect(result[2]).toMatchObject({key: 'activity:second', start: 2, until: 6});
 });
 
 test('a peer message that begins a turn stays above its activity', () => {
@@ -142,8 +138,8 @@ test('earlier turns stay grouped while a later turn runs', () => {
   const result = rows([
     user('one', 1), working('w1', 2), call('a', 'read', 3), text('first', 4), idle('i1', 5, ['first']),
     user('two', 6), working('w2', 7), call('b', 'bash', 8),
-  ], true);
-  expect(shape(result)).toEqual(['one', ['activity', ['a']], 'first', 'two', ['activity', ['b']]]);
+  ]);
+  expect(shape(result)).toEqual(['one', ['activity', ['a']], 'first', 'two', 'b']);
 });
 
 test('repeated working states of one launch do not split a turn', () => {
