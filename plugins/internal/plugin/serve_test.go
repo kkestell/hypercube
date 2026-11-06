@@ -260,9 +260,11 @@ func TestServeIgnoresResentCommands(t *testing.T) {
 	}
 }
 
-func TestServeAnswersWhileInputPendingAndKeepsCommandRepliesOrdered(t *testing.T) {
+func TestServeAnswersWhileInputPendingAndKeepsEffectsOrdered(t *testing.T) {
 	s := &standIn{script: "cat >/dev/null"}
 	accepted := make(chan struct{})
+	release := sync.OnceFunc(func() { close(accepted) })
+	defer release()
 	started := make(chan struct{})
 	c := serveStart(t, func(args harness.StartArgs, emit func(harness.Event)) (Agent, error) {
 		ag, err := s.start(args, emit)
@@ -271,13 +273,18 @@ func TestServeAnswersWhileInputPendingAndKeepsCommandRepliesOrdered(t *testing.T
 			if text == "first" {
 				close(started)
 				<-accepted
+				s.record("accepted first")
 			}
 			return nil
 		}
-		ag.Answer = func(_ string, choices []string, _ string) error {
+		ag.Answer = func(request string, choices []string, _ string) error {
 			s.record("answer " + strings.Join(choices, ", "))
-			close(accepted)
+			emit(harness.Event{Items: []harness.Item{{ID: request, Kind: harness.KindAttention, Done: true}}})
 			return nil
+		}
+		ag.Configure = func(selection harness.Selection) (*harness.Selection, error) {
+			s.record("configure " + selection.Model)
+			return &selection, nil
 		}
 		return ag, err
 	})
@@ -289,8 +296,22 @@ func TestServeAnswersWhileInputPendingAndKeepsCommandRepliesOrdered(t *testing.T
 		t.Fatal("input did not start")
 	}
 	c.command(harness.Command{ID: 3, Command: harness.CmdInput, Text: "second"})
-	c.command(harness.Command{ID: 4, Command: harness.CmdAnswer, Request: "dialog", Choices: []string{"a", "b"}})
-	for _, id := range []int64{2, 3, 4} {
+	c.command(harness.Command{ID: 4, Command: harness.CmdConfigure, Selection: &harness.Selection{Model: "next"}})
+	c.command(harness.Command{ID: 5, Command: harness.CmdInput, Text: "third"})
+	c.command(harness.Command{ID: 6, Command: harness.CmdAnswer, Request: "dialog", Choices: []string{"a", "b"}})
+	r := c.next()
+	if r.Event == nil || len(r.Event.Items) != 1 || r.Event.Items[0].ID != "dialog" || !r.Event.Items[0].Done {
+		t.Fatalf("dialog completion: %+v", r)
+	}
+	r = c.next()
+	if r.Reply == nil || r.Reply.ID != 6 || r.Reply.Error != "" {
+		t.Fatalf("answer reply while input waits: %+v", r)
+	}
+	if calls := s.recorded(); !slices.Equal(calls, []string{"input first", "answer a, b"}) {
+		t.Fatal(calls)
+	}
+	release()
+	for _, id := range []int64{2, 3, 4, 5} {
 		r := c.next()
 		if r.Reply == nil || r.Reply.ID != id || r.Reply.Error != "" {
 			t.Fatalf("reply to %d: %+v", id, r)
@@ -300,8 +321,48 @@ func TestServeAnswersWhileInputPendingAndKeepsCommandRepliesOrdered(t *testing.T
 	if err := c.wait(); err != nil {
 		t.Fatal(err)
 	}
-	if calls := s.recorded(); !slices.Equal(calls, []string{"input first", "answer a, b", "input second", "stop"}) {
+	if calls := s.recorded(); !slices.Equal(calls, []string{"input first", "answer a, b", "accepted first", "input second", "configure next", "input third", "stop"}) {
 		t.Fatal(calls)
+	}
+}
+
+func TestServeInterruptsWhileInputPending(t *testing.T) {
+	s := &standIn{script: "cat >/dev/null"}
+	accepted := make(chan struct{})
+	release := sync.OnceFunc(func() { close(accepted) })
+	defer release()
+	started := make(chan struct{})
+	c := serveStart(t, func(args harness.StartArgs, emit func(harness.Event)) (Agent, error) {
+		ag, err := s.start(args, emit)
+		ag.Input = func(string, []harness.Image) error {
+			s.record("input")
+			close(started)
+			<-accepted
+			return nil
+		}
+		return ag, err
+	})
+	c.start()
+	c.command(harness.Command{ID: 2, Command: harness.CmdInput, Text: "pending"})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("input did not start")
+	}
+	if err := c.reply(harness.Command{ID: 3, Command: harness.CmdInterrupt}); err != "" {
+		t.Fatal(err)
+	}
+	if calls := s.recorded(); !slices.Equal(calls, []string{"input", "interrupt"}) {
+		t.Fatal(calls)
+	}
+	release()
+	r := c.next()
+	if r.Reply == nil || r.Reply.ID != 2 || r.Reply.Error != "" {
+		t.Fatalf("input reply: %+v", r)
+	}
+	c.in.Close()
+	if err := c.wait(); err != nil {
+		t.Fatal(err)
 	}
 }
 
