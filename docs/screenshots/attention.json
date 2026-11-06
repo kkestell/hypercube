@@ -15,7 +15,7 @@
               "items": [
                 {"id": "c1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "go list -m -u github.com/yuin/goldmark"}, "output": "github.com/yuin/goldmark v1.7.8 [v1.7.13]", "done": true},
                 {"id": "t1", "kind": "text", "text": "goldmark v1.7.13 is available. Updating the module needs network access to fetch it.", "done": true},
-                {"id": "q1", "kind": "attention", "text": "Run this command?\n\n```\ngo get github.com/yuin/goldmark@v1.7.13 && go mod tidy\n```\n\nFetch the new goldmark release and update go.sum.", "choices": ["Allow", "Allow for this session", "Deny"], "grant": "commandExecution"}
+                {"id": "q1", "kind": "attention", "text": "Run `go get github.com/yuin/goldmark@v1.7.13 && go mod tidy`?", "choices": ["Allow", "Allow for this session", "Deny"], "grant": "commandExecution"}
               ]
             }
           ]
@@ -30,7 +30,7 @@
               "items": [
                 {"id": "c1", "kind": "tool", "tool": "Bash", "input": {"command": "git log --oneline v0.3.0..HEAD", "description": "List changes since the last release"}, "output": "4be1c7e Add harbor build -force\n9d02a3f Skip unchanged pages with a build cache\n51f8e20 Keep public/ between builds\n0c7d4b9 Fix front matter values containing colons", "done": true},
                 {"id": "r1", "kind": "reasoning", "text": "Keeping public/ between builds changes behavior sites may rely on: stale files used to disappear on every build.", "done": true},
-                {"id": "q1", "kind": "attention", "text": "Builds no longer clear `public/`, so sites that relied on a clean output folder will see stale files. Which version should this release be?", "choices": ["0.4.0", "1.0.0"], "notes": ["A minor bump; breaking changes are expected before 1.0.", "Declare the CLI and output layout stable."], "free": true}
+                {"id": "q1", "kind": "attention", "text": "Builds no longer clear `public/`, which breaks sites that relied on it. Which version should this release be?", "choices": ["0.4.0", "1.0.0"], "notes": ["Breaking changes are expected before 1.0.", "Declare the CLI stable."]}
               ]
             }
           ]

@@ -265,6 +265,9 @@ const requests = {inflight: new Set(), completed: []};
 async function capture(scene, ids, backend, window, name) {
   const contents = window.contents;
   const win = BrowserWindow.fromWebContents(contents);
+  // The window takes focus to draw its buttons active; keys typed meanwhile
+  // must not reach the page.
+  contents.on('before-input-event', event => event.preventDefault());
   const webRequest = session.defaultSession.webRequest;
   webRequest.onBeforeRequest((details, callback) => {
     if (details.resourceType !== 'webSocket') requests.inflight.add(details.id);
@@ -298,7 +301,8 @@ async function capture(scene, ids, backend, window, name) {
 
   // settled waits until the page shows the selected session with its open
   // tabs' content, the window has the theme, and nothing is loading.
-  const tabs = [];
+  const workbench = views.workbench;
+  const tabs = workbench.rightPanel && workbench.rightTab === 'files' ? ['/files?', '/changes?'] : [];
   const panes = node => node ? (node.tabs ? [node] : node.children.flatMap(panes)) : [];
   for (const pane of panes(top.view?.tabs.root)) {
     const [kind, file] = [pane.active.slice(0, pane.active.indexOf(':')), pane.active.slice(pane.active.indexOf(':') + 1)];
@@ -329,8 +333,11 @@ async function capture(scene, ids, backend, window, name) {
 
   const config = await (await fetch(backend.origin + '/config')).json();
   await backend.post('config', {}, {...config, theme: 'dark'});
+  // Loading the same address would only follow its hash, so reload.
   requests.completed = [];
-  await contents.loadURL(`${backend.origin}/#${encodeURIComponent(selected)}`);
+  const reloaded = new Promise(resolve => contents.once('did-finish-load', resolve));
+  contents.reload();
+  await reloaded;
   await shot('dark');
 }
 
