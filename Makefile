@@ -138,7 +138,7 @@ dev-stop:
 dev-clean:
 	scripts/dev clean
 
-# web-build builds the Taikonaut website into web/public. web-serve runs its dev
+# web-build builds the Hypercube website into web/public. web-serve runs its dev
 # server at http://localhost:1313. Both go through web/Makefile, which installs
 # the pinned Hugo into web/bin on first use.
 web-build:

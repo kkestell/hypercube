@@ -1,6 +1,6 @@
 # Website
 
-This is the Hugo site for Taikonaut. `taikonaut.dev` is the placeholder public
+This is the Hugo site for Hypercube. `taikonaut.dev` is the placeholder public
 URL until deployment. Follow the root `AGENTS.md`.
 
 - Run `make web-build` or `make web-serve` from the repository root. Inside

@@ -44,5 +44,5 @@ Extensibility:
 Configuration and diagnostics:
 
 - Store credentials in the OS keyring or a private local file with `ox login`.
-- Configure Taikonaut globally or per workspace.
+- Configure Hypercube globally or per workspace.
 - Write an optional diagnostic JSONL trace.

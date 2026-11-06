@@ -1,5 +1,5 @@
 +++
-title = 'Taikonaut'
+title = 'Hypercube'
 toc = false
 +++
 
@@ -11,11 +11,11 @@ A macOS app for running coding agents together.
 curl -fsSL https://taikonaut.dev/install | bash
 ```
 
-## About Taikonaut
+## About Hypercube
 
 ### Your coding tools in one place
 
-Run Claude Code, OpenCode, Codex, and Pi side by side. Taikonaut uses your installed tools and existing credentials, with your settings preserved. Choose a model and reasoning level for each session.
+Run Claude Code, OpenCode, Codex, and Pi side by side. Hypercube uses your installed tools and existing credentials, with your settings preserved. Choose a model and reasoning level for each session.
 
 ### Agents that work as a team
 

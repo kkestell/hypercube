@@ -1,6 +1,6 @@
 baseURL = 'https://taikonaut.dev/'
 locale = 'en-us'
-title = 'Taikonaut'
+title = 'Hypercube'
 
 disableKinds = ['taxonomy', 'term', 'rss', 'sitemap']
 
