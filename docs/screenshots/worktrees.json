@@ -1,0 +1,156 @@
+{
+  "size": {
+    "width": 1680,
+    "height": 1020
+  },
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "profile": "claude-sonnet-high",
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Add a description to the harbor README",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "c1",
+                  "kind": "tool",
+                  "tool": "bash",
+                  "input": {
+                    "command": "git status --short"
+                  },
+                  "output": "README.md",
+                  "done": true
+                },
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "I added a short description of harbor to the README.",
+                  "done": true
+                }
+              ],
+              "git": [
+                {
+                  "file": "README.md",
+                  "content": "# harbor\n\nA small static site generator for Markdown pages.\n"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "codex-gpt-terra-high",
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Document the build command",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "c1",
+                  "kind": "tool",
+                  "tool": "bash",
+                  "input": {
+                    "command": "git status --short"
+                  },
+                  "output": "build-notes.md",
+                  "done": true
+                },
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "Added `build-notes.md` with the build command and output directory, then committed it on this branch.\n\nRun `go run . build` from the project root to render the site into `public/`.",
+                  "done": true
+                }
+              ],
+              "git": [
+                {
+                  "file": "build-notes.md",
+                  "content": "# Building a site\n\nRun `go run . build` to render content into `public/`.\n"
+                },
+                {
+                  "args": [
+                    "add",
+                    "build-notes.md"
+                  ]
+                },
+                {
+                  "args": [
+                    "commit",
+                    "-m",
+                    "Document the build command"
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "pi-sonnet-high",
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Add a publishing checklist",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "c1",
+                  "kind": "tool",
+                  "tool": "bash",
+                  "input": {
+                    "command": "git status --short"
+                  },
+                  "output": "publishing.md",
+                  "done": true
+                },
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "Added and merged a publishing checklist.",
+                  "done": true
+                }
+              ],
+              "git": [
+                {
+                  "file": "publishing.md",
+                  "content": "# Publishing\n\n1. Run the build.\n2. Check the generated pages.\n3. Upload `public/`.\n"
+                },
+                {
+                  "args": [
+                    "add",
+                    "publishing.md"
+                  ]
+                },
+                {
+                  "args": [
+                    "commit",
+                    "-m",
+                    "Add a publishing checklist"
+                  ]
+                },
+                {
+                  "args": [
+                    "update-ref",
+                    "refs/heads/main",
+                    "HEAD"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [
+    0,
+    1
+  ],
+  "workbench": {
+    "rightPanel": false
+  }
+}

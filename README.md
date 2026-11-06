@@ -42,6 +42,11 @@ children.
 ### Teams and communication
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/suggestion-dark.png">
+  <img alt="A running team with a suggested task waiting for review" src="docs/images/suggestion-light.png">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/offer-dark.png">
   <img alt="An agent offers a new task, with a card asking whether it runs in a new session or the current one" src="docs/images/offer-light.png">
 </picture>
@@ -60,6 +65,11 @@ children.
 
 ### Workspaces and Git
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/worktrees-dark.png">
+  <img alt="Sessions on separate branches with uncommitted, unmerged, and merged work" src="docs/images/worktrees-light.png">
+</picture>
+
 - **Local workspaces.** Git repositories and ordinary project folders organize sessions by project.
 - **Original checkout or worktree.** Sessions can use your current working files or have a separate Git branch and worktree.
 - **Worktree preparation.** New worktrees include submodules and selected local configuration or dependencies.
@@ -71,6 +81,11 @@ children.
 - **External project tools.** Project directories can open in Visual Studio Code, Finder, or Terminal.
 
 ### Prompts and conversations
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/details-dark.png">
+  <img alt="An expanded turn showing reasoning, tool calls, and a native subagent" src="docs/images/details-light.png">
+</picture>
 
 - **Multiline prompts and prompt history.** Earlier prompts can be recalled and edited.
 - **File mentions.** Project file suggestions make it easy to reference files in prompts.

@@ -31,6 +31,7 @@ const profiles = [
   {name: 'claude-opus-high', description: 'Opus at high effort for design and debugging.', harness: 'claude', model: 'opus', effort: 'high'},
   {name: 'claude-sonnet-high', description: 'Sonnet at high effort for ordinary implementation.', harness: 'claude', model: 'sonnet', effort: 'high'},
   {name: 'codex-gpt-terra-high', description: 'GPT Terra at high effort for implementation and review.', harness: 'codex', model: 'gpt-6.1-terra', effort: 'high'},
+  {name: 'pi-sonnet-high', description: 'Claude Sonnet at high thinking for implementation.', harness: 'pi', model: 'anthropic/claude-sonnet-4-5', effort: 'high'},
   {name: 'opencode-deepseek-flash-max', description: 'DeepSeek Flash at max effort for quick, cheap work.', harness: 'opencode', model: 'opencode-go/deepseek-v4.1-flash', effort: 'max'},
 ];
 
@@ -250,7 +251,7 @@ async function play(scene, base, backend) {
     if (w.changes) await git('apply', path.join(fixtures, w.changes));
     const workspace = await (await post('workspace', {action: 'new', path: repo})).text();
     for (const s of w.sessions) {
-      const created = await (await post('session', {action: 'new', workspace, profile: s.profile}, {text: s.turns[0].prompt})).json();
+      const created = await (await post('session', {action: 'new', workspace, profile: s.profile, ...(s.worktree ? {worktree: '1'} : {})}, {text: s.turns[0].prompt})).json();
       await playTurns(created.session, s);
     }
   }
@@ -297,7 +298,18 @@ async function capture(scene, ids, backend, window, name) {
   const top = scene.workspaces[w].sessions[s];
   const selected = ids.get(top);
   const sessionViews = {};
-  for (const [scened, id] of ids) if (scened.view) sessionViews[id] = scened.view;
+  for (const [scened, id] of ids) if (scened.view) {
+    backend.select(id);
+    await until(() => hasItem([...backend.live.transcript.values()], scened.turns.at(-1).items.at(-1).id));
+    const items = [...backend.live.transcript.values()];
+    const expanded = {};
+    for (const key of Object.keys(scened.view.expanded ?? {})) {
+      const item = key === 'activity' ? items.find(item => item.kind === 'state' && item.state === 'working') : items.find(item => item.id.endsWith(':' + key));
+      if (!item) throw new Error(`cannot expand ${key}`);
+      expanded[key === 'activity' ? 'activity:' + item.id : item.id] = true;
+    }
+    sessionViews[id] = {...scened.view, expanded};
+  }
   const views = {selected: null, workbench: {...defaultWorkbench, ...scene.workbench}, sessionViews};
   await contents.loadURL(backend.origin + '/version');
   await contents.executeJavaScript(`localStorage.setItem('hypercube.views', ${JSON.stringify(JSON.stringify(views))})`);
@@ -334,12 +346,20 @@ async function capture(scene, ids, backend, window, name) {
     const windowNumber = win.getMediaSourceId().split(':')[1];
     console.log(`${name}: capturing ${theme}`);
     const file = path.join(images, `${name}-${theme}.png`);
-    await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
+    // macOS can briefly capture a wider native frame after sizing the window.
+    let image;
+    do {
+      if (!win.isFocused()) {
+        const focused = new Promise(resolve => win.once('focus', resolve));
+        app.focus({steal: true});
+        win.focus();
+        await focused;
+      }
+      await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
+      image = nativeImage.createFromPath(file);
+    } while (!win.isFocused() || image.getSize().width !== 2 * width || image.getSize().height !== 2 * height);
     // The screen holds the window's last painted frame, which lags the page
     // when the window was covered; the image must show what the page drew.
-    const image = nativeImage.createFromPath(file);
-    const {width: shotWidth, height: shotHeight} = image.getSize();
-    if (shotWidth !== 2 * width || shotHeight !== 2 * height) throw new Error(`${name}-${theme}.png is ${shotWidth}×${shotHeight}, not twice ${width}×${height}`);
     if (difference(image, await contents.capturePage()) > 8) {
       throw new Error(`${name}-${theme}.png does not show the page; keep the window in front while it is captured`);
     }

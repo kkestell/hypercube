@@ -36,7 +36,7 @@
           ]
         },
         {
-          "profile": "claude-sonnet-high",
+          "profile": "opencode-deepseek-flash-max",
           "turns": [
             {
               "prompt": "Highlight code blocks in rendered pages",

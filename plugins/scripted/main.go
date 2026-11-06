@@ -54,7 +54,13 @@ type turn struct {
 	Usage    *harness.Usage `json:"usage"`
 	Children []session      `json:"children"`
 	// Offers are the titles of tasks the turn offers the user as new sessions.
-	Offers []string `json:"offers"`
+	Offers      []string  `json:"offers"`
+	Suggestions []session `json:"suggestions"`
+	Git         []struct {
+		Args    []string `json:"args"`
+		File    string   `json:"file"`
+		Content string   `json:"content"`
+	} `json:"git"`
 }
 
 func main() {
@@ -163,7 +169,21 @@ func play(t turn, start harness.StartArgs, event func(harness.Event) error) erro
 	if err := event(harness.Event{State: harness.Working}); err != nil {
 		return err
 	}
-	if len(t.Children) > 0 || len(t.Offers) > 0 {
+	for _, step := range t.Git {
+		if step.File != "" {
+			if err := os.WriteFile(start.Dir+"/"+step.File, []byte(step.Content), 0644); err != nil {
+				return err
+			}
+		}
+		if len(step.Args) > 0 {
+			cmd := exec.Command("git", append([]string{"-c", "user.name=Hypercube", "-c", "user.email=hypercube@example.com", "-c", "commit.gpgsign=false"}, step.Args...)...)
+			cmd.Dir = start.Dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				return fmt.Errorf("git: %s: %w", out, err)
+			}
+		}
+	}
+	if len(t.Children) > 0 || len(t.Offers) > 0 || len(t.Suggestions) > 0 {
 		if err := createSessions(start, t); err != nil {
 			return event(harness.Event{State: harness.Idle, Items: []harness.Item{{ID: "children", Kind: harness.KindError, Text: err.Error(), Done: true}}})
 		}
@@ -208,6 +228,9 @@ func createSessions(start harness.StartArgs, t turn) error {
 	}
 	for _, title := range t.Offers {
 		calls = append(calls, map[string]any{"title": title, "initiation": "offer"})
+	}
+	for _, c := range t.Suggestions {
+		calls = append(calls, map[string]any{"title": c.Title, "name": c.Name, "profile": c.Profile, "dir": c.Dir, "initiation": "own_initiative", "message": c.Turns[0].Prompt})
 	}
 	for _, args := range calls {
 		result, err := conn.CallTool(ctx, &mcp.CallToolParams{Name: "create_session", Arguments: args})

@@ -1,0 +1,102 @@
+{
+  "size": {
+    "width": 1680,
+    "height": 1020
+  },
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "profile": "claude-opus-high",
+          "turns": [
+            {
+              "prompt": "Generate a sitemap for the site",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "r1",
+                  "kind": "reasoning",
+                  "text": "The build already walks the content tree, so it can collect the output paths without a second walk.",
+                  "done": true
+                },
+                {
+                  "id": "c1",
+                  "kind": "tool",
+                  "tool": "Read",
+                  "input": "build.go",
+                  "output": "func (s Site) Build() (int, error) {\n    // ...\n    err = filepath.WalkDir(s.Content, func(path string, d fs.DirEntry, err error) error {\n        // render each Markdown page\n    })\n    return n, err\n}",
+                  "done": true
+                },
+                {
+                  "id": "a1",
+                  "kind": "tool",
+                  "tool": "Agent",
+                  "input": "Review sitemap edge cases",
+                  "output": "Review complete.",
+                  "done": true
+                },
+                {
+                  "id": "a2",
+                  "parent": "a1",
+                  "kind": "tool",
+                  "tool": "Grep",
+                  "input": {
+                    "pattern": "WalkDir",
+                    "path": "build.go"
+                  },
+                  "output": "build.go:39: err = filepath.WalkDir(s.Content, func(path string, d fs.DirEntry, err error) error {",
+                  "done": true
+                },
+                {
+                  "id": "a3",
+                  "parent": "a1",
+                  "kind": "text",
+                  "text": "Include the home page and escape URLs in XML.",
+                  "done": true
+                },
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The build now writes `sitemap.xml` with one entry per page.\n\n```xml\n<url><loc>https://example.org/</loc></url>\n```\n\n| Check | Result |\n| --- | --- |\n| Home page | Included |\n| XML escaping | Covered |",
+                  "done": true
+                }
+              ]
+            }
+          ],
+          "view": {
+            "tabs": {
+              "root": {
+                "id": 1,
+                "tabs": [
+                  "agent"
+                ],
+                "active": "agent"
+              },
+              "preview": null,
+              "dragging": null,
+              "nextId": 2
+            },
+            "activePane": 1,
+            "expanded": {
+              "activity": true,
+              "c1": true,
+              "a1": true
+            },
+            "scroll": {},
+            "folders": {},
+            "files": {}
+          }
+        }
+      ]
+    }
+  ],
+  "select": [
+    0,
+    0
+  ],
+  "workbench": {
+    "rightPanel": false
+  }
+}

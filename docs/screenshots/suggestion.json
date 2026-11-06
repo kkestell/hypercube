@@ -1,0 +1,114 @@
+{
+  "size": {
+    "width": 1680,
+    "height": 1020
+  },
+  "workspaces": [
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "profile": "pi-sonnet-high",
+          "turns": [
+            {
+              "prompt": "Review the field notes guide and check its links",
+              "end": "working",
+              "items": [
+                {
+                  "id": "c1",
+                  "kind": "tool",
+                  "tool": "read",
+                  "input": {
+                    "path": "content/guide/getting-started.md"
+                  },
+                  "output": "# Getting started\n...",
+                  "done": true
+                },
+                {
+                  "id": "c2",
+                  "kind": "tool",
+                  "tool": "create_session",
+                  "input": {
+                    "title": "Check relative links",
+                    "initiation": "user_asked"
+                  },
+                  "output": "Started links.",
+                  "done": true
+                },
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The links check is running. I also noticed the guide has no offline instructions, so I suggested a separate task.",
+                  "done": true
+                },
+                {
+                  "id": "c3",
+                  "kind": "tool",
+                  "tool": "bash",
+                  "input": {
+                    "command": "harbor build"
+                  },
+                  "output": "built 3 pages",
+                  "done": true
+                }
+              ],
+              "children": [
+                {
+                  "title": "Check relative links",
+                  "name": "links",
+                  "profile": "codex-gpt-terra-high",
+                  "dir": ".",
+                  "turns": [
+                    {
+                      "prompt": "Find broken relative links in the guide",
+                      "end": "working",
+                      "items": [
+                        {
+                          "id": "c1",
+                          "kind": "tool",
+                          "tool": "exec_command",
+                          "input": {
+                            "cmd": "rg \"\\]\\(\" content"
+                          },
+                          "output": "content/guide/getting-started.md:8: [sync](sync.md)",
+                          "done": true
+                        },
+                        {
+                          "id": "t1",
+                          "kind": "text",
+                          "text": "Checking the rendered paths now.",
+                          "done": true
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "suggestions": [
+                {
+                  "title": "Add an offline reading guide",
+                  "name": "offline-guide",
+                  "profile": "claude-sonnet-high",
+                  "dir": ".",
+                  "turns": [
+                    {
+                      "prompt": "Write a guide to reading field notes offline"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [
+    0,
+    0
+  ],
+  "workbench": {
+    "rightPanel": false
+  }
+}

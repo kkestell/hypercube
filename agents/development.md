@@ -44,9 +44,12 @@ each scene in `docs/screenshots/`. A scene file lists workspaces, each a copy
 of a fixture repository in `docs/screenshots/repos/` with an optional patch of
 uncommitted changes, and their sessions: each turn's prompt, the transcript
 items in the plugin protocol's JSON, how the turn ends (`idle`, `working`, or
-`ask`), the children it starts, and the tasks it offers as new sessions. A session's `view` is the page's saved
-tabs and splits, `select` picks the shown session, and `size` is the window
-in points. [scripts/screenshots/main.js](../scripts/screenshots/main.js) plays
+`ask`), the children it starts, the tasks it offers, and its own-initiative
+suggestions. A turn may write fixture files and run Git commands in its session
+directory with `git` steps; `worktree` starts a top-level session on its own
+branch. A session's `view` is the page's saved tabs and splits; `view.expanded`
+names `activity` or item IDs to open in a saved turn. `select` picks the shown
+session, and `size` is the window in points. [scripts/screenshots/main.js](../scripts/screenshots/main.js) plays
 each scene through a real backend with
 [the scripted plugin](../plugins/scripted/main.go), opens the real desktop
 window, and captures it. Everything else it creates is deleted.
