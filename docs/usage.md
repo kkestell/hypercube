@@ -3,9 +3,15 @@
 ## Start a session
 
 Choose **Add Workspace** to select a project folder, or **New Session** for a
-workspace already in the sidebar. Below the message box, choose a
-[profile](configuration.md) and decide whether to enable **Worktree**. Send the
-first prompt to create the session.
+workspace already in the sidebar. The new-session page names the workspace.
+Choose a [profile](configuration.md) below the message box and decide whether
+to enable **Use a new worktree** above it. Send the first prompt to create the
+session.
+
+Each workspace keeps its unfinished new-session prompt, profile, and worktree
+choice when you switch sessions. Return through its **New Session** row in the
+sidebar or its New Session button. Typed text also survives reloading the app;
+image attachments stay available until the app reloads.
 
 Leave Worktree off to use the original checkout, including its uncommitted
 changes. Turn it on for a separate checkout and branch. That branch starts at
@@ -125,6 +131,10 @@ request also appears in its parent's chat, where you can answer without
 switching sessions. The parent's agent does not receive that copy. Once
 answered, it disappears there and remains in the child's history.
 
+Questions that allow several choices show checkboxes. Select the choices you
+want, then choose **Submit**; you can also include an **Other response** when
+the question offers it.
+
 Approvals may offer **Always allow in this session** or **Always allow in all
 sessions**. These choices belong to the harness and survive restarts. Remove
 saved choices in **Settings** (**Command+,**). Available approval choices vary
@@ -133,7 +143,8 @@ saved choices in **Settings** (**Command+,**). Available approval choices vary
 For requests from other sessions, answer the notification card or use its eye
 button to open the chat. Closing a request card hides it without answering.
 Closing a reply card hides it without marking the reply seen; reply cards also
-close after 15 seconds or when the agent works again.
+close after 15 seconds or when the agent works again. Their expiry pauses while
+the pointer is over the card or keyboard focus is inside it.
 
 While the desktop app is open and its window lacks focus, macOS notifications
 announce requests and replies. Clicking one opens its session. Requests and
@@ -159,12 +170,15 @@ the message box names the task and offers **New session** and **Do it here**. Th
 agent ends its turn and your answer reaches it as a message, whenever you give
 it; the question stays open across reloads and restarts. New session lets the
 agent start one child for that task with a brief it writes then; Do it here
-keeps the work in the session. Corrections and follow-ups need no question;
+keeps the work in the session. Unanswered offers also appear in request
+notifications and waiting indicators, even while the parent is parked.
+Corrections and follow-ups need no question;
 follow-ups on a child's work go back to that child while its context helps.
 
 Work the agent suggests on its own appears as cards showing the brief,
 profile, context, and folder or new worktree.
-**Start** launches it; **Dismiss** closes the card. Cards survive reloads and
+**Start** launches it; **Dismiss** closes the card. Handled cards collapse to a
+single line; expand one to read its brief again. Cards survive reloads and
 do not block the parent. An unsuccessful launch shows an error and leaves the
 card or accepted offer available to retry when its child was cleaned up.
 

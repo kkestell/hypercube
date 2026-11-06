@@ -8,8 +8,10 @@ import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
 import type {TranscriptItem} from '../transcript/types.ts';
 import {Composer} from './composer.tsx';
-import {unsentKey} from './drafts.ts';
+import {unsentKey as workspaceDraftKey} from './drafts.ts';
 import type {Profile} from './types.ts';
+
+const unsentKey = workspaceDraftKey('w');
 
 let fetches: Mock<FetchHandler>;
 beforeEach(() => { fetches = stubFetch(() => Response.json([])); });
@@ -41,7 +43,7 @@ const pressAndRelease = (field: HTMLTextAreaElement, key: string) => act(() => {
   field.dispatchEvent(new KeyboardEvent('keyup', {key, bubbles: true, cancelable: true}));
 });
 
-const prompt = (id: string, text: string, from?: string): TranscriptItem => ({id, seq: Number(id), kind: 'user', text, from});
+const prompt = (id: string, text: string, from?: string): TranscriptItem & {kind: 'user'} => ({id, seq: Number(id), kind: 'user', text, from});
 const withHistory = (state: State, ...items: TranscriptItem[]): State => ({
   ...state,
   session: {...emptySession('a'), transcript: {order: items.map(item => item.id), items: Object.fromEntries(items.map(item => [item.id, item]))}},
@@ -197,13 +199,16 @@ const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
-const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label=Worktree]');
+const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label="Use a new worktree"]');
 
 test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   await act(async () => {});
-  const toggle = element(root, '[aria-label=Worktree]', HTMLButtonElement);
+  const toggle = element(root, '[aria-label="Use a new worktree"]', HTMLButtonElement);
+  expect(root.textContent).toContain('/repo');
+  expect(root.textContent).toContain('Use a new worktree');
+  expect(root.textContent).toContain('Create a separate branch and working folder');
   expect(toggle.getAttribute('aria-pressed')).toBe('false');
   expect(toggle.disabled).toBe(false);
   unmountAll();
@@ -216,7 +221,7 @@ test('turning Worktree on creates the session in a worktree and locks while send
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
-  const toggle = element(root, '[aria-label=Worktree]', HTMLButtonElement);
+  const toggle = element(root, '[aria-label="Use a new worktree"]', HTMLButtonElement);
   clickControl(toggle);
   expect(s.get().unsent?.worktree).toBe(true);
   const releases: (() => void)[] = [];
@@ -280,7 +285,7 @@ test('Merge asks the agent to merge into the target in the checkout', async () =
 
 test('prompt history returns to the unsent draft', () => {
   const s = store();
-  s.update(state => withHistory(state, prompt('1', 'first'), prompt('2', 'peer', 'peer'), prompt('3', 'last')));
+  s.update(state => withHistory(state, prompt('1', 'first'), prompt('2', 'peer', 'peer'), prompt('3', 'last'), {...prompt('4', 'automatic report'), automatic: true}));
   const root = mount(s, <Composer session={session} />);
   const field = textarea(root);
   typeInto(field, 'draft');

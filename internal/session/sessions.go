@@ -228,11 +228,14 @@ func (r *Runtime) Detach() {
 	}
 	r.mu.Unlock()
 	for _, l := range lives {
-		l.send.Lock()
-		if l.client != nil {
-			_ = l.client.Close()
+		// Closing releases a sender blocked on plugin input. It must not
+		// wait behind that sender's lock.
+		r.mu.Lock()
+		client := l.client
+		r.mu.Unlock()
+		if client != nil {
+			_ = client.Close()
 		}
-		l.send.Unlock()
 	}
 	for _, l := range lives {
 		<-l.done

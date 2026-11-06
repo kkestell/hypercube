@@ -3,12 +3,14 @@ import {act, useState} from 'react';
 import {element, find, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {ProfileSelect} from '../agent/profile-select.tsx';
-import {unsentKey} from '../agent/drafts.ts';
+import {unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import {createStore} from '../store.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import type {Config} from './types.ts';
+
+const unsentKey = workspaceDraftKey('w');
 
 const config: Config = {default_profile: 'lead', profiles: [
   {name: 'lead', description: 'Large tasks', harness: 'claude', model: 'opus', effort: 'high'},
@@ -157,6 +159,6 @@ test.each(['remove', 'rename', 'keep'] as const)('saving settings reconciles a d
   const expected = change === 'keep' ? 'lead' : 'worker';
   expect(store.get().unsent?.profile).toBe(expected);
   expect(element(root, '[aria-label=Profile]', HTMLButtonElement).textContent).toBe(change === 'keep' ? 'Sonnet · Low' : 'Sol · Low');
-  await act(async () => { await createSession(store, {text: 'Start the draft', images: []}); });
+  await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created).toEqual([expected]);
 });

@@ -119,6 +119,34 @@ func TestExitIncludesStatusAndStderr(t *testing.T) {
 		t.Fatalf("%+v: %v", e, err)
 	}
 }
+
+func TestOutputWriteFailureStopsChild(t *testing.T) {
+	dir := filepath.Join(temp(t), "run")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	segment := (&Holder{dir: dir}).segment(0)
+	if err := syscall.Mkfifo(segment, 0600); err != nil {
+		t.Fatal(err)
+	}
+	h, err := Start(dir, []string{"/usr/bin/yes"}, os.Environ(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = h.Stop(); _ = h.Remove() })
+	// Closing the reader makes the holder's next output write fail with EPIPE.
+	reader, err := os.Open(segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readN(t, reader, 1)
+	reader.Close()
+	until(t, func() bool { return !h.Alive() })
+	exit, err := h.Exit()
+	if err != nil || exit.Code == 0 || !strings.Contains(exit.Status, "broken pipe") {
+		t.Fatalf("exit %+v: %v", exit, err)
+	}
+}
 func TestClosedAndLost(t *testing.T) {
 	h := start(t, nil, "/bin/cat")
 	out := output(t, h, 0)

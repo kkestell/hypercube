@@ -42,7 +42,7 @@ export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {
     case 'reasoning': return <ReasoningItem item={row.item} />;
     case 'user': return <MessageItem item={row.item} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={row.item} session={session} />;
-    case 'proposal': return <ProposalItem item={row.item} session={session.id} />;
+    case 'proposal': return <ProposalItem item={row.item} session={session.id} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'error': return <ErrorAlert item={row.item} />;
     case 'text': return <TextBlock item={row.item} />;
   }

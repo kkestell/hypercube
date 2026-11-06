@@ -1,4 +1,5 @@
 import {Button} from '../components/ui/button';
+import {Checkbox} from '../components/ui/checkbox';
 import {Input} from '../components/ui/input';
 import {Label} from '../components/ui/label';
 // The answers to an open attention request: full-width choice rows
@@ -11,7 +12,7 @@ import {Label} from '../components/ui/label';
 // A typed answer is a draft, so it survives the form closing.
 import {useId, useState} from 'react';
 import {alwaysAllow, answerRequest} from '../api.ts';
-import {draftOf, typed} from '../agent/drafts.ts';
+import {cleared, draftOf, selectedChoices, typed} from '../agent/drafts.ts';
 import {submitsOnKey} from '../shared/submit-key.ts';
 import {useStore} from '../store.ts';
 import type {AttentionItem} from './types.ts';
@@ -32,18 +33,19 @@ export function AttentionForm({session, item, ended}: AttentionFormProps) {
   const locked = sending || !!ended;
   const id = useId();
   const key = `${session}/${item.id}`;
-  const text = draftOf(state, key).text;
+  const {text, choices = []} = draftOf(state, key);
+  const selected = (item.choices ?? []).filter(choice => choices.includes(choice));
 
   const submit = async (answer: () => Promise<boolean>) => {
     if (sending) return;
     setSending(true);
-    if (await answer()) store.update(s => typed(s, key, ''));
+    if (await answer()) store.update(s => cleared(s, key));
     else setSending(false);
   };
-  const send = (choice: string) => submit(() => answerRequest(store, session, item.id, choice, text));
+  const send = (choices: string[]) => submit(() => answerRequest(store, session, item.id, choices, text));
   const allowAlways = (all: boolean) => submit(() => alwaysAllow(store, session, item.id, all));
   const sendText = () => {
-    if (text.trim()) send('');
+    if (text.trim() || item.multi && selected.length) send(item.multi ? selected : []);
   };
 
   return (
@@ -52,9 +54,16 @@ export function AttentionForm({session, item, ended}: AttentionFormProps) {
         <div className="attention-form-choices flex flex-col gap-2" role="group" aria-label="Choices">
           {item.choices.map((choice, i) => (
             <div className="attention-form-choice flex flex-col gap-1" key={choice}>
-              <Button type="button" variant="secondary" size="sm" className={choiceClass} data-choice={choice} disabled={locked} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
-                {choice}
-              </Button>
+              {item.multi ? (
+                <div className="flex items-start gap-2">
+                  <Checkbox id={`${id}-choice-${i}`} checked={selected.includes(choice)} disabled={locked} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onCheckedChange={checked => store.update(s => selectedChoices(s, key, checked ? [...choices, choice] : choices.filter(value => value !== choice)))} />
+                  <Label htmlFor={`${id}-choice-${i}`} className="min-w-0 whitespace-normal break-words leading-5">{choice}</Label>
+                </div>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" className={choiceClass} data-choice={choice} disabled={locked} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send([choice])}>
+                  {choice}
+                </Button>
+              )}
               {item.notes?.[i] && <span className="attention-form-note px-3 text-xs text-muted-foreground" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
             </div>
           ))}
@@ -79,10 +88,11 @@ export function AttentionForm({session, item, ended}: AttentionFormProps) {
               onChange={e => store.update(s => typed(s, key, e.currentTarget.value))}
               onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
             />
-            <Button type="button" variant="secondary" size="sm" disabled={locked || !text.trim()} onClick={sendText}>Send</Button>
+            {!item.multi && <Button type="button" variant="secondary" size="sm" disabled={locked || !text.trim()} onClick={sendText}>Send</Button>}
           </div>
         </div>
       )}
+      {item.multi && <Button type="button" variant="secondary" size="sm" disabled={locked || !selected.length && !text.trim()} onClick={sendText}>Submit</Button>}
     </div>
   );
 }

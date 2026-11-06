@@ -135,7 +135,9 @@ func TestQuitLeavesSessionsParkedAndInputResumes(t *testing.T) {
 	}
 	rt := f.newRuntime()
 	f.rt = rt
-	rt.Restore()
+	if err := rt.Restore(nil); err != nil {
+		t.Fatal(err)
+	}
 	if len(f.log(s.ID, "start")) != 1 || f.awake(s.ID) {
 		t.Fatal("restore woke a parked session")
 	}

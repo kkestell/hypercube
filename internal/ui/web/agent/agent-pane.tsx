@@ -7,14 +7,14 @@ import {useStore} from '../store.ts';
 import {Tesseract} from '../tesseract/tesseract.tsx';
 import {Transcript} from '../transcript/transcript.tsx';
 import {Composer} from './composer.tsx';
-import {attachImages, unsentKey} from './drafts.ts';
+import {attachImages, isUnsent} from './drafts.ts';
 
 const hasFiles = (e: DragEvent) => e.dataTransfer.types.includes('Files');
 
 export function AgentPane({session, active}: {session: Session; active: boolean}) {
   const [state, store] = useStore();
   const [dropping, setDropping] = useState(false);
-  const unsent = session.id === unsentKey;
+  const unsent = isUnsent(session.id);
 
   const over = (e: DragEvent<HTMLElement>) => {
     if (!hasFiles(e)) return;

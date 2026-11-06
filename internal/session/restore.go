@@ -3,6 +3,7 @@ package session
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,9 +14,11 @@ import (
 	"github.com/kkestell/hypercube/internal/terminal"
 )
 
-// Restore adopts durable launches. A session whose agent was lost stays parked
-// until it is used or has queued messages.
-func (r *Runtime) Restore() {
+// Restore registers durable launches before serve starts the app's services,
+// then adopts their readers. Services remain available to attaching agents. A
+// session whose agent was lost stays parked until used or sent a message.
+// Pass nil for serve when no services need to start.
+func (r *Runtime) Restore(serve func()) error {
 	var families [][]store.Session
 	known := map[string]bool{}
 	err := r.db.Read(func(tx *store.Tx) error {
@@ -42,8 +45,11 @@ func (r *Runtime) Restore() {
 		return nil
 	})
 	if err != nil {
-		logf("restore sessions: %v", err)
-		return
+		return fmt.Errorf("restore sessions: %w", err)
+	}
+	attached, lost, err := r.registerRestored(families)
+	if err != nil {
+		return err
 	}
 	run := filepath.Join(store.Dir(), "run")
 	entries, _ := os.ReadDir(run)
@@ -56,50 +62,9 @@ func (r *Runtime) Restore() {
 			}
 		}
 	}
-	workspaces := map[string]bool{}
-	for _, family := range families {
-		r.restoreFamily(family)
-		workspaces[family[0].Workspace] = true
+	if serve != nil {
+		serve()
 	}
-	for id := range workspaces {
-		r.refreshMerges(id)
-	}
-}
-
-func (r *Runtime) restoreFamily(family []store.Session) {
-	run := filepath.Join(store.Dir(), "run")
-	root := family[0]
-	var lost []*live
-	var attached []*live
-	r.mu.Lock()
-	for _, s := range family {
-		if s.Launch == "" {
-			continue
-		}
-		dir := filepath.Join(run, s.Launch)
-		h, err := hold.Open(dir)
-		missing := errors.Is(err, os.ErrNotExist)
-		alive := err == nil && h.Alive()
-		exited := false
-		if err == nil {
-			_, exitErr := h.Exit()
-			exited = exitErr == nil
-		}
-		l, err := r.attach(s, root.ID)
-		if err != nil {
-			logf("restoring %s: %v", s.ID, err)
-			continue
-		}
-		r.live[s.ID] = l
-		l.stopping = s.Ended
-		// The holder writes its exit record before it releases its lock, so
-		// checking the lock first leaves no gap between the two.
-		if !missing && !alive && !exited {
-			lost = append(lost, l)
-		}
-		attached = append(attached, l)
-	}
-	r.mu.Unlock()
 	for _, l := range attached {
 		go r.run(l)
 	}
@@ -112,19 +77,68 @@ func (r *Runtime) restoreFamily(family []store.Session) {
 		r.settleLocked(l.id)
 	}
 	r.mu.Unlock()
-	for _, s := range family {
-		if s.Ended {
-			continue
+	workspaces := map[string]bool{}
+	for _, family := range families {
+		for _, s := range family {
+			if s.Ended {
+				continue
+			}
+			if err := r.Terminals.Adopt(s.ID); err != nil {
+				logf("adopting the shell of %s: %v", s.ID, err)
+			}
+			r.Deliver(s.ID)
 		}
-		if err := r.Terminals.Adopt(s.ID); err != nil {
-			logf("adopting the shell of %s: %v", s.ID, err)
-		}
-		r.Deliver(s.ID)
+		workspaces[family[0].Workspace] = true
 	}
+	for id := range workspaces {
+		r.refreshMerges(id)
+	}
+	return nil
+}
+
+// registerRestored installs every saved launch before any lifecycle request
+// can decide a new launch from the same session snapshot.
+func (r *Runtime) registerRestored(families [][]store.Session) (attached, lost []*live, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	run := filepath.Join(store.Dir(), "run")
+	for _, family := range families {
+		for _, s := range family {
+			if s.Launch == "" {
+				continue
+			}
+			dir := filepath.Join(run, s.Launch)
+			h, err := hold.Open(dir)
+			missing := errors.Is(err, os.ErrNotExist)
+			alive := err == nil && h.Alive()
+			exited := false
+			if err == nil {
+				_, exitErr := h.Exit()
+				exited = exitErr == nil
+			}
+			l, err := r.attach(s, family[0].ID)
+			if err != nil {
+				return nil, nil, fmt.Errorf("restoring %s: %w", s.ID, err)
+			}
+			r.live[s.ID] = l
+			l.stopping = s.Ended
+			// The holder writes its exit record before releasing its lock.
+			if !missing && !alive && !exited {
+				lost = append(lost, l)
+			}
+			attached = append(attached, l)
+		}
+	}
+	return attached, lost, nil
 }
 
 func (r *Runtime) attach(s store.Session, root string) (*live, error) {
-	l := &live{id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":", position: s.Position, ready: s.Ready, quick: s.Quick, attention: s.Attention, pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, started: make(chan struct{}), done: make(chan struct{})}
+	l := &live{
+		id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":",
+		position: s.Position, ready: s.Ready, quick: s.Quick, attention: s.Attention,
+		pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{},
+		started: make(chan struct{}), done: make(chan struct{}),
+	}
 	if s.Ready != 0 {
 		close(l.started)
 	}

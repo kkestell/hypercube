@@ -63,7 +63,8 @@ export interface Session {
 }
 
 // Unsent is a new session the user has opened but not yet sent a first prompt
-// to. Its identity object tells it apart from a later unsent session.
+// to. It lives in unsent while shown, or unsentDrafts when another view is shown.
+// Its identity object tells it apart from a later unsent session.
 export interface Unsent {
   identity: object;
   workspace: string | null;

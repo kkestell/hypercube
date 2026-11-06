@@ -19,6 +19,7 @@
 //	!answer    a turn of progress text and a final answer
 //	!stream    text and tool items that replace and extend each other
 //	!ask       an attention request with the choices yes and no
+//	!multiask  a question that permits several choices
 //	!asyncask  another request, asked asynchronously while the turn goes on;
 //	           its answer closes it without changing the work state
 //	!question  the !ask request alone, without a work state
@@ -88,8 +89,9 @@ type Entry struct {
 	// input
 	Images int `json:"images,omitempty"`
 	// answer
-	Request string `json:"request,omitempty"`
-	Choice  string `json:"choice,omitempty"`
+	Request string   `json:"request,omitempty"`
+	Choice  string   `json:"choice,omitempty"`
+	Choices []string `json:"choices,omitempty"`
 }
 
 // Log returns the entries of the given kind that the agent's stand-in wrote
@@ -289,6 +291,9 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("question"):
 		p.reply(cmd.ID, "")
 		p.state("", harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Choices: []string{"yes", "no"}})
+	case has("multiask"):
+		p.reply(cmd.ID, "")
+		p.state(harness.Working, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Choose several", Choices: []string{"yes", "no", "with, punctuation"}, Multi: true, Free: true})
 	case has("ask"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Working, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Choices: []string{"yes", "no"}})
@@ -363,7 +368,10 @@ func approval(turn string, done bool, answer string) harness.Item {
 }
 
 func (p *standIn) answer(cmd harness.Command) {
-	p.log(Entry{Kind: "answer", Request: cmd.Request, Choice: cmd.Choice, Text: cmd.Text})
+	if len(cmd.Choices) > 0 {
+		cmd.Choice = strings.Join(cmd.Choices, ", ")
+	}
+	p.log(Entry{Kind: "answer", Request: cmd.Request, Choice: cmd.Choice, Choices: cmd.Choices, Text: cmd.Text})
 	if turn, ok := strings.CutPrefix(cmd.Request, "approval-"); ok {
 		p.reply(cmd.ID, "")
 		p.state(harness.Idle, approval(turn, true, cmd.Choice), harness.Item{ID: "tool-" + turn, Kind: harness.KindTool, Tool: "Tool", Output: cmd.Choice, Done: true})

@@ -11,25 +11,18 @@ import {sendPrompt} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
 import {submitsOnKey} from '../shared/submit-key.ts';
 import {useStore} from '../store.ts';
-import {attachImages, canSend, draftOf, removeImage, typed, unsentKey} from './drafts.ts';
-import {promptHistory} from './history.ts';
+import {attachImages, canSend, draftOf, isUnsent, removeImage, typed} from './drafts.ts';
+import {promptHistory, stepHistory, type History} from './history.ts';
 import {MentionList, useMentions} from './use-mentions.tsx';
 import {ProfileSelect} from './profile-select.tsx';
 import {Usage} from './usage.tsx';
 import {Limits} from './limits.tsx';
 import {MergeButton} from './merge-button.tsx';
-import {WorktreeToggle} from './worktree-toggle.tsx';
+import {NewSessionOptions} from './new-session-options.tsx';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {Textarea} from '../components/ui/textarea';
 import {Icon} from '../shared/icon.tsx';
-
-// History is the prompt being edited while the arrow keys step through the
-// session's earlier prompts, with the edits made to each so far.
-interface History {
-  index: number;
-  edits: Record<number, string>;
-}
 
 export function Composer({session}: {session: Session}) {
   const [state, store] = useStore();
@@ -69,11 +62,9 @@ export function Composer({session}: {session: Session}) {
         const prompts = promptHistory(transcript);
         if (prompts.length) {
           e.preventDefault();
-          const index = history === null ? prompts.length - 1 : up ? Math.max(0, history.index - 1) : history.index + 1;
-          const edits: Record<number, string> = {...prompts, ...history?.edits};
-          mentions.dismiss(index >= prompts.length ? draft.text : edits[index]);
-          if (index >= prompts.length) setHistory(null);
-          else setHistory({index, edits});
+          const next = stepHistory(prompts, history, up ? 'up' : 'down');
+          mentions.dismiss(next === null ? draft.text : next.edits[next.index]);
+          setHistory(next);
           return;
         }
       }
@@ -98,6 +89,7 @@ export function Composer({session}: {session: Session}) {
 
   return (
     <form className={`composer @container/composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+      {isUnsent(session.id) && <NewSessionOptions />}
       {/* One line of text makes the box 50px tall: its border, padding, and the
           text's line; half that rounds its ends into half circles. */}
       <Card className="rounded-[25px] bg-transparent py-2 shadow-none dark:bg-input/30">
@@ -138,7 +130,6 @@ export function Composer({session}: {session: Session}) {
       <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[11px] pr-[22px]">
         <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <ProfileSelect session={session} />
-          {session.id === unsentKey && <WorktreeToggle />}
           <MergeButton session={session} />
         </div>
         <div className="flex items-center gap-4">

@@ -1,12 +1,14 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
-import {attachImages, canSend, draftOf, typed, unsentKey} from '../agent/drafts.ts';
+import {attachImages, canSend, draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import type {Profile} from '../agent/types.ts';
 import {createStore} from '../store.ts';
 import {openUnsent, unsentProfile} from './selection.ts';
 import {chooseSession, sendPrompt} from './session-actions.ts';
 import type {Session} from './types.ts';
+
+const unsentKey = workspaceDraftKey('w');
 
 afterEach(() => mock.restore());
 
@@ -73,19 +75,23 @@ test('text typed while the unsent session sends moves to the created session', a
 for (const accepted of [true, false]) {
   const reply = () => accepted ? Response.json({session: 'n'}) : new Response('refused', {status: 409});
 
-  test(`a ${accepted ? 'successful' : 'refused'} creation leaves a replacement unsent session alone`, async () => {
+  test(`a ${accepted ? 'successful' : 'refused'} creation preserves another workspace's new session`, async () => {
     const s = store();
     s.update(state => typed(unsentProfile(openUnsent(state, 'w'), lead), unsentKey, 'first'));
     const created = Promise.withResolvers<Response>();
     answer(() => created.promise);
     const sending = sendPrompt(s, idle(unsentKey));
-    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), lead), unsentKey, 'second'));
+    const other = workspaceDraftKey('other');
+    s.update(state => typed(unsentProfile(openUnsent(state, 'other'), lead), other, 'second'));
     const replacement = s.get().unsent;
     created.resolve(reply());
     await sending;
     expect(s.get().unsent).toBe(replacement);
     expect(s.get().pending).toBeNull();
-    expect(s.get().drafts).toEqual({[unsentKey]: {text: 'second', images: [], reading: 0}});
+    expect(draftOf(s.get(), other).text).toBe('second');
+    expect(draftOf(s.get(), unsentKey).text).toBe(accepted ? '' : 'first');
+    if (accepted) expect(s.get().unsentDrafts[unsentKey]).toBeUndefined();
+    else expect(s.get().unsentDrafts[unsentKey].sending).toBe(false);
   });
 
   test(`image reads do not strand a composer when creation ${accepted ? 'succeeds' : 'is refused'}`, async () => {

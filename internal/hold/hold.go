@@ -44,9 +44,10 @@ type Exit struct {
 }
 
 type Holder struct {
-	dir   string
-	mu    sync.Mutex
-	input net.Conn
+	dir    string
+	mu     sync.Mutex
+	input  net.Conn
+	closed bool
 }
 
 // Start starts a detached holder with the child's environment and directory.
@@ -109,21 +110,29 @@ func Open(dir string) (*Holder, error) {
 }
 func (h *Holder) Write(p []byte) (int, error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	if h.closed {
+		h.mu.Unlock()
+		return 0, net.ErrClosed
+	}
 	if h.input == nil {
 		c, err := net.Dial("unix", filepath.Join(h.dir, "in"))
 		if err != nil {
+			h.mu.Unlock()
 			return 0, err
 		}
 		h.input = c
 	}
-	return h.input.Write(p)
+	conn := h.input
+	h.mu.Unlock()
+	// Close must be able to release a write whose child stopped reading.
+	return conn.Write(p)
 }
 
 // Close releases this attachment's input connection without stopping the child.
 func (h *Holder) Close() error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.closed = true
 	if h.input != nil {
 		err := h.input.Close()
 		h.input = nil

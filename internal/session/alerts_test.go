@@ -49,7 +49,7 @@ func TestRequestAlerts(t *testing.T) {
 	// Later changes do not repeat the request: the next alert is the reply.
 	for _, it := range f.transcript(s.ID) {
 		if it.Kind == "attention" {
-			if err := f.rt.Answer(s.ID, it.ID, "yes", ""); err != nil {
+			if err := f.rt.Answer(s.ID, it.ID, []string{"yes"}, ""); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -125,5 +125,59 @@ func TestExistingRequestsAndRepliesAreNotAlerted(t *testing.T) {
 	}
 	if err := w.read(func(a Alert) { t.Errorf("alert for existing state: %+v", a) }); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWatcherStartedDuringQuestionIgnoresEarlierReply(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.input(s.ID, "!ask")
+	f.until("the question", func() bool { return f.storedSession(s.ID).Attention })
+	w := newAlertWatch(f.rt)
+	if err := w.read(nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Answer(s.ID, f.requests()[0].Item.ID, []string{"yes"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	f.until("the answer", func() bool { return !f.storedSession(s.ID).Attention && f.idle(s.ID) })
+	var alerts []Alert
+	notify := func(a Alert) { alerts = append(alerts, a) }
+	if err := w.read(notify); err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts) != 0 {
+		t.Fatalf("alerts for the earlier reply = %+v", alerts)
+	}
+	f.input(s.ID, "next")
+	f.until("the next reply", func() bool { return strings.HasSuffix(f.summary(s.ID), "user:next|text:ack") && f.idle(s.ID) })
+	if err := w.read(notify); err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts) != 1 || alerts[0].Text != "ack" {
+		t.Fatalf("alerts after the new reply = %+v", alerts)
+	}
+}
+
+func TestOfferRequestAlerts(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	w := newAlertWatch(f.rt)
+	if err := w.read(nil); err != nil {
+		t.Fatal(err)
+	}
+	id, err := f.rt.OfferChild(s.ID, "New task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.park(s.ID)
+	var alerts []Alert
+	for range 2 {
+		if err := w.read(func(a Alert) { alerts = append(alerts, a) }); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(alerts) != 1 || alerts[0].Key != "request:"+s.ID+":"+id || alerts[0].Text != "New task" {
+		t.Fatalf("offer alerts = %+v", alerts)
 	}
 }

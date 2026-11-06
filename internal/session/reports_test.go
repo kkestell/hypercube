@@ -73,13 +73,13 @@ func TestWaitingChildIsNamedWithReports(t *testing.T) {
 	parent := f.session()
 	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
 	f.input(bob.ID, "!ask")
-	f.until("bob's question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.until("bob's question", func() bool { return len(f.requests()) == 1 })
 	f.input(alice.ID, "!answer")
 	f.until("alice's report delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
 	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: bob.") || !strings.Contains(got, "alice finished a turn") {
 		t.Fatal(got)
 	}
-	if requests := f.rt.Requests(); len(requests) != 1 || requests[0].Item.Done || len(f.log(bob.ID, "answer")) != 0 {
+	if requests := f.requests(); len(requests) != 1 || requests[0].Item.Done || len(f.log(bob.ID, "answer")) != 0 {
 		t.Fatalf("bob's question was answered: %+v", requests)
 	}
 }
@@ -107,7 +107,7 @@ func TestAsyncQuestionDoesNotReleaseReports(t *testing.T) {
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
 	f.input(two.ID, "!asyncask")
-	f.until("two's question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.until("two's question", func() bool { return len(f.requests()) == 1 })
 	f.input(one.ID, "!answer")
 	f.until("report queued", func() bool { return len(f.queued(parent.ID)) == 1 })
 	if len(f.inputs(parent.ID)) != 1 {
@@ -126,7 +126,7 @@ func TestSecondQuestionReleasesReports(t *testing.T) {
 	parent := f.session()
 	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
 	f.input(bob.ID, "!asyncask")
-	f.until("bob's asynchronous question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.until("bob's asynchronous question", func() bool { return len(f.requests()) == 1 })
 	f.input(alice.ID, "!answer")
 	f.until("alice's report queued", func() bool { return len(f.queued(parent.ID)) == 1 && f.idle(alice.ID) })
 	f.input(bob.ID, "!question")

@@ -31,7 +31,7 @@ func TestAsyncChildAnswersStayOnTheirThread(t *testing.T) {
 			if state == "idle" {
 				h.feed(t, `{"method":"turn/completed","params":{"threadId":"child","turn":{"id":"child-turn","status":"completed"}}}`)
 			}
-			if err := h.answer("question:child-question/0", "src", ""); err != nil {
+			if err := h.answer("question:child-question/0", []string{"src"}, ""); err != nil {
 				t.Fatal(err)
 			}
 			steers, starts := h.server.sent("turn/steer"), h.server.sent("turn/start")
@@ -77,16 +77,16 @@ func TestInvalidNumericFormAnswerStaysOpenForCorrection(t *testing.T) {
 			h := newAgent(t)
 			h.thread = "main"
 			h.feed(t, fmt.Sprintf(`{"id":1,"method":"mcpServer/elicitation/request","params":{"serverName":"srv","threadId":"main","mode":"form","message":"Details","requestedSchema":{"type":"object","properties":{"count":{"type":%q,"title":"Count"},"note":{"type":"string","title":"Note"}}}}}`, tc.typeName))
-			if err := h.answer("request:1/0", "", tc.answer); err == nil {
+			if err := h.answer("request:1/0", nil, tc.answer); err == nil {
 				t.Fatal("invalid numeric answer accepted")
 			}
 			if h.item(t, "request:1/0").Done {
 				t.Fatal("invalid answer closed its field")
 			}
-			if err := h.answer("request:1/0", "", "3"); err != nil {
+			if err := h.answer("request:1/0", nil, "3"); err != nil {
 				t.Fatal(err)
 			}
-			if err := h.answer("request:1/1", "", "hello"); err != nil {
+			if err := h.answer("request:1/1", nil, "hello"); err != nil {
 				t.Fatal(err)
 			}
 			got := h.server.await(1)

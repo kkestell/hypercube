@@ -14,9 +14,9 @@ import {Input} from '../components/ui/input';
 import {BusyDot} from '../shared/busy-dot.tsx';
 import {Chevron} from '../shared/icon.tsx';
 
-const statusOf = (session: Session, selected: boolean) => {
+const statusOf = (session: Session, selected: boolean, waiting: boolean) => {
   if (session.ended) return null;
-  if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
+  if (waiting) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <BusyDot title="Working" />;
   return null;
@@ -39,7 +39,7 @@ interface SessionItemProps {
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}: SessionItemProps) {
   const [state, store] = useStore();
   const selected = session.id === state.selected;
-  const status = statusOf(session, selected);
+  const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id));
   const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();

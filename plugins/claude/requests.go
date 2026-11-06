@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
@@ -26,15 +27,22 @@ const (
 
 // answer replies to an open request: the choice or text of a question, or
 // Allow or Deny, with a reason as text, for a tool permission.
-func (c *claude) answer(item, choice, text string) error {
+func (c *claude) answer(item string, choices []string, text string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	open, ok := c.requests.Get(item)
 	if !ok {
 		return fmt.Errorf("request %s is not open", item)
 	}
+	if err := harness.CheckAnswer(open.Item, choices, text); err != nil {
+		return err
+	}
 	if open.Request.questions != nil {
-		return c.answerQuestion(open, choice, text)
+		return c.answerQuestion(open, choices, text)
+	}
+	choice := ""
+	if len(choices) > 0 {
+		choice = choices[0]
 	}
 	return c.answerPermission(open, choice, text)
 }
@@ -71,9 +79,12 @@ func (c *claude) answerPermission(open plugin.Open[request], choice, text string
 
 // answerQuestion records the answer to one question. Claude is answered once
 // every question of the request has an answer.
-func (c *claude) answerQuestion(open plugin.Open[request], choice, text string) error {
+func (c *claude) answerQuestion(open plugin.Open[request], choices []string, text string) error {
 	r := open.Request
-	result := cmp.Or(choice, text)
+	result := cmp.Or(strings.Join(choices, ", "), text)
+	if open.Item.Multi && len(choices) > 0 && strings.TrimSpace(text) != "" {
+		result += ", " + text
+	}
 	if result == "" {
 		return errors.New("the answer is empty")
 	}
@@ -131,6 +142,7 @@ func (c *claude) control(ev *harness.Event, m message) {
 		var in struct {
 			Questions []struct {
 				Question string `json:"question"`
+				Multi    bool   `json:"multiSelect"`
 				Options  []struct {
 					Label       string `json:"label"`
 					Description string `json:"description"`
@@ -142,7 +154,7 @@ func (c *claude) control(ev *harness.Event, m message) {
 			return
 		}
 		for i, q := range in.Questions {
-			item := harness.Item{ID: fmt.Sprintf("%s/%d", m.RequestID, i), Kind: harness.KindAttention, Text: q.Question, Free: true}
+			item := harness.Item{ID: fmt.Sprintf("%s/%d", m.RequestID, i), Kind: harness.KindAttention, Text: q.Question, Free: true, Multi: q.Multi}
 			var notes []string
 			for _, o := range q.Options {
 				item.Choices = append(item.Choices, o.Label)

@@ -472,13 +472,13 @@ func TestQuestionForm(t *testing.T) {
 		t.Fatal(got)
 	}
 	// The form is answered once every question has an answer.
-	if err := h.answer("form:0/1", "Large", ""); err != nil {
+	if err := h.answer("form:0/1", []string{"Large"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := h.acp.responses(); len(got) != 0 {
 		t.Fatal("answered early:", got)
 	}
-	if err := h.answer("form:0/0", "", "green"); err != nil {
+	if err := h.answer("form:0/0", nil, "green"); err != nil {
 		t.Fatal(err)
 	}
 	var r []map[string]any
@@ -492,7 +492,7 @@ func TestQuestionForm(t *testing.T) {
 		t.Fatalf("%+v", it)
 	}
 	for _, id := range []string{"form:0/0", "form:9/0"} {
-		if err := h.answer(id, "Red", ""); err == nil || !strings.Contains(err.Error(), "is not open") {
+		if err := h.answer(id, []string{"Red"}, ""); err == nil || !strings.Contains(err.Error(), "is not open") {
 			t.Fatal(id, err)
 		}
 	}
@@ -512,7 +512,7 @@ func TestWithdrawnFormIsRefused(t *testing.T) {
 		t.Fatal(r)
 	}
 	eventually(t, "the closed questions", func() bool { return h.item(t, "form:0/0").Done && h.item(t, "form:0/1").Done })
-	if err := h.answer("form:0/0", "Red", ""); err == nil {
+	if err := h.answer("form:0/0", []string{"Red"}, ""); err == nil {
 		t.Fatal("answered a withdrawn form")
 	}
 	h.endTurn(t, "cancelled")
@@ -529,22 +529,22 @@ func TestFormWithMultipleChoiceAndPlainText(t *testing.T) {
 		`"tags":{"type":"array","title":"Tags","items":{"anyOf":[{"const":"a","title":"a"},{"const":"b","title":"b"}]}},`+
 		`"note":{"type":"string","title":"A note"}}}}}`)
 	tags, note := h.item(t, "form:0/0"), h.item(t, "form:0/1")
-	if tags.Text != "Tags" || tags.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || note.Text != "A note" || !note.Free || len(note.Choices) != 0 {
+	if tags.Text != "Tags" || !tags.Multi || tags.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || note.Text != "A note" || !note.Free || note.Multi || len(note.Choices) != 0 {
 		t.Fatalf("%+v %+v", tags, note)
 	}
-	if err := h.answer("form:0/0", "", "x"); err == nil {
+	if err := h.answer("form:0/0", nil, "x"); err == nil {
 		t.Fatal("typed text answered a question that lists its choices only")
 	}
-	if err := h.answer("form:0/0", "b", ""); err != nil {
+	if err := h.answer("form:0/0", []string{"a", "b"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.answer("form:0/1", "", "hello"); err != nil {
+	if err := h.answer("form:0/1", nil, "hello"); err != nil {
 		t.Fatal(err)
 	}
 	var r []map[string]any
 	eventually(t, "the answer", func() bool { r = h.acp.responses(); return len(r) == 1 })
 	content := r[0]["result"].(map[string]any)["content"].(map[string]any)
-	if !slices.Equal(content["tags"].([]any), []any{"b"}) || content["note"] != "hello" {
+	if !slices.Equal(content["tags"].([]any), []any{"a", "b"}) || content["note"] != "hello" {
 		t.Fatal(content)
 	}
 }
@@ -662,7 +662,7 @@ func TestEndOfTurnFinishesOpenItems(t *testing.T) {
 			t.Fatalf("%+v is still open", it)
 		}
 	}
-	if err := h.answer("form:0/0", "Red", ""); err == nil {
+	if err := h.answer("form:0/0", []string{"Red"}, ""); err == nil {
 		t.Fatal("answered a request of a finished turn")
 	}
 	// The form is cancelled while the connection stays open.

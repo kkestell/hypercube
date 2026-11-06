@@ -121,7 +121,11 @@ func (d *dataSocket) sendState() error {
 		}
 		d.workspaces, d.limits, d.stale = workspaces, limits, false
 	}
-	data, err := json.Marshal(stateMessage{"state", buildID(), d.workspaces, d.rt.Requests(), d.limits})
+	requests, err := d.rt.Requests()
+	if err != nil {
+		return err
+	}
+	data, err := json.Marshal(stateMessage{"state", buildID(), d.workspaces, requests, d.limits})
 	if err != nil || bytes.Equal(data, d.sent) {
 		return err
 	}

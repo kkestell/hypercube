@@ -320,3 +320,19 @@ func (f *fixture) awake(id string) bool {
 	defer f.rt.mu.Unlock()
 	return f.rt.live[id] != nil
 }
+
+func (f *fixture) requests() []Request {
+	f.t.Helper()
+	requests, err := f.rt.Requests()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	return requests
+}
+
+func (f *fixture) restore() {
+	f.t.Helper()
+	if err := f.rt.Restore(nil); err != nil {
+		f.t.Fatal(err)
+	}
+}

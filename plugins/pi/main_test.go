@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 )
 
 // The fixtures in testdata are pi's own output, recorded from
@@ -326,10 +327,13 @@ func TestSelectDialog(t *testing.T) {
 	if a.Text != "Pick a color" || !slices.Equal(a.Choices, []string{"red", "green"}) || a.Free || a.Done {
 		t.Fatalf("attention %+v", a)
 	}
-	if err := p.answer(a.ID, "purple", ""); err == nil {
+	if err := p.answer(a.ID, []string{"purple"}, ""); err == nil {
 		t.Error("an unknown choice was accepted")
 	}
-	if err := p.answer(a.ID, "green", ""); err != nil {
+	if err := p.answer(a.ID, []string{"red", "green"}, ""); err == nil {
+		t.Error("several choices were accepted for a single-choice dialog")
+	}
+	if err := p.answer(a.ID, []string{"green"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	r := p.commands("extension_ui_response")
@@ -339,7 +343,7 @@ func TestSelectDialog(t *testing.T) {
 	if done := p.item(t, harness.KindAttention); !done.Done || done.Answer != "green" {
 		t.Errorf("attention %+v", done)
 	}
-	if err := p.answer(a.ID, "green", ""); err == nil {
+	if err := p.answer(a.ID, []string{"green"}, ""); err == nil {
 		t.Error("an answer to a finished request succeeded")
 	}
 }
@@ -356,7 +360,7 @@ func TestConfirmDialog(t *testing.T) {
 		if a.Text != "Delete it?\n\nThis cannot be undone." || !slices.Equal(a.Choices, []string{"Yes", "No"}) {
 			t.Fatalf("attention %+v", a)
 		}
-		if err := p.answer(a.ID, tc.choice, ""); err != nil {
+		if err := p.answer(a.ID, []string{tc.choice}, ""); err != nil {
 			t.Fatal(err)
 		}
 		if r := p.commands("extension_ui_response"); len(r) != 1 || r[0]["confirmed"] != tc.want {
@@ -374,10 +378,10 @@ func TestInputAndEditorTakeText(t *testing.T) {
 		if a.Text != tc.text || !a.Free || len(a.Choices) != 0 {
 			t.Fatalf("%s: attention %+v", tc.name, a)
 		}
-		if err := p.answer(a.ID, "", ""); err == nil {
+		if err := p.answer(a.ID, nil, ""); err == nil {
 			t.Errorf("%s: an empty answer was accepted", tc.name)
 		}
-		if err := p.answer(a.ID, "", "Kyle"); err != nil {
+		if err := p.answer(a.ID, nil, "Kyle"); err != nil {
 			t.Fatal(err)
 		}
 		if r := p.commands("extension_ui_response"); len(r) != 1 || r[0]["value"] != "Kyle" {
@@ -399,7 +403,7 @@ func TestDialogEndsWhenPiGivesUp(t *testing.T) {
 	if a := p.item(t, harness.KindAttention); a.ID != id || !a.Done {
 		t.Errorf("attention %+v", a)
 	}
-	if err := p.answer(id, "red", ""); err == nil {
+	if err := p.answer(id, []string{"red"}, ""); err == nil {
 		t.Error("an answer to an expired dialog succeeded")
 	}
 }
@@ -479,7 +483,7 @@ func TestInterruptGivesUpDialogsAndAborts(t *testing.T) {
 	if a := p.item(t, harness.KindAttention); !a.Done {
 		t.Errorf("attention %+v", a)
 	}
-	if err := p.answer(id, "red", ""); err == nil {
+	if err := p.answer(id, []string{"red"}, ""); err == nil {
 		t.Error("an answer to a cancelled dialog succeeded")
 	}
 }
@@ -569,12 +573,18 @@ func fakePi(t *testing.T, env map[string]string) (args string) {
 echo "$@" > "$FAKE_ARGS"
 echo "$HYPERCUBE_MCP" > "$FAKE_ARGS.mcp"
 cost=0.5
+pending_prompt=
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   case "$line" in
     *'"type":"get_state"'*) printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{"model":{"provider":"%s","id":"%s","contextWindow":1000},"sessionFile":"%s","sessionId":"session-1"}}\n' "$id" "$FAKE_PROVIDER" "$FAKE_MODEL" "$FAKE_SESSION_FILE";;
     *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":%s,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id" "$cost";;
     *'"type":"prompt"'*)
+      if [ -n "$FAKE_DIALOG_BEFORE_PROMPT_REPLY" ]; then
+        pending_prompt=$id
+        printf '{"type":"extension_ui_request","id":"dialog","method":"select","title":"Pick a color","options":["red","green"]}\n'
+        continue
+      fi
       if [ -n "$FAKE_PENDING" ]; then
         echo pending > "$FAKE_PENDING"
         while [ -f "$FAKE_PENDING" ]; do sleep 0.01; done
@@ -583,6 +593,9 @@ while IFS= read -r line; do
       printf '{"id":"%s","type":"response","command":"prompt","success":true,"data":{"disposition":"started"}}\n' "$id"
       cost=0.75
       cat "$FAKE_STREAM";;
+    *'"type":"extension_ui_response"'*)
+      printf '{"id":"%s","type":"response","command":"prompt","success":true}\n' "$pending_prompt"
+      pending_prompt=;;
   esac
 done
 `
@@ -601,6 +614,7 @@ done
 	}
 	t.Setenv("FAKE_STREAM", stream)
 	t.Setenv("FAKE_PENDING", "")
+	t.Setenv("FAKE_DIALOG_BEFORE_PROMPT_REPLY", "")
 	for k, v := range env {
 		t.Setenv(k, v)
 	}
@@ -676,6 +690,29 @@ func startArgs(t *testing.T) harness.StartArgs {
 	}
 }
 
+func TestServeAnswersDialogBeforePromptAcceptance(t *testing.T) {
+	fakePi(t, map[string]string{"FAKE_DIALOG_BEFORE_PROMPT_REPLY": "1"})
+	c := harnesstest.Serve(t, serve)
+	a := startArgs(t)
+	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &a})
+	if reply := c.Reply(1); reply.Error != "" {
+		t.Fatal(reply.Error)
+	}
+	c.Send(harness.Command{ID: 2, Command: harness.CmdInput, Text: "open the dialog"})
+	c.Until(func(r harness.Record) bool {
+		return r.Event != nil && slices.ContainsFunc(r.Event.Items, func(it harness.Item) bool {
+			return it.ID == "dialog" && it.Kind == harness.KindAttention && !it.Done
+		})
+	})
+	c.Send(harness.Command{ID: 3, Command: harness.CmdAnswer, Request: "dialog", Choices: []string{"green"}})
+	for _, id := range []int64{2, 3} {
+		r := c.Until(func(r harness.Record) bool { return r.Reply != nil })
+		if r.Reply.ID != id || r.Reply.Error != "" {
+			t.Fatalf("reply to %d: %+v", id, r.Reply)
+		}
+	}
+}
+
 func TestStart(t *testing.T) {
 	argsFile := fakePi(t, nil)
 	a := startArgs(t)
@@ -722,7 +759,7 @@ func TestStart(t *testing.T) {
 	if !slices.Equal(texts, []string{"done"}) || !slices.Equal(reported, []string{"session-1"}) {
 		t.Errorf("texts %v, conversations %v", texts, reported)
 	}
-	if err := ag.answer("nothing", "", ""); err == nil {
+	if err := ag.answer("nothing", nil, ""); err == nil {
 		t.Error("an answer to no request succeeded")
 	}
 }

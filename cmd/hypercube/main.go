@@ -73,9 +73,9 @@ type app struct {
 	once sync.Once
 }
 
-// startApp serves HTTP on the listener, then restores the sessions the user
-// left running. Harness plugins are in plugins, or beside the executable when
-// it is empty. The desktop app's connection, when it has one, drives the
+// startApp registers saved launches, then serves HTTP while adopting the
+// sessions the user left running. Harness plugins are in plugins, or beside
+// the executable when it is empty. The desktop app's connection, when it has one, drives the
 // sessions' browsers and shows their alerts.
 func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
 	db, err := store.Open()
@@ -87,8 +87,13 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 	ctx, cancel := context.WithCancel(context.Background())
 	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1)}
 	a.server = &http.Server{Handler: ui.Handler(db, rt, desktop)}
-	go func() { a.done <- a.server.Serve(listener) }()
-	rt.Restore()
+	if err := rt.Restore(func() {
+		go func() { a.done <- a.server.Serve(listener) }()
+	}); err != nil {
+		cancel()
+		_ = db.Close()
+		return nil, err
+	}
 	go func() {
 		err := rt.WatchAlerts(ctx, func(alert session.Alert) {
 			// A failed alert is reported and the watch goes on.

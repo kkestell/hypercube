@@ -81,6 +81,7 @@ export interface AttentionItem extends ItemBase {
   kind: 'attention';
   text?: string;
   choices?: string[];
+  multi?: boolean;
   notes?: string[];
   free?: boolean;
   answer?: string;

@@ -5,7 +5,7 @@
 // would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
-import {useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import {post} from '../api.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {agentTabId, selectTab} from '../editor/editor.ts';
@@ -95,7 +95,7 @@ export function App({store}: {store: Store}) {
 
   const {sidebar, rightPanel, panel} = state.workbench;
   const key = (e: KeyboardEvent) => {
-    if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.nativeEvent.isComposing || !(e.target instanceof Element)) return;
+    if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
     if (state.confirmation || e.target.closest('[role=menu], [role=dialog], [role=alertdialog], .terminal-panel')) return;
     const session = currentSession(state);
@@ -103,9 +103,18 @@ export function App({store}: {store: Store}) {
     e.preventDefault();
     post(store, 'session', {action: 'interrupt', id: session.id});
   };
+  useEffect(() => {
+    const capture = (e: KeyboardEvent) => shortcut(e, store, shortcutActions);
+    document.addEventListener('keydown', capture, true);
+    document.addEventListener('keydown', key);
+    return () => {
+      document.removeEventListener('keydown', capture, true);
+      document.removeEventListener('keydown', key);
+    };
+  });
   return (
     <StoreContext.Provider value={context}>
-      <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)} onKeyDownCapture={e => shortcut(e, store, shortcutActions)} onKeyDown={key}>
+      <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)}>
         <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />

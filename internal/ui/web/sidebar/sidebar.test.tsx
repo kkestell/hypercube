@@ -184,3 +184,12 @@ test('an initially selected archived child opens its family in Archived', () => 
   expect(sessionRows(root)).toEqual(['archived', 'child']);
   expect(find(root, '[role=tablist][aria-label="Sidebar"] [data-state=active]').getAttribute('aria-label')).toBe('Archived');
 });
+
+
+test('a saved offer shows waiting while its session is parked', () => {
+  const {root, store} = setup([session('a', {activity: 'exited'})]);
+  act(() => store.update(state => ({...state, requests: [{session: 'a', item: {id: 'offer', kind: 'attention'}}]})));
+  expect(row(root, 'a').querySelector('[aria-label="Waiting on you"]')).not.toBeNull();
+  act(() => store.update(state => ({...state, requests: []})));
+  expect(row(root, 'a').querySelector('[aria-label="Waiting on you"]')).toBeNull();
+});

@@ -26,7 +26,7 @@ func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed task", Profile: harness.Profile{Name: "worker", Harness: "test", Model: "m", Effort: "low"}, Dir: ".", Message: "brief"})
-	if len(f.family(parent.ID)) != 1 || len(f.rt.Requests()) != 0 {
+	if len(f.family(parent.ID)) != 1 || len(f.requests()) != 0 {
 		t.Fatal("proposal launched or blocked the parent")
 	}
 	f.park(parent.ID)

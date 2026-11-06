@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // A plugin's `serve` command speaks JSON Lines on stdin and stdout; stderr
@@ -43,16 +44,18 @@ const (
 // Command is one request to the plugin. The plugin answers each with a Reply
 // carrying the same ID. Resent commands whose ID is not greater than the last
 // ID read are ignored. IDs increase across launches. Start is set for
-// CmdStart, Text and Images for CmdInput, and Request, Choice, and Text for
+// CmdStart, Text and Images for CmdInput, and Request, Choices, and Text for
 // CmdAnswer, and Selection for CmdConfigure. An input has text, images, or both.
 type Command struct {
-	ID        int64      `json:"id"`
-	Command   string     `json:"command"`
-	Start     *StartArgs `json:"start,omitempty"`
-	Text      string     `json:"text,omitempty"`
-	Images    []Image    `json:"images,omitempty"`
-	Request   string     `json:"request,omitempty"`
+	ID      int64      `json:"id"`
+	Command string     `json:"command"`
+	Start   *StartArgs `json:"start,omitempty"`
+	Text    string     `json:"text,omitempty"`
+	Images  []Image    `json:"images,omitempty"`
+	Request string     `json:"request,omitempty"`
+	// Choice is retained for replaying commands saved by older versions.
 	Choice    string     `json:"choice,omitempty"`
+	Choices   []string   `json:"choices,omitempty"`
 	Selection *Selection `json:"selection,omitempty"`
 }
 
@@ -157,7 +160,8 @@ type Limit struct {
 // items name the item that started it as their Parent.
 //
 // An attention item asks the user: Text is the prompt, Choices are the options,
-// Notes[i] optionally describes Choices[i], and Free allows typed text. It stays open until an event sets Done, with the
+// Notes[i] optionally describes Choices[i], Multi allows several selections,
+// and Free allows typed text. It stays open until an event sets Done, with the
 // Answer when there is one. The agent waits for the answer unless Async is
 // set: an asynchronous question leaves the agent working.
 //
@@ -197,6 +201,7 @@ type Item struct {
 	Output  string          `json:"output,omitempty"`
 	Failed  bool            `json:"failed,omitempty"`
 	Choices []string        `json:"choices,omitempty"`
+	Multi   bool            `json:"multi,omitempty"`
 	Notes   []string        `json:"notes,omitempty"`
 	Free    bool            `json:"free,omitempty"`
 	Answer  string          `json:"answer,omitempty"`
@@ -209,6 +214,30 @@ type Item struct {
 	Offer   bool            `json:"offer,omitempty"`
 	// Automatic distinguishes host-generated input from the user's prompts.
 	Automatic bool `json:"automatic,omitempty"`
+}
+
+// CheckAnswer validates selections received from the UI or plugin commands.
+func CheckAnswer(item Item, choices []string, text string) error {
+	if len(choices) > 1 && !item.Multi {
+		return errors.New("the question allows only one choice")
+	}
+	for i, choice := range choices {
+		if !slices.Contains(item.Choices, choice) {
+			return fmt.Errorf("unknown choice %q", choice)
+		}
+		if slices.Contains(choices[:i], choice) {
+			return fmt.Errorf("choice %q was selected more than once", choice)
+		}
+	}
+	if len(choices) == 0 {
+		if strings.TrimSpace(text) == "" {
+			return errors.New("the answer is empty")
+		}
+		if !item.Free {
+			return errors.New("the question needs one of its choices")
+		}
+	}
+	return nil
 }
 
 // Line returns the command as one line of the plugin's input.

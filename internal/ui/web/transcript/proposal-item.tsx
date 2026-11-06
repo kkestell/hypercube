@@ -4,15 +4,24 @@ import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {useStore} from '../store.ts';
 import {Markdown} from './markdown.tsx';
+import {Disclosure} from './disclosure.tsx';
 import type {ProposalItem as Proposal} from './types.ts';
+
+interface ProposalItemProps {
+  item: Proposal;
+  session: string;
+  expanded: boolean;
+  setOpen: (key: string, open: boolean) => void;
+}
 
 // Starting uses the saved proposal on the server. The browser sends only its ID.
 // A fork works where this session works, so its card names no folder.
-export function ProposalItem({item, session}: {item: Proposal; session: string}) {
+export function ProposalItem({item, session, expanded, setOpen}: ProposalItemProps) {
   const [, store] = useStore();
   const [sending, setSending] = useState(false);
   const card = useRef<HTMLDivElement>(null);
   const options = item.input;
+  const outcome = item.answer === 'Dismissed' ? 'Dismissed' : `Child session: ${options.name}`;
   const act = async (action: 'start-proposal' | 'dismiss-proposal') => {
     if (sending) return;
     setSending(true);
@@ -23,19 +32,20 @@ export function ProposalItem({item, session}: {item: Proposal; session: string})
   return (
     <Card ref={card} tabIndex={-1} className="border-0 py-3" aria-label="Proposed child session">
       <CardContent className="space-y-3 px-4">
-        <div className="font-medium">{item.text}</div>
-        <div className="text-xs text-muted-foreground">
-          {options.profile.name} · {options.fork ? 'Forked context' : `Fresh context · ${options.dir ? `Folder: ${options.dir}` : 'New worktree'}`}
-        </div>
-        {options.message && <Markdown text={options.message} style="chat" />}
-        {item.done ? (
-          <div className="text-xs text-muted-foreground">{item.answer === 'Dismissed' ? 'Dismissed' : `Child session: ${options.name}`}</div>
-        ) : (
+        {item.done ? <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
+          summary={<><span className="truncate font-medium">{item.text}</span><span className="truncate text-xs text-muted-foreground">{options.profile.name} · {outcome}</span></>}>
+          {options.message && <Markdown text={options.message} style="chat" />}
+        </Disclosure> : <>
+          <div className="font-medium">{item.text}</div>
+          <div className="text-xs text-muted-foreground">
+            {options.profile.name} · {options.fork ? 'Forked context' : `Fresh context · ${options.dir ? `Folder: ${options.dir}` : 'New worktree'}`}
+          </div>
+          {options.message && <Markdown text={options.message} style="chat" />}
           <div className="flex gap-2">
             <Button size="sm" disabled={sending} onClick={() => act('start-proposal')}>Start</Button>
             <Button size="sm" variant="secondary" disabled={sending} onClick={() => act('dismiss-proposal')}>Dismiss</Button>
           </div>
-        )}
+        </>}
       </CardContent>
     </Card>
   );

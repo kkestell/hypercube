@@ -37,7 +37,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const [view, setView] = useState('sessions');
   const frozen = useRef(state.workspaces);
   const family = sessionOf(state, state.selected);
-  const selectedView = family ? ((family.parent ?? family.session).ended ? 'archived' : 'sessions') : null;
+  const selectedView = state.unsent ? 'sessions' : family ? ((family.parent ?? family.session).ended ? 'archived' : 'sessions') : null;
   useEffect(() => {
     if (selectedView) setView(selectedView);
   }, [state.selected, selectedView]);
@@ -85,6 +85,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}
+        showDraft={view === 'sessions'}
         onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
         renaming={renaming} onRenaming={setRenaming}
       />

@@ -10,7 +10,10 @@ import type {State} from '../state.ts';
 import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
 
 export const allSessions = (state: State): Session[] => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
-export const waitingCount = (state: State) => allSessions(state).filter(s => s.attention).length;
+export const waitingCount = (state: State) => {
+  const waiting = new Set(state.requests.map(request => request.session));
+  return allSessions(state).filter(s => !s.ended && (s.attention || waiting.has(s.id))).length;
+};
 
 export const currentSession = (state: State) => allSessions(state).find(s => s.id === state.selected);
 
@@ -26,8 +29,8 @@ export function sessionOf(state: State, id: string | null): {workspace: Workspac
 }
 
 // The unsent session takes the harness of its chosen profile.
-const unsentSession = (sending: boolean, harness = ''): Session => ({
-  id: unsentKey, parent: '', title: 'New Session', ready: false, ended: false, unseen: false,
+const unsentSession = (id: string, sending: boolean, harness = ''): Session => ({
+  id, parent: '', title: 'New Session', ready: false, ended: false, unseen: false,
   harness, model: '', effort: '', dir: '', activity: sending ? 'busy' : 'idle', attention: false, usage: {},
   worktree: false, children: [],
 });
@@ -36,7 +39,7 @@ const unsentSession = (sending: boolean, harness = ''): Session => ({
 export function shownSession(state: State): Session | null {
   if (state.unsent) {
     const {sending, profile} = state.unsent;
-    return unsentSession(sending, state.config?.profiles.find(p => p.name === profile)?.harness);
+    return unsentSession(unsentKey(state.unsent.workspace), sending, state.config?.profiles.find(p => p.name === profile)?.harness);
   }
   return state.session ? currentSession(state) ?? null : null;
 }
@@ -62,9 +65,10 @@ export const emptySession = (id: string): AttachedSession => ({
 
 const omit = <T>(object: Record<string, T>, keys: string[]) => Object.fromEntries(Object.entries(object).filter(([key]) => !keys.includes(key)));
 
-function discardUnsent(state: State): State {
+function parkUnsent(state: State): State {
   if (!state.unsent) return state;
-  return {...state, unsent: null, drafts: omit(state.drafts, [unsentKey])};
+  const key = unsentKey(state.unsent.workspace);
+  return {...state, unsent: null, unsentDrafts: {...state.unsentDrafts, [key]: state.unsent}};
 }
 
 // attach replaces the session state when the shown session changes.
@@ -78,8 +82,13 @@ function attach(state: State): State {
 // receivedWorkspaces applies a state message's workspaces.
 export function receivedWorkspaces(state: State, workspaces: Workspace[]): State {
   let next = {...state, workspaces};
-  const unsentWorkspace = next.unsent?.workspace;
-  if (unsentWorkspace && !workspaces.some(w => w.id === unsentWorkspace)) next = discardUnsent(next);
+  const removed = (draft: Unsent) => draft.workspace !== null && !workspaces.some(w => w.id === draft.workspace);
+  const discarded = Object.entries(next.unsentDrafts).filter(([, draft]) => removed(draft)).map(([key]) => key);
+  if (next.unsent && removed(next.unsent)) {
+    discarded.push(unsentKey(next.unsent.workspace));
+    next = {...next, unsent: null};
+  }
+  if (discarded.length) next = {...next, drafts: omit(next.drafts, discarded), unsentDrafts: omit(next.unsentDrafts, discarded)};
   const sessions = allSessions(next);
   if (next.pending && sessions.some(s => s.id === next.pending)) next = {...next, selected: next.pending, pending: null};
   // A family archived while shown is deselected, and nothing takes its place.
@@ -95,20 +104,21 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
 // selectSession shows a session. A new session's ID can arrive before the
 // state that lists it, so the selection waits for that state.
 export function selectSession(state: State, id: string): State {
-  const next = discardUnsent(state);
+  const next = parkUnsent(state);
   if (!allSessions(next).some(s => s.id === id)) return {...next, pending: id};
   return attach({...next, selected: id, pending: null});
 }
 
-// openUnsent opens a new session in a workspace, in place of any other unsent
-// session. It has no profile until the composer chooses one, and runs in the
-// checkout unless the composer chooses a worktree.
+// openUnsent reopens the workspace's unfinished session or creates one.
 export function openUnsent(state: State, workspace?: string | null): State {
   workspace ??= state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id ?? state.workspaces[0]?.id ?? null;
-  const next = discardUnsent(state);
+  if (state.unsent?.workspace === workspace) return state;
+  const next = parkUnsent(state);
+  const key = unsentKey(workspace);
+  const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
-  const unsent: Unsent = {identity: {}, workspace, profile: null, worktree: false, sending: false};
-  return attach({...next, unsent, selected: null, pending: null});
+  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, profile: null, worktree: false, sending: false};
+  return attach({...next, unsent, unsentDrafts, selected: null, pending: null});
 }
 
 // unsentProfile sets the unsent session's profile.
@@ -121,4 +131,9 @@ export const unsentWorktree = (state: State, worktree: boolean): State => state.
   ? {...state, unsent: {...state.unsent, worktree}}
   : state;
 
-export const unsentSending = (state: State, sending: boolean): State => state.unsent ? {...state, unsent: {...state.unsent, sending}} : state;
+export function unsentSending(state: State, sending: boolean, key = state.unsent && unsentKey(state.unsent.workspace)): State {
+  if (!key) return state;
+  if (state.unsent && unsentKey(state.unsent.workspace) === key) return {...state, unsent: {...state.unsent, sending}};
+  const draft = state.unsentDrafts[key];
+  return draft ? {...state, unsentDrafts: {...state.unsentDrafts, [key]: {...draft, sending}}} : state;
+}

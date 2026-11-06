@@ -56,7 +56,7 @@ test('a proposed child stays visible after the final response and sends only its
   await act(async () => reply.resolve(new Response('')));
   send([{id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', profile: {name: 'worker', harness: 'codex', model: 'm', effort: 'low'}}, done: true, answer: 'child-id'}]);
   expect(card.textContent).toContain('Child session: review');
-  expect(card.querySelector('button')).toBeNull();
+  expect([...card.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
 });
 
 test('a refused proposal action can be retried or dismissed', async () => {

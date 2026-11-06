@@ -235,7 +235,7 @@ func (ag *agent) startTurn(ev *harness.Event, id string) {
 	ev.State = harness.Working
 }
 
-// endTurn finishes a main turn: nothing is left streaming or waiting. The
+// endTurn finishes a main turn's items, leaving native children running. The
 // agent is idle unless a newer turn has started, and a completed turn reports
 // its final answer with it. An interrupted turn is the user's own doing; a
 // failed one is an error.
@@ -248,17 +248,25 @@ func (ag *agent) endTurn(ev *harness.Event, id, status, message string) {
 		}
 		ag.final = nil
 		for id, it := range ag.open {
+			if it.Parent != "" {
+				continue
+			}
 			it.Append, it.Done = true, true
 			ev.Items = append(ev.Items, it)
 			delete(ag.open, id)
 		}
 		for id, it := range ag.running {
+			if it.Parent != "" {
+				continue
+			}
 			it.Done = true
 			ev.Items = append(ev.Items, it)
 			ag.finished[id] = true
 			delete(ag.running, id)
 		}
-		ev.Items = append(ev.Items, ag.closeRequests(blockingRequest, false)...)
+		ev.Items = append(ev.Items, ag.closeRequests(func(r *request) bool {
+			return blockingRequest(r) && r.thread == ag.thread
+		}, false)...)
 		ev.State = harness.Idle
 	}
 	if status == "failed" {

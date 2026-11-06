@@ -1,4 +1,3 @@
-import type {KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {toggle, toggleWrap} from './workbench.ts';
@@ -155,8 +154,8 @@ const editingTarget = (target: Element) => !!target.closest('input, textarea, [c
 
 // shortcut runs the shortcut that a key press in the page names. In the
 // desktop app the menus run the shortcuts they own.
-export function shortcut(e: ReactKeyboardEvent, store: Store, actions: ShortcutActions) {
-  if (e.defaultPrevented || e.repeat || e.nativeEvent.isComposing || !(e.target instanceof Element)) return;
+export function shortcut(e: KeyboardEvent, store: Store, actions: ShortcutActions) {
+  if (e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
   if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
   if (e.target.closest('.terminal-panel') && !shortcuts.some(item => item.terminal && matches(e, item.id))) return;
   if (store.get().confirmation) return;

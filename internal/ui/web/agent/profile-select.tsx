@@ -7,14 +7,14 @@ import {fetchConfig, selectProfile} from '../api.ts';
 import {receivedConfig} from '../app/config.ts';
 import {unsentProfile} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
-import {unsentKey} from './drafts.ts';
+import {isUnsent} from './drafts.ts';
 import {modelLabel, profileLabel} from './profile-label.ts';
 import {harnessIcon} from './harness-icon.tsx';
 import type {Session} from '../sessions/types.ts';
 
 export function ProfileSelect({session}: {session: Session}) {
   const [state, store] = useStore();
-  const unsent = session.id === unsentKey ? state.unsent : null;
+  const unsent = isUnsent(session.id) ? state.unsent : null;
   const profiles = state.config?.profiles ?? [];
   const [revision, refresh] = useState(0);
   useEffect(() => {

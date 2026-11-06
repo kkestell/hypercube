@@ -40,10 +40,10 @@ func TestRequestsNewestFirst(t *testing.T) {
 	parent := f.session()
 	child := f.child(parent, "w1", "")
 	f.input(parent.ID, "!ask")
-	f.until("the parent's request", func() bool { return len(f.rt.Requests()) == 1 })
+	f.until("the parent's request", func() bool { return len(f.requests()) == 1 })
 	f.input(child.ID, "!ask")
-	f.until("the child's request", func() bool { return len(f.rt.Requests()) == 2 })
-	if requests := f.rt.Requests(); requests[0].Session != child.ID || requests[1].Session != parent.ID {
+	f.until("the child's request", func() bool { return len(f.requests()) == 2 })
+	if requests := f.requests(); requests[0].Session != child.ID || requests[1].Session != parent.ID {
 		t.Fatalf("requests = %+v", requests)
 	}
 }

@@ -54,8 +54,8 @@ func (s *standIn) start(a harness.StartArgs, emit func(harness.Event)) (Agent, e
 			return err
 		},
 		Interrupt: func() error { s.record("interrupt"); return nil },
-		Answer: func(request, choice, text string) error {
-			s.record("answer " + request + " " + choice + " " + text)
+		Answer: func(request string, choices []string, text string) error {
+			s.record("answer " + request + " " + strings.Join(choices, ", ") + " " + text)
 			return nil
 		},
 		Stop: func() { s.record("stop"); p.Stop() },
@@ -72,11 +72,16 @@ type serving struct {
 
 func serveStandIn(t *testing.T, s *standIn) *serving {
 	t.Helper()
+	return serveStart(t, s.start)
+}
+
+func serveStart(t *testing.T, start Start) *serving {
+	t.Helper()
 	inRead, inWrite := io.Pipe()
 	outRead, outWrite := io.Pipe()
 	c := &serving{t: t, in: inWrite, records: make(chan harness.Record, 64), done: make(chan error, 1)}
 	go func() {
-		err := Serve(inRead, outWrite, s.start)
+		err := Serve(inRead, outWrite, start)
 		outWrite.Close()
 		c.done <- err
 	}()
@@ -252,5 +257,83 @@ func TestServeIgnoresResentCommands(t *testing.T) {
 	}
 	if got := s.recorded(); !slices.Equal(got, []string{"input once", "interrupt", "stop"}) {
 		t.Fatal(got)
+	}
+}
+
+func TestServeAnswersWhileInputPendingAndKeepsCommandRepliesOrdered(t *testing.T) {
+	s := &standIn{script: "cat >/dev/null"}
+	accepted := make(chan struct{})
+	started := make(chan struct{})
+	c := serveStart(t, func(args harness.StartArgs, emit func(harness.Event)) (Agent, error) {
+		ag, err := s.start(args, emit)
+		ag.Input = func(text string, _ []harness.Image) error {
+			s.record("input " + text)
+			if text == "first" {
+				close(started)
+				<-accepted
+			}
+			return nil
+		}
+		ag.Answer = func(_ string, choices []string, _ string) error {
+			s.record("answer " + strings.Join(choices, ", "))
+			close(accepted)
+			return nil
+		}
+		return ag, err
+	})
+	c.start()
+	c.command(harness.Command{ID: 2, Command: harness.CmdInput, Text: "first"})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("input did not start")
+	}
+	c.command(harness.Command{ID: 3, Command: harness.CmdInput, Text: "second"})
+	c.command(harness.Command{ID: 4, Command: harness.CmdAnswer, Request: "dialog", Choices: []string{"a", "b"}})
+	for _, id := range []int64{2, 3, 4} {
+		r := c.next()
+		if r.Reply == nil || r.Reply.ID != id || r.Reply.Error != "" {
+			t.Fatalf("reply to %d: %+v", id, r)
+		}
+	}
+	c.in.Close()
+	if err := c.wait(); err != nil {
+		t.Fatal(err)
+	}
+	if calls := s.recorded(); !slices.Equal(calls, []string{"input first", "answer a, b", "input second", "stop"}) {
+		t.Fatal(calls)
+	}
+}
+
+func TestServeStopsAndJoinsPendingInput(t *testing.T) {
+	s := &standIn{script: "cat >/dev/null"}
+	started, stopped, joined := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	c := serveStart(t, func(args harness.StartArgs, emit func(harness.Event)) (Agent, error) {
+		ag, err := s.start(args, emit)
+		ag.Input = func(string, []harness.Image) error {
+			close(started)
+			<-stopped
+			close(joined)
+			return nil
+		}
+		stop := ag.Stop
+		ag.Stop = func() { close(stopped); stop() }
+		return ag, err
+	})
+	c.start()
+	c.command(harness.Command{ID: 2, Command: harness.CmdInput, Text: "pending"})
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("input did not start")
+	}
+	c.in.Close()
+	if err := c.wait(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-joined:
+	default:
+		t.Fatal("Serve returned before input ended")
 	}
 }

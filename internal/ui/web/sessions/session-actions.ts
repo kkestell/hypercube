@@ -2,7 +2,7 @@
 // The server applies each action, and the result arrives in the next state
 // message.
 import {post} from '../api.ts';
-import {canSend, cleared, draftOf, restored, unsentCreated, unsentKey} from '../agent/drafts.ts';
+import {canSend, cleared, draftOf, isUnsent, restored, unsentCreated, unsentOf} from '../agent/drafts.ts';
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
 import type {Store} from '../store.ts';
@@ -51,20 +51,21 @@ interface Prompt {
 // createSession sends the unsent session's first prompt, which creates the
 // session, then shows it. A refusal restores the prompt only while that
 // unsent session is still open.
-export async function createSession(store: Store, prompt: Prompt) {
-  const unsent = store.get().unsent;
+export async function createSession(store: Store, prompt: Prompt, key: string) {
+  const unsent = unsentOf(store.get(), key);
   if (!unsent?.workspace || !unsent.profile) return false;
-  store.update(state => unsentSending(state, true));
+  store.update(state => unsentSending(state, true, key));
   const {workspace, profile, worktree} = unsent;
   const params = {action: 'new', workspace, profile, ...(worktree && {worktree: '1'})};
   const created = await post(store, 'session', params, JSON.stringify(prompt));
   // A completion must not change another unsent session or restore into it.
-  if (store.get().unsent?.identity !== unsent.identity) return true;
-  store.update(state => unsentSending(state, false));
+  if (unsentOf(store.get(), key)?.identity !== unsent.identity) return true;
+  store.update(state => unsentSending(state, false, key));
   if (created === null) return false;
   const ids: {session: string} = JSON.parse(created);
-  store.update(state => unsentCreated(state, ids.session));
-  chooseSession(store, ids.session);
+  const shown = store.get().unsent?.identity === unsent.identity;
+  store.update(state => unsentCreated(state, ids.session, key));
+  if (shown) chooseSession(store, ids.session);
   return true;
 }
 
@@ -80,8 +81,8 @@ export async function sendPrompt(store: Store, session: Pick<Session, 'id' | 'en
   if (!canSend(state, session)) return;
   const {text, images} = draftOf(state, session.id);
   store.update(next => cleared(next, session.id));
-  const accepted = session.id === unsentKey
-    ? await createSession(store, {text, images})
+  const accepted = isUnsent(session.id)
+    ? await createSession(store, {text, images}, session.id)
     : await post(store, 'session', {action: 'input', id: session.id}, JSON.stringify({text, images})) !== null;
   if (!accepted) store.update(next => restored(next, session.id, {text, images}));
 }

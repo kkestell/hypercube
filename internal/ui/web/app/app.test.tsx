@@ -1,8 +1,9 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
-import {receivedWorkspaces} from '../sessions/selection.ts';
+import {openUnsent, receivedWorkspaces} from '../sessions/selection.ts';
+import {typed, unsentKey} from '../agent/drafts.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
@@ -85,6 +86,35 @@ test('Escape interrupts only the shown busy session and leaves other Escape acti
   act(() => store.update(state => receivedWorkspaces(state, workspaces({...sessions[0], activity: 'idle'}, sessions[1]))));
   keydown(field, 'Escape');
   expect(requests).toHaveLength(1);
+});
+
+test('app shortcuts work with focus on the transcript background', async () => {
+  const requests = answer(() => Response.json([]));
+  const store = appStore({selected: 'a'}, testSession({id: 'a', activity: 'busy'}));
+  const root = mount(store, <App store={store} />);
+  act(() => find(root, '.composer textarea').blur());
+  expect(document.activeElement).toBe(document.body);
+  expect(keydown(document.body, 'b', {metaKey: true}).defaultPrevented).toBe(true);
+  expect(store.get().workbench.sidebar).toBe(false);
+  expect(keydown(document.body, 'p', {metaKey: true}).defaultPrevented).toBe(true);
+  expect(document.querySelector('[role=dialog]')).not.toBeNull();
+  keydown(document.activeElement ?? document.body, 'Escape');
+  await act(async () => { keydown(document.body, 'Escape'); });
+  expect(requests.some(request => request.params.action === 'interrupt')).toBe(true);
+});
+
+test('a workspace draft remains in the sidebar and returns to its unsent prompt', async () => {
+  answer(() => Response.json({profiles: []}));
+  const store = appStore({selected: 'a'}, testSession({id: 'a'}));
+  const root = mount(store, <App store={store} />);
+  act(() => store.update(state => typed(openUnsent(state, 'w'), unsentKey('w'), 'finish this later')));
+  expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
+  act(() => find(root, '.sidebar [data-session="a"]').click());
+  expect(store.get().selected).toBe('a');
+  act(() => buttonNamed(find(root, '.sidebar'), 'New Session').click());
+  expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
+  expect(root.textContent).toContain('/repo');
+  await act(async () => {});
 });
 
 test('archived families open from the sidebar and can be deleted', async () => {

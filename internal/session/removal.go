@@ -80,12 +80,12 @@ func (r *Runtime) Unarchive(id string) error {
 	return err
 }
 
-func (r *Runtime) removeFamily(id string, archive bool) error {
+// claimRemoval reads the family under the same lock as child creation and
+// claims it before releasing the membership snapshot.
+func (r *Runtime) claimRemoval(id string) (store.Session, string, []store.Session, error) {
 	var s store.Session
 	var root string
 	var children []store.Session
-	// Claim the family while reading its membership, under the same lock as
-	// CreateChild. No child can appear after this snapshot.
 	r.mu.Lock()
 	err := r.db.Read(func(tx *store.Tx) error {
 		var err error
@@ -119,6 +119,11 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 		r.deleting[id] = true
 	}
 	r.mu.Unlock()
+	return s, root, children, err
+}
+
+func (r *Runtime) removeFamily(id string, archive bool) error {
+	s, root, children, err := r.claimRemoval(id)
 	if err != nil {
 		return err
 	}
@@ -170,28 +175,35 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 		}
 		// A later worktree can still fail to remove. Record each completed
 		// child now so it cannot resume in a directory that is already gone.
-		if err := r.save(func(tx *write) error {
-			if archive {
-				return endArchived(tx, tree.session.ID)
-			}
-			return tx.DeleteSession(tree.session.ID)
-		}); err != nil {
+		if err := r.save(func(tx *write) error { return recordRemoved(tx, tree.session.ID, archive) }); err != nil {
 			return err
 		}
 	}
+	return r.recordRemovedFamily(id, children, archive)
+}
+
+// recordRemovedFamily finishes persistence after all managed worktrees are gone.
+// Worktree children were recorded individually so partial cleanup is retained.
+func (r *Runtime) recordRemovedFamily(id string, children []store.Session, archive bool) error {
 	return r.save(func(tx *write) error {
-		if !archive {
-			return tx.DeleteSession(id)
-		}
-		for _, child := range children {
-			if child.Branch == "" && !child.Ended {
-				if err := endArchived(tx, child.ID); err != nil {
-					return err
+		if archive {
+			for _, child := range children {
+				if child.Branch == "" && !child.Ended {
+					if err := endArchived(tx, child.ID); err != nil {
+						return err
+					}
 				}
 			}
 		}
-		return endArchived(tx, id)
+		return recordRemoved(tx, id, archive)
 	})
+}
+
+func recordRemoved(tx *write, id string, archive bool) error {
+	if archive {
+		return endArchived(tx, id)
+	}
+	return tx.DeleteSession(id)
 }
 
 type managedWorktree struct {

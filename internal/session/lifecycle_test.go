@@ -100,7 +100,7 @@ func TestBusySessionsDoNotPark(t *testing.T) {
 		ready      func(*fixture, string) bool
 	}{
 		{"working", "!work", func(f *fixture, id string) bool { return f.storedSession(id).Activity == store.Busy }},
-		{"question", "!ask", func(f *fixture, id string) bool { return len(f.rt.Requests()) == 1 }},
+		{"question", "!ask", func(f *fixture, id string) bool { return len(f.requests()) == 1 }},
 		{"input pending", "!accept", func(f *fixture, id string) bool {
 			f.rt.mu.Lock()
 			defer f.rt.mu.Unlock()
@@ -131,14 +131,14 @@ func TestAnsweredQuestionStartsTheIdleTimeout(t *testing.T) {
 	f.idleAfter(time.Hour)
 	s := f.session()
 	f.input(s.ID, "!asyncask")
-	f.until("the question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.until("the question", func() bool { return len(f.requests()) == 1 })
 	f.input(s.ID, "!finish")
 	f.until("the finished turn", func() bool { return f.idle(s.ID) })
 	if f.parkable(s.ID) {
 		t.Fatal("a session with an open question can park")
 	}
 	f.idleAfter(50 * time.Millisecond)
-	if err := f.rt.Answer(s.ID, f.rt.Requests()[0].Item.ID, "yes", ""); err != nil {
+	if err := f.rt.Answer(s.ID, f.requests()[0].Item.ID, []string{"yes"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.untilParked(s.ID)

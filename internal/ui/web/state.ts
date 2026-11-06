@@ -11,7 +11,9 @@ import type {Confirmation} from './shared/types.ts';
 // an ID that the next workspaces may move to a running session. pending names
 // a session chosen before the server listed it. loaded is set once the first
 // workspaces arrive. drafts are keyed by draft key, dismissed by card key,
-// and fileOpens by session ID. titleBar is null outside the native window.
+// and fileOpens by session ID. unsentDrafts holds parked new-session contexts
+// by draft key; unsent holds the one currently shown. titleBar is null outside
+// the native window.
 // config is the most recently fetched or saved configuration.
 export interface State {
   workspaces: Workspace[];
@@ -22,6 +24,7 @@ export interface State {
   selected: string | null;
   pending: string | null;
   unsent: Unsent | null;
+  unsentDrafts: Record<string, Unsent>;
   visible: boolean;
   drafts: Record<string, Draft>;
   dismissed: Record<string, true>;
@@ -44,6 +47,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   selected,
   pending: null,
   unsent: null,
+  unsentDrafts: {},
   visible,
   drafts: {},
   dismissed: {},

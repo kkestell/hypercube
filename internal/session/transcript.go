@@ -15,14 +15,14 @@ type TranscriptItem struct {
 	Seq int64 `json:"seq"`
 }
 
-// Request is an agent's open attention item.
+// Request is an open plugin question or a saved task offer.
 type Request struct {
 	Session string       `json:"session"`
 	Item    harness.Item `json:"item"`
 }
 
-// Requests returns open attention items, newest first, across all live sessions.
-func (r *Runtime) Requests() []Request {
+// Requests returns open plugin requests and saved offers, newest first.
+func (r *Runtime) Requests() ([]Request, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	requests := []Request{}
@@ -33,10 +33,26 @@ func (r *Runtime) Requests() []Request {
 			}
 		}
 	}
+	if err := r.db.Read(func(tx *store.Tx) error {
+		offers, err := tx.OpenOffers()
+		if err != nil {
+			return err
+		}
+		for _, offer := range offers {
+			var item harness.Item
+			if err := json.Unmarshal(offer.Data, &item); err != nil {
+				return err
+			}
+			requests = append(requests, Request{Session: offer.Session, Item: item})
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
 	slices.SortFunc(requests, func(a, b Request) int {
 		return cmp.Or(cmp.Compare(b.Item.At, a.Item.At), cmp.Compare(b.Item.ID, a.Item.ID))
 	})
-	return requests
+	return requests, nil
 }
 
 // Transcript returns the session's items in order: those saved, then those still

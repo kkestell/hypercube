@@ -16,4 +16,5 @@ export interface Draft {
   text: string;
   images: Image[];
   reading: number;
+  choices?: string[];
 }

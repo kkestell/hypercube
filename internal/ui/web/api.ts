@@ -70,8 +70,10 @@ export const selectProfile = (store: Store, session: string, profile: string) =>
 
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.
-export async function answerRequest(store: Store, session: string, request: string, choice: string, text?: string): Promise<boolean> {
-  return await post(store, 'session', {action: 'answer', id: session, request, choice}, text) !== null;
+export async function answerRequest(store: Store, session: string, requestID: string, choices: string[], text?: string): Promise<boolean> {
+  const params = new URLSearchParams({action: 'answer', id: session, request: requestID});
+  for (const choice of choices.length ? choices : ['']) params.append('choice', choice);
+  return await request(store, `session?${params}`, {method: 'POST', body: text}, response => response.text()) !== null;
 }
 
 // alwaysAllow answers a session's approval request with its first choice and

@@ -1,7 +1,7 @@
 import {useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject} from 'react';
 import {Command, CommandItem, CommandList} from '../components/ui/command';
 import {mentionFiles} from '../api.ts';
-import {unsentKey} from './drafts.ts';
+import {isUnsent} from './drafts.ts';
 import {insertMention, mentionAt, mentionChoices, prepareFiles, type MentionFile} from './mention.ts';
 
 // Selection is the text and caret together, so suggestions always correspond
@@ -53,7 +53,7 @@ export function useMentions(
   const open = !!mention;
 
   useLayoutEffect(() => {
-    const params = session === unsentKey ? (workspace ? {workspace} : null) : {session};
+    const params = isUnsent(session) ? (workspace ? {workspace} : null) : {session};
     if (!params) { setFiles([]); setError(''); return; }
     if (!open) return;
     const controller = new AbortController();

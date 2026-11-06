@@ -319,10 +319,10 @@ func TestQuestionAnswer(t *testing.T) {
 	head, _ := until(t, fixture(t, "question"), `"control_request"`)
 	h.feed(head...)
 	item := h.transcript()[0]
-	if err := h.answer(item.ID, "", ""); err == nil {
+	if err := h.answer(item.ID, nil, ""); err == nil {
 		t.Error("an empty answer succeeded")
 	}
-	if err := h.answer(item.ID, "Red", ""); err != nil {
+	if err := h.answer(item.ID, []string{"Red"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	id, body := h.reply(t)
@@ -340,7 +340,7 @@ func TestQuestionAnswer(t *testing.T) {
 	if !done.Done || done.Answer != "Red" {
 		t.Errorf("%+v", done)
 	}
-	if err := h.answer(item.ID, "Red", ""); err == nil {
+	if err := h.answer(item.ID, []string{"Red"}, ""); err == nil {
 		t.Error("a finished request took an answer")
 	}
 }
@@ -349,7 +349,7 @@ func TestQuestionTypedAnswer(t *testing.T) {
 	h := newClaude()
 	head, _ := until(t, fixture(t, "question"), `"control_request"`)
 	h.feed(head...)
-	if err := h.answer(h.transcript()[0].ID, "", "Green"); err != nil {
+	if err := h.answer(h.transcript()[0].ID, nil, "Green"); err != nil {
 		t.Fatal(err)
 	}
 	_, body := h.reply(t)
@@ -363,7 +363,7 @@ func TestQuestionInputIsKept(t *testing.T) {
 	h := newClaude()
 	h.feed(`{"type":"control_request","request_id":"r1","request":{"subtype":"can_use_tool","tool_name":"AskUserQuestion","input":{` +
 		`"questions":[{"question":"One?","options":[{"label":"a","description":""}]}],"source":{"id":7,"tags":["x"]}}}}`)
-	if err := h.answer("r1/0", "a", ""); err != nil {
+	if err := h.answer("r1/0", []string{"a"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	_, body := h.reply(t)
@@ -385,13 +385,13 @@ func TestSeveralQuestionsAnswerTogether(t *testing.T) {
 	if len(items) != 2 || items[0].ID != "r1/0" || items[1].ID != "r1/1" || items[0].Text != "One?" {
 		t.Fatalf("%+v", items)
 	}
-	if err := h.answer("r1/1", "c", ""); err != nil {
+	if err := h.answer("r1/1", []string{"c"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.sentFrames(t)) != 0 {
 		t.Fatal("claude was answered before every question was")
 	}
-	if err := h.answer("r1/0", "b", ""); err != nil {
+	if err := h.answer("r1/0", []string{"b"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	_, body := h.reply(t)
@@ -414,10 +414,10 @@ func TestToolPermissionPrompt(t *testing.T) {
 		!strings.HasPrefix(prompt.Text, "Allow Bash?") {
 		t.Fatalf("%+v", prompt)
 	}
-	if err := h.answer(prompt.ID, "Maybe", ""); err == nil {
+	if err := h.answer(prompt.ID, []string{"Maybe"}, ""); err == nil {
 		t.Error("an unknown choice succeeded")
 	}
-	if err := h.answer(prompt.ID, "Allow", ""); err != nil {
+	if err := h.answer(prompt.ID, []string{"Allow"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	id, body := h.reply(t)
@@ -432,7 +432,7 @@ func TestDeniedToolShowsAsFailed(t *testing.T) {
 	head, rest := until(t, fixture(t, "permission"), `"control_request"`)
 	h.feed(head...)
 	prompt := h.transcript()[1]
-	if err := h.answer(prompt.ID, "Deny", "not now"); err != nil {
+	if err := h.answer(prompt.ID, []string{"Deny"}, "not now"); err != nil {
 		t.Fatal(err)
 	}
 	_, body := h.reply(t)
@@ -467,7 +467,7 @@ func TestTypedTextAloneDenies(t *testing.T) {
 	h := newClaude()
 	head, _ := until(t, fixture(t, "permission"), `"control_request"`)
 	h.feed(head...)
-	if err := h.answer(h.transcript()[1].ID, "", "use a different file"); err != nil {
+	if err := h.answer(h.transcript()[1].ID, nil, "use a different file"); err != nil {
 		t.Fatal(err)
 	}
 	if _, body := h.reply(t); body["behavior"] != "deny" || body["message"] != "use a different file" {
@@ -484,7 +484,7 @@ func TestCancelledRequestFinishes(t *testing.T) {
 	if got := h.transcript()[1]; !got.Done || got.Answer != "" {
 		t.Errorf("%+v", got)
 	}
-	if err := h.answer(prompt.ID, "Allow", ""); err == nil {
+	if err := h.answer(prompt.ID, []string{"Allow"}, ""); err == nil {
 		t.Error("a cancelled request took an answer")
 	}
 }
@@ -660,7 +660,7 @@ func TestStart(t *testing.T) {
 	if !slices.Equal(texts, []string{"Hello there."}) {
 		t.Errorf("texts %v", texts)
 	}
-	if err := c.answer("nothing", "", ""); err == nil {
+	if err := c.answer("nothing", nil, ""); err == nil {
 		t.Error("an answer to no request succeeded")
 	}
 }

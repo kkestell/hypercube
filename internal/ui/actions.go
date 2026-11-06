@@ -116,7 +116,11 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
 			return
 		}
-		err = s.rt.Answer(id, q.Get("request"), q.Get("choice"), string(body))
+		choices := q["choice"]
+		if len(choices) == 1 && choices[0] == "" {
+			choices = nil
+		}
+		err = s.rt.Answer(id, q.Get("request"), choices, string(body))
 	case "start-proposal":
 		_, err = s.rt.StartProposal(id, q.Get("proposal"))
 	case "dismiss-proposal":

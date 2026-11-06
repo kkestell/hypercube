@@ -377,7 +377,7 @@ func TestCreateSessionForms(t *testing.T) {
 	if text, failed := callTool(t, parent, "create_session", fill); !failed {
 		t.Fatalf("an unanswered offer started a child: %q", text)
 	}
-	if err := rt.Answer("session-1", offer, "New session", ""); err != nil {
+	if err := rt.Answer("session-1", offer, []string{"New session"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, brief := range []any{nil, "  "} {

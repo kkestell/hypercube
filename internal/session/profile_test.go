@@ -96,7 +96,7 @@ func TestSelectProfileUnansweredAcrossReattachment(t *testing.T) {
 	f.rt.Detach()
 	<-result
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	f.until("attached", func() bool {
 		f.rt.mu.Lock()
 		defer f.rt.mu.Unlock()

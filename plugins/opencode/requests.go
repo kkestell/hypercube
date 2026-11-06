@@ -122,6 +122,7 @@ func (ag *agent) form(ev *harness.Event, id, params json.RawMessage) {
 			fld.custom = key + "_custom"
 		}
 		item := harness.Item{ID: fmt.Sprintf("form:%d/%d", ag.forms, len(items)), Kind: harness.KindAttention, Free: !fld.options || fld.custom != ""}
+		item.Multi = fld.array && fld.options
 		var notes []string
 		for _, o := range options {
 			item.Choices = append(item.Choices, o.Const)
@@ -141,15 +142,18 @@ func (ag *agent) form(ev *harness.Event, id, params json.RawMessage) {
 }
 
 // answer replies to an open question with a choice or text.
-func (ag *agent) answer(item, choice, text string) error {
+func (ag *agent) answer(item string, choices []string, text string) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	open, ok := ag.requests.Get(item)
 	if !ok {
 		return fmt.Errorf("request %s is not open", item)
 	}
+	if err := harness.CheckAnswer(open.Item, choices, text); err != nil {
+		return err
+	}
 	r := open.Request
-	result := choice
+	result := strings.Join(choices, ", ")
 	if result == "" {
 		result = text
 	}
@@ -157,14 +161,18 @@ func (ag *agent) answer(item, choice, text string) error {
 		return errors.New("the answer is empty")
 	}
 	f := r.fields[open.Index]
-	if choice == "" && f.options && f.custom == "" {
+	if len(choices) == 0 && f.options && f.custom == "" {
 		return errors.New("the question needs one of its choices")
 	}
 	switch {
-	case choice != "" && f.array:
-		r.content[f.key] = []string{choice}
-	case choice != "":
-		r.content[f.key] = choice
+	case len(choices) > 0 && f.array:
+		r.content[f.key] = choices
+		if f.custom != "" && strings.TrimSpace(text) != "" {
+			r.content[f.custom] = text
+			result += ", " + text
+		}
+	case len(choices) > 0:
+		r.content[f.key] = choices[0]
 	case f.custom != "":
 		r.content[f.custom] = text
 	default:

@@ -1,13 +1,35 @@
 import {expect, test} from 'bun:test';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
-import {unsentKey} from '../agent/drafts.ts';
+import {draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {receivedTranscript} from '../transcript/transcripts.ts';
 import type {Session} from './types.ts';
-import {emptySession, openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentProfile} from './selection.ts';
+import {emptySession, openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentProfile, unsentWorktree} from './selection.ts';
+
+const unsentKey = workspaceDraftKey('w');
 
 const session = (id: string, ended = false, extra: Partial<Session> = {}) => testSession({id, title: 'Title ' + id, ended, ...extra});
 const workspaces = (...sessions: Session[]) => [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})];
 const initial = (selected = '') => testState({selected});
+
+test('new-session drafts and choices survive navigation across sessions and workspaces', () => {
+  let state = receivedWorkspaces(initial('a'), [...workspaces(session('a')), testWorkspace({id: 'other'})]);
+  state = typed(unsentWorktree(unsentProfile(openUnsent(state, 'w'), {name: 'lead', description: '', harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey, 'unfinished');
+  const identity = state.unsent?.identity;
+  state = selectSession(state, 'a');
+  expect(state.unsent).toBeNull();
+  expect(state.session?.id).toBe('a');
+  expect(draftOf(state, unsentKey).text).toBe('unfinished');
+  state = typed(openUnsent(state, 'other'), workspaceDraftKey('other'), 'another workspace');
+  state = openUnsent(state, 'w');
+  expect(state.unsent).toMatchObject({identity, profile: 'lead', worktree: true});
+  expect(draftOf(state, unsentKey).text).toBe('unfinished');
+  expect(draftOf(state, workspaceDraftKey('other')).text).toBe('another workspace');
+  expect(state.unsentDrafts[unsentKey]).toBeUndefined();
+  expect(openUnsent(state, 'w')).toBe(state);
+  state = receivedWorkspaces(state, workspaces(session('a')));
+  expect(state.unsentDrafts[workspaceDraftKey('other')]).toBeUndefined();
+  expect(draftOf(state, workspaceDraftKey('other')).text).toBe('');
+});
 
 test('a page without a hash selects a session that has not ended', () => {
   const state = receivedWorkspaces(initial(), workspaces(session('a', true), session('b')));
@@ -92,4 +114,11 @@ test('pageTitle counts waiting sessions and names the session and workspace', ()
   ));
   expect(pageTitle(state)).toBe('(2) Title a — repo — Hypercube');
   expect(pageTitle(initial())).toBe('Hypercube');
+});
+
+
+test('waiting counts include saved offers in parked sessions once per session', () => {
+  const state = receivedWorkspaces(initial('a'), workspaces(session('a'), session('b', false, {attention: true})));
+  const requests = ['a', 'a', 'b'].map((id, i) => ({session: id, item: {id: String(i), kind: 'attention' as const}}));
+  expect(pageTitle({...state, requests})).toBe('(2) Title a — repo — Hypercube');
 });

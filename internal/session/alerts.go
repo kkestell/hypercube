@@ -65,9 +65,12 @@ func newAlertWatch(r *Runtime) *alertWatch {
 // read records the current requests and replies and sends the new ones to
 // notify. A nil notify only records them.
 func (w *alertWatch) read(notify func(Alert)) error {
-	requests := w.runtime.Requests()
+	requests, err := w.runtime.Requests()
+	if err != nil {
+		return err
+	}
 	var alerts []Alert
-	err := w.runtime.db.Read(func(tx *store.Tx) error {
+	err = w.runtime.db.Read(func(tx *store.Tx) error {
 		for _, req := range requests {
 			key := "request:" + req.Session + ":" + req.Item.ID
 			if w.requests[key] {
@@ -97,7 +100,9 @@ func (w *alertWatch) read(notify func(Alert)) error {
 				for _, s := range append([]store.Session{top}, children...) {
 					wasBusy := w.busy[s.ID]
 					w.busy[s.ID] = s.Activity == store.Busy
-					if s.Activity != store.Idle || !(s.Unseen || wasBusy) {
+					// Startup seeds replies even for busy sessions: answering an
+					// existing question may make the old reply eligible again.
+					if notify != nil && (s.Activity != store.Idle || !(s.Unseen || wasBusy)) {
 						continue
 					}
 					text, seq, err := tx.LastText(s.ID)

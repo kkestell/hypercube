@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
@@ -37,13 +38,13 @@ func TestOfferAnswers(t *testing.T) {
 	if _, err := f.rt.StartOffer(parent.ID, here, options("Here")); err == nil {
 		t.Fatal("an unanswered offer started a child")
 	}
-	if err := f.rt.Answer(parent.ID, here, "", "typed"); err == nil {
+	if err := f.rt.Answer(parent.ID, here, nil, "typed"); err == nil {
 		t.Fatal("an offer took typed text")
 	}
-	if err := f.rt.Answer(parent.ID, here, offerHere, ""); err != nil {
+	if err := f.rt.Answer(parent.ID, here, []string{offerHere}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.rt.Answer(parent.ID, here, offerNew, ""); err == nil {
+	if err := f.rt.Answer(parent.ID, here, []string{offerNew}, ""); err == nil {
 		t.Fatal("an offer was answered twice")
 	}
 	f.until("the Do it here answer", func() bool { return len(f.inputs(parent.ID)) == 2 && f.idle(parent.ID) })
@@ -58,7 +59,7 @@ func TestOfferAnswers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := f.rt.Answer(parent.ID, accepted, offerNew, ""); err != nil {
+	if err := f.rt.Answer(parent.ID, accepted, []string{offerNew}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the New session answer", func() bool { return len(f.inputs(parent.ID)) == 3 && f.idle(parent.ID) })
@@ -117,7 +118,7 @@ func TestOfferStaysOpen(t *testing.T) {
 	if it := f.offerItem(parent.ID, id); it.Done {
 		t.Fatalf("offer closed: %+v", it)
 	}
-	if err := f.rt.Answer(parent.ID, id, offerNew, ""); err != nil {
+	if err := f.rt.Answer(parent.ID, id, []string{offerNew}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the answer after the restart", func() bool {
@@ -136,7 +137,7 @@ func TestArchivedOfferWaitsForUnarchive(t *testing.T) {
 	if err := f.rt.Archive(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.rt.Answer(parent.ID, id, offerNew, ""); !errors.Is(err, errEnded) {
+	if err := f.rt.Answer(parent.ID, id, []string{offerNew}, ""); !errors.Is(err, errEnded) {
 		t.Fatalf("answering an archived offer = %v", err)
 	}
 	if f.offerItem(parent.ID, id).Done || len(f.queued(parent.ID)) != 0 {
@@ -145,8 +146,62 @@ func TestArchivedOfferWaitsForUnarchive(t *testing.T) {
 	if err := f.rt.Unarchive(parent.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.rt.Answer(parent.ID, id, offerNew, ""); err != nil {
+	if err := f.rt.Answer(parent.ID, id, []string{offerNew}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the answer delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
+}
+
+func TestOfferRequestsSurviveParkingAndRestoration(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	id, err := f.rt.OfferChild(parent.ID, "Task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func() {
+		t.Helper()
+		requests := f.requests()
+		if len(requests) != 1 || requests[0].Session != parent.ID || requests[0].Item.ID != id {
+			t.Fatalf("offer requests = %+v", requests)
+		}
+	}
+	check()
+	f.idleAfter(50 * time.Millisecond)
+	f.view(parent.ID)()
+	f.untilParked(parent.ID)
+	check()
+	f.restart()
+	check()
+	if f.awake(parent.ID) {
+		t.Fatal("restoring an offer woke its parked agent")
+	}
+	if err := f.rt.Answer(parent.ID, id, []string{offerHere}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if requests := f.requests(); len(requests) != 0 {
+		t.Fatalf("answered offer remained requested: %+v", requests)
+	}
+	f.until("the offer answer delivered", func() bool { return len(f.queued(parent.ID)) == 0 && f.idle(parent.ID) })
+}
+
+func TestArchivedOffersLeaveRequestsUntilUnarchived(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	id, err := f.rt.OfferChild(parent.ID, "Task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.Archive(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if requests := f.requests(); len(requests) != 0 {
+		t.Fatalf("archived offer remained requested: %+v", requests)
+	}
+	if err := f.rt.Unarchive(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if requests := f.requests(); len(requests) != 1 || requests[0].Item.ID != id {
+		t.Fatalf("unarchived offer requests = %+v", requests)
+	}
 }

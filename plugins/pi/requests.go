@@ -2,9 +2,7 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -25,30 +23,24 @@ func (r *request) stop() {
 
 // answer replies to an open dialog: a choice, or typed text for a dialog that
 // takes text.
-func (ag *agent) answer(item, choice, text string) error {
+func (ag *agent) answer(item string, choices []string, text string) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	r := ag.requests[item]
 	if r == nil {
 		return fmt.Errorf("request %s is not open", item)
 	}
-	result := choice
-	if result == "" {
-		result = text
+	if err := harness.CheckAnswer(r.item, choices, text); err != nil {
+		return err
 	}
-	if result == "" {
-		return errors.New("the answer is empty")
+	result := text
+	if len(choices) == 1 {
+		result = choices[0]
 	}
 	reply := map[string]any{"type": "extension_ui_response", "id": item}
-	switch {
-	case r.method == "confirm":
-		if result != yes && result != no {
-			return fmt.Errorf("unknown choice %q", result)
-		}
+	if r.method == "confirm" {
 		reply["confirmed"] = result == yes
-	case len(r.item.Choices) > 0 && !slices.Contains(r.item.Choices, result):
-		return fmt.Errorf("unknown choice %q", result)
-	default:
+	} else {
 		reply["value"] = result
 	}
 	if err := ag.write(reply); err != nil {

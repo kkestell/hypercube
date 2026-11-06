@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {createStore} from '../store.ts';
-import {openUnsent} from '../sessions/selection.ts';
+import {openUnsent, selectSession, unsentProfile, unsentWorktree} from '../sessions/selection.ts';
 import type {Unsent} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {testState} from '../../test-state.ts';
@@ -34,12 +34,12 @@ test.each([null, 'workspace'])('a new-session prompt restores with workspace %s 
   const store = reload();
   store.update(state => openUnsent(state, workspace));
   store.update(state => unsentChanged(state, {profile: 'profile', worktree: true, sending: true}));
-  store.update(state => typed(state, unsentKey, 'new prompt'));
+  store.update(state => typed(state, unsentKey(workspace), 'new prompt'));
   const next = reload().get();
   expect(next.selected).toBeNull();
   expect(next.unsent).toMatchObject({workspace, profile: 'profile', worktree: true, sending: false});
-  expect(draftOf(next, unsentKey).text).toBe('new prompt');
-  store.update(state => unsentCreated(state, 'created'));
+  expect(draftOf(next, unsentKey(workspace)).text).toBe('new prompt');
+  store.update(state => unsentCreated(state, 'created', unsentKey(workspace)));
   expect(reload().get().unsent).toBeNull();
   expect(draftOf(reload().get(), 'created').text).toBe('new prompt');
 });
@@ -52,6 +52,32 @@ test('sent or erased text is removed from saved drafts', () => {
   store.update(state => typed(state, 's', 'erase this'));
   store.update(state => typed(state, 's', ''));
   expect(reload().get().drafts).toEqual({});
+});
+
+test('parked new-session drafts restore across workspaces without replacing the selected session', () => {
+  const store = reload();
+  store.update(state => typed(unsentWorktree(unsentProfile(openUnsent(state, 'a'), {name: 'worker', description: '', harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey('a'), 'first workspace'));
+  store.update(state => typed(openUnsent(state, 'b'), unsentKey('b'), 'second workspace'));
+  store.update(state => selectSession(state, 's'));
+  const restored = reload();
+  expect(restored.get().selected).toBe('s');
+  expect(restored.get().unsent).toBeNull();
+  expect(Object.keys(restored.get().unsentDrafts)).toEqual([unsentKey('a'), unsentKey('b')]);
+  restored.update(state => openUnsent(state, 'a'));
+  expect(restored.get().unsent).toMatchObject({workspace: 'a', profile: 'worker', worktree: true, sending: false});
+  expect(draftOf(restored.get(), unsentKey('a')).text).toBe('first workspace');
+  restored.update(state => openUnsent(state, 'b'));
+  expect(draftOf(restored.get(), unsentKey('b')).text).toBe('second workspace');
+});
+
+test('the previous new-session storage format restores into its workspace draft', () => {
+  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {new: 'existing prompt', s: 'session draft'}, unsent: {workspace: 'w', profile: 'worker', worktree: true}}));
+  const restored = reload();
+  expect(restored.get().unsent).toMatchObject({workspace: 'w', profile: 'worker', worktree: true});
+  expect(draftOf(restored.get(), unsentKey('w')).text).toBe('existing prompt');
+  expect(restored.get().drafts.new).toBeUndefined();
+  restored.update(state => typed(state, unsentKey('w'), 'updated'));
+  expect(draftOf(reload().get(), unsentKey('w')).text).toBe('updated');
 });
 
 test('storage failure keeps typing available, reports once, and retries on the next edit', () => {

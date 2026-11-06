@@ -17,7 +17,7 @@ type Agent struct {
 	Conversation string   // reported with the idle event that follows start's reply
 	Input        func(text string, images []harness.Image) error
 	Interrupt    func() error
-	Answer       func(request, choice, text string) error
+	Answer       func(request string, choices []string, text string) error
 	Configure    func(harness.Selection) (*harness.Selection, error)
 	Stop         func()
 }
@@ -31,13 +31,19 @@ type Start func(a harness.StartArgs, emit func(harness.Event)) (Agent, error)
 // when in closes or when the harness ends.
 func Serve(in io.Reader, out io.Writer, start Start) error {
 	s := &server{enc: json.NewEncoder(out)}
+	var inputDone <-chan error
 	defer func() {
 		if s.agent != nil {
 			s.agent.Stop()
 		}
+		if inputDone != nil {
+			<-inputDone
+		}
 	}()
 	commands := make(chan harness.Command)
 	failed := make(chan error, 1)
+	stopped := make(chan struct{})
+	defer close(stopped)
 	go func() {
 		defer close(commands)
 		scanner := bufio.NewScanner(in)
@@ -48,7 +54,11 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 				failed <- fmt.Errorf("malformed command: %w", err)
 				return
 			}
-			commands <- cmd
+			select {
+			case commands <- cmd:
+			case <-stopped:
+				return
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			failed <- err
@@ -56,7 +66,34 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 	}()
 	var last int64
 	var exited <-chan struct{} // the started process's Done
+	var inputID int64
+	var queued []harness.Command
+	answered := map[int64]error{}
 	for {
+		if inputDone == nil && len(queued) > 0 {
+			cmd := queued[0]
+			queued = queued[1:]
+			if err, ok := answered[cmd.ID]; ok {
+				delete(answered, cmd.ID)
+				s.reply(cmd.ID, nil, err)
+				continue
+			}
+			if cmd.Command == harness.CmdInput && s.agent != nil {
+				// Only input waits off the command loop: native extensions may ask
+				// for an answer before accepting it. Other commands stay ordered.
+				done := make(chan error, 1)
+				inputDone, inputID = done, cmd.ID
+				go func() { done <- s.agent.Input(cmd.Text, cmd.Images) }()
+				continue
+			}
+			selection, err := s.handle(cmd, start)
+			s.reply(cmd.ID, selection, err)
+			if err == nil && cmd.Command == harness.CmdStart {
+				s.write(harness.Record{Event: &harness.Event{Conversation: s.agent.Conversation, State: harness.Idle}})
+				exited = s.agent.Process.Done()
+			}
+			continue
+		}
 		select {
 		case cmd, ok := <-commands:
 			if !ok {
@@ -71,12 +108,13 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 				continue
 			}
 			last = cmd.ID
-			selection, err := s.handle(cmd, start)
-			s.reply(cmd.ID, selection, err)
-			if err == nil && cmd.Command == harness.CmdStart {
-				s.write(harness.Record{Event: &harness.Event{Conversation: s.agent.Conversation, State: harness.Idle}})
-				exited = s.agent.Process.Done()
+			queued = append(queued, cmd)
+			if inputDone != nil && cmd.Command == harness.CmdAnswer {
+				_, answered[cmd.ID] = s.handle(cmd, start)
 			}
+		case err := <-inputDone:
+			s.reply(inputID, nil, err)
+			inputDone = nil
 		case <-exited:
 			return s.agent.Process.Err()
 		}
@@ -133,7 +171,11 @@ func (s *server) handle(cmd harness.Command, start Start) (*harness.Selection, e
 	case harness.CmdInterrupt:
 		return nil, s.agent.Interrupt()
 	case harness.CmdAnswer:
-		return nil, s.agent.Answer(cmd.Request, cmd.Choice, cmd.Text)
+		choices := cmd.Choices
+		if len(choices) == 0 && cmd.Choice != "" {
+			choices = []string{cmd.Choice}
+		}
+		return nil, s.agent.Answer(cmd.Request, choices, cmd.Text)
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd.Command)
 }

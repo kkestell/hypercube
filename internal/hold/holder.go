@@ -62,14 +62,24 @@ func Main(args []string) error {
 	go serveInput(listener, child.input, *terminal)
 	copied := make(chan error, 1)
 	go func() { copied <- h.copyOutput(child.output, *terminal) }()
-	waitErr := child.wait(signals, *terminal)
-	// A descendant can keep the output open after the child exits; stop
-	// copying after a second rather than wait for it.
+	waited := make(chan error, 1)
+	go func() { waited <- child.wait(signals, *terminal) }()
+	var waitErr error
 	select {
 	case err = <-copied:
-	case <-time.After(time.Second):
-		child.output.Close()
-		err = <-copied
+		if err != nil {
+			_ = syscall.Kill(-child.cmd.Process.Pid, syscall.SIGKILL)
+		}
+		waitErr = <-waited
+	case waitErr = <-waited:
+		// A descendant can keep the output open after the child exits; stop
+		// copying after a second rather than wait for it.
+		select {
+		case err = <-copied:
+		case <-time.After(time.Second):
+			child.output.Close()
+			err = <-copied
+		}
 	}
 	_ = syscall.Kill(-child.cmd.Process.Pid, syscall.SIGKILL)
 	<-child.stderrDone

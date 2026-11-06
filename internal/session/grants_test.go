@@ -28,7 +28,7 @@ func (f *fixture) approve(id string) string {
 
 // openApprovals lists the IDs of the session's open approval requests.
 func (f *fixture) openApprovals(id string) (ids []string) {
-	for _, r := range f.rt.Requests() {
+	for _, r := range f.requests() {
 		if r.Session == id && r.Item.Grant != "" {
 			ids = append(ids, r.Item.ID)
 		}
@@ -98,8 +98,8 @@ func TestAlwaysAllowInAllSessions(t *testing.T) {
 	f.until("both sessions answered", func() bool { return f.answersOf(a.ID) == 1 && f.answersOf(b.ID) == 1 })
 	f.input(b.ID, "!approve")
 	f.until("the request answered", func() bool { return f.answersOf(b.ID) == 2 })
-	if len(f.rt.Requests()) != 0 {
-		t.Fatalf("requests = %+v", f.rt.Requests())
+	if len(f.requests()) != 0 {
+		t.Fatalf("requests = %+v", f.requests())
 	}
 	if err := f.db.Tx(func(tx *store.Tx) error { return tx.DeleteGrant("", "test", "Tool") }); err != nil {
 		t.Fatal(err)
@@ -111,12 +111,12 @@ func TestAlwaysAllowNeedsAnOpenApproval(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
-	f.until("a question", func() bool { return len(f.rt.Requests()) == 1 })
-	if err := f.rt.AlwaysAllow(s.ID, f.rt.Requests()[0].Item.ID, true); err == nil {
+	f.until("a question", func() bool { return len(f.requests()) == 1 })
+	if err := f.rt.AlwaysAllow(s.ID, f.requests()[0].Item.ID, true); err == nil {
 		t.Error("a question was always allowed")
 	}
 	request := f.approve(s.ID)
-	if err := f.rt.Answer(s.ID, request, "Deny", ""); err != nil {
+	if err := f.rt.Answer(s.ID, request, []string{"Deny"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the answer", func() bool { return len(f.openApprovals(s.ID)) == 0 })

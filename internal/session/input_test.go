@@ -13,7 +13,7 @@ func TestAttentionRequests(t *testing.T) {
 	parent := f.session()
 	f.input(parent.ID, "!ask")
 	f.until("attention", func() bool { return f.storedSession(parent.ID).Attention })
-	if requests := f.rt.Requests(); len(requests) != 1 || requests[0].Session != parent.ID || requests[0].Item.Kind != harness.KindAttention {
+	if requests := f.requests(); len(requests) != 1 || requests[0].Session != parent.ID || requests[0].Item.Kind != harness.KindAttention {
 		t.Fatalf("requests = %+v", requests)
 	}
 	var request string
@@ -25,14 +25,14 @@ func TestAttentionRequests(t *testing.T) {
 			}
 		}
 	}
-	if err := f.rt.Answer(parent.ID, "nothing", "yes", ""); err == nil || !strings.Contains(err.Error(), "finished") {
+	if err := f.rt.Answer(parent.ID, "nothing", []string{"yes"}, ""); err == nil || !strings.Contains(err.Error(), "finished") {
 		t.Fatalf("answer to an unknown request: %v", err)
 	}
-	if err := f.rt.Answer(parent.ID, request, "yes", ""); err != nil {
+	if err := f.rt.Answer(parent.ID, request, []string{"yes"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the answered request", func() bool { return !f.storedSession(parent.ID).Attention })
-	if requests := f.rt.Requests(); len(requests) != 0 {
+	if requests := f.requests(); len(requests) != 0 {
 		t.Fatalf("answered requests = %+v", requests)
 	}
 	if got := f.log(parent.ID, "answer"); len(got) != 1 || got[0].Request != "q" || got[0].Choice != "yes" {
@@ -47,7 +47,7 @@ func TestAttentionRequests(t *testing.T) {
 	if !answered.Done || answered.Answer != "yes" {
 		t.Fatalf("answered item = %+v", answered)
 	}
-	if err := f.rt.Answer(parent.ID, request, "no", ""); err == nil || !strings.Contains(err.Error(), "finished") {
+	if err := f.rt.Answer(parent.ID, request, []string{"no"}, ""); err == nil || !strings.Contains(err.Error(), "finished") {
 		t.Fatalf("a second answer: %v", err)
 	}
 }

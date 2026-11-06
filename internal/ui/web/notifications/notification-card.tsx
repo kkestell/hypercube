@@ -5,7 +5,7 @@ import {Icon} from '../shared/icon.tsx';
 // A request card offers answers; a reply card shows its opening lines and closes
 // itself after 15 seconds, as if closed. An error card has only its message
 // and close, and stays until it is closed.
-import {useEffect} from 'react';
+import {useEffect, useRef} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {useStore} from '../store.ts';
 import {AttentionForm} from '../transcript/attention-form.tsx';
@@ -17,15 +17,50 @@ const replyLifetime = 15000;
 
 export function NotificationCard({card}: {card: CardData}) {
   const [, store] = useStore();
+  const element = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (card.kind !== 'reply') return;
-    const timer = setTimeout(() => closeCard(store, card), replyLifetime);
-    return () => clearTimeout(timer);
+    const node = element.current;
+    if (card.kind !== 'reply' || !node) return;
+    let remaining = replyLifetime;
+    let started = performance.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let hovered = false;
+    let focused = node.contains(document.activeElement);
+    const pause = () => {
+      if (timer === undefined) return;
+      clearTimeout(timer);
+      timer = undefined;
+      remaining -= performance.now() - started;
+    };
+    const resume = () => {
+      if (hovered || focused || timer !== undefined) return;
+      started = performance.now();
+      timer = setTimeout(() => closeCard(store, card), remaining);
+    };
+    const enter = () => { hovered = true; pause(); };
+    const leave = () => { hovered = false; resume(); };
+    const focus = () => { focused = true; pause(); };
+    const blur = (event: FocusEvent) => {
+      focused = event.relatedTarget instanceof Node && node.contains(event.relatedTarget);
+      resume();
+    };
+    node.addEventListener('pointerenter', enter);
+    node.addEventListener('pointerleave', leave);
+    node.addEventListener('focusin', focus);
+    node.addEventListener('focusout', blur);
+    resume();
+    return () => {
+      pause();
+      node.removeEventListener('pointerenter', enter);
+      node.removeEventListener('pointerleave', leave);
+      node.removeEventListener('focusin', focus);
+      node.removeEventListener('focusout', blur);
+    };
   }, [card.key]);
 
   return (
-    <Card className="notification-card gap-2 py-3" role="alert">
+    <Card ref={element} className="notification-card gap-2 py-3" role="alert">
       <CardHeader className="notification-card-header gap-1 px-3">
         <CardTitle className="min-w-0">
           {card.kind === 'error'

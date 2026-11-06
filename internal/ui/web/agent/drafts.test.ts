@@ -1,8 +1,13 @@
-import {expect, test} from 'bun:test';
+import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {createStore} from '../store.ts';
 import {testSession, testState} from '../../test-state.ts';
 import type {State} from '../state.ts';
-import {attachImages, canSend, draftOf, typed, unsentCreated, unsentKey} from './drafts.ts';
+import {attachImages, canSend, draftOf, typed, unsentCreated, unsentKey as workspaceDraftKey} from './drafts.ts';
+import {openUnsent, selectSession} from '../sessions/selection.ts';
+
+const unsentKey = workspaceDraftKey('w');
+
+afterEach(() => mock.restore());
 
 const session = testSession({id: 's'});
 const store = (extra: Partial<State> = {}) => createStore(testState({selected: 's', ...extra}));
@@ -28,9 +33,26 @@ test('sending waits for images still being read', async () => {
   expect(canSend(s.get(), session)).toBe(true);
 });
 
+test('an image read finishes into its parked new-session draft', async () => {
+  const s = store();
+  s.update(state => openUnsent(state, 'w'));
+  const readers: FileReader[] = [];
+  spyOn(FileReader.prototype, 'readAsDataURL').mockImplementation(function (this: FileReader) { readers.push(this); });
+  const reading = attachImages(s, unsentKey, [png(4)]);
+  s.update(state => selectSession(state, 's'));
+  s.update(state => openUnsent(state, 'other'));
+  Object.defineProperty(readers[0], 'result', {value: 'data:image/png;base64,AAAAAA=='});
+  readers[0].dispatchEvent(new ProgressEvent('load'));
+  await reading;
+  expect(draftOf(s.get(), unsentKey)).toMatchObject({reading: 0, images: [{mime_type: 'image/png', data: 'AAAAAA=='}]});
+  expect(draftOf(s.get(), workspaceDraftKey('other')).images).toEqual([]);
+  s.update(state => openUnsent(state, 'w'));
+  expect(draftOf(s.get(), unsentKey).images).toHaveLength(1);
+});
+
 test('the created session takes the unsent session\'s draft, and an empty draft leaves nothing', () => {
   const draft = {text: 'hi', images: [], reading: 1};
-  const moved = unsentCreated(testState({drafts: {[unsentKey]: draft, other: draft}}), 'n');
+  const moved = unsentCreated(testState({drafts: {[unsentKey]: draft, other: draft}}), 'n', unsentKey);
   expect(moved.drafts).toEqual({other: draft, 'n': {text: 'hi', images: [], reading: 0}});
-  expect(unsentCreated(testState({drafts: {[unsentKey]: {text: '', images: [], reading: 1}}}), 'n').drafts).toEqual({});
+  expect(unsentCreated(testState({drafts: {[unsentKey]: {text: '', images: [], reading: 1}}}), 'n', unsentKey).drafts).toEqual({});
 });

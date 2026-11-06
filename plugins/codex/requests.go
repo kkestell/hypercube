@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -43,14 +42,14 @@ type request struct {
 	id      json.RawMessage
 	method  string
 	items   []harness.Item // the questions, before ag.requests tracks them
-	answers []string
+	answers [][]string
 
 	declinable  bool            // an approval that lets the user decline
 	permissions json.RawMessage // the permissions asked for
 	questionIDs []string        // the ID of each question, by item
 	form        []formField     // the fields of a form, by item; nil without one
 	async       bool            // an async question answered by a user message
-	thread      string          // async question's thread
+	thread      string          // thread that owns the request
 }
 
 // formField is a field of an elicitation's form.
@@ -85,10 +84,19 @@ func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 		return
 	}
 	r.id, r.method = m.ID, m.Method
-	r.answers = make([]string, len(r.items))
+	var owner struct {
+		Thread string `json:"threadId"`
+	}
+	_ = json.Unmarshal(m.Params, &owner)
+	r.thread = owner.Thread
+	if r.thread == "" {
+		r.thread = ag.thread
+	}
+	r.answers = make([][]string, len(r.items))
 	for i := range r.items {
 		r.items[i].ID = fmt.Sprintf("request:%s/%d", strings.Trim(string(m.ID), `"`), i)
 		r.items[i].Kind = harness.KindAttention
+		r.items[i].Parent = ag.children[r.thread].parent
 	}
 	ag.requests.Add(r, r.items)
 	ev.Items = append(ev.Items, r.items...)
@@ -98,9 +106,9 @@ func (ag *agent) serverRequest(ev *harness.Event, m plugin.Message) {
 func (r *request) response() (any, error) {
 	switch r.method {
 	case methodCommand, methodFile:
-		return approvalResponse(r.answers[0], r.declinable), nil
+		return approvalResponse(r.answers[0][0], r.declinable), nil
 	case methodPermissions:
-		return permissionsResponse(r.answers[0], r.permissions), nil
+		return permissionsResponse(r.answers[0][0], r.permissions), nil
 	case methodQuestions:
 		return questionsResponse(r.questionIDs, r.answers), nil
 	default:
@@ -165,17 +173,17 @@ func permissionsResponse(choice string, permissions json.RawMessage) any {
 	return map[string]any{"permissions": permissions, "scope": scope}
 }
 
-func questionsResponse(ids, answers []string) any {
+func questionsResponse(ids []string, answers [][]string) any {
 	byID := map[string]any{}
 	for i, id := range ids {
-		byID[id] = map[string]any{"answers": []string{answers[i]}}
+		byID[id] = map[string]any{"answers": answers[i]}
 	}
 	return map[string]any{"answers": byID}
 }
 
-func elicitationResponse(form []formField, answers []string) (any, error) {
+func elicitationResponse(form []formField, answers [][]string) (any, error) {
 	if form == nil {
-		if answers[0] == accept {
+		if answers[0][0] == accept {
 			return map[string]any{"action": "accept", "content": map[string]any{}}, nil
 		}
 		return map[string]any{"action": "decline"}, nil
@@ -192,7 +200,11 @@ func elicitationResponse(form []formField, answers []string) (any, error) {
 }
 
 // formValue converts the answer to a form field to the value codex expects.
-func formValue(f plugin.Field, answer string) (any, error) {
+func formValue(f plugin.Field, answers []string) (any, error) {
+	if f.Type == "array" {
+		return answers, nil
+	}
+	answer := answers[0]
 	switch f.Type {
 	case "boolean":
 		return answer == "Yes", nil
@@ -205,8 +217,6 @@ func formValue(f plugin.Field, answer string) (any, error) {
 			return nil, errors.New("the answer must be an integer")
 		}
 		return n, nil
-	case "array":
-		return []string{answer}, nil
 	}
 	return answer, nil
 }
@@ -382,6 +392,7 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 				item.Choices, titles = append(item.Choices, o.Const), append(titles, o.Title)
 			}
 			item.Free = len(item.Choices) == 0
+			item.Multi = f.Type == "array" && len(item.Choices) > 0
 			item.Notes = plugin.Notes(titles)
 		default:
 			return nil, fmt.Errorf("a %s field", f.Type)
@@ -393,7 +404,7 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 }
 
 // answer replies to an open request with a choice or text.
-func (ag *agent) answer(item, choice, text string) error {
+func (ag *agent) answer(item string, choices []string, text string) error {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	open, ok := ag.requests.Get(item)
@@ -401,29 +412,24 @@ func (ag *agent) answer(item, choice, text string) error {
 		return fmt.Errorf("request %s is not open", item)
 	}
 	r, i := open.Request, open.Index
-	answer := choice
-	switch {
-	case choice != "":
-		if !slices.Contains(open.Item.Choices, choice) {
-			return fmt.Errorf("unknown choice %q", choice)
-		}
-	case text == "":
-		return errors.New("the answer is empty")
-	case !open.Item.Free:
-		return errors.New("the question needs one of its choices")
-	default:
-		answer = text
+	if err := harness.CheckAnswer(open.Item, choices, text); err != nil {
+		return err
 	}
+	answers := choices
+	if len(answers) == 0 {
+		answers = []string{text}
+	}
+	answer := strings.Join(answers, ", ")
 	if r.async {
 		return ag.answerAsync(open, answer)
 	}
 	// A form answer that cannot be converted is refused at once.
 	if r.form != nil {
-		if _, err := formValue(r.form[i].field, answer); err != nil {
+		if _, err := formValue(r.form[i].field, answers); err != nil {
 			return err
 		}
 	}
-	r.answers[i] = answer
+	r.answers[i] = answers
 	if open.Last {
 		response, err := r.response()
 		if err != nil {

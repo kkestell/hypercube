@@ -568,6 +568,39 @@ func TestUnknownThreadIsIgnored(t *testing.T) {
 	}
 }
 
+func TestMainTurnCompletionLeavesChildItemsAndRequestsOpen(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "main"
+	h.feed(t,
+		`{"method":"turn/started","params":{"threadId":"main","turn":{"id":"turn"}}}`,
+		`{"method":"item/started","params":{"threadId":"main","item":{"type":"subAgentActivity","id":"spawn","kind":"started","agentThreadId":"child"}}}`,
+		`{"method":"item/started","params":{"threadId":"child","item":{"type":"commandExecution","id":"shell","command":"echo late","status":"inProgress"}}}`,
+		`{"method":"item/agentMessage/delta","params":{"threadId":"child","itemId":"text","delta":"still "}}`,
+		`{"id":9,"method":"item/commandExecution/requestApproval","params":{"threadId":"child","command":"echo late"}}`,
+		`{"method":"turn/completed","params":{"threadId":"main","turn":{"id":"turn","status":"completed"}}}`)
+	for _, id := range []string{"shell", "text", "request:9/0"} {
+		if it := h.item(t, id); it.Done || it.Parent != "spawn" {
+			t.Fatalf("child item after main completion: %+v", it)
+		}
+	}
+	h.feed(t,
+		`{"method":"item/completed","params":{"threadId":"child","item":{"type":"commandExecution","id":"shell","command":"echo late","status":"completed","aggregatedOutput":"late\n","exitCode":0}}}`,
+		`{"method":"item/agentMessage/delta","params":{"threadId":"child","itemId":"text","delta":"working"}}`,
+		`{"method":"item/completed","params":{"threadId":"child","item":{"type":"agentMessage","id":"text","text":"still working"}}}`)
+	if it := h.item(t, "shell"); !it.Done || it.Output != "late\n" {
+		t.Fatalf("late child tool: %+v", it)
+	}
+	if it := h.item(t, "text"); !it.Done || it.Text != "still working" {
+		t.Fatalf("late child message: %+v", it)
+	}
+	if err := h.answer("request:9/0", []string{allow}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.server.await(1)[0]; compact(got["result"]) != `{"decision":"accept"}` {
+		t.Fatalf("child approval reply: %+v", got)
+	}
+}
+
 func TestInterruptEndsTheTurnWithoutAnError(t *testing.T) {
 	h := newAgent(t)
 	lines := fixture(t, "interrupt")
@@ -739,11 +772,11 @@ func TestApprovalBecomesAnAttentionRequest(t *testing.T) {
 		t.Fatalf("%+v", ask)
 	}
 	for _, bad := range [][2]string{{"Maybe", ""}, {"", ""}, {"", "free text"}} {
-		if err := h.answer(ask.ID, bad[0], bad[1]); err == nil {
+		if err := h.answer(ask.ID, []string{bad[0]}, bad[1]); err == nil {
 			t.Fatalf("answered with %q", bad)
 		}
 	}
-	if err := h.answer(ask.ID, deny, ""); err != nil {
+	if err := h.answer(ask.ID, []string{deny}, ""); err != nil {
 		t.Fatal(err)
 	}
 	responses := h.server.await(1)
@@ -754,7 +787,7 @@ func TestApprovalBecomesAnAttentionRequest(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 	// A finished request cannot be answered again.
-	if err := h.answer(ask.ID, allow, ""); err == nil || !strings.Contains(err.Error(), "is not open") {
+	if err := h.answer(ask.ID, []string{allow}, ""); err == nil || !strings.Contains(err.Error(), "is not open") {
 		t.Fatal(err)
 	}
 }
@@ -777,7 +810,7 @@ func TestApprovalDecisions(t *testing.T) {
 		t.Fatalf("%+v", network)
 	}
 	for _, a := range [][2]string{{"request:7/0", allowSession}, {"request:s8/0", allow}, {"request:9/0", deny}} {
-		if err := h.answer(a[0], a[1], ""); err != nil {
+		if err := h.answer(a[0], []string{a[1]}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -816,11 +849,11 @@ func TestPermissionsRequest(t *testing.T) {
 	if !strings.Contains(ask.Text, `"enabled":true`) || !strings.Contains(ask.Text, "to fetch") {
 		t.Fatalf("%+v", ask)
 	}
-	if err := h.answer(ask.ID, allowSession, ""); err != nil {
+	if err := h.answer(ask.ID, []string{allowSession}, ""); err != nil {
 		t.Fatal(err)
 	}
 	h.feed(t, `{"id":4,"method":"item/permissions/requestApproval","params":{"threadId":"t1","turnId":"u1","itemId":"i","cwd":"/w","permissions":{"network":{"enabled":true}}}}`)
-	if err := h.answer("request:4/0", deny, ""); err != nil {
+	if err := h.answer("request:4/0", []string{deny}, ""); err != nil {
 		t.Fatal(err)
 	}
 	var got []string
@@ -844,7 +877,7 @@ func TestAsyncQuestions(t *testing.T) {
 	if size.Text != "Which size?" || !size.Async || !size.Free || !slices.Equal(size.Choices, []string{"Small", "Large"}) || name.Text != "What name?" || !name.Free || len(name.Choices) != 0 {
 		t.Fatalf("%+v %+v", size, name)
 	}
-	if err := h.answer(size.ID, "Large", ""); err != nil {
+	if err := h.answer(size.ID, []string{"Large"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if got := inputText(h.server.sent("turn/steer")[0]); got != "Which size?\n\nLarge" {
@@ -858,13 +891,13 @@ func TestAsyncQuestions(t *testing.T) {
 	}
 	h.feed(t, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`)
 	h.feed(t, `{"method":"item/completed","params":{"threadId":"t1","turnId":"u1","item":{"type":"agentMessage","id":"m2","delivery":"async","questions":[{"title":"What name?","options":null}]}}}`)
-	if err := h.answer("question:m2/0", "", "Ada"); err != nil {
+	if err := h.answer("question:m2/0", nil, "Ada"); err != nil {
 		t.Fatal(err)
 	}
 	if got := inputText(h.server.sent("turn/start")[0]); got != "What name?\n\nAda" {
 		t.Fatal(got)
 	}
-	if err := h.answer("question:m2/0", "", "Ada"); err == nil {
+	if err := h.answer("question:m2/0", nil, "Ada"); err == nil {
 		t.Fatal("answered a finished question")
 	}
 }
@@ -902,19 +935,19 @@ func TestQuestionsAreAnsweredTogether(t *testing.T) {
 	if !name.Free || len(name.Choices) != 0 || !color.Free || len(color.Choices) != 1 {
 		t.Fatalf("%+v %+v", name, color)
 	}
-	if err := h.answer(size.ID, "", "huge"); err == nil {
+	if err := h.answer(size.ID, nil, "huge"); err == nil {
 		t.Fatal("typed text for a question with fixed choices")
 	}
-	if err := h.answer(size.ID, "Large", ""); err != nil {
+	if err := h.answer(size.ID, []string{"Large"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := h.answer(name.ID, "", "Ada"); err != nil {
+	if err := h.answer(name.ID, nil, "Ada"); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.server.responses()) != 0 {
 		t.Fatal("answered before every question had an answer")
 	}
-	if err := h.answer(color.ID, "", "teal"); err != nil {
+	if err := h.answer(color.ID, nil, "teal"); err != nil {
 		t.Fatal(err)
 	}
 	responses := h.server.await(1)
@@ -939,7 +972,7 @@ func TestElicitationApproval(t *testing.T) {
 		t.Fatal(got)
 	}
 	for _, a := range [][2]string{{"request:1/0", "Accept"}, {"request:2/0", "Decline"}} {
-		if err := h.answer(a[0], a[1], ""); err != nil {
+		if err := h.answer(a[0], []string{a[1]}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -965,23 +998,29 @@ func TestElicitationForm(t *testing.T) {
 	if !strings.HasPrefix(zeta.Text, "srv: Details") || !slices.Equal(zeta.Choices, []string{"fast", "slow"}) || !slices.Equal(zeta.Notes, []string{"Fast one", "Slow one"}) {
 		t.Fatalf("%+v", zeta)
 	}
-	if !slices.Equal(alpha.Choices, []string{"Yes", "No"}) || !count.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || !note.Free {
+	if !slices.Equal(alpha.Choices, []string{"Yes", "No"}) || !count.Free || !slices.Equal(tags.Choices, []string{"a", "b"}) || !tags.Multi || !note.Free {
 		t.Fatalf("%+v", h.transcript())
 	}
-	if err := h.answer(count.ID, "", "many"); err == nil {
+	if err := h.answer(count.ID, nil, "many"); err == nil {
 		t.Fatal("accepted a number that is not one")
 	}
+	if err := h.answer(tags.ID, []string{"a", "a"}, ""); err == nil {
+		t.Fatal("accepted duplicate selections")
+	}
 	for _, a := range [][2]string{{zeta.ID, "slow"}, {alpha.ID, "No"}, {count.ID, "3"}, {tags.ID, "b"}, {note.ID, "hi"}} {
-		text, choice := "", a[1]
+		text, choices := "", []string{a[1]}
 		if a[0] == count.ID || a[0] == note.ID {
-			text, choice = a[1], ""
+			text, choices = a[1], nil
 		}
-		if err := h.answer(a[0], choice, text); err != nil {
+		if a[0] == tags.ID {
+			choices = []string{"a", "b"}
+		}
+		if err := h.answer(a[0], choices, text); err != nil {
 			t.Fatal(err)
 		}
 	}
 	responses := h.server.await(1)
-	want := `{"action":"accept","content":{"alpha":false,"count":3,"note":"hi","tags":["b"],"zeta":"slow"}}`
+	want := `{"action":"accept","content":{"alpha":false,"count":3,"note":"hi","tags":["a","b"],"zeta":"slow"}}`
 	if len(responses) != 1 || compact(responses[0]["result"]) != want {
 		t.Fatalf("%+v", responses)
 	}
@@ -1025,7 +1064,7 @@ func TestInterruptRefusesOpenRequests(t *testing.T) {
 	if got := h.item(t, "request:0/0"); !got.Done || got.Answer != "" {
 		t.Fatalf("%+v", got)
 	}
-	if err := h.answer("request:0/0", allow, ""); err == nil {
+	if err := h.answer("request:0/0", []string{allow}, ""); err == nil {
 		t.Fatal("answered a request that was interrupted")
 	}
 }
@@ -1043,7 +1082,7 @@ func TestResolvedAndEndedTurnsCloseRequests(t *testing.T) {
 	if !h.item(t, "request:1/0").Done || h.item(t, "request:2/0").Done {
 		t.Fatalf("%+v", h.transcript())
 	}
-	if err := h.answer("request:1/0", allow, ""); err == nil {
+	if err := h.answer("request:1/0", []string{allow}, ""); err == nil {
 		t.Fatal("answered a resolved request")
 	}
 	h.feed(t, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`)

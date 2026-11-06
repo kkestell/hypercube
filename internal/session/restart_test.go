@@ -15,7 +15,7 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-func (f *fixture) restart() { f.t.Helper(); f.rt.Detach(); f.rt = f.newRuntime(); f.rt.Restore() }
+func (f *fixture) restart() { f.t.Helper(); f.rt.Detach(); f.rt = f.newRuntime(); f.restore() }
 func (f *fixture) holder(id string) *hold.Holder {
 	f.t.Helper()
 	s := f.storedSession(id)
@@ -35,7 +35,7 @@ func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
 	f.recordDetachedInput(s.ID, "!finish", true)
 	f.until("offline inputs", func() bool { return len(f.inputs(s.ID)) == 4 })
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	f.until("replayed state", func() bool {
 		return f.storedSession(s.ID).Usage.Context == 45200 && f.storedSession(s.ID).Activity == store.Idle && strings.Contains(f.summary(s.ID), "text:finished")
 	})
@@ -86,14 +86,14 @@ func TestRestartAnswersPersistedAttention(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "!ask")
-	f.until("attention", func() bool { return len(f.rt.Requests()) == 1 })
-	id := f.rt.Requests()[0].Item.ID
+	f.until("attention", func() bool { return len(f.requests()) == 1 })
+	id := f.requests()[0].Item.ID
 	f.restart()
-	f.until("restored attention", func() bool { return len(f.rt.Requests()) == 1 })
-	if err := f.rt.Answer(s.ID, id, "yes", ""); err != nil {
+	f.until("restored attention", func() bool { return len(f.requests()) == 1 })
+	if err := f.rt.Answer(s.ID, id, []string{"yes"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	f.until("answered", func() bool { return len(f.rt.Requests()) == 0 })
+	f.until("answered", func() bool { return len(f.requests()) == 0 })
 	if log := f.log(s.ID, "answer"); len(log) != 1 || log[0].Request != "q" {
 		t.Fatal(log)
 	}
@@ -128,7 +128,7 @@ func TestRestartKeepsHeldDeliveryAndResendsUnwrittenCommand(t *testing.T) {
 	f.rt.Detach()
 	f.recordDetachedInput(s.ID, "not sent", false)
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	f.until("unsent command delivered", func() bool { return len(f.inputs(s.ID)) == 4 && strings.HasSuffix(f.summary(s.ID), "text:ack") })
 	if got := f.inputs(s.ID); got[3] != "not sent" {
 		t.Fatal(got)
@@ -141,7 +141,7 @@ func TestRestartDeliversMessageQueuedBeforeDelivery(t *testing.T) {
 	// The message was saved, but the app stopped before delivering it.
 	f.queue("user", s.ID, "queued")
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	f.until("delivered", func() bool { return len(f.queued(s.ID)) == 0 })
 }
 func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
@@ -152,7 +152,7 @@ func TestRestartReadsExitedLaunchAndRelaunches(t *testing.T) {
 	h := f.holder(s.ID)
 	f.until("offline exit", func() bool { _, err := h.Exit(); return err == nil })
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	f.until("resumed after exit", func() bool { return len(f.log(s.ID, "start")) == 2 && f.idle(s.ID) })
 	if !strings.Contains(f.summary(s.ID), "The agent exited: ") || f.storedSession(s.ID).Quick != 1 {
 		t.Fatalf("exit not applied: %s %+v", f.summary(s.ID), f.storedSession(s.ID))
@@ -193,7 +193,7 @@ func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
 	dir := filepath.Join(store.Dir(), "run", f.storedSession(child.ID).Launch)
 	killHolder(t, dir)
 	f.rt = f.newRuntime()
-	f.rt.Restore()
+	f.restore()
 	if f.awake(child.ID) || f.storedSession(child.ID).Launch != "" || len(f.log(child.ID, "start")) != 1 {
 		t.Fatal("the lost child did not stay parked")
 	}
@@ -232,7 +232,7 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer orphan.Remove()
-	f.rt.Restore()
+	f.restore()
 	f.until("decided launch ready", func() bool { return f.idle("s") })
 	if f.storedSession("s").Launch != original || len(f.log("s", "start")) != 1 {
 		t.Fatal("recorded launch replaced")
@@ -302,7 +302,7 @@ func TestQuickExitCountSurvivesRestarts(t *testing.T) {
 		h := f.holder(s.ID)
 		f.until("exit", func() bool { _, err := h.Exit(); return err == nil })
 		f.rt = f.newRuntime()
-		f.rt.Restore()
+		f.restore()
 		if exits < maxQuickExits {
 			f.until("next launch", func() bool { return len(f.log(s.ID, "start")) == exits+1 && f.idle(s.ID) })
 		} else {
@@ -366,7 +366,7 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.rt.Restore()
+	f.restore()
 	deadline := time.Now().Add(f.rt.startTimeout + 5*time.Second)
 	for f.storedSession("s").Launch != "" && time.Now().Before(deadline) {
 		time.Sleep(100 * time.Millisecond)
@@ -382,9 +382,101 @@ func TestAdoptedIdleSessionParks(t *testing.T) {
 	f.rt.Detach()
 	f.rt = f.newRuntime()
 	f.idleAfter(50 * time.Millisecond)
-	f.rt.Restore()
+	f.restore()
 	f.untilParked(s.ID)
 	if len(f.log(s.ID, "start")) != 1 || f.summary(s.ID) != "user:start|text:ack" {
 		t.Fatalf("parking the adopted session: %q", f.summary(s.ID))
+	}
+}
+
+func TestDetachReleasesBlockedPluginSender(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	s = f.storedSession(s.ID)
+	pid := f.log(s.ID, "start")[0].Pid
+	h := f.holder(s.ID)
+	if err := syscall.Kill(pid, syscall.SIGSTOP); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = syscall.Kill(pid, syscall.SIGCONT)
+		_ = h.Stop()
+		_ = h.Remove()
+	})
+	f.rt.mu.Lock()
+	l := f.rt.live[s.ID]
+	// The holder reads a whole command before writing it to the plugin.
+	// The second large line fills its socket once the first fills the pipe.
+	for range 2 {
+		_, err := f.rt.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: strings.Repeat("x", 2<<20)}, nil)
+		if err != nil {
+			f.rt.mu.Unlock()
+			t.Fatal(err)
+		}
+	}
+	f.rt.mu.Unlock()
+	sent := make(chan struct{})
+	go func() { f.rt.send(l); close(sent) }()
+	f.until("the sender holding its lock", func() bool {
+		if l.send.TryLock() {
+			l.send.Unlock()
+			return false
+		}
+		return true
+	})
+	detached := make(chan struct{})
+	go func() { f.rt.Detach(); close(detached) }()
+	select {
+	case <-detached:
+	case <-time.After(5 * time.Second):
+		t.Fatal("detach waited behind the blocked plugin writer")
+	}
+	select {
+	case <-sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("detach left its sender blocked")
+	}
+	if !h.Alive() || f.storedSession(s.ID).Launch != s.Launch || f.summary(s.ID) != "user:start|text:ack" {
+		t.Fatal("detach stopped the holder or discarded its transcript checkpoint")
+	}
+}
+
+func TestRestoreRegistersAllFamiliesBeforeServing(t *testing.T) {
+	f := newFixture(t)
+	first := f.session()
+	child := f.child(first, "worker", "")
+	other := f.session()
+	first, child, other = f.storedSession(first.ID), f.storedSession(child.ID), f.storedSession(other.ID)
+	f.rt.Detach()
+	f.rt = f.newRuntime()
+	var releases []func()
+	t.Cleanup(func() {
+		for _, release := range releases {
+			release()
+		}
+	})
+	err := f.rt.Restore(func() {
+		// Requests admitted as soon as HTTP starts must find every saved
+		// family, including the family not yet adopted by any reader.
+		for _, s := range []store.Session{first, child, other} {
+			release, err := f.rt.View(s.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			releases = append(releases, release)
+			if got := f.storedSession(s.ID).Launch; got != s.Launch {
+				t.Errorf("early view replaced launch %s with %s", s.Launch, got)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []store.Session{first, child, other} {
+		f.input(s.ID, "after restoration")
+		f.until("the restored launch accepting input", func() bool { return f.idle(s.ID) })
+		if len(f.log(s.ID, "start")) != 1 || f.storedSession(s.ID).Launch != s.Launch {
+			t.Error("restoration replaced the registered launch")
+		}
 	}
 }
