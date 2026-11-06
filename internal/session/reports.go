@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -123,7 +124,7 @@ func reportInput(queued []store.Message, waiting []string) (out outgoing) {
 		body.WriteString(m.Text)
 	}
 	out.batch = body.String()
-	heading := "Child reports are ready."
+	heading := report.ReportsReady
 	if len(waiting) > 0 {
 		heading += fmt.Sprintf(" Waiting for the user: %s. Leave the waiting children's questions and approvals to the user.", strings.Join(waiting, ", "))
 	}

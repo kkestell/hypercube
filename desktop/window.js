@@ -1,7 +1,7 @@
 // The main window: the Hypercube page, or the waiting page until the backend
 // answers. The page draws the title bar's row, its tab bars, beside the
 // window's buttons, and the window reports that row's size.
-const {app, BrowserWindow, screen, shell} = require('electron');
+const {app, BrowserWindow, ipcMain, nativeTheme, screen, shell} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const dock = require('./dock.js');
@@ -30,8 +30,9 @@ function savedBounds(file) {
 
 // createMainWindow makes the window, hidden until its first page is ready. The
 // backend page is at origin; the waiting page and its sibling pages are in
-// pagesDir.
-function createMainWindow({origin, pagesDir, userData}) {
+// pagesDir. The window answers the page's title bar and theme messages and
+// passes the page's other messages to onMessage.
+function createMainWindow({origin, pagesDir, userData, onMessage}) {
   const boundsFile = path.join(userData, 'window.json');
   const save = () => fs.writeFileSync(boundsFile, JSON.stringify(win.getNormalBounds()));
   const win = new BrowserWindow({
@@ -70,6 +71,28 @@ function createMainWindow({origin, pagesDir, userData}) {
   win.on('enter-full-screen', reportTitleBar);
   win.on('leave-full-screen', reportTitleBar);
 
+  // Messages from the Hypercube page, which the window's bridge sends, until
+  // the window is destroyed.
+  const fromPage = event => event.senderFrame === contents.mainFrame && new URL(event.senderFrame.url).origin === origin;
+  const received = (event, message) => {
+    if (!fromPage(event)) return;
+    switch (message.type) {
+      case 'title-bar':
+        reportTitleBar();
+        break;
+      // The Settings theme also sets the app's native appearance, which the
+      // window's buttons, the menus, the agent browser toolbars, and the
+      // waiting page follow.
+      case 'theme':
+        if (['system', 'light', 'dark'].includes(message.theme)) nativeTheme.themeSource = message.theme;
+        break;
+      default:
+        onMessage?.(message);
+    }
+  };
+  ipcMain.on('page', received);
+  win.on('closed', () => ipcMain.removeListener('page', received));
+
   // Links away from the page open in the default browser.
   contents.on('will-navigate', (e, url) => {
     if (new URL(url).origin === origin) return;
@@ -93,7 +116,6 @@ function createMainWindow({origin, pagesDir, userData}) {
     contents,
     send,
     show,
-    reportTitleBar,
     isFocused: () => win.isVisible() && win.isFocused(),
     showWaiting: () => win.loadFile(path.join(pagesDir, 'waiting.html')),
     showBackend: () => win.loadURL(origin + '/'),

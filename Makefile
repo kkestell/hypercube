@@ -11,7 +11,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean ui
+.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean ui screenshots
 
 # bundle builds $(APP): the Electron desktop app, Hypercube Desktop, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -114,6 +114,17 @@ install-service: build quit-desktop place
 # Run it before go build, go vet, or go test.
 ui:
 	cd internal/ui && bun install --frozen-lockfile && bun build.ts dist
+
+# screenshots regenerates docs/images from the scenes in docs/screenshots,
+# running the real backend and desktop window with the scripted harness plugin
+# installed under each harness name. The first run downloads Electron.
+screenshots: ui
+	cd desktop && bun install --frozen-lockfile && node node_modules/electron/install.js
+	@tmp=$$(mktemp -d /tmp/hc-XXXXXX) && trap 'rm -rf "$$tmp"' EXIT && \
+		go build -o $$tmp/hypercube ./cmd/hypercube && \
+		go build -o $$tmp/hypercube-harness-scripted ./plugins/scripted && \
+		for p in $(PLUGINS); do ln -s hypercube-harness-scripted $$tmp/hypercube-harness-$$p || exit 1; done && \
+		desktop/node_modules/.bin/electron scripts/screenshots/main.js --dir=$$tmp docs/screenshots/*.json
 
 dev:
 	scripts/dev up

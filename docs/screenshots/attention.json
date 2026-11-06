@@ -1,0 +1,59 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "profile": "codex-gpt-terra-high",
+          "turns": [
+            {
+              "prompt": "Upgrade goldmark to the latest release and fix whatever breaks",
+              "end": "ask",
+              "usage": {"context": 27650, "window": 272000},
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "go list -m -u github.com/yuin/goldmark"}, "output": "github.com/yuin/goldmark v1.7.8 [v1.7.13]", "done": true},
+                {"id": "t1", "kind": "text", "text": "goldmark v1.7.13 is available. Updating the module needs network access to fetch it.", "done": true},
+                {"id": "q1", "kind": "attention", "text": "Run `go get github.com/yuin/goldmark@v1.7.13 && go mod tidy`?", "choices": ["Allow", "Allow for this session", "Deny"], "grant": "commandExecution"}
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "claude-opus-high",
+          "turns": [
+            {
+              "prompt": "Prepare the next release: changelog, version bump, and tag",
+              "end": "ask",
+              "usage": {"context": 39400, "window": 200000, "cost": 0.47},
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Bash", "input": {"command": "git log --oneline v0.3.0..HEAD", "description": "List changes since the last release"}, "output": "4be1c7e Add harbor build -force\n9d02a3f Skip unchanged pages with a build cache\n51f8e20 Keep public/ between builds\n0c7d4b9 Fix front matter values containing colons", "done": true},
+                {"id": "r1", "kind": "reasoning", "text": "Keeping public/ between builds changes behavior sites may rely on: stale files used to disappear on every build.", "done": true},
+                {"id": "q1", "kind": "attention", "text": "Builds no longer clear `public/`, which breaks sites that relied on it. Which version should this release be?", "choices": ["0.4.0", "1.0.0"], "notes": ["Breaking changes are expected before 1.0.", "Declare the CLI stable."]}
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "claude-sonnet-high",
+          "turns": [
+            {
+              "prompt": "Highlight code blocks in rendered pages",
+              "end": "working",
+              "usage": {"context": 22310, "window": 200000, "cost": 0.09},
+              "items": [
+                {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting wraps chroma and plugs into goldmark as an extension, so render needs only a configured converter.", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}, "output": "package main\n...", "done": true},
+                {"id": "t1", "kind": "text", "text": "I'll add the goldmark-highlighting extension with CSS classes instead of inline styles, so the site's stylesheet controls the colors in light and dark mode.", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./...", "description": "Run the tests"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 2]
+}
