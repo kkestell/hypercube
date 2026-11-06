@@ -1,7 +1,7 @@
 // Sessions choose configured profiles; a running session keeps its harness.
 import {useEffect, useState} from 'react';
 import {Button} from '../components/ui/button';
-import {DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
 import {Icon} from '../shared/icon.tsx';
 import {fetchConfig, selectProfile} from '../api.ts';
 import {receivedConfig} from '../app/config.ts';
@@ -11,6 +11,7 @@ import {isUnsent} from './drafts.ts';
 import {modelLabel, profileLabel} from './profile-label.ts';
 import {harnessIcon} from './harness-icon.tsx';
 import type {Session} from '../sessions/types.ts';
+import type {Profile} from './types.ts';
 
 export function ProfileSelect({session}: {session: Session}) {
   const [state, store] = useStore();
@@ -26,10 +27,8 @@ export function ProfileSelect({session}: {session: Session}) {
     });
     return () => { current = false; };
   }, [store, session.id, session.ready, unsent?.identity, revision]);
-  const choose = (value: string) => {
+  const choose = (profile: Profile) => {
     if (unsent ? unsent.sending : !session.ready) return;
-    const profile = profiles.find(p => p.name === value);
-    if (!profile) return;
     if (unsent) store.update(s => unsentProfile(s, profile));
     else selectProfile(store, session.id, profile.name);
   };
@@ -44,14 +43,13 @@ export function ProfileSelect({session}: {session: Session}) {
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
-      <DropdownMenuRadioGroup value={selected?.name ?? ''} onValueChange={choose}>
-        {choices.map(p => {
-          const icon = harnessIcon(p.harness);
-          return <DropdownMenuRadioItem key={p.name} value={p.name}>
-            {icon}<span className="min-w-0 whitespace-normal break-words">{icon ? modelLabel(p) : profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
-          </DropdownMenuRadioItem>;
-        })}
-      </DropdownMenuRadioGroup>
+      {choices.map(p => {
+        const icon = harnessIcon(p.harness);
+        return <DropdownMenuItem key={p.name} role="menuitemradio" aria-checked={p === selected} onSelect={() => choose(p)}>
+          {icon}<span className="min-w-0 whitespace-normal break-words">{icon ? modelLabel(p) : profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
+          {p === selected && <Icon name="check" className="ml-auto" />}
+        </DropdownMenuItem>;
+      })}
     </DropdownMenuContent>
   </DropdownMenu>;
 }

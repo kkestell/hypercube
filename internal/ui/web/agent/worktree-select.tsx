@@ -1,7 +1,7 @@
 // The new-session page chooses whether a session in a Git workspace runs in
 // the checkout or in a new worktree.
 import {Button} from '../components/ui/button';
-import {DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
+import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
 import {Icon} from '../shared/icon.tsx';
 import {unsentWorktree} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
@@ -27,11 +27,10 @@ export function WorktreeSelect() {
       </Button>
     </DropdownMenuTrigger>
     <DropdownMenuContent side="top" align="start" className="w-80 max-w-[calc(100vw-2rem)]">
-      <DropdownMenuRadioGroup value={shown.value} onValueChange={choose}>
-        {choices.map(c => <DropdownMenuRadioItem key={c.value} value={c.value}>
-          <Icon name={c.icon} /><span className="min-w-0 whitespace-normal">{c.label}<span className="block text-xs text-muted-foreground">{c.description}</span></span>
-        </DropdownMenuRadioItem>)}
-      </DropdownMenuRadioGroup>
+      {choices.map(c => <DropdownMenuItem key={c.value} role="menuitemradio" aria-checked={c === shown} onSelect={() => choose(c.value)}>
+        <Icon name={c.icon} /><span className="min-w-0 whitespace-normal">{c.label}<span className="block text-xs text-muted-foreground">{c.description}</span></span>
+        {c === shown && <Icon name="check" className="ml-auto" />}
+      </DropdownMenuItem>)}
     </DropdownMenuContent>
   </DropdownMenu></div>;
 }
