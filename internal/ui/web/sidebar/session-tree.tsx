@@ -6,6 +6,7 @@
 import {useLayoutEffect, useRef, useState, type KeyboardEvent} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {expandSession} from '../app/workbench.ts';
+import {shownId} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {useStore} from '../store.ts';
 import {SessionItem} from './session-item.tsx';
@@ -44,7 +45,7 @@ export function SessionTree({label, sessions, renaming, onRenaming}: SessionTree
     return [row, ...expanded ? children : []];
   });
   const ids = rows.map(row => row.session.id);
-  const active = ids.find(id => id === focused) ?? ids.find(id => id === state.selected) ?? ids[0];
+  const active = ids.find(id => id === focused) ?? ids.find(id => id === shownId(state)) ?? ids[0];
 
   // When the focused row goes away, the focus moves to the tabbable row
   // instead of leaving the tree.

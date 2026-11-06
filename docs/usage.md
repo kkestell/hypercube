@@ -8,10 +8,11 @@ Choose a [profile](configuration.md) below the message box and decide whether
 to enable **Use a new worktree** above it. Send the first prompt to create the
 session.
 
-Each workspace keeps its unfinished new-session prompt, profile, and worktree
-choice when you switch sessions. Return through its **New Session** row in the
-sidebar or its New Session button. Typed text also survives reloading the app;
-image attachments stay available until the app reloads.
+Once you type or attach something, the new session stays in the sidebar as a
+**New Session** row, keeping its prompt, profile, and worktree choice while you
+switch sessions. Choose **Discard Draft** from its context menu to remove it.
+Typed text also survives reloading the app; image attachments stay available
+until the app reloads.
 
 Leave Worktree off to use the original checkout, including its uncommitted
 changes. Turn it on for a separate checkout and branch. That branch starts at

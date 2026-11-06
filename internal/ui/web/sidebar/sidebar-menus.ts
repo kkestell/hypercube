@@ -1,4 +1,5 @@
-// The sidebar's menus: a session's and a workspace's.
+// The sidebar's menus: a session's, an unsent session's, and a workspace's.
+import {discardUnsent, isUnsent} from '../agent/drafts.ts';
 import {post} from '../api.ts';
 import {archiveSession, deleteSession, deleteWorkspace, unarchiveSession} from '../sessions/session-actions.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
@@ -13,6 +14,7 @@ const openItems = (store: Store, kind: 'session' | 'workspace', id: string): Con
   openApps.map(([label, app, icon]) => ({label, icon, run: () => post(store, 'open', {kind, id, app})}));
 
 export const sessionItems = (store: Store, session: Session, rename: () => void): ContextMenuItem[][] => {
+  if (isUnsent(session.id)) return [[{label: 'Discard Draft', icon: 'trash', destructive: true, run: () => store.update(state => discardUnsent(state, session.id))}]];
   const renameItem: ContextMenuItem = {label: 'Rename', icon: 'edit', run: rename};
   const deleteItem: ContextMenuItem = {label: 'Delete Session', icon: 'trash', destructive: true, run: () => deleteSession(store, session)};
   if (!session.parent && session.ended) return [[{label: 'Unarchive', icon: 'archive', run: () => unarchiveSession(store, session.id)}, deleteItem]];

@@ -103,17 +103,29 @@ test('app shortcuts work with focus on the transcript background', async () => {
   expect(requests.some(request => request.params.action === 'interrupt')).toBe(true);
 });
 
-test('a workspace draft remains in the sidebar and returns to its unsent prompt', async () => {
+test('a new session draft is a sidebar row that reopens its prompt and can be discarded', async () => {
   answer(() => Response.json({profiles: []}));
   const store = appStore({selected: 'a'}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
+  const draftRow = () => root.querySelector<HTMLElement>(`.sidebar [data-session="${unsentKey('w')}"]`);
+  act(() => store.update(state => openUnsent(state, 'w')));
+  act(() => find(root, '.sidebar [data-session="a"]').click());
+  expect(draftRow()).toBeNull();
+
   act(() => store.update(state => typed(openUnsent(state, 'w'), unsentKey('w'), 'finish this later')));
-  expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
+  expect(draftRow()?.getAttribute('aria-selected')).toBe('true');
   act(() => find(root, '.sidebar [data-session="a"]').click());
   expect(store.get().selected).toBe('a');
-  act(() => buttonNamed(find(root, '.sidebar'), 'New Session').click());
+  act(() => draftRow()!.click());
   expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
   expect(root.textContent).toContain('/repo');
+
+  act(() => { draftRow()!.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
+  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Discard Draft']);
+  act(() => { clickControl(findAll(document, '[role=menuitem]')[0]); });
+  expect(draftRow()).toBeNull();
+  expect(store.get().unsent).toBeNull();
+  expect(store.get().drafts[unsentKey('w')]).toBeUndefined();
   await act(async () => {});
 });
 

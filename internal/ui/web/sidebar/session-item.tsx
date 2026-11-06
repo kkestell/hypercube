@@ -5,6 +5,7 @@
 // collapses or expands its children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
+import {shownId} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {BranchIcon} from '../shared/branch-icon.tsx';
 import {StatusDot} from '../shared/status-dot.tsx';
@@ -38,7 +39,7 @@ interface SessionItemProps {
 
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}: SessionItemProps) {
   const [state, store] = useStore();
-  const selected = session.id === state.selected;
+  const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id));
   const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {

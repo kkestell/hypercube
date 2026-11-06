@@ -1,6 +1,8 @@
 // Workspace groups show either active sessions or archived families.
 import {useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
+import {unsentRow} from '../sessions/selection.ts';
+import {isUnsent} from '../agent/drafts.ts';
 import {scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
 import type {SidebarTab} from '../app/types.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
@@ -38,7 +40,12 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const view = state.workbench.sidebarTab;
   const frozen = useRef(state.workspaces);
 
-  const visible = (workspace: Workspace) => workspace.sessions.filter(top => top.ended === (view === 'archived'));
+  // The sessions view lists a workspace's unsent session above its sessions.
+  const visible = (workspace: Workspace) => {
+    const sessions = workspace.sessions.filter(top => top.ended === (view === 'archived'));
+    const unsent = view === 'sessions' ? unsentRow(state, workspace.id) : null;
+    return unsent ? [unsent, ...sessions] : sessions;
+  };
   if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: visible(workspace)}));
   const workspaces = frozen.current;
   const sessionById = (id: string | undefined) => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
@@ -67,7 +74,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     if (!row || !session || (e.key !== 'F2' && !menuKey)) return;
     e.preventDefault();
     if (e.key === 'F2') {
-      if (session.parent || !session.ended) setRenaming(session.id);
+      if (!isUnsent(session.id) && (session.parent || !session.ended)) setRenaming(session.id);
     } else setMenu({...below(row), items: sessionMenu(session)});
   };
 
@@ -75,7 +82,6 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}
-        showDraft={view === 'sessions'}
         onMenu={button => setMenu({...below(button), items: workspaceMenu(workspace)})}
         renaming={renaming} onRenaming={setRenaming}
       />

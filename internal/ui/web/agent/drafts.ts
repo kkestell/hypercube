@@ -80,13 +80,18 @@ export async function attachImages(store: Store, key: string, files: File[]): Pr
   })));
 }
 
-// unsentCreated gives the created session whatever the user typed in
-// the unsent session while its first prompt was sent. Pending image reads
-// belong to the discarded unsent session and will be ignored.
-export function unsentCreated(state: State, session: string, key: string): State {
-  const {text, images} = draftOf(state, key);
+// discardUnsent removes an unsent session and its draft. Its pending image
+// reads will be ignored.
+export function discardUnsent(state: State, key: string): State {
   const unsentDrafts = {...state.unsentDrafts};
   delete unsentDrafts[key];
   const unsent = state.unsent && unsentKey(state.unsent.workspace) === key ? null : state.unsent;
-  return withDraft(cleared({...state, unsent, unsentDrafts}, key), session, () => ({text, images, reading: 0}));
+  return cleared({...state, unsent, unsentDrafts}, key);
+}
+
+// unsentCreated gives the created session whatever the user typed in
+// the unsent session while its first prompt was sent.
+export function unsentCreated(state: State, session: string, key: string): State {
+  const {text, images} = draftOf(state, key);
+  return withDraft(discardUnsent(state, key), session, () => ({text, images, reading: 0}));
 }

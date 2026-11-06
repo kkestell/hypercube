@@ -3,7 +3,7 @@
 // which gives it a fresh session state for its transcripts, tabs, and files.
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
-import {unsentKey} from '../agent/drafts.ts';
+import {isUnsent, unsentKey, unsentOf} from '../agent/drafts.ts';
 import {agentTabs} from '../editor/editor.ts';
 import type {Profile} from '../agent/types.ts';
 import type {State} from '../state.ts';
@@ -36,13 +36,23 @@ const unsentSession = (id: string, sending: boolean, harness = ''): Session => (
   worktree: false, children: [],
 });
 
+const placeholder = (state: State, unsent: Unsent) =>
+  unsentSession(unsentKey(unsent.workspace), unsent.sending, state.config?.profiles.find(p => p.name === unsent.profile)?.harness);
+
 // shownSession is the unsent placeholder or the attached session.
 export function shownSession(state: State): Session | null {
-  if (state.unsent) {
-    const {sending, profile} = state.unsent;
-    return unsentSession(unsentKey(state.unsent.workspace), sending, state.config?.profiles.find(p => p.name === profile)?.harness);
-  }
+  if (state.unsent) return placeholder(state, state.unsent);
   return state.session ? currentSession(state) ?? null : null;
+}
+
+// shownId names the shown unsent session or the selected session.
+export const shownId = (state: State) => state.unsent ? unsentKey(state.unsent.workspace) : state.selected;
+
+// unsentRow is the placeholder for the workspace's unsent session, shown or
+// parked, which the sidebar lists above its sessions.
+export function unsentRow(state: State, workspace: string): Session | null {
+  const unsent = unsentOf(state, unsentKey(workspace));
+  return unsent ? placeholder(state, unsent) : null;
 }
 
 export function pageTitle(state: State) {
@@ -68,9 +78,12 @@ export const emptySession = (id: string): AttachedSession => ({
 
 const omit = <T>(object: Record<string, T>, keys: string[]) => Object.fromEntries(Object.entries(object).filter(([key]) => !keys.includes(key)));
 
+// parkUnsent keeps the shown unsent session when it has a draft or is
+// sending, and drops it otherwise.
 function parkUnsent(state: State): State {
   if (!state.unsent) return state;
   const key = unsentKey(state.unsent.workspace);
+  if (!state.drafts[key] && !state.unsent.sending) return {...state, unsent: null};
   return {...state, unsent: null, unsentDrafts: {...state.unsentDrafts, [key]: state.unsent}};
 }
 
@@ -123,9 +136,10 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   return attach(next);
 }
 
-// selectSession shows a session. A new session's ID can arrive before the
-// state that lists it, so the selection waits for that state.
+// selectSession shows a session or an unsent session. A new session's ID can
+// arrive before the state that lists it, so the selection waits for that state.
 export function selectSession(state: State, id: string): State {
+  if (isUnsent(id)) return openUnsent(state, unsentOf(state, id)!.workspace);
   const next = parkUnsent(state);
   if (!allSessions(next).some(s => s.id === id)) return {...next, pending: id};
   const family = sessionOf(next, id)!;
