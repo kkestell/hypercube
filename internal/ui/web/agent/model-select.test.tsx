@@ -261,3 +261,51 @@ test('a failed refresh keeps saved models and shows the error', async () => {
   expect(item('Opus')).toBeDefined();
   expect(find(document, '[role=alert]').textContent).toBe('Catalog unavailable');
 });
+
+test('opening during a saved-catalog read refreshes once after it finishes', async () => {
+  const saved = Promise.withResolvers<Response>();
+  const fresh = Promise.withResolvers<Response>();
+  const fetches = serve(url => {
+    const q = queryOf(url);
+    if (!url.startsWith('models?') || q.model) return undefined;
+    return q.refresh ? fresh.promise : saved.promise;
+  });
+  const root = mount(unsentStore(), <SessionSelection session={testSession({id: unsentKey})} />);
+  await open(root);
+  const modelLists = () => fetches.mock.calls.map(([url]) => url).filter(url => url.startsWith('models?') && !queryOf(url).model);
+  expect(modelLists().map(queryOf)).toEqual([{workspace: 'w', harness: 'claude'}]);
+  await act(async () => saved.resolve(Response.json(catalogs.claude)));
+  expect(item('Opus')).toBeDefined();
+  expect(modelLists().map(queryOf)).toEqual([
+    {workspace: 'w', harness: 'claude'},
+    {workspace: 'w', harness: 'claude', refresh: '1'},
+  ]);
+  await act(async () => fresh.resolve(Response.json({models: [{id: 'opus', label: 'Opus 5.5'}]})));
+  expect(item('Opus 5.5')).toBeDefined();
+  expect(modelLists()).toHaveLength(2);
+});
+
+test('a picker retries a failed label load', async () => {
+  const fetches = serve(url => url.startsWith('models?') && !queryOf(url).model && !queryOf(url).refresh
+    ? new Response('Not signed in', {status: 409}) : undefined);
+  const root = mount(unsentStore(), <SessionSelection session={testSession({id: unsentKey})} />);
+  await settle();
+  await open(root);
+  expect(item('Opus')).toBeDefined();
+  expect(fetches.mock.calls.map(([url]) => queryOf(url))).toContainEqual({workspace: 'w', harness: 'claude', refresh: '1'});
+});
+
+test('choosing a model retries failed efforts', async () => {
+  let attempts = 0;
+  serve(url => queryOf(url).model === 'plain' && attempts++ === 0
+    ? new Response('Efforts unavailable', {status: 409}) : undefined);
+  const s = unsentStore();
+  const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  await open(root);
+  await choose('Plain');
+  expect(find(document, '[role=alert]').textContent).toBe('Could not choose plain: Efforts unavailable');
+  await choose('Plain');
+  expect(s.get().unsent?.settings).toEqual({harness: 'claude', model: 'plain', effort: ''});
+  expect(document.querySelector('[role=alert]')).toBeNull();
+  expect(attempts).toBe(2);
+});

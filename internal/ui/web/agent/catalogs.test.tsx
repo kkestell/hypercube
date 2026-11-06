@@ -29,3 +29,14 @@ test('label mounts share one request per key, including after remounting', async
   expect(fetches).toHaveBeenCalledTimes(2);
   await act(async () => finish(Response.json({models: [{id: 'sol', label: 'Sol'}]})));
 });
+
+test('failed label loads are attempted once across remounts', async () => {
+  const fetches = stubFetch(() => new Response('Not signed in', {status: 409}));
+  const store = createStore(testState());
+  for (let i = 0; i < 3; i++) {
+    mount(store, <Label />);
+    await act(async () => {});
+    unmountAll();
+  }
+  expect(fetches).toHaveBeenCalledTimes(1);
+});

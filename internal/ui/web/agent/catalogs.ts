@@ -1,5 +1,5 @@
 // Shared model catalogs survive picker and session changes for this page.
-// The backend supplies persisted catalogs; only opening a picker refreshes them.
+// Labels read persisted choices; picker actions can refresh or retry them.
 import {useEffect} from 'react';
 import {fetchModels} from '../api.ts';
 import type {State} from '../state.ts';
@@ -14,7 +14,7 @@ export interface CatalogKey {
 
 export interface CatalogEntry {
   value?: Catalog;
-  loading: boolean;
+  loading: false | 'cached' | 'refresh';
   error?: string;
 }
 
@@ -26,8 +26,8 @@ const withCatalog = (state: State, key: CatalogKey, entry: CatalogEntry): State 
 
 export async function loadCatalog(store: Store, key: CatalogKey, refresh = false): Promise<void> {
   const entry = catalogOf(store.get(), key);
-  if (entry?.loading || (!refresh && entry?.value)) return;
-  store.update(state => withCatalog(state, key, {value: entry?.value, loading: true}));
+  if (entry?.loading || (!refresh && entry)) return;
+  store.update(state => withCatalog(state, key, {value: entry?.value, loading: refresh ? 'refresh' : 'cached'}));
   try {
     const value = await fetchModels(key.workspace, key.harness, key.model, refresh);
     store.update(state => withCatalog(state, key, {value, loading: false}));

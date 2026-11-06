@@ -50,6 +50,7 @@ export function ModelSelect({value, workspace, onChange, fixedHarness = false, d
   const installed = harnesses?.value?.filter(h => h.installed) ?? [];
   const harness = browsed ?? value?.harness ?? installed[0]?.id ?? '';
   const catalog = workspace && harness ? catalogOf(state, {workspace, harness, model: ''}) : undefined;
+  const loadingCached = catalog?.loading === 'cached';
   const currentModel = value?.harness === harness ? value.model : null;
   const effortModel = pending ?? currentModel;
   const efforts = workspace && harness && effortModel ? catalogOf(state, {workspace, harness, model: effortModel}) : undefined;
@@ -60,10 +61,14 @@ export function ModelSelect({value, workspace, onChange, fixedHarness = false, d
     if (workspace && harness && currentModel) void loadCatalog(store, {workspace, harness, model: currentModel}, true);
   });
   useEffect(() => {
-    if (!open || !workspace || !harness) return;
-    void loadCatalog(store, {workspace, harness, model: ''}, true);
-    refreshEfforts();
+    if (open) refreshEfforts();
   }, [store, open, workspace, harness]);
+  // Wait for a saved read, then refresh once. A refresh's own loading changes
+  // do not trigger this effect, and concurrent refreshes share the same request.
+  useEffect(() => {
+    if (!open || !workspace || !harness || loadingCached) return;
+    void loadCatalog(store, {workspace, harness, model: ''}, true);
+  }, [store, open, workspace, harness, loadingCached]);
 
   // A chosen model is committed with its default effort once its efforts load,
   // or with the current effort when it is the current model.
@@ -82,7 +87,9 @@ export function ModelSelect({value, workspace, onChange, fixedHarness = false, d
   const choose = (model: string) => {
     if (!workspace || !harness) return;
     setFailure(null);
-    void loadCatalog(store, {workspace, harness, model});
+    const key = {workspace, harness, model};
+    const entry = catalogOf(state, key);
+    void loadCatalog(store, key, !!entry?.error && !entry.value);
     setPending(model);
   };
   const chooseEffort = (effort: string) => {
