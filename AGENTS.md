@@ -81,7 +81,7 @@ browser shows each agent's transcript.
   core names no harness.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `docs/` — user documentation, indexed by `README.md`.
-- `agents/` — plans, reviews, and work logs.
+- `agents/` — developer references, research, and active task records.
 
 ## Validation
 
@@ -119,7 +119,10 @@ The example in `docs/configuration.md` is the user's
 
 `README.md` indexes the user documentation in `docs/`. Update a guide only
 when the behavior it describes changes. `AGENTS.md` gives instructions to
-agents and should rarely change.
+agents and should rarely change. Developer reference lives in
+[architecture](agents/architecture.md) and
+[development and releases](agents/development.md). Outstanding work belongs in
+[GitHub Issues](https://github.com/kkestell/hypercube/issues).
 
 Use the [hypercube skill](.agents/skills/hypercube/SKILL.md) for nontrivial
 changes, including architecture changes, new concepts, subsystems, and major

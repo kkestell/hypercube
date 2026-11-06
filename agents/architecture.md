@@ -16,6 +16,25 @@ Desktop app or browser ←→ hypercube ui ←→ SQLite
                     hypercube mcp ←→ hypercube ui
 ```
 
+## Plugin protocol
+
+Each `hypercube-harness-<name>` executable runs beside `hypercube`. The app
+starts it with `serve` and exchanges commands and events as JSON Lines. The
+plugin owns the native protocol; the core and browser interface do not name
+individual harnesses.
+
+The [protocol types](../internal/harness/protocol.go) define commands, replies,
+transcript items, and usage fields. Native mappings live in the
+[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode),
+[Codex](../plugins/codex), and [Pi](../plugins/pi) plugins. Restart a session to
+load a newly installed plugin.
+
+Integration research for the supported harnesses is in
+[Claude Code](research/harnesses/claude-code.md),
+[OpenCode](research/harnesses/opencode.md), [Codex](research/harnesses/codex.md),
+and [Pi](research/harnesses/pi.md). These are version-specific research notes;
+the plugin code defines the current integration.
+
 ## Why agents outlive the window
 
 An agent plugin runs under a `hypercube hold` process that owns its input and

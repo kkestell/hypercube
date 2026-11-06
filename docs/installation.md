@@ -66,27 +66,9 @@ This installs `~/Applications/Hypercube.app` and links `hypercube` and its
 plugins into `~/.local/bin`. Put that directory on your PATH. Use
 `APPDIR=<dir>` and `BINDIR=<dir>` to change the destinations.
 
-Create [your configuration](configuration.md), then start the backend in a
-terminal:
-
-```sh
-hypercube ui
-```
-
-Open `~/Applications/Hypercube.app` to show it in the desktop app. The window
-connects to the backend on port 4280, or waits until one answers. Choose
-**Show Hypercube** from the menu bar icon if the window is closed. The first
-launch asks for notification permission.
-
-The same interface is available at http://localhost:4280/. Pass a port to the
-backend to use another address, and the same port to the desktop app:
-
-```sh
-hypercube ui 4282
-~/Applications/Hypercube.app/Contents/MacOS/Hypercube\ Desktop --port=4282
-```
-
-The desktop app is required for agents' browser windows and macOS notifications.
+Create [your configuration](configuration.md), then follow
+[Run at login](#run-at-login). For development and release packaging, see
+[the development reference](../agents/development.md).
 
 ## Run at login
 
@@ -116,14 +98,23 @@ launchctl bootout gui/$(id -u)/com.github.kkestell.hypercube
 rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 ```
 
+To run without a login service, start `hypercube ui` in a terminal, then open
+`~/Applications/Hypercube.app`. The interface is also available at
+http://localhost:4280/. The desktop app provides agents' browser windows and
+macOS notifications; its first launch asks for notification permission.
+
+To use another port, pass it to both processes:
+
+```sh
+hypercube ui 4282
+~/Applications/Hypercube.app/Contents/MacOS/Hypercube\ Desktop --port=4282
+```
+
 ## Upgrade
 
 Run `make install-service` again. It quits the desktop app if it is open,
 replaces the installed build, restarts the backend, and opens the app, while
 agents and terminal shells keep running.
-This remains the everyday development workflow: it builds your checkout,
-including uncommitted changes, without requiring a release tag or running
-the full checks.
 
 Those agents still use the plugins they launched with. Restart their sessions
 to use a new plugin build. A holder-directory or plugin-protocol change requires
@@ -161,19 +152,14 @@ or harness storage overrides before starting.
    - Native conversation storage outside Hypercube for the harnesses you use.
      Claude Code, OpenCode, and Pi keep their own histories. See
      [conversation storage](harness-support.md#conversation-storage) for
-     Codex's account links; their source settings and credentials must remain
-     available at their original paths.
+     Codex storage. Keep harness settings and credentials available at their
+     original paths.
 3. To recover, quit the app and other writers again. Preserve any newer work
    separately, then replace the saved directories with the backup at their
    original paths. Restore the matching previous app and plugins together
    with its saved state. Start it with the same storage overrides, inspect
    the conversations and repository changes, and send a prompt to verify
    native conversation resume.
-
-Same-path backup, upgrade, and recovery have been exercised with Codex,
-including committed work and modified and untracked files in the main
-checkout and a managed worktree. Recovery of Claude Code, OpenCode, and Pi
-native histories has not been exercised.
 
 ## Identify a build
 
@@ -182,11 +168,8 @@ the executable on your PATH; these may differ before you reload the service.
 The running server also reports its identity at http://localhost:4280/version
 and writes it to the service log at startup.
 
-Go embeds the release tag or a version containing the commit, followed by
-`+dirty` when the checkout has uncommitted changes. The full commit is included
-when available. A build without Git metadata reports `devel`. The app bundle
-also records the full identity in `CFBundleGetInfoString`; its numeric version
-fields contain the version's three-number core.
+Build identities contain the release tag or commit, followed by `+dirty` for
+uncommitted checkout changes. A build without Git metadata reports `devel`.
 
 ## Files on disk
 
@@ -200,53 +183,3 @@ fields contain the version's three-number core.
 | Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` |
 
 Configuration follows `XDG_CONFIG_HOME`; saved state follows `XDG_STATE_HOME`.
-
-## Develop without replacing the installed app
-
-```sh
-make dev
-```
-
-Open http://localhost:4281/. This uses separate configuration and state, with a
-scratch repository of sample files under `~/projects/hypercube-dev/repo`. Use
-`make dev-app` when testing desktop app behavior; it also runs a development
-desktop app connected to the development backend.
-
-Source changes rebuild the development app and reload the interface. A failed
-build leaves the previous build running. Successful rebuilds preserve agents
-and terminal shells.
-
-- **Ctrl-C** or `make dev-stop` ends the development backend, desktop app, and
-  their processes.
-- `make dev-clean` also removes disposable resources and native development
-  conversations, including holders left by a crash.
-- `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.
-
-See [scripts/dev](../scripts/dev) for cleanup details.
-
-For a build alone, run `make` and use `bin/hypercube` or
-`bin/Hypercube.app`. Code changes require `make check`, which also needs Bun.
-Tests use local harness stand-ins; live model behavior needs a smoke test.
-
-## Prepare an official beta
-
-GitHub Actions runs `make check` on main-branch pushes and pull requests, using
-the Go and Bun versions declared in the repository. Beta tags run those same
-checks before packaging an ad hoc signed Apple Silicon app.
-
-Once the intended changes are committed and checked, create and push an
-annotated tag such as `v0.1.0-beta.1`. The **Beta release** workflow builds the
-ZIP and `SHA256SUMS`, then creates a **draft prerelease** with generated notes.
-Inspect the notes, test the downloaded app, and publish the draft when ready.
-No Apple account or signing secrets are required. GitHub Actions must be enabled
-and permitted to create releases in the repository.
-
-To check and package locally on Apple Silicon:
-
-```sh
-make check
-make release
-```
-
-Only release packaging requires a clean checkout at a beta tag. Its outputs
-are under `bin/release/`; it does not install the app or restart the service.

@@ -40,8 +40,7 @@ at least one profile.
 
 Copy the [example below](#example-configuration) and remove profiles you do not
 use. Accepted model and effort values differ
-[by harness](harness-support.md#requirements); Hypercube's schema is defined in
-[config.go](../internal/harness/config.go).
+[by harness](harness-support.md#requirements).
 
 Profile edits affect subsequent choices. An existing session keeps its saved
 model and effort until you change its selection, even if you edit or remove

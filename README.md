@@ -23,7 +23,7 @@ children.
 - [Harness differences](docs/harness-support.md) — follow-ups, permissions,
   model changes, and version requirements.
 - [Installation](docs/installation.md) — beta downloads, checkout builds, the
-  login service, upgrades, and releases.
-- [Architecture](docs/architecture.md) — process boundaries and saved state.
+  login service, upgrades, and recovery.
 
-[AGENTS.md](AGENTS.md) contains contributor instructions.
+Developers: start with [AGENTS.md](AGENTS.md) for instructions, architecture,
+and development and release references.

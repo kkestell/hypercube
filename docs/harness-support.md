@@ -89,38 +89,25 @@ first message, so a Pi session with no saved conversation cannot resume.
 Forked children copy a saved native conversation using the same harness.
 A fork of a session in the original checkout shares its folder; a fork of a
 session in its own worktree gets a new worktree. Claude Code, Codex, and Pi can
-fork into another working directory. OpenCode requires the source directory and
-ACP `session/fork` support, so it can fork only sessions in the original
-checkout. A failed fork reports an error instead of starting with fresh
+fork into another working directory. OpenCode can fork only sessions in the
+original checkout, and requires a version with native fork support.
+A failed fork reports an error instead of starting with fresh
 context. See
 [sessions and working copies](introduction.md#what-the-other-agent-knows).
 
 Codex uses its native conversation storage, configuration, and credentials:
 `CODEX_HOME` from Hypercube's launch environment, or Codex's default home.
-Conversations appear in Codex's normal history. Hypercube does not inspect
-Neuron's account-selection script or select an account itself.
+Conversations appear in Codex's normal history. Hypercube does not select an
+account itself.
 
 Earlier versions stored Codex conversations in `codex/` under Hypercube's state
 directory, including `codex/homes/` for additional accounts. Those files and
 Hypercube's transcripts are preserved. Codex has no supported cross-home import,
-so existing private conversations cannot resume through this integration. An
-older copy in the native home is never resumed in their place. Their saved
-chats remain readable; start a new session to use the native integration. A
-failed resume never silently starts a new conversation.
+so existing private conversations cannot resume through this integration.
+Their saved chats remain readable; start a new session to use the native
+integration.
 
 OpenCode shows the parent tool's result for native subagents. Their live child
-transcripts are not displayed because ACP does not identify the launching tool.
+transcripts are not displayed because OpenCode does not identify the launching
+tool.
 Other harnesses retain child transcripts where their protocols supply that ID.
-
-## Plugin protocol
-
-Each `hypercube-harness-<name>` executable runs beside `hypercube`. The app
-starts it with `serve` and exchanges commands and events as JSON Lines. The
-plugin owns the native protocol; the core and browser interface do not name
-individual harnesses.
-
-The [protocol types](../internal/harness/protocol.go) define commands, replies,
-transcript items, and usage fields. Native mappings live in the
-[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode),
-[Codex](../plugins/codex), and [Pi](../plugins/pi) plugins. Restart a session to
-load a newly installed plugin.
