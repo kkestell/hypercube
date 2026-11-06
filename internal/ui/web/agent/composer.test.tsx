@@ -53,7 +53,7 @@ test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(textarea(root));
   expect(profileButton(root).disabled).toBe(true);
-  expect(profileButton(root).textContent).toBe('Opus · High');
+  expect(profileButton(root).textContent).toBe('OpusHigh');
 });
 
 test('a composer leaves the focus in a tab strip', () => {
@@ -140,14 +140,14 @@ test('the unsent composer uses the configured default and keeps the draft when a
   expect(control(root, 'Send').disabled).toBe(false);
   const select = profileButton(root);
   expect(select.disabled).toBe(false);
-  expect(select.textContent).toBe('Sol · Medium');
+  expect(select.textContent).toBe('SolMedium');
   clickControl(select);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Opus · High' : 'Sol · Medium'}`));
+  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'OpusHigh' : 'SolMedium'}`));
   act(() => options[0].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.profile).toBe('claude');
-  expect(select.textContent).toBe('Opus · High');
+  expect(select.textContent).toBe('OpusHigh');
   expect(s.get().drafts[unsentKey].text).toBe('hello');
 });
 
@@ -177,7 +177,7 @@ test('opening the selector uses saved profiles and replaces a removed draft choi
   clickControl(profileButton(root));
   await settle();
   expect(s.get().unsent?.profile).toBe('codex');
-  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['Sol · Medium']);
+  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['SolMedium']);
   expect(textarea(root).value).toBe('Keep this draft');
 });
 

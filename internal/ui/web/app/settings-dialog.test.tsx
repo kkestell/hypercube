@@ -28,10 +28,14 @@ const input = (id: string, value: string) => {
   const field = id === 'profile-description' ? element(document, '#' + id, HTMLTextAreaElement) : element(document, '#' + id, HTMLInputElement);
   act(() => { setValue(field, value); field.dispatchEvent(new Event('input', {bubbles: true})); });
 };
-const select = (id: string, value: string) => {
-  const field = element(document, '#' + id, HTMLSelectElement);
-  act(() => { field.value = value; field.dispatchEvent(new Event('change', {bubbles: true})); });
+const select = (id: string, option: string) => {
+  const key = (target: Element) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); });
+  key(element(document, '#' + id, HTMLButtonElement));
+  const found = [...document.querySelectorAll('[role=option]')].find(o => o.textContent === option);
+  if (!found) throw new Error('Missing option: ' + option);
+  key(found);
 };
+const shown = (id: string) => element(document, '#' + id, HTMLButtonElement).textContent;
 function View() {
   const [open, setOpen] = useState(true);
   return <><button onClick={() => setOpen(true)}>Open settings</button><SettingsDialog open={open} onOpenChange={setOpen} /></>;
@@ -53,11 +57,11 @@ test('profile create, update, delete and default selection save as one config', 
   input('profile-description', 'New tasks');
   input('profile-model', 'new-model');
   input('profile-effort', 'medium');
-  select('profile-harness', 'pi');
-  await click('worker');
+  select('profile-harness', 'Pi');
+  await click('SolLow');
   await click('Remove profile');
   await click('General');
-  select('default-profile', '1');
+  select('default-profile', 'New ModelMedium');
   expect(posts).toHaveLength(0);
   await click('Save changes');
   expect(posts).toEqual([{default_profile: 'new-profile', profiles: [
@@ -86,19 +90,17 @@ test('default follows its profile through rename and deletion, and the last prof
     return url === 'version' ? new Response('build') : Response.json(config);
   });
   await open();
-  select('default-profile', '1');
+  select('default-profile', 'SolLow');
   await click('Agent profiles');
   input('profile-name', 'worker');
   input('profile-name', 'renamed');
   await click('General');
-  expect(element(document, '#default-profile', HTMLSelectElement).value).toBe('1');
+  expect(shown('default-profile')).toBe('SolLow');
   await click('Agent profiles');
-  await click('worker (default)');
+  await click('SolLow (default)');
   input('profile-name', 'default-renamed');
-  await click('General');
-  expect(element(document, '#default-profile', HTMLSelectElement).selectedOptions[0].textContent).toBe('default-renamed');
   await click('Agent profiles');
-  await click('default-renamed (default)');
+  await click('SolLow (default)');
   await click('Remove profile');
   expect(button('Remove profile').disabled).toBe(true);
   await click('Save changes');
@@ -147,7 +149,7 @@ test.each(['remove', 'rename', 'keep'] as const)('saving settings reconciles a d
   const root = mount(store, <><ProfileSelect session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   expect(store.get().unsent?.profile).toBe('lead');
-  select('default-profile', '1');
+  select('default-profile', 'SolLow');
   await click('Agent profiles');
   if (change === 'remove') await click('Remove profile');
   if (change === 'rename') input('profile-name', 'renamed');
@@ -158,7 +160,7 @@ test.each(['remove', 'rename', 'keep'] as const)('saving settings reconciles a d
   await click('Save changes');
   const expected = change === 'keep' ? 'lead' : 'worker';
   expect(store.get().unsent?.profile).toBe(expected);
-  expect(element(root, '[aria-label=Profile]', HTMLButtonElement).textContent).toBe(change === 'keep' ? 'Sonnet · Low' : 'Sol · Low');
+  expect(element(root, '[aria-label=Profile]', HTMLButtonElement).textContent).toBe(change === 'keep' ? 'SonnetLow' : 'SolLow');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created).toEqual([expected]);
 });

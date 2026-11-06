@@ -1,4 +1,4 @@
-// A profile's harness, model, and effort in their display form. The config
+// Display forms of a profile's harness, model, and effort. The config
 // holds lowercase IDs; known words get their proper spelling and everything
 // else falls back to title case.
 import type {Profile} from './types.ts';
@@ -28,15 +28,7 @@ export function displayName(value = ''): string {
 
 // The first segment of a model ID names its provider. Keep the rest of the
 // path, which may contain slashes of its own.
-function modelName(model = ''): string {
+export function modelName(model = ''): string {
   const provider = model.indexOf('/');
   return displayName(provider < 0 ? model : model.slice(provider + 1));
 }
-
-export const modelLabel = (profile: Pick<Profile, 'model' | 'effort'>): string =>
-  [modelName(profile.model), displayName(profile.effort)]
-    .filter(Boolean)
-    .join(' · ');
-
-export const profileLabel = (profile: Pick<Profile, 'harness' | 'model' | 'effort'>): string =>
-  [displayName(profile.harness), modelLabel(profile)].filter(Boolean).join(' · ');

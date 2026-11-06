@@ -26,7 +26,7 @@ function ContextRing({percent}: {percent: number}) {
 export function Usage({usage}: {usage: SessionUsage}) {
   const {context = 0, window = 0, cost: spent = 0} = usage;
   if (!window) return null;
-  const title = `${tokens(context)} / ${tokens(window)} tokens, ${Math.round(context / window * 100)}% context used${spent > 0 ? ' · ' + cost(spent) : ''}`;
+  const title = `${tokens(context)} / ${tokens(window)} tokens, ${Math.round(context / window * 100)}% context used${spent > 0 ? ', ' + cost(spent) : ''}`;
   return <span className="usage flex shrink-0 text-muted-foreground" title={title}>
     <ContextRing percent={Math.min(100, context / window * 100)} />
   </span>;

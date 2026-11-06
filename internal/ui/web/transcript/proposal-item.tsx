@@ -1,7 +1,9 @@
-import {useRef, useState} from 'react';
+import {useRef, useState, type ReactNode} from 'react';
 import {post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
+import {ProfileName} from '../agent/profile-name.tsx';
+import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {Markdown} from './markdown.tsx';
 import {Disclosure} from './disclosure.tsx';
@@ -33,12 +35,17 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
     <Card ref={card} tabIndex={-1} className="border-0 py-3" aria-label="Proposed child session">
       <CardContent className="space-y-3 px-4">
         {item.done ? <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
-          summary={<><span className="truncate font-medium">{item.text}</span><span className="truncate text-xs text-muted-foreground">{options.profile.name} · {outcome}</span></>}>
+          summary={<><span className="truncate font-medium">{item.text}</span>
+            <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><ProfileName profile={options.profile} /></Detail><span className="truncate">{outcome}</span></span></>}>
           {options.message && <Markdown text={options.message} style="chat" />}
         </Disclosure> : <>
           <div className="font-medium">{item.text}</div>
-          <div className="text-xs text-muted-foreground">
-            {options.profile.name} · {options.fork ? 'Forked context' : `Fresh context · ${options.dir ? `Folder: ${options.dir}` : 'New worktree'}`}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <Detail><ProfileName profile={options.profile} /></Detail>
+            <Detail><Icon name="comment-discussion" />{options.fork ? 'Forked context' : 'Fresh context'}</Detail>
+            {!options.fork && (options.dir
+              ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>
+              : <Detail><Icon name="git-branch" />New worktree</Detail>)}
           </div>
           {options.message && <Markdown text={options.message} style="chat" />}
           <div className="flex gap-2">
@@ -49,4 +56,9 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
       </CardContent>
     </Card>
   );
+}
+
+// One icon-led fact about the proposed session.
+function Detail({children}: {children: ReactNode}) {
+  return <span className="flex min-w-0 items-center gap-1.5">{children}</span>;
 }

@@ -1,17 +1,16 @@
 import {expect, test} from 'bun:test';
-import {profileLabel} from './profile-label.ts';
-import type {Profile} from './types.ts';
+import {displayName, modelName} from './profile-label.ts';
 
-test('profile labels use proper names and capitalization', () => {
-  const cases: [Pick<Profile, 'harness' | 'model' | 'effort'>, string][] = [
-    [{harness: 'claude', model: 'haiku', effort: 'low'}, 'Claude · Haiku · Low'],
-    [{harness: 'claude', model: 'opus', effort: 'xhigh'}, 'Claude · Opus · Extra High'],
-    [{harness: 'codex', model: 'gpt-6.1-sol', effort: 'high'}, 'Codex · GPT-6.1 Sol · High'],
-    [{harness: 'codex', model: 'gpt-6-luna', effort: 'medium'}, 'Codex · GPT-6 Luna · Medium'],
-    [{harness: 'opencode', model: 'opencode-go/deepseek-v4.1-flash', effort: 'max'}, 'OpenCode · DeepSeek V4.1 Flash · Max'],
-    [{harness: 'pi', model: 'openrouter/x/m', effort: 'high'}, 'Pi · X M · High'],
-    [{harness: 'pi', model: 'openrouter/y/m', effort: 'high'}, 'Pi · Y M · High'],
-    [{harness: 'pi', model: 'some-model', effort: 'low'}, 'Pi · Some Model · Low'],
+test('names use proper spelling and capitalization', () => {
+  const cases: [string, string][] = [
+    [displayName('xhigh'), 'Extra High'],
+    [displayName('opencode'), 'OpenCode'],
+    [modelName('haiku'), 'Haiku'],
+    [modelName('gpt-6.1-sol'), 'GPT-6.1 Sol'],
+    [modelName('gpt-6-luna'), 'GPT-6 Luna'],
+    [modelName('opencode-go/deepseek-v4.1-flash'), 'DeepSeek V4.1 Flash'],
+    [modelName('openrouter/x/m'), 'X M'],
+    [modelName('some-model'), 'Some Model'],
   ];
-  for (const [profile, label] of cases) expect(profileLabel(profile)).toBe(label);
+  for (const [name, expected] of cases) expect(name).toBe(expected);
 });

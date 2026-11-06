@@ -3,7 +3,8 @@ import {fetchConfig, saveConfig} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {Label} from '../components/ui/label';
-import {NativeSelect, NativeSelectOption} from '../components/ui/native-select';
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
+import {ProfileName} from '../agent/profile-name.tsx';
 import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
@@ -70,9 +71,12 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
             {section === 'General' && draft && <section className="grid gap-6">
               <p className="text-sm text-muted-foreground">Choose the agent profile selected when you open a new session.</p>
               <div className="grid gap-3"><Label htmlFor="default-profile">Default agent profile</Label>
-                <NativeSelect id="default-profile" value={draft.defaultIndex} onChange={e => setDraft({...draft, defaultIndex: Number(e.target.value)})}>
-                  {draft.profiles.map((p, i) => <NativeSelectOption key={i} value={i}>{p.name || 'Untitled profile'}</NativeSelectOption>)}
-                </NativeSelect></div>
+                <Select value={String(draft.defaultIndex)} onValueChange={value => setDraft({...draft, defaultIndex: Number(value)})}>
+                  <SelectTrigger id="default-profile" className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {draft.profiles.map((p, i) => <SelectItem key={i} value={String(i)}><ProfileName profile={p} /></SelectItem>)}
+                  </SelectContent>
+                </Select></div>
               <p className="text-sm text-muted-foreground">Existing sessions keep their current model and effort.</p>
             </section>}
             {section === 'Agent profiles' && draft && <SettingsProfiles draft={draft} onChange={setDraft} />}

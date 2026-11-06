@@ -3,8 +3,12 @@ import type {Profile} from '../agent/types.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Label} from '../components/ui/label';
-import {NativeSelect, NativeSelectOption} from '../components/ui/native-select';
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
+import {harnessIcon} from '../agent/harness-icon.tsx';
+import {ProfileName} from '../agent/profile-name.tsx';
 import {Textarea} from '../components/ui/textarea';
+
+const harnesses = [['claude', 'Claude Code'], ['codex', 'Codex'], ['opencode', 'OpenCode'], ['pi', 'Pi']];
 
 // Track the default by position while editing so duplicate or unfinished names
 // cannot make it refer to the wrong profile. Save writes its final name.
@@ -33,8 +37,8 @@ export function SettingsProfiles({draft, onChange}: {draft: ProfileDraft; onChan
       <div className="flex min-w-0 flex-col gap-3">
         <div aria-label="Agent profiles" className="flex max-h-80 flex-col gap-1 overflow-y-auto">
           {profiles.map((p, i) => <Button key={i} type="button" variant={i === selected ? 'secondary' : 'ghost'}
-            className="h-auto justify-start whitespace-normal break-all text-left" aria-pressed={i === selected} onClick={() => setSelected(i)}>
-            {p.name || 'Untitled profile'}{i === defaultIndex && <span className="sr-only"> (default)</span>}
+            className="justify-start" aria-pressed={i === selected} onClick={() => setSelected(i)}>
+            <ProfileName profile={p} />{i === defaultIndex && <span className="sr-only"> (default)</span>}
           </Button>)}
         </div>
         <Button type="button" variant="outline" onClick={add}>Add profile</Button>
@@ -45,11 +49,13 @@ export function SettingsProfiles({draft, onChange}: {draft: ProfileDraft; onChan
           <Input autoFocus id="profile-name" value={profile.name} onChange={e => edit({name: e.target.value})} />
           <p className="text-xs text-muted-foreground">A unique name used in the selector and by agents.</p></div>
         <div className="grid gap-2"><Label htmlFor="profile-harness">Harness</Label>
-          <NativeSelect id="profile-harness" value={profile.harness} onChange={e => edit({harness: e.target.value})}>
-            {!['claude', 'codex', 'opencode', 'pi'].includes(profile.harness) && <NativeSelectOption value={profile.harness}>{profile.harness}</NativeSelectOption>}
-            <NativeSelectOption value="claude">Claude Code</NativeSelectOption><NativeSelectOption value="codex">Codex</NativeSelectOption>
-            <NativeSelectOption value="opencode">OpenCode</NativeSelectOption><NativeSelectOption value="pi">Pi</NativeSelectOption>
-          </NativeSelect></div>
+          <Select value={profile.harness} onValueChange={harness => edit({harness})}>
+            <SelectTrigger id="profile-harness" className="w-full"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {!harnesses.some(([value]) => value === profile.harness) && <SelectItem value={profile.harness}>{profile.harness}</SelectItem>}
+              {harnesses.map(([value, label]) => <SelectItem key={value} value={value}>{harnessIcon(value)}{label}</SelectItem>)}
+            </SelectContent>
+          </Select></div>
         <div className="grid grid-cols-2 gap-3">
           <div className="grid gap-2"><Label htmlFor="profile-model">Model</Label><Input id="profile-model" value={profile.model} onChange={e => edit({model: e.target.value})} /></div>
           <div className="grid gap-2"><Label htmlFor="profile-effort">Effort</Label><Input id="profile-effort" value={profile.effort} onChange={e => edit({effort: e.target.value})} /></div>
