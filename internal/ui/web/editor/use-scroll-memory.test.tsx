@@ -123,3 +123,45 @@ test.each([false, true])('transcript restoration keeps following=%s after delaye
   expect(view.scrollTop).toBe(following ? 1300 : 200);
   expect(store.get().session!.scroll.a.following).toBe(following);
 });
+
+test.each([false, true])('transcript preserves image restoration and follow intent; user scroll=%s', userScroll => {
+  Object.defineProperty(HTMLImageElement.prototype, 'complete', {configurable: true, get: () => false});
+  const state = initial();
+  state.session!.scroll.a = {top: 500, left: 0, following: false};
+  const store = createStore(state);
+  const root = mount(store, <Transcript session={testSession({id: 'a'})} />);
+  const view = find(root, '.transcript');
+  const height = scrollArea(view);
+  act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [
+    {id: 'image', seq: 1, kind: 'text', images: [{mime_type: 'image/png', data: 'AAAA'}]},
+  ]})));
+  const image = root.querySelector('img')!;
+  expect(image.complete).toBe(false);
+  expect(view.scrollTop).toBe(0);
+  act(() => view.dispatchEvent(new Event('scroll')));
+  // Output arriving while the image is incomplete also runs transcript layout.
+  act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: false, items: [
+    {id: 'answer', seq: 2, kind: 'text', text: 'More output'},
+  ]})));
+  act(() => window.dispatchEvent(new Event('pagehide')));
+  expect(store.get().session!.scroll.a).toEqual({top: 500, left: 0, following: false});
+  if (userScroll) {
+    height(300);
+    view.scrollTop = 150;
+    act(() => view.dispatchEvent(new Event('scroll')));
+  }
+  height(1200);
+  Object.defineProperty(image, 'complete', {value: true});
+  act(() => image.dispatchEvent(new Event('load')));
+  expect(view.scrollTop).toBe(userScroll ? 150 : 500);
+  act(() => window.dispatchEvent(new Event('pagehide')));
+  expect(store.get().session!.scroll.a).toEqual({top: userScroll ? 150 : 500, left: 0, following: false});
+  height(1400);
+  act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: false, items: [
+    {id: 'next', seq: 3, kind: 'text', text: 'Next answer'},
+  ]})));
+  expect(view.scrollTop).toBe(userScroll ? 150 : 500);
+  act(() => find(root, '[aria-label="Scroll to newest output"]').click());
+  expect(view.scrollTop).toBe(1300);
+  expect(store.get().session!.scroll.a.following).toBe(true);
+});

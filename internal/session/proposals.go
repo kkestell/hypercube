@@ -94,6 +94,13 @@ func (r *Runtime) DismissProposal(parentID, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.save(func(tx *write) error {
+		parent, err := tx.Session(parentID)
+		if err != nil {
+			return err
+		}
+		if parent.Ended {
+			return errEnded
+		}
 		item, seq, err := childProposal(tx.Tx, parentID, id)
 		if err != nil {
 			return err
