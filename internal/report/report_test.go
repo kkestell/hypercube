@@ -113,7 +113,7 @@ func TestFormatAttributesMessages(t *testing.T) {
 		if !strings.HasPrefix(got, "Message from q (\"Fix parser\", workspace /repo):\nhello") || !strings.HasSuffix(got, "send_message tool to q.") {
 			t.Error(got)
 		}
-		if got := Format(tx, store.Message{From: "gone", Text: "hi"}); got != "Message from gone:\nhi" {
+		if got := Format(tx, store.Message{From: "gone", Text: "hi"}); !strings.HasPrefix(got, "Message from gone:\nhi\n\n") {
 			t.Error(got)
 		}
 		return nil

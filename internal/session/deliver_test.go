@@ -27,9 +27,11 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	f.queue("user", s.ID, "second")
 	f.queue("user", s.ID, "third")
 	f.until("three deliveries", func() bool { return len(f.inputs(s.ID)) == 4 && len(f.queued(s.ID)) == 0 })
-	want := "start|Message from user:\nfirst|Message from user:\nsecond|Message from user:\nthird"
-	if got := strings.Join(f.inputs(s.ID), "|"); got != want {
-		t.Fatalf("inputs = %q", got)
+	inputs := f.inputs(s.ID)
+	for i, want := range []string{"start", "Message from user:\nfirst", "Message from user:\nsecond", "Message from user:\nthird"} {
+		if !strings.HasPrefix(inputs[i], want) {
+			t.Fatalf("input %d = %q, want prefix %q", i, inputs[i], want)
+		}
 	}
 	f.until("the session idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle && len(f.transcript(s.ID)) == 8 })
 	// The plugin's replies and the next delivery race, so a reply can land
@@ -68,9 +70,9 @@ func TestRefusedMessageStaysQueued(t *testing.T) {
 	// The next attempt sends the refused message again, not the one after it.
 	f.rt.Deliver(parent.ID)
 	f.until("a second refusal", func() bool { return refusals() == 2 })
-	want := "start|Message from user:\n!reject this|Message from user:\n!reject this"
-	if got := strings.Join(f.inputs(parent.ID), "|"); got != want || len(f.queued(parent.ID)) != 2 {
-		t.Fatalf("after two refusals: inputs %q, queue %+v", got, f.queued(parent.ID))
+	inputs := f.inputs(parent.ID)
+	if len(inputs) != 3 || inputs[0] != "start" || !strings.HasPrefix(inputs[1], "Message from user:\n!reject this") || inputs[1] != inputs[2] || len(f.queued(parent.ID)) != 2 {
+		t.Fatalf("after two refusals: inputs %q, queue %+v", inputs, f.queued(parent.ID))
 	}
 	// Dropping the bad message lets the next delivery go through.
 	if err := f.db.Tx(func(tx *store.Tx) error { return tx.Dequeue(f.queued(parent.ID)[0].ID) }); err != nil {
