@@ -23,8 +23,7 @@ type server struct {
 }
 
 // Handler serves the page, its data socket, its actions, and the agents'
-// tools; desktop is the Electron app's connection, which drives the sessions'
-// browsers.
+// tools; desktop is the Electron app's notification connection.
 func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.Handler {
 	s := &server{db: db, rt: rt}
 	mux := http.NewServeMux()
@@ -42,7 +41,7 @@ func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.H
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.HandleFunc("GET /grants", s.grants)
 	mux.HandleFunc("POST /grants", s.deleteGrant)
-	mux.Handle("POST /mcp", mcp.Handler(db, rt, desktop))
+	mux.Handle("POST /mcp", mcp.Handler(db, rt))
 	mux.Handle("GET /desktop", desktop)
 	mux.HandleFunc("POST /workspace", s.workspaceAction)
 	mux.HandleFunc("POST /session", s.sessionAction)

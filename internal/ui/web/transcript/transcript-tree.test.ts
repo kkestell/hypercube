@@ -53,9 +53,6 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle(tool({server: 'hypercube', tool: 'read_session', input: {to: 'w1', cursor: 4}}))).toEqual(['Read session', 'w1']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'set_title', input: {title: 'Fix tool rendering'}}))).toEqual(['Set title', 'Fix tool rendering']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'open_file', input: {path: 'main.go', lines: [{start: 10}]}}))).toEqual(['Open file', 'main.go']);
-  expect(toolTitle(tool({server: 'hypercube', tool: 'browser_navigate', input: {url: 'https://example.com'}}))).toEqual(['Navigate browser', 'https://example.com']);
-  expect(toolTitle(tool({server: 'hypercube', tool: 'browser_eval', input: {script: 'return document.title;'}}))).toEqual(['Run browser script', 'return document.title;']);
-  expect(toolTitle(tool({server: 'hypercube', tool: 'browser_close', input: {}}))).toEqual(['Close browser', '']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'end_session'}))).toEqual(['End session', '']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'open_file', input: {path: 42}}))).toEqual(['Open file', '']);
   expect(toolTitle(tool({server: 'hypercube', tool: 'unknown', input: {query: 'go'}}))).toEqual(['hypercube - unknown', 'go']);

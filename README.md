@@ -120,12 +120,9 @@ sessions.
 - **Content search.** Project-wide text search shows highlighted matches linked to their files.
 - **Files opened by agents.** Agents can present local files in your tabs with relevant lines highlighted.
 
-### Terminal and agent browser windows
+### Terminal
 
 - **Per-session terminals.** Each session has an integrated shell in its working directory, with recent output retained across reconnects.
-- **Visible agent browsers.** Agents can browse and interact with websites in dedicated windows you can watch and navigate.
-- **Browser controls.** Agent browser windows include navigation, file upload selection, and opening pages in your default browser.
-- **Saved website logins.** Agent browser windows share remembered website sign-ins.
 
 ### macOS app
 

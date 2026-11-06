@@ -1,14 +1,11 @@
-// Package desktop is the backend's side of its connection to the Electron
-// desktop app, which shows the window, the notifications, and each session's
-// browser. The app connects to the backend's /desktop WebSocket, one JSON
-// object per text frame: the backend sends requests and alerts, and the app
-// replies to each request with its ID. The backend runs without the app; its
-// calls then fail with ErrNoApp.
+// Package desktop sends notifications to the Electron app over its /desktop
+// WebSocket. The backend runs without the app; alerts are then dropped.
 package desktop
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"sync"
 
@@ -17,9 +14,11 @@ import (
 	"github.com/kkestell/hypercube/internal/session"
 )
 
-// ErrNoApp is the error of browser calls made while the desktop app is not
-// connected.
-var ErrNoApp = errors.New("the browser needs the Hypercube app; open it")
+// conn is one connection from the app.
+type conn struct {
+	ws   *websocket.Conn
+	done chan struct{} // closed when the HTTP handler finishes
+}
 
 // Desktop holds the desktop app's current connection. Its zero value has none.
 type Desktop struct {
@@ -35,9 +34,6 @@ func (d *Desktop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	// The app's replies carry whole page values, and the app is a trusted local
-	// process.
-	ws.SetReadLimit(-1)
 	c := &conn{ws: ws, done: make(chan struct{})}
 	old, ok := d.attach(c)
 	if !ok {
@@ -47,12 +43,14 @@ func (d *Desktop) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if old != nil {
 		old.ws.CloseNow()
 	}
-	c.serve(r.Context())
+	defer close(c.done)
+	defer ws.CloseNow()
+	<-ws.CloseRead(r.Context()).Done()
 	d.detach(c)
 }
 
 // attach makes c current and returns the connection it replaces. It fails
-// after Close.
+// after Shutdown.
 func (d *Desktop) attach(c *conn) (old *conn, ok bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -85,53 +83,21 @@ func (d *Desktop) Shutdown() {
 	}
 }
 
-func (d *Desktop) conn() (*conn, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if d.current == nil {
-		return nil, ErrNoApp
-	}
-	return d.current, nil
-}
-
 // Alert asks the app to notify the user of the alert, with a sound when sound
 // is set. Without the app, the alert is dropped.
 func (d *Desktop) Alert(a session.Alert, sound bool) error {
-	c, err := d.conn()
-	if err != nil {
+	d.mu.Lock()
+	c := d.current
+	d.mu.Unlock()
+	if c == nil {
 		return nil
 	}
-	return c.send(map[string]any{"type": "alert", "session": a.Session, "title": a.Title, "subtitle": a.Subtitle, "text": a.Text, "sound": sound})
-}
-
-// Navigate loads url in the session's browser, creating it, and returns the
-// page's URL and title once it has loaded.
-func (d *Desktop) Navigate(ctx context.Context, session, url string) (string, string, error) {
-	c, err := d.conn()
-	if err != nil {
-		return "", "", err
-	}
-	r, err := c.call(ctx, map[string]any{"type": "navigate", "session": session, "url": url})
-	return r.URL, r.Title, err
-}
-
-// Eval runs script as the body of an async function in the session's page,
-// and returns JSON.stringify of its result.
-func (d *Desktop) Eval(ctx context.Context, session, script string) (string, error) {
-	c, err := d.conn()
-	if err != nil {
-		return "", err
-	}
-	r, err := c.call(ctx, map[string]any{"type": "eval", "session": session, "script": script})
-	return r.Result, err
-}
-
-// Close closes the session's browser, if it has one.
-func (d *Desktop) Close(ctx context.Context, session string) error {
-	c, err := d.conn()
+	data, err := json.Marshal(map[string]any{"type": "alert", "session": a.Session, "title": a.Title, "subtitle": a.Subtitle, "text": a.Text, "sound": sound})
 	if err != nil {
 		return err
 	}
-	_, err = c.call(ctx, map[string]any{"type": "close", "session": session})
-	return err
+	if err := c.ws.Write(context.Background(), websocket.MessageText, data); err != nil {
+		return fmt.Errorf("sending to the Hypercube app: %w", err)
+	}
+	return nil
 }

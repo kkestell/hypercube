@@ -116,24 +116,18 @@ See [transcripts](../internal/session/transcript.go) and
 and runs the agents, with no window of its own. It runs as a login service or
 in a terminal. The Electron app, `Hypercube Desktop`, is a client of the
 backend. It shows the interface in a window, with the menus, menu bar icon,
-Dock badge, notifications, and agents' browsers. Quitting, restarting, or
+Dock badge, and notifications. Quitting, restarting, or
 losing the desktop app leaves the backend, agents, messaging, and coordination
 running. Its signed application bundle, `Hypercube.app`, contains the desktop
 app, `hypercube`, and the plugins; macOS notifications require that bundle.
 
 The desktop app connects to the backend's loopback `/desktop` WebSocket and
-dials again after a restart. The backend sends navigate, eval, and close
-requests for agents' browsers and an alert for each new request or reply that
-the notification preferences in `config.json` allow; the app answers each request with its ID. Without a desktop app, browser calls
-fail with a message asking the user to open it, and alerts are dropped. The
-page shows current requests when the app opens. The backend's side is in
+dials again after a restart. The backend sends an alert for each new request or
+reply that the notification preferences in `config.json` allow. Without a
+desktop app, alerts are dropped. The page shows current requests when the app
+opens. The backend's side is in
 [internal/desktop](../internal/desktop/desktop.go) and the app in
 [desktop](../desktop/main.js).
-
-Each session's browser is a desktop window with a toolbar page above the
-site. The site page has no access to the app, and every browser shares one
-persistent profile, retaining logins across sessions and restarts. Closing the
-window, calling `browser_close`, or quitting the desktop app ends a browser.
 
 [Panel terminals](../internal/terminal/terminal.go) start on demand, one per
 session, in its working directory. Their holders own the pseudo-terminals and

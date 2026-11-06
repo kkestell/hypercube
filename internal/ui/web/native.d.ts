@@ -21,17 +21,6 @@ declare global {
     install(): Promise<string>;
   } | undefined;
 
-  // hypercubeBrowser is the agent browser toolbar's bridge to its site view.
-  var hypercubeBrowser: {
-    onState(callback: (state: BrowserState) => void): void;
-    navigate(address: string): void;
-    focusSite(): void;
-    back(): void;
-    forward(): void;
-    reload(): void;
-    openExternal(): void;
-  } | undefined;
-
   interface SetupStatus {
     address: string;
     port: number;
@@ -46,12 +35,6 @@ declare global {
     // out of its temporary location before setup; 'setup' offers to install
     // the login service.
     action: 'headless' | 'kickstart' | 'move' | 'setup';
-  }
-
-  interface BrowserState {
-    url: string;
-    canGoBack: boolean;
-    canGoForward: boolean;
   }
 
   interface WindowEventMap {

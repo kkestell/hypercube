@@ -30,8 +30,8 @@ icon if the window is closed.
 
 The backend and the desktop app are separate. The backend starts at login and
 keeps agents running; the desktop app, which shows the window, menu bar icon,
-notifications, and agents' browsers, starts when you open it. Hypercube does not
-add itself to Login Items; add it in **System Settings → General → Login Items**
+and notifications, starts when you open it. Hypercube does not add itself to
+Login Items; add it in **System Settings → General → Login Items**
 to have the desktop app open at login too. Quitting the desktop app leaves the
 backend and its agents running.
 
@@ -107,8 +107,8 @@ rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 
 To run without a login service, start `hypercube ui` in a terminal, then open
 `~/Applications/Hypercube.app`. The interface is also available at
-http://localhost:4280/. The desktop app provides agents' browser windows and
-macOS notifications; its first launch asks for notification permission.
+http://localhost:4280/. The desktop app provides macOS notifications; its first
+launch asks for notification permission.
 
 To use another port, pass it to both processes:
 
@@ -186,7 +186,7 @@ uncommitted checkout changes. A build without Git metadata reports `devel`.
 | Saved-state directory | `~/.local/state/hypercube/` |
 | Database | `~/.local/state/hypercube/hypercube.db` |
 | Service log | `~/.local/state/hypercube/ui.log` |
-| Desktop app profile: website logins and window position | `~/.local/state/hypercube/chromium/` |
+| Desktop app profile and window position | `~/.local/state/hypercube/chromium/` |
 | Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` |
 
 Configuration follows `XDG_CONFIG_HOME`; saved state follows `XDG_STATE_HOME`.

@@ -41,9 +41,8 @@ func result[In any](run func(context.Context, In) (string, error)) mcp.ToolHandl
 	}
 }
 
-// newServer returns the server for one session; browser drives its browser,
-// and is nil without the Hypercube window.
-func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) *mcp.Server {
+// newServer returns the server for one session.
+func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
 	var caller store.Session
@@ -65,7 +64,6 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "open_file", Description: "Open a file in a tab beside your chat, which the user sees, and select it. Use it to show relevant code at its lines or a completed deliverable when that helps the user review the result. path is relative to your directory, absolute, or starts with ~ for the user's home; it may be anywhere the user can read. lines highlights ranges of lines, each {start, end} with end optional, and scrolls to the first; a Markdown file with lines shows its source, otherwise its preview. The tab opens now if the user is viewing your session, or the next time they do."}, result(func(_ context.Context, a openFileArgs) (string, error) { return openFile(rt, caller.Dir, self, a) }))
-	addBrowserTools(server, browser, self)
 	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, model, effort (empty for the harness's default), activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		return server
@@ -183,11 +181,11 @@ type nopCloser struct{ io.Writer }
 func (nopCloser) Close() error { return nil }
 
 // Handler is the app's /mcp route: it serves the tools to the session named in
-// SessionHeader, with browser as in newServer. Each request is answered on its own, so the tools follow the
+// SessionHeader. Each request is answered on its own, so the tools follow the
 // current workspace and configuration.
-func Handler(db *store.DB, rt *session.Runtime, browser Browser) http.Handler {
+func Handler(db *store.DB, rt *session.Runtime) http.Handler {
 	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return newServer(db, rt, browser, r.Header.Get(SessionHeader))
+		return newServer(db, rt, r.Header.Get(SessionHeader))
 	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := db.Read(func(tx *store.Tx) error { _, err := tx.Session(r.Header.Get(SessionHeader)); return err }); err != nil {

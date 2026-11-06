@@ -81,7 +81,7 @@ function createMainWindow({origin, pagesDir, userData, onMessage}) {
         reportTitleBar();
         break;
       // The Settings theme also sets the app's native appearance, which the
-      // window's buttons, the menus, the agent browser toolbars, and the
+      // window's buttons, the menus, and the
       // waiting page follow.
       case 'theme':
         if (['system', 'light', 'dark'].includes(message.theme)) nativeTheme.themeSource = message.theme;

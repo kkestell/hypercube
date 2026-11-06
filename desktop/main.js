@@ -1,5 +1,5 @@
 // Hypercube Desktop, the Electron app that shows the Hypercube backend: the
-// window, menus, menu bar icon, notifications, and the agents' browsers. It
+// window, menus, menu bar icon, and notifications. It
 // connects to a backend running on its own, as a login service or in a
 // terminal, and quitting it leaves that backend and its agents running.
 const {app, ipcMain} = require('electron');
@@ -7,7 +7,6 @@ const os = require('node:os');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
 const {createAttention} = require('./attention.js');
-const {createBrowsers} = require('./browser.js');
 const {connect} = require('./connection.js');
 const {setMenu} = require('./menu.js');
 const setup = require('./setup.js');
@@ -105,7 +104,6 @@ function start() {
     alert(alert) {
       if (!win.isFocused()) attention.notify(alert);
     },
-    request: createBrowsers(pagesDir),
   });
 
   app.on('activate', win.show);

@@ -78,8 +78,8 @@ type app struct {
 // startApp upgrades the config, finds the installed harnesses, and registers
 // saved launches, then serves HTTP while adopting the
 // sessions the user left running. Harness plugins are in plugins, or beside
-// the executable when it is empty. The desktop app's connection, when it has one, drives the
-// sessions' browsers and shows their alerts.
+// the executable when it is empty. The desktop app's connection, when it has
+// one, shows their alerts.
 func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
 	// An earlier version's config is converted before anything reads it.
 	if err := harness.UpgradeConfig(); err != nil {

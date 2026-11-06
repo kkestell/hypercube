@@ -42,9 +42,6 @@ const hypercubeTools = new Map<string, [name: string, field?: string]>([
   ['read_session', ['Read session', 'to']],
   ['set_title', ['Set title', 'title']],
   ['open_file', ['Open file', 'path']],
-  ['browser_navigate', ['Navigate browser', 'url']],
-  ['browser_eval', ['Run browser script', 'script']],
-  ['browser_close', ['Close browser']],
 ]);
 
 // Native calls have no MCP server. Keep tool identities in the transcript;

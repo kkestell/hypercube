@@ -89,21 +89,12 @@ Right-click a file tab or tree row to copy its absolute or relative path. An
 agent can also open files and highlight lines for you, including files outside
 its working directory; those tabs appear when you view its session.
 
-### Terminal and browser
+### Terminal
 
 The terminal panel is your shell in the selected session's directory. Each
 session has its own shell. Hiding the panel, closing the interface, or quitting
 the desktop app leaves it running; archiving or deleting the session, or ending
 the backend, ends it.
-
-With the desktop app open, an agent's page navigation opens its own browser
-window. It accepts HTTP, HTTPS, and `about:blank` addresses. The toolbar above
-the page has back, forward, reload, an address field, and a button that opens
-the page in your default browser. The **Window** menu
-lists open browser windows. Closing the window or the agent's `browser_close`
-ends that browser; quitting the desktop app closes them all and fails their
-pending calls. With the app closed, an agent's browser calls fail with a
-message asking you to open it. Session browsers share website logins.
 
 Quitting the desktop app, from ⌘Q, the menu bar icon, or the Dock, ends only
 the app. Agents, shells, and messaging keep running in the background service.

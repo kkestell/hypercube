@@ -335,39 +335,12 @@ func TestAppProcess(t *testing.T) {
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
 
 	// The desktop app connects and disconnects without affecting the backend or
-	// its agents; browser calls work only while it is connected.
-	browserEval := func() string {
-		out, _ := bridge("browser_eval", map[string]string{"script": "return 1"}).CombinedOutput()
-		return string(out)
-	}
-	if got := browserEval(); !strings.Contains(got, "open it") {
-		t.Fatalf("browser call without the desktop app = %s", got)
-	}
+	// its agents.
 	desktop, _, err := websocket.Dial(t.Context(), "ws"+strings.TrimPrefix(c.base, "http")+"/desktop", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	evaluated := make(chan string, 1)
-	go func() { evaluated <- browserEval() }()
-	_, request, err := desktop.Read(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	var eval struct {
-		ID   int
-		Type string
-	}
-	if err := json.Unmarshal(request, &eval); err != nil || eval.Type != "eval" {
-		t.Fatalf("desktop request = %s, %v", request, err)
-	}
-	if err := desktop.Write(t.Context(), websocket.MessageText, fmt.Appendf(nil, `{"id":%d,"result":"\"from the app\""}`, eval.ID)); err != nil {
-		t.Fatal(err)
-	}
-	if got := <-evaluated; !strings.Contains(got, "from the app") {
-		t.Fatalf("browser call = %s", got)
-	}
 	desktop.Close(websocket.StatusNormalClosure, "")
-	w.until("browser calls failing after the desktop app disconnects", func() bool { return strings.Contains(browserEval(), "open it") })
 	if w.session(parent.ID).Activity != store.Idle || gone(w.lastPid(parent.ID)) || gone(w.lastPid(child.ID)) {
 		t.Fatal("desktop disconnect disturbed the agents")
 	}
