@@ -42,7 +42,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const [state, store] = useStore();
   const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id));
-  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
+  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-5' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();
@@ -74,7 +74,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
 
 // Branch draws a child row's stretch of the line down from its parent.
 function Branch({position, siblings}: {position: number; siblings: number}) {
-  return <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-2 rounded-bl-lg border-b' : 'bottom-0'}`} />;
+  return <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-1 rounded-bl-sm border-b' : 'bottom-0'}`} />;
 }
 
 interface EndedFoldProps {
@@ -90,7 +90,7 @@ interface EndedFoldProps {
 
 export function EndedFold({id, count, position, siblings, expanded, tabbable, onToggle, onFocus}: EndedFoldProps) {
   return (
-    <Button asChild variant="ghost" size="sm" className="session-fold relative ml-4 h-7 cursor-default justify-start px-2 text-xs font-normal text-muted-foreground"><div
+    <Button asChild variant="ghost" size="sm" className="session-fold relative ml-5 h-7 cursor-default justify-start px-2 text-xs font-normal text-muted-foreground"><div
       role="treeitem" data-row={id} aria-level={2} aria-posinset={position} aria-setsize={siblings} aria-expanded={expanded} aria-selected={false}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus} onClick={onToggle}
     >
