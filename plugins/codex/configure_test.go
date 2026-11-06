@@ -20,6 +20,7 @@ while IFS= read -r line; do
  case "$line" in
  *'"method":"initialize"'*) printf '{"id":%s,"result":{}}\n' "$id";;
  *'"method":"thread/start"'*) printf '{"id":%s,"result":{"thread":{"id":"th"}}}\n' "$id";;
+ *'"method":"model/list"'*) printf '{"id":%s,"result":{"data":[{"id":"old","model":"old","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]},{"id":"new","model":"new","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]},{"id":"bad","model":"bad","supportedReasoningEfforts":[{"reasoningEffort":"high"}]}],"nextCursor":null}}\n' "$id";;
  *'"method":"turn/start"'*)
   n=$((n+1)); turn="tu$n"
   case "$line" in

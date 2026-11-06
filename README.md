@@ -7,10 +7,10 @@ Agents run locally with your existing credentials.
 
 ## Setup
 
-[Install Hypercube](docs/installation.md), then
-[configure at least one agent profile](docs/configuration.md). Profiles are the
-harness, model, and effort choices available to you and to agents creating
-children.
+[Install Hypercube](docs/installation.md) and at least one authenticated
+harness. Hypercube lists the models each installed harness offers; see
+[configuration](docs/configuration.md) for defaults and guidance for child
+sessions.
 
 ## Features
 
@@ -19,12 +19,12 @@ children.
   <img alt="A lead session working beside two child sessions, with a file and a diff split beside its conversation" src="docs/images/overview-light.png">
 </picture>
 
-### Agents and profiles
+### Agents and models
 
 - **Multiple harnesses.** Claude Code, OpenCode, Codex, and Pi sessions run side by side.
 - **Existing accounts and tools.** Agents use your installed harnesses and credentials, with your settings preserved.
-- **Named agent profiles.** Saved combinations of harness, model, and effort are available to you and to agents creating child sessions.
-- **Session defaults.** A preferred profile and choice of original checkout or worktree provide defaults for new sessions.
+- **Discovered models.** Each session chooses from the models and efforts its harness offers; child sessions inherit their parent's unless guidance or you call for others.
+- **Session defaults.** New sessions start with the workspace's latest settings or a default, and a choice of original checkout or worktree.
 - **Model and effort changes.** A session can continue with a different model or effort.
 - **Follow-ups and interruption.** You can send corrections during work or interrupt the current turn.
 
@@ -134,8 +134,8 @@ children.
   share, what they know about each other, and where their edits go.
 - [Using Hypercube](docs/usage.md) — starting sessions, reviewing work, answering
   requests, and returning to a task later.
-- [Configuration](docs/configuration.md) — profiles and local files needed by
-  worktrees.
+- [Configuration](docs/configuration.md) — preferences, choosing models, and
+  local files needed by worktrees.
 - [Harness differences](docs/harness-support.md) — follow-ups, permissions,
   model changes, and version requirements.
 - [Installation](docs/installation.md) — beta downloads, checkout builds, the

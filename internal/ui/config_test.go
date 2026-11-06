@@ -11,14 +11,15 @@ import (
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/internal/store"
 )
+
+// lead is the settings of the app's first session.
+var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 
 func TestSaveConfig(t *testing.T) {
 	a := newApp(t)
-	cfg := harness.Config{DefaultProfile: "next", Theme: "light", TerminalFontSize: 14, Notifications: harness.Notifications{Requests: true}, Profiles: []harness.Profile{
-		{Name: "next", Description: "Updated profile", Harness: "test", Model: "next", Effort: "high"},
-	}}
+	cfg := harness.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
+		Theme: "light", TerminalFontSize: 14, Notifications: harness.Notifications{Requests: true}}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -28,29 +29,13 @@ func TestSaveConfig(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(got, cfg) {
 		t.Fatalf("saved config = %+v, %v", got, err)
 	}
-	// Removing the original profile does not reconfigure an existing session.
-	if err := a.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(a.session.ID)
-		if err == nil && (s.Model != "m" || s.Effort != "low") {
-			t.Fatalf("existing session changed: %+v", s)
-		}
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	next, err := a.rt.Create(a.session.Workspace, got.DefaultProfile, false, "next session")
-	if err != nil || next.Model != "next" || next.Effort != "high" {
-		t.Fatalf("new session = %+v, %v", next, err)
-	}
 	// Invalid request bodies leave the last saved configuration untouched.
 	for name, body := range map[string]string{
-		"broken JSON":     `{`,
-		"empty profiles":  `{"profiles":[]}`,
-		"missing default": strings.Replace(string(body), `"next"`, `"missing"`, 1),
-		"unfinished":      `{"profiles":[{"name":"unfinished"}]}`,
-		"unknown setting": strings.Replace(string(body), `{`, `{"font":"Menlo",`, 1),
-		"second document": string(body) + `{}`,
-		"duplicate names": `{"profiles":[` + string(mustProfileJSON(t, cfg.Profiles[0])) + `,` + string(mustProfileJSON(t, cfg.Profiles[0])) + `]}`,
+		"broken JSON":        `{`,
+		"incomplete default": strings.Replace(string(body), `"model":"next"`, `"model":""`, 1),
+		"legacy profiles":    `{"theme":"system","terminal_font_size":13,"profiles":[]}`,
+		"unknown setting":    strings.Replace(string(body), `{`, `{"font":"Menlo",`, 1),
+		"second document":    string(body) + `{}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			a.post("/config", body, http.StatusBadRequest)
@@ -62,15 +47,6 @@ func TestSaveConfig(t *testing.T) {
 	}
 }
 
-func mustProfileJSON(t *testing.T, profile harness.Profile) []byte {
-	t.Helper()
-	data, err := json.Marshal(profile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
-}
-
 func TestSaveConfigFailure(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
@@ -78,7 +54,7 @@ func TestSaveConfigFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := handler(t, open(t))
-	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"theme":"system","terminal_font_size":13,"profiles":[{"name":"one","description":"Jobs","harness":"codex","model":"sol","effort":"high"}]}`))
+	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"theme":"system","terminal_font_size":13}`))
 	req.Header.Set("Origin", "http://localhost:4280")
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, req)

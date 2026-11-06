@@ -1,15 +1,17 @@
 // The page's layout and the window and account details it shows.
-import type {Profile} from '../agent/types.ts';
+import type {Settings} from '../agent/types.ts';
 
-// Config is config.json: the agent profiles and the user's preferences.
-// default_worktree starts new sessions in Git workspaces in a worktree.
+// Config is config.json: the user's preferences. default_selection starts new
+// sessions with its settings; child_model_guidance tells agents when a child
+// should use other settings than theirs; default_worktree starts new sessions
+// in Git workspaces in a worktree.
 export interface Config {
-  default_profile: string;
+  default_selection?: Settings;
+  child_model_guidance: string;
   default_worktree: boolean;
   theme: Theme;
   terminal_font_size: number;
   notifications: Notifications;
-  profiles: Profile[];
 }
 
 export type Theme = 'system' | 'light' | 'dark';

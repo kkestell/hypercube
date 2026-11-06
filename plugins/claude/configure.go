@@ -17,7 +17,16 @@ type configuration struct {
 
 // configure waits for the response to this flag override, while the stream
 // reader continues translating the conversation.
+// An empty effort clears the effort override, so the model's default applies.
 func (c *claude) configure(selection harness.Selection) (*harness.Selection, error) {
+	// Claude accepts any model name here and fails only on the next prompt.
+	if _, err := check(c.models, selection); err != nil {
+		return nil, err
+	}
+	var effort any
+	if selection.Effort != "" {
+		effort = selection.Effort
+	}
 	c.writing.Lock()
 	c.counter++
 	id := fmt.Sprintf("configure-%d", c.counter)
@@ -33,7 +42,7 @@ func (c *claude) configure(selection harness.Selection) (*harness.Selection, err
 	}()
 	if err := c.send(map[string]any{"type": "control_request", "request_id": id,
 		"request": map[string]any{"subtype": "apply_flag_settings", "settings": map[string]any{
-			"model": selection.Model, "effortLevel": selection.Effort,
+			"model": selection.Model, "effortLevel": effort,
 		}}}); err != nil {
 		return nil, err
 	}

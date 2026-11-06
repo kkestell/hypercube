@@ -1,20 +1,19 @@
-// The Settings sections that edit preferences: General and Notifications.
+// The Settings sections that edit preferences: General, Agents, and
+// Notifications.
 import type {ReactNode} from 'react';
-import {ProfileName} from '../agent/profile-name.tsx';
+import {ModelSelect} from '../agent/model-select.tsx';
 import {Label} from '../components/ui/label';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
 import {Switch} from '../components/ui/switch';
+import {Textarea} from '../components/ui/textarea';
 import {Icon} from '../shared/icon.tsx';
-import type {ProfileDraft} from './settings-profiles.tsx';
+import {sessionOf} from '../sessions/selection.ts';
+import {useStore} from '../store.ts';
 import type {Config, Notifications, Theme} from './types.ts';
 
-// SettingsDraft is the edited config, with the default profile tracked by
-// position as in ProfileDraft.
-export type SettingsDraft = Omit<Config, 'default_profile'> & ProfileDraft;
-
 interface SectionProps {
-  draft: SettingsDraft;
-  onChange: (change: Partial<SettingsDraft>) => void;
+  draft: Config;
+  onChange: (change: Partial<Config>) => void;
 }
 
 const themes: [Theme, string][] = [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']];
@@ -50,18 +49,41 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
       </Field>
     </Group>
     <Group title="New sessions">
-      <Field id="default-profile" label="Default agent profile">
-        <Choice id="default-profile" value={String(draft.defaultIndex)} onChange={value => onChange({defaultIndex: Number(value)})}>
-          {draft.profiles.map((p, i) => <SelectItem key={i} value={String(i)}><ProfileName profile={p} /></SelectItem>)}
-        </Choice>
-        <p className="text-sm text-muted-foreground">Existing sessions keep their current model and effort.</p>
-      </Field>
+      <DefaultSelection draft={draft} onChange={onChange} />
       <Field id="default-location" label="Default location">
         <Choice id="default-location" value={draft.default_worktree ? 'worktree' : 'local'} onChange={value => onChange({default_worktree: value === 'worktree'})}>
           <SelectItem value="local"><Icon name="laptop" />Local</SelectItem>
           <SelectItem value="worktree"><Icon name="git-branch" />Worktree</SelectItem>
         </Choice>
         <p className="text-sm text-muted-foreground">For Git workspaces. The composer can change it for each session.</p>
+      </Field>
+    </Group>
+  </div>;
+}
+
+// DefaultSelection chooses the default settings from what the harnesses offer
+// in the shown workspace, or the first.
+function DefaultSelection({draft, onChange}: SectionProps) {
+  const [state] = useStore();
+  const workspace = (state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id) || state.workspaces[0]?.id;
+  return <div className="grid gap-3">
+    <span className="text-sm font-medium leading-none">Default model</span>
+    <ModelSelect value={draft.default_selection ?? null} place={workspace ? {workspace} : null} label="Default model"
+      className="self-start" onChange={default_selection => onChange({default_selection})} />
+    <p className="text-sm text-muted-foreground">
+      {workspace ? 'New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.'
+        : 'Add a workspace to choose a default model.'}
+    </p>
+  </div>;
+}
+
+export function SettingsAgents({draft, onChange}: SectionProps) {
+  return <div className="grid gap-10">
+    <Group title="Child sessions">
+      <Field id="child-model-guidance" label="Guidance for choosing child models">
+        <Textarea id="child-model-guidance" rows={8} value={draft.child_model_guidance}
+          onChange={e => onChange({child_model_guidance: e.target.value})} />
+        <p className="text-sm text-muted-foreground">A child session uses its parent's harness, model, and effort unless the user asks for others or this guidance calls for them. Agents follow it as an instruction; it does not limit which models they can choose.</p>
       </Field>
     </Group>
   </div>;

@@ -4,8 +4,8 @@ import {showError} from '../notifications/errors.ts';
 import type {Unsent} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
-import {unsentKey} from './drafts.ts';
-import type {Draft} from './types.ts';
+import {unsentKey, withDraftDefaults} from './drafts.ts';
+import type {Draft, Settings} from './types.ts';
 
 const storageKey = 'hypercube.drafts';
 
@@ -14,11 +14,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const isNullableString = (value: unknown): value is string | null => value === null || typeof value === 'string';
 
+const isSettings = (value: unknown): value is Settings => isRecord(value) &&
+  typeof value.harness === 'string' && typeof value.model === 'string' && typeof value.effort === 'string';
+
+// Earlier versions saved a profile name, which no longer names settings: such
+// a draft keeps its text and place and takes the defaults once, like a new one.
 function readContext(value: unknown): Unsent {
-  if (!isRecord(value) || !isNullableString(value.workspace) || !isNullableString(value.profile) || (value.worktree !== null && typeof value.worktree !== 'boolean')) {
+  if (!isRecord(value) || !isNullableString(value.workspace) || (value.worktree !== null && typeof value.worktree !== 'boolean') ||
+    (value.settings !== undefined && value.settings !== null && !isSettings(value.settings))) {
     throw new Error('Invalid new-session draft.');
   }
-  return {workspace: value.workspace, profile: value.profile, worktree: value.worktree, identity: {}, sending: false};
+  const settings = isSettings(value.settings) ? value.settings : null;
+  return {workspace: value.workspace, settings, worktree: value.worktree, identity: {}, sending: false};
 }
 
 function readSaved(text: string): Pick<State, 'drafts' | 'unsent' | 'unsentDrafts'> {
@@ -59,7 +66,7 @@ export function startDraftStorage(store: Store): () => void {
     const text = localStorage.getItem(storageKey);
     if (text !== null) {
       const saved = readSaved(text);
-      store.update(state => ({...state, ...saved, selected: saved.unsent ? null : state.selected}));
+      store.update(state => withDraftDefaults({...state, ...saved, selected: saved.unsent ? null : state.selected}));
     }
   } catch (error) {
     showError(store, 'Could not restore unsent text: ' + reason(error));
@@ -72,7 +79,7 @@ export function startDraftStorage(store: Store): () => void {
     previous = state;
     if (!changed) return;
     const drafts = Object.fromEntries(Object.entries(state.drafts).filter(([, draft]) => draft.text).map(([key, draft]) => [key, draft.text]));
-    const context = (draft: Unsent) => ({workspace: draft.workspace, profile: draft.profile, worktree: draft.worktree});
+    const context = (draft: Unsent) => ({workspace: draft.workspace, settings: draft.settings, worktree: draft.worktree});
     const unsent = state.unsent && drafts[unsentKey(state.unsent.workspace)]
       ? context(state.unsent)
       : null;

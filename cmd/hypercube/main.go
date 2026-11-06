@@ -75,11 +75,16 @@ type app struct {
 	once sync.Once
 }
 
-// startApp registers saved launches, then serves HTTP while adopting the
+// startApp upgrades the config, finds the installed harnesses, and registers
+// saved launches, then serves HTTP while adopting the
 // sessions the user left running. Harness plugins are in plugins, or beside
 // the executable when it is empty. The desktop app's connection, when it has one, drives the
 // sessions' browsers and shows their alerts.
 func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
+	// An earlier version's config is converted before anything reads it.
+	if err := harness.UpgradeConfig(); err != nil {
+		return nil, fmt.Errorf("upgrading the config: %w", err)
+	}
 	db, err := store.Open()
 	if err != nil {
 		return nil, err
@@ -87,6 +92,11 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 	rt := session.New(db, "http://"+listener.Addr().String())
 	rt.PluginDir = plugins
 	ctx, cancel := context.WithCancel(context.Background())
+	// Sessions that start know the installed harnesses. A plugin that cannot
+	// describe its harness is listed with its error.
+	if _, err := rt.ScanHarnesses(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "hypercube: finding harness plugins:", err)
+	}
 	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1)}
 	a.server = &http.Server{Handler: ui.Handler(db, rt, desktop)}
 	if err := rt.Restore(func() {

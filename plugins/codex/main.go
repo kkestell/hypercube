@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -30,14 +29,7 @@ const (
 )
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-codex serve")
-		os.Exit(1)
-	}
-	if err := serve(os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "hypercube-harness-codex:", err)
-		os.Exit(1)
-	}
+	plugin.Plugin{Product: "Codex", Executable: "codex", Serve: serve, Models: models}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {
@@ -46,10 +38,14 @@ func serve(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return plugin.Agent{}, err
 		}
-		return plugin.Agent{
+		started := plugin.Agent{
 			Process: ag.proc, Conversation: nativeConversationPrefix + ag.thread,
 			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
-		}, nil
+		}
+		if ag.selection != (harness.Selection{Model: a.Model, Effort: a.Effort}) {
+			started.Selection = &ag.selection
+		}
+		return started, nil
 	})
 }
 
@@ -86,20 +82,29 @@ type childThread struct {
 	ended  string // its most recently completed turn
 }
 
-func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
+// launch starts `codex app-server` in dir.
+func launch(dir string, emit func(harness.Event)) (*agent, error) {
 	cmd := exec.Command("codex", "app-server")
-	cmd.Dir = a.Dir
+	cmd.Dir = dir
 	p, err := plugin.StartProcess("Codex", cmd)
 	if err != nil {
 		return nil, err
 	}
 	ag := &agent{
-		proc: p, emit: emit, selection: harness.Selection{Model: a.Model, Effort: a.Effort}, finished: map[string]bool{},
+		proc: p, emit: emit, finished: map[string]bool{},
 		open: map[string]harness.Item{}, running: map[string]harness.Item{}, children: map[string]childThread{},
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)
 	go func() { ag.rpc.End(p.Read(ag.rpc.Line)) }()
+	return ag, nil
+}
+
+func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
+	ag, err := launch(a.Dir, emit)
+	if err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
 	defer cancel()
 	if err := ag.connect(ctx, a); err != nil {
@@ -122,16 +127,16 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 			return errors.New("this saved Codex conversation predates the native storage integration and cannot resume safely; its transcript and files are preserved; start a new session")
 		}
 	}
-	// Experimental methods include the questions Codex asks the user.
-	if err := ag.call(ctx, "initialize", map[string]any{
-		"clientInfo":   map[string]any{"name": "hypercube", "version": "1"},
-		"capabilities": map[string]any{"experimentalApi": true},
-	}, nil); err != nil {
-		return fmt.Errorf("incompatible Codex app-server; update Codex: %w", err)
-	}
-	if err := ag.rpc.Notify("initialized", map[string]any{}); err != nil {
+	if err := ag.initialize(ctx); err != nil {
 		return err
 	}
+	selection, err := ag.resolve(ctx, harness.Selection{Model: a.Model, Effort: a.Effort})
+	if err != nil {
+		return err
+	}
+	ag.mu.Lock()
+	ag.selection = selection
+	ag.mu.Unlock()
 	// Codex names a folder by its resolved path when it asks whether to trust it.
 	wd, err := filepath.EvalSymlinks(a.Dir)
 	if err != nil {
@@ -142,16 +147,18 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 		sandbox["writable_roots"] = roots
 	}
 	params := map[string]any{
-		"cwd": a.Dir, "model": a.Model, "approvalPolicy": "on-request", "approvalsReviewer": "auto_review", "sandbox": "workspace-write",
+		"cwd": a.Dir, "model": selection.Model, "approvalPolicy": "on-request", "approvalsReviewer": "auto_review", "sandbox": "workspace-write",
 		"developerInstructions": a.Instructions,
 		"config": map[string]any{
-			"model_reasoning_effort":  a.Effort,
 			"sandbox_workspace_write": sandbox,
 			"projects":                map[string]any{wd: map[string]any{"trust_level": "trusted"}},
 			"mcp_servers": map[string]any{"hypercube": map[string]any{
 				"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "default_tools_approval_mode": "approve",
 			}},
 		},
+	}
+	if selection.Effort != "" {
+		params["config"].(map[string]any)["model_reasoning_effort"] = selection.Effort
 	}
 	method := "thread/start"
 	if a.Conversation != "" {
@@ -234,8 +241,15 @@ func userInput(text string, images []harness.Image) []map[string]any {
 }
 
 // configure retains the settings for the next turn/start; steering keeps the
-// current turn's settings.
+// current turn's settings. An empty effort selects the model's default, since
+// turn/start keeps the previous effort when it is omitted.
 func (ag *agent) configure(selection harness.Selection) (*harness.Selection, error) {
+	ctx, cancel := context.WithTimeout(ag.ctx, callTimeout)
+	defer cancel()
+	selection, err := ag.resolve(ctx, selection)
+	if err != nil {
+		return nil, err
+	}
 	ag.mu.Lock()
 	ag.selection = selection
 	ag.mu.Unlock()
@@ -296,7 +310,10 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 	defer cancel()
 	params := map[string]any{"threadId": thread, "input": userInput(text, images)}
 	if main {
-		params["model"], params["effort"] = selection.Model, selection.Effort
+		params["model"] = selection.Model
+		if selection.Effort != "" {
+			params["effort"] = selection.Effort
+		}
 	}
 	if err := ag.call(ctx, "turn/start", params, &started); err != nil {
 		return err

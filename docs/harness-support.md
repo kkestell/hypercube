@@ -5,27 +5,31 @@ weight: 5
 
 # Harness differences
 
-Profiles select a native coding tool through the `harness` field. Install and
-authenticate that tool before launching a session. Hypercube configures each
-launch without rewriting your global or project settings or changing `HOME`.
+Each session runs a native coding tool, its harness. Install and authenticate
+that tool before launching a session. Hypercube finds the installed harnesses
+when it starts and when the selector opens, and asks a harness for its models
+and efforts in the session's folder. Hypercube configures each launch without
+rewriting your global or project settings or changing `HOME`.
 
 ## Requirements
 
 | Harness | Executable | Model and effort |
 | --- | --- | --- |
-| Claude Code (`claude`) | `claude`; works with a Claude Team login | Claude's model and effort values. |
-| OpenCode (`opencode`) | OpenCode 2.x | A `provider/model` from `opencode models`; a level offered for that model, or `default` if none. |
-| Codex (`codex`) | `codex` | Codex's model and reasoning effort values. |
-| Pi (`pi`) | Pi 1.4 or later | A full `provider/id` from `pi --list-models`; effort is its thinking level. |
+| Claude Code (`claude`) | `claude`; works with a Claude Team login | A model and effort its initialization lists. |
+| OpenCode (`opencode`) | OpenCode 2.x | A `provider/model` and a variant offered for that model. |
+| Codex (`codex`) | `codex` | A model and reasoning effort from its model list. |
+| Pi (`pi`) | Pi 1.4 or later | A full `provider/id`; effort is a thinking level the model offers. |
 
-OpenCode rejects an unsupported model or effort at launch. Use full Pi model
-IDs: Pi may substitute a different model for a partial ID, and Hypercube fails
-the launch if the selected model differs from the requested one.
+Each harness rejects a model or effort it does not offer when the session
+starts or changes model, before the first prompt. Without an effort, the
+harness uses its default; Codex, OpenCode, and Pi report the effort they chose,
+and the selector shows it. Listing models starts no conversation: OpenCode
+opens a temporary session without tools and deletes it.
 
 ## Messages and model changes
 
 A follow-up during work does not have identical timing across harnesses.
-Neither does changing the profile selection:
+Neither does changing the model or effort:
 
 | Harness | Follow-up during a turn | Model or effort change |
 | --- | --- | --- |
@@ -34,9 +38,9 @@ Neither does changing the profile selection:
 | Codex | Steers the current turn before its next step. | Used at the next turn start; steering keeps the current settings. |
 | Pi | Read after the current step's tool calls, before the next model request. | Native controls applied when selected. |
 
-Pi can adjust a requested thinking level to one the model supports. The profile
-selector shows the result. A partially failed change can leave the model
-changed and the effort unchanged; the error remains visible.
+A partially failed change can leave the model changed and the effort
+unchanged; the selector shows the accepted settings and the error remains
+visible.
 
 Interrupt ends the current turn and leaves its output in chat. OpenCode, Codex,
 and Pi also give up pending questions or dialogs when interrupted.

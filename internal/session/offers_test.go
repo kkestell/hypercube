@@ -25,7 +25,7 @@ func TestOfferAnswers(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	options := func(title string) ChildOptions {
-		return ChildOptions{Name: "task", Title: title, Profile: harness.Profile{Harness: "test", Model: "m", Effort: "low"}, Message: "the brief"}
+		return ChildOptions{Name: "task", Title: title, Settings: lead, Message: "the brief"}
 	}
 
 	here, err := f.rt.OfferChild(parent.ID, "Here")
@@ -80,7 +80,7 @@ func TestOfferAnswers(t *testing.T) {
 	}
 	// A start that fails and is cleaned up leaves the offer usable.
 	missing := options("Task")
-	missing.Profile.Harness = "missing"
+	missing.Settings.Harness = "missing"
 	if _, err := f.rt.StartOffer(parent.ID, accepted, missing); err == nil {
 		t.Fatal("a child started without its plugin")
 	}

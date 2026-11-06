@@ -66,7 +66,7 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "open_file", Description: "Open a file in a tab beside your chat, which the user sees, and select it. Use it to show relevant code at its lines or a completed deliverable when that helps the user review the result. path is relative to your directory, absolute, or starts with ~ for the user's home; it may be anywhere the user can read. lines highlights ranges of lines, each {start, end} with end optional, and scrolls to the first; a Markdown file with lines shows its source, otherwise its preview. The tab opens now if the user is viewing your session, or the next time they do."}, result(func(_ context.Context, a openFileArgs) (string, error) { return openFile(rt, caller.Dir, self, a) }))
 	addBrowserTools(server, browser, self)
-	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, model, effort (empty for the harness's default), activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		return server
 	}
@@ -79,6 +79,9 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 			return "", err
 		}
 		return "Title set.", nil
+	}))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_models", Description: listModelsDescription}, result(func(ctx context.Context, a listModelsArgs) (string, error) {
+		return listModels(ctx, rt, caller.Dir, a)
 	}))
 	addChildTools(server, rt, self, w)
 	return server
@@ -201,6 +204,8 @@ func listSessions(db *store.DB, self string) (string, error) {
 		To        string `json:"to"`
 		Title     string `json:"title"`
 		Harness   string `json:"harness"`
+		Model     string `json:"model"`
+		Effort    string `json:"effort"`
 		Activity  string `json:"activity"`
 		Dir       string `json:"directory"`
 		Branch    string `json:"branch"`
@@ -243,7 +248,7 @@ func listSessions(db *store.DB, self string) (string, error) {
 			if s.Parent == caller.ID {
 				to = s.Name
 			}
-			listed = append(listed, entry{To: to, Title: s.Title, Harness: s.Harness, Activity: s.Activity, Dir: s.Dir, Branch: s.Branch, Workspace: w.Path, Parent: s.Parent})
+			listed = append(listed, entry{To: to, Title: s.Title, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Activity: s.Activity, Dir: s.Dir, Branch: s.Branch, Workspace: w.Path, Parent: s.Parent})
 		}
 		return nil
 	})

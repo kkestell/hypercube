@@ -39,19 +39,17 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 	return w, err
 }
 
-// Create starts a top-level session with the first prompt. With worktree,
-// the session runs in its own worktree on a new branch from the checkout's
-// HEAD.
-func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text string, images ...harness.Image) (store.Session, error) {
+// Create starts a top-level session with the settings and the first prompt.
+// With worktree, the session runs in its own worktree on a new branch from
+// the checkout's HEAD.
+func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree bool, text string, images ...harness.Image) (store.Session, error) {
 	if err := checkPrompt(text, images); err != nil {
 		return store.Session{}, err
 	}
-	cfg, err := harness.LoadConfig()
-	if err != nil {
+	if err := settings.Check(); err != nil {
 		return store.Session{}, err
 	}
-	profile, err := cfg.Profile(profileName)
-	if err != nil {
+	if _, err := harness.Find(r.PluginDir, settings.Harness); err != nil {
 		return store.Session{}, err
 	}
 	var w store.Workspace
@@ -59,7 +57,7 @@ func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text st
 		return store.Session{}, err
 	}
 	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text),
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle, Dir: w.Path}
+		Harness: settings.Harness, Model: settings.Model, Effort: settings.Effort, Activity: store.Idle, Dir: w.Path}
 	if worktree {
 		if w.NoGit {
 			return store.Session{}, errors.New("a worktree session needs a Git checkout")
@@ -68,6 +66,7 @@ func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text st
 		if err := workspace.AddWorktree(w.Path, s.Dir, s.Branch); err != nil {
 			return store.Session{}, err
 		}
+		var err error
 		if s.Base, err = workspace.Head(s.Dir); err != nil {
 			return store.Session{}, errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
 		}

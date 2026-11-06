@@ -31,7 +31,12 @@
 //	!crash     reply, then exit
 //
 // Any other text is a quick turn. Starting with the conversation "unresumable"
-// fails. With HYPERCUBE_TEST_CRASH set the plugin exits shortly after starting.
+// or the model "invalid" fails, and a start without an effort reports the
+// effort "low". With HYPERCUBE_TEST_CRASH set the plugin exits shortly after
+// starting.
+//
+// Its `describe` and `models` commands answer with Catalog's fixed models.
+// With HYPERCUBE_TEST_MODELS_HOLD set, `models` waits until it is killed.
 package harnesstest
 
 import (
@@ -142,8 +147,41 @@ func Run() {
 	if os.Getenv(marker) != "1" {
 		return
 	}
-	serve(os.Stdin, os.Stdout)
+	switch os.Args[len(os.Args)-1] {
+	case "describe":
+		_ = json.NewEncoder(os.Stdout).Encode(harness.Description{Name: "Stand-in", Installed: true})
+	case "models":
+		var req harness.ModelsRequest
+		if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
+			os.Exit(exitBadCommand)
+		}
+		if os.Getenv("HYPERCUBE_TEST_MODELS_HOLD") != "" {
+			select {}
+		}
+		c, err := Catalog(req)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(c)
+	default:
+		serve(os.Stdin, os.Stdout)
+	}
 	os.Exit(0)
+}
+
+// Catalog is the stand-in's answer to `models`: the models "m", whose efforts
+// are low and high, and "plain", which has no effort setting.
+func Catalog(req harness.ModelsRequest) (harness.Catalog, error) {
+	c := harness.Catalog{Models: []harness.Model{{ID: "m", Label: "Model M", Provider: "test"}, {ID: "plain"}}, Default: "m", Model: req.Model}
+	switch req.Model {
+	case "", "plain":
+	case "m":
+		c.Efforts, c.DefaultEffort = []string{"low", "high"}, "low"
+	default:
+		return c, fmt.Errorf("model %q is not offered", req.Model)
+	}
+	return c, nil
 }
 
 // standIn is the state of one plugin process.
@@ -232,10 +270,18 @@ func (p *standIn) start(cmd harness.Command) {
 		p.reply(cmd.ID, "cannot resume conversation unresumable")
 		return
 	}
+	if s.Model == "invalid" {
+		p.reply(cmd.ID, "model invalid is not offered")
+		return
+	}
 	if os.Getenv("HYPERCUBE_TEST_START_HOLD") == "1" {
 		return
 	}
-	p.reply(cmd.ID, "")
+	reply := harness.Reply{ID: cmd.ID}
+	if s.Effort == "" {
+		reply.Selection = &harness.Selection{Model: s.Model, Effort: "low"}
+	}
+	_ = p.enc.Encode(harness.Record{Reply: &reply})
 	p.event(harness.Event{Conversation: p.agent + "-conversation", State: harness.Idle})
 	if os.Getenv("HYPERCUBE_TEST_CRASH") != "" {
 		time.Sleep(startCrashDelay)

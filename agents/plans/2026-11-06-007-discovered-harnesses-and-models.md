@@ -87,8 +87,8 @@ Use the following resolution rules for fresh children:
 | --- | --- |
 | No overrides | Copy the parent's currently accepted harness, model, and effort. |
 | Effort only | Keep the parent's harness/model and validate the requested effort for that model. |
-| Model only | Use the parent's harness and the requested model. If the model differs, use that model's advertised default effort unless effort is explicit. |
-| Different harness | Require an explicit model; do not copy a model ID into another harness. Resolve omitted effort from the selected model. |
+| Model only | Use the parent's harness and the requested model. If the model differs, leave effort empty (the harness's default, which the plugin reports at start) unless effort is explicit. |
+| Different harness | Require an explicit model; do not copy a model ID into another harness. An omitted effort is empty, the harness's default. |
 | Explicit same harness/model, omitted effort | Retain the parent's effort. |
 
 Keep the existing native-fork constraint: the harness cannot change. Preserve
@@ -211,7 +211,10 @@ from an absent native executable.
   or when its directory/harness/model changes; cancel superseded requests.
   Reuse the same picker component for each consumer, not a global catalog
   cache. No persistent catalog, polling interval, background native process,
-  or app-wide model cache is needed.
+  or app-wide model cache is needed. Cancelling a query signals only the plugin
+  first so its discovery context can unwind and delete temporary native state.
+  Allow bounded cleanup before killing the remaining process group, and return
+  a temporary-session deletion failure rather than claiming a successful catalog.
 - A catalog is a statement of advertised availability, not proof of entitlement,
   quota, or provider health. Native startup/configuration is authoritative.
   Preserve explicit failures and do not fall back to another model or harness.
@@ -243,7 +246,10 @@ reply, and apply it before the runtime declares the session ready.
 Where the native API exposes only acceptance of an omitted effort, preserve the
 explicit “Harness default” representation rather than claiming a measured
 effective level. A start reply from an older adopted plugin can omit selection;
-leave its saved settings intact. Keep existing durable start/configure command
+leave its saved settings intact. The launch counts as started only after the
+transaction that saves the start reply (Ready and accepted settings) commits,
+and `CreateChild` returns the child as saved, so its result reports the
+accepted settings. Keep existing durable start/configure command
 shapes and do not rewrite their queued JSON lines during the migration.
 
 Use the accepted selection already available from native initialization

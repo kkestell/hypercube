@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -17,7 +18,7 @@ func TestArchivedWorktreesAreNotMeasured(t *testing.T) {
 	}
 	s := f.worktreeSession()
 	// The configure reply follows the idle event's merge refresh.
-	if err := f.rt.SelectProfile(s.ID, "lead"); err != nil {
+	if err := f.rt.Select(s.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	merges := f.rt.Merges()

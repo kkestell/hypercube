@@ -10,32 +10,13 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/hold"
 )
-
-// Find returns the path of the harness's plugin in dir, or beside the running
-// executable when dir is empty.
-func Find(dir, name string) (string, error) {
-	if dir == "" {
-		exe, err := os.Executable()
-		if err != nil {
-			return "", err
-		}
-		dir = filepath.Dir(exe)
-	}
-	path := filepath.Join(dir, "hypercube-harness-"+name)
-	if _, err := os.Stat(path); err != nil {
-		return "", fmt.Errorf("harness %q has no plugin: install %s", name, path)
-	}
-	return path, nil
-}
 
 // Client attaches to one plugin's holder.
 type Client struct {

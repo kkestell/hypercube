@@ -10,7 +10,7 @@ import (
 
 func (f *fixture) proposal(parentID string, options ChildOptions) string {
 	f.t.Helper()
-	if err := f.rt.ProposeChild(parentID, options); err != nil {
+	if _, err := f.rt.ProposeChild(parentID, options); err != nil {
 		f.t.Fatal(err)
 	}
 	for _, item := range f.transcript(parentID) {
@@ -25,7 +25,7 @@ func (f *fixture) proposal(parentID string, options ChildOptions) string {
 func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed task", Profile: harness.Profile{Name: "worker", Harness: "test", Model: "m", Effort: "low"}, Dir: ".", Message: "brief"})
+	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Proposed task", Settings: lead, Dir: ".", Message: "brief"})
 	if len(f.family(parent.ID)) != 1 || len(f.requests()) != 0 {
 		t.Fatal("proposal launched or blocked the parent")
 	}
@@ -57,7 +57,7 @@ func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
 func TestProposalCanRetryAFailedLaunchOrBeDismissed(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	options := ChildOptions{Name: "retry", Title: "Retry", Profile: harness.Profile{Harness: "missing", Model: "m", Effort: "low"}, Dir: "."}
+	options := ChildOptions{Name: "retry", Title: "Retry", Settings: harness.Settings{Harness: "missing", Model: "m", Effort: "low"}, Dir: "."}
 	id := f.proposal(parent.ID, options)
 	if _, err := f.rt.StartProposal(parent.ID, id); err == nil {
 		t.Fatal("missing plugin started")
@@ -86,7 +86,7 @@ func TestProposalCanRetryAFailedLaunchOrBeDismissed(t *testing.T) {
 func TestForkRejectsADifferentHarness(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Profile: harness.Profile{Harness: "other"}, Fork: true})
+	_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: harness.Settings{Harness: "other", Model: "m"}, Fork: true})
 	if err == nil || len(f.family(parent.ID)) != 1 {
 		t.Fatalf("incompatible fork: %v", err)
 	}

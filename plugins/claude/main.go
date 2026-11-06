@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -21,14 +22,7 @@ import (
 const startTimeout = 60 * time.Second
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-claude serve")
-		os.Exit(1)
-	}
-	if err := serve(os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "hypercube-harness-claude:", err)
-		os.Exit(1)
-	}
+	plugin.Plugin{Product: "Claude Code", Executable: "claude", Serve: serve, Models: models}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {
@@ -59,6 +53,7 @@ type claude struct {
 	// mu guards the translation state below. Events are emitted with it held,
 	// so they keep the order of the stream and of answers.
 	mu           sync.Mutex
+	models       []nativeModel // what initialize offered; set before start returns
 	conversation string
 	model        string
 	configuring  *configuration
@@ -81,7 +76,10 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 	// The prompt snapshot would freeze the instructions of the first launch.
 	argv := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
 		"--permission-prompt-tool", "stdio", "--permission-mode", "auto", "--system-prompt-snapshot", "off",
-		"--mcp-config", string(mcpJSON), "--model", a.Model, "--effort", a.Effort}
+		"--mcp-config", string(mcpJSON), "--model", a.Model}
+	if a.Effort != "" {
+		argv = append(argv, "--effort", a.Effort)
+	}
 	if a.Instructions != "" {
 		argv = append(argv, "--append-system-prompt", a.Instructions)
 	}
@@ -108,21 +106,31 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 	}
 	ready := make(chan error, 1)
 	go c.read(ready)
-	if err := c.send(map[string]any{"type": "control_request", "request_id": "initialize", "request": map[string]any{"subtype": "initialize"}}); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
+	defer cancel()
+	if err := c.initialize(ctx, ready); err != nil {
 		p.Stop()
 		return nil, err
 	}
-	select {
-	case err := <-ready:
-		if err != nil {
-			p.Stop()
-			return nil, err
-		}
-	case <-time.After(startTimeout):
+	// Claude accepts any model name at launch and fails only on the first prompt.
+	if _, err := check(c.models, harness.Selection{Model: a.Model, Effort: a.Effort}); err != nil {
 		p.Stop()
-		return nil, errors.New("claude did not become ready")
+		return nil, err
 	}
 	return c, nil
+}
+
+// initialize asks claude to start and waits until read reports the answer.
+func (c *claude) initialize(ctx context.Context, ready <-chan error) error {
+	if err := c.send(map[string]any{"type": "control_request", "request_id": "initialize", "request": map[string]any{"subtype": "initialize"}}); err != nil {
+		return err
+	}
+	select {
+	case err := <-ready:
+		return err
+	case <-ctx.Done():
+		return errors.New("claude did not become ready")
+	}
 }
 
 // Startup states of claude's output.
@@ -156,6 +164,8 @@ func (c *claude) read(ready chan<- error) {
 		case m.Type == "control_response" && m.Response.RequestID == "initialize":
 			if m.Response.Subtype == "error" {
 				failure = errors.New(m.Response.Error)
+			} else if failure == nil {
+				c.models, failure = initialized(m.Response.Response)
 			}
 			state = started
 			if failure != nil {

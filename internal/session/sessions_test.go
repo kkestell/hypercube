@@ -16,7 +16,7 @@ import (
 
 func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	f := newFixture(t)
-	s, err := f.rt.Create(f.workspace.ID, "lead", false, "\n  Fix the  parser \nand the lexer")
+	s, err := f.rt.Create(f.workspace.ID, lead, false, "\n  Fix the  parser \nand the lexer")
 	parent := s
 	if err != nil {
 		t.Fatal(err)
@@ -32,7 +32,7 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 		return len(items) > 0 && items[0].Kind == harness.KindUser && items[0].Text == "\n  Fix the  parser \nand the lexer"
 	})
 	png := harness.Image{MIMEType: "image/png", Data: "iVBORw0KGgo="}
-	s, err = f.rt.Create(f.workspace.ID, "worker", false, "", png)
+	s, err = f.rt.Create(f.workspace.ID, lead, false, "", png)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,11 +41,15 @@ func TestCreateSendsTheFirstPrompt(t *testing.T) {
 	}
 }
 
-func TestCreateRefusesAnUnknownProfile(t *testing.T) {
+func TestCreateRefusesIncompleteSettings(t *testing.T) {
 	f := newFixture(t)
-	for _, name := range []string{"", "missing"} {
-		if _, err := f.rt.Create(f.workspace.ID, name, false, "start"); err == nil || !strings.Contains(err.Error(), "no profile named") {
-			t.Errorf("Create(%q) error = %v", name, err)
+	for want, settings := range map[string]harness.Settings{
+		"missing harness":                 {Model: "m"},
+		"missing model":                   {Harness: "test"},
+		`harness "missing" has no plugin`: {Harness: "missing", Model: "m"},
+	} {
+		if _, err := f.rt.Create(f.workspace.ID, settings, false, "start"); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Create(%+v) error = %v", settings, err)
 		}
 	}
 	f.read(func(tx *store.Tx) error {
@@ -67,7 +71,7 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 		{" \n", nil},
 		{"", []harness.Image{{MIMEType: "image/png", Data: "bm90IGEgcG5n"}}},
 	} {
-		if _, err := f.rt.Create(f.workspace.ID, "lead", false, c.text, c.images...); err == nil {
+		if _, err := f.rt.Create(f.workspace.ID, lead, false, c.text, c.images...); err == nil {
 			t.Errorf("Create accepted %q and %d images", c.text, len(c.images))
 		}
 	}
@@ -340,7 +344,7 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 // reply.
 func (f *fixture) worktreeSession() store.Session {
 	f.t.Helper()
-	s, err := f.rt.Create(f.workspace.ID, "lead", true, "start")
+	s, err := f.rt.Create(f.workspace.ID, lead, true, "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -423,7 +427,7 @@ func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.rt.Create(outside.ID, "lead", true, "start"); err == nil {
+	if _, err := f.rt.Create(outside.ID, lead, true, "start"); err == nil {
 		t.Fatal("created a worktree session outside Git")
 	}
 	f.read(func(tx *store.Tx) error {

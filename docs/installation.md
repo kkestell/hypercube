@@ -7,7 +7,7 @@ weight: 1
 
 Hypercube runs on macOS. Install at least one authenticated coding harness:
 `claude`, `opencode`, `codex`, or `pi`. Check
-[harness requirements](harness-support.md) before configuring profiles.
+[harness requirements](harness-support.md) before starting a session.
 
 ## Download a beta
 

@@ -19,6 +19,7 @@ while IFS= read -r line; do
  id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
  case "$line" in
  *'"type":"get_state"'*) printf '{"id":"%s","type":"response","success":true,"data":{"model":{"provider":"p","id":"%s","contextWindow":%s},"thinkingLevel":"%s","sessionId":"s"}}\n' "$id" "$model" "$window" "$level";;
+ *'"type":"get_available_thinking_levels"'*) printf '{"id":"%s","type":"response","success":true,"data":{"levels":["low","medium","high"]}}\n' "$id";;
  *'"type":"set_model"'*)
   case "$line" in
   *'"modelId":"new"'*'"provider":"p"'*) model=new; window=900;;

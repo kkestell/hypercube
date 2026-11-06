@@ -6,7 +6,7 @@
       "repo": "field-notes",
       "sessions": [
         {
-          "profile": "codex-gpt-terra-high",
+          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
           "turns": [
             {
               "prompt": "Fix the broken links in the getting-started guide",
@@ -28,7 +28,7 @@
       "changes": "harbor.patch",
       "sessions": [
         {
-          "profile": "opencode-deepseek-flash-max",
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
           "turns": [
             {
               "prompt": "Add an RSS feed for the posts folder",
@@ -42,7 +42,7 @@
           ]
         },
         {
-          "profile": "claude-opus-high",
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
           "turns": [
             {
               "prompt": "Make harbor build skip pages whose source hasn't changed since the last build",
@@ -68,7 +68,7 @@
                 {
                   "title": "Write build cache tests",
                   "name": "cache-tests",
-                  "profile": "codex-gpt-terra-high",
+                  "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
                   "dir": ".",
                   "turns": [
                     {
@@ -86,7 +86,7 @@
                 {
                   "title": "Document build -force",
                   "name": "readme-force",
-                  "profile": "claude-sonnet-high",
+                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
                   "dir": ".",
                   "turns": [
                     {
@@ -103,8 +103,8 @@
                 }
               ],
               "items": [
-                {"id": "c7", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Write build cache tests", "name": "cache-tests", "profile": "codex-gpt-terra-high", "dir": ".", "initiation": "user_asked"}, "output": "Created cache-tests in harbor.", "done": true},
-                {"id": "c8", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Document build -force", "name": "readme-force", "profile": "claude-sonnet-high", "dir": ".", "initiation": "user_asked"}, "output": "Created readme-force in harbor.", "done": true},
+                {"id": "c7", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Write build cache tests", "name": "cache-tests", "harness": "codex", "model": "gpt-6.1-terra", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created cache-tests in harbor.", "done": true},
+                {"id": "c8", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Document build -force", "name": "readme-force", "harness": "claude", "model": "sonnet", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created readme-force in harbor.", "done": true},
                 {"id": "t3", "kind": "text", "text": "**cache-tests** is writing the table tests and **readme-force** is updating the README. Meanwhile I'll remove outputs whose source page is gone: the cache already lists every page it built, so a page in the cache but not in `content/` is stale.", "done": true},
                 {"id": "c9", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
                 {"id": "c10", "kind": "tool", "tool": "Bash", "input": {"command": "rm content/posts/templates.md && go run . build && ls public/posts", "description": "Check that a deleted page's output is removed"}}

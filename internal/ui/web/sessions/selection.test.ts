@@ -1,9 +1,10 @@
 import {expect, test} from 'bun:test';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
+import {receivedConfig} from '../app/config.ts';
 import {draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {receivedTranscript} from '../transcript/transcripts.ts';
 import type {Session} from './types.ts';
-import {emptySession, openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentProfile, unsentWorktree} from './selection.ts';
+import {emptySession, openUnsent, pageTitle, receivedWorkspaces, selectSession, unsentSettingsChosen, unsentWorktree} from './selection.ts';
 
 const unsentKey = workspaceDraftKey('w');
 
@@ -13,7 +14,7 @@ const initial = (selected = '') => testState({selected});
 
 test('new-session drafts and choices survive navigation across sessions and workspaces', () => {
   let state = receivedWorkspaces(initial('a'), [...workspaces(session('a')), testWorkspace({id: 'other'})]);
-  state = typed(unsentWorktree(unsentProfile(openUnsent(state, 'w'), {name: 'lead', description: '', harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey, 'unfinished');
+  state = typed(unsentWorktree(unsentSettingsChosen(openUnsent(state, 'w'), {harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey, 'unfinished');
   const identity = state.unsent?.identity;
   state = selectSession(state, 'a');
   expect(state.unsent).toBeNull();
@@ -21,7 +22,7 @@ test('new-session drafts and choices survive navigation across sessions and work
   expect(draftOf(state, unsentKey).text).toBe('unfinished');
   state = typed(openUnsent(state, 'other'), workspaceDraftKey('other'), 'another workspace');
   state = openUnsent(state, 'w');
-  expect(state.unsent).toMatchObject({identity, profile: 'lead', worktree: true});
+  expect(state.unsent).toMatchObject({identity, settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true});
   expect(draftOf(state, unsentKey).text).toBe('unfinished');
   expect(draftOf(state, workspaceDraftKey('other')).text).toBe('another workspace');
   expect(state.unsentDrafts[unsentKey]).toBeUndefined();
@@ -66,12 +67,13 @@ test('a removed selection moves to a session that has not ended', () => {
 test('the unsent session is discarded with its workspace', () => {
   let state = receivedWorkspaces(initial(), workspaces(session('a')));
   state = openUnsent(state, 'w');
-  expect(state.unsent?.profile).toBeNull();
-  state = unsentProfile(state, {name: 'claude-lead', description: '', harness: 'claude', model: 'opus', effort: 'high'});
+  // A new draft starts with the settings of the workspace's newest session.
+  expect(state.unsent?.settings).toEqual({harness: '', model: '', effort: ''});
+  state = unsentSettingsChosen(state, {harness: 'claude', model: 'opus', effort: 'high'});
   state = {...state, drafts: {[unsentKey]: {text: 'hi', images: [], reading: 0}}};
   expect(state.selected).toBeNull();
   expect(state.session).toBeNull();
-  expect(state.unsent?.profile).toBe('claude-lead');
+  expect(state.unsent?.settings).toEqual({harness: 'claude', model: 'opus', effort: 'high'});
   state = receivedWorkspaces(state, []);
   expect(state.unsent).toBeNull();
   expect(state.drafts).toEqual({});
@@ -121,4 +123,21 @@ test('waiting counts include saved offers in parked sessions once per session', 
   const state = receivedWorkspaces(initial('a'), workspaces(session('a'), session('b', false, {attention: true})));
   const requests = ['a', 'a', 'b'].map((id, i) => ({session: id, item: {id: String(i), kind: 'attention' as const}}));
   expect(pageTitle({...state, requests})).toBe('(2) Title a — repo — Hypercube');
+});
+
+test("a draft's settings are set once and then follow neither new sessions nor a new default", () => {
+  const opus = {harness: 'claude', model: 'opus', effort: 'high'};
+  let state = receivedWorkspaces(initial(), workspaces());
+  state = typed(openUnsent(state, 'w'), unsentKey, 'unfinished');
+  // Nothing supplies settings yet; the config, when it arrives, does once.
+  expect(state.unsent?.settings).toBeNull();
+  state = receivedConfig(state, testConfig({default_selection: opus}));
+  expect(state.unsent?.settings).toEqual(opus);
+  state = receivedConfig(state, testConfig({default_selection: {harness: 'codex', model: 'sol', effort: 'low'}}));
+  state = receivedWorkspaces(state, workspaces(session('n', false, {harness: 'pi', model: 'p/x', effort: 'max'})));
+  expect(state.unsent?.settings).toEqual(opus);
+  expect(draftOf(state, unsentKey).text).toBe('unfinished');
+  // Parked and reopened, the draft keeps them.
+  state = openUnsent(selectSession(state, 'n'), 'w');
+  expect(state.unsent?.settings).toEqual(opus);
 });

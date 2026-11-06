@@ -210,16 +210,17 @@ func (r *Runtime) pluginPath(id string) (string, error) {
 }
 
 // startArgs builds the arguments recorded with the launch's start command.
+// The caller holds mu.
 func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartArgs, err error) {
-	var profiles []harness.Profile
+	var guidance string
 	if s.Parent == "" {
 		cfg, err := harness.LoadConfig()
 		if err != nil {
 			return args, err
 		}
-		profiles = cfg.Profiles
+		guidance = cfg.ChildGuidance
 	}
-	instructions, err := report.Instructions(tx, s, profiles)
+	instructions, err := report.Instructions(tx, s, r.installedLocked(), guidance)
 	if err != nil {
 		return args, err
 	}

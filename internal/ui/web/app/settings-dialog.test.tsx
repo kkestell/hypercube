@@ -1,8 +1,8 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
-import {element, find, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {ProfileSelect} from '../agent/profile-select.tsx';
+import {SessionSelection} from '../agent/session-selection.tsx';
 import {WorktreeSelect} from '../agent/worktree-select.tsx';
 import {unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {openUnsent} from '../sessions/selection.ts';
@@ -13,10 +13,7 @@ import type {Config} from './types.ts';
 
 const unsentKey = workspaceDraftKey('w');
 
-const config = testConfig({profiles: [
-  {name: 'lead', description: 'Large tasks', harness: 'claude', model: 'opus', effort: 'high'},
-  {name: 'worker', description: 'Small tasks', harness: 'codex', model: 'sol', effort: 'low'},
-]});
+const config = testConfig({child_model_guidance: 'Use sol for reviews.'});
 afterEach(() => { mock.restore(); unmountAll(); });
 const settle = () => act(() => new Promise<void>(resolve => setImmediate(resolve)));
 const button = (name: string) => {
@@ -25,8 +22,9 @@ const button = (name: string) => {
   return found;
 };
 const click = async (name: string) => { await act(async () => button(name).click()); };
-const input = (id: string, value: string) => {
-  const field = id === 'profile-description' ? element(document, '#' + id, HTMLTextAreaElement) : element(document, '#' + id, HTMLInputElement);
+const guidance = () => element(document, '#child-model-guidance', HTMLTextAreaElement);
+const write = (value: string) => {
+  const field = guidance();
   act(() => { setValue(field, value); field.dispatchEvent(new Event('input', {bubbles: true})); });
 };
 const select = (id: string, option: string) => {
@@ -42,35 +40,6 @@ function View() {
   return <><button onClick={() => setOpen(true)}>Open settings</button><SettingsDialog open={open} onOpenChange={setOpen} /></>;
 }
 const open = async () => { mount(createStore(testState()), <View />); await settle(); };
-
-test('profile create, update, delete and default selection save as one config', async () => {
-  const posts: Config[] = [];
-  stubFetch((url, init) => {
-    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
-    return url === 'version' ? new Response('test build') : Response.json(config);
-  });
-  await open();
-  await click('Agent profiles');
-  input('profile-name', 'renamed');
-  input('profile-model', 'sonnet');
-  await click('Add profile');
-  input('profile-name', 'new-profile');
-  input('profile-description', 'New tasks');
-  input('profile-model', 'new-model');
-  input('profile-effort', 'medium');
-  select('profile-harness', 'Pi');
-  await click('SolLow');
-  await click('Remove profile');
-  await click('General');
-  select('default-profile', 'New ModelMedium');
-  expect(posts).toHaveLength(0);
-  await click('Save changes');
-  expect(posts).toEqual([{...config, default_profile: 'new-profile', profiles: [
-    {...config.profiles[0], name: 'renamed', model: 'sonnet'},
-    {name: 'new-profile', description: 'New tasks', harness: 'pi', model: 'new-model', effort: 'medium'},
-  ]}]);
-  expect(Boolean(document.querySelector('[role=dialog][data-state=open]'))).toBe(false);
-});
 
 test('preferences save with the config and apply to the page', async () => {
   const posts: Config[] = [];
@@ -97,50 +66,41 @@ test('preferences save with the config and apply to the page', async () => {
   expect(element(root, '[aria-label=Location]', HTMLButtonElement).textContent).toBe('Worktree');
 });
 
-test('cancel discards edits and reopening reloads the saved config', async () => {
-  const fetches = stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
-  await open();
-  await click('Agent profiles');
-  input('profile-name', 'discard-me');
-  await click('Cancel');
-  await click('Open settings');
-  await click('Agent profiles');
-  expect(element(document, '#profile-name', HTMLInputElement).value).toBe('lead');
-  expect(fetches.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
-});
-
-test('default follows its profile through rename and deletion, and the last profile remains', async () => {
+test('guidance saves with the config', async () => {
   const posts: Config[] = [];
   stubFetch((url, init) => {
     if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
     return url === 'version' ? new Response('build') : Response.json(config);
   });
   await open();
-  select('default-profile', 'SolLow');
-  await click('Agent profiles');
-  input('profile-name', 'worker');
-  input('profile-name', 'renamed');
-  await click('General');
-  expect(shown('default-profile')).toBe('SolLow');
-  await click('Agent profiles');
-  await click('SolLow (default)');
-  input('profile-name', 'default-renamed');
-  await click('Agent profiles');
-  await click('SolLow (default)');
-  await click('Remove profile');
-  expect(button('Remove profile').disabled).toBe(true);
+  await click('Agents');
+  expect(guidance().value).toBe('Use sol for reviews.');
+  expect(document.body.textContent).toContain('does not limit which models they can choose');
+  write('Use opus for design.');
   await click('Save changes');
-  expect(posts[0].default_profile).toBe('renamed');
+  expect(posts).toEqual([{...config, child_model_guidance: 'Use opus for design.'}]);
+});
+
+test('cancel discards edits and reopening reloads the saved config', async () => {
+  const fetches = stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
+  await open();
+  await click('Agents');
+  write('discard me');
+  await click('Cancel');
+  await click('Open settings');
+  await click('Agents');
+  expect(guidance().value).toBe('Use sol for reviews.');
+  expect(fetches.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(0);
 });
 
 test('a refused save keeps the edits and shows the server reason', async () => {
-  stubFetch((url, init) => init?.method === 'POST' ? new Response('duplicate profile "worker"', {status: 400}) : url === 'version' ? new Response('build') : Response.json(config));
+  stubFetch((url, init) => init?.method === 'POST' ? new Response('default selection: missing model', {status: 400}) : url === 'version' ? new Response('build') : Response.json(config));
   await open();
-  await click('Agent profiles');
-  input('profile-name', 'worker');
+  await click('Agents');
+  write('kept');
   await click('Save changes');
-  expect(find(document, '[role=alert]').textContent).toContain('duplicate profile "worker"');
-  expect(element(document, '#profile-name', HTMLInputElement).value).toBe('worker');
+  expect(find(document, '[role=alert]').textContent).toContain('default selection: missing model');
+  expect(guidance().value).toBe('kept');
   expect(button('Save changes').disabled).toBe(false);
 });
 
@@ -157,36 +117,45 @@ test('saving holds the modal open until the write completes', async () => {
   expect(Boolean(document.querySelector('[role=dialog][data-state=open]'))).toBe(false);
 });
 
-test.each(['remove', 'rename', 'keep'] as const)('saving settings reconciles a draft choice (%s) before sending without opening its menu', async change => {
-  let saved = config;
-  const created: string[] = [];
+test('the default model is chosen from the workspace and initializes a draft that has no settings yet', async () => {
+  const posts: Config[] = [];
+  const created: Record<string, string>[] = [];
   stubFetch((url, init) => {
-    if (url === 'config' && init?.method === 'POST') {
-      saved = JSON.parse(String(init.body));
-      return new Response(null, {status: 204});
+    if (url === 'config' && init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    if (url.startsWith('models?')) {
+      const model = new URL(url, 'http://x/').searchParams.get('model');
+      return Response.json(model ? {models: [], model, efforts: ['low'], default_effort: 'low'} : {models: [{id: 'sol', label: 'Sol'}], default: 'sol'});
     }
+    if (url === 'harnesses?') return Response.json([{id: 'claude', name: 'Claude Code', installed: true}, {id: 'codex', name: 'Codex', installed: true}]);
     if (url.startsWith('session?')) {
-      created.push(new URL(url, 'http://test/').searchParams.get('profile')!);
+      created.push(Object.fromEntries(new URL(url, 'http://x/').searchParams));
       return Response.json({session: 'created'});
     }
-    return url === 'version' ? new Response('build') : Response.json(saved);
+    return url === 'version' ? new Response('build') : Response.json(config);
   });
-  const store = createStore(openUnsent(testState({workspaces: [testWorkspace({id: 'w'})]}), 'w'));
-  const root = mount(store, <><ProfileSelect session={testSession({id: unsentKey})} /><View /></>);
+  const store = createStore(openUnsent(testState({config: testConfig({default_selection: undefined}), workspaces: [testWorkspace({id: 'w'})]}), 'w'));
+  expect(store.get().unsent?.settings).toBeNull();
+  const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
-  expect(store.get().unsent?.profile).toBe('lead');
-  select('default-profile', 'SolLow');
-  await click('Agent profiles');
-  if (change === 'remove') await click('Remove profile');
-  if (change === 'rename') input('profile-name', 'renamed');
-  if (change === 'keep') {
-    input('profile-model', 'sonnet');
-    input('profile-effort', 'low');
-  }
+  const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);
+  clickControl(picker);
+  await settle(); await settle();
+  const key = (target: Element) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); });
+  key(element(document, '[aria-label=Harness]', HTMLButtonElement));
+  key([...document.querySelectorAll('[role=option]')].find(o => o.textContent === 'Codex')!);
+  await settle(); await settle();
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent?.startsWith('Sol'))!);
+  await settle(); await settle();
   await click('Save changes');
-  const expected = change === 'keep' ? 'lead' : 'worker';
-  expect(store.get().unsent?.profile).toBe(expected);
-  expect(element(root, '[aria-label=Profile]', HTMLButtonElement).textContent).toBe(change === 'keep' ? 'SonnetLow' : 'SolLow');
+  const chosen = {harness: 'codex', model: 'sol', effort: 'low'};
+  expect(posts[0].default_selection).toEqual(chosen);
+  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('Codex sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
-  expect(created).toEqual([expected]);
+  expect(created[0]).toMatchObject({action: 'new', ...chosen});
+});
+
+test('the default model needs a workspace', async () => {
+  stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
+  await open();
+  expect(document.body.textContent).toContain('Add a workspace to choose a default model.');
 });

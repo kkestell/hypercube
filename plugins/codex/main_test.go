@@ -53,6 +53,14 @@ type agentUnderTest struct {
 	events []harness.Event
 }
 
+// modelList is the stand-in app-server's model/list: "m", whose default
+// effort is medium, and the hidden "secret", which has no efforts.
+var modelList = map[string]any{"data": []map[string]any{
+	{"id": "m", "model": "m", "displayName": "M", "isDefault": true, "defaultReasoningEffort": "medium",
+		"supportedReasoningEfforts": []map[string]any{{"reasoningEffort": "low"}, {"reasoningEffort": "medium"}}},
+	{"id": "secret", "model": "secret", "hidden": true},
+}}
+
 func newAgent(t *testing.T) *agentUnderTest {
 	t.Helper()
 	agentIn, peerOut := io.Pipe()
@@ -70,6 +78,7 @@ func newAgent(t *testing.T) *agentUnderTest {
 	}
 	h.rpc = plugin.NewRPC(agentOut, h.handle)
 	go func() { h.rpc.End(plugin.ReadLines(agentIn, h.rpc.Line)) }()
+	h.server.handle("model/list", func(map[string]any) (any, *plugin.RPCError) { return modelList, nil })
 	go h.server.serve(peerIn)
 	t.Cleanup(func() { h.cancel(); peerOut.Close(); peerIn.Close() })
 	return h

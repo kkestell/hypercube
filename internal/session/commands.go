@@ -116,7 +116,8 @@ func (r *Runtime) wait(l *live, id int64, timeout time.Duration) error {
 // waiting. The output position is committed by apply in this transaction.
 func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 	c := l.commands[reply.ID]
-	if c.Command == harness.CmdConfigure && reply.Selection != nil {
+	// Start and configure report the settings the harness accepted.
+	if reply.Selection != nil && (c.Command == harness.CmdConfigure || c.Command == harness.CmdStart) {
 		s, err := tx.Session(l.id)
 		if err != nil {
 			return err
@@ -147,7 +148,6 @@ func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 			if err = tx.SaveSession(s); err != nil {
 				return err
 			}
-			close(l.started)
 		}
 	} else if failure != nil {
 		if c.Command == harness.CmdInput {

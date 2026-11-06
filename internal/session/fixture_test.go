@@ -17,6 +17,9 @@ import (
 
 func TestStandIn(t *testing.T) { harnesstest.Run() }
 
+// lead is the settings of the fixture's top-level sessions.
+var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
+
 // fixture is a runtime whose agents are the stand-in plugin, in a Git
 // workspace.
 type fixture struct {
@@ -46,12 +49,6 @@ func newFixture(t *testing.T) *fixture {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", f.logs)
 	harnesstest.Install(t, f.plugins, "test")
-	config := `{"profiles":[
-		{"name":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
-	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	f.git(f.root, "init", "-q", "-b", "main")
 	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "init")
 	if f.root, err = filepath.EvalSymlinks(f.root); err != nil {
@@ -89,7 +86,7 @@ func (f *fixture) git(dir string, args ...string) {
 // "user:start|text:ack".
 func (f *fixture) session() store.Session {
 	f.t.Helper()
-	s, err := f.rt.Create(f.workspace.ID, "lead", false, "start")
+	s, err := f.rt.Create(f.workspace.ID, lead, false, "start")
 	if err != nil {
 		f.t.Fatal(err)
 	}
@@ -121,15 +118,7 @@ func (f *fixture) seed(children ...store.Session) {
 
 func (f *fixture) child(parent store.Session, name, message string) store.Session {
 	f.t.Helper()
-	cfg, err := harness.LoadConfig()
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	profile, err := cfg.Profile("worker")
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Title", Profile: profile, Dir: "", Message: message})
+	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Title", Dir: "", Message: message})
 	if err != nil {
 		f.t.Fatal(err)
 	}

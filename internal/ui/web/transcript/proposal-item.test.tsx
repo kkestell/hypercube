@@ -14,7 +14,7 @@ test.each(['Started', 'Dismissed'])('a %s child proposal collapses and keeps its
   const brief = 'A detailed brief to investigate the parser.';
   const item: TranscriptItem = {
     id: 'p', seq: 1, kind: 'proposal', text: 'Investigate parser',
-    input: {name: 'parser', title: 'Parser work', profile: {name: 'worker', harness: 'claude', model: 'opus', effort: 'high'}, message: brief},
+    input: {name: 'parser', title: 'Parser work', settings: {harness: 'claude', model: 'opus', effort: 'high'}, message: brief},
   };
   const store = createStore(receivedTranscript(testState({session: emptySession('s')}), {type: 'transcript', session: 's', reset: true, items: [item]}));
   const root = mount(store, <Transcript session={testSession({id: 's'})} />);
@@ -23,7 +23,8 @@ test.each(['Started', 'Dismissed'])('a %s child proposal collapses and keeps its
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 's', reset: false, items: [{...item, done: true, answer}]})));
   const trigger = find(root, '.proposal-item [data-slot=collapsible-trigger]');
   expect(trigger.textContent).toContain(answer === 'Dismissed' ? 'Dismissed' : 'Child session: parser');
-  expect(trigger.textContent).toContain('OpusHigh');
+  expect(trigger.textContent).toContain('opushigh');
+  expect(find(trigger, '[title]').title).toBe('Claude opus, effort high');
   expect(root.textContent).not.toContain(brief);
   act(() => trigger.click());
   expect(root.textContent).toContain(brief);

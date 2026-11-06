@@ -3,6 +3,7 @@
 import type {Changes, OpenDiff} from '../changes/types.ts';
 import type {ScrollMemory, TabLayout} from '../editor/types.ts';
 import type {LineRange, SessionFiles} from '../files/types.ts';
+import type {Settings} from '../agent/types.ts';
 import type {Transcript} from '../transcript/types.ts';
 
 // Workspace is a folder that holds sessions, newest first. noGit marks a
@@ -64,12 +65,12 @@ export interface Session {
 
 // Unsent is a new session the user has opened but not yet sent a first prompt
 // to. It lives in unsent while shown, or unsentDrafts when another view is shown.
-// Its identity object tells it apart from a later unsent session. A null
-// worktree follows the Settings default until the user chooses.
+// Its identity object tells it apart from a later unsent session. Null
+// settings and worktree follow the defaults until the user chooses.
 export interface Unsent {
   identity: object;
   workspace: string | null;
-  profile: string | null;
+  settings: Settings | null;
   worktree: boolean | null;
   sending: boolean;
 }

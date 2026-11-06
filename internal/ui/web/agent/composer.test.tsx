@@ -2,7 +2,7 @@ import {afterEach, beforeEach, expect, mock, spyOn, test, type Mock} from 'bun:t
 import {act} from 'react';
 import {clickControl, element, type FetchHandler, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {emptySession, openUnsent, unsentProfile, unsentSending} from '../sessions/selection.ts';
+import {emptySession, openUnsent, unsentSettingsChosen} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import type {Merge, Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -10,7 +10,6 @@ import {createStore} from '../store.ts';
 import type {TranscriptItem} from '../transcript/types.ts';
 import {Composer} from './composer.tsx';
 import {unsentKey as workspaceDraftKey} from './drafts.ts';
-import type {Profile} from './types.ts';
 
 const unsentKey = workspaceDraftKey('w');
 
@@ -25,7 +24,7 @@ const session = testSession({id: 'a', harness: 'claude', model: 'opus', effort: 
 const store = () => createStore(testState());
 const textarea = (root: HTMLElement) => element(root, 'textarea', HTMLTextAreaElement);
 const control = (root: HTMLElement, title: string) => element(root, `[title="${title}"]`, HTMLButtonElement);
-const profileButton = (root: HTMLElement) => element(root, '.composer-profile', HTMLButtonElement);
+const settingsButton = (root: HTMLElement) => element(root, 'button[aria-label^="Model"]', HTMLButtonElement);
 const queryOf = (url: string) => Object.fromEntries(new URL(url, 'http://x/').searchParams);
 const sentBody = (init?: RequestInit): {text: string; images: unknown[]} => JSON.parse(String(init?.body));
 
@@ -53,8 +52,8 @@ const withHistory = (state: State, ...items: TranscriptItem[]): State => ({
 test('a composer focuses its text box when it mounts', () => {
   const root = mount(store(), <Composer session={session} />);
   expect(document.activeElement).toBe(textarea(root));
-  expect(profileButton(root).disabled).toBe(true);
-  expect(profileButton(root).textContent).toBe('OpusHigh');
+  expect(settingsButton(root).disabled).toBe(true);
+  expect(settingsButton(root).title).toBe('Claude opus, effort high');
 });
 
 test('a composer leaves the focus in a tab strip', () => {
@@ -115,10 +114,6 @@ test('an ended session cannot send and shows no exited dot', () => {
   expect(root.querySelector('[title="Exited"]')).toBeNull();
 });
 
-const profiles: Profile[] = [
-  {name: 'claude', description: 'Claude for hard tasks', harness: 'claude', model: 'opus', effort: 'high'},
-  {name: 'codex', description: 'Codex for ordinary tasks', harness: 'codex', model: 'sol', effort: 'medium'},
-];
 const unsentSession = testSession({id: unsentKey});
 const settle = () => act(() => new Promise<void>(resolve => setTimeout(resolve)));
 const unsentStore = () => {
@@ -127,83 +122,15 @@ const unsentStore = () => {
   return s;
 };
 
-test('the unsent composer uses the configured default and keeps the draft when another is chosen', async () => {
-  fetches = stubFetch(() => Response.json({default_profile: 'codex', profiles}));
-  const s = unsentStore();
-  const root = mount(s, <Composer session={unsentSession} />);
-  const field = textarea(root);
-  setValue(field, 'hello');
-  act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
-  expect(control(root, 'Send').disabled).toBe(true);
-  await settle();
-
-  expect(s.get().unsent?.profile).toBe('codex');
-  expect(control(root, 'Send').disabled).toBe(false);
-  const select = profileButton(root);
-  expect(select.disabled).toBe(false);
-  expect(select.textContent).toBe('SolMedium');
-  clickControl(select);
-  await settle();
-  const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'OpusHigh' : 'SolMedium'}`));
-  act(() => options[0].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
-  expect(s.get().unsent?.profile).toBe('claude');
-  expect(select.textContent).toBe('OpusHigh');
-  expect(s.get().drafts[unsentKey].text).toBe('hello');
-});
-
-test('profiles that arrive for a replaced unsent session are ignored', async () => {
-  const answers: ((response: Response) => void)[] = [];
-  fetches = stubFetch(url => url.startsWith('mention-files?') ? Response.json([]) : new Promise<Response>(resolve => { answers.push(resolve); }));
-  const s = unsentStore();
-  mount(s, <Composer session={unsentSession} />);
-  act(() => s.update(state => openUnsent(state, 'other')));
-  expect(answers.length).toBe(2);
-  answers[0](Response.json({default_profile: 'codex', profiles: [profiles[1]]}));
-  await settle();
-  expect(s.get().unsent).toMatchObject({workspace: 'other', profile: null});
-  answers[1](Response.json({default_profile: 'claude', profiles}));
-  await settle();
-  expect(s.get().unsent?.profile).toBe('claude');
-});
-
-test('opening the selector uses saved profiles and replaces a removed draft choice with the default', async () => {
-  let config = {default_profile: 'claude', profiles};
-  fetches = stubFetch(() => Response.json(config));
-  const s = unsentStore();
-  const root = mount(s, <Composer session={unsentSession} />);
-  await settle();
-  typeInto(textarea(root), 'Keep this draft');
-  config = {default_profile: 'codex', profiles: [profiles[1]]};
-  clickControl(profileButton(root));
-  await settle();
-  expect(s.get().unsent?.profile).toBe('codex');
-  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['SolMedium']);
-  expect(textarea(root).value).toBe('Keep this draft');
-});
-
-test('the profile selector stays in place and disables while the first message sends', async () => {
-  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
-  const s = unsentStore();
-  const root = mount(s, <Composer session={unsentSession} />);
-  await settle();
-  const select = profileButton(root);
-  act(() => s.update(state => unsentSending(state, true)));
-  expect(profileButton(root)).toBe(select);
-  expect(select.disabled).toBe(true);
-  await act(async () => { clickControl(select); });
-  expect(s.get().unsent?.profile).toBe('claude');
-});
-
 const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
-  const s = createStore(testState({workspaces: [testWorkspace({id: 'w', path: '/repo', noGit, sessions})]}));
+  const s = createStore(testState({config: testConfig(), workspaces: [testWorkspace({id: 'w', path: '/repo', noGit, sessions})]}));
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
 const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label="Location"]');
 
 test('the unsent composer offers Local or Worktree, Local first, only in a Git workspace', async () => {
-  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
+  fetches = stubFetch(() => Response.json([]));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   await act(async () => {});
   const toggle = element(root, '[aria-label="Location"]', HTMLButtonElement);
@@ -215,7 +142,7 @@ test('the unsent composer offers Local or Worktree, Local first, only in a Git w
 });
 
 test('choosing Worktree creates the session in a worktree and locks while sending', async () => {
-  fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
+  fetches = stubFetch(() => Response.json([]));
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
@@ -246,7 +173,7 @@ test('choosing Worktree creates the session in a worktree and locks while sendin
 test.each([false, true])('a default of Worktree applies only in a Git workspace (noGit %p)', async noGit => {
   fetches = stubFetch(() => Response.json({session: 'n'}));
   const s = worktreeStore(noGit);
-  s.update(state => unsentProfile({...state, config: testConfig({default_worktree: true})}, profiles[0]));
+  s.update(state => unsentSettingsChosen({...state, config: testConfig({default_worktree: true})}, {harness: 'claude', model: 'opus', effort: 'high'}));
   await act(async () => { await createSession(s, {text: 'hello', images: []}, unsentKey); });
   const params = new URL(fetches.mock.calls.at(-1)?.[0] ?? '', 'http://x/').searchParams;
   expect(params.get('worktree')).toBe(noGit ? null : '1');
@@ -432,7 +359,7 @@ test('opening mentions refreshes files, keeps old results while loading, and rep
 });
 
 test('clearing the new session workspace removes its file suggestions', async () => {
-  fetches.mockImplementation(url => Response.json(url.startsWith('mention-files?') ? ['old.go'] : {default_profile: 'claude', profiles}));
+  fetches.mockImplementation(url => Response.json(url.startsWith('mention-files?') ? ['old.go'] : []));
   const s = unsentStore();
   const root = mount(s, <Composer session={unsentSession} />);
   const field = textarea(root);

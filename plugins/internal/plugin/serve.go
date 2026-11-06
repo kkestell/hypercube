@@ -15,11 +15,14 @@ import (
 type Agent struct {
 	Process      *Process // Serve returns Process.Err() when it ends by itself
 	Conversation string   // reported with the idle event that follows start's reply
-	Input        func(text string, images []harness.Image) error
-	Interrupt    func() error
-	Answer       func(request string, choices []string, text string) error
-	Configure    func(harness.Selection) (*harness.Selection, error)
-	Stop         func()
+	// Selection is the model and effort the harness reports it started with,
+	// when they differ from the requested ones. Start's reply carries it.
+	Selection *harness.Selection
+	Input     func(text string, images []harness.Image) error
+	Interrupt func() error
+	Answer    func(request string, choices []string, text string) error
+	Configure func(harness.Selection) (*harness.Selection, error)
+	Stop      func()
 }
 
 // Start starts the harness for the `start` command. The harness reports
@@ -155,7 +158,7 @@ func (s *server) handle(cmd harness.Command, start Start) (*harness.Selection, e
 			return nil, err
 		}
 		s.agent = &a
-		return nil, nil
+		return a.Selection, nil
 	}
 	if s.agent == nil {
 		return nil, errors.New("not started")

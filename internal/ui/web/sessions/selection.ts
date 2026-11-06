@@ -3,9 +3,9 @@
 // which gives it a fresh session state for its transcripts, tabs, and files.
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
-import {isUnsent, unsentKey, unsentOf} from '../agent/drafts.ts';
+import {draftDefaults, isUnsent, unsentKey, unsentOf, withDraftDefaults} from '../agent/drafts.ts';
 import {agentTabs} from '../editor/editor.ts';
-import type {Profile} from '../agent/types.ts';
+import type {Settings} from '../agent/types.ts';
 import type {State} from '../state.ts';
 import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
 import {restoreView, sessionView} from './view-state.ts';
@@ -29,7 +29,7 @@ export function sessionOf(state: State, id: string | null): {workspace: Workspac
   }
 }
 
-// The unsent session takes the harness of its chosen profile.
+// The unsent session takes the harness of its settings.
 const unsentSession = (id: string, sending: boolean, harness = ''): Session => ({
   id, parent: '', title: 'New Session', ready: false, ended: false, unseen: false,
   harness, model: '', effort: '', dir: '', activity: sending ? 'busy' : 'idle', attention: false, usage: {},
@@ -37,7 +37,8 @@ const unsentSession = (id: string, sending: boolean, harness = ''): Session => (
 });
 
 const placeholder = (state: State, unsent: Unsent) =>
-  unsentSession(unsentKey(unsent.workspace), unsent.sending, state.config?.profiles.find(p => p.name === unsent.profile)?.harness);
+  unsentSession(unsentKey(unsent.workspace), unsent.sending, unsent.settings?.harness);
+
 
 // shownSession is the unsent placeholder or the attached session.
 export function shownSession(state: State): Session | null {
@@ -133,7 +134,7 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   const oldFamily = sessionOf(state, state.selected);
   if (family && (family.parent ?? family.session).ended && !(oldFamily?.parent ?? oldFamily?.session)?.ended && next.session?.id === chosen?.id) next = {...next, selected: null};
   else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => !s.ended)?.id ?? ''};
-  return attach(next);
+  return attach(withDraftDefaults(next));
 }
 
 // selectSession shows a session or an unsent session. A new session's ID can
@@ -154,13 +155,13 @@ export function openUnsent(state: State, workspace?: string | null): State {
   const key = unsentKey(workspace);
   const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
-  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, profile: null, worktree: null, sending: false};
+  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, settings: draftDefaults(next, workspace), worktree: null, sending: false};
   return attach({...next, unsent, unsentDrafts, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
 }
 
-// unsentProfile sets the unsent session's profile.
-export const unsentProfile = (state: State, profile: Profile): State => state.unsent
-  ? {...state, unsent: {...state.unsent, profile: profile.name}}
+// unsentSettingsChosen sets the unsent session's settings.
+export const unsentSettingsChosen = (state: State, settings: Settings): State => state.unsent
+  ? {...state, unsent: {...state.unsent, settings}}
   : state;
 
 // inWorktree is whether the unsent session will run in its own worktree. A

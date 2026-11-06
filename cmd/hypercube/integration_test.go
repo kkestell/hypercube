@@ -21,6 +21,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -56,6 +57,7 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
+	// A config from before agent profiles were removed, which the app upgrades.
 	config := `{"profiles":[
 		{"name":"first","description":"First lead","harness":"test","model":"haiku","effort":"low"},
 		{"name":"worker","description":"test","harness":"test","model":"p/m","effort":"high"}
@@ -193,10 +195,10 @@ func (c client) post(path string, values map[string]string, body string) (int, s
 	return res.StatusCode, strings.TrimSpace(string(b))
 }
 
-// newSession starts a session with the named profile and returns its ID.
-func (c client) newSession(workspace, profile string) string {
+// newSession starts a session with the settings and returns its ID.
+func (c client) newSession(workspace string, settings harness.Settings) string {
 	c.t.Helper()
-	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "profile": profile}, `{"text":"start"}`)
+	code, body := c.post("/session", map[string]string{"action": "new", "workspace": workspace, "harness": settings.Harness, "model": settings.Model, "effort": settings.Effort}, `{"text":"start"}`)
 	if code != http.StatusOK {
 		c.t.Fatalf("new session: %d %s", code, body)
 	}
@@ -276,7 +278,20 @@ func TestAppProcess(t *testing.T) {
 	if err != nil || !bytes.Equal(serverVersion, version) {
 		t.Fatalf("running server version = %q, %v; CLI = %q", serverVersion, err, version)
 	}
-	parent := w.session(c.newSession(ws.ID, "first"))
+	res, err = http.Get(c.base + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cfg harness.Config
+	err = json.NewDecoder(res.Body).Decode(&cfg)
+	res.Body.Close()
+	if err != nil || cfg.DefaultSelection == nil || !strings.Contains(cfg.ChildGuidance, "model p/m, effort high: test") {
+		t.Fatalf("upgraded config = %+v, %v", cfg, err)
+	}
+	parent := w.session(c.newSession(ws.ID, *cfg.DefaultSelection))
+	if parent.Model != "haiku" {
+		t.Fatalf("parent %+v", parent)
+	}
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
 	// The agent's harness runs `hypercube mcp`, which reaches the app.
 	bridge := func(tool string, args map[string]string) *exec.Cmd {
@@ -286,7 +301,7 @@ func TestAppProcess(t *testing.T) {
 		cmd.Stdin = bytes.NewReader(append(body, '\n'))
 		return cmd
 	}
-	out, err := bridge("create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "profile": "worker", "message": "brief"}).CombinedOutput()
+	out, err := bridge("create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "model": "p/m", "effort": "high", "message": "brief"}).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "Proposed w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}

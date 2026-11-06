@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/terminal"
 	"github.com/kkestell/hypercube/internal/workspace"
@@ -75,6 +76,8 @@ type Runtime struct {
 	viewers map[string]int
 	// idle holds each parkable session's idle timer, by session ID.
 	idle map[string]*idleTimer
+	// harnesses is the last scan of the installed harnesses.
+	harnesses []harness.Harness
 	// refreshMu serializes refreshMerges.
 	refreshMu sync.Mutex
 	feed      feed

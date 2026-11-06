@@ -2,9 +2,9 @@ import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {attachImages, canSend, draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
-import type {Profile} from '../agent/types.ts';
+import type {Settings} from '../agent/types.ts';
 import {createStore} from '../store.ts';
-import {openUnsent, unsentProfile} from './selection.ts';
+import {openUnsent, unsentSettingsChosen} from './selection.ts';
 import {chooseSession, sendPrompt} from './session-actions.ts';
 import type {Session} from './types.ts';
 
@@ -14,7 +14,7 @@ afterEach(() => mock.restore());
 
 const idle = (id: string): Pick<Session, 'id' | 'ended' | 'activity'> => ({id, ended: false, activity: 'idle'});
 const store = () => createStore(testState({selected: 's'}));
-const lead: Profile = {name: 'claude-lead', description: '', harness: 'claude', model: 'opus', effort: 'high'};
+const lead: Settings = {harness: 'claude', model: 'opus', effort: 'high'};
 const png = (bytes: number) => new File([new Uint8Array(bytes)], 'a.png', {type: 'image/png'});
 
 // answer replies to every request with respond(), and returns the query
@@ -47,22 +47,22 @@ test('a refused prompt returns unless another was started', async () => {
   expect(draftOf(s.get(), 's').text).toBe('second');
 });
 
-test('the unsent session cannot send until it has a profile', () => {
+test('the unsent session cannot send until it has settings', () => {
   const s = store();
   s.update(state => typed(openUnsent(state, 'w'), unsentKey, 'hello'));
   expect(canSend(s.get(), idle(unsentKey))).toBe(false);
-  s.update(state => unsentProfile(state, lead));
+  s.update(state => unsentSettingsChosen(state, lead));
   expect(canSend(s.get(), idle(unsentKey))).toBe(true);
 });
 
 test('text typed while the unsent session sends moves to the created session', async () => {
   const s = store();
-  s.update(state => unsentProfile(openUnsent(state, 'w'), lead));
+  s.update(state => unsentSettingsChosen(openUnsent(state, 'w'), lead));
   s.update(state => typed(state, unsentKey, 'create it'));
   const created = Promise.withResolvers<Response>();
   const requests = answer(() => created.promise);
   const sending = sendPrompt(s, idle(unsentKey));
-  expect(Object.fromEntries(requests[0])).toEqual({action: 'new', workspace: 'w', profile: 'claude-lead'});
+  expect(Object.fromEntries(requests[0])).toEqual({action: 'new', workspace: 'w', harness: 'claude', model: 'opus', effort: 'high'});
   expect(s.get().unsent?.sending).toBe(true);
   s.update(state => typed(state, unsentKey, 'next'));
   created.resolve(Response.json({session: 'n'}));
@@ -77,12 +77,12 @@ for (const accepted of [true, false]) {
 
   test(`a ${accepted ? 'successful' : 'refused'} creation preserves another workspace's new session`, async () => {
     const s = store();
-    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), lead), unsentKey, 'first'));
+    s.update(state => typed(unsentSettingsChosen(openUnsent(state, 'w'), lead), unsentKey, 'first'));
     const created = Promise.withResolvers<Response>();
     answer(() => created.promise);
     const sending = sendPrompt(s, idle(unsentKey));
     const other = workspaceDraftKey('other');
-    s.update(state => typed(unsentProfile(openUnsent(state, 'other'), lead), other, 'second'));
+    s.update(state => typed(unsentSettingsChosen(openUnsent(state, 'other'), lead), other, 'second'));
     const replacement = s.get().unsent;
     created.resolve(reply());
     await sending;
@@ -96,7 +96,7 @@ for (const accepted of [true, false]) {
 
   test(`image reads do not strand a composer when creation ${accepted ? 'succeeds' : 'is refused'}`, async () => {
     const s = store();
-    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), lead), unsentKey, 'first'));
+    s.update(state => typed(unsentSettingsChosen(openUnsent(state, 'w'), lead), unsentKey, 'first'));
     const created = Promise.withResolvers<Response>();
     const readers: FileReader[] = [];
     answer(() => created.promise);
@@ -133,7 +133,7 @@ for (const [phase, response] of failures) {
     expect(s.get().errors[0].message).toContain('Load failed');
     expect(draftOf(s.get(), 's').text).toBe('hello');
 
-    s.update(state => typed(unsentProfile(openUnsent(state, 'w'), lead), unsentKey, 'create it'));
+    s.update(state => typed(unsentSettingsChosen(openUnsent(state, 'w'), lead), unsentKey, 'create it'));
     await sendPrompt(s, idle(unsentKey));
     expect(s.get().errors.length).toBe(2);
     expect(s.get().unsent?.sending).toBe(false);

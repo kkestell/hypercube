@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -31,14 +32,7 @@ const (
 var extension []byte
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-pi serve")
-		os.Exit(1)
-	}
-	if err := serve(os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "hypercube-harness-pi:", err)
-		os.Exit(1)
-	}
+	plugin.Plugin{Product: "Pi", Executable: "pi", Serve: serve, Models: models}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {
@@ -47,10 +41,14 @@ func serve(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return plugin.Agent{}, err
 		}
-		return plugin.Agent{
+		started := plugin.Agent{
 			Process: ag.proc, Conversation: ag.conversation(),
 			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
-		}, nil
+		}
+		if ag.started != (harness.Selection{Model: a.Model, Effort: a.Effort}) {
+			started.Selection = &ag.started
+		}
+		return started, nil
 	})
 }
 
@@ -84,12 +82,14 @@ type agent struct {
 	requests  map[string]*request     // open extension dialogs, by item ID
 	last      assistant               // the latest assistant message of the run
 	errs      plugin.Errors
+
+	started harness.Selection // what Pi started with; set by connect
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	provider, model, ok := strings.Cut(a.Model, "/")
 	if !ok {
-		return nil, fmt.Errorf("model %q is not provider/id; see pi --list-models", a.Model)
+		return nil, fmt.Errorf("model %q is not provider/id; see list_models", a.Model)
 	}
 	file, err := plugin.WriteFile(filepath.Join(a.StateDir, "pi-extension"), "index.js", extension)
 	if err != nil {
@@ -109,14 +109,29 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	} else if a.Fork != "" {
 		argv = append(argv, "--fork", a.Fork, "--session-id", a.Session)
 	}
-	cmd := exec.Command("pi", argv...)
-	cmd.Dir = a.Dir
 	mcp := map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "exposure": "direct"}
 	mcpJSON, err := json.Marshal(mcp)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Env = append(os.Environ(), "HYPERCUBE_MCP="+string(mcpJSON))
+	ag, err := launch(a.Dir, argv, emit, "HYPERCUBE_MCP="+string(mcpJSON))
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
+	defer cancel()
+	if err := ag.connect(ctx, a); err != nil {
+		ag.stop()
+		return nil, err
+	}
+	return ag, nil
+}
+
+// launch starts pi in dir with the arguments and environment.
+func launch(dir string, argv []string, emit func(harness.Event), env ...string) (*agent, error) {
+	cmd := exec.Command("pi", argv...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
 	p, err := plugin.StartProcess("Pi", cmd)
 	if err != nil {
 		return nil, err
@@ -127,12 +142,6 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	}
 	ag.ctx, ag.cancel = context.WithCancel(context.Background())
 	go func() { ag.end(p.Read(ag.line)) }()
-	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
-	defer cancel()
-	if err := ag.connect(ctx, a); err != nil {
-		ag.stop()
-		return nil, err
-	}
 	return ag, nil
 }
 
@@ -143,20 +152,21 @@ func (ag *agent) stop() {
 }
 
 // connect checks what Pi started with: the model, which Pi replaces with
-// another when the requested name is partial, and a resumed session, which
-// Pi has saved once it holds a message.
+// another when the requested name is partial, the thinking level, which Pi
+// lowers to one the model supports, and a resumed session, which Pi has
+// saved once it holds a message.
 func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	var state sessionState
 	if err := ag.call(ctx, "get_state", nil, &state); err != nil {
 		return err
 	}
-	selected := "no model"
-	if state.Model != nil {
-		selected = state.Model.Provider + "/" + state.Model.ID
+	if err := state.check(a.Model); err != nil {
+		return err
 	}
-	if selected != a.Model {
-		return fmt.Errorf("Pi selected %s instead of requested %s; use a full provider/model ID from pi --list-models", selected, a.Model)
+	if err := ag.checkLevel(ctx, a.Model, a.Effort); err != nil {
+		return err
 	}
+	ag.started = harness.Selection{Model: a.Model, Effort: cmp.Or(state.ThinkingLevel, a.Effort)}
 	window, session := state.Model.ContextWindow, state.SessionID
 	var cost float64
 	var contextTokens int

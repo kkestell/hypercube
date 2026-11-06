@@ -37,6 +37,8 @@ func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.H
 	mux.HandleFunc("GET /state", s.state)
 	mux.HandleFunc("GET /config", config)
 	mux.HandleFunc("POST /config", saveConfig)
+	mux.HandleFunc("GET /harnesses", s.harnesses)
+	mux.HandleFunc("GET /models", s.models)
 	mux.HandleFunc("GET /search-sessions", s.searchSessions)
 	mux.HandleFunc("GET /grants", s.grants)
 	mux.HandleFunc("POST /grants", s.deleteGrant)

@@ -6,7 +6,8 @@
 // lists a parent's ended children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
-import {shownId} from '../sessions/selection.ts';
+import {sessionOf, shownId} from '../sessions/selection.ts';
+import {SettingsDiffer} from '../agent/session-selection.tsx';
 import type {Session} from '../sessions/types.ts';
 import {BranchIcon} from '../shared/branch-icon.tsx';
 import {StatusDot} from '../shared/status-dot.tsx';
@@ -40,6 +41,7 @@ interface SessionItemProps {
 
 export function SessionItem({session, level, position, siblings, hasChildren, expanded, tabbable, onToggle, onFocus, renaming, onRenaming}: SessionItemProps) {
   const [state, store] = useStore();
+  const parent = level === 2 ? sessionOf(state, session.id)?.parent : null;
   const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id));
   const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-5' : ''} ${session.ended ? 'opacity-60' : ''}`;
@@ -64,7 +66,8 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
           <Chevron open={expanded} />
         </span>}
       </span>
-      {session.id !== renaming && (session.worktree || status) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
+      {session.id !== renaming && (session.worktree || status || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
+        {parent && <SettingsDiffer child={session} parent={parent} />}
         {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
         {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}

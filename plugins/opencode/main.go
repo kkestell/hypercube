@@ -29,14 +29,7 @@ const (
 )
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-opencode serve")
-		os.Exit(1)
-	}
-	if err := serve(os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "hypercube-harness-opencode:", err)
-		os.Exit(1)
-	}
+	plugin.Plugin{Product: "OpenCode", Executable: "opencode", Serve: serve, Models: models}.Main()
 }
 
 func serve(in io.Reader, out io.Writer) error {
@@ -45,10 +38,14 @@ func serve(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return plugin.Agent{}, err
 		}
-		return plugin.Agent{
+		started := plugin.Agent{
 			Process: ag.proc, Conversation: ag.session,
 			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
-		}, nil
+		}
+		if ag.started != (harness.Selection{Model: a.Model, Effort: a.Effort}) {
+			started.Selection = &ag.started
+		}
+		return started, nil
 	})
 }
 
@@ -74,7 +71,8 @@ type agent struct {
 	forms    int
 	errors   plugin.Errors
 
-	options []configOption // owned by start and the ordered configure commands
+	options []configOption    // owned by start and the ordered configure commands
+	started harness.Selection // the settings begin selected
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
@@ -93,9 +91,24 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	ag, err := launch(a, emit, "OPENCODE_CONFIG_CONTENT="+string(configJSON))
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
+	defer cancel()
+	if err := ag.begin(ctx, a); err != nil {
+		ag.stop()
+		return nil, err
+	}
+	return ag, nil
+}
+
+// launch starts `opencode acp` in the agent's directory.
+func launch(a harness.StartArgs, emit func(harness.Event), env ...string) (*agent, error) {
 	cmd := exec.Command("opencode", "acp")
 	cmd.Dir = a.Dir
-	cmd.Env = append(os.Environ(), "OPENCODE_CONFIG_CONTENT="+string(configJSON))
+	cmd.Env = append(os.Environ(), env...)
 	p, err := plugin.StartProcess("OpenCode", cmd)
 	if err != nil {
 		return nil, err
@@ -104,12 +117,6 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	ag.proc = p
 	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)
 	go func() { ag.rpc.End(p.Read(ag.rpc.Line)) }()
-	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
-	defer cancel()
-	if err := ag.begin(ctx, a); err != nil {
-		ag.stop()
-		return nil, err
-	}
 	return ag, nil
 }
 
@@ -130,6 +137,7 @@ type initializeResult struct {
 		SessionCapabilities struct {
 			Resume *struct{} `json:"resume"`
 			Fork   *struct{} `json:"fork"`
+			Delete *struct{} `json:"delete"`
 		} `json:"sessionCapabilities"`
 	} `json:"agentCapabilities"`
 }
@@ -147,8 +155,8 @@ type envVariable struct {
 	Value string `json:"value"`
 }
 
-// begin starts or resumes the session and selects the model and effort.
-func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
+// initialize opens the connection.
+func (ag *agent) initialize(ctx context.Context) (initializeResult, error) {
 	var init initializeResult
 	err := ag.call(ctx, "initialize", map[string]any{
 		"protocolVersion": protocolVersion,
@@ -156,6 +164,12 @@ func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
 		// A form request is how OpenCode asks the user a question.
 		"clientCapabilities": map[string]any{"elicitation": map[string]any{"form": map[string]any{}}},
 	}, &init)
+	return init, err
+}
+
+// begin starts or resumes the session and selects the model and effort.
+func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
+	init, err := ag.initialize(ctx)
 	if err != nil {
 		return err
 	}
@@ -198,9 +212,11 @@ func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
 		ag.mu.Unlock()
 	}
 	ag.options = opened.ConfigOptions
-	if _, err := ag.selectSettings(ctx, harness.Selection{Model: a.Model, Effort: a.Effort}); err != nil {
+	selected, err := ag.selectSettings(ctx, harness.Selection{Model: a.Model, Effort: a.Effort})
+	if err != nil {
 		return err
 	}
+	ag.started = *selected
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ag.emit(harness.Event{Conversation: ag.session})
