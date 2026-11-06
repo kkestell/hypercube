@@ -100,8 +100,8 @@ browser shows each agent's transcript.
   must be compared. It serves the browser view without the desktop app; open
   its URL in the user's browser with `open`. Use `make dev-app` only to test
   desktop app behavior.
-- The user judges how the browser view looks. Leave rendering, screenshots,
-  and visual checks of it to them.
+- Check a change to the browser view with tests and the build, without
+  screenshots. The user judges how it looks.
 - `make install-service` loads a merged change into the installed app. Run it
   from the original checkout. Offer to run it after finishing a change, and run
   it whenever the user asks.
