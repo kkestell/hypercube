@@ -154,7 +154,11 @@ type DB struct{ sql *sql.DB }
 // Writes take the database lock when they begin and wait up to five seconds
 // for it.
 func Open() (*DB, error) {
-	if err := os.MkdirAll(Dir(), 0o755); err != nil {
+	if err := os.MkdirAll(Dir(), 0o700); err != nil {
+		return nil, err
+	}
+	// Also protect transcripts and plugin state in existing installations.
+	if err := os.Chmod(Dir(), 0o700); err != nil {
 		return nil, err
 	}
 	params := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "foreign_keys(1)"}, "_txlock": {"immediate"}}

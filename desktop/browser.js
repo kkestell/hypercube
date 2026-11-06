@@ -7,7 +7,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const dock = require('./dock.js');
 const {external} = require('./window.js');
-const {normalizeAddress} = require('./address.js');
+const {isBrowserURL, normalizeAddress} = require('./address.js');
 
 const toolbarHeight = 44;
 const partition = 'persist:browser';
@@ -35,9 +35,12 @@ class Browser {
     // A script can run in a browser that has not navigated, once its blank
     // page has loaded.
     this.blank = contents.loadURL('about:blank');
+    for (const event of ['will-navigate', 'will-redirect']) contents.on(event, (e, url) => {
+      if (!isBrowserURL(url)) e.preventDefault();
+    });
     // A link that opens a window opens in the same page.
     contents.setWindowOpenHandler(({url}) => {
-      contents.loadURL(url);
+      if (isBrowserURL(url)) contents.loadURL(url);
       return {action: 'deny'};
     });
     const update = () => {
@@ -66,7 +69,7 @@ class Browser {
 
   async navigate(address) {
     const url = normalizeAddress(address);
-    if (!url) throw new Error(`${address} is not a URL`);
+    if (!url) throw new Error('Only HTTP, HTTPS, and about:blank URLs are supported');
     dock.show();
     this.win.showInactive();
     await this.until(this.blank);

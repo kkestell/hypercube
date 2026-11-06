@@ -175,6 +175,14 @@ func TestRoutesRefuseOtherSites(t *testing.T) {
 	}
 }
 
+func TestPageRefusesForeignFrames(t *testing.T) {
+	res := httptest.NewRecorder()
+	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/", nil))
+	if res.Code != http.StatusOK || res.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
+		t.Fatalf("page response = %d, %v", res.Code, res.Header())
+	}
+}
+
 func TestActions(t *testing.T) {
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {

@@ -80,8 +80,9 @@ the desktop app leaves it running; archiving or deleting the session, or ending
 the backend, ends it.
 
 With the desktop app open, an agent's page navigation opens its own browser
-window. The toolbar above the page has back, forward, reload, an address field,
-and a button that opens the page in your default browser. The **Window** menu
+window. It accepts HTTP, HTTPS, and `about:blank` addresses. The toolbar above
+the page has back, forward, reload, an address field, and a button that opens
+the page in your default browser. The **Window** menu
 lists open browser windows. Closing the window or the agent's `browser_close`
 ends that browser; quitting the desktop app closes them all and fails their
 pending calls. With the app closed, an agent's browser calls fail with a

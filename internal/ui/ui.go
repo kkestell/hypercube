@@ -75,6 +75,9 @@ func localOnly(next http.Handler) http.Handler {
 			http.Error(w, "forbidden origin", http.StatusForbidden)
 			return
 		}
+		// Framed pages send actions with their own origin, so the origin
+		// check alone cannot prevent another site from hiding our controls.
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 		next.ServeHTTP(w, r)
 	})
 }

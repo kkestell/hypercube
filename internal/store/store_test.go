@@ -53,18 +53,34 @@ func seed(t *testing.T, db *DB, w, path, s string, children ...string) {
 	})
 }
 
-func TestOpenCreatesSchema(t *testing.T) {
+func TestOpenSecuresStateAndPreservesRows(t *testing.T) {
 	db := open(t)
 	if _, err := os.Stat(dbPath()); err != nil {
 		t.Fatal(err)
 	}
+	assertPrivate := func() {
+		t.Helper()
+		info, err := os.Stat(Dir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o700 {
+			t.Errorf("state directory mode = %04o, want 0700", info.Mode().Perm())
+		}
+	}
+	assertPrivate()
 	seed(t, db, "w", "/repo", "s")
 	db.Close()
+	// Existing installations used a directory readable by other accounts.
+	if err := os.Chmod(Dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	again, err := Open()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer again.Close()
+	assertPrivate()
 	if err := again.Read(func(tx *Tx) error {
 		_, err := tx.Session("s")
 		return err
