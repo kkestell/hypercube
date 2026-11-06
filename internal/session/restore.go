@@ -168,7 +168,7 @@ func (r *Runtime) attach(s store.Session, root string) (*live, error) {
 			if err = json.Unmarshal(e.Data, &item); err != nil {
 				return err
 			}
-			if !item.Done && strings.HasPrefix(item.ID, l.prefix) {
+			if !item.Done && item.Kind != harness.KindProposal && strings.HasPrefix(item.ID, l.prefix) {
 				l.pending[item.ID] = &pendingItem{seq: e.Seq, item: item}
 			}
 		}

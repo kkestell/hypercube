@@ -2,6 +2,49 @@ package store
 
 import "testing"
 
+func TestOpenUpgradesChildCoordinationState(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s", "child")
+	tx(t, db, func(tx *Tx) error {
+		return tx.Queue(Message{From: "s-child", To: "s", Text: "saved message"})
+	})
+	if _, err := db.sql.Exec(`ALTER TABLE sessions DROP COLUMN fork; ALTER TABLE sessions DROP COLUMN input_pending; ALTER TABLE messages DROP COLUMN report;`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		db, err := Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db.Read(func(tx *Tx) error {
+			s, err := tx.Session("s")
+			if err != nil {
+				return err
+			}
+			if s.Fork != "" || s.InputPending {
+				t.Fatalf("unexpected fork %q", s.Fork)
+			}
+			messages, err := tx.Queued("s")
+			if err != nil {
+				return err
+			}
+			if len(messages) != 1 || messages[0].Report || messages[0].Text != "saved message" {
+				t.Fatalf("messages %+v", messages)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestOpenUpgradesDatabaseBeforeDurableLaunches(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s", "child")

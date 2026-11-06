@@ -21,7 +21,8 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 		return r.eventLocked(l, *rec.Event, next)
 	}
 	reply := *rec.Reply
-	if _, ok := l.commands[reply.ID]; !ok {
+	command, ok := l.commands[reply.ID]
+	if !ok {
 		return fmt.Errorf("reply to unknown request %d", reply.ID)
 	}
 	if err := r.save(func(tx *write) error {
@@ -44,6 +45,17 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 	_ = l.client.Discard(next)
 	if reply.Error == "" {
 		r.kickFamilyLocked(l.root)
+	} else {
+		// Other family members may now be eligible, but do not immediately
+		// retry a rejected queued message to this session.
+		for id, member := range r.live {
+			if member.root == l.root && id != l.id {
+				r.kickLocked(id)
+			}
+		}
+		if command.Message == 0 {
+			r.kickLocked(l.id)
+		}
 	}
 	return nil
 }
@@ -171,6 +183,9 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 					return err
 				}
 			}
+			if err := r.queueReport(tx, s, ev.Final, l.prefix); err != nil {
+				return err
+			}
 		}
 		return r.checkpoint(tx, l, next)
 	})
@@ -181,10 +196,8 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 	if len(allowed) > 0 {
 		go r.send(l)
 	}
-	if len(failures) > 0 {
+	if len(failures) > 0 || ev.State == harness.Idle {
 		r.kickFamilyLocked(l.root)
-	} else if ev.State == harness.Idle {
-		r.kickLocked(l.id)
 	}
 	_ = l.client.Discard(next)
 	return nil
@@ -205,13 +218,18 @@ func (r *Runtime) stateMarker(l *live, ev harness.Event, next, at int64) *pendin
 func applyEvent(s *store.Session, ev harness.Event) {
 	if ev.Conversation != "" {
 		s.Conversation = ev.Conversation
+		s.Fork = ""
 	}
 	switch ev.State {
 	case harness.Working:
 		s.Activity = store.Busy
+		s.InputPending = false
 	case harness.Idle:
 		if s.Activity == store.Busy {
 			s.Unseen = true
+		}
+		if s.Activity == store.Busy || len(ev.Items) > 0 || len(ev.Final) > 0 || ev.InputPending {
+			s.InputPending = ev.InputPending
 		}
 		s.Activity = store.Idle
 	}

@@ -40,6 +40,11 @@ func (r *Runtime) kickLocked(id string) {
 	var command int64
 	err := r.save(func(tx *write) error {
 		var err error
+		if len(out.reports) > 0 {
+			if err := tx.BatchReports(out.reports, out.text); err != nil {
+				return err
+			}
+		}
 		command, err = r.record(tx, l, harness.Command{Command: harness.CmdInput, Text: out.text}, out.message, out.seq, &out.item)
 		return err
 	})
@@ -87,6 +92,7 @@ func (l *live) delivering() bool {
 // outgoing is a queued message ready to send.
 type outgoing struct {
 	message int64
+	reports []int64
 	// text is what the plugin receives, and item what the transcript shows.
 	text string
 	item harness.Item
@@ -110,13 +116,28 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 		if err != nil || len(queued) == 0 {
 			return err
 		}
-		m := queued[0]
-		text := report.Format(tx, m)
-		out = outgoing{message: m.ID, text: text, item: harness.Item{Kind: harness.KindUser, Text: text, Done: true}}
-		// The transcript shows a session's message as written, with its sender.
-		if m.From != "" {
-			out.item.Text, out.item.From = m.Text, m.From
+		for _, m := range queued {
+			if m.Report {
+				continue
+			}
+			text := report.Format(tx, m)
+			out = outgoing{message: m.ID, text: text, item: harness.Item{Kind: harness.KindUser, Text: text, Done: true}}
+			// The transcript shows a session's message as written, with its sender.
+			if m.From != "" {
+				out.item.Text, out.item.From = m.Text, m.From
+			}
+			ok = true
+			return nil
 		}
+		parent, err := tx.Session(l.id)
+		if err != nil {
+			return err
+		}
+		ready, err := r.reportsReady(tx, parent)
+		if err != nil || !ready {
+			return err
+		}
+		out = reportInput(queued)
 		ok = true
 		return nil
 	})

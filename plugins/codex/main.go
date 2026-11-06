@@ -4,6 +4,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -114,9 +115,9 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 // writable so that a child session can commit.
 func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	thread := ""
-	if a.Conversation != "" {
+	if a.Conversation != "" || a.Fork != "" {
 		var native bool
-		thread, native = strings.CutPrefix(a.Conversation, nativeConversationPrefix)
+		thread, native = strings.CutPrefix(cmp.Or(a.Conversation, a.Fork), nativeConversationPrefix)
 		if !native {
 			return errors.New("this saved Codex conversation predates the native storage integration and cannot resume safely; its transcript and files are preserved; start a new session")
 		}
@@ -155,6 +156,10 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	method := "thread/start"
 	if a.Conversation != "" {
 		method = "thread/resume"
+		params["threadId"] = thread
+		params["excludeTurns"] = true
+	} else if a.Fork != "" {
+		method = "thread/fork"
 		params["threadId"] = thread
 		params["excludeTurns"] = true
 	}

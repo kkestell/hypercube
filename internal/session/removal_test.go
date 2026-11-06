@@ -98,7 +98,7 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 				}
 			}()
 			wait()
-			_, err := f.rt.CreateChild(parent.ID, "late", "Late child", harness.Profile{Harness: "test"}, "", "")
+			_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "late", Title: "Late child", Profile: harness.Profile{Harness: "test"}, Dir: "", Message: ""})
 			if !errors.Is(err, errDeleting) {
 				t.Fatalf("child creation during cleanup = %v, want errDeleting", err)
 			}
@@ -204,7 +204,7 @@ func TestPartialFamilyRemovalRecordsEachCompletedChild(t *testing.T) {
 			parent := f.worktreeSession()
 			first := f.child(parent, "first", "")
 			second := f.child(parent, "second", "")
-			direct, err := f.rt.CreateChild(parent.ID, "direct", "Direct child", harness.Profile{Harness: "test"}, ".", "")
+			direct, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "direct", Title: "Direct child", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""})
 			if err != nil {
 				t.Fatal(err)
 			}

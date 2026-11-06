@@ -58,15 +58,22 @@ to the rest of your local filesystem.
 
 ## What the other agent knows
 
-A child receives its assignment, not a copy of the parent's conversation. The
-parent needs to pass the relevant decisions, file locations, and expected
-result. Each agent can read the files in its working directory, but information
-from another chat reaches it only through explicit messages.
+A fresh child receives its assignment and local instructions. A forked child
+inherits the parent's saved native conversation at the time it starts; its
+Hypercube transcript begins with its own assignment. Forks use the parent's
+harness and can choose another model. Fresh children can use any configured
+harness. Native restrictions still apply: OpenCode forks need the parent's
+folder, so they cannot use a new worktree.
 
-Writing a final response in the child's chat does not by itself inform the
-parent. The child reports back through Hypercube's messaging tools. Messages
-appear in both conversations, so you can see what was actually communicated.
-You can also speak to a child directly.
+When a child successfully finishes a turn, Hypercube automatically reports the
+first 400 characters of its final response. Progress text is excluded. Reports
+wait until the parent and all its live children are idle, then arrive together
+and let the parent continue. A child waiting for your answer also holds up
+automatic reports. Failed launches and ended children do not hold them up.
+
+Agents can still send explicit messages during work. These do not wait for the
+other children to finish. Messages appear in both conversations, so you can
+see what was communicated. You can also speak to a child directly.
 
 A parent can message its children and other running top-level sessions, even
 in another workspace. A child can message only its parent and cannot create

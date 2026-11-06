@@ -12,7 +12,7 @@
 // the response follows it. A turn that did not succeed, and a transcript saved
 // without state items, draw every row as it is.
 
-import type {AttentionItem, ErrorItem, Item, ReasoningItem, StateItem, TextItem, ToolItem, Transcript, UserItem} from './types.ts';
+import type {AttentionItem, ProposalItem, ErrorItem, Item, ReasoningItem, StateItem, TextItem, ToolItem, Transcript, UserItem} from './types.ts';
 
 // Tool input fields, in the order that best says what a call does.
 const summaryKeys = ['command', 'cmd', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
@@ -103,7 +103,8 @@ export type ItemRow =
   | {type: 'text'; item: TextItem}
   | {type: 'error'; item: ErrorItem}
   | {type: 'attention'; item: AttentionItem}
-  | {type: 'message'; item: ToolItem};
+  | {type: 'message'; item: ToolItem}
+  | {type: 'proposal'; item: ProposalItem};
 
 // ToolRow is a tool call with the rows nested under it.
 export interface ToolRow {
@@ -168,6 +169,7 @@ export function transcriptRows(transcript: Transcript): Row[] {
       case 'reasoning': return {type: 'reasoning', item};
       case 'error': return {type: 'error', item};
       case 'attention': return {type: 'attention', item};
+      case 'proposal': return {type: 'proposal', item};
       default: return {type: 'text', item}; // a kind added later draws as text
     }
   };
@@ -235,12 +237,12 @@ const isTurnRow = (row: Row): row is TurnRow => row.type !== 'activity';
 // follow one row of the other activity.
 function finishTurn(turn: Turn, idle: StateItem, out: Row[]) {
   const final = new Set(idle.final);
-  const response = turn.rows.filter(row => final.has(row.item.id));
+  const response = turn.rows.filter(row => final.has(row.item.id) || row.type === 'proposal');
   if (response.length === 0) {
     out.push(...turn.rows);
     return;
   }
-  const activity = turn.rows.filter(row => !final.has(row.item.id));
+  const activity = turn.rows.filter(row => !final.has(row.item.id) && row.type !== 'proposal');
   if (activity.length > 0) {
     out.push({type: 'activity', key: 'activity:' + turn.work.id, rows: activity, start: turn.start, until: idle.at || 0});
   }

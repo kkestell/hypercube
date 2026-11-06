@@ -6,6 +6,7 @@ import type {Session} from '../sessions/types.ts';
 import {CopyButton} from './copy-button.tsx';
 import {ActivityItem} from './activity-item.tsx';
 import {AttentionItem} from './attention-item.tsx';
+import {ProposalItem} from './proposal-item.tsx';
 import {Markdown} from './markdown.tsx';
 import {MessageItem} from './message-item.tsx';
 import {ReasoningItem} from './reasoning-item.tsx';
@@ -41,6 +42,7 @@ export function TranscriptRow({row, session, expanded, setOpen, response}: RowCo
     case 'reasoning': return <ReasoningItem item={row.item} />;
     case 'user': return <MessageItem item={row.item} expanded={!!expanded[row.item.id]} setOpen={setOpen} />;
     case 'attention': return <AttentionItem item={row.item} session={session} />;
+    case 'proposal': return <ProposalItem item={row.item} session={session.id} />;
     case 'error': return <ErrorAlert item={row.item} />;
     case 'text': return <TextBlock item={row.item} response={response} />;
   }

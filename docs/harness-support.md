@@ -79,6 +79,12 @@ Sessions resume their saved native conversation. A failed resume stays failed
 rather than silently opening a new conversation. Pi starts saving with the
 first message, so a Pi session with no saved conversation cannot resume.
 
+Forked children copy a saved native conversation using the same harness.
+Claude Code, Codex, and Pi can fork into another working directory. OpenCode
+requires the source directory and ACP `session/fork` support. A failed fork
+reports an error instead of starting with fresh context. See
+[sessions and working copies](introduction.md#what-the-other-agent-knows).
+
 Codex uses its native conversation storage, configuration, and credentials:
 `CODEX_HOME` from Hypercube's launch environment, or Codex's default home.
 Conversations appear in Codex's normal history. Hypercube does not inspect

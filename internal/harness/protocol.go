@@ -21,8 +21,8 @@ const (
 	CmdConfigure = "configure"
 )
 
-// Item kinds. Plugins send every kind but User and State, which Hypercube
-// writes for the text and images it delivers and each change of work state.
+// Item kinds. Hypercube writes User, State, and Proposal; plugins send the
+// remaining kinds.
 const (
 	KindUser      = "user"
 	KindState     = "state"
@@ -31,6 +31,7 @@ const (
 	KindTool      = "tool"
 	KindError     = "error"
 	KindAttention = "attention"
+	KindProposal  = "proposal"
 )
 
 // Work states of the agent's main conversation.
@@ -74,6 +75,10 @@ type StartArgs struct {
 	Effort  string            `json:"effort"`
 	// Conversation is the harness's saved conversation to resume, if any.
 	Conversation string `json:"conversation"`
+	// Fork copies a native conversation on first launch, instead of resuming it.
+	Fork string `json:"fork,omitempty"`
+	// ForkDir is the source conversation's working directory.
+	ForkDir string `json:"fork_dir,omitempty"`
 	// Dir is the agent's working directory.
 	Dir string `json:"dir"`
 	// Instructions tell the model about its team and tools.
@@ -111,6 +116,8 @@ type Event struct {
 	Conversation string `json:"conversation,omitempty"`
 	// State is the main agent's work state. Native subagents do not change it.
 	State string `json:"state,omitempty"`
+	// InputPending on Idle means another native prompt is queued to start.
+	InputPending bool `json:"input_pending,omitempty"`
 	// Final names the main agent's text and image items that are the response
 	// to the turn that has just ended. It accompanies State Idle, once the turn
 	// succeeded, and is left out when a turn was interrupted, failed, or has no
@@ -192,6 +199,8 @@ type Item struct {
 	State   string          `json:"state,omitempty"`
 	Final   []string        `json:"final,omitempty"`
 	Grant   string          `json:"grant,omitempty"`
+	// Automatic distinguishes host-generated input from the user's prompts.
+	Automatic bool `json:"automatic,omitempty"`
 }
 
 // Line returns the command as one line of the plugin's input.

@@ -55,8 +55,12 @@ type Session struct {
 	Dir          string
 	Branch       string
 	Conversation string
-	Activity     string
-	Attention    bool
+	// Fork is the native source to copy until Conversation names the child's copy.
+	Fork      string
+	Activity  string
+	Attention bool
+	// InputPending is recorded input that has not yet begun work.
+	InputPending bool
 	Usage        harness.Usage
 	Created      int64
 	Launch       string
@@ -69,10 +73,11 @@ type Session struct {
 }
 
 type Message struct {
-	ID   int64
-	From string
-	To   string
-	Text string
+	ID     int64
+	From   string
+	To     string
+	Text   string
+	Report bool
 }
 
 // Dir is the directory that holds the database and plugin files.
@@ -112,8 +117,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   awaiting_user INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
   harness TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL,
   dir TEXT NOT NULL, branch TEXT NOT NULL DEFAULT '',
-  conversation TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL,
-  attention INTEGER NOT NULL DEFAULT 0,
+  conversation TEXT NOT NULL DEFAULT '', fork TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL,
+  attention INTEGER NOT NULL DEFAULT 0, input_pending INTEGER NOT NULL DEFAULT 0,
   context INTEGER NOT NULL DEFAULT 0, window INTEGER NOT NULL DEFAULT 0,
   cost REAL NOT NULL DEFAULT 0, created INTEGER NOT NULL,
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
@@ -129,7 +134,7 @@ CREATE TABLE IF NOT EXISTS messages (
   id INTEGER PRIMARY KEY,
   sender TEXT NOT NULL,
   recipient TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-  text TEXT NOT NULL);
+  text TEXT NOT NULL, report INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS transcript (
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL, item TEXT NOT NULL, data TEXT NOT NULL,
@@ -237,34 +242,34 @@ func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
 	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+ activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base, fork, input_pending)
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
 		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
-		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base)
+		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Fork, s.InputPending)
 }
 
 // SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
 	return t.exec(`UPDATE sessions SET title = ?, running = ?, ended = ?, awaiting_user = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ? WHERE id = ?`,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ? WHERE id = ?`,
 		s.Title, s.Running, s.Ended, s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.ID)
+		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.ID)
 }
 
 const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
  awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
- activity, attention, context, window, cost, created, launch, position, ready, quick, base`
+ activity, attention, context, window, cost, created, launch, position, ready, quick, base, fork, input_pending`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
 	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
 		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
-		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base)
+		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Fork, &s.InputPending)
 	return s, err
 }
 
@@ -336,18 +341,18 @@ func (t *Tx) DeleteSession(id string) error {
 
 // Queue adds a message for its recipient.
 func (t *Tx) Queue(m Message) error {
-	return t.exec(`INSERT INTO messages (sender, recipient, text) VALUES (?, ?, ?)`, m.From, m.To, m.Text)
+	return t.exec(`INSERT INTO messages (sender, recipient, text, report) VALUES (?, ?, ?, ?)`, m.From, m.To, m.Text, m.Report)
 }
 
 // Queued returns the messages waiting for a session, oldest first.
 func (t *Tx) Queued(id string) ([]Message, error) {
-	rows, err := t.tx.Query(`SELECT id, sender, recipient, text FROM messages WHERE recipient = ? ORDER BY id`, id)
+	rows, err := t.tx.Query(`SELECT id, sender, recipient, text, report FROM messages WHERE recipient = ? ORDER BY id`, id)
 	if err != nil {
 		return nil, err
 	}
 	return collect(rows, func(r interface{ Scan(...any) error }) (Message, error) {
 		var m Message
-		err := r.Scan(&m.ID, &m.From, &m.To, &m.Text)
+		err := r.Scan(&m.ID, &m.From, &m.To, &m.Text, &m.Report)
 		return m, err
 	})
 }
@@ -355,6 +360,20 @@ func (t *Tx) Queued(id string) ([]Message, error) {
 // Dequeue removes a delivered message.
 func (t *Tx) Dequeue(id int64) error {
 	return t.exec(`DELETE FROM messages WHERE id = ?`, id)
+}
+
+// BatchReports replaces the first queued report with the delivery snapshot.
+// Its caller records the input command in the same transaction.
+func (t *Tx) BatchReports(ids []int64, text string) error {
+	if err := t.exec(`UPDATE messages SET sender = '', text = ? WHERE id = ?`, text, ids[0]); err != nil {
+		return err
+	}
+	for _, id := range ids[1:] {
+		if err := t.Dequeue(id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *Tx) DropQueued(id string) error {

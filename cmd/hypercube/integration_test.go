@@ -287,8 +287,31 @@ func TestAppProcess(t *testing.T) {
 		return cmd
 	}
 	out, err := bridge("create_session", map[string]string{"name": "w1", "title": "Title", "profile": "worker", "message": "brief"}).CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "Created w1") {
+	if err != nil || !strings.Contains(string(out), "Proposed w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
+	}
+	if len(w.family(parent.ID)) != 1 {
+		t.Fatal("a proposed child started without a click")
+	}
+	var proposal string
+	w.read(func(tx *store.Tx) error {
+		entries, err := tx.Transcript(parent.ID)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			var item struct{ ID, Kind string }
+			if err := json.Unmarshal(e.Data, &item); err != nil {
+				return err
+			}
+			if item.Kind == "proposal" {
+				proposal = item.ID
+			}
+		}
+		return nil
+	})
+	if code, body := c.post("/session", map[string]string{"action": "start-proposal", "id": parent.ID, "proposal": proposal}, ""); code != http.StatusOK {
+		t.Fatalf("start proposal: %d %s", code, body)
 	}
 	child := w.family(parent.ID)[1]
 	w.until("the child's brief", func() bool {

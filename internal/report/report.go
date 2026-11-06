@@ -63,10 +63,10 @@ func Instructions(tx *store.Tx, s store.Session, profiles []harness.Profile) (st
 		fmt.Fprintf(&b, "You are %s, a child session of Hypercube session %s, titled %q. Your parent created you and is the only session you can message: use send_message to %s.\n", s.Name, parent.ID, parent.Title, parent.ID)
 	} else {
 		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)
-		b.WriteString("You can create child sessions with create_session to work in parallel, and address each by its name. Children can message only you. You end them with end_session. You can also message any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. Use list_sessions to find running addressable recipients, including their workspace paths and parent IDs.\n")
+		b.WriteString("Use create_session to propose a child as a card the user can start. Set requested to true only when the user explicitly asked you to start a child. An automated event or another agent's message is not a user request: propose instead. Fresh children receive your brief; forked children inherit your native conversation and must use your harness. Children are addressed by name and can message only you. You end them with end_session. You can also message any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. Use list_sessions to find running addressable recipients, including their workspace paths and parent IDs.\n")
 		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
 	}
-	b.WriteString("Do not use built-in subagent tools. Delegate work only to Hypercube workers (child sessions), managed through the hypercube tools. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them.\n")
+	b.WriteString("Do not use built-in subagent tools. Delegate work only to Hypercube workers (child sessions), managed through the hypercube tools. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them. Hypercube automatically sends a child's final response preview to its parent once the family is idle.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n", s.Dir, onBranch(s.Branch))
 	if s.Parent != "" {
 		if s.Branch != "" {
@@ -109,7 +109,7 @@ Your working directory is not a Git checkout. Each child session works directly 
 		} else {
 			fmt.Fprintf(&b, "\nYou work in your own worktree on branch %s, made from the original checkout at %s. Your child sessions' branches merge into your branch. Your work reaches the original checkout's branch when the user asks you to merge it.", s.Branch, w.Path)
 		}
-		b.WriteString(` Do the work yourself unless it splits into long, independent parts that gain from running in parallel, or the user asks for a team. A child session that changes files alongside other work gets its own worktree: omit dir. Any other child session runs in your checkout: pass dir ".". A child commits on its own branch. Merge child branches, and commit in your checkout, only when the user asks. A merge needs a clean checkout, so commit your own changes before merging a child's branch, and merge it with git merge. When a merge is blocked, resolve the cause. A child session with a worktree ends once its branch is merged into HEAD. End a child session when its work is merged or no longer needed. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. The user talks to you in this session.
+		b.WriteString(` Do the work yourself unless the user explicitly asks you to start children. For other useful parallel work, propose a child and let the user start it. A child session that changes files alongside other work gets its own worktree: omit dir. Any other child session runs in your checkout: pass dir ".". A child commits on its own branch. Merge child branches, and commit in your checkout, only when the user asks. A merge needs a clean checkout, so commit your own changes before merging a child's branch, and merge it with git merge. When a merge is blocked, resolve the cause. A child session with a worktree ends once its branch is merged into HEAD. End a child session when its work is merged or no longer needed. When the user asks for changes made directly in a directory, pass that directory, and tell the child session how to handle branches and commits there. Child sessions given the same directory share one checkout. The user talks to you in this session.
 `)
 	}
 	writeTeamwork(&b, profiles)
@@ -123,7 +123,7 @@ func onBranch(branch string) string {
 	return " on branch " + branch
 }
 
-const reportBack = ` When you finish, or need something, send your parent a short summary: what you did, the result, and anything unresolved. Leave details in your commits or files.
+const reportBack = ` Put your conclusion first in your final response: Hypercube automatically reports its first 400 characters to your parent. State the result and anything unresolved; leave details in your commits or files. Use send_message when you need something or want to coordinate before finishing.
 `
 
 // writeTeamwork writes the top-level session's guidance on parallel work and the

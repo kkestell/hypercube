@@ -676,6 +676,17 @@ func TestStartResumes(t *testing.T) {
 	}
 }
 
+func TestStartForksWithoutAnnouncingTheParent(t *testing.T) {
+	argsFile := fakeClaude(t, nil)
+	a := startArgs
+	a.Fork = "parent-conversation"
+	c, _ := start(t, a)
+	data, _ := os.ReadFile(argsFile)
+	if !strings.Contains(string(data), "--resume parent-conversation --fork-session --session-id ") || c.conversation != "" {
+		t.Fatalf("arguments %s, conversation %q", data, c.conversation)
+	}
+}
+
 // startFails starts claude and returns the error, checking that nothing was
 // emitted.
 func startFails(t *testing.T, a harness.StartArgs) error {

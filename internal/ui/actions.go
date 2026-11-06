@@ -120,6 +120,10 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.rt.Answer(id, q.Get("request"), q.Get("choice"), string(body))
+	case "start-proposal":
+		_, err = s.rt.StartProposal(id, q.Get("proposal"))
+	case "dismiss-proposal":
+		err = s.rt.DismissProposal(id, q.Get("proposal"))
 	case "allow":
 		scope := q.Get("scope")
 		if scope != "session" && scope != "all" {

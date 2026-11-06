@@ -26,6 +26,20 @@ func (r *Runtime) record(tx *write, l *live, cmd harness.Command, message, seq i
 		return 0, err
 	}
 	cmd.ID = c.ID
+	if cmd.Command == harness.CmdInput || cmd.Command == harness.CmdInterrupt {
+		s, err := tx.Session(l.id)
+		if err != nil {
+			return 0, err
+		}
+		if cmd.Command == harness.CmdInterrupt {
+			s.InputPending = false
+		} else if s.Activity != store.Busy {
+			s.InputPending = true
+		}
+		if err := tx.SaveSession(s); err != nil {
+			return 0, err
+		}
+	}
 	line, err := cmd.Line()
 	if err != nil {
 		return 0, err
@@ -135,6 +149,16 @@ func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 			}
 		}
 	} else if failure != nil {
+		if c.Command == harness.CmdInput {
+			s, err := tx.Session(l.id)
+			if err != nil {
+				return err
+			}
+			s.InputPending = false
+			if err := tx.SaveSession(s); err != nil {
+				return err
+			}
+		}
 		text := "Agent command failed: "
 		if c.Message != 0 {
 			text = "Delivering a message failed: "

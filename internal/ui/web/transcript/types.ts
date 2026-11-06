@@ -20,6 +20,21 @@ export interface UserItem extends ItemBase {
   text?: string;
   images?: Image[];
   from?: string;
+  automatic?: boolean;
+}
+
+export interface ProposalItem extends ItemBase {
+  kind: 'proposal';
+  text?: string;
+  input: {
+    name: string;
+    title: string;
+    profile: {name: string; harness: string; model: string; effort: string};
+    dir?: string;
+    message?: string;
+    fork?: boolean;
+  };
+  answer?: string;
 }
 
 // StateItem records a work state change; an idle one's final names the items
@@ -72,7 +87,7 @@ export interface AttentionItem extends ItemBase {
   grant?: string;
 }
 
-export type Item = UserItem | StateItem | TextItem | ReasoningItem | ToolItem | ErrorItem | AttentionItem;
+export type Item = UserItem | StateItem | TextItem | ReasoningItem | ToolItem | ErrorItem | AttentionItem | ProposalItem;
 
 // TranscriptItem is an item with its position in the transcript.
 export type TranscriptItem = Item & {seq: number};

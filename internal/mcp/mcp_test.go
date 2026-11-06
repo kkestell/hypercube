@@ -302,7 +302,7 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
-	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "title": "One", "profile": "sol", "dir": "missing"})
+	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "title": "One", "profile": "sol", "dir": "missing", "requested": true})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
 		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}

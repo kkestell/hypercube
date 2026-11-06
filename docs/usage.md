@@ -153,6 +153,14 @@ sessions are hidden; **Show Stopped Sessions** in a workspace's menu shows its
 stopped sessions, and in a session's menu shows its stopped children. Shown
 stopped sessions are dimmed and carry no dots.
 
+Agents are instructed to start children directly only when you explicitly ask.
+Otherwise they propose a task as a card showing its brief, profile, context,
+and folder or new worktree. **Start** launches it; **Dismiss** closes the card.
+Proposals survive reloads and do not block the parent. An unsuccessful launch
+shows an error and leaves the card available to retry when its child was
+cleaned up. Interpreting whether you requested a child is the agent's judgment;
+the app does not determine that from the text of your prompt.
+
 ## Layout and shortcuts
 
 Drag tabs between panes, or onto a pane's edge to split it. Drag dividers to

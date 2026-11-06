@@ -42,19 +42,22 @@ func (ag *agent) ended(stopReason string, err error) {
 	if text != "" {
 		ev.Items = append(ev.Items, ag.errors.Item(text))
 	}
+	ev.State, ev.InputPending = harness.Idle, len(ag.queued) > 0
+	// Each successful prompt has its own final, even when the next prompt
+	// is already queued. InputPending keeps the host from treating this
+	// transition as a chance to resume the parent.
+	if !stopping && err == nil && stopReason == "end_turn" && ag.last != "" {
+		ev.Final = []string{ag.last}
+	}
+	ag.emit(ev)
 	if len(ag.queued) > 0 {
 		blocks := ag.queued
 		ag.queued = nil
+		ag.emit(harness.Event{State: harness.Working})
 		ag.prompt(blocks)
 	} else {
 		ag.busy = false
-		ev.State = harness.Idle
-		// The message the turn ended on is its response.
-		if !stopping && err == nil && stopReason == "end_turn" && ag.last != "" {
-			ev.Final = []string{ag.last}
-		}
 	}
-	ag.emit(ev)
 }
 
 // handle takes what opencode sends: updates, permission requests, and questions

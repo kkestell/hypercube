@@ -759,6 +759,27 @@ func TestBegin(t *testing.T) {
 			t.Fatal(set)
 		}
 	})
+	t.Run("forked session", func(t *testing.T) {
+		h := connected(t)
+		defaultHandlers(h, true)
+		h.acp.handlers["initialize"] = func(map[string]any) (any, *plugin.RPCError) {
+			return map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"sessionCapabilities": map[string]any{"fork": map[string]any{}}}}, nil
+		}
+		h.acp.handlers["session/fork"] = func(map[string]any) (any, *plugin.RPCError) {
+			result, err := h.acp.handlers["session/new"](nil)
+			result.(map[string]any)["sessionId"] = "ses_child"
+			return result, err
+		}
+		a := args
+		a.Fork = "ses_parent"
+		if err := h.begin(context.Background(), a); err != nil {
+			t.Fatal(err)
+		}
+		p := h.acp.sent("session/fork")[0]
+		if p["sessionId"] != "ses_parent" || p["cwd"] != a.Dir || h.session != "ses_child" || len(h.acp.sent("session/resume")) != 0 {
+			t.Fatalf("fork %+v, session %q", p, h.session)
+		}
+	})
 	t.Run("a session that cannot be resumed", func(t *testing.T) {
 		h := connected(t)
 		defaultHandlers(h, true)
@@ -841,6 +862,13 @@ func TestBegin(t *testing.T) {
 	})
 }
 
+func TestForkRequiresTheSourceFolder(t *testing.T) {
+	_, err := startAgent(harness.StartArgs{Fork: "ses_parent", ForkDir: "/source", Dir: "/worktree"}, func(harness.Event) {})
+	if err == nil || !strings.Contains(err.Error(), "require the parent's folder") {
+		t.Fatal(err)
+	}
+}
+
 // OpenCode refuses a prompt while one runs, so input during a turn waits for
 // the turn to end. The agent is idle only when nothing is in flight or waiting.
 func TestInputDuringATurnWaits(t *testing.T) {
@@ -876,14 +904,17 @@ func TestInputDuringATurnWaits(t *testing.T) {
 	if got := prompts()[1]; !slices.Equal(got, []string{"second", "third"}) {
 		t.Fatal(got)
 	}
-	if got := h.states(); !slices.Equal(got, []string{harness.Working}) {
-		t.Fatal("idle between turns:", got)
+	if got := h.states(); !slices.Equal(got, []string{harness.Working, harness.Idle, harness.Working}) {
+		t.Fatal("turn transition:", got)
+	}
+	if events := h.snapshot(); !slices.ContainsFunc(events, func(ev harness.Event) bool { return ev.State == harness.Idle && ev.InputPending }) {
+		t.Fatal("queued work was not reported")
 	}
 	if p := h.acp.sent("session/prompt")[0]; p["sessionId"] != "ses_1" {
 		t.Fatal(p)
 	}
 	h.endTurn(t, "end_turn")
-	if got := h.states(); !slices.Equal(got, []string{harness.Working, harness.Idle}) {
+	if got := h.states(); !slices.Equal(got, []string{harness.Working, harness.Idle, harness.Working, harness.Idle}) {
 		t.Fatal(got)
 	}
 	// The next input starts a turn of its own.
@@ -894,7 +925,7 @@ func TestInputDuringATurnWaits(t *testing.T) {
 	if got := prompts(); len(got) != 3 || !slices.Equal(got[2], []string{"fourth"}) {
 		t.Fatal(got)
 	}
-	if got := h.states(); !slices.Equal(got, []string{harness.Working, harness.Idle, harness.Working, harness.Idle}) {
+	if got := h.states(); !slices.Equal(got, []string{harness.Working, harness.Idle, harness.Working, harness.Idle, harness.Working, harness.Idle}) {
 		t.Fatal(got)
 	}
 }
@@ -1075,7 +1106,7 @@ func TestNativeSubagentFixtureAnswersWithTheMainMessage(t *testing.T) {
 	}
 }
 
-func TestQueuedPromptsContinueOneRunWithoutAnIntermediateResponse(t *testing.T) {
+func TestQueuedPromptsKeepEachSuccessfulResponse(t *testing.T) {
 	h := connected(t)
 	h.session = "ses_1"
 	h.startTurn(t)
@@ -1087,10 +1118,10 @@ func TestQueuedPromptsContinueOneRunWithoutAnIntermediateResponse(t *testing.T) 
 	eventually(t, "the queued prompt", func() bool { return len(h.acp.sent("session/prompt")) == 2 })
 	h.endTurn(t, "end_turn")
 	got := h.finals()
-	if len(got) != 1 || got[0] != nil {
+	if len(got) != 2 || !slices.Equal(got[0], []string{"m1"}) || got[1] != nil {
 		t.Fatalf("finals %v", got)
 	}
-	// A queued turn's own response is reported when it ends the run.
+	// Both the preceding answer and the queued turn's own response survive.
 	if err := h.input("again", nil); err != nil {
 		t.Fatal(err)
 	}
@@ -1102,7 +1133,7 @@ func TestQueuedPromptsContinueOneRunWithoutAnIntermediateResponse(t *testing.T) 
 	eventually(t, "the queued prompt", func() bool { return len(h.acp.sent("session/prompt")) == 4 })
 	h.feed(t, update("agent_message_chunk", "m3", "New.", "", ""))
 	h.endTurn(t, "end_turn")
-	if got := h.finals(); len(got) != 2 || !slices.Equal(got[1], []string{"m3"}) {
+	if got := h.finals(); len(got) != 4 || !slices.Equal(got[2], []string{"m2"}) || !slices.Equal(got[3], []string{"m3"}) {
 		t.Fatalf("finals %v", got)
 	}
 }

@@ -78,6 +78,9 @@ type agent struct {
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
+	if a.Fork != "" && a.Dir != a.ForkDir {
+		return nil, errors.New("OpenCode forks require the parent's folder; set dir to . or choose fresh context")
+	}
 	config := map[string]any{}
 	if a.Instructions != "" {
 		file, err := plugin.WriteFile(filepath.Join(a.StateDir, "opencode-instructions"), a.Session+".md", []byte(a.Instructions))
@@ -126,6 +129,7 @@ type initializeResult struct {
 	AgentCapabilities struct {
 		SessionCapabilities struct {
 			Resume *struct{} `json:"resume"`
+			Fork   *struct{} `json:"fork"`
 		} `json:"sessionCapabilities"`
 	} `json:"agentCapabilities"`
 }
@@ -158,21 +162,37 @@ func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
 	if init.ProtocolVersion != protocolVersion || a.Conversation != "" && init.AgentCapabilities.SessionCapabilities.Resume == nil {
 		return errors.New("this OpenCode does not support ACP 1 with session resume: OpenCode 2.x is required")
 	}
+	if a.Fork != "" && init.AgentCapabilities.SessionCapabilities.Fork == nil {
+		return errors.New("this OpenCode does not support ACP session forks; update OpenCode")
+	}
 	env := []envVariable{}
 	for _, k := range slices.Sorted(maps.Keys(a.Env)) {
 		env = append(env, envVariable{Name: k, Value: a.Env[k]})
 	}
 	servers := []any{map[string]any{"name": "hypercube", "command": a.Hypercube, "args": []string{"mcp"}, "env": env}}
 	var opened sessionResult
-	if a.Conversation != "" {
-		err := ag.call(ctx, "session/resume", map[string]any{"sessionId": a.Conversation, "cwd": a.Dir, "mcpServers": servers}, &opened)
+	if a.Conversation != "" || a.Fork != "" {
+		method, source := "session/resume", a.Conversation
+		if source == "" {
+			method, source = "session/fork", a.Fork
+		}
+		err := ag.call(ctx, method, map[string]any{"sessionId": source, "cwd": a.Dir, "mcpServers": servers}, &opened)
 		if err != nil {
-			return fmt.Errorf("OpenCode could not resume session %s: %w", a.Conversation, err)
+			action := "resume"
+			if a.Fork != "" {
+				action = "fork"
+			}
+			return fmt.Errorf("OpenCode could not %s session %s: %w", action, source, err)
 		}
 	} else {
 		if err := ag.call(ctx, "session/new", map[string]any{"cwd": a.Dir, "mcpServers": servers}, &opened); err != nil {
 			return err
 		}
+	}
+	if a.Fork != "" && (opened.SessionID == "" || opened.SessionID == a.Fork) {
+		return errors.New("OpenCode returned no independent fork")
+	}
+	if opened.SessionID != "" {
 		ag.mu.Lock()
 		ag.session = opened.SessionID
 		ag.mu.Unlock()

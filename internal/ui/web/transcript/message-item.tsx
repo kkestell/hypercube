@@ -52,6 +52,9 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
     </>;
     text = sent.text;
     details = item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>;
+  } else if (item.automatic) {
+    heading = 'Child reports';
+    text = item.text ?? '';
   } else if (item.from) {
     heading = 'From ' + (sessionOf(state, item.from)?.session.title || item.from);
     text = item.text ?? '';

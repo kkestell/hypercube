@@ -1128,6 +1128,25 @@ func TestConnectResumesAThread(t *testing.T) {
 	}
 }
 
+func TestConnectForksAThread(t *testing.T) {
+	h := newAgent(t)
+	h.server.handle("initialize", func(map[string]any) (any, *plugin.RPCError) { return map[string]any{}, nil })
+	h.server.handle("thread/fork", func(p map[string]any) (any, *plugin.RPCError) {
+		return map[string]any{"thread": map[string]any{"id": "child"}}, nil
+	})
+	a := harness.StartArgs{Model: "m", Effort: "low", Dir: t.TempDir(), Fork: "native:parent", Instructions: "child instructions"}
+	if err := h.connect(context.Background(), a); err != nil {
+		t.Fatal(err)
+	}
+	p := h.server.sent("thread/fork")[0]
+	if p["threadId"] != "parent" || p["developerInstructions"] != a.Instructions || p["cwd"] != a.Dir || h.thread != "child" || len(h.server.sent("thread/resume")) != 0 {
+		t.Fatalf("fork: %+v, thread %q", p, h.thread)
+	}
+	if ev := h.snapshot(); ev[len(ev)-1].Conversation != "native:child" {
+		t.Fatal(ev)
+	}
+}
+
 // An old private thread can have a stale copy in the native home. Never
 // resume that copy or silently create a replacement conversation.
 func TestLegacyPrivateConversationIsRejectedBeforeConnecting(t *testing.T) {

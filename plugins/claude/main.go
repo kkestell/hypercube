@@ -4,6 +4,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,8 +37,11 @@ func serve(in io.Reader, out io.Writer) error {
 		if err != nil {
 			return plugin.Agent{}, err
 		}
+		c.mu.Lock()
+		conversation := c.conversation
+		c.mu.Unlock()
 		return plugin.Agent{
-			Process: c.proc, Conversation: a.Conversation,
+			Process: c.proc, Conversation: conversation,
 			Configure: c.configure, Input: c.input, Interrupt: c.interrupt, Answer: c.answer, Stop: c.proc.Stop,
 		}, nil
 	})
@@ -83,6 +87,12 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 	}
 	if a.Conversation != "" {
 		argv = append(argv, "--resume", a.Conversation)
+	} else if a.Fork != "" {
+		// A stable destination keeps a first launch that has not yet reported
+		// its conversation from choosing another ID on restart.
+		hash := fmt.Sprintf("%x", sha256.Sum256([]byte(a.Session)))
+		id := fmt.Sprintf("%s-%s-4%s-8%s-%s", hash[:8], hash[8:12], hash[13:16], hash[17:20], hash[20:32])
+		argv = append(argv, "--resume", a.Fork, "--fork-session", "--session-id", id)
 	}
 	cmd := exec.Command("claude", argv...)
 	cmd.Dir = a.Dir

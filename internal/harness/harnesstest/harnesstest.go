@@ -73,6 +73,7 @@ type Entry struct {
 	Effort string `json:"effort,omitempty"`
 	// start
 	Conversation string            `json:"conversation,omitempty"`
+	Fork         string            `json:"fork,omitempty"`
 	Dir          string            `json:"dir,omitempty"`
 	Instructions string            `json:"instructions,omitempty"`
 	Env          map[string]string `json:"env,omitempty"`
@@ -220,7 +221,7 @@ func text(id, body string, done bool) harness.Item {
 func (p *standIn) start(cmd harness.Command) {
 	s := cmd.Start
 	p.agent = s.Session
-	p.log(Entry{Kind: "start", Conversation: s.Conversation, Dir: s.Dir, Instructions: s.Instructions,
+	p.log(Entry{Kind: "start", Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: s.Instructions,
 		Model: s.Model, Effort: s.Effort, Env: s.Env, Pid: os.Getpid(), Pgid: syscall.Getpgrp()})
 	if s.Conversation == "unresumable" {
 		p.reply(cmd.ID, "cannot resume conversation unresumable")
@@ -243,12 +244,23 @@ func (p *standIn) input(cmd harness.Command) {
 	p.turn = fmt.Sprintf("t%d", p.turns)
 	has := func(word string) bool { return strings.Contains(cmd.Text, "!"+word) }
 	switch {
+	case strings.HasPrefix(cmd.Text, "!report "):
+		var answer string
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(cmd.Text, "!report ")), &answer); err != nil {
+			p.reply(cmd.ID, err.Error())
+			return
+		}
+		p.reply(cmd.ID, "")
+		p.state(harness.Working, text("progress", "looking", true))
+		p.event(harness.Event{State: harness.Idle, Final: []string{p.turn}, Items: []harness.Item{text(p.turn, answer, true)}})
 	case has("reject"):
 		p.reply(cmd.ID, "rejected")
 	case has("onclose"):
 		p.onclose = append(p.onclose, cmd.ID)
 	case has("hold"):
 		p.held = append(p.held, cmd.ID)
+	case has("accept"):
+		p.reply(cmd.ID, "")
 	case has("work"):
 		p.reply(cmd.ID, "")
 		p.state(harness.Working, text("w", "working", false))

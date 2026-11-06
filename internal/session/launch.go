@@ -57,6 +57,7 @@ func (r *Runtime) decide(tx *write, s store.Session, root string, quick int) (*l
 	}
 	s.Launch, s.Position, s.Ready, s.Quick = store.NewID(), 0, 0, quick
 	s.Activity, s.Attention = store.Exited, false
+	s.InputPending = false
 	if err = tx.SaveSession(s); err != nil {
 		return nil, err
 	}
@@ -227,7 +228,14 @@ func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartAr
 	if err != nil {
 		return args, err
 	}
-	args = harness.StartArgs{Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
+	args = harness.StartArgs{Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
+	if s.Fork != "" {
+		parent, err := tx.Session(s.Parent)
+		if err != nil {
+			return args, err
+		}
+		args.ForkDir = parent.Dir
+	}
 	return args, nil
 }
 
@@ -320,6 +328,7 @@ func (r *Runtime) endLocked(l *live, cause error) (*live, bool) {
 	if next != nil {
 		r.live[next.id] = next
 	}
+	r.kickFamilyLocked(l.root)
 	return next, true
 }
 

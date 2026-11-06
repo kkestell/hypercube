@@ -38,6 +38,9 @@ ALTER TABLE transcript RENAME TO old_transcript;`); err != nil {
 			if err := tx.addBaseColumn(); err != nil {
 				return err
 			}
+			if err := tx.addChildColumns(); err != nil {
+				return err
+			}
 		}
 		var version int
 		if err := tx.tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
@@ -80,6 +83,25 @@ func (t *Tx) addBaseColumn() error {
 		return err
 	}
 	return t.exec(`ALTER TABLE sessions ADD COLUMN base TEXT NOT NULL DEFAULT '';`)
+}
+
+func (t *Tx) addChildColumns() error {
+	for _, column := range []struct{ table, name, definition string }{
+		{"sessions", "fork", "TEXT NOT NULL DEFAULT ''"},
+		{"sessions", "input_pending", "INTEGER NOT NULL DEFAULT 0"},
+		{"messages", "report", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		has, err := t.exists(`SELECT 1 FROM pragma_table_info('` + column.table + `') WHERE name = '` + column.name + `'`)
+		if err != nil {
+			return err
+		}
+		if !has {
+			if err := t.exec(`ALTER TABLE ` + column.table + ` ADD COLUMN ` + column.name + ` ` + column.definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func (t *Tx) exists(query string) (bool, error) {

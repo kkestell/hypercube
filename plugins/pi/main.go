@@ -106,6 +106,8 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	// a resumed one exists.
 	if a.Conversation != "" {
 		argv = append(argv, "--session-id", a.Conversation)
+	} else if a.Fork != "" {
+		argv = append(argv, "--fork", a.Fork, "--session-id", a.Session)
 	}
 	cmd := exec.Command("pi", argv...)
 	cmd.Dir = a.Dir
@@ -158,7 +160,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	window, session := state.Model.ContextWindow, state.SessionID
 	var cost float64
 	var contextTokens int
-	announced := a.Conversation != ""
+	announced := a.Conversation != "" || a.Fork != ""
 	if announced {
 		if _, err := os.Stat(state.SessionFile); err != nil {
 			return fmt.Errorf("Pi has no saved session %s", a.Conversation)

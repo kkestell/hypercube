@@ -757,6 +757,20 @@ func TestStartResumesTheSession(t *testing.T) {
 	}
 }
 
+func TestStartForksTheSession(t *testing.T) {
+	argsFile := fakePi(t, nil)
+	if err := os.WriteFile(os.Getenv("FAKE_SESSION_FILE"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := startArgs(t)
+	a.Fork, a.Session = "parent-session", "session-1"
+	ag, _ := start(t, a)
+	data, _ := os.ReadFile(argsFile)
+	if !strings.Contains(string(data), "--fork parent-session --session-id session-1") || ag.conversation() != "session-1" {
+		t.Fatalf("arguments %s, conversation %q", data, ag.conversation())
+	}
+}
+
 func TestStartFailedResume(t *testing.T) {
 	// The session file is missing: Pi would start a new session under the ID.
 	fakePi(t, nil)

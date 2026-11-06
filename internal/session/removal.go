@@ -270,5 +270,6 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		}
 		return tx.DropQueued(child.ID)
 	})
+	r.Deliver(parentID)
 	return child, err
 }

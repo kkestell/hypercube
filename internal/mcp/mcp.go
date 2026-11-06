@@ -33,11 +33,13 @@ type sendMessageArgs struct {
 }
 
 type createSessionArgs struct {
-	Name    string `json:"name"`
-	Title   string `json:"title"`
-	Profile string `json:"profile"`
-	Dir     string `json:"dir,omitempty"`
-	Message string `json:"message,omitempty"`
+	Name      string `json:"name"`
+	Title     string `json:"title"`
+	Profile   string `json:"profile"`
+	Dir       string `json:"dir,omitempty"`
+	Message   string `json:"message,omitempty"`
+	Fork      bool   `json:"fork,omitempty"`
+	Requested bool   `json:"requested,omitempty"`
 }
 
 type setTitleArgs struct {
@@ -110,6 +112,7 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 		createDescription = "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Given dir, " + dirArg + ". " + profileArg
 		createSchema.Required = append(createSchema.Required, "dir")
 	}
+	createDescription += " Set requested only when the user explicitly asked you to start a child; otherwise this records a proposal card for the user to start. Automated events are not user requests. Fork copies the parent's native context and requires the same harness; native restrictions on working directories still apply. Fresh context is the default."
 	for _, p := range cfg.Profiles {
 		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
 	}
@@ -315,7 +318,14 @@ func createSession(rt *session.Runtime, self string, cfg harness.Config, args cr
 	if err != nil {
 		return "", err
 	}
-	child, err := rt.CreateChild(self, args.Name, args.Title, profile, args.Dir, args.Message)
+	options := session.ChildOptions{Name: args.Name, Title: args.Title, Profile: profile, Dir: args.Dir, Message: args.Message, Fork: args.Fork}
+	if !args.Requested {
+		if err := rt.ProposeChild(self, options); err != nil {
+			return "", err
+		}
+		return "Proposed " + args.Name + ". The user can start it from the card; no child has started.", nil
+	}
+	child, err := rt.CreateChild(self, options)
 	if err != nil {
 		return "", err
 	}

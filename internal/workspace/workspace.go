@@ -290,7 +290,8 @@ func Removable(root, dir, branch string) error {
 // uncommitted counts the changed and untracked files in the checkout in dir,
 // listing each file in an untracked folder.
 func uncommitted(dir string) (int, error) {
-	status, err := git(dir, "status", "--porcelain", "--untracked-files=all")
+	// Status runs while agents write; it must not lock their index to refresh it.
+	status, err := gitWith(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", "status", "--porcelain", "--untracked-files=all")
 	if err != nil || status == "" {
 		return 0, err
 	}
