@@ -31,7 +31,7 @@ export function WorkspaceSection({workspace, onMenu, renaming, onRenaming}: Work
             {workspace.sessions.length > 0 && <span className="invisible flex text-muted-foreground group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible"><Chevron open={open} /></span>}
           </Button>
         </CollapsibleTrigger>
-        <div className="invisible absolute inset-y-0 right-0 flex items-center bg-linear-to-r from-transparent via-card via-25% to-card pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
+        <div className="invisible absolute inset-y-0 right-0 flex items-center bg-linear-to-r from-transparent via-sidebar via-25% to-sidebar pl-4 group-hover/workspace:visible group-has-[:focus-visible]/workspace:visible">
           <Button variant="ghost" size="icon-sm" className="size-6" aria-label="New Session" title="New Session" onClick={() => store.update(s => openUnsent(s, workspace.id))}><Icon name="add" /></Button>
           <Button variant="ghost" size="icon-sm" className="size-6" aria-label="More Actions" title="More Actions" onClick={e => onMenu(e.currentTarget)}><Icon name="ellipsis" /></Button>
         </div>
