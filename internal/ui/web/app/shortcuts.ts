@@ -127,7 +127,7 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     }
     case 'next':
     case 'previous': {
-      const rows = [...document.querySelectorAll<HTMLElement>('.sidebar [role="treeitem"]')];
+      const rows = [...document.querySelectorAll<HTMLElement>('.sidebar [role="treeitem"][data-session]')];
       const index = rows.findIndex(row => row.dataset.session === state.selected);
       const previous = id === 'previous';
       const session = rows[index < 0 ? (previous ? rows.length - 1 : 0) : (index + (previous ? -1 : 1) + rows.length) % rows.length]?.dataset.session;

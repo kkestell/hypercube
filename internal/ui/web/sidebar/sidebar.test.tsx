@@ -2,6 +2,7 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {nativeShortcut, type ShortcutActions} from '../app/shortcuts.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
 import {selectSession} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
@@ -110,6 +111,24 @@ test('an active family folds its ended children, and menus offer Restart Agent o
   click(find(root, '[role=tab][data-state=inactive]'));
   choose(root, '[data-session="old"]', 'Unarchive');
   expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'restart', id: 'live'}, {action: 'unarchive', id: 'old'}]);
+});
+
+test.each([false, true])('session shortcuts skip an ended-children fold and wrap (running child: %s)', runningChild => {
+  const ended = session('ended', {parent: 'a', ended: true});
+  const children = runningChild ? [session('live', {parent: 'a'}), ended] : [ended];
+  const {root, store} = setup([session('a', {children}), session('b')], 'a');
+  expect(find(root, '[data-row="ended:a"]').getAttribute('aria-expanded')).toBe('false');
+  expect(sessionRows(root)).toEqual(runningChild ? ['a', 'live', 'b'] : ['a', 'b']);
+  const none = () => {};
+  const actions: ShortcutActions = {focusComposer: none, showHelp: none, showSettings: none, openQuickOpen: none, openSessionSearch: none};
+  for (const id of runningChild ? ['live', 'b', 'a'] : ['b', 'a']) {
+    act(() => nativeShortcut('next', store, actions));
+    expect(store.get().selected).toBe(id);
+  }
+  for (const id of runningChild ? ['b', 'live', 'a'] : ['b', 'a']) {
+    act(() => nativeShortcut('previous', store, actions));
+    expect(store.get().selected).toBe(id);
+  }
 });
 
 test('deleting a session asks first and posts only on Delete', () => {
