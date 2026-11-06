@@ -5,6 +5,46 @@
   },
   "workspaces": [
     {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "profile": "pi-gpt-high",
+          "turns": [
+            {
+              "prompt": "Clarify how notebooks sync between devices",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The sync guide now explains when changes appear on a second device.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "opencode-deepseek-flash-max",
+          "turns": [
+            {
+              "prompt": "Review the getting started guide for missing steps",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The guide covers installation and sync; the download link should point to the release page.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "harbor",
       "repo": "harbor",
       "sessions": [
@@ -47,50 +87,146 @@
           "worktree": true,
           "turns": [
             {
-              "prompt": "Document the build command",
+              "prompt": "Explain how the sample site is built and previewed",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "read1",
+                  "kind": "tool",
+                  "tool": "exec_command",
+                  "input": {
+                    "cmd": "cat README.md main.go"
+                  },
+                  "output": "harbor build renders pages; harbor serve starts a preview.",
+                  "done": true
+                },
+                {
+                  "id": "answer1",
+                  "kind": "text",
+                  "text": "The sample site stores Markdown in `content/` and Go templates in `templates/`. `harbor build` renders the pages to `public/`; `harbor serve` serves that output locally.\n\nThe README lists both commands but does not explain that a build replaces `public/`.",
+                  "done": true
+                }
+              ]
+            },
+            {
+              "prompt": "Document how to build and preview a harbor site",
               "end": "idle",
               "items": [
                 {
                   "id": "c1",
                   "kind": "tool",
-                  "tool": "bash",
+                  "tool": "exec_command",
                   "input": {
-                    "command": "git status --short"
+                    "cmd": "cat README.md"
                   },
-                  "output": "build-notes.md",
+                  "output": "The README lists build and serve but does not explain the output.",
+                  "done": true
+                },
+                {
+                  "id": "c2",
+                  "kind": "tool",
+                  "tool": "exec_command",
+                  "input": {
+                    "cmd": "go run . build"
+                  },
+                  "output": "built 3 pages",
                   "done": true
                 },
                 {
                   "id": "t1",
                   "kind": "text",
-                  "text": "Added `build-notes.md` with the build command and output directory, then committed it on this branch.\n\nRun `go run . build` from the project root to render the site into `public/`.",
+                  "text": "The build renders Markdown from `content/` into `public/`. I will add a short walkthrough that explains the output and how to preview it locally.",
+                  "done": true
+                },
+                {
+                  "id": "c3",
+                  "kind": "tool",
+                  "tool": "apply_patch",
+                  "input": {
+                    "cmd": "Update README.md"
+                  },
+                  "output": "Updated README.md",
+                  "done": true
+                },
+                {
+                  "id": "c4",
+                  "kind": "tool",
+                  "tool": "exec_command",
+                  "input": {
+                    "cmd": "git add README.md && git commit -m \"Document build and preview\""
+                  },
+                  "output": "[branch] Document build and preview",
+                  "done": true
+                },
+                {
+                  "id": "t2",
+                  "kind": "text",
+                  "text": "Added a build and preview walkthrough to **README.md** and committed it on this branch.\n\n- `harbor build` renders Markdown pages into `public/`.\n- `harbor serve -addr :8080` starts a local preview.\n- Rebuilding replaces the output directory, so generated files do not need to be checked in.\n\nI ran `go run . build` against the sample content; it rendered all three pages.",
                   "done": true
                 }
               ],
               "git": [
                 {
-                  "file": "build-notes.md",
-                  "content": "# Building a site\n\nRun `go run . build` to render content into `public/`.\n"
+                  "file": "README.md",
+                  "content": "# harbor\n\nA small static site generator. harbor turns a folder of Markdown pages into HTML using Go templates.\n\n## Build and preview\n\nRun `harbor build` to render Markdown in `content/` into `public/`. Each build replaces the output directory.\n\nRun `harbor serve -addr :8080` and open http://localhost:8080/ to preview the result.\n\n## Layout\n\n- `content/` holds Markdown pages.\n- `templates/` holds Go templates.\n- `public/` holds generated HTML.\n"
                 },
                 {
                   "args": [
                     "add",
-                    "build-notes.md"
+                    "README.md"
                   ]
                 },
                 {
                   "args": [
                     "commit",
                     "-m",
-                    "Document the build command"
+                    "Document build and preview"
                   ]
                 }
               ]
             }
-          ]
+          ],
+          "view": {
+            "tabs": {
+              "root": {
+                "id": 1,
+                "axis": "x",
+                "ratio": 52,
+                "children": [
+                  {
+                    "id": 2,
+                    "tabs": [
+                      "agent"
+                    ],
+                    "active": "agent"
+                  },
+                  {
+                    "id": 3,
+                    "tabs": [
+                      "file:README.md"
+                    ],
+                    "active": "file:README.md"
+                  }
+                ]
+              },
+              "preview": null,
+              "dragging": null,
+              "nextId": 4
+            },
+            "activePane": 2,
+            "expanded": {},
+            "scroll": {},
+            "folders": {},
+            "files": {
+              "README.md": {
+                "source": false,
+                "lines": []
+              }
+            }
+          }
         },
         {
-          "profile": "pi-sonnet-high",
+          "profile": "pi-gpt-high",
           "worktree": true,
           "turns": [
             {
@@ -147,10 +283,14 @@
     }
   ],
   "select": [
-    0,
+    1,
     1
   ],
   "workbench": {
-    "rightPanel": false
+    "sizes": {
+      "sidebar": 290,
+      "rightPanel": 300,
+      "panel": 240
+    }
   }
 }

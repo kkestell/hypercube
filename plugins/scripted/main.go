@@ -16,6 +16,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -171,7 +172,7 @@ func play(t turn, start harness.StartArgs, event func(harness.Event) error) erro
 	}
 	for _, step := range t.Git {
 		if step.File != "" {
-			if err := os.WriteFile(start.Dir+"/"+step.File, []byte(step.Content), 0644); err != nil {
+			if err := os.WriteFile(filepath.Join(start.Dir, step.File), []byte(step.Content), 0644); err != nil {
 				return err
 			}
 		}

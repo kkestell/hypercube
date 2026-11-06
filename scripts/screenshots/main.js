@@ -31,7 +31,7 @@ const profiles = [
   {name: 'claude-opus-high', description: 'Opus at high effort for design and debugging.', harness: 'claude', model: 'opus', effort: 'high'},
   {name: 'claude-sonnet-high', description: 'Sonnet at high effort for ordinary implementation.', harness: 'claude', model: 'sonnet', effort: 'high'},
   {name: 'codex-gpt-terra-high', description: 'GPT Terra at high effort for implementation and review.', harness: 'codex', model: 'gpt-6.1-terra', effort: 'high'},
-  {name: 'pi-sonnet-high', description: 'Claude Sonnet at high thinking for implementation.', harness: 'pi', model: 'anthropic/claude-sonnet-4-5', effort: 'high'},
+  {name: 'pi-gpt-high', description: 'GPT-5.2 at high thinking for implementation.', harness: 'pi', model: 'openai/gpt-5.2', effort: 'high'},
   {name: 'opencode-deepseek-flash-max', description: 'DeepSeek Flash at max effort for quick, cheap work.', harness: 'opencode', model: 'opencode-go/deepseek-v4.1-flash', effort: 'max'},
 ];
 
@@ -347,7 +347,7 @@ async function capture(scene, ids, backend, window, name) {
     console.log(`${name}: capturing ${theme}`);
     const file = path.join(images, `${name}-${theme}.png`);
     // macOS can briefly capture a wider native frame after sizing the window.
-    let image;
+    let image, wrongSize = false;
     do {
       if (!win.isFocused()) {
         const focused = new Promise(resolve => win.once('focus', resolve));
@@ -357,7 +357,14 @@ async function capture(scene, ids, backend, window, name) {
       }
       await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
       image = nativeImage.createFromPath(file);
-    } while (!win.isFocused() || image.getSize().width !== 2 * width || image.getSize().height !== 2 * height);
+      const size = image.getSize();
+      if (size.width !== 2 * width || size.height !== 2 * height) {
+        if (wrongSize) throw new Error(`${name}-${theme}.png is ${size.width}×${size.height}, not twice ${width}×${height}`);
+        wrongSize = true;
+        continue;
+      }
+      if (win.isFocused()) break;
+    } while (true);
     // The screen holds the window's last painted frame, which lags the page
     // when the window was covered; the image must show what the page drew.
     if (difference(image, await contents.capturePage()) > 8) {

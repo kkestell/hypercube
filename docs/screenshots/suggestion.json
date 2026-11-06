@@ -5,14 +5,54 @@
   },
   "workspaces": [
     {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "profile": "codex-gpt-terra-high",
+          "turns": [
+            {
+              "prompt": "Check the page template for missing metadata",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The default template includes the page title and viewport metadata.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "pi-gpt-high",
+          "turns": [
+            {
+              "prompt": "Review the harbor command examples",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The README examples match the build and serve commands.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "field-notes",
       "repo": "field-notes",
       "sessions": [
         {
-          "profile": "pi-sonnet-high",
+          "profile": "pi-gpt-high",
           "turns": [
             {
-              "prompt": "Review the field notes guide and check its links",
+              "prompt": "Review the field notes guide, check its links, and improve the first-run instructions",
               "end": "working",
               "items": [
                 {
@@ -20,14 +60,15 @@
                   "kind": "tool",
                   "tool": "read",
                   "input": {
-                    "path": "content/guide/getting-started.md"
+                    "cmd": "cat content/guide/getting-started.md"
                   },
-                  "output": "# Getting started\n...",
+                  "output": "The guide covers installation, notebooks, and sync.",
                   "done": true
                 },
                 {
                   "id": "c2",
                   "kind": "tool",
+                  "server": "hypercube",
                   "tool": "create_session",
                   "input": {
                     "title": "Check relative links",
@@ -39,18 +80,43 @@
                 {
                   "id": "t1",
                   "kind": "text",
-                  "text": "The links check is running. I also noticed the guide has no offline instructions, so I suggested a separate task.",
+                  "text": "**links** is checking the rendered paths while I review the first-run instructions. The guide mentions sync but does not say how to confirm that the first notebook is available on another device.",
                   "done": true
                 },
                 {
                   "id": "c3",
                   "kind": "tool",
+                  "tool": "read",
+                  "input": {
+                    "cmd": "cat content/guide/sync.md"
+                  },
+                  "output": "Sign in with the same account on each device.",
+                  "done": true
+                },
+                {
+                  "id": "t2",
+                  "kind": "text",
+                  "text": "I will add a verification step after enabling sync and link to the sync guide. I also found that offline reading is undocumented, so I suggested it as a separate task.",
+                  "done": true
+                },
+                {
+                  "id": "c4",
+                  "kind": "tool",
+                  "tool": "edit",
+                  "input": {
+                    "cmd": "content/guide/getting-started.md"
+                  },
+                  "output": "Updated the first-run checklist.",
+                  "done": true
+                },
+                {
+                  "id": "c5",
+                  "kind": "tool",
                   "tool": "bash",
                   "input": {
-                    "command": "harbor build"
+                    "command": "git diff -- content/guide/getting-started.md"
                   },
-                  "output": "built 3 pages",
-                  "done": true
+                  "done": false
                 }
               ],
               "children": [
@@ -100,15 +166,46 @@
               ]
             }
           ]
+        },
+        {
+          "profile": "claude-sonnet-high",
+          "turns": [
+            {
+              "prompt": "Improve the sync troubleshooting guide",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "Added steps for checking account and connection settings.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "opencode-deepseek-flash-max",
+          "turns": [
+            {
+              "prompt": "Review the field notes homepage",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The homepage introduces notebooks and links to the getting-started guide.",
+                  "done": true
+                }
+              ]
+            }
+          ]
         }
       ]
     }
   ],
   "select": [
-    0,
+    1,
     0
-  ],
-  "workbench": {
-    "rightPanel": false
-  }
+  ]
 }

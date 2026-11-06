@@ -5,6 +5,46 @@
   },
   "workspaces": [
     {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "profile": "pi-gpt-high",
+          "turns": [
+            {
+              "prompt": "Clarify how notebooks sync between devices",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The sync guide now explains when changes appear on a second device.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "opencode-deepseek-flash-max",
+          "turns": [
+            {
+              "prompt": "Review the getting started guide for missing steps",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The guide covers installation and sync; the download link should point to the release page.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "harbor",
       "repo": "harbor",
       "sessions": [
@@ -12,21 +52,23 @@
           "profile": "claude-opus-high",
           "turns": [
             {
-              "prompt": "Generate a sitemap for the site",
+              "prompt": "Add a sitemap with absolute URLs for every rendered page",
               "end": "idle",
               "items": [
                 {
                   "id": "r1",
                   "kind": "reasoning",
-                  "text": "The build already walks the content tree, so it can collect the output paths without a second walk.",
+                  "text": "The build already walks the content tree, so it can collect each rendered URL in that pass.",
                   "done": true
                 },
                 {
                   "id": "c1",
                   "kind": "tool",
                   "tool": "Read",
-                  "input": "build.go",
-                  "output": "func (s Site) Build() (int, error) {\n    // ...\n    err = filepath.WalkDir(s.Content, func(path string, d fs.DirEntry, err error) error {\n        // render each Markdown page\n    })\n    return n, err\n}",
+                  "input": {
+                    "cmd": "build.go"
+                  },
+                  "output": "Build walks content and renders each Markdown page.",
                   "done": true
                 },
                 {
@@ -34,7 +76,7 @@
                   "kind": "tool",
                   "tool": "Agent",
                   "input": "Review sitemap edge cases",
-                  "output": "Review complete.",
+                  "output": "Include the home page, escape XML, and use the configured site URL rather than a relative path.",
                   "done": true
                 },
                 {
@@ -46,20 +88,20 @@
                     "pattern": "WalkDir",
                     "path": "build.go"
                   },
-                  "output": "build.go:39: err = filepath.WalkDir(s.Content, func(path string, d fs.DirEntry, err error) error {",
+                  "output": "build.go:39: filepath.WalkDir(s.Content, ...)",
                   "done": true
                 },
                 {
                   "id": "a3",
                   "parent": "a1",
                   "kind": "text",
-                  "text": "Include the home page and escape URLs in XML.",
+                  "text": "Nested pages need their output paths preserved; XML encoding must escape ampersands.",
                   "done": true
                 },
                 {
                   "id": "t1",
                   "kind": "text",
-                  "text": "The build now writes `sitemap.xml` with one entry per page.\n\n```xml\n<url><loc>https://example.org/</loc></url>\n```\n\n| Check | Result |\n| --- | --- |\n| Home page | Included |\n| XML escaping | Covered |",
+                  "text": "The build now writes a sitemap using the configured site URL:\n\n```xml\n<urlset>\n  <url><loc>https://example.org/</loc></url>\n  <url><loc>https://example.org/posts/</loc></url>\n</urlset>\n```\n\n| Check | Result |\n| --- | --- |\n| Home and nested pages | Included |\n| XML escaping | Covered |",
                   "done": true
                 }
               ]
@@ -81,22 +123,52 @@
             "activePane": 1,
             "expanded": {
               "activity": true,
-              "c1": true,
               "a1": true
             },
             "scroll": {},
             "folders": {},
             "files": {}
           }
+        },
+        {
+          "profile": "codex-gpt-terra-high",
+          "turns": [
+            {
+              "prompt": "Check the page template for missing metadata",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The default template includes the page title and viewport metadata.",
+                  "done": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "pi-gpt-high",
+          "turns": [
+            {
+              "prompt": "Review the harbor command examples",
+              "end": "idle",
+              "items": [
+                {
+                  "id": "t1",
+                  "kind": "text",
+                  "text": "The README examples match the build and serve commands.",
+                  "done": true
+                }
+              ]
+            }
+          ]
         }
       ]
     }
   ],
   "select": [
-    0,
+    1,
     0
-  ],
-  "workbench": {
-    "rightPanel": false
-  }
+  ]
 }
