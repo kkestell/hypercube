@@ -124,7 +124,7 @@ export function ModelSelect({value, place, onChange, fixedHarness = false, disab
         )}
         {status && <p role="alert" className="px-1 text-xs text-destructive">{status}</p>}
         {place && harness && !catalog?.error && (
-          <Command className="rounded-md border" loop>
+          <Command loop>
             <CommandInput placeholder="Search models" aria-label="Search models" />
             <CommandList className="max-h-64">
               {!catalog ? <p className="py-6 text-center text-sm text-muted-foreground">Loading models…</p>
