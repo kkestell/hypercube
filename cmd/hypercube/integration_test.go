@@ -286,7 +286,7 @@ func TestAppProcess(t *testing.T) {
 		cmd.Stdin = bytes.NewReader(append(body, '\n'))
 		return cmd
 	}
-	out, err := bridge("create_session", map[string]string{"name": "w1", "title": "Title", "profile": "worker", "message": "brief"}).CombinedOutput()
+	out, err := bridge("create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "profile": "worker", "message": "brief"}).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "Proposed w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
@@ -418,8 +418,8 @@ func TestAppProcess(t *testing.T) {
 			t.Fatalf("input: %d %s", status, body)
 		}
 		w.until("input after restart", func() bool { return w.session(parent.ID).Activity == store.Idle })
-		if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 || w.session(parent.ID).AwaitingUser {
-			t.Fatal("restart replaced agents or awaits user")
+		if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 {
+			t.Fatal("restart replaced agents")
 		}
 	}
 	if err := app.Process.Signal(syscall.SIGINT); err != nil {
@@ -433,11 +433,18 @@ func TestAppProcess(t *testing.T) {
 			t.Fatalf("agent %d survived Quit", pid)
 		}
 	}
+	// After Quit the sessions stay parked until used; a prompt wakes only its
+	// session.
 	start()
-	w.until("agents after Quit", func() bool {
-		return w.starts(parent.ID) == 2 && w.starts(child.ID) == 2 && w.ready(parent.ID) && w.ready(child.ID)
-	})
-	if !w.session(parent.ID).AwaitingUser {
-		t.Fatal("launch after Quit did not await user")
+	if w.starts(parent.ID) != 1 || w.starts(child.ID) != 1 {
+		t.Fatal("restore after Quit started agents")
+	}
+	status, body := c.post("/session", map[string]string{"action": "input", "id": parent.ID}, `{"text":"after quit"}`)
+	if status != http.StatusOK {
+		t.Fatalf("input after Quit: %d %s", status, body)
+	}
+	w.until("the parent after Quit", func() bool { return w.starts(parent.ID) == 2 && w.ready(parent.ID) })
+	if w.starts(child.ID) != 1 {
+		t.Fatal("a prompt to the parent woke its child")
 	}
 }

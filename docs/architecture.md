@@ -21,13 +21,13 @@ Desktop app or browser ←→ hypercube ui ←→ SQLite
 An agent plugin runs under a `hypercube hold` process that owns its input and
 output independently of the app. Panel shells use holders too. A service
 restart, development rebuild, SIGTERM, or app crash therefore leaves those
-processes alive. On startup, the app attaches to surviving launches, finishes
-those that exited, and restarts lost ones.
+processes alive. On startup, the app attaches to surviving launches and
+finishes those that exited or were lost.
 
-SIGINT to the backend deliberately ends agents and shells. A family's running
-mark remains, so its sessions launch again next time, awaiting a prompt.
-Stopping a family also ends its processes but clears that mark. Quitting the
-desktop app does neither.
+Each session's agent starts when the session is opened, prompted, or sent a
+message, and ends after the session has been idle and unviewed for 15 minutes.
+SIGINT to the backend deliberately ends agents and shells; each session starts
+again when next used. Quitting the desktop app ends neither.
 
 An agent whose plugin exits after starting is relaunched with its saved
 conversation. Three quick exits—within ten seconds of starting—stop automatic

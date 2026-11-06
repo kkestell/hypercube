@@ -60,7 +60,14 @@ to the dialog. A timed-out dialog closes; extension errors appear in chat.
 
 Claude Code and OpenCode send answers to a group of questions once all are
 answered. Codex does the same for blocking questions; its async questions send
-each answer as a message, and new input closes unanswered async questions.
+each answer as a message, and new input closes unanswered async questions. A
+Codex async question leaves the agent working, so it holds up a parent's
+automatic reports until the turn ends; every other question means the agent
+waits for you. OpenCode closes a question it withdraws.
+
+Hypercube answers its own **New session** / **Do it here** questions without
+the harness, and starts a child only after **New session** or a card's
+**Start**.
 
 ## Usage reports
 
@@ -80,9 +87,12 @@ rather than silently opening a new conversation. Pi starts saving with the
 first message, so a Pi session with no saved conversation cannot resume.
 
 Forked children copy a saved native conversation using the same harness.
-Claude Code, Codex, and Pi can fork into another working directory. OpenCode
-requires the source directory and ACP `session/fork` support. A failed fork
-reports an error instead of starting with fresh context. See
+A fork of a session in the original checkout shares its folder; a fork of a
+session in its own worktree gets a new worktree. Claude Code, Codex, and Pi can
+fork into another working directory. OpenCode requires the source directory and
+ACP `session/fork` support, so it can fork only sessions in the original
+checkout. A failed fork reports an error instead of starting with fresh
+context. See
 [sessions and working copies](introduction.md#what-the-other-agent-knows).
 
 Codex uses its native conversation storage, configuration, and credentials:

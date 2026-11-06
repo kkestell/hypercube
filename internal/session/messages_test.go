@@ -12,21 +12,13 @@ func TestSendMessageScope(t *testing.T) {
 	f := newFixture(t)
 	f.seed(store.Session{ID: "own-child", Name: "child"}, store.Session{ID: "sibling", Name: "sibling"}, store.Session{ID: "ended", Name: "ended", Ended: true})
 	if err := f.db.Tx(func(tx *store.Tx) error {
-		parent, err := tx.Session("s")
-		if err != nil {
-			return err
-		}
-		parent.Running = true
-		if err := tx.SaveSession(parent); err != nil {
-			return err
-		}
 		if err := tx.AddWorkspace(store.Workspace{ID: "far", Path: "/other"}); err != nil {
 			return err
 		}
 		for _, s := range []store.Session{
-			{ID: "peer", Workspace: f.workspace.ID, Running: true},
+			{ID: "peer", Workspace: f.workspace.ID},
 			{ID: "peer-child", Parent: "peer", Name: "child", Workspace: f.workspace.ID},
-			{ID: "far", Workspace: "far", Running: true},
+			{ID: "far", Workspace: "far"},
 			{ID: "far-child", Parent: "far", Name: "child", Workspace: "far"},
 			{ID: "stopped", Workspace: "far"},
 			{ID: "stopped-child", Parent: "stopped", Name: "child", Workspace: "far"},
@@ -58,10 +50,10 @@ func TestSendMessageScope(t *testing.T) {
 		{"s", "own-child", "no", "", "not found"},
 		{"s", "peer-child", "no", "", "not found"},
 		{"s", "far-child", "no", "", "not found"},
-		{"s", "stopped", "no", "", "stopped session"},
-		{"stopped", "child", "no", "", "stopped session"},
-		{"stopped-child", "stopped", "no", "", "stopped session"},
-		{"s", "ended", "no", "", "ended child session"},
+		{"s", "stopped", "hello", "stopped", ""},
+		{"stopped", "child", "hello", "stopped-child", ""},
+		{"stopped-child", "stopped", "hello", "stopped", ""},
+		{"s", "ended", "no", "", "ended session"},
 		{"s", "missing", "no", "", "not found"},
 		{"s", "child", " \n", "", "text is required"},
 	} {
@@ -109,22 +101,15 @@ func TestSendMessageAcrossWorkspaces(t *testing.T) {
 	f.until("cross-workspace delivery with the sender's identity", func() bool {
 		return strings.Contains(strings.Join(f.inputs(peer.ID), "\n"), want) && len(f.queued(peer.ID)) == 0
 	})
-	if err := f.rt.Stop(peer.ID); err != nil {
+	// A message to a parked session wakes it, resuming its conversation.
+	f.park(peer.ID)
+	if _, err := f.rt.SendMessage(parent.ID, peer.ID, "after parking"); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.rt.Start(peer.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.rt.SendMessage(parent.ID, peer.ID, "awaiting the user"); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.queued(peer.ID)) != 1 {
-		t.Fatal("message was not held while awaiting the user")
-	}
-	if err := f.rt.Stop(peer.ID); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.queued(peer.ID)) != 1 {
-		t.Fatal("stopping discarded an accepted message")
+	f.until("the parked session to wake and take the message", func() bool {
+		return strings.Contains(strings.Join(f.inputs(peer.ID), "\n"), "after parking") && len(f.queued(peer.ID)) == 0
+	})
+	if starts := f.log(peer.ID, "start"); len(starts) != 2 || starts[1].Conversation != peer.ID+"-conversation" {
+		t.Fatalf("starts = %v", starts)
 	}
 }

@@ -65,6 +65,12 @@ the whole system and against the plan's simpler baseline. Verify its findings
 and resolve justified concerns in the plan. Changes that add no new subsystem
 and rewrite no abstraction skip this step.
 
+## Implementation
+
+The agent implementing a plan uses `/kwork`, whether that is this session or a
+delegated one. A delegated implementer's brief names the plan and tells it to
+invoke `/kwork`.
+
 ## Code review and completion
 
 A substantial change gets one review with `/kreview` from a session that did

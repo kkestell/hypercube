@@ -1,6 +1,6 @@
 // The panel's shell for the attached session. The server starts it when the
-// panel first shows and keeps it running until it exits or the session stops,
-// so hiding the panel leaves it running. The server replays the shell's recent
+// panel first shows and keeps it running until it exits or the session is
+// archived or deleted, so hiding the panel leaves it running. The server replays the shell's recent
 // output on every connection, so a reconnect starts the terminal over. The
 // panel closes when its shell exits or cannot connect.
 import {useEffect, useRef} from 'react';

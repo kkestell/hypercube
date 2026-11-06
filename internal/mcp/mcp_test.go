@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -55,7 +57,7 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: parentDir, NoGit: noGit}); err != nil {
 			return err
 		}
-		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Running: true, Dir: parentDir, Activity: store.Idle}); err != nil {
+		if err := tx.AddSession(store.Session{ID: "session-1", Workspace: "w", Dir: parentDir, Activity: store.Idle}); err != nil {
 			return err
 		}
 		if childDir != "" {
@@ -163,11 +165,7 @@ func TestTools(t *testing.T) {
 			}
 		}
 		create := schemaOf(t, list["create_session"])
-		want := []any{"name", "title", "profile"}
-		if noGit {
-			want = append(want, "dir")
-		}
-		if got := create["required"]; !slices.Equal(got.([]any), want) {
+		if got := create["required"]; !slices.Equal(got.([]any), []any{"title"}) {
 			t.Errorf("noGit=%v: create_session requires %v", noGit, got)
 		}
 		// Every profile is offered.
@@ -260,19 +258,24 @@ func TestBridge(t *testing.T) {
 	}
 }
 
-// create_session refuses bad arguments and a stopped session,
+// create_session refuses bad arguments and a parked session,
 // adding no agent.
 func TestCreateSessionRefusals(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
-		{"name": "w1", "title": "One", "profile": "sol"},
-		{"name": "w1", "title": "One", "dir": "."},
-		{"name": "W 1", "title": "One", "profile": "sol", "dir": "."},
-		{"name": "w1", "title": "One", "profile": "nope", "dir": "."},
-		{"name": "w1", "profile": "sol", "dir": "."},
-		{"name": "w1", "title": "  ", "profile": "sol", "dir": "."},
 		{"name": "w1", "title": "One", "profile": "sol", "dir": "."},
+		{"name": "w1", "title": "One", "profile": "sol", "dir": ".", "requested": true},
+		{"initiation": "own_initiative", "name": "w1", "title": "One", "dir": "."},
+		{"initiation": "own_initiative", "name": "W 1", "title": "One", "profile": "sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "nope", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "profile": "sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "  ", "profile": "sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "sol", "dir": ".", "fork": true},
+		{"initiation": "offer", "title": "One", "profile": "sol"},
+		{"initiation": "offer", "title": "One"},
+		{"initiation": "offer", "title": "One", "offer_id": "x"},
+		{"offer_id": "x", "name": "w1", "title": "One", "profile": "sol", "dir": "."},
 	} {
 		if text, failed := callTool(t, parent, "create_session", args); !failed {
 			t.Errorf("create_session(%v) = %q", args, text)
@@ -283,10 +286,12 @@ func TestCreateSessionRefusals(t *testing.T) {
 	}
 }
 
-func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
-	db, rt := family(t, true, t.TempDir(), "")
+// started runs session-1 with the stand-in plugin and connects to its tools.
+func started(t *testing.T, db *store.DB, rt *session.Runtime) *mcp.ClientSession {
+	t.Helper()
 	plugins := t.TempDir()
 	harnesstest.Install(t, plugins, "one")
+	harnesstest.Install(t, plugins, "two")
 	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
 	rt.PluginDir = plugins
 	t.Cleanup(rt.Quit)
@@ -298,16 +303,118 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 		parent.Harness, parent.Model, parent.Effort = "one", "opus", "high"
 		return tx.SaveSession(parent)
 	})
-	if err := rt.Start("session-1"); err != nil {
+	if err := rt.Input("session-1", "start"); err != nil {
 		t.Fatal(err)
 	}
-	parent := connect(t, serve(t, db, rt).URL, "session-1")
-	text, failed := callTool(t, parent, "create_session", map[string]any{"name": "w1", "title": "One", "profile": "sol", "dir": "missing", "requested": true})
+	return connect(t, serve(t, db, rt).URL, "session-1")
+}
+
+func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	parent := started(t, db, rt)
+	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "sol", "dir": "missing"})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
 		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}
 	if list := children(t, db, "session-1"); len(list) != 0 {
 		t.Errorf("after create_session: %+v", list)
+	}
+}
+
+// An offer starts nothing until the user chooses New session and the agent
+// supplies the brief; a suggestion starts nothing until the user's Start.
+func TestCreateSessionForms(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	parent := started(t, db, rt)
+	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "offer", "title": "Task"})
+	if failed {
+		t.Fatal(text)
+	}
+	items, err := rt.Transcript("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var offer string
+	for _, it := range items {
+		if it.Offer && !it.Done {
+			offer = it.ID
+		}
+	}
+	if offer == "" || !strings.Contains(text, offer) || len(children(t, db, "session-1")) != 0 {
+		t.Fatalf("offer %q: %q", offer, text)
+	}
+	fill := map[string]any{"offer_id": offer, "name": "w1", "title": "Task", "profile": "sol", "dir": ".", "message": "the brief"}
+	if text, failed := callTool(t, parent, "create_session", fill); !failed {
+		t.Fatalf("an unanswered offer started a child: %q", text)
+	}
+	if err := rt.Answer("session-1", offer, "New session", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, brief := range []any{nil, "  "} {
+		unbriefed := maps.Clone(fill)
+		if brief == nil {
+			delete(unbriefed, "message")
+		} else {
+			unbriefed["message"] = brief
+		}
+		if text, failed := callTool(t, parent, "create_session", unbriefed); !failed {
+			t.Fatalf("an offer started a child without a brief: %q", text)
+		}
+	}
+	if text, failed := callTool(t, parent, "create_session", fill); failed {
+		t.Fatal(text)
+	}
+	if text, failed := callTool(t, parent, "create_session", fill); !failed {
+		t.Fatalf("an offer started a second child: %q", text)
+	}
+	if list := children(t, db, "session-1"); len(list) != 1 || list[0].Harness != "two" || list[0].Model != "gpt-6.1-sol" {
+		t.Fatalf("children = %+v", list)
+	}
+	suggestion := map[string]any{"initiation": "own_initiative", "name": "w2", "title": "Later", "profile": "sol", "dir": "."}
+	if text, failed := callTool(t, parent, "create_session", suggestion); failed {
+		t.Fatal(text)
+	}
+	if list := children(t, db, "session-1"); len(list) != 1 {
+		t.Fatalf("a suggestion started a child: %+v", list)
+	}
+}
+
+// read_session shows a child's transcript, newest last, a page at a time.
+func TestReadSession(t *testing.T) {
+	db, rt := family(t, false, t.TempDir(), t.TempDir())
+	long := strings.Repeat("x", 30000)
+	items := []harness.Item{
+		{ID: "1", Kind: harness.KindUser, Text: "the brief", From: "session-1"},
+		{ID: "2", Kind: harness.KindText, Text: long},
+		{ID: "3", Kind: harness.KindReasoning, Text: "thinking"},
+		{ID: "4", Kind: harness.KindTool, Tool: "shell"},
+		{ID: "5", Kind: harness.KindText, Parent: "4", Text: "a native subagent"},
+		{ID: "6", Kind: harness.KindText, Text: "Done: " + long},
+		{ID: "7", Kind: harness.KindState, State: harness.Idle, Final: []string{"6"}},
+	}
+	change(t, db, func(tx *store.Tx) error {
+		for i, it := range items {
+			data, err := json.Marshal(it)
+			if err != nil {
+				return err
+			}
+			if _, err := tx.PutEntry("b", store.Entry{Seq: int64(i + 1), Item: it.ID, Data: data}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	parent := connect(t, serve(t, db, rt).URL, "session-1")
+	last, failed := callTool(t, parent, "read_session", map[string]any{"to": "w1"})
+	if failed || !strings.HasPrefix(last, "Earlier entries remain: call read_session with cursor 4 ") || !strings.HasSuffix(last, "Tool: shell\n\nAssistant: Done: "+long+"\n\n(turn finished)") {
+		t.Fatalf("last page = %.200q", last)
+	}
+	first, failed := callTool(t, parent, "read_session", map[string]any{"to": "w1", "cursor": 4})
+	if failed || first != "Message from session-1: the brief\n\nAssistant: "+long {
+		t.Fatalf("first page = %.200q", first)
+	}
+	if text, failed := callTool(t, parent, "read_session", map[string]any{"to": "nobody"}); !failed {
+		t.Fatalf("read an unknown session: %q", text)
 	}
 }
 
@@ -333,12 +440,12 @@ func TestSetTitle(t *testing.T) {
 	}
 }
 
-// end_session refuses in a stopped session and leaves the child.
-func TestEndSessionStoppedSession(t *testing.T) {
+// end_session refuses in a parked session and leaves the child.
+func TestEndSessionParkedSession(t *testing.T) {
 	db, rt := family(t, false, t.TempDir(), t.TempDir())
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	if text, failed := callTool(t, parent, "end_session", map[string]any{"name": "w1"}); !failed || !strings.Contains(text, "not running") {
-		t.Fatalf("end_session in a stopped session: %q %v", text, failed)
+		t.Fatalf("end_session in a parked session: %q %v", text, failed)
 	}
 	if list := children(t, db, "session-1"); len(list) != 1 {
 		t.Errorf("after end_session: %+v", list)
@@ -353,12 +460,12 @@ func TestSessionBoundaries(t *testing.T) {
 			return err
 		}
 		for _, s := range []store.Session{
-			{ID: "peer", Workspace: "w", Title: "Fix parser", Running: true},
+			{ID: "peer", Workspace: "w", Title: "Fix parser"},
 			{ID: "peer-child", Workspace: "w", Parent: "peer", Name: "child"},
-			{ID: "far", Workspace: "far", Running: true},
+			{ID: "far", Workspace: "far"},
 			{ID: "far-child", Workspace: "far", Parent: "far", Name: "child"},
-			{ID: "stopped", Workspace: "far"},
-			{ID: "stopped-child", Workspace: "far", Parent: "stopped", Name: "child"},
+			{ID: "parked", Workspace: "far"},
+			{ID: "parked-child", Workspace: "far", Parent: "parked", Name: "child"},
 			{ID: "ended", Workspace: "w", Parent: "session-1", Name: "ended", Ended: true},
 		} {
 			if err := tx.AddSession(s); err != nil {
@@ -371,7 +478,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 9 || parentTools["open_file"] == nil || childTools["open_file"] == nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 10 || parentTools["open_file"] == nil || childTools["open_file"] == nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
@@ -402,20 +509,20 @@ func TestSessionBoundaries(t *testing.T) {
 			}
 		}
 	}
-	checkList(parent, map[string][2]string{"w1": {dir, "session-1"}, "peer": {dir, ""}, "far": {"/other", ""}})
+	checkList(parent, map[string][2]string{"w1": {dir, "session-1"}, "peer": {dir, ""}, "far": {"/other", ""}, "parked": {"/other", ""}})
 	checkList(child, map[string][2]string{"session-1": {dir, ""}})
-	checkList(connect(t, url, "stopped-child"), map[string][2]string{})
+	checkList(connect(t, url, "parked-child"), map[string][2]string{"parked": {"/other", ""}})
 	for _, to := range []string{"peer", "far", "peer-child", "far-child", "w1"} {
 		if text, failed := callTool(t, child, "send_message", map[string]any{"to": to, "text": "no"}); !failed {
 			t.Fatal(text)
 		}
 	}
-	for _, to := range []string{"peer-child", "far-child", "stopped", "ended"} {
+	for _, to := range []string{"peer-child", "far-child", "ended"} {
 		if text, failed := callTool(t, parent, "send_message", map[string]any{"to": to, "text": "no"}); !failed {
 			t.Fatal(text)
 		}
 	}
-	for _, to := range []string{"peer", "far"} {
+	for _, to := range []string{"peer", "far", "parked"} {
 		if text, failed := callTool(t, parent, "send_message", map[string]any{"to": to, "text": "yes"}); failed || text != "Message queued for "+to+"." {
 			t.Fatal(text)
 		}
@@ -424,7 +531,7 @@ func TestSessionBoundaries(t *testing.T) {
 		t.Fatal(text)
 	}
 	change(t, db, func(tx *store.Tx) error {
-		for _, id := range []string{"peer-child", "far-child", "stopped", "ended"} {
+		for _, id := range []string{"peer-child", "far-child", "ended"} {
 			messages, err := tx.Queued(id)
 			if err != nil {
 				return err
@@ -440,7 +547,7 @@ func TestSessionBoundaries(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		s.Running = false
+		s.Ended = true
 		return tx.SaveSession(s)
 	})
 	checkList(child, map[string][2]string{})

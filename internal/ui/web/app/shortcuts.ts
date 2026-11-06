@@ -1,6 +1,6 @@
 import type {KeyboardEvent as ReactKeyboardEvent} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
-import {openUnsent, runningFirst} from '../sessions/selection.ts';
+import {openUnsent} from '../sessions/selection.ts';
 import {toggle, toggleWrap} from './workbench.ts';
 import type {Store} from '../store.ts';
 import {hypercube} from './window.ts';
@@ -123,7 +123,7 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'composer':
       return actions.focusComposer;
     case 'select': {
-      const session = state.workspaces.flatMap(w => runningFirst(w.sessions))[Number(key) - 1];
+      const session = state.workspaces.flatMap(w => w.sessions.filter(s => !s.ended))[Number(key) - 1];
       return session && (() => chooseSession(store, session.id));
     }
     case 'next':

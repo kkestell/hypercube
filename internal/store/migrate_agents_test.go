@@ -98,9 +98,9 @@ func TestOpenUpgradesAgentsDatabase(t *testing.T) {
 				return err
 			}
 			want := []Session{
-				{ID: "s1", Workspace: "w1", Title: "Fix parser", Running: true, AwaitingUser: true, Unseen: true,
+				{ID: "s1", Workspace: "w1", Title: "Fix parser", Unseen: true,
 					Harness: "claude", Model: "opus", Effort: "high", Dir: "/repo", Conversation: "conv-l1",
-					Activity: Idle, Attention: true, Usage: usage(10, 200, 1.5), Created: 100},
+					Activity: Idle, Usage: usage(10, 200, 1.5), Created: 100},
 				{ID: "s2", Workspace: "w2", Title: "Other", Harness: "opencode", Model: "deep", Effort: "max",
 					Dir: "/plain", Conversation: "conv-l2", Activity: Exited, Usage: usage(7, 70, 0.07), Created: 200},
 			}

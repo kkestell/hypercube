@@ -24,7 +24,6 @@ type shownSession struct {
 	Parent    string        `json:"parent"`
 	Title     string        `json:"title"`
 	Ready     bool          `json:"ready"`
-	Running   bool          `json:"running"`
 	Ended     bool          `json:"ended"`
 	Unseen    bool          `json:"unseen"`
 	Reply     string        `json:"reply,omitempty"`
@@ -43,10 +42,9 @@ type shownSession struct {
 }
 
 // showSession shows a top-level session with its children and, for a
-// worktree session, its merge status. A child runs while its parent runs,
-// until it ends.
+// worktree session, its merge status.
 func showSession(tx *store.Tx, s store.Session, merges map[string]workspace.Merge) (shownSession, error) {
-	shown, err := show(tx, s, s.Running)
+	shown, err := show(tx, s)
 	if err != nil {
 		return shown, err
 	}
@@ -59,7 +57,7 @@ func showSession(tx *store.Tx, s store.Session, merges map[string]workspace.Merg
 		return shown, err
 	}
 	for _, c := range children {
-		child, err := show(tx, c, s.Running && !c.Ended)
+		child, err := show(tx, c)
 		if err != nil {
 			return shown, err
 		}
@@ -69,9 +67,9 @@ func showSession(tx *store.Tx, s store.Session, merges map[string]workspace.Merg
 }
 
 // show shows one session. An unseen idle session carries its last reply.
-func show(tx *store.Tx, s store.Session, running bool) (shownSession, error) {
-	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Running: running, Ended: s.Ended,
-		Ready: running && !s.Ended && s.Ready != 0, Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
+func show(tx *store.Tx, s store.Session) (shownSession, error) {
+	shown := shownSession{ID: s.ID, Parent: s.Parent, Title: s.Title, Ended: s.Ended,
+		Ready: !s.Ended && s.Ready != 0, Unseen: s.Unseen, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Dir: s.Dir,
 		Activity: s.Activity, Attention: s.Attention, Usage: s.Usage, Children: []shownSession{}}
 	if s.Unseen && s.Activity == store.Idle {
 		var err error

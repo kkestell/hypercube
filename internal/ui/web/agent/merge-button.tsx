@@ -12,7 +12,7 @@ export function MergeButton({session}: {session: Session}) {
   if (!merge || !found || merge.unmerged <= 0 || merge.error) return null;
 
   return (
-    <Button type="button" variant="secondary" size="xs" className="composer-merge" disabled={!session.running}
+    <Button type="button" variant="secondary" size="xs" className="composer-merge"
       onClick={() => requestMerge(store, session, merge.target, found.workspace.path)}>
       Merge
     </Button>

@@ -46,7 +46,6 @@ export interface Session {
   parent: string;
   title: string;
   ready: boolean;
-  running: boolean;
   ended: boolean;
   unseen: boolean;
   reply?: string;

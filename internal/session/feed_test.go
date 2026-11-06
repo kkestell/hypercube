@@ -116,16 +116,14 @@ func TestEndedLaunchPublishesDrainedItemsAndNote(t *testing.T) {
 	}
 }
 
-func TestStoppedSessionPublishesDrainedItems(t *testing.T) {
+func TestParkedSessionPublishesDrainedItems(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.until("a pending item", func() bool { return len(f.transcript(s.ID)) == 4 })
 	changes, cancel := f.rt.Subscribe()
 	defer cancel()
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(s.ID)
 	change := nextChange(t, changes, func(c Change) bool { return c.Session == s.ID })
 	if change.Session != s.ID || change.Item.Text != "working" || !change.Item.Done {
 		t.Fatalf("stopped item = %+v", change)

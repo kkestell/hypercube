@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {receivedWorkspaces} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
@@ -54,7 +54,7 @@ const keydown = (target: EventTarget, key: string, options: KeyboardEventInit = 
 
 test('Escape interrupts only the shown busy session and leaves other Escape actions alone', async () => {
   const requests = answer(() => new Response(''));
-  const sessions = ['a', 'b'].map(id => testSession({id, title: id, running: true, activity: 'busy'}));
+  const sessions = ['a', 'b'].map(id => testSession({id, title: id, activity: 'busy'}));
   const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, rightTab: 'search'})}, ...sessions);
   const root = mount(store, <App store={store} />);
   requests.length = 0;
@@ -91,7 +91,7 @@ test('archived families open from the sidebar and can be deleted', async () => {
   const requests = answer((_, init) => init?.method === 'POST' ? new Response('') : Response.json([]));
   const child = testSession({id: 'child', parent: 'archived', title: 'Child chat', ended: true, activity: 'exited'});
   const archived = testSession({id: 'archived', title: 'Finished work', ended: true, activity: 'exited', children: [child]});
-  const active = testSession({id: 'active', title: 'Active work', running: true});
+  const active = testSession({id: 'active', title: 'Active work'});
   const store = createStore(receivedWorkspaces(testState({selected: 'active', workbench: workbench({rightPanel: false})}),
     [testWorkspace({id: 'w', name: 'My workspace', path: '/repo', sessions: [active, archived]})]));
   const root = mount(store, <App store={store} />);
@@ -105,7 +105,9 @@ test('archived families open from the sidebar and can be deleted', async () => {
   expect(store.get().selected).toBe('child');
   expect(sendDisabled(root)).toBe(true);
   act(() => { find(root, '[data-session="archived"]').dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
-  act(() => { clickControl(find(document, '[role=menuitem]')); });
+  const deleteItem = findAll(document, '[role=menuitem]').find(item => item.textContent === 'Delete Session');
+  if (!deleteItem) throw new Error('No Delete Session item');
+  act(() => { clickControl(deleteItem); });
   const confirmation = find(document, '[role=alertdialog]');
   expect(confirmation.textContent).toContain("Its chat and its children's chats are deleted.");
   expect(requests.filter(request => request.method === 'POST')).toHaveLength(0);

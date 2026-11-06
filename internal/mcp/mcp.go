@@ -15,39 +15,19 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const dirArg = "an existing directory given as an absolute path, a path starting with ~/, or a path relative to your directory, the child session works directly in it"
-
-const profileArg = "The profile sets the child session's harness, model, and effort. An optional message is queued for the child session before it starts."
-
 type sendMessageArgs struct {
 	To   string `json:"to"`
 	Text string `json:"text"`
 }
 
-type createSessionArgs struct {
-	Name      string `json:"name"`
-	Title     string `json:"title"`
-	Profile   string `json:"profile"`
-	Dir       string `json:"dir,omitempty"`
-	Message   string `json:"message,omitempty"`
-	Fork      bool   `json:"fork,omitempty"`
-	Requested bool   `json:"requested,omitempty"`
-}
-
 type setTitleArgs struct {
 	Title string `json:"title"`
-}
-
-type endSessionArgs struct {
-	Name string `json:"name"`
 }
 
 // result wraps a tool's text; an error becomes an error result the model sees.
@@ -62,9 +42,7 @@ func result[In any](run func(context.Context, In) (string, error)) mcp.ToolHandl
 }
 
 // newServer returns the server for one session; browser drives its browser,
-// and is nil without the Hypercube window. Outside Git, child sessions cannot
-// have worktrees, so create_session requires dir. Profiles restrict profile to
-// the configured profiles.
+// and is nil without the Hypercube window.
 func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) *mcp.Server {
 	// An unreadable database or configuration fails the tool calls that need
 	// it, so it needs no separate error here.
@@ -80,18 +58,19 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 		return err
 	})
 
-	sendDescription := "Send a message to one of your running child sessions by its name, or to any other running top-level session across all workspaces in this app by its ID. Stopped and ended recipients are refused. This is the only way to reach other Hypercube sessions."
+	sendDescription := "Send a message to one of your child sessions by its name, or to any other top-level session across all workspaces in this app by its ID. A recipient that is not running starts to receive it. Ended recipients are refused. This is the only way to reach other Hypercube sessions."
 	if caller.Parent != "" {
-		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only session you can message, and it must be running.", caller.Parent)
+		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only session you can message.", caller.Parent)
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "open_file", Description: "Open a file in a tab beside your chat, which the user sees, and select it. path is relative to your directory, absolute, or starts with ~ for the user's home; it may be anywhere the user can read. lines highlights ranges of lines, each {start, end} with end optional, and scrolls to the first; a Markdown file with lines shows its source, otherwise its preview. The tab opens now if the user is viewing your session, or the next time they do."}, result(func(_ context.Context, a openFileArgs) (string, error) { return openFile(rt, caller.Dir, self, a) }))
 	addBrowserTools(server, browser, self)
-	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the running sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		return server
 	}
+	mcp.AddTool(server, &mcp.Tool{Name: "read_session", Description: readSessionDescription}, result(func(_ context.Context, a readSessionArgs) (string, error) { return readSession(db, rt, self, a) }))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_title",
 		Description: "Set your session's title: a short display title for the user. It does not change how sessions are addressed.",
@@ -101,31 +80,7 @@ func newServer(db *store.DB, rt *session.Runtime, browser Browser, self string) 
 		}
 		return "Title set.", nil
 	}))
-	cfg, cfgErr := harness.LoadConfig()
-
-	createSchema, err := jsonschema.For[createSessionArgs](nil)
-	if err != nil {
-		panic(err)
-	}
-	createDescription := "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Without dir, the child session gets its own branch and worktree from HEAD. With dir, " + dirArg + ", and Hypercube creates no branch or worktree. " + profileArg
-	if w.NoGit {
-		createDescription = "Create a child session and launch its agent. The title is a short, meaningful display title for the user; the name stays its address. Given dir, " + dirArg + ". " + profileArg
-		createSchema.Required = append(createSchema.Required, "dir")
-	}
-	createDescription += " Set requested only when the user explicitly asked you to start a child; otherwise this records a proposal card for the user to start. Automated events are not user requests. Fork copies the parent's native context and requires the same harness; native restrictions on working directories still apply. Fresh context is the default."
-	for _, p := range cfg.Profiles {
-		createSchema.Properties["profile"].Enum = append(createSchema.Properties["profile"].Enum, p.Name)
-	}
-	mcp.AddTool(server, &mcp.Tool{Name: "create_session", Description: createDescription, InputSchema: createSchema}, result(func(_ context.Context, a createSessionArgs) (string, error) {
-		if cfgErr != nil {
-			return "", cfgErr
-		}
-		return createSession(rt, self, cfg, a)
-	}))
-	mcp.AddTool(server, &mcp.Tool{
-		Name:        "end_session",
-		Description: "End a child session: its agent stops for good, and a child with a worktree also has its worktree and branch removed; Git refuses dirty worktrees and unmerged branches. The ended child stays listed for the user and cannot be messaged.",
-	}, result(func(_ context.Context, a endSessionArgs) (string, error) { return endSession(rt, self, a.Name) }))
+	addChildTools(server, rt, self, w)
 	return server
 }
 
@@ -280,13 +235,6 @@ func listSessions(db *store.DB, self string) (string, error) {
 			if s.ID == self || s.Ended {
 				continue
 			}
-			running, err := tx.Running(s)
-			if err != nil {
-				return err
-			}
-			if !running {
-				continue
-			}
 			w, err := tx.Workspace(s.Workspace)
 			if err != nil {
 				return err
@@ -311,34 +259,4 @@ func sendMessage(rt *session.Runtime, self, to, text string) (string, error) {
 		return "", err
 	}
 	return fmt.Sprintf("Message queued for %s.", to), nil
-}
-
-func createSession(rt *session.Runtime, self string, cfg harness.Config, args createSessionArgs) (string, error) {
-	profile, err := cfg.Profile(args.Profile)
-	if err != nil {
-		return "", err
-	}
-	options := session.ChildOptions{Name: args.Name, Title: args.Title, Profile: profile, Dir: args.Dir, Message: args.Message, Fork: args.Fork}
-	if !args.Requested {
-		if err := rt.ProposeChild(self, options); err != nil {
-			return "", err
-		}
-		return "Proposed " + args.Name + ". The user can start it from the card; no child has started.", nil
-	}
-	child, err := rt.CreateChild(self, options)
-	if err != nil {
-		return "", err
-	}
-	if child.Branch == "" {
-		return fmt.Sprintf("Created %s in %s.", child.Name, child.Dir), nil
-	}
-	return fmt.Sprintf("Created %s on branch %s in %s.", child.Name, child.Branch, child.Dir), nil
-}
-
-func endSession(rt *session.Runtime, self, name string) (string, error) {
-	child, err := rt.EndChild(self, name)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("Ended %s.", child.Name), nil
 }

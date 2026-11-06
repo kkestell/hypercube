@@ -36,7 +36,7 @@ func (r *Runtime) SelectProfile(id, name string) error {
 	var command int64
 	if err == nil {
 		command, err = r.recordRequest(l, harness.Command{Command: harness.CmdConfigure,
-			Selection: &harness.Selection{Model: profile.Model, Effort: profile.Effort}}, nil, false)
+			Selection: &harness.Selection{Model: profile.Model, Effort: profile.Effort}}, nil)
 	}
 	r.mu.Unlock()
 	if err != nil {

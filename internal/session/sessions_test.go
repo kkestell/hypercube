@@ -83,51 +83,42 @@ func TestCreateRefusesABadPromptBeforeMakingAnything(t *testing.T) {
 	}
 }
 
-func TestRestoredSessionHoldsMessagesUntilThePrompt(t *testing.T) {
+func TestParkedSessionWakesForInputAndMessages(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
+	f.park(s.ID)
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || a.Launch != "" || syscall.Kill(f.log(s.ID, "start")[0].Pid, 0) != syscall.ESRCH {
+		t.Fatalf("after parking: %+v", a)
 	}
-	if a := f.storedSession(s.ID); a.Activity != store.Exited || f.storedSession(s.ID).Running || syscall.Kill(f.log(s.ID, "start")[0].Pid, 0) != syscall.ESRCH {
-		t.Fatalf("after stop: %+v", a)
+	if got := f.summary(s.ID); got != "user:start|text:ack" {
+		t.Fatalf("parking left a note: %q", got)
 	}
-	if err := f.rt.Input(s.ID, "to a stopped agent"); err == nil {
-		t.Fatal("input reached a stopped agent")
-	}
-	f.queue("user", s.ID, "queued while stopped")
-	if err := f.rt.Start(s.ID); err != nil {
-		t.Fatal(err)
-	}
-	f.until("the session idle", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
-	start := f.log(s.ID, "start")
-	if len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
-		t.Fatalf("restart: %v awaiting=%v", start, f.storedSession(s.ID).AwaitingUser)
-	}
-	// A delivery attempt sends nothing until the user's prompt, which goes
-	// first; then the queue.
-	f.rt.Deliver(s.ID)
+	// A prompt wakes the session, resuming its conversation, and goes first.
 	f.input(s.ID, "continue")
-	f.until("the held message", func() bool { return len(f.inputs(s.ID)) == 3 && len(f.queued(s.ID)) == 0 })
-	if got := f.inputs(s.ID); got[1] != "continue" || !strings.Contains(got[2], "queued while stopped") {
-		t.Fatalf("inputs = %q", got)
+	start := f.log(s.ID, "start")
+	if len(start) != 2 || start[1].Conversation != s.ID+"-conversation" {
+		t.Fatalf("wake: %v", start)
 	}
-	if got := f.storedSession(s.ID); got.AwaitingUser || got.Title != "start" {
-		t.Fatalf("session = %+v", got)
+	f.until("the prompt", func() bool { return f.summary(s.ID) == "user:start|text:ack|user:continue|text:ack" && f.idle(s.ID) })
+	// A queued message wakes it again.
+	f.park(s.ID)
+	f.queue("user", s.ID, "queued while parked")
+	f.until("the queued message", func() bool { return len(f.inputs(s.ID)) == 3 && len(f.queued(s.ID)) == 0 })
+	if got := f.inputs(s.ID); !strings.Contains(got[2], "queued while parked") || len(f.log(s.ID, "start")) != 3 {
+		t.Fatalf("inputs = %q", got)
 	}
 }
 
-func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
+func TestQuitLeavesSessionsParkedAndInputResumes(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.input(s.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(s.ID).Activity == store.Busy })
 	pid := f.log(s.ID, "start")[0].Pid
 	f.rt.Quit()
-	// Shutdown saves the unfinished item, ends the process, and leaves the
-	// session marked running.
-	if a := f.storedSession(s.ID); a.Activity != store.Exited || !f.storedSession(s.ID).Running {
-		t.Fatalf("after shutdown: %+v", a)
+	// Quit saves the unfinished item and ends the process.
+	if a := f.storedSession(s.ID); a.Activity != store.Exited || a.Launch != "" {
+		t.Fatalf("after quit: %+v", a)
 	}
 	if got := f.summary(s.ID); got != "user:start|text:ack|user:!work|text:working" {
 		t.Fatalf("transcript = %q", got)
@@ -139,17 +130,19 @@ func TestShutdownKeepsTheRunningMarkAndRestoreResumes(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
 		t.Fatalf("the plugin process remains: %v", err)
 	}
-	if err := f.rt.Start(s.ID); err == nil {
-		t.Fatal("a finished runtime started a session")
+	if err := f.rt.Input(s.ID, "too late"); !errors.Is(err, errClosing) {
+		t.Fatalf("a finished runtime woke a session: %v", err)
 	}
 	rt := f.newRuntime()
 	f.rt = rt
 	rt.Restore()
-	f.until("the restored session", func() bool { return f.storedSession(s.ID).Activity == store.Idle })
-	if start := f.log(s.ID, "start"); len(start) != 2 || start[1].Conversation != s.ID+"-conversation" || !f.storedSession(s.ID).AwaitingUser {
-		t.Fatalf("restore: %v", start)
+	if len(f.log(s.ID, "start")) != 1 || f.awake(s.ID) {
+		t.Fatal("restore woke a parked session")
 	}
 	f.input(s.ID, "continue")
+	if start := f.log(s.ID, "start"); len(start) != 2 || start[1].Conversation != s.ID+"-conversation" {
+		t.Fatalf("resume: %v", start)
+	}
 	f.until("a turn after restore", func() bool {
 		return f.summary(s.ID) == "user:start|text:ack|user:!work|text:working|user:continue|text:ack"
 	})
@@ -202,14 +195,10 @@ func TestShellsEndWithTheirSession(t *testing.T) {
 		return s.ID
 	}
 	sh := open()
-	if err := f.rt.Stop(s.ID); err != nil || !f.shellEnded(sh) {
-		t.Fatalf("Stop left the shell running: %v", err)
-	}
-	if _, err := f.rt.Shell(s.ID, 80, 24); err == nil {
-		t.Fatal("a stopped session opened a shell")
-	}
-	if err := f.rt.Start(s.ID); err != nil {
-		t.Fatal(err)
+	// A shell outlives its session's agent.
+	f.park(s.ID)
+	if f.shellEnded(sh) {
+		t.Fatal("parking ended the shell")
 	}
 	sh = open()
 	if err := f.rt.Delete(s.ID); err != nil || !f.shellEnded(sh) {
@@ -314,7 +303,7 @@ func TestDeleteMissingCheckout(t *testing.T) {
 	})
 }
 
-// A session cannot start while Delete waits for its plugins to end, so no
+// A session cannot wake while Delete waits for its plugins to end, so no
 // plugin of it outlives the delete.
 func TestDeletingSessionCannotStart(t *testing.T) {
 	t.Setenv("HYPERCUBE_TEST_END_DELAY", "500ms")
@@ -323,9 +312,14 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 
 	deleted := make(chan error, 1)
 	go func() { deleted <- f.rt.Delete(s.ID) }()
-	f.until("delete to claim the session", func() bool { f.rt.mu.Lock(); defer f.rt.mu.Unlock(); return f.rt.deleting[s.ID] })
-	if err := f.rt.Start(s.ID); !errors.Is(err, errDeleting) {
-		t.Fatalf("start during delete: %v", err)
+	f.until("delete to stop the session", func() bool {
+		f.rt.mu.Lock()
+		defer f.rt.mu.Unlock()
+		l := f.rt.live[s.ID]
+		return f.rt.deleting[s.ID] && (l == nil || l.stopping)
+	})
+	if err := f.wake(s.ID); !errors.Is(err, errDeleting) {
+		t.Fatalf("wake during delete: %v", err)
 	}
 	if err := <-deleted; err != nil {
 		t.Fatal(err)
@@ -337,24 +331,6 @@ func TestDeletingSessionCannotStart(t *testing.T) {
 	defer f.rt.mu.Unlock()
 	if len(f.rt.live) != 0 {
 		t.Fatal("an agent of the deleted session is running")
-	}
-}
-
-func TestStopClearsTheFamilysAttention(t *testing.T) {
-	f := newFixture(t)
-	f.seed(store.Session{ID: "c", Name: "c"})
-	for _, id := range []string{"s", "c"} {
-		if err := f.rt.update(id, func(s *store.Session) { s.Running, s.Attention = id == "s", true }); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := f.rt.Stop("s"); err != nil {
-		t.Fatal(err)
-	}
-	for _, id := range []string{"s", "c"} {
-		if got := f.storedSession(id); got.Running || got.Attention {
-			t.Errorf("%s after stop: %+v", id, got)
-		}
 	}
 }
 
@@ -407,17 +383,15 @@ func TestWorktreeSession(t *testing.T) {
 		t.Fatalf("refused delete changed the session: %v", err)
 	}
 
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.Start(s.ID); err != nil {
+	f.park(s.ID)
+	if err := f.wake(s.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got := f.storedSession(s.ID); got.Dir != dir || got.Branch != branch {
-		t.Fatalf("after restart: %+v", got)
+		t.Fatalf("after waking: %+v", got)
 	}
 	if _, err := os.Stat(dir); err != nil {
-		t.Fatalf("stop removed the worktree: %v", err)
+		t.Fatalf("parking removed the worktree: %v", err)
 	}
 
 	f.git(f.root, "merge", "-q", branch)
@@ -462,9 +436,7 @@ func TestCreateRefusesAWorktreeOutsideGit(t *testing.T) {
 func TestMergeStatusFailureStaysWithItsSession(t *testing.T) {
 	f := newFixture(t)
 	s := f.worktreeSession()
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(s.ID)
 	if err := os.RemoveAll(s.Dir); err != nil {
 		t.Fatal(err)
 	}
@@ -517,9 +489,8 @@ func TestDeleteWorktreeSessionWithoutItsWorktree(t *testing.T) {
 	f := newFixture(t)
 	s := f.worktreeSession()
 	child := f.child(s, "w1", "")
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(child.ID)
+	f.park(s.ID)
 	if err := os.RemoveAll(s.Dir); err != nil {
 		t.Fatal(err)
 	}
@@ -550,7 +521,7 @@ func TestArchiveFamily(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, member := range []store.Session{s, child} {
-		if saved := f.storedSession(member.ID); !saved.Ended || saved.Running || f.summary(member.ID) != before[member.ID] {
+		if saved := f.storedSession(member.ID); !saved.Ended || f.summary(member.ID) != before[member.ID] {
 			t.Errorf("archived session = %+v, transcript = %s", saved, f.summary(member.ID))
 		}
 		if syscall.Kill(f.log(member.ID, "start")[0].Pid, 0) != syscall.ESRCH {
@@ -569,8 +540,8 @@ func TestArchiveFamily(t *testing.T) {
 	if !f.shellEnded(child.ID) {
 		t.Error("child shell remains")
 	}
-	if err := f.rt.Start(s.ID); err == nil {
-		t.Error("archived family started")
+	if err := f.wake(s.ID); !errors.Is(err, errEnded) {
+		t.Errorf("archived session woke: %v", err)
 	}
 }
 

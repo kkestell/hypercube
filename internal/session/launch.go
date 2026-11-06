@@ -38,6 +38,8 @@ type live struct {
 	// written.
 	send sync.Mutex
 	sent int64
+	// started is closed once the plugin has accepted start.
+	started chan struct{}
 	// done is closed when the launch is over, by run or, when run never
 	// starts, by CreateChild.
 	done chan struct{}
@@ -61,7 +63,7 @@ func (r *Runtime) decide(tx *write, s store.Session, root string, quick int) (*l
 	if err = tx.SaveSession(s); err != nil {
 		return nil, err
 	}
-	l := &live{id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":", pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, done: make(chan struct{}), quick: quick}
+	l := &live{id: s.ID, root: root, workspace: s.Workspace, prefix: s.Launch + ":", pending: map[string]*pendingItem{}, commands: map[int64]store.Command{}, waiters: map[int64]chan error{}, started: make(chan struct{}), done: make(chan struct{}), quick: quick}
 	if err = r.loadSeq(tx.Tx, s.ID); err != nil {
 		return nil, err
 	}
@@ -92,36 +94,28 @@ func (r *Runtime) nextSeq(id string) int64 {
 	return r.seqs[id]
 }
 
-// sessionLive reports whether any member of the family has a launch. The
-// caller holds mu.
-func (r *Runtime) sessionLive(session string) bool {
-	for _, l := range r.live {
-		if l.root == session {
-			return true
-		}
-	}
-	return false
+// launch attaches the reader and waits for the plugin to start.
+func (r *Runtime) launch(l *live) error {
+	go r.run(l)
+	return r.awaitStart(l)
 }
 
-// launch attaches the reader and waits for the durable start command's reply.
-func (r *Runtime) launch(l *live) error {
-	r.mu.Lock()
-	var start int64
-	for id, c := range l.commands {
-		if c.Command == harness.CmdStart {
-			start = id
-		}
-	}
-	r.mu.Unlock()
-	go r.run(l)
-	if start == 0 {
+// awaitStart returns once the launch has started, or with why it ended
+// before starting. run enforces the start timeout.
+func (r *Runtime) awaitStart(l *live) error {
+	select {
+	case <-l.started:
 		return nil
+	case <-l.done:
 	}
-	err := r.wait(l, start, r.startTimeout)
-	if err != nil {
-		<-l.done
+	select {
+	case <-l.started:
+		return nil
+	default:
 	}
-	return err
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return cmp.Or(l.cause, errStopped)
 }
 
 func (r *Runtime) run(l *live) {
@@ -183,12 +177,17 @@ func (r *Runtime) run(l *live) {
 	})
 	defer timer.Stop()
 	reason := client.Read(l.position, func(rec harness.Record, next int64) error {
-		if err := r.apply(l, rec, next); err != nil {
+		toParent, err := r.apply(l, rec, next)
+		if err != nil {
 			return err
 		}
 		// A finished turn can have committed or merged work.
 		if rec.Event != nil && rec.Event.State == harness.Idle {
 			r.refreshMerges(l.workspace)
+		}
+		// A child's report or failure wakes a parked parent.
+		if toParent {
+			r.Deliver(l.root)
 		}
 		return nil
 	})
@@ -279,11 +278,7 @@ func (r *Runtime) endLocked(l *live, cause error) (*live, bool) {
 		if err != nil {
 			return err
 		}
-		running, err := tx.Running(s)
-		if err != nil {
-			return err
-		}
-		suppress := r.closing || l.stopping || !running
+		suppress := r.closing || l.stopping
 		lost := errors.Is(cause, hold.ErrLost)
 		failed := l.ready == 0
 		reason := cmp.Or(l.cause, cause, errStopped)

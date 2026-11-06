@@ -6,7 +6,8 @@ import {Label} from '../components/ui/label';
 // when the request takes typed text. The transcript and notification cards
 // both draw it, and answers go only through answerRequest and alwaysAllow. An
 // approval request also offers to always allow its tool. Its controls are
-// disabled while an answer is sent and enabled again if the server refuses it.
+// disabled while an answer is sent and enabled again if the server refuses it,
+// and stay disabled in an ended session's read-only transcript.
 // A typed answer is a draft, so it survives the form closing.
 import {useId, useState} from 'react';
 import {alwaysAllow, answerRequest} from '../api.ts';
@@ -22,11 +23,13 @@ const choiceClass = 'h-auto min-h-8 w-full justify-start whitespace-normal py-1.
 interface AttentionFormProps {
   session: string;
   item: AttentionItem;
+  ended?: boolean;
 }
 
-export function AttentionForm({session, item}: AttentionFormProps) {
+export function AttentionForm({session, item, ended}: AttentionFormProps) {
   const [state, store] = useStore();
   const [sending, setSending] = useState(false);
+  const locked = sending || !!ended;
   const id = useId();
   const key = `${session}/${item.id}`;
   const text = draftOf(state, key).text;
@@ -49,7 +52,7 @@ export function AttentionForm({session, item}: AttentionFormProps) {
         <div className="attention-form-choices flex flex-col gap-2" role="group" aria-label="Choices">
           {item.choices.map((choice, i) => (
             <div className="attention-form-choice flex flex-col gap-1" key={choice}>
-              <Button type="button" variant="secondary" size="sm" className={choiceClass} data-choice={choice} disabled={sending} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
+              <Button type="button" variant="secondary" size="sm" className={choiceClass} data-choice={choice} disabled={locked} aria-describedby={item.notes?.[i] ? `${id}-note-${i}` : undefined} onClick={() => send(choice)}>
                 {choice}
               </Button>
               {item.notes?.[i] && <span className="attention-form-note px-3 text-xs text-muted-foreground" id={`${id}-note-${i}`}>{item.notes[i]}</span>}
@@ -59,8 +62,8 @@ export function AttentionForm({session, item}: AttentionFormProps) {
       )}
       {item.grant && (
         <div className="attention-form-choices flex flex-col gap-2" role="group" aria-label="Always allow">
-          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="session" disabled={sending} onClick={() => allowAlways(false)}>Always allow in this session</Button>
-          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="all" disabled={sending} onClick={() => allowAlways(true)}>Always allow in all sessions</Button>
+          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="session" disabled={locked} onClick={() => allowAlways(false)}>Always allow in this session</Button>
+          <Button type="button" variant="secondary" size="sm" className={choiceClass} data-always="all" disabled={locked} onClick={() => allowAlways(true)}>Always allow in all sessions</Button>
         </div>
       )}
       {item.free && (
@@ -72,11 +75,11 @@ export function AttentionForm({session, item}: AttentionFormProps) {
               className="h-8"
               aria-label={item.choices?.length ? 'Other response' : 'Your response'}
               value={text}
-              disabled={sending}
+              disabled={locked}
               onChange={e => store.update(s => typed(s, key, e.currentTarget.value))}
               onKeyDown={e => e.target === e.currentTarget && submitsOnKey(e) && sendText()}
             />
-            <Button type="button" variant="secondary" size="sm" disabled={sending || !text.trim()} onClick={sendText}>Send</Button>
+            <Button type="button" variant="secondary" size="sm" disabled={locked || !text.trim()} onClick={sendText}>Send</Button>
           </div>
         </div>
       )}

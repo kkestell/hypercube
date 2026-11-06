@@ -551,7 +551,6 @@ func TestSnapshotOrder(t *testing.T) {
 					return err
 				}
 				s.Title = "Title " + id
-				s.Running = i < 2
 				if err := tx.SaveSession(s); err != nil {
 					return err
 				}
@@ -580,7 +579,7 @@ func seedSnapshot(t *testing.T, db *store.DB, workspace, path, id string, childr
 				return err
 			}
 		}
-		if err := tx.AddSession(store.Session{ID: id, Workspace: workspace, Running: true}); err != nil {
+		if err := tx.AddSession(store.Session{ID: id, Workspace: workspace}); err != nil {
 			return err
 		}
 		for _, name := range children {

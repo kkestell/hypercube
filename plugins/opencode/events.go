@@ -71,7 +71,7 @@ func (ag *agent) handle(m plugin.Message) {
 	case m.Method == "session/update":
 		ag.update(&ev, m.Params)
 	case m.Method == "$/cancel_request":
-		ag.withdraw(m.Params)
+		ag.withdraw(&ev, m.Params)
 	case m.ID == nil:
 		// Other notifications carry nothing the plugin shows.
 	case m.Method == "session/request_permission":

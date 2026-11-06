@@ -61,26 +61,32 @@ to the rest of your local filesystem.
 A fresh child receives its assignment and local instructions. A forked child
 inherits the parent's saved native conversation at the time it starts; its
 Hypercube transcript begins with its own assignment. Forks use the parent's
-harness and can choose another model. Fresh children can use any configured
-harness. Native restrictions still apply: OpenCode forks need the parent's
-folder, so they cannot use a new worktree.
+harness and can choose another model. A fork works where its parent works: a
+parent in the original checkout shares its folder, uncommitted files included,
+with the fork, and a parent in its own worktree gives the fork a new worktree
+from its last commit. Fresh children can use any configured harness. Native
+restrictions still apply: OpenCode forks need the parent's folder, so they
+cannot use a new worktree.
 
 When a child successfully finishes a turn, Hypercube automatically reports the
-first 400 characters of its final response. Progress text is excluded. Reports
-wait until the parent and all its live children are idle, then arrive together
-and let the parent continue. A child waiting for your answer also holds up
-automatic reports. Failed launches and ended children do not hold them up.
+first 400 characters of its final response. Progress text is excluded. A
+longer response's report gives its full length, and the parent can read the
+child's transcript, or any top-level session's, with its `read_session` tool.
+Reports wait until the parent is idle and no live child is working, then arrive
+together and let the parent continue. A child waiting for your answer does not
+hold them up: the report names it, and the parent continues other work while
+you answer it. Failed launches and ended children do not hold them up either.
 
 Agents can still send explicit messages during work. These do not wait for the
 other children to finish. Messages appear in both conversations, so you can
 see what was communicated. You can also speak to a child directly.
 
-A parent can message its children and other running top-level sessions, even
-in another workspace. A child can message only its parent and cannot create
-children of its own. Stopped and ended sessions cannot receive agent messages.
+A parent can message its children and other top-level sessions, even in
+another workspace. A child can message only its parent and cannot create
+children of its own. Ended sessions cannot receive agent messages.
 
-The parent and its children form a family. Starting or stopping the parent
-affects that family; see [session lifecycle](usage.md#resume-and-cleanup).
+Each session starts when it is used and stops after it has been idle; see
+[session lifecycle](usage.md#resume-and-cleanup).
 
 Native subagents created by a harness are separate from Hypercube children.
 Their activity appears inside a tool call in the existing chat rather than as

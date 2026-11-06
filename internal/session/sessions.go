@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -59,7 +58,7 @@ func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text st
 	if err := r.db.Read(func(tx *store.Tx) error { var err error; w, err = tx.Workspace(workspaceID); return err }); err != nil {
 		return store.Session{}, err
 	}
-	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text), Running: true,
+	s := store.Session{ID: store.NewID(), Workspace: workspaceID, Title: report.Title(text),
 		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Idle, Dir: w.Path}
 	if worktree {
 		if w.NoGit {
@@ -82,151 +81,7 @@ func (r *Runtime) Create(workspaceID, profileName string, worktree bool, text st
 	if worktree {
 		r.refreshMerges(workspaceID)
 	}
-	if err := r.start(s.ID, true); err != nil {
-		return s, err
-	}
 	return s, r.Input(s.ID, text, images...)
-}
-
-// Start launches a stopped family, resuming its conversations.
-// They deliver no queued messages until the user prompts the session.
-func (r *Runtime) Start(id string) error {
-	return r.start(id, false)
-}
-
-func (r *Runtime) start(id string, fresh bool) error {
-	var dir string
-	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		if s.Parent != "" {
-			return errors.New("a child session starts and stops with its parent")
-		}
-		dir = s.Dir
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	branch, _ := workspace.Branch(dir)
-	// The family is registered before any plugin starts, so a second start
-	// finds it running.
-	r.mu.Lock()
-	if r.closing {
-		r.mu.Unlock()
-		return errClosing
-	}
-	if r.deleting[id] {
-		r.mu.Unlock()
-		return errDeleting
-	}
-	if r.sessionLive(id) {
-		r.mu.Unlock()
-		return nil
-	}
-	var lives []*live
-	err = r.save(func(tx *write) error {
-		s, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		if s.Ended {
-			return errors.New("an archived session cannot be started")
-		}
-		s.Running, s.AwaitingUser = true, !fresh
-		// A worktree session's branch is fixed when it is created.
-		if s.Base == "" {
-			s.Branch = branch
-		}
-		children, err := tx.Children(id)
-		if err != nil {
-			return err
-		}
-		for _, member := range append([]store.Session{s}, children...) {
-			if member.Ended {
-				continue
-			}
-			if r.deleting[member.ID] {
-				return errDeleting
-			}
-			if err := tx.SaveSession(member); err != nil {
-				return err
-			}
-			l, err := r.decide(tx, member, id, 0)
-			if err != nil {
-				return err
-			}
-			lives = append(lives, l)
-		}
-		return nil
-	})
-	if err == nil {
-		for _, l := range lives {
-			r.live[l.id] = l
-		}
-	}
-	r.mu.Unlock()
-	if err != nil {
-		return err
-	}
-	var wg sync.WaitGroup
-	errs := make([]error, len(lives))
-	for i, l := range lives {
-		wg.Go(func() {
-			if err := r.launch(l); err != nil && !errors.Is(err, errStopped) {
-				errs[i] = fmt.Errorf("launching %s: %w", l.id, err)
-			}
-		})
-	}
-	wg.Wait()
-	return errors.Join(errs...)
-}
-
-// Stop stops the family. Its conversations and queued messages stay
-// for the next Start.
-func (r *Runtime) Stop(id string) error {
-	r.mu.Lock()
-	lives, err := r.stopLocked(id)
-	r.mu.Unlock()
-	r.stopLaunches(lives)
-	if err == nil {
-		r.stopShells(id)
-	}
-	return err
-}
-
-// stopLocked marks the session stopped before releasing its agents, so a late
-// exit cannot relaunch them. The caller holds mu.
-func (r *Runtime) stopLocked(id string) ([]*live, error) {
-	err := r.save(func(tx *write) error {
-		s, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		if s.Parent != "" {
-			return errors.New("a child session starts and stops with its parent")
-		}
-		s.Running = false
-		children, err := tx.Children(id)
-		if err != nil {
-			return err
-		}
-		// A stopped session waits on nobody, so its family drops the flag now
-		// instead of when each agent exits.
-		for _, c := range append(children, s) {
-			c.Attention = false
-			if err := tx.SaveSession(c); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return r.selectLaunches(func(l *live) bool { return l.root == id }), nil
 }
 
 // DeleteWorkspace deletes each of the workspace's sessions, then the
@@ -274,7 +129,8 @@ func (r *Runtime) update(id string, change func(*store.Session)) error {
 	})
 }
 
-// Shell opens the running session's shell in its own directory.
+// Shell opens the session's shell in its own directory. The shell outlives the
+// session's agent; Archive, Delete, EndChild, and Quit end it.
 func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 	// Open only forks the shell's holder; it does not wait for the shell.
 	// Keep admission under the lifecycle lock so cleanup sees every shell
@@ -290,12 +146,8 @@ func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
 		if err != nil {
 			return err
 		}
-		running, err := tx.Running(s)
-		if err != nil {
-			return err
-		}
-		if !running {
-			return errors.New("the session is not running")
+		if s.Ended {
+			return errEnded
 		}
 		if r.deleting[id] || r.deleting[s.Parent] {
 			return errDeleting
@@ -349,7 +201,7 @@ func (r *Runtime) stopLaunches(lives []*live) {
 	wg.Wait()
 }
 
-// Quit ends every agent and shell while preserving the sessions' running marks.
+// Quit ends every agent and shell. Each session wakes again when next used.
 func (r *Runtime) Quit() {
 	r.mu.Lock()
 	if r.detached {
@@ -357,6 +209,7 @@ func (r *Runtime) Quit() {
 		return
 	}
 	r.closing = true
+	r.stopIdleLocked()
 	lives := r.selectLaunches(func(*live) bool { return true })
 	r.mu.Unlock()
 	r.Terminals.Close()
@@ -368,6 +221,7 @@ func (r *Runtime) Detach() {
 	r.mu.Lock()
 	r.closing = true
 	r.detached = true
+	r.stopIdleLocked()
 	lives := make([]*live, 0, len(r.live))
 	for _, l := range r.live {
 		lives = append(lives, l)

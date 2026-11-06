@@ -43,14 +43,14 @@ func TestOpenDeletesLegacyStatusItems(t *testing.T) {
 	}
 }
 
-func TestOpenClearsAttentionOfSessionsThatAreNotRunning(t *testing.T) {
+func TestOpenDropsRunColumnsAndClearsAttentionWithoutAgent(t *testing.T) {
 	db := open(t)
 	waiting := []Session{
-		{ID: "run", Running: true},
-		{ID: "run-live", Parent: "run", Name: "live"},
-		{ID: "run-ended", Parent: "run", Name: "ended", Ended: true},
-		{ID: "stopped"},
-		{ID: "stopped-child", Parent: "stopped", Name: "child"},
+		{ID: "awake", Launch: "l1"},
+		{ID: "awake-child", Parent: "awake", Name: "child", Launch: "l2"},
+		{ID: "awake-ended", Parent: "awake", Name: "ended", Ended: true, Launch: "l3"},
+		{ID: "parked"},
+		{ID: "parked-child", Parent: "parked", Name: "child"},
 	}
 	tx(t, db, func(tx *Tx) error {
 		if err := tx.AddWorkspace(Workspace{ID: "w", Path: "/w"}); err != nil {
@@ -64,16 +64,26 @@ func TestOpenClearsAttentionOfSessionsThatAreNotRunning(t *testing.T) {
 		}
 		return nil
 	})
+	// Recreate the previous version's columns.
+	if _, err := db.sql.Exec(`ALTER TABLE sessions ADD COLUMN running INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE sessions ADD COLUMN awaiting_user INTEGER NOT NULL DEFAULT 0;`); err != nil {
+		t.Fatal(err)
+	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 	err := reopen(t).Read(func(tx *Tx) error {
+		for _, column := range []string{"running", "awaiting_user"} {
+			if has, err := tx.exists(`SELECT 1 FROM pragma_table_info('sessions') WHERE name = '` + column + `'`); err != nil || has {
+				t.Errorf("column %s present=%v, %v", column, has, err)
+			}
+		}
 		for _, s := range waiting {
 			got, err := tx.Session(s.ID)
 			if err != nil {
 				return err
 			}
-			if want := s.ID == "run" || s.ID == "run-live"; got.Attention != want {
+			if want := s.ID == "awake" || s.ID == "awake-child"; got.Attention != want {
 				t.Errorf("%s attention = %v, want %v", s.ID, got.Attention, want)
 			}
 		}

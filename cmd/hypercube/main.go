@@ -103,9 +103,9 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 	return a, nil
 }
 
-// close ends the app. With quit it ends every agent first; without it the
-// agents keep running for the next start. Sessions keep their running mark
-// either way, so the next start restores them.
+// close ends the app. With quit it ends every agent first, and each session
+// starts again when next used; without it the agents keep running for the
+// next start to adopt.
 func (a *app) close(quit bool) {
 	a.once.Do(func() {
 		if quit {

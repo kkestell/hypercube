@@ -26,7 +26,6 @@ test('sending waits for images still being read', async () => {
   expect(canSend(s.get(), session)).toBe(false);
   await reading;
   expect(canSend(s.get(), session)).toBe(true);
-  expect(canSend(s.get(), {...session, activity: 'exited'})).toBe(false);
 });
 
 test('the created session takes the unsent session\'s draft, and an empty draft leaves nothing', () => {

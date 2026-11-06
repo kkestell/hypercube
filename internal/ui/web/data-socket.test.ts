@@ -46,9 +46,9 @@ const started = () => {
   return store;
 };
 
-const stateMessage = (build: string, running = true): StateMessage => ({
+const stateMessage = (build: string, ended = false): StateMessage => ({
   type: 'state', build, requests: [], limits: [],
-  workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [testSession({id: 'a', title: 'A', running})]})],
+  workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [testSession({id: 'a', title: 'A', ended})]})],
 });
 
 const textItem = (id: string, seq: number, text: string): TranscriptItem => ({id, seq, kind: 'text', text});
@@ -65,7 +65,7 @@ test('state and transcript messages reach the store, and select follows the atta
   expect(socket.sent).toEqual([{select: ''}, {select: 'a'}]);
   socket.receive({type: 'transcript', session: 'a', reset: true, items: [textItem('1', 1, 'hi')]});
   expect(store.get().session?.transcript.order).toEqual(['1']);
-  socket.receive(stateMessage('b1', false));
+  socket.receive(stateMessage('b1', true));
   expect(socket.sent.at(-1)).toEqual({select: ''});
 });
 
@@ -140,7 +140,7 @@ test('an open received during a session switch waits until the page returns', as
   const [socket] = FakeSocket.all;
   socket.open();
   const message = stateMessage('b1');
-  message.workspaces[0].sessions.push(testSession({id: 'b', title: 'B', running: true}));
+  message.workspaces[0].sessions.push(testSession({id: 'b', title: 'B'}));
   socket.receive(message);
   store.update(state => selectSession(state, 'b'));
   socket.receive({type: 'open', session: 'a', path: 'guide.md', lines: [{start: 1, end: 1}]});

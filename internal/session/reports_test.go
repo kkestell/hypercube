@@ -17,7 +17,7 @@ func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
 	answer := strings.Repeat("界", 450)
 	f.input(one.ID, "!report "+strconv.Quote(answer))
 	f.until("first child's report queued", func() bool { return len(f.queued(parent.ID)) == 1 })
-	if got := f.queued(parent.ID)[0]; !got.Report || got.Text != "one finished a turn:\n"+strings.Repeat("界", 400)+"…" {
+	if got := f.queued(parent.ID)[0]; !got.Report || got.Text != "one finished a turn:\n"+strings.Repeat("界", 400)+"\n(first 400 of 450 characters) Read the rest with read_session on one." {
 		t.Fatalf("report %+v", got)
 	}
 	if len(f.inputs(parent.ID)) != 1 {
@@ -66,26 +66,74 @@ func TestReportArrivingDuringDeliveryIsNotLost(t *testing.T) {
 	}
 }
 
-func TestChildQuestionAndParentWorkDelayReports(t *testing.T) {
+// A child waiting on the user's answer does not hold back another child's
+// report, and the parent learns that it waits.
+func TestWaitingChildIsNamedWithReports(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
+	f.input(bob.ID, "!ask")
+	f.until("bob's question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.input(alice.ID, "!answer")
+	f.until("alice's report delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
+	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: bob.") || !strings.Contains(got, "alice finished a turn") {
+		t.Fatal(got)
+	}
+	if requests := f.rt.Requests(); len(requests) != 1 || requests[0].Item.Done || len(f.log(bob.ID, "answer")) != 0 {
+		t.Fatalf("bob's question was answered: %+v", requests)
+	}
+}
+
+// Reports wait while the parent works.
+func TestParentWorkDelaysReports(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	child := f.child(parent, "child", "")
+	f.input(parent.ID, "!work")
+	f.until("parent working", func() bool { return !f.idle(parent.ID) })
+	f.input(child.ID, "!answer")
+	f.until("report queued", func() bool { return len(f.queued(parent.ID)) == 1 && f.idle(child.ID) })
+	if len(f.inputs(parent.ID)) != 2 {
+		t.Fatal("a report interrupted the parent's work")
+	}
+	f.input(parent.ID, "!finish")
+	f.until("parent receives the report after finishing", func() bool { return len(f.inputs(parent.ID)) == 4 && len(f.queued(parent.ID)) == 0 })
+}
+
+// A working child with only an asynchronous question holds back reports
+// until its work ends.
+func TestAsyncQuestionDoesNotReleaseReports(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
-	f.input(two.ID, "!ask")
-	f.until("child's question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.input(two.ID, "!asyncask")
+	f.until("two's question", func() bool { return len(f.rt.Requests()) == 1 })
 	f.input(one.ID, "!answer")
-	f.until("report waiting for the question", func() bool { return len(f.queued(parent.ID)) == 1 })
-	f.input(parent.ID, "!work")
-	f.until("parent working", func() bool { return !f.idle(parent.ID) })
-	request := f.rt.Requests()[0]
-	if err := f.rt.Answer(two.ID, request.Item.ID, "yes", ""); err != nil {
-		t.Fatal(err)
+	f.until("report queued", func() bool { return len(f.queued(parent.ID)) == 1 })
+	if len(f.inputs(parent.ID)) != 1 {
+		t.Fatal("a working child's asynchronous question released the report")
 	}
-	f.until("child idle after answer", func() bool { return f.idle(two.ID) })
-	if len(f.inputs(parent.ID)) != 2 {
-		t.Fatal("report interrupted the parent's work")
+	f.input(two.ID, "!finish")
+	f.until("reports delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
+	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: two.") {
+		t.Fatal(got)
 	}
-	f.input(parent.ID, "!finish")
-	f.until("parent receives report after finishing", func() bool { return len(f.inputs(parent.ID)) == 4 && len(f.queued(parent.ID)) == 0 })
+}
+
+// A question that opens while another is open can still release reports.
+func TestSecondQuestionReleasesReports(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
+	f.input(bob.ID, "!asyncask")
+	f.until("bob's asynchronous question", func() bool { return len(f.rt.Requests()) == 1 })
+	f.input(alice.ID, "!answer")
+	f.until("alice's report queued", func() bool { return len(f.queued(parent.ID)) == 1 && f.idle(alice.ID) })
+	f.input(bob.ID, "!question")
+	f.until("alice's report delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
+	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: bob.") {
+		t.Fatal(got)
+	}
 }
 
 func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
@@ -129,18 +177,16 @@ func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
 func TestForkChildUsesItsOwnConversationOnRestart(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Profile: harness.Profile{Harness: "test", Model: "m", Effort: "low"}, Dir: ".", Fork: true})
-	if err != nil {
-		t.Fatal(err)
+	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Profile: harness.Profile{Harness: "test", Model: "m", Effort: "low"}, Fork: true})
+	if err != nil || child.Dir != f.root {
+		t.Fatal(child, err)
 	}
 	f.until("child's saved conversation", func() bool { return f.storedSession(child.ID).Conversation != "" })
 	if start := f.log(child.ID, "start")[0]; start.Conversation != "" || start.Fork != f.storedSession(parent.ID).Conversation {
 		t.Fatalf("start %+v", start)
 	}
-	if err := f.rt.Stop(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.Start(parent.ID); err != nil {
+	f.park(child.ID)
+	if err := f.wake(child.ID); err != nil {
 		t.Fatal(err)
 	}
 	starts := f.log(child.ID, "start")

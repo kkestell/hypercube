@@ -1,7 +1,7 @@
 // Workspace groups show either active sessions or archived families.
 import {useCallback, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent} from 'react';
 import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
-import {runningFirst, sessionOf, stopped} from '../sessions/selection.ts';
+import {sessionOf} from '../sessions/selection.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
 import {ContextMenu, type ContextMenuItem} from '../shared/context-menu.tsx';
 import {PanelTabs} from '../shared/panel-tabs.tsx';
@@ -34,7 +34,6 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   const [renaming, setRenaming] = useState<string | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
-  const [shownStopped, setShownStopped] = useState<Record<string, boolean>>({});
   const [view, setView] = useState('sessions');
   const frozen = useRef(state.workspaces);
   const family = sessionOf(state, state.selected);
@@ -49,32 +48,13 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
     chooseSession(store, id);
   };
 
-  const selected = (session: Session) => session.id === state.selected;
-  const visible = (workspace: Workspace) => workspace.sessions.flatMap(top => {
-    if (view === 'archived') return top.ended ? [top] : [];
-    if (top.ended) return [];
-    const children = top.children.filter(child => !stopped(child) || shownStopped[top.id] || selected(child));
-    const leads = children.some(child => !stopped(child) || selected(child));
-    const shown = !stopped(top) || shownStopped[workspace.id] || selected(top) || leads;
-    return shown ? [{...top, children}] : [];
-  });
-  if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: runningFirst(visible(workspace))}));
+  const visible = (workspace: Workspace) => workspace.sessions.filter(top => top.ended === (view === 'archived'));
+  if (!renaming) frozen.current = state.workspaces.map(workspace => ({...workspace, sessions: visible(workspace)}));
   const workspaces = frozen.current;
   const sessionById = (id: string | undefined) => workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children])).find(s => s.id === id);
 
-  // stoppedItems offers to show or hide the stopped sessions among sessions,
-  // which belong to the workspace or parent id.
-  const stoppedItems = (id: string, sessions: Session[]): ContextMenuItem[] => {
-    if (!sessions.some(stopped)) return [];
-    const shown = !!shownStopped[id];
-    return [{label: shown ? 'Hide Stopped Sessions' : 'Show Stopped Sessions', icon: shown ? 'eye-off' : 'eye', run: () => setShownStopped(s => ({...s, [id]: !shown}))}];
-  };
-  const workspaceMenu = (workspace: Workspace) => {
-    const sessions = state.workspaces.find(w => w.id === workspace.id)?.sessions.filter(s => !s.ended) ?? [];
-    return [view === 'sessions' ? stoppedItems(workspace.id, sessions) : [], ...workspaceItems(store, workspace)];
-  };
-  const sessionMenu = (session: Session) =>
-    [view === 'sessions' ? stoppedItems(session.id, sessionOf(state, session.id)?.session.children ?? []) : [], ...sessionItems(store, session, () => setRenaming(session.id))];
+  const workspaceMenu = (workspace: Workspace) => workspaceItems(store, workspace);
+  const sessionMenu = (session: Session) => sessionItems(store, session, () => setRenaming(session.id));
 
   const contextMenu = (e: MouseEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;

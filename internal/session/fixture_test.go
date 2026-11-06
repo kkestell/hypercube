@@ -292,3 +292,31 @@ func (f *fixture) summary(agent string) string {
 	}
 	return strings.Join(parts, "|")
 }
+
+// park ends the session's agent as its idle timeout does.
+func (f *fixture) park(id string) {
+	f.t.Helper()
+	f.rt.mu.Lock()
+	lives := f.rt.selectLaunches(func(l *live) bool { return l.id == id })
+	f.rt.mu.Unlock()
+	if len(lives) == 0 {
+		f.t.Fatalf("%s has no agent to park", id)
+	}
+	f.rt.stopLaunches(lives)
+}
+
+// wake starts the session's agent and waits for it to start.
+func (f *fixture) wake(id string) error {
+	l, err := f.rt.wake(id)
+	if err != nil {
+		return err
+	}
+	return f.rt.awaitStart(l)
+}
+
+// awake reports whether the session has an agent.
+func (f *fixture) awake(id string) bool {
+	f.rt.mu.Lock()
+	defer f.rt.mu.Unlock()
+	return f.rt.live[id] != nil
+}

@@ -50,13 +50,11 @@ func TestSelectProfile(t *testing.T) {
 			}
 			f.restart()
 			f.until("reattached", func() bool { return f.idle(s.ID) || f.storedSession(s.ID).Activity == store.Busy })
-			if err := f.rt.Stop(s.ID); err != nil {
-				t.Fatal(err)
-			}
+			f.park(s.ID)
 			if err := f.rt.SelectProfile(s.ID, "lead"); err == nil {
-				t.Fatal("configured stopped session")
+				t.Fatal("configured parked session")
 			}
-			if err := f.rt.Start(s.ID); err != nil {
+			if err := f.wake(s.ID); err != nil {
 				t.Fatal(err)
 			}
 			starts := f.log(s.ID, "start")

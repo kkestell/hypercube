@@ -9,8 +9,8 @@
 #   scripts/dev up --app
 #                      also run the desktop app, with its own menu bar icon
 #                      and window, connected to the dev backend
-#   scripts/dev stop   stop the backend and the desktop app; the sessions stay
-#                      marked running, so `up` resumes them
+#   scripts/dev stop   stop the backend and the desktop app; each session
+#                      starts again when next used
 #   scripts/dev clean  stop them and delete everything they left
 set -euo pipefail
 

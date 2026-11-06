@@ -11,7 +11,7 @@ export const testWorkspace = (overrides: Partial<Workspace> & {id: string}): Wor
 });
 
 export const testSession = (overrides: Partial<Session> & {id: string}): Session => ({
-  parent: '', title: overrides.id, ready: false, running: false, ended: false, unseen: false,
+  parent: '', title: overrides.id, ready: false, ended: false, unseen: false,
   harness: '', model: '', effort: '', dir: '', activity: 'idle', attention: false, usage: {},
   worktree: false, children: [], ...overrides,
 });

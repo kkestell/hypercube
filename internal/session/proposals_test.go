@@ -29,10 +29,8 @@ func TestProposalPersistsAndStartsOnlyOnce(t *testing.T) {
 	if len(f.family(parent.ID)) != 1 || len(f.rt.Requests()) != 0 {
 		t.Fatal("proposal launched or blocked the parent")
 	}
-	if err := f.rt.Stop(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.Start(parent.ID); err != nil {
+	f.park(parent.ID)
+	if err := f.wake(parent.ID); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup

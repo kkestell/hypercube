@@ -35,9 +35,10 @@ export function toolSummary(input: unknown): string {
 // Hypercube's own tools: what each call does and the input field that tells
 // calls apart. send_message draws as a message instead.
 const hypercubeTools = new Map<string, [name: string, field?: string]>([
-  ['create_session', ['Create session', 'name']],
+  ['create_session', ['Create session', 'title']],
   ['end_session', ['End session', 'name']],
   ['list_sessions', ['List sessions']],
+  ['read_session', ['Read session', 'to']],
   ['set_title', ['Set title', 'title']],
   ['open_file', ['Open file', 'path']],
   ['browser_navigate', ['Navigate browser', 'url']],

@@ -13,7 +13,7 @@ afterEach(() => {
   unmountAll();
 });
 
-const session = (id: string, extra: Partial<Session> = {}) => testSession({id, title: 'Session ' + id, running: true, ...extra});
+const session = (id: string, extra: Partial<Session> = {}) => testSession({id, title: 'Session ' + id, ...extra});
 function setup(sessions: Session[], selected: string | null = null) {
   let respond = () => new Response('');
   const requests: URL[] = [];
@@ -39,8 +39,6 @@ const pick = (label: string) => {
   if (!item) throw new Error('No menu item ' + label);
   clickControl(item);
 };
-const showStopped = (root: HTMLElement, selector = '[data-workspace="w"] .workspace-section-header') =>
-  choose(root, selector, 'Show Stopped Sessions');
 const key = (element: HTMLElement, key: string) => act(() => element.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true})));
 function rename(root: HTMLElement, id: string) {
   key(row(root, id), 'F2');
@@ -87,22 +85,20 @@ test('Enter saves a changed title, Escape cancels, and leaving the field saves',
   expect(posted().length).toBe(2);
 });
 
-test('a session\'s menu stops a running session and starts a stopped or failed one', () => {
-  const {root, posted} = setup([
-    session('running'),
-    session('stopped', {running: false}),
-    session('failed', {activity: 'exited'}),
-  ]);
-  showStopped(root);
-  choose(root, '[data-session="running"]', 'Stop Session');
-  choose(root, '[data-session="stopped"]', 'Start Session');
-  choose(root, '[data-session="failed"]', 'Start Session');
-  expect(posted().slice(-3)).toEqual([
-    {action: 'stop', id: 'running'},
-    {action: 'start', id: 'stopped'},
-    {action: 'start', id: 'failed'},
-  ]);
-  expect(document.querySelector('[role=menu]')).toBeNull();
+test('every active family is listed with all its children, and menus offer only Archive and Unarchive', () => {
+  const live = session('live', {parent: 'a'});
+  const ended = session('ended', {parent: 'a', ended: true});
+  const {root, posted} = setup([session('a', {activity: 'exited', children: [live, ended]}), session('b'), session('old', {ended: true})], 'live');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'ended', 'b']);
+  expect(row(root, 'ended').className).toContain('opacity-60');
+  expect(row(root, 'a').className).not.toContain('opacity-60');
+  contextMenu(row(root, 'a'));
+  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(
+    ['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal', 'Archive Session', 'Delete Session']);
+  pick('Archive Session');
+  click(find(root, '[role=tab][data-state=inactive]'));
+  choose(root, '[data-session="old"]', 'Unarchive');
+  expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'unarchive', id: 'old'}]);
 });
 
 test('deleting a session asks first and posts only on Delete', () => {
@@ -147,7 +143,7 @@ test.each([
   {id: 'archived', view: 'Archived', other: 'Sessions'},
   {id: 'active', view: 'Sessions', other: 'Archived'},
 ])('search reveals an already selected $id session after switching tabs', async ({id, view, other}) => {
-  const {root, store, answer} = setup([session('active'), session('archived', {ended: true, running: false})], id);
+  const {root, store, answer} = setup([session('active'), session('archived', {ended: true})], id);
   const tabs = find(root, '[role=tablist][aria-label="Sidebar"]');
   expect(find(tabs, '[data-state=active]').getAttribute('aria-label')).toBe(view);
   click(find(tabs, '[data-state=inactive]'));
@@ -164,8 +160,8 @@ test.each([
 });
 
 test('archive menu hides the family while search can select its chat', () => {
-  const child = session('child', {parent: 'archived', running: false, ended: true});
-  const {root, store, posted} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})]);
+  const child = session('child', {parent: 'archived', ended: true});
+  const {root, store, posted} = setup([session('active'), session('archived', {ended: true, children: [child]})]);
   expect(sessionRows(root)).toEqual(['active']);
   const tablists = findAll(root, '[role=tablist]');
   expect(tablists).toHaveLength(1);
@@ -183,8 +179,8 @@ test('archive menu hides the family while search can select its chat', () => {
 });
 
 test('an initially selected archived child opens its family in Archived', () => {
-  const child = session('child', {parent: 'archived', running: false, ended: true});
-  const {root} = setup([session('active'), session('archived', {running: false, ended: true, children: [child]})], 'child');
+  const child = session('child', {parent: 'archived', ended: true});
+  const {root} = setup([session('active'), session('archived', {ended: true, children: [child]})], 'child');
   expect(sessionRows(root)).toEqual(['archived', 'child']);
   expect(find(root, '[role=tablist][aria-label="Sidebar"] [data-state=active]').getAttribute('aria-label')).toBe('Archived');
 });

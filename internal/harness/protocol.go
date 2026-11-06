@@ -158,13 +158,19 @@ type Limit struct {
 //
 // An attention item asks the user: Text is the prompt, Choices are the options,
 // Notes[i] optionally describes Choices[i], and Free allows typed text. It stays open until an event sets Done, with the
-// Answer when there is one.
+// Answer when there is one. The agent waits for the answer unless Async is
+// set: an asynchronous question leaves the agent working.
 //
 // An approval attention item names the tool it asks to use in Grant, the
 // harness's own name for the tool, and its first choice allows the request
 // once. A user can allow the tool for good, and Hypercube then answers later
 // approvals for that tool with the first choice. The item keeps its Grant when
 // it finishes.
+//
+// An offer is an attention item Hypercube writes in a top-level session's
+// transcript: it asks whether a new task gets its own child session, and its
+// Text is the task's title. Its Input holds the settings of the child its
+// accepted answer started.
 //
 // An item's Images are shown with its text: the pictures a user sent, or the
 // pictures a model or tool produced. An item may have images and no text.
@@ -199,6 +205,8 @@ type Item struct {
 	State   string          `json:"state,omitempty"`
 	Final   []string        `json:"final,omitempty"`
 	Grant   string          `json:"grant,omitempty"`
+	Async   bool            `json:"async,omitempty"`
+	Offer   bool            `json:"offer,omitempty"`
 	// Automatic distinguishes host-generated input from the user's prompts.
 	Automatic bool `json:"automatic,omitempty"`
 }

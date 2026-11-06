@@ -46,6 +46,16 @@ func childProposal(tx *store.Tx, parentID, id string) (harness.Item, int64, erro
 	return item, e.Seq, nil
 }
 
+// useProposal closes a started proposal with its child's ID.
+func useProposal(tx *write, parentID, id, child string) error {
+	item, seq, err := childProposal(tx.Tx, parentID, id)
+	if err != nil {
+		return err
+	}
+	item.Done, item.Answer = true, child
+	return tx.putItem(parentID, seq, item)
+}
+
 func reopenProposal(tx *write, parentID, id string) error {
 	e, found, err := tx.Entry(parentID, id)
 	if err != nil || !found {
@@ -73,7 +83,7 @@ func (r *Runtime) StartProposal(parentID, id string) (store.Session, error) {
 	if err != nil {
 		return store.Session{}, err
 	}
-	return r.createChild(parentID, options, id)
+	return r.createChild(parentID, options, approval{id: id})
 }
 
 func (r *Runtime) DismissProposal(parentID, id string) error {

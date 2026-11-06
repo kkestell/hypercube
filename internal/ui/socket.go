@@ -56,6 +56,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 
 	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt,
 		batch: map[string]session.TranscriptItem{}, stale: true}
+	defer d.endView()
 	if d.sendState() != nil {
 		return
 	}
@@ -104,6 +105,8 @@ type dataSocket struct {
 	sent  []byte
 
 	selected string
+	// release ends the view of the selected session, which keeps it awake.
+	release func()
 	// batch holds the selected session's changed items by item ID.
 	batch map[string]session.TranscriptItem
 }
@@ -129,12 +132,18 @@ func (d *dataSocket) sendState() error {
 	return nil
 }
 
-// selectSession selects a session and sends its whole transcript.
+// selectSession selects and views a session, which wakes it, and sends its
+// whole transcript.
 func (d *dataSocket) selectSession(id string) error {
+	d.endView()
 	d.selected = id
 	clear(d.batch)
 	if id == "" {
 		return nil
+	}
+	var err error
+	if d.release, err = d.rt.View(id); err != nil {
+		return err
 	}
 	items, err := d.rt.Transcript(id)
 	if err != nil {
@@ -144,6 +153,13 @@ func (d *dataSocket) selectSession(id string) error {
 		return err
 	}
 	return d.sendOpens()
+}
+
+func (d *dataSocket) endView() {
+	if d.release != nil {
+		d.release()
+		d.release = nil
+	}
 }
 
 // add records a change for the next batch.

@@ -76,8 +76,8 @@ its working directory; those tabs appear when you view its session.
 
 The terminal panel is your shell in the selected session's directory. Each
 session has its own shell. Hiding the panel, closing the interface, or quitting
-the desktop app leaves it running; stopping the session or ending the backend
-ends it.
+the desktop app leaves it running; archiving or deleting the session, or ending
+the backend, ends it.
 
 With the desktop app open, an agent's page navigation opens its own browser
 window. The toolbar above the page has back, forward, reload, an address field,
@@ -142,24 +142,29 @@ and the page show the current requests when it opens.
 ## Find a conversation
 
 **Command+K** searches saved titles and conversation text across workspaces,
-including stopped, ended, and archived sessions. **F2** or **Rename** in a
+including ended and archived sessions. **F2** or **Rename** in a
 session's menu changes its title. Right-click a row for its menu; workspace
 and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
 Children appear under their parent. A breathing dot indicates work, an amber
-dot means an answer is needed, and a blue dot marks an unseen reply. Stopped
-sessions are hidden; **Show Stopped Sessions** in a workspace's menu shows its
-stopped sessions, and in a session's menu shows its stopped children. Shown
-stopped sessions are dimmed and carry no dots.
+dot means an answer is needed, and a blue dot marks an unseen reply. Ended
+children are dimmed and carry no dots.
 
-Agents are instructed to start children directly only when you explicitly ask.
-Otherwise they propose a task as a card showing its brief, profile, context,
-and folder or new worktree. **Start** launches it; **Dismiss** closes the card.
-Proposals survive reloads and do not block the parent. An unsuccessful launch
-shows an error and leaves the card available to retry when its child was
-cleaned up. Interpreting whether you requested a child is the agent's judgment;
-the app does not determine that from the text of your prompt.
+When you ask for a separate new task, the agent offers it: a question above the
+message box names the task and offers **New session** and **Do it here**. The
+agent ends its turn and your answer reaches it as a message, whenever you give
+it; the question stays open across reloads and restarts. New session lets the
+agent start one child for that task with a brief it writes then; Do it here
+keeps the work in the session. Corrections and follow-ups to the current task
+stay in the session without a question.
+
+Work the agent suggests on its own, and sessions you ask it to start, appear as
+cards showing the brief, profile, context, and folder or new worktree.
+**Start** launches it; **Dismiss** closes the card. Cards survive reloads and
+do not block the parent. An unsuccessful launch shows an error and leaves the
+card or accepted offer available to retry when its child was cleaned up. No
+child starts without your New session answer or Start click.
 
 ## Layout and shortcuts
 
@@ -177,28 +182,25 @@ its own keys except **Command+P**, **Command+Shift+F**, and **Command+,**.
 
 ## Resume and cleanup
 
-Closing the interface leaves agents running. To pause work, use **Stop** in the
-top-level session's menu. It stops that session and its children—the family—
-while keeping their conversations, queued messages, branches, and worktrees.
-**Start** resumes the family, but work and queued-message delivery wait until
-you send a prompt to a family member. Clicking a child of a stopped parent also
-starts the family.
+Hypercube starts a session's agent, resuming its conversation, when you open
+the session, send it a prompt, or a message reaches it, such as a child's
+report. It ends the agent after 15 idle minutes while nobody views the
+session; the conversation, queued messages, branch, and worktree stay. Each
+session starts and stops on its own, children included.
 
-After a backend restart, Hypercube reconnects to agents that survived. If every
-agent in a running family was lost, or you ended the backend with SIGINT or
-rebooted, the
-family starts awaiting your prompt. A harness that exits unexpectedly is
-relaunched with its conversation; repeated quick failures stop relaunches.
-For a failed start, the error stays in chat. Stop and start the family to retry.
+After a backend restart, Hypercube reconnects to agents that survived. Other
+sessions start when next used. A harness that exits unexpectedly is relaunched
+with its conversation; repeated quick failures stop relaunches. For a failed
+start, the error stays in chat. Open the session or send it a prompt to retry.
 
 Choose a cleanup action according to what you want to keep:
 
 | Action | Conversation history | Managed worktrees and branches |
 | --- | --- | --- |
-| **Stop** | Kept; work can resume. | Kept. |
 | **Archive** | Kept read-only and searchable; family leaves the sidebar. | Removed after Git checks. |
 | **Delete** | Deleted with the family's chats. | Removed after Git checks. |
 | **End child** | Kept read-only; that child cannot resume. | Removed after Git checks. |
+| **Unarchive** | Returns to the session list. | A worktree session gets its worktree back, on its branch from the checkout's HEAD. |
 
 The parent ends children with its `end_session` tool. Ended children can later
 be deleted individually. Existing directories assigned to children are left
@@ -211,4 +213,4 @@ refuses without changing anything until its checks pass. The checks honor Git's
 submodule settings, including settings that ignore submodule changes.
 
 Open archived chats through Search or the sidebar’s **Archived** tab, which lists
-archived families by workspace and also lets you delete them.
+archived families by workspace and also lets you unarchive or delete them.

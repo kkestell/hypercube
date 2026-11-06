@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,12 +10,33 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// Deliver sends the session's queued messages, if it is running and its session
-// is not waiting for the user. Callers queue a message, then call Deliver.
+// Deliver sends the session's queued messages, waking the session when it has
+// no running agent. Callers queue a message, then call Deliver.
 func (r *Runtime) Deliver(id string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
+	l := r.live[id]
+	parked := l == nil || l.stopping
 	r.kickLocked(id)
+	r.mu.Unlock()
+	if !parked {
+		return
+	}
+	wanted := false
+	err := r.db.Read(func(tx *store.Tx) error {
+		s, err := tx.Session(id)
+		if err != nil {
+			return err
+		}
+		queued, err := tx.Queued(id)
+		wanted = !s.Ended && len(queued) > 0
+		return err
+	})
+	if err == nil && wanted {
+		_, err = r.wake(id)
+	}
+	if err != nil && !errors.Is(err, errClosing) && !errors.Is(err, errDeleting) {
+		logf("waking %s for its messages: %v", id, err)
+	}
 }
 
 // kickFamilyLocked delivers to every member of the family. The caller holds
@@ -41,7 +63,7 @@ func (r *Runtime) kickLocked(id string) {
 	err := r.save(func(tx *write) error {
 		var err error
 		if len(out.reports) > 0 {
-			if err := tx.BatchReports(out.reports, out.text); err != nil {
+			if err := tx.BatchReports(out.reports, out.batch); err != nil {
 				return err
 			}
 		}
@@ -93,6 +115,8 @@ func (l *live) delivering() bool {
 type outgoing struct {
 	message int64
 	reports []int64
+	// batch is the reports' text, which replaces the first report's.
+	batch string
 	// text is what the plugin receives, and item what the transcript shows.
 	text string
 	item harness.Item
@@ -101,17 +125,13 @@ type outgoing struct {
 	seq int64
 }
 
-// next returns l's oldest queued message, unless l is over, its session waits
-// for the user, or nothing is queued. The caller holds mu.
+// next returns l's oldest queued message, unless l is over or nothing is
+// queued. The caller holds mu.
 func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 	if !r.current(l) {
 		return out, false
 	}
 	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Root(l.id)
-		if err != nil || s.AwaitingUser || !s.Running {
-			return err
-		}
 		queued, err := tx.Queued(l.id)
 		if err != nil || len(queued) == 0 {
 			return err
@@ -120,11 +140,11 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 			if m.Report {
 				continue
 			}
-			text := report.Format(tx, m)
-			out = outgoing{message: m.ID, text: text, item: harness.Item{Kind: harness.KindUser, Text: text, Done: true}}
+			out = outgoing{message: m.ID, text: m.Text, item: harness.Item{Kind: harness.KindUser, Text: m.Text, Automatic: true, Done: true}}
 			// The transcript shows a session's message as written, with its sender.
 			if m.From != "" {
-				out.item.Text, out.item.From = m.Text, m.From
+				out.text = report.Format(tx, m)
+				out.item.From, out.item.Automatic = m.From, false
 			}
 			ok = true
 			return nil
@@ -133,11 +153,11 @@ func (r *Runtime) next(l *live) (out outgoing, ok bool) {
 		if err != nil {
 			return err
 		}
-		ready, err := r.reportsReady(tx, parent)
+		ready, waiting, err := r.reportsReady(tx, parent)
 		if err != nil || !ready {
 			return err
 		}
-		out = reportInput(queued)
+		out = reportInput(queued, waiting)
 		ok = true
 		return nil
 	})

@@ -8,7 +8,8 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// SendMessage queues a message between sessions and attempts delivery.
+// SendMessage queues a message between sessions and delivers it, waking the
+// recipient if it is parked.
 func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, err error) {
 	if strings.TrimSpace(text) == "" {
 		return recipient, errors.New("text is required")
@@ -26,16 +27,9 @@ func (r *Runtime) SendMessage(from, to, text string) (recipient store.Session, e
 			return errors.New("cannot send a message to yourself")
 		}
 		if s.Ended {
-			return errors.New("cannot send a message to an ended child session")
+			return errors.New("cannot send a message to an ended session")
 		}
 		recipient = s
-		running, err := tx.Running(s)
-		if err != nil {
-			return err
-		}
-		if !running {
-			return errors.New("cannot send a message to a stopped session")
-		}
 		return tx.Queue(store.Message{From: from, To: s.ID, Text: text})
 	})
 	if err != nil {

@@ -89,7 +89,7 @@ ALTER TABLE sessions DROP COLUMN base;`); err != nil {
 				t.Fatalf("sessions after upgrade = %+v", sessions)
 			}
 			s := sessions[0]
-			if s.ID != "s" || s.Title != "Saved session" || s.Conversation != "conversation" || !s.Running || s.Launch != "" || s.Position != 0 || s.Ready != 0 || s.Quick != 0 || s.Base != "" {
+			if s.ID != "s" || s.Title != "Saved session" || s.Conversation != "conversation" || s.Launch != "" || s.Position != 0 || s.Ready != 0 || s.Quick != 0 || s.Base != "" {
 				t.Errorf("session after upgrade = %+v", s)
 			}
 			children, err := tx.Children("s")
@@ -141,7 +141,7 @@ func TestOpenUpgradesDatabaseBeforeWorktreeSessions(t *testing.T) {
 		}
 		err = again.Read(func(tx *Tx) error {
 			s, err := tx.Session("s")
-			if err == nil && (s.Base != "" || !s.Running) {
+			if err == nil && s.Base != "" {
 				t.Errorf("session after upgrade = %+v", s)
 			}
 			return err

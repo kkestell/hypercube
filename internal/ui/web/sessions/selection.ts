@@ -12,10 +12,6 @@ import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
 export const allSessions = (state: State): Session[] => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 export const waitingCount = (state: State) => allSessions(state).filter(s => s.attention).length;
 
-export const stopped = (session: Session) => !session.running || session.ended;
-const hasRunningAgent = (session: Session) => !stopped(session) || session.children.some(child => !stopped(child));
-export const runningFirst = (sessions: Session[]) => sessions.toSorted((a, b) => Number(hasRunningAgent(b)) - Number(hasRunningAgent(a)));
-
 export const currentSession = (state: State) => allSessions(state).find(s => s.id === state.selected);
 
 // sessionOf finds a session, its workspace, and its parent when it is a child.
@@ -29,11 +25,9 @@ export function sessionOf(state: State, id: string | null): {workspace: Workspac
   }
 }
 
-export const failed = (session: Session) => !session.parent && session.running && session.activity === 'exited';
-
 // The unsent session takes the harness of its chosen profile.
 const unsentSession = (sending: boolean, harness = ''): Session => ({
-  id: unsentKey, parent: '', title: 'New Session', ready: false, running: false, ended: false, unseen: false,
+  id: unsentKey, parent: '', title: 'New Session', ready: false, ended: false, unseen: false,
   harness, model: '', effort: '', dir: '', activity: sending ? 'busy' : 'idle', attention: false, usage: {},
   worktree: false, children: [],
 });
@@ -88,14 +82,13 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   if (unsentWorkspace && !workspaces.some(w => w.id === unsentWorkspace)) next = discardUnsent(next);
   const sessions = allSessions(next);
   if (next.pending && sessions.some(s => s.id === next.pending)) next = {...next, selected: next.pending, pending: null};
-  // A session that stops while shown is deselected, and nothing takes its
-  // place. Otherwise a selection naming no session moves to a running one.
+  // A family archived while shown is deselected, and nothing takes its place.
+  // Otherwise a selection naming no session moves to one that has not ended.
   const chosen = currentSession(next);
   const family = sessionOf(next, next.selected);
   const oldFamily = sessionOf(state, state.selected);
   if (family && (family.parent ?? family.session).ended && !(oldFamily?.parent ?? oldFamily?.session)?.ended && next.session?.id === chosen?.id) next = {...next, selected: null};
-  else if (chosen && !chosen.running && !chosen.ended && currentSession(state)?.running && next.session?.id === chosen.id) next = {...next, selected: null};
-  else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => s.running)?.id ?? ''};
+  else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => !s.ended)?.id ?? ''};
   return attach(next);
 }
 

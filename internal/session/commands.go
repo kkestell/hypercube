@@ -147,6 +147,7 @@ func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 			if err = tx.SaveSession(s); err != nil {
 				return err
 			}
+			close(l.started)
 		}
 	} else if failure != nil {
 		if c.Command == harness.CmdInput {
@@ -184,19 +185,9 @@ func (r *Runtime) reply(tx *write, l *live, reply harness.Reply) error {
 }
 
 // recordRequest records an interactive command. The caller holds mu.
-func (r *Runtime) recordRequest(l *live, cmd harness.Command, item *harness.Item, release bool) (int64, error) {
+func (r *Runtime) recordRequest(l *live, cmd harness.Command, item *harness.Item) (int64, error) {
 	var id int64
 	err := r.save(func(tx *write) error {
-		if release {
-			s, err := tx.Root(l.id)
-			if err != nil {
-				return err
-			}
-			s.AwaitingUser = false
-			if err = tx.SaveSession(s); err != nil {
-				return err
-			}
-		}
 		var seq int64
 		if item != nil {
 			seq = r.nextSeq(l.id)

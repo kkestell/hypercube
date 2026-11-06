@@ -14,7 +14,7 @@ import (
 // request is a form waiting for the user, which is how OpenCode asks the
 // questions of its question tool.
 type request struct {
-	id      json.RawMessage // the form request's JSON-RPC ID; nil once OpenCode has withdrawn it
+	id      json.RawMessage // the form request's JSON-RPC ID
 	fields  []field         // one per attention item
 	content map[string]any
 }
@@ -38,28 +38,25 @@ type formReply struct {
 func (ag *agent) closeRequests() []harness.Item {
 	items, closed := ag.requests.Close(func(*request) bool { return true })
 	for _, r := range closed {
-		if r.id != nil {
-			_ = ag.rpc.Respond(r.id, formReply{Action: "cancel"})
-		}
+		_ = ag.rpc.Respond(r.id, formReply{Action: "cancel"})
 	}
 	return items
 }
 
 // withdraw refuses a form that OpenCode no longer waits for, with the error
-// the ACP SDK sent for a cancelled request. Its questions stay open until the
-// turn ends.
-func (ag *agent) withdraw(params json.RawMessage) {
+// the ACP SDK sent for a cancelled request, and closes its questions.
+func (ag *agent) withdraw(ev *harness.Event, params json.RawMessage) {
 	var p struct {
 		RequestID json.RawMessage `json:"requestId"`
 	}
 	if json.Unmarshal(params, &p) != nil {
 		return
 	}
-	r := ag.requests.Find(func(r *request) bool { return r.id != nil && bytes.Equal(r.id, p.RequestID) })
-	if r != nil {
+	items, closed := ag.requests.Close(func(r *request) bool { return bytes.Equal(r.id, p.RequestID) })
+	for _, r := range closed {
 		_ = ag.rpc.RespondError(r.id, -32603, "Internal error")
-		r.id = nil
 	}
+	ev.Items = append(ev.Items, items...)
 }
 
 // permission approves a permission request once, as `opencode --auto` does.
@@ -173,7 +170,7 @@ func (ag *agent) answer(item, choice, text string) error {
 	default:
 		r.content[f.key] = text
 	}
-	if open.Last && r.id != nil {
+	if open.Last {
 		_ = ag.rpc.Respond(r.id, formReply{Action: "accept", Content: r.content})
 	}
 	ag.emit(harness.Event{Items: []harness.Item{ag.requests.Done(item, result)}})

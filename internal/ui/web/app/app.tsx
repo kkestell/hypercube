@@ -99,7 +99,7 @@ export function App({store}: {store: Store}) {
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
     if (state.confirmation || e.target.closest('[role=menu], [role=dialog], [role=alertdialog], .terminal-panel')) return;
     const session = currentSession(state);
-    if (!session?.running || session.ended || session.activity !== 'busy' || state.unsent) return;
+    if (!session || session.ended || session.activity !== 'busy' || state.unsent) return;
     e.preventDefault();
     post(store, 'session', {action: 'interrupt', id: session.id});
   };

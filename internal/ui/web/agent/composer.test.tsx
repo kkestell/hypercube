@@ -67,7 +67,7 @@ test('a composer leaves the focus in a tab strip', () => {
 
 test('a busy agent can be stopped until text or an image is added', () => {
   const s = store();
-  const root = mount(s, <Composer session={{...session, running: true, activity: 'busy'}} />);
+  const root = mount(s, <Composer session={{...session, activity: 'busy'}} />);
   const field = textarea(root);
   clickControl(control(root, 'Stop'));
   expect(queryOf(fetches.mock.calls[0][0])).toEqual({action: 'interrupt', id: 'a'});
@@ -95,6 +95,13 @@ test('pasting images attaches them and leaves text paste alone', async () => {
   Object.defineProperty(readers[0], 'result', {value: 'data:image/png;base64,YQ=='});
   await act(async () => readers[0].dispatchEvent(new ProgressEvent('load')));
   expect(root.querySelector('img[alt="Attached image"]')).not.toBeNull();
+});
+
+test('a parked session can send, which starts it', () => {
+  const s = store();
+  s.update(state => ({...state, drafts: {[session.id]: {text: 'hello', images: [], reading: 0}}}));
+  const root = mount(s, <Composer session={{...session, activity: 'exited'}} />);
+  expect(control(root, 'Send').disabled).toBe(false);
 });
 
 test('an ended session cannot send and shows no exited dot', () => {
@@ -230,7 +237,7 @@ test('turning Worktree on creates the session in a worktree and locks while send
 
 const merge = (extra: Partial<Merge> = {}): Merge => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: false, uncommitted: 0, ...extra});
 const existing = (extra: Partial<Session> = {}) => {
-  const top = testSession({...session, running: true, worktree: true, merge: merge(), children: [testSession({id: 'c', parent: 'a'})], ...extra});
+  const top = testSession({...session, worktree: true, merge: merge(), children: [testSession({id: 'c', parent: 'a'})], ...extra});
   return {top, store: worktreeStore(false, [top])};
 };
 const mergeButton = (root: HTMLElement) => root.querySelector('.composer-merge');
@@ -246,14 +253,12 @@ test('existing sessions have no worktree toggle', () => {
   }
 });
 
-test('Merge shows only with unmerged commits and no error, and disables while stopped', () => {
+test('Merge shows only with unmerged commits and no error', () => {
   for (const m of [merge(), merge({committed: true}), merge({uncommitted: 1}), merge({unmerged: 1, error: 'x'})]) {
     const {top, store: s} = existing({merge: m});
     expect(mergeButton(mount(s, <Composer session={top} />))).toBeNull();
     unmountAll();
   }
-  const {top, store: s} = existing({running: false, merge: merge({unmerged: 1, committed: true})});
-  expect(element(mount(s, <Composer session={top} />), '.composer-merge', HTMLButtonElement).disabled).toBe(true);
 });
 
 test('Merge asks the agent to merge into the target in the checkout', async () => {

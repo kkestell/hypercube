@@ -82,7 +82,7 @@ export function Composer({session}: {session: Session}) {
     e.preventDefault();
     send();
   };
-  const stop = session.running && !session.ended && session.activity === 'busy' && !text.trim() && !draft.images.length && !draft.reading;
+  const stop = !session.ended && session.activity === 'busy' && !text.trim() && !draft.images.length && !draft.reading;
   const paste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const files = [...e.clipboardData.files].filter(file => file.type.startsWith('image/'));
     if (files.length) attachImages(store, session.id, files);

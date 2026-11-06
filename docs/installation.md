@@ -208,10 +208,9 @@ make dev
 ```
 
 Open http://localhost:4281/. This uses separate configuration and state, with a
-scratch repository under `~/projects/hypercube-dev/repo`. Its stopped preview
-session has sample files and starts no model. Use `make dev-app` when testing
-desktop app behavior; it also runs a development desktop app connected to the
-development backend.
+scratch repository of sample files under `~/projects/hypercube-dev/repo`. Use
+`make dev-app` when testing desktop app behavior; it also runs a development
+desktop app connected to the development backend.
 
 Source changes rebuild the development app and reload the interface. A failed
 build leaves the previous build running. Successful rebuilds preserve agents
@@ -223,8 +222,7 @@ and terminal shells.
   conversations, including holders left by a crash.
 - `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.
 
-Sessions remain marked running for the next development launch. See
-[scripts/dev](../scripts/dev) for cleanup details.
+See [scripts/dev](../scripts/dev) for cleanup details.
 
 For a build alone, run `make` and use `bin/hypercube` or
 `bin/Hypercube.app`. Code changes require `make check`, which also needs Bun.

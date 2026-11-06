@@ -16,7 +16,7 @@ afterEach(() => {
 // requestParams are the query parameters of the nth fetch.
 const requestParams = (calls: Parameters<typeof fetch>[], n: number) => new URL(String(calls[n][0]), 'http://x/').searchParams;
 
-const busy = testSession({id: 's', running: true, activity: 'busy'});
+const busy = testSession({id: 's', activity: 'busy'});
 
 type NewItem = Item & {seq?: number};
 
@@ -120,6 +120,25 @@ test('an attention request offers its choices, waits while sending, and opens ag
   expect(rows()).toEqual([]);
   expect(find(root, '.attention-item-answered').textContent).toBe('Proceed?');
   expect(find(root, '.attention-item-answer').textContent).toBe('no');
+});
+
+test('a new task offer stays above the composer, sends one choice, and records it', () => {
+  const fetches = spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}));
+  const {root, send} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}]);
+  const pending = find(root, '.transcript-pending');
+  expect(findAll(pending, 'button[data-choice]').map(r => r.textContent)).toEqual(['New session', 'Do it here']);
+  choose(root, 'New session');
+  choose(root, 'Do it here');
+  expect(fetches).toHaveBeenCalledTimes(1);
+  expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'o', choice: 'New session'});
+  send([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here'], done: true, answer: 'New session', seq: 0}]);
+  expect(root.querySelector('.transcript-pending .attention-item')).toBeNull();
+  expect(find(root, '.attention-item-answer').textContent).toBe('New session');
+});
+
+test('an offer in an archived transcript cannot be answered', () => {
+  const {root} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
+  expect(findAll(root, 'button[data-choice]').every(row => row.hasAttribute('disabled'))).toBe(true);
 });
 
 test('an approval request offers to always allow its tool in either scope', async () => {

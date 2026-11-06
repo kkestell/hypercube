@@ -11,9 +11,6 @@ import (
 func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
-	if got := f.storedSession(s.ID); got.AwaitingUser || !got.Running {
-		t.Fatalf("new session: %+v", got)
-	}
 	// The plugin starts in the parent's directory with its instructions.
 	start := f.log(s.ID, "start")
 	if len(start) != 1 || start[0].Dir != f.root ||
@@ -49,9 +46,9 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	if strings.Join(users, ",") != "start,first,second,third" || replies != 4 {
 		t.Fatalf("transcript = %q", f.summary(s.ID))
 	}
-	// Starting a running session changes nothing.
-	if err := f.rt.Start(s.ID); err != nil || len(f.log(s.ID, "start")) != 1 {
-		t.Fatalf("start of a running session: %v", err)
+	// Waking an awake session changes nothing.
+	if err := f.wake(s.ID); err != nil || len(f.log(s.ID, "start")) != 1 {
+		t.Fatalf("wake of an awake session: %v", err)
 	}
 }
 

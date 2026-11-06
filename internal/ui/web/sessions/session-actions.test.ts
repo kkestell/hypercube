@@ -136,15 +136,11 @@ for (const [phase, response] of failures) {
   });
 }
 
-test('choosing a stopped child starts its parent, and choosing an ended child only selects', () => {
+test('choosing a session only selects it', () => {
   const requests = answer(() => new Response(''));
-  const child = testSession({id: 'c', parent: 'p'});
-  const workspaces = (ended: boolean) => [testWorkspace({id: 'w', sessions: [testSession({id: 'p', running: ended, children: [{...child, ended}]})]})];
-  const s = createStore(testState({workspaces: workspaces(false)}));
+  const child = testSession({id: 'c', parent: 'p', activity: 'exited'});
+  const s = createStore(testState({workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 'p', activity: 'exited', children: [child]})]})]}));
   chooseSession(s, 'c');
   expect(s.get().session?.id).toBe('c');
-  expect(requests[0].get('id')).toBe('p');
-  s.update(state => ({...state, workspaces: workspaces(true)}));
-  chooseSession(s, 'c');
-  expect(requests.length).toBe(1);
+  expect(requests.length).toBe(0);
 });

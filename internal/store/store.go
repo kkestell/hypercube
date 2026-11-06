@@ -45,9 +45,7 @@ type Session struct {
 	Parent       string
 	Name         string
 	Title        string
-	Running      bool
 	Ended        bool
-	AwaitingUser bool
 	Unseen       bool
 	Harness      string
 	Model        string
@@ -72,6 +70,7 @@ type Session struct {
 	Base string
 }
 
+// Message is a queued message. From is empty for Hypercube's own messages.
 type Message struct {
 	ID     int64
 	From   string
@@ -113,8 +112,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   workspace TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
   parent TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '',
-  running INTEGER NOT NULL, ended INTEGER NOT NULL DEFAULT 0,
-  awaiting_user INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
+  ended INTEGER NOT NULL DEFAULT 0, unseen INTEGER NOT NULL DEFAULT 0,
   harness TEXT NOT NULL, model TEXT NOT NULL, effort TEXT NOT NULL,
   dir TEXT NOT NULL, branch TEXT NOT NULL DEFAULT '',
   conversation TEXT NOT NULL DEFAULT '', fork TEXT NOT NULL DEFAULT '', activity TEXT NOT NULL,
@@ -240,34 +238,34 @@ func (t *Tx) DeleteWorkspace(id string) error {
 
 func (t *Tx) AddSession(s Session) error {
 	created := cmp.Or(s.Created, now())
-	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, running, ended,
- awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
+	return t.exec(`INSERT INTO sessions (id, workspace, parent, name, title, ended,
+ unseen, harness, model, effort, dir, branch, conversation,
  activity, attention, context, window, cost, created, last_active, launch, position, ready, quick, base, fork, input_pending)
- VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Running, s.Ended,
-		s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
+ VALUES (?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Workspace, s.Parent, s.Name, s.Title, s.Ended,
+		s.Unseen, s.Harness, s.Model, s.Effort, s.Dir, s.Branch,
 		s.Conversation, s.Activity, s.Attention, s.Usage.Context, s.Usage.Window,
 		s.Usage.Cost, created, created, s.Launch, s.Position, s.Ready, s.Quick, s.Base, s.Fork, s.InputPending)
 }
 
 // SaveSession writes every mutable field.
 func (t *Tx) SaveSession(s Session) error {
-	return t.exec(`UPDATE sessions SET title = ?, running = ?, ended = ?, awaiting_user = ?, unseen = ?,
+	return t.exec(`UPDATE sessions SET title = ?, ended = ?, unseen = ?,
  harness = ?, model = ?, effort = ?, dir = ?, branch = ?, conversation = ?,
- activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ? WHERE id = ?`,
-		s.Title, s.Running, s.Ended, s.AwaitingUser, s.Unseen, s.Harness, s.Model, s.Effort,
+ activity = ?, attention = ?, context = ?, window = ?, cost = ?, launch = ?, position = ?, ready = ?, quick = ?, fork = ?, input_pending = ?, base = ? WHERE id = ?`,
+		s.Title, s.Ended, s.Unseen, s.Harness, s.Model, s.Effort,
 		s.Dir, s.Branch, s.Conversation, s.Activity, s.Attention, s.Usage.Context,
-		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.ID)
+		s.Usage.Window, s.Usage.Cost, s.Launch, s.Position, s.Ready, s.Quick, s.Fork, s.InputPending, s.Base, s.ID)
 }
 
-const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, running, ended,
- awaiting_user, unseen, harness, model, effort, dir, branch, conversation,
+const sessionColumns = `id, workspace, COALESCE(parent, ''), name, title, ended,
+ unseen, harness, model, effort, dir, branch, conversation,
  activity, attention, context, window, cost, created, launch, position, ready, quick, base, fork, input_pending`
 
 func scanSession(row interface{ Scan(...any) error }) (Session, error) {
 	var s Session
-	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Running, &s.Ended,
-		&s.AwaitingUser, &s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
+	err := row.Scan(&s.ID, &s.Workspace, &s.Parent, &s.Name, &s.Title, &s.Ended,
+		&s.Unseen, &s.Harness, &s.Model, &s.Effort, &s.Dir, &s.Branch,
 		&s.Conversation, &s.Activity, &s.Attention, &s.Usage.Context, &s.Usage.Window,
 		&s.Usage.Cost, &s.Created, &s.Launch, &s.Position, &s.Ready, &s.Quick, &s.Base, &s.Fork, &s.InputPending)
 	return s, err
@@ -305,11 +303,6 @@ func (t *Tx) Root(id string) (Session, error) {
 		return s, err
 	}
 	return t.Session(s.Parent)
-}
-
-func (t *Tx) Running(s Session) (bool, error) {
-	root, err := t.Root(s.ID)
-	return root.Running && !s.Ended, err
 }
 
 // FindSession is the messaging scope: a parent sees its children by name and

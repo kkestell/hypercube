@@ -4,7 +4,6 @@
 // parent, collapses or expands its children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
-import {stopped} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {BranchIcon} from '../shared/branch-icon.tsx';
 import {StatusDot} from '../shared/status-dot.tsx';
@@ -15,7 +14,7 @@ import {BusyDot} from '../shared/busy-dot.tsx';
 import {Chevron} from '../shared/icon.tsx';
 
 const statusOf = (session: Session, selected: boolean) => {
-  if (stopped(session)) return null;
+  if (session.ended) return null;
   if (session.attention) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <BusyDot title="Working" />;
@@ -43,7 +42,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const background = selected
     ? '[--row-bg:var(--secondary)] hover:bg-secondary'
     : '[--row-bg:var(--card)] hover:bg-transparent dark:hover:bg-transparent';
-  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${background} ${level === 2 ? 'ml-4' : ''} ${stopped(session) ? 'opacity-60' : ''}`;
+  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${background} ${level === 2 ? 'ml-4' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();

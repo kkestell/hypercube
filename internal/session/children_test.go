@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 func TestChildLifecycle(t *testing.T) {
@@ -67,11 +69,9 @@ func TestChildLifecycle(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(f.root, ".hypercube", parent.ID, "w2")); !os.IsNotExist(err) {
 		t.Fatal("the failed child's worktree remains")
 	}
-	if err := f.rt.Stop(parent.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(parent.ID)
 	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w3", Title: "Title", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""}); err == nil {
-		t.Fatal("a stopped session took a child")
+		t.Fatal("a parked session took a child")
 	}
 }
 
@@ -146,6 +146,64 @@ func TestChildDirectoriesAndScope(t *testing.T) {
 	}
 }
 
+// A fork works where its parent works: in the original checkout or a folder
+// outside Git, it shares the parent's folder; from a worktree session, it gets
+// a new worktree from the parent's HEAD.
+func TestForkPlacement(t *testing.T) {
+	f := newFixture(t)
+	profile := harness.Profile{Harness: "test", Model: "m", Effort: "low"}
+	fork := func(parent store.Session, name, dir string) (store.Session, error) {
+		return f.rt.CreateChild(parent.ID, ChildOptions{Name: name, Title: "Fork", Profile: profile, Dir: dir, Fork: true})
+	}
+	checkout := f.session()
+	if err := os.WriteFile(filepath.Join(f.root, "uncommitted"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	shared, err := fork(checkout, "shared", "")
+	if err != nil || shared.Dir != f.root || shared.Branch != "" {
+		t.Fatalf("fork of the original checkout = %+v, %v", shared, err)
+	}
+	if _, err := fork(checkout, "saved", "."); err != nil {
+		t.Fatalf("a saved directory naming the parent's folder: %v", err)
+	}
+	if _, err := fork(checkout, "elsewhere", t.TempDir()); err == nil {
+		t.Fatal("a fork took another folder")
+	}
+	if _, err := f.rt.CreateChild(checkout.ID, ChildOptions{Name: "other", Title: "Fork", Profile: harness.Profile{Harness: "other"}, Fork: true}); err == nil {
+		t.Fatal("a fork took another harness")
+	}
+
+	parent := f.worktreeSession()
+	f.git(parent.Dir, "commit", "-q", "--allow-empty", "-m", "parent work")
+	head, err := workspace.Head(parent.Dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	separate, err := fork(parent, "separate", "")
+	if err != nil || separate.Dir == parent.Dir || separate.Branch == "" {
+		t.Fatalf("fork of a worktree session = %+v, %v", separate, err)
+	}
+	if got, err := workspace.Head(separate.Dir); err != nil || got != head {
+		t.Fatalf("fork worktree HEAD = %s, %v; want %s", got, err, head)
+	}
+	if _, err := fork(parent, "saved", "."); err == nil {
+		t.Fatal("a fork of a worktree session took a folder")
+	}
+
+	outside, err := f.rt.AddWorkspace(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	top, err := f.rt.Create(outside.ID, "lead", false, "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.until("the session outside Git idle", func() bool { return f.idle(top.ID) && f.storedSession(top.ID).Conversation != "" })
+	if plain, err := fork(top, "plain", ""); err != nil || plain.Dir != outside.Path {
+		t.Fatalf("fork outside Git = %+v, %v", plain, err)
+	}
+}
+
 func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
@@ -172,14 +230,8 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: child.Name, Title: "Title", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "choose another") {
 		t.Fatalf("reused child name: %v", err)
 	}
-	if err := f.rt.Stop(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.Start(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.log(child.ID, "start")) != 1 {
-		t.Fatal("ended child relaunched")
+	if err := f.wake(child.ID); !errors.Is(err, errEnded) || len(f.log(child.ID, "start")) != 1 {
+		t.Fatalf("ended child woke: %v", err)
 	}
 	if err := f.rt.Delete(child.ID); err != nil {
 		t.Fatal(err)
@@ -191,47 +243,6 @@ func TestEndedChildKeepsChatAndCannotResume(t *testing.T) {
 		_, err := tx.Session(parent.ID)
 		return err
 	})
-}
-
-func TestFamilyRestoresAndChildPromptReleasesQueues(t *testing.T) {
-	f := newFixture(t)
-	parent := f.session()
-	child := f.child(parent, "child", "")
-	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
-	if _, err := f.rt.Shell(child.ID, 80, 24); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.rt.Stop(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if !f.shellEnded(child.ID) {
-		t.Fatal("parent stop left child shell running")
-	}
-	if f.storedSession(child.ID).Activity != store.Exited {
-		t.Fatal("parent stop left child running")
-	}
-	f.queue("user", parent.ID, "held for parent")
-	f.queue(parent.ID, child.ID, "held for child")
-	if err := f.rt.Start(parent.ID); err != nil {
-		t.Fatal(err)
-	}
-	if len(f.queued(parent.ID)) != 1 || len(f.queued(child.ID)) != 1 || !f.storedSession(parent.ID).AwaitingUser {
-		t.Fatal("family queues not held")
-	}
-	f.input(child.ID, "continue")
-	f.until("both family queues", func() bool { return len(f.queued(parent.ID)) == 0 && len(f.queued(child.ID)) == 0 })
-	if f.storedSession(parent.ID).AwaitingUser {
-		t.Fatal("child prompt did not release family")
-	}
-	f.rt.Quit()
-	f.rt = f.newRuntime()
-	f.rt.Restore()
-	f.until("restored family", func() bool {
-		return len(f.log(child.ID, "start")) == 3 && f.storedSession(child.ID).Activity == store.Idle
-	})
-	if !f.storedSession(parent.ID).AwaitingUser {
-		t.Fatal("restored family not held")
-	}
 }
 
 func TestDeleteParentSkipsEndedChildren(t *testing.T) {
@@ -252,15 +263,10 @@ func TestDeleteParentSkipsEndedChildren(t *testing.T) {
 	})
 }
 
-func TestChildFollowsItsParent(t *testing.T) {
+func TestDeleteRefusesAnActiveChild(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "child", "")
-	for name, run := range map[string]func(string) error{"Start": f.rt.Start, "Stop": f.rt.Stop} {
-		if err := run(child.ID); err == nil || !strings.Contains(err.Error(), "starts and stops with its parent") {
-			t.Errorf("%s(child) = %v", name, err)
-		}
-	}
 	if err := f.rt.Delete(child.ID); err == nil || !strings.Contains(err.Error(), "must be ended") {
 		t.Fatalf("Delete(active child) = %v", err)
 	}

@@ -8,12 +8,43 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// CreateChild launches a child in a new worktree, or directly in dir.
+// CreateChild launches a child in a new worktree, or directly in dir. Agents
+// start children only through a proposal or an accepted offer.
 func (r *Runtime) CreateChild(parentID string, options ChildOptions) (store.Session, error) {
-	return r.createChild(parentID, options, "")
+	return r.createChild(parentID, options, approval{})
 }
 
-func (r *Runtime) createChild(parentID string, options ChildOptions, proposal string) (store.Session, error) {
+// approval names the user's saved permission for a child, if any: a proposal
+// the user started, or an offer the user accepted. Registering the child uses
+// it up in the same transaction, and a cleaned-up failed start restores it.
+type approval struct {
+	id    string
+	offer bool
+}
+
+func (a approval) use(tx *write, parentID string, options ChildOptions, child store.Session) error {
+	switch {
+	case a.id == "":
+		return nil
+	case a.offer:
+		return useOffer(tx, parentID, a.id, options)
+	default:
+		return useProposal(tx, parentID, a.id, child.ID)
+	}
+}
+
+func (a approval) restore(tx *write, parentID string) error {
+	switch {
+	case a.id == "":
+		return nil
+	case a.offer:
+		return reopenOffer(tx, parentID, a.id)
+	default:
+		return reopenProposal(tx, parentID, a.id)
+	}
+}
+
+func (r *Runtime) createChild(parentID string, options ChildOptions, approved approval) (store.Session, error) {
 	var parent, child store.Session
 	r.mu.Lock()
 	if r.deleting[parentID] {
@@ -34,15 +65,8 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, proposal st
 		if err := tx.AddSession(child); err != nil {
 			return err
 		}
-		if proposal != "" {
-			item, seq, err := childProposal(tx.Tx, parentID, proposal)
-			if err != nil {
-				return err
-			}
-			item.Done, item.Answer = true, child.ID
-			if err := tx.putItem(parentID, seq, item); err != nil {
-				return err
-			}
+		if err := approved.use(tx, parentID, options, child); err != nil {
+			return err
 		}
 		if options.Message != "" {
 			if err := tx.Queue(store.Message{From: parentID, To: child.ID, Text: options.Message}); err != nil {
@@ -65,10 +89,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, proposal st
 			if err := tx.DeleteSession(child.ID); err != nil {
 				return err
 			}
-			if proposal != "" {
-				return reopenProposal(tx, parentID, proposal)
-			}
-			return nil
+			return approved.restore(tx, parentID)
 		})
 		r.mu.Unlock()
 		if cleanup != nil {

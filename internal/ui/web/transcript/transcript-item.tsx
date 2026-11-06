@@ -28,7 +28,7 @@ const ErrorAlert = memo(({item}: {item: ErrorItem}) => <Alert className="transcr
 // RowControls are what a row needs besides its data: the session, the keys
 // the user opened in expanded, and setOpen(key, open) to change one.
 export interface RowControls {
-  session: Pick<Session, 'id'>;
+  session: Pick<Session, 'id' | 'ended'>;
   expanded: Record<string, true>;
   setOpen: (key: string, open: boolean) => void;
 }

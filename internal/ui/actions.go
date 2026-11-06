@@ -71,8 +71,7 @@ func readInput(w http.ResponseWriter, r *http.Request) (input, bool) {
 }
 
 // sessionAction creates a session in a workspace from its first prompt and
-// returns the session ID, or starts, stops, deletes, renames, or marks
-// seen a session.
+// returns the session ID, or acts on a session.
 func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	id := q.Get("id")
@@ -90,14 +89,12 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"session": created.ID})
 		return
-	case "start":
-		err = s.rt.Start(id)
-	case "stop":
-		err = s.rt.Stop(id)
 	case "delete":
 		err = s.rt.Delete(id)
 	case "archive":
 		err = s.rt.Archive(id)
+	case "unarchive":
+		err = s.rt.Unarchive(id)
 	case "rename":
 		err = s.rt.Rename(id, q.Get("title"))
 	case "seen":

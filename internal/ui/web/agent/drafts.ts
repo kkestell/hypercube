@@ -23,7 +23,7 @@ const hasContent = (draft: Draft) => !draft.reading && (!!draft.text.trim() || d
 const unsentReady = (state: State) => !!state.unsent?.workspace && !!state.unsent.profile && !state.unsent.sending;
 
 export const canSend = (state: State, session: Pick<Session, 'id' | 'ended' | 'activity'>, text = draftOf(state, session.id).text) =>
-  !session.ended && hasContent({...draftOf(state, session.id), text}) && session.activity !== 'exited' && (session.id !== unsentKey || unsentReady(state));
+  !session.ended && hasContent({...draftOf(state, session.id), text}) && (session.id !== unsentKey || unsentReady(state));
 
 function withDraft(state: State, key: string, change: (draft: Draft) => Draft): State {
   const draft = change(draftOf(state, key));

@@ -56,17 +56,15 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	if n := len(f.log(parent.ID, "start")); n != maxQuickExits {
 		t.Fatalf("%d launches", n)
 	}
-	if f.storedSession(parent.ID).Activity != store.Exited || !f.storedSession(s.ID).Running {
-		t.Fatalf("agent %+v, session %+v", f.storedSession(parent.ID), f.storedSession(s.ID))
+	if f.storedSession(parent.ID).Activity != store.Exited {
+		t.Fatalf("agent %+v", f.storedSession(parent.ID))
 	}
 }
 
 func TestFailedResumeIsAnError(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(s.ID)
 	if err := f.db.Tx(func(tx *store.Tx) error {
 		a, err := tx.Session(s.ID)
 		if err != nil {
@@ -77,7 +75,7 @@ func TestFailedResumeIsAnError(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err := f.rt.Start(s.ID)
+	err := f.wake(s.ID)
 	if err == nil || !strings.Contains(err.Error(), "cannot resume conversation unresumable") {
 		t.Fatalf("start: %v", err)
 	}
@@ -90,8 +88,8 @@ func TestFailedResumeIsAnError(t *testing.T) {
 	if a := f.storedSession(s.ID); a.Activity != store.Exited || a.Conversation != "unresumable" || len(starts) != 2 || starts[1].Conversation != "unresumable" {
 		t.Fatalf("after a failed resume: agent %+v, starts %v", a, starts)
 	}
-	// Nothing of the failed launch remains, so starting again tries again.
-	if err := f.rt.Start(s.ID); err == nil || len(f.log(s.ID, "start")) != 3 {
+	// Nothing of the failed launch remains, so a prompt tries again.
+	if err := f.rt.Input(s.ID, "hello"); err == nil || len(f.log(s.ID, "start")) != 3 {
 		t.Fatalf("second start: %v", err)
 	}
 }
@@ -134,7 +132,7 @@ func TestUnsupportedHarnessFailsTheStart(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	err := f.rt.Start("s")
+	err := f.wake("s")
 	if err == nil || !strings.Contains(err.Error(), "unsupported harness: not ported") {
 		t.Fatalf("start: %v", err)
 	}

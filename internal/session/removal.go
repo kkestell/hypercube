@@ -24,6 +24,62 @@ func (r *Runtime) Archive(id string) error {
 	return r.removeFamily(id, true)
 }
 
+// Unarchive returns an archived top-level session to the session list. A
+// worktree session gets its worktree back, on its branch created again from
+// the checkout's HEAD. Its children stay ended, and it wakes when next used.
+func (r *Runtime) Unarchive(id string) error {
+	var s store.Session
+	var checkout string
+	r.mu.Lock()
+	err := r.db.Read(func(tx *store.Tx) error {
+		var err error
+		s, err = tx.Session(id)
+		if err != nil {
+			return err
+		}
+		switch {
+		case r.deleting[id]:
+			return errDeleting
+		case s.Parent != "":
+			return errors.New("only a top-level session can be unarchived")
+		case !s.Ended:
+			return errors.New("the session is not archived")
+		}
+		w, err := tx.Workspace(s.Workspace)
+		checkout = w.Path
+		return err
+	})
+	if err == nil {
+		r.deleting[id] = true
+	}
+	r.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	defer r.releaseRemoval(id)
+	base := ""
+	if s.Base != "" {
+		if err := workspace.AddWorktree(checkout, s.Dir, s.Branch); err != nil {
+			return err
+		}
+		if base, err = workspace.Head(s.Dir); err != nil {
+			return err
+		}
+	}
+	err = r.save(func(tx *write) error {
+		s, err := tx.Session(id)
+		if err != nil {
+			return err
+		}
+		s.Ended, s.Base = false, base
+		return tx.SaveSession(s)
+	})
+	if err == nil && base != "" {
+		r.refreshMerges(s.Workspace)
+	}
+	return err
+}
+
 func (r *Runtime) removeFamily(id string, archive bool) error {
 	var s store.Session
 	var root string
@@ -93,13 +149,7 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 	}
 	r.mu.Lock()
 	lives := r.selectLaunches(func(l *live) bool { return l.root == id })
-	if archive {
-		_, err = r.stopLocked(id)
-	}
 	r.mu.Unlock()
-	if err != nil {
-		return err
-	}
 	r.stopLaunches(lives)
 	r.stopShells(id)
 	// All writers have stopped. Check the whole family before removing any
@@ -196,10 +246,46 @@ func endArchived(tx *write, id string) error {
 	return tx.DropQueued(id)
 }
 
+// releaseRemoval ends a removal's claim on a session and, for a top-level
+// session, on its children. Sessions that survive a refused removal can park
+// again, and messages that reached them during the claim wake them.
 func (r *Runtime) releaseRemoval(id string) {
+	var held []string
 	r.mu.Lock()
 	delete(r.deleting, id)
+	err := r.db.Read(func(tx *store.Tx) error {
+		s, err := tx.Session(id)
+		if errors.Is(err, store.ErrNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		family := []store.Session{s}
+		if s.Parent == "" {
+			children, err := tx.Children(id)
+			if err != nil {
+				return err
+			}
+			family = append(family, children...)
+		}
+		for _, m := range family {
+			if !m.Ended {
+				held = append(held, m.ID)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		logf("reading the sessions %s's removal held: %v", id, err)
+	}
+	for _, m := range held {
+		r.settleLocked(m)
+	}
 	r.mu.Unlock()
+	for _, m := range held {
+		r.Deliver(m)
+	}
 }
 
 // EndChild stops its writers and removes its worktree, keeping its chat.

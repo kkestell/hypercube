@@ -192,7 +192,7 @@ func TestRefusedRemovalKeepsTheFamilyWorking(t *testing.T) {
 	if _, err := f.rt.Shell(parent.ID, 80, 24); err != nil {
 		t.Fatal("the refusal kept its shell admission claim:", err)
 	}
-	if got := f.storedSession(parent.ID); !got.Running || got.Ended || got.Activity == store.Exited {
+	if got := f.storedSession(parent.ID); got.Ended || got.Activity == store.Exited {
 		t.Fatalf("refused removal changed the family: %+v", got)
 	}
 }
@@ -283,4 +283,65 @@ exec "$HYPERCUBE_TEST_REAL_GIT" "$@"
 			}
 		})
 	}
+}
+
+// pausedRefusal starts deleting a family whose dirty worktree refuses removal,
+// runs during while the worktree check holds the claim, then waits for the
+// refusal.
+func (f *fixture) pausedRefusal(parent store.Session, during func()) {
+	f.t.Helper()
+	if err := os.WriteFile(filepath.Join(parent.Dir, "unfinished"), []byte("keep"), 0o644); err != nil {
+		f.t.Fatal(err)
+	}
+	wait, release := pauseStatus(f.t, parent.Dir)
+	removed := make(chan error, 1)
+	go func() { removed <- f.rt.Delete(parent.ID) }()
+	wait()
+	during()
+	release()
+	if err := <-removed; err == nil {
+		f.t.Fatal("removed a dirty worktree")
+	}
+}
+
+func TestRefusedRemovalWakesQueuedRecipients(t *testing.T) {
+	f := newFixture(t)
+	f.idleAfter(time.Hour)
+	parent := f.worktreeSession()
+	child := f.child(parent, "worker", "")
+	if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+		t.Fatal(err)
+	}
+	f.until("the child idle", func() bool { return f.idle(child.ID) })
+	f.park(parent.ID)
+	f.park(child.ID)
+	f.pausedRefusal(parent, func() {
+		f.queue("user", parent.ID, "to the parent")
+		if _, err := f.rt.SendMessage(parent.ID, child.Name, "to the child"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.until("both woken for their messages", func() bool {
+		return f.awake(parent.ID) && f.awake(child.ID) && len(f.queued(parent.ID)) == 0 && len(f.queued(child.ID)) == 0
+	})
+}
+
+func TestRefusedRemovalRestartsTheIdleTimeout(t *testing.T) {
+	f := newFixture(t)
+	f.idleAfter(time.Hour)
+	parent := f.worktreeSession()
+	child := f.child(parent, "worker", "")
+	if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+		t.Fatal(err)
+	}
+	f.until("the child idle", func() bool { return f.idle(child.ID) })
+	f.pausedRefusal(parent, func() {
+		f.idleAfter(50 * time.Millisecond)
+		// A command reply during the checks cancels the claimed parent's timer.
+		if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.untilParked(parent.ID)
+	f.untilParked(child.ID)
 }

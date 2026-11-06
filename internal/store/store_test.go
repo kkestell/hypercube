@@ -41,7 +41,7 @@ func seed(t *testing.T, db *DB, w, path, s string, children ...string) {
 				return err
 			}
 		}
-		if err := tx.AddSession(Session{ID: s, Workspace: w, Running: true}); err != nil {
+		if err := tx.AddSession(Session{ID: s, Workspace: w}); err != nil {
 			return err
 		}
 		for _, name := range children {
@@ -336,18 +336,6 @@ func TestSessionScopeAndFamilyState(t *testing.T) {
 		root, err := tx.Root(one.ID)
 		if err != nil || root.ID != p.ID {
 			t.Fatalf("Root=%+v,%v", root, err)
-		}
-		running, err := tx.Running(one)
-		if err != nil || !running {
-			t.Fatalf("Running=%v,%v", running, err)
-		}
-		one.Ended = true
-		if err := tx.SaveSession(one); err != nil {
-			return err
-		}
-		running, err = tx.Running(one)
-		if err != nil || running {
-			t.Fatalf("ended Running=%v,%v", running, err)
 		}
 		if _, err := tx.PutEntry(one.ID, Entry{Seq: 1, Item: "i", Data: []byte(`{}`)}); err != nil {
 			return err

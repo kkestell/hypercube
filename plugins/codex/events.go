@@ -1,12 +1,8 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -111,93 +107,6 @@ type threadItem struct {
 		Title   string   `json:"title"`
 		Options []string `json:"options"`
 	} `json:"questions"`
-}
-
-type fileChange struct {
-	Path string          `json:"path"`
-	Kind json.RawMessage `json:"kind"`
-	Diff string          `json:"diff"`
-}
-
-type toolResult struct {
-	Content           []contentBlock  `json:"content"`
-	StructuredContent json.RawMessage `json:"structuredContent"`
-}
-
-type contentBlock struct {
-	Type     string `json:"type"`
-	Text     string `json:"text"`
-	Data     string `json:"data"`     // an MCP image block's base64 data
-	MIMEType string `json:"mimeType"` // an MCP image block's type
-	ImageURL string `json:"imageUrl"` // a dynamic tool's data URL
-}
-
-// supportedImages are the formats the transcript shows.
-var supportedImages = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
-
-// maxImageFile limits the images read from disk.
-const maxImageFile = 10 << 20
-
-// image is the picture of a content block, if it is an inline one.
-func (b contentBlock) image() (harness.Image, bool) {
-	if b.ImageURL != "" {
-		mime, data, ok := strings.Cut(strings.TrimPrefix(b.ImageURL, "data:"), ";base64,")
-		if ok && strings.HasPrefix(b.ImageURL, "data:") && supportedImages[mime] && data != "" {
-			return harness.Image{MIMEType: mime, Data: data}, true
-		}
-		return harness.Image{}, false
-	}
-	if b.Type == "image" && supportedImages[b.MIMEType] && b.Data != "" {
-		return harness.Image{MIMEType: b.MIMEType, Data: b.Data}, true
-	}
-	return harness.Image{}, false
-}
-
-// fileImage reads an image file, which Codex wrote or viewed, for the transcript.
-func fileImage(path string) (harness.Image, bool) {
-	if path == "" {
-		return harness.Image{}, false
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return harness.Image{}, false
-	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxImageFile+1))
-	if err != nil || len(data) > maxImageFile {
-		return harness.Image{}, false
-	}
-	mime := http.DetectContentType(data)
-	if !supportedImages[mime] {
-		return harness.Image{}, false
-	}
-	return harness.Image{MIMEType: mime, Data: base64.StdEncoding.EncodeToString(data)}, true
-}
-
-// rawImage is generated image data that Codex sent inline as base64.
-func rawImage(b64 string) (harness.Image, bool) {
-	head := b64
-	if len(head) > 64 {
-		head = head[:64]
-	}
-	head = head[:len(head)/4*4]
-	data, err := base64.StdEncoding.DecodeString(head)
-	if err != nil {
-		return harness.Image{}, false
-	}
-	mime := http.DetectContentType(data)
-	return harness.Image{MIMEType: mime, Data: b64}, supportedImages[mime]
-}
-
-// blocksImages are the inline images among content blocks.
-func blocksImages(blocks []contentBlock) []harness.Image {
-	var images []harness.Image
-	for _, b := range blocks {
-		if img, ok := b.image(); ok {
-			images = append(images, img)
-		}
-	}
-	return images
 }
 
 func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
@@ -424,7 +333,7 @@ func (ag *agent) agentMessage(ev *harness.Event, thread, parent string, it threa
 		return
 	}
 	for i, q := range it.Questions {
-		item := harness.Item{ID: fmt.Sprintf("question:%s/%d", it.ID, i), Parent: parent, Kind: harness.KindAttention, Text: q.Title, Choices: q.Options, Free: true}
+		item := harness.Item{ID: fmt.Sprintf("question:%s/%d", it.ID, i), Parent: parent, Kind: harness.KindAttention, Text: q.Title, Choices: q.Options, Free: true, Async: true}
 		r := &request{async: true, thread: thread}
 		ag.requests.Add(r, []harness.Item{item})
 		ev.Items = append(ev.Items, item)
@@ -450,109 +359,4 @@ func (ag *agent) finish(id string) (streamed bool) {
 	delete(ag.running, id)
 	ag.finished[id] = true
 	return streamed
-}
-
-// generatedImage shows an image Codex generated: the file it saved, else the
-// data it sent inline. A generation that failed is an error.
-func (ag *agent) generatedImage(ev *harness.Event, parent string, it threadItem) {
-	var inline string
-	_ = json.Unmarshal(it.Result, &inline) // the file's identity alone leaves it empty
-	img, ok := fileImage(it.SavedPath)
-	if !ok {
-		img, ok = rawImage(inline)
-	}
-	switch {
-	case ok:
-		ag.complete(ev, harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindText, Images: []harness.Image{img}})
-	case it.Status == "failed" || len(it.Failure) > 0 && string(it.Failure) != "null":
-		ag.finish(it.ID)
-		ag.fail(ev, "Image generation failed.")
-	default:
-		ag.finish(it.ID)
-	}
-}
-
-func (ag *agent) tool(ev *harness.Event, parent string, it threadItem, completed bool) {
-	item := harness.Item{ID: it.ID, Parent: parent, Kind: harness.KindTool}
-	var input any
-	switch it.Type {
-	case "commandExecution":
-		item.Tool, input = "shell", map[string]any{"command": it.Command, "cwd": it.Cwd}
-		if it.Output != nil {
-			item.Output = *it.Output
-		}
-		item.Failed = it.Status == "failed" || it.Status == "declined" || it.ExitCode != nil && *it.ExitCode != 0
-	case "fileChange":
-		paths := make([]string, len(it.Changes))
-		for i, c := range it.Changes {
-			paths[i] = c.Path
-		}
-		item.Tool, input = "apply_patch", map[string]any{"path": strings.Join(paths, ", "), "changes": it.Changes}
-		item.Failed = it.Status == "failed" || it.Status == "declined"
-	case "mcpToolCall":
-		item.Server, item.Tool = it.Server, it.Tool
-		item.Input = it.Arguments
-		item.Failed = it.Status == "failed" || it.Error != nil
-		switch {
-		case it.Error != nil:
-			item.Output = it.Error.Message
-		case len(it.Result) > 0 && string(it.Result) != "null":
-			var r toolResult
-			if json.Unmarshal(it.Result, &r) == nil {
-				item.Output = blocksText(r.Content)
-				item.Images = blocksImages(r.Content)
-				if item.Output == "" && len(item.Images) == 0 && len(r.StructuredContent) > 0 {
-					item.Output = string(r.StructuredContent)
-				}
-			}
-		}
-	case "dynamicToolCall":
-		item.Tool = it.Tool
-		if it.Namespace != "" {
-			item.Tool = it.Namespace + "__" + it.Tool
-		}
-		item.Input = it.Arguments
-		item.Output = blocksText(it.ContentItems)
-		item.Images = blocksImages(it.ContentItems)
-		item.Failed = it.Status == "failed" || it.Success != nil && !*it.Success
-	case "webSearch":
-		item.Tool, input = "web_search", map[string]any{"query": it.Query}
-	case "imageView":
-		item.Tool, input = "view_image", map[string]any{"path": it.Path}
-		if completed {
-			if img, ok := fileImage(it.Path); ok {
-				item.Images = []harness.Image{img}
-			}
-		}
-	case "subAgentActivity":
-		item.Tool, input = "subagent", map[string]any{"agent": it.AgentPath, "model": it.Model}
-	case "collabAgentToolCall":
-		item.Tool, input = "agent_"+it.Tool, map[string]any{"prompt": it.Prompt}
-		item.Failed = it.Status == "failed"
-	}
-	if input != nil {
-		var err error
-		if item.Input, err = json.Marshal(input); err != nil {
-			ag.fail(ev, "Codex sent a "+it.Type+" item that Hypercube cannot show: "+err.Error())
-		}
-	}
-	if it.Status == "declined" && item.Output == "" {
-		item.Output = "Declined."
-	}
-	if completed {
-		ag.complete(ev, item)
-		return
-	}
-	ag.running[it.ID] = item
-	ev.Items = append(ev.Items, item)
-}
-
-func blocksText(blocks []contentBlock) string {
-	var parts []string
-	for _, b := range blocks {
-		if b.Text != "" {
-			parts = append(parts, b.Text)
-		}
-	}
-	return strings.Join(parts, "\n")
 }

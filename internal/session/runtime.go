@@ -21,6 +21,9 @@ const (
 	// a long conversation.
 	startTimeout   = time.Minute
 	requestTimeout = 30 * time.Second
+	// idleTimeout is how long a session stays eligible to park before its
+	// agent ends.
+	idleTimeout = 15 * time.Minute
 	// An agent that ends maxQuickExits times in a row, each within quickExit of
 	// starting, stays exited.
 	quickExit     = 10 * time.Second
@@ -31,6 +34,7 @@ var (
 	errStopped  = errors.New("the agent was stopped")
 	errClosing  = errors.New("hypercube is shutting down")
 	errDeleting = errors.New("the session is being deleted")
+	errEnded    = errors.New("the session has ended")
 )
 
 // Runtime is the app's service for running agents.
@@ -43,14 +47,15 @@ type Runtime struct {
 	// PluginDir holds the harness plugins. Empty means beside the running
 	// executable.
 	PluginDir string
-	// Terminals holds each running session's shell. Stop, Delete, and Quit
-	// end them.
+	// Terminals holds each session's shell. Archive, Delete, EndChild, and
+	// Quit end them.
 	Terminals terminal.Set
 
 	db  *store.DB
 	url string
-	// startTimeout and requestTimeout bound replies; tests shorten them.
-	startTimeout, requestTimeout time.Duration
+	// startTimeout and requestTimeout bound replies, and idleTimeout parks
+	// sessions; tests shorten them.
+	startTimeout, requestTimeout, idleTimeout time.Duration
 
 	mu    sync.Mutex
 	live  map[string]*live      // by session ID
@@ -66,6 +71,10 @@ type Runtime struct {
 	deleting map[string]bool
 	// merges holds each worktree session's merge status, by session ID.
 	merges map[string]workspace.Merge
+	// viewers counts the pages viewing each session, by session ID.
+	viewers map[string]int
+	// idle holds each parkable session's idle timer, by session ID.
+	idle map[string]*idleTimer
 	// refreshMu serializes refreshMerges.
 	refreshMu sync.Mutex
 	feed      feed
@@ -74,7 +83,8 @@ type Runtime struct {
 // New returns a runtime for the database. url is where agents reach the app.
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{},
-		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{}, startTimeout: startTimeout, requestTimeout: requestTimeout}
+		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
+		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}
 }
 
 func logf(format string, args ...any) {

@@ -23,7 +23,7 @@ import {transcriptRows} from './transcript-tree.ts';
 import {emptyTranscript, setExpanded} from './transcripts.ts';
 
 interface TranscriptProps {
-  session: Pick<Session, 'id'>;
+  session: Pick<Session, 'id' | 'ended'>;
   active?: boolean;
   footer?: ReactNode;
 }

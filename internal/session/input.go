@@ -26,19 +26,26 @@ func checkPrompt(text string, images []harness.Image) error {
 }
 
 // Input sends the user's prompt, text and images, to the agent at once, even
-// while it works. It also releases the session's queued messages.
+// while it works. A parked session wakes first.
 func (r *Runtime) Input(id, text string, images ...harness.Image) error {
 	if err := checkPrompt(text, images); err != nil {
 		return err
 	}
+	l, err := r.wake(id)
+	if err != nil {
+		return err
+	}
+	if err := r.awaitStart(l); err != nil {
+		return err
+	}
 	r.mu.Lock()
-	l, err := r.running(id)
+	l, err = r.running(id)
 	if err != nil {
 		r.mu.Unlock()
 		return err
 	}
 	item := &harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true}
-	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: text, Images: images}, item, true)
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: text, Images: images}, item)
 	r.mu.Unlock()
 	if err != nil {
 		return err
@@ -55,7 +62,7 @@ func (r *Runtime) Interrupt(id string) error {
 		r.mu.Unlock()
 		return err
 	}
-	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInterrupt}, nil, false)
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInterrupt}, nil)
 	r.mu.Unlock()
 	if err != nil {
 		return err
@@ -64,9 +71,17 @@ func (r *Runtime) Interrupt(id string) error {
 }
 
 // Answer replies to an attention request with one of its choices, typed text,
-// or both. A request that has finished cannot be answered.
+// or both. A request that has finished cannot be answered. Hypercube answers
+// its own offers; the plugin answers the rest.
 func (r *Runtime) Answer(id, requestID, choice, text string) error {
 	r.mu.Lock()
+	if isOffer, err := r.answerOffer(id, requestID, choice); isOffer || err != nil {
+		r.mu.Unlock()
+		if isOffer && err == nil {
+			r.Deliver(id)
+		}
+		return err
+	}
 	l, err := r.running(id)
 	var p *pendingItem
 	if err == nil {
@@ -76,7 +91,7 @@ func (r *Runtime) Answer(id, requestID, choice, text string) error {
 		r.mu.Unlock()
 		return errors.New("the request is finished")
 	}
-	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(requestID, l.prefix), Choice: choice, Text: text}, nil, false)
+	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(requestID, l.prefix), Choice: choice, Text: text}, nil)
 	r.mu.Unlock()
 	if err != nil {
 		return err

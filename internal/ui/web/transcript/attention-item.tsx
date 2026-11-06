@@ -13,7 +13,7 @@ export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {i
     return (
       <Card className="attention-item attention-item-open border-0"><CardContent className="space-y-3">
         <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" /></div>
-        <AttentionForm session={session.id} item={item} />
+        <AttentionForm session={session.id} item={item} ended={session.ended} />
       </CardContent></Card>
     );
   }

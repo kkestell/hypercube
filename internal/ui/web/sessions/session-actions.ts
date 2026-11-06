@@ -6,12 +6,11 @@ import {canSend, cleared, draftOf, restored, unsentCreated, unsentKey} from '../
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
 import type {Store} from '../store.ts';
-import {allSessions, failed, openUnsent, selectSession, unsentSending} from './selection.ts';
+import {openUnsent, selectSession, unsentSending} from './selection.ts';
 import type {Session, Workspace} from './types.ts';
 
-export const startSession = (store: Store, id: string) => post(store, 'session', {action: 'start', id});
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
-export const stopSession = (store: Store, id: string) => post(store, 'session', {action: 'stop', id});
+export const unarchiveSession = (store: Store, id: string) => post(store, 'session', {action: 'unarchive', id});
 export const renameSession = (store: Store, id: string, title: string) => post(store, 'session', {action: 'rename', id, title});
 export const markSeen = (store: Store, id: string) => post(store, 'session', {action: 'seen', id});
 // addWorkspace opens a new session in the added workspace.
@@ -39,11 +38,9 @@ export const deleteWorkspace = (store: Store, workspace: Workspace) => confirmDe
   "Its sessions are deleted with their chats and their children's worktrees and branches.",
   () => post(store, 'workspace', {action: 'delete', id: workspace.id}));
 
-// chooseSession shows a session, starting it if it is stopped or failed to start.
+// chooseSession shows a session. Showing it starts its agent.
 export function chooseSession(store: Store, id: string) {
   store.update(state => selectSession(state, id));
-  const session = allSessions(store.get()).find(s => s.id === id);
-  if (session && !session.ended && (!session.running || failed(session))) startSession(store, session.parent || id);
 }
 
 interface Prompt {

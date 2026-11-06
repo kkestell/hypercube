@@ -498,8 +498,7 @@ func TestQuestionForm(t *testing.T) {
 	}
 }
 
-// A form that OpenCode withdraws is refused once, and its questions close
-// when the turn ends.
+// A form that OpenCode withdraws is refused once, and its questions close.
 func TestWithdrawnFormIsRefused(t *testing.T) {
 	h := connected(t)
 	lines := fixture(t, "question")
@@ -512,19 +511,14 @@ func TestWithdrawnFormIsRefused(t *testing.T) {
 	if r[0]["id"] != float64(0) || r[0]["error"].(map[string]any)["code"] != float64(-32603) {
 		t.Fatal(r)
 	}
-	if it := h.item(t, "form:0/0"); it.Done {
-		t.Fatalf("%+v", it)
-	}
-	if err := h.answer("form:0/0", "Red", ""); err != nil {
-		t.Fatal(err)
+	eventually(t, "the closed questions", func() bool { return h.item(t, "form:0/0").Done && h.item(t, "form:0/1").Done })
+	if err := h.answer("form:0/0", "Red", ""); err == nil {
+		t.Fatal("answered a withdrawn form")
 	}
 	h.endTurn(t, "cancelled")
 	h.sync(t)
 	if r = h.acp.responses(); len(r) != 1 {
 		t.Fatal("answered a withdrawn form:", r)
-	}
-	if it := h.item(t, "form:0/1"); !it.Done {
-		t.Fatalf("%+v", it)
 	}
 }
 
@@ -864,7 +858,7 @@ func TestBegin(t *testing.T) {
 
 func TestForkRequiresTheSourceFolder(t *testing.T) {
 	_, err := startAgent(harness.StartArgs{Fork: "ses_parent", ForkDir: "/source", Dir: "/worktree"}, func(harness.Event) {})
-	if err == nil || !strings.Contains(err.Error(), "require the parent's folder") {
+	if err == nil || !strings.Contains(err.Error(), "choose fresh context") {
 		t.Fatal(err)
 	}
 }
@@ -950,11 +944,7 @@ func TestInterruptCancelsAForm(t *testing.T) {
 	if got := h.acp.sent("session/cancel")[0]["sessionId"]; got != h.session {
 		t.Fatal(got)
 	}
-	for _, id := range []string{"form:0/0", "form:0/1"} {
-		if it := h.item(t, id); !it.Done {
-			t.Fatalf("%+v", it)
-		}
-	}
+	eventually(t, "the closed questions", func() bool { return h.item(t, "form:0/0").Done && h.item(t, "form:0/1").Done })
 	h.endTurn(t, "cancelled")
 	if err := h.interrupt(); err != nil || len(h.acp.sent("session/cancel")) != 1 {
 		t.Fatal("interrupted an idle agent", err)

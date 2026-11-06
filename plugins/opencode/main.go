@@ -79,7 +79,7 @@ type agent struct {
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	if a.Fork != "" && a.Dir != a.ForkDir {
-		return nil, errors.New("OpenCode forks require the parent's folder; set dir to . or choose fresh context")
+		return nil, errors.New("OpenCode forks require the parent's folder, and a fork of a session in its own worktree gets a new worktree; choose fresh context")
 	}
 	config := map[string]any{}
 	if a.Instructions != "" {

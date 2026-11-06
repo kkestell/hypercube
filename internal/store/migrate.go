@@ -41,6 +41,9 @@ ALTER TABLE transcript RENAME TO old_transcript;`); err != nil {
 			if err := tx.addChildColumns(); err != nil {
 				return err
 			}
+			if err := tx.dropRunColumns(); err != nil {
+				return err
+			}
 		}
 		var version int
 		if err := tx.tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
@@ -55,11 +58,8 @@ PRAGMA user_version = 1;`); err != nil {
 				return err
 			}
 		}
-		// A session that is not running waits on nobody.
-		return tx.exec(`
-UPDATE sessions SET attention = 0
-WHERE attention = 1 AND (ended = 1
-  OR NOT (SELECT running FROM sessions AS root WHERE root.id = COALESCE(sessions.parent, sessions.id)))`)
+		// A session without an agent waits on nobody.
+		return tx.exec(`UPDATE sessions SET attention = 0 WHERE attention = 1 AND (ended = 1 OR launch = '')`)
 	})
 }
 
@@ -104,6 +104,23 @@ func (t *Tx) addChildColumns() error {
 	return nil
 }
 
+// dropRunColumns upgrades databases from before sessions started and stopped
+// on their own.
+func (t *Tx) dropRunColumns() error {
+	for _, name := range []string{"running", "awaiting_user"} {
+		has, err := t.exists(`SELECT 1 FROM pragma_table_info('sessions') WHERE name = '` + name + `'`)
+		if err != nil {
+			return err
+		}
+		if has {
+			if err := t.exec(`ALTER TABLE sessions DROP COLUMN ` + name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (t *Tx) exists(query string) (bool, error) {
 	var one int
 	err := t.tx.QueryRow(query).Scan(&one)
@@ -138,7 +155,7 @@ func (t *Tx) checkLegacy() error {
 // keeping their conversations, queued messages, and transcripts. The previous
 // session tables have been renamed to old_* before the current schema is made.
 func (t *Tx) convertLegacy() error {
-	const columns = `id, workspace, parent, name, title, running, ended, awaiting_user, unseen,
+	const columns = `id, workspace, parent, name, title, ended, unseen,
  harness, model, effort, dir, branch, conversation, activity, attention,
  context, window, cost, created, last_active`
 	err := t.exec(`
@@ -147,13 +164,13 @@ CREATE TEMP VIEW legacy_agents AS
   session || '/' || name AS address FROM agents;
 
 INSERT INTO sessions (` + columns + `)
- SELECT s.id, s.workspace, NULL, '', s.title, s.running, 0, s.awaiting_user, s.unseen,
+ SELECT s.id, s.workspace, NULL, '', s.title, 0, s.unseen,
   a.harness, a.model, a.effort, a.dir, a.branch, a.conversation, a.activity, a.attention,
   a.context, a.window, a.cost, s.created, s.last_active
  FROM old_sessions s JOIN agents a ON a.session = s.id AND a.role = 'lead';
 
 INSERT INTO sessions (` + columns + `)
- SELECT a.id, s.workspace, s.id, a.name, a.name, 0, 0, 0, 0,
+ SELECT a.id, s.workspace, s.id, a.name, a.name, 0, 0,
   a.harness, a.model, a.effort, a.dir, a.branch, a.conversation, a.activity, a.attention,
   a.context, a.window, a.cost, a.created, a.created
  FROM agents a JOIN old_sessions s ON s.id = a.session WHERE a.role = 'worker';

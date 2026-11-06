@@ -39,8 +39,8 @@ func TestRestartAppliesOutputAndStreamingOnce(t *testing.T) {
 	f.until("replayed state", func() bool {
 		return f.storedSession(s.ID).Usage.Context == 45200 && f.storedSession(s.ID).Activity == store.Idle && strings.Contains(f.summary(s.ID), "text:finished")
 	})
-	if len(f.log(s.ID, "start")) != 1 || f.storedSession(s.ID).AwaitingUser {
-		t.Fatal("restart launched another plugin or awaits user")
+	if len(f.log(s.ID, "start")) != 1 {
+		t.Fatal("restart launched another plugin")
 	}
 	count := 0
 	for _, item := range f.transcript(s.ID) {
@@ -183,7 +183,7 @@ func killHolder(t *testing.T, dir string) {
 		t.Fatal("holder still alive")
 	}
 }
-func TestRestartLostLaunchWithLiveFamilyMember(t *testing.T) {
+func TestRestartLostLaunchStaysParkedUntilMessaged(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	child := f.child(s, "child", "")
@@ -194,21 +194,16 @@ func TestRestartLostLaunchWithLiveFamilyMember(t *testing.T) {
 	killHolder(t, dir)
 	f.rt = f.newRuntime()
 	f.rt.Restore()
-	f.until("lost child relaunched", func() bool { return len(f.log(child.ID, "start")) == 2 && f.idle(child.ID) })
-	if len(f.log(s.ID, "start")) != 1 || f.storedSession(s.ID).AwaitingUser || f.storedSession(child.ID).Usage.Context != 45200 || strings.Contains(f.summary(child.ID), "exited") {
+	if f.awake(child.ID) || f.storedSession(child.ID).Launch != "" || len(f.log(child.ID, "start")) != 1 {
+		t.Fatal("the lost child did not stay parked")
+	}
+	if !f.awake(s.ID) || len(f.log(s.ID, "start")) != 1 || f.storedSession(child.ID).Usage.Context != 45200 || strings.Contains(f.summary(child.ID), "exited") {
 		t.Fatal("lost launch was not recovered without a note")
 	}
-}
-func TestRestartAllLostAwaitsUser(t *testing.T) {
-	f := newFixture(t)
-	s := f.session()
-	f.rt.Detach()
-	killHolder(t, filepath.Join(store.Dir(), "run", f.storedSession(s.ID).Launch))
-	f.rt = f.newRuntime()
-	f.rt.Restore()
-	if !f.storedSession(s.ID).AwaitingUser || len(f.log(s.ID, "start")) != 2 {
-		t.Fatal("all-lost family did not await user")
-	}
+	f.queue(s.ID, child.ID, "after the loss")
+	f.until("the child to wake and take the message", func() bool {
+		return len(f.queued(child.ID)) == 0 && len(f.log(child.ID, "start")) == 2
+	})
 }
 func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 	f := newFixture(t)
@@ -220,7 +215,6 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		s.Running = true
 		s.Harness = "test"
 		if err = tx.SaveSession(s); err != nil {
 			return err
@@ -276,19 +270,14 @@ func TestRestartReplaysUncommittedStreamingAppend(t *testing.T) {
 	f.restart()
 	f.until("completed item once", func() bool { return count("working more done") == 1 })
 }
-func TestStopAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
+func TestParkAppliesAcceptanceBeforeReaderEnds(t *testing.T) {
 	f := newFixture(t)
 	s := f.session()
 	f.queue("user", s.ID, "!onclose")
 	f.until("pending delivery", func() bool { return len(f.inputs(s.ID)) == 2 })
-	if err := f.rt.Stop(s.ID); err != nil {
-		t.Fatal(err)
-	}
+	f.park(s.ID)
 	if len(f.queued(s.ID)) != 0 || !strings.Contains(f.summary(s.ID), "user:!onclose") {
-		t.Fatal("stop discarded acceptance")
-	}
-	if err := f.rt.Start(s.ID); err != nil {
-		t.Fatal(err)
+		t.Fatal("parking discarded acceptance")
 	}
 	f.input(s.ID, "again")
 	if len(f.inputs(s.ID)) != 3 {
@@ -367,7 +356,6 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 			return err
 		}
 		s.Harness = "test"
-		s.Running = true
 		if err = tx.SaveSession(s); err != nil {
 			return err
 		}
@@ -385,5 +373,18 @@ func TestRestoreDecidedLaunchHasStartTimeout(t *testing.T) {
 	}
 	if !strings.Contains(f.summary("s"), "Could not start the agent: the plugin did not start in time") || f.storedSession("s").Launch != "" {
 		t.Fatal(f.summary("s"))
+	}
+}
+
+func TestAdoptedIdleSessionParks(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.rt.Detach()
+	f.rt = f.newRuntime()
+	f.idleAfter(50 * time.Millisecond)
+	f.rt.Restore()
+	f.untilParked(s.ID)
+	if len(f.log(s.ID, "start")) != 1 || f.summary(s.ID) != "user:start|text:ack" {
+		t.Fatalf("parking the adopted session: %q", f.summary(s.ID))
 	}
 }

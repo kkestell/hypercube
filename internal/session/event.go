@@ -11,11 +11,13 @@ import (
 )
 
 // apply commits every durable effect with the position of its source record.
-func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
+// It reports whether the record could have queued a message for a child's
+// parent.
+func (r *Runtime) apply(l *live, rec harness.Record, next int64) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.current(l) || r.detached {
-		return nil
+		return false, nil
 	}
 	if rec.Event != nil {
 		return r.eventLocked(l, *rec.Event, next)
@@ -23,7 +25,7 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 	reply := *rec.Reply
 	command, ok := l.commands[reply.ID]
 	if !ok {
-		return fmt.Errorf("reply to unknown request %d", reply.ID)
+		return false, fmt.Errorf("reply to unknown request %d", reply.ID)
 	}
 	if err := r.save(func(tx *write) error {
 		if err := r.reply(tx, l, reply); err != nil {
@@ -31,7 +33,7 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 		}
 		return r.checkpoint(tx, l, next)
 	}); err != nil {
-		return err
+		return false, err
 	}
 	l.position = next
 	delete(l.commands, reply.ID)
@@ -57,7 +59,8 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) error {
 			r.kickLocked(l.id)
 		}
 	}
-	return nil
+	r.settleLocked(l.id)
+	return false, nil
 }
 
 // checkpoint saves streaming items as unfinished.
@@ -79,16 +82,60 @@ func (r *Runtime) checkpoint(tx *write, l *live, next int64) error {
 	return tx.SaveSession(s)
 }
 
-func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
+// eventLocked applies an event to the live launch, saves its effects with the
+// event's position in one transaction, and then schedules what they allow. It
+// reports whether a child's event could have queued a report or failure for
+// its parent.
+func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) (bool, error) {
 	l.position = next
-	var completed []*pendingItem
-	var failures []string
-	var allowed []harness.Item
+	applied, err := r.applyItems(l, ev, next)
+	if err != nil {
+		return false, err
+	}
+	// A stopping launch waits on nobody, whatever it still has pending.
+	attention := false
+	for _, p := range l.pending {
+		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
+	}
+	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
+	if len(applied.completed) == 0 && len(applied.allowed) == 0 && len(applied.failures) == 0 && !applied.questions && len(ev.Limits) == 0 && !changed {
+		// Streaming output is published and saved at the next checkpoint.
+		return false, nil
+	}
+	if err := r.save(func(tx *write) error { return r.saveEvent(tx, l, ev, applied, changed, attention, next) }); err != nil {
+		return false, err
+	}
+	l.attention = attention
+	if len(applied.allowed) > 0 {
+		go r.send(l)
+	}
+	// Failures and finished turns queue messages, and a question that opens or
+	// closes changes whether the parent can take its children's reports.
+	if len(applied.failures) > 0 || ev.State == harness.Idle || applied.questions {
+		r.kickFamilyLocked(l.root)
+	}
+	_ = l.client.Discard(next)
+	r.settleLocked(l.id)
+	return l.root != l.id && (len(applied.failures) > 0 || ev.State == harness.Idle), nil
+}
+
+// appliedItems is what an event's items did to the live launch.
+type appliedItems struct {
+	completed []*pendingItem // finished items and state markers, in transcript order
+	allowed   []harness.Item // approvals answered by saved grants
+	failures  []string       // the text of new error items
+	questions bool           // a question opened or closed
+}
+
+// applyItems namespaces the event's items, answers granted approvals, merges
+// streaming items, and publishes unfinished ones. A turn's work marker
+// precedes the items the same event starts, and its idle marker follows the
+// items the event finishes. The caller holds mu.
+func (r *Runtime) applyItems(l *live, ev harness.Event, next int64) (appliedItems, error) {
+	var out appliedItems
 	at := time.Now().UnixMilli()
-	// A turn's work marker precedes the items the same event starts, and its
-	// idle marker follows the items the event finishes.
 	if ev.State == harness.Working {
-		completed = append(completed, r.stateMarker(l, ev, next, at))
+		out.completed = append(out.completed, r.stateMarker(l, ev, next, at))
 	}
 	for _, it := range ev.Items {
 		it.ID = l.prefix + it.ID
@@ -106,14 +153,15 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			if !l.stopping {
 				var err error
 				if granted, err = r.granted(l, it.Grant); err != nil {
-					return err
+					return out, err
 				}
 			}
 			if granted {
-				allowed = append(allowed, it)
+				out.allowed = append(out.allowed, it)
 				continue
 			}
 		}
+		out.questions = out.questions || it.Kind == harness.KindAttention && (p == nil || it.Done)
 		it.At = at
 		if p != nil {
 			it.At = p.item.At
@@ -122,7 +170,7 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 			p = &pendingItem{seq: r.nextSeq(l.id)}
 			l.pending[it.ID] = p
 			if it.Kind == harness.KindError {
-				failures = append(failures, it.Text)
+				out.failures = append(out.failures, it.Text)
 			}
 		} else if it.Append {
 			merged := p.item
@@ -133,74 +181,58 @@ func (r *Runtime) eventLocked(l *live, ev harness.Event, next int64) error {
 		p.item = it
 		if it.Done {
 			delete(l.pending, it.ID)
-			completed = append(completed, p)
+			out.completed = append(out.completed, p)
 		} else {
 			r.feed.publish(Change{Session: l.id, Seq: p.seq, Item: it})
 		}
 	}
 	if ev.State == harness.Idle {
-		completed = append(completed, r.stateMarker(l, ev, next, at))
+		out.completed = append(out.completed, r.stateMarker(l, ev, next, at))
 	}
-	// A stopping launch waits on nobody, whatever it still has pending.
-	attention := false
-	for _, p := range l.pending {
-		attention = attention || p.item.Kind == harness.KindAttention && !l.stopping
-	}
-	changed := ev.Conversation != "" || ev.State != "" || ev.Usage != nil || attention != l.attention
-	if len(completed) == 0 && len(allowed) == 0 && len(failures) == 0 && len(ev.Limits) == 0 && !changed {
-		return nil
-	}
-	err := r.save(func(tx *write) error {
-		for _, item := range allowed {
-			if _, err := r.recordAllow(tx, l, item, false); err != nil {
-				return err
-			}
-		}
-		for _, e := range completed {
-			if err := tx.putItem(l.id, e.seq, e.item); err != nil {
-				return err
-			}
-		}
-		s, err := tx.Session(l.id)
-		if err != nil {
+	return out, nil
+}
+
+// saveEvent saves the event's durable effects: granted answers, finished
+// items, limits, the session's state, a child's failure and report messages,
+// and the checkpoint.
+func (r *Runtime) saveEvent(tx *write, l *live, ev harness.Event, applied appliedItems, changed, attention bool, next int64) error {
+	for _, item := range applied.allowed {
+		if _, err := r.recordAllow(tx, l, item, false); err != nil {
 			return err
 		}
-		for _, limit := range ev.Limits {
-			if err := tx.PutLimit(s.Harness, limit); err != nil {
-				return err
-			}
+	}
+	for _, e := range applied.completed {
+		if err := tx.putItem(l.id, e.seq, e.item); err != nil {
+			return err
 		}
-		if changed {
-			applyEvent(&s, ev)
-			s.Attention = attention
-			if err := tx.SaveSession(s); err != nil {
-				return err
-			}
-		}
-		if s.Parent != "" {
-			for _, text := range failures {
-				if err := queueFailure(tx, s, text); err != nil {
-					return err
-				}
-			}
-			if err := r.queueReport(tx, s, ev.Final, l.prefix); err != nil {
-				return err
-			}
-		}
-		return r.checkpoint(tx, l, next)
-	})
+	}
+	s, err := tx.Session(l.id)
 	if err != nil {
 		return err
 	}
-	l.attention = attention
-	if len(allowed) > 0 {
-		go r.send(l)
+	for _, limit := range ev.Limits {
+		if err := tx.PutLimit(s.Harness, limit); err != nil {
+			return err
+		}
 	}
-	if len(failures) > 0 || ev.State == harness.Idle {
-		r.kickFamilyLocked(l.root)
+	if changed {
+		applyEvent(&s, ev)
+		s.Attention = attention
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
 	}
-	_ = l.client.Discard(next)
-	return nil
+	if s.Parent != "" {
+		for _, text := range applied.failures {
+			if err := queueFailure(tx, s, text); err != nil {
+				return err
+			}
+		}
+		if err := r.queueReport(tx, s, ev.Final, l.prefix); err != nil {
+			return err
+		}
+	}
+	return r.checkpoint(tx, l, next)
 }
 
 // stateMarker is the saved record of an event's work state. Its ID names the
