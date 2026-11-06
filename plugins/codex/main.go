@@ -60,20 +60,22 @@ type agent struct {
 
 	// mu guards the state below. Events are emitted with it held, so they keep
 	// the order of the notifications and of answers.
-	mu        sync.Mutex
-	selection harness.Selection
-	thread    string
-	turn      string                  // the main turn in progress
-	ended     string                  // the last main turn that completed
-	final     []string                // the main turn's final answer messages so far
-	finished  map[string]bool         // items that have completed
-	open      map[string]harness.Item // streamed items that have not completed
-	running   map[string]harness.Item // tool items that have not completed
-	children  map[string]childThread  // native subagents, by thread ID
-	limits    [2]harness.Limit        // general primary and secondary windows
-	requests  plugin.Requests[request]
-	answering *request // async question whose answer is being sent
-	errs      plugin.Errors
+	mu             sync.Mutex
+	selection      harness.Selection
+	thread         string
+	turn           string                  // the main turn in progress
+	starting       bool                    // turn/start for the main thread is in flight
+	interruptStart bool                    // interrupt the main turn once turn/start returns its ID
+	ended          string                  // the last main turn that completed
+	final          []string                // the main turn's final answer messages so far
+	finished       map[string]bool         // items that have completed
+	open           map[string]harness.Item // streamed items that have not completed
+	running        map[string]harness.Item // tool items that have not completed
+	children       map[string]childThread  // native subagents, by thread ID
+	limits         [2]harness.Limit        // general primary and secondary windows
+	requests       plugin.Requests[request]
+	answering      *request // async question whose answer is being sent
+	errs           plugin.Errors
 }
 
 type childThread struct {
@@ -314,12 +316,21 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 		if selection.Effort != "" {
 			params["effort"] = selection.Effort
 		}
+		ag.mu.Lock()
+		ag.starting = true
+		ag.mu.Unlock()
 	}
-	if err := ag.call(ctx, "turn/start", params, &started); err != nil {
+	err := ag.call(ctx, "turn/start", params, &started)
+	ag.mu.Lock()
+	interrupted := false
+	if main {
+		interrupted = ag.interruptStart
+		ag.starting, ag.interruptStart = false, false
+	}
+	if err != nil {
+		ag.mu.Unlock()
 		return err
 	}
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	var ev harness.Event
 	ev.Items = ag.closeAsyncQuestions(thread)
 	if main {
@@ -332,6 +343,10 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 		}
 	}
 	ag.send(ev)
+	ag.mu.Unlock()
+	if interrupted {
+		return ag.interrupt()
+	}
 	return nil
 }
 
@@ -366,6 +381,11 @@ func (ag *agent) interrupt() error {
 	// Codex waits for the answers of requests it has sent.
 	ev.Items = ag.closeRequests(blockingRequest, true)
 	ag.send(ev)
+	if ag.starting {
+		ag.interruptStart = true
+		ag.mu.Unlock()
+		return nil
+	}
 	ag.mu.Unlock()
 	if turn == "" {
 		return nil
