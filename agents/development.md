@@ -33,6 +33,27 @@ Follow [the validation rules](../AGENTS.md#validation) for checks, smoke tests,
 and installing changes. `make install-service` builds the checkout, including
 uncommitted changes, without requiring a release tag or running the full checks.
 
+## Documentation screenshots
+
+```sh
+make screenshots
+```
+
+This regenerates `docs/images/<scene>-light.png` and `<scene>-dark.png` for
+each scene in `docs/screenshots/`. A scene file lists workspaces, each a copy
+of a fixture repository in `docs/screenshots/repos/` with an optional patch of
+uncommitted changes, and their sessions: each turn's prompt, the transcript
+items in the plugin protocol's JSON, how the turn ends (`idle`, `working`, or
+`ask`), and the children it starts. A session's `view` is the page's saved
+tabs and splits, `select` picks the shown session, and `size` is the window
+in points. [scripts/screenshots/main.js](../scripts/screenshots/main.js) plays
+each scene through a real backend with
+[the scripted plugin](../plugins/scripted/main.go), opens the real desktop
+window, and captures it. Everything else it creates is deleted.
+
+The window must fit on a Retina display. On first use macOS asks to grant the
+terminal the Screen Recording permission.
+
 ## Prepare an official beta
 
 GitHub Actions runs `make check` on main-branch pushes and pull requests, using

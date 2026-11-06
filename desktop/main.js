@@ -2,7 +2,7 @@
 // window, menus, menu bar icon, notifications, and the agents' browsers. It
 // connects to a backend running on its own, as a login service or in a
 // terminal, and quitting it leaves that backend and its agents running.
-const {app, ipcMain, nativeTheme} = require('electron');
+const {app, ipcMain} = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
@@ -34,7 +34,7 @@ if (app.requestSingleInstanceLock()) {
 function start() {
   const origin = `http://localhost:${port}`;
   const pagesDir = path.join(process.resourcesPath, 'ui');
-  const win = createMainWindow({origin, pagesDir, userData: app.getPath('userData')});
+  const win = createMainWindow({origin, pagesDir, userData: app.getPath('userData'), onMessage});
   const attention = createAttention({
     resourcesDir: process.resourcesPath,
     show: win.show,
@@ -55,27 +55,17 @@ function start() {
   };
   setMenu([], run);
 
-  // Messages from the Hypercube page, which the window's bridge sends.
-  const fromPage = event => event.senderFrame === win.contents.mainFrame && new URL(event.senderFrame.url).origin === origin;
-  ipcMain.on('page', (event, message) => {
-    if (!fromPage(event)) return;
+  // The page's messages that are not the window's own.
+  function onMessage(message) {
     switch (message.type) {
-      case 'title-bar':
-        win.reportTitleBar();
-        break;
       case 'badge':
         if (Number.isInteger(message.count)) attention.setBadge(message.count);
-        break;
-      // The Settings theme also sets the app's native appearance, which the
-      // menus, the agent browser toolbars, and the waiting page follow.
-      case 'theme':
-        if (['system', 'light', 'dark'].includes(message.theme)) nativeTheme.themeSource = message.theme;
         break;
       case 'shortcuts':
         if (Array.isArray(message.items)) setMenu(message.items, run);
         break;
     }
-  });
+  }
 
   // The waiting page's setup requests.
   const waitingURL = pathToFileURL(path.join(pagesDir, 'waiting.html')).href;

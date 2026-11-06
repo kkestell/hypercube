@@ -78,8 +78,10 @@ browser shows each agent's transcript.
 - `internal/` — one package per concern: `desktop`, `harness`, `hold`, `mcp`,
   `report`, `session`, `store`, `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
-  core names no harness.
+  core names no harness. `plugins/scripted` plays documentation screenshot
+  scenes and never ships.
 - `scripts/dev` — the isolated development session (`make dev`).
+- `scripts/screenshots` — the documentation screenshots (`make screenshots`).
 - `docs/` — user documentation, indexed by `README.md`.
 - `agents/` — developer references, research, and active task records.
 

@@ -14,6 +14,11 @@ children.
 
 ## Features
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
+  <img alt="A lead session working beside two child sessions, with a file and a diff split beside its conversation" src="docs/images/overview-light.png">
+</picture>
+
 ### Agents and profiles
 
 - **Multiple harnesses.** Claude Code, OpenCode, Codex, and Pi sessions run side by side.
@@ -74,6 +79,11 @@ children.
 - **Conversation search.** Text search includes match counts and navigation between results.
 
 ### Questions, approvals, and notifications
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/attention-dark.png">
+  <img alt="Notification cards with a question and a command approval from two other sessions" src="docs/images/attention-light.png">
+</picture>
 
 - **Questions and approvals.** Pending requests remain visible alongside the composer, and answered requests remain in the conversation history.
 - **Answers across sessions.** Notification cards let you answer another agent's request without leaving the current conversation.
