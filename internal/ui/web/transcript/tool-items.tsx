@@ -22,7 +22,7 @@ export function ToolCall({call, session, expanded, setOpen}: RowControls & {call
     : item.failed ? <Icon name="error" className="tool-items-failed text-destructive" role="img" title="Failed" />
     : <Icon name="check" role="img" title="Done" />;
   return (
-    <Disclosure className="tool-items-call [.tool-items-call[data-state=closed]+&]:-mt-3" open={open} onToggle={open => setOpen(item.id, open)}
+    <Disclosure className="tool-items-call [:is(.tool-items-call,.attention-item)[data-state=closed]+&]:-mt-3" open={open} onToggle={open => setOpen(item.id, open)}
       marker={<span className="tool-items-status">{status}</span>} summary={<Title item={item} />}>
       {open && (
         <div className="tool-items-body mt-2 space-y-2">

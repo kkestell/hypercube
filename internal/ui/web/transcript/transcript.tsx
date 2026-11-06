@@ -11,6 +11,7 @@ import {useCallback, useLayoutEffect, useMemo, useRef, useState, type MouseEvent
 import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {Button} from '../components/ui/button';
+import {Card, CardContent} from '../components/ui/card';
 import {Icon} from '../shared/icon.tsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {rememberScroll} from '../editor/editor.ts';
@@ -39,7 +40,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const pending = transcript.order.map(id => transcript.items[id]).filter(isPending);
   const setOpen = useCallback((key: string, open: boolean) => store.update(s => setExpanded(s, key, open)), [store]);
 
-  const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null), bottom = useRef<HTMLDivElement>(null);
+  const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
   const memory = useScrollMemory(view, session.id, ready);
   const lastTop = useRef(memory.current.top);
   const [away, setAway] = useState(!memory.current.following);
@@ -88,7 +89,6 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     const observer = new ResizeObserver(followEnd);
     observer.observe(view.current);
     observer.observe(list.current);
-    if (bottom.current) observer.observe(bottom.current);
     return () => observer.disconnect();
   }, [ready]);
 
@@ -99,20 +99,22 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
         <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-[37px] py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
-        <div ref={bottom} className={`transcript-bottom sticky bottom-0 flow-root shrink-0 ${tabBackground}`}>
-          {pending.length > 0 && (
-            <section className={`transcript-pending my-4 flex flex-col gap-4 ${column(state)}`} aria-label="Waiting on you">
-              {pending.map(item => item.kind === 'attention'
-                ? <AttentionItem key={item.id} item={item} session={session} />
-                : <ProposalItem key={item.id} item={item} session={session.id} expanded={false} setOpen={setOpen} />)}
-            </section>
-          )}
-        </div>
       </div>
-      <div className={`transcript-footer relative shrink-0 ${tabBackground}`}>
+      <div className={`transcript-footer relative shrink-0 ${tabBackground} ${pending.length ? '[&_.composer>[data-slot=card]]:shadow-lg [&_.composer>[data-slot=card]]:shadow-black/40' : ''}`}>
         {away && (
           <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
             onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>
+        )}
+        {/* The card tucks 16px under the composer, which comes after it in tab
+            order, overlaps its padded bottom edge, and casts a shadow on it. */}
+        {pending.length > 0 && (
+          <section className={`transcript-pending -mb-8 ${column(state)}`} aria-label="Waiting on you">
+            <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
+              {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
+                ? <AttentionItem item={item} session={session} />
+                : <ProposalItem item={item} session={session.id} expanded={false} setOpen={setOpen} />}</CardContent>)}
+            </Card>
+          </section>
         )}
         {footer}
       </div>

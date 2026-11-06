@@ -33,30 +33,33 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
     if (result === null) setSending(false);
     else focusComposerField();
   };
-  return (
+  if (item.done) return (
     <Card className="border-0 py-3" aria-label="Proposed child session">
-      <CardContent className="space-y-3 px-4">
-        {item.done ? <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
+      <CardContent className="px-4">
+        <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
           summary={<><span className="truncate font-medium">{item.text}</span>
             <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><ProfileName profile={options.profile} /></Detail><span className="truncate">{outcome}</span></span></>}>
           {options.message && <Markdown text={options.message} style="chat" />}
-        </Disclosure> : <>
-          <div className="font-medium">{item.text}</div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <Detail><ProfileName profile={options.profile} /></Detail>
-            <Detail><Icon name="comment-discussion" />{options.fork ? 'Forked context' : 'Fresh context'}</Detail>
-            {!options.fork && (options.dir
-              ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>
-              : <Detail><Icon name="git-branch" />New worktree</Detail>)}
-          </div>
-          {options.message && <Markdown text={options.message} style="chat" />}
-          <div className="flex gap-2">
-            <Button size="sm" disabled={sending} onClick={() => act('start-proposal')}>Start</Button>
-            <Button size="sm" variant="secondary" disabled={sending} onClick={() => act('dismiss-proposal')}>Dismiss</Button>
-          </div>
-        </>}
+        </Disclosure>
       </CardContent>
     </Card>
+  );
+  return (
+    <div className="space-y-3" role="group" aria-label="Proposed child session">
+      <div className="font-medium">{item.text}</div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <Detail><ProfileName profile={options.profile} /></Detail>
+        <Detail><Icon name="comment-discussion" />{options.fork ? 'Forked context' : 'Fresh context'}</Detail>
+        {!options.fork && (options.dir
+          ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>
+          : <Detail><Icon name="git-branch" />New worktree</Detail>)}
+      </div>
+      {options.message && <Markdown text={options.message} style="chat" />}
+      <div className="flex gap-2">
+        <Button size="sm" disabled={sending} onClick={() => act('start-proposal')}>Start</Button>
+        <Button size="sm" variant="secondary" disabled={sending} onClick={() => act('dismiss-proposal')}>Dismiss</Button>
+      </div>
+    </div>
   );
 }
 

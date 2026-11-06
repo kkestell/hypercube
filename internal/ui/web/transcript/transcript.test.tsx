@@ -32,8 +32,10 @@ function setup(items: NewItem[], session = busy) {
 const marker = (id: string, state: WorkState, at: number, final?: string[]): Item => ({id: 'L1:' + id, kind: 'state', state, at, done: true, final});
 
 const choose = (root: HTMLElement, choice: string) => {
-  act(() => clickControl(find(root, `button[data-choice="${choice}"]`)));
+  act(() => clickControl(find(root, `[role="radio"][data-choice="${choice}"]`)));
 };
+const submitButton = (root: HTMLElement) => find(root, '.attention-form-submit');
+const submit = (root: HTMLElement) => act(() => clickControl(submitButton(root)));
 
 test('an open proposal is pinned below the history, sends only its saved ID, and returns to history when started', async () => {
   const reply = Promise.withResolvers<Response>();
@@ -103,15 +105,19 @@ test('an attention request offers its choices, waits while sending, and opens ag
   const refusal = Promise.withResolvers<Response>();
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(refusal.promise);
   const {root, send} = setup([{id: 'q', kind: 'attention', text: 'Proceed?', choices: ['yes', 'no']}]);
-  const rows = () => findAll(root, 'button[data-choice]');
-  const list = () => find(root, '[role="group"]');
+  const rows = () => findAll(root, '[role="radio"][data-choice]');
+  const list = () => find(root, '[role="radiogroup"]');
   expect(list().getAttribute('aria-label')).toBe('Choices');
-  expect(rows().map(r => r.textContent)).toEqual(['yes', 'no']);
+  expect(rows().map(r => r.getAttribute('data-choice'))).toEqual(['yes', 'no']);
   expect(root.querySelector('input')).toBeNull();
+  expect(submitButton(root).hasAttribute('disabled')).toBe(true);
   choose(root, 'yes');
+  expect(fetches).not.toHaveBeenCalled();
+  submit(root);
   expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'q', choice: 'yes'});
   expect(rows().every(row => row.hasAttribute('disabled'))).toBe(true);
   choose(root, 'no');
+  submit(root);
   expect(fetches).toHaveBeenCalledTimes(1);
   await act(async () => {
     refusal.resolve(new Response('no longer open', {status: 409}));
@@ -121,7 +127,10 @@ test('an attention request offers its choices, waits while sending, and opens ag
 
   send([{id: 'q', kind: 'attention', text: 'Proceed?', done: true, answer: 'no', seq: 1}]);
   expect(rows()).toEqual([]);
-  expect(find(root, '.attention-item-answered').textContent).toBe('Proceed?');
+  expect(find(root, '.attention-item').textContent).toContain('Answered');
+  expect(root.querySelector('.attention-item-answer')).toBeNull();
+  act(() => find(root, '.attention-item > [data-slot=collapsible-trigger]').click());
+  expect(find(root, '.attention-item-question').textContent).toBe('Proceed?');
   expect(find(root, '.attention-item-answer').textContent).toBe('no');
 });
 
@@ -129,19 +138,21 @@ test('a new task offer stays above the composer, sends one choice, and records i
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}));
   const {root, send} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}]);
   const pending = find(root, '.transcript-pending');
-  expect(findAll(pending, 'button[data-choice]').map(r => r.textContent)).toEqual(['New session', 'Do it here']);
+  expect(findAll(pending, '[role="radio"][data-choice]').map(r => r.getAttribute('data-choice'))).toEqual(['New session', 'Do it here']);
   choose(root, 'New session');
+  submit(root);
   choose(root, 'Do it here');
+  submit(root);
   expect(fetches).toHaveBeenCalledTimes(1);
   expect(Object.fromEntries(requestParams(fetches.mock.calls, 0))).toEqual({action: 'answer', id: 's', request: 'o', choice: 'New session'});
   send([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here'], done: true, answer: 'New session', seq: 0}]);
   expect(root.querySelector('.transcript-pending .attention-item')).toBeNull();
-  expect(find(root, '.attention-item-answer').textContent).toBe('New session');
+  expect(find(root, '.attention-item').textContent).toContain('New session');
 });
 
 test('an offer in an archived transcript cannot be answered', () => {
   const {root} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
-  expect(findAll(root, 'button[data-choice]').every(row => row.hasAttribute('disabled'))).toBe(true);
+  expect(findAll(root, '[role="radio"]').every(row => row.hasAttribute('disabled'))).toBe(true);
 });
 
 test('an approval request offers to always allow its tool in either scope', async () => {
@@ -159,23 +170,24 @@ test('a typed answer is sent with Enter and not when empty', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
   const {root} = setup([{id: 'q', kind: 'attention', text: 'Name?', free: true, choices: ['Ada']}]);
   const field = element(root, 'input', HTMLInputElement);
-  const sendButton = find(root, '.attention-form-entry button');
-  const label = find(root, 'label');
-  expect(label.textContent).toBe('Other response');
-  expect(label.getAttribute('for')).toBe(field.id);
-  expect(field.querySelector('button')).toBeNull();
-  expect(sendButton.textContent).toBe('Send');
-  expect(sendButton.hasAttribute('disabled')).toBe(true);
-  act(() => clickControl(sendButton));
-  expect(fetches).not.toHaveBeenCalled();
+  expect(field.getAttribute('aria-label')).toBe('Other response');
+  expect(submitButton(root).hasAttribute('disabled')).toBe(true);
+  act(() => clickControl(submitButton(root)));
   act(() => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(fetches).not.toHaveBeenCalled();
-  setValue(field, 'Ada');
+  const otherRadio = find(root, '[role="radio"]:not([data-choice])');
+  act(() => clickControl(otherRadio));
+  expect(otherRadio.getAttribute('aria-checked')).toBe('true');
+  expect(submitButton(root).hasAttribute('disabled')).toBe(true);
+  choose(root, 'Ada');
+  expect(otherRadio.getAttribute('aria-checked')).toBe('false');
+  setValue(field, 'Grace');
   act(() => field.dispatchEvent(new Event('input', {bubbles: true})));
-  expect(sendButton.hasAttribute('disabled')).toBe(false);
+  expect(find(root, '[role="radio"][data-choice="Ada"]').getAttribute('aria-checked')).toBe('false');
+  expect(submitButton(root).hasAttribute('disabled')).toBe(false);
   await act(async () => field.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true})));
   expect(requestParams(fetches.mock.calls, 0).get('choice')).toBe('');
-  expect(fetches.mock.calls[0][1]?.body).toBe('Ada');
+  expect(fetches.mock.calls[0][1]?.body).toBe('Grace');
 });
 
 test('a nested request stays pinned outside a collapsed activity and returns to history when answered', () => {
@@ -197,7 +209,7 @@ test('a nested request stays pinned outside a collapsed activity and returns to 
   expect(root.querySelector('.transcript-pending')).toBeNull();
   act(() => find(group, '[data-slot=collapsible-trigger]').click());
   act(() => find(group, '.tool-items-call > [data-slot=collapsible-trigger]').click());
-  expect(find(group, '.attention-item-answer').textContent).toBe('ok');
+  expect(find(group, '.attention-item').textContent).toContain('ok');
 });
 
 test('pending questions and their draft stay outside the history list while output arrives', () => {
@@ -218,9 +230,9 @@ test('pending questions and their draft stay outside the history list while outp
   expect(field.value).toBe('My answer');
   expect(findAll(pending, '.attention-item-question').map(item => item.textContent)).toEqual(['First?', 'Second?']);
   expect(find(view, '.transcript-list').textContent).toBe('More work');
-  expect(pending.parentElement === find(view, '.transcript-bottom')).toBe(true);
+  expect(find(root, '.transcript-footer').contains(pending)).toBe(true);
   send([{id: 'q1', kind: 'attention', text: 'First?', done: true, answer: 'My answer', seq: 0}]);
-  expect(find(view, '.attention-item-answer').textContent).toBe('My answer');
+  expect(find(view, '.attention-item').textContent).toContain('My answer');
   expect(pending.querySelectorAll('.attention-item').length).toBe(1);
 });
 

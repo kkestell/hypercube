@@ -88,11 +88,11 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className={`composer @container/composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+    <form className={`composer @container/composer relative my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
       {isUnsent(session.id) && <WorktreeSelect />}
       {/* One line of text makes the box 50px tall: its border, padding, and the
           text's line; half that rounds its ends into half circles. */}
-      <Card className="rounded-[16px] bg-transparent py-2 shadow-none dark:bg-input/30">
+      <Card className="rounded-[16px] py-2 shadow-none dark:bg-[color-mix(in_oklab,var(--card),white_4%)]">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
             <div className="composer-images flex flex-wrap gap-2">

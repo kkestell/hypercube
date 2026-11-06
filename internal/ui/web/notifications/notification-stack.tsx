@@ -1,14 +1,11 @@
-// The notification cards, stacked in the top right corner below the tab bars.
-// A top-row tab bar is as tall as the title bar or its 2.75rem of tabs and
-// padding, whichever is taller; the stack sits as far below it as it sits from
-// the right edge.
+// The notification cards, stacked in the top right corner of the window.
 import {useStore} from '../store.ts';
 import {NotificationCard} from './notification-card.tsx';
 import {cards} from './notifications.ts';
 import type {Card} from './types.ts';
 
 function Stack({shown}: {shown: Card[]}) {
-  return <div className="notification-stack fixed right-4 top-[calc(max(var(--title-bar-height,0px),2.75rem)+1rem)] z-50 flex max-h-3/4 w-sm max-w-full flex-col gap-3 overflow-auto">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
+  return <div className="notification-stack fixed right-4 top-4 z-50 flex max-h-3/4 w-sm max-w-full flex-col gap-3 overflow-auto">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
 }
 
 export function NotificationStack() {
