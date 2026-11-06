@@ -164,8 +164,9 @@ and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
 Children appear under their parent. A breathing dot indicates work, an amber
-dot means an answer is needed, and a blue dot marks an unseen reply. Ended
-children are dimmed and carry no dots.
+dot means an answer is needed, and a blue dot marks an unseen reply. An active
+parent's ended children fold into one row, such as **12 ended**, that lists
+them when chosen; there they are dimmed and carry no dots.
 
 When you explicitly ask for another session or delegation, such as an
 independent review by another agent, the agent starts it without asking again.
@@ -179,10 +180,10 @@ notifications and waiting indicators, even while the parent is parked.
 Corrections and follow-ups need no question;
 follow-ups on a child's work go back to that child while its context helps.
 
-Work the agent suggests on its own appears as cards showing the brief,
-profile, context, and folder or new worktree.
-**Start** launches it; **Dismiss** closes the card. Handled cards collapse to a
-single line; expand one to read its brief again. Cards survive reloads and
+Work the agent suggests on its own appears as cards above the message box,
+showing the brief, profile, context, and folder or new worktree.
+**Start** launches it; **Dismiss** closes the card. Handled cards move into the
+conversation as a single line; expand one to read its brief again. Cards survive reloads and
 do not block the parent. An unsuccessful launch shows an error and leaves the
 card or accepted offer available to retry when its child was cleaned up.
 
@@ -217,6 +218,10 @@ After a backend restart, Hypercube reconnects to agents that survived. Other
 sessions start when next used. A harness that exits unexpectedly is relaunched
 with its conversation; repeated quick failures stop relaunches. For a failed
 start, the error stays in chat. Open the session or send it a prompt to retry.
+
+**Restart Agent** in a session's context menu ends its agent and starts it
+again from the installed plugin, resuming its conversation. A turn in progress
+is cut short.
 
 Choose a cleanup action according to what you want to keep:
 

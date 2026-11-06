@@ -88,20 +88,28 @@ test('Enter saves a changed title, Escape cancels, and leaving the field saves',
   expect(posted().length).toBe(2);
 });
 
-test('every active family is listed with all its children, and menus offer only Archive and Unarchive', () => {
+test('an active family folds its ended children, and menus offer Restart Agent only to sessions that can run', () => {
   const live = session('live', {parent: 'a'});
   const ended = session('ended', {parent: 'a', ended: true});
-  const {root, posted} = setup([session('a', {activity: 'exited', children: [live, ended]}), session('b'), session('old', {ended: true})], 'live');
+  const {root, posted} = setup([session('a', {activity: 'exited', children: [ended, live]}), session('b'), session('old', {ended: true})], 'live');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'b']);
+  const fold = find(root, '[data-row="ended:a"]');
+  expect(fold.textContent).toBe('1 ended');
+  click(fold);
   expect(sessionRows(root)).toEqual(['a', 'live', 'ended', 'b']);
   expect(row(root, 'ended').className).toContain('opacity-60');
   expect(row(root, 'a').className).not.toContain('opacity-60');
   contextMenu(row(root, 'a'));
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(
-    ['Rename', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal', 'Archive Session', 'Delete Session']);
+    ['Rename', 'Restart Agent', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal', 'Archive Session', 'Delete Session']);
   pick('Archive Session');
+  contextMenu(row(root, 'ended'));
+  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).not.toContain('Restart Agent');
+  key(document.activeElement as HTMLElement, 'Escape');
+  choose(root, '[data-session="live"]', 'Restart Agent');
   click(find(root, '[role=tab][data-state=inactive]'));
   choose(root, '[data-session="old"]', 'Unarchive');
-  expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'unarchive', id: 'old'}]);
+  expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'restart', id: 'live'}, {action: 'unarchive', id: 'old'}]);
 });
 
 test('deleting a session asks first and posts only on Delete', () => {
@@ -140,6 +148,21 @@ test('only one row is tabbable, and the arrow keys move and open rows', () => {
   expect(document.activeElement).toBe(row(root, 'b'));
   key(row(root, 'b'), 'Enter');
   expect(store.get().selected).toBe('b');
+});
+
+test('the ended fold opens and closes from the keyboard and keeps the shown session listed', () => {
+  const ended = session('ended', {parent: 'a', ended: true});
+  const {root} = setup([session('a', {children: [session('live', {parent: 'a'}), ended]})], 'ended');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'ended']);
+  const fold = find(root, '[data-row="ended:a"]');
+  act(() => fold.focus());
+  key(fold, 'Enter');
+  expect(fold.getAttribute('aria-expanded')).toBe('true');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'ended']);
+  key(fold, 'ArrowRight');
+  expect(document.activeElement).toBe(row(root, 'ended'));
+  key(row(root, 'ended'), 'ArrowLeft');
+  expect(document.activeElement).toBe(row(root, 'a'));
 });
 
 test.each([

@@ -29,8 +29,8 @@ interface MessageItemProps {
 function UserBubble({item}: {item: UserItem}) {
   return (
     <div className="message-item message-item-user my-3 flex justify-end">
-      <div className="message-item-user-content group relative max-w-full [--copy-bg:var(--card)]">
-        <Card className="message-item-bubble border-0 py-3"><CardContent className="px-4">
+      <div className="message-item-user-content group relative max-w-[75%] [--copy-bg:var(--secondary)]">
+        <Card className="message-item-bubble border-0 bg-secondary py-3"><CardContent className="px-4">
           <div className="message-item-text whitespace-pre-wrap break-words">{item.text ?? ''}</div>
           <TranscriptImages images={item.images} />
         </CardContent></Card>
@@ -64,15 +64,20 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
   }
   const body = (
     <div className="message-item-body space-y-2">
-      <div className="message-item-text"><Markdown text={text} style="chat" /></div>
+      <div className="message-item-text"><Markdown text={text} style="chat" muted /></div>
       {details}
     </div>
   );
+  // A one-line message with nothing attached shows in full, with nothing to expand.
+  const foldable = /\r?\n/.test(text.trim()) || (item.kind === 'tool' ? item.failed : !!item.images?.length);
+  if (!foldable) {
+    return <div className="message-item message-item-agent py-1"><div className="flex items-center gap-2 text-sm leading-5">{heading}</div>{body}</div>;
+  }
   return (
     <Disclosure className="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={heading} preview={text.split(/\r?\n/, 1)[0]}>
-      {/* The body's first line takes the preview's place, which sits inside
-          the trigger's bottom padding. */}
-      {expanded && <div className="-mt-1 pr-3">{body}</div>}
+      {/* The body takes the preview's place, which sits above the trigger's
+          bottom padding; pb-1 restores that padding below it. */}
+      {expanded && <div className="-mt-1 pb-1 pr-3">{body}</div>}
     </Disclosure>
   );
 }

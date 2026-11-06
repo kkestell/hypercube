@@ -190,6 +190,34 @@ func TestWakeWhileParking(t *testing.T) {
 	}
 }
 
+// Restart replaces a running agent and starts a parked one, each resuming its
+// conversation without an error in the transcript.
+func TestRestart(t *testing.T) {
+	f := newFixture(t)
+	f.idleAfter(time.Hour)
+	s := f.session()
+	first := f.log(s.ID, "start")[0]
+	if err := f.rt.Restart(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.until("the agent running again", func() bool { return len(f.log(s.ID, "start")) == 2 && f.idle(s.ID) })
+	if syscall.Kill(first.Pid, 0) != syscall.ESRCH {
+		t.Fatal("the first agent's process remains")
+	}
+	conversation := f.storedSession(s.ID).Conversation
+	if second := f.log(s.ID, "start")[1]; second.Conversation != conversation || conversation == "" {
+		t.Fatalf("the restart resumed %q, want %q", second.Conversation, conversation)
+	}
+	f.park(s.ID)
+	if err := f.rt.Restart(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.until("the parked agent started", func() bool { return len(f.log(s.ID, "start")) == 3 && f.idle(s.ID) })
+	if got := f.summary(s.ID); got != "user:start|text:ack" {
+		t.Fatalf("restarting changed the transcript: %q", got)
+	}
+}
+
 func TestUnarchive(t *testing.T) {
 	f := newFixture(t)
 	f.idleAfter(time.Hour)

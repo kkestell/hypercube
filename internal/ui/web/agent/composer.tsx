@@ -92,7 +92,7 @@ export function Composer({session}: {session: Session}) {
       {isUnsent(session.id) && <WorktreeSelect />}
       {/* One line of text makes the box 50px tall: its border, padding, and the
           text's line; half that rounds its ends into half circles. */}
-      <Card className="rounded-[25px] bg-transparent py-2 shadow-none dark:bg-input/30">
+      <Card className="rounded-[16px] bg-transparent py-2 shadow-none dark:bg-input/30">
         <CardContent className="flex flex-col gap-1 px-3">
           {draft.images.length > 0 && (
             <div className="composer-images flex flex-wrap gap-2">

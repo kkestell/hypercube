@@ -35,7 +35,7 @@ const choose = (root: HTMLElement, choice: string) => {
   act(() => clickControl(find(root, `button[data-choice="${choice}"]`)));
 };
 
-test('a proposed child stays visible after the final response and sends only its saved ID', async () => {
+test('an open proposal is pinned below the history, sends only its saved ID, and returns to history when started', async () => {
   const reply = Promise.withResolvers<Response>();
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(reply.promise);
   const {root, send} = setup([
@@ -45,7 +45,8 @@ test('a proposed child stays visible after the final response and sends only its
     {id: 'L1:answer', kind: 'text', text: 'I found a separate task.', done: true},
     marker('idle', 'idle', 2, ['L1:answer']),
   ]);
-  const card = find(root, '[aria-label="Proposed child session"]');
+  const card = find(root, '.transcript-pending [aria-label="Proposed child session"]');
+  expect(root.querySelector('.transcript-list [aria-label="Proposed child session"]')).toBeNull();
   expect(card.textContent).toContain('Check the parser');
   expect(card.textContent).toContain('Fresh context');
   act(() => find(card, 'button').click());
@@ -55,8 +56,10 @@ test('a proposed child stays visible after the final response and sends only its
   expect(fetches.mock.calls[0][1]?.body).toBeUndefined();
   await act(async () => reply.resolve(new Response('')));
   send([{id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', profile: {name: 'worker', harness: 'codex', model: 'm', effort: 'low'}}, done: true, answer: 'child-id'}]);
-  expect(card.textContent).toContain('Child session: review');
-  expect([...card.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
+  expect(root.querySelector('.transcript-pending')).toBeNull();
+  const done = find(root, '.transcript-list [aria-label="Proposed child session"]');
+  expect(done.textContent).toContain('Child session: review');
+  expect([...done.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
 });
 
 test('a refused proposal action can be retried or dismissed', async () => {
@@ -186,7 +189,7 @@ test('a nested request stays pinned outside a collapsed activity and returns to 
   ]);
   const group = find(root, '.activity-item');
   expect(group.getAttribute('data-state') === 'open').toBe(false);
-  const pending = find(root, '[aria-label="Pending questions"]');
+  const pending = find(root, '[aria-label="Waiting on you"]');
   expect(pending.querySelector('button[data-choice="ok"]')).not.toBeNull();
   expect(pending.closest('.transcript-list')).toBeNull();
   expect(root.querySelector('.transcript-list .attention-item')).toBeNull();

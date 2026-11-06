@@ -19,8 +19,9 @@ import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
 import type {Session} from '../sessions/types.ts';
 import {AttentionItem} from './attention-item.tsx';
+import {ProposalItem} from './proposal-item.tsx';
 import {TranscriptRow} from './transcript-item.tsx';
-import {transcriptRows} from './transcript-tree.ts';
+import {isPending, transcriptRows} from './transcript-tree.ts';
 import {emptyTranscript, setExpanded} from './transcripts.ts';
 
 interface TranscriptProps {
@@ -35,10 +36,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const ready = state.session?.transcriptReady ?? false;
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
-  const pending = transcript.order.flatMap(id => {
-    const item = transcript.items[id];
-    return item.kind === 'attention' && !item.done ? [item] : [];
-  });
+  const pending = transcript.order.map(id => transcript.items[id]).filter(isPending);
   const setOpen = useCallback((key: string, open: boolean) => store.update(s => setExpanded(s, key, open)), [store]);
 
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null), bottom = useRef<HTMLDivElement>(null);
@@ -103,8 +101,10 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
         </div>
         <div ref={bottom} className={`transcript-bottom sticky bottom-0 flow-root shrink-0 ${tabBackground}`}>
           {pending.length > 0 && (
-            <section className={`transcript-pending my-4 flex flex-col gap-4 ${column(state)}`} aria-label="Pending questions">
-              {pending.map(item => <AttentionItem key={item.id} item={item} session={session} />)}
+            <section className={`transcript-pending my-4 flex flex-col gap-4 ${column(state)}`} aria-label="Waiting on you">
+              {pending.map(item => item.kind === 'attention'
+                ? <AttentionItem key={item.id} item={item} session={session} />
+                : <ProposalItem key={item.id} item={item} session={session.id} expanded={false} setOpen={setOpen} />)}
             </section>
           )}
         </div>

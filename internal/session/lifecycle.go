@@ -36,6 +36,17 @@ func (r *Runtime) View(id string) (release func(), err error) {
 	return release, nil
 }
 
+// Restart ends the session's agent and starts it again from the installed
+// plugin, resuming its conversation. A turn in progress is cut short.
+func (r *Runtime) Restart(id string) error {
+	r.mu.Lock()
+	lives := r.selectLaunches(func(l *live) bool { return l.id == id })
+	r.mu.Unlock()
+	r.stopLaunches(lives)
+	_, err := r.wake(id)
+	return err
+}
+
 // wake returns the session's launch, registering one that resumes its
 // conversation when it has none. It does not wait for the plugin to start.
 func (r *Runtime) wake(id string) (*live, error) {

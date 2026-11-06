@@ -1,7 +1,8 @@
-import {useRef, useState, type ReactNode} from 'react';
+import {useState, type ReactNode} from 'react';
 import {post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
+import {focusComposerField} from '../agent/focus-composer.ts';
 import {ProfileName} from '../agent/profile-name.tsx';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
@@ -17,11 +18,12 @@ interface ProposalItemProps {
 }
 
 // Starting uses the saved proposal on the server. The browser sends only its ID.
+// An open proposal is pinned below the history, so an answered one leaves its
+// card and returns the focus to the composer.
 // A fork works where this session works, so its card names no folder.
 export function ProposalItem({item, session, expanded, setOpen}: ProposalItemProps) {
   const [, store] = useStore();
   const [sending, setSending] = useState(false);
-  const card = useRef<HTMLDivElement>(null);
   const options = item.input;
   const outcome = item.answer === 'Dismissed' ? 'Dismissed' : `Child session: ${options.name}`;
   const act = async (action: 'start-proposal' | 'dismiss-proposal') => {
@@ -29,10 +31,10 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
     setSending(true);
     const result = await post(store, 'session', {action, id: session, proposal: item.id});
     if (result === null) setSending(false);
-    else card.current?.focus();
+    else focusComposerField();
   };
   return (
-    <Card ref={card} tabIndex={-1} className="border-0 py-3" aria-label="Proposed child session">
+    <Card className="border-0 py-3" aria-label="Proposed child session">
       <CardContent className="space-y-3 px-4">
         {item.done ? <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
           summary={<><span className="truncate font-medium">{item.text}</span>

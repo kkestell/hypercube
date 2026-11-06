@@ -2,7 +2,8 @@
 // focus. The row's right edge shows the worktree branch icon and, only when
 // there is something to say, the session's own state. A click chooses the
 // session; a click on a parent's chevron, or a double-click on the parent,
-// collapses or expands its children.
+// collapses or expands its children. EndedFold is the child row that hides or
+// lists a parent's ended children.
 import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import {shownId} from '../sessions/selection.ts';
@@ -49,12 +50,12 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
 
   return (
     <Button asChild variant={selected ? 'secondary' : 'ghost'} size="sm" className={classes}><div
-      role="treeitem" data-session={session.id}
+      role="treeitem" data-row={session.id} data-session={session.id}
       aria-level={level} aria-posinset={position} aria-setsize={siblings} aria-expanded={hasChildren ? expanded : undefined} aria-selected={selected}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus}
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
-      {level === 2 && <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-2 rounded-bl-lg border-b' : 'bottom-0'}`} />}
+      {level === 2 && <Branch position={position} siblings={siblings} />}
       <span className="flex min-w-0 flex-1 items-center gap-2">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
@@ -67,6 +68,34 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
         {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
         {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}
+    </div></Button>
+  );
+}
+
+// Branch draws a child row's stretch of the line down from its parent.
+function Branch({position, siblings}: {position: number; siblings: number}) {
+  return <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-2 rounded-bl-lg border-b' : 'bottom-0'}`} />;
+}
+
+interface EndedFoldProps {
+  id: string;
+  count: number;
+  position: number;
+  siblings: number;
+  expanded: boolean;
+  tabbable: boolean;
+  onToggle: () => void;
+  onFocus: () => void;
+}
+
+export function EndedFold({id, count, position, siblings, expanded, tabbable, onToggle, onFocus}: EndedFoldProps) {
+  return (
+    <Button asChild variant="ghost" size="sm" className="session-fold relative ml-4 h-7 cursor-default justify-start px-2 text-xs font-normal text-muted-foreground"><div
+      role="treeitem" data-row={id} aria-level={2} aria-posinset={position} aria-setsize={siblings} aria-expanded={expanded} aria-selected={false}
+      tabIndex={tabbable ? 0 : -1} onFocus={onFocus} onClick={onToggle}
+    >
+      <Branch position={position} siblings={siblings} />
+      <span className="flex items-center gap-1">{count} ended<Chevron open={expanded} /></span>
     </div></Button>
   );
 }

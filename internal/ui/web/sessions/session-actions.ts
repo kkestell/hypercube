@@ -11,6 +11,7 @@ import type {Session, Workspace} from './types.ts';
 
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
 export const unarchiveSession = (store: Store, id: string) => post(store, 'session', {action: 'unarchive', id});
+export const restartSession = (store: Store, id: string) => post(store, 'session', {action: 'restart', id});
 export const renameSession = (store: Store, id: string, title: string) => post(store, 'session', {action: 'rename', id, title});
 export const markSeen = (store: Store, id: string) => post(store, 'session', {action: 'seen', id});
 // addWorkspace opens a new session in the added workspace.

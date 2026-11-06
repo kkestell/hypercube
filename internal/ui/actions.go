@@ -109,6 +109,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		err = s.rt.SelectProfile(id, q.Get("profile"))
 	case "interrupt":
 		err = s.rt.Interrupt(id)
+	case "restart":
+		err = s.rt.Restart(id)
 	case "answer":
 		var body []byte
 		body, err = io.ReadAll(http.MaxBytesReader(w, r.Body, 4<<20))

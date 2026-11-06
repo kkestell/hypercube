@@ -116,8 +116,8 @@ Run `make install-service` again. It quits the desktop app if it is open,
 replaces the installed build, restarts the backend, and opens the app, while
 agents and terminal shells keep running.
 
-Those agents still use the plugins they launched with. Restart their sessions
-to use a new plugin build. A holder-directory or plugin-protocol change requires
+Those agents still use the plugins they launched with. Choose **Restart Agent**
+from a session's context menu to use a new plugin build. A holder-directory or plugin-protocol change requires
 ending the agents with SIGINT before installation.
 
 State migrates on startup. Upgrading from the earlier leads/workers version

@@ -21,7 +21,7 @@ interface DisclosureProps {
 // the heading.
 export function Disclosure({className = '', open, onToggle, title, summary, preview, marker, children}: DisclosureProps) {
   return <Collapsible className={`disclosure [--disclosure-indent:--spacing(6)] ${className}`} open={open} onOpenChange={onToggle}>
-    <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full items-start justify-start gap-0 whitespace-normal px-0 py-1 text-left font-normal hover:bg-transparent dark:hover:bg-transparent" title={title}>
+    <CollapsibleTrigger asChild><Button variant="ghost" size="sm" className="h-auto w-full items-start justify-start gap-0 whitespace-normal px-0 py-1 text-left font-normal hover:bg-transparent hover:text-inherit dark:hover:bg-transparent" title={title}>
       {marker && <span className="disclosure-marker flex h-5 w-(--disclosure-indent) shrink-0 items-center">{marker}</span>}
       <span className="min-w-0 flex-1"><span className="disclosure-heading flex min-w-0 items-center gap-2">{summary}{!marker && <Chevron open={open} />}</span>
         {!open && preview && <span className="disclosure-preview block truncate leading-6 text-muted-foreground"><MarkdownText text={preview} /></span>}

@@ -145,6 +145,10 @@ function repeatsQuestions(item: Item, index: number, {order, items}: Transcript)
   return false;
 }
 
+// isPending reports an open question, approval, or proposed child session,
+// which waits on the user.
+export const isPending = <T extends Item>(item: T): item is Extract<T, {kind: 'attention' | 'proposal'}> => (item.kind === 'attention' || item.kind === 'proposal') && !item.done;
+
 // transcriptRows returns the rows of a transcript.
 export function transcriptRows(transcript: Transcript): Row[] {
   const {order, items} = transcript;
@@ -152,8 +156,8 @@ export function transcriptRows(transcript: Transcript): Row[] {
   for (let i = 0; i < order.length; i++) {
     const item = items[order[i]];
     if (repeatsQuestions(item, i, transcript)) continue;
-    // Open requests are pinned below the scrolling history.
-    if (item.kind === 'attention' && !item.done) continue;
+    // Open requests and proposals are pinned below the scrolling history.
+    if (isPending(item)) continue;
     const parent = item.parent === undefined ? undefined : items[item.parent];
     const container = parent?.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     const siblings = containers.get(container);

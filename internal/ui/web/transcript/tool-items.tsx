@@ -11,7 +11,7 @@ import type {ToolItem} from './types.ts';
 
 function Title({item}: {item: ToolItem}) {
   const [name, detail] = toolTitle(item);
-  return <span className="tool-items-title min-w-0 truncate text-sm" title={[name, detail].filter(Boolean).join(' ')}><span className="tool-items-name text-foreground">{name}</span> {detail && <span className="tool-items-detail ml-1 font-mono text-xs text-muted-foreground">{detail}</span>}</span>;
+  return <span className="tool-items-title min-w-0 truncate text-sm" title={[name, detail].filter(Boolean).join(' ')}><span className="tool-items-name">{name}</span> {detail && <span className="tool-items-detail ml-1 font-mono text-xs text-muted-foreground">{detail}</span>}</span>;
 }
 
 export function ToolCall({call, session, expanded, setOpen}: RowControls & {call: ToolRow}) {
