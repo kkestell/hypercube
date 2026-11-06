@@ -1,3 +1,8 @@
+---
+title: Configuration
+weight: 2
+---
+
 # Configuration
 
 Create `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set, the path

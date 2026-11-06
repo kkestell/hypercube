@@ -11,7 +11,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean ui screenshots
+.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean ui screenshots web-build web-serve
 
 # bundle builds $(APP): the Electron desktop app, Hypercube Desktop, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -70,8 +70,8 @@ build: bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
 	for p in $(PLUGINS); do ln -sf Hypercube.app/Contents/MacOS/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 
-# check compiles the programs without packaging the app.
-check: ui
+# check builds the programs and website without packaging the app.
+check: ui web-build
 	go build ./cmd/... ./plugins/...
 	cd internal/ui && bunx tsc -p . && bun test
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile && bun test
@@ -137,3 +137,12 @@ dev-stop:
 
 dev-clean:
 	scripts/dev clean
+
+# web-build builds the Taikonaut website into web/public. web-serve runs its dev
+# server at http://localhost:1313. Both go through web/Makefile, which installs
+# the pinned Hugo into web/bin on first use.
+web-build:
+	$(MAKE) -C web build
+
+web-serve:
+	$(MAKE) -C web serve

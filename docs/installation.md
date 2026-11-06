@@ -1,3 +1,8 @@
+---
+title: Installation
+weight: 1
+---
+
 # Installation
 
 Hypercube runs on macOS. Install at least one authenticated coding harness:
@@ -53,9 +58,10 @@ example:
 
 ## Build and install from a checkout
 
-Source builds need Git, the Go version in [go.mod](../go.mod), and Bun. Packaging
-downloads the Electron runtime the first time. The Go build embeds the browser
-view, so run `make ui` before `go build`, `go vet`, or `go test`.
+Source builds need Git, the Go version in
+[go.mod](https://github.com/kkestell/hypercube/blob/main/go.mod), and Bun.
+Packaging downloads the Electron runtime the first time. The Go build embeds
+the browser view, so run `make ui` before `go build`, `go vet`, or `go test`.
 
 From this checkout:
 
@@ -69,7 +75,7 @@ plugins into `~/.local/bin`. Put that directory on your PATH. Use
 
 Create [your configuration](configuration.md), then follow
 [Run at login](#run-at-login). For development and release packaging, see
-[the development reference](../agents/development.md).
+[the development reference](https://github.com/kkestell/hypercube/blob/main/agents/development.md).
 
 ## Run at login
 

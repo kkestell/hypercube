@@ -57,6 +57,24 @@ window, and captures it. Everything else it creates is deleted.
 The window must fit on a Retina display. On first use macOS asks to grant the
 terminal the Screen Recording permission.
 
+## Website
+
+`make web-build` builds the Hugo site into `web/public/`; `make web-serve`
+previews it at http://localhost:1313/. Both use the pinned Hugo version in
+`web/Makefile`. `make check` includes the website build.
+
+The guides in `docs/` and screenshots in `docs/images/` are shared by GitHub
+and the website. Hugo mounts them at `/docs/` and `/docs/images/`; screenshot
+scenes and fixtures in `docs/screenshots/` are not published. In the guides,
+link to other guides with relative `.md` paths and screenshots with
+`images/<scene>-light.png`. Hugo resolves the guide URLs and adds each
+screenshot's `-dark.png` variant for dark appearance.
+
+For Cloudflare Pages, use the repository root as the build root,
+`make web-build` as the build command, and `web/public` as the output directory.
+Commit screenshots generated locally with `make screenshots`; the website
+build does not run the macOS screenshot capture. Keep `web/public/` gitignored.
+
 ## Prepare an official beta
 
 GitHub Actions runs `make check` on main-branch pushes and pull requests, using

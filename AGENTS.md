@@ -82,6 +82,8 @@ browser shows each agent's transcript.
   scenes and never ships.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
+- `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
+  and `make web-serve`.
 - `docs/` — user documentation, indexed by `README.md`.
 - `agents/` — developer references, research, and active task records.
 

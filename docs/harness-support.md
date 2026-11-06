@@ -1,3 +1,8 @@
+---
+title: Harness differences
+weight: 5
+---
+
 # Harness differences
 
 Profiles select a native coding tool through the `harness` field. Install and

@@ -41,16 +41,6 @@ children.
 
 ### Teams and communication
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/suggestion-dark.png">
-  <img alt="A running team with a suggested task waiting for review" src="docs/images/suggestion-light.png">
-</picture>
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/offer-dark.png">
-  <img alt="An agent offers a new task, with a card asking whether it runs in a new session or the current one" src="docs/images/offer-light.png">
-</picture>
-
 - **Delegation to child sessions.** Agents can assign work to child sessions with different harnesses, models, and efforts.
 - **Task placement.** You can choose whether a new task belongs in the current session or a separate session.
 - **Suggested work.** Agents can propose additional tasks for you to review before they start.
@@ -65,11 +55,6 @@ children.
 
 ### Workspaces and Git
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/worktrees-dark.png">
-  <img alt="Sessions on separate branches with uncommitted, unmerged, and merged work" src="docs/images/worktrees-light.png">
-</picture>
-
 - **Local workspaces.** Git repositories and ordinary project folders organize sessions by project.
 - **Original checkout or worktree.** Sessions can use your current working files or have a separate Git branch and worktree.
 - **Worktree preparation.** New worktrees include submodules and selected local configuration or dependencies.
@@ -81,11 +66,6 @@ children.
 - **External project tools.** Project directories can open in Visual Studio Code, Finder, or Terminal.
 
 ### Prompts and conversations
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/details-dark.png">
-  <img alt="An expanded turn showing reasoning, tool calls, and a native subagent" src="docs/images/details-light.png">
-</picture>
 
 - **Multiline prompts and prompt history.** Earlier prompts can be recalled and edited.
 - **File mentions.** Project file suggestions make it easy to reference files in prompts.
@@ -99,11 +79,6 @@ children.
 - **Conversation search.** Text search includes match counts and navigation between results.
 
 ### Questions, approvals, and notifications
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/attention-dark.png">
-  <img alt="Notification cards with a question and a command approval from two other sessions" src="docs/images/attention-light.png">
-</picture>
 
 - **Questions and approvals.** Pending requests remain visible alongside the composer, and answered requests remain in the conversation history.
 - **Answers across sessions.** Notification cards let you answer another agent's request without leaving the current conversation.

@@ -1,3 +1,8 @@
+---
+title: Sessions, context, and working copies
+weight: 3
+---
+
 # Sessions, context, and working copies
 
 A session has its own conversation and working directory. Two sessions can have
@@ -23,6 +28,8 @@ its parent. That reviewer sees the actual working files, including changes
 absent from Git history. Its chat appears beneath the parent in the sidebar.
 
 ## Working on separate branches
+
+![Sessions on separate branches with uncommitted, unmerged, and merged work](images/worktrees-light.png)
 
 For independent edits, a child can have its own Git worktree: another checkout
 on its own branch. The parent can keep working without sharing staged files

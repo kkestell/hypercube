@@ -1,3 +1,8 @@
+---
+title: Using Hypercube
+weight: 4
+---
+
 # Using Hypercube
 
 ## Start a session
@@ -46,6 +51,8 @@ Successful turns collapse their intermediate activity into **Worked for …**.
 Expand that row for the reasoning, tool calls, and messages between sessions.
 Expand an individual tool call for its input and output. Failed or interrupted
 turns keep their activity visible.
+
+![An expanded turn showing reasoning, tool calls, and a native subagent](images/details-light.png)
 
 ### Files and diffs
 
@@ -128,6 +135,8 @@ until the harness reports again. See
 
 ## Answer a request
 
+![Notification cards with a question and a command approval from two other sessions](images/attention-light.png)
+
 Questions and approvals stay above the message box while you scroll. A child's
 request also appears in its parent's chat, where you can answer without
 switching sessions. The parent's agent does not receive that copy. Once
@@ -168,6 +177,8 @@ dot means an answer is needed, and a blue dot marks an unseen reply. An active
 parent's ended children fold into one row, such as **12 ended**, that lists
 them when chosen; there they are dimmed and carry no dots.
 
+## Work with a team
+
 When you explicitly ask for another session or delegation, such as an
 independent review by another agent, the agent starts it without asking again.
 For a separate new task whose placement you have not chosen, a question above
@@ -180,12 +191,16 @@ notifications and waiting indicators, even while the parent is parked.
 Corrections and follow-ups need no question;
 follow-ups on a child's work go back to that child while its context helps.
 
+![An agent offers a new task, with a card asking whether it runs in a new session or the current one](images/offer-light.png)
+
 Work the agent suggests on its own appears as cards above the message box,
 showing the brief, profile, context, and folder or new worktree.
 **Start** launches it; **Dismiss** closes the card. Handled cards move into the
 conversation as a single line; expand one to read its brief again. Cards survive reloads and
 do not block the parent. An unsuccessful launch shows an error and leaves the
 card or accepted offer available to retry when its child was cleaned up.
+
+![A running team with a suggested task waiting for review](images/suggestion-light.png)
 
 ## Layout and shortcuts
 
