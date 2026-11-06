@@ -14,7 +14,13 @@ type filePreview struct {
 }
 
 func previewMIME(name string) string {
-	typ := mime.TypeByExtension(strings.ToLower(filepath.Ext(name)))
+	ext := strings.ToLower(filepath.Ext(name))
+	// TypeScript source takes precedence over MPEG transport streams (.ts, .mts).
+	switch ext {
+	case ".ts", ".tsx", ".mts", ".cts":
+		return ""
+	}
+	typ := mime.TypeByExtension(ext)
 	base, _, _ := mime.ParseMediaType(typ)
 	if strings.HasPrefix(base, "image/") || strings.HasPrefix(base, "audio/") || strings.HasPrefix(base, "video/") || base == "application/pdf" || base == "text/html" {
 		return base

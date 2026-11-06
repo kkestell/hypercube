@@ -32,6 +32,19 @@ func TestBrowserPreviews(t *testing.T) {
 		h.ServeHTTP(res, req)
 		return res
 	}
+	for _, name := range []string{"fit.ts", "fit.TS", "fit.tsx", "fit.mts", "fit.cts"} {
+		t.Run(name, func(t *testing.T) {
+			const source = "export const fit = (value: number): number => value;\n"
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(source), 0600); err != nil {
+				t.Fatal(err)
+			}
+			address := "/file?" + url.Values{"session": {"s"}, "path": {name}}.Encode()
+			res := get(address, nil)
+			if res.Code != 200 || res.Header().Get("Content-Type") != "text/plain; charset=utf-8" || res.Body.String() != source {
+				t.Fatalf("source = %d %v %s", res.Code, res.Header(), res.Body)
+			}
+		})
+	}
 	for _, tc := range []struct {
 		name, mime, content string
 		source              bool
