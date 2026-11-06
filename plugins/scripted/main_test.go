@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
+	"github.com/kkestell/hypercube/internal/report"
 )
 
 const testScene = `{"workspaces": [{"sessions": [{"turns": [
@@ -69,5 +70,17 @@ func TestTurns(t *testing.T) {
 	unmatched := events(c, 4, "Something else", func(harness.Event) bool { return true })
 	if items := unmatched[0].Items; len(items) != 1 || items[0].Kind != harness.KindError {
 		t.Errorf("unmatched input = %+v, want an error item", unmatched)
+	}
+}
+
+// An idle parent of idle children receives their reports, which no scene
+// scripts. The turn ends without an error.
+func TestChildReports(t *testing.T) {
+	c := start(t)
+	got := events(c, 2, report.ReportsReady+" A report marks the end of a turn.\n\nReports:\n\nDone.",
+		func(ev harness.Event) bool { return ev.State == harness.Idle })
+	want := []harness.Event{{State: harness.Working}, {State: harness.Idle}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("report turn = %+v, want %+v", got, want)
 	}
 }

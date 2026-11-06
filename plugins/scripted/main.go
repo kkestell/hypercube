@@ -3,7 +3,8 @@
 // it in place of the native harnesses. It reads the scene file named by
 // HYPERCUBE_SCENE and answers each input with the turn whose prompt the input
 // contains: a child's brief arrives wrapped in its parent's message. A turn
-// may start child sessions through Hypercube's create_session tool.
+// may start child sessions through Hypercube's create_session tool, and a
+// parent ends the turn that delivers its children's reports at once.
 package main
 
 import (
@@ -17,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -96,10 +98,17 @@ func serve(in io.Reader, out io.Writer) error {
 			continue
 		}
 		t, ok := match(turns, cmd.Text)
-		if !ok {
+		switch {
+		case strings.HasPrefix(cmd.Text, report.ReportsReady):
+			// An idle parent of idle children receives their reports; a
+			// scene's parent has nothing to say about them.
+			if err = event(harness.Event{State: harness.Working}); err == nil {
+				err = event(harness.Event{State: harness.Idle})
+			}
+		case !ok:
 			err = event(harness.Event{State: harness.Idle, Items: []harness.Item{{ID: fmt.Sprintf("unmatched-%d", cmd.ID),
 				Kind: harness.KindError, Text: "The scene has no turn for this input.", Done: true}}})
-		} else {
+		default:
 			err = play(t, start, event)
 		}
 		if err != nil {

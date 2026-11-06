@@ -308,16 +308,23 @@ async function capture(scene, ids, backend, window, name) {
     const [kind, file] = [pane.active.slice(0, pane.active.indexOf(':')), pane.active.slice(pane.active.indexOf(':') + 1)];
     if (kind === 'file' || kind === 'diff') tabs.push(`/${kind}?${file}`);
   }
+  // An error card is the one card that names no session. A view the page
+  // rejects shows one and never makes the scene's requests, so the checks
+  // look for it before waiting on them.
+  const errorCard = `[...document.querySelectorAll('.notification-card')]
+    .find(card => !card.querySelector('.notification-card-session'))?.textContent`;
+  const checkError = async () => {
+    const error = await contents.executeJavaScript(`${errorCard} ?? ''`);
+    if (error) throw new Error(`the page shows an error: ${error}`);
+  };
   const settled = async theme => {
     await contents.insertCSS(still);
     await contents.executeJavaScript('document.fonts.ready.then(() => true)');
-    await pageCondition(contents, `document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`);
+    await pageCondition(contents, `${errorCard} || document.querySelector('.transcript-list')?.textContent.includes(${JSON.stringify(top.turns[0].prompt)})`);
+    await checkError();
     await until(() => nativeTheme.themeSource === theme && tabs.every(tab => requests.completed.includes(tab)) && requests.inflight.size === 0);
     await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
-    // An error card is the one card that names no session.
-    const error = await contents.executeJavaScript(`[...document.querySelectorAll('.notification-card')]
-      .find(card => !card.querySelector('.notification-card-session'))?.textContent ?? ''`);
-    if (error) throw new Error(`the page shows an error: ${error}`);
+    await checkError();
   };
   const shot = async theme => {
     await settled(theme);

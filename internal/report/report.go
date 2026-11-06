@@ -154,6 +154,9 @@ Profiles. Choose the profile whose description fits the task, and pass its name 
 	}
 }
 
+// ReportsReady begins the input that delivers child reports to their parent.
+const ReportsReady = "Child reports are ready."
+
 // FailureMessage describes a child session's failed turn for its parent.
 func FailureMessage(detail string) string {
 	detail = strings.TrimSpace(detail)
