@@ -3,8 +3,9 @@
 // it in place of the native harnesses. It reads the scene file named by
 // HYPERCUBE_SCENE and answers each input with the turn whose prompt the input
 // contains: a child's brief arrives wrapped in its parent's message. A turn
-// may start child sessions through Hypercube's create_session tool, and a
-// parent ends the turn that delivers its children's reports at once.
+// may start child sessions and offer tasks through Hypercube's create_session
+// tool, and a parent ends the turn that delivers its children's reports at
+// once.
 package main
 
 import (
@@ -52,6 +53,8 @@ type turn struct {
 	End      string         `json:"end"`
 	Usage    *harness.Usage `json:"usage"`
 	Children []session      `json:"children"`
+	// Offers are the titles of tasks the turn offers the user as new sessions.
+	Offers []string `json:"offers"`
 }
 
 func main() {
@@ -153,15 +156,15 @@ func match(turns []turn, text string) (turn, bool) {
 	return turn{}, false
 }
 
-// play sends a turn: working, its children, its items, and its end. The last
+// play sends a turn: working, its children and offers, its items, and its end. The last
 // item arrives with the end, so its arrival means the turn has played. A
 // child that cannot start ends the turn with the reason.
 func play(t turn, start harness.StartArgs, event func(harness.Event) error) error {
 	if err := event(harness.Event{State: harness.Working}); err != nil {
 		return err
 	}
-	if len(t.Children) > 0 {
-		if err := createChildren(start, t.Children); err != nil {
+	if len(t.Children) > 0 || len(t.Offers) > 0 {
+		if err := createSessions(start, t); err != nil {
 			return event(harness.Event{State: harness.Idle, Items: []harness.Item{{ID: "children", Kind: harness.KindError, Text: err.Error(), Done: true}}})
 		}
 	}
@@ -184,8 +187,9 @@ func play(t turn, start harness.StartArgs, event func(harness.Event) error) erro
 	return event(end)
 }
 
-// createChildren starts children through the session's own Hypercube tools.
-func createChildren(start harness.StartArgs, children []session) error {
+// createSessions starts a turn's children and makes its offers through the
+// session's own Hypercube tools.
+func createSessions(start harness.StartArgs, t turn) error {
 	ctx := context.Background()
 	cmd := exec.Command(start.Hypercube, "mcp")
 	cmd.Env = os.Environ()
@@ -198,15 +202,20 @@ func createChildren(start harness.StartArgs, children []session) error {
 		return err
 	}
 	defer conn.Close()
-	for _, c := range children {
-		result, err := conn.CallTool(ctx, &mcp.CallToolParams{Name: "create_session", Arguments: map[string]any{
-			"title": c.Title, "name": c.Name, "profile": c.Profile, "dir": c.Dir, "initiation": "user_asked", "message": c.Turns[0].Prompt,
-		}})
+	var calls []map[string]any
+	for _, c := range t.Children {
+		calls = append(calls, map[string]any{"title": c.Title, "name": c.Name, "profile": c.Profile, "dir": c.Dir, "initiation": "user_asked", "message": c.Turns[0].Prompt})
+	}
+	for _, title := range t.Offers {
+		calls = append(calls, map[string]any{"title": title, "initiation": "offer"})
+	}
+	for _, args := range calls {
+		result, err := conn.CallTool(ctx, &mcp.CallToolParams{Name: "create_session", Arguments: args})
 		if err != nil {
 			return err
 		}
 		if result.IsError {
-			return fmt.Errorf("creating %s: %v", c.Name, result.Content)
+			return fmt.Errorf("creating %s: %v", args["title"], result.Content)
 		}
 	}
 	return nil

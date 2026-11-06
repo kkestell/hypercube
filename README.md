@@ -41,6 +41,11 @@ children.
 
 ### Teams and communication
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/offer-dark.png">
+  <img alt="An agent offers a new task, with a card asking whether it runs in a new session or the current one" src="docs/images/offer-light.png">
+</picture>
+
 - **Delegation to child sessions.** Agents can assign work to child sessions with different harnesses, models, and efforts.
 - **Task placement.** You can choose whether a new task belongs in the current session or a separate session.
 - **Suggested work.** Agents can propose additional tasks for you to review before they start.

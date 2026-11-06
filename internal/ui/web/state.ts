@@ -60,7 +60,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   confirmation: null,
   workbench: {
     sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
-    sizes: {sidebar: 260, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
+    sizes: {sidebar: 290, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
     collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
   },
   session: null,

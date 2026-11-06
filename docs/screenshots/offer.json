@@ -1,0 +1,55 @@
+{
+  "size": {"width": 1680, "height": 1020},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "profile": "claude-sonnet-high",
+          "turns": [
+            {
+              "prompt": "Add a reading time estimate under each post's title",
+              "end": "idle",
+              "usage": {"context": 18320, "window": 200000, "cost": 0.12},
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "templates/page.html"}, "output": "     1\t<!doctype html>\n     2\t<html lang=\"en\">\n...", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "templates/page.html"}, "output": "The file templates/page.html has been updated.", "done": true},
+                {"id": "t1", "kind": "text", "text": "Posts now show a reading time under the title, such as **4 min read**, from the word count at 230 words a minute.", "done": true}
+              ]
+            }
+          ]
+        },
+        {
+          "profile": "claude-opus-high",
+          "turns": [
+            {
+              "prompt": "Give the default page template a dark theme that follows the reader's system setting",
+              "end": "idle",
+              "usage": {"context": 31540, "window": 200000, "cost": 0.38},
+              "items": [
+                {"id": "r1", "kind": "reasoning", "text": "The template has inline styles with fixed colors. CSS custom properties plus a prefers-color-scheme media query keep it to one stylesheet.", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "templates/page.html"}, "output": "     1\t<!doctype html>\n     2\t<html lang=\"en\">\n...", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "Edit", "input": {"file_path": "templates/page.html"}, "output": "The file templates/page.html has been updated.", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Bash", "input": {"command": "go run . build", "description": "Build the sample site"}, "output": "built 3 pages", "done": true},
+                {"id": "t1", "kind": "text", "text": "The default template now defines its colors as CSS custom properties and switches them under `prefers-color-scheme: dark`, so pages follow the reader's system setting with no script.", "done": true}
+              ]
+            },
+            {
+              "prompt": "Looks good. Also, harbor should write a sitemap.xml so search engines find every page",
+              "end": "idle",
+              "offers": ["Generate sitemap.xml during build"],
+              "usage": {"context": 33870, "window": 200000, "cost": 0.41},
+              "items": [
+                {"id": "c4", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Generate sitemap.xml during build", "initiation": "offer"}, "output": "Offered \"Generate sitemap.xml during build\". End your turn now; the user's answer arrives as a message.", "done": true},
+                {"id": "t2", "kind": "text", "text": "A sitemap is separate from the theme work, so I've offered it as its own task. Choose whether it runs in a new session or here.", "done": true}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 1]
+}

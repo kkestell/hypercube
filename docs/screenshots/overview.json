@@ -1,5 +1,5 @@
 {
-  "size": {"width": 1440, "height": 900},
+  "size": {"width": 1680, "height": 1020},
   "workspaces": [
     {
       "name": "field-notes",
@@ -130,5 +130,5 @@
     }
   ],
   "select": [1, 1],
-  "workbench": {"sizes": {"sidebar": 260, "rightPanel": 260, "panel": 240}}
+  "workbench": {"sizes": {"sidebar": 290, "rightPanel": 300, "panel": 240}}
 }

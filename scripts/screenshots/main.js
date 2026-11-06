@@ -37,7 +37,7 @@ const profiles = [
 // The page's own default workbench, which a scene's workbench overrides.
 const defaultWorkbench = {
   sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
-  sizes: {sidebar: 260, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
+  sizes: {sidebar: 290, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
   collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
 };
 
@@ -337,7 +337,10 @@ async function capture(scene, ids, backend, window, name) {
     await run('screencapture', ['-x', '-o', `-l${windowNumber}`, file]);
     // The screen holds the window's last painted frame, which lags the page
     // when the window was covered; the image must show what the page drew.
-    if (difference(nativeImage.createFromPath(file), await contents.capturePage()) > 8) {
+    const image = nativeImage.createFromPath(file);
+    const {width: shotWidth, height: shotHeight} = image.getSize();
+    if (shotWidth !== 2 * width || shotHeight !== 2 * height) throw new Error(`${name}-${theme}.png is ${shotWidth}×${shotHeight}, not twice ${width}×${height}`);
+    if (difference(image, await contents.capturePage()) > 8) {
       throw new Error(`${name}-${theme}.png does not show the page; keep the window in front while it is captured`);
     }
   };

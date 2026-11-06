@@ -128,6 +128,6 @@ test('invalid saved layouts report their failure and retain defaults', () => {
   const store = fresh();
   startViewStorage(store);
   expect(store.get().sessionViews).toEqual({});
-  expect(store.get().workbench.sizes.sidebar).toBe(260);
+  expect(store.get().workbench.sizes.sidebar).toBe(290);
   expect(store.get().errors[0].message).toContain('Could not restore view state');
 });
