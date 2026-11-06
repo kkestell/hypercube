@@ -220,3 +220,18 @@ test('pending questions and their draft stay outside the history list while outp
   expect(find(view, '.attention-item-answer').textContent).toBe('My answer');
   expect(pending.querySelectorAll('.attention-item').length).toBe(1);
 });
+
+test('a running turn is one working activity until its response arrives', () => {
+  spyOn(Date, 'now').mockReturnValue(1000 + 324_000);
+  const {root, send} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'c', kind: 'tool', tool: 'bash', at: 1200},
+    {id: 't', kind: 'text', text: 'Done', at: 1400},
+  ]);
+  expect(find(root, '.activity-item .disclosure-heading').textContent).toBe('Working for 5m 24s…');
+  expect(root.querySelector('.transcript-list > .transcript-text')).toBeNull();
+  send([marker('i', 'idle', 2000, ['t'])]);
+  expect(find(root, '.activity-item .disclosure-heading').textContent).toBe('Worked for 1s');
+  expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
+});

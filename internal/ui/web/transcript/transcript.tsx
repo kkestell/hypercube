@@ -6,7 +6,8 @@
 // The list's sides line up with the composer's attach and send icons: the
 // column's 16px plus the composer box's 21px to its icons. Expanding or
 // collapsing an item keeps its heading where it was on screen, and the list
-// follows its end again only if that leaves it there.
+// follows its end again only if that leaves it there. The view is a size
+// container, so its rows can size themselves to its height.
 import {useCallback, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode} from 'react';
 import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
@@ -23,7 +24,7 @@ import {transcriptRows} from './transcript-tree.ts';
 import {emptyTranscript, setExpanded} from './transcripts.ts';
 
 interface TranscriptProps {
-  session: Pick<Session, 'id' | 'ended'>;
+  session: Pick<Session, 'id' | 'ended' | 'activity'>;
   active?: boolean;
   footer?: ReactNode;
 }
@@ -32,7 +33,8 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const [state, store] = useStore();
   const transcript = state.session?.transcript ?? emptyTranscript;
   const expanded = state.session?.expanded ?? {};
-  const rows = useMemo(() => transcriptRows(transcript), [transcript]);
+  const running = !session.ended && session.activity === 'busy';
+  const rows = useMemo(() => transcriptRows(transcript, running), [transcript, running]);
   const pending = transcript.order.flatMap(id => {
     const item = transcript.items[id];
     return item.kind === 'attention' && !item.done ? [item] : [];
@@ -94,7 +96,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
-      <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
+      <div ref={view} className="transcript flex [container-type:size] min-h-0 flex-1 flex-col overflow-auto" onScroll={scrolled}>
         <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-[37px] py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} response />)}
         </div>

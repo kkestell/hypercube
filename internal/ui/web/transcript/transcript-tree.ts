@@ -7,10 +7,11 @@
 //
 // Hypercube saves a state item at each change of the agent's work state. The
 // items between a working state and the next idle one are one turn's activity.
-// Once the turn succeeds, the idle state names its final response: the input
-// that began the turn stays above one activity row holding everything else, and
-// the response follows it. A turn that did not succeed, and a transcript saved
-// without state items, draw every row as it is.
+// While the agent works, the input that began its turn stays above one running
+// activity row holding everything the turn has shown. Once the turn succeeds,
+// the idle state names its final response: the activity row holds everything
+// else, and the response follows it. A turn that did not succeed, and a
+// transcript saved without state items, draw every row as it is.
 
 import type {AttentionItem, ProposalItem, ErrorItem, Item, ReasoningItem, StateItem, TextItem, ToolItem, Transcript, UserItem} from './types.ts';
 
@@ -116,14 +117,15 @@ export interface ToolRow {
 
 export type TurnRow = ItemRow | ToolRow;
 
-// ActivityRow is a finished turn's activity. start and until are millisecond
-// times, 0 when unknown.
+// ActivityRow is a turn's activity. start and until are millisecond times, 0
+// when unknown; a running turn has no until yet.
 export interface ActivityRow {
   type: 'activity';
   key: string;
   rows: TurnRow[];
   start: number;
   until: number;
+  running: boolean;
 }
 
 export type Row = TurnRow | ActivityRow;
@@ -144,8 +146,9 @@ function repeatsQuestions(item: Item, index: number, {order, items}: Transcript)
   return false;
 }
 
-// transcriptRows returns the rows of a transcript.
-export function transcriptRows(transcript: Transcript): Row[] {
+// transcriptRows returns the rows of a transcript. running says the agent is
+// working on the transcript's last turn.
+export function transcriptRows(transcript: Transcript, running = false): Row[] {
   const {order, items} = transcript;
   const containers = new Map<string, Item[]>();
   for (let i = 0; i < order.length; i++) {
@@ -174,7 +177,7 @@ export function transcriptRows(transcript: Transcript): Row[] {
       default: return {type: 'text', item}; // a kind added later draws as text
     }
   };
-  return turns(containers.get('') ?? [], rowOf);
+  return turns(containers.get('') ?? [], rowOf, running);
 }
 
 // Items of different launches of an agent have different ID prefixes, which
@@ -191,8 +194,8 @@ interface Turn {
 }
 
 // turns draws the top-level items, grouping the activity of each turn that a
-// state item shows to have succeeded.
-function turns(items: Item[], rowOf: (item: Exclude<Item, StateItem>) => TurnRow): Row[] {
+// state item shows to have succeeded, and of the last turn while it runs.
+function turns(items: Item[], rowOf: (item: Exclude<Item, StateItem>) => TurnRow, running: boolean): Row[] {
   const out: Row[] = [];
   let turn: Turn | null = null;
   let floor = 0; // the input that begins a turn is not above this row
@@ -217,7 +220,8 @@ function turns(items: Item[], rowOf: (item: Exclude<Item, StateItem>) => TurnRow
       floor = out.length;
     }
   }
-  end();
+  if (running && turn) out.push(activityRow(turn, turn.rows, 0, true));
+  else end();
   return out;
 }
 
@@ -245,7 +249,12 @@ function finishTurn(turn: Turn, idle: StateItem, out: Row[]) {
   }
   const activity = turn.rows.filter(row => !final.has(row.item.id) && row.type !== 'proposal');
   if (activity.length > 0) {
-    out.push({type: 'activity', key: 'activity:' + turn.work.id, rows: activity, start: turn.start, until: idle.at || 0});
+    out.push(activityRow(turn, activity, idle.at || 0, false));
   }
   out.push(...response);
 }
+
+// A turn keeps its activity row's key from running to finished, so the row
+// stays open or closed as the user left it.
+const activityRow = (turn: Turn, rows: TurnRow[], until: number, running: boolean): ActivityRow =>
+  ({type: 'activity', key: 'activity:' + turn.work.id, rows, start: turn.start, until, running});
