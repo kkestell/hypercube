@@ -100,7 +100,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
           {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
         </div>
       </div>
-      <div className={`transcript-footer relative shrink-0 ${tabBackground} ${pending.length ? '[&_.composer>[data-slot=card]]:shadow-lg [&_.composer>[data-slot=card]]:shadow-black/40' : ''}`}>
+      <div className={`transcript-footer relative shrink-0 ${tabBackground} ${pending.length ? '[&_.composer>[data-slot=card]]:shadow-lg dark:[&_.composer>[data-slot=card]]:shadow-black/40' : ''}`}>
         {away && (
           <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
             onClick={() => { memory.current = {...memory.current, following: true}; followEnd(); focusComposerField(); }}><Icon name="arrow-down" /></Button>

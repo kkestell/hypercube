@@ -93,7 +93,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
   </SidebarBody>);
 
   return (
-    <div className="sidebar flex h-full min-h-0 flex-col bg-card">
+    <div className="sidebar flex h-full min-h-0 flex-col bg-sidebar">
       <PanelTabs label="Sidebar" tabs={[{id: 'sessions', title: 'Sessions', icon: 'comment-discussion'}, {id: 'archived', title: 'Archived', icon: 'archive'}]}
         selected={view} onSelect={value => { setRenaming(null); store.update(s => selectSidebarTab(s, value)); }} clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={id => chooseSession(store, id)} />

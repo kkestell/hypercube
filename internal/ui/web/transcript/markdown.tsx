@@ -50,7 +50,7 @@ function element(t: Token, options: Options): ReactNode {
     case 'paragraph': return options.flatten ? children(t.tokens) : <p>{children(t.tokens)}</p>;
     case 'heading': return options.flatten ? children(t.tokens) : createElement('h' + t.depth, null, children(t.tokens));
     case 'code':
-      return options.flatten ? t.text : <div className="markdown-code-block group relative [--copy-bg:var(--tw-prose-pre-bg)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
+      return options.flatten ? t.text : <div className="markdown-code-block group relative [--copy-bg:var(--muted)]"><pre><HighlightedCode text={t.text} lang={t.lang ?? ''} /></pre>{!options.preview && <CopyButton text={t.text} label="Copy code" />}</div>;
     case 'blockquote': return options.flatten ? flatTokens(t.tokens) : <blockquote>{children(t.tokens)}</blockquote>;
     case 'hr': return options.flatten ? null : <hr />;
     case 'list': {
@@ -107,7 +107,7 @@ interface MarkdownProps extends Pick<Options, 'imageSource'> {
 
 export function Markdown({text, style, muted, imageSource}: MarkdownProps) {
   return (
-    <div className={`markdown markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
+    <div className={`markdown markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
       {tokens(lexer(text), {preview: style === 'preview', imageSource})}
     </div>
   );
