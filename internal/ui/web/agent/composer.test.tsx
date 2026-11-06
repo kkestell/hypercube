@@ -1,8 +1,9 @@
 import {afterEach, beforeEach, expect, mock, spyOn, test, type Mock} from 'bun:test';
 import {act} from 'react';
 import {clickControl, element, type FetchHandler, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
-import {emptySession, openUnsent, unsentSending} from '../sessions/selection.ts';
+import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
+import {emptySession, openUnsent, unsentProfile, unsentSending} from '../sessions/selection.ts';
+import {createSession} from '../sessions/session-actions.ts';
 import type {Merge, Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
@@ -240,6 +241,15 @@ test('choosing Worktree creates the session in a worktree and locks while sendin
   expect(params.get('worktree')).toBe('1');
   releases[0]();
   await settle();
+});
+
+test.each([false, true])('a default of Worktree applies only in a Git workspace (noGit %p)', async noGit => {
+  fetches = stubFetch(() => Response.json({session: 'n'}));
+  const s = worktreeStore(noGit);
+  s.update(state => unsentProfile({...state, config: testConfig({default_worktree: true})}, profiles[0]));
+  await act(async () => { await createSession(s, {text: 'hello', images: []}, unsentKey); });
+  const params = new URL(fetches.mock.calls.at(-1)?.[0] ?? '', 'http://x/').searchParams;
+  expect(params.get('worktree')).toBe(noGit ? null : '1');
 });
 
 const merge = (extra: Partial<Merge> = {}): Merge => ({branch: 'hypercube/session-a', target: 'main', unmerged: 0, committed: false, uncommitted: 0, ...extra});

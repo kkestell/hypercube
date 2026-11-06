@@ -163,8 +163,12 @@ export const unsentProfile = (state: State, profile: Profile): State => state.un
   ? {...state, unsent: {...state.unsent, profile: profile.name}}
   : state;
 
-// inWorktree is whether the unsent session will run in its own worktree.
-export const inWorktree = (state: State, unsent: Unsent) => unsent.worktree ?? state.config?.default_worktree ?? false;
+// inWorktree is whether the unsent session will run in its own worktree. A
+// workspace without Git always runs locally.
+export function inWorktree(state: State, unsent: Unsent) {
+  if (state.workspaces.find(w => w.id === unsent.workspace)?.noGit) return false;
+  return unsent.worktree ?? state.config?.default_worktree ?? false;
+}
 
 // unsentWorktree sets whether the unsent session runs in its own worktree.
 export const unsentWorktree = (state: State, worktree: boolean): State => state.unsent
