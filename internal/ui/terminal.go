@@ -13,6 +13,11 @@ import (
 // shell's output to the page and the page's input to the shell. The page sends
 // {"cols": n, "rows": n} to resize it, and the shell's end sends {"exit": n}.
 func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.CloseNow()
 	q := r.URL.Query()
 	size := func(name string, fallback int) int {
 		n, err := strconv.Atoi(q.Get(name))
@@ -23,14 +28,12 @@ func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
 	}
 	cols, rows := size("cols", 80), size("rows", 24)
 	sh, err := s.rt.Shell(q.Get("session"), cols, rows)
-	if refused(w, err) {
-		return
-	}
-	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
+		// Text marks the shell as ended, so the page does not reconnect.
+		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"exit":-1}`))
+		_ = conn.Close(websocket.StatusInternalError, "shell startup failed")
 		return
 	}
-	defer conn.CloseNow()
 	conn.SetReadLimit(1 << 20)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
