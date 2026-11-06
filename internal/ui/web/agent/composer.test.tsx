@@ -199,31 +199,33 @@ const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
   s.update(state => openUnsent(state, 'w'));
   return s;
 };
-const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label="Use a new worktree"]');
+const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label="Location"]');
 
-test('the unsent composer offers a Worktree toggle, off, only in a Git workspace', async () => {
+test('the unsent composer offers Local or Worktree, Local first, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   await act(async () => {});
-  const toggle = element(root, '[aria-label="Use a new worktree"]', HTMLButtonElement);
-  expect(root.textContent).toContain('/repo');
-  expect(root.textContent).toContain('Use a new worktree');
-  expect(root.textContent).toContain('Create a separate branch and working folder');
-  expect(toggle.getAttribute('aria-pressed')).toBe('false');
+  const toggle = element(root, '[aria-label="Location"]', HTMLButtonElement);
+  expect(toggle.textContent).toBe('Local');
   expect(toggle.disabled).toBe(false);
   unmountAll();
   await act(async () => { root = mount(worktreeStore(true), <Composer session={unsentSession} />); });
   expect(worktreeToggle(root)).toBeNull();
 });
 
-test('turning Worktree on creates the session in a worktree and locks while sending', async () => {
+test('choosing Worktree creates the session in a worktree and locks while sending', async () => {
   fetches = stubFetch(() => Response.json({default_profile: 'claude', profiles}));
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
   await settle();
-  const toggle = element(root, '[aria-label="Use a new worktree"]', HTMLButtonElement);
+  const toggle = element(root, '[aria-label="Location"]', HTMLButtonElement);
   clickControl(toggle);
+  await settle();
+  const options = [...document.querySelectorAll('[role=menuitemradio]')];
+  expect(options.map(o => o.textContent)).toEqual(['LocalWork in the current checkout.', 'WorktreeCreate a separate branch and working folder from the current checkout.']);
+  act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.worktree).toBe(true);
+  expect(toggle.textContent).toBe('Worktree');
   const releases: (() => void)[] = [];
   fetches.mockImplementation(() => new Promise<Response>(resolve => { releases.push(() => resolve(Response.json({session: 'n'}))); }));
   const field = textarea(root);
@@ -247,14 +249,11 @@ const existing = (extra: Partial<Session> = {}) => {
 };
 const mergeButton = (root: HTMLElement) => root.querySelector('.composer-merge');
 
-test('existing sessions have no worktree toggle', () => {
+test('started sessions have no location choice', () => {
   const {top, store: s} = existing();
-  let root = mount(s, <Composer session={top} />);
-  expect(worktreeToggle(root)).toBeNull();
-  for (const shown of [{...top, worktree: false, merge: undefined}, top.children[0]]) {
+  for (const shown of [top, {...top, worktree: false, merge: undefined}, top.children[0]]) {
+    expect(worktreeToggle(mount(s, <Composer session={shown} />))).toBeNull();
     unmountAll();
-    root = mount(s, <Composer session={shown} />);
-    expect(worktreeToggle(root)).toBeNull();
   }
 });
 

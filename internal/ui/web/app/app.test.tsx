@@ -118,7 +118,6 @@ test('a new session draft is a sidebar row that reopens its prompt and can be di
   expect(store.get().selected).toBe('a');
   act(() => draftRow()!.click());
   expect(element(root, '.composer textarea', HTMLTextAreaElement).value).toBe('finish this later');
-  expect(root.textContent).toContain('/repo');
 
   act(() => { draftRow()!.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true})); });
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Discard Draft']);

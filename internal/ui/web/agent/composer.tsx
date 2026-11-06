@@ -18,7 +18,7 @@ import {ProfileSelect} from './profile-select.tsx';
 import {Usage} from './usage.tsx';
 import {Limits} from './limits.tsx';
 import {MergeButton} from './merge-button.tsx';
-import {NewSessionOptions} from './new-session-options.tsx';
+import {WorktreeSelect} from './worktree-select.tsx';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {Textarea} from '../components/ui/textarea';
@@ -89,7 +89,7 @@ export function Composer({session}: {session: Session}) {
 
   return (
     <form className={`composer @container/composer my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
-      {isUnsent(session.id) && <NewSessionOptions />}
+      {isUnsent(session.id) && <WorktreeSelect />}
       {/* One line of text makes the box 50px tall: its border, padding, and the
           text's line; half that rounds its ends into half circles. */}
       <Card className="rounded-[25px] bg-transparent py-2 shadow-none dark:bg-input/30">

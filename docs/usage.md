@@ -3,10 +3,10 @@
 ## Start a session
 
 Choose **Add Workspace** to select a project folder, or **New Session** for a
-workspace already in the sidebar. The new-session page names the workspace.
-Choose a [profile](configuration.md) below the message box and decide whether
-to enable **Use a new worktree** above it. Send the first prompt to create the
-session.
+workspace already in the sidebar. Choose a [profile](configuration.md) below
+the message box and, in a Git workspace, **Local** to work in the checkout or
+**Worktree** to work on a new branch in its own folder above it. Send the first
+prompt to create the session.
 
 Once you type or attach something, the new session stays in the sidebar as a
 **New Session** row, keeping its prompt, profile, and worktree choice while you
