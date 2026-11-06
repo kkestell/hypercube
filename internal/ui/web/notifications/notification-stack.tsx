@@ -5,7 +5,7 @@ import {cards} from './notifications.ts';
 import type {Card} from './types.ts';
 
 function Stack({shown}: {shown: Card[]}) {
-  return <div className="notification-stack fixed right-4 top-4 z-50 [app-region:no-drag]flex max-h-3/4 w-sm max-w-full flex-col gap-3 overflow-auto">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
+  return <div className="notification-stack pointer-events-none [app-region:no-drag] fixed right-1 top-1 z-50 flex max-h-3/4 w-[25.5rem] max-w-full flex-col gap-3 overflow-auto p-3">{shown.map(card => <NotificationCard key={card.key} card={card} />)}</div>;
 }
 
 export function NotificationStack() {

@@ -54,7 +54,8 @@ example:
 ## Build and install from a checkout
 
 Source builds need Git, the Go version in [go.mod](../go.mod), and Bun. Packaging
-downloads the Electron runtime the first time.
+downloads the Electron runtime the first time. The Go build embeds the browser
+view, so run `make ui` before `go build`, `go vet`, or `go test`.
 
 From this checkout:
 
