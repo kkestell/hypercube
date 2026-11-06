@@ -60,7 +60,7 @@ export function NotificationCard({card}: {card: CardData}) {
   }, [card.key]);
 
   return (
-    <Card ref={element} className="notification-card gap-2 py-3" role="alert">
+    <Card ref={element} className="notification-card pointer-events-auto gap-2 py-3 shadow-[0_4px_12px_-2px_rgb(0_0_0/0.12)]" role="alert">
       <CardHeader className="notification-card-header gap-1 px-3">
         <CardTitle className="min-w-0">
           {card.kind === 'error'
