@@ -138,11 +138,11 @@ func TestRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := d.Alert(session.Alert{Session: "s1", Title: "T", Subtitle: "W", Text: "hello"}); err != nil {
+	if err := d.Alert(session.Alert{Session: "s1", Title: "T", Subtitle: "W", Text: "hello"}, true); err != nil {
 		t.Fatal(err)
 	}
 	m = request(t, ws)
-	if m["type"] != "alert" || m["session"] != "s1" || m["title"] != "T" || m["subtitle"] != "W" || m["text"] != "hello" {
+	if m["type"] != "alert" || m["session"] != "s1" || m["title"] != "T" || m["subtitle"] != "W" || m["text"] != "hello" || m["sound"] != true {
 		t.Errorf("alert = %v", m)
 	}
 }
@@ -200,7 +200,7 @@ func TestWithoutTheApp(t *testing.T) {
 	if err := d.Close(ctx, "s1"); !errors.Is(err, ErrNoApp) {
 		t.Errorf("Close = %v, want ErrNoApp", err)
 	}
-	if err := d.Alert(session.Alert{}); err != nil {
+	if err := d.Alert(session.Alert{}, true); err != nil {
 		t.Errorf("Alert = %v, want the alert dropped", err)
 	}
 }

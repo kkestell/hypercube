@@ -154,7 +154,7 @@ export function openUnsent(state: State, workspace?: string | null): State {
   const key = unsentKey(workspace);
   const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
-  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, profile: null, worktree: false, sending: false};
+  const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, profile: null, worktree: null, sending: false};
   return attach({...next, unsent, unsentDrafts, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
 }
 
@@ -162,6 +162,9 @@ export function openUnsent(state: State, workspace?: string | null): State {
 export const unsentProfile = (state: State, profile: Profile): State => state.unsent
   ? {...state, unsent: {...state.unsent, profile: profile.name}}
   : state;
+
+// inWorktree is whether the unsent session will run in its own worktree.
+export const inWorktree = (state: State, unsent: Unsent) => unsent.worktree ?? state.config?.default_worktree ?? false;
 
 // unsentWorktree sets whether the unsent session runs in its own worktree.
 export const unsentWorktree = (state: State, worktree: boolean): State => state.unsent

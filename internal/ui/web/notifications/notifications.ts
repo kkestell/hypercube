@@ -1,7 +1,8 @@
 // Notification cards, which stack in the top right for the page's errors and
 // for the open attention requests and unseen replies of sessions the page is
 // not showing. A request comes from the state message's requests, newest
-// first; a reply from a session's reply and replySeq. Closing an error card
+// first; a reply from a session's reply and replySeq. The notification
+// settings turn request and reply cards off. Closing an error card
 // removes the error; closing another card dismisses it in this page.
 import {chooseSession} from '../sessions/session-actions.ts';
 import {allSessions, sessionOf} from '../sessions/selection.ts';
@@ -30,12 +31,13 @@ export function receivedRequests(state: State, requests: AttentionRequest[]): St
 // then the reply cards in sidebar order.
 export function cards(state: State): Card[] {
   const errors = state.errors.map((error): Card => ({key: error.key, kind: 'error', text: error.message}));
-  const requests = state.requests.flatMap((request): Card[] => {
+  const notifications = state.config?.notifications;
+  const requests = notifications?.requests === false ? [] : state.requests.flatMap((request): Card[] => {
     const found = sessionOf(state, request.session);
     if (!found) return [];
     return [{key: requestKey(request), kind: 'request', workspace: found.workspace.name, session: found.session, parent: found.parent, item: request.item}];
   });
-  const replies = state.workspaces.flatMap(workspace => workspace.sessions.flatMap(top =>
+  const replies = notifications?.replies === false ? [] : state.workspaces.flatMap(workspace => workspace.sessions.flatMap(top =>
     [{session: top, parent: null}, ...top.children.map(session => ({session, parent: top}))].filter(({session}) => session.replySeq).map(({session, parent}): Card =>
       ({key: replyKey(session), kind: 'reply', workspace: workspace.name, session, parent, text: session.reply ?? ''}))));
   const shown = [...requests, ...replies].filter(card => card.kind !== 'error' && card.session.id !== state.selected && !state.dismissed[card.key]);

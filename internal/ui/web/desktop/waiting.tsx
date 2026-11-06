@@ -3,7 +3,7 @@
 // login service, the button that does.
 import {useEffect, useState, type ReactNode} from 'react';
 import {createRoot} from 'react-dom/client';
-import {startAppearance} from '../app/appearance.ts';
+import {startSystemAppearance} from '../app/appearance.ts';
 import {Alert, AlertDescription} from '../components/ui/alert';
 import {Button} from '../components/ui/button';
 
@@ -48,5 +48,5 @@ function Waiting() {
   </main>;
 }
 
-startAppearance();
+startSystemAppearance();
 createRoot(document.getElementById('app')!).render(<Waiting />);

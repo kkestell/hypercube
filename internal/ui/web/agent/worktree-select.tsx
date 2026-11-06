@@ -3,7 +3,7 @@
 import {Button} from '../components/ui/button';
 import {DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger} from '../components/ui/dropdown-menu';
 import {Icon} from '../shared/icon.tsx';
-import {unsentWorktree} from '../sessions/selection.ts';
+import {inWorktree, unsentWorktree} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
 
 const choices = [
@@ -16,7 +16,7 @@ export function WorktreeSelect() {
   const {unsent} = state;
   const workspace = unsent && state.workspaces.find(w => w.id === unsent.workspace);
   if (!unsent || !workspace || workspace.noGit) return null;
-  const shown = choices[unsent.worktree ? 1 : 0];
+  const shown = choices[inWorktree(state, unsent) ? 1 : 0];
   const choose = (value: string) => {
     if (!unsent.sending) store.update(s => unsentWorktree(s, value === 'worktree'));
   };

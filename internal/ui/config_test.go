@@ -16,7 +16,7 @@ import (
 
 func TestSaveConfig(t *testing.T) {
 	a := newApp(t)
-	cfg := harness.Config{DefaultProfile: "next", Profiles: []harness.Profile{
+	cfg := harness.Config{DefaultProfile: "next", Theme: "light", TerminalFontSize: 14, Notifications: harness.Notifications{Requests: true}, Profiles: []harness.Profile{
 		{Name: "next", Description: "Updated profile", Harness: "test", Model: "next", Effort: "high"},
 	}}
 	body, err := json.Marshal(cfg)
@@ -48,7 +48,7 @@ func TestSaveConfig(t *testing.T) {
 		"empty profiles":  `{"profiles":[]}`,
 		"missing default": strings.Replace(string(body), `"next"`, `"missing"`, 1),
 		"unfinished":      `{"profiles":[{"name":"unfinished"}]}`,
-		"unknown setting": strings.Replace(string(body), `{`, `{"theme":"light",`, 1),
+		"unknown setting": strings.Replace(string(body), `{`, `{"font":"Menlo",`, 1),
 		"second document": string(body) + `{}`,
 		"duplicate names": `{"profiles":[` + string(mustProfileJSON(t, cfg.Profiles[0])) + `,` + string(mustProfileJSON(t, cfg.Profiles[0])) + `]}`,
 	} {
@@ -78,7 +78,7 @@ func TestSaveConfigFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := handler(t, open(t))
-	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"profiles":[{"name":"one","description":"Jobs","harness":"codex","model":"sol","effort":"high"}]}`))
+	req := httptest.NewRequest("POST", "http://localhost:4280/config", strings.NewReader(`{"theme":"system","terminal_font_size":13,"profiles":[{"name":"one","description":"Jobs","harness":"codex","model":"sol","effort":"high"}]}`))
 	req.Header.Set("Origin", "http://localhost:4280")
 	res := httptest.NewRecorder()
 	h.ServeHTTP(res, req)

@@ -3,7 +3,7 @@
 // page's state and carries out the controls.
 import {useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {startAppearance} from '../app/appearance.ts';
+import {startSystemAppearance} from '../app/appearance.ts';
 import {Button} from '../components/ui/button';
 import {Input} from '../components/ui/input';
 import {Icon} from '../shared/icon.tsx';
@@ -30,5 +30,5 @@ function Toolbar() {
   </form>;
 }
 
-startAppearance();
+startSystemAppearance();
 createRoot(document.getElementById('app')!).render(<Toolbar />);

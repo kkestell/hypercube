@@ -1,9 +1,27 @@
 // The page's layout and the window and account details it shows.
 import type {Profile} from '../agent/types.ts';
 
+// Config is config.json: the agent profiles and the user's preferences.
+// default_worktree starts new sessions in Git workspaces in a worktree.
 export interface Config {
   default_profile: string;
+  default_worktree: boolean;
+  theme: Theme;
+  terminal_font_size: number;
+  notifications: Notifications;
   profiles: Profile[];
+}
+
+export type Theme = 'system' | 'light' | 'dark';
+
+// Notifications chooses the alerts for sessions the page is not showing:
+// requests and replies show as cards and, while the window is not focused,
+// as macOS notifications when macos is set, with a sound when sound is set.
+export interface Notifications {
+  requests: boolean;
+  replies: boolean;
+  macos: boolean;
+  sound: boolean;
 }
 
 export type RightTab = 'files' | 'search';

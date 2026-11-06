@@ -3,9 +3,10 @@
 Create `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set, the path
 is `$XDG_CONFIG_HOME/hypercube/config.json` instead.
 
-Open Settings (`⌘,`) to select the default agent profile or add, edit, and
-remove profiles. **Save changes** validates and writes the configuration;
-closing the modal without saving discards profile edits. At least one complete
+Open Settings (`⌘,`) to choose the theme, terminal text size, defaults for new
+sessions, and notifications, or to add, edit, and remove profiles. **Save
+changes** validates and writes the configuration; closing the modal without
+saving discards edits. At least one complete
 profile must remain. Renaming the default profile keeps it selected; removing
 it selects the first remaining profile.
 
@@ -16,6 +17,17 @@ choice for each session.
 
 After saving, an open session draft keeps its selected profile if that name
 still exists; otherwise it switches to the saved default.
+
+## Preferences
+
+Settings writes these top-level fields. A file without them uses the defaults.
+
+| Field | Value | Default |
+| --- | --- | --- |
+| `default_worktree` | `true` to start new sessions in Git workspaces in a worktree. The composer can change it for each session. | `false` |
+| `theme` | `system`, `light`, or `dark`. | `system` |
+| `terminal_font_size` | The terminal's text size in pixels: 12, 13, 14, 16, or 18. | `13` |
+| `notifications` | An object of four booleans. `requests` and `replies` choose which alerts appear as cards and macOS notifications; `macos` shows macOS notifications while the window is not focused; `sound` plays a sound with them. | all `true` |
 
 Editing the file directly while Hypercube is running is unsupported. To edit
 it by hand, stop Hypercube first; a settings save replaces the file.

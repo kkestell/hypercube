@@ -15,7 +15,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 const isNullableString = (value: unknown): value is string | null => value === null || typeof value === 'string';
 
 function readContext(value: unknown): Unsent {
-  if (!isRecord(value) || !isNullableString(value.workspace) || !isNullableString(value.profile) || typeof value.worktree !== 'boolean') {
+  if (!isRecord(value) || !isNullableString(value.workspace) || !isNullableString(value.profile) || (value.worktree !== null && typeof value.worktree !== 'boolean')) {
     throw new Error('Invalid new-session draft.');
   }
   return {workspace: value.workspace, profile: value.profile, worktree: value.worktree, identity: {}, sending: false};

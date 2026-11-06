@@ -107,8 +107,8 @@ app, `hypercube`, and the plugins; macOS notifications require that bundle.
 
 The desktop app connects to the backend's loopback `/desktop` WebSocket and
 dials again after a restart. The backend sends navigate, eval, and close
-requests for agents' browsers and an alert for each new request or reply; the
-app answers each request with its ID. Without a desktop app, browser calls
+requests for agents' browsers and an alert for each new request or reply that
+the notification preferences in `config.json` allow; the app answers each request with its ID. Without a desktop app, browser calls
 fail with a message asking the user to open it, and alerts are dropped. The
 page shows current requests when the app opens. The backend's side is in
 [internal/desktop](../internal/desktop/desktop.go) and the app in
