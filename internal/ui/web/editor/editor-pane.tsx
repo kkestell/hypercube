@@ -3,14 +3,13 @@
 // tab under the pointer, or on the body, where an edge within a quarter of the
 // pane splits it.
 import {useRef, useState, type DragEvent} from 'react';
-import {activatePane} from '../app/workbench.ts';
 import {AgentPane} from '../agent/agent-pane.tsx';
 import {DiffView} from '../changes/diff-view.tsx';
 import {Card} from '../components/ui/card';
 import {FileView} from '../files/file-view.tsx';
 import {shownSession} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
-import {agentTabs, moveTab, tabEntry} from './editor.ts';
+import {activatePane, agentTabs, moveTab, tabEntry} from './editor.ts';
 import {EditorTabs} from './editor-tabs.tsx';
 import {panes} from './tab-layout.ts';
 import type {Edge, Pane, Placement} from './types.ts';
@@ -33,7 +32,7 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
   const entries = pane.tabs.map(id => tabEntry(state, id));
   const active = tabEntry(state, pane.active);
   const allPanes = panes(state.session?.tabs.root ?? agentTabs.root);
-  const activePane = allPanes.find(item => item.id === state.workbench.activePane) ?? allPanes[0];
+  const activePane = allPanes.find(item => item.id === state.session?.activePane) ?? allPanes[0];
   const isActive = focused && activePane.id === pane.id;
   const activate = () => store.update(s => activatePane(s, pane.id));
 

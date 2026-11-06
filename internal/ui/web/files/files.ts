@@ -8,6 +8,8 @@ import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import type {FileEntry, FileRead, OpenFile, SessionFiles} from './types.ts';
 
+export const unreadFile: OpenFile = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
+
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 
 // sortEntries puts folders first, then orders by name as VS Code does.

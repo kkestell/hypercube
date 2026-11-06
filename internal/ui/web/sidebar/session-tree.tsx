@@ -5,6 +5,7 @@
 // such as Escape, pass on to the app.
 import {useLayoutEffect, useRef, useState, type KeyboardEvent} from 'react';
 import {chooseSession} from '../sessions/session-actions.ts';
+import {expandSession} from '../app/workbench.ts';
 import type {Session} from '../sessions/types.ts';
 import {useStore} from '../store.ts';
 import {SessionItem} from './session-item.tsx';
@@ -28,7 +29,7 @@ interface SessionTreeProps {
 
 export function SessionTree({label, sessions, renaming, onRenaming}: SessionTreeProps) {
   const [state, store] = useStore();
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const collapsed = state.workbench.collapsedSessions;
   const [focused, setFocused] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const hadFocus = useRef(false);
@@ -53,7 +54,7 @@ export function SessionTree({label, sessions, renaming, onRenaming}: SessionTree
     if (hadFocus.current && root && !root.contains(document.activeElement)) root.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
   });
 
-  const setExpanded = (id: string, expanded: boolean) => setCollapsed(c => ({...c, [id]: !expanded}));
+  const setExpanded = (id: string, expanded: boolean) => store.update(s => expandSession(s, id, expanded));
   const focusRow = (id: string) => ref.current?.querySelector<HTMLElement>(`[data-session="${CSS.escape(id)}"]`)?.focus();
 
   const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {

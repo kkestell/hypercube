@@ -1,5 +1,5 @@
-import {useState} from 'react';
 import {unsentKey} from '../agent/drafts.ts';
+import {expandWorkspace} from '../app/workbench.ts';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {Chevron, Icon} from '../shared/icon.tsx';
@@ -18,7 +18,8 @@ interface WorkspaceSectionProps {
 
 export function WorkspaceSection({workspace, onMenu, renaming, onRenaming, showDraft}: WorkspaceSectionProps) {
   const [state, store] = useStore();
-  const [open, setOpen] = useState(true);
+  const open = !state.workbench.collapsedWorkspaces[workspace.id];
+  const setOpen = (value: boolean) => store.update(s => expandWorkspace(s, workspace.id, value));
   const headingId = `workspace-section-${workspace.id}`;
   return <Collapsible open={open} onOpenChange={setOpen} asChild>
     <section className={`workspace-section ${workspace.sessions.length ? 'mb-2 last:mb-0' : ''}`} data-workspace={workspace.id} aria-labelledby={headingId}>

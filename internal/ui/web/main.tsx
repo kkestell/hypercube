@@ -6,19 +6,23 @@ import {startAppearance} from './app/appearance.ts';
 import {startBadge} from './app/badge.ts';
 import {startTitleBar} from './app/title-bar.ts';
 import {startWindowEvents} from './app/window.ts';
-import {setVisible, startWorkbenchStorage} from './app/workbench.ts';
+import {setVisible} from './app/workbench.ts';
+import {startViewStorage} from './app/view-storage.ts';
 import {startDraftStorage} from './agent/draft-storage.ts';
 import {startDataSocket} from './data-socket.ts';
 import {startFilePolling} from './files/file-polling.ts';
 import {startNativeNotifications} from './notifications/notifications.ts';
 import {initialState} from './state.ts';
 import {createStore} from './store.ts';
+import {selectSession} from './sessions/selection.ts';
 
-const store = createStore(initialState(decodeURIComponent(location.hash.slice(1)), document.visibilityState === 'visible'));
+const selected = decodeURIComponent(location.hash.slice(1));
+const store = createStore(initialState(selected, document.visibilityState === 'visible'));
 
 startAppearance();
+startViewStorage(store);
 startDraftStorage(store);
-startWorkbenchStorage(store);
+if (selected) store.update(state => selectSession(state, selected));
 document.addEventListener('visibilitychange', () => store.update(state => setVisible(state, document.visibilityState === 'visible')));
 startWindowEvents();
 startDataSocket(store);

@@ -13,6 +13,7 @@ import {focusComposerField} from '../agent/focus-composer.ts';
 import {Button} from '../components/ui/button';
 import {Icon} from '../shared/icon.tsx';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
+import {rememberScroll} from '../editor/editor.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
@@ -31,6 +32,7 @@ interface TranscriptProps {
 export function Transcript({session, active = true, footer}: TranscriptProps) {
   const [state, store] = useStore();
   const transcript = state.session?.transcript ?? emptyTranscript;
+  const ready = state.session?.transcriptReady ?? false;
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
   const pending = transcript.order.flatMap(id => {
@@ -40,28 +42,29 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
   const setOpen = useCallback((key: string, open: boolean) => store.update(s => setExpanded(s, key, open)), [store]);
 
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null), bottom = useRef<HTMLDivElement>(null);
-  const memory = useScrollMemory(view, session.id);
+  const memory = useScrollMemory(view, session.id, ready);
   const lastTop = useRef(memory.current.top);
-  const [away, setAway] = useState(false);
+  const [away, setAway] = useState(!memory.current.following);
   const held = useRef<{trigger: Element; top: number} | null>(null);
 
   const followEnd = () => {
     const container = view.current;
-    if (!container || !memory.current.following) return;
+    if (!ready || !container || !memory.current.following) return;
     container.scrollTop = container.scrollHeight;
     lastTop.current = container.scrollTop;
     setAway(false);
   };
 
   const scrolled = () => {
-    if (!view.current) return;
+    if (!ready || !view.current) return;
     const {scrollTop, clientHeight, scrollHeight} = view.current;
     setAway(scrollHeight - scrollTop - clientHeight >= 2);
     let following = memory.current.following;
     if (scrollHeight - scrollTop - clientHeight < 2) following = true;
     else if (scrollTop < lastTop.current) following = false;
     lastTop.current = scrollTop;
-    memory.current = {...memory.current, following};
+    memory.current = {...memory.current, top: scrollTop, left: view.current.scrollLeft, following};
+    store.update(state => rememberScroll(state, session.id, session.id, memory.current));
   };
 
   // Every expand and collapse trigger in the list toggles through setOpen, so
@@ -89,7 +92,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     observer.observe(list.current);
     if (bottom.current) observer.observe(bottom.current);
     return () => observer.disconnect();
-  }, []);
+  }, [ready]);
 
   return (
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">

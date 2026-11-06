@@ -154,5 +154,6 @@ test('an open received during a session switch waits until the page returns', as
   expect(fetches).toHaveBeenCalledTimes(1);
   store.update(state => selectSession(state, 'b'));
   store.update(state => selectSession(state, 'a'));
-  expect(store.get().session?.files.open).toEqual({});
+  expect(store.get().session?.files.open['guide.md']).toMatchObject({source: true, reveal: false, text: null});
+  expect(fetches).toHaveBeenCalledTimes(1);
 });

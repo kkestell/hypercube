@@ -4,7 +4,7 @@ import type {Draft} from './agent/types.ts';
 import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
-import type {AttachedSession, Unsent, Workspace} from './sessions/types.ts';
+import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
 import type {Confirmation} from './shared/types.ts';
 
 // selected names the chosen session: null after the shown session stops, or
@@ -15,6 +15,7 @@ import type {Confirmation} from './shared/types.ts';
 // by draft key; unsent holds the one currently shown. titleBar is null outside
 // the native window.
 // config is the most recently fetched or saved configuration.
+// sessionViews retains inactive sessions' view choices without server data.
 export interface State {
   workspaces: Workspace[];
   loaded: boolean;
@@ -32,6 +33,7 @@ export interface State {
   confirmation: Confirmation | null;
   workbench: Workbench;
   session: AttachedSession | null;
+  sessionViews: Record<string, SessionViewState>;
   fileOpens: Record<string, FileOpenRequest[]>;
   titleBar: TitleBar | null;
 }
@@ -53,8 +55,13 @@ export const initialState = (selected: string, visible: boolean): State => ({
   dismissed: {},
   errors: [],
   confirmation: null,
-  workbench: {sidebar: true, rightPanel: true, panel: false, rightTab: 'files', activePane: null, wrap: false, fixedWidth: true},
+  workbench: {
+    sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
+    sizes: {sidebar: 260, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
+    collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
+  },
   session: null,
+  sessionViews: {},
   fileOpens: {},
   titleBar: null,
 });

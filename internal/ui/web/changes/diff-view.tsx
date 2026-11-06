@@ -50,8 +50,8 @@ function DiffLines({text, path, wrap}: {text: string; path: string; wrap: boolea
 export function DiffView({id, path, active = true}: {id: TabId; path: string; active?: boolean}) {
   const [state] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  useScrollMemory(view, id);
   const diff = state.session?.diffs[path];
+  useScrollMemory(view, id, !!diff && (diff.text !== null || diff.message !== null));
   const move = (direction: number) => {
     if (!list.current || !view.current) return;
     const changes = [...list.current.querySelectorAll('[data-change]')];

@@ -2,7 +2,7 @@
 // sessions: the unsent one and the attached one.
 import type {Changes, OpenDiff} from '../changes/types.ts';
 import type {ScrollMemory, TabLayout} from '../editor/types.ts';
-import type {SessionFiles} from '../files/types.ts';
+import type {LineRange, SessionFiles} from '../files/types.ts';
 import type {Transcript} from '../transcript/types.ts';
 
 // Workspace is a folder that holds sessions, newest first. noGit marks a
@@ -79,12 +79,24 @@ export interface Unsent {
 export interface AttachedSession {
   id: string;
   transcript: Transcript;
+  transcriptReady: boolean;
+  activePane: number | null;
   expanded: Record<string, true>;
   tabs: TabLayout;
   scroll: Record<string, ScrollMemory>;
   changes: Changes;
   diffs: Record<string, OpenDiff>;
   files: SessionFiles;
+}
+
+// SessionViewState holds only view choices, without server data or live handles.
+export interface SessionViewState {
+  tabs: TabLayout;
+  activePane: number | null;
+  expanded: Record<string, true>;
+  scroll: Record<string, ScrollMemory>;
+  folders: Record<string, true>;
+  files: Record<string, {source: boolean; lines: LineRange[]}>;
 }
 
 // SessionSearchResult is a session whose title or conversation matches a

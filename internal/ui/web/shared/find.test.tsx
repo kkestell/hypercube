@@ -3,6 +3,7 @@ import type {DetachedWindowAPI} from 'happy-dom';
 import {act, useRef, useState} from 'react';
 import {element, find, mount, setValue, unmountAll} from '../../test-render.tsx';
 import {testState} from '../../test-state.ts';
+import {emptySession} from '../sessions/selection.ts';
 import {createStore, useStore} from '../store.ts';
 import {Find} from './find.tsx';
 
@@ -21,7 +22,7 @@ function key(target: EventTarget, key: string, options: KeyboardEventInit = {}) 
 }
 
 test('find reveals a match beyond the right edge', () => {
-  const root = mount(createStore(testState({workbench: {...testState().workbench, activePane: 1}})), <Pane id={1} active />);
+  const root = mount(createStore(testState({session: {...emptySession('s'), activePane: 1}})), <Pane id={1} active />);
   const view = find(root, '[tabindex]');
   view.getBoundingClientRect = () => new DOMRect(0, 0, 100, 100);
   const original = Range.prototype.getBoundingClientRect;
@@ -38,7 +39,7 @@ test('find reveals a match beyond the right edge', () => {
 });
 
 test('typing marks the match while focus stays in the field', () => {
-  const root = mount(createStore(testState({workbench: {...testState().workbench, activePane: 1}})), <Pane id={1} active />);
+  const root = mount(createStore(testState({session: {...emptySession('s'), activePane: 1}})), <Pane id={1} active />);
   key(document.body, 'f', {metaKey: true});
   const input = element(root, 'input', HTMLInputElement);
   act(() => { setValue(input, 't'); input.dispatchEvent(new Event('input', {bubbles: true})); });
@@ -48,14 +49,14 @@ test('typing marks the match while focus stays in the field', () => {
 });
 
 test('the active pane owns the highlight while another search streams or closes', async () => {
-  const store = createStore(testState({workbench: {...testState().workbench, activePane: 1}}));
+  const store = createStore(testState({session: {...emptySession('s'), activePane: 1}}));
   function SplitView() {
     const [state] = useStore();
     const [text, setText] = useState('some text');
     return <>
       <button onClick={() => setText('some text streamed')}>Stream</button>
-      <Pane id={1} active={state.workbench.activePane === 1} text={text} />
-      <Pane id={2} active={state.workbench.activePane === 2} />
+      <Pane id={1} active={state.session?.activePane === 1} text={text} />
+      <Pane id={2} active={state.session?.activePane === 2} />
     </>;
   }
   const root = mount(store, <SplitView />);
@@ -65,7 +66,7 @@ test('the active pane owns the highlight while another search streams or closes'
     act(() => { setValue(input, text); input.dispatchEvent(new Event('input', {bubbles: true})); });
     return input;
   };
-  const activate = (id: number) => act(() => store.update(state => ({...state, workbench: {...state.workbench, activePane: id}})));
+  const activate = (id: number) => act(() => store.update(state => ({...state, session: {...state.session!, activePane: id}})));
   const highlighted = () => [...(CSS.highlights.get('find') ?? [])].map(range => range.toString());
   query(1, 'text');
   activate(2);

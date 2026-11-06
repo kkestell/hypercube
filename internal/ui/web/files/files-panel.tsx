@@ -4,10 +4,11 @@ import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components
 import {changeTree, loadChanges, statusLabel} from '../changes/changes.ts';
 import type {ChangeStatus} from '../changes/types.ts';
 import {fileTabId, keepOpen, openDiffTab, openFileTab} from '../editor/editor.ts';
+import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {FileIcon} from './file-icon.tsx';
-import {loadFolder, setFolderOpen, treeEntries} from './files.ts';
+import {listedFolder, loadFolder, setFolderOpen, treeEntries} from './files.ts';
 import {usePathMenu} from './path-menu.tsx';
 
 const statusColor: Record<ChangeStatus, string> = {
@@ -23,6 +24,9 @@ export function FilesPanel() {
   const listing = (dir: string) => treeEntries(files, changes, dir);
   const menu = usePathMenu();
   const tree = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLDivElement>(null);
+  const ready = listings[''] !== undefined && Object.keys(expanded).every(path => !listedFolder(files, path) || listings[path] !== undefined);
+  useScrollMemory(scroller, 'files-tree', ready && state.workbench.rightPanel && state.workbench.rightTab === 'files');
   const [focused, setFocused] = useState<string | null>(null);
   const visible: string[] = [];
   const collect = (dir: string) => {
@@ -96,10 +100,10 @@ export function FilesPanel() {
       </Button>}
     </div>;
   });
-  return <>
+  return <div ref={scroller} className="h-full min-h-0 overflow-auto">
     {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}
     <div ref={tree} className="files-panel p-2 pt-1" role="tree" aria-label="Files" onKeyDown={keyDown}>
     {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
     </div>{menu.element}
-  </>;
+  </div>;
 }

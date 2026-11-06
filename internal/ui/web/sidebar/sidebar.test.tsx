@@ -3,6 +3,7 @@ import {act, useState} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
+import {selectSession} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {ConfirmDialog} from '../shared/confirm-dialog.tsx';
 import {createStore} from '../store.ts';
@@ -21,7 +22,9 @@ function setup(sessions: Session[], selected: string | null = null) {
     requests.push(new URL(url, 'http://x/'));
     return respond();
   });
-  const store = createStore(testState({selected, workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]}));
+  let state = testState({workspaces: [testWorkspace({id: 'w', name: 'repo', path: '/repo', sessions})]});
+  if (selected) state = selectSession(state, selected);
+  const store = createStore(state);
   function View() {
     const [searchOpen, setSearchOpen] = useState(false);
     return <><Sidebar searchOpen={searchOpen} onSearchOpenChange={setSearchOpen} onSettings={() => {}} /><ConfirmDialog /></>;

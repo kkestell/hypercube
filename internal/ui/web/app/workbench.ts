@@ -2,8 +2,7 @@
 // page itself is visible.
 
 import type {State} from '../state.ts';
-import type {Store} from '../store.ts';
-import type {Region, RightTab} from './types.ts';
+import type {Region, RightTab, SidebarTab} from './types.ts';
 
 // toggle shows or hides the 'sidebar', 'rightPanel', or 'panel'.
 export const toggle = (state: State, region: Region): State => ({...state, workbench: {...state.workbench, [region]: !state.workbench[region]}});
@@ -13,8 +12,6 @@ export const selectRightTab = (state: State, tab: RightTab): State => ({...state
 export const closePanel = (state: State): State => state.workbench.panel ? {...state, workbench: {...state.workbench, panel: false}} : state;
 
 export const setVisible = (state: State, visible: boolean): State => ({...state, visible});
-
-export const activatePane = (state: State, id: number | null): State => state.workbench.activePane === id ? state : {...state, workbench: {...state.workbench, activePane: id}};
 
 export const toggleWrap = (state: State): State => ({...state, workbench: {...state.workbench, wrap: !state.workbench.wrap}});
 
@@ -26,17 +23,22 @@ export const toggleFixedWidth = (state: State): State => ({...state, workbench: 
 export const column = (state: State): string =>
   `px-4 ${state.workbench.fixedWidth ? 'mx-auto w-full max-w-[50.6rem]' : ''}`;
 
-// startWorkbenchStorage restores the saved wrap and fixed-width settings and
-// saves each change.
-export function startWorkbenchStorage(store: Store) {
-  const keys = {wrap: 'hypercube.wrap', fixedWidth: 'hypercube.fixedWidth'} as const;
-  const saved = {wrap: localStorage.getItem(keys.wrap) === 'true', fixedWidth: localStorage.getItem(keys.fixedWidth) !== 'false'};
-  store.update(state => ({...state, workbench: {...state.workbench, ...saved}}));
-  return store.subscribe(state => {
-    for (const name of ['wrap', 'fixedWidth'] as const) {
-      if (state.workbench[name] === saved[name]) continue;
-      saved[name] = state.workbench[name];
-      localStorage.setItem(keys[name], String(saved[name]));
-    }
-  });
+export const resizeRegion = (state: State, region: Region, size: number): State => state.workbench.sizes[region] === size
+  ? state : {...state, workbench: {...state.workbench, sizes: {...state.workbench.sizes, [region]: size}}};
+
+export const selectSidebarTab = (state: State, sidebarTab: SidebarTab): State => state.workbench.sidebarTab === sidebarTab
+  ? state : {...state, workbench: {...state.workbench, sidebarTab}};
+
+export const scrollSidebar = (state: State, tab: SidebarTab, top: number): State => state.workbench.sidebarScroll[tab] === top
+  ? state : {...state, workbench: {...state.workbench, sidebarScroll: {...state.workbench.sidebarScroll, [tab]: top}}};
+
+function expansion(state: State, field: 'collapsedWorkspaces' | 'collapsedSessions', id: string, open: boolean): State {
+  if (!state.workbench[field][id] === open) return state;
+  const collapsed = {...state.workbench[field]};
+  if (open) delete collapsed[id];
+  else collapsed[id] = true;
+  return {...state, workbench: {...state.workbench, [field]: collapsed}};
 }
+
+export const expandWorkspace = (state: State, id: string, open: boolean): State => expansion(state, 'collapsedWorkspaces', id, open);
+export const expandSession = (state: State, id: string, open: boolean): State => expansion(state, 'collapsedSessions', id, open);

@@ -8,6 +8,7 @@ import {agentTabs} from '../editor/editor.ts';
 import type {Profile} from '../agent/types.ts';
 import type {State} from '../state.ts';
 import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
+import {restoreView, sessionView} from './view-state.ts';
 
 export const allSessions = (state: State): Session[] => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 export const waitingCount = (state: State) => {
@@ -55,6 +56,8 @@ export function pageTitle(state: State) {
 export const emptySession = (id: string): AttachedSession => ({
   id,
   transcript: {order: [], items: {}},
+  transcriptReady: false,
+  activePane: null,
   expanded: {},
   tabs: agentTabs,
   scroll: {},
@@ -76,7 +79,15 @@ function attach(state: State): State {
   const shown = currentSession(state);
   const id = shown?.id ?? null;
   if (id === (state.session?.id ?? null)) return state;
-  return {...state, session: id ? emptySession(id) : null};
+  const sessionViews = {...state.sessionViews};
+  const previous = state.session;
+  if (previous && allSessions(state).some(session => session.id === previous.id)) {
+    sessionViews[previous.id] = sessionView(previous);
+  }
+  const saved = id ? sessionViews[id] : undefined;
+  if (id) delete sessionViews[id];
+  const session = id ? emptySession(id) : null;
+  return {...state, sessionViews, session: session && saved ? restoreView(session, saved) : session};
 }
 
 // receivedWorkspaces applies a state message's workspaces.
@@ -90,7 +101,18 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   }
   if (discarded.length) next = {...next, drafts: omit(next.drafts, discarded), unsentDrafts: omit(next.unsentDrafts, discarded)};
   const sessions = allSessions(next);
-  if (next.pending && sessions.some(s => s.id === next.pending)) next = {...next, selected: next.pending, pending: null};
+  const ids = new Set(sessions.map(session => session.id));
+  const sessionViews = Object.fromEntries(Object.entries(next.sessionViews).filter(([id]) => ids.has(id)));
+  const workspaceIds = new Set(workspaces.map(workspace => workspace.id));
+  next = {...next, sessionViews, workbench: {
+    ...next.workbench,
+    collapsedWorkspaces: Object.fromEntries(Object.entries(next.workbench.collapsedWorkspaces).filter(([id]) => workspaceIds.has(id))),
+    collapsedSessions: Object.fromEntries(Object.entries(next.workbench.collapsedSessions).filter(([id]) => ids.has(id))),
+  }};
+  if (next.pending && sessions.some(s => s.id === next.pending)) {
+    const family = sessionOf(next, next.pending)!;
+    next = {...next, selected: next.pending, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}};
+  }
   // A family archived while shown is deselected, and nothing takes its place.
   // Otherwise a selection naming no session moves to one that has not ended.
   const chosen = currentSession(next);
@@ -106,19 +128,20 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
 export function selectSession(state: State, id: string): State {
   const next = parkUnsent(state);
   if (!allSessions(next).some(s => s.id === id)) return {...next, pending: id};
-  return attach({...next, selected: id, pending: null});
+  const family = sessionOf(next, id)!;
+  return attach({...next, selected: id, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}});
 }
 
 // openUnsent reopens the workspace's unfinished session or creates one.
 export function openUnsent(state: State, workspace?: string | null): State {
   workspace ??= state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id ?? state.workspaces[0]?.id ?? null;
-  if (state.unsent?.workspace === workspace) return state;
+  if (state.unsent?.workspace === workspace) return state.workbench.sidebarTab === 'sessions' ? state : {...state, workbench: {...state.workbench, sidebarTab: 'sessions'}};
   const next = parkUnsent(state);
   const key = unsentKey(workspace);
   const unsentDrafts = omit(next.unsentDrafts, [key]);
   // Identity survives immutable updates to the sending flag.
   const unsent: Unsent = next.unsentDrafts[key] ?? {identity: {}, workspace, profile: null, worktree: false, sending: false};
-  return attach({...next, unsent, unsentDrafts, selected: null, pending: null});
+  return attach({...next, unsent, unsentDrafts, selected: null, pending: null, workbench: {...next.workbench, sidebarTab: 'sessions'}});
 }
 
 // unsentProfile sets the unsent session's profile.

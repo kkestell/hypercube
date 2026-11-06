@@ -15,7 +15,8 @@ interface SplitProps {
   minStart?: string;
   minEnd?: string;
   collapsed?: 'start' | 'end' | null;
-  onResize?: (percent: number) => void;
+  // User changes report pixels for a fixed child, or the first child's percent.
+  onResize?: (size: number) => void;
   children: [ReactNode, ReactNode];
 }
 
@@ -37,7 +38,14 @@ export function Split({split = 'vertical', fixed = 'none', size, minStart, minEn
   return <ResizablePanelGroup orientation={split === 'vertical' ? 'horizontal' : 'vertical'}
     className={`split ${collapsed ? 'split-collapsed' : ''}`} disabled={!!collapsed}
     onLayoutChanged={(layout, meta) => {
-      if (fixed === 'none' && meta.isUserInteraction) onResize?.(layout[id + '-start']);
+      if (!meta.isUserInteraction || collapsed) return;
+      if (fixed === 'none') onResize?.(layout[id + '-start']);
+      else {
+        // Keyboard callbacks precede React's panel styles. Combine the new
+        // percentage with the available pixels instead of reading the old size.
+        const available = (first.current?.getSize().inPixels ?? 0) + (last.current?.getSize().inPixels ?? 0);
+        if (available > 0) onResize?.(available * layout[id + '-' + fixed] / 100);
+      }
     }}>
     <ResizablePanel id={id + '-start'} panelRef={first} defaultSize={startSize}
       groupResizeBehavior={fixed === 'start' ? 'preserve-pixel-size' : 'preserve-relative-size'}

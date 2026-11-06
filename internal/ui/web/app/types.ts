@@ -7,18 +7,22 @@ export interface Config {
 }
 
 export type RightTab = 'files' | 'search';
+export type SidebarTab = 'sessions' | 'archived';
 
-// Workbench is which regions show, the right panel's tab, the focused editor
-// pane, whether file views wrap lines, and whether chats and Markdown
-// previews use a fixed reading width.
+// Workbench holds global panel sizes and visibility, sidebar choices, and
+// whether file views wrap and chats use a fixed reading width.
 export interface Workbench {
   sidebar: boolean;
   rightPanel: boolean;
   panel: boolean;
   rightTab: RightTab;
-  activePane: number | null;
   wrap: boolean;
   fixedWidth: boolean;
+  sizes: Record<Region, number>;
+  sidebarTab: SidebarTab;
+  collapsedWorkspaces: Record<string, true>;
+  collapsedSessions: Record<string, true>;
+  sidebarScroll: Record<SidebarTab, number>;
 }
 
 export type Region = 'sidebar' | 'rightPanel' | 'panel';

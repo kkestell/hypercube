@@ -16,7 +16,7 @@ export function receivedTranscript(state: State, message: TranscriptMessage): St
   for (const item of message.items) items[item.id] = item;
   const order = Object.keys(items).sort((a, b) => items[a].seq - items[b].seq);
   const transcript = {order, items};
-  return {...state, session: {...session, transcript}};
+  return {...state, session: {...session, transcript, transcriptReady: true}};
 }
 
 // setExpanded opens or closes an activity or a message.

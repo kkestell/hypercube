@@ -27,6 +27,7 @@ import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
 import {hypercube} from './window.ts';
 import {titleBarVars} from './title-bar.ts';
+import {resizeRegion} from './workbench.ts';
 
 function refuseStrayDrops(store: Store) {
   const refuse = (e: DragEvent) => {
@@ -93,7 +94,7 @@ export function App({store}: {store: Store}) {
     }
   }, [state.selected]);
 
-  const {sidebar, rightPanel, panel} = state.workbench;
+  const {sidebar, rightPanel, panel, sizes} = state.workbench;
   const key = (e: KeyboardEvent) => {
     if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
@@ -116,10 +117,10 @@ export function App({store}: {store: Store}) {
     <StoreContext.Provider value={context}>
       <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)}>
         <div className="app-body min-h-0 flex-1">
-          <Split fixed="start" size={260} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
+          <Split fixed="start" size={sizes.sidebar} onResize={size => store.update(s => resizeRegion(s, 'sidebar', size))} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
-            <Split fixed="end" size={320} minStart="60%" collapsed={rightPanel ? null : 'end'}>
-              <Split split="horizontal" fixed="end" size={240} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
+            <Split fixed="end" size={sizes.rightPanel} onResize={size => store.update(s => resizeRegion(s, 'rightPanel', size))} minStart="60%" collapsed={rightPanel ? null : 'end'}>
+              <Split split="horizontal" fixed="end" size={sizes.panel} onResize={size => store.update(s => resizeRegion(s, 'panel', size))} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
                 <TerminalPanel key={state.session?.id ?? ''} />
               </Split>

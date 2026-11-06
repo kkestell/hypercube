@@ -1,13 +1,13 @@
 // The attached session's tabs, preview, and remembered scroll. File and diff
 // tabs share one preview tab, replaced on the next click until kept open.
 import {diffTitle, readOpenDiff} from '../changes/changes.ts';
-import type {OpenFile} from '../files/types.ts';
 import {hasPreview} from '../files/language.ts';
-import {readOpenFile} from '../files/files.ts';
+import {readOpenFile, unreadFile} from '../files/files.ts';
 import {shownSession} from '../sessions/selection.ts';
 import type {AttachedSession} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
+import {ownsScroll} from '../sessions/view-state.ts';
 import * as layout from './tab-layout.ts';
 import type {Edge, FileOpenRequest, ScrollMemory, TabEntry, TabId, TabLayout} from './types.ts';
 
@@ -81,8 +81,6 @@ export function closeTab(state: State, id: TabId): State {
   });
 }
 
-const unread: OpenFile = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
-
 // tabOpened opens a tab as the shared preview, replacing the previous preview,
 // and has add record the new tab's data. An open tab is only selected.
 function tabOpened(state: State, id: TabId, add: (session: AttachedSession) => AttachedSession): State {
@@ -99,7 +97,7 @@ function tabOpened(state: State, id: TabId, add: (session: AttachedSession) => A
 export function openFileTab(store: Store, path: string) {
   if (!store.get().session) return;
   store.update(state => tabOpened(state, fileTabId(path), session => ({
-    ...session, files: {...session.files, open: {...session.files.open, [path]: unread}},
+    ...session, files: {...session.files, open: {...session.files.open, [path]: unreadFile}},
   })));
   readOpenFile(store, path);
 }
@@ -125,7 +123,7 @@ export function openRequestedFile(store: Store, request: FileOpenRequest) {
   store.update(state => withSession(state, session => {
     const id = fileTabId(path);
     const tabs = layout.openTab(session.tabs, id);
-    const file = {...(session.files.open[path] ?? unread), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
+    const file = {...(session.files.open[path] ?? unreadFile), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
     return {...session, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...session.files, open: {...session.files.open, [path]: file}}};
   }));
   readOpenFile(store, path);
@@ -159,12 +157,17 @@ export const setDragging = (state: State, id: TabId | null) => withTabs(state, t
 export const resizeSplit = (state: State, splitId: number, ratio: number) =>
   withTabs(state, tabs => layout.resizeSplit(tabs, splitId, Math.max(15, Math.min(85, ratio))));
 
-// rememberScroll keeps a view's scroll while its session stays attached, for
-// agents and for files that are still open. A closed tab's view unmounts
-// after the tab is forgotten.
+export const activatePane = (state: State, id: number | null): State =>
+  state.session && state.session.activePane !== id ? withSession(state, session => ({...session, activePane: id})) : state;
+
+// rememberScroll also accepts a departing view's final scroll after selection.
 export function rememberScroll(state: State, sessionId: string, id: TabId, scroll: ScrollMemory): State {
-  if (!state.session || state.session.id !== sessionId) return state;
-  const kept = layout.findPane(state.session.tabs.root, id) || shownSession(state)?.id === id;
-  if (!kept) return state;
-  return withSession(state, session => ({...session, scroll: {...session.scroll, [id]: scroll}}));
+  const active = state.session?.id === sessionId;
+  const view = active ? state.session : state.sessionViews[sessionId];
+  if (!view || !ownsScroll(view, sessionId, id)) return state;
+  const old = view.scroll[id];
+  if (old?.top === scroll.top && old.left === scroll.left && old.following === scroll.following) return state;
+  const remembered = {...view.scroll, [id]: scroll};
+  return active && state.session ? {...state, session: {...state.session, scroll: remembered}}
+    : {...state, sessionViews: {...state.sessionViews, [sessionId]: {...state.sessionViews[sessionId], scroll: remembered}}};
 }

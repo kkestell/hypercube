@@ -47,9 +47,9 @@ interface FileViewProps {
 export function FileView({id, path, active = true}: FileViewProps) {
   const [state, store] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  useScrollMemory(view, id);
   const session = state.session;
   const file = session?.files.open[path];
+  useScrollMemory(view, id, !!file && (file.text !== null || file.message !== null || !!file.preview || file.deleted));
   const sessionId = session?.id;
   useLayoutEffect(() => {
     if (!sessionId || !file?.reveal || file.text === null) return;
