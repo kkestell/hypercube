@@ -8,8 +8,7 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// CreateChild launches a child in a new worktree, or directly in dir. Agents
-// start children only through a proposal or an accepted offer.
+// CreateChild launches a child in a new worktree, or directly in dir.
 func (r *Runtime) CreateChild(parentID string, options ChildOptions) (store.Session, error) {
 	return r.createChild(parentID, options, approval{})
 }

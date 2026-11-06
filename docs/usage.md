@@ -151,20 +151,21 @@ Children appear under their parent. A breathing dot indicates work, an amber
 dot means an answer is needed, and a blue dot marks an unseen reply. Ended
 children are dimmed and carry no dots.
 
-When you ask for a separate new task, the agent offers it: a question above the
-message box names the task and offers **New session** and **Do it here**. The
+When you explicitly ask for another session or delegation, such as an
+independent review by another agent, the agent starts it without asking again.
+For a separate new task whose placement you have not chosen, a question above
+the message box names the task and offers **New session** and **Do it here**. The
 agent ends its turn and your answer reaches it as a message, whenever you give
 it; the question stays open across reloads and restarts. New session lets the
 agent start one child for that task with a brief it writes then; Do it here
-keeps the work in the session. Corrections and follow-ups to the current task
-stay in the session without a question.
+keeps the work in the session. Corrections and follow-ups need no question;
+follow-ups on a child's work go back to that child while its context helps.
 
-Work the agent suggests on its own, and sessions you ask it to start, appear as
-cards showing the brief, profile, context, and folder or new worktree.
+Work the agent suggests on its own appears as cards showing the brief,
+profile, context, and folder or new worktree.
 **Start** launches it; **Dismiss** closes the card. Cards survive reloads and
 do not block the parent. An unsuccessful launch shows an error and leaves the
-card or accepted offer available to retry when its child was cleaned up. No
-child starts without your New session answer or Start click.
+card or accepted offer available to retry when its child was cleaned up.
 
 ## Layout and shortcuts
 

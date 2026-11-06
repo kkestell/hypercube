@@ -66,8 +66,7 @@ automatic reports until the turn ends; every other question means the agent
 waits for you. OpenCode closes a question it withdraws.
 
 Hypercube answers its own **New session** / **Do it here** questions without
-the harness, and starts a child only after **New session** or a card's
-**Start**.
+the harness.
 
 ## Usage reports
 

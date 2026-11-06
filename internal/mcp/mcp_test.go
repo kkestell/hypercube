@@ -321,6 +321,36 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 	}
 }
 
+// An explicitly requested child starts without an offer or proposal.
+func TestRequestedSessionStartsWithoutAnOffer(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	parent := started(t, db, rt)
+	args := map[string]any{"initiation": "user_asked", "name": "reviewer", "title": "Review", "profile": "opus", "dir": "."}
+	for _, brief := range []string{"", "  "} {
+		args["message"] = brief
+		if text, failed := callTool(t, parent, "create_session", args); !failed {
+			t.Fatalf("a requested child started without a brief: %q", text)
+		}
+	}
+	args["message"] = "Review the change without editing it. Report contradictions and gaps."
+	if text, failed := callTool(t, parent, "create_session", args); failed {
+		t.Fatal(text)
+	}
+	list := children(t, db, "session-1")
+	if len(list) != 1 || list[0].Name != "reviewer" || list[0].Harness != "one" || list[0].Model != "opus" {
+		t.Fatalf("children = %+v", list)
+	}
+	items, err := rt.Transcript("session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range items {
+		if it.Offer || it.Kind == harness.KindProposal {
+			t.Fatalf("requested delegation created a confirmation: %+v", it)
+		}
+	}
+}
+
 // An offer starts nothing until the user chooses New session and the agent
 // supplies the brief; a suggestion starts nothing until the user's Start.
 func TestCreateSessionForms(t *testing.T) {

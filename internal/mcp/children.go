@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/kkestell/hypercube/internal/harness"
@@ -16,6 +17,7 @@ import (
 const (
 	initiationOffer = "offer"
 	initiationOwn   = "own_initiative"
+	initiationAsked = "user_asked"
 )
 
 type createSessionArgs struct {
@@ -33,10 +35,11 @@ type endSessionArgs struct {
 	Name string `json:"name"`
 }
 
-const createDescription = `Start or suggest a child session, in one of three forms.
-- Offer: when the user asks for a separate new task, pass initiation "offer" and a short, meaningful title only. The user chooses New session or Do it here. End your turn: the answer arrives as a message. Continuing an existing task, including corrections and small follow-ups, stays in this session without an offer.
+const createDescription = `Start or suggest a child session.
+- Requested delegation: when the user explicitly asks you to start another session or delegate work, pass initiation "user_asked" with the child's settings and brief in message. This starts it immediately; do not ask again for work the user has authorized.
+- Offer: for a separate new task whose placement the user has not chosen, pass initiation "offer" and a short, meaningful title only. The user chooses New session or Do it here. End your turn: the answer arrives as a message. Continuing an existing task, including corrections and small follow-ups, needs no offer.
 - Accepted offer: when the answer is New session, pass its offer_id with the same title, a name, a profile, and a message that briefs the child. It starts with fresh context.
-- Suggestion: pass initiation "own_initiative" with the child's settings to save a card the user can start or dismiss. Use it for work you suggest yourself, and when the user asks you to start another session. No child starts until the user clicks Start.
+- Suggestion: for work you suggest yourself, pass initiation "own_initiative" with the child's settings to save a card the user can start or dismiss. This starts nothing until the user clicks Start.
 The name is the child's address. The profile sets the child's harness, model, and effort, and the message is queued for the child before it starts. Fork copies your native conversation, requires your harness, and works where you work: in your folder when you work in the original checkout, otherwise in a new worktree from your HEAD; a fork takes no dir.`
 
 const dirDescription = " Without dir, a fresh child gets its own branch and worktree from HEAD. With dir, an existing directory given as an absolute path, a path starting with ~/, or a path relative to your directory, the child works directly in it and Hypercube creates no branch or worktree."
@@ -51,7 +54,7 @@ func addChildTools(server *mcp.Server, rt *session.Runtime, self string, w store
 	if err != nil {
 		panic(err)
 	}
-	schema.Properties["initiation"].Enum = []any{initiationOffer, initiationOwn}
+	schema.Properties["initiation"].Enum = []any{initiationOffer, initiationOwn, initiationAsked}
 	for _, p := range cfg.Profiles {
 		schema.Properties["profile"].Enum = append(schema.Properties["profile"].Enum, p.Name)
 	}
@@ -94,14 +97,21 @@ func createSession(rt *session.Runtime, self string, cfg harness.Config, args cr
 		if err != nil {
 			return "", err
 		}
-		if child.Branch == "" {
-			return fmt.Sprintf("Created %s in %s.", child.Name, child.Dir), nil
+		return childCreated(child), nil
+	case args.Initiation == initiationAsked:
+		if strings.TrimSpace(args.Message) == "" {
+			return "", errors.New("a requested child session needs its brief in message")
 		}
-		return fmt.Sprintf("Created %s on branch %s in %s.", child.Name, child.Branch, child.Dir), nil
+		options, err := childOptions(cfg, args)
+		if err != nil {
+			return "", err
+		}
+		child, err := rt.CreateChild(self, options)
+		if err != nil {
+			return "", err
+		}
+		return childCreated(child), nil
 	case args.Initiation == initiationOwn:
-		if args.Fork && args.Dir != "" {
-			return "", errors.New("a fork works where you work and takes no dir")
-		}
 		options, err := childOptions(cfg, args)
 		if err != nil {
 			return "", err
@@ -111,11 +121,21 @@ func createSession(rt *session.Runtime, self string, cfg harness.Config, args cr
 		}
 		return "Proposed " + args.Name + ". The user can start it from the card; no child has started.", nil
 	default:
-		return "", errors.New(`pass initiation "offer" or "own_initiative", or the offer_id of an accepted offer`)
+		return "", errors.New(`pass initiation "user_asked", "offer", or "own_initiative", or the offer_id of an accepted offer`)
 	}
 }
 
+func childCreated(child store.Session) string {
+	if child.Branch == "" {
+		return fmt.Sprintf("Created %s in %s.", child.Name, child.Dir)
+	}
+	return fmt.Sprintf("Created %s on branch %s in %s.", child.Name, child.Branch, child.Dir)
+}
+
 func childOptions(cfg harness.Config, args createSessionArgs) (session.ChildOptions, error) {
+	if args.Fork && args.Dir != "" {
+		return session.ChildOptions{}, errors.New("a fork works where you work and takes no dir")
+	}
 	profile, err := cfg.Profile(args.Profile)
 	if err != nil {
 		return session.ChildOptions{}, err

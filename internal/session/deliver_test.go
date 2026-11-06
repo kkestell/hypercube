@@ -23,12 +23,12 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	}
 	// Each queued message goes out once the plugin accepts the one before it,
 	// and leaves the queue when it does.
-	f.queue("user", s.ID, "first")
-	f.queue("user", s.ID, "second")
-	f.queue("user", s.ID, "third")
+	f.queue("gone", s.ID, "first")
+	f.queue("gone", s.ID, "second")
+	f.queue("gone", s.ID, "third")
 	f.until("three deliveries", func() bool { return len(f.inputs(s.ID)) == 4 && len(f.queued(s.ID)) == 0 })
 	inputs := f.inputs(s.ID)
-	for i, want := range []string{"start", "Message from user:\nfirst", "Message from user:\nsecond", "Message from user:\nthird"} {
+	for i, want := range []string{"start", "Message from gone:\nfirst", "Message from gone:\nsecond", "Message from gone:\nthird"} {
 		if !strings.HasPrefix(inputs[i], want) {
 			t.Fatalf("input %d = %q, want prefix %q", i, inputs[i], want)
 		}
@@ -40,7 +40,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	replies := 0
 	for _, it := range f.transcript(s.ID) {
 		if it.Kind == harness.KindUser {
-			users = append(users, strings.TrimPrefix(it.Text, "Message from user:\n"))
+			users = append(users, it.Text)
 		} else {
 			replies++
 		}
@@ -65,13 +65,13 @@ func TestRefusedMessageStaysQueued(t *testing.T) {
 		}
 		return n
 	}
-	f.queue("user", parent.ID, "!reject this", "after")
+	f.queue("gone", parent.ID, "!reject this", "after")
 	f.until("a refusal", func() bool { return refusals() == 1 })
 	// The next attempt sends the refused message again, not the one after it.
 	f.rt.Deliver(parent.ID)
 	f.until("a second refusal", func() bool { return refusals() == 2 })
 	inputs := f.inputs(parent.ID)
-	if len(inputs) != 3 || inputs[0] != "start" || !strings.HasPrefix(inputs[1], "Message from user:\n!reject this") || inputs[1] != inputs[2] || len(f.queued(parent.ID)) != 2 {
+	if len(inputs) != 3 || inputs[0] != "start" || !strings.HasPrefix(inputs[1], "Message from gone:\n!reject this") || inputs[1] != inputs[2] || len(f.queued(parent.ID)) != 2 {
 		t.Fatalf("after two refusals: inputs %q, queue %+v", inputs, f.queued(parent.ID))
 	}
 	// Dropping the bad message lets the next delivery go through.
@@ -87,7 +87,7 @@ func TestMessagesGoOutWhileTheAgentWorks(t *testing.T) {
 	parent := f.session()
 	f.input(parent.ID, "!work")
 	f.until("a working session", func() bool { return f.storedSession(parent.ID).Activity == store.Busy })
-	f.queue("user", parent.ID, "change course")
+	f.queue("gone", parent.ID, "change course")
 	f.until("steering", func() bool { return len(f.inputs(parent.ID)) == 3 && len(f.queued(parent.ID)) == 0 })
 	f.input(parent.ID, "!finish")
 	f.until("an idle session", func() bool { return f.storedSession(parent.ID).Activity == store.Idle })
