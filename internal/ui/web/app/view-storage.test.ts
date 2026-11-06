@@ -5,11 +5,11 @@ import {startDraftStorage} from '../agent/draft-storage.ts';
 import {draftOf, typed, unsentKey} from '../agent/drafts.ts';
 import {activatePane, keepOpen, moveTab, openDiffTab, openRequestedFile, rememberScroll, resizeSplit} from '../editor/editor.ts';
 import {panes} from '../editor/tab-layout.ts';
-import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
+import {openUnsent, receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {receivedTranscript, setExpanded} from '../transcript/transcripts.ts';
 import {startViewStorage} from './view-storage.ts';
-import {toggleWrap} from './workbench.ts';
+import {toggle, toggleWrap} from './workbench.ts';
 
 const workspaces = [testWorkspace({id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})]})];
 const fresh = (selected = '') => createStore(testState({selected}));
@@ -67,6 +67,52 @@ test('session switches and reloads preserve independent view choices without cac
   expect(restored.diffs['changed.go']).toEqual({text: null, message: null});
   expect(restored.transcript.order).toEqual([]);
   expect(restored.transcriptReady).toBe(false);
+});
+
+test('terminal visibility belongs to each session, survives reload, and stays closed for drafts', () => {
+  const store = fresh('a');
+  startViewStorage(store);
+  store.update(state => receivedWorkspaces(state, workspaces));
+  store.update(state => toggle(state, 'panel'));
+  expect(store.get().session?.panel).toBe(true);
+  store.update(state => selectSession(state, 'b'));
+  expect(store.get().session?.panel).toBe(false);
+  store.update(state => selectSession(state, 'a'));
+  expect(store.get().session?.panel).toBe(true);
+  store.update(state => openUnsent(state, 'w'));
+  expect(store.get().session).toBeNull();
+  const draft = store.get();
+  store.update(state => toggle(state, 'panel'));
+  expect(store.get()).toBe(draft);
+  store.update(state => selectSession(state, 'a'));
+  expect(store.get().session?.panel).toBe(true);
+
+  const reloaded = fresh();
+  startViewStorage(reloaded);
+  reloaded.update(state => receivedWorkspaces(state, workspaces));
+  expect(reloaded.get().session?.panel).toBe(true);
+  reloaded.update(state => selectSession(state, 'b'));
+  expect(reloaded.get().session?.panel).toBe(false);
+});
+
+test.each([false, true])('legacy terminal visibility migrates to the selected session only (open %p)', panel => {
+  const previous = fresh('a');
+  startViewStorage(previous);
+  previous.update(state => receivedWorkspaces(state, workspaces));
+  previous.update(state => selectSession(state, 'b'));
+  previous.update(state => selectSession(state, 'a'));
+  const saved = JSON.parse(localStorage.getItem('hypercube.views')!);
+  saved.workbench.panel = panel;
+  for (const view of Object.values(saved.sessionViews)) delete (view as {panel?: boolean}).panel;
+  localStorage.setItem('hypercube.views', JSON.stringify(saved));
+
+  const reloaded = fresh();
+  startViewStorage(reloaded);
+  reloaded.update(state => receivedWorkspaces(state, workspaces));
+  expect(reloaded.get().errors).toEqual([]);
+  expect(reloaded.get().session?.panel).toBe(panel);
+  expect(reloaded.get().sessionViews.b.panel).toBe(false);
+  expect(JSON.parse(localStorage.getItem('hypercube.views')!).workbench.panel).toBeUndefined();
 });
 
 test('an explicit session URL wins over saved selection and a restored new-session draft', () => {

@@ -7,6 +7,7 @@ export function sessionView(session: AttachedSession): SessionViewState {
   return {
     tabs: {...session.tabs, dragging: null},
     activePane: session.activePane,
+    panel: session.panel,
     expanded: session.expanded,
     scroll: session.scroll,
     folders: session.files.expanded,
@@ -20,6 +21,7 @@ export function restoreView(session: AttachedSession, view: SessionViewState): A
     ...session,
     tabs: view.tabs,
     activePane: view.activePane,
+    panel: view.panel,
     expanded: view.expanded,
     scroll: view.scroll,
     files: {listings: {}, expanded: view.folders, open: Object.fromEntries(Object.entries(view.files).map(([path, file]) => [path, {...unreadFile, ...file}]))},

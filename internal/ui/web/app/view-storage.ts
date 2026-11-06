@@ -17,7 +17,7 @@ function snapshot(state: State): SavedViews {
 function viewChanged(before: State, after: State) {
   if (before.selected !== after.selected || before.workbench !== after.workbench || before.sessionViews !== after.sessionViews) return true;
   const a = before.session, b = after.session;
-  return a?.id !== b?.id || a?.tabs !== b?.tabs || a?.activePane !== b?.activePane || a?.expanded !== b?.expanded
+  return a?.id !== b?.id || a?.tabs !== b?.tabs || a?.activePane !== b?.activePane || a?.panel !== b?.panel || a?.expanded !== b?.expanded
     || a?.scroll !== b?.scroll || a?.files.expanded !== b?.files.expanded || a?.files.open !== b?.files.open;
 }
 

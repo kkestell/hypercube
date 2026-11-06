@@ -83,6 +83,7 @@ export interface AttachedSession {
   transcript: Transcript;
   transcriptReady: boolean;
   activePane: number | null;
+  panel: boolean;
   expanded: Record<string, true>;
   tabs: TabLayout;
   scroll: Record<string, ScrollMemory>;
@@ -95,6 +96,7 @@ export interface AttachedSession {
 export interface SessionViewState {
   tabs: TabLayout;
   activePane: number | null;
+  panel: boolean;
   expanded: Record<string, true>;
   scroll: Record<string, ScrollMemory>;
   folders: Record<string, true>;

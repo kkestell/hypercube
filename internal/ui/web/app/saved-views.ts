@@ -26,7 +26,7 @@ function layout(value: unknown): value is LayoutNode | null {
 }
 
 function sessionView(value: unknown) {
-  if (!record(value) || !record(value.tabs) || !layout(value.tabs.root) || !positiveInteger(value.tabs.nextId)
+  if (!record(value) || typeof value.panel !== 'boolean' || !record(value.tabs) || !layout(value.tabs.root) || !positiveInteger(value.tabs.nextId)
     || !(value.tabs.preview === null || typeof value.tabs.preview === 'string') || value.tabs.dragging !== null
     || !(value.activePane === null || positiveInteger(value.activePane)) || !flags(value.expanded) || !flags(value.folders)) return false;
   const scroll = entries(value.scroll, entry => record(entry) && nonnegative(entry.top) && nonnegative(entry.left) && typeof entry.following === 'boolean');
@@ -36,7 +36,7 @@ function sessionView(value: unknown) {
 }
 
 function workbench(value: unknown) {
-  if (!record(value) || !['sidebar', 'rightPanel', 'panel', 'wrap', 'fixedWidth'].every(key => typeof value[key] === 'boolean')) return false;
+  if (!record(value) || !['sidebar', 'rightPanel', 'wrap', 'fixedWidth'].every(key => typeof value[key] === 'boolean')) return false;
   const sizes = value.sizes;
   return (value.rightTab === 'files' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
     && record(sizes) && ['sidebar', 'rightPanel', 'panel'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
@@ -45,7 +45,17 @@ function workbench(value: unknown) {
 }
 
 export function readSavedViews(text: string): SavedViews {
-  const value: unknown = JSON.parse(text);
+  let value: unknown = JSON.parse(text);
+  // The old global terminal visibility belongs to the selected session. Other
+  // sessions start closed because the old format had no per-session choice.
+  if (record(value) && record(value.workbench) && typeof value.workbench.panel === 'boolean' && record(value.sessionViews)) {
+    const {panel, ...workbench} = value.workbench;
+    const selected = value.selected;
+    const sessionViews = Object.fromEntries(Object.entries(value.sessionViews).map(([id, view]) => [id,
+      record(view) ? {...view, panel: id === selected && panel} : view,
+    ]));
+    value = {...value, workbench, sessionViews};
+  }
   if (!record(value) || !(value.selected === null || typeof value.selected === 'string')
     || !workbench(value.workbench) || !entries(value.sessionViews, sessionView)) throw new Error('Invalid saved view state.');
   return value as unknown as SavedViews;

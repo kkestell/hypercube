@@ -210,9 +210,10 @@ card or accepted offer available to retry when its child was cleaned up.
 Drag tabs between panes, or onto a pane's edge to split it. Drag dividers to
 resize panes and panels. Buttons at the right of the footer toggle the
 sidebar, terminal, and right panel. Each session remembers its tabs, editor
-splits, open files, expanded items, and scroll positions across switches and
-restarts. Overall panel sizes, sidebar choices, and the last selected session
-are remembered in this browser; the desktop app keeps its own view choices.
+splits, open files, expanded items, scroll positions, and terminal visibility
+across switches and restarts. Overall panel sizes, sidebar choices, and the
+last selected session are remembered in this browser; the desktop app keeps
+its own view choices.
 Use **View → Zoom In**, **Zoom Out**, or
 **Actual Size** in the desktop app to change page size. The theme follows macOS
 appearance unless **Settings** sets it to Light or Dark; Settings also sets

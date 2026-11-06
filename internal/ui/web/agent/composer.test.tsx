@@ -2,11 +2,11 @@ import {afterEach, beforeEach, expect, mock, spyOn, test, type Mock} from 'bun:t
 import {act} from 'react';
 import {clickControl, element, type FetchHandler, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {emptySession, openUnsent, unsentSettingsChosen} from '../sessions/selection.ts';
+import {emptySession, openUnsent, shownSession, unsentSettingsChosen} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import type {Merge, Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
-import {createStore} from '../store.ts';
+import {createStore, useStore} from '../store.ts';
 import type {TranscriptItem} from '../transcript/types.ts';
 import {Composer} from './composer.tsx';
 import {unsentKey as workspaceDraftKey} from './drafts.ts';
@@ -128,6 +128,28 @@ const worktreeStore = (noGit: boolean, sessions: Session[] = []) => {
   return s;
 };
 const worktreeToggle = (root: HTMLElement) => root.querySelector('[aria-label="Location"]');
+
+test('pending creation keeps Send disabled and cannot interrupt a placeholder', async () => {
+  let release = () => {};
+  fetches.mockImplementation(() => new Promise<Response>(resolve => { release = () => resolve(Response.json({session: 'n'})); }));
+  const s = worktreeStore(false);
+  function ShownComposer() {
+    const [state] = useStore();
+    const shown = shownSession(state);
+    return shown && <Composer session={shown} />;
+  }
+  const root = mount(s, <ShownComposer />);
+  typeInto(textarea(root), 'hello');
+  clickControl(control(root, 'Send'));
+  expect(s.get().unsent?.sending).toBe(true);
+  expect(root.querySelector('[aria-label="Stop"]')).toBeNull();
+  const send = control(root, 'Send');
+  expect(send.disabled).toBe(true);
+  clickControl(send);
+  expect(fetches.mock.calls.map(([url]) => queryOf(url).action)).toEqual(['new']);
+  release();
+  await settle();
+});
 
 test('the unsent composer offers Local or Worktree, Local first, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json([]));
