@@ -144,7 +144,7 @@ test('the unsent composer uses the configured default and keeps the draft when a
   clickControl(select);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Opus · High' : 'Sol · Medium'}${p.description}`));
+  expect(options.map(o => o.textContent)).toEqual(profiles.map(p => `${p.harness === 'claude' ? 'Opus · High' : 'Sol · Medium'}`));
   act(() => options[0].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.profile).toBe('claude');
   expect(select.textContent).toBe('Opus · High');
@@ -177,7 +177,7 @@ test('opening the selector uses saved profiles and replaces a removed draft choi
   clickControl(profileButton(root));
   await settle();
   expect(s.get().unsent?.profile).toBe('codex');
-  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['Sol · MediumCodex for ordinary tasks']);
+  expect([...document.querySelectorAll('[role=menuitemradio]')].map(item => item.textContent)).toEqual(['Sol · Medium']);
   expect(textarea(root).value).toBe('Keep this draft');
 });
 
@@ -222,7 +222,7 @@ test('choosing Worktree creates the session in a worktree and locks while sendin
   clickControl(toggle);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(['LocalWork in the current checkout.', 'WorktreeCreate a separate branch and working folder from the current checkout.']);
+  expect(options.map(o => o.textContent)).toEqual(['Local', 'Worktree']);
   act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.worktree).toBe(true);
   expect(toggle.textContent).toBe('Worktree');

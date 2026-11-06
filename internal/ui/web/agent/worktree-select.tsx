@@ -7,8 +7,8 @@ import {unsentWorktree} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
 
 const choices = [
-  {value: 'local', icon: 'laptop', label: 'Local', description: 'Work in the current checkout.'},
-  {value: 'worktree', icon: 'git-branch', label: 'Worktree', description: 'Create a separate branch and working folder from the current checkout.'},
+  {value: 'local', icon: 'laptop', label: 'Local'},
+  {value: 'worktree', icon: 'git-branch', label: 'Worktree'},
 ] as const;
 
 export function WorktreeSelect() {
@@ -26,9 +26,9 @@ export function WorktreeSelect() {
         <Icon name={shown.icon} />{shown.label}<Icon name="chevron-down" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start" className="w-80 max-w-[calc(100vw-2rem)]">
+    <DropdownMenuContent side="top" align="start" className="min-w-40">
       {choices.map(c => <DropdownMenuItem key={c.value} role="menuitemradio" aria-checked={c === shown} onSelect={() => choose(c.value)}>
-        <Icon name={c.icon} /><span className="min-w-0 whitespace-normal">{c.label}<span className="block text-xs text-muted-foreground">{c.description}</span></span>
+        <Icon name={c.icon} />{c.label}
         {c === shown && <Icon name="check" className="ml-auto" />}
       </DropdownMenuItem>)}
     </DropdownMenuContent>

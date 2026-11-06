@@ -42,11 +42,11 @@ export function ProfileSelect({session}: {session: Session}) {
         {icon}<span className="truncate">{shown ? (icon ? modelLabel(shown) : profileLabel(shown)) : 'Select profile'}</span><Icon name="chevron-down" />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent side="top" align="start" className="w-96 max-w-[calc(100vw-2rem)]">
+    <DropdownMenuContent side="top" align="start" className="min-w-56 max-w-[calc(100vw-2rem)]">
       {choices.map(p => {
         const icon = harnessIcon(p.harness);
         return <DropdownMenuItem key={p.name} role="menuitemradio" aria-checked={p === selected} onSelect={() => choose(p)}>
-          {icon}<span className="min-w-0 whitespace-normal break-words">{icon ? modelLabel(p) : profileLabel(p)}{p.description && <span className="block text-xs text-muted-foreground">{p.description}</span>}</span>
+          {icon}<span className="min-w-0 truncate">{icon ? modelLabel(p) : profileLabel(p)}</span>
           {p === selected && <Icon name="check" className="ml-auto" />}
         </DropdownMenuItem>;
       })}
