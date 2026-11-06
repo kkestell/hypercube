@@ -71,11 +71,11 @@ afterEach(() => {
 
 const setup = () => {
   const initial = testState();
-  const store = createStore({...initial, session: emptySession('s'), workbench: {...initial.workbench, panel: true}});
+  const store = createStore({...initial, session: {...emptySession('s'), panel: true}});
   mount(store, <TerminalPanel />);
   return store;
 };
-const panelShown = (store: Store) => store.get().workbench.panel;
+const panelShown = (store: Store) => store.get().session?.panel;
 
 test('the panel connects to the session\'s shell', () => {
   setup();

@@ -29,12 +29,11 @@ export interface Notifications {
 export type RightTab = 'files' | 'search';
 export type SidebarTab = 'sessions' | 'archived';
 
-// Workbench holds global panel sizes and visibility, sidebar choices, and
+// Workbench holds panel sizes, sidebar and right-panel visibility and choices, and
 // whether file views wrap and chats use a fixed reading width.
 export interface Workbench {
   sidebar: boolean;
   rightPanel: boolean;
-  panel: boolean;
   rightTab: RightTab;
   wrap: boolean;
   fixedWidth: boolean;

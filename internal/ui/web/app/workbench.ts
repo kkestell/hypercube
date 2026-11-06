@@ -5,11 +5,13 @@ import type {State} from '../state.ts';
 import type {Region, RightTab, SidebarTab} from './types.ts';
 
 // toggle shows or hides the 'sidebar', 'rightPanel', or 'panel'.
-export const toggle = (state: State, region: Region): State => ({...state, workbench: {...state.workbench, [region]: !state.workbench[region]}});
+export const toggle = (state: State, region: Region): State => region === 'panel'
+  ? state.session ? {...state, session: {...state.session, panel: !state.session.panel}} : state
+  : {...state, workbench: {...state.workbench, [region]: !state.workbench[region]}};
 
 export const selectRightTab = (state: State, tab: RightTab): State => ({...state, workbench: {...state.workbench, rightTab: tab}});
 
-export const closePanel = (state: State): State => state.workbench.panel ? {...state, workbench: {...state.workbench, panel: false}} : state;
+export const closePanel = (state: State): State => state.session?.panel ? {...state, session: {...state.session, panel: false}} : state;
 
 export const setVisible = (state: State, visible: boolean): State => ({...state, visible});
 

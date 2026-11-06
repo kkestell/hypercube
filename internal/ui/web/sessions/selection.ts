@@ -69,6 +69,7 @@ export const emptySession = (id: string): AttachedSession => ({
   transcript: {order: [], items: {}},
   transcriptReady: false,
   activePane: null,
+  panel: false,
   expanded: {},
   tabs: agentTabs,
   scroll: {},

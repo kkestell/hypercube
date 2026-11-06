@@ -138,7 +138,7 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'rightPanel':
       if (editing) return undefined;
       return () => {
-        if (state.workbench[id] && target.closest(regionSelectors[id])) actions.focusComposer();
+        if ((id === 'panel' ? state.session?.panel : state.workbench[id]) && target.closest(regionSelectors[id])) actions.focusComposer();
         store.update(s => toggle(s, id));
       };
     case 'settings':

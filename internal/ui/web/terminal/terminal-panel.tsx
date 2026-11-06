@@ -78,7 +78,7 @@ export function TerminalPanel() {
   const box = useRef<HTMLDivElement>(null);
   const shell = useRef<Shell | null>(null);
   const session = state.session?.id;
-  const shown = state.workbench.panel;
+  const shown = state.session?.panel ?? false;
   const dark = isDark(state);
   const fontSize = state.config?.terminal_font_size ?? 13;
 

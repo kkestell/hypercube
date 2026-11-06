@@ -94,7 +94,8 @@ export function App({store}: {store: Store}) {
     }
   }, [state.selected]);
 
-  const {sidebar, rightPanel, panel, sizes} = state.workbench;
+  const {sidebar, rightPanel, sizes} = state.workbench;
+  const panel = state.session?.panel ?? false;
   const key = (e: KeyboardEvent) => {
     if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
