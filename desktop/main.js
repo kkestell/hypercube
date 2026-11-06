@@ -2,7 +2,7 @@
 // window, menus, menu bar icon, notifications, and the agents' browsers. It
 // connects to a backend running on its own, as a login service or in a
 // terminal, and quitting it leaves that backend and its agents running.
-const {app, ipcMain} = require('electron');
+const {app, ipcMain, nativeTheme} = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const {pathToFileURL} = require('node:url');
@@ -65,6 +65,11 @@ function start() {
         break;
       case 'badge':
         if (Number.isInteger(message.count)) attention.setBadge(message.count);
+        break;
+      // The Settings theme also sets the app's native appearance, which the
+      // menus, the agent browser toolbars, and the waiting page follow.
+      case 'theme':
+        if (['system', 'light', 'dark'].includes(message.theme)) nativeTheme.themeSource = message.theme;
         break;
       case 'shortcuts':
         if (Array.isArray(message.items)) setMenu(message.items, run);

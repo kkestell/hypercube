@@ -1,8 +1,9 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
 import {element, find, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {ProfileSelect} from '../agent/profile-select.tsx';
+import {WorktreeSelect} from '../agent/worktree-select.tsx';
 import {unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
@@ -12,10 +13,10 @@ import type {Config} from './types.ts';
 
 const unsentKey = workspaceDraftKey('w');
 
-const config: Config = {default_profile: 'lead', profiles: [
+const config = testConfig({profiles: [
   {name: 'lead', description: 'Large tasks', harness: 'claude', model: 'opus', effort: 'high'},
   {name: 'worker', description: 'Small tasks', harness: 'codex', model: 'sol', effort: 'low'},
-]};
+]});
 afterEach(() => { mock.restore(); unmountAll(); });
 const settle = () => act(() => new Promise<void>(resolve => setImmediate(resolve)));
 const button = (name: string) => {
@@ -64,11 +65,36 @@ test('profile create, update, delete and default selection save as one config', 
   select('default-profile', 'New ModelMedium');
   expect(posts).toHaveLength(0);
   await click('Save changes');
-  expect(posts).toEqual([{default_profile: 'new-profile', profiles: [
+  expect(posts).toEqual([{...config, default_profile: 'new-profile', profiles: [
     {...config.profiles[0], name: 'renamed', model: 'sonnet'},
     {name: 'new-profile', description: 'New tasks', harness: 'pi', model: 'new-model', effort: 'medium'},
   ]}]);
   expect(Boolean(document.querySelector('[role=dialog][data-state=open]'))).toBe(false);
+});
+
+test('preferences save with the config and apply to the page', async () => {
+  const posts: Config[] = [];
+  stubFetch((url, init) => {
+    if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
+    return url === 'version' ? new Response('build') : Response.json(config);
+  });
+  const store = createStore(openUnsent(testState({workspaces: [testWorkspace({id: 'w'})]}), 'w'));
+  const root = mount(store, <><WorktreeSelect /><View /></>);
+  await settle();
+  select('theme', 'Dark');
+  select('terminal-font-size', '16 px');
+  select('default-location', 'Worktree');
+  await click('Notifications');
+  await act(async () => element(document, '#notify-macos', HTMLButtonElement).click());
+  expect(element(document, '#notify-sound', HTMLButtonElement).disabled).toBe(true);
+  await act(async () => element(document, '#notify-replies', HTMLButtonElement).click());
+  await click('Save changes');
+  const saved: Config = {...config, theme: 'dark', terminal_font_size: 16, default_worktree: true,
+    notifications: {requests: true, replies: false, macos: false, sound: true}};
+  expect(posts).toEqual([saved]);
+  expect(store.get().config).toEqual(saved);
+  // An untouched new session follows the saved default location.
+  expect(element(root, '[aria-label=Location]', HTMLButtonElement).textContent).toBe('Worktree');
 });
 
 test('cancel discards edits and reopening reloads the saved config', async () => {

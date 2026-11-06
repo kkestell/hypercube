@@ -1,24 +1,22 @@
 import {useEffect, useState} from 'react';
 import {fetchConfig, saveConfig} from '../api.ts';
 import {Button} from '../components/ui/button';
-import {Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle} from '../components/ui/dialog';
-import {Label} from '../components/ui/label';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
-import {ProfileName} from '../agent/profile-name.tsx';
+import {Dialog, DialogContent, DialogHeader, DialogTitle} from '../components/ui/dialog';
 import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
-import {SettingsProfiles, type ProfileDraft} from './settings-profiles.tsx';
+import {SettingsGeneral, SettingsNotifications, type SettingsDraft} from './settings-preferences.tsx';
+import {SettingsProfiles} from './settings-profiles.tsx';
 
-const sections = ['General', 'Agent profiles', 'Permissions'] as const;
+const sections = ['General', 'Agent profiles', 'Notifications', 'Permissions'] as const;
 type Section = typeof sections[number];
 
 export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
   const focus = useDialogFocus(open);
   const [saving, setSaving] = useState(false);
   return <Dialog open={open} onOpenChange={next => { if (!saving) onOpenChange(next); }}>
-    <DialogContent {...focus} showCloseButton={!saving} className="flex h-[min(790px,90dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
+    <DialogContent {...focus} aria-describedby={undefined} showCloseButton={!saving} className="flex h-[min(790px,90dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
       {open && <SettingsContent close={() => onOpenChange(false)} saving={saving} setSaving={setSaving} />}
     </DialogContent>
   </Dialog>;
@@ -27,24 +25,29 @@ export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChang
 function SettingsContent({close, saving, setSaving}: {close: () => void; saving: boolean; setSaving: (saving: boolean) => void}) {
   const [, store] = useStore();
   const [section, setSection] = useState<Section>('General');
-  const [draft, setDraft] = useState<ProfileDraft | null>(null);
+  const [draft, setDraft] = useState<SettingsDraft | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
     fetchConfig(store).then(config => {
       if (!active) return;
-      if (config) setDraft({profiles: config.profiles, defaultIndex: config.profiles.findIndex(p => p.name === config.default_profile)});
-      else setLoadFailed(true);
+      if (!config) setLoadFailed(true);
+      else {
+        const {default_profile, ...rest} = config;
+        setDraft({...rest, defaultIndex: config.profiles.findIndex(p => p.name === default_profile)});
+      }
     });
     return () => { active = false; };
   }, [store]);
+  const edit = (change: Partial<SettingsDraft>) => setDraft(draft => draft && {...draft, ...change});
   const save = async () => {
     if (!draft) return;
     setError('');
     setSaving(true);
     try {
-      const config = {default_profile: draft.profiles[draft.defaultIndex].name, profiles: draft.profiles};
+      const {defaultIndex, ...rest} = draft;
+      const config = {...rest, default_profile: draft.profiles[defaultIndex].name};
       await saveConfig(config);
       store.update(state => receivedConfig(state, config));
       close();
@@ -56,7 +59,7 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
   };
   return <>
     <DialogHeader className="shrink-0 border-b px-6 py-5">
-      <DialogTitle>Settings</DialogTitle><DialogDescription>Preferences for Hypercube on this Mac.</DialogDescription>
+      <DialogTitle>Settings</DialogTitle>
     </DialogHeader>
     <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
       <nav aria-label="Settings sections" className="flex shrink-0 gap-1 overflow-x-auto border-b p-3 sm:w-44 sm:flex-col sm:border-r sm:border-b-0">
@@ -66,27 +69,18 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
       <div className="min-w-0 flex-1 overflow-y-auto p-6">
         <h2 className="mb-2 text-xl font-semibold">{section}</h2>
         <div className="mt-5">
-          {(section === 'General' || section === 'Agent profiles') && !draft && <p>{loadFailed ? 'Could not load settings. Close and reopen to try again.' : 'Loading settings…'}</p>}
+          {section !== 'Permissions' && !draft && <p>{loadFailed ? 'Could not load settings. Close and reopen to try again.' : 'Loading settings…'}</p>}
           <fieldset disabled={saving} className="min-w-0">
-            {section === 'General' && draft && <section className="grid gap-6">
-              <p className="text-sm text-muted-foreground">Choose the agent profile selected when you open a new session.</p>
-              <div className="grid gap-3"><Label htmlFor="default-profile">Default agent profile</Label>
-                <Select value={String(draft.defaultIndex)} onValueChange={value => setDraft({...draft, defaultIndex: Number(value)})}>
-                  <SelectTrigger id="default-profile" className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {draft.profiles.map((p, i) => <SelectItem key={i} value={String(i)}><ProfileName profile={p} /></SelectItem>)}
-                  </SelectContent>
-                </Select></div>
-              <p className="text-sm text-muted-foreground">Existing sessions keep their current model and effort.</p>
-            </section>}
-            {section === 'Agent profiles' && draft && <SettingsProfiles draft={draft} onChange={setDraft} />}
+            {draft && section === 'General' && <SettingsGeneral draft={draft} onChange={edit} />}
+            {draft && section === 'Notifications' && <SettingsNotifications draft={draft} onChange={edit} />}
+            {draft && section === 'Agent profiles' && <SettingsProfiles draft={draft} onChange={edit} />}
           </fieldset>
           {section === 'Permissions' && <SettingsPermissions />}
         </div>
       </div>
     </div>
     <footer className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t px-6 py-4">
-      <div className="min-w-0 flex-1"><p className="text-xs text-muted-foreground">Profile edits apply after saving.</p>{error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}</div>
+      <div className="min-w-0 flex-1">{error && <p role="alert" className="text-sm text-destructive">{error}</p>}</div>
       <div className="flex gap-2"><Button type="button" variant="outline" disabled={saving} onClick={close}>Cancel</Button><Button type="button" disabled={!draft || saving} onClick={save}>{saving ? 'Saving…' : 'Save changes'}</Button></div>
     </footer>
   </>;

@@ -1,5 +1,5 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
@@ -35,6 +35,13 @@ test('request cards come in the server order, then reply cards in sidebar order'
 test('the selected session has no cards; its nested sessions keep theirs', () => {
   expect(cards(state({selected: 'a'})).map(c => c.key)).toEqual(['request:c:q2', 'request:a-w:q1', 'reply:a-w:4', 'reply:b:3']);
   expect(cards(state({selected: 'a-w'})).map(c => c.key)).toEqual(['request:c:q2', 'reply:a:7', 'reply:b:3']);
+});
+
+test('the notification settings turn request and reply cards off', () => {
+  const off = (requests: boolean, replies: boolean) =>
+    cards(state({config: testConfig({notifications: {requests, replies, macos: true, sound: true}})})).map(c => c.key);
+  expect(off(false, true)).toEqual(['reply:a:7', 'reply:a-w:4', 'reply:b:3']);
+  expect(off(true, false)).toEqual(['request:c:q2', 'request:a-w:q1']);
 });
 
 test('dismissals are forgotten once the request is answered or the reply seen', () => {

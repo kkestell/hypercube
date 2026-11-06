@@ -4,19 +4,21 @@
 // output on every connection, so a reconnect starts the terminal over. The
 // panel closes when its shell exits or cannot connect.
 import {useEffect, useRef} from 'react';
+import {isDark} from '../app/appearance.ts';
 import {closePanel} from '../app/workbench.ts';
 import {useStore} from '../store.ts';
-import {createTerminal} from './xterm.ts';
+import {createTerminal, type TerminalStyle} from './xterm.ts';
 
 interface Shell {
   focus(): void;
+  restyle(style: TerminalStyle): void;
   close(): void;
 }
 
 // openShell connects a terminal in box to the session's shell, calling ended
 // when the shell exits or cannot connect.
-function openShell(box: HTMLElement, session: string, ended: () => void): Shell {
-  const {term, fit, dispose} = createTerminal(box);
+function openShell(box: HTMLElement, session: string, style: TerminalStyle, ended: () => void): Shell {
+  const {term, fit, restyle, dispose} = createTerminal(box, style);
   const encoder = new TextEncoder();
   let socket: WebSocket | null = null, connected = false, exited = false, closed = false;
   const send = (data: Uint8Array<ArrayBuffer> | string) => {
@@ -58,6 +60,10 @@ function openShell(box: HTMLElement, session: string, ended: () => void): Shell 
 
   return {
     focus: () => term.focus(),
+    restyle(style) {
+      restyle(style);
+      resized();
+    },
     close() {
       closed = true;
       socket?.close();
@@ -73,16 +79,20 @@ export function TerminalPanel() {
   const shell = useRef<Shell | null>(null);
   const session = state.session?.id;
   const shown = state.workbench.panel;
+  const dark = isDark(state);
+  const fontSize = state.config?.terminal_font_size ?? 13;
 
   useEffect(() => {
     if (!shown || !session || !box.current) return;
-    shell.current ??= openShell(box.current, session, () => {
+    shell.current ??= openShell(box.current, session, {dark, fontSize}, () => {
       shell.current?.close();
       shell.current = null;
       store.update(closePanel);
     });
     shell.current.focus();
   }, [shown]);
+
+  useEffect(() => shell.current?.restyle({dark, fontSize}), [dark, fontSize]);
 
   useEffect(() => () => shell.current?.close(), []);
 

@@ -14,12 +14,14 @@ import type {Confirmation} from './shared/types.ts';
 // and fileOpens by session ID. unsentDrafts holds parked new-session contexts
 // by draft key; unsent holds the one currently shown. titleBar is null outside
 // the native window.
-// config is the most recently fetched or saved configuration.
+// config is the most recently fetched or saved configuration. systemDark is
+// whether the Mac's appearance is dark.
 // sessionViews retains inactive sessions' view choices without server data.
 export interface State {
   workspaces: Workspace[];
   loaded: boolean;
   config: Config | null;
+  systemDark: boolean;
   limits: Limit[];
   requests: AttentionRequest[];
   selected: string | null;
@@ -44,6 +46,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
   loaded: false,
   config: null,
+  systemDark: false,
   limits: [],
   requests: [],
   selected,

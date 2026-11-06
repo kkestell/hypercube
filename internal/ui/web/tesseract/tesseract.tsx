@@ -92,7 +92,6 @@ function animate(canvas: HTMLCanvasElement): () => void {
 
   const segments = new Float32Array(edges.length * 4);
   const intensity = new Float32Array(edges.length);
-  const appearance = matchMedia('(prefers-color-scheme: dark)');
   let frame = 0;
   const draw = (ms: number) => {
     const width = Math.max(1, Math.round(canvas.clientWidth * devicePixelRatio));
@@ -114,7 +113,7 @@ function animate(canvas: HTMLCanvasElement): () => void {
     gl.uniform4fv(uniform.segments, segments);
     gl.uniform1fv(uniform.intensity, intensity);
     gl.uniform1f(uniform.width, 0.5 * devicePixelRatio);
-    gl.uniform1f(uniform.dark, appearance.matches ? 1 : 0);
+    gl.uniform1f(uniform.dark, document.documentElement.classList.contains('dark') ? 1 : 0);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
 
     frame = requestAnimationFrame(draw);

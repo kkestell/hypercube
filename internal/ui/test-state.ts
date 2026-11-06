@@ -1,5 +1,6 @@
 // Complete states, workspaces, and sessions for tests, which override only
 // what a test is about.
+import type {Config} from './web/app/types.ts';
 import type {OpenFile} from './web/files/types.ts';
 import type {Session, Workspace} from './web/sessions/types.ts';
 import {initialState, type State} from './web/state.ts';
@@ -14,6 +15,14 @@ export const testSession = (overrides: Partial<Session> & {id: string}): Session
   parent: '', title: overrides.id, ready: false, ended: false, unseen: false,
   harness: '', model: '', effort: '', dir: '', activity: 'idle', attention: false, usage: {},
   worktree: false, children: [], ...overrides,
+});
+
+// testConfig has one profile and the default preferences.
+export const testConfig = (overrides: Partial<Config> = {}): Config => ({
+  default_profile: 'lead', default_worktree: false, theme: 'system', terminal_font_size: 13,
+  notifications: {requests: true, replies: true, macos: true, sound: true},
+  profiles: [{name: 'lead', description: 'Large tasks', harness: 'claude', model: 'opus', effort: 'high'}],
+  ...overrides,
 });
 
 // unread is a file open in a tab that has not been read.

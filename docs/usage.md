@@ -5,8 +5,9 @@
 Choose **Add Workspace** to select a project folder, or **New Session** for a
 workspace already in the sidebar. Choose a [profile](configuration.md) below
 the message box and, in a Git workspace, **Local** to work in the checkout or
-**Worktree** to work on a new branch in its own folder above it. Send the first
-prompt to create the session.
+**Worktree** to work on a new branch in its own folder above it. The choice
+starts at the default location from **Settings**. Send the first prompt to
+create the session.
 
 Once you type or attach something, the new session stays in the sidebar as a
 **New Session** row, keeping its prompt, profile, and worktree choice while you
@@ -148,7 +149,9 @@ close after 15 seconds or when the agent works again. Their expiry pauses while
 the pointer is over the card or keyboard focus is inside it.
 
 While the desktop app is open and its window lacks focus, macOS notifications
-announce requests and replies. Clicking one opens its session. Requests and
+announce requests and replies, with a sound. Clicking one opens its session.
+**Settings → Notifications** turns request and reply alerts off, both as cards
+and as macOS notifications, and turns off macOS notifications or their sound. Requests and
 replies that arrive while the app is closed are not announced later; the badge
 and the page show the current requests when it opens.
 
@@ -193,7 +196,8 @@ restarts. Overall panel sizes, sidebar choices, and the last selected session
 are remembered in this browser; the desktop app keeps its own view choices.
 Use **View → Zoom In**, **Zoom Out**, or
 **Actual Size** in the desktop app to change page size. The theme follows macOS
-appearance. In the desktop app, the menus own the shortcuts they show, so ⌘N,
+appearance unless **Settings** sets it to Light or Dark; Settings also sets
+the terminal's text size. In the desktop app, the menus own the shortcuts they show, so ⌘N,
 ⌘B, ⌘J, ⌘⌥B, ⌘⌥↑/↓, ⌘,, ⌘/, and zoom work wherever focus is, including text
 fields, terminals, and dialogs.
 

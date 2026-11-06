@@ -64,12 +64,13 @@ export interface Session {
 
 // Unsent is a new session the user has opened but not yet sent a first prompt
 // to. It lives in unsent while shown, or unsentDrafts when another view is shown.
-// Its identity object tells it apart from a later unsent session.
+// Its identity object tells it apart from a later unsent session. A null
+// worktree follows the Settings default until the user chooses.
 export interface Unsent {
   identity: object;
   workspace: string | null;
   profile: string | null;
-  worktree: boolean;
+  worktree: boolean | null;
   sending: boolean;
 }
 

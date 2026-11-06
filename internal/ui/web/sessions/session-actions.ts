@@ -6,7 +6,7 @@ import {canSend, cleared, draftOf, isUnsent, restored, unsentCreated, unsentOf} 
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
 import type {Store} from '../store.ts';
-import {openUnsent, selectSession, unsentSending} from './selection.ts';
+import {inWorktree, openUnsent, selectSession, unsentSending} from './selection.ts';
 import type {Session, Workspace} from './types.ts';
 
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
@@ -55,8 +55,8 @@ export async function createSession(store: Store, prompt: Prompt, key: string) {
   const unsent = unsentOf(store.get(), key);
   if (!unsent?.workspace || !unsent.profile) return false;
   store.update(state => unsentSending(state, true, key));
-  const {workspace, profile, worktree} = unsent;
-  const params = {action: 'new', workspace, profile, ...(worktree && {worktree: '1'})};
+  const {workspace, profile} = unsent;
+  const params = {action: 'new', workspace, profile, ...(inWorktree(store.get(), unsent) && {worktree: '1'})};
   const created = await post(store, 'session', params, JSON.stringify(prompt));
   // A completion must not change another unsent session or restore into it.
   if (unsentOf(store.get(), key)?.identity !== unsent.identity) return true;

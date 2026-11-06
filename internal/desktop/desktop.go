@@ -94,14 +94,14 @@ func (d *Desktop) conn() (*conn, error) {
 	return d.current, nil
 }
 
-// Alert asks the app to notify the user of the alert. Without the app, the
-// alert is dropped.
-func (d *Desktop) Alert(a session.Alert) error {
+// Alert asks the app to notify the user of the alert, with a sound when sound
+// is set. Without the app, the alert is dropped.
+func (d *Desktop) Alert(a session.Alert, sound bool) error {
 	c, err := d.conn()
 	if err != nil {
 		return nil
 	}
-	return c.send(map[string]any{"type": "alert", "session": a.Session, "title": a.Title, "subtitle": a.Subtitle, "text": a.Text})
+	return c.send(map[string]any{"type": "alert", "session": a.Session, "title": a.Title, "subtitle": a.Subtitle, "text": a.Text, "sound": sound})
 }
 
 // Navigate loads url in the session's browser, creating it, and returns the

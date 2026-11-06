@@ -1,5 +1,5 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
-import {testState} from '../test-state.ts';
+import {testConfig, testState} from '../test-state.ts';
 import {fetchConfig, listFiles, post, readFile} from './api.ts';
 import type {FileRead} from './files/types.ts';
 import {createStore, type Store} from './store.ts';
@@ -83,9 +83,9 @@ test('post shows a network failure and returns null', async () => {
 });
 
 test('fetchConfig requests every configured profile', async () => {
-  const profiles = ['one', 'two'].map(name => ({name, description: '', harness: 'claude', model: '', effort: ''}));
-  const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({default_profile: "two", profiles}));
-  expect(await fetchConfig(createStore(testState()))).toEqual({default_profile: "two", profiles});
+  const config = testConfig({default_profile: 'two', profiles: ['one', 'two'].map(name => ({name, description: '', harness: 'claude', model: '', effort: ''}))});
+  const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(config));
+  expect(await fetchConfig(createStore(testState()))).toEqual(config);
   expect(fetchMock.mock.calls[0][0]).toBe('config');
 });
 

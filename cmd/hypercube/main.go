@@ -12,11 +12,13 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/desktop"
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
@@ -97,7 +99,7 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 	go func() {
 		err := rt.WatchAlerts(ctx, func(alert session.Alert) {
 			// A failed alert is reported and the watch goes on.
-			if err := desktop.Alert(alert); err != nil {
+			if err := sendAlert(desktop, alert); err != nil {
 				fmt.Fprintln(os.Stderr, "hypercube: alerting the desktop app:", err)
 			}
 		})
@@ -106,6 +108,27 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 		}
 	}()
 	return a, nil
+}
+
+// sendAlert passes an alert to the desktop app as the notification
+// preferences allow. An unreadable config is reported and sends the alert as
+// the defaults do.
+func sendAlert(d *desktop.Desktop, alert session.Alert) error {
+	n := harness.DefaultNotifications
+	cfg, err := harness.LoadConfig()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hypercube: reading notification preferences:", err)
+	} else {
+		n = cfg.Notifications
+	}
+	wanted := n.Replies
+	if strings.HasPrefix(alert.Key, "request:") {
+		wanted = n.Requests
+	}
+	if !wanted || !n.MacOS {
+		return nil
+	}
+	return d.Alert(alert, n.Sound)
 }
 
 // close ends the app. With quit it ends every agent first, and each session

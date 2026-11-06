@@ -1,6 +1,6 @@
 // What calls for the user's attention outside the window: the menu bar icon
 // and Dock badge with the number of sessions waiting, and a notification for
-// each alert.
+// each alert, silent unless the alert asks for a sound.
 const {app, Menu, Notification, Tray, nativeImage} = require('electron');
 const path = require('node:path');
 
@@ -25,8 +25,8 @@ function createAttention({resourcesDir, show, clicked}) {
       tray.setTitle(label);
       tray.setToolTip(count ? `Hypercube, ${count} waiting on you` : 'Hypercube');
     },
-    notify({session, title, subtitle, text}) {
-      const notification = new Notification({title, subtitle, body: text});
+    notify({session, title, subtitle, text, sound}) {
+      const notification = new Notification({title, subtitle, body: text, silent: !sound});
       open.add(notification);
       notification.on('click', () => clicked(session));
       notification.on('close', () => open.delete(notification));

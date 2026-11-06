@@ -1,7 +1,8 @@
 import {afterEach, beforeEach, expect, jest, mock, test} from 'bun:test';
 import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.tsx';
-import {testState} from '../../test-state.ts';
+import {testConfig, testState} from '../../test-state.ts';
+import type {TerminalStyle} from './xterm.ts';
 import {emptySession} from '../sessions/selection.ts';
 import {createStore, type Store} from '../store.ts';
 
@@ -32,6 +33,7 @@ class FakeTerminal {
   cols = 80;
   rows = 24;
   resets = 0;
+  styles: TerminalStyle[] = [];
   disposed = false;
   onData() {}
   onBinary() {}
@@ -44,10 +46,11 @@ class FakeTerminal {
 
 let terminals: FakeTerminal[];
 mock.module('./xterm.ts', () => ({
-  createTerminal() {
+  createTerminal(_box: HTMLElement, style: TerminalStyle) {
     const term = new FakeTerminal();
+    term.styles.push(style);
     terminals.push(term);
-    return {term, fit: {fit() {}}, dispose: () => term.dispose()};
+    return {term, fit: {fit() {}}, restyle: (style: TerminalStyle) => term.styles.push(style), dispose: () => term.dispose()};
   },
 }));
 const {TerminalPanel} = await import('./terminal-panel.tsx');
@@ -78,6 +81,13 @@ test('the panel connects to the session\'s shell', () => {
   setup();
   expect(FakeSocket.all.length).toBe(1);
   expect(new URL(FakeSocket.all[0].url).searchParams.get('session')).toBe('s');
+});
+
+test('the open terminal follows the theme and text size settings', () => {
+  const store = setup();
+  act(() => store.update(state => ({...state, config: testConfig({theme: 'dark', terminal_font_size: 16})})));
+  expect(terminals[0].styles.at(0)).toEqual({dark: false, fontSize: 13});
+  expect(terminals[0].styles.at(-1)).toEqual({dark: true, fontSize: 16});
 });
 
 test('the panel closes when the shell exits', () => {
