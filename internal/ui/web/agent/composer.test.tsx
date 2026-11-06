@@ -146,7 +146,7 @@ test('pending creation keeps Send disabled and cannot interrupt a placeholder', 
   const send = control(root, 'Send');
   expect(send.disabled).toBe(true);
   clickControl(send);
-  expect(fetches.mock.calls.map(([url]) => queryOf(url).action)).toEqual(['new']);
+  expect(fetches.mock.calls.filter(([url]) => url.startsWith('session?')).map(([url]) => queryOf(url).action)).toEqual(['new']);
   release();
   await settle();
 });

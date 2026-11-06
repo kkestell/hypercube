@@ -7,6 +7,7 @@ import type {Session} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {isUnsent, unsentOf} from './drafts.ts';
+import {useModels} from './catalogs.ts';
 import {ModelSelect} from './model-select.tsx';
 import {sameSettings, settingsText} from './selection-label.ts';
 import type {Settings} from './types.ts';
@@ -15,20 +16,24 @@ export function SessionSelection({session}: {session: Session}) {
   const [state, store] = useStore();
   const unsent = isUnsent(session.id) ? unsentOf(state, session.id) : undefined;
   if (unsent) {
-    return <ModelSelect value={unsent.settings} place={unsent.workspace ? {workspace: unsent.workspace} : null}
+    return <ModelSelect key={unsent.workspace} value={unsent.settings} workspace={unsent.workspace}
       disabled={unsent.sending} onChange={settings => store.update(s => unsentSettingsChosen(s, settings))} />;
   }
-  const parent = sessionOf(state, session.id)?.parent;
+  const found = sessionOf(state, session.id);
+  const workspace = found?.workspace.id ?? null;
+  const parent = found?.parent;
   return <span className="flex min-w-0 items-center gap-1">
-    <ModelSelect value={session} place={{session: session.id}} fixedHarness disabled={!session.ready || session.ended}
+    <ModelSelect key={session.id} value={session} workspace={workspace} fixedHarness disabled={!session.ready || session.ended}
       onChange={settings => selectModel(store, session.id, settings.model, settings.effort)} />
-    {parent && <SettingsDiffer child={session} parent={parent} />}
+    {parent && <SettingsDiffer child={session} parent={parent} workspace={workspace} />}
   </span>;
 }
 
 // SettingsDiffer marks a child whose settings differ from its parent's.
-export function SettingsDiffer({child, parent}: {child: Settings; parent: Settings}) {
+export function SettingsDiffer({child, parent, workspace}: {child: Settings; parent: Settings; workspace: string | null}) {
+  const childModels = useModels(workspace, child.harness);
+  const parentModels = useModels(workspace, parent.harness);
   if (sameSettings(child, parent)) return null;
   return <Icon name="differs" role="img" className="text-muted-foreground"
-    title={`Settings differ from the parent's: ${settingsText(child)}; parent ${settingsText(parent)}`} />;
+    title={`Settings differ from the parent's: ${settingsText(child, childModels)}; parent ${settingsText(parent, parentModels)}`} />;
 }

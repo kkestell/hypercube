@@ -1,5 +1,6 @@
 // The page's state, which the store holds: the server's workspaces, requests,
 // and limits, and what the page itself keeps.
+import type {CatalogEntry} from './agent/catalogs.ts';
 import type {Draft} from './agent/types.ts';
 import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
@@ -19,6 +20,7 @@ import type {Confirmation} from './shared/types.ts';
 // sessionViews retains inactive sessions' view choices without server data.
 export interface State {
   workspaces: Workspace[];
+  catalogs: Record<string, CatalogEntry>;
   loaded: boolean;
   config: Config | null;
   systemDark: boolean;
@@ -44,6 +46,7 @@ export interface State {
 // session the page's URL names selected.
 export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
+  catalogs: {},
   loaded: false,
   config: null,
   systemDark: false,

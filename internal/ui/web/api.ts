@@ -69,14 +69,9 @@ export const selectModel = (store: Store, session: string, model: string, effort
 // fetchHarnesses lists the installed harnesses, scanning for new ones.
 export const fetchHarnesses = (signal: AbortSignal) => get<Harness[]>('harnesses', {}, signal);
 
-// Where a harness's models are asked about: a session's directory, or a
-// workspace's for a new session.
-export type ModelsPlace = {session: string} | {workspace: string};
-
-// fetchModels asks a harness for its models and, with model, that model's
-// efforts.
-export const fetchModels = (place: ModelsPlace, harness: string, model: string, signal: AbortSignal) =>
-  get<Catalog>('models', {...place, harness, ...(model && {model})}, signal);
+// fetchModels returns saved choices, or asks the harness again with refresh.
+export const fetchModels = (workspace: string, harness: string, model: string, refresh: boolean, signal?: AbortSignal) =>
+  get<Catalog>('models', {workspace, harness, ...(model && {model}), ...(refresh && {refresh: '1'})}, signal);
 
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.

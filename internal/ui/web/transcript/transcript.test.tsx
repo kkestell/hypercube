@@ -1,7 +1,7 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, element, find, findAll, mount, setValue, unmountAll} from '../../test-render.tsx';
-import {testSession, testState} from '../../test-state.ts';
+import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
+import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptySession} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {Transcript} from './transcript.tsx';
@@ -62,6 +62,17 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
   const done = find(root, '.transcript-list [aria-label="Proposed child session"]');
   expect(done.textContent).toContain('Child session: review');
   expect([...done.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
+});
+
+test('open and answered proposals show model display names from the session workspace', async () => {
+  const fetches = stubFetch(() => Response.json({models: [{id: 'm', label: 'Model M'}]}));
+  const {root, store, send} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}]);
+  await act(async () => store.update(state => ({...state, workspaces: [testWorkspace({id: 'w', sessions: [busy]})]})));
+  expect(fetches.mock.calls[0][0]).toBe('models?workspace=w&harness=codex');
+  expect(find(root, '[title="Codex Model M, effort low"]').textContent).toContain('Model M');
+  send([{id: 'p', kind: 'proposal', text: 'Task', done: true, answer: 'child', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}]);
+  expect(find(root, '[title="Codex Model M, effort low"]').textContent).toContain('Model M');
+  expect(fetches).toHaveBeenCalledTimes(1);
 });
 
 test('a refused proposal action can be retried or dismissed', async () => {

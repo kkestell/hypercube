@@ -124,7 +124,7 @@ test('the default model is chosen from the workspace and initializes a draft tha
     if (url === 'config' && init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
     if (url.startsWith('models?')) {
       const model = new URL(url, 'http://x/').searchParams.get('model');
-      return Response.json(model ? {models: [], model, efforts: ['low'], default_effort: 'low'} : {models: [{id: 'sol', label: 'Sol'}], default: 'sol'});
+      return Response.json(model ? {models: [], model, efforts: ['low'], default_effort: 'low'} : {models: [{id: 'sol', label: 'Sol'}, {id: 'opus', label: 'Opus 5.5'}], default: 'sol'});
     }
     if (url === 'harnesses?') return Response.json([{id: 'claude', name: 'Claude Code', installed: true}, {id: 'codex', name: 'Codex', installed: true}]);
     if (url.startsWith('session?')) {
@@ -138,6 +138,7 @@ test('the default model is chosen from the workspace and initializes a draft tha
   const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);
+  expect(picker.title).toBe('Claude Opus 5.5, effort high');
   clickControl(picker);
   await settle(); await settle();
   const key = (target: Element) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); });
@@ -149,7 +150,7 @@ test('the default model is chosen from the workspace and initializes a draft tha
   await click('Save changes');
   const chosen = {harness: 'codex', model: 'sol', effort: 'low'};
   expect(posts[0].default_selection).toEqual(chosen);
-  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('Codex sol, effort low');
+  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('Codex Sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created[0]).toMatchObject({action: 'new', ...chosen});
 });

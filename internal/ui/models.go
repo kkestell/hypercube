@@ -19,29 +19,27 @@ func (s *server) harnesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, list)
 }
 
-// models asks a harness for the models it offers in a session's directory,
-// or in a workspace's for a new session.
+// models returns a workspace's saved catalog, refreshing it when requested.
 func (s *server) models(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	var dir string
 	err := s.db.Read(func(tx *store.Tx) error {
-		switch {
-		case q.Get("session") != "":
-			session, err := tx.Session(q.Get("session"))
-			dir = session.Dir
-			return err
-		case q.Get("workspace") != "":
-			workspace, err := tx.Workspace(q.Get("workspace"))
-			dir = workspace.Path
-			return err
+		if q.Get("workspace") == "" {
+			return errors.New("a workspace is required")
 		}
-		return errors.New("a session or workspace is required")
+		workspace, err := tx.Workspace(q.Get("workspace"))
+		dir = workspace.Path
+		return err
 	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	catalog, err := s.rt.Models(r.Context(), q.Get("harness"), dir, q.Get("model"))
+	models := s.rt.CachedModels
+	if q.Get("refresh") == "1" {
+		models = s.rt.Models
+	}
+	catalog, err := models(r.Context(), q.Get("harness"), dir, q.Get("model"))
 	if refused(w, err) {
 		return
 	}

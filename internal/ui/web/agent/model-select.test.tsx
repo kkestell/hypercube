@@ -2,10 +2,11 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
 import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {openUnsent, receivedWorkspaces} from '../sessions/selection.ts';
+import {openUnsent, receivedWorkspaces, shownSession} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
-import {createStore} from '../store.ts';
+import {createStore, useStore} from '../store.ts';
+import {catalogKey} from './catalogs.ts';
 import {typed, unsentKey as workspaceDraftKey} from './drafts.ts';
 import {SessionSelection} from './session-selection.tsx';
 import type {Catalog, Harness} from './types.ts';
@@ -69,15 +70,17 @@ const unsentStore = (sessions: Session[] = []) => createStore(openUnsent(testSta
   workspaces: [testWorkspace({id: 'w', path: '/repo', sessions})],
 }), 'w'));
 
-test('a new session starts from the newest session in its workspace, then the default', () => {
+test('a closed selector loads display names, using the newest session then the default', async () => {
   serve();
   const fresh = unsentStore();
   const root = mount(fresh, <SessionSelection session={testSession({id: unsentKey})} />);
-  expect(trigger(root).title).toBe('Claude opus, effort high');
+  await settle();
+  expect(trigger(root).title).toBe('Claude Opus, effort high');
   unmountAll();
   const used = unsentStore([testSession({id: 'n', harness: 'codex', model: 'sol', effort: ''})]);
   const second = mount(used, <SessionSelection session={testSession({id: unsentKey})} />);
-  expect(trigger(second).title).toBe('Codex sol, default effort');
+  await settle();
+  expect(trigger(second).title).toBe('Codex Sol, default effort');
 });
 
 test('choosing a harness, a searched model, and an effort sets the draft without losing its text', async () => {
@@ -85,7 +88,7 @@ test('choosing a harness, a searched model, and an effort sets the draft without
   const s = unsentStore();
   s.update(state => typed(state, unsentKey, 'keep this'));
   const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
-  expect(fetches).not.toHaveBeenCalled();
+  expect(fetches.mock.calls.map(([url]) => queryOf(url))).toEqual([{workspace: 'w', harness: 'claude'}]);
   await open(root);
   // Only installed harnesses are offered.
   await chooseOption('Harness', 'Codex');
@@ -98,7 +101,7 @@ test('choosing a harness, a searched model, and an effort sets the draft without
   expect(s.get().unsent?.settings).toEqual({harness: 'codex', model: 'sol', effort: ''});
   expect(s.get().drafts[unsentKey].text).toBe('keep this');
   const asked = fetches.mock.calls.map(([url]) => url).filter(url => url.startsWith('models?')).map(queryOf);
-  expect(asked).toContainEqual({workspace: 'w', harness: 'codex'});
+  expect(asked).toContainEqual({workspace: 'w', harness: 'codex', refresh: '1'});
   expect(asked).toContainEqual({workspace: 'w', harness: 'codex', model: 'sol'});
   await act(async () => { await createSession(s, {text: 'keep this', images: []}, unsentKey); });
   const created = fetches.mock.calls.map(([url]) => url).find(url => url.startsWith('session?'))!;
@@ -121,9 +124,11 @@ test('search narrows the models, and a model without efforts has no effort contr
 
 test('a running session changes its model within its harness', async () => {
   const fetches = serve();
-  const s = createStore(testState());
   const running = testSession({id: 'a', harness: 'claude', model: 'plain', effort: '', ready: true});
+  const s = createStore(testState({workspaces: [testWorkspace({id: 'w', sessions: [running]})]}));
   const root = mount(s, <SessionSelection session={running} />);
+  await settle();
+  expect(trigger(root).title).toBe('Claude Plain, default effort');
   await open(root);
   expect(document.querySelector('[aria-label=Harness]')).toBeNull();
   await choose('Opus');
@@ -134,7 +139,7 @@ test('a running session changes its model within its harness', async () => {
   // A session that is not ready shows its settings and cannot change them.
   const starting = mount(s, <SessionSelection session={{...running, ready: false}} />);
   expect(trigger(starting).disabled).toBe(true);
-  expect(trigger(starting).title).toBe('Claude plain, default effort');
+  expect(trigger(starting).title).toBe('Claude Plain, default effort');
 });
 
 test('discovery failures are shown and leave the selection as it was', async () => {
@@ -156,30 +161,34 @@ test('discovery failures are shown and leave the selection as it was', async () 
 
 test('a late catalog for another workspace is ignored', async () => {
   const waiting: ((response: Response) => void)[] = [];
-  const fetches = serve(url => url.startsWith('models?') && queryOf(url).workspace === 'w'
+  serve(url => url.startsWith('models?') && queryOf(url).workspace === 'w'
     ? new Promise<Response>(resolve => { waiting.push(resolve); }) : undefined);
   const s = unsentStore();
   s.update(state => receivedWorkspaces(state, [...state.workspaces, testWorkspace({id: 'other', path: '/other'})]));
-  const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  function ShownSelection() {
+    const [state] = useStore();
+    return <SessionSelection session={shownSession(state)!} />;
+  }
+  const root = mount(s, <ShownSelection />);
   await open(root);
-  const first = fetches.mock.calls.findIndex(([url]) => url.startsWith('models?'));
   act(() => s.update(state => openUnsent(state, 'other')));
-  await settle();
-  expect(fetches.mock.calls[first][1]?.signal?.aborted).toBe(true);
+  await open(root);
+  expect(item('Opus')).toBeDefined();
   waiting[0](Response.json({models: [{id: 'stale', label: 'Stale'}]}));
   await settle();
   expect(findAll(document, '[cmdk-item]').some(i => i.textContent?.startsWith('Stale'))).toBe(false);
   expect(s.get().unsent).toMatchObject({workspace: 'other', settings: {harness: 'claude', model: 'opus', effort: 'high'}});
 });
 
-test('a child whose settings differ from its parent is marked', () => {
+test('a child whose settings differ from its parent is marked with display names', async () => {
   serve();
   const child = testSession({id: 'c', parent: 'p', harness: 'claude', model: 'plain', effort: ''});
   const parent = testSession({id: 'p', harness: 'claude', model: 'opus', effort: 'high', children: [child]});
   const s = createStore(testState({workspaces: [testWorkspace({id: 'w', sessions: [parent]})]}));
   const root = mount(s, <SessionSelection session={child} />);
+  await settle();
   expect(root.querySelector('[role=img][aria-label^="Settings differ"]')?.getAttribute('aria-label'))
-    .toBe("Settings differ from the parent's: Claude plain, default effort; parent Claude opus, effort high");
+    .toBe("Settings differ from the parent's: Claude Plain, default effort; parent Claude Opus, effort high");
   unmountAll();
   const same = mount(s, <SessionSelection session={{...child, model: 'opus', effort: 'high'}} />);
   expect(same.querySelector('[aria-label^="Settings differ"]')).toBeNull();
@@ -206,4 +215,49 @@ test("a failure to list the current model's efforts is shown", async () => {
   await open(root);
   expect(find(document, '[role=alert]').textContent).toBe('Could not list the efforts of opus: effort discovery failed');
   expect(document.querySelector('[aria-label=Effort]')).toBeNull();
+});
+
+test('closing and remounting the selector keeps the display name', async () => {
+  serve();
+  const s = unsentStore();
+  const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  await open(root);
+  expect(trigger(root).title).toBe('Claude Opus, effort high');
+  act(() => document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true})));
+  await settle();
+  expect(document.querySelector('[aria-label="Search models"]')).toBeNull();
+  expect(trigger(root).title).toBe('Claude Opus, effort high');
+  unmountAll();
+  const remounted = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  expect(trigger(remounted).title).toBe('Claude Opus, effort high');
+});
+
+test('opening shows saved models during refresh and updates them in place', async () => {
+  let finish!: (response: Response) => void;
+  serve(url => queryOf(url).refresh === '1' && !queryOf(url).model
+    ? new Promise<Response>(resolve => { finish = resolve; }) : undefined);
+  const s = unsentStore();
+  s.update(state => ({...state, catalogs: {
+    [catalogKey({workspace: 'w', harness: 'claude', model: ''})]: {value: catalogs.claude, loading: false},
+  }}));
+  const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  await open(root);
+  expect(item('Opus').textContent).toContain('opus');
+  expect(document.body.textContent).not.toContain('Loading models…');
+  await act(async () => finish(Response.json({models: [{id: 'opus', label: 'Opus 5.5'}]})));
+  expect(item('Opus 5.5')).toBeDefined();
+  expect(trigger(root).title).toBe('Claude Opus 5.5, effort high');
+});
+
+test('a failed refresh keeps saved models and shows the error', async () => {
+  serve(url => queryOf(url).refresh === '1' && !queryOf(url).model
+    ? new Response('Catalog unavailable', {status: 409}) : undefined);
+  const s = unsentStore();
+  s.update(state => ({...state, catalogs: {
+    [catalogKey({workspace: 'w', harness: 'claude', model: ''})]: {value: catalogs.claude, loading: false},
+  }}));
+  const root = mount(s, <SessionSelection session={testSession({id: unsentKey})} />);
+  await open(root);
+  expect(item('Opus')).toBeDefined();
+  expect(find(document, '[role=alert]').textContent).toBe('Catalog unavailable');
 });

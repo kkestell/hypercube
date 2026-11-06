@@ -67,7 +67,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
         </span>}
       </span>
       {session.id !== renaming && (session.worktree || status || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
-        {parent && <SettingsDiffer child={session} parent={parent} />}
+        {parent && <SettingsDiffer child={session} parent={parent} workspace={sessionOf(state, session.id)?.workspace.id ?? null} />}
         {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
         {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}

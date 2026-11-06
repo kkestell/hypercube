@@ -1,22 +1,23 @@
 // Chooses a harness, model, and effort from what the harnesses offer in a
-// directory. The choices load when the picker opens. Choosing a model loads its
-// efforts before the complete settings are committed; a running session's
-// harness is fixed.
-import {useEffect, useState} from 'react';
-import {fetchHarnesses, fetchModels, type ModelsPlace} from '../api.ts';
+// workspace. Saved choices show immediately and refresh when opened. Choosing
+// a model loads its efforts before committing; a running session's harness is fixed.
+import {useEffect, useEffectEvent, useState} from 'react';
+import {fetchHarnesses} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Command, CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {Popover, PopoverContent, PopoverTrigger} from '../components/ui/popover';
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
 import {Icon} from '../shared/icon.tsx';
+import {useStore} from '../store.ts';
+import {catalogOf, loadCatalog, useModels} from './catalogs.ts';
 import {displayName, settingsText} from './selection-label.ts';
 import {SelectionName} from './selection-name.tsx';
-import type {Catalog, Harness, Settings} from './types.ts';
+import type {Harness, Settings} from './types.ts';
 
 interface ModelSelectProps {
   value: Settings | null;
   // Where the choices are offered; without one there is nothing to choose.
-  place: ModelsPlace | null;
+  workspace: string | null;
   onChange: (settings: Settings) => void;
   fixedHarness?: boolean;
   disabled?: boolean;
@@ -30,56 +31,58 @@ const harnessDefault = 'harness-default';
 const reason = (error: unknown) => error instanceof Error ? error.message : String(error);
 const aborted = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
 
-// Loaded is a request's result, or why it failed, for the key it was made for.
-type Loaded<T> = {key: string; value?: T; error?: string};
-
-// useLoad runs load for key while key is set, cancelling superseded requests.
-function useLoad<T>(key: string | null, load: (signal: AbortSignal) => Promise<T>): Loaded<T> | null {
-  const [loaded, setLoaded] = useState<Loaded<T> | null>(null);
-  useEffect(() => {
-    if (key === null) return;
-    const controller = new AbortController();
-    load(controller.signal).then(
-      value => setLoaded({key, value}),
-      error => { if (!aborted(error)) setLoaded({key, error: reason(error)}); });
-    return () => controller.abort();
-  }, [key]);
-  return loaded && loaded.key === key ? loaded : null;
-}
-
-export function ModelSelect({value, place, onChange, fixedHarness = false, disabled = false, label = 'Model', className = ''}: ModelSelectProps) {
+export function ModelSelect({value, workspace, onChange, fixedHarness = false, disabled = false, label = 'Model', className = ''}: ModelSelectProps) {
+  const [state, store] = useStore();
+  const shownModels = useModels(workspace, value?.harness);
   const [open, setOpen] = useState(false);
   const [browsed, setBrowsed] = useState<string | null>(null);
   // The model chosen while its efforts load, and why the last choice failed.
   const [pending, setPending] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const placeKey = place && JSON.stringify(place);
-
-  const harnesses = useLoad<Harness[]>(open && !fixedHarness ? 'harnesses' : null, fetchHarnesses);
+  const [harnesses, setHarnesses] = useState<{value?: Harness[]; error?: string} | null>(null);
+  useEffect(() => {
+    if (!open || fixedHarness) return;
+    const controller = new AbortController();
+    fetchHarnesses(controller.signal).then(value => setHarnesses({value}),
+      error => { if (!aborted(error)) setHarnesses({error: reason(error)}); });
+    return () => controller.abort();
+  }, [open, fixedHarness]);
   const installed = harnesses?.value?.filter(h => h.installed) ?? [];
   const harness = browsed ?? value?.harness ?? installed[0]?.id ?? '';
-  const catalog = useLoad<Catalog>(open && place && harness ? `${placeKey}\n${harness}` : null,
-    signal => fetchModels(place!, harness, '', signal));
-  const effortModel = pending ?? (value?.harness === harness ? value.model : null);
-  const efforts = useLoad<Catalog>(open && place && harness && effortModel ? `${placeKey}\n${harness}\n${effortModel}` : null,
-    signal => fetchModels(place!, harness, effortModel!, signal));
+  const catalog = workspace && harness ? catalogOf(state, {workspace, harness, model: ''}) : undefined;
+  const currentModel = value?.harness === harness ? value.model : null;
+  const effortModel = pending ?? currentModel;
+  const efforts = workspace && harness && effortModel ? catalogOf(state, {workspace, harness, model: effortModel}) : undefined;
+
+  // Refresh the selection at opening or when browsing another harness; choosing
+  // a model below uses its saved efforts instead.
+  const refreshEfforts = useEffectEvent(() => {
+    if (workspace && harness && currentModel) void loadCatalog(store, {workspace, harness, model: currentModel}, true);
+  });
+  useEffect(() => {
+    if (!open || !workspace || !harness) return;
+    void loadCatalog(store, {workspace, harness, model: ''}, true);
+    refreshEfforts();
+  }, [store, open, workspace, harness]);
 
   // A chosen model is committed with its default effort once its efforts load,
   // or with the current effort when it is the current model.
   useEffect(() => {
-    if (!pending || !efforts || efforts.key.split('\n')[2] !== pending) return;
+    if (!pending || !efforts || (!efforts.value && !efforts.error)) return;
     setPending(null);
-    if (efforts.error) {
+    if (!efforts.value && efforts.error) {
       setFailure(`Could not choose ${pending}: ${efforts.error}`);
       return;
     }
     const same = value?.harness === harness && value.model === pending;
     const effort = same && (value.effort === '' || efforts.value?.efforts?.includes(value.effort)) ? value.effort : efforts.value?.default_effort ?? '';
     onChange({harness, model: pending, effort});
-  }, [efforts, pending]);
+  }, [efforts, pending, harness, value, onChange]);
 
   const choose = (model: string) => {
+    if (!workspace || !harness) return;
     setFailure(null);
+    void loadCatalog(store, {workspace, harness, model});
     setPending(model);
   };
   const chooseEffort = (effort: string) => {
@@ -96,10 +99,9 @@ export function ModelSelect({value, place, onChange, fixedHarness = false, disab
   };
 
   const models = catalog?.value?.models ?? [];
-  const shownModels = value?.harness === harness ? models : [];
   const effortChoices = !pending && value?.harness === harness ? efforts?.value?.efforts ?? [] : [];
   const browsedHarness = harnesses?.value?.find(h => h.id === harness);
-  const status = !place ? 'Add a workspace to choose a model.'
+  const status = !workspace ? 'Add a workspace to choose a model.'
     : harnesses?.error ?? (harnesses?.value && !installed.length ? 'No harness is installed.' : null)
     ?? (browsedHarness?.error || (browsedHarness && !browsedHarness.installed ? `${browsedHarness.name || displayName(harness)} is not installed.` : null))
     ?? catalog?.error ?? failure ?? (!pending && efforts?.error ? `Could not list the efforts of ${effortModel}: ${efforts.error}` : null) ?? null;
@@ -123,11 +125,11 @@ export function ModelSelect({value, place, onChange, fixedHarness = false, disab
           </Select>
         )}
         {status && <p role="alert" className="px-1 text-xs text-destructive">{status}</p>}
-        {place && harness && !catalog?.error && (
+        {workspace && harness && (catalog?.value || !catalog?.error) && (
           <Command loop>
             <CommandInput placeholder="Search models" aria-label="Search models" />
             <CommandList className="max-h-64">
-              {!catalog ? <p className="py-6 text-center text-sm text-muted-foreground">Loading models…</p>
+              {!catalog?.value ? <p className="py-6 text-center text-sm text-muted-foreground">Loading models…</p>
                 : <CommandEmpty>No models match.</CommandEmpty>}
               {models.map(m => {
                 const current = value?.harness === harness && value.model === m.id;

@@ -68,7 +68,7 @@ function DefaultSelection({draft, onChange}: SectionProps) {
   const workspace = (state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id) || state.workspaces[0]?.id;
   return <div className="grid gap-3">
     <span className="text-sm font-medium leading-none">Default model</span>
-    <ModelSelect value={draft.default_selection ?? null} place={workspace ? {workspace} : null} label="Default model"
+    <ModelSelect value={draft.default_selection ?? null} workspace={workspace ?? null} label="Default model"
       className="self-start" onChange={default_selection => onChange({default_selection})} />
     <p className="text-sm text-muted-foreground">
       {workspace ? 'New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.'

@@ -142,6 +142,9 @@ CREATE TABLE IF NOT EXISTS grants (
   session TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   harness TEXT NOT NULL, tool TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS grants_unique ON grants (COALESCE(session, ''), harness, tool);
+CREATE TABLE IF NOT EXISTS catalogs (
+  harness TEXT NOT NULL, dir TEXT NOT NULL, model TEXT NOT NULL,
+  catalog TEXT NOT NULL, PRIMARY KEY (harness, dir, model));
 CREATE TABLE IF NOT EXISTS limits (
   harness TEXT NOT NULL, minutes INTEGER NOT NULL, used INTEGER NOT NULL,
   resets INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (harness, minutes));

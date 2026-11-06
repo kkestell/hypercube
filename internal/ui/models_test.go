@@ -1,10 +1,13 @@
 package ui
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -36,7 +39,6 @@ func TestHarnessesAndModels(t *testing.T) {
 	}
 	for _, query := range []url.Values{
 		{"harness": {"test"}, "workspace": {a.session.Workspace}, "model": {"m"}},
-		{"harness": {"test"}, "session": {a.session.ID}, "model": {"m"}},
 	} {
 		code, body := a.get("/models?" + query.Encode())
 		want, _ := harnesstest.Catalog(harness.ModelsRequest{Model: "m"})
@@ -53,6 +55,44 @@ func TestHarnessesAndModels(t *testing.T) {
 		if code, body := a.get("/models?" + query.Encode()); code == http.StatusOK {
 			t.Fatalf("models(%v) = %s", query, body)
 		}
+	}
+}
+
+func TestModelsCacheAndRefresh(t *testing.T) {
+	a := newApp(t)
+	log := filepath.Join(t.TempDir(), "models.log")
+	t.Setenv("HYPERCUBE_TEST_MODELS_LOG", log)
+	query := url.Values{"harness": {"test"}, "workspace": {a.session.Workspace}}
+	get := func(wantCalls int) []byte {
+		t.Helper()
+		code, body := a.get("/models?" + query.Encode())
+		if code != http.StatusOK {
+			t.Fatalf("models = %d %s", code, body)
+		}
+		requests, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := bytes.Count(requests, []byte("\n")); got != wantCalls {
+			t.Fatalf("plugin calls = %d, want %d", got, wantCalls)
+		}
+		return body
+	}
+	fresh := get(1)
+	get(1)
+	// Seed a visibly older catalog to show that refresh replaces the saved value.
+	stale := `{"models":[{"id":"old"}]}`
+	change(t, a.db, func(tx *store.Tx) error { return tx.SaveCatalog("test", a.session.Dir, "", stale) })
+	if got := get(1); string(bytes.TrimSpace(got)) != stale {
+		t.Fatalf("cached catalog = %s", got)
+	}
+	query.Set("refresh", "1")
+	if got := get(2); !bytes.Equal(got, fresh) {
+		t.Fatalf("refreshed catalog = %s, want %s", got, fresh)
+	}
+	query.Del("refresh")
+	if got := get(2); !bytes.Equal(got, fresh) {
+		t.Fatalf("saved refresh = %s, want %s", got, fresh)
 	}
 }
 
