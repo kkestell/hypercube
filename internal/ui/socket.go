@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -55,7 +56,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	go readSelections(ctx, cancel, conn, selections)
 
 	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt,
-		batch: map[string]session.TranscriptItem{}, stale: true}
+		batch: map[string]session.TranscriptItem{}}
 	defer d.endView()
 	if d.sendState() != nil {
 		return
@@ -75,7 +76,7 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			d.add(change)
-			if tick == nil {
+			if tick == nil && (d.stale || len(d.batch) > 0) {
 				timer.Reset(coalesce)
 				tick = timer.C
 			}
@@ -98,9 +99,7 @@ type dataSocket struct {
 	db   *store.DB
 	rt   *session.Runtime
 
-	workspaces []shownWorkspace
-	limits     []store.Limit
-	// stale marks workspaces and limits out of date with the database.
+	// stale marks the state as possibly changed since it was last sent.
 	stale bool
 	sent  []byte
 
@@ -111,21 +110,19 @@ type dataSocket struct {
 	batch map[string]session.TranscriptItem
 }
 
-// sendState sends the view data and requests if they differ from the last
-// state sent, rereading the view data first when it is stale.
+// sendState reads the view data and requests and sends them if they differ
+// from the last state sent.
 func (d *dataSocket) sendState() error {
-	if d.stale {
-		workspaces, limits, err := snapshot(d.db, d.rt.Merges())
-		if err != nil {
-			return err
-		}
-		d.workspaces, d.limits, d.stale = workspaces, limits, false
+	d.stale = false
+	workspaces, limits, err := snapshot(d.db, d.rt.Merges())
+	if err != nil {
+		return err
 	}
 	requests, err := d.rt.Requests()
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(stateMessage{"state", buildID(), d.workspaces, requests, d.limits})
+	data, err := json.Marshal(stateMessage{"state", buildID(), workspaces, requests, limits})
 	if err != nil || bytes.Equal(data, d.sent) {
 		return err
 	}
@@ -166,21 +163,27 @@ func (d *dataSocket) endView() {
 	}
 }
 
-// add records a change for the next batch.
+// add records a change for the next batch. Durable writes and queued file
+// opens publish a change without a session. A streamed request also changes
+// the requests; other streamed items concern only a page that selects their
+// session.
 func (d *dataSocket) add(change session.Change) {
-	switch {
-	case change.Session == "":
+	if change.Session == "" || change.Item.Kind == harness.KindAttention {
 		d.stale = true
-	case change.Session == d.selected:
+	}
+	if change.Session != "" && change.Session == d.selected {
 		d.batch[change.Item.ID] = session.TranscriptItem{Item: change.Item, Seq: change.Seq}
 	}
 }
 
-// flush sends the state if it changed, then the batched items in
-// transcript order.
+// flush sends the state and file opens if they may have changed, with the
+// batched items in transcript order between them.
 func (d *dataSocket) flush() error {
-	if err := d.sendState(); err != nil {
-		return err
+	stale := d.stale
+	if stale {
+		if err := d.sendState(); err != nil {
+			return err
+		}
 	}
 	if len(d.batch) > 0 {
 		items := make([]session.TranscriptItem, 0, len(d.batch))
@@ -193,6 +196,9 @@ func (d *dataSocket) flush() error {
 		}
 	}
 	clear(d.batch)
+	if !stale {
+		return nil
+	}
 	return d.sendOpens()
 }
 

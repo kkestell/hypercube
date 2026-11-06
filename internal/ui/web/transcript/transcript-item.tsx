@@ -33,8 +33,10 @@ export interface RowControls {
   setOpen: (key: string, open: boolean) => void;
 }
 
-// TranscriptRow draws a row of transcriptRows.
-export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {row: Row}) {
+// TranscriptRow draws a row of transcriptRows. A row redraws only when its
+// row or controls change, so typing and other page changes leave a long
+// transcript alone.
+export const TranscriptRow = memo(({row, session, expanded, setOpen}: RowControls & {row: Row}) => {
   switch (row.type) {
     case 'activity': return <ActivityItem row={row} session={session} expanded={expanded} setOpen={setOpen} />;
     case 'tool': return <ToolCall call={row} session={session} expanded={expanded} setOpen={setOpen} />;
@@ -46,4 +48,4 @@ export function TranscriptRow({row, session, expanded, setOpen}: RowControls & {
     case 'error': return <ErrorAlert item={row.item} />;
     case 'text': return <TextBlock item={row.item} />;
   }
-}
+});

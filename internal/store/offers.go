@@ -9,8 +9,10 @@ type OpenOffer struct {
 }
 
 func (t *Tx) OpenOffers() ([]OpenOffer, error) {
-	rows, err := t.tx.Query(`SELECT transcript.session, data FROM transcript
-  JOIN sessions ON sessions.id = transcript.session
+	// CROSS JOIN makes SQLite read active sessions first and look up only
+	// their transcripts, instead of evaluating JSON for every saved item.
+	rows, err := t.tx.Query(`SELECT transcript.session, data FROM sessions
+  CROSS JOIN transcript ON transcript.session = sessions.id
   WHERE sessions.ended = 0 AND json_extract(data, '$.offer') = 1
   AND COALESCE(json_extract(data, '$.done'), 0) = 0`)
 	if err != nil {
