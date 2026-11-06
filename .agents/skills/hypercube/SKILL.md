@@ -48,35 +48,52 @@ states what is rewritten and deleted, and why the result is simpler overall.
 Before starting work, explain whether loading it requires active sessions to
 restart, using the criteria in `AGENTS.md`.
 
+## Task folder
+
+Plans and reviews are working files, not part of the repository. At the start
+of the task, create a folder with `mktemp -d -t hypercube` and write them
+there, never in the checkout. Pass the folder's absolute path to every session
+that works on the task, so each one reads the same plan and reviews whatever
+checkout it runs in.
+
 ## Planning
 
-For nontrivial work, write a plan with `/kplan`, or delegate it. Confirm
-assumptions with the user only when they would change the scope; ask about
-each one separately, with plausible alternatives. Resolve ordinary details
-without expanding scope. The plan shows the design that leaves the codebase
-simplest overall, including any abstraction it rewrites and any code it
-deletes, and justifies additions against current requirements.
+For nontrivial work, write a plan as `plan.md` in the task folder, or delegate
+it. Confirm assumptions with the user only when they would change the scope;
+ask about each one separately, with plausible alternatives. Resolve ordinary
+details without expanding scope.
+
+The plan states the goal and the user's requirements, the design, the files
+it changes, the code it rewrites and deletes, and the checks that verify it.
+It shows the design that leaves the codebase simplest overall and justifies
+additions against current requirements. Write it so an implementer who has
+not seen this conversation can follow it.
 
 ## Architectural review
 
 Before implementing a new subsystem or an architectural change, have a session
 that did not write the plan review it against `AGENTS.md`, in the context of
-the whole system and against the plan's simpler baseline. Verify its findings
-and resolve justified concerns in the plan. Changes that add no new subsystem
-and rewrite no abstraction skip this step.
+the whole system and against the plan's simpler baseline. The reviewer writes
+its findings to `plan-review.md` in the task folder. Verify them and resolve
+justified concerns in the plan. Changes that add no new subsystem and rewrite
+no abstraction skip this step.
 
 ## Implementation
 
-The agent implementing a plan uses `/kwork`, whether that is this session or a
-delegated one. A delegated implementer's brief names the plan and tells it to
-invoke `/kwork`.
+The implementer follows `plan.md`, whether that is this session or a delegated
+one. A delegated implementer's brief gives the task folder's path. When the
+code shows the plan is wrong or incomplete, the implementer updates the plan
+and reports the change rather than working around it. It runs the checks the
+plan names and reports what it changed, what it checked, and anything left
+undone.
 
 ## Code review and completion
 
-A substantial change gets one review with `/kreview` from a session that did
-not write it, applying the `AGENTS.md` standard to whole touched files. The
-review reports findings only, overriding `/kreview`'s default fixes and
-staging. Verify each finding and fix those the user approves.
+A substantial change gets one review from a session that did not write it,
+applying the `AGENTS.md` standard to whole touched files and checking the
+result against `plan.md`. The reviewer writes its findings to `review.md` in
+the task folder and changes no code. Verify each finding and fix those the
+user approves.
 
 Complete the checks in `AGENTS.md`. For browser changes, use the running
 `make dev` server, or start one if none is running, and open its address in
