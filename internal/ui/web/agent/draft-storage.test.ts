@@ -1,9 +1,10 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {createStore} from '../store.ts';
-import {openUnsent, selectSession, unsentProfile, unsentWorktree} from '../sessions/selection.ts';
+import {openUnsent, selectSession, unsentSettingsChosen, unsentWorktree} from '../sessions/selection.ts';
 import type {Unsent} from '../sessions/types.ts';
 import type {State} from '../state.ts';
-import {testState} from '../../test-state.ts';
+import {testConfig, testState} from '../../test-state.ts';
+import {receivedConfig} from '../app/config.ts';
 import {cleared, draftOf, typed, unsentCreated, unsentKey} from './drafts.ts';
 import {startDraftStorage} from './draft-storage.ts';
 
@@ -30,14 +31,14 @@ test('reload restores text from multiple chats and request answers, without tran
   expect(draftOf(next, 's/request').text).toBe('answer');
 });
 
-test.each([null, 'workspace'])('a new-session prompt restores with workspace %s and its profile and worktree choice', workspace => {
+test.each([null, 'workspace'])('a new-session prompt restores with workspace %s and its settings and worktree choice', workspace => {
   const store = reload();
   store.update(state => openUnsent(state, workspace));
-  store.update(state => unsentChanged(state, {profile: 'profile', worktree: true, sending: true}));
+  store.update(state => unsentChanged(state, {settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, sending: true}));
   store.update(state => typed(state, unsentKey(workspace), 'new prompt'));
   const next = reload().get();
   expect(next.selected).toBeNull();
-  expect(next.unsent).toMatchObject({workspace, profile: 'profile', worktree: true, sending: false});
+  expect(next.unsent).toMatchObject({workspace, settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, sending: false});
   expect(draftOf(next, unsentKey(workspace)).text).toBe('new prompt');
   store.update(state => unsentCreated(state, 'created', unsentKey(workspace)));
   expect(reload().get().unsent).toBeNull();
@@ -56,7 +57,7 @@ test('sent or erased text is removed from saved drafts', () => {
 
 test('parked new-session drafts restore across workspaces without replacing the selected session', () => {
   const store = reload();
-  store.update(state => typed(unsentWorktree(unsentProfile(openUnsent(state, 'a'), {name: 'worker', description: '', harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey('a'), 'first workspace'));
+  store.update(state => typed(unsentWorktree(unsentSettingsChosen(openUnsent(state, 'a'), {harness: 'claude', model: 'opus', effort: 'high'}), true), unsentKey('a'), 'first workspace'));
   store.update(state => typed(openUnsent(state, 'b'), unsentKey('b'), 'second workspace'));
   store.update(state => selectSession(state, 's'));
   const restored = reload();
@@ -64,7 +65,7 @@ test('parked new-session drafts restore across workspaces without replacing the 
   expect(restored.get().unsent).toBeNull();
   expect(Object.keys(restored.get().unsentDrafts)).toEqual([unsentKey('a'), unsentKey('b')]);
   restored.update(state => openUnsent(state, 'a'));
-  expect(restored.get().unsent).toMatchObject({workspace: 'a', profile: 'worker', worktree: true, sending: false});
+  expect(restored.get().unsent).toMatchObject({workspace: 'a', settings: {harness: 'claude', model: 'opus', effort: 'high'}, worktree: true, sending: false});
   expect(draftOf(restored.get(), unsentKey('a')).text).toBe('first workspace');
   restored.update(state => openUnsent(state, 'b'));
   expect(draftOf(restored.get(), unsentKey('b')).text).toBe('second workspace');
@@ -73,7 +74,13 @@ test('parked new-session drafts restore across workspaces without replacing the 
 test('the previous new-session storage format restores into its workspace draft', () => {
   localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {new: 'existing prompt', s: 'session draft'}, unsent: {workspace: 'w', profile: 'worker', worktree: true}}));
   const restored = reload();
-  expect(restored.get().unsent).toMatchObject({workspace: 'w', profile: 'worker', worktree: true});
+  // A saved profile name no longer names settings: the draft takes the
+  // default once it arrives, and keeps it from then on.
+  expect(restored.get().unsent).toMatchObject({workspace: 'w', settings: null, worktree: true});
+  const opus = {harness: 'claude', model: 'opus', effort: 'high'};
+  restored.update(state => receivedConfig(state, testConfig({default_selection: opus})));
+  restored.update(state => receivedConfig(state, testConfig({default_selection: {harness: 'codex', model: 'sol', effort: 'low'}})));
+  expect(reload().get().unsent).toMatchObject({workspace: 'w', settings: opus, worktree: true});
   expect(draftOf(restored.get(), unsentKey('w')).text).toBe('existing prompt');
   expect(restored.get().drafts.new).toBeUndefined();
   restored.update(state => typed(state, unsentKey('w'), 'updated'));

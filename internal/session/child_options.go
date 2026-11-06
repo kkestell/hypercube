@@ -13,21 +13,24 @@ import (
 
 var childName = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
-// ChildOptions are the settings and assignment of a new child. A proposal
-// saves these settings so its Start action uses exactly what the user saw.
+// ChildOptions are the settings and assignment of a new child. Settings
+// overrides the parent's harness, model, and effort where set. A proposal
+// saves the resolved settings so its Start action uses exactly what the user
+// saw.
 type ChildOptions struct {
-	Name    string          `json:"name"`
-	Title   string          `json:"title"`
-	Profile harness.Profile `json:"profile"`
-	Dir     string          `json:"dir,omitempty"`
-	Message string          `json:"message,omitempty"`
-	Fork    bool            `json:"fork,omitempty"`
+	Name     string           `json:"name"`
+	Title    string           `json:"title"`
+	Settings harness.Settings `json:"settings"`
+	Dir      string           `json:"dir,omitempty"`
+	Message  string           `json:"message,omitempty"`
+	Fork     bool             `json:"fork,omitempty"`
 }
 
 // prepareChild validates the requested context and directory before any files
 // or processes are created. Proposals and direct starts share these checks.
-func prepareChild(tx *store.Tx, parentID string, options ChildOptions) (store.Session, store.Session, error) {
-	name, title, profile, dir := options.Name, options.Title, options.Profile, options.Dir
+// With exact, the options' settings are complete and used as they are.
+func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact bool) (store.Session, store.Session, error) {
+	name, title, dir := options.Name, options.Title, options.Dir
 	if !childName.MatchString(name) {
 		return store.Session{}, store.Session{}, errors.New("name must be lowercase letters, digits, and hyphens")
 	}
@@ -42,8 +45,17 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions) (store.Se
 	if parent.Parent != "" {
 		return store.Session{}, store.Session{}, errors.New("only a top-level session can do this")
 	}
+	settings := options.Settings
+	if !exact {
+		if settings, err = childSettings(parent, settings); err != nil {
+			return store.Session{}, store.Session{}, err
+		}
+	}
+	if err := settings.Check(); err != nil {
+		return store.Session{}, store.Session{}, err
+	}
 	if options.Fork {
-		if profile.Harness != parent.Harness {
+		if settings.Harness != parent.Harness {
 			return store.Session{}, store.Session{}, errors.New("a fork must use the parent's harness; choose fresh context to change harness")
 		}
 		if parent.Conversation == "" {
@@ -51,7 +63,7 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions) (store.Se
 		}
 	}
 	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
-		Harness: profile.Harness, Model: profile.Model, Effort: profile.Effort, Activity: store.Exited}
+		Harness: settings.Harness, Model: settings.Model, Effort: settings.Effort, Activity: store.Exited}
 	if options.Fork {
 		child.Fork = parent.Conversation
 	}

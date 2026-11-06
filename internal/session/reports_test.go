@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/kkestell/hypercube/internal/harness"
 )
 
 func TestChildReportsWaitForTheFamilyWithoutBlockingMessages(t *testing.T) {
@@ -177,7 +175,7 @@ func TestPendingChildInputSurvivesBackendReattachment(t *testing.T) {
 func TestForkChildUsesItsOwnConversationOnRestart(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
-	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Profile: harness.Profile{Harness: "test", Model: "m", Effort: "low"}, Fork: true})
+	child, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: lead, Fork: true})
 	if err != nil || child.Dir != f.root {
 		t.Fatal(child, err)
 	}

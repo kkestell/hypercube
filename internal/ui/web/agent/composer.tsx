@@ -1,9 +1,9 @@
 import {column} from '../app/workbench.ts';
 import {shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
-// images, and attach and send buttons, and below them its profile and usage.
-// A new session chooses its profile and worktree there; a running session can
-// choose a profile of its harness. The text takes focus on mount.
+// images, and attach and send buttons, and below them its settings and usage.
+// A new session chooses its settings and worktree there; a running session can
+// change its model and effort. The text takes focus on mount.
 import {useEffect, useRef, useState, type ChangeEvent, type ClipboardEvent, type KeyboardEvent} from 'react';
 import {imageSrc, imageTypes} from '../images.ts';
 import {post} from '../api.ts';
@@ -14,7 +14,7 @@ import {useStore} from '../store.ts';
 import {attachImages, canSend, draftOf, isUnsent, removeImage, typed} from './drafts.ts';
 import {promptHistory, stepHistory, type History} from './history.ts';
 import {MentionList, useMentions} from './use-mentions.tsx';
-import {ProfileSelect} from './profile-select.tsx';
+import {SessionSelection} from './session-selection.tsx';
 import {Usage} from './usage.tsx';
 import {Limits} from './limits.tsx';
 import {MergeButton} from './merge-button.tsx';
@@ -125,11 +125,11 @@ export function Composer({session}: {session: Session}) {
         </CardContent>
       </Card>
       {/* The box's icons sit 21px in from its edges: its border, padding, and
-          half the button around each icon. The profile button pads its icon
+          half the button around each icon. The settings button pads its icon
           10px and the 14px ring is centered on the send icon. */}
       <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[11px] pr-[22px]">
         <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <ProfileSelect session={session} />
+          <SessionSelection session={session} />
           <MergeButton session={session} />
         </div>
         <div className="flex items-center gap-4">

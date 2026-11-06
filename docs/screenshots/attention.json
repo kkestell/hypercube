@@ -6,7 +6,7 @@
       "repo": "harbor",
       "sessions": [
         {
-          "profile": "codex-gpt-terra-high",
+          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
           "turns": [
             {
               "prompt": "Upgrade goldmark to the latest release and fix whatever breaks",
@@ -21,7 +21,7 @@
           ]
         },
         {
-          "profile": "claude-opus-high",
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
           "turns": [
             {
               "prompt": "Prepare the next release: changelog, version bump, and tag",
@@ -36,7 +36,7 @@
           ]
         },
         {
-          "profile": "opencode-deepseek-flash-max",
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
           "turns": [
             {
               "prompt": "Highlight code blocks in rendered pages",

@@ -43,7 +43,7 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
   const {root, send} = setup([
     {id: 'L1:input', kind: 'user', text: 'Review this'},
     marker('working', 'working', 1),
-    {id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', profile: {name: 'worker', harness: 'codex', model: 'm', effort: 'low'}, dir: '.', message: 'Check the parser'}},
+    {id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', settings: {harness: 'codex', model: 'm', effort: 'low'}, dir: '.', message: 'Check the parser'}},
     {id: 'L1:answer', kind: 'text', text: 'I found a separate task.', done: true},
     marker('idle', 'idle', 2, ['L1:answer']),
   ]);
@@ -57,7 +57,7 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
   expect(Object.fromEntries(params)).toEqual({action: 'start-proposal', id: 's', proposal: 'L1:proposal'});
   expect(fetches.mock.calls[0][1]?.body).toBeUndefined();
   await act(async () => reply.resolve(new Response('')));
-  send([{id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', profile: {name: 'worker', harness: 'codex', model: 'm', effort: 'low'}}, done: true, answer: 'child-id'}]);
+  send([{id: 'L1:proposal', kind: 'proposal', text: 'Review separately', input: {name: 'review', title: 'Review separately', settings: {harness: 'codex', model: 'm', effort: 'low'}}, done: true, answer: 'child-id'}]);
   expect(root.querySelector('.transcript-pending')).toBeNull();
   const done = find(root, '.transcript-list [aria-label="Proposed child session"]');
   expect(done.textContent).toContain('Child session: review');
@@ -66,7 +66,7 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
 
 test('a refused proposal action can be retried or dismissed', async () => {
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('Could not start', {status: 400}));
-  const {root} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', profile: {name: 'worker', harness: 'codex', model: 'm', effort: 'low'}}}]);
+  const {root} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}]);
   const card = find(root, '[aria-label="Proposed child session"]');
   await act(async () => find(card, 'button').click());
   expect(find(card, 'button').hasAttribute('disabled')).toBe(false);

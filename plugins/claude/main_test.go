@@ -539,6 +539,13 @@ func TestUnreadableLineIsSkipped(t *testing.T) {
 	}
 }
 
+// initializedLine answers initialize with the models a fake claude offers.
+const initializedLine = `{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{"models":[` +
+	`{"value":"default","resolvedModel":"claude-opus-resolved","displayName":"Default (recommended)","supportsEffort":true,"supportedEffortLevels":["low","high","max"]},` +
+	`{"value":"opus","resolvedModel":"claude-opus-resolved","displayName":"Opus","supportsEffort":true,"supportedEffortLevels":["low","high","max"]},` +
+	`{"value":"haiku","resolvedModel":"claude-haiku-resolved","displayName":"Haiku","supportsEffort":true,"supportedEffortLevels":["low","max"]},` +
+	`{"value":"claude-plain","resolvedModel":"claude-plain","displayName":"Plain"}]}}}`
+
 // fakeClaude installs a `claude` that answers initialize, plays $FAKE_STREAM
 // for each user message, and records its arguments in $FAKE_ARGS. It plays
 // $FAKE_BEFORE first, and with $FAKE_FAIL it then exits, as claude does when
@@ -555,7 +562,7 @@ while IFS= read -r line; do
   case "$line" in
     *'"initialize"'*)
       if [ -n "$FAKE_INIT" ]; then cat "$FAKE_INIT"; exit 0; fi
-      echo '{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}' ;;
+      echo "$FAKE_INITIALIZED" ;;
     *'"type":"user"'*) cat "$FAKE_STREAM" ;;
   esac
 done
@@ -567,6 +574,7 @@ done
 	args = filepath.Join(dir, "args")
 	t.Setenv("FAKE_ARGS", args)
 	t.Setenv("FAKE_STREAM", filepath.Join("testdata", "text.jsonl"))
+	t.Setenv("FAKE_INITIALIZED", initializedLine)
 	for _, k := range []string{"FAKE_BEFORE", "FAKE_FAIL", "FAKE_INIT"} {
 		t.Setenv(k, "")
 	}
@@ -727,7 +735,7 @@ func TestStartFailsOnAResult(t *testing.T) {
 	fakeClaude(t, map[string]string{
 		"FAKE_BEFORE": playFile(t, `{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["first failure"]}`),
 		"FAKE_INIT": playFile(t,
-			`{"type":"control_response","response":{"subtype":"success","request_id":"initialize","response":{}}}`,
+			initializedLine,
 			`{"type":"result","subtype":"error_during_execution","is_error":true,"errors":["second failure"]}`),
 	})
 	if err := startFails(t, startArgs); err.Error() != "first failure" {

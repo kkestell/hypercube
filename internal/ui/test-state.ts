@@ -17,11 +17,11 @@ export const testSession = (overrides: Partial<Session> & {id: string}): Session
   worktree: false, children: [], ...overrides,
 });
 
-// testConfig has one profile and the default preferences.
+// testConfig has a default selection and the default preferences.
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({
-  default_profile: 'lead', default_worktree: false, theme: 'system', terminal_font_size: 13,
+  default_selection: {harness: 'claude', model: 'opus', effort: 'high'}, child_model_guidance: '',
+  default_worktree: false, theme: 'system', terminal_font_size: 13,
   notifications: {requests: true, replies: true, macos: true, sound: true},
-  profiles: [{name: 'lead', description: 'Large tasks', harness: 'claude', model: 'opus', effort: 'high'}],
   ...overrides,
 });
 

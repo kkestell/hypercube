@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -35,20 +34,19 @@ func open(t *testing.T, sessions ...store.Session) *store.DB {
 }
 
 func TestInstructions(t *testing.T) {
-	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "Build it", Harness: "test", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
-	profiles := []harness.Profile{{Name: "planner", Description: "design", Harness: "test", Model: "m", Effort: "low"}}
+	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo"}, store.Session{ID: "q", Title: "Fix"}, store.Session{ID: "c", Parent: "p", Name: "builder", Title: "Build it", Harness: "test", Model: "m", Dir: "/repo/child", Branch: "hypercube/p/builder", Ended: true})
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
 		child, _ := tx.Session("c")
-		parentText, err := Instructions(tx, p, profiles)
+		parentText, err := Instructions(tx, p, []string{"test", "other"}, "Use m for design.")
 		if err != nil {
 			return err
 		}
-		childText, err := Instructions(tx, child, nil)
+		childText, err := Instructions(tx, child, nil, "Use m for design.")
 		if err != nil {
 			return err
 		}
-		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", "planner (test, m, low): design", "create_session", "end_session"} {
+		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test m, default effort", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", ChildSettings, "Installed harnesses: test, other.", "guidance for choosing child models:\nUse m for design.", "create_session", "end_session"} {
 			if !strings.Contains(parentText, want) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}
@@ -58,6 +56,9 @@ func TestInstructions(t *testing.T) {
 				t.Errorf("child missing %q: %s", want, childText)
 			}
 		}
+		if strings.Contains(childText, "Use m for design") || strings.Contains(parentText, "profile") {
+			t.Error("a child got the guidance, or a parent was told about profiles")
+		}
 		if strings.Contains(parentText, "q (Fix)") {
 			t.Error("instructions include a stale peer snapshot:", parentText)
 		}
@@ -65,7 +66,7 @@ func TestInstructions(t *testing.T) {
 			t.Error("instructions changed workspace sharing or child scope")
 		}
 		child.Branch = ""
-		text, err := Instructions(tx, child, nil)
+		text, err := Instructions(tx, child, nil, "")
 		if err != nil {
 			return err
 		}
@@ -82,7 +83,7 @@ func TestWorktreeSessionInstructions(t *testing.T) {
 	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo/.hypercube/p", Branch: "hypercube/session-p", Base: "abc"})
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
-		text, err := Instructions(tx, p, nil)
+		text, err := Instructions(tx, p, nil, "")
 		if err != nil {
 			return err
 		}

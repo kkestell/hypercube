@@ -70,11 +70,7 @@ func TestConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := `{"profiles":[
-		{"name":"first","description":"First lead","harness":"claude","model":"opus","effort":"high"},
-		{"name":"worker","description":"Worker","harness":"codex","model":"sol","effort":"high"},
-		{"name":"second","description":"Second lead","harness":"codex","model":"sol","effort":"high"}
-	]}`
+	config := `{"default_selection":{"harness":"claude","model":"opus","effort":"high"},"child_model_guidance":"Use sol for reviews."}`
 	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -87,19 +83,14 @@ func TestConfig(t *testing.T) {
 	}
 	res := get()
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
-		t.Fatalf("profiles response = %d %s", res.Code, res.Body)
+		t.Fatalf("config response = %d %s", res.Code, res.Body)
 	}
 	var got harness.Config
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	want := []harness.Profile{
-		{Name: "first", Description: "First lead", Harness: "claude", Model: "opus", Effort: "high"},
-		{Name: "worker", Description: "Worker", Harness: "codex", Model: "sol", Effort: "high"},
-		{Name: "second", Description: "Second lead", Harness: "codex", Model: "sol", Effort: "high"},
-	}
-	if got.DefaultProfile != "first" || !slices.Equal(got.Profiles, want) {
-		t.Fatalf("profiles = %+v", got)
+	if got.DefaultSelection == nil || *got.DefaultSelection != (harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}) || got.ChildGuidance != "Use sol for reviews." {
+		t.Fatalf("config = %+v", got)
 	}
 	// A malformed config is reported instead of returning an empty list.
 	if err := os.WriteFile(path, []byte(`{`), 0o644); err != nil {
@@ -277,12 +268,6 @@ func newApp(t *testing.T) *app {
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", logs)
 	harnesstest.Install(t, plugins, "test")
-	config := `{"profiles":[
-		{"name":"lead","description":"Lead","harness":"test","model":"m","effort":"low"},
-		{"name":"worker","description":"Worker","harness":"test","model":"m","effort":"low"}]}`
-	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	db, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +280,7 @@ func newApp(t *testing.T) *app {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := rt.Create(w.ID, "lead", false, "start")
+	s, err := rt.Create(w.ID, lead, false, "start")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -521,7 +506,7 @@ func TestTranscriptStreamsToTheSelectedSession(t *testing.T) {
 
 func (a *app) child(name string) store.Session {
 	a.t.Helper()
-	child, err := a.rt.CreateChild(a.session.ID, session.ChildOptions{Name: name, Title: "Title", Profile: harness.Profile{Harness: "test", Model: "m", Effort: "low"}, Dir: ".", Message: ""})
+	child, err := a.rt.CreateChild(a.session.ID, session.ChildOptions{Name: name, Title: "Title", Dir: ".", Message: ""})
 	if err != nil {
 		a.t.Fatal(err)
 	}

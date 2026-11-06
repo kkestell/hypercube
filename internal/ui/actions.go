@@ -82,7 +82,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		created, err := s.rt.Create(q.Get("workspace"), q.Get("profile"), q.Get("worktree") == "1", in.Text, in.Images...)
+		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
+		created, err := s.rt.Create(q.Get("workspace"), settings, q.Get("worktree") == "1", in.Text, in.Images...)
 		if refused(w, err) {
 			return
 		}
@@ -105,8 +106,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.rt.Input(id, in.Text, in.Images...)
-	case "profile":
-		err = s.rt.SelectProfile(id, q.Get("profile"))
+	case "selection":
+		err = s.rt.Select(id, harness.Selection{Model: q.Get("model"), Effort: q.Get("effort")})
 	case "interrupt":
 		err = s.rt.Interrupt(id)
 	case "restart":

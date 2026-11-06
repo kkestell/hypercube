@@ -6,7 +6,7 @@
       "repo": "harbor",
       "sessions": [
         {
-          "profile": "claude-sonnet-high",
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
           "turns": [
             {
               "prompt": "Add a reading time estimate under each post's title",
@@ -22,7 +22,7 @@
           ]
         },
         {
-          "profile": "claude-opus-high",
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
           "turns": [
             {
               "prompt": "Give the default page template a dark theme that follows the reader's system setting",

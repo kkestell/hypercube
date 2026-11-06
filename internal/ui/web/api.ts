@@ -1,4 +1,5 @@
 // Every HTTP call the page makes to the server.
+import type {Catalog, Harness} from './agent/types.ts';
 import type {Config, Grant} from './app/types.ts';
 import type {ChangesResult, DiffRead} from './changes/types.ts';
 import type {FileEntry, FileRead, SearchFile} from './files/types.ts';
@@ -61,9 +62,21 @@ export async function saveConfig(config: Config): Promise<void> {
 export const fetchGrants = (store: Store) =>
   request<Grant[]>(store, 'grants', undefined, response => response.json());
 
-// selectProfile applies a configured profile to a ready session.
-export const selectProfile = (store: Store, session: string, profile: string) =>
-  post(store, 'session', {action: 'profile', id: session, profile});
+// selectModel changes a ready session's model and effort within its harness.
+export const selectModel = (store: Store, session: string, model: string, effort: string) =>
+  post(store, 'session', {action: 'selection', id: session, model, effort});
+
+// fetchHarnesses lists the installed harnesses, scanning for new ones.
+export const fetchHarnesses = (signal: AbortSignal) => get<Harness[]>('harnesses', {}, signal);
+
+// Where a harness's models are asked about: a session's directory, or a
+// workspace's for a new session.
+export type ModelsPlace = {session: string} | {workspace: string};
+
+// fetchModels asks a harness for its models and, with model, that model's
+// efforts.
+export const fetchModels = (place: ModelsPlace, harness: string, model: string, signal: AbortSignal) =>
+  get<Catalog>('models', {...place, harness, ...(model && {model})}, signal);
 
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.

@@ -1,6 +1,6 @@
 // The supplied harness marks, kept inline so monochrome SVGs inherit text color.
 import type {ReactNode} from 'react';
-import {displayName} from './profile-label.ts';
+import {displayName} from './selection-label.ts';
 
 const icons = new Map<string, {viewBox: string; paths: ReactNode}>([
   ['claude', {viewBox: '0 0 248 248', paths: <>

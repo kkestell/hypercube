@@ -9,7 +9,7 @@
       "repo": "harbor",
       "sessions": [
         {
-          "profile": "codex-gpt-terra-high",
+          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
           "turns": [
             {
               "prompt": "Check the page template for missing metadata",
@@ -26,7 +26,7 @@
           ]
         },
         {
-          "profile": "pi-gpt-high",
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
           "turns": [
             {
               "prompt": "Review the harbor command examples",
@@ -49,7 +49,7 @@
       "repo": "field-notes",
       "sessions": [
         {
-          "profile": "pi-gpt-high",
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
           "turns": [
             {
               "prompt": "Review the field notes guide, check its links, and improve the first-run instructions",
@@ -123,7 +123,7 @@
                 {
                   "title": "Check relative links",
                   "name": "links",
-                  "profile": "codex-gpt-terra-high",
+                  "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
                   "dir": ".",
                   "turns": [
                     {
@@ -155,7 +155,7 @@
                 {
                   "title": "Add an offline reading guide",
                   "name": "offline-guide",
-                  "profile": "claude-sonnet-high",
+                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
                   "dir": ".",
                   "turns": [
                     {
@@ -168,7 +168,7 @@
           ]
         },
         {
-          "profile": "claude-sonnet-high",
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
           "turns": [
             {
               "prompt": "Improve the sync troubleshooting guide",
@@ -185,7 +185,7 @@
           ]
         },
         {
-          "profile": "opencode-deepseek-flash-max",
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
           "turns": [
             {
               "prompt": "Review the field notes homepage",

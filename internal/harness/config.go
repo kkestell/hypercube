@@ -2,32 +2,26 @@ package harness
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 )
 
-// Profile names a harness, model, and effort for an agent, and its
-// description says when to use it.
-type Profile struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Harness     string `json:"harness"`
-	Model       string `json:"model"`
-	Effort      string `json:"effort"`
-}
-
-// Config is config.json: the agent profiles and the user's preferences.
+// Config is config.json: the user's preferences. DefaultSelection, when set,
+// starts new sessions with that harness, model, and effort. ChildGuidance
+// tells agents when a child session should use other settings than theirs.
 // DefaultWorktree starts new sessions in Git workspaces in a worktree.
 type Config struct {
-	DefaultProfile   string        `json:"default_profile"`
+	DefaultSelection *Settings     `json:"default_selection,omitempty"`
+	ChildGuidance    string        `json:"child_model_guidance"`
 	DefaultWorktree  bool          `json:"default_worktree"`
 	Theme            string        `json:"theme"`
 	TerminalFontSize int           `json:"terminal_font_size"`
 	Notifications    Notifications `json:"notifications"`
-	Profiles         []Profile     `json:"profiles"`
 }
 
 // Notifications chooses which alerts reach the user and how. Requests and
@@ -59,12 +53,16 @@ func configPath() string {
 	return filepath.Join(base, "hypercube", "config.json")
 }
 
-// LoadConfig reads config.json and checks that every value is set.
+// LoadConfig reads config.json. Without a file, every preference takes its
+// default.
 func LoadConfig() (Config, error) {
 	// A file written before a preference existed takes its default.
 	c := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
 	path := configPath()
 	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return c, nil
+	}
 	if err != nil {
 		return c, err
 	}
@@ -77,8 +75,7 @@ func LoadConfig() (Config, error) {
 	return c, nil
 }
 
-// Validate checks the configuration and resolves an omitted default to the
-// first profile, as files written before default_profile did.
+// Validate checks the configuration's values.
 func (c *Config) Validate() error {
 	if !slices.Contains(themes, c.Theme) {
 		return fmt.Errorf("theme %q is not one of %v", c.Theme, themes)
@@ -86,29 +83,10 @@ func (c *Config) Validate() error {
 	if !slices.Contains(terminalFontSizes, c.TerminalFontSize) {
 		return fmt.Errorf("terminal font size %d is not one of %v", c.TerminalFontSize, terminalFontSizes)
 	}
-	if len(c.Profiles) == 0 {
-		return fmt.Errorf("at least one profile is required")
-	}
-	seen := map[string]bool{}
-	for i, p := range c.Profiles {
-		switch {
-		case strings.TrimSpace(p.Name) == "":
-			return fmt.Errorf("profile %d: missing name", i+1)
-		case seen[p.Name]:
-			return fmt.Errorf("duplicate profile %q", p.Name)
-		case strings.TrimSpace(p.Description) == "":
-			return fmt.Errorf("profile %q: missing description", p.Name)
+	if c.DefaultSelection != nil {
+		if err := c.DefaultSelection.Check(); err != nil {
+			return fmt.Errorf("default selection: %w", err)
 		}
-		if err := p.check(); err != nil {
-			return fmt.Errorf("profile %q: %w", p.Name, err)
-		}
-		seen[p.Name] = true
-	}
-	if c.DefaultProfile == "" {
-		c.DefaultProfile = c.Profiles[0].Name
-	}
-	if !seen[c.DefaultProfile] {
-		return fmt.Errorf("default profile %q does not exist", c.DefaultProfile)
 	}
 	return nil
 }
@@ -123,7 +101,14 @@ func SaveConfig(c Config) error {
 	if err != nil {
 		return err
 	}
+	return writeConfig(data)
+}
+
+func writeConfig(data []byte) error {
 	path := configPath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".config-*")
 	if err != nil {
 		return fmt.Errorf("saving config: %w", err)
@@ -143,24 +128,83 @@ func SaveConfig(c Config) error {
 	return nil
 }
 
-// Profile returns the profile with the given name.
-func (c Config) Profile(name string) (Profile, error) {
-	for _, p := range c.Profiles {
-		if p.Name == name {
-			return p, nil
-		}
-	}
-	return Profile{}, fmt.Errorf("no profile named %q", name)
+// legacyProfile is an agent profile of earlier versions: named settings and
+// when to use them.
+type legacyProfile struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Settings
 }
 
-func (p Profile) check() error {
-	switch {
-	case strings.TrimSpace(p.Harness) == "":
-		return fmt.Errorf("missing harness")
-	case strings.TrimSpace(p.Model) == "":
-		return fmt.Errorf("missing model")
-	case strings.TrimSpace(p.Effort) == "":
-		return fmt.Errorf("missing effort")
+// UpgradeConfig converts a config.json written by earlier versions, which
+// named agent profiles, before anything reads it. The default profile becomes
+// the default selection, and the profiles' descriptions become the child
+// guidance, unless the file already has guidance. A file without profiles is
+// left as it is.
+func UpgradeConfig() error {
+	path := configPath()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
-	return nil
+	if err != nil {
+		return err
+	}
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	_, hasProfiles := doc["profiles"]
+	_, hasDefault := doc["default_profile"]
+	if !hasProfiles && !hasDefault {
+		return nil
+	}
+	var legacy struct {
+		DefaultProfile string          `json:"default_profile"`
+		Profiles       []legacyProfile `json:"profiles"`
+	}
+	if err := json.Unmarshal(data, &legacy); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	delete(doc, "profiles")
+	delete(doc, "default_profile")
+	// Earlier versions used the first profile when no default was named.
+	name := legacy.DefaultProfile
+	if name == "" && len(legacy.Profiles) > 0 {
+		name = legacy.Profiles[0].Name
+	}
+	for _, p := range legacy.Profiles {
+		if p.Name == name {
+			if doc["default_selection"], err = json.Marshal(p.Settings); err != nil {
+				return err
+			}
+		}
+	}
+	if _, ok := doc["child_model_guidance"]; !ok {
+		var b strings.Builder
+		for _, p := range legacy.Profiles {
+			fmt.Fprintf(&b, "- Harness %s, model %s, effort %s: %s\n", p.Harness, p.Model, p.Effort, strings.TrimSpace(p.Description))
+		}
+		if doc["child_model_guidance"], err = json.Marshal(strings.TrimSuffix(b.String(), "\n")); err != nil {
+			return err
+		}
+	}
+	// Decoding the result checks it as LoadConfig will, and writing the
+	// typed value keeps the file's field order.
+	converted, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	c := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+	if err := json.Unmarshal(converted, &c); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("%s: %w", path, err)
+	}
+	out, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeConfig(out)
 }

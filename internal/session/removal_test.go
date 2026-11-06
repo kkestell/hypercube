@@ -85,7 +85,7 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 			parent := f.worktreeSession()
 			// The configure reply follows the first turn's merge refresh, so
 			// the barrier can only catch this test's cleanup.
-			if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+			if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 				t.Fatal(err)
 			}
 			wait, release := pauseStatus(t, parent.Dir)
@@ -98,7 +98,7 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 				}
 			}()
 			wait()
-			_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "late", Title: "Late child", Profile: harness.Profile{Harness: "test"}, Dir: "", Message: ""})
+			_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "late", Title: "Late child", Dir: "", Message: ""})
 			if !errors.Is(err, errDeleting) {
 				t.Fatalf("child creation during cleanup = %v, want errDeleting", err)
 			}
@@ -169,7 +169,7 @@ func TestEndChildBlocksShellAdmissionDuringItsChecks(t *testing.T) {
 func TestRefusedRemovalKeepsTheFamilyWorking(t *testing.T) {
 	f := newFixture(t)
 	parent := f.worktreeSession()
-	if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+	if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(parent.Dir, "unfinished"), []byte("keep"), 0o644); err != nil {
@@ -204,7 +204,7 @@ func TestPartialFamilyRemovalRecordsEachCompletedChild(t *testing.T) {
 			parent := f.worktreeSession()
 			first := f.child(parent, "first", "")
 			second := f.child(parent, "second", "")
-			direct, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "direct", Title: "Direct child", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""})
+			direct, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "direct", Title: "Direct child", Dir: ".", Message: ""})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -309,7 +309,7 @@ func TestRefusedRemovalWakesQueuedRecipients(t *testing.T) {
 	f.idleAfter(time.Hour)
 	parent := f.worktreeSession()
 	child := f.child(parent, "worker", "")
-	if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+	if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the child idle", func() bool { return f.idle(child.ID) })
@@ -331,14 +331,14 @@ func TestRefusedRemovalRestartsTheIdleTimeout(t *testing.T) {
 	f.idleAfter(time.Hour)
 	parent := f.worktreeSession()
 	child := f.child(parent, "worker", "")
-	if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+	if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 		t.Fatal(err)
 	}
 	f.until("the child idle", func() bool { return f.idle(child.ID) })
 	f.pausedRefusal(parent, func() {
 		f.idleAfter(50 * time.Millisecond)
 		// A command reply during the checks cancels the claimed parent's timer.
-		if err := f.rt.SelectProfile(parent.ID, "lead"); err != nil {
+		if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 			t.Fatal(err)
 		}
 	})

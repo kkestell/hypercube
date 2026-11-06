@@ -58,6 +58,20 @@ PRAGMA user_version = 1;`); err != nil {
 				return err
 			}
 		}
+		if version < 2 {
+			// Proposals and accepted offers saved the agent profile they
+			// started with; they now save only its settings.
+			if err := tx.exec(`
+UPDATE transcript SET data = json_set(json_remove(data, '$.input.profile'), '$.input.settings', json_object(
+	'harness', coalesce(json_extract(data, '$.input.profile.harness'), ''),
+	'model', coalesce(json_extract(data, '$.input.profile.model'), ''),
+	'effort', coalesce(json_extract(data, '$.input.profile.effort'), '')))
+WHERE json_type(data, '$.input.profile') = 'object'
+	AND (json_extract(data, '$.kind') = 'proposal' OR json_extract(data, '$.kind') = 'attention' AND json_extract(data, '$.offer') = 1);
+PRAGMA user_version = 2;`); err != nil {
+				return err
+			}
+		}
 		// A session without an agent waits on nobody.
 		return tx.exec(`UPDATE sessions SET attention = 0 WHERE attention = 1 AND (ended = 1 OR launch = '')`)
 	})

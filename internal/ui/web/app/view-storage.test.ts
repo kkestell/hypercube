@@ -73,7 +73,7 @@ test('an explicit session URL wins over saved selection and a restored new-sessi
   const previous = fresh('a');
   startViewStorage(previous);
   previous.update(state => receivedWorkspaces(state, workspaces));
-  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'keep this draft'}, unsent: {workspace: 'w', profile: 'lead', worktree: true}}));
+  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'keep this draft'}, unsent: {workspace: 'w', settings: null, worktree: true}}));
   const explicit = fresh('b');
   startViewStorage(explicit);
   startDraftStorage(explicit);

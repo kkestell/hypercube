@@ -6,6 +6,10 @@
 // may start child sessions and offer tasks through Hypercube's create_session
 // tool, and a parent ends the turn that delivers its children's reports at
 // once.
+//
+// Its `describe` and `models` commands answer from the scene: the harness is
+// the one the plugin's file is installed as, and its models are those the
+// scene's sessions use with it.
 package main
 
 import (
@@ -17,6 +21,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -41,11 +46,11 @@ type scene struct {
 }
 
 type session struct {
-	Title   string `json:"title"`
-	Name    string `json:"name"`
-	Profile string `json:"profile"`
-	Dir     string `json:"dir"`
-	Turns   []turn `json:"turns"`
+	Title    string           `json:"title"`
+	Name     string           `json:"name"`
+	Settings harness.Settings `json:"settings"`
+	Dir      string           `json:"dir"`
+	Turns    []turn           `json:"turns"`
 }
 
 type turn struct {
@@ -65,18 +70,62 @@ type turn struct {
 }
 
 func main() {
-	if len(os.Args) != 2 || os.Args[1] != "serve" {
-		fmt.Fprintln(os.Stderr, "usage: hypercube-harness-scripted serve")
-		os.Exit(1)
+	var err error
+	switch {
+	case len(os.Args) == 2 && os.Args[1] == "serve":
+		err = serve(os.Stdin, os.Stdout)
+	case len(os.Args) == 2 && os.Args[1] == "describe":
+		err = json.NewEncoder(os.Stdout).Encode(harness.Description{Name: names[harnessID()], Installed: true})
+	case len(os.Args) == 2 && os.Args[1] == "models":
+		err = models(os.Stdin, os.Stdout)
+	default:
+		err = fmt.Errorf("usage: %s serve | describe | models", os.Args[0])
 	}
-	if err := serve(os.Stdin, os.Stdout); err != nil {
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube-harness-scripted:", err)
 		os.Exit(1)
 	}
 }
 
+// names are the display names of the harnesses the scenes use.
+var names = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi"}
+
+// harnessID is the harness the plugin is installed as.
+func harnessID() string {
+	return strings.TrimPrefix(filepath.Base(os.Args[0]), "hypercube-harness-")
+}
+
+// models lists the models the scene's sessions use with this harness, the
+// first as the default, and a requested model's efforts.
+func models(in io.Reader, out io.Writer) error {
+	var req harness.ModelsRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return err
+	}
+	sessions, _, err := load(os.Getenv("HYPERCUBE_SCENE"))
+	if err != nil {
+		return err
+	}
+	c := harness.Catalog{Model: req.Model}
+	for _, s := range sessions {
+		if s.Harness != harnessID() {
+			continue
+		}
+		if !slices.ContainsFunc(c.Models, func(m harness.Model) bool { return m.ID == s.Model }) {
+			c.Models = append(c.Models, harness.Model{ID: s.Model})
+		}
+		if s.Model == req.Model && s.Effort != "" && !slices.Contains(c.Efforts, s.Effort) {
+			c.Efforts = append(c.Efforts, s.Effort)
+		}
+	}
+	if len(c.Models) > 0 {
+		c.Default = c.Models[0].ID
+	}
+	return json.NewEncoder(out).Encode(c)
+}
+
 func serve(in io.Reader, out io.Writer) error {
-	turns, err := load(os.Getenv("HYPERCUBE_SCENE"))
+	_, turns, err := load(os.Getenv("HYPERCUBE_SCENE"))
 	if err != nil {
 		return err
 	}
@@ -128,30 +177,36 @@ func serve(in io.Reader, out io.Writer) error {
 	return scanner.Err()
 }
 
-// load returns every turn of the scene, of top-level sessions and children.
-func load(path string) ([]turn, error) {
+// load returns the settings of every session in the scene, suggestions
+// included, and every turn of top-level sessions and children.
+func load(path string) ([]harness.Settings, []turn, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var s scene
 	if err := json.Unmarshal(data, &s); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
+		return nil, nil, fmt.Errorf("%s: %w", path, err)
 	}
+	var settings []harness.Settings
 	var turns []turn
 	var add func([]session)
 	add = func(sessions []session) {
 		for _, s := range sessions {
+			settings = append(settings, s.Settings)
 			for _, t := range s.Turns {
 				turns = append(turns, t)
 				add(t.Children)
+				for _, suggested := range t.Suggestions {
+					settings = append(settings, suggested.Settings)
+				}
 			}
 		}
 	}
 	for _, w := range s.Workspaces {
 		add(w.Sessions)
 	}
-	return turns, nil
+	return settings, turns, nil
 }
 
 func match(turns []turn, text string) (turn, bool) {
@@ -208,6 +263,12 @@ func play(t turn, start harness.StartArgs, event func(harness.Event) error) erro
 	return event(end)
 }
 
+// childCall is the create_session arguments of a child or suggestion.
+func childCall(c session, initiation string) map[string]any {
+	return map[string]any{"title": c.Title, "name": c.Name, "harness": c.Settings.Harness, "model": c.Settings.Model, "effort": c.Settings.Effort,
+		"dir": c.Dir, "initiation": initiation, "message": c.Turns[0].Prompt}
+}
+
 // createSessions starts a turn's children and makes its offers through the
 // session's own Hypercube tools.
 func createSessions(start harness.StartArgs, t turn) error {
@@ -225,13 +286,13 @@ func createSessions(start harness.StartArgs, t turn) error {
 	defer conn.Close()
 	var calls []map[string]any
 	for _, c := range t.Children {
-		calls = append(calls, map[string]any{"title": c.Title, "name": c.Name, "profile": c.Profile, "dir": c.Dir, "initiation": "user_asked", "message": c.Turns[0].Prompt})
+		calls = append(calls, childCall(c, "user_asked"))
 	}
 	for _, title := range t.Offers {
 		calls = append(calls, map[string]any{"title": title, "initiation": "offer"})
 	}
 	for _, c := range t.Suggestions {
-		calls = append(calls, map[string]any{"title": c.Title, "name": c.Name, "profile": c.Profile, "dir": c.Dir, "initiation": "own_initiative", "message": c.Turns[0].Prompt})
+		calls = append(calls, childCall(c, "own_initiative"))
 	}
 	for _, args := range calls {
 		result, err := conn.CallTool(ctx, &mcp.CallToolParams{Name: "create_session", Arguments: args})

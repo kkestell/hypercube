@@ -1,7 +1,7 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
 import {clickControl, element, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {openUnsent, receivedWorkspaces} from '../sessions/selection.ts';
 import {typed, unsentKey} from '../agent/drafts.ts';
 import type {Session} from '../sessions/types.ts';
@@ -104,7 +104,7 @@ test('app shortcuts work with focus on the transcript background', async () => {
 });
 
 test('a new session draft is a sidebar row that reopens its prompt and can be discarded', async () => {
-  answer(() => Response.json({profiles: []}));
+  answer(() => Response.json(testConfig()));
   const store = appStore({selected: 'a'}, testSession({id: 'a'}));
   const root = mount(store, <App store={store} />);
   const draftRow = () => root.querySelector<HTMLElement>(`.sidebar [data-session="${unsentKey('w')}"]`);

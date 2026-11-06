@@ -64,7 +64,8 @@ Hypercube transcript begins with its own assignment. Forks use the parent's
 harness and can choose another model. A fork works where its parent works: a
 parent in the original checkout shares its folder, uncommitted files included,
 with the fork, and a parent in its own worktree gives the fork a new worktree
-from its last commit. Fresh children can use any configured harness. Native
+from its last commit. A child uses its parent's harness, model, and effort unless the parent passes
+others, and fresh children can use any installed harness. Native
 restrictions still apply: OpenCode forks need the parent's folder, so they
 cannot use a new worktree.
 

@@ -118,36 +118,8 @@ up)
 	if [ ! -f "$CONFIG" ]; then
 		cat >"$CONFIG" <<'JSON'
 {
-  "profiles": [
-    {
-      "name": "claude",
-      "description": "Claude Code haiku, for smoke tests.",
-      "harness": "claude",
-      "model": "haiku",
-      "effort": "low"
-    },
-    {
-      "name": "opencode",
-      "description": "OpenCode with DeepSeek Flash, for smoke tests.",
-      "harness": "opencode",
-      "model": "openrouter/~deepseek/deepseek-flash-latest",
-      "effort": "high"
-    },
-    {
-      "name": "codex",
-      "description": "Codex Luna, for smoke tests.",
-      "harness": "codex",
-      "model": "gpt-6-luna",
-      "effort": "low"
-    },
-    {
-      "name": "pi",
-      "description": "Pi with DeepSeek Flash, for smoke tests.",
-      "harness": "pi",
-      "model": "openrouter/~deepseek/deepseek-flash-latest",
-      "effort": "low"
-    }
-  ]
+  "default_selection": {"harness": "claude", "model": "haiku", "effort": "low"},
+  "child_model_guidance": "Smoke tests use cheap models: Claude Code haiku at low effort, Codex gpt-6-luna at low effort, and openrouter/~deepseek/deepseek-flash-latest in OpenCode or Pi."
 }
 JSON
 	fi

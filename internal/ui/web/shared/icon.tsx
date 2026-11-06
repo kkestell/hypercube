@@ -1,5 +1,5 @@
 // Lucide icons shared by the application actions.
-import {ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
+import {ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
   Clock, Copy, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
   Globe, Info, Laptop, MessageSquare, Paperclip, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
   Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
@@ -13,7 +13,7 @@ const icons = {
   search: Search, settings: Settings, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,
   'open-preview': Eye, 'go-to-file': FileCode,
-  play: Play, edit: Pencil, archive: Archive, trash: Trash2, code: Code, 'folder-open': FolderOpen, terminal: SquareTerminal,
+  differs: ArrowLeftRight, play: Play, edit: Pencil, archive: Archive, trash: Trash2, code: Code, 'folder-open': FolderOpen, terminal: SquareTerminal,
 };
 
 export type IconName = keyof typeof icons;

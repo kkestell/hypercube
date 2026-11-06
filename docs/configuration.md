@@ -1,22 +1,13 @@
 # Configuration
 
-Create `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set, the path
-is `$XDG_CONFIG_HOME/hypercube/config.json` instead.
+Hypercube reads `~/.config/hypercube/config.json`. If `XDG_CONFIG_HOME` is set,
+the path is `$XDG_CONFIG_HOME/hypercube/config.json` instead. Without the file,
+every preference takes its default.
 
 Open Settings (`⌘,`) to choose the theme, terminal text size, defaults for new
-sessions, and notifications, or to add, edit, and remove profiles. **Save
+sessions, guidance for choosing child models, and notifications. **Save
 changes** validates and writes the configuration; closing the modal without
-saving discards edits. At least one complete
-profile must remain. Renaming the default profile keeps it selected; removing
-it selects the first remaining profile.
-
-The optional top-level `default_profile` field names the profile selected for a
-new session. If omitted in an existing file, it uses the first profile. Saving
-from Settings writes an explicit default. The composer can override this
-choice for each session.
-
-After saving, an open session draft keeps its selected profile if that name
-still exists; otherwise it switches to the saved default.
+saving discards edits.
 
 ## Preferences
 
@@ -24,6 +15,8 @@ Settings writes these top-level fields. A file without them uses the defaults.
 
 | Field | Value | Default |
 | --- | --- | --- |
+| `default_selection` | An object with `harness`, `model`, and `effort`: the settings of a new session in a workspace that has no sessions yet. Otherwise a new session starts with the settings of the workspace's newest session. An empty `effort` uses the harness's default. | none |
+| `child_model_guidance` | Text that tells agents when a child session should use another harness, model, or effort than its parent. | empty |
 | `default_worktree` | `true` to start new sessions in Git workspaces in a worktree. The composer can change it for each session. | `false` |
 | `theme` | `system`, `light`, or `dark`. | `system` |
 | `terminal_font_size` | The terminal's text size in pixels: 12, 13, 14, 16, or 18. | `13` |
@@ -32,32 +25,17 @@ Settings writes these top-level fields. A file without them uses the defaults.
 Editing the file directly while Hypercube is running is unsupported. To edit
 it by hand, stop Hypercube first; a settings save replaces the file.
 
-## Profiles
+## Choosing models
 
-Each entry in `profiles` is a harness, model, and effort combination. It appears
-in the selector below the message box. A parent agent also receives the list
-when choosing how to run a child, so the description should tell it which work
-the profile is suitable for.
+Hypercube asks each installed harness which models and efforts it offers, in
+the folder where the session runs. The composer's selector lists them, and a
+running session can change its model and effort within its harness. Accepted
+model and effort values differ [by harness](harness-support.md#requirements).
 
-All five fields are required. Names must be unique, and the file must contain
-at least one profile.
-
-| Field | Value |
-| --- | --- |
-| `name` | The name shown in the selector and used by agents. |
-| `description` | When to choose this profile. |
-| `harness` | `claude`, `opencode`, `codex`, or `pi`; its plugin must be installed. |
-| `model` | A model ID accepted by the harness. |
-| `effort` | A reasoning level or model variant accepted by that harness. |
-
-Copy the [example below](#example-configuration) and remove profiles you do not
-use. Accepted model and effort values differ
-[by harness](harness-support.md#requirements).
-
-Profile edits affect subsequent choices. An existing session keeps its saved
-model and effort until you change its selection, even if you edit or remove
-the original profile. Profiles are reread when the selector loads or opens and when
-session tools or startup instructions request them.
+A child session uses its parent's current harness, model, and effort unless the
+parent passes others. Agents pass others when you ask for them, or when
+`child_model_guidance` calls for them for that kind of task. The guidance is an
+instruction to agents; it does not limit which models they can choose.
 
 ## Local files in worktrees
 
@@ -80,70 +58,20 @@ checkout do not update the other copy.
 
 ```json
 {
-  "profiles": [
-    {
-      "name": "opencode-deepseek-flash-max",
-      "description": "DeepSeek V4.1 Flash at max effort for ordinary implementation, investigation, and review. Cheap and fast. Artificial Analysis: Terminal-Bench 4.0 26.8%; no FrontierCode 2.0 or cost per task listed.",
-      "harness": "opencode",
-      "model": "opencode-go/deepseek-v4.1-flash",
-      "effort": "max"
-    },
-    {
-      "name": "codex-gpt-luna-medium",
-      "description": "GPT Luna 6 at medium effort only for trivial tasks such as lookups and quick checks. Weak at coding. Cheap and fast. Artificial Analysis: Terminal-Bench 4.0 2.5%, FrontierCode 2.0 12.8%, $0.04 per task.",
-      "harness": "codex",
-      "model": "gpt-6-luna",
-      "effort": "medium"
-    },
-    {
-      "name": "codex-gpt-terra-high",
-      "description": "GPT Terra 6.1 at high effort for ordinary implementation, investigation, and review. Cheaper and faster than Sol high. Artificial Analysis: Terminal-Bench 4.0 41.9%, FrontierCode 2.0 37.5%, $0.26 per task.",
-      "harness": "codex",
-      "model": "gpt-6.1-terra",
-      "effort": "high"
-    },
-    {
-      "name": "codex-gpt-sol-high",
-      "description": "GPT Sol at high effort, only for code review and for implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Artificial Analysis: Terminal-Bench 4.0 51.5%, FrontierCode 2.0 36.7%, $0.59 per task.",
-      "harness": "codex",
-      "model": "gpt-6.1-sol",
-      "effort": "high"
-    },
-    {
-      "name": "codex-gpt-sol-xhigh",
-      "description": "GPT Sol at extra high effort, only for hard code review and for hard implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Slower and costlier. Artificial Analysis: Terminal-Bench 4.0 54.0%, FrontierCode 2.0 38.5%, $0.76 per task.",
-      "harness": "codex",
-      "model": "gpt-6.1-sol",
-      "effort": "xhigh"
-    },
-    {
-      "name": "claude-haiku-xhigh",
-      "description": "Haiku at extra high effort for small, well-defined tasks: lookups, simple edits, and quick checks. Artificial Analysis: Terminal-Bench 4.0 29.3%, FrontierCode 2.0 29.9%, $0.25 per task.",
-      "harness": "claude",
-      "model": "haiku",
-      "effort": "xhigh"
-    },
-    {
-      "name": "claude-sonnet-high",
-      "description": "Sonnet at high effort for ordinary implementation, investigation, and review. Artificial Analysis: Terminal-Bench 4.0 43.9%, FrontierCode 2.0 25.7%, $1.64 per task.",
-      "harness": "claude",
-      "model": "sonnet",
-      "effort": "high"
-    },
-    {
-      "name": "claude-opus-medium",
-      "description": "Opus at medium effort for hard implementation, debugging, and design work. Artificial Analysis: Terminal-Bench 4.0 52.5%, FrontierCode 2.0 33.1%, $2.45 per task.",
-      "harness": "claude",
-      "model": "opus",
-      "effort": "medium"
-    },
-    {
-      "name": "claude-opus-high",
-      "description": "Opus at high effort for the hardest design and debugging work. Slower and costlier than claude-opus-medium. Artificial Analysis: Terminal-Bench 4.0 56.6%, FrontierCode 2.0 35.9%, $3.46 per task.",
-      "harness": "claude",
-      "model": "opus",
-      "effort": "high"
-    }
-  ]
+  "default_selection": {
+    "harness": "opencode",
+    "model": "opencode-go/deepseek-v4.1-flash",
+    "effort": "max"
+  },
+  "child_model_guidance": "- Harness opencode, model opencode-go/deepseek-v4.1-flash, effort max: DeepSeek V4.1 Flash at max effort for ordinary implementation, investigation, and review. Cheap and fast. Artificial Analysis: Terminal-Bench 4.0 26.8%; no FrontierCode 2.0 or cost per task listed.\n- Harness codex, model gpt-6-luna, effort medium: GPT Luna 6 at medium effort only for trivial tasks such as lookups and quick checks. Weak at coding. Cheap and fast. Artificial Analysis: Terminal-Bench 4.0 2.5%, FrontierCode 2.0 12.8%, $0.04 per task.\n- Harness codex, model gpt-6.1-terra, effort high: GPT Terra at high effort for implementation, design work, and live skill testing.\n- Harness codex, model gpt-6.1-sol, effort high: GPT Sol at high effort, only for code review and for implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Artificial Analysis: Terminal-Bench 4.0 51.5%, FrontierCode 2.0 36.7%, $0.59 per task.\n- Harness codex, model gpt-6.1-sol, effort xhigh: GPT Sol at extra high effort, only for hard code review and for hard implementation from a written plan. Its reviews include many speculative findings, so verify each one before acting on it. Never use it for design work: it over-engineers. Slower and costlier. Artificial Analysis: Terminal-Bench 4.0 54.0%, FrontierCode 2.0 38.5%, $0.76 per task.\n- Harness claude, model haiku, effort xhigh: Haiku at extra high effort for small, well-defined tasks: lookups, simple edits, and quick checks. Artificial Analysis: Terminal-Bench 4.0 29.3%, FrontierCode 2.0 29.9%, $0.25 per task.\n- Harness claude, model sonnet, effort high: Sonnet at high effort for ordinary implementation, investigation, and review. Artificial Analysis: Terminal-Bench 4.0 43.9%, FrontierCode 2.0 25.7%, $1.64 per task.\n- Harness claude, model opus, effort medium: Opus at medium effort for hard implementation, debugging, and design work. Artificial Analysis: Terminal-Bench 4.0 52.5%, FrontierCode 2.0 33.1%, $2.45 per task.\n- Harness claude, model opus, effort high: Opus at high effort for the hardest design and debugging work. Slower and costlier than claude-large. Artificial Analysis: Terminal-Bench 4.0 56.6%, FrontierCode 2.0 35.9%, $3.46 per task.",
+  "default_worktree": false,
+  "theme": "system",
+  "terminal_font_size": 13,
+  "notifications": {
+    "requests": true,
+    "replies": true,
+    "macos": true,
+    "sound": true
+  }
 }
 ```

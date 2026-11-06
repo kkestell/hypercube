@@ -4,19 +4,15 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestSaveConfig(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfg := Config{DefaultProfile: "worker", DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true}, Profiles: []Profile{
-		{Name: "lead", Description: "Large jobs", Harness: "claude", Model: "opus", Effort: "high"},
-		{Name: "worker", Description: "Small jobs", Harness: "codex", Model: "sol", Effort: "low"},
-	}}
+	cfg := Config{DefaultSelection: &Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
+		DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}
 	if err := SaveConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -31,11 +27,9 @@ func TestSaveConfig(t *testing.T) {
 	}
 	for _, invalid := range []Config{
 		{},
-		{DefaultProfile: "missing", Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Profiles: cfg.Profiles},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Profiles: []Profile{cfg.Profiles[0], cfg.Profiles[0]}},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Profiles: []Profile{{Name: "unfinished"}}},
-		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize, Profiles: cfg.Profiles},
-		{Theme: cfg.Theme, TerminalFontSize: 15, Profiles: cfg.Profiles},
+		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize},
+		{Theme: cfg.Theme, TerminalFontSize: 15},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, DefaultSelection: &Settings{Harness: "codex"}},
 	} {
 		if err := SaveConfig(invalid); err == nil {
 			t.Fatalf("saved invalid config: %+v", invalid)
@@ -44,17 +38,6 @@ func TestSaveConfig(t *testing.T) {
 		if err != nil || string(after) != string(before) {
 			t.Fatalf("invalid save changed file: %s, %v", after, err)
 		}
-	}
-	// A replacement of the profiles also persists the new explicit default.
-	cfg.Profiles = cfg.Profiles[:1]
-	cfg.Profiles[0].Model = "sonnet"
-	cfg.DefaultProfile = "lead"
-	if err := SaveConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
-	got, err = LoadConfig()
-	if err != nil || !reflect.DeepEqual(got, cfg) {
-		t.Fatalf("updated config = %+v, %v", got, err)
 	}
 	files, err := os.ReadDir(dir)
 	if err != nil || len(files) != 1 {
@@ -65,20 +48,21 @@ func TestSaveConfig(t *testing.T) {
 func TestLoadConfigDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
+	defaults := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+	// A fresh installation has no file.
+	got, err := LoadConfig()
+	if err != nil || !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("missing config = %+v, %v", got, err)
+	}
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	// A file from before the preferences and default_profile existed.
-	profile := `{"name":"one","description":"Jobs","harness":"codex","model":"sol","effort":"high"}`
-	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"profiles":[`+profile+`]}`), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadConfig()
-	want := Config{DefaultProfile: "one", Theme: "system", TerminalFontSize: 13,
-		Notifications: Notifications{Requests: true, Replies: true, MacOS: true, Sound: true},
-		Profiles:      []Profile{{Name: "one", Description: "Jobs", Harness: "codex", Model: "sol", Effort: "high"}}}
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("loaded config = %+v, %v", got, err)
+	got, err = LoadConfig()
+	if err != nil || !reflect.DeepEqual(got, defaults) {
+		t.Fatalf("empty config = %+v, %v", got, err)
 	}
 }
 
@@ -89,8 +73,65 @@ func TestSaveConfigWriteFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hypercube"), []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Config{Theme: "system", TerminalFontSize: 13, Profiles: []Profile{{Name: "one", Description: "Jobs", Harness: "codex", Model: "sol", Effort: "high"}}}
-	if err := SaveConfig(cfg); err == nil {
+	if err := SaveConfig(Config{Theme: "system", TerminalFontSize: 13}); err == nil {
 		t.Fatal("save succeeded without a config directory")
+	}
+}
+
+func TestUpgradeConfig(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "hypercube")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
+	path := filepath.Join(dir, "config.json")
+	if err := UpgradeConfig(); err != nil {
+		t.Fatalf("upgrading without a file: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("upgrade created a config: %v", err)
+	}
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lead := `{"name":"lead","description":" Hard work. ","harness":"claude","model":"opus","effort":"high"}`
+	worker := `{"name":"worker","description":"Small jobs.","harness":"opencode","model":"p/m/x","effort":"low"}`
+	guidance := "- Harness claude, model opus, effort high: Hard work.\n- Harness opencode, model p/m/x, effort low: Small jobs."
+	for name, tc := range map[string]struct {
+		source string
+		want   Config
+	}{
+		"implicit default": {`{"theme":"dark","profiles":[` + lead + `,` + worker + `]}`,
+			Config{DefaultSelection: &Settings{Harness: "claude", Model: "opus", Effort: "high"}, ChildGuidance: guidance, Theme: "dark", TerminalFontSize: 13, Notifications: DefaultNotifications}},
+		"explicit default": {`{"default_profile":"worker","default_worktree":true,"terminal_font_size":16,"notifications":{"requests":false,"replies":true,"macos":false,"sound":false},"profiles":[` + lead + `,` + worker + `]}`,
+			Config{DefaultSelection: &Settings{Harness: "opencode", Model: "p/m/x", Effort: "low"}, ChildGuidance: guidance, DefaultWorktree: true, Theme: "system", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}},
+		"explicit guidance": {`{"child_model_guidance":"","profiles":[` + lead + `]}`,
+			Config{DefaultSelection: &Settings{Harness: "claude", Model: "opus", Effort: "high"}, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for range 2 {
+				if err := UpgradeConfig(); err != nil {
+					t.Fatal(err)
+				}
+				got, err := LoadConfig()
+				if err != nil || !reflect.DeepEqual(got, tc.want) {
+					t.Fatalf("upgraded config = %+v, %v", got, err)
+				}
+			}
+			data, err := os.ReadFile(path)
+			if err != nil || strings.Contains(string(data), "profile") {
+				t.Fatalf("upgraded file = %s, %v", data, err)
+			}
+		})
+	}
+	// A malformed file stays as it is.
+	if err := os.WriteFile(path, []byte(`{"profiles":`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := UpgradeConfig(); err == nil {
+		t.Fatal("upgraded a malformed config")
+	}
+	if data, err := os.ReadFile(path); err != nil || string(data) != `{"profiles":` {
+		t.Fatalf("malformed config changed: %s, %v", data, err)
 	}
 }

@@ -36,18 +36,6 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
-	if err := os.MkdirAll(filepath.Join(dir, "hypercube"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	config := []byte(`{
-  "profiles": [
-    {"name": "opus", "description": "leading.", "harness": "one", "model": "opus", "effort": "high"},
-    {"name": "sol", "description": "coding.", "harness": "two", "model": "gpt-6.1-sol", "effort": "medium"}
-  ]
-}`)
-	if err := os.WriteFile(filepath.Join(dir, "hypercube", "config.json"), config, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	db, err := store.Open()
 	if err != nil {
 		t.Fatal(err)
@@ -159,7 +147,7 @@ func TestTools(t *testing.T) {
 		server := httptest.NewServer(Handler(db, rt, nil))
 		list := tools(t, connect(t, server.URL, "session-1"))
 		server.Close()
-		for _, name := range []string{"send_message", "list_sessions", "create_session", "end_session", "open_file"} {
+		for _, name := range []string{"send_message", "list_sessions", "list_models", "create_session", "end_session", "open_file"} {
 			if list[name] == nil {
 				t.Errorf("noGit=%v: %s missing", noGit, name)
 			}
@@ -168,9 +156,15 @@ func TestTools(t *testing.T) {
 		if got := create["required"]; !slices.Equal(got.([]any), []any{"title"}) {
 			t.Errorf("noGit=%v: create_session requires %v", noGit, got)
 		}
-		// Every profile is offered.
-		if enum := create["properties"].(map[string]any)["profile"].(map[string]any)["enum"]; !slices.Equal(enum.([]any), []any{"opus", "sol"}) {
-			t.Errorf("noGit=%v: profile enum = %v", noGit, enum)
+		// Settings are free overrides, checked by the harness.
+		properties := create["properties"].(map[string]any)
+		for _, name := range []string{"harness", "model", "effort"} {
+			if p := properties[name].(map[string]any); p["enum"] != nil {
+				t.Errorf("noGit=%v: %s enum = %v", noGit, name, p["enum"])
+			}
+		}
+		if properties["profile"] != nil {
+			t.Errorf("noGit=%v: create_session takes a profile", noGit)
 		}
 	}
 }
@@ -264,18 +258,18 @@ func TestCreateSessionRefusals(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := connect(t, serve(t, db, rt).URL, "session-1")
 	for _, args := range []map[string]any{
-		{"name": "w1", "title": "One", "profile": "sol", "dir": "."},
-		{"name": "w1", "title": "One", "profile": "sol", "dir": ".", "requested": true},
+		{"name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
+		{"name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": ".", "requested": true},
 		{"initiation": "own_initiative", "name": "w1", "title": "One", "dir": "."},
-		{"initiation": "own_initiative", "name": "W 1", "title": "One", "profile": "sol", "dir": "."},
-		{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "nope", "dir": "."},
-		{"initiation": "own_initiative", "name": "w1", "profile": "sol", "dir": "."},
-		{"initiation": "own_initiative", "name": "w1", "title": "  ", "profile": "sol", "dir": "."},
-		{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "sol", "dir": ".", "fork": true},
-		{"initiation": "offer", "title": "One", "profile": "sol"},
+		{"initiation": "own_initiative", "name": "W 1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "  ", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": ".", "fork": true},
+		{"initiation": "offer", "title": "One", "model": "gpt-6.1-sol"},
 		{"initiation": "offer", "title": "One"},
 		{"initiation": "offer", "title": "One", "offer_id": "x"},
-		{"offer_id": "x", "name": "w1", "title": "One", "profile": "sol", "dir": "."},
+		{"offer_id": "x", "name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
 	} {
 		if text, failed := callTool(t, parent, "create_session", args); !failed {
 			t.Errorf("create_session(%v) = %q", args, text)
@@ -312,7 +306,7 @@ func started(t *testing.T, db *store.DB, rt *session.Runtime) *mcp.ClientSession
 func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
-	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "own_initiative", "name": "w1", "title": "One", "profile": "sol", "dir": "missing"})
+	text, failed := callTool(t, parent, "create_session", map[string]any{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": "missing"})
 	if !failed || !strings.Contains(text, "missing: no such file or directory") {
 		t.Fatalf("create_session with a missing directory: %q %v", text, failed)
 	}
@@ -325,7 +319,7 @@ func TestCreateSessionRefusesMissingDirectory(t *testing.T) {
 func TestRequestedSessionStartsWithoutAnOffer(t *testing.T) {
 	db, rt := family(t, true, t.TempDir(), "")
 	parent := started(t, db, rt)
-	args := map[string]any{"initiation": "user_asked", "name": "reviewer", "title": "Review", "profile": "opus", "dir": "."}
+	args := map[string]any{"initiation": "user_asked", "name": "reviewer", "title": "Review", "dir": "."}
 	for _, brief := range []string{"", "  "} {
 		args["message"] = brief
 		if text, failed := callTool(t, parent, "create_session", args); !failed {
@@ -373,7 +367,7 @@ func TestCreateSessionForms(t *testing.T) {
 	if offer == "" || !strings.Contains(text, offer) || len(children(t, db, "session-1")) != 0 {
 		t.Fatalf("offer %q: %q", offer, text)
 	}
-	fill := map[string]any{"offer_id": offer, "name": "w1", "title": "Task", "profile": "sol", "dir": ".", "message": "the brief"}
+	fill := map[string]any{"offer_id": offer, "name": "w1", "title": "Task", "harness": "two", "model": "gpt-6.1-sol", "dir": ".", "message": "the brief"}
 	if text, failed := callTool(t, parent, "create_session", fill); !failed {
 		t.Fatalf("an unanswered offer started a child: %q", text)
 	}
@@ -400,7 +394,7 @@ func TestCreateSessionForms(t *testing.T) {
 	if list := children(t, db, "session-1"); len(list) != 1 || list[0].Harness != "two" || list[0].Model != "gpt-6.1-sol" {
 		t.Fatalf("children = %+v", list)
 	}
-	suggestion := map[string]any{"initiation": "own_initiative", "name": "w2", "title": "Later", "profile": "sol", "dir": "."}
+	suggestion := map[string]any{"initiation": "own_initiative", "name": "w2", "title": "Later", "harness": "two", "model": "gpt-6.1-sol", "dir": "."}
 	if text, failed := callTool(t, parent, "create_session", suggestion); failed {
 		t.Fatal(text)
 	}
@@ -508,7 +502,7 @@ func TestSessionBoundaries(t *testing.T) {
 	parent := connect(t, url, "session-1")
 	child := connect(t, url, "b")
 	parentTools, childTools := tools(t, parent), tools(t, child)
-	if len(parentTools) != 10 || parentTools["open_file"] == nil || childTools["open_file"] == nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
+	if len(parentTools) != 11 || parentTools["open_file"] == nil || childTools["list_models"] != nil || childTools["open_file"] == nil || len(childTools) != 6 || childTools["create_session"] != nil || childTools["end_session"] != nil {
 		t.Fatalf("tools: %v / %v", parentTools, childTools)
 	}
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
@@ -621,5 +615,37 @@ func TestBridgeWaitsForRestartingApp(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "session-1") {
 		t.Fatal(out.String())
+	}
+}
+
+// list_models reports the harnesses and their choices without starting a
+// session.
+func TestListModels(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	parent := started(t, db, rt)
+	for _, tc := range []struct {
+		args map[string]any
+		want []string
+	}{
+		{map[string]any{}, []string{`"id": "one"`, `"id": "two"`, `"installed": true`}},
+		{map[string]any{"harness": "one"}, []string{`"id": "m"`, `"id": "plain"`, `"default": "m"`}},
+		{map[string]any{"harness": "one", "query": "PLAIN"}, []string{`"id": "plain"`}},
+		{map[string]any{"harness": "one", "model": "m"}, []string{`"efforts": [`, `"default_effort": "low"`}},
+	} {
+		text, failed := callTool(t, parent, "list_models", tc.args)
+		for _, want := range tc.want {
+			if failed || !strings.Contains(text, want) {
+				t.Errorf("list_models(%v) = %s, want %s", tc.args, text, want)
+			}
+		}
+	}
+	if text, _ := callTool(t, parent, "list_models", map[string]any{"harness": "one", "query": "plain"}); strings.Contains(text, `"id": "m"`) {
+		t.Errorf("query kept other models: %s", text)
+	}
+	if text, failed := callTool(t, parent, "list_models", map[string]any{"harness": "one", "model": "gone"}); !failed || !strings.Contains(text, "not offered") {
+		t.Errorf("list_models for an unknown model = %q", text)
+	}
+	if list := children(t, db, "session-1"); len(list) != 0 {
+		t.Errorf("list_models started sessions: %+v", list)
 	}
 }

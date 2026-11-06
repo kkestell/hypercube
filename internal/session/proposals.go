@@ -8,24 +8,28 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// ProposeChild records a task without launching an agent or blocking this turn.
-func (r *Runtime) ProposeChild(parentID string, options ChildOptions) error {
+// ProposeChild records a task without launching an agent or blocking this
+// turn, and returns the child's resolved settings, which the proposal saves.
+func (r *Runtime) ProposeChild(parentID string, options ChildOptions) (harness.Settings, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	l, err := r.running(parentID)
 	if err != nil {
-		return err
+		return harness.Settings{}, err
 	}
-	return r.save(func(tx *write) error {
-		if _, _, err := prepareChild(tx.Tx, parentID, options); err != nil {
+	err = r.save(func(tx *write) error {
+		_, child, err := prepareChild(tx.Tx, parentID, options, false)
+		if err != nil {
 			return err
 		}
+		options.Settings = harness.Settings{Harness: child.Harness, Model: child.Model, Effort: child.Effort}
 		data, err := json.Marshal(options)
 		if err != nil {
 			return err
 		}
 		return tx.putItem(parentID, r.nextSeq(parentID), harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindProposal, Text: options.Title, Input: data})
 	})
+	return options.Settings, err
 }
 
 func childProposal(tx *store.Tx, parentID, id string) (harness.Item, int64, error) {

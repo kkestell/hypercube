@@ -36,6 +36,10 @@ func (r *Runtime) apply(l *live, rec harness.Record, next int64) (bool, error) {
 		return false, err
 	}
 	l.position = next
+	// The launch has started once its start and accepted settings are saved.
+	if command.Command == harness.CmdStart && reply.Error == "" {
+		close(l.started)
+	}
 	delete(l.commands, reply.ID)
 	if ch := l.waiters[reply.ID]; ch != nil {
 		var err error

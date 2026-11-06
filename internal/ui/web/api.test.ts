@@ -82,14 +82,14 @@ test('post shows a network failure and returns null', async () => {
   expect(errors(store)).toEqual(['Load failed']);
 });
 
-test('fetchConfig requests every configured profile', async () => {
-  const config = testConfig({default_profile: 'two', profiles: ['one', 'two'].map(name => ({name, description: '', harness: 'claude', model: '', effort: ''}))});
+test('fetchConfig requests the preferences', async () => {
+  const config = testConfig({child_model_guidance: 'Use opus for design.'});
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(config));
   expect(await fetchConfig(createStore(testState()))).toEqual(config);
   expect(fetchMock.mock.calls[0][0]).toBe('config');
 });
 
-test('fetchConfig shows malformed profiles and returns null', async () => {
+test('fetchConfig shows a malformed config and returns null', async () => {
   spyOn(globalThis, 'fetch').mockResolvedValue(new Response('not json'));
   const store = createStore(testState());
   expect(await fetchConfig(store)).toBeNull();

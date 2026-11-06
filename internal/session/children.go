@@ -21,12 +21,16 @@ type approval struct {
 	offer bool
 }
 
+// saved reports whether the approval is a proposal, whose saved settings are
+// already resolved.
+func (a approval) saved() bool { return a.id != "" && !a.offer }
+
 func (a approval) use(tx *write, parentID string, options ChildOptions, child store.Session) error {
 	switch {
 	case a.id == "":
 		return nil
 	case a.offer:
-		return useOffer(tx, parentID, a.id, options)
+		return useOffer(tx, parentID, a.id, options, child)
 	default:
 		return useProposal(tx, parentID, a.id, child.ID)
 	}
@@ -57,7 +61,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 	var l *live
 	err := r.save(func(tx *write) error {
 		var err error
-		parent, child, err = prepareChild(tx.Tx, parentID, options)
+		parent, child, err = prepareChild(tx.Tx, parentID, options, approved.saved())
 		if err != nil {
 			return err
 		}
@@ -113,5 +117,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 		}
 		return store.Session{}, discard(err)
 	}
-	return child, nil
+	// The start saved the settings the harness accepted.
+	err = r.db.Read(func(tx *store.Tx) error { var err error; child, err = tx.Session(child.ID); return err })
+	return child, err
 }

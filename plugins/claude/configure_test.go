@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -14,7 +15,7 @@ func TestServeConfigureAliasUsesResolvedModelWindow(t *testing.T) {
 	script := `#!/bin/sh
 while IFS= read -r line; do
  case "$line" in
- *'"subtype":"initialize"'*) echo '{"type":"control_response","response":{"subtype":"success","request_id":"initialize"}}';;
+ *'"subtype":"initialize"'*) echo "$FAKE_INITIALIZED";;
  *'"subtype":"apply_flag_settings"'*)
   id=$(printf '%s' "$line" | sed -n 's/.*"request_id":"\([^"]*\)".*/\1/p')
   case "$line" in
@@ -22,6 +23,7 @@ while IFS= read -r line; do
   *'"effortLevel":"max","model":"haiku"'*)
    echo '{"type":"control_response","response":{"subtype":"error","request_id":"other","error":"unrelated"}}'
    printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
+  *'"effortLevel":null,"model":"opus"'*) printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
   *) exit 4;;
   esac;;
  *'"content":"work"'*)
@@ -39,6 +41,7 @@ done
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("FAKE_INITIALIZED", initializedLine)
 	c := harnesstest.Serve(t, serve)
 	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "opus", Effort: "high", Dir: t.TempDir()}})
 	if r := c.Reply(1); r.Error != "" {
@@ -68,7 +71,17 @@ done
 	})
 
 	c.Send(harness.Command{ID: 5, Command: harness.CmdConfigure, Selection: &harness.Selection{Model: "bad", Effort: "max"}})
-	if r := c.Reply(5); r.Error != "bad model" || r.Selection != nil {
+	if r := c.Reply(5); !strings.Contains(r.Error, `does not offer model "bad"`) || r.Selection != nil {
+		t.Fatal(r)
+	}
+	c.Send(harness.Command{ID: 6, Command: harness.CmdConfigure, Selection: &harness.Selection{Model: "haiku", Effort: "high"}})
+	if r := c.Reply(6); !strings.Contains(r.Error, `does not accept effort "high"`) || r.Selection != nil {
+		t.Fatal(r)
+	}
+	// An empty effort clears the override instead of keeping max.
+	cleared := harness.Selection{Model: "opus"}
+	c.Send(harness.Command{ID: 7, Command: harness.CmdConfigure, Selection: &cleared})
+	if r := c.Reply(7); r.Error != "" || r.Selection == nil || *r.Selection != cleared {
 		t.Fatal(r)
 	}
 }

@@ -101,8 +101,9 @@ func (r *Runtime) StartOffer(parentID, id string, options ChildOptions) (store.S
 	return r.createChild(parentID, options, approval{id: id, offer: true})
 }
 
-// useOffer marks an accepted offer as used by the child's settings.
-func useOffer(tx *write, parentID, id string, options ChildOptions) error {
+// useOffer marks an accepted offer as used by the child, saving its resolved
+// settings.
+func useOffer(tx *write, parentID, id string, options ChildOptions, child store.Session) error {
 	item, seq, found, err := offer(tx.Tx, parentID, id)
 	if err != nil {
 		return err
@@ -121,6 +122,7 @@ func useOffer(tx *write, parentID, id string, options ChildOptions) error {
 	case strings.TrimSpace(options.Message) == "":
 		return errors.New("an offered child session needs its brief in message")
 	}
+	options.Settings = harness.Settings{Harness: child.Harness, Model: child.Model, Effort: child.Effort}
 	if item.Input, err = json.Marshal(options); err != nil {
 		return err
 	}

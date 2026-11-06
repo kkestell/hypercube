@@ -9,7 +9,7 @@
       "repo": "field-notes",
       "sessions": [
         {
-          "profile": "pi-gpt-high",
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
           "turns": [
             {
               "prompt": "Clarify how notebooks sync between devices",
@@ -26,7 +26,7 @@
           ]
         },
         {
-          "profile": "opencode-deepseek-flash-max",
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
           "turns": [
             {
               "prompt": "Review the getting started guide for missing steps",
@@ -49,7 +49,7 @@
       "repo": "harbor",
       "sessions": [
         {
-          "profile": "claude-sonnet-high",
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
           "worktree": true,
           "turns": [
             {
@@ -83,7 +83,7 @@
           ]
         },
         {
-          "profile": "codex-gpt-terra-high",
+          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
           "worktree": true,
           "turns": [
             {
@@ -226,7 +226,7 @@
           }
         },
         {
-          "profile": "pi-gpt-high",
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
           "worktree": true,
           "turns": [
             {

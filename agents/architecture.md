@@ -29,6 +29,22 @@ transcript items, and usage fields. Native mappings live in the
 [Codex](../plugins/codex), and [Pi](../plugins/pi) plugins. Restart a session to
 load a newly installed plugin.
 
+Two one-shot commands, defined in [discovery](../internal/harness/discovery.go),
+describe the harness. `describe` reports whether the native executable is
+installed; the app runs it for every plugin at startup and when the browser or
+`list_models` lists harnesses, and gives the installed names to new sessions'
+instructions. `models` lists the models a harness offers in a directory and,
+for one model, its efforts; the browser's selector and `list_models` ask for
+it on demand, and nothing caches it. The plugin, not the core, checks a
+session's model and effort in its native start and configure, and its start
+and configure replies report the settings the harness accepted.
+
+A session saves its harness, model, and effort. A child takes its parent's
+current settings, with any overrides its parent passes, resolved in
+[selection](../internal/session/selection.go) when the child is created or
+proposed; a proposal saves the resolved settings. A launch counts as started
+once the transaction that saves its start reply commits.
+
 Integration research for the supported harnesses is in
 [Claude Code](research/harnesses/claude-code.md),
 [OpenCode](research/harnesses/opencode.md), [Codex](research/harnesses/codex.md),

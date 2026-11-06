@@ -3,14 +3,16 @@
 ## Start a session
 
 Choose **Add Workspace** to select a project folder, or **New Session** for a
-workspace already in the sidebar. Choose a [profile](configuration.md) below
-the message box and, in a Git workspace, **Local** to work in the checkout or
+workspace already in the sidebar. Choose a harness, model, and effort below the
+message box; a new session starts with those of the workspace's newest session,
+or the [default](configuration.md) in a workspace without sessions. In a Git
+workspace, choose **Local** to work in the checkout or
 **Worktree** to work on a new branch in its own folder above it. The choice
 starts at the default location from **Settings**. Send the first prompt to
 create the session.
 
 Once you type or attach something, the new session stays in the sidebar as a
-**New Session** row, keeping its prompt, profile, and worktree choice while you
+**New Session** row, keeping its prompt, settings, and worktree choice while you
 switch sessions. Choose **Discard Draft** from its context menu to remove it.
 Typed text also survives reloading the app; image attachments stay available
 until the app reloads.
@@ -22,9 +24,9 @@ HEAD, so it excludes uncommitted work. See
 to work on the same project.
 
 A session keeps the harness it started with. The model and effort can change
-later through the profile selector, including during work. The selection
-survives restarts; editing or deleting the profile does not alter existing
-sessions automatically. [Harness timing](harness-support.md#messages-and-model-changes)
+later through the selector, including during work. The selection survives
+restarts. A child whose settings differ from its parent's is marked in its
+composer and in the sidebar. [Harness timing](harness-support.md#messages-and-model-changes)
 determines when a new selection takes effect.
 
 ## Send a correction or stop a turn
@@ -181,7 +183,8 @@ Corrections and follow-ups need no question;
 follow-ups on a child's work go back to that child while its context helps.
 
 Work the agent suggests on its own appears as cards above the message box,
-showing the brief, profile, context, and folder or new worktree.
+showing the brief, the harness, model, and effort it will use, context, and
+folder or new worktree.
 **Start** launches it; **Dismiss** closes the card. Handled cards move into the
 conversation as a single line; expand one to read its brief again. Cards survive reloads and
 do not block the parent. An unsuccessful launch shows an error and leaves the

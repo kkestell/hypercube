@@ -38,7 +38,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	t.Setenv("HYPERCUBE_TEST_CRASH", "1")
 	// The plugin can exit before the first prompt reaches it, which Create
 	// reports; the session and its parent remain.
-	s, _ := f.rt.Create(f.workspace.ID, "lead", false, "start")
+	s, _ := f.rt.Create(f.workspace.ID, lead, false, "start")
 	parent := s
 	ended := func() (n int) {
 		for _, it := range f.transcript(parent.ID) {
@@ -50,7 +50,7 @@ func TestAgentThatKeepsEndingStaysEnded(t *testing.T) {
 	}
 	f.until("the agent to end three times", func() bool { return ended() == maxQuickExits })
 	// CreateChild refuses only when the parent has no launch, even a starting one.
-	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "the session is not running") {
 		t.Fatalf("a session that stayed exited took a child: %v", err)
 	}
 	if n := len(f.log(parent.ID, "start")); n != maxQuickExits {
@@ -112,7 +112,7 @@ func TestFailedRelaunchStaysEnded(t *testing.T) {
 		return strings.HasSuffix(f.summary(parent.ID), "|error:Could not start the agent: cannot resume conversation unresumable")
 	})
 	// The failed relaunch has no successor, including one still starting.
-	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Profile: harness.Profile{Harness: "test"}, Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "the session is not running") {
+	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Dir: ".", Message: ""}); err == nil || !strings.Contains(err.Error(), "the session is not running") {
 		t.Fatalf("a failed relaunch took a child: %v", err)
 	}
 	starts := f.log(parent.ID, "start")

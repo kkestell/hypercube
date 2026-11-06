@@ -45,9 +45,10 @@ type message struct {
 	RequestID string          `json:"request_id"`
 	Request   json.RawMessage `json:"request"`
 	Response  struct {
-		Subtype   string `json:"subtype"`
-		RequestID string `json:"request_id"`
-		Error     string `json:"error"`
+		Subtype   string          `json:"subtype"`
+		RequestID string          `json:"request_id"`
+		Error     string          `json:"error"`
+		Response  json.RawMessage `json:"response"`
 	} `json:"response"`
 	IsError        bool    `json:"is_error"`
 	Result         string  `json:"result"`

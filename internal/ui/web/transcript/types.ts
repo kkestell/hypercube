@@ -1,4 +1,5 @@
 // A session's transcript: the items its agent and Hypercube record, by kind.
+import type {Settings} from '../agent/types.ts';
 import type {Image} from '../images.ts';
 
 // WorkState is the agent's work state that a state item records.
@@ -29,7 +30,7 @@ export interface ProposalItem extends ItemBase {
   input: {
     name: string;
     title: string;
-    profile: {name: string; harness: string; model: string; effort: string};
+    settings: Settings;
     dir?: string;
     message?: string;
     fork?: boolean;

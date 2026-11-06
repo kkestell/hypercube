@@ -7,7 +7,7 @@ import {showError} from '../notifications/errors.ts';
 import type {Session, Unsent} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
-import type {Draft} from './types.ts';
+import type {Draft, Settings} from './types.ts';
 
 // Each workspace has one unfinished new session, with a stable draft key.
 export const unsentKey = (workspace: string | null) => 'new/' + (workspace ?? '');
@@ -22,10 +22,33 @@ export const draftOf = (state: State, key: string): Draft => state.drafts[key] ?
 // A prompt has text, images, or both, and waits for images still being read.
 const hasContent = (draft: Draft) => !draft.reading && (!!draft.text.trim() || draft.images.length > 0);
 
-// A new session needs a workspace and profile before its first prompt can send.
+// draftDefaults are a new session's first settings: those of the newest
+// top-level session in its workspace, or the configured default.
+export function draftDefaults(state: State, workspace: string | null): Settings | null {
+  const newest = state.workspaces.find(w => w.id === workspace)?.sessions[0];
+  if (newest) return {harness: newest.harness, model: newest.model, effort: newest.effort};
+  return state.config?.default_selection ?? null;
+}
+
+// withDraftDefaults gives new-session drafts without settings their defaults
+// once the workspaces or config that supply them arrive. Settings a draft
+// already has never change by themselves.
+export function withDraftDefaults(state: State): State {
+  const fill = (draft: Unsent) => {
+    if (draft.settings || draft.sending) return draft;
+    const settings = draftDefaults(state, draft.workspace);
+    return settings ? {...draft, settings} : draft;
+  };
+  const unsent = state.unsent && fill(state.unsent);
+  const filled = Object.entries(state.unsentDrafts).map(([key, draft]) => [key, fill(draft)] as const);
+  if (unsent === state.unsent && filled.every(([key, draft]) => draft === state.unsentDrafts[key])) return state;
+  return {...state, unsent, unsentDrafts: Object.fromEntries(filled)};
+}
+
+// A new session needs a workspace and settings before its first prompt can send.
 const unsentReady = (state: State, key: string) => {
   const unsent = unsentOf(state, key);
-  return !!unsent?.workspace && !!unsent.profile && !unsent.sending;
+  return !!unsent?.workspace && !!unsent.settings && !unsent.sending;
 };
 
 export const canSend = (state: State, session: Pick<Session, 'id' | 'ended' | 'activity'>, text = draftOf(state, session.id).text) =>

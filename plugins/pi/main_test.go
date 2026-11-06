@@ -577,7 +577,9 @@ pending_prompt=
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
   case "$line" in
-    *'"type":"get_state"'*) printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{"model":{"provider":"%s","id":"%s","contextWindow":1000},"sessionFile":"%s","sessionId":"session-1"}}\n' "$id" "$FAKE_PROVIDER" "$FAKE_MODEL" "$FAKE_SESSION_FILE";;
+    *'"type":"get_state"'*) printf '{"id":"%s","type":"response","command":"get_state","success":true,"data":{"model":{"provider":"%s","id":"%s","contextWindow":1000},"thinkingLevel":"%s","sessionFile":"%s","sessionId":"session-1"}}\n' "$id" "$FAKE_PROVIDER" "$FAKE_MODEL" "$FAKE_LEVEL" "$FAKE_SESSION_FILE";;
+    *'"type":"get_available_models"'*) printf '{"id":"%s","type":"response","success":true,"data":{"models":[{"id":"x/m","name":"M","provider":"openrouter"},{"id":"plain","name":"Plain","provider":"openai"}]}}\n' "$id";;
+    *'"type":"get_available_thinking_levels"'*) printf '{"id":"%s","type":"response","success":true,"data":{"levels":["off","low","high"]}}\n' "$id";;
     *'"type":"get_session_stats"'*) printf '{"id":"%s","type":"response","command":"get_session_stats","success":true,"data":{"cost":%s,"contextUsage":{"tokens":7,"contextWindow":1000}}}\n' "$id" "$cost";;
     *'"type":"prompt"'*)
       if [ -n "$FAKE_DIALOG_BEFORE_PROMPT_REPLY" ]; then
@@ -607,6 +609,7 @@ done
 	t.Setenv("FAKE_ARGS", args)
 	t.Setenv("FAKE_PROVIDER", "openrouter")
 	t.Setenv("FAKE_MODEL", "x/m")
+	t.Setenv("FAKE_LEVEL", "high")
 	t.Setenv("FAKE_SESSION_FILE", filepath.Join(dir, "session.jsonl"))
 	stream, err := filepath.Abs(filepath.Join("testdata", "tool.jsonl"))
 	if err != nil {

@@ -20,6 +20,7 @@ type configOption struct {
 // configValue is one value of a setting, or a group of values.
 type configValue struct {
 	Value   string        `json:"value"`
+	Name    string        `json:"name"`
 	Options []configValue `json:"options"`
 }
 
@@ -30,26 +31,29 @@ func (ag *agent) configure(selection harness.Selection) (*harness.Selection, err
 }
 
 // selectSettings uses the options returned after the model change: selecting
-// a model can change both the available efforts and the current effort.
+// a model can change both the available efforts and the current effort. An
+// empty effort keeps the one OpenCode selects with the model.
 func (ag *agent) selectSettings(ctx context.Context, selection harness.Selection) (*harness.Selection, error) {
 	options, err := ag.choose(ctx, ag.options, "model", selection.Model)
 	if err != nil {
 		return nil, err
 	}
 	ag.options = options
-	selected := &harness.Selection{Model: selection.Model, Effort: "default"}
+	selected := &harness.Selection{Model: selection.Model}
 	effort := findOption(options, "effort")
 	if effort != nil {
 		selected.Effort = effort.CurrentValue
 	}
-	if effort != nil || selection.Effort != "default" {
-		options, err = ag.choose(ctx, options, "effort", selection.Effort)
-		if err != nil {
-			return selected, fmt.Errorf("model %s: %w", selection.Model, err)
-		}
-		ag.options = options
-		selected.Effort = selection.Effort
+	// Earlier versions saved "default" for a model without an effort setting.
+	if selection.Effort == "" || effort == nil && selection.Effort == "default" {
+		return selected, nil
 	}
+	options, err = ag.choose(ctx, options, "effort", selection.Effort)
+	if err != nil {
+		return selected, fmt.Errorf("model %s: %w", selection.Model, err)
+	}
+	ag.options = options
+	selected.Effort = selection.Effort
 	return selected, nil
 }
 
@@ -86,11 +90,7 @@ func (ag *agent) choose(ctx context.Context, options []configOption, id, value s
 		return nil, fmt.Errorf("OpenCode offers no %s setting", id)
 	}
 	if !slices.Contains(values(o), value) {
-		hint := ""
-		if id == "model" {
-			hint = "; use a provider/model ID from `opencode models`"
-		}
-		return nil, fmt.Errorf("OpenCode does not offer %s %q%s", id, value, hint)
+		return nil, fmt.Errorf("OpenCode does not offer %s %q; see list_models", id, value)
 	}
 	var result sessionResult
 	err := ag.call(ctx, "session/set_config_option", map[string]any{"sessionId": ag.session, "configId": id, "value": value}, &result)

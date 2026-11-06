@@ -2,7 +2,7 @@ import {useEffect, useState} from 'react';
 import {fetchGrants, post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {harnessIcon} from '../agent/harness-icon.tsx';
-import {displayName} from '../agent/profile-label.ts';
+import {displayName} from '../agent/selection-label.ts';
 import {useStore} from '../store.ts';
 import type {Grant} from './types.ts';
 

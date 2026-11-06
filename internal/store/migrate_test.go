@@ -154,3 +154,44 @@ func TestLegacyTranscriptCleanupRunsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOpenReplacesSavedProfilesWithSettings(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	profile := `{"name":"worker","description":"Small jobs","harness":"codex","model":"sol","effort":"low"}`
+	entries := []struct{ before, after string }{
+		{`{"id":"p1","kind":"proposal","text":"Task","input":{"name":"task","title":"Task","profile":` + profile + `,"dir":".","message":"brief"}}`,
+			`{"id":"p1","kind":"proposal","text":"Task","input":{"name":"task","title":"Task","dir":".","message":"brief","settings":{"harness":"codex","model":"sol","effort":"low"}}}`},
+		{`{"id":"p2","kind":"proposal","done":true,"answer":"child-id","input":{"name":"done","profile":` + profile + `}}`,
+			`{"id":"p2","kind":"proposal","done":true,"answer":"child-id","input":{"name":"done","settings":{"harness":"codex","model":"sol","effort":"low"}}}`},
+		{`{"id":"o1","kind":"attention","offer":true,"done":true,"answer":"New session","input":{"name":"offered","profile":` + profile + `}}`,
+			`{"id":"o1","kind":"attention","offer":true,"done":true,"answer":"New session","input":{"name":"offered","settings":{"harness":"codex","model":"sol","effort":"low"}}}`},
+		// A recorded tool call keeps what the agent sent.
+		{`{"id":"t1","kind":"tool","input":{"profile":"worker"}}`, `{"id":"t1","kind":"tool","input":{"profile":"worker"}}`},
+	}
+	tx(t, db, func(tx *Tx) error {
+		for i, e := range entries {
+			if _, err := tx.PutEntry("s", Entry{Seq: int64(i + 1), Item: string(rune('a' + i)), Data: []byte(e.before)}); err != nil {
+				return err
+			}
+		}
+		return tx.exec(`PRAGMA user_version = 1`)
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopen(t).Read(func(tx *Tx) error {
+		saved, err := tx.Transcript("s")
+		if err != nil {
+			return err
+		}
+		for i, e := range entries {
+			if saved[i].Seq != int64(i+1) || string(saved[i].Data) != e.after {
+				t.Errorf("entry %d = %d %s, want %s", i, saved[i].Seq, saved[i].Data, e.after)
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}

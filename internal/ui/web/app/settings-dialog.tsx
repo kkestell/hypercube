@@ -6,10 +6,10 @@ import {useDialogFocus} from '../shared/focus.ts';
 import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
-import {SettingsGeneral, SettingsNotifications, type SettingsDraft} from './settings-preferences.tsx';
-import {SettingsProfiles} from './settings-profiles.tsx';
+import {SettingsAgents, SettingsGeneral, SettingsNotifications} from './settings-preferences.tsx';
+import type {Config} from './types.ts';
 
-const sections = ['General', 'Agent profiles', 'Notifications', 'Permissions'] as const;
+const sections = ['General', 'Agents', 'Notifications', 'Permissions'] as const;
 type Section = typeof sections[number];
 
 export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
@@ -25,7 +25,7 @@ export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChang
 function SettingsContent({close, saving, setSaving}: {close: () => void; saving: boolean; setSaving: (saving: boolean) => void}) {
   const [, store] = useStore();
   const [section, setSection] = useState<Section>('General');
-  const [draft, setDraft] = useState<SettingsDraft | null>(null);
+  const [draft, setDraft] = useState<Config | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -33,23 +33,18 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
     fetchConfig(store).then(config => {
       if (!active) return;
       if (!config) setLoadFailed(true);
-      else {
-        const {default_profile, ...rest} = config;
-        setDraft({...rest, defaultIndex: config.profiles.findIndex(p => p.name === default_profile)});
-      }
+      else setDraft(config);
     });
     return () => { active = false; };
   }, [store]);
-  const edit = (change: Partial<SettingsDraft>) => setDraft(draft => draft && {...draft, ...change});
+  const edit = (change: Partial<Config>) => setDraft(draft => draft && {...draft, ...change});
   const save = async () => {
     if (!draft) return;
     setError('');
     setSaving(true);
     try {
-      const {defaultIndex, ...rest} = draft;
-      const config = {...rest, default_profile: draft.profiles[defaultIndex].name};
-      await saveConfig(config);
-      store.update(state => receivedConfig(state, config));
+      await saveConfig(draft);
+      store.update(state => receivedConfig(state, draft));
       close();
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -73,7 +68,7 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
           <fieldset disabled={saving} className="min-w-0">
             {draft && section === 'General' && <SettingsGeneral draft={draft} onChange={edit} />}
             {draft && section === 'Notifications' && <SettingsNotifications draft={draft} onChange={edit} />}
-            {draft && section === 'Agent profiles' && <SettingsProfiles draft={draft} onChange={edit} />}
+            {draft && section === 'Agents' && <SettingsAgents draft={draft} onChange={edit} />}
           </fieldset>
           {section === 'Permissions' && <SettingsPermissions />}
         </div>

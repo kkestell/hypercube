@@ -54,10 +54,11 @@ interface Prompt {
 // unsent session is still open.
 export async function createSession(store: Store, prompt: Prompt, key: string) {
   const unsent = unsentOf(store.get(), key);
-  if (!unsent?.workspace || !unsent.profile) return false;
+  const settings = unsent?.settings;
+  if (!unsent?.workspace || !settings) return false;
   store.update(state => unsentSending(state, true, key));
-  const {workspace, profile} = unsent;
-  const params = {action: 'new', workspace, profile, ...(inWorktree(store.get(), unsent) && {worktree: '1'})};
+  const {workspace} = unsent;
+  const params = {action: 'new', workspace, ...settings, ...(inWorktree(store.get(), unsent) && {worktree: '1'})};
   const created = await post(store, 'session', params, JSON.stringify(prompt));
   // A completion must not change another unsent session or restore into it.
   if (unsentOf(store.get(), key)?.identity !== unsent.identity) return true;

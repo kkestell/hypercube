@@ -25,16 +25,6 @@ const dirFlag = process.argv.find(arg => arg.startsWith('--dir='));
 const dir = dirFlag && path.resolve(dirFlag.slice('--dir='.length));
 const sceneFiles = process.argv.slice(2).filter(arg => arg.endsWith('.json'));
 
-// The profiles the scenes name. They use the real harness names, so the page
-// labels sessions as it does in real use.
-const profiles = [
-  {name: 'claude-opus-high', description: 'Opus at high effort for design and debugging.', harness: 'claude', model: 'opus', effort: 'high'},
-  {name: 'claude-sonnet-high', description: 'Sonnet at high effort for ordinary implementation.', harness: 'claude', model: 'sonnet', effort: 'high'},
-  {name: 'codex-gpt-terra-high', description: 'GPT Terra at high effort for implementation and review.', harness: 'codex', model: 'gpt-6.1-terra', effort: 'high'},
-  {name: 'pi-gpt-high', description: 'GPT-5.2 at high thinking for implementation.', harness: 'pi', model: 'openai/gpt-5.2', effort: 'high'},
-  {name: 'opencode-deepseek-flash-max', description: 'DeepSeek Flash at max effort for quick, cheap work.', harness: 'opencode', model: 'opencode-go/deepseek-v4.1-flash', effort: 'max'},
-];
-
 // The page's own default workbench, which a scene's workbench overrides.
 const defaultWorkbench = {
   sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
@@ -101,7 +91,7 @@ async function shoot(file) {
   const base = path.join(dir, name);
   fs.mkdirSync(path.join(base, 'config/hypercube'), {recursive: true});
   fs.writeFileSync(path.join(base, 'config/hypercube/config.json'),
-    JSON.stringify({default_profile: profiles[0].name, theme: 'light', profiles}, null, 2));
+    JSON.stringify({theme: 'light'}, null, 2));
   console.log(`${name}: playing`);
   const backend = await startBackend(base, path.resolve(file));
   let window;
@@ -251,7 +241,7 @@ async function play(scene, base, backend) {
     if (w.changes) await git('apply', path.join(fixtures, w.changes));
     const workspace = await (await post('workspace', {action: 'new', path: repo})).text();
     for (const s of w.sessions) {
-      const created = await (await post('session', {action: 'new', workspace, profile: s.profile, ...(s.worktree ? {worktree: '1'} : {})}, {text: s.turns[0].prompt})).json();
+      const created = await (await post('session', {action: 'new', workspace, ...s.settings, ...(s.worktree ? {worktree: '1'} : {})}, {text: s.turns[0].prompt})).json();
       await playTurns(created.session, s);
     }
   }
