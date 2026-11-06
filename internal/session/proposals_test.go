@@ -1,6 +1,7 @@
 package session
 
 import (
+	"errors"
 	"sync"
 	"testing"
 
@@ -89,5 +90,28 @@ func TestForkRejectsADifferentHarness(t *testing.T) {
 	_, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "fork", Title: "Fork", Settings: harness.Settings{Harness: "other", Model: "m"}, Fork: true})
 	if err == nil || len(f.family(parent.ID)) != 1 {
 		t.Fatalf("incompatible fork: %v", err)
+	}
+}
+
+func TestArchivedProposalCannotBeDismissed(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	id := f.proposal(parent.ID, ChildOptions{Name: "proposed", Title: "Task", Settings: lead, Dir: "."})
+	if err := f.rt.Archive(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.DismissProposal(parent.ID, id); !errors.Is(err, errEnded) {
+		t.Fatalf("dismissing an archived proposal = %v", err)
+	}
+	for _, item := range f.transcript(parent.ID) {
+		if item.ID == id && (item.Done || item.Answer != "") {
+			t.Fatalf("archived proposal changed: %+v", item)
+		}
+	}
+	if err := f.rt.Unarchive(parent.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rt.DismissProposal(parent.ID, id); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -112,7 +112,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
             <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
               {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
                 ? <AttentionItem item={item} session={session} />
-                : <ProposalItem item={item} session={session.id} expanded={false} setOpen={setOpen} />}</CardContent>)}
+                : <ProposalItem item={item} session={session} expanded={false} setOpen={setOpen} />}</CardContent>)}
             </Card>
           </section>
         )}

@@ -75,6 +75,16 @@ test('a refused proposal action can be retried or dismissed', async () => {
   expect(requestParams(fetches.mock.calls, 1).get('action')).toBe('dismiss-proposal');
 });
 
+test('an archived proposal cannot be started or dismissed', () => {
+  const fetches = spyOn(globalThis, 'fetch');
+  const {root} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}], testSession({id: 's', ended: true, activity: 'exited'}));
+  const buttons = findAll(root, '[aria-label="Proposed child session"] button');
+  expect(buttons.map(button => button.textContent)).toEqual(['Start', 'Dismiss']);
+  expect(buttons.every(button => button.hasAttribute('disabled'))).toBe(true);
+  act(() => buttons.forEach(button => button.click()));
+  expect(fetches).not.toHaveBeenCalled();
+});
+
 test('items replace themselves in place, and unchanged items are left alone', () => {
   const {root, send} = setup([{id: '1', kind: 'user', text: 'hi', seq: 1}, {id: '2', kind: 'text', text: 'Hel', seq: 2}]);
   const list = find(root, '.transcript-list');

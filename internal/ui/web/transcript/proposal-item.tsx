@@ -9,11 +9,12 @@ import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {Markdown} from './markdown.tsx';
 import {Disclosure} from './disclosure.tsx';
+import type {Session} from '../sessions/types.ts';
 import type {ProposalItem as Proposal} from './types.ts';
 
 interface ProposalItemProps {
   item: Proposal;
-  session: string;
+  session: Pick<Session, 'id' | 'ended'>;
   expanded: boolean;
   setOpen: (key: string, open: boolean) => void;
 }
@@ -28,9 +29,9 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
   const options = item.input;
   const outcome = item.answer === 'Dismissed' ? 'Dismissed' : `Child session: ${options.name}`;
   const act = async (action: 'start-proposal' | 'dismiss-proposal') => {
-    if (sending) return;
+    if (sending || session.ended) return;
     setSending(true);
-    const result = await post(store, 'session', {action, id: session, proposal: item.id});
+    const result = await post(store, 'session', {action, id: session.id, proposal: item.id});
     if (result === null) setSending(false);
     else focusComposerField();
   };
@@ -57,8 +58,8 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
       </div>
       {options.message && <div className="max-h-[40vh] overflow-y-auto"><Markdown text={options.message} style="chat" /></div>}
       <div className="flex gap-2">
-        <Button size="sm" disabled={sending} onClick={() => act('start-proposal')}>Start</Button>
-        <Button size="sm" variant="secondary" disabled={sending} onClick={() => act('dismiss-proposal')}>Dismiss</Button>
+        <Button size="sm" disabled={sending || session.ended} onClick={() => act('start-proposal')}>Start</Button>
+        <Button size="sm" variant="secondary" disabled={sending || session.ended} onClick={() => act('dismiss-proposal')}>Dismiss</Button>
       </div>
     </div>
   );
