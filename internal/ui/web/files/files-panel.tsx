@@ -12,7 +12,7 @@ import {listedFolder, loadFolder, setFolderOpen, treeEntries} from './files.ts';
 import {usePathMenu} from './path-menu.tsx';
 
 const statusColor: Record<ChangeStatus, string> = {
-  modified: 'text-amber-500/70', added: 'text-green-500/70', untracked: 'text-green-500/70', deleted: 'text-muted-foreground',
+  modified: 'text-amber-700 dark:text-amber-500/70', added: 'text-green-700 dark:text-green-500/70', untracked: 'text-green-700 dark:text-green-500/70', deleted: 'text-muted-foreground',
 };
 
 export function FilesPanel() {
