@@ -71,19 +71,14 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 	var exited <-chan struct{} // the started process's Done
 	var inputID int64
 	var queued []harness.Command
-	answered := map[int64]error{}
 	for {
 		if inputDone == nil && len(queued) > 0 {
 			cmd := queued[0]
 			queued = queued[1:]
-			if err, ok := answered[cmd.ID]; ok {
-				delete(answered, cmd.ID)
-				s.reply(cmd.ID, nil, err)
-				continue
-			}
 			if cmd.Command == harness.CmdInput && s.agent != nil {
 				// Only input waits off the command loop: native extensions may ask
-				// for an answer before accepting it. Other commands stay ordered.
+				// for an answer before accepting it. Input and configuration stay
+				// ordered; answers and interrupts can complete while input waits.
 				done := make(chan error, 1)
 				inputDone, inputID = done, cmd.ID
 				go func() { done <- s.agent.Input(cmd.Text, cmd.Images) }()
@@ -111,10 +106,12 @@ func Serve(in io.Reader, out io.Writer, start Start) error {
 				continue
 			}
 			last = cmd.ID
-			queued = append(queued, cmd)
-			if inputDone != nil && cmd.Command == harness.CmdAnswer {
-				_, answered[cmd.ID] = s.handle(cmd, start)
+			if inputDone != nil && (cmd.Command == harness.CmdAnswer || cmd.Command == harness.CmdInterrupt) {
+				selection, err := s.handle(cmd, start)
+				s.reply(cmd.ID, selection, err)
+				continue
 			}
+			queued = append(queued, cmd)
 		case err := <-inputDone:
 			s.reply(inputID, nil, err)
 			inputDone = nil

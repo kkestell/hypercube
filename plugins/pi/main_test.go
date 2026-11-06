@@ -708,11 +708,13 @@ func TestServeAnswersDialogBeforePromptAcceptance(t *testing.T) {
 		})
 	})
 	c.Send(harness.Command{ID: 3, Command: harness.CmdAnswer, Request: "dialog", Choices: []string{"green"}})
-	for _, id := range []int64{2, 3} {
+	pending := map[int64]bool{2: true, 3: true}
+	for range 2 {
 		r := c.Until(func(r harness.Record) bool { return r.Reply != nil })
-		if r.Reply.ID != id || r.Reply.Error != "" {
-			t.Fatalf("reply to %d: %+v", id, r.Reply)
+		if !pending[r.Reply.ID] || r.Reply.Error != "" {
+			t.Fatalf("input or answer reply: %+v", r.Reply)
 		}
+		delete(pending, r.Reply.ID)
 	}
 }
 

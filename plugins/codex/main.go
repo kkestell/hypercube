@@ -60,20 +60,22 @@ type agent struct {
 
 	// mu guards the state below. Events are emitted with it held, so they keep
 	// the order of the notifications and of answers.
-	mu        sync.Mutex
-	selection harness.Selection
-	thread    string
-	turn      string                  // the main turn in progress
-	ended     string                  // the last main turn that completed
-	final     []string                // the main turn's final answer messages so far
-	finished  map[string]bool         // items that have completed
-	open      map[string]harness.Item // streamed items that have not completed
-	running   map[string]harness.Item // tool items that have not completed
-	children  map[string]childThread  // native subagents, by thread ID
-	limits    [2]harness.Limit        // general primary and secondary windows
-	requests  plugin.Requests[request]
-	answering *request // async question whose answer is being sent
-	errs      plugin.Errors
+	mu             sync.Mutex
+	selection      harness.Selection
+	thread         string
+	turn           string                  // the main turn in progress
+	inputPending   bool                    // main-thread input is in flight, including steering and fallback
+	interruptInput bool                    // interrupt the main turn once input returns
+	ended          string                  // the last main turn that completed
+	final          []string                // the main turn's final answer messages so far
+	finished       map[string]bool         // items that have completed
+	open           map[string]harness.Item // streamed items that have not completed
+	running        map[string]harness.Item // tool items that have not completed
+	children       map[string]childThread  // native subagents, by thread ID
+	limits         [2]harness.Limit        // general primary and secondary windows
+	requests       plugin.Requests[request]
+	answering      *request // async question whose answer is being sent
+	errs           plugin.Errors
 }
 
 type childThread struct {
@@ -266,7 +268,7 @@ func (ag *agent) input(text string, images []harness.Image) error {
 // inputThread steers the named thread's turn in progress, or starts a turn. A
 // steer can arrive after the turn has ended but before its completion reaches
 // us; the input then starts a turn.
-func (ag *agent) inputThread(thread, text string, images []harness.Image) error {
+func (ag *agent) inputThread(thread, text string, images []harness.Image) (err error) {
 	select {
 	case <-ag.rpc.Done():
 		return errors.New("codex is not running")
@@ -275,7 +277,18 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 	ag.mu.Lock()
 	main := thread == ag.thread
 	turn, selection := ag.turn, ag.selection
-	if !main {
+	if main {
+		ag.inputPending = true
+		defer func() {
+			ag.mu.Lock()
+			interrupted := ag.interruptInput
+			ag.inputPending, ag.interruptInput = false, false
+			ag.mu.Unlock()
+			if interrupted {
+				err = errors.Join(err, ag.interrupt())
+			}
+		}()
+	} else {
 		turn = ag.children[thread].turn
 	}
 	ag.mu.Unlock()
@@ -366,6 +379,11 @@ func (ag *agent) interrupt() error {
 	// Codex waits for the answers of requests it has sent.
 	ev.Items = ag.closeRequests(blockingRequest, true)
 	ag.send(ev)
+	if ag.inputPending {
+		ag.interruptInput = true
+		ag.mu.Unlock()
+		return nil
+	}
 	ag.mu.Unlock()
 	if turn == "" {
 		return nil
