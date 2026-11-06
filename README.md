@@ -80,6 +80,11 @@ sessions.
 
 ### Questions, approvals, and notifications
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/attention-dark.png">
+  <img alt="Notification cards with a question and a command approval from two other sessions" src="docs/images/attention-light.png">
+</picture>
+
 - **Questions and approvals.** Pending requests remain visible alongside the composer, and answered requests remain in the conversation history.
 - **Answers across sessions.** Notification cards let you answer another agent's request without leaving the current conversation.
 - **Reply and error alerts.** Notifications surface new replies and problems across your sessions.

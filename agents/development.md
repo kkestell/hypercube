@@ -42,7 +42,8 @@ make screenshots
 This regenerates `docs/images/<scene>-light.png` and `<scene>-dark.png` for
 each scene in `docs/screenshots/`. A scene file lists workspaces, each a copy
 of a fixture repository in `docs/screenshots/repos/` with an optional patch of
-uncommitted changes, and their sessions: each turn's prompt, the transcript
+uncommitted changes, and their sessions: each session's `settings` (harness,
+model, and effort, as the session shows them), each turn's prompt, the transcript
 items in the plugin protocol's JSON, how the turn ends (`idle`, `working`, or
 `ask`), the children it starts, the tasks it offers, and its own-initiative
 suggestions. A turn may write fixture files and run Git commands in its session
@@ -55,7 +56,15 @@ each scene through a real backend with
 window, and captures it. Everything else it creates is deleted.
 
 The window must fit on a Retina display. On first use macOS asks to grant the
-terminal the Screen Recording permission.
+terminal the Screen Recording permission. Run one capture at a time in one
+visible terminal window, and leave the screenshot window in front until the run
+ends: a covered window stops painting, and the driver fails a capture that
+differs from the page.
+
+Open every image the run writes and check its theme, its content, and the
+window's title bar buttons. Give a new scene the density of the existing ones:
+several sessions across workspaces, a transcript that fills its column, and the
+Files panel open.
 
 ## Website
 
