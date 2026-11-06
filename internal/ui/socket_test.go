@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/session"
@@ -45,5 +47,21 @@ func TestFileOpensReachTheViewingPage(t *testing.T) {
 	}
 	if len(a.rt.TakeFileOpens(a.session.ID)) != 0 {
 		t.Fatal("requests remained queued")
+	}
+}
+
+func TestRequestsReachPagesViewingOtherSessions(t *testing.T) {
+	a := newApp(t)
+	p := a.page()
+	p.until("initial state", func() bool { return p.state.Build != "" })
+	a.input("!ask", http.StatusOK)
+	p.until("the question", func() bool {
+		return len(p.state.Requests) == 1 && p.state.Requests[0].Item.Text == "Proceed?"
+	})
+	q := url.Values{"action": {"answer"}, "id": {a.session.ID}, "request": {p.state.Requests[0].Item.ID}, "choice": {"yes"}}
+	a.post("/session?"+q.Encode(), "", http.StatusOK)
+	p.until("the answered question", func() bool { return len(p.state.Requests) == 0 })
+	if p.resets != 0 {
+		t.Fatalf("transcripts sent to a page without a selection: %d", p.resets)
 	}
 }
