@@ -12,6 +12,8 @@ import {createFilePoller} from './file-polling.ts';
 
 afterEach(() => mock.restore());
 
+const listings = {'': [{name: 'a', dir: true}, {name: 'c', dir: true}], a: [{name: 'b', dir: true}], c: [{name: 'd', dir: true}]};
+
 // stubRoutes answers each request from routes, by path and query, and records
 // the requests in order. A route may return a promise to hold its answer.
 function stubRoutes(routes: Record<string, () => Response | Promise<Response>>) {
@@ -20,7 +22,9 @@ function stubRoutes(routes: Record<string, () => Response | Promise<Response>>) 
     const {pathname, searchParams} = new URL(url, 'http://localhost/');
     const name = pathname.slice(1) + ':' + searchParams.get('path');
     requests.push(name);
-    return (routes[name] ?? (() => Response.json([])))();
+    if (routes[name]) return routes[name]();
+    const entries = pathname === '/files' ? listings[searchParams.get('path') as keyof typeof listings] : [];
+    return Response.json(entries ?? []);
   });
   return {requests, fetches};
 }
@@ -32,7 +36,6 @@ function attached(id = 's'): AttachedSession {
   let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce(openTab, session.tabs);
   tabs = moveTab(tabs, fileTabId('x.go'), panes(tabs.root)[0].id, 'right');
   const open = {'x.go': unread, 'y.go': unread, 'z.go': {...unread, text: 'z', etag: '"z"'}};
-  const listings = {'': [{name: 'a', dir: true}, {name: 'c', dir: true}], a: [{name: 'b', dir: true}], c: [{name: 'd', dir: true}]};
   return {...session, tabs, files: {listings, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
 }
 
@@ -59,6 +62,15 @@ test('only shown folders, their changes, and the active file tab of each pane ar
   expect(hidden).toEqual(['file:z.go', 'file:x.go']);
 });
 
+test('one poll restores nested expanded folders using freshly loaded parent listings', async () => {
+  const session = {...attached(), files: {...attached().files, listings: {}}};
+  const {requests} = stubRoutes({});
+  const store = createStore(state({session}));
+  await createFilePoller(store)();
+  expect(requests.slice(0, 3)).toEqual(['files:', 'files:a', 'files:a/b']);
+  expect(store.get().session?.files.listings.a).toEqual([{name: 'b', dir: true}]);
+});
+
 test('a folder shown only through its deleted files is not listed', async () => {
   const {requests} = stubRoutes({});
   const session = {...emptySession('s'), files: {listings: {'': []}, expanded: {gone: true as const}, open: {}}};
@@ -70,7 +82,7 @@ test('a folder shown only through its deleted files is not listed', async () => 
 
 test('requests go one at a time and a poll is skipped while one runs', async () => {
   let release = () => {};
-  const {requests} = stubRoutes({'files:': () => new Promise(resolve => { release = () => resolve(Response.json([])); })});
+  const {requests} = stubRoutes({'files:': () => new Promise(resolve => { release = () => resolve(Response.json(listings[''])); })});
   const poll = createFilePoller(createStore(state()));
   const first = poll();
   await poll();
