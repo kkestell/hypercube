@@ -54,7 +54,7 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
           ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>
           : <Detail><Icon name="git-branch" />New worktree</Detail>)}
       </div>
-      {options.message && <Markdown text={options.message} style="chat" />}
+      {options.message && <div className="max-h-[40vh] overflow-y-auto"><Markdown text={options.message} style="chat" /></div>}
       <div className="flex gap-2">
         <Button size="sm" disabled={sending} onClick={() => act('start-proposal')}>Start</Button>
         <Button size="sm" variant="secondary" disabled={sending} onClick={() => act('dismiss-proposal')}>Dismiss</Button>

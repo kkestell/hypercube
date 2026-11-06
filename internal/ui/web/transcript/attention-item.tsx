@@ -11,7 +11,7 @@ import type {AttentionItem as Attention} from './types.ts';
 export function AttentionItem({item, session}: Pick<RowControls, 'session'> & {item: Attention}) {
   return (
     <div className="attention-item attention-item-open space-y-3">
-      <div className="attention-item-question"><Markdown text={item.text ?? ''} style="chat" /></div>
+      <div className="attention-item-question max-h-[40vh] overflow-y-auto"><Markdown text={item.text ?? ''} style="chat" /></div>
       <AttentionForm session={session.id} item={item} ended={session.ended} />
     </div>
   );
