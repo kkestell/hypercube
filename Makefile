@@ -17,7 +17,7 @@ LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/Launc
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
 # hoc. The icons are rendered from cmd/hypercube/AppIcon.svg and
 # desktop/menubar.svg. build also links hypercube and the plugins into bin/.
-bundle: bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
+bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile
 	rm -rf $(APP)
 	mkdir -p $(dir $(APP))
@@ -66,17 +66,13 @@ binaries:
 	go build -o $(OUT)/hypercube ./cmd/hypercube
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
-build: ui bundle
+build: bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
 	for p in $(PLUGINS); do ln -sf Hypercube.app/Contents/MacOS/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 
-# check compiles the programs without packaging the app, and fails when
-# internal/ui/dist differs from a fresh build of its sources.
-check:
+# check compiles the programs without packaging the app.
+check: ui
 	go build ./cmd/... ./plugins/...
-	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && cd internal/ui && \
-		bun install --frozen-lockfile && bun build.ts "$$tmp" && \
-		{ diff -rq dist "$$tmp" || { echo "internal/ui/dist is stale; run make ui"; exit 1; }; }
 	cd internal/ui && bunx tsc -p . && bun test
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile && bun test
 	go vet ./...
@@ -114,8 +110,8 @@ install-service: build quit-desktop place
 	APP="$(APPDIR)/Hypercube.app" SERVICE="$(SERVICE)" PORT="$(PORT)" scripts/install-service
 	open "$(APPDIR)/Hypercube.app"
 
-# ui builds the browser view into internal/ui/dist, which is committed and
-# embedded, so go build needs no bun.
+# ui builds the browser view into internal/ui/dist, which the Go build embeds.
+# Run it before go build, go vet, or go test.
 ui:
 	cd internal/ui && bun install --frozen-lockfile && bun build.ts dist
 

@@ -1,9 +1,7 @@
 // Builds the browser view into the directory given as the only argument: the
 // bundles of web/, the page, the desktop app's waiting page and browser
 // toolbar, the Tailwind stylesheet, and the license of every package the
-// bundle includes. Its output depends only on the sources and the
-// locked dependencies, so make check can compare it with the committed dist/.
-// Run `bun install --frozen-lockfile` before it: the bundler resolves packages
+// bundle includes. Run `bun install --frozen-lockfile` before it: the bundler resolves packages
 // from the node_modules that exists when this script starts.
 import {cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync} from 'node:fs';
 import {join, resolve} from 'node:path';
@@ -15,7 +13,7 @@ if (!outdir) {
   process.exit(2);
 }
 
-// Another bun version can bundle differently, which would make dist/ look stale.
+// Another bun version can bundle differently.
 const {packageManager}: {packageManager: string} = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 const pinned = packageManager.replace(/^bun@/, '');
 if (Bun.version !== pinned) {
