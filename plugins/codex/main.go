@@ -64,8 +64,8 @@ type agent struct {
 	selection      harness.Selection
 	thread         string
 	turn           string                  // the main turn in progress
-	starting       bool                    // turn/start for the main thread is in flight
-	interruptStart bool                    // interrupt the main turn once turn/start returns its ID
+	inputPending   bool                    // main-thread input is in flight, including steering and fallback
+	interruptInput bool                    // interrupt the main turn once input returns
 	ended          string                  // the last main turn that completed
 	final          []string                // the main turn's final answer messages so far
 	finished       map[string]bool         // items that have completed
@@ -268,7 +268,7 @@ func (ag *agent) input(text string, images []harness.Image) error {
 // inputThread steers the named thread's turn in progress, or starts a turn. A
 // steer can arrive after the turn has ended but before its completion reaches
 // us; the input then starts a turn.
-func (ag *agent) inputThread(thread, text string, images []harness.Image) error {
+func (ag *agent) inputThread(thread, text string, images []harness.Image) (err error) {
 	select {
 	case <-ag.rpc.Done():
 		return errors.New("codex is not running")
@@ -277,7 +277,18 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 	ag.mu.Lock()
 	main := thread == ag.thread
 	turn, selection := ag.turn, ag.selection
-	if !main {
+	if main {
+		ag.inputPending = true
+		defer func() {
+			ag.mu.Lock()
+			interrupted := ag.interruptInput
+			ag.inputPending, ag.interruptInput = false, false
+			ag.mu.Unlock()
+			if interrupted {
+				err = errors.Join(err, ag.interrupt())
+			}
+		}()
+	} else {
 		turn = ag.children[thread].turn
 	}
 	ag.mu.Unlock()
@@ -316,21 +327,12 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 		if selection.Effort != "" {
 			params["effort"] = selection.Effort
 		}
-		ag.mu.Lock()
-		ag.starting = true
-		ag.mu.Unlock()
 	}
-	err := ag.call(ctx, "turn/start", params, &started)
-	ag.mu.Lock()
-	interrupted := false
-	if main {
-		interrupted = ag.interruptStart
-		ag.starting, ag.interruptStart = false, false
-	}
-	if err != nil {
-		ag.mu.Unlock()
+	if err := ag.call(ctx, "turn/start", params, &started); err != nil {
 		return err
 	}
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
 	var ev harness.Event
 	ev.Items = ag.closeAsyncQuestions(thread)
 	if main {
@@ -343,10 +345,6 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) error 
 		}
 	}
 	ag.send(ev)
-	ag.mu.Unlock()
-	if interrupted {
-		return ag.interrupt()
-	}
 	return nil
 }
 
@@ -381,8 +379,8 @@ func (ag *agent) interrupt() error {
 	// Codex waits for the answers of requests it has sent.
 	ev.Items = ag.closeRequests(blockingRequest, true)
 	ag.send(ev)
-	if ag.starting {
-		ag.interruptStart = true
+	if ag.inputPending {
+		ag.interruptInput = true
 		ag.mu.Unlock()
 		return nil
 	}

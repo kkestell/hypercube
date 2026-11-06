@@ -716,6 +716,47 @@ func TestSteerRejectedAfterTheTurnEnded(t *testing.T) {
 	}
 }
 
+func TestInterruptWhileSteerFallsBackToStartingATurn(t *testing.T) {
+	h := newAgent(t)
+	h.thread = "t1"
+	turnStart(h, "u2")
+	steering, rejected := make(chan struct{}), make(chan struct{})
+	release := sync.OnceFunc(func() { close(rejected) })
+	defer release()
+	h.server.handle("turn/steer", func(map[string]any) (any, *plugin.RPCError) {
+		close(steering)
+		<-rejected
+		return nil, &plugin.RPCError{Code: -32600, Message: "no active turn to steer"}
+	})
+	h.server.handle("turn/interrupt", func(map[string]any) (any, *plugin.RPCError) {
+		return map[string]any{}, nil
+	})
+	h.feed(t, `{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}`)
+	done := make(chan error, 1)
+	go func() { done <- h.input("late", nil) }()
+	select {
+	case <-steering:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn/steer did not arrive")
+	}
+	h.feed(t, `{"method":"turn/completed","params":{"threadId":"t1","turn":{"id":"u1","status":"completed"}}}`)
+	if err := h.interrupt(); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("input did not finish")
+	}
+	if sent := h.server.sent("turn/interrupt"); len(sent) != 1 || sent[0]["threadId"] != "t1" || sent[0]["turnId"] != "u2" {
+		t.Fatalf("turn interrupts: %+v", sent)
+	}
+}
+
 // Only an idle thread starts a turn after a failed steer. Any other status, or
 // a thread that cannot be read, returns the steer's error.
 func TestSteerFailureOnALiveTurnIsReturned(t *testing.T) {
