@@ -42,7 +42,10 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const [state, store] = useStore();
   const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id), level === 2);
-  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${session.ended ? 'opacity-60' : ''}`;
+  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''}`;
+  // An ended session dims its contents but not its guide line, which stays
+  // even along the tree.
+  const dim = session.ended ? 'opacity-60' : '';
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();
@@ -56,13 +59,13 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
-      <span className="session-item-status inline-flex size-4 shrink-0 items-center justify-center">{status}</span>
-      <span className={`flex min-w-0 flex-1 items-center ${session.worktree ? '' : `${toEdge} ${hasChildren ? chevronInset : ''}`}`}>
+      <span className={`session-item-status inline-flex size-4 shrink-0 items-center justify-center ${dim}`}>{status}</span>
+      <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree ? '' : `${toEdge} ${hasChildren ? chevronInset : ''}`}`}>
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
           : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} onToggle={toggle} />}
       </span>
-      {session.id !== renaming && session.worktree && <BranchIcon className="session-item-branch shrink-0" merge={session.merge} />}
+      {session.id !== renaming && session.worktree && <BranchIcon className={`session-item-branch shrink-0 ${dim}`} merge={session.merge} />}
     </div></Button>
   );
 }
@@ -116,13 +119,14 @@ function Title({title, small, chevron, onToggle}: TitleProps) {
 
 // Branch indents a child row and draws its stretch of the line that runs down
 // from just under the parent's status dot, centered on it, with a stroke across
-// toward the child's dot. The last child's stroke turns the line's corner.
+// toward the child's dot that starts beside the line, so the translucent
+// strokes never overlap. The last child's stroke turns the line's corner.
 function Branch({position, siblings}: {position: number; siblings: number}) {
   const last = position === siblings;
   return (
-    <span aria-hidden="true" className="pointer-events-none relative w-3 shrink-0 self-stretch">
-      <span className={`absolute left-[7.5px] border-l border-border ${position === 1 ? '-top-1.5' : 'top-0'} ${last ? 'bottom-1/2 w-2.5 rounded-bl-sm border-b' : 'bottom-0'}`} />
-      {!last && <span className="absolute bottom-1/2 left-[7.5px] w-2.5 border-b border-border" />}
+    <span aria-hidden="true" className="pointer-events-none relative w-3.5 shrink-0 self-stretch">
+      <span className={`absolute left-[7.5px] border-l border-border ${position === 1 ? '-top-1' : 'top-0'} ${last ? 'bottom-1/2 w-3 rounded-bl-sm border-b' : 'bottom-0'}`} />
+      {!last && <span className="absolute bottom-1/2 left-[8.5px] w-[11px] border-b border-border" />}
     </span>
   );
 }

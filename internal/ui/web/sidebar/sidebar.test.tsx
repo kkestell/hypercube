@@ -99,8 +99,8 @@ test('an active family hides its ended children until its menu shows them, and m
   expect(sessionRows(root)).toEqual(['a', 'live', 'b']);
   choose(root, '[data-session="a"]', 'Show Ended Sessions');
   expect(sessionRows(root)).toEqual(['a', 'ended', 'live', 'b']);
-  expect(row(root, 'ended').className).toContain('opacity-60');
-  expect(row(root, 'a').className).not.toContain('opacity-60');
+  expect(row(root, 'ended').querySelector('.opacity-60')).not.toBeNull();
+  expect(row(root, 'a').querySelector('.opacity-60')).toBeNull();
   contextMenu(row(root, 'ended'));
   expect(menuLabels()).not.toContain('Restart Agent');
   key(document.activeElement as HTMLElement, 'Escape');
