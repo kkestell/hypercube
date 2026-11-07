@@ -1,10 +1,10 @@
 // A session's tree row. A parent shows a chevron after its title on hover or
-// focus. The row's right edge shows the worktree branch icon and, only when
-// there is something to say, the session's own state. A click chooses the
-// session; a click on a parent's chevron, or a double-click on the parent,
-// collapses or expands its children. EndedFold is the child row that hides or
-// lists a parent's ended children.
-import {useEffect, useRef, type KeyboardEvent, type MouseEvent} from 'react';
+// keyboard focus. The row's right edge shows the worktree branch icon and,
+// only when there is something to say, the session's own state. A click
+// chooses the session; a click on a parent's chevron, or a double-click on the
+// parent, collapses or expands its children. EndedFold is the child row that
+// hides or lists a parent's ended children.
+import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import {sessionOf, shownId} from '../sessions/selection.ts';
 import {SettingsDiffer} from '../agent/session-selection.tsx';
@@ -24,6 +24,7 @@ const statusOf = (session: Session, selected: boolean, waiting: boolean) => {
   if (session.activity === 'busy') return <BusyDot title="Working" />;
   return null;
 };
+
 
 interface SessionItemProps {
   session: Session;
@@ -58,15 +59,10 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
-      <span className="flex min-w-0 flex-1 items-center gap-2">
+      <span className="flex min-w-0 flex-1 items-center">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
-          : <span className="relative min-w-0 flex-1">
-            <span className={`session-item-title block truncate text-left ${level === 2 ? 'text-xs' : ''}`}>{session.title}</span>
-            {hasChildren && <span className="session-item-twistie invisible absolute right-0 top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-within/session:visible" onClick={toggle}>
-              <Chevron open={expanded} />
-            </span>}
-          </span>}
+          : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} onToggle={toggle} />}
       </span>
       {session.id !== renaming && (session.worktree || status || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
         {parent && <SettingsDiffer child={session} parent={parent} workspace={sessionOf(state, session.id)?.workspace.id ?? null} />}
@@ -74,6 +70,48 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
         {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}
     </div></Button>
+  );
+}
+
+// A title too long to fit fades out over 1rem ending --fade-end before its
+// right edge.
+const fade = '[mask-image:linear-gradient(to_right,#000_calc(100%_-_var(--fade-end)_-_1rem),transparent_calc(100%_-_var(--fade-end)))] [--fade-end:0px]';
+// While a parent's chevron shows, the title's padding makes room for it, and
+// the fade ends before it.
+const chevronRoom = 'group-hover/session:pr-5 group-focus-visible/session:pr-5';
+const fadeBeforeChevron = 'group-hover/session:[--fade-end:1.25rem] group-focus-visible/session:[--fade-end:1.25rem]';
+
+interface TitleProps {
+  title: string;
+  small: boolean;
+  chevron: ReactNode;
+  onToggle: (e: MouseEvent) => void;
+}
+
+// Title shows a session title and, for a parent, the chevron at its end. It
+// watches whether the title overflows, so only a title that does not fit
+// fades.
+function Title({title, small, chevron, onToggle}: TitleProps) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const measure = () => setOverflows(element.scrollWidth > element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [title]);
+
+  return (
+    <span className="relative flex min-w-0 items-center">
+      <span ref={ref} className={`session-item-title min-w-0 overflow-hidden whitespace-nowrap text-left ${small ? 'text-xs' : ''} ${chevron ? chevronRoom : ''} ${overflows ? fade : ''} ${overflows && chevron ? fadeBeforeChevron : ''}`}>{title}</span>
+      {chevron && <span className="session-item-twistie invisible absolute right-0 top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-visible/session:visible" onClick={onToggle}>
+        {chevron}
+      </span>}
+    </span>
   );
 }
 
