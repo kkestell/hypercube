@@ -15,20 +15,27 @@ import (
 )
 
 // pauseStatus holds the first completed Git status in dir.
-func pauseStatus(t *testing.T, dir string) (wait, release func()) {
-	t.Helper()
-	return pauseGit(t, dir, "status", "--porcelain")
+func (f *fixture) pauseStatus(dir string) (wait, release func()) {
+	f.t.Helper()
+	return f.pauseGit(dir, "status", "--porcelain")
 }
 
 // pauseGit holds the first completed Git command matching command and arg in
-// dir. Both pipe ends stay open so cleanup can release it even after failure.
-func pauseGit(t *testing.T, dir, command, arg string) (wait, release func()) {
+// dir. The runtime's merge refreshes can run Git through the barrier until the
+// runtime quits, so the barrier lives in the fixture's directory, which is
+// removed after that. Both pipe ends stay open so cleanup can release the held
+// command even after failure.
+func (f *fixture) pauseGit(dir, command, arg string) (wait, release func()) {
+	t := f.t
 	t.Helper()
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
-	barrier := t.TempDir()
+	barrier, err := os.MkdirTemp(f.dir, "git")
+	if err != nil {
+		t.Fatal(err)
+	}
 	pipes := make([]*os.File, 2)
 	for i, name := range []string{"reached", "release"} {
 		path := filepath.Join(barrier, name)
@@ -68,6 +75,9 @@ exec "$HYPERCUBE_TEST_GIT" "$@"
 	var once sync.Once
 	release = func() { once.Do(func() { _, _ = pipes[1].Write([]byte("continue\n")) }) }
 	t.Cleanup(func() {
+		// Claiming the barrier keeps a later command from waiting on the
+		// closed pipes.
+		_ = os.Mkdir(filepath.Join(barrier, "claimed"), 0o700)
 		release()
 		for _, p := range pipes {
 			p.Close()
@@ -96,7 +106,7 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 			if err := f.rt.Select(parent.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
 				t.Fatal(err)
 			}
-			wait, release := pauseStatus(t, parent.Dir)
+			wait, release := f.pauseStatus(parent.Dir)
 			removed := make(chan error, 1)
 			go func() {
 				if archive {
@@ -156,7 +166,7 @@ func TestEndChildBlocksShellAdmissionDuringItsChecks(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
 	child := f.child(parent, "ending", "")
-	wait, release := pauseStatus(t, child.Dir)
+	wait, release := f.pauseStatus(child.Dir)
 	ended := make(chan error, 1)
 	go func() { _, err := f.rt.EndChild(parent.ID, child.Name); ended <- err }()
 	wait()
@@ -183,7 +193,7 @@ func TestRefusedRemovalKeepsTheFamilyWorking(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(parent.Dir, "unfinished"), []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wait, release := pauseStatus(t, parent.Dir)
+	wait, release := f.pauseStatus(parent.Dir)
 	removed := make(chan error, 1)
 	go func() { removed <- f.rt.Delete(parent.ID) }()
 	wait()
@@ -301,7 +311,7 @@ func (f *fixture) pausedRefusal(parent store.Session, during func()) {
 	if err := os.WriteFile(filepath.Join(parent.Dir, "unfinished"), []byte("keep"), 0o644); err != nil {
 		f.t.Fatal(err)
 	}
-	wait, release := pauseStatus(f.t, parent.Dir)
+	wait, release := f.pauseStatus(parent.Dir)
 	removed := make(chan error, 1)
 	go func() { removed <- f.rt.Delete(parent.ID) }()
 	wait()

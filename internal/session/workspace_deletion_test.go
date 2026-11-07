@@ -24,7 +24,7 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 	if err := os.WriteFile(scratch, []byte("keep"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wait, release := pauseStatus(t, s.Dir)
+	wait, release := f.pauseStatus(s.Dir)
 	removed := make(chan error, 1)
 	done := make(chan struct{})
 	go func() {
@@ -71,7 +71,7 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 
 func TestWorkspaceDeletionRefusesUntilEveryCreationFinishes(t *testing.T) {
 	f := newFixture(t)
-	wait, release := pauseGit(t, f.root, "worktree", "add")
+	wait, release := f.pauseGit(f.root, "worktree", "add")
 	var s store.Session
 	created := make(chan error, 1)
 	done := make(chan struct{})
@@ -132,7 +132,7 @@ func TestWorkspaceDeletionRefusesUntilFailedCreationCleansUp(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(f.root, ".worktreeinclude"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	wait, release := pauseGit(t, f.root, "worktree", "remove")
+	wait, release := f.pauseGit(f.root, "worktree", "remove")
 	created := make(chan error, 1)
 	done := make(chan struct{})
 	go func() {

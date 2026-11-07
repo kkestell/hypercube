@@ -37,7 +37,7 @@ func Main(args []string) error {
 	lock := os.NewFile(3, "lock")
 	defer lock.Close()
 	syscall.CloseOnExec(3)
-	if err := os.WriteFile(filepath.Join(h.dir, "pid"), []byte(strconv.Itoa(os.Getpid())), 0600); err != nil {
+	if err := h.publish("pid", []byte(strconv.Itoa(os.Getpid()))); err != nil {
 		return err
 	}
 	socket := os.NewFile(4, "in")
@@ -226,10 +226,17 @@ func (h *Holder) writeExit(e Exit) error {
 	if err != nil {
 		return err
 	}
-	if err = os.WriteFile(filepath.Join(h.dir, "exit.tmp"), data, 0600); err != nil {
+	return h.publish("exit", data)
+}
+
+// publish writes the file name in the holder's directory whole, so a reader
+// sees it complete or not at all.
+func (h *Holder) publish(name string, data []byte) error {
+	path := filepath.Join(h.dir, name)
+	if err := os.WriteFile(path+".tmp", data, 0600); err != nil {
 		return err
 	}
-	return os.Rename(filepath.Join(h.dir, "exit.tmp"), filepath.Join(h.dir, "exit"))
+	return os.Rename(path+".tmp", path)
 }
 func (h *Holder) copyOutput(in io.Reader, terminal bool) error {
 	var position int64
