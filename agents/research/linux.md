@@ -103,9 +103,8 @@ sockets, and session recovery).
 
 Docker runs ARM64 Linux containers natively. Checked on 2026-11-06:
 
-- A Debian 13 container started with `/sbin/init`, `--privileged`,
-  `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write boots systemd and
-  runs a lingering user's manager. A user service with `KillMode=process`
+- A Debian 13 container started with `/sbin/init` and `--privileged` boots
+  systemd in its own cgroup namespace and runs a lingering user's manager. A user service with `KillMode=process`
   left its child running across `systemctl --user restart`.
 - Electron 45.2.3 in a `node:22-trixie` container, under `xvfb-run` with
   `ELECTRON_DISABLE_SANDBOX=1`, started, was driven by Playwright's Electron

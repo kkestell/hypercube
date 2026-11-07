@@ -11,7 +11,7 @@ PLUGINS := claude opencode codex pi
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 
-.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean ui screenshots web-build web-serve
+.PHONY: binaries build bundle check release install place quit-desktop install-service dev dev-app dev-stop dev-clean linux-check ui screenshots web-build web-serve
 
 # bundle builds $(APP): the Electron desktop app, Hypercube Desktop, with
 # hypercube and the harness plugins side by side in Contents/MacOS, signed ad
@@ -137,6 +137,10 @@ dev-stop:
 
 dev-clean:
 	scripts/dev clean
+
+# linux-check runs make check in a fresh Linux container.
+linux-check:
+	scripts/linux/run
 
 # web-build builds the Hypercube website into web/public. web-serve runs its dev
 # server at http://localhost:1313. Both go through web/Makefile, which installs
