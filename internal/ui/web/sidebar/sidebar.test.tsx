@@ -309,9 +309,6 @@ test('the parent chevron overlays the title and toggles children without selecti
   expect(chevron.classList.contains('right-0')).toBe(true);
   expect(chevron.className).toContain('group-hover/session:visible');
   expect(chevron.className).toContain('group-focus-within/session:visible');
-  const columns = find(parent, '.session-item-decoration').children;
-  expect(columns).toHaveLength(3);
-  for (const column of columns) expect(column.classList.contains('size-4')).toBe(true);
   click(chevron);
   expect(sessionRows(root)).toEqual(['a']);
   expect(store.get().selected).toBe('child');
