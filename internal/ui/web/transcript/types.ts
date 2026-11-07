@@ -1,6 +1,5 @@
 // A session's transcript: the items its agent and Hypercube record, by kind.
 import type {Settings} from '../agent/types.ts';
-import type {Image} from '../images.ts';
 
 // WorkState is the agent's work state that a state item records.
 export type WorkState = 'working' | 'idle';
@@ -19,7 +18,7 @@ interface ItemBase {
 export interface UserItem extends ItemBase {
   kind: 'user';
   text?: string;
-  images?: Image[];
+  images?: string[];
   from?: string;
   automatic?: boolean;
 }
@@ -49,7 +48,7 @@ export interface StateItem extends ItemBase {
 export interface TextItem extends ItemBase {
   kind: 'text';
   text?: string;
-  images?: Image[];
+  images?: string[];
 }
 
 export interface ReasoningItem extends ItemBase {
@@ -66,7 +65,7 @@ export interface ToolItem extends ItemBase {
   input?: unknown;
   output?: string;
   failed?: boolean;
-  images?: Image[];
+  images?: string[];
 }
 
 export interface ErrorItem extends ItemBase {

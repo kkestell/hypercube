@@ -30,7 +30,7 @@ test('only exact adjacent text copies of structured questions are omitted', () =
   const copy: TextItem & {seq: number} = {id: 'copy', kind: 'text', seq: 0, text: 'Which size?\n- Small\n- Large'};
   expect(ids(rows([copy, question]))).toEqual(['q']);
   expect(ids(rows([{...copy, text: 'Context.\n' + copy.text}, question]))).toEqual(['copy', 'q']);
-  expect(ids(rows([{...copy, images: [{mime_type: 'image/png', data: 'x'}]}, question]))).toEqual(['copy', 'q']);
+  expect(ids(rows([{...copy, images: ['/transcript-image?index=0']}, question]))).toEqual(['copy', 'q']);
   expect(ids(rows([copy, {...question, parent: 'other'}]))).toEqual(['copy', 'q']);
   expect(ids(rows([copy, text('between', 2), question]))).toEqual(['copy', 'between', 'q']);
 });

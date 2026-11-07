@@ -27,10 +27,17 @@ type stateMessage struct {
 }
 
 type transcriptMessage struct {
-	Type    string                   `json:"type"`
-	Session string                   `json:"session"`
-	Reset   bool                     `json:"reset"`
-	Items   []session.TranscriptItem `json:"items"`
+	Type    string      `json:"type"`
+	Session string      `json:"session"`
+	Reset   bool        `json:"reset"`
+	Items   []shownItem `json:"items"`
+}
+
+// shownItem is a transcript item with links to its images in place of their
+// data, which can be megabytes per screenshot.
+type shownItem struct {
+	session.TranscriptItem
+	Images []string `json:"images,omitempty"`
 }
 
 type openMessage struct {
@@ -216,7 +223,11 @@ func (d *dataSocket) sendOpens() error {
 }
 
 func (d *dataSocket) sendTranscript(reset bool, items []session.TranscriptItem) error {
-	data, err := json.Marshal(transcriptMessage{"transcript", d.selected, reset, items})
+	shown := make([]shownItem, len(items))
+	for i, item := range items {
+		shown[i] = shownItem{item, imageLinks(d.selected, item.ID, item.Item.Images)}
+	}
+	data, err := json.Marshal(transcriptMessage{"transcript", d.selected, reset, shown})
 	if err != nil {
 		return err
 	}
