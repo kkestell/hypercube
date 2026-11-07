@@ -3,6 +3,7 @@ import {act} from 'react';
 import {mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testState, unread} from '../../test-state.ts';
 import {openTab} from '../editor/tab-layout.ts';
+import {EditorArea} from '../editor/editor-area.tsx';
 import {emptySession} from '../sessions/selection.ts';
 import {createStore, StoreContext} from '../store.ts';
 import {FileView} from './file-view.tsx';
@@ -23,7 +24,7 @@ test.each([
   session.files.open[path] = {...unread, text: `- [**Read more**](${href})`};
   const fetch = stubFetch(() => new Response('Linked file'));
   const store = createStore(testState({session}));
-  const root = mount(store, <FileView id={'file:' + path} path={path} />);
+  const root = mount(store, <EditorArea />);
   const link = root.querySelector('a')!;
   expect(link.textContent).toBe('Read more');
   const click = new MouseEvent('click', {bubbles: true, cancelable: true});
@@ -160,6 +161,7 @@ test('a browser decoding error offers the file directly', () => {
 });
 
 test('source highlights reveal once after text arrives, across refreshes and remounts', async () => {
+  stubFetch(() => new Promise(() => {}));
   const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   try {
     const session = emptySession('s');

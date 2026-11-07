@@ -1,8 +1,8 @@
 // The attached session's tabs, preview, and remembered scroll. File and diff
 // tabs share one preview tab, replaced on the next click until kept open.
-import {diffTitle, readOpenDiff} from '../changes/changes.ts';
+import {diffReady, diffTitle, readOpenDiff} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
-import {readOpenFile, unreadFile} from '../files/files.ts';
+import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
 import {shownSession} from '../sessions/selection.ts';
 import type {AttachedSession} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -96,18 +96,20 @@ function tabOpened(state: State, id: TabId, add: (session: AttachedSession) => A
 // File and diff clicks open the shared preview, or select an existing tab.
 export function openFileTab(store: Store, path: string) {
   if (!store.get().session) return;
+  const ready = fileReady(store.get().session?.files.open[path]);
   store.update(state => tabOpened(state, fileTabId(path), session => ({
     ...session, files: {...session.files, open: {...session.files.open, [path]: unreadFile}},
   })));
-  readOpenFile(store, path);
+  if (ready) readOpenFile(store, path);
 }
 
 export function openDiffTab(store: Store, path: string) {
   if (!store.get().session) return;
+  const ready = diffReady(store.get().session?.diffs[path]);
   store.update(state => tabOpened(state, diffTabId(path), session => ({
     ...session, diffs: {...session.diffs, [path]: {text: null, message: null}},
   })));
-  readOpenDiff(store, path);
+  if (ready) readOpenDiff(store, path);
 }
 
 // openRequestedFile keeps and selects an agent's file. A late socket message
@@ -120,13 +122,14 @@ export function openRequestedFile(store: Store, request: FileOpenRequest) {
     }}));
     return;
   }
+  const ready = fileReady(store.get().session?.files.open[path]);
   store.update(state => withSession(state, session => {
     const id = fileTabId(path);
     const tabs = layout.openTab(session.tabs, id);
     const file = {...(session.files.open[path] ?? unreadFile), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
     return {...session, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...session.files, open: {...session.files.open, [path]: file}}};
   }));
-  readOpenFile(store, path);
+  if (ready) readOpenFile(store, path);
 }
 
 // openPendingFiles runs when the attached session changes.

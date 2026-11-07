@@ -4,6 +4,8 @@ import {fetchChanges, HttpError, readDiff} from '../api.ts';
 import type {Store} from '../store.ts';
 import type {ChangeStatus, ChangeTree, Changes, DiffRead, OpenDiff} from './types.ts';
 
+export const diffReady = (diff: OpenDiff | undefined) => !!diff && (diff.text !== null || diff.message !== null);
+
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 
 const statusLabels: Record<ChangeStatus, string> = {modified: 'Modified', added: 'Added', untracked: 'Untracked', deleted: 'Deleted'};
