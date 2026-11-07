@@ -40,6 +40,10 @@ bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 		plutil -replace CFBundleGetInfoString -string "$$info" $(APP)/Contents/Info.plist
 	for p in $(PLUGINS); do codesign --force --sign "$(SIGN_IDENTITY)" $(MACOS)/hypercube-harness-$$p || exit 1; done
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" $(APP)
+	# The service is the process macOS asks for privacy permissions, which it
+	# grants to the app's identifier.
+	codesign --force --sign "$(SIGN_IDENTITY)" --identifier $(APP_ID) $(MACOS)/hypercube
+	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 
 bin/AppIcon.icns: cmd/hypercube/AppIcon.svg
 	mkdir -p bin
