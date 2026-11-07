@@ -2,7 +2,7 @@ import {useCallback, useState, type KeyboardEvent, type MouseEvent} from 'react'
 import {revealItem} from '../app/desktop-actions.ts';
 import {changeTree} from '../changes/changes.ts';
 import {openDiffTab} from '../editor/editor.ts';
-import {currentSession} from '../sessions/selection.ts';
+import {editorDirectory} from '../editor/target.ts';
 import {ContextMenu} from '../shared/context-menu.tsx';
 import {useStore} from '../store.ts';
 
@@ -28,12 +28,11 @@ export function usePathMenu() {
       setMenu({path, x: rect.left, y: rect.bottom});
     },
   });
-  const session = currentSession(state);
-  const dir = session?.dir ?? '';
+  const dir = editorDirectory(state) ?? '';
   const relative = (path: string) => path.startsWith(dir + '/') ? path.slice(dir.length + 1) : path;
   const absolute = (path: string) => path.startsWith('/') ? path : `${dir.replace(/\/$/, '')}/${path}`;
-  const changed = menu && changeTree(state.session?.changes ?? null).files.has(menu.path);
-  const element = menu && session && <ContextMenu x={menu.x} y={menu.y} onClose={close} items={[
+  const changed = menu && changeTree(state.editor?.changes ?? null).files.has(menu.path);
+  const element = menu && dir && <ContextMenu x={menu.x} y={menu.y} onClose={close} items={[
     ...(changed ? [[{label: 'Open Changes', icon: 'source-control' as const, run: () => openDiffTab(store, menu.path)}]] : []),
     revealItem(store, absolute(menu.path)),
     [

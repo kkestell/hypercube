@@ -1,8 +1,8 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, element, find, findAll, mount, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
-import {openUnsent, receivedWorkspaces} from '../sessions/selection.ts';
+import {openUnsent, receivedWorkspaces, selectWorkspace} from '../sessions/selection.ts';
 import {typed, unsentKey} from '../agent/drafts.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
@@ -180,4 +180,60 @@ test('the desktop app\'s menus get the platform\'s bindings', () => {
   expect(linux.previous?.[0]).toEqual({key: 'pageup', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false});
   expect(Object.values(linux).flat().some(b => b.metaKey)).toBe(false);
   expect(linux.sidebar).toEqual([{key: 'b', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false}]);
+});
+
+
+test('workspace heading opens recent sessions and shared tools; its chevron collapses independently', async () => {
+  const calls: URL[] = [];
+  stubFetch(url => {
+    const request = new URL(url, 'http://localhost/');
+    calls.push(request);
+    if (request.pathname === '/files/tree') return Response.json({'': [{name: 'main.go', dir: false}]});
+    if (request.pathname === '/changes') return Response.json({branch: 'feature', files: [{path: 'main.go', status: 'modified', added: 1, removed: 1}]});
+    if (request.pathname === '/mention-files') return Response.json(['main.go']);
+    if (request.pathname === '/search-files') return Response.json([{path: 'main.go', lines: [{line: 3, parts: ['', 'needle', '']}]}]);
+    return new Response('source\nneedle');
+  });
+  const sessions = Array.from({length: 12}, (_, i) => testSession({id: `s${i}`, title: `Session ${i}`, ended: i === 1}));
+  const store = appStore({selected: 's0'}, ...sessions);
+  const root = mount(store, <App store={store} />);
+  await act(async () => clickControl(find(root, '.workspace-section-toggle')));
+  const dashboard = find(root, '[aria-label="Workspace dashboard"]');
+  expect([...dashboard.querySelectorAll('li')].map(li => li.textContent)).toEqual(sessions.slice(0, 10).map(s => s.title));
+  expect(store.get().session).toBeNull();
+  expect(document.title).toBe('repo — Hypercube');
+  expect(decodeURIComponent(location.hash.slice(1))).toBe('workspace:w');
+  await act(async () => clickControl(find(root, '[aria-label="Collapse repo"]')));
+  expect(store.get().selected).toBe('workspace:w');
+  expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
+  expect(find(root, '[aria-label="Expand repo"]')).toBeDefined();
+  await act(async () => clickControl(find(root, '[data-file="main.go"]')));
+  expect(store.get().editor?.tabs.preview).toBe('file:main.go');
+  await act(async () => clickControl(find(root, '[aria-label="Open changes: 1 added, 1 removed"]')));
+  expect(store.get().editor?.tabs.preview).toBe('diff:main.go');
+  const toolRequests = calls.filter(url => ['/files/tree', '/file', '/changes', '/diff'].includes(url.pathname) && url.searchParams.has('workspace'));
+  expect(toolRequests.map(url => url.pathname)).toEqual(expect.arrayContaining(['/files/tree', '/file', '/changes', '/diff']));
+  expect(toolRequests.every(url => url.searchParams.get('workspace') === 'w' && !url.searchParams.has('session'))).toBe(true);
+  await act(async () => clickControl(find(root, '.right-panel [aria-label="Search"]')));
+  const search = element(root, '[aria-label="Search files contents"]', HTMLInputElement);
+  await act(async () => { setValue(search, 'needle'); search.dispatchEvent(new Event('input', {bubbles: true})); });
+  await act(async () => clickControl(find(root, 'button[title="needle"]')));
+  expect(store.get().editor?.files.open['main.go'].lines).toEqual([{start: 3, end: 3}]);
+  expect(calls.find(url => url.pathname === '/search-files')?.searchParams.get('workspace')).toBe('w');
+  act(() => store.update(state => selectWorkspace(state, 'w')));
+  const dashboardTab = [...root.querySelectorAll<HTMLElement>('[role=tab]')].find(tab => tab.textContent === 'repo')!;
+  await act(async () => clickControl(dashboardTab));
+  await act(async () => clickControl(buttonNamed(find(root, '[aria-label="Workspace dashboard"]'), 'Session 1')));
+  expect(store.get().selected).toBe('s1');
+  expect(store.get().session?.id).toBe('s1');
+});
+
+
+test('workspace without sessions has a dashboard empty state', async () => {
+  stubFetch(url => Response.json(new URL(url, 'http://x/').pathname === '/files/tree' ? {'': []} : null));
+  const store = appStore();
+  store.update(state => selectWorkspace(state, 'w'));
+  const root = mount(store, <App store={store} />);
+  await act(async () => {});
+  expect(find(root, '[aria-label="Workspace dashboard"]').textContent).toContain('No sessions yet.');
 });

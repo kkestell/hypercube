@@ -9,8 +9,8 @@ import type {ScrollMemory, TabId} from './types.ts';
 
 export function useScrollMemory(ref: RefObject<HTMLElement | null>, id: TabId, ready = true, trackFollowing = false) {
   const [state, store] = useStore();
-  const memory = useRef<ScrollMemory>(state.session?.scroll[id] ?? {top: 0, left: 0, following: true});
-  const sessionId = state.session?.id;
+  const memory = useRef<ScrollMemory>(state.editor?.scroll[id] ?? {top: 0, left: 0, following: true});
+  const viewKey = state.editor?.id;
   const contentReady = useRef(ready);
   contentReady.current = ready;
   const pendingRestore = useRef<{top: number; left: number} | null>(null);
@@ -21,7 +21,7 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, id: TabId, r
   const save = () => {
     const view = ref.current;
     if (view && contentReady.current && !pendingRestore.current) memory.current = {...memory.current, top: view.scrollTop, left: view.scrollLeft};
-    if (sessionId) store.update(s => rememberScroll(s, sessionId, id, memory.current));
+    if (viewKey) store.update(s => rememberScroll(s, viewKey, id, memory.current));
   };
   const followEnd = (force = false) => {
     const view = ref.current;
@@ -49,7 +49,7 @@ export function useScrollMemory(ref: RefObject<HTMLElement | null>, id: TabId, r
     const view = ref.current;
     if (!view || !ready) return;
     // A split may unmount the old view after this view rendered.
-    memory.current = store.get().session?.scroll[id] ?? memory.current;
+    memory.current = store.get().editor?.scroll[id] ?? memory.current;
     // Keep the saved position until images settle, unless the user scrolls.
     const images = [...view.querySelectorAll('img')].filter(image => !image.complete);
     const restore = () => {

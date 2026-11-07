@@ -2,7 +2,7 @@ import {afterEach, beforeEach, expect, jest, mock, spyOn, test} from 'bun:test';
 import {testSession, testState, testWorkspace} from '../test-state.ts';
 import {startDataSocket, type ServerMessage, type StateMessage} from './data-socket.ts';
 import {findPane} from './editor/tab-layout.ts';
-import {selectSession} from './sessions/selection.ts';
+import {selectSession, selectWorkspace} from './sessions/selection.ts';
 import {createStore} from './store.ts';
 import type {TranscriptItem} from './transcript/types.ts';
 
@@ -119,9 +119,9 @@ test('an open message keeps and selects an unread file', () => {
   socket.open();
   socket.receive(stateMessage('b1'));
   socket.receive({type: 'open', session: 'a', path: 'a.go', lines: []});
-  expect(store.get().session?.tabs.preview).toBeNull();
-  expect(findPane(store.get().session?.tabs.root ?? null, 'file:a.go')?.active).toBe('file:a.go');
-  expect(store.get().session?.files.open['a.go']?.text).toBeNull();
+  expect(store.get().editor?.tabs.preview).toBeNull();
+  expect(findPane(store.get().editor?.tabs.root ?? null, 'file:a.go')?.active).toBe('file:a.go');
+  expect(store.get().editor?.files.open['a.go']?.text).toBeNull();
   expect(fetches).not.toHaveBeenCalled();
 });
 
@@ -135,16 +135,35 @@ test('an open received during a session switch waits until the page returns', ()
   socket.receive(message);
   store.update(state => selectSession(state, 'b'));
   socket.receive({type: 'open', session: 'a', path: 'guide.md', lines: [{start: 1, end: 1}]});
-  expect(store.get().session?.files.open).toEqual({});
+  expect(store.get().editor?.files.open).toEqual({});
   expect(fetches).not.toHaveBeenCalled();
   store.update(state => selectSession(state, 'a'));
-  expect(findPane(store.get().session?.tabs.root ?? null, 'file:guide.md')?.active).toBe('file:guide.md');
-  expect(store.get().session?.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 1, end: 1}]});
+  expect(findPane(store.get().editor?.tabs.root ?? null, 'file:guide.md')?.active).toBe('file:guide.md');
+  expect(store.get().editor?.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 1, end: 1}]});
   expect(store.get().fileOpens).toEqual({});
-  expect(store.get().session?.files.open['guide.md']?.text).toBeNull();
+  expect(store.get().editor?.files.open['guide.md']?.text).toBeNull();
   expect(fetches).not.toHaveBeenCalled();
   store.update(state => selectSession(state, 'b'));
   store.update(state => selectSession(state, 'a'));
-  expect(store.get().session?.files.open['guide.md']).toMatchObject({source: true, reveal: false, text: null});
+  expect(store.get().editor?.files.open['guide.md']).toMatchObject({source: true, reveal: false, text: null});
   expect(fetches).not.toHaveBeenCalled();
+});
+
+
+test('workspace dashboards unsubscribe the transcript and keep agent file requests queued', () => {
+  const store = started();
+  const [socket] = FakeSocket.all;
+  socket.open();
+  socket.receive(stateMessage('b1'));
+  store.update(state => selectWorkspace(state, 'w'));
+  expect(socket.sent.at(-1)).toEqual({select: ''});
+  socket.receive({type: 'open', session: 'a', path: 'agent.md', lines: [{start: 2}]});
+  socket.receive({type: 'transcript', session: 'a', reset: true, items: [textItem('late', 1, 'late reply')]});
+  expect(store.get().session).toBeNull();
+  expect(store.get().editor?.files.open['agent.md']).toBeUndefined();
+  expect(store.get().fileOpens.a).toHaveLength(1);
+  store.update(state => selectSession(state, 'a'));
+  expect(socket.sent.at(-1)).toEqual({select: 'a'});
+  expect(store.get().editor?.files.open['agent.md'].lines).toEqual([{start: 2}]);
+  expect(store.get().fileOpens.a).toBeUndefined();
 });

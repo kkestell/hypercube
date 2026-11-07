@@ -60,6 +60,9 @@ Files, and Settings. On Linux, terminal copy/paste uses **Ctrl+Shift+C** /
 | Dimmed outline | Ended. |
 | Hollow dot | Child session; its state is shown with the same conventions. |
 
+Click a workspace heading to open its dashboard of recent sessions, including
+archived sessions. The separate chevron collapses or expands its sidebar list.
+
 Children are grouped under their parent. An active parent's ended children
 are hidden until **Show Ended Sessions** is chosen in its menu.
 
@@ -97,12 +100,18 @@ within the window. After reset, the last reading is dimmed and marked
 | HTML preview | Relative resources load; scripts are disabled. |
 | HTML/SVG source | Available for supported text encodings within the text limit. |
 | Media | Images, audio, video, and PDFs open in the app, without the text limit. Some formats and codecs may not play. |
-| Changes | Whole Git repository containing the session directory. |
+| Changes | Whole Git repository containing the current view’s directory. |
 | Quick Open and project search | In Git: tracked and untracked files, excluding ignored and hidden paths. |
 | Project text search | Case-insensitive plain text; skips files over 256 KiB; stops at 1,000 matching lines. |
+
+On a workspace dashboard, file tools and the terminal use the workspace’s main
+checkout and its currently checked-out branch. Sessions use their own working
+directories.
 
 ## Saved layouts
 
 Each session remembers tabs, editor splits, open files, expanded items, scroll
 positions, and terminal visibility across switches and restarts. The app also
-remembers overall panel sizes, sidebar choices, and the last selected session.
+remembers each workspace dashboard’s tabs, splits, open files, folders, scroll
+positions, and terminal visibility. Overall panel sizes, sidebar choices, and the
+last selected session or workspace are saved too.

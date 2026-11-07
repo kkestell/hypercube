@@ -97,7 +97,7 @@ test('ended children attach and stay shown when they end', () => {
   state = receivedWorkspaces(state, workspaces(session('a', false, {children: [{...child, ended: true}]})));
   expect(state.selected).toBe('child');
   expect(state.session?.transcript.order).toEqual(['1']);
-  state = selectSession({...state, selected: null, session: null}, 'child');
+  state = selectSession({...state, selected: null, session: null, editor: null}, 'child');
   expect(state.session?.id).toBe('child');
 });
 

@@ -32,7 +32,7 @@ import {resizeRegion} from './workbench.ts';
 
 function refuseStrayDrops(store: Store) {
   const refuse = (e: DragEvent) => {
-    const draggingTab = store.get().session?.tabs.dragging && !(e.target instanceof Element && e.target.closest('.editor-area'));
+    const draggingTab = store.get().editor?.tabs.dragging && !(e.target instanceof Element && e.target.closest('.editor-area'));
     const strayFile = e.dataTransfer?.types.includes('Files') && !e.defaultPrevented;
     if (!draggingTab && !strayFile) return;
     e.preventDefault();
@@ -60,8 +60,8 @@ export function App({store}: {store: Store}) {
   }, [state]);
   const focusComposer = () => {
     if (focusComposerField()) return;
-    const session = store.get().session;
-    const pane = session && findPane(session.tabs.root, agentTabId);
+    const editor = store.get().editor;
+    const pane = editor && findPane(editor.tabs.root, agentTabId);
     if (!pane) return;
     focusPending.current = true;
     store.update(s => selectTab(s, pane.id, agentTabId));
@@ -72,7 +72,7 @@ export function App({store}: {store: Store}) {
     return unsubscribe;
   }, [store]);
   useEffect(() => refuseStrayDrops(store), []);
-  useEffect(() => { setQuickOpen(false); }, [state.session?.id, state.unsent]);
+  useEffect(() => { setQuickOpen(false); }, [state.editor?.id, state.unsent]);
   useEffect(() => {
     hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: keysOf(s).map(binding)}))});
   }, []);
@@ -96,7 +96,7 @@ export function App({store}: {store: Store}) {
   }, [state.selected]);
 
   const {sidebar, rightPanel, sizes} = state.workbench;
-  const panel = state.session?.panel ?? false;
+  const panel = state.editor?.panel ?? false;
   const key = (e: KeyboardEvent) => {
     if (!matches(e, 'interrupt') || e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
     // Escape belongs to the terminal, dialogs, and menus while they have focus.
@@ -123,8 +123,8 @@ export function App({store}: {store: Store}) {
             <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
             <Split fixed="end" size={sizes.rightPanel} onResize={size => store.update(s => resizeRegion(s, 'rightPanel', size))} minStart="60%" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={sizes.panel} onResize={size => store.update(s => resizeRegion(s, 'panel', size))} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
-                <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.session?.id ?? (state.unsent ? 'unsent' : '')} /></main>
-                <TerminalPanel key={state.session?.id ?? ''} />
+                <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.editor?.id ?? (state.unsent ? 'unsent' : '')} /></main>
+                <TerminalPanel key={state.editor?.id ?? ''} />
               </Split>
               <RightPanel />
             </Split>
@@ -132,7 +132,7 @@ export function App({store}: {store: Store}) {
         </div>
         <NotificationStack />
         <ConfirmDialog />
-        <QuickOpen key={state.session?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
+        <QuickOpen key={state.editor?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>

@@ -15,6 +15,10 @@ import (
 func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 	f := newFixture(t)
 	s := f.worktreeSession()
+	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
+	if _, err := f.rt.WorkspaceShell(f.workspace.ID, 80, 24); err != nil {
+		t.Fatal(err)
+	}
 	// The configure reply follows the first turn's merge refresh, so only
 	// deletion can reach the status barrier.
 	if err := f.rt.Select(s.ID, harness.Selection{Model: "m", Effort: "low"}); err != nil {
@@ -33,6 +37,9 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 	}()
 	t.Cleanup(func() { release(); <-done })
 	wait()
+	if _, err := f.rt.WorkspaceShell(f.workspace.ID, 80, 24); !errors.Is(err, errWorkspaceDeleting) {
+		t.Fatalf("shell during deletion = %v", err)
+	}
 	if _, err := f.rt.Create(f.workspace.ID, lead, true, "late"); !errors.Is(err, errWorkspaceDeleting) {
 		t.Fatalf("creation during deletion = %v, want errWorkspaceDeleting", err)
 	}
@@ -42,6 +49,9 @@ func TestWorkspaceDeletionClaimsMembershipBeforeCheckingWorktrees(t *testing.T) 
 	release()
 	if err := <-removed; err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
 		t.Fatalf("deletion of dirty worktree = %v", err)
+	}
+	if f.shellEnded(workspaceShellOwner(f.workspace.ID)) {
+		t.Fatal("refused deletion stopped workspace shell")
 	}
 	if got := f.storedSession(s.ID); got.Dir != s.Dir || got.Ended {
 		t.Fatalf("refused deletion changed the session: %+v", got)

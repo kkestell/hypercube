@@ -1,33 +1,23 @@
-// Which session the page shows. The server's workspaces list the sessions;
-// selected names the chosen one, and the page attaches to it,
-// which gives it a fresh session state for its transcripts, tabs, and files.
+// Navigation attaches either a session or workspace to the shared editor.
+// Only a real session also attaches a transcript.
 // The unsent session is a new session the user has opened but not yet sent a
 // first prompt to; it exists only in this page.
+import {allSessions, sessionOf} from './lookup.ts';
+export {allSessions, sessionOf} from './lookup.ts';
 import {draftDefaults, isUnsent, unsentKey, unsentOf, withDraftDefaults} from '../agent/drafts.ts';
-import {agentTabs} from '../editor/editor.ts';
+import {attach} from '../editor/attachment.ts';
+export {emptySession, emptyEditor} from '../editor/attachment.ts';
+import {selectedWorkspace, selectionTarget, targetExists, workspaceKey} from '../editor/target.ts';
 import type {Settings} from '../agent/types.ts';
 import type {State} from '../state.ts';
-import type {AttachedSession, Session, Unsent, Workspace} from './types.ts';
-import {restoreView, sessionView} from './view-state.ts';
+import type {Session, Unsent, Workspace} from './types.ts';
 
-export const allSessions = (state: State): Session[] => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 export const waitingCount = (state: State) => {
   const waiting = new Set(state.requests.map(request => request.session));
   return allSessions(state).filter(s => !s.ended && (s.attention || waiting.has(s.id))).length;
 };
 
 export const currentSession = (state: State) => allSessions(state).find(s => s.id === state.selected);
-
-// sessionOf finds a session, its workspace, and its parent when it is a child.
-export function sessionOf(state: State, id: string | null): {workspace: Workspace; session: Session; parent: Session | null} | undefined {
-  for (const workspace of state.workspaces) {
-    for (const top of workspace.sessions) {
-      if (top.id === id) return {workspace, session: top, parent: null};
-      const child = top.children.find(s => s.id === id);
-      if (child) return {workspace, session: child, parent: top};
-    }
-  }
-}
 
 // The unsent session takes the harness of its settings.
 const unsentSession = (id: string, sending: boolean, harness = ''): Session => ({
@@ -60,23 +50,9 @@ export function pageTitle(state: State) {
   const waiting = waitingCount(state);
   const session = currentSession(state);
   const {unsent} = state;
-  const workspace = unsent ? state.workspaces.find(w => w.id === unsent.workspace) : session && sessionOf(state, session.id)?.workspace;
+  const workspace = unsent ? state.workspaces.find(w => w.id === unsent.workspace) : selectedWorkspace(state);
   return (waiting ? `(${waiting}) ` : '') + [session?.title, workspace?.name, 'Hypercube'].filter(Boolean).join(' — ');
 }
-
-export const emptySession = (id: string): AttachedSession => ({
-  id,
-  transcript: {order: [], items: {}},
-  transcriptReady: false,
-  activePane: null,
-  panel: false,
-  expanded: {},
-  tabs: agentTabs,
-  scroll: {},
-  changes: null,
-  diffs: {},
-  files: {listings: {}, listingErrors: {}, expanded: {}, open: {}},
-});
 
 const omit = <T>(object: Record<string, T>, keys: string[]) => Object.fromEntries(Object.entries(object).filter(([key]) => !keys.includes(key)));
 
@@ -87,29 +63,6 @@ function parkUnsent(state: State): State {
   const key = unsentKey(state.unsent.workspace);
   if (!state.drafts[key] && !state.unsent.sending && !state.submissions[key]?.length) return {...state, unsent: null};
   return {...state, unsent: null, unsentDrafts: {...state.unsentDrafts, [key]: state.unsent}};
-}
-
-// attach replaces the session state when the shown session changes.
-function attach(state: State): State {
-  const shown = currentSession(state);
-  const id = shown?.id ?? null;
-  if (id === (state.session?.id ?? null)) return state;
-  const sessionViews = {...state.sessionViews};
-  const fileTrees = {...state.fileTrees};
-  const previous = state.session;
-  if (previous && allSessions(state).some(session => session.id === previous.id)) {
-    sessionViews[previous.id] = sessionView(previous);
-    fileTrees[previous.id] = {listings: previous.files.listings, changes: previous.changes};
-  }
-  const saved = id ? sessionViews[id] : undefined;
-  if (id) delete sessionViews[id];
-  const cached = id ? fileTrees[id] : undefined;
-  if (id) delete fileTrees[id];
-  let session = id ? emptySession(id) : null;
-  if (session && saved) session = restoreView(session, saved);
-  if (session && cached) session = {...session, changes: cached.changes, files: {...session.files, listings: cached.listings}};
-  return {...state, sessionViews, fileTrees, session, sessionVersion: state.sessionVersion + 1, treeVersion: state.treeVersion + 1,
-    fileReadVersions: {}, diffReadVersions: {}};
 }
 
 // receivedWorkspaces applies a state message's workspaces.
@@ -126,9 +79,16 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   const ids = new Set(sessions.map(session => session.id));
   const removedIDs = [...discarded, ...allSessions(state).filter(session => !ids.has(session.id)).map(session => session.id)];
   next = {...next, submissions: omit(next.submissions, removedIDs)};
-  const sessionViews = Object.fromEntries(Object.entries(next.sessionViews).filter(([id]) => ids.has(id)));
+
   const workspaceIds = new Set(workspaces.map(workspace => workspace.id));
-  next = {...next, sessionViews, fileTrees: Object.fromEntries(Object.entries(next.fileTrees).filter(([id]) => ids.has(id))), workbench: {
+  const fileTrees = Object.fromEntries(Object.entries(next.fileTrees).filter(([key]) => {
+    const target = selectionTarget(key);
+    return target && targetExists(next, target);
+  }));
+  next = {...next,
+    sessionViews: Object.fromEntries(Object.entries(next.sessionViews).filter(([id]) => ids.has(id))),
+    workspaceViews: Object.fromEntries(Object.entries(next.workspaceViews).filter(([id]) => workspaceIds.has(id))),
+    fileTrees, workbench: {
     ...next.workbench,
     collapsedWorkspaces: Object.fromEntries(Object.entries(next.workbench.collapsedWorkspaces).filter(([id]) => workspaceIds.has(id))),
     collapsedSessions: Object.fromEntries(Object.entries(next.workbench.collapsedSessions).filter(([id]) => ids.has(id))),
@@ -139,19 +99,26 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   }
   // A family archived while shown is deselected, and nothing takes its place.
   // Otherwise a selection naming no session moves to one that has not ended.
+  const target = selectionTarget(next.selected);
   const chosen = currentSession(next);
   const family = sessionOf(next, next.selected);
   const oldFamily = sessionOf(state, state.selected);
   if (family && (family.parent ?? family.session).ended && !(oldFamily?.parent ?? oldFamily?.session)?.ended && next.session?.id === chosen?.id) next = {...next, selected: null};
-  else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => !s.ended)?.id ?? ''};
+  else if (target && 'workspace' in target) {
+    if (!selectedWorkspace(next)) next = {...next, selected: null};
+  } else if (next.selected !== null && !chosen) next = {...next, selected: sessions.find(s => !s.ended)?.id ?? ''};
   return attach(withDraftDefaults(next));
 }
 
 // selectSession shows a session or an unsent session. A new session's ID can
 // arrive before the state that lists it, so the selection waits for that state.
+export const selectWorkspace = (state: State, id: string) => selectSession(state, workspaceKey(id));
+
 export function selectSession(state: State, id: string): State {
   if (isUnsent(id)) return openUnsent(state, unsentOf(state, id)!.workspace);
   const next = parkUnsent(state);
+  const target = selectionTarget(id);
+  if (target && 'workspace' in target) return targetExists(next, target) ? attach({...next, selected: id, pending: null}) : next;
   if (!allSessions(next).some(s => s.id === id)) return {...next, pending: id};
   const family = sessionOf(next, id)!;
   return attach({...next, selected: id, pending: null, workbench: {...next.workbench, sidebarTab: (family.parent ?? family.session).ended ? 'archived' : 'sessions'}});
@@ -159,7 +126,7 @@ export function selectSession(state: State, id: string): State {
 
 // openUnsent reopens the workspace's unfinished session or creates one.
 export function openUnsent(state: State, workspace?: string | null): State {
-  workspace ??= state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id ?? state.workspaces[0]?.id ?? null;
+  workspace ??= state.unsent?.workspace ?? selectedWorkspace(state)?.id ?? state.workspaces[0]?.id ?? null;
   if (state.unsent?.workspace === workspace) return state.workbench.sidebarTab === 'sessions' ? state : {...state, workbench: {...state.workbench, sidebarTab: 'sessions'}};
   const next = parkUnsent(state);
   const key = unsentKey(workspace);

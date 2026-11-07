@@ -17,7 +17,7 @@ function requested(fetchMock: {mock: {calls: Parameters<typeof fetch>[]}}) {
 test('listFileTree sends all visible folders together', async () => {
   const entries = {'': [{name: 'a.go', dir: false}], sub: null};
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(entries));
-  expect(await listFileTree('session one', ['', 'sub'])).toEqual(entries);
+  expect(await listFileTree({session: 'session one'}, ['', 'sub'])).toEqual(entries);
   const {url, init} = requested(fetchMock);
   expect(url.searchParams.get('session')).toBe('session one');
   expect(url.pathname).toBe('/files/tree');
@@ -28,12 +28,12 @@ test('listFileTree sends all visible folders together', async () => {
 
 test('listFileTree keeps the status of a failed listing', async () => {
   spyOn(globalThis, 'fetch').mockResolvedValue(new Response('missing', {status: 404}));
-  await expect(listFileTree('s', ['missing'])).rejects.toMatchObject({message: 'missing', status: 404});
+  await expect(listFileTree({session: 's'}, ['missing'])).rejects.toMatchObject({message: 'missing', status: 404});
 });
 
 test('readFile returns text and ETag and sends the previous ETag', async () => {
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('package main\n', {headers: {ETag: '"13-123"'}}));
-  expect(await readFile('s', 'a.go', '"12-122"')).toEqual({text: 'package main\n', etag: '"13-123"'});
+  expect(await readFile({session: 's'}, 'a.go', '"12-122"')).toEqual({text: 'package main\n', etag: '"13-123"'});
   const {url, init} = requested(fetchMock);
   expect(url.searchParams.get('path')).toBe('a.go');
   expect(init?.headers).toEqual({'If-None-Match': '"12-122"'});
@@ -49,19 +49,19 @@ test('readFile maps unchanged, deleted, large, and binary files', async () => {
   ];
   for (const [status, result] of cases) {
     fetchMock.mockResolvedValue(new Response(null, {status}));
-    expect(await readFile('s', 'a.go')).toEqual(result);
+    expect(await readFile({session: 's'}, 'a.go')).toEqual(result);
   }
 });
 
 test('readFile reports other failures with their text', async () => {
   spyOn(globalThis, 'fetch').mockResolvedValue(new Response('permission denied', {status: 409}));
-  expect(await readFile('s', 'a.go')).toEqual({error: 'permission denied'});
+  expect(await readFile({session: 's'}, 'a.go')).toEqual({error: 'permission denied'});
 });
 
 test('readFile reads browser preview metadata without downloading media bytes', async () => {
   const preview = {mime: 'image/png', url: '/preview/s/repo/picture.png?v=1'};
   spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({text: null, preview}, {headers: {ETag: '"1"'}}));
-  expect(await readFile('s', 'picture.png')).toEqual({text: null, preview, etag: '"1"'});
+  expect(await readFile({session: 's'}, 'picture.png')).toEqual({text: null, preview, etag: '"1"'});
 });
 
 test('post returns the response text', async () => {

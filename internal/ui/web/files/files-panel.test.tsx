@@ -6,7 +6,7 @@ import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {FilesPanel} from './files-panel.tsx';
 import {createFilePoller} from './file-polling.ts';
-import {emptySession} from '../sessions/selection.ts';
+import {emptyEditor} from '../sessions/selection.ts';
 
 afterEach(() => { unmountAll(); mock.restore(); });
 
@@ -14,8 +14,8 @@ test('a restored tree shows expanded folders from one response', async () => {
   const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
     id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
   })]));
-  store.update(state => ({...state, session: {...state.session!, files: {
-    ...state.session!.files, expanded: {src: true, 'src/nested': true},
+  store.update(state => ({...state, editor: {...state.editor!, files: {
+    ...state.editor!.files, expanded: {src: true, 'src/nested': true},
   }}}));
   store.update(state => selectSession(state, 'b'));
   store.update(state => selectSession(state, 'a'));
@@ -42,8 +42,8 @@ test('a visited session shows its cached tree before refresh completes', async (
   const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
     id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
   })]));
-  store.update(state => ({...state, session: {...state.session!, files: {
-    ...state.session!.files, listings: {'': [{name: 'src', dir: true}], src: [{name: 'file.go', dir: false}]},
+  store.update(state => ({...state, editor: {...state.editor!, files: {
+    ...state.editor!.files, listings: {'': [{name: 'src', dir: true}], src: [{name: 'file.go', dir: false}]},
     expanded: {src: true},
   }}}));
   store.update(state => selectSession(state, 'b'));
@@ -54,9 +54,9 @@ test('a visited session shows its cached tree before refresh completes', async (
 });
 
 test('a denied root listing is visible, preserves cached entries, and clears on the next successful poll', async () => {
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.files.listings = {'': [{name: 'cached.go', dir: false}]};
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   let denied = true;
   stubFetch(url => {
     if (new URL(url, 'http://x/').pathname !== '/files/tree') return Response.json(null);

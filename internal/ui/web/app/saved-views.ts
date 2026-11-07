@@ -1,5 +1,5 @@
 // Browser storage is an external boundary; runtime state uses these shapes directly.
-import type {LayoutNode} from '../editor/types.ts';
+import type {EditorViewState, LayoutNode} from '../editor/types.ts';
 import type {SessionViewState} from '../sessions/types.ts';
 import type {Workbench} from './types.ts';
 
@@ -7,6 +7,7 @@ export interface SavedViews {
   selected: string | null;
   workbench: Workbench;
   sessionViews: Record<string, SessionViewState>;
+  workspaceViews: Record<string, EditorViewState>;
 }
 
 const record = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -25,15 +26,17 @@ function layout(value: unknown): value is LayoutNode | null {
     && Array.isArray(value.children) && value.children.length === 2 && value.children.every(child => child !== null && layout(child));
 }
 
-function sessionView(value: unknown) {
+function editorView(value: unknown) {
   if (!record(value) || typeof value.panel !== 'boolean' || !record(value.tabs) || !layout(value.tabs.root) || !positiveInteger(value.tabs.nextId)
     || !(value.tabs.preview === null || typeof value.tabs.preview === 'string') || value.tabs.dragging !== null
-    || !(value.activePane === null || positiveInteger(value.activePane)) || !flags(value.expanded) || !flags(value.folders)) return false;
+    || !(value.activePane === null || positiveInteger(value.activePane)) || !flags(value.folders)) return false;
   const scroll = entries(value.scroll, entry => record(entry) && nonnegative(entry.top) && nonnegative(entry.left) && typeof entry.following === 'boolean');
   const files = entries(value.files, entry => record(entry) && typeof entry.source === 'boolean' && Array.isArray(entry.lines)
     && entry.lines.every(line => record(line) && positiveInteger(line.start) && (line.end === undefined || positiveInteger(line.end))));
   return scroll && files;
 }
+
+const sessionView = (value: unknown) => editorView(value) && record(value) && flags(value.expanded);
 
 function workbench(value: unknown) {
   if (!record(value) || !['sidebar', 'rightPanel', 'wrap', 'fixedWidth'].every(key => typeof value[key] === 'boolean')) return false;
@@ -56,7 +59,8 @@ export function readSavedViews(text: string): SavedViews {
     ]));
     value = {...value, workbench, sessionViews};
   }
+  if (record(value) && value.workspaceViews === undefined) value = {...value, workspaceViews: {}};
   if (!record(value) || !(value.selected === null || typeof value.selected === 'string')
-    || !workbench(value.workbench) || !entries(value.sessionViews, sessionView)) throw new Error('Invalid saved view state.');
+    || !workbench(value.workbench) || !entries(value.sessionViews, sessionView) || !entries(value.workspaceViews, editorView)) throw new Error('Invalid saved view state.');
   return value as unknown as SavedViews;
 }

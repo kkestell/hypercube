@@ -111,13 +111,13 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'searchSessions':
       return actions.openSessionSearch;
     case 'searchFiles':
-      if (!state.session || state.unsent) return undefined;
+      if (!state.editor || state.unsent) return undefined;
       return () => {
         store.update(s => ({...s, workbench: {...s.workbench, rightPanel: true, rightTab: 'search'}}));
         if (state.workbench.rightPanel && state.workbench.rightTab === 'search') document.querySelector<HTMLElement>('[aria-label="Search files contents"]')?.focus();
       };
     case 'quickOpen':
-      return state.session && !state.unsent ? actions.openQuickOpen : undefined;
+      return state.editor && !state.unsent ? actions.openQuickOpen : undefined;
     case 'new':
       return () => store.update(s => openUnsent(s));
     case 'composer':
@@ -139,7 +139,7 @@ function shortcutAction(id: ShortcutId, target: Element, editing: boolean, key: 
     case 'rightPanel':
       if (editing) return undefined;
       return () => {
-        if ((id === 'panel' ? state.session?.panel : state.workbench[id]) && target.closest(regionSelectors[id])) actions.focusComposer();
+        if ((id === 'panel' ? state.editor?.panel : state.workbench[id]) && target.closest(regionSelectors[id])) actions.focusComposer();
         store.update(s => toggle(s, id));
       };
     case 'settings':

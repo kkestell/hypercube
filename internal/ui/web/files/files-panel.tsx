@@ -17,9 +17,9 @@ const statusColor: Record<ChangeStatus, string> = {
 
 export function FilesPanel() {
   const [state, store] = useStore();
-  const files = state.session?.files ?? {listings: {}, listingErrors: {}, expanded: {}, open: {}};
+  const files = state.editor?.files ?? {listings: {}, listingErrors: {}, expanded: {}, open: {}};
   const {listings, listingErrors, expanded} = files;
-  const gitChanges = state.session?.changes;
+  const gitChanges = state.editor?.changes;
   const changes = changeTree(gitChanges ?? null);
   const listing = (dir: string) => treeEntries(files, changes, dir);
   const menu = usePathMenu();
@@ -45,10 +45,10 @@ export function FilesPanel() {
     if (hadFocus.current && root && !root.contains(document.activeElement)) root.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
   });
   useEffect(() => {
-    if (!state.session || !state.workbench.rightPanel || state.workbench.rightTab !== 'files') return;
-    loadTree(store, shownFolders(state.session.files));
+    if (!state.editor || !state.workbench.rightPanel || state.workbench.rightTab !== 'files') return;
+    loadTree(store, shownFolders(state.editor.files));
     loadChanges(store);
-  }, [state.session?.id, state.workbench.rightPanel, state.workbench.rightTab]);
+  }, [state.editor?.id, state.workbench.rightPanel, state.workbench.rightTab]);
   const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
     const row = e.target.closest<HTMLElement>('[role="treeitem"]');
@@ -107,7 +107,7 @@ export function FilesPanel() {
     {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}
     <div ref={tree} className="files-panel p-2 pt-1" role="tree" aria-label="Files" onKeyDown={keyDown}>
     {listingErrors[''] && <p className="px-2 text-sm text-destructive">{listingErrors['']}</p>}
-    {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
+    {listings[''] === null ? <p>This folder no longer exists.</p> : entries('', 1)}
     </div>{menu.element}
   </div>;
 }

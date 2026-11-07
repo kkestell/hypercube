@@ -1,6 +1,6 @@
 // Persist view choices, refreshing transcript and file data on every attachment.
 import {showError} from '../notifications/errors.ts';
-import {sessionView} from '../sessions/view-state.ts';
+import {editorView} from '../editor/view-state.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import {readSavedViews, type SavedViews} from './saved-views.ts';
@@ -10,14 +10,20 @@ const reason = (error: unknown) => error instanceof Error ? error.message : Stri
 
 function snapshot(state: State): SavedViews {
   const sessionViews = {...state.sessionViews};
-  if (state.session) sessionViews[state.session.id] = sessionView(state.session);
-  return {selected: state.selected, workbench: state.workbench, sessionViews};
+  const workspaceViews = {...state.workspaceViews};
+  if (state.editor) {
+    const view = editorView(state.editor);
+    const target = state.editor.target;
+    if ('workspace' in target) workspaceViews[target.workspace] = view;
+    else sessionViews[target.session] = {...view, expanded: state.session!.expanded};
+  }
+  return {selected: state.selected, workbench: state.workbench, sessionViews, workspaceViews};
 }
 
 function viewChanged(before: State, after: State) {
-  if (before.selected !== after.selected || before.workbench !== after.workbench || before.sessionViews !== after.sessionViews) return true;
-  const a = before.session, b = after.session;
-  return a?.id !== b?.id || a?.tabs !== b?.tabs || a?.activePane !== b?.activePane || a?.panel !== b?.panel || a?.expanded !== b?.expanded
+  if (before.selected !== after.selected || before.workbench !== after.workbench || before.sessionViews !== after.sessionViews || before.workspaceViews !== after.workspaceViews || before.session?.expanded !== after.session?.expanded) return true;
+  const a = before.editor, b = after.editor;
+  return a?.id !== b?.id || a?.tabs !== b?.tabs || a?.activePane !== b?.activePane || a?.panel !== b?.panel
     || a?.scroll !== b?.scroll || a?.files.expanded !== b?.files.expanded || a?.files.open !== b?.files.open;
 }
 
@@ -28,7 +34,7 @@ export function startViewStorage(store: Store): () => void {
     written = localStorage.getItem(storageKey);
     if (written !== null) {
       const saved = readSavedViews(written);
-      store.update(state => ({...state, workbench: saved.workbench, sessionViews: saved.sessionViews, selected: state.selected || saved.selected}));
+      store.update(state => ({...state, workbench: saved.workbench, sessionViews: saved.sessionViews, workspaceViews: saved.workspaceViews, selected: state.selected || saved.selected}));
     } else {
       const wrap = localStorage.getItem('hypercube.wrap');
       const fixedWidth = localStorage.getItem('hypercube.fixedWidth');

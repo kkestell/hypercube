@@ -1,13 +1,14 @@
-// The attached session's tabs, preview, and remembered scroll. File and diff
+// The current editor's tabs, preview, and remembered scroll. File and diff
 // tabs share one preview tab, replaced on the next click until kept open.
 import {diffReady, diffTitle, readOpenDiff} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
 import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
 import {shownSession} from '../sessions/selection.ts';
-import type {AttachedSession} from '../sessions/types.ts';
+import type {EditorView} from './types.ts';
+import {selectedWorkspace, selectionTarget} from './target.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
-import {ownsScroll} from '../sessions/view-state.ts';
+import {ownsScroll} from './view-state.ts';
 import * as layout from './tab-layout.ts';
 import type {Edge, FileOpenRequest, ScrollMemory, TabEntry, TabId, TabLayout} from './types.ts';
 
@@ -15,6 +16,9 @@ export const agentTabId = 'agent';
 
 // agentTabs is the layout a session starts with: its agent alone.
 export const agentTabs: TabLayout = {root: {id: 1, tabs: [agentTabId], active: agentTabId}, preview: null, dragging: null, nextId: 2};
+
+export const dashboardTabId = 'dashboard';
+export const dashboardTabs: TabLayout = {...agentTabs, root: {id: 1, tabs: [dashboardTabId], active: dashboardTabId}};
 
 export const fileTabId = (path: string): TabId => 'file:' + path;
 
@@ -25,30 +29,34 @@ export const isDiffTab = (id: TabId) => id.startsWith('diff:');
 // tabPath is a file or diff tab's path.
 export const tabPath = (id: TabId) => id.slice(id.indexOf(':') + 1);
 
-function withSession(state: State, change: (session: AttachedSession) => AttachedSession): State {
-  return state.session ? {...state, session: change(state.session)} : state;
+function withEditor(state: State, change: (editor: EditorView) => EditorView): State {
+  return state.editor ? {...state, editor: change(state.editor)} : state;
 }
 
 const withTabs = (state: State, change: (tabs: TabLayout) => TabLayout) =>
-  withSession(state, session => ({...session, tabs: change(session.tabs)}));
+  withEditor(state, editor => ({...editor, tabs: change(editor.tabs)}));
 
 export function tabEntry(state: State, id: TabId): TabEntry {
   if (id === agentTabId) {
     const title = shownSession(state)?.title ?? 'New Session';
     return {kind: 'agent', id, label: title, title, preview: false};
   }
-  const {session} = state;
-  if (!session) throw new Error(`Tab ${id} has no attached session.`);
+  if (id === dashboardTabId) {
+    const title = selectedWorkspace(state)?.name ?? 'Workspace';
+    return {kind: 'dashboard', id, label: title, title, preview: false};
+  }
+  const {editor} = state;
+  if (!editor) throw new Error(`Tab ${id} has no attached editor.`);
   const path = tabPath(id);
   const name = path.slice(path.lastIndexOf('/') + 1);
-  const preview = session.tabs.preview === id;
+  const preview = editor.tabs.preview === id;
   if (isDiffTab(id)) {
-    const changes = session.changes;
+    const changes = editor.changes;
     const status = changes && 'files' in changes ? changes.files.find(file => file.path === path)?.status : undefined;
     const label = diffTitle(path, status);
     return {kind: 'diff', id, path, name, label, title: label, preview};
   }
-  const open = session.files.open[path];
+  const open = editor.files.open[path];
   const deleted = !!open?.deleted;
   return {
     kind: 'file', id, path, name, deleted,
@@ -60,54 +68,54 @@ export function tabEntry(state: State, id: TabId): TabEntry {
 }
 
 // forgetTab drops a file or diff's data and scroll when closed or replaced.
-function forgetTab(session: AttachedSession, id: TabId): AttachedSession {
+function forgetTab(editor: EditorView, id: TabId): EditorView {
   const path = tabPath(id);
-  const scroll = {...session.scroll};
+  const scroll = {...editor.scroll};
   delete scroll[id];
   if (isDiffTab(id)) {
-    const diffs = {...session.diffs};
+    const diffs = {...editor.diffs};
     delete diffs[path];
-    return {...session, diffs, scroll};
+    return {...editor, diffs, scroll};
   }
-  const open = {...session.files.open};
+  const open = {...editor.files.open};
   delete open[path];
-  return {...session, files: {...session.files, open}, scroll};
+  return {...editor, files: {...editor.files, open}, scroll};
 }
 
 export function closeTab(state: State, id: TabId): State {
-  return withSession(state, session => {
-    const preview = session.tabs.preview === id ? null : session.tabs.preview;
-    return {...forgetTab(session, id), tabs: {...layout.closeTab(session.tabs, id), preview}};
+  return withEditor(state, editor => {
+    const preview = editor.tabs.preview === id ? null : editor.tabs.preview;
+    return {...forgetTab(editor, id), tabs: {...layout.closeTab(editor.tabs, id), preview}};
   });
 }
 
 // tabOpened opens a tab as the shared preview, replacing the previous preview,
 // and has add record the new tab's data. An open tab is only selected.
-function tabOpened(state: State, id: TabId, add: (session: AttachedSession) => AttachedSession): State {
-  return withSession(state, session => {
-    if (layout.findPane(session.tabs.root, id)) return {...session, tabs: layout.openTab(session.tabs, id)};
-    const preview = session.tabs.preview;
-    const tabs = preview ? layout.replaceTab(session.tabs, preview, id) : layout.openTab(session.tabs, id);
-    const kept = preview ? forgetTab(session, preview) : session;
+function tabOpened(state: State, id: TabId, add: (editor: EditorView) => EditorView): State {
+  return withEditor(state, editor => {
+    if (layout.findPane(editor.tabs.root, id)) return {...editor, tabs: layout.openTab(editor.tabs, id)};
+    const preview = editor.tabs.preview;
+    const tabs = preview ? layout.replaceTab(editor.tabs, preview, id) : layout.openTab(editor.tabs, id);
+    const kept = preview ? forgetTab(editor, preview) : editor;
     return {...add(kept), tabs: {...tabs, preview: id}};
   });
 }
 
 // File and diff clicks open the shared preview, or select an existing tab.
 export function openFileTab(store: Store, path: string) {
-  if (!store.get().session) return;
-  const ready = fileReady(store.get().session?.files.open[path]);
-  store.update(state => tabOpened(state, fileTabId(path), session => ({
-    ...session, files: {...session.files, open: {...session.files.open, [path]: unreadFile}},
+  if (!store.get().editor) return;
+  const ready = fileReady(store.get().editor?.files.open[path]);
+  store.update(state => tabOpened(state, fileTabId(path), editor => ({
+    ...editor, files: {...editor.files, open: {...editor.files.open, [path]: unreadFile}},
   })));
   if (ready) readOpenFile(store, path);
 }
 
 export function openDiffTab(store: Store, path: string) {
-  if (!store.get().session) return;
-  const ready = diffReady(store.get().session?.diffs[path]);
-  store.update(state => tabOpened(state, diffTabId(path), session => ({
-    ...session, diffs: {...session.diffs, [path]: {text: null, message: null}},
+  if (!store.get().editor) return;
+  const ready = diffReady(store.get().editor?.diffs[path]);
+  store.update(state => tabOpened(state, diffTabId(path), editor => ({
+    ...editor, diffs: {...editor.diffs, [path]: {text: null, message: null}},
   })));
   if (ready) readOpenDiff(store, path);
 }
@@ -122,12 +130,18 @@ export function openRequestedFile(store: Store, request: FileOpenRequest) {
     }}));
     return;
   }
-  const ready = fileReady(store.get().session?.files.open[path]);
-  store.update(state => withSession(state, session => {
+  openFileAt(store, path, lines);
+}
+
+// Search navigation opens in the current editor, independent of agent requests.
+export function openFileAt(store: Store, path: string, lines: FileOpenRequest['lines']) {
+  if (!store.get().editor) return;
+  const ready = fileReady(store.get().editor?.files.open[path]);
+  store.update(state => withEditor(state, editor => {
     const id = fileTabId(path);
-    const tabs = layout.openTab(session.tabs, id);
-    const file = {...(session.files.open[path] ?? unreadFile), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
-    return {...session, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...session.files, open: {...session.files.open, [path]: file}}};
+    const tabs = layout.openTab(editor.tabs, id);
+    const file = {...(editor.files.open[path] ?? unreadFile), source: hasPreview(path) && lines.length > 0, lines, reveal: lines.length > 0};
+    return {...editor, tabs: {...tabs, preview: tabs.preview === id ? null : tabs.preview}, files: {...editor.files, open: {...editor.files.open, [path]: file}}};
   }));
   if (ready) readOpenFile(store, path);
 }
@@ -161,16 +175,19 @@ export const resizeSplit = (state: State, splitId: number, ratio: number) =>
   withTabs(state, tabs => layout.resizeSplit(tabs, splitId, Math.max(15, Math.min(85, ratio))));
 
 export const activatePane = (state: State, id: number | null): State =>
-  state.session && state.session.activePane !== id ? withSession(state, session => ({...session, activePane: id})) : state;
+  state.editor && state.editor.activePane !== id ? withEditor(state, editor => ({...editor, activePane: id})) : state;
 
 // rememberScroll also accepts a departing view's final scroll after selection.
 export function rememberScroll(state: State, sessionId: string, id: TabId, scroll: ScrollMemory): State {
-  const active = state.session?.id === sessionId;
-  const view = active ? state.session : state.sessionViews[sessionId];
+  const active = state.editor?.id === sessionId;
+  const target = selectionTarget(sessionId);
+  const workspace = target && 'workspace' in target ? target.workspace : null;
+  const view = active ? state.editor : workspace ? state.workspaceViews[workspace] : state.sessionViews[sessionId];
   if (!view || !ownsScroll(view, sessionId, id)) return state;
   const old = view.scroll[id];
   if (old?.top === scroll.top && old.left === scroll.left && old.following === scroll.following) return state;
   const remembered = {...view.scroll, [id]: scroll};
-  return active && state.session ? {...state, session: {...state.session, scroll: remembered}}
+  if (active && state.editor) return {...state, editor: {...state.editor, scroll: remembered}};
+  return workspace ? {...state, workspaceViews: {...state.workspaceViews, [workspace]: {...state.workspaceViews[workspace], scroll: remembered}}}
     : {...state, sessionViews: {...state.sessionViews, [sessionId]: {...state.sessionViews[sessionId], scroll: remembered}}};
 }

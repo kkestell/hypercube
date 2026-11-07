@@ -33,14 +33,14 @@ function scrollArea(view: HTMLElement) {
 
 test('file scroll waits for loaded content, saves late unmount, and survives a reload', () => {
   const state = initial();
-  state.session!.tabs = openTab(state.session!.tabs, 'file:guide.md');
-  state.session!.files.open['guide.md'] = {...unreadFile};
-  state.session!.scroll['file:guide.md'] = {top: 200, left: 12, following: false};
+  state.editor!.tabs = openTab(state.editor!.tabs, 'file:guide.md');
+  state.editor!.files.open['guide.md'] = {...unreadFile};
+  state.editor!.scroll['file:guide.md'] = {top: 200, left: 12, following: false};
   const store = createStore(state);
   startViewStorage(store);
   function SelectedFile() {
     const [state] = useStore();
-    return state.session?.files.open['guide.md'] ? <FileView key={state.session.id} id="file:guide.md" path="guide.md" /> : null;
+    return state.editor?.files.open['guide.md'] ? <FileView key={state.editor.id} id="file:guide.md" path="guide.md" /> : null;
   }
   const root = mount(store, <SelectedFile />);
   let view = find(root, '.file-view');
@@ -48,8 +48,8 @@ test('file scroll waits for loaded content, saves late unmount, and survives a r
   expect(view.scrollTop).toBe(0);
   const loaded = () => {
     height(1000);
-    act(() => store.update(state => ({...state, session: {...state.session!, files: {...state.session!.files, open: {
-      ...state.session!.files.open, 'guide.md': {...state.session!.files.open['guide.md'], text: 'loaded source'},
+    act(() => store.update(state => ({...state, editor: {...state.editor!, files: {...state.editor!.files, open: {
+      ...state.editor!.files.open, 'guide.md': {...state.editor!.files.open['guide.md'], text: 'loaded source'},
     }}}})));
   };
   loaded();
@@ -69,21 +69,21 @@ test('file scroll waits for loaded content, saves late unmount, and survives a r
   const reloaded = createStore(testState());
   startViewStorage(reloaded);
   reloaded.update(state => receivedWorkspaces(state, workspaces));
-  expect(reloaded.get().session!.scroll['file:guide.md'].top).toBe(456);
+  expect(reloaded.get().editor!.scroll['file:guide.md'].top).toBe(456);
 });
 
 test.each(['load', 'error', 'user scroll'])('Markdown scroll waits for images: %s', outcome => {
   Object.defineProperty(HTMLImageElement.prototype, 'complete', {configurable: true, get: () => false});
   const state = initial();
-  state.session!.tabs = openTab(state.session!.tabs, 'file:guide.md');
-  state.session!.files.open['guide.md'] = {...unreadFile};
-  state.session!.scroll['file:guide.md'] = {top: 500, left: 0, following: false};
+  state.editor!.tabs = openTab(state.editor!.tabs, 'file:guide.md');
+  state.editor!.files.open['guide.md'] = {...unreadFile};
+  state.editor!.scroll['file:guide.md'] = {top: 500, left: 0, following: false};
   const store = createStore(state);
   const root = mount(store, <FileView id="file:guide.md" path="guide.md" />);
   const view = find(root, '.file-view');
   const height = scrollArea(view);
-  act(() => store.update(state => ({...state, session: {...state.session!, files: {...state.session!.files, open: {
-    ...state.session!.files.open, 'guide.md': {...unreadFile, text: '![diagram](diagram.png)'},
+  act(() => store.update(state => ({...state, editor: {...state.editor!, files: {...state.editor!.files, open: {
+    ...state.editor!.files.open, 'guide.md': {...unreadFile, text: '![diagram](diagram.png)'},
   }}}})));
   const image = root.querySelector('img')!;
   expect(image.complete).toBe(false);
@@ -93,7 +93,7 @@ test.each(['load', 'error', 'user scroll'])('Markdown scroll waits for images: %
     view.dispatchEvent(new Event('scroll'));
     window.dispatchEvent(new Event('pagehide'));
   });
-  expect(store.get().session!.scroll['file:guide.md'].top).toBe(500);
+  expect(store.get().editor!.scroll['file:guide.md'].top).toBe(500);
   if (outcome === 'user scroll') {
     height(300);
     view.scrollTop = 150;
@@ -104,12 +104,12 @@ test.each(['load', 'error', 'user scroll'])('Markdown scroll waits for images: %
   act(() => image.dispatchEvent(new Event(outcome === 'error' ? 'error' : 'load')));
   expect(view.scrollTop).toBe(outcome === 'user scroll' ? 150 : 500);
   act(() => window.dispatchEvent(new Event('pagehide')));
-  expect(store.get().session!.scroll['file:guide.md'].top).toBe(outcome === 'user scroll' ? 150 : 500);
+  expect(store.get().editor!.scroll['file:guide.md'].top).toBe(outcome === 'user scroll' ? 150 : 500);
 });
 
 test.each([false, true])('transcript restoration keeps following=%s after delayed output and new items', following => {
   const state = initial();
-  state.session!.scroll.a = {top: 200, left: 0, following};
+  state.editor!.scroll.a = {top: 200, left: 0, following};
   const store = createStore(state);
   const root = mount(store, <Transcript session={testSession({id: 'a'})} />);
   const view = find(root, '.transcript');
@@ -117,17 +117,17 @@ test.each([false, true])('transcript restoration keeps following=%s after delaye
   height(1000);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [{id: 'answer', seq: 1, kind: 'text', text: 'saved answer'}]})));
   expect(view.scrollTop).toBe(following ? 900 : 200);
-  expect(store.get().session!.scroll.a.following).toBe(following);
+  expect(store.get().editor!.scroll.a.following).toBe(following);
   height(1400);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: false, items: [{id: 'new', seq: 2, kind: 'text', text: 'next answer'}]})));
   expect(view.scrollTop).toBe(following ? 1300 : 200);
-  expect(store.get().session!.scroll.a.following).toBe(following);
+  expect(store.get().editor!.scroll.a.following).toBe(following);
 });
 
 test.each([false, true])('transcript preserves image restoration and follow intent; user scroll=%s', userScroll => {
   Object.defineProperty(HTMLImageElement.prototype, 'complete', {configurable: true, get: () => false});
   const state = initial();
-  state.session!.scroll.a = {top: 500, left: 0, following: false};
+  state.editor!.scroll.a = {top: 500, left: 0, following: false};
   const store = createStore(state);
   const root = mount(store, <Transcript session={testSession({id: 'a'})} />);
   const view = find(root, '.transcript');
@@ -144,7 +144,7 @@ test.each([false, true])('transcript preserves image restoration and follow inte
     {id: 'answer', seq: 2, kind: 'text', text: 'More output'},
   ]})));
   act(() => window.dispatchEvent(new Event('pagehide')));
-  expect(store.get().session!.scroll.a).toEqual({top: 500, left: 0, following: false});
+  expect(store.get().editor!.scroll.a).toEqual({top: 500, left: 0, following: false});
   if (userScroll) {
     height(300);
     view.scrollTop = 150;
@@ -155,7 +155,7 @@ test.each([false, true])('transcript preserves image restoration and follow inte
   act(() => image.dispatchEvent(new Event('load')));
   expect(view.scrollTop).toBe(userScroll ? 150 : 500);
   act(() => window.dispatchEvent(new Event('pagehide')));
-  expect(store.get().session!.scroll.a).toEqual({top: userScroll ? 150 : 500, left: 0, following: false});
+  expect(store.get().editor!.scroll.a).toEqual({top: userScroll ? 150 : 500, left: 0, following: false});
   height(1400);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: false, items: [
     {id: 'next', seq: 3, kind: 'text', text: 'Next answer'},
@@ -163,5 +163,5 @@ test.each([false, true])('transcript preserves image restoration and follow inte
   expect(view.scrollTop).toBe(userScroll ? 150 : 500);
   act(() => find(root, '[aria-label="Scroll to newest output"]').click());
   expect(view.scrollTop).toBe(1300);
-  expect(store.get().session!.scroll.a.following).toBe(true);
+  expect(store.get().editor!.scroll.a.following).toBe(true);
 });

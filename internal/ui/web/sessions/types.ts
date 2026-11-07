@@ -1,8 +1,6 @@
 // Workspaces and their sessions as the server shows them, and the page's own
 // sessions: the unsent one and the attached one.
-import type {Changes, OpenDiff} from '../changes/types.ts';
-import type {ScrollMemory, TabLayout} from '../editor/types.ts';
-import type {LineRange, SessionFiles} from '../files/types.ts';
+import type {EditorViewState} from '../editor/types.ts';
 import type {Settings} from '../agent/types.ts';
 import type {Transcript} from '../transcript/types.ts';
 
@@ -77,32 +75,17 @@ export interface Unsent {
   sending: boolean;
 }
 
-// AttachedSession is the page's state for the session it shows: its
-// transcript, the activities and messages the user expanded, its tabs and
-// their remembered scroll, and its changes, diffs, and files.
+// AttachedSession holds only the real session's transcript and disclosures.
 export interface AttachedSession {
   id: string;
   transcript: Transcript;
   transcriptReady: boolean;
-  activePane: number | null;
-  panel: boolean;
   expanded: Record<string, true>;
-  tabs: TabLayout;
-  scroll: Record<string, ScrollMemory>;
-  changes: Changes;
-  diffs: Record<string, OpenDiff>;
-  files: SessionFiles;
 }
 
-// SessionViewState holds only view choices, without server data or live handles.
-export interface SessionViewState {
-  tabs: TabLayout;
-  activePane: number | null;
-  panel: boolean;
+// SessionViewState retains the historical saved format.
+export interface SessionViewState extends EditorViewState {
   expanded: Record<string, true>;
-  scroll: Record<string, ScrollMemory>;
-  folders: Record<string, true>;
-  files: Record<string, {source: boolean; lines: LineRange[]}>;
 }
 
 // SessionSearchResult is a session whose title or conversation matches a

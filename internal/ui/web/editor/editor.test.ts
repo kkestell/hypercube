@@ -1,8 +1,8 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
-import {emptySession} from '../sessions/selection.ts';
-import type {AttachedSession} from '../sessions/types.ts';
+import {emptySession, emptyEditor} from '../sessions/selection.ts';
+import type {EditorView} from '../editor/types.ts';
 import type {State} from '../state.ts';
 import {createStore, type Store} from '../store.ts';
 import {agentTabId, closeTab, diffTabId, fileTabId, keepOpen, openDiffTab, openFileTab, openRequestedFile, rememberScroll, resizeSplit, tabEntry} from './editor.ts';
@@ -12,9 +12,9 @@ import type {ScrollMemory, TabId} from './types.ts';
 
 afterEach(() => mock.restore());
 
-const attached = (state: State): AttachedSession => state.session ?? expect.unreachable('no attached session');
-const openTestTab = (state: State, id: TabId): State => ({...state, session: {...attached(state), tabs: openTab(attached(state).tabs, id)}});
-const store = () => createStore(testState({session: emptySession('s')}));
+const attached = (state: State): EditorView => state.editor ?? expect.unreachable('no attached session');
+const openTestTab = (state: State, id: TabId): State => ({...state, editor: {...attached(state), tabs: openTab(attached(state).tabs, id)}});
+const store = () => createStore(testState({session: emptySession('s'), editor: emptyEditor({session: 's'})}));
 const session = (s: Store) => attached(s.get());
 const tabsOf = (s: Store) => panes(session(s).tabs.root).map(pane => pane.tabs);
 const activeTab = (s: Store) => panes(session(s).tabs.root)[0].active;
@@ -39,7 +39,7 @@ test('a clicked file opens as a tab beside the agent\'s tab and replaces the pre
 test('resizeSplit keeps the ratio between 15 and 85', () => {
   const s = store();
   s.update(state => openTestTab(openTestTab(state, 'file:one'), 'file:two'));
-  s.update(state => ({...state, session: {...attached(state), tabs: moveTab(attached(state).tabs, 'file:two', 1, 'right')}}));
+  s.update(state => ({...state, editor: {...attached(state), tabs: moveTab(attached(state).tabs, 'file:two', 1, 'right')}}));
   const root = () => session(s).tabs.root ?? expect.unreachable('no tabs');
   const split = root().id;
   s.update(state => resizeSplit(state, split, 5));
@@ -72,7 +72,7 @@ test('scroll belongs to the attached session and its open files', () => {
   let state = testState({
     selected: 's',
     workspaces: [testWorkspace({id: 'w', sessions: [testSession({id: 's'}), testSession({id: 'other'})]})],
-    session: emptySession('s'),
+    editor: emptyEditor({session: 's'}),
   });
   state = rememberScroll(state, 's', 's', scroll);
   expect(attached(state).scroll).toEqual({s: scroll});
@@ -118,7 +118,7 @@ test('diff tabs share preview replacement and forget their data and scroll', () 
   expect(tabsOf(s)).toEqual([[agentTabId, id]]);
   expect(session(s).tabs.preview).toBe(id);
   expect(tabEntry(s.get(), id)).toMatchObject({kind: 'diff', name: 'foo.py', label: 'foo.py (Working Tree)'});
-  s.update(state => ({...state, session: {...attached(state), changes: {branch: 'main', files: [{path: 'foo.py', status: 'added'}]}}}));
+  s.update(state => ({...state, editor: {...attached(state), changes: {branch: 'main', files: [{path: 'foo.py', status: 'added'}]}}}));
   expect(tabEntry(s.get(), id).label).toBe('foo.py (Added)');
   s.update(state => keepOpen(state, id));
   openDiffTab(s, 'other.py');

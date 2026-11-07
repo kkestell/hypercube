@@ -45,22 +45,22 @@ interface FileViewProps {
 export function FileView({id, path, active = true}: FileViewProps) {
   const [state, store] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  const session = state.session;
-  const file = session?.files.open[path];
+  const editor = state.editor;
+  const file = editor?.files.open[path];
   const ready = fileReady(file);
   useScrollMemory(view, id, ready);
-  const sessionId = session?.id;
+  const viewKey = editor?.id;
   useEffect(() => {
-    if (sessionId && file && !ready) readOpenFile(store, path);
-  }, [sessionId, path, !!file, ready]);
+    if (viewKey && file && !ready) readOpenFile(store, path);
+  }, [viewKey, path, !!file, ready]);
   useLayoutEffect(() => {
-    if (!sessionId || !file?.reveal || file.text === null) return;
+    if (!viewKey || !file?.reveal || file.text === null) return;
     const highlight = view.current?.querySelector('.file-view-highlight');
     if (!highlight) return;
     highlight.scrollIntoView({block: 'center'});
-    store.update(state => revealed(state, sessionId, path));
+    store.update(state => revealed(state, viewKey, path));
   }, [file?.text, file?.reveal, file?.source]);
-  if (!sessionId) return null;
+  if (!viewKey) return null;
   const preview = file?.preview && (!file.source || file.text === null) ? file.preview : undefined;
   let content: ReactNode = null;
   if (preview) content = <BrowserPreview key={preview.url} preview={preview} path={path} />;
@@ -68,7 +68,7 @@ export function FileView({id, path, active = true}: FileViewProps) {
   else if (file?.text !== null && file?.text !== undefined) {
     content = language(path) === 'markdown' && !file.source
       ? <div className={`mx-auto p-6 ${state.workbench.fixedWidth ? 'max-w-[51.7rem]' : ''}`}>
-        <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} renderLink={(href, children) => {
+        <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, editor!.target, path)} renderLink={(href, children) => {
           const target = markdownFilePath(href, path);
           return target === null ? <MarkdownLink href={href}>{children}</MarkdownLink> : <a href={href} onClick={event => {
             event.preventDefault();

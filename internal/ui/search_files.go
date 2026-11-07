@@ -24,7 +24,7 @@ type searchFile struct {
 }
 
 func (s *server) searchFiles(w http.ResponseWriter, r *http.Request) {
-	root, err := s.sessionRoot(r.URL.Query().Get("session"))
+	root, err := s.targetRoot(requestTarget(r))
 	if fileError(w, err) {
 		return
 	}

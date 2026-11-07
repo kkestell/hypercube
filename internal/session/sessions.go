@@ -8,7 +8,6 @@ import (
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/kkestell/hypercube/internal/terminal"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
@@ -145,6 +144,7 @@ func (r *Runtime) DeleteWorkspace(id string) error {
 			return err
 		}
 	}
+	r.Terminals.Stop(workspaceShellOwner(id))
 	return r.save(func(tx *write) error { return tx.DeleteWorkspace(id) })
 }
 
@@ -171,50 +171,6 @@ func (r *Runtime) update(id string, change func(*store.Session)) error {
 		change(&s)
 		return tx.SaveSession(s)
 	})
-}
-
-// Shell opens the session's shell in its own directory. The shell outlives the
-// session's agent; Archive, Delete, EndChild, and Quit end it.
-func (r *Runtime) Shell(id string, cols, rows int) (*terminal.Shell, error) {
-	// Open only forks the shell's holder; it does not wait for the shell.
-	// Keep admission under the lifecycle lock so cleanup sees every shell
-	// admitted before its claim and refuses every request after it.
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.closing {
-		return nil, errClosing
-	}
-	var dir string
-	err := r.db.Read(func(tx *store.Tx) error {
-		s, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		if s.Ended {
-			return errEnded
-		}
-		if r.deleting[id] || r.deleting[s.Parent] {
-			return errDeleting
-		}
-		dir = s.Dir
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return r.Terminals.Open(id, dir, cols, rows)
-}
-
-// stopShells ends the root's shell and all its children's shells.
-func (r *Runtime) stopShells(id string) {
-	var children []store.Session
-	if err := r.db.Read(func(tx *store.Tx) error { var err error; children, err = tx.Children(id); return err }); err != nil {
-		logf("reading child shells: %v", err)
-	}
-	r.Terminals.Stop(id)
-	for _, c := range children {
-		r.Terminals.Stop(c.ID)
-	}
 }
 
 // selectLaunches marks launches as stopping but leaves their readers attached.

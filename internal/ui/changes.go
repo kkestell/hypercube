@@ -12,10 +12,10 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// gitDir returns the session's folder and whether it is inside a Git
+// gitDir returns the target's folder and whether it is inside a Git
 // repository.
-func (s *server) gitDir(id string) (dir, top string, ok bool, err error) {
-	dir, err = s.sessionDir(id)
+func (s *server) gitDir(target fileTarget) (dir, top string, ok bool, err error) {
+	dir, err = s.targetDir(target)
 	if err != nil {
 		return "", "", false, err
 	}
@@ -27,7 +27,7 @@ func (s *server) gitDir(id string) (dir, top string, ok bool, err error) {
 }
 
 func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
-	dir, top, ok, err := s.gitDir(r.URL.Query().Get("session"))
+	dir, top, ok, err := s.gitDir(requestTarget(r))
 	if fileError(w, err) {
 		return
 	}
@@ -95,7 +95,7 @@ func untrackedLines(root *os.Root, path string) (*int, *int, error) {
 }
 
 func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
-	dir, _, ok, err := s.gitDir(r.URL.Query().Get("session"))
+	dir, _, ok, err := s.gitDir(requestTarget(r))
 	if fileError(w, err) {
 		return
 	}
@@ -105,7 +105,7 @@ func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	path := r.URL.Query().Get("path")
 	if !filepath.IsLocal(path) || filepath.Clean(path) == "." {
-		http.Error(w, "path must name a file in the session folder", http.StatusBadRequest)
+		http.Error(w, "path must name a file in the folder", http.StatusBadRequest)
 		return
 	}
 	patch, err := workspace.Diff(dir, path, maxFile)

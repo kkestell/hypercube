@@ -20,8 +20,17 @@ import (
 // Pass nil for serve when no services need to start.
 func (r *Runtime) Restore(serve func()) error {
 	var families [][]store.Session
+	var workspaceRecords []store.Workspace
 	known := map[string]bool{}
 	err := r.db.Read(func(tx *store.Tx) error {
+		var err error
+		workspaceRecords, err = tx.Workspaces()
+		if err != nil {
+			return err
+		}
+		for _, workspace := range workspaceRecords {
+			known[terminal.Name(workspaceShellOwner(workspace.ID))] = true
+		}
 		roots, err := tx.Sessions("")
 		if err != nil {
 			return err
@@ -60,6 +69,13 @@ func (r *Runtime) Restore(serve func()) error {
 				_ = h.Stop()
 				_ = h.Remove()
 			}
+		}
+	}
+	// Workspace deletion can be served immediately, so its holders must already
+	// belong to the terminal set before requests can remove their owners.
+	for _, workspace := range workspaceRecords {
+		if err := r.Terminals.Adopt(workspaceShellOwner(workspace.ID)); err != nil {
+			logf("adopting workspace shell %s: %v", workspace.ID, err)
 		}
 	}
 	if serve != nil {

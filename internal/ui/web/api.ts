@@ -1,4 +1,5 @@
 // Every HTTP call the page makes to the server.
+import type {EditorTarget} from './editor/target.ts';
 import type {Catalog, Harness} from './agent/types.ts';
 import type {Config, Grant} from './app/types.ts';
 import type {ChangesResult, DiffRead} from './changes/types.ts';
@@ -103,8 +104,8 @@ export async function alwaysAllow(store: Store, session: string, request: string
 }
 
 // listFileTree returns each requested folder's entries or read failure.
-export async function listFileTree(session: string, dirs: string[]): Promise<Record<string, FolderListing>> {
-  const response = await fetch(url('files/tree', {session}), {method: 'POST', body: JSON.stringify(dirs), cache: 'no-store'});
+export async function listFileTree(target: EditorTarget, dirs: string[]): Promise<Record<string, FolderListing>> {
+  const response = await fetch(url('files/tree', target), {method: 'POST', body: JSON.stringify(dirs), cache: 'no-store'});
   if (!response.ok) throw new HttpError(await response.text(), response.status);
   return response.json();
 }
@@ -113,8 +114,8 @@ export async function listFileTree(session: string, dirs: string[]): Promise<Rec
 export const mentionFiles = (params: {session: string} | {workspace: string}, signal: AbortSignal) =>
   get<string[]>('mention-files', params, signal);
 
-export const searchFiles = (session: string, query: string, signal: AbortSignal) =>
-  get<SearchFile[]>('search-files', {session, q: query}, signal);
+export const searchFiles = (target: EditorTarget, query: string, signal: AbortSignal) =>
+  get<SearchFile[]>('search-files', {...target, q: query}, signal);
 
 // searchSessions finds session titles and conversation text across workspaces.
 // The server sends null when nothing matches.
@@ -123,13 +124,13 @@ export const searchSessions = (query: string, signal: AbortSignal): Promise<Sess
 
 // fetchChanges lists the changes within the session's folder, or
 // returns null for a folder outside a repository.
-export const fetchChanges = (session: string) => get<ChangesResult | null>('changes', {session});
+export const fetchChanges = (target: EditorTarget) => get<ChangesResult | null>('changes', target);
 
 // readFile reads text or browser preview metadata, or reports an unchanged,
 // deleted, or unsupported file.
-export async function readFile(session: string, path: string, etag?: string | null): Promise<FileRead> {
+export async function readFile(target: EditorTarget, path: string, etag?: string | null): Promise<FileRead> {
   const headers: Record<string, string> = etag ? {'If-None-Match': etag} : {};
-  const response = await fetch(url('file', {session, path}), {headers, cache: 'no-store'});
+  const response = await fetch(url('file', {...target, path}), {headers, cache: 'no-store'});
   if (response.status === 304) return {unchanged: true};
   if (response.status === 404) return {deleted: true};
   if (response.status === 413) return {message: tooLarge};
@@ -140,8 +141,8 @@ export async function readFile(session: string, path: string, etag?: string | nu
 }
 
 // readDiff reads a whole-file patch, with the text viewer's size and binary messages.
-export async function readDiff(session: string, path: string): Promise<DiffRead> {
-  const response = await fetch(url('diff', {session, path}), {cache: 'no-store'});
+export async function readDiff(target: EditorTarget, path: string): Promise<DiffRead> {
+  const response = await fetch(url('diff', {...target, path}), {cache: 'no-store'});
   if (response.status === 413) return {message: tooLarge};
   if (response.status === 415) return {message: unsupported};
   if (!response.ok) return {error: await response.text()};

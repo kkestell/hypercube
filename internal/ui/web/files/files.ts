@@ -1,7 +1,7 @@
-// The attached session's files: the folder listings and expansion of the
+// The attached editor's files: the folder listings and expansion of the
 // Files tree, and the contents of each file open in a tab, by path relative to
-// the session's working directory ('' is the directory itself). Results that
-// arrive after the page attached to another session are dropped.
+// the target's directory ('' is the directory itself). Results that
+// arrive after the page attached to another view are dropped.
 import {HttpError, listFileTree, readFile} from '../api.ts';
 import type {ChangeTree} from '../changes/types.ts';
 import type {State} from '../state.ts';
@@ -40,10 +40,10 @@ export function treeEntries(files: SessionFiles, changes: ChangeTree, dir: strin
   return deleted.size ? sortEntries([...entries, ...deleted.values()]) : entries;
 }
 
-function withFiles(state: State, sessionId: string, change: (files: SessionFiles) => SessionFiles): State {
-  if (state.session?.id !== sessionId) return state;
-  const files = change(state.session.files);
-  return files === state.session.files ? state : {...state, session: {...state.session, files}};
+function withFiles(state: State, viewKey: string, change: (files: SessionFiles) => SessionFiles): State {
+  if (state.editor?.id !== viewKey) return state;
+  const files = change(state.editor.files);
+  return files === state.editor.files ? state : {...state, editor: {...state.editor, files}};
 }
 
 // shownFolders includes the root and expanded folders with expanded ancestors.
@@ -54,8 +54,8 @@ export function shownFolders(files: SessionFiles): string[] {
 
 // fileRead applies a read of an open file. A deleted file keeps its contents,
 // and a failed read leaves a file that has shown something as it is.
-function fileRead(state: State, sessionId: string, path: string, result: FileRead): State {
-  return withFiles(state, sessionId, files => {
+function fileRead(state: State, viewKey: string, path: string, result: FileRead): State {
+  return withFiles(state, viewKey, files => {
     const file = files.open[path];
     if (!file || 'unchanged' in result) return files;
     let next: OpenFile;
@@ -75,26 +75,26 @@ function fileRead(state: State, sessionId: string, path: string, result: FileRea
   });
 }
 
-export const setSource = (state: State, path: string, source: boolean): State => state.session ? withFiles(state, state.session.id, files => ({
+export const setSource = (state: State, path: string, source: boolean): State => state.editor ? withFiles(state, state.editor.id, files => ({
   ...files, open: {...files.open, [path]: {...files.open[path], source}},
 })) : state;
 
-export const revealed = (state: State, sessionId: string, path: string): State => withFiles(state, sessionId, files => ({
+export const revealed = (state: State, viewKey: string, path: string): State => withFiles(state, viewKey, files => ({
   ...files, open: {...files.open, [path]: {...files.open[path], reveal: false}},
 }));
 
 // loadTree applies one coherent refresh. A newer read or attachment supersedes
 // an older response, including a late response after A → B → A.
 export async function loadTree(store: Store, dirs: string[]) {
-  const session = store.get().session;
-  if (!session) return;
-  const attachment = store.get().sessionVersion;
+  const editor = store.get().editor;
+  if (!editor) return;
+  const attachment = store.get().editorVersion;
   const request = store.get().treeVersion + 1;
   store.update(state => ({...state, treeVersion: request}));
   const apply = (response: Record<string, FolderListing>) => {
     store.update(state => {
-      if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.treeVersion !== request) return state;
-      const files = state.session.files;
+      if (state.editor?.id !== editor.id || state.editorVersion !== attachment || state.treeVersion !== request) return state;
+      const files = state.editor.files;
       const listings = {...files.listings};
       const listingErrors = {...files.listingErrors};
       let changed = false;
@@ -125,11 +125,11 @@ export async function loadTree(store: Store, dirs: string[]) {
           changed = true;
         }
       }
-      return changed ? {...state, session: {...state.session, files: {...updated, expanded}}} : state;
+      return changed ? {...state, editor: {...state.editor, files: {...updated, expanded}}} : state;
     });
   };
   try {
-    apply(await listFileTree(session.id, dirs));
+    apply(await listFileTree(editor.target, dirs));
   } catch (error) {
     if (error instanceof HttpError && error.status === 404) apply({'': null});
     else {
@@ -141,32 +141,32 @@ export async function loadTree(store: Store, dirs: string[]) {
 
 // readOpenFile reads an open file, asking only for a change since the last read.
 export async function readOpenFile(store: Store, path: string) {
-  const session = store.get().session;
-  const file = session?.files.open[path];
-  if (!session || !file) return;
-  const attachment = store.get().sessionVersion;
+  const editor = store.get().editor;
+  const file = editor?.files.open[path];
+  if (!editor || !file) return;
+  const attachment = store.get().editorVersion;
   const request = (store.get().fileReadVersions[path] ?? 0) + 1;
   store.update(state => ({...state, fileReadVersions: {...state.fileReadVersions, [path]: request}}));
   let result: FileRead;
   try {
-    result = await readFile(session.id, path, file.etag);
+    result = await readFile(editor.target, path, file.etag);
   } catch (error) {
     result = {error: error instanceof Error ? error.message : String(error)};
   }
-  store.update(state => state.sessionVersion === attachment && state.fileReadVersions[path] === request
-    ? fileRead(state, session.id, path, result) : state);
+  store.update(state => state.editorVersion === attachment && state.fileReadVersions[path] === request
+    ? fileRead(state, editor.id, path, result) : state);
 }
 
 // setFolderOpen expands or collapses a folder, listing it when it first opens
 // unless it exists only through deleted files.
 export function setFolderOpen(store: Store, path: string, open: boolean) {
-  const session = store.get().session;
-  if (!session || !!session.files.expanded[path] === open) return;
-  store.update(state => withFiles(state, session.id, files => {
+  const editor = store.get().editor;
+  if (!editor || !!editor.files.expanded[path] === open) return;
+  store.update(state => withFiles(state, editor.id, files => {
     const expanded = {...files.expanded};
     if (open) expanded[path] = true;
     else delete expanded[path];
     return {...files, expanded};
   }));
-  if (open && !(path in session.files.listings) && listedFolder(session.files, path)) loadTree(store, [path]);
+  if (open && !(path in editor.files.listings) && listedFolder(editor.files, path)) loadTree(store, [path]);
 }

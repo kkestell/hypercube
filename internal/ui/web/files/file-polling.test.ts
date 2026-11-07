@@ -2,14 +2,14 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
 import {fileTabId, tabEntry} from '../editor/editor.ts';
 import {moveTab, openTab, panes} from '../editor/tab-layout.ts';
-import {emptySession} from '../sessions/selection.ts';
+import {emptyEditor} from '../sessions/selection.ts';
 import type {RightTab, Workbench} from '../app/types.ts';
-import type {AttachedSession} from '../sessions/types.ts';
+import type {EditorView} from '../editor/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
 import {testSession, testState, testWorkspace, unread} from '../../test-state.ts';
 import {loadChanges, readOpenDiff} from '../changes/changes.ts';
-import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
+import {receivedWorkspaces, selectSession, selectWorkspace} from '../sessions/selection.ts';
 import {readOpenFile} from './files.ts';
 import {createFilePoller} from './file-polling.ts';
 
@@ -33,8 +33,8 @@ function stubRoutes(routes: Record<string, () => Response | Promise<Response>>) 
 
 // A session with folders a (expanded), a/b (expanded), c/d (expanded under a
 // collapsed c), and file tabs x.go (active in its pane) and y.go (behind z.go).
-function attached(id = 's'): AttachedSession {
-  const session = emptySession(id);
+function attached(id = 's'): EditorView {
+  const session = emptyEditor({session: id});
   let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce(openTab, session.tabs);
   tabs = moveTab(tabs, fileTabId('x.go'), panes(tabs.root)[0].id, 'right');
   const open = {'x.go': unread, 'y.go': unread, 'z.go': {...unread, text: 'z', etag: '"z"'}};
@@ -43,12 +43,12 @@ function attached(id = 's'): AttachedSession {
 
 const workbench = (rightPanel: boolean, rightTab: RightTab): Workbench => ({...testState().workbench, rightPanel, rightTab});
 
-const state = (overrides: Partial<State> = {}) => testState({session: attached(), workbench: workbench(true, 'files'), ...overrides});
+const state = (overrides: Partial<State> = {}) => testState({editor: attached(), workbench: workbench(true, 'files'), ...overrides});
 
 test('nothing is polled while the page is hidden or unattached', async () => {
   const {requests} = stubRoutes({});
   await createFilePoller(createStore(state({visible: false})))();
-  await createFilePoller(createStore(state({session: null})))();
+  await createFilePoller(createStore(state({editor: null})))();
   expect(requests).toEqual([]);
 });
 
@@ -68,19 +68,19 @@ test('only shown folders, their changes, and the active file tab of each pane ar
 test('one poll restores nested expanded folders using freshly loaded parent listings', async () => {
   const session = {...attached(), files: {...attached().files, listings: {}}};
   const {requests} = stubRoutes({});
-  const store = createStore(state({session}));
+  const store = createStore(state({editor: session}));
   await createFilePoller(store)();
   expect(requests[0]).toBe('files/tree:null');
-  expect(store.get().session?.files.listings.a).toEqual([{name: 'b', dir: true}]);
+  expect(store.get().editor?.files.listings.a).toEqual([{name: 'b', dir: true}]);
 });
 
 test('a folder shown only through its deleted files stays expanded', async () => {
   const {requests} = stubRoutes({'files/tree:null': () => Response.json({'': [], gone: null})});
-  const session = {...emptySession('s'), files: {listings: {'': []}, listingErrors: {}, expanded: {gone: true as const}, open: {}}};
-  const store = createStore(state({session}));
+  const session = {...emptyEditor({session: 's'}), files: {listings: {'': []}, listingErrors: {}, expanded: {gone: true as const}, open: {}}};
+  const store = createStore(state({editor: session}));
   await createFilePoller(store)();
   expect(requests).toEqual(['files/tree:null', 'changes:null']);
-  expect(store.get().session?.files.expanded.gone).toBe(true);
+  expect(store.get().editor?.files.expanded.gone).toBe(true);
 });
 
 
@@ -102,39 +102,39 @@ test('a missing folder collapses', async () => {
   stubRoutes({'files/tree:null': () => Response.json({...listings, 'a/b': null})});
   const store = createStore(state());
   await createFilePoller(store)();
-  expect(store.get().session?.files.expanded).toEqual({a: true, 'c/d': true});
+  expect(store.get().editor?.files.expanded).toEqual({a: true, 'c/d': true});
 });
 
 test('a missing session folder replaces a cached tree with the missing message', async () => {
   stubRoutes({'files/tree:null': () => new Response('gone', {status: 404})});
   const store = createStore(state());
   await createFilePoller(store)();
-  expect(store.get().session?.files.listings['']).toBeNull();
+  expect(store.get().editor?.files.listings['']).toBeNull();
 });
 
 test('results for a session the page left are dropped', async () => {
   const store = createStore(state());
   stubRoutes({'files/tree:null': () => {
-    store.update(s => ({...s, session: emptySession('other')}));
+    store.update(s => ({...s, editor: emptyEditor({session: 'other'})}));
     return Response.json(listings);
   }});
   await createFilePoller(store)();
-  expect(store.get().session).toEqual(emptySession('other'));
+  expect(store.get().editor).toEqual(emptyEditor({session: 'other'}));
 });
 
 
 test('Changes refreshes with an active diff even while hidden', async () => {
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.diffs = {'a.go': {text: null, message: null}};
   session.tabs = openTab(session.tabs, 'diff:a.go');
   const {requests} = stubRoutes({
     'changes:null': () => Response.json({branch: 'main', files: []}),
     'diff:a.go': () => new Response('patch'),
   });
-  const store = createStore(state({session, workbench: workbench(true, 'search')}));
+  const store = createStore(state({editor: session, workbench: workbench(true, 'search')}));
   await createFilePoller(store)();
   expect(requests).toEqual(['changes:null', 'diff:a.go']);
-  expect(store.get().session?.diffs['a.go']).toEqual({text: 'patch', message: null});
+  expect(store.get().editor?.diffs['a.go']).toEqual({text: 'patch', message: null});
   requests.length = 0;
   store.update(s => ({...s, workbench: workbench(false, 'search')}));
   await createFilePoller(store)();
@@ -143,7 +143,7 @@ test('Changes refreshes with an active diff even while hidden', async () => {
 
 
 test('a diff title follows its status while the right panel shows Files', async () => {
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.diffs = {'a.go': {text: '', message: null}};
   session.tabs = openTab(session.tabs, 'diff:a.go');
   session.changes = {branch: 'main', files: [{path: 'a.go', status: 'untracked'}]};
@@ -152,21 +152,23 @@ test('a diff title follows its status while the right panel shows Files', async 
     'changes:null': () => Response.json({branch: 'main', files: [{path: 'a.go', status: 'added'}]}),
     'diff:a.go': () => new Response('patch'),
   });
-  const store = createStore(state({session}));
+  const store = createStore(state({editor: session}));
   expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Untracked)');
   await createFilePoller(store)();
   expect(requests).toEqual(['files/tree:null', 'changes:null', 'diff:a.go']);
   expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Added)');
 });
 
-for (const kind of ['file', 'diff'] as const) {
-  test(`a newer polled ${kind} supersedes overlapping reads and an earlier A-B-A attachment`, async () => {
+for (const kind of ['file', 'diff'] as const) for (const dashboard of [false, true]) {
+  test(`a newer polled ${kind} supersedes overlapping reads and an earlier A-B-A attachment (workspace ${dashboard})`, async () => {
     const store = createStore(receivedWorkspaces(testState({selected: 'a', workbench: workbench(false, 'search')}), [testWorkspace({
       id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
     })]));
+    const selectA = (state: State) => dashboard ? selectWorkspace(state, 'w') : selectSession(state, 'a');
+    if (dashboard) store.update(selectA);
     store.update(state => {
-      const session = state.session!;
-      return {...state, session: {...session, tabs: openTab(session.tabs, `${kind}:a.go`),
+      const session = state.editor!;
+      return {...state, editor: {...session, tabs: openTab(session.tabs, `${kind}:a.go`),
         files: {...session.files, open: {'a.go': unread}}, diffs: {'a.go': {text: null, message: null}}}};
     });
     const replies: Array<(response: Response) => void> = [];
@@ -183,7 +185,7 @@ for (const kind of ['file', 'diff'] as const) {
     const firstRead = read(store, 'a.go');
     const oldAttachment = read(store, 'a.go');
     store.update(state => selectSession(state, 'b'));
-    store.update(state => selectSession(state, 'a'));
+    store.update(selectA);
     const older = read(store, 'a.go');
     const newer = createFilePoller(store)();
     await polled;
@@ -196,13 +198,13 @@ for (const kind of ['file', 'diff'] as const) {
     // This read and the poll both have version 2 in their own attachments.
     replies[1](new Response('old attachment'));
     await oldAttachment;
-    const session = store.get().session!;
+    const session = store.get().editor!;
     expect((kind === 'file' ? session.files.open['a.go'] : session.diffs['a.go']).text).toBe('new text');
   });
 }
 
 test('a newer change poll supersedes an overlapping initial read', async () => {
-  const store = createStore(state({session: emptySession('s')}));
+  const store = createStore(state({editor: emptyEditor({session: 's'})}));
   const replies: Array<(response: Response) => void> = [];
   let started = () => {};
   const polled = new Promise<void>(resolve => { started = resolve; });
@@ -221,5 +223,5 @@ test('a newer change poll supersedes an overlapping initial read', async () => {
   await poll;
   replies[0](Response.json({branch: 'main', files: []}));
   await initial;
-  expect(store.get().session?.changes).toEqual(latest);
+  expect(store.get().editor?.changes).toEqual(latest);
 });

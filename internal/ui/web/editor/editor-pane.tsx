@@ -3,6 +3,7 @@
 // tab under the pointer, or on the body, where an edge within a quarter of the
 // pane splits it.
 import {useRef, useState, type DragEvent} from 'react';
+import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {AgentPane} from '../agent/agent-pane.tsx';
 import {DiffView} from '../changes/diff-view.tsx';
 import {Card} from '../components/ui/card';
@@ -28,11 +29,11 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
   const [drop, setDrop] = useState<Edge | null>(null);
   const body = useRef<HTMLDivElement>(null);
   const shown = shownSession(state);
-  const dragging = state.session?.tabs.dragging;
+  const dragging = state.editor?.tabs.dragging;
   const entries = pane.tabs.map(id => tabEntry(state, id));
   const active = tabEntry(state, pane.active);
-  const allPanes = panes(state.session?.tabs.root ?? agentTabs.root);
-  const activePane = allPanes.find(item => item.id === state.session?.activePane) ?? allPanes[0];
+  const allPanes = panes(state.editor?.tabs.root ?? agentTabs.root);
+  const activePane = allPanes.find(item => item.id === state.editor?.activePane) ?? allPanes[0];
   const isActive = focused && activePane.id === pane.id;
   const activate = () => store.update(s => activatePane(s, pane.id));
 
@@ -69,7 +70,7 @@ export function EditorPane({pane, focused, placement}: {pane: Pane; focused: boo
         drop === 'top' ? 'inset-x-0 top-0 h-1/2' : drop === 'bottom' ? 'inset-x-0 bottom-0 h-1/2' : 'inset-0'}`} />}
       <EditorTabs pane={pane} entries={entries} placement={placement} />
       <div ref={body} className="editor-pane-body relative flex min-h-0 flex-1 flex-col">
-        {active.kind === 'agent' ? shown && <AgentPane key={shown.id} session={shown} active={isActive} />
+        {active.kind === 'dashboard' ? <WorkspaceDashboard /> : active.kind === 'agent' ? shown && <AgentPane key={shown.id} session={shown} active={isActive} />
           : active.kind === 'diff' ? <DiffView key={active.id} id={active.id} path={active.path} active={isActive} />
           : <FileView key={active.id} id={active.id} path={active.path} active={isActive} />}
       </div>

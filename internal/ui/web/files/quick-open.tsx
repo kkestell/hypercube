@@ -13,22 +13,22 @@ interface QuickOpenProps {
 
 export function QuickOpen({open, onOpenChange}: QuickOpenProps) {
   const [state, store] = useStore();
-  const session = state.session?.id;
+  const editor = state.editor?.id;
   const [files, setFiles] = useState<string[]>([]);
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!open || !session) return;
+    if (!open || !editor) return;
     const controller = new AbortController();
     setFiles([]); setError('');
-    mentionFiles({session}, controller.signal)
+    mentionFiles(state.editor!.target, controller.signal)
       .then(paths => { if (!controller.signal.aborted) setFiles(paths); })
       .catch((err: unknown) => { if (!controller.signal.aborted) setError('Could not list files: ' + (err instanceof Error ? err.message : String(err))); });
     return () => controller.abort();
-  }, [open, session]);
+  }, [open, editor]);
   const keyDown = (e: KeyboardEvent) => {
     if (matches(e, 'quickOpen')) e.preventDefault();
   };
-  return <CommandDialog open={open && !!session} onOpenChange={onOpenChange} title="Quick Open" description="Search session files" commandProps={{onKeyDown: keyDown}}>
+  return <CommandDialog open={open && !!editor} onOpenChange={onOpenChange} title="Quick Open" description="Search files" commandProps={{onKeyDown: keyDown}}>
     <CommandInput placeholder="Search files by name" aria-label="Search files" />
     <CommandList>
       {error ? <p className="p-4 text-sm">{error}</p> : <CommandEmpty>No files found.</CommandEmpty>}

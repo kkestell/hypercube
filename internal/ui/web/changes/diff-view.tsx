@@ -37,13 +37,13 @@ function DiffLines({text, path, wrap, active}: {text: string; path: string; wrap
 export function DiffView({id, path, active = true}: {id: TabId; path: string; active?: boolean}) {
   const [state, store] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  const diff = state.session?.diffs[path];
-  const sessionId = state.session?.id;
+  const diff = state.editor?.diffs[path];
+  const viewKey = state.editor?.id;
   const ready = diffReady(diff);
   useScrollMemory(view, id, ready);
   useEffect(() => {
-    if (sessionId && diff && !ready) readOpenDiff(store, path);
-  }, [sessionId, path, !!diff, ready]);
+    if (viewKey && diff && !ready) readOpenDiff(store, path);
+  }, [viewKey, path, !!diff, ready]);
   const move = (direction: number) => {
     if (!list.current || !view.current) return;
     const changes = [...list.current.querySelectorAll('[data-change]')];

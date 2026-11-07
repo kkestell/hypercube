@@ -4,7 +4,7 @@ import {mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testState, unread} from '../../test-state.ts';
 import {openTab} from '../editor/tab-layout.ts';
 import {EditorArea} from '../editor/editor-area.tsx';
-import {emptySession} from '../sessions/selection.ts';
+import {emptyEditor} from '../sessions/selection.ts';
 import {createStore, StoreContext} from '../store.ts';
 import {FileView} from './file-view.tsx';
 import {setSource} from './files.ts';
@@ -19,19 +19,19 @@ test.each([
   ['docs/guide.md', 'a&amp;b.md', 'docs/a&b.md'],
   ['/work/repo/docs/guide.md', '../README.md', '/work/repo/README.md'],
 ])('Markdown link in %s opens %s in a file tab', async (path, href, target) => {
-  const session = emptySession('s & 1');
+  const session = emptyEditor({session: 's & 1'});
   session.tabs = openTab(session.tabs, 'file:' + path);
   session.files.open[path] = {...unread, text: `- [**Read more**](${href})`};
   const fetch = stubFetch(() => new Response('Linked file'));
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   const root = mount(store, <EditorArea />);
   const link = root.querySelector('a')!;
   expect(link.textContent).toBe('Read more');
   const click = new MouseEvent('click', {bubbles: true, cancelable: true});
   await act(async () => { link.dispatchEvent(click); });
   expect(click.defaultPrevented).toBe(true);
-  expect(store.get().session?.tabs.preview).toBe('file:' + target);
-  expect(store.get().session?.files.open[target]?.text).toBe('Linked file');
+  expect(store.get().editor?.tabs.preview).toBe('file:' + target);
+  expect(store.get().editor?.files.open[target]?.text).toBe('Linked file');
   const request = new URL(fetch.mock.calls[0][0], 'http://localhost');
   expect(request.pathname).toBe('/file');
   expect(request.searchParams.get('session')).toBe('s & 1');
@@ -40,14 +40,14 @@ test.each([
 
 test('Markdown file links retain safe external links and block unsafe addresses', () => {
   const path = 'README.md';
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.files.open[path] = {...unread, text: `
 [Web](https://example.com) [Mail](mailto:a@example.com)
 [Script](javascript:alert%281%29) [Encoded](jav&#x61;script:alert%281%29)
 [Data](data:text/html,hello) [File](file:///etc/passwd)
 [Encoded file](fi&#x09;le:///etc/passwd) [Network](//example.com/file.md)
 `};
-  const root = mount(createStore(testState({session})), <FileView id={'file:' + path} path={path} />);
+  const root = mount(createStore(testState({editor: session})), <FileView id={'file:' + path} path={path} />);
   expect([...root.querySelectorAll('a')].map(link => link.getAttribute('href'))).toEqual(['https://example.com/', 'mailto:a@example.com']);
   expect([...root.querySelectorAll('a')].every(link => link.target === '_blank')).toBe(true);
   expect(root.textContent).toContain('Encoded file');
@@ -55,7 +55,7 @@ test('Markdown file links retain safe external links and block unsafe addresses'
 
 test('Markdown file previews render images relative to the file and session', () => {
   const path = 'docs #1/guide.md';
-  const session = emptySession('s & 1');
+  const session = emptyEditor({session: 's & 1'});
   session.files.open[path] = {...unread, text: `
 - ![Local](images/picture.png "Caption")
 
@@ -72,7 +72,7 @@ test('Markdown file previews render images relative to the file and session', ()
 ![HTML](data:text/html,hello)
 <img src=x onerror=alert(1)>
 `};
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   const root = document.createElement('div');
   try {
     render(<StoreContext.Provider value={[store.get(), store]}><FileView id="file" path={path} /></StoreContext.Provider>, root);
@@ -100,10 +100,10 @@ test.each([
   ['document.pdf', 'application/pdf', 'object', 'data'],
   ['index.html', 'text/html', 'iframe', 'src'],
 ])('browser preview for %s uses its native viewer', (path, mime, tag, attribute) => {
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   const url = '/preview/s/repo/' + path + '?v=1';
   session.files.open[path] = {...unread, preview: {mime, url}};
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   const root = document.createElement('div');
   render(<StoreContext.Provider value={[store.get(), store]}><FileView id={'file:' + path} path={path} /></StoreContext.Provider>, root);
   const viewer = root.querySelector(tag);
@@ -115,16 +115,16 @@ test.each([
 
 test('textual browser previews switch to highlighted source, then refresh the native viewer', () => {
   const path = 'drawing.svg';
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.files.open[path] = {...unread, text: '<svg/>', preview: {mime: 'image/svg+xml', url: '/preview/s/repo/drawing.svg?v=1'}};
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   const root = mount(store, <FileView id={'file:' + path} path={path} />);
   expect(root.querySelector('img')).not.toBeNull();
   act(() => store.update(state => setSource(state, path, true)));
   expect(root.querySelector('img')).toBeNull();
   expect(root.querySelector('code')?.textContent).toBe('<svg/>');
   act(() => store.update(state => setSource(state, path, false)));
-  act(() => store.update(state => ({...state, session: {...session, files: {...session.files, open: {
+  act(() => store.update(state => ({...state, editor: {...session, files: {...session.files, open: {
     [path]: {...session.files.open[path], preview: {mime: 'image/svg+xml', url: '/preview/s/repo/drawing.svg?v=2'}},
   }}}})));
   expect(root.querySelector('img')?.getAttribute('src')).toBe('/preview/s/repo/drawing.svg?v=2');
@@ -132,10 +132,10 @@ test('textual browser previews switch to highlighted source, then refresh the na
 
 test('source scrolling after a preview switch is remembered across remounts', async () => {
   const path = 'drawing.svg', id = 'file:' + path;
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.tabs = openTab(session.tabs, id);
   session.files.open[path] = {...unread, text: '<svg/>', preview: {mime: 'image/svg+xml', url: '/preview/s/repo/drawing.svg?v=1'}};
-  const store = createStore(testState({session}));
+  const store = createStore(testState({editor: session}));
   const root = mount(store, <FileView id={id} path={path} />);
   act(() => store.update(state => setSource(state, path, true)));
   const scroller = root.querySelector<HTMLElement>('.file-view')!;
@@ -144,7 +144,7 @@ test('source scrolling after a preview switch is remembered across remounts', as
     scroller.dispatchEvent(new Event('scroll'));
   });
   render(null, root);
-  expect(store.get().session?.scroll[id]?.top).toBe(500);
+  expect(store.get().editor?.scroll[id]?.top).toBe(500);
   const restored = mount(store, <FileView id={id} path={path} />);
   await act(async () => {});
   expect(restored.querySelector('.file-view')?.scrollTop).toBe(500);
@@ -152,9 +152,9 @@ test('source scrolling after a preview switch is remembered across remounts', as
 
 test('a browser decoding error offers the file directly', () => {
   const path = 'unsupported.png';
-  const session = emptySession('s');
+  const session = emptyEditor({session: 's'});
   session.files.open[path] = {...unread, preview: {mime: 'image/png', url: '/preview/s/repo/unsupported.png?v=1'}};
-  const root = mount(createStore(testState({session})), <FileView id={'file:' + path} path={path} />);
+  const root = mount(createStore(testState({editor: session})), <FileView id={'file:' + path} path={path} />);
   act(() => root.querySelector('img')?.dispatchEvent(new Event('error')));
   expect(root.textContent).toContain('This browser could not display the file.');
   expect(root.querySelector('a')?.getAttribute('href')).toBe('/preview/s/repo/unsupported.png?v=1');
@@ -164,15 +164,15 @@ test('source highlights reveal once after text arrives, across refreshes and rem
   stubFetch(() => new Promise(() => {}));
   const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   try {
-    const session = emptySession('s');
+    const session = emptyEditor({session: 's'});
     session.files.open['a.md'] = {...unread, source: true, lines: [{start: 1, end: 2}, {start: 3, end: 3}], reveal: true};
     session.scroll['file:a.md'] = {top: 100, left: 0, following: false};
-    const store = createStore(testState({session}));
+    const store = createStore(testState({editor: session}));
     const root = mount(store, <FileView id="file:a.md" path="a.md" />);
     expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
     expect(scroll).not.toHaveBeenCalled();
-    const text = (value: string) => store.update(state => state.session ? {...state, session: {...state.session, files: {...state.session.files, open: {
-      'a.md': {...unread, ...state.session.files.open['a.md'], text: value},
+    const text = (value: string) => store.update(state => state.editor ? {...state, editor: {...state.editor, files: {...state.editor.files, open: {
+      'a.md': {...unread, ...state.editor.files.open['a.md'], text: value},
     }}}} : state);
     act(() => text('# Title\nline\nlast'));
     expect(root.querySelector('.markdown-preview')).toBeNull();
@@ -182,7 +182,7 @@ test('source highlights reveal once after text arrives, across refreshes and rem
     expect(scroll).toHaveBeenCalledTimes(1);
     expect(scroll.mock.contexts[0] === highlights[0]).toBe(true);
     expect(scroll.mock.calls[0][0]).toEqual({block: 'center'});
-    expect(store.get().session?.files.open['a.md']?.reveal).toBe(false);
+    expect(store.get().editor?.files.open['a.md']?.reveal).toBe(false);
     act(() => text('# Changed'));
     act(() => render(null, root));
     await act(async () => { mount(store, <FileView id="file:a.md" path="a.md" />); });
@@ -193,16 +193,16 @@ test('source highlights reveal once after text arrives, across refreshes and rem
 test('reveal waits for a rendered source highlight, including an empty file', () => {
   const scroll = spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
   try {
-    const session = emptySession('s');
+    const session = emptyEditor({session: 's'});
     session.files.open['a.md'] = {...unread, text: '', lines: [{start: 1, end: 1}], reveal: true};
-    const store = createStore(testState({session}));
+    const store = createStore(testState({editor: session}));
     const root = mount(store, <FileView id="file:a.md" path="a.md" />);
     expect(scroll).not.toHaveBeenCalled();
-    expect(store.get().session?.files.open['a.md']?.reveal).toBe(true);
+    expect(store.get().editor?.files.open['a.md']?.reveal).toBe(true);
     act(() => store.update(state => setSource(state, 'a.md', true)));
     expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(1);
     expect(scroll).toHaveBeenCalledTimes(1);
-    expect(store.get().session?.files.open['a.md']?.reveal).toBe(false);
+    expect(store.get().editor?.files.open['a.md']?.reveal).toBe(false);
     act(() => store.update(state => setSource(state, 'a.md', false)));
     expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
   } finally { scroll.mockRestore(); }
@@ -226,9 +226,9 @@ test('partial worker highlights keep the remaining source text visible', () => {
     return frames.length;
   }});
   try {
-    const session = emptySession('s');
+    const session = emptyEditor({session: 's'});
     session.files.open['a.go'] = {...unread, text: 'one\ntwo\nthree'};
-    const root = mount(createStore(testState({session})), <FileView id="file:a.go" path="a.go" />);
+    const root = mount(createStore(testState({editor: session})), <FileView id="file:a.go" path="a.go" />);
     const source = () => [...root.querySelectorAll('.file-view-code code')].map(line => line.textContent);
     expect(source()).toEqual(['one', 'two', 'three']);
     act(() => workers[0].onmessage?.({data: {kind: 'chunk', document: 0, start: 0, lines: ['<span>one</span>']}} as MessageEvent));

@@ -139,10 +139,12 @@ opens. The backend's side is in
 [internal/desktop](../internal/desktop/desktop.go) and the app in
 [desktop](../desktop/main.js).
 
-[Panel terminals](../internal/terminal/terminal.go) start on demand, one per
-session, in its working directory. Their holders own the pseudo-terminals and
+[Panel terminals](../internal/terminal/terminal.go) start on demand for each
+session or workspace. Session shells use their working directories; workspace
+shells use the registered checkout. Their holders own the pseudo-terminals and
 bounded scrollback, which browser connections read directly. A shell ends on
-exit, session stop or deletion, or the backend's SIGINT.
+exit, deletion of its owner, or the backend’s SIGINT. Archiving a session also
+ends its shell.
 
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without

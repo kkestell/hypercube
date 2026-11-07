@@ -1,4 +1,4 @@
-// The right panel: the shown session's Files and Search, as icon tabs.
+// The right panel: the current view's Files and Search, as icon tabs.
 import {SearchPanel} from '../files/search-panel.tsx';
 import {FilesPanel} from '../files/files-panel.tsx';
 import {useStore} from '../store.ts';
@@ -15,10 +15,10 @@ export function RightPanel() {
   const [state, store] = useStore();
   return (
     <aside className="right-panel h-full min-w-0 bg-sidebar">
-      <PanelTabs label="Session views" tabs={tabs} selected={state.workbench.rightTab}
+      <PanelTabs label="File tools" tabs={tabs} selected={state.workbench.rightTab}
         onSelect={id => store.update(s => selectRightTab(s, id))}>
-        <FilesPanel key={state.session?.id} />
-        <SearchPanel key={state.session?.id} />
+        <FilesPanel key={state.editor?.id} />
+        <SearchPanel key={state.editor?.id} />
       </PanelTabs>
     </aside>
   );

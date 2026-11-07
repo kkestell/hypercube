@@ -9,29 +9,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-
-	"github.com/kkestell/hypercube/internal/store"
 )
 
 const maxMentionFiles = 50000
-
-func (s *server) mentionRoot(r *http.Request) (*os.Root, error) {
-	if id := r.URL.Query().Get("workspace"); id != "" {
-		var dir string
-		err := s.db.Read(func(tx *store.Tx) error {
-			workspace, err := tx.Workspace(id)
-			if err == nil {
-				dir = workspace.Path
-			}
-			return err
-		})
-		if err != nil {
-			return nil, err
-		}
-		return os.OpenRoot(dir)
-	}
-	return s.sessionRoot(r.URL.Query().Get("session"))
-}
 
 // gitWorktree detects a repository without treating a failed Git command as a
 // non-Git workspace. Worktrees have a .git file in place of a directory.
@@ -130,7 +110,7 @@ func walkMentionFiles(ctx context.Context, root *os.Root) ([]string, error) {
 }
 
 func (s *server) mentionFiles(w http.ResponseWriter, r *http.Request) {
-	root, err := s.mentionRoot(r)
+	root, err := s.targetRoot(requestTarget(r))
 	if fileError(w, err) {
 		return
 	}

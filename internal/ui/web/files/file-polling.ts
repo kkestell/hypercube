@@ -11,16 +11,16 @@ import {loadTree, readOpenFile, shownFolders} from './files.ts';
 export function createFilePoller(store: Store) {
   let running = false;
   return async function poll() {
-    const {visible, session, sessionVersion, workbench} = store.get();
-    if (running || !visible || !session) return;
+    const {visible, editor, editorVersion, workbench} = store.get();
+    if (running || !visible || !editor) return;
     running = true;
     try {
       const tree = workbench.rightPanel && workbench.rightTab === 'files';
       if (tree) {
-        await loadTree(store, shownFolders(session.files));
+        await loadTree(store, shownFolders(editor.files));
       }
-      const shownPanes = panes(session.tabs.root);
-      const left = () => store.get().session?.id !== session.id || store.get().sessionVersion !== sessionVersion;
+      const shownPanes = panes(editor.tabs.root);
+      const left = () => store.get().editor?.id !== editor.id || store.get().editorVersion !== editorVersion;
       if (!left() && (tree || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
       for (const pane of shownPanes) {
         if (left()) break;

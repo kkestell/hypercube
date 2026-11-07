@@ -30,15 +30,19 @@ func previewMIME(name string) string {
 
 // previewURL keeps the file's absolute path in the URL so relative resources
 // in an HTML document resolve alongside it, including outside the session dir.
-func (s *server) previewURL(session, name, etag string) (string, error) {
+func (s *server) previewURL(target fileTarget, name, etag string) (string, error) {
 	if !filepath.IsAbs(name) {
-		dir, err := s.sessionDir(session)
+		dir, err := s.targetDir(target)
 		if err != nil {
 			return "", err
 		}
 		name = filepath.Join(dir, name)
 	}
-	u := url.URL{Path: "/preview/" + session + filepath.ToSlash(name), RawQuery: url.Values{"v": {etag}}.Encode()}
+	prefix := "/preview/" + target.session
+	if target.workspace != "" {
+		prefix = "/workspace-preview/" + target.workspace
+	}
+	u := url.URL{Path: prefix + filepath.ToSlash(name), RawQuery: url.Values{"v": {etag}}.Encode()}
 	return u.String(), nil
 }
 
@@ -46,7 +50,7 @@ func (s *server) previewURL(session, name, etag string) (string, error) {
 // PDF readers. It uses the same absolute-file access as an agent's open_file.
 func (s *server) readPreview(w http.ResponseWriter, r *http.Request) {
 	name := "/" + r.PathValue("path")
-	file, err := s.openFile(r.PathValue("session"), name)
+	file, err := s.openFile(fileTarget{session: r.PathValue("session"), workspace: r.PathValue("workspace")}, name)
 	if fileError(w, err) {
 		return
 	}

@@ -3,7 +3,7 @@
 import type {CatalogEntry} from './agent/catalogs.ts';
 import type {Draft} from './agent/types.ts';
 import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
-import type {FileOpenRequest} from './editor/types.ts';
+import type {EditorView, EditorViewState, FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
 import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
 import type {Submission} from './sessions/submissions.ts';
@@ -11,7 +11,7 @@ import type {Changes} from './changes/types.ts';
 import type {FileEntry} from './files/types.ts';
 import type {Confirmation} from './shared/types.ts';
 
-// selected names the chosen session: null after the shown session stops, or
+// selected names a session or workspace dashboard: null after the shown session stops, or
 // an ID that the next workspaces may move to a running session. pending names
 // a session chosen before the server listed it. endedShown names the active
 // parents whose ended children the sidebar lists. loaded is set once the first
@@ -22,7 +22,8 @@ import type {Confirmation} from './shared/types.ts';
 // config is the most recently fetched or saved configuration. systemDark is
 // whether the Mac's appearance is dark.
 // sessionViews retains inactive sessions' view choices without server data.
-// fileTrees keeps the last shown tree until its session is selected again.
+// workspaceViews retains inactive dashboard choices; fileTrees caches listings
+// until their view is selected again.
 // Read versions discard superseded responses; per-path versions belong to the
 // current attachment and reset when it changes.
 export interface State {
@@ -46,12 +47,14 @@ export interface State {
   confirmation: Confirmation | null;
   workbench: Workbench;
   session: AttachedSession | null;
-  sessionVersion: number;
+  editor: EditorView | null;
+  editorVersion: number;
   treeVersion: number;
   changesVersion: number;
   fileReadVersions: Record<string, number>;
   diffReadVersions: Record<string, number>;
   sessionViews: Record<string, SessionViewState>;
+  workspaceViews: Record<string, EditorViewState>;
   fileTrees: Record<string, {listings: Record<string, FileEntry[] | null>; changes: Changes}>;
   fileOpens: Record<string, FileOpenRequest[]>;
   titleBar: TitleBar | null;
@@ -84,12 +87,14 @@ export const initialState = (selected: string, visible: boolean): State => ({
     collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
   },
   session: null,
-  sessionVersion: 0,
+  editor: null,
+  editorVersion: 0,
   treeVersion: 0,
   changesVersion: 0,
   fileReadVersions: {},
   diffReadVersions: {},
   sessionViews: {},
+  workspaceViews: {},
   fileTrees: {},
   fileOpens: {},
   titleBar: null,

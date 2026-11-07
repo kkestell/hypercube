@@ -19,7 +19,7 @@ export function SessionView() {
     if (session?.unseen && state.visible) markSeen(store, session.id);
   }, [session?.id, session?.unseen, state.visible]);
 
-  if (shownSession(state)) return <EditorArea />;
+  if (shownSession(state) || state.editor) return <EditorArea />;
   return <>
     <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
     {state.workspaces.length === 0 && <section aria-label="No workspaces" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

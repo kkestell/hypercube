@@ -21,8 +21,8 @@ function setup() {
   const store = createStore(receivedWorkspaces(testState({selected: 's'}), [testWorkspace({id: 'w', sessions: [
     testSession({id: 's', dir: '/worktree with spaces'}),
   ]})]));
-  store.update(state => ({...state, session: {...state.session!, changes,
-    files: {...state.session!.files, listings, expanded: {src: true}}}}));
+  store.update(state => ({...state, editor: {...state.editor!, changes,
+    files: {...state.editor!.files, listings, expanded: {src: true}}}}));
   const root = mount(store, <FilesPanel />);
   return {root, fetches};
 }

@@ -46,7 +46,7 @@ export function EditorArea() {
       document.removeEventListener('focusout', focusOut);
     };
   }, []);
-  const {root} = state.session?.tabs ?? agentTabs;
+  const {root} = state.editor?.tabs ?? agentTabs;
   return <div ref={area} className="editor-area h-full min-h-0 min-w-0">
     {root ? <PaneTree node={root} focused={focused} placement={whole} /> : <EditorTabs pane={null} entries={[]} placement={whole} />}
   </div>;

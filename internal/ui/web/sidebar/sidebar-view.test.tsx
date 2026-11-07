@@ -43,7 +43,7 @@ test('sidebar choices, independent scroll positions, and panel sizes survive a b
   click(tab(root, 'Sessions'));
   expect(active.scrollTop).toBe(110);
   expect(store.get().workbench.sidebarScroll).toEqual({sessions: 110, archived: 230});
-  click(find(root, '.workspace-section-toggle'));
+  click(find(root, '[aria-label="Collapse repo"]'));
   click(tab(root, 'Archived'));
   archived.scrollTop = 250;
   act(() => window.dispatchEvent(new Event('pagehide')));
@@ -57,8 +57,8 @@ test('sidebar choices, independent scroll positions, and panel sizes survive a b
   expect(tab(root, 'Archived').getAttribute('aria-selected')).toBe('true');
   expect(body(root, 'archived').scrollTop).toBe(250);
   expect(restored.get().workbench.sizes).toEqual({sidebar: 290, rightPanel: 390, panel: 210});
-  expect(find(root, '.workspace-section-toggle').getAttribute('aria-expanded')).toBe('false');
-  click(find(root, '.workspace-section-toggle'));
+  expect(find(root, '[aria-label="Expand repo"]').getAttribute('aria-expanded')).toBe('false');
+  click(find(root, '[aria-label="Expand repo"]'));
   expect(root.querySelector('[data-session=archived]')).not.toBeNull();
   click(tab(root, 'Sessions'));
   expect(root.querySelector('[data-session=parent]')).not.toBeNull();

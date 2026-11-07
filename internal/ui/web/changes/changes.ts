@@ -1,5 +1,5 @@
-// The attached session's Git changes and open diffs, by path relative to the
-// session's working directory.
+// The attached editor's Git changes and open diffs, by path relative to the
+// target's directory.
 import {fetchChanges, HttpError, readDiff} from '../api.ts';
 import type {Store} from '../store.ts';
 import type {ChangeStatus, ChangeTree, Changes, DiffRead, OpenDiff} from './types.ts';
@@ -36,14 +36,14 @@ export function changeTree(changes: Changes): ChangeTree {
 }
 
 export async function loadChanges(store: Store) {
-  const session = store.get().session;
-  if (!session) return;
-  const attachment = store.get().sessionVersion;
+  const editor = store.get().editor;
+  if (!editor) return;
+  const attachment = store.get().editorVersion;
   const request = store.get().changesVersion + 1;
   store.update(state => ({...state, changesVersion: request}));
   let changes: Changes;
   try {
-    const result = await fetchChanges(session.id);
+    const result = await fetchChanges(editor.target);
     changes = result && {...result, files: result.files.toSorted((a, b) => collator.compare(a.path, b.path))};
   } catch (error) {
     changes = error instanceof HttpError && error.status === 404
@@ -51,8 +51,8 @@ export async function loadChanges(store: Store) {
       : {error: error instanceof Error ? error.message : String(error)};
   }
   store.update(state => {
-    if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.changesVersion !== request || JSON.stringify(state.session.changes) === JSON.stringify(changes)) return state;
-    return {...state, session: {...state.session, changes}};
+    if (state.editor?.id !== editor.id || state.editorVersion !== attachment || state.changesVersion !== request || JSON.stringify(state.editor.changes) === JSON.stringify(changes)) return state;
+    return {...state, editor: {...state.editor, changes}};
   });
 }
 
@@ -63,23 +63,23 @@ function openDiff(result: DiffRead): OpenDiff {
 
 // Failed reads retain a diff that has already shown text or a message.
 export async function readOpenDiff(store: Store, path: string) {
-  const session = store.get().session;
-  if (!session?.diffs[path]) return;
-  const attachment = store.get().sessionVersion;
+  const editor = store.get().editor;
+  if (!editor?.diffs[path]) return;
+  const attachment = store.get().editorVersion;
   const request = (store.get().diffReadVersions[path] ?? 0) + 1;
   store.update(state => ({...state, diffReadVersions: {...state.diffReadVersions, [path]: request}}));
   let result: DiffRead;
   try {
-    result = await readDiff(session.id, path);
+    result = await readDiff(editor.target, path);
   } catch (error) {
     result = {error: error instanceof Error ? error.message : String(error)};
   }
   store.update(state => {
-    if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.diffReadVersions[path] !== request) return state;
-    const diff = state.session.diffs[path];
+    if (state.editor?.id !== editor.id || state.editorVersion !== attachment || state.diffReadVersions[path] !== request) return state;
+    const diff = state.editor.diffs[path];
     if (!diff || ('error' in result && (diff.text !== null || diff.message !== null))) return state;
     const next = openDiff(result);
     if (next.text === diff.text && next.message === diff.message) return state;
-    return {...state, session: {...state.session, diffs: {...state.session.diffs, [path]: next}}};
+    return {...state, editor: {...state.editor, diffs: {...state.editor.diffs, [path]: next}}};
   });
 }

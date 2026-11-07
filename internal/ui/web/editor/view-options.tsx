@@ -23,7 +23,7 @@ interface Option {
 export function ViewOptions({active}: {active: TabEntry | undefined}) {
   const [state, store] = useStore();
   const file = active?.kind === 'file' ? active : null;
-  const browserPreview = file && state.session?.files.open[file.path]?.preview && !file.source;
+  const browserPreview = file && state.editor?.files.open[file.path]?.preview && !file.source;
   const options: Option[] = [];
   if ((file && !browserPreview) || active?.kind === 'diff') {
     options.push({title: 'Word Wrap', icon: 'wrap', keys: firstKeys('wrap'), on: state.workbench.wrap, toggle: toggleWrap});

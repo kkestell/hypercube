@@ -27,24 +27,31 @@ func hidden(name string) bool {
 	return false
 }
 
-func (s *server) sessionDir(id string) (string, error) {
-	var dir string
-	err := s.db.Read(func(tx *store.Tx) error {
-		session, err := tx.Session(id)
-		if err != nil {
-			return err
-		}
-		dir = session.Dir
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-	return dir, nil
+// fileTarget identifies a real session or workspace; paths never select owners.
+type fileTarget struct {
+	session   string
+	workspace string
 }
 
-func (s *server) sessionRoot(id string) (*os.Root, error) {
-	dir, err := s.sessionDir(id)
+func requestTarget(r *http.Request) fileTarget {
+	return fileTarget{session: r.URL.Query().Get("session"), workspace: r.URL.Query().Get("workspace")}
+}
+func (s *server) targetDir(target fileTarget) (string, error) {
+	var dir string
+	err := s.db.Read(func(tx *store.Tx) error {
+		if target.workspace != "" {
+			workspace, err := tx.Workspace(target.workspace)
+			dir = workspace.Path
+			return err
+		}
+		session, err := tx.Session(target.session)
+		dir = session.Dir
+		return err
+	})
+	return dir, err
+}
+func (s *server) targetRoot(target fileTarget) (*os.Root, error) {
+	dir, err := s.targetDir(target)
 	if err != nil {
 		return nil, err
 	}
@@ -73,8 +80,8 @@ func readText(file *os.File, size int64) ([]byte, error) {
 
 // openFile opens a file of the session: a relative path within its directory,
 // or an absolute path anywhere, which an agent can ask the view to show.
-func (s *server) openFile(id, name string) (*os.File, error) {
-	root, err := s.sessionRoot(id)
+func (s *server) openFile(target fileTarget, name string) (*os.File, error) {
+	root, err := s.targetRoot(target)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +144,7 @@ func folderEntries(root *os.Root, dir string) ([]fileEntry, error) {
 // listFileTree reads the visible folder listings in one request and one
 // response, so a large expanded tree is applied to the page once.
 func (s *server) listFileTree(w http.ResponseWriter, r *http.Request) {
-	root, err := s.sessionRoot(r.URL.Query().Get("session"))
+	root, err := s.targetRoot(requestTarget(r))
 	if fileError(w, err) {
 		return
 	}
@@ -183,7 +190,7 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = "."
 	}
-	file, err := s.openFile(r.URL.Query().Get("session"), name)
+	file, err := s.openFile(requestTarget(r), name)
 	if fileError(w, err) {
 		return
 	}
@@ -203,7 +210,7 @@ func (s *server) readFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if typ := previewMIME(name); typ != "" {
-		address, err := s.previewURL(r.URL.Query().Get("session"), name, etag)
+		address, err := s.previewURL(requestTarget(r), name, etag)
 		if fileError(w, err) {
 			return
 		}

@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
-import {emptySession, receivedWorkspaces, selectSession} from '../sessions/selection.ts';
+import {emptyEditor, receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore, type Store} from '../store.ts';
 import {testSession, testState, testWorkspace, unread} from '../../test-state.ts';
 import {loadTree, readOpenFile} from './files.ts';
@@ -9,10 +9,10 @@ import type {OpenFile} from './types.ts';
 afterEach(() => mock.restore());
 
 const store = (file: OpenFile) => {
-  const session = emptySession('s');
-  return createStore(testState({session: {...session, files: {...session.files, open: {'a.go': file}}}}));
+  const session = emptyEditor({session: 's'});
+  return createStore(testState({editor: {...session, files: {...session.files, open: {'a.go': file}}}}));
 };
-const opened = (s: Store) => s.get().session?.files.open['a.go'];
+const opened = (s: Store) => s.get().editor?.files.open['a.go'];
 const read = async (s: Store, response: Response) => {
   stubFetch(() => response);
   await readOpenFile(s, 'a.go');
@@ -30,9 +30,9 @@ test('a read shows the text, and a later read replaces it', async () => {
 test('a deleted file keeps its text and loses its ETag', async () => {
   const s = store({...unread, text: 'one', etag: '"1"'});
   expect(await read(s, new Response(null, {status: 404}))).toEqual({...unread, text: 'one', deleted: true});
-  const before = s.get().session;
+  const before = s.get().editor;
   await read(s, new Response(null, {status: 404}));
-  expect(s.get().session).toBe(before);
+  expect(s.get().editor).toBe(before);
 });
 
 test('a file that returns is no longer deleted', async () => {
@@ -42,9 +42,9 @@ test('a file that returns is no longer deleted', async () => {
 
 test('a failed read keeps what is shown, and shows the failure only when nothing is', async () => {
   const shown = store({...unread, text: 'one', etag: '"1"'});
-  const before = shown.get().session;
+  const before = shown.get().editor;
   await read(shown, new Response('permission denied', {status: 409}));
-  expect(shown.get().session).toBe(before);
+  expect(shown.get().editor).toBe(before);
 
   expect((await read(store(unread), new Response('permission denied', {status: 409})))?.message).toBe('permission denied');
   spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Load failed'));
@@ -63,11 +63,11 @@ test('a large or binary file replaces the content with a message', async () => {
 
 test('an unchanged file and a file that is no longer open are left alone', async () => {
   const s = store({...unread, text: 'one', etag: '"1"'});
-  const before = s.get().session;
+  const before = s.get().editor;
   await read(s, new Response(null, {status: 304}));
-  expect(s.get().session).toBe(before);
+  expect(s.get().editor).toBe(before);
   await readOpenFile(s, 'other.go');
-  expect(s.get().session).toBe(before);
+  expect(s.get().editor).toBe(before);
 });
 
 test('a read preserves the file mode and requested highlights', async () => {
@@ -82,11 +82,11 @@ test('browser previews refresh, survive deletion and failed reads, and yield to 
   const preview = {mime: 'image/png', url: '/preview/s/repo/picture.png?v=1'};
   await read(s, Response.json({text: null, preview}, {headers: {ETag: '"1"'}}));
   expect(opened(s)).toMatchObject({text: null, preview, etag: '"1"'});
-  const before = s.get().session;
+  const before = s.get().editor;
   await read(s, new Response(null, {status: 304}));
-  expect(s.get().session).toBe(before);
+  expect(s.get().editor).toBe(before);
   await read(s, new Response('denied', {status: 409}));
-  expect(s.get().session).toBe(before);
+  expect(s.get().editor).toBe(before);
   await read(s, new Response(null, {status: 404}));
   expect(opened(s)).toMatchObject({preview, deleted: true});
   const changed = {...preview, url: '/preview/s/repo/picture.png?v=2'};
@@ -117,5 +117,5 @@ test('a late tree read cannot overwrite a newer read or a new attachment', async
   await older;
   replies[0](Response.json({'': [{name: 'old attachment', dir: false}]}));
   await oldAttachment;
-  expect(s.get().session?.files.listings['']).toEqual([{name: 'new', dir: false}]);
+  expect(s.get().editor?.files.listings['']).toEqual([{name: 'new', dir: false}]);
 });

@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/coder/websocket"
+	"github.com/kkestell/hypercube/internal/terminal"
 )
 
 // terminal connects the page to the session's shell. Binary messages carry the
@@ -27,7 +28,13 @@ func (s *server) terminal(w http.ResponseWriter, r *http.Request) {
 		return n
 	}
 	cols, rows := size("cols", 80), size("rows", 24)
-	sh, err := s.rt.Shell(q.Get("session"), cols, rows)
+	target := requestTarget(r)
+	var sh *terminal.Shell
+	if target.workspace != "" {
+		sh, err = s.rt.WorkspaceShell(target.workspace, cols, rows)
+	} else {
+		sh, err = s.rt.Shell(target.session, cols, rows)
+	}
 	if err != nil {
 		// Text marks the shell as ended, so the page does not reconnect.
 		_ = conn.Write(r.Context(), websocket.MessageText, []byte(`{"exit":-1}`))

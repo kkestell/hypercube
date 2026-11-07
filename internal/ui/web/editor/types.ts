@@ -1,8 +1,32 @@
-// The attached session's tabs: a tree of panes and two-way splits, and the
+// Shared editor tabs: a tree of panes and two-way splits, and the
 // remembered scroll of each tab's view.
-import type {LineRange} from '../files/types.ts';
+import type {Changes, OpenDiff} from '../changes/types.ts';
+import type {EditorTarget} from './target.ts';
+import type {LineRange, SessionFiles} from '../files/types.ts';
 
-// A tab ID is 'agent', 'file:<path>', or 'diff:<path>'.
+// EditorView owns the file tools and tab layout for a session or workspace.
+export interface EditorView {
+  id: string;
+  target: EditorTarget;
+  activePane: number | null;
+  panel: boolean;
+  tabs: TabLayout;
+  scroll: Record<string, ScrollMemory>;
+  changes: Changes;
+  diffs: Record<string, OpenDiff>;
+  files: SessionFiles;
+}
+
+export interface EditorViewState {
+  tabs: TabLayout;
+  activePane: number | null;
+  panel: boolean;
+  scroll: Record<string, ScrollMemory>;
+  folders: Record<string, true>;
+  files: Record<string, {source: boolean; lines: LineRange[]}>;
+}
+
+// A tab ID is 'agent', 'dashboard', 'file:<path>', or 'diff:<path>'.
 export type TabId = string;
 
 // Pane is a group of tabs with one active tab.
@@ -56,6 +80,9 @@ interface TabEntryBase {
 export interface AgentTabEntry extends TabEntryBase {
   kind: 'agent';
 }
+export interface DashboardTabEntry extends TabEntryBase {
+  kind: 'dashboard';
+}
 
 export interface DiffTabEntry extends TabEntryBase {
   kind: 'diff';
@@ -71,7 +98,7 @@ export interface FileTabEntry extends TabEntryBase {
   source: boolean | null;
 }
 
-export type TabEntry = AgentTabEntry | DiffTabEntry | FileTabEntry;
+export type TabEntry = AgentTabEntry | DashboardTabEntry | DiffTabEntry | FileTabEntry;
 
 // ScrollMemory is a view's scroll, and whether it follows its end.
 export interface ScrollMemory {

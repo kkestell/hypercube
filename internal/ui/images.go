@@ -16,7 +16,7 @@ import (
 // readImage serves preview images by the same rules as files.
 func (s *server) readImage(w http.ResponseWriter, r *http.Request) {
 	name := r.URL.Query().Get("path")
-	file, err := s.openFile(r.URL.Query().Get("session"), name)
+	file, err := s.openFile(requestTarget(r), name)
 	if fileError(w, err) {
 		return
 	}

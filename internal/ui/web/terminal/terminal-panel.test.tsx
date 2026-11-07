@@ -3,7 +3,7 @@ import {act} from 'react';
 import {mount, unmountAll} from '../../test-render.tsx';
 import {testConfig, testState} from '../../test-state.ts';
 import type {TerminalStyle} from './xterm.ts';
-import {emptySession} from '../sessions/selection.ts';
+import {emptyEditor} from '../sessions/selection.ts';
 import {createStore, type Store} from '../store.ts';
 
 // FakeSocket stands in for the WebSocket that TerminalPanel opens.
@@ -71,11 +71,11 @@ afterEach(() => {
 
 const setup = () => {
   const initial = testState();
-  const store = createStore({...initial, session: {...emptySession('s'), panel: true}});
+  const store = createStore({...initial, editor: {...emptyEditor({session: 's'}), panel: true}});
   mount(store, <TerminalPanel />);
   return store;
 };
-const panelShown = (store: Store) => store.get().session?.panel;
+const panelShown = (store: Store) => store.get().editor?.panel;
 
 test('the panel connects to the session\'s shell', () => {
   setup();
@@ -121,4 +121,13 @@ test('a dropped connection reconnects and starts the terminal over', () => {
   FakeSocket.all[1].open();
   expect(terminals[0].resets).toBe(2);
   expect(terminals.length).toBe(1);
+});
+
+
+test('a workspace terminal names its workspace without a session subscription', () => {
+  const store = createStore(testState({editor: {...emptyEditor({workspace: 'w'}), panel: true}}));
+  mount(store, <TerminalPanel />);
+  const params = new URL(FakeSocket.all[0].url).searchParams;
+  expect(params.get('workspace')).toBe('w');
+  expect(params.has('session')).toBe(false);
 });

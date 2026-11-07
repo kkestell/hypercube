@@ -1,8 +1,8 @@
-// The panel's shell for the attached session. The server starts it when the
-// panel first shows and keeps it running until it exits or the session is
-// archived or deleted, so hiding the panel leaves it running. The server replays the shell's recent
+// The panel's shell starts lazily for the current session or workspace and
+// survives hiding or switching views. The backend owns its lifetime. It replays recent
 // output on every connection, so a reconnect starts the terminal over. The
 // panel closes when its shell exits or cannot connect.
+import type {EditorTarget} from '../editor/target.ts';
 import {useEffect, useRef} from 'react';
 import {isDark} from '../app/appearance.ts';
 import {terminalShortcut} from '../app/shortcuts.ts';
@@ -18,7 +18,7 @@ interface Shell {
 
 // openShell connects a terminal in box to the session's shell, calling ended
 // when the shell exits or cannot connect.
-function openShell(box: HTMLElement, session: string, style: TerminalStyle, ended: () => void): Shell {
+function openShell(box: HTMLElement, target: EditorTarget, style: TerminalStyle, ended: () => void): Shell {
   const {term, fit, restyle, dispose} = createTerminal(box, style, terminalShortcut);
   const encoder = new TextEncoder();
   let socket: WebSocket | null = null, connected = false, exited = false, closed = false;
@@ -38,7 +38,7 @@ function openShell(box: HTMLElement, session: string, style: TerminalStyle, ende
   resized();
 
   const connect = () => {
-    const params = new URLSearchParams({session, cols: String(term.cols), rows: String(term.rows)});
+    const params = new URLSearchParams({...target, cols: String(term.cols), rows: String(term.rows)});
     socket = new WebSocket(new URL('terminal?' + params, location.href.replace(/^http/, 'ws')));
     socket.binaryType = 'arraybuffer';
     socket.onopen = () => {
@@ -78,14 +78,14 @@ export function TerminalPanel() {
   const [state, store] = useStore();
   const box = useRef<HTMLDivElement>(null);
   const shell = useRef<Shell | null>(null);
-  const session = state.session?.id;
-  const shown = state.session?.panel ?? false;
+  const session = state.editor?.id;
+  const shown = state.editor?.panel ?? false;
   const dark = isDark(state);
   const fontSize = state.config?.terminal_font_size ?? 13;
 
   useEffect(() => {
     if (!shown || !session || !box.current) return;
-    shell.current ??= openShell(box.current, session, {dark, fontSize}, () => {
+    shell.current ??= openShell(box.current, state.editor!.target, {dark, fontSize}, () => {
       shell.current?.close();
       shell.current = null;
       store.update(closePanel);
