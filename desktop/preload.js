@@ -6,6 +6,9 @@ const {contextBridge, ipcRenderer} = require('electron');
 contextBridge.exposeInMainWorld('hypercube', {
   postMessage: message => ipcRenderer.send('page', message),
   onEvent: callback => ipcRenderer.on('event', (_, name, detail) => callback(name, detail)),
+  platform: process.platform,
+  chooseFolder: () => ipcRenderer.invoke('action', {type: 'choose-folder'}),
+  open: (app, path) => ipcRenderer.invoke('action', {type: 'open', app, path}),
 });
 contextBridge.exposeInMainWorld('hypercubeSetup', {
   status: () => ipcRenderer.invoke('setup-status'),

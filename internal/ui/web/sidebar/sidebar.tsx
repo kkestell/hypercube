@@ -3,6 +3,7 @@ import {useCallback, useLayoutEffect, useRef, useState, type KeyboardEvent, type
 import {addWorkspace, chooseSession} from '../sessions/session-actions.ts';
 import {unsentRow} from '../sessions/selection.ts';
 import {isUnsent} from '../agent/drafts.ts';
+import {hypercube} from '../app/window.ts';
 import {scrollSidebar, selectSidebarTab} from '../app/workbench.ts';
 import type {SidebarTab} from '../app/types.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
@@ -98,7 +99,7 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
         selected={view} onSelect={value => { setRenaming(null); store.update(s => selectSidebarTab(s, value)); }} clearsWindowButtons actions={<>
           <SessionSearch open={searchOpen} onOpenChange={onSearchOpenChange} onSelect={id => chooseSession(store, id)} />
           <Button className="size-7" variant="ghost" size="icon" aria-label="Settings" title="Settings" onClick={onSettings}><Icon name="settings" /></Button>
-          <Button className="size-7" variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>
+          {hypercube() && <Button className="size-7" variant="ghost" size="icon" aria-label="Add Workspace" title="Add Workspace" onClick={() => addWorkspace(store)}><Icon name="new-folder" /></Button>}
         </>}>
         {bodies}
       </PanelTabs>

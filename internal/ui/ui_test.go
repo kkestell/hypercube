@@ -204,6 +204,7 @@ func TestActions(t *testing.T) {
 	post("/session?action=interrupt&id=a", http.StatusConflict)
 	post("/session?action=answer&id=a&request=q&choice=yes", http.StatusConflict)
 	post("/workspace?action=rm", http.StatusBadRequest)
+	post("/workspace?action=new", http.StatusBadRequest)
 	post("/session?action=rename&id=s&title=%20", http.StatusConflict)
 	post("/session?action=rename&id=missing&title=x", http.StatusConflict)
 	post("/session?action=rename&id=s&title=Parser", http.StatusOK)

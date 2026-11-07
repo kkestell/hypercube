@@ -2,6 +2,7 @@
 // a workspace invitation when none exists. While the page is visible, a
 // shown session's unseen reply is seen.
 import {useEffect} from 'react';
+import {hypercube} from '../app/window.ts';
 import {Button} from '../components/ui/button';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {EditorTabs} from '../editor/editor-tabs.tsx';
@@ -25,7 +26,7 @@ export function SessionView() {
       <Icon name="new-folder" className="size-8 text-muted-foreground" />
       <h1 className="text-lg font-medium">Add a workspace to get started</h1>
       <p className="max-w-sm text-sm text-muted-foreground">Choose a project folder, then start a session with a coding agent.</p>
-      <Button onClick={() => addWorkspace(store)}><Icon name="new-folder" />Add Workspace</Button>
+      {hypercube() && <Button onClick={() => addWorkspace(store)}><Icon name="new-folder" />Add Workspace</Button>}
     </section>}
   </>;
 }

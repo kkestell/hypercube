@@ -1,18 +1,21 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
-import {stubFetch} from '../../test-render.tsx';
+import {stubFetch, testBridge} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {attachImages, canSend, discardUnsent, draftOf, typed, unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import type {Settings} from '../agent/types.ts';
 import {createStore} from '../store.ts';
 import {openUnsent, unsentSettingsChosen} from './selection.ts';
-import {chooseSession, retrySubmission, sendPrompt} from './session-actions.ts';
+import {addWorkspace, chooseSession, retrySubmission, sendPrompt} from './session-actions.ts';
 import type {Session} from './types.ts';
 import {submissionsOf} from './submissions.ts';
 import {receivedTranscript} from '../transcript/transcripts.ts';
 
 const unsentKey = workspaceDraftKey('w');
 
-afterEach(() => mock.restore());
+afterEach(() => {
+  mock.restore();
+  delete globalThis.hypercube;
+});
 
 const idle = (id: string): Pick<Session, 'id' | 'ended' | 'activity'> => ({id, ended: false, activity: 'idle'});
 const store = () => createStore(testState({selected: 's'}));
@@ -228,3 +231,13 @@ for (const pending of [false, true]) {
     expect(s.get().pending).toBeNull();
   });
 }
+
+test('a chosen folder is added as a workspace, and a cancelled chooser posts nothing', async () => {
+  const requests = answer(() => new Response('w'));
+  const folders = ['/chosen folder', ''];
+  globalThis.hypercube = testBridge({chooseFolder: async () => folders.shift()!});
+  const target = store();
+  await addWorkspace(target);
+  await addWorkspace(target);
+  expect(requests.map(params => Object.fromEntries(params))).toEqual([{action: 'new', path: '/chosen folder'}]);
+});

@@ -78,3 +78,14 @@ export function element<T extends Element>(root: ParentNode, selector: string, k
 export const find = (root: ParentNode, selector: string) => element(root, selector, HTMLElement);
 
 export const findAll = (root: ParentNode, selector: string) => [...root.querySelectorAll<HTMLElement>(selector)];
+
+// testBridge is a desktop app's bridge on macOS, with overrides, for a test to
+// assign to globalThis.hypercube and delete afterwards.
+export const testBridge = (overrides: Partial<NonNullable<typeof globalThis.hypercube>> = {}): NonNullable<typeof globalThis.hypercube> => ({
+  postMessage: () => {},
+  onEvent: () => {},
+  platform: 'darwin',
+  chooseFolder: async () => '',
+  open: async () => '',
+  ...overrides,
+});

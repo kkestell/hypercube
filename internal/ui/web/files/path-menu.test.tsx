@@ -1,13 +1,13 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
+import {find, findAll, mount, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import type {ChangesResult} from '../changes/types.ts';
 import {receivedWorkspaces} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {FilesPanel} from './files-panel.tsx';
 
-afterEach(() => { unmountAll(); mock.restore(); });
+afterEach(() => { unmountAll(); mock.restore(); delete globalThis.hypercube; });
 
 function setup() {
   const listings = {'': [{name: 'src', dir: true}], src: [{name: 'file with spaces.go', dir: false}]};
@@ -32,24 +32,33 @@ const key = (target: HTMLElement, key: string, shiftKey = false) => act(() => {
 });
 const item = (label: string) => findAll(document, '[role=menuitem]').find(item => item.textContent === label)!;
 
-test.each(['src', 'src/file with spaces.go'])('Show in Finder reveals %s from a keyboard-opened file menu', async path => {
+test.each([
+  ['darwin', 'Show in Finder'],
+  ['linux', 'Show in Files'],
+])('on %s the file menu reveals a file through the desktop app', async (platform, label) => {
+  const open = mock(async (_app: string, _path: string) => '');
+  globalThis.hypercube = testBridge({platform, open});
   const {root, fetches} = setup();
-  const row = find(root, `[data-path="${path}"]`);
+  const row = find(root, '[data-path="src/file with spaces.go"]');
   act(() => row.focus());
   key(row, 'F10', true);
-  expect(item('Show in Finder')).toBeDefined();
+  expect(item(label)).toBeDefined();
   expect(item('Copy Name')).toBeDefined();
-  expect(!!item('Open Changes')).toBe(path !== 'src');
-  act(() => item('Show in Finder').focus());
-  await act(async () => key(item('Show in Finder'), 'Enter'));
-  const opened = fetches.mock.calls.filter(([url]) => url.startsWith('open?'));
-  expect(opened).toHaveLength(1);
-  expect(Object.fromEntries(new URL(opened[0][0], 'http://x/').searchParams)).toEqual({
-    kind: 'path', id: 's', app: 'finder', path,
-  });
-  expect(opened[0][1]?.method).toBe('POST');
+  expect(item('Open Changes')).toBeDefined();
+  act(() => item(label).focus());
+  await act(async () => key(item(label), 'Enter'));
+  expect(open.mock.calls).toEqual([['reveal', '/worktree with spaces/src/file with spaces.go']]);
+  expect(fetches.mock.calls.filter(([url]) => url.startsWith('open'))).toEqual([]);
   expect(document.querySelector('[role=menu]')).toBeNull();
   expect(document.activeElement).toBe(row);
+});
+
+test('the file menu has no reveal item in a browser', () => {
+  const {root} = setup();
+  const row = find(root, '[data-path="src"]');
+  act(() => row.focus());
+  key(row, 'F10', true);
+  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(['Copy Name', 'Copy Path', 'Copy Relative Path']);
 });
 
 test('file menu copies names and paths, and Escape returns focus', async () => {

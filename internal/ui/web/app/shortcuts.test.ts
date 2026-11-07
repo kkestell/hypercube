@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {testBridge} from '../../test-render.tsx';
 import {testState} from '../../test-state.ts';
 import {createStore} from '../store.ts';
 import {nativeShortcut, shortcut, type ShortcutActions} from './shortcuts.ts';
@@ -16,7 +17,7 @@ test('the desktop app\'s menus run the shortcuts they own, once', () => {
   shortcut(keyDown('b', 'KeyB'), store, actions);
   expect(sidebar()).toBe(!before);
 
-  globalThis.hypercube = {postMessage: none, onEvent: none};
+  globalThis.hypercube = testBridge();
   try {
     shortcut(keyDown('b', 'KeyB'), store, actions);
     expect(sidebar()).toBe(!before);

@@ -1,17 +1,10 @@
 // The sidebar's menus: a session's, an unsent session's, and a workspace's.
 import {discardUnsent, isUnsent} from '../agent/drafts.ts';
-import {post} from '../api.ts';
+import {openItems} from '../app/desktop-actions.ts';
 import {archiveSession, deleteSession, deleteWorkspace, restartSession, unarchiveSession} from '../sessions/session-actions.ts';
 import type {Session, Workspace} from '../sessions/types.ts';
 import type {ContextMenuItem} from '../shared/context-menu.tsx';
-import type {IconName} from '../shared/icon.tsx';
 import type {Store} from '../store.ts';
-
-const openApps: [string, string, IconName][] = [
-  ['Open in VS Code', 'vscode', 'code'], ['Reveal in Finder', 'finder', 'folder-open'], ['Open in Terminal', 'terminal', 'terminal'],
-];
-const openItems = (store: Store, kind: 'session' | 'workspace', id: string): ContextMenuItem[] =>
-  openApps.map(([label, app, icon]) => ({label, icon, run: () => post(store, 'open', {kind, id, app})}));
 
 export const sessionItems = (store: Store, session: Session, rename: () => void): ContextMenuItem[][] => {
   if (isUnsent(session.id)) return [[{label: 'Discard Draft', icon: 'trash', destructive: true, run: () => store.update(state => discardUnsent(state, session.id))}]];
@@ -19,15 +12,15 @@ export const sessionItems = (store: Store, session: Session, rename: () => void)
   const deleteItem: ContextMenuItem = {label: 'Delete Session', icon: 'trash', destructive: true, run: () => deleteSession(store, session)};
   if (!session.parent && session.ended) return [[{label: 'Unarchive', icon: 'archive', run: () => unarchiveSession(store, session.id)}, deleteItem]];
   const restartItem: ContextMenuItem = {label: 'Restart Agent', icon: 'refresh', run: () => restartSession(store, session.id)};
-  if (session.parent) return [session.ended ? [renameItem] : [renameItem, restartItem], openItems(store, 'session', session.id), session.ended ? [deleteItem] : []];
+  if (session.parent) return [session.ended ? [renameItem] : [renameItem, restartItem], openItems(store, session.dir), session.ended ? [deleteItem] : []];
   return [
     [renameItem, restartItem],
-    openItems(store, 'session', session.id),
+    openItems(store, session.dir),
     [{label: 'Archive Session', icon: 'archive', run: () => archiveSession(store, session.id)}, deleteItem],
   ];
 };
 
 export const workspaceItems = (store: Store, workspace: Workspace): ContextMenuItem[][] => [
-  openItems(store, 'workspace', workspace.id),
+  openItems(store, workspace.path),
   [{label: 'Delete Workspace', icon: 'trash', destructive: true, run: () => deleteWorkspace(store, workspace)}],
 ];

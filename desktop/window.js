@@ -1,9 +1,10 @@
 // The main window: the Hypercube page, or the waiting page until the backend
 // answers. The page draws the title bar's row, its tab bars, beside the
 // window's buttons, and the window reports that row's size.
-const {app, BrowserWindow, ipcMain, nativeTheme, screen, shell} = require('electron');
+const {app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
+const {createActions} = require('./actions.js');
 const dock = require('./dock.js');
 
 // The buttons' position and the title bar row they sit in, in points. The row
@@ -11,6 +12,8 @@ const dock = require('./dock.js');
 // buttons take from the left, with the same margin on the right as the left.
 const trafficLightPosition = {x: 19, y: 19};
 const titleBar = {height: 52, inset: 98};
+
+const act = createActions({dialog, shell, platform: process.platform});
 
 const external = url => ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol) && shell.openExternal(url);
 
@@ -91,7 +94,16 @@ function createMainWindow({origin, pagesDir, userData, onMessage}) {
     }
   };
   ipcMain.on('page', received);
-  win.on('closed', () => ipcMain.removeListener('page', received));
+  // The page's requests to act in the user's session: the folder chooser and
+  // opening folders and files in other applications.
+  ipcMain.handle('action', (event, request) => {
+    if (!fromPage(event)) throw new Error('refused');
+    return act(request, win);
+  });
+  win.on('closed', () => {
+    ipcMain.removeListener('page', received);
+    ipcMain.removeHandler('action');
+  });
 
   // Links away from the page open in the default browser.
   contents.on('will-navigate', (e, url) => {

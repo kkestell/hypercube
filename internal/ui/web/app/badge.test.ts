@@ -1,11 +1,12 @@
 import {expect, test} from 'bun:test';
+import {testBridge} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {createStore} from '../store.ts';
 import {startBadge} from './badge.ts';
 
 test('the native badge follows the number of waiting sessions', () => {
   const posted: object[] = [];
-  globalThis.hypercube = {postMessage: message => posted.push(message), onEvent: () => {}};
+  globalThis.hypercube = testBridge({postMessage: message => posted.push(message)});
   try {
     const store = createStore(testState());
     startBadge(store);
@@ -28,7 +29,7 @@ test('the native badge follows the number of waiting sessions', () => {
 
 test('the first loaded state clears a stale badge when no sessions are waiting', () => {
   const posted: object[] = [];
-  globalThis.hypercube = {postMessage: message => posted.push(message), onEvent: () => {}};
+  globalThis.hypercube = testBridge({postMessage: message => posted.push(message)});
   try {
     const store = createStore(testState());
     startBadge(store);

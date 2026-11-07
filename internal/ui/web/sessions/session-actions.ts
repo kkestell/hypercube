@@ -2,6 +2,7 @@
 // The server applies each action, and the result arrives in the next state
 // message.
 import {post, submitPrompt} from '../api.ts';
+import {hypercube} from '../app/window.ts';
 import {canSend, cleared, draftOf, isUnsent, unsentCreated, unsentOf} from '../agent/drafts.ts';
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
@@ -15,9 +16,12 @@ export const unarchiveSession = (store: Store, id: string) => post(store, 'sessi
 export const restartSession = (store: Store, id: string) => post(store, 'session', {action: 'restart', id});
 export const renameSession = (store: Store, id: string, title: string) => post(store, 'session', {action: 'rename', id, title});
 export const markSeen = (store: Store, id: string) => post(store, 'session', {action: 'seen', id});
-// addWorkspace opens a new session in the added workspace.
+// addWorkspace asks the desktop app for a folder and opens a new session in the
+// workspace added there.
 export async function addWorkspace(store: Store) {
-  const workspace = await post(store, 'workspace', {action: 'new'});
+  const path = await hypercube()?.chooseFolder();
+  if (!path) return;
+  const workspace = await post(store, 'workspace', {action: 'new', path});
   if (workspace) store.update(s => openUnsent(s, workspace));
 }
 

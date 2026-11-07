@@ -159,9 +159,11 @@ make dev
 ```
 
 Open http://localhost:4281/. This uses separate configuration and state, with a
-scratch repository of sample files under `~/projects/hypercube-dev/repo`. Use
-`make dev-app` when testing desktop app behavior; it also runs a development
-desktop app connected to the development backend.
+scratch repository of sample files under `~/projects/hypercube-dev/repo`, which
+the browser view starts with as its workspace. Use `make dev-app` when testing
+desktop app behavior, including adding workspaces and opening folders in other
+apps; it also runs a development desktop app connected to the development
+backend.
 
 Source changes rebuild the development app and reload the interface. A failed
 build leaves the previous build running. Successful rebuilds preserve agents

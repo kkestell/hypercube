@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act, useState} from 'react';
-import {clickControl, element, find, findAll, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {nativeShortcut, type ShortcutActions} from '../app/shortcuts.ts';
 import {chooseSession} from '../sessions/session-actions.ts';
@@ -13,6 +13,7 @@ import {Sidebar} from './sidebar.tsx';
 afterEach(() => {
   mock.restore();
   unmountAll();
+  delete globalThis.hypercube;
 });
 
 const session = (id: string, extra: Partial<Session> = {}) => testSession({id, title: 'Session ' + id, ...extra});
@@ -102,7 +103,7 @@ test('an active family folds its ended children, and menus offer Restart Agent o
   expect(row(root, 'a').className).not.toContain('opacity-60');
   contextMenu(row(root, 'a'));
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(
-    ['Rename', 'Restart Agent', 'Open in VS Code', 'Reveal in Finder', 'Open in Terminal', 'Archive Session', 'Delete Session']);
+    ['Rename', 'Restart Agent', 'Archive Session', 'Delete Session']);
   pick('Archive Session');
   contextMenu(row(root, 'ended'));
   expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).not.toContain('Restart Agent');
@@ -111,6 +112,33 @@ test('an active family folds its ended children, and menus offer Restart Agent o
   click(find(root, '[role=tab][data-state=inactive]'));
   choose(root, '[data-session="old"]', 'Unarchive');
   expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'restart', id: 'live'}, {action: 'unarchive', id: 'old'}]);
+});
+
+const menuLabels = () => findAll(document, '[role=menuitem]').map(item => item.textContent);
+
+test.each([
+  ['darwin', ['Open in VS Code', 'Reveal in Finder', 'Open in Terminal']],
+  ['linux', ['Open in VS Code', 'Show in Files']],
+])('on %s the menus ask the desktop app to open folders', async (platform, labels) => {
+  const open = mock(async (_app: string, _path: string) => '');
+  globalThis.hypercube = testBridge({platform, open});
+  const {root, posted} = setup([session('a', {dir: '/repo/.worktrees/a'})]);
+  contextMenu(row(root, 'a'));
+  expect(menuLabels()).toEqual(['Rename', 'Restart Agent', ...labels, 'Archive Session', 'Delete Session']);
+  await act(async () => pick('Open in VS Code'));
+  contextMenu(find(root, '[data-workspace="w"]'));
+  expect(menuLabels()).toEqual([...labels, 'Delete Workspace']);
+  await act(async () => pick(labels[1]));
+  expect(open.mock.calls).toEqual([['vscode', '/repo/.worktrees/a'], ['folder', '/repo']]);
+  expect(posted()).toEqual([]);
+});
+
+test('a refused open shows the desktop app\'s message', async () => {
+  globalThis.hypercube = testBridge({open: async () => 'VS Code was not found.'});
+  const {root, store} = setup([session('a')]);
+  contextMenu(row(root, 'a'));
+  await act(async () => pick('Open in VS Code'));
+  expect(store.get().errors.map(error => error.message)).toEqual(['VS Code was not found.']);
 });
 
 test.each([false, true])('session shortcuts skip an ended-children fold and wrap (running child: %s)', runningChild => {

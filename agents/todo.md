@@ -12,7 +12,7 @@ and `kreview` cycle as described in [development](development.md), planning
 from the code current at that time. This list does not authorize installing
 the app or publishing a release.
 
-- [ ] **Linux checks in CI and a passing test suite.** Add `make check` jobs
+- [x] **Linux checks in CI and a passing test suite.** Add `make check` jobs
   on `ubuntu-24.04` and `ubuntu-24.04-arm`, keeping the macOS job. Make the
   suite pass there:
   - Copy `.worktreeinclude` paths with `cp -R` plus the platform's clone flag
@@ -27,7 +27,7 @@ the app or publishing a release.
     in `make dev` do not fall back to `/bin/zsh`, which Linux may lack.
     systemd sets `SHELL` for the service. Make `scripts/dev`'s port message
     work without `lsof`, which Arch does not install by default.
-- [ ] **Desktop actions.** Move Add Workspace's folder chooser and the Open
+- [x] **Desktop actions.** Move Add Workspace's folder chooser and the Open
   in VS Code, Reveal in Finder, Open in Terminal, and Show in Finder items from
   the backend to the desktop app, which runs in the graphical session on both
   platforms: Electron's `dialog.showOpenDialog`, `shell.showItemInFolder`,

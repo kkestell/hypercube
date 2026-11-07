@@ -11,6 +11,17 @@ declare global {
   var hypercube: {
     postMessage(message: object): void;
     onEvent(callback: (name: string, detail: unknown) => void): void;
+    // platform is the app's process.platform: 'darwin' on macOS, 'linux' on
+    // Linux.
+    platform: string;
+    // chooseFolder shows the folder chooser and returns the folder, empty when
+    // the user cancels.
+    chooseFolder(): Promise<string>;
+    // open opens an absolute path in app: 'vscode' and 'terminal' open a
+    // folder in those applications, 'folder' opens a folder in the file
+    // manager, and 'reveal' shows a file or folder in its parent folder.
+    // Terminal is macOS only. It returns an error message, empty on success.
+    open(app: 'vscode' | 'folder' | 'reveal' | 'terminal', path: string): Promise<string>;
   } | undefined;
 
   // hypercubeSetup is the waiting page's bridge to the app's background
