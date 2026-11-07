@@ -118,15 +118,15 @@ function Title({title, small, chevron, onToggle}: TitleProps) {
 }
 
 // Branch indents a child row and draws its stretch of the line that runs down
-// from just under the parent's status dot, centered on it, with a stroke across
-// toward the child's dot that starts beside the line, so the translucent
+// from the parent's status dot, centered on it, with a stroke across
+// to the child's dot that starts beside the line, so the translucent
 // strokes never overlap. The last child's stroke turns the line's corner.
 function Branch({position, siblings}: {position: number; siblings: number}) {
   const last = position === siblings;
   return (
     <span aria-hidden="true" className="pointer-events-none relative w-3.5 shrink-0 self-stretch">
-      <span className={`absolute left-[7.5px] border-l border-border ${position === 1 ? '-top-1' : 'top-0'} ${last ? 'bottom-1/2 w-3 rounded-bl-sm border-b' : 'bottom-0'}`} />
-      {!last && <span className="absolute bottom-1/2 left-[8.5px] w-[11px] border-b border-border" />}
+      <span className={`absolute left-[7.5px] border-l border-border ${position === 1 ? '-top-3' : 'top-0'} ${last ? 'bottom-1/2 w-[16.5px] rounded-bl-sm border-b' : 'bottom-0'}`} />
+      {!last && <span className="absolute bottom-1/2 left-[8.5px] w-[15.5px] border-b border-border" />}
     </span>
   );
 }
