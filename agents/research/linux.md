@@ -101,7 +101,19 @@ sockets, and session recovery).
 
 ## Test environments on this Mac
 
-Docker (ARM64 Linux containers), Lima, and UTM are installed. Containers cover
-the Go and Bun test suites. A graphical VM (UTM) is needed for Electron,
-systemd, notifications, and keyboard behavior. GitHub Actions provides
-`ubuntu-24.04` and `ubuntu-24.04-arm` runners for both architectures.
+Docker runs ARM64 Linux containers natively. Checked on 2026-11-06:
+
+- A Debian 13 container started with `/sbin/init`, `--privileged`,
+  `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write boots systemd and
+  runs a lingering user's manager. A user service with `KillMode=process`
+  left its child running across `systemctl --user restart`.
+- Electron 45.2.3 in a `node:22-trixie` container, under `xvfb-run` with
+  `ELECTRON_DISABLE_SANDBOX=1`, started, was driven by Playwright's Electron
+  support (`_electron.launch`, `app.evaluate` in the main process, page
+  screenshots), and reported `process.platform` as `linux`. It needed
+  `xvfb`, `libgtk-3-0`, `libnss3`, `libasound2`, `libgbm1`, and `libxss1`.
+
+Containers share Docker's kernel, so Ubuntu's AppArmor restriction on user
+namespaces and Chromium's sandbox are tested only on a real Ubuntu kernel,
+such as GitHub's `ubuntu-24.04` runner. Emulated AMD64 machines are too slow
+for a desktop; AMD64 runs in CI.

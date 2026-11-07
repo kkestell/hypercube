@@ -9,10 +9,9 @@ systemd user service.
 [Linux findings](research/linux.md) records what fails today and the platform
 facts behind these tasks. Take each task through its own `kplan`, `kwork`,
 and `kreview` cycle as described in [development](development.md), planning
-from the code current at that time. From the Debian VM task on, each task
-verifies its Linux behavior in that VM: agents work over SSH, and the user
-checks what has to be seen, such as windows, menus, dialogs, and
-notifications. This list does not authorize installing the app on the Mac or
+from the code current at that time. From the Linux test environment task on, each
+task verifies its Linux behavior there with automated tests, including what
+appears on screen. This list does not authorize installing the app on the Mac or
 publishing a release.
 
 - [x] **Linux checks in CI and a passing test suite.** Add `make check` jobs
@@ -38,13 +37,17 @@ publishing a release.
   backend's `osascript` and `open` calls and `POST /open`; `POST /workspace`
   takes the chosen path. Use the platform's labels ("Show in Files" on
   Linux). Linux has no standard terminal application, so Open in Terminal is
-  macOS-only. Its Linux items are checked in the VM with the desktop app task.
-- [ ] **Debian test VM.** Create a Debian 13 ARM64 VM with Lima from
-  Debian's cloud image: `vmType: vz`, so it runs natively, and
-  `video.display: default` for a GNOME desktop window. Provision Git, Go, Bun,
-  and `rsvg-convert`, and record the Lima configuration and how to recreate
-  the VM in `agents/development.md`. Smoke tests use the scripted harness
-  plugin, which needs no credentials. Run `make check` and `make dev` in it.
+  macOS-only. Its Linux items are tested with the desktop app task.
+- [ ] **Linux test environment.** A Debian 13 container image that boots
+  systemd, with a user manager for a test user, Xvfb, Electron's runtime
+  libraries, Git, Go, Bun, `rsvg-convert`, and Playwright. It runs natively on
+  ARM64 in Docker on the Mac and on AMD64 in CI. One command builds the
+  checkout in it and runs a test that drives the Linux desktop app with
+  Playwright's Electron support and saves screenshots for agents to inspect.
+  Sessions use the scripted harness plugin, which needs no credentials.
+  Chromium's sandbox is off in containers. Document the command in
+  `agents/development.md`. This task proves the environment with `make check`
+  and `make dev`; the later tasks add their own tests to it.
 - [ ] **Linux bundle.** `make bundle` on Linux builds a directory with the
   Electron client (`hypercube-desktop`), `hypercube`, the four plugins, the UI
   pages, a PNG icon, the `.desktop` file, and the service installer, and
@@ -59,8 +62,9 @@ publishing a release.
   shells running for the new backend to adopt. On Ubuntu 23.10 and later,
   install an AppArmor profile for the bundle's Electron executable with one
   `sudo` step. Verify login-shell environment with bash and zsh, and adoption
-  across `systemctl --user restart`. Check the AppArmor step in an Ubuntu
-  ARM64 VM.
+  across `systemctl --user restart`. Test install, service start, and adoption
+  across a restart in the Linux test environment. Check the AppArmor step on
+  a real Ubuntu kernel, such as GitHub's `ubuntu-24.04` runner.
 - [ ] **Desktop app on Linux.** Use a standard window frame with Electron's
   menu bar (File, Edit, View, Session, Help; About in Help, Quit in File).
   Closing the window quits the client; the tray stays macOS-only. Badge with
@@ -75,16 +79,13 @@ publishing a release.
   keys in `xterm.ts` macOS-only. Rename `notifications.macos` to
   `notifications.desktop`, migrating the saved value at startup, and update
   Settings, `docs/configuration.md`, and the user's config together.
-- [ ] **Distribution checks.** Install the tarball and run the service,
-  desktop app, a session, a panel shell, a notification, and a service
-  restart in native ARM64 VMs for Ubuntu and Fedora. For AMD64, a CI job on
-  `ubuntu-24.04` installs the tarball and starts the service and the desktop
-  app on a virtual display. Arch supports only AMD64, so check its install,
-  service, and a session in an emulated AMD64 VM without a desktop. Fix
-  differences in the owning task's code; claim the full matrix when every
-  check passes.
+- [ ] **Distribution checks.** Run the Linux test environment's install,
+  service, desktop app, session, panel shell, notification, and restart tests
+  in Ubuntu, Fedora, and Arch images as well as Debian: ARM64 on the Mac, and
+  AMD64 in CI, where Arch's images run. Fix differences in the owning task's
+  code; claim the full matrix when every check passes.
 - [ ] **Release.** The beta workflow builds both Linux tarballs with
   `SHA256SUMS` beside the macOS ZIP; check a downloaded tarball's
-  `hypercube version` in a VM. Update `README.md`, `AGENTS.md`'s target line,
+  `hypercube version` in the Linux test environment. Update `README.md`, `AGENTS.md`'s target line,
   `docs/installation.md`, and `agents/development.md` with Linux commands and
   the supported targets. Screenshots stay on macOS.
