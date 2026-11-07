@@ -94,9 +94,12 @@ sockets, and session recovery).
 - **Electron menu accelerators on Linux use Ctrl.** With ⌘ mapped to Ctrl,
   menu keys such as Ctrl+B, Ctrl+J, Ctrl+N, Ctrl+L, Ctrl+K, and the Edit menu's
   Ctrl+C and Ctrl+V collide with shell and readline keys in the panel terminal.
-  Which of the menu and the page sees a key first must be checked on Linux;
-  `MenuItem.registerAccelerator: false` shows a key without registering it.
-  Linux terminals use Ctrl+Shift+C and Ctrl+Shift+V for copy and paste.
+  The page's `keydown` runs first, and a menu accelerator fires only when the
+  page did not call `preventDefault()`; xterm.js calls it for every key it
+  sends to the shell, so the terminal keeps those keys without
+  `registerAccelerator: false`. Playwright's `page.keyboard` never triggers
+  accelerators; `xdotool` does. Linux terminals use Ctrl+Shift+C and Ctrl+Shift+V
+  for copy and paste.
 - **A systemd user service may lack the graphical session's environment**
   (`DISPLAY`, `WAYLAND_DISPLAY`). GNOME and KDE import it into the user
   manager; minimal compositors may not. The desktop app always runs in the

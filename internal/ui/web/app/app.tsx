@@ -22,7 +22,8 @@ import type {State} from '../state.ts';
 import {StoreContext, type Store} from '../store.ts';
 import {TerminalPanel} from '../terminal/terminal-panel.tsx';
 import {RightPanel} from './right-panel.tsx';
-import {binding, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActions} from './shortcuts.ts';
+import {binding} from './keys.ts';
+import {keysOf, matches, nativeShortcut, shortcut, shortcuts, type ShortcutActions} from './shortcuts.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import {ShortcutsDialog} from './shortcuts-dialog.tsx';
 import {hypercube} from './window.ts';
@@ -73,7 +74,7 @@ export function App({store}: {store: Store}) {
   useEffect(() => refuseStrayDrops(store), []);
   useEffect(() => { setQuickOpen(false); }, [state.session?.id, state.unsent]);
   useEffect(() => {
-    hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: s.keys.map(binding)}))});
+    hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: keysOf(s).map(binding)}))});
   }, []);
   const shortcutActions: ShortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), showSettings: () => setSettingsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
   useEffect(() => {

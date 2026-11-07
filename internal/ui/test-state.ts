@@ -21,7 +21,7 @@ export const testSession = (overrides: Partial<Session> & {id: string}): Session
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({
   default_selection: {harness: 'claude', model: 'opus', effort: 'high'}, child_model_guidance: '',
   default_worktree: false, theme: 'system', terminal_font_size: 13,
-  notifications: {requests: true, replies: true, macos: true, sound: true},
+  notifications: {requests: true, replies: true, desktop: true, sound: true},
   ...overrides,
 });
 

@@ -1,5 +1,5 @@
 import {column} from '../app/workbench.ts';
-import {shortcuts} from '../app/shortcuts.ts';
+import {firstKeys, shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
 // images, and attach and send buttons, and below them its settings and usage.
 // A new session chooses its settings and worktree there; a running session can
@@ -108,7 +108,7 @@ export function Composer({session}: {session: Session}) {
           <MentionList mentions={mentions} />
           <div className="composer-input flex items-end gap-1">
             <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground" title="Attach Image" aria-label="Attach Image" onClick={() => picker.current?.click()}><Icon name="attach" /></Button>
-            <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${focusShortcut.keys[0]})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
+            <Textarea ref={field} rows={1} aria-label="Message" title={focusShortcut && `${focusShortcut.title} (${firstKeys('composer')})`} className="composer-text flex-1 min-h-0 max-h-[calc(8lh+0.5rem)] resize-none rounded-none border-0 bg-transparent p-1 text-sm leading-6 shadow-none focus-visible:ring-0 dark:bg-transparent" value={text}
               role="combobox" aria-expanded={suggesting ? 'true' : undefined} aria-autocomplete="list"
               aria-controls={suggesting ? mentions.listId : undefined}
               aria-activedescendant={mentions.choices.length ? mentions.optionId : undefined}

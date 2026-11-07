@@ -135,3 +135,55 @@ func TestUpgradeConfig(t *testing.T) {
 		t.Fatalf("malformed config changed: %s, %v", data, err)
 	}
 }
+
+func TestUpgradeConfigNotifications(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "hypercube")
+	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.json")
+	lead := `{"name":"lead","harness":"claude","model":"opus","effort":"high"}`
+	for name, tc := range map[string]struct {
+		source string
+		want   Notifications // after the upgrade
+		kept   bool          // the file stays byte for byte
+	}{
+		"renamed": {source: `{"notifications":{"requests":true,"replies":false,"macos":false,"sound":true}}`,
+			want: Notifications{Requests: true, Sound: true}},
+		"both names": {source: `{"theme":"dark","notifications":{"macos":false,"desktop":true}}`, kept: true},
+		"new name":   {source: `{"theme":"dark","notifications":{"desktop":false}}`, kept: true},
+		"none":       {source: `{"theme":"dark"}`, kept: true},
+		"with profiles": {source: `{"notifications":{"requests":false,"replies":true,"macos":false,"sound":true},"profiles":[` + lead + `]}`,
+			want: Notifications{Replies: true, Sound: true}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := UpgradeConfig(); err != nil {
+				t.Fatal(err)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.kept {
+				if string(data) != tc.source {
+					t.Fatalf("config changed: %s", data)
+				}
+				return
+			}
+			if strings.Contains(string(data), "macos") || !strings.Contains(string(data), `"desktop"`) {
+				t.Fatalf("upgraded file = %s", data)
+			}
+			got, err := LoadConfig()
+			if err != nil || got.Notifications != tc.want {
+				t.Fatalf("notifications = %+v, %v", got.Notifications, err)
+			}
+			if name == "with profiles" && (got.DefaultSelection == nil || strings.Contains(string(data), "profiles")) {
+				t.Fatalf("profiles not upgraded in the same write: %s", data)
+			}
+		})
+	}
+}

@@ -150,11 +150,11 @@ Closing a reply card hides it without marking the reply seen; reply cards also
 close after 15 seconds or when the agent works again. Their expiry pauses while
 the pointer is over the card or keyboard focus is inside it.
 
-While the desktop app is open and its window lacks focus, macOS notifications
+While the desktop app is open and its window lacks focus, desktop notifications
 announce requests and replies, with a sound. Clicking one opens its session.
 **Settings → Notifications** turns request and reply alerts off, both as cards
-and as macOS notifications, and turns off macOS notifications or their sound. Requests and
-replies that arrive while the app is closed are not announced later; the badge
+and as desktop notifications, and turns off desktop notifications or their
+sound. Requests and replies that arrive while the app is closed are not announced later; the badge
 and the page show the current requests when it opens.
 
 ## Find a conversation
@@ -217,6 +217,13 @@ fields, terminals, and dialogs.
 **Help → Keyboard Shortcuts** (**Command+/**) lists all shortcuts, including
 sidebar navigation. Text fields retain their editing keys. The terminal keeps
 its own keys except **Command+P**, **Command+Shift+F**, and **Command+,**.
+
+On Linux, shortcuts use Ctrl for ⌘ and Alt for ⌥, so Quick Open is **Ctrl+P**
+and Search Files is **Ctrl+Shift+F**. Next and Previous Session are
+**Ctrl+PageDown** and **Ctrl+PageUp**, and Next and Previous Change are **F7**
+and **Shift+F7**. The terminal keeps every key it uses except **Ctrl+P**,
+**Ctrl+Shift+F**, and **Ctrl+,**; **Ctrl+Shift+C** and **Ctrl+Shift+V** copy and
+paste there.
 
 ## Resume and cleanup
 

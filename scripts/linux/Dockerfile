@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		systemd systemd-sysv dbus-user-session ca-certificates curl git unzip xz-utils \
 		make gcc g++ libc6-dev xvfb xauth librsvg2-bin nodejs npm procps sqlite3 \
 		libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxss1 desktop-file-utils zsh fish iproute2 \
-		openbox dunst dbus-bin imagemagick wmctrl x11-utils python3-gi gir1.2-glib-2.0 \
+		openbox dunst dbus-bin imagemagick wmctrl xdotool x11-utils python3-gi gir1.2-glib-2.0 \
 	&& rm -rf /var/lib/apt/lists/*
 
 RUN set -eu; \

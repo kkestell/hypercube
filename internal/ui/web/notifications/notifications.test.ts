@@ -39,7 +39,7 @@ test('the selected session has no cards; its nested sessions keep theirs', () =>
 
 test('the notification settings turn request and reply cards off', () => {
   const off = (requests: boolean, replies: boolean) =>
-    cards(state({config: testConfig({notifications: {requests, replies, macos: true, sound: true}})})).map(c => c.key);
+    cards(state({config: testConfig({notifications: {requests, replies, desktop: true, sound: true}})})).map(c => c.key);
   expect(off(false, true)).toEqual(['reply:a:7', 'reply:a-w:4', 'reply:b:3']);
   expect(off(true, false)).toEqual(['request:c:q2', 'request:a-w:q1']);
 });
@@ -67,7 +67,7 @@ test('closing reply and request cards dismisses them without marking replies see
   expect(cards(s.get()).map(c => c.key)).toEqual(['request:a-w:q1', 'reply:a-w:4', 'reply:b:3']);
 });
 
-test('a clicked macOS notification shows its session', () => {
+test('a clicked desktop notification shows its session', () => {
   spyOn(globalThis, 'fetch').mockResolvedValue(new Response(''));
   const s = createStore(state({selected: 'c'}));
   startNativeNotifications(s);

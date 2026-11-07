@@ -71,7 +71,7 @@ publishing a release.
   `app.setBadgeCount`. Keep notifications and click-through. Use Dock calls
   only on macOS. Resolve the bundle and installer from the Linux layout; the
   waiting page shows `systemctl --user` commands and offers service setup.
-- [ ] **Keys and labels.** Take the platform from the desktop bridge and
+- [x] **Keys and labels.** Take the platform from the desktop bridge and
   derive bindings and displayed keys from it: ⌘ becomes Ctrl and ⌥ becomes Alt on Linux. Apply this to the menus,
   page shortcuts, quick open, and the shortcut reference. In the panel
   terminal on Linux, only shortcuts marked for the terminal leave the shell;

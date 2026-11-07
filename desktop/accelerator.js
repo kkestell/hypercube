@@ -1,4 +1,4 @@
-const keyNames = {ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right', '+': 'Plus'};
+const keyNames = {ArrowDown: 'Down', ArrowUp: 'Up', ArrowLeft: 'Left', ArrowRight: 'Right', pagedown: 'PageDown', pageup: 'PageUp', '+': 'Plus'};
 
 // accelerator is the Electron accelerator for a page's key binding,
 // {key, metaKey, altKey, ctrlKey, shiftKey}, where key is lower case or a

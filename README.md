@@ -89,8 +89,8 @@ sessions.
 - **Answers across sessions.** Notification cards let you answer another agent's request without leaving the current conversation.
 - **Reply and error alerts.** Notifications surface new replies and problems across your sessions.
 - **Remembered permissions.** Saved tool approvals can be reviewed and revoked.
-- **macOS notifications.** Native notifications announce requests and replies and link back to their conversations.
-- **Notification preferences.** Request alerts, reply alerts, macOS notifications, and sound are configurable.
+- **Desktop notifications.** Native notifications announce requests and replies and link back to their conversations.
+- **Notification preferences.** Request alerts, reply alerts, desktop notifications, and sound are configurable.
 - **Activity and attention indicators.** Working agents, unanswered requests, and unseen replies are easy to identify.
 
 ### Usage monitoring

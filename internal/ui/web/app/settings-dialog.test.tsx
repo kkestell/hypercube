@@ -54,12 +54,12 @@ test('preferences save with the config and apply to the page', async () => {
   select('terminal-font-size', '16 px');
   select('default-location', 'Worktree');
   await click('Notifications');
-  await act(async () => element(document, '#notify-macos', HTMLButtonElement).click());
+  await act(async () => element(document, '#notify-desktop', HTMLButtonElement).click());
   expect(element(document, '#notify-sound', HTMLButtonElement).disabled).toBe(true);
   await act(async () => element(document, '#notify-replies', HTMLButtonElement).click());
   await click('Save changes');
   const saved: Config = {...config, theme: 'dark', terminal_font_size: 16, default_worktree: true,
-    notifications: {requests: true, replies: false, macos: false, sound: true}};
+    notifications: {requests: true, replies: false, desktop: false, sound: true}};
   expect(posts).toEqual([saved]);
   expect(store.get().config).toEqual(saved);
   // An untouched new session follows the saved default location.

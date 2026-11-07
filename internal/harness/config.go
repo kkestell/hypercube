@@ -25,19 +25,19 @@ type Config struct {
 }
 
 // Notifications chooses which alerts reach the user and how. Requests and
-// Replies choose the alerts for sessions the user is not viewing; MacOS sends
-// them to Notification Center while the window is not focused, with a sound
-// when Sound is set.
+// Replies choose the alerts for sessions the user is not viewing; Desktop sends
+// them to the desktop's notifications while the window is not focused, with a
+// sound when Sound is set.
 type Notifications struct {
 	Requests bool `json:"requests"`
 	Replies  bool `json:"replies"`
-	MacOS    bool `json:"macos"`
+	Desktop  bool `json:"desktop"`
 	Sound    bool `json:"sound"`
 }
 
 // DefaultNotifications sends every alert, as Hypercube did before the
 // preferences existed.
-var DefaultNotifications = Notifications{Requests: true, Replies: true, MacOS: true, Sound: true}
+var DefaultNotifications = Notifications{Requests: true, Replies: true, Desktop: true, Sound: true}
 
 var (
 	themes            = []string{"system", "light", "dark"}
@@ -136,11 +136,14 @@ type legacyProfile struct {
 	Settings
 }
 
-// UpgradeConfig converts a config.json written by earlier versions, which
-// named agent profiles, before anything reads it. The default profile becomes
-// the default selection, and the profiles' descriptions become the child
-// guidance, unless the file already has guidance. A file without profiles is
-// left as it is.
+// upgrade changes the decoded config.json of an earlier version and reports
+// whether it changed anything.
+type upgrade func(doc map[string]json.RawMessage) (bool, error)
+
+// UpgradeConfig converts a config.json written by earlier versions before
+// anything reads it. A file that no upgrade changes is left as it is; otherwise
+// it is decoded and validated as LoadConfig will, and the typed value is
+// written, which keeps the file's field order.
 func UpgradeConfig() error {
 	path := configPath()
 	data, err := os.ReadFile(path)
@@ -154,43 +157,17 @@ func UpgradeConfig() error {
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	_, hasProfiles := doc["profiles"]
-	_, hasDefault := doc["default_profile"]
-	if !hasProfiles && !hasDefault {
+	changed := false
+	for _, up := range []upgrade{upgradeProfiles, upgradeNotifications} {
+		did, err := up(doc)
+		if err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		changed = changed || did
+	}
+	if !changed {
 		return nil
 	}
-	var legacy struct {
-		DefaultProfile string          `json:"default_profile"`
-		Profiles       []legacyProfile `json:"profiles"`
-	}
-	if err := json.Unmarshal(data, &legacy); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	delete(doc, "profiles")
-	delete(doc, "default_profile")
-	// Earlier versions used the first profile when no default was named.
-	name := legacy.DefaultProfile
-	if name == "" && len(legacy.Profiles) > 0 {
-		name = legacy.Profiles[0].Name
-	}
-	for _, p := range legacy.Profiles {
-		if p.Name == name {
-			if doc["default_selection"], err = json.Marshal(p.Settings); err != nil {
-				return err
-			}
-		}
-	}
-	if _, ok := doc["child_model_guidance"]; !ok {
-		var b strings.Builder
-		for _, p := range legacy.Profiles {
-			fmt.Fprintf(&b, "- Harness %s, model %s, effort %s: %s\n", p.Harness, p.Model, p.Effort, strings.TrimSpace(p.Description))
-		}
-		if doc["child_model_guidance"], err = json.Marshal(strings.TrimSuffix(b.String(), "\n")); err != nil {
-			return err
-		}
-	}
-	// Decoding the result checks it as LoadConfig will, and writing the
-	// typed value keeps the file's field order.
 	converted, err := json.Marshal(doc)
 	if err != nil {
 		return err
@@ -207,4 +184,76 @@ func UpgradeConfig() error {
 		return err
 	}
 	return writeConfig(out)
+}
+
+// upgradeProfiles converts the agent profiles of earlier versions. The default
+// profile becomes the default selection, and the profiles' descriptions become
+// the child guidance, unless the file already has guidance.
+func upgradeProfiles(doc map[string]json.RawMessage) (bool, error) {
+	_, hasProfiles := doc["profiles"]
+	_, hasDefault := doc["default_profile"]
+	if !hasProfiles && !hasDefault {
+		return false, nil
+	}
+	var legacy struct {
+		DefaultProfile string          `json:"default_profile"`
+		Profiles       []legacyProfile `json:"profiles"`
+	}
+	if hasDefault {
+		if err := json.Unmarshal(doc["default_profile"], &legacy.DefaultProfile); err != nil {
+			return false, err
+		}
+	}
+	if hasProfiles {
+		if err := json.Unmarshal(doc["profiles"], &legacy.Profiles); err != nil {
+			return false, err
+		}
+	}
+	delete(doc, "profiles")
+	delete(doc, "default_profile")
+	// Earlier versions used the first profile when no default was named.
+	name := legacy.DefaultProfile
+	if name == "" && len(legacy.Profiles) > 0 {
+		name = legacy.Profiles[0].Name
+	}
+	for _, p := range legacy.Profiles {
+		if p.Name == name {
+			var err error
+			if doc["default_selection"], err = json.Marshal(p.Settings); err != nil {
+				return false, err
+			}
+		}
+	}
+	if _, ok := doc["child_model_guidance"]; !ok {
+		var b strings.Builder
+		for _, p := range legacy.Profiles {
+			fmt.Fprintf(&b, "- Harness %s, model %s, effort %s: %s\n", p.Harness, p.Model, p.Effort, strings.TrimSpace(p.Description))
+		}
+		var err error
+		if doc["child_model_guidance"], err = json.Marshal(strings.TrimSuffix(b.String(), "\n")); err != nil {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+// upgradeNotifications renames notifications.macos to notifications.desktop,
+// keeping the user's choice, when the file has only the old name.
+func upgradeNotifications(doc map[string]json.RawMessage) (bool, error) {
+	if doc["notifications"] == nil {
+		return false, nil
+	}
+	var notifications map[string]json.RawMessage
+	if err := json.Unmarshal(doc["notifications"], &notifications); err != nil {
+		return false, err
+	}
+	old, hasOld := notifications["macos"]
+	if _, hasNew := notifications["desktop"]; !hasOld || hasNew {
+		return false, nil
+	}
+	notifications["desktop"] = old
+	delete(notifications, "macos")
+	var err error
+	doc["notifications"], err = json.Marshal(notifications)
+	return err == nil, err
 }

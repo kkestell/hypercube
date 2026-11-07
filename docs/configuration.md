@@ -25,7 +25,7 @@ Settings writes these top-level fields. A file without them uses the defaults.
 | `default_worktree` | `true` to start new sessions in Git workspaces in a worktree. The composer can change it for each session. | `false` |
 | `theme` | `system`, `light`, or `dark`. | `system` |
 | `terminal_font_size` | The terminal's text size in pixels: 12, 13, 14, 16, or 18. | `13` |
-| `notifications` | An object of four booleans. `requests` and `replies` choose which alerts appear as cards and macOS notifications; `macos` shows macOS notifications while the window is not focused; `sound` plays a sound with them. | all `true` |
+| `notifications` | An object of four booleans. `requests` and `replies` choose which alerts appear as cards and desktop notifications; `desktop` shows desktop notifications while the window is not focused; `sound` plays a sound with them. | all `true` |
 
 Editing the file directly while Hypercube is running is unsupported. To edit
 it by hand, stop Hypercube first; a settings save replaces the file.
@@ -77,7 +77,7 @@ checkout do not update the other copy.
   "notifications": {
     "requests": true,
     "replies": true,
-    "macos": true,
+    "desktop": true,
     "sound": true
   }
 }

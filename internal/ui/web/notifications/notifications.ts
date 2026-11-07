@@ -55,7 +55,7 @@ export function closeCard(store: Store, card: Card) {
   store.update(state => dismiss(state, card.key));
 }
 
-// startNativeNotifications shows the session of a macOS notification the user
+// startNativeNotifications shows the session of a desktop notification the user
 // clicks. The desktop app reports the click in a hypercube-notification
 // event, {session}.
 export function startNativeNotifications(store: Store) {

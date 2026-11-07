@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
-import {clickControl, element, find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
+import {clickControl, element, find, findAll, mount, stubFetch, testBridge, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {openUnsent, receivedWorkspaces} from '../sessions/selection.ts';
 import {typed, unsentKey} from '../agent/drafts.ts';
@@ -13,6 +13,7 @@ import type {Workbench} from './types.ts';
 afterEach(() => {
   mock.restore();
   unmountAll();
+  delete globalThis.hypercube;
 });
 
 const workbench = (overrides: Partial<Workbench>): Workbench => ({...testState().workbench, ...overrides});
@@ -154,4 +155,29 @@ test('archived families open from the sidebar and can be deleted', async () => {
   expect(requests.filter(request => request.method === 'POST')).toHaveLength(0);
   await act(async () => { buttonNamed(confirmation, 'Delete').click(); });
   expect(requests.at(-1)?.params).toEqual({action: 'delete', id: 'archived'});
+});
+
+test('the desktop app\'s menus get the platform\'s bindings', () => {
+  answer(() => Response.json([]));
+  const bindingsOf = (platform: string) => {
+    const posted: {type: string; items: {id: string; bindings: Record<string, unknown>[]}[]}[] = [];
+    globalThis.hypercube = testBridge({platform, postMessage: message => posted.push(message as typeof posted[number])});
+    const store = appStore();
+    mount(store, <App store={store} />);
+    unmountAll();
+    return Object.fromEntries(posted.find(message => message.type === 'shortcuts')!.items.map(item => [item.id, item.bindings]));
+  };
+  const mac = bindingsOf('darwin');
+  expect(mac.next).toEqual([
+    {key: 'ArrowDown', metaKey: true, altKey: true, ctrlKey: false, shiftKey: false},
+    {key: 'tab', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false},
+  ]);
+  const linux = bindingsOf('linux');
+  expect(linux.next).toEqual([
+    {key: 'pagedown', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false},
+    {key: 'tab', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false},
+  ]);
+  expect(linux.previous?.[0]).toEqual({key: 'pageup', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false});
+  expect(Object.values(linux).flat().some(b => b.metaKey)).toBe(false);
+  expect(linux.sidebar).toEqual([{key: 'b', metaKey: false, altKey: false, ctrlKey: true, shiftKey: false}]);
 });

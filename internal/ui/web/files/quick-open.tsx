@@ -2,6 +2,7 @@ import {useEffect, useState, type KeyboardEvent} from 'react';
 import {mentionFiles} from '../api.ts';
 import {CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {openFileTab} from '../editor/editor.ts';
+import {matches} from '../app/shortcuts.ts';
 import {CommandDialog} from '../shared/command-dialog.tsx';
 import {useStore} from '../store.ts';
 
@@ -25,7 +26,7 @@ export function QuickOpen({open, onOpenChange}: QuickOpenProps) {
     return () => controller.abort();
   }, [open, session]);
   const keyDown = (e: KeyboardEvent) => {
-    if (e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === 'p') e.preventDefault();
+    if (matches(e, 'quickOpen')) e.preventDefault();
   };
   return <CommandDialog open={open && !!session} onOpenChange={onOpenChange} title="Quick Open" description="Search session files" commandProps={{onKeyDown: keyDown}}>
     <CommandInput placeholder="Search files by name" aria-label="Search files" />

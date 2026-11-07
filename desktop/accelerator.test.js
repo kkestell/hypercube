@@ -10,6 +10,8 @@ test.each([
   [binding('b', 'meta', 'alt'), 'Command+Alt+B'],
   [binding('ArrowDown', 'meta', 'alt'), 'Command+Alt+Down'],
   [binding('tab', 'ctrl', 'shift'), 'Control+Shift+Tab'],
+  [binding('pagedown', 'ctrl'), 'Control+PageDown'],
+  [binding('f7', 'shift'), 'Shift+F7'],
   [binding('f3'), 'F3'],
   [binding('=', 'meta'), 'Command+='],
   [binding('+', 'meta', 'shift'), 'Command+Plus'],

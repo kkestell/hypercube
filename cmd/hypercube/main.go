@@ -135,7 +135,7 @@ func sendAlert(d *desktop.Desktop, alert session.Alert) error {
 	if strings.HasPrefix(alert.Key, "request:") {
 		wanted = n.Requests
 	}
-	if !wanted || !n.MacOS {
+	if !wanted || !n.Desktop {
 		return nil
 	}
 	return d.Alert(alert, n.Sound)

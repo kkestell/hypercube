@@ -5,6 +5,7 @@
 // panel closes when its shell exits or cannot connect.
 import {useEffect, useRef} from 'react';
 import {isDark} from '../app/appearance.ts';
+import {terminalShortcut} from '../app/shortcuts.ts';
 import {closePanel} from '../app/workbench.ts';
 import {useStore} from '../store.ts';
 import {createTerminal, type TerminalStyle} from './xterm.ts';
@@ -18,7 +19,7 @@ interface Shell {
 // openShell connects a terminal in box to the session's shell, calling ended
 // when the shell exits or cannot connect.
 function openShell(box: HTMLElement, session: string, style: TerminalStyle, ended: () => void): Shell {
-  const {term, fit, restyle, dispose} = createTerminal(box, style);
+  const {term, fit, restyle, dispose} = createTerminal(box, style, terminalShortcut);
   const encoder = new TextEncoder();
   let socket: WebSocket | null = null, connected = false, exited = false, closed = false;
   const send = (data: Uint8Array<ArrayBuffer> | string) => {

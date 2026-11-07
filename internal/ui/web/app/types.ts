@@ -18,11 +18,11 @@ export type Theme = 'system' | 'light' | 'dark';
 
 // Notifications chooses the alerts for sessions the page is not showing:
 // requests and replies show as cards and, while the window is not focused,
-// as macOS notifications when macos is set, with a sound when sound is set.
+// as desktop notifications when desktop is set, with a sound when sound is set.
 export interface Notifications {
   requests: boolean;
   replies: boolean;
-  macos: boolean;
+  desktop: boolean;
   sound: boolean;
 }
 

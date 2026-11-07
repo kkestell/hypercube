@@ -2,8 +2,9 @@
 // Drive the installed desktop app against the installed service on a Linux
 // desktop in the Linux test container: the window frame and menu bar, each
 // waiting page, setting up the service, a notification and the launcher badge,
-// the open actions, closing the window, and reinstalling and uninstalling while
-// the app runs. It starts openbox, the dunst notification server, a stand-in
+// the open actions, the shortcuts and the panel terminal's keys pressed with
+// xdotool, closing the window, and reinstalling and uninstalling while the app
+// runs. It starts openbox, the dunst notification server, a stand-in
 // file manager, and stand-ins for `code` and `xdg-open`, and records the
 // notification and badge traffic on the session bus. Screenshots and logs go
 // to bin/linux-test/. It changes the test user's home, so run it in the
@@ -121,6 +122,14 @@ const badgeCounts = () => [...read(busLog).matchAll(/member=Update\s+string "app
 const menuOf = electronApp => electronApp.evaluate(({Menu}) =>
   Menu.getApplicationMenu().items.map(item => ({label: item.label, items: item.submenu.items.filter(i => i.visible).map(i => i.label || i.type)})));
 const text = page => page.locator('body').innerText();
+
+// press sends keys, such as 'ctrl+b', to the window that has focus as real X
+// key events: a menu accelerator fires only for those, not for the keys that
+// Playwright sends through the DevTools protocol.
+const press = (...keys) => run('xdotool', ['key', '--clearmodifiers', '--delay', '50', ...keys]);
+const typeText = value => run('xdotool', ['type', '--delay', '50', value]);
+const accelerators = (electronApp, label) => electronApp.evaluate(({Menu}, label) =>
+  Menu.getApplicationMenu().items.find(item => item.label === label).submenu.items.filter(i => i.accelerator).map(i => [i.label, i.accelerator]), label);
 
 async function main() {
   check(tryRun('systemctl', ['--user', 'is-active', '--quiet', unit]).status !== 0, 'the service is already running; start from a clean home');
@@ -250,7 +259,77 @@ async function main() {
   await page.getByRole('menuitem', {name: 'Show in Files'}).click();
   await waitFor('the ShowItems call', () => read(fileManagerLog).includes(`ShowItems ['file://${repo}/first.txt']`));
 
-  // 8. Closing the window quits the app, and the service and agents stay.
+  // 8. Shortcuts: Ctrl and Alt in the menus' accelerators, the page's keys, and
+  // the panel terminal, which keeps its keys for the shell.
+  run('wmctrl', ['-a', 'desktop-project']);
+  const sidebarShown = async () => (await page.getByRole('button', {name: 'Toggle Primary Side Bar'}).getAttribute('aria-pressed')) === 'true';
+  const dialog = page.getByRole('dialog');
+  const rows = () => page.locator('.terminal-panel .xterm-rows').innerText();
+  const view = await accelerators(electronApp, 'View');
+  const sessionMenu = await accelerators(electronApp, 'Session');
+  check(view.find(([label]) => label === 'Toggle Sidebar')?.[1] === 'Control+B', `View accelerators are ${JSON.stringify(view)}`);
+  check(sessionMenu.some(([label, accelerator]) => label === 'Next Session' && accelerator === 'Control+PageDown'), `Session accelerators are ${JSON.stringify(sessionMenu)}`);
+  check([...view, ...sessionMenu].every(([, accelerator]) => !accelerator.includes('Command')), 'a menu accelerator uses Command');
+
+  press('ctrl+b');
+  await waitFor('Ctrl+B to hide the sidebar', async () => !(await sidebarShown()));
+  press('ctrl+b');
+  await waitFor('Ctrl+B to show the sidebar', sidebarShown);
+  press('ctrl+k');
+  await dialog.waitFor();
+  press('Escape');
+  await dialog.waitFor({state: 'hidden'});
+
+  // The terminal gets Ctrl+B and Ctrl+N, which are menu keys elsewhere.
+  press('ctrl+j');
+  await waitFor('the terminal prompt', async () => /\$/.test(await rows()));
+  typeText('cat -v');
+  press('Return', 'ctrl+b', 'ctrl+n', 'Return');
+  await waitFor('^B^N in the terminal', async () => (await rows()).includes('^B^N'));
+  check(await sidebarShown(), 'Ctrl+B in the terminal toggled the sidebar');
+  check(await page.locator(`.sidebar [data-session="${session}"][aria-selected=true]`).count() === 1, 'Ctrl+N in the terminal opened a new session');
+  press('ctrl+c');
+  typeText('echo keys-marker');
+  press('Return');
+  await waitFor('the marker line', async () => (await rows()).split('\n').includes('keys-marker'));
+  press('ctrl+l');
+  await waitFor('Ctrl+L to clear the screen', async () => !(await rows()).includes('keys-marker'));
+  press('ctrl+p');
+  await dialog.waitFor();
+  press('Escape');
+  await dialog.waitFor({state: 'hidden'});
+
+  // Ctrl+Shift+C and Ctrl+Shift+V copy and paste in the terminal.
+  await page.locator('.terminal-panel textarea').focus();
+  typeText('echo copy-marker');
+  press('Return');
+  await waitFor('the copy marker', async () => (await rows()).split('\n').includes('copy-marker'));
+  await page.locator('.terminal-panel .xterm-rows > div', {hasText: /^copy-marker$/}).dblclick({position: {x: 10, y: 5}, force: true});
+  press('ctrl+shift+c');
+  await waitFor('the selection on the clipboard', async () => await electronApp.evaluate(({clipboard}) => clipboard.readText()) === 'copy-marker');
+  await electronApp.evaluate(({clipboard}) => clipboard.writeText('echo pasted-ok'));
+  press('ctrl+shift+v', 'Return');
+  await waitFor('the pasted command to run', async () => (await rows()).split('\n').includes('pasted-ok'));
+
+  // The shortcut reference, and the View menu opened from the keyboard.
+  press('ctrl+slash');
+  await page.getByRole('heading', {name: 'Keyboard shortcuts'}).waitFor();
+  check((await dialog.innerText()).includes('Ctrl'), 'the shortcut reference does not show Ctrl');
+  await sleep(500);
+  screenshot('keys-shortcuts');
+  press('Escape');
+  await dialog.waitFor({state: 'hidden'});
+  // Alt focuses the menu bar's first menu, File; View is two to the right.
+  await electronApp.evaluate(({Menu}) => {
+    Menu.getApplicationMenu().items.find(item => item.label === 'View').submenu.once('menu-will-show', () => { globalThis.viewShown = true; });
+  });
+  press('alt', 'Right', 'Right', 'Down');
+  await waitFor('the View menu to open', () => electronApp.evaluate(() => globalThis.viewShown === true));
+  await sleep(500);
+  screenshot('keys-menu');
+  press('Escape');
+
+  // 9. Closing the window quits the app, and the service and agents stay.
   const service = mainPid();
   const [holder] = fs.readdirSync(path.join(state, 'run')).map(d => Number(read(path.join(state, 'run', d, 'pid')))).filter(alive);
   check(holder, 'the holder is not running');
@@ -258,7 +337,7 @@ async function main() {
   check(mainPid() === service && answers(), 'closing the window disturbed the service');
   check(alive(holder), 'closing the window ended the agent');
 
-  // 9. The service installed but not answering.
+  // 10. The service installed but not answering.
   run('systemctl', ['--user', 'stop', unit]);
   electronApp = await launch(path.join(app, 'hypercube-desktop'));
   page = await electronApp.firstWindow();
@@ -269,7 +348,7 @@ async function main() {
   await page.waitForURL('http://localhost:4280/', {timeout: 30000});
   check(alive(holder), 'the agent did not survive the service restart');
 
-  // 10. Reinstalling quits the running app and opens the new one.
+  // 11. Reinstalling quits the running app and opens the new one.
   const before = desktopProcesses(app);
   check(before.length === 1, `expected one desktop app, found ${before.map(pid => pid + ' ' + JSON.stringify(read(`/proc/${pid}/cmdline`)))}`);
   await runWithApp('make', ['install-service']);
@@ -281,7 +360,7 @@ async function main() {
   check(alive(holder), 'the agent did not survive the reinstall');
   screenshot('reinstall');
 
-  // 11. Uninstalling quits the app.
+  // 12. Uninstalling quits the app.
   run('make', ['uninstall'], {stdio: 'inherit'});
   check(!fs.existsSync(app), `${app} remains after removal`);
   await waitFor('the app to exit', () => !alive(after[0]));

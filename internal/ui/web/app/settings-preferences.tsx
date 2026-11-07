@@ -110,8 +110,8 @@ export function SettingsNotifications({draft, onChange}: SectionProps) {
       <Toggle id="notify-replies" label="An agent has a new reply" checked={n.replies} onChange={replies => set({replies})} />
     </Group>
     <Group title="Delivery">
-      <Toggle id="notify-macos" label="Show macOS notifications" description="When the Hypercube window is not focused." checked={n.macos} onChange={macos => set({macos})} />
-      <Toggle id="notify-sound" label="Play a sound" checked={n.sound} disabled={!n.macos} onChange={sound => set({sound})} />
+      <Toggle id="notify-desktop" label="Show desktop notifications" description="When the Hypercube window is not focused." checked={n.desktop} onChange={desktop => set({desktop})} />
+      <Toggle id="notify-sound" label="Play a sound" checked={n.sound} disabled={!n.desktop} onChange={sound => set({sound})} />
     </Group>
   </div>;
 }

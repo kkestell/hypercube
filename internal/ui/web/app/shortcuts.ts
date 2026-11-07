@@ -3,6 +3,7 @@ import {openUnsent} from '../sessions/selection.ts';
 import {toggle, toggleWrap} from './workbench.ts';
 import type {Store} from '../store.ts';
 import {hypercube} from './window.ts';
+import {binding, keysLabel, linux} from './keys.ts';
 import type {Region} from './types.ts';
 
 export type ShortcutId = 'settings' | 'new' | 'next' | 'previous' | 'select' | 'interrupt' | 'searchSessions'
@@ -13,12 +14,14 @@ export type Section = 'App' | 'Session' | 'View' | 'Help';
 
 // Shortcut is one key binding. menu puts it in the desktop app's menus, which
 // then own every key of it, native has the app handle it, and terminal keeps
-// it working while a terminal has focus.
-interface Shortcut {
+// it working while a terminal has focus. keys is written for macOS; linux
+// replaces it on Linux where its keys collide with the desktop's.
+export interface Shortcut {
   id: ShortcutId;
   section: Section;
   title: string;
   keys: string[];
+  linux?: string[];
   menu?: boolean;
   native?: boolean;
   terminal?: boolean;
@@ -28,8 +31,8 @@ interface Shortcut {
 export const shortcuts: Shortcut[] = [
   {id: 'settings', section: 'App', title: 'Settings…', keys: ['⌘,'], menu: true, terminal: true},
   {id: 'new', section: 'Session', title: 'New Session', keys: ['⌘N'], menu: true},
-  {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌘⌥↓', '⌃Tab'], menu: true},
-  {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], menu: true},
+  {id: 'next', section: 'Session', title: 'Next Session', keys: ['⌘⌥↓', '⌃Tab'], linux: ['⌃PageDown', '⌃Tab'], menu: true},
+  {id: 'previous', section: 'Session', title: 'Previous Session', keys: ['⌘⌥↑', '⌃⇧Tab'], linux: ['⌃PageUp', '⌃⇧Tab'], menu: true},
   {id: 'select', section: 'Session', title: 'Select Session', keys: ['⌘1–9']},
   {id: 'interrupt', section: 'Session', title: 'Interrupt Agent', keys: ['Escape']},
   {id: 'searchSessions', section: 'Session', title: 'Search Sessions', keys: ['⌘K']},
@@ -43,22 +46,13 @@ export const shortcuts: Shortcut[] = [
   {id: 'zoomOut', section: 'View', title: 'Zoom Out', keys: ['⌘-'], menu: true, native: true},
   {id: 'zoomReset', section: 'View', title: 'Actual Size', keys: ['⌘0'], menu: true, native: true},
   {id: 'wrap', section: 'View', title: 'Toggle Word Wrap', keys: ['⌥Z']},
-  {id: 'nextChange', section: 'View', title: 'Next Change', keys: ['⌥F5']},
-  {id: 'previousChange', section: 'View', title: 'Previous Change', keys: ['⌥⇧F5']},
+  {id: 'nextChange', section: 'View', title: 'Next Change', keys: ['⌥F5'], linux: ['F7']},
+  {id: 'previousChange', section: 'View', title: 'Previous Change', keys: ['⌥⇧F5'], linux: ['⇧F7']},
   {id: 'find', section: 'View', title: 'Find', keys: ['⌘F']},
   {id: 'findNext', section: 'View', title: 'Next Match', keys: ['⌘G', 'F3']},
   {id: 'findPrevious', section: 'View', title: 'Previous Match', keys: ['⌘⇧G', '⇧F3']},
   {id: 'help', section: 'Help', title: 'Keyboard Shortcuts', keys: ['⌘/'], menu: true},
 ];
-
-// Translate the notation used by the reference into keyboard event fields.
-const arrows: Record<string, string> = {'↓': 'ArrowDown', '↑': 'ArrowUp'};
-
-export function binding(text: string) {
-  const key = text.replace(/[⌘⌥⌃⇧]/g, '');
-  return {key: arrows[key] ?? key.toLowerCase(),
-    metaKey: text.includes('⌘'), altKey: text.includes('⌥'), ctrlKey: text.includes('⌃'), shiftKey: text.includes('⇧') || key === '+'};
-}
 
 // A keystroke, from a DOM or React keyboard event.
 interface Keystroke {
@@ -70,8 +64,11 @@ interface Keystroke {
   shiftKey?: boolean;
 }
 
+// keysOf is the notation of the shortcut's bindings on this platform.
+export const keysOf = (item: Shortcut) => linux() && item.linux ? item.linux : item.keys;
+
 export function matches(event: Keystroke, id: ShortcutId) {
-  return shortcutOf(id).keys.some(text => {
+  return keysOf(shortcutOf(id)).some(text => {
     const b = binding(text);
     const key = event.altKey && event.code && ['KeyB', 'KeyZ'].includes(event.code) ? event.code.slice(3).toLowerCase() : event.key.toLowerCase();
     const range = b.key.match(/^(.)–(.)$/);
@@ -86,8 +83,12 @@ function shortcutOf(id: ShortcutId): Shortcut {
   return item;
 }
 
-// firstKeys is the notation of a shortcut's first binding.
-export const firstKeys = (id: ShortcutId) => shortcutOf(id).keys[0];
+// firstKeys is the label of a shortcut's first binding.
+export const firstKeys = (id: ShortcutId) => keysLabel(keysOf(shortcutOf(id))[0]);
+
+// terminalShortcut says a shortcut marked terminal matches the keystroke, which
+// the terminal then leaves to the page and the menus.
+export const terminalShortcut = (event: Keystroke) => shortcuts.some(item => item.terminal && matches(event, item.id));
 
 export interface ShortcutActions {
   focusComposer: () => void;
@@ -157,7 +158,7 @@ const editingTarget = (target: Element) => !!target.closest('input, textarea, [c
 export function shortcut(e: KeyboardEvent, store: Store, actions: ShortcutActions) {
   if (e.defaultPrevented || e.repeat || e.isComposing || !(e.target instanceof Element)) return;
   if (e.target.closest('[role=menu], [role=dialog], [role=alertdialog]')) return;
-  if (e.target.closest('.terminal-panel') && !shortcuts.some(item => item.terminal && matches(e, item.id))) return;
+  if (e.target.closest('.terminal-panel') && !terminalShortcut(e)) return;
   if (store.get().confirmation) return;
   const item = shortcuts.find(s => matches(e, s.id));
   if (item?.menu && hypercube()) return;

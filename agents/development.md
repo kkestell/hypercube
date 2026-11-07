@@ -164,8 +164,9 @@ zsh, and fish, keeps a scripted agent running across a service restart, and
 checks `make uninstall`. `scripts/linux/test-desktop` then drives the installed
 desktop app against the installed service with Playwright: the window frame and
 menus, each waiting page, setting up the service, a notification and the
-launcher badge, the open actions, closing the window, and reinstalling and
-uninstalling while the app runs. It starts openbox, the dunst notification
+launcher badge, the open actions, the shortcuts and Ctrl labels, the panel
+terminal's keys (pressed with `xdotool`), closing the window, and reinstalling
+and uninstalling while the app runs. It starts openbox, the dunst notification
 server, a stand-in file manager, and stand-ins for `code` and `xdg-open`.
 Screenshots and logs land in `bin/linux-test/`, copied out of the container
 when the command ends. The container runs natively on Apple Silicon and needs

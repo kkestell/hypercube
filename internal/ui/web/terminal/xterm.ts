@@ -1,8 +1,9 @@
 // The panel's terminal: stock xterm.js, the fit add-on, standard terminal
-// colors, and macOS text editing keys.
+// colors, macOS text editing keys, and Linux copy and paste keys.
 import {FitAddon} from '@xterm/addon-fit';
 import {Terminal} from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
+import {linux} from '../app/keys.ts';
 
 // editing gives the bytes Ghostty sends for the macOS text editing shortcuts,
 // which xterm.js leaves to the browser.
@@ -36,10 +37,25 @@ export interface TerminalStyle {
   fontSize: number;
 }
 
+// copyPaste handles Ctrl+Shift+C and Ctrl+Shift+V as GNOME Terminal does and
+// reports whether e was one of them. Copying without a selection leaves the
+// clipboard alone.
+function copyPaste(term: Terminal, e: KeyboardEvent) {
+  if (!e.ctrlKey || !e.shiftKey || e.altKey || e.metaKey) return false;
+  if (e.code === 'KeyC') {
+    if (term.hasSelection()) void navigator.clipboard.writeText(term.getSelection());
+  }
+  else if (e.code === 'KeyV') void navigator.clipboard.readText().then(text => term.paste(text));
+  else return false;
+  e.preventDefault();
+  return true;
+}
+
 // createTerminal opens a terminal that fills box. Call fit.fit() after box
-// changes size or after restyle. The editing keys arrive through term.onData
-// like typing.
-export function createTerminal(box: HTMLElement, style: TerminalStyle) {
+// changes size or after restyle. passes says a key belongs to the page or the
+// menus rather than the shell. The editing keys arrive through term.onData like
+// typing.
+export function createTerminal(box: HTMLElement, style: TerminalStyle, passes: (e: KeyboardEvent) => boolean) {
   const term = new Terminal({
     theme: theme(style.dark),
     fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -54,7 +70,10 @@ export function createTerminal(box: HTMLElement, style: TerminalStyle) {
   term.loadAddon(fit);
   term.open(box);
   term.attachCustomKeyEventHandler(e => {
-    const text = e.type === 'keydown' && editing(e);
+    if (e.type !== 'keydown') return true;
+    if (passes(e)) return false;
+    if (linux()) return !copyPaste(term, e);
+    const text = editing(e);
     if (!text) return true;
     e.preventDefault();
     term.input(text);
