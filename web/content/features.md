@@ -3,19 +3,17 @@ title = 'Features'
 toc = false
 +++
 
-Hypercube brings local coding agents together in one macOS app. Native harnesses
-own their tools, credentials, and execution modes.
+Hypercube is a macOS and Linux app for coordinating local coding agents.
 
-- Run Claude Code, OpenCode, Codex, and Pi side by side, choosing from each
-  harness's models and reasoning levels.
-- Delegate work to child sessions in a shared checkout or separate Git
-  worktrees, exchange messages, and speak to any agent directly.
-- Return to saved conversations and archive completed teams. Agents and terminal
-  shells keep running when the app window closes.
-- Browse and search project files, review diffs, and open previews in tabs and
-  split panes beside the conversation.
-- Answer questions and approvals, send follow-ups, interrupt work, and receive
-  notifications about requests and replies.
+| What you can do | Learn more |
+| --- | --- |
+| Run Claude Code, OpenCode, Codex, and Pi with their own models and credentials. | [Harness differences](/docs/harness-support/) |
+| Send prompts, images, corrections, and answers to questions or approvals. | [Manage sessions](/docs/usage/) |
+| Delegate a bounded task or request an independent review. | [Work with a team](/docs/teamwork/) |
+| Share a checkout or isolate edits in separate Git worktrees. | [Sessions and working copies](/docs/introduction/) |
+| Browse files, search text, inspect diffs, and use a session terminal. | [Review files and changes](/docs/review-changes/) |
+| Keep work running after the app closes and return to saved conversations. | [What keeps running](/docs/lifecycle/) |
+| Arrange split panes, change appearance, and navigate with shortcuts. | [Interface reference](/docs/interface/) |
 
-See [Using Hypercube](/docs/usage/) for the supported workflows and
-[Harness differences](/docs/harness-support/) for native harness capabilities.
+Start with [installation](/docs/installation/) and the
+[first-session walkthrough](/docs/getting-started/).

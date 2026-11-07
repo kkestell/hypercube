@@ -1,121 +1,126 @@
 ---
 title: Harness differences
-weight: 5
+weight: 31
 ---
 
 # Harness differences
 
-Each session runs a native coding tool, its harness. Install and authenticate
-that tool before launching a session. Hypercube finds the installed harnesses
-when it starts and when the selector opens, and asks a harness for its models
-and efforts in the session's folder. Hypercube configures each launch without
-rewriting your global or project settings or changing `HOME`.
+A harness is the native coding tool behind a session. Install and authenticate
+it before starting a session. Hypercube uses per-launch configuration: it does
+not rewrite your global or project settings or change `HOME`.
 
 ## Requirements
 
-| Harness | Executable | Model and effort |
+| Harness | Required executable | Model and effort selection |
 | --- | --- | --- |
-| Claude Code (`claude`) | `claude`; works with a Claude Team login | A model and effort its initialization lists. |
-| OpenCode (`opencode`) | OpenCode 2.x | A `provider/model` and a variant offered for that model. |
-| Codex (`codex`) | `codex` | A model and reasoning effort from its model list. |
-| Pi (`pi`) | Pi 1.4 or later | A full `provider/id`; effort is a thinking level the model offers. |
+| Claude Code | `claude`; works with a Claude Team login | A model and effort listed by its initialization. |
+| OpenCode | `opencode`, version 2.x | A `provider/model` and one of its offered variants. |
+| Codex | `codex` | A model and reasoning effort from its model list. |
+| Pi | `pi`, version 1.4 or later | A full `provider/id` and an offered thinking level. |
 
-Each harness rejects a model or effort it does not offer when the session
-starts or changes model, before the first prompt. Without an effort, the
-harness uses its default; Codex, OpenCode, and Pi report the effort they chose,
-and the selector shows it. Listing models starts no conversation: OpenCode
-opens a temporary session without tools and deletes it.
+Hypercube discovers installed harnesses at startup and when the selector opens.
+Models and efforts are discovered in the session's folder. Invalid selections
+are rejected at start or model change, before the first prompt.
+
+An empty effort uses the harness default. Codex, OpenCode, and Pi report the
+chosen effort back to the selector. Listing models does not create a
+conversation; OpenCode reads its native model catalog directly.
 
 ## Messages and model changes
 
-A follow-up during work does not have identical timing across harnesses.
-Neither does changing the model or effort:
-
-| Harness | Follow-up during a turn | Model or effort change |
+| Harness | Follow-up during work | Model or effort change |
 | --- | --- | --- |
 | Claude Code | Read before its next step. | May affect its next model call. |
-| OpenCode | Queued for the next turn, with other waiting messages. | Native controls applied when selected. |
-| Codex | Steers the current turn before its next step. | Used at the next turn start; steering keeps the current settings. |
+| OpenCode | Read at the next step boundary, after running tools finish. | Native controls applied when selected. |
+| Codex | Steers the current turn before its next step. | Used at the next turn start; steering keeps current settings. |
 | Pi | Read after the current step's tool calls, before the next model request. | Native controls applied when selected. |
 
-A partially failed change can leave the model changed and the effort
-unchanged; the selector shows the accepted settings and the error remains
-visible.
+A partially failed change can leave the model changed but the effort unchanged.
+The selector shows accepted settings; the error stays visible in chat.
 
-Interrupt ends the current turn and leaves its output in chat. OpenCode, Codex,
-and Pi also give up pending questions or dialogs when interrupted.
+Interrupting leaves output in the conversation. OpenCode, Codex, and Pi also
+give up pending questions or dialogs when interrupted.
 
 ## Permissions
 
-**Claude Code** runs in auto permission mode. Tool requests that reach Hypercube
-offer Allow and Deny. Typing a response without choosing Allow denies the tool
-and gives Claude the text. Saved permission choices use Claude's tool names.
+Agents are local processes using your credentials. Separate worktrees do not
+restrict filesystem access. Native permission and sandbox behavior still
+depends on the harness:
 
-**OpenCode** allows permissions it asks about once, as with `opencode --auto`.
-A permission denied by OpenCode's own configuration stays denied.
+### Claude Code
 
-**Codex** runs in a workspace-write sandbox with network access and an automatic
-approval reviewer. Git directories are writable, allowing child sessions to
-commit. Hypercube's MCP tools need no approval. Requests the reviewer does not
-settle appear in chat, with Allow, Deny, and session permission where supported.
-If Codex offers cancellation without decline, choosing Deny cancels the turn.
+- Runs in auto permission mode.
+- Tool requests that reach Hypercube offer **Allow** and **Deny**.
+- Typing a response without choosing Allow denies the tool and supplies the
+  text to Claude.
+- Saved permission choices use Claude's tool names.
 
-Codex can save command and file-change approvals. Network-host, write-root, and
-permission requests have no persistent Hypercube grant. MCP tool approvals have
-no Always allow option because Codex does not identify the tool in that request.
+### OpenCode
 
-**Pi** extension dialogs appear as choices, Yes/No, or a text field according
-to the dialog. A timed-out dialog closes; extension errors appear in chat.
+- Allows permissions it asks about once, as with `opencode --auto`.
+- A permission denied by OpenCode's own configuration stays denied.
 
-Claude Code and OpenCode send answers to a group of questions once all are
-answered. Codex does the same for blocking questions; its async questions send
-each answer as a message, and new input closes unanswered async questions. A
-Codex async question leaves the agent working, so it holds up a parent's
-automatic reports until the turn ends; every other question means the agent
-waits for you. OpenCode closes a question it withdraws.
+### Codex
 
-Hypercube answers its own **New session** / **Do it here** questions without
-the harness.
+- Runs in a workspace-write sandbox with network access and an automatic
+  approval reviewer. Git directories are writable so children can commit.
+- Hypercube's MCP tools need no approval. Requests the reviewer does not
+  settle appear in chat with Allow, Deny, and session permission where supported.
+- If cancellation is offered without decline, choosing Deny cancels the turn.
+- Command and file-change approvals can be saved. Network-host, write-root,
+  and permission requests have no persistent Hypercube grant.
+- MCP approvals have no Always allow option because Codex does not identify
+  the tool in that request.
+
+### Pi
+
+- Extension dialogs appear as choices, Yes/No, or a text field.
+- A timed-out dialog closes; extension errors appear in chat.
+
+Saved choices can be reviewed and removed in **Settings**.
+
+## Questions
+
+| Harness | Answer delivery |
+| --- | --- |
+| Claude Code | A group of questions is submitted after all are answered. |
+| OpenCode | A group is submitted after all are answered. Withdrawn questions close. |
+| Codex | Blocking questions wait for all answers. Async answers become individual messages; new input closes unanswered async questions. |
+| Pi | Answers follow the extension dialog's controls. |
+
+Codex keeps working during async questions, so those questions hold up a
+parent's automatic child reports until the turn ends. Other questions mean
+the agent is waiting for you.
+
+Hypercube handles its own **New session** / **Do it here** questions directly,
+without the harness.
 
 ## Usage reports
 
-Context use is the latest request's token count. Other reports vary:
+Context use is the latest request's token count. Other readings vary:
 
 | Harness | Cost | Subscription usage |
 | --- | --- | --- |
 | Claude Code | Reported with the turn result. | Five-hour and seven-day windows, after turns. |
-| OpenCode | Reported for the main conversation. | Not reported. |
+| OpenCode | Main conversation. | Not reported. |
 | Codex | Not reported. | Account limit windows, after turns. |
 | Pi | Session total, including before a resume. | Not reported. |
 
+See [usage indicators](interface.md#usage-indicators) for how readings appear.
+
 ## Conversation storage
 
-Sessions resume their saved native conversation. A failed resume stays failed
-rather than silently opening a new conversation. Pi starts saving with the
-first message, so a Pi session with no saved conversation cannot resume.
+Each session resumes its saved native conversation. A failed resume stays
+failed instead of silently creating a new conversation. Pi starts saving
+with the first message; a Pi session with no saved conversation cannot resume.
 
-Forked children copy a saved native conversation using the same harness.
-A fork of a session in the original checkout shares its folder; a fork of a
-session in its own worktree gets a new worktree. Claude Code, Codex, and Pi can
-fork into another working directory. OpenCode can fork only sessions in the
-original checkout, and requires a version with native fork support.
-A failed fork reports an error instead of starting with fresh
-context. See
-[sessions and working copies](introduction.md#what-the-other-agent-knows).
+Forking also uses native history and fails explicitly if it cannot copy that
+history. See [fork context and directory rules](introduction.md#fresh-and-forked-context)
+and [storage locations and legacy Codex history](storage.md#native-conversations).
 
-Codex uses its native conversation storage, configuration, and credentials:
-`CODEX_HOME` from Hypercube's launch environment, or Codex's default home.
-Conversations appear in Codex's normal history. Hypercube does not select an
-account itself.
+## Native subagent display
 
-Earlier versions stored Codex conversations in `codex/` under Hypercube's state
-directory, including `codex/homes/` for additional accounts. Those files and
-Hypercube's transcripts are preserved. Codex has no supported cross-home import,
-so existing private conversations cannot resume through this integration.
-Their saved chats remain readable; start a new session to use the native
-integration.
-
-OpenCode shows the parent tool's result for native subagents. Their live child
-transcripts are not displayed because OpenCode does not identify the launching
-tool.
-Other harnesses retain child transcripts where their protocols supply that ID.
+Harness-created subagents are not Hypercube child sessions. OpenCode shows
+the parent tool's result, not live subagent transcripts, because its protocol
+does not identify the launching tool. Other harnesses retain child transcripts
+where their protocols supply that ID.

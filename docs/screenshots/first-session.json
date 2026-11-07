@@ -1,0 +1,47 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "turns": [{
+            "prompt": "Check the links in the Field Notes homepage without changing files",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The homepage links to the getting-started guide and the sync guide. Both source pages are present. No files changed.", "done": true}]
+          }]
+        }
+      ]
+    },
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "turns": [{
+            "prompt": "Review the page template for missing metadata; report only",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "The page template includes a title and viewport metadata. A description would need a corresponding field in the page data. I have not changed the template.", "done": true}]
+          }]
+        },
+        {
+          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
+          "turns": [{
+            "prompt": "Explain what this project does. Identify its main entry point and how to run its tests, based on the files you find. Do not edit files, install anything, or run the tests.",
+            "end": "idle",
+            "usage": {"context": 12480, "window": 272000},
+            "items": [
+              {"id": "read", "kind": "tool", "tool": "exec_command", "input": {"cmd": "cat README.md main.go build_test.go"}, "output": "README.md describes a static site generator. main.go handles the build and serve commands. build_test.go contains TestBuildRendersPages.", "done": true},
+              {"id": "answer", "kind": "text", "text": "## What this project does\n\n**harbor** is a small static site generator. It turns Markdown pages into HTML using Go templates.\n\n| Folder | Purpose |\n| --- | --- |\n| `content/` | Markdown pages and their front matter |\n| `templates/` | Go templates used to render pages |\n| `public/` | Generated output, replaced by each build |\n\n## Main entry point\n\n`main.go` contains `main()`. It dispatches the `build` command to `Site.Build()` in `build.go`, or the `serve` command to a local preview of the generated output.\n\nStart with `main.go` for command handling and `build.go` for page rendering.\n\n## Tests\n\n`build_test.go` contains `TestBuildRendersPages`. It creates a temporary page and template, builds the site, and checks the generated HTML.\n\nThe test command, from the repository root, is:\n\n```sh\ngo test ./...\n```\n\nI only read the files. **No tests were run, no dependencies were installed, and no files were changed.**", "done": true}
+            ]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [1, 1],
+  "workbench": {"sizes": {"sidebar": 400, "rightPanel": 260, "panel": 240}}
+}

@@ -28,7 +28,7 @@ const sceneFiles = process.argv.slice(2).filter(arg => arg.endsWith('.json'));
 // The page's own default workbench, which a scene's workbench overrides.
 const defaultWorkbench = {
   sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
-  sizes: {sidebar: 290, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
+  sizes: {sidebar: 400, rightPanel: 320, panel: 240}, sidebarTab: 'sessions',
   collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
 };
 
@@ -307,7 +307,7 @@ async function capture(scene, ids, backend, window, name) {
   // settled waits until the page shows the selected session with its open
   // tabs' content, the window has the theme, and nothing is loading.
   const workbench = views.workbench;
-  const tabs = workbench.rightPanel && workbench.rightTab === 'files' ? ['/files?', '/changes?'] : [];
+  const tabs = workbench.rightPanel && workbench.rightTab === 'files' ? ['/files/tree?', '/changes?'] : [];
   const panes = node => node ? (node.tabs ? [node] : node.children.flatMap(panes)) : [];
   for (const pane of panes(top.view?.tabs.root)) {
     const [kind, file] = [pane.active.slice(0, pane.active.indexOf(':')), pane.active.slice(pane.active.indexOf(':') + 1)];

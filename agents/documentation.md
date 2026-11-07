@@ -1,67 +1,105 @@
-# Documentation
+# Documentation maintenance
 
-The example in `docs/configuration.md` is the user's
-`~/.config/hypercube/config.json`. Change both together so they stay the same.
+User documentation starts in [README.md](../README.md) and lives in `docs/`.
+Contributor setup starts in [CONTRIBUTING.md](../CONTRIBUTING.md); architecture
+and project rules live in `agents/`. Keep these audiences separate.
 
-`README.md` indexes the user documentation in `docs/`. Update a guide only
-when the behavior it describes changes. `AGENTS.md` is the entry point for
-agent instructions and should rarely change. Developer reference lives in
-[architecture](architecture.md) and
-[development and releases](development.md). Outstanding work belongs in
-[GitHub Issues](https://github.com/kkestell/hypercube/issues).
+## Structure and writing
 
-The code describes the implementation. A fact lives in one place. Correct or
-delete inaccurate text without expanding it. Do not create new user guides
-unless asked.
+Use [Diátaxis](https://diataxis.fr/) to choose a page's purpose:
 
-## Documentation screenshots
+| Type | Reader's need | Existing pages |
+| --- | --- | --- |
+| Tutorial | Learn by completing a safe, concrete exercise. | `getting-started.md` |
+| How-to | Complete a particular task. | `installation.md`, `usage.md`, `teamwork.md`, `review-changes.md`, `upgrades.md` |
+| Reference | Look up precise behavior, values, or limits. | `configuration.md`, `harness-support.md`, `interface.md`, `storage.md` |
+| Explanation | Understand relationships and tradeoffs. | `introduction.md`, `lifecycle.md` |
 
-```sh
-make screenshots
-```
+- Give each page one purpose. Link to another type rather than interrupting a
+  procedure with a reference dump or an architectural explanation.
+- Describe supported product workflows, not every entry point the
+  implementation exposes. User guides cover the desktop app; its web server
+  and development browser view are not user-facing alternatives.
+- Start with the outcome and prerequisites. Use task headings, short
+  paragraphs, numbered procedures, and tables for lookup.
+- Use screenshots where readers need to locate a control or recognize a
+  result. Place them beside the relevant step and explain what to look for.
+- Keep required steps separate from optional choices. Put destructive effects
+  before the command, and distinguish macOS from Linux.
+- Document public defaults, not a maintainer's personal settings or model
+  rankings. Do not change local configuration when editing documentation.
+- Keep each fact in one authoritative location. Verify behavior against code;
+  correct or remove inaccuracies rather than accumulating caveats.
+- Add a guide only when requested or when a requested documentation
+  restructuring needs it. Update the README and website landing links together.
+- Preserve existing page paths when practical; update live links and anchors
+  when moving content. Historical plans and reviews are not current guides.
 
-This regenerates `docs/images/<scene>-light.png` and `<scene>-dark.png` for
-each scene in `docs/screenshots/`. A scene file lists workspaces, each a copy
-of a fixture repository in `docs/screenshots/repos/` with an optional patch of
-uncommitted changes, and their sessions: each session's `settings` (harness,
-model, and effort, as the session shows them), each turn's prompt, the transcript
-items in the plugin protocol's JSON, how the turn ends (`idle`, `working`, or
-`ask`), the children it starts, the tasks it offers, and its own-initiative
-suggestions. A turn may write fixture files and run Git commands in its session
-directory with `git` steps; `worktree` starts a top-level session on its own
-branch. A session's `view` is the page's saved tabs and splits; `view.expanded`
-names `activity` or item IDs to open in a saved turn. `select` picks the shown
-session, and `size` is the window in points.
-[scripts/screenshots/main.js](../scripts/screenshots/main.js) plays each scene
-through a real backend with [the scripted plugin](../plugins/scripted/main.go),
-opens the real desktop window, and captures it. Everything else it creates is
-deleted.
+For prose-only changes, inspect the diff and links; do not run code checks.
 
-The window must fit on a Retina display. On first use macOS asks to grant the
-terminal the Screen Recording permission. Run one capture at a time in one
-visible terminal window, and leave the screenshot window in front until the run
-ends: a covered window stops painting, and the driver fails a capture that
-differs from the page.
+## Screenshots
 
-Open every image the run writes and check its theme, its content, and the
-window's title bar buttons. Give a new scene the density of the existing ones:
-several sessions across workspaces, a transcript that fills its column, and the
-Files panel open.
+Run `make screenshots` only when captures need changing. It regenerates
+`docs/images/<scene>-light.png` and `-dark.png` from scenes in
+`docs/screenshots/`.
+
+The [capture driver](../scripts/screenshots/main.js) runs a real backend with
+the [scripted plugin](../plugins/scripted/main.go), opens the desktop app,
+and captures that window, including its native buttons and rounded corners.
+Temporary resources are deleted afterward.
+
+### Scene contents
+
+Each scene declares:
+
+- Workspaces copied from fixture repositories in `docs/screenshots/repos/`,
+  with optional patches of uncommitted changes.
+- Session settings as shown in the app: harness, model, and effort.
+- Turn prompts, transcript items in plugin-protocol JSON, and ending state
+  (`idle`, `working`, or `ask`).
+- Children, task offers, and agent-initiated suggestions.
+- Optional fixture-file writes and Git steps; `worktree` gives a top-level
+  session its own branch.
+- Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
+  to expand in a saved turn. `select` chooses the session; `size` sets window
+  dimensions in points.
+
+### Capture requirements
+
+Use a Retina display large enough for the scene's window. Native window capture
+requires macOS Screen Recording permission for the app running the command.
+If permission is denied, stop and wait for the user to resolve it; do not change
+permissions automatically. Run one capture at a time and keep the screenshot
+window in front: a covered window can stop painting, and the driver rejects a
+capture that differs from the rendered page.
+
+Open every generated image and check theme, content, toolbar layout, and native
+window buttons.
+Keep toolbars fully visible and session labels readable; do not squeeze the
+sidebar to fit more content. Use several sessions across workspaces, a
+transcript filling its column, and the Files panel open. Commit new captures
+with their scene changes.
 
 ## Website
 
-`make web-build` builds the Hugo site into `web/public/`; `make web-serve`
-previews it at http://localhost:1313/. Both use the pinned Hugo version in
-`web/Makefile`. `make check` includes the website build.
+- `make web-build` builds into `web/public/`.
+- `make web-serve` previews at http://localhost:1313/.
+- Both use the Hugo version pinned in `web/Makefile`; `make check` includes
+  the website build.
 
-The guides in `docs/` and screenshots in `docs/images/` are shared by GitHub
-and the website. Hugo mounts them at `/docs/` and `/docs/images/`; screenshot
-scenes and fixtures in `docs/screenshots/` are not published. In the guides,
-link to other guides with relative `.md` paths. Embed each screenshot as a
-`<picture>` with a `prefers-color-scheme: dark` source for `-dark.png` and an
-`<img>` for `-light.png`, as the README does.
+Hugo publishes `docs/*.md` at `/docs/` and `docs/images/` at `/docs/images/`.
+Screenshot scenes and fixtures are not published. Guides use relative `.md`
+links to one another; links outside the published guides use GitHub URLs.
+Keep shared Markdown H1s and YAML frontmatter (`title`, `weight`); the website
+suppresses duplicate H1s.
 
-For Cloudflare Pages, use the repository root as the build root,
-`make web-build` as the build command, and `web/public` as the output directory.
-Commit screenshots generated locally with `make screenshots`; the website
-build does not run the macOS screenshot capture. Keep `web/public/` gitignored.
+In shared guides, use Markdown images pointing to `images/<scene>-light.png`.
+The website's image renderer resolves the path and supplies the dark variant;
+GitHub displays the light image. Raw `<picture>` markup is omitted by Hugo.
+The README is not published through Hugo and can use `<picture>` for both
+themes. Do not regenerate screenshots just for prose changes.
+
+For Cloudflare Pages, use the repository root, build command `make web-build`,
+and output directory `web/public`. That build does not capture screenshots.
+Keep generated output gitignored. See [website instructions](../web/AGENTS.md)
+before changing site configuration or layouts.

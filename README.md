@@ -1,147 +1,56 @@
 # Hypercube
 
-A macOS and Linux app for running Claude Code, OpenCode, Codex, and Pi sessions together.
-A session can ask another agent to review its changes, delegate implementation
-on a separate branch, or coordinate with an agent in another repository.
-Agents run locally with your existing credentials.
+Run Claude Code, OpenCode, Codex, and Pi together in a macOS or Linux app.
+Ask an agent to delegate a task, get a second opinion, or review another
+agent's work. Each session has its own conversation; you choose whether agents
+share working files or use separate Git branches.
 
-## Setup
-
-[Install Hypercube](docs/installation.md) and at least one authenticated
-harness. Hypercube lists the models each installed harness offers; see
-[configuration](docs/configuration.md) for defaults and guidance for child
-sessions.
-
-## Features
+Agents run locally with your installed coding tools and existing credentials.
+They can keep working after you close the app.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
-  <img alt="A lead session working beside two child sessions, with a file and a diff split beside its conversation" src="docs/images/overview-light.png">
+  <img alt="A parent session and two children, with a file and diff beside the conversation" src="docs/images/overview-light.png">
 </picture>
 
-### Agents and models
+## Start here
 
-- **Multiple harnesses.** Claude Code, OpenCode, Codex, and Pi sessions run side by side.
-- **Existing accounts and tools.** Agents use your installed harnesses and credentials, with your settings preserved.
-- **Discovered models.** Each session chooses from the models and efforts its harness offers; child sessions inherit their parent's unless guidance or you call for others.
-- **Session defaults.** New sessions start with the workspace's latest settings or a default, and a choice of original checkout or worktree.
-- **Model and effort changes.** A session can continue with a different model or effort.
-- **Follow-ups and interruption.** You can send corrections during work or interrupt the current turn.
+1. [Install Hypercube](docs/installation.md).
+2. Follow [Your first session](docs/getting-started.md) to explore a project
+   without changing files.
 
-### Sessions and saved conversations
+You need an installed, authenticated coding tool. See
+[supported harnesses](docs/harness-support.md#requirements) for requirements.
 
-- **Saved conversations.** Sessions retain their history and can resume earlier work.
-- **Session titles.** Sessions have automatic initial titles and can be renamed by you or the agent.
-- **Agent restart.** An agent can restart while retaining its conversation.
-- **Background work.** Agents, communication, and terminal shells keep running when the desktop app is closed.
-- **Recovery after interruptions.** Active agents reconnect after app or service restarts, and saved conversations remain available.
-- **Archiving and unarchiving.** Completed teams can leave the active list while their conversations remain readable and searchable, and archived sessions can return to active use.
-- **Ending child sessions.** A parent can end individual child sessions while keeping their conversation history.
-- **Session and workspace deletion.** Saved conversations and workspace entries can be removed without deleting the original project folder.
+## How-to guides
 
-### Teams and communication
+Choose the task you want to complete:
 
-- **Delegation to child sessions.** Agents can assign work to child sessions with different harnesses, models, and efforts.
-- **Task placement.** You can choose whether a new task belongs in the current session or a separate session.
-- **Suggested work.** Agents can propose additional tasks for you to review before they start.
-- **Fresh or forked context.** Child sessions can begin with a focused assignment or inherit their parent's conversation.
-- **Shared or separate working files.** Child sessions can share a checkout, use their own branch and worktree, or work in another project directory.
-- **Direct child conversations.** Each child session has its own conversation where you can inspect its work and send prompts.
-- **Agent communication.** Parent and child agents exchange messages, and agents can coordinate across workspaces.
-- **Conversation access.** Parent agents can read conversations from their child sessions and other top-level sessions to understand prior work.
-- **Visible communication.** Messages between agents appear in their conversations.
-- **Automatic child reports.** Parent agents receive previews of child responses and notices of failures.
-- **Visible team structure.** Child sessions are grouped beneath their parent in the sidebar.
+- [Manage sessions](docs/usage.md) — start, steer, resume, and archive work.
+- [Work with a team](docs/teamwork.md) — delegate, review, and merge changes.
+- [Review files and changes](docs/review-changes.md) — inspect output beside chat.
+- [Upgrade Hypercube](docs/upgrades.md).
 
-### Workspaces and Git
+## Reference
 
-- **Local workspaces.** Git repositories and ordinary project folders organize sessions by project.
-- **Original checkout or worktree.** Sessions can use your current working files or have a separate Git branch and worktree.
-- **Worktree preparation.** New worktrees include submodules and selected local configuration or dependencies.
-- **Changed-file indicators.** The file tree shows added, modified, untracked, and deleted files with change counts.
-- **Diff review.** Staged, unstaged, and untracked changes have highlighted diffs with search and change navigation.
-- **Branch and merge status.** Sessions show their branch, unmerged commits, and uncommitted changes.
-- **Agent-assisted merging.** Agents can commit work, merge branches, and resolve conflicts.
-- **Cleanup safeguards.** Uncommitted files and unmerged work are protected during worktree cleanup.
-- **External project tools.** Project directories can open in Visual Studio Code, Finder on macOS or Files on Linux, and Terminal on macOS.
+Look up a setting, capability, shortcut, or path:
 
-### Prompts and conversations
+- [Configuration](docs/configuration.md)
+- [Harness differences](docs/harness-support.md)
+- [Interface reference](docs/interface.md)
+- [Files and storage](docs/storage.md)
 
-- **Multiline prompts and prompt history.** Earlier prompts can be recalled and edited.
-- **File mentions.** Project file suggestions make it easy to reference files in prompts.
-- **Image attachments.** Prompts can include multiple images, with or without text.
-- **Saved drafts.** Unsent prompt text and typed answers survive reloads, and unfinished new sessions remain accessible in the sidebar.
-- **Live activity.** Responses, reasoning, tool calls, errors, and questions stream into the conversation.
-- **Expandable work details.** Tool inputs and outputs, agent messages, and subagent activity can be inspected within the conversation.
-- **Collapsed completed work.** Finished turns group intermediate activity beneath an elapsed-time summary, keeping the final answer prominent.
-- **Formatted responses.** Conversations display Markdown, tables, highlighted code, links, and images, with copying for messages and code blocks.
-- **Scroll control.** Earlier output stays in view while new activity arrives, with a quick return to the latest output.
-- **Conversation search.** Text search includes match counts and navigation between results.
+## Explanation
 
-### Questions, approvals, and notifications
+Understand the choices behind a workflow:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/attention-dark.png">
-  <img alt="Notification cards with a question and a command approval from two other sessions" src="docs/images/attention-light.png">
-</picture>
+- [Sessions, context, and working copies](docs/introduction.md)
+- [What keeps running when you leave](docs/lifecycle.md)
 
-- **Questions and approvals.** Pending requests remain visible alongside the composer, and answered requests remain in the conversation history.
-- **Answers across sessions.** Notification cards let you answer another agent's request without leaving the current conversation.
-- **Reply and error alerts.** Notifications surface new replies and problems across your sessions.
-- **Remembered permissions.** Saved tool approvals can be reviewed and revoked.
-- **Desktop notifications.** Native notifications announce requests and replies and link back to their conversations.
-- **Notification preferences.** Request alerts, reply alerts, desktop notifications, and sound are configurable.
-- **Activity and attention indicators.** Working agents, unanswered requests, and unseen replies are easy to identify.
+## Contributing
 
-### Usage monitoring
+Building or changing Hypercube? Start with [Contributing](CONTRIBUTING.md).
+User guides above do not require a source checkout.
 
-- **Context usage.** Sessions show reported context use and token counts.
-- **Reported costs.** Cost information from harnesses appears alongside session usage.
-- **Subscription usage.** Reported usage windows and reset countdowns help track subscription limits.
-
-### Navigation and layout
-
-- **Workspace and team navigation.** Collapsible groups organize active sessions, child sessions, and archived sessions.
-- **Search across conversations.** Titles, conversation text, and agent messages are searchable across workspaces and archived sessions.
-- **Flexible panes and tabs.** Conversations and files can share a resizable layout with split panes and movable tabs.
-- **Saved layouts.** Session tabs, open files, scroll positions, and panel arrangements are remembered.
-- **Reading preferences.** Fixed reading width, word wrap, terminal text size, and zoom adjust the reading experience.
-- **Light and dark appearance.** The app can follow macOS appearance or use a chosen theme.
-- **Keyboard navigation.** Shortcuts and keyboard-accessible trees cover sessions, panels, search, and file navigation.
-
-### Files and search
-
-- **File browsing.** Each session has a project file tree, preview tabs, and file-path copying.
-- **Source viewing.** Read-only source views provide syntax highlighting, line numbers, word wrap, and search.
-- **Document previews.** Markdown, HTML, and SVG have rendered previews and source views.
-- **Media previews.** Images, audio, video, and PDFs open within the app.
-- **Live file updates.** File trees, open files, and diffs follow changes as agents work.
-- **Quick file search.** Filename and path search provides quick access to project files.
-- **Content search.** Project-wide text search shows highlighted matches linked to their files.
-- **Files opened by agents.** Agents can present local files in your tabs with relevant lines highlighted.
-
-### Terminal
-
-- **Per-session terminals.** Each session has an integrated shell in its working directory, with recent output retained across reconnects.
-
-### Desktop app
-
-- **Menu bar and Dock access.** On macOS, Hypercube remains accessible from the menu bar and Dock when its main window is closed.
-- **Native desktop controls.** The app includes native menus, fullscreen, zoom, and remembered window placement.
-- **Background startup at login.** Hypercube's background service can start when you log in, through launchd on macOS or a systemd user service on Linux.
-
-## Documentation
-
-- [Sessions, context, and working copies](docs/introduction.md) — what agents
-  share, what they know about each other, and where their edits go.
-- [Using Hypercube](docs/usage.md) — starting sessions, reviewing work, answering
-  requests, and returning to a task later.
-- [Configuration](docs/configuration.md) — preferences, choosing models, and
-  local files needed by worktrees.
-- [Harness differences](docs/harness-support.md) — follow-ups, permissions,
-  model changes, and version requirements.
-- [Installation](docs/installation.md) — beta downloads, checkout builds, the
-  login service, upgrades, and recovery.
-
-Developers: start with [AGENTS.md](AGENTS.md) for instructions, architecture,
-and development and release references.
+Report bugs and request features in
+[GitHub Issues](https://github.com/kkestell/hypercube/issues).

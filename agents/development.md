@@ -1,9 +1,10 @@
 # Development and releases
 
 Start with [AGENTS.md](../AGENTS.md) for project scope and document routing.
-Source builds need Git, the Go version in [go.mod](../go.mod), and Bun.
-Packaging downloads Electron on first use. User installation, service management,
-and recovery are in [the installation guide](../docs/installation.md).
+For source setup, local builds, and installing a checkout, use
+[Contributing](../CONTRIBUTING.md). This reference covers project conventions,
+workflow, testing, and releases. App users should start with the
+[user documentation](../README.md#start-here).
 Documentation procedures are in [documentation](documentation.md).
 
 ## Code
@@ -25,7 +26,8 @@ Documentation procedures are in [documentation](documentation.md).
 - `scripts/linux/` — the Linux test container (`scripts/linux/run`).
 - `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
   and `make web-serve`.
-- `docs/` — user documentation, indexed by `README.md`.
+- `docs/` — user tutorials, how-to guides, reference, and explanations, indexed
+  by `README.md` and the website's documentation landing page.
 - `agents/` — developer references, research, plans, work logs, and reviews.
 
 ## Code style
@@ -214,33 +216,14 @@ you find them, including leftovers from earlier builds and installs.
 
 ## Develop without replacing the installed app
 
-```sh
-make dev
-```
+Follow [Run a development copy](../CONTRIBUTING.md#run-a-development-copy).
+Additional controls:
 
-Open http://localhost:4281/. This uses separate configuration and state, with a
-scratch repository of sample files under `~/projects/hypercube-dev/repo`, which
-the browser view starts with as its workspace. Use `make dev-app` when testing
-desktop app behavior, including adding workspaces and opening folders in other
-apps; it also runs a development desktop app connected to the development
-backend.
-
-Source changes rebuild the development app and reload the interface. A failed
-build leaves the previous build running. Successful rebuilds preserve agents
-and terminal shells.
-
-- **Ctrl-C** or `make dev-stop` ends the development backend, desktop app, and
-  their processes.
 - `make dev-clean` also removes disposable resources and native development
   conversations, including holders left by a crash.
 - `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.
 
 See [scripts/dev](../scripts/dev) for cleanup details.
-
-For a build alone, run `make build` and use `bin/hypercube`. The bundle is
-`bin/Hypercube.app` on macOS and `bin/Hypercube` on Linux. `make
-install-service` builds the checkout, including uncommitted changes, without
-requiring a release tag or running the full checks.
 
 ## Prepare an official beta
 
@@ -274,5 +257,5 @@ are under `bin/release/`; it does not install the app or restart the service.
 Go embeds the release tag or commit-based version, adding `+dirty` for
 uncommitted changes. Builds without Git metadata report `devel`. The bundle's
 `CFBundleGetInfoString` records the full identity; its numeric version fields
-contain the version's three-number core. See [build identification](../docs/installation.md#identify-a-build)
+contain the version's three-number core. See [build identification](../docs/storage.md#build-identities)
 for the user-visible checks.

@@ -130,5 +130,5 @@
     }
   ],
   "select": [1, 1],
-  "workbench": {"sizes": {"sidebar": 290, "rightPanel": 300, "panel": 240}}
+  "workbench": {"sizes": {"sidebar": 400, "rightPanel": 300, "panel": 240}}
 }

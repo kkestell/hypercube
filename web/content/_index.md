@@ -3,34 +3,30 @@ title = 'Hypercube'
 toc = false
 +++
 
-A macOS app for running coding agents together.
+Run local coding agents together on macOS and Linux.
 
-## Install
+Hypercube brings Claude Code, OpenCode, Codex, and Pi into one app. Use your
+installed tools and existing credentials. Give each session its own model,
+follow its work, and ask agents to help one another.
 
-[Install Hypercube](/docs/installation/) from a beta download or a source build.
+[Install Hypercube](/docs/installation/) ·
+[Try your first session](/docs/getting-started/)
 
-## About Hypercube
+## One task or a team
 
-### Your coding tools in one place
+Start with a single conversation. When you need a second opinion or independent
+work, ask for another agent. Children have their own chats, exchange messages
+with their parent, and report back when done.
 
-Run Claude Code, OpenCode, Codex, and Pi side by side. Hypercube uses your installed tools and existing credentials, with your settings preserved. Choose a model and reasoning level for each session.
+## Shared files or separate branches
 
-### Agents that work as a team
+Review uncommitted work in the same checkout, or let independent tasks run in
+separate Git worktrees. Inspect the results before asking an agent to merge them.
 
-Ask an agent to delegate implementation, get a second opinion, or have another agent review its changes. Each child session has its own conversation. Agents exchange messages as they work, and you can follow those conversations or speak to any agent directly.
+## The work beside the conversation
 
-### Parallel work on separate branches
+Browse files, read diffs, search the project, and open a terminal without leaving
+the session. Answer questions and approvals as they arrive. Close the app
+without ending active agents, then return to their saved conversations.
 
-Let agents share your current checkout or give them separate Git worktrees, each with its own files and branch. Independent tasks can move forward in parallel. Review the results and ask an agent to merge them when you are ready.
-
-### Conversations you can return to
-
-Sessions keep their history so you can return to earlier work. Close the app while agents and terminal shells keep running in the background, then reopen it to pick up where you left off. Archive completed work without losing its conversation.
-
-### Review beside the conversation
-
-Browse files, inspect diffs, search your project, and use a terminal alongside the chat. Open source files, rendered Markdown, images, and other previews in movable tabs and split panes, keeping the work and the discussion together.
-
-### Stay involved as work happens
-
-Send a correction during a turn, interrupt an agent, or answer a question or approval request from the conversation. Notifications bring requests and replies from other sessions to your attention, so you can keep a team moving without watching every chat.
+[Read the documentation](/docs/) · [See features](/features/)

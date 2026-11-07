@@ -22,4 +22,4 @@ URL until deployment. Follow the root `AGENTS.md`.
 - `public/`, `resources/`, `.hugo_build.lock`, and `bin/` are generated and
   gitignored. Never edit them. `make check` includes the website build.
 
-Deployment settings are in `../agents/development.md` under Website.
+Deployment settings are in `../agents/documentation.md` under Website.

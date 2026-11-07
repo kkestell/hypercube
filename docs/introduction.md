@@ -1,104 +1,89 @@
 ---
 title: Sessions, context, and working copies
-weight: 3
+weight: 40
 ---
 
 # Sessions, context, and working copies
 
-A session has its own conversation and working directory. Two sessions can have
-separate histories while editing exactly the same files. Starting another chat
-does not create another checkout.
+**A separate conversation does not mean separate files.** Each session has
+its own history and a working directory. Two agents can know different things
+while editing the same checkout.
 
-## Working in the same checkout
+## Workspaces and sessions
 
-Sessions you create yourself are top-level sessions. They use the workspace's
-original folder by default. A workspace is a project folder; for Git projects,
-it is the top level of the checkout.
-Sessions using that folder share files, staged changes, and the current branch.
-If one changes a file or switches branches, the others see that change.
+A workspace is a project folder. For Git projects, it is the top level of the
+checkout. Sessions you create yourself are top-level sessions. An agent can
+create children, grouped beneath it in the sidebar; that original session is
+their parent.
 
-This is useful for reviewing work that has not been committed. For example,
-ask an agent:
+The parent gives each child an assignment and receives its results. The child
+has a conversation you can inspect and address directly. It is not merely a
+tool call hidden inside the parent's chat.
 
-> Have another agent review the uncommitted changes in this checkout.
-> Ask it to report findings without editing files.
+## Shared checkout or separate worktree
 
-The agent can create a child in the same directory. Your original session is
-its parent. That reviewer sees the actual working files, including changes
-absent from Git history. Its chat appears beneath the parent in the sidebar.
+| Arrangement | What agents share | Best suited to |
+| --- | --- | --- |
+| Same checkout | Working files, staged changes, current branch. | Reviewing uncommitted changes or tightly coordinated work. |
+| Separate Git worktrees | Committed starting point; each has its own working files, index, and branch. | Independent edits that will be merged later. |
 
-## Working on separate branches
+In a shared checkout, a file edit or branch switch affects every session using
+that folder. Separate conversations do not prevent those collisions.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="images/worktrees-dark.png">
-  <img alt="Sessions on separate branches with uncommitted, unmerged, and merged work" src="images/worktrees-light.png">
-</picture>
+A new worktree starts at the current commit, not the current uncommitted
+working files. A task that depends on uncommitted changes therefore needs
+either the shared checkout or a commit to start from. Ignored local files can
+be supplied through [`.worktreeinclude`](configuration.md#worktreeinclude).
 
-For independent edits, a child can have its own Git worktree: another checkout
-on its own branch. The parent can keep working without sharing staged files
-or mixing the child's edits into its own working copy.
+![Sessions on separate branches showing uncommitted, unmerged, and merged work](images/worktrees-light.png)
 
-A parent might therefore use both arrangements:
+A child's branch merges into its parent's branch. A top-level worktree's
+branch merges into the workspace's original checkout. This makes the parent
+responsible for integrating delegated work before the child is ended.
 
-```text
-Parent session         original checkout
-├── Review child       same checkout, including uncommitted edits
-└── Implementation     separate worktree and branch
-```
+Worktrees separate edits, not access permissions. These are trusted local
+agents with your credentials and access to the rest of your filesystem.
+Outside Git, children need existing directories instead of managed worktrees.
 
-A new worktree starts at the parent's current commit. It does **not** include
-the parent's uncommitted changes. If a child's work depends on those changes,
-they need to be committed first, or the child needs to use the existing checkout.
-Ignored local files such as `.env` can be supplied through
-[`.worktreeinclude`](configuration.md#local-files-in-worktrees).
+## Fresh and forked context
 
-Work from a child's branch reaches the parent through a Git merge. The child
-is instructed to commit on its branch; the parent merges it when asked. Ending
-the child removes its managed worktree only after Git confirms that its changes
-are committed and merged.
+**Fresh children** receive their assignment and local instructions. They do
+not inherit the parent's discussion. This gives an independent reviewer a
+focused brief rather than the reasoning it is meant to challenge.
 
-You can also give a session you create its own worktree: turn on **Worktree**
-before its first prompt. Its children's branches merge into that session's
-branch. The **Merge** button below its message box asks the agent to integrate
-its work into the original checkout.
+**Forked children** inherit the parent's saved native conversation at the
+moment of the fork. Their visible Hypercube transcript begins with their own
+assignment. A fork keeps the parent's harness, though it can choose another
+model. Fresh children can use any installed harness.
 
-Outside Git, children need an existing directory because Hypercube cannot
-create worktrees. Worktrees separate working files; agents still have access
-to the rest of your local filesystem.
+Context and files are separate choices, but forks have directory constraints:
 
-## What the other agent knows
+| Parent's location | Fork's location |
+| --- | --- |
+| Original checkout | Same folder, including uncommitted changes. |
+| Managed worktree | New worktree from the parent's last commit. |
 
-A fresh child receives its assignment and local instructions. A forked child
-inherits the parent's saved native conversation at the time it starts; its
-Hypercube transcript begins with its own assignment. Forks use the parent's
-harness and can choose another model. A fork works where its parent works: a
-parent in the original checkout shares its folder, uncommitted files included,
-with the fork, and a parent in its own worktree gives the fork a new worktree
-from its last commit. A child uses its parent's harness, model, and effort unless the parent passes
-others, and fresh children can use any installed harness. Native
-restrictions still apply: OpenCode forks need the parent's folder, so they
-cannot use a new worktree.
+Claude Code, Codex, and Pi support the second arrangement. OpenCode requires
+the parent's folder, so it can fork only from an original-checkout session,
+with a version that supports native forks.
 
-When a child successfully finishes a turn, Hypercube automatically reports the
-first 400 characters of its final response. Progress text is excluded. A
-longer response's report gives its full length, and the parent can read the
-child's transcript, or any top-level session's, with its `read_session` tool.
-Reports wait until the parent is idle and no live child is working, then arrive
-together and let the parent continue. A child waiting for your answer does not
-hold them up: the report names it, and the parent continues other work while
-you answer it. Failed launches and ended children do not hold them up either.
+## How agents communicate
 
-Agents can still send explicit messages during work. These do not wait for the
-other children to finish. Messages appear in both conversations, so you can
-see what was communicated. You can also speak to a child directly.
+A parent can message its children and other top-level sessions, including
+those in other workspaces. A child can message only its parent and cannot
+create children. Ended sessions cannot receive agent messages.
 
-A parent can message its children and other top-level sessions, even in
-another workspace. A child can message only its parent and cannot create
-children of its own. Ended sessions cannot receive agent messages.
+Explicit messages arrive during work and appear in both conversations.
+Automatic completion reports wait until the parent is idle and no child is
+working, then arrive together. A child waiting for your answer, a failed
+launch, or an ended child does not hold up those reports.
 
-Each session starts when it is used and stops after it has been idle; see
-[session lifecycle](usage.md#resume-and-cleanup).
+Each completion report contains the first 400 characters of the child's final
+response, not its progress text. Longer replies include their full length;
+the parent can read the full child conversation or any top-level session's
+conversation when it needs more context.
 
-Native subagents created by a harness are separate from Hypercube children.
-Their activity appears inside a tool call in the existing chat rather than as
-another session in the sidebar.
+Native subagents created inside a harness are different from Hypercube
+children. They appear within a tool call, not as sessions in the sidebar.
+
+For practical prompts and merge steps, see [Work with a team](teamwork.md).
