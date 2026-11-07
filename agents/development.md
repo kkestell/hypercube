@@ -15,6 +15,7 @@ Documentation procedures are in [documentation](documentation.md).
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness. `plugins/scripted` plays documentation screenshot
   scenes and never ships.
+- `make/` — the macOS and Linux packaging rules the `Makefile` includes.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
 - `scripts/linux/` — the Linux test container (`scripts/linux/run`).
@@ -151,8 +152,10 @@ delivery. Do not delegate the commit or merge to the three agents.
 
 `scripts/linux/run [command]` runs the command in a new Debian 13 container
 that boots systemd, then removes the container. The default command is `make
-check`; `make linux-check` runs it. The container runs natively on Apple
-Silicon and needs Docker.
+check`; `make linux-check` runs it. `make linux-test` runs the Linux tests:
+`scripts/linux/test-bundle` builds the bundle and checks its layout, its
+executables, and the backend started from it. The container runs natively on
+Apple Silicon and needs Docker.
 
 The command runs as the user `tester`, which has a systemd user manager, under
 Xvfb. The image has Go and Bun at the versions the repository declares,
@@ -199,9 +202,10 @@ and terminal shells.
 
 See [scripts/dev](../scripts/dev) for cleanup details.
 
-For a build alone, run `make` and use `bin/hypercube` or `bin/Hypercube.app`.
-`make install-service` builds the checkout, including uncommitted changes,
-without requiring a release tag or running the full checks.
+For a build alone, run `make build` and use `bin/hypercube`. The bundle is
+`bin/Hypercube.app` on macOS and `bin/Hypercube` on Linux. `make
+install-service` builds the checkout, including uncommitted changes, without
+requiring a release tag or running the full checks.
 
 ## Prepare an official beta
 

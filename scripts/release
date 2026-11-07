@@ -1,5 +1,6 @@
 #!/bin/bash
-# Package a clean, tagged Apple Silicon beta without touching the installed app.
+# Package a clean, tagged beta for the machine it runs on without touching the
+# installed app.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,22 +18,44 @@ if [ -n "$(git status --porcelain)" ]; then
 	echo "release: commit or remove checkout changes before packaging" >&2
 	exit 1
 fi
-if [ "$(go env GOOS)/$(go env GOARCH)" != darwin/arm64 ]; then
-	echo "release: build on macOS for Apple Silicon (darwin/arm64)" >&2
-	exit 1
-fi
+
+check_identity() {
+	identity=$("$1" version)
+	if [ "$identity" != "Hypercube $tag ($commit)" ]; then
+		echo "release: unexpected build identity: $identity" >&2
+		exit 1
+	fi
+}
+
+package_macos() {
+	if [ "$(go env GOARCH)" != arm64 ]; then
+		echo "release: build on Apple Silicon (darwin/arm64)" >&2
+		exit 1
+	fi
+	make bundle APP=bin/release/Hypercube.app
+	app=bin/release/Hypercube.app
+	check_identity "$app/Contents/MacOS/hypercube"
+	codesign --verify --deep --strict "$app"
+	archive=Hypercube-$tag-macos-arm64.zip
+	ditto -c -k --sequesterRsrc --keepParent "$app" "bin/release/$archive"
+}
+
+package_linux() {
+	make bundle APP=bin/release/Hypercube
+	check_identity bin/release/Hypercube/hypercube
+	archive=Hypercube-$tag-linux-$(go env GOARCH).tar.gz
+	tar -C bin/release -czf "bin/release/$archive" Hypercube
+}
 
 rm -rf bin/release
-make bundle APP=bin/release/Hypercube.app
-app=bin/release/Hypercube.app
-identity=$("$app/Contents/MacOS/hypercube" version)
-if [ "$identity" != "Hypercube $tag ($commit)" ]; then
-	echo "release: unexpected build identity: $identity" >&2
+case "$(go env GOOS)" in
+darwin) package_macos ;;
+linux) package_linux ;;
+*)
+	echo "release: build on macOS or Linux" >&2
 	exit 1
-fi
-codesign --verify --deep --strict "$app"
-archive=Hypercube-$tag-macos-arm64.zip
-ditto -c -k --sequesterRsrc --keepParent "$app" "bin/release/$archive"
+	;;
+esac
 cd bin/release
 shasum -a 256 "$archive" > SHA256SUMS
 echo "Packaged $identity: bin/release/$archive"

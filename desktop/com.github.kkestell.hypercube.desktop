@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hypercube
+Exec=hypercube-desktop
+Icon=com.github.kkestell.hypercube
+StartupWMClass=com.github.kkestell.hypercube
+Categories=Development;

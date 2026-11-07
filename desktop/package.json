@@ -1,6 +1,7 @@
 {
   "name": "hypercube-desktop",
   "productName": "Hypercube",
+  "desktopName": "com.github.kkestell.hypercube.desktop",
   "private": true,
   "version": "0.0.0",
   "main": "main.js",

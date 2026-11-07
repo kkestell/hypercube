@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Build the Linux bundle with make build and check its layout, the executables,
+# and the backend started from it. Run it in the Linux test container:
+#
+#   scripts/linux/run scripts/linux/test-bundle
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+app=bin/Hypercube
+desktop_file=com.github.kkestell.hypercube.desktop
+plugins=(claude opencode codex pi)
+declare -A product=([claude]="Claude Code" [opencode]=OpenCode [codex]=Codex [pi]=Pi)
+
+fail() {
+	echo "test-bundle: $*" >&2
+	exit 1
+}
+
+make build
+
+# Layout.
+for f in hypercube-desktop hypercube "${plugins[@]/#/hypercube-harness-}"; do
+	[ -x "$app/$f" ] && [ -f "$app/$f" ] || fail "$app/$f is not an executable file"
+done
+case $(uname -m) in
+aarch64) machine=AArch64 ;;
+x86_64) machine=X86-64 ;;
+*) fail "unsupported architecture $(uname -m)" ;;
+esac
+readelf -h "$app/hypercube-desktop" | grep -q "Machine:.*$machine" ||
+	fail "hypercube-desktop is not a $machine executable"
+for f in resources/app/main.js resources/ui/index.html; do
+	[ -f "$app/$f" ] || fail "$app/$f is missing"
+done
+[ "$(head -c 8 "$app/resources/com.github.kkestell.hypercube.png" | od -An -tx1 | tr -d ' \n')" = 89504e470d0a1a0a ] ||
+	fail "the icon is not a PNG"
+desktop-file-validate "$app/resources/$desktop_file" || fail "the .desktop file is invalid"
+[ "$(node -p 'require(process.argv[1]).desktopName' "$PWD/$app/resources/app/package.json")" = "$desktop_file" ] ||
+	fail "desktopName in package.json is not $desktop_file"
+for f in bin/hypercube "${plugins[@]/#/bin/hypercube-harness-}"; do
+	[ "$(realpath "$f")" = "$(realpath "$app")/$(basename "$f")" ] ||
+		fail "$f does not resolve into $app"
+done
+
+# Executables.
+"$app/hypercube" version | grep -q '^Hypercube ' || fail "hypercube version printed no identity"
+for p in "${plugins[@]}"; do
+	"$app/hypercube-harness-$p" describe | grep -q "\"name\":\"${product[$p]}\"" ||
+		fail "hypercube-harness-$p describe did not name ${product[$p]}"
+done
+
+# Backend. It runs with its own configuration and state, and finds the plugins
+# beside it.
+tmp=$(mktemp -d)
+backend=
+cleanup() {
+	if [ -n "$backend" ]; then
+		kill "$backend" 2>/dev/null || true
+		wait "$backend" 2>/dev/null || true
+	fi
+	rm -rf "$tmp"
+}
+trap cleanup EXIT
+port=$((20000 + RANDOM % 20000))
+XDG_CONFIG_HOME=$tmp/config XDG_STATE_HOME=$tmp/state \
+	"$app/hypercube" ui "$port" >"$tmp/backend.log" 2>&1 &
+backend=$!
+until curl -fsS "http://127.0.0.1:$port/version" >/dev/null 2>&1; do
+	kill -0 "$backend" 2>/dev/null || {
+		cat "$tmp/backend.log" >&2
+		fail "the backend exited before answering"
+	}
+	sleep 0.2
+done
+harnesses=$(curl -fsS "http://127.0.0.1:$port/harnesses")
+for p in "${plugins[@]}"; do
+	grep -q "\"id\":\"$p\"" <<<"$harnesses" || fail "the backend did not find the $p plugin: $harnesses"
+done
+
+echo "test-bundle: passed"
