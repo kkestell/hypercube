@@ -3,242 +3,222 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
-// ended finishes a turn: nothing is left streaming or waiting. The agent is
-// idle once no prompt is in flight and no input waits.
-func (ag *agent) ended(stopReason string, err error) {
+// nativeEvent reads only the main session's public stream. Child sessions have
+// their own sessionID and cannot finish this agent's turn or enter its output.
+type nativeEvent struct {
+	Type string `json:"type"`
+	Data struct {
+		SessionID          string          `json:"sessionID"`
+		AssistantMessageID string          `json:"assistantMessageID"`
+		ID                 string          `json:"id"`
+		InboxID            string          `json:"inboxID"`
+		Name               string          `json:"name"`
+		Ordinal            int             `json:"ordinal"`
+		Delta              string          `json:"delta"`
+		Text               string          `json:"text"`
+		Input              json.RawMessage `json:"input"`
+		Content            []toolContent   `json:"content"`
+		Finish             string          `json:"finish"`
+		Error              struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Cost   float64 `json:"cost"`
+		Tokens struct {
+			Input  int `json:"input"`
+			Output int `json:"output"`
+			Cache  struct {
+				Read  int `json:"read"`
+				Write int `json:"write"`
+			} `json:"cache"`
+		} `json:"tokens"`
+		Form form `json:"form"`
+	} `json:"data"`
+}
+
+type toolContent struct {
+	Type string `json:"type"`
+	Text string `json:"text"`
+	URI  string `json:"uri"`
+	MIME string `json:"mime"`
+}
+
+// The event stream includes unrelated domains with different payload shapes
+// (for example, instructions.updated has an object-valued delta). Decode only
+// events this adapter consumes rather than imposing one schema on all events.
+func (e *nativeEvent) UnmarshalJSON(b []byte) error {
+	var envelope struct {
+		Type string          `json:"type"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(b, &envelope); err != nil {
+		return err
+	}
+	e.Type = envelope.Type
+	switch e.Type {
+	case "session.inbox.enqueued", "session.inbox.delivered", "session.inbox.cancelled",
+		"session.execution.started", "session.execution.succeeded", "session.execution.failed", "session.execution.interrupted",
+		"session.step.started", "session.step.ended", "session.text.delta", "session.text.ended", "session.reasoning.delta", "session.reasoning.ended",
+		"session.tool.input.started", "session.tool.input.ended", "session.tool.called", "session.tool.success", "session.tool.failed",
+		"session.usage.updated", "permission.asked", "form.created", "form.replied", "form.cancelled":
+		return json.Unmarshal(envelope.Data, &e.Data)
+	}
+	return nil
+}
+
+func (ag *agent) handle(e nativeEvent) error {
+	if e.Type == "plugin.updated" {
+		select {
+		case ag.catalogChanged <- struct{}{}:
+		default:
+		}
+		return nil
+	}
+	// Native children share this private server. Their permissions and
+	// questions must still be answered while the parent waits on their tool.
+	if e.Type == "permission.asked" {
+		// Match ACP's allow-once behavior; configured denials are not asked.
+		return ag.server.call(ag.ctx, "POST", sessionPath(e.Data.SessionID)+"/permission/"+e.Data.ID+"/reply", map[string]string{"decision": "once"}, nil)
+	}
+	if e.Type == "form.created" {
+		return ag.form(e.Data.Form)
+	}
+	if e.Type == "form.replied" || e.Type == "form.cancelled" {
+		ag.mu.Lock()
+		defer ag.mu.Unlock()
+		items, _ := ag.requests.Close(func(r *request) bool { return r.id == e.Data.ID && (e.Type == "form.cancelled" || !r.replying) })
+		if len(items) > 0 {
+			ag.emit(harness.Event{Items: items})
+		}
+		return nil
+	}
+	if e.Data.SessionID != ag.session {
+		return nil
+	}
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	var ev harness.Event
+	d := e.Data
+	switch e.Type {
+	case "session.inbox.enqueued":
+		ag.pending[d.InboxID] = true
+	case "session.inbox.delivered", "session.inbox.cancelled":
+		delete(ag.pending, d.InboxID)
+	case "session.execution.started":
+		ag.last, ag.finish = nil, ""
+		ev.State = harness.Working
+	case "session.execution.succeeded", "session.execution.failed", "session.execution.interrupted":
+		ev = ag.ended(e)
+	case "session.step.started":
+		ag.last, ag.finish = nil, ""
+	case "session.step.ended":
+		ag.finish = d.Finish
+		ag.used = d.Tokens.Input + d.Tokens.Output + d.Tokens.Cache.Read + d.Tokens.Cache.Write
+		ev.Usage = &harness.Usage{Context: ag.used, Window: ag.window, Cost: ag.cost}
+	case "session.text.delta", "session.text.ended", "session.reasoning.delta", "session.reasoning.ended":
+		kind := harness.KindText
+		if strings.HasPrefix(e.Type, "session.reasoning.") {
+			kind = harness.KindReasoning
+		}
+		id := fmt.Sprintf("%s:%s:%d", d.AssistantMessageID, kind, d.Ordinal)
+		it := harness.Item{ID: id, Kind: kind, Text: d.Delta, Append: true}
+		if strings.HasSuffix(e.Type, ".ended") {
+			it.Text, it.Append, it.Done = d.Text, false, true
+			delete(ag.open, id)
+		} else {
+			ag.open[id] = harness.Item{ID: id, Kind: kind}
+		}
+		if kind == harness.KindText && !slices.Contains(ag.last, id) {
+			ag.last = append(ag.last, id)
+		}
+		ev.Items = append(ev.Items, it)
+	case "session.tool.input.started", "session.tool.input.ended", "session.tool.called", "session.tool.success", "session.tool.failed":
+		id := d.AssistantMessageID + ":" + d.ID
+		it := ag.tools[id]
+		if it.Done {
+			break
+		}
+		it.ID, it.Kind = id, harness.KindTool
+		if d.Name != "" {
+			it.Tool = d.Name
+			if tool, ok := strings.CutPrefix(d.Name, "hypercube_"); ok {
+				it.Server, it.Tool = "hypercube", tool
+			}
+		}
+		if e.Type == "session.tool.input.ended" && json.Valid([]byte(d.Text)) {
+			it.Input = json.RawMessage(d.Text)
+		}
+		if len(d.Input) > 0 {
+			it.Input = d.Input
+		}
+		if e.Type == "session.tool.success" || e.Type == "session.tool.failed" {
+			it.Done, it.Failed = true, e.Type == "session.tool.failed"
+			it.Output, it.Images = toolOutput(d.Content)
+			if it.Output == "" && it.Failed {
+				it.Output = d.Error.Message
+			}
+			ag.tools[id] = harness.Item{Done: true}
+		} else {
+			ag.tools[id] = it
+		}
+		ag.last = nil
+		ev.Items = append(ev.Items, it)
+	case "session.usage.updated":
+		ag.cost = d.Cost
+		ev.Usage = &harness.Usage{Context: ag.used, Window: ag.window, Cost: ag.cost}
+	}
+	if ev.State != "" || len(ev.Items) > 0 || ev.Usage != nil {
+		ag.emit(ev)
+	}
+	return nil
+}
+
+// ended is driven by native execution completion, never by input responses.
+// A correction can therefore be admitted without inventing an idle transition.
+func (ag *agent) ended(e nativeEvent) harness.Event {
+	ev := harness.Event{State: harness.Idle, InputPending: len(ag.pending) > 0}
 	for id, it := range ag.open {
 		it.Append, it.Done = true, true
 		ev.Items = append(ev.Items, it)
 		delete(ag.open, id)
 	}
-	ev.Items = append(ev.Items, ag.closeRequests()...)
-	stopping := ag.ctx.Err() != nil
-	select {
-	case <-ag.rpc.Done():
-		stopping = true // Serve reports the process's exit reason.
-	default:
+	// An answer already being sent finishes its own item after the HTTP
+	// response, which can arrive after the native execution has ended.
+	items, _ := ag.requests.Close(func(r *request) bool { return !r.replying })
+	ev.Items = append(ev.Items, items...)
+	if e.Type == "session.execution.failed" {
+		ev.Items = append(ev.Items, ag.errors.Item(e.Data.Error.Message))
 	}
-	// A cancelled turn is the user's own doing.
-	text := ""
-	switch {
-	case stopping:
-		// The agent is stopping.
-	case err != nil:
-		text = err.Error()
-	case stopReason == "max_tokens":
-		text = "The model stopped at its output limit."
-	case stopReason == "refusal":
-		text = "The model refused the request."
-	}
-	if text != "" {
-		ev.Items = append(ev.Items, ag.errors.Item(text))
-	}
-	ev.State, ev.InputPending = harness.Idle, len(ag.queued) > 0
-	// Each successful prompt has its own final, even when the next prompt
-	// is already queued. InputPending keeps the host from treating this
-	// transition as a chance to resume the parent.
-	if !stopping && err == nil && stopReason == "end_turn" && ag.last != "" {
-		ev.Final = []string{ag.last}
-	}
-	ag.emit(ev)
-	if len(ag.queued) > 0 {
-		blocks := ag.queued
-		ag.queued = nil
-		ag.emit(harness.Event{State: harness.Working})
-		ag.prompt(blocks)
-	} else {
-		ag.busy = false
-	}
-}
-
-// handle takes what opencode sends: updates, permission requests, and questions
-// for the user. It runs on the connection's reading goroutine, so it answers
-// what it can at once and leaves a form to be answered by the user.
-func (ag *agent) handle(m plugin.Message) {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	var ev harness.Event
-	switch {
-	case m.Method == "session/update":
-		ag.update(&ev, m.Params)
-	case m.Method == "$/cancel_request":
-		ag.withdraw(&ev, m.Params)
-	case m.ID == nil:
-		// Other notifications carry nothing the plugin shows.
-	case m.Method == "session/request_permission":
-		result, err := permission(m.Params)
-		if err != nil {
-			_ = ag.rpc.RespondError(m.ID, -32602, err.Error())
-		} else {
-			_ = ag.rpc.Respond(m.ID, result)
-		}
-	case m.Method == "elicitation/create":
-		ag.form(&ev, m.ID, m.Params)
-	default:
-		_ = ag.rpc.RespondError(m.ID, -32601, "Method not found")
-	}
-	if len(ev.Items) > 0 || ev.Usage != nil {
-		ag.emit(ev)
-	}
-}
-
-// sessionUpdate is the part of a session/update notification that the plugin
-// reads. Content is one content block for a chunk and a list of tool call
-// content for a tool call.
-type sessionUpdate struct {
-	SessionID string `json:"sessionId"`
-	Update    struct {
-		SessionUpdate string          `json:"sessionUpdate"`
-		MessageID     string          `json:"messageId"`
-		Content       json.RawMessage `json:"content"`
-		ToolCallID    string          `json:"toolCallId"`
-		Name          string          `json:"name"`
-		Status        string          `json:"status"`
-		RawInput      json.RawMessage `json:"rawInput"`
-		Used          int             `json:"used"`
-		Size          int             `json:"size"`
-		Cost          *struct {
-			Amount float64 `json:"amount"`
-		} `json:"cost"`
-		Meta struct {
-			Child json.RawMessage `json:"opencode/child-session"`
-		} `json:"_meta"`
-	} `json:"update"`
-}
-
-// contentBlock is a block of a message or of a tool's result.
-type contentBlock struct {
-	Type     string `json:"type"`
-	Text     string `json:"text"`
-	Data     string `json:"data"`
-	MIMEType string `json:"mimeType"`
-}
-
-// toolContent is an entry of a tool call's content: a content block, or
-// another type such as a diff.
-type toolContent struct {
-	Type    string       `json:"type"`
-	Content contentBlock `json:"content"`
-}
-
-func (ag *agent) update(ev *harness.Event, params json.RawMessage) {
-	var p sessionUpdate
-	if json.Unmarshal(params, &p) != nil || p.SessionID != ag.session {
-		return
-	}
-	u := p.Update
-	// ACP does not identify the tool that launched a child. Keep its output
-	// out of the main transcript rather than guessing its parent from a title.
-	if len(u.Meta.Child) > 0 && string(u.Meta.Child) != "null" {
-		return
-	}
-	switch u.SessionUpdate {
-	case "agent_message_chunk", "agent_thought_chunk":
-		kind := harness.KindText
-		if u.SessionUpdate == "agent_thought_chunk" {
-			kind = harness.KindReasoning
-		}
-		var content contentBlock
-		if json.Unmarshal(u.Content, &content) != nil {
-			return
-		}
-		ag.chunk(ev, kind, u.MessageID, content)
-	case "tool_call", "tool_call_update":
-		var content []toolContent
-		if len(u.Content) > 0 && json.Unmarshal(u.Content, &content) != nil {
-			return
-		}
-		ag.toolCall(ev, u.ToolCallID, u.Name, u.Status, u.RawInput, content)
-	case "usage_update":
-		if u.Used == 0 {
-			return
-		}
-		usage := harness.Usage{Context: u.Used, Window: u.Size}
-		if u.Cost != nil {
-			usage.Cost = u.Cost.Amount
-		}
-		ev.Usage = &usage
-	}
-}
-
-// chunk extends a streamed message or reasoning item.
-func (ag *agent) chunk(ev *harness.Event, kind, messageID string, content contentBlock) {
-	if content.Type != "text" || content.Text == "" {
-		return
-	}
-	id := fmt.Sprintf("%s:%d", kind, ag.turn)
-	if messageID != "" {
-		id = messageID
-	}
-	if kind == harness.KindText {
-		ag.last = messageID
-	}
-	ev.Items = append(ev.Items, harness.Item{ID: id, Kind: kind, Text: content.Text, Append: true})
-	ag.open[id] = harness.Item{ID: id, Kind: kind}
-}
-
-// toolCall reports a tool call or an update to it. OpenCode names the tool in
-// a field of its own, and its input is kept as OpenCode wrote it.
-func (ag *agent) toolCall(ev *harness.Event, id, name, status string, input json.RawMessage, content []toolContent) {
-	if id == "" {
-		return
-	}
-	t, known := ag.tools[id]
-	if !known {
-		t = harness.Item{ID: id, Kind: harness.KindTool}
-		// Text before a tool call is progress.
-		ag.last = ""
-	}
-	if t.Done {
-		return
-	}
-	if name != "" {
-		t.Tool = name
-		// OpenCode names an MCP tool <server>_<tool>.
-		if tool, ok := strings.CutPrefix(name, "hypercube_"); ok {
-			t.Server, t.Tool = "hypercube", tool
+	if e.Type == "session.execution.succeeded" {
+		switch ag.finish {
+		case "length":
+			ev.Items = append(ev.Items, ag.errors.Item("The model stopped at its output limit."))
+		case "content-filter":
+			ev.Items = append(ev.Items, ag.errors.Item("The model refused the request."))
+		default:
+			ev.Final = slices.Clone(ag.last)
 		}
 	}
-	if len(input) > 0 {
-		t.Input = input
-	}
-	if status == "completed" || status == "failed" {
-		t.Done, t.Failed = true, status == "failed"
-		t.Output, t.Images = toolOutput(content)
-	}
-	if t.Done {
-		// Remember completion to ignore later updates without retaining payloads.
-		ag.tools[id] = harness.Item{Done: true}
-	} else {
-		ag.tools[id] = t
-	}
-	ev.Items = append(ev.Items, t)
+	return ev
 }
 
-// toolOutput is the text and images of a tool's result. An edit is shown as a
-// diff, which has neither.
 func toolOutput(content []toolContent) (string, []harness.Image) {
-	var parts []string
+	var text []string
 	var images []harness.Image
 	for _, c := range content {
-		if c.Type != "content" {
-			continue
+		if c.Type == "text" {
+			text = append(text, c.Text)
 		}
-		switch b := c.Content; b.Type {
-		case "text":
-			parts = append(parts, b.Text)
-		case "image":
-			images = append(images, harness.Image{MIMEType: b.MIMEType, Data: b.Data})
+		if c.Type == "file" && strings.HasPrefix(c.MIME, "image/") {
+			if data, ok := strings.CutPrefix(c.URI, "data:"+c.MIME+";base64,"); ok {
+				images = append(images, harness.Image{MIMEType: c.MIME, Data: data})
+			}
 		}
 	}
-	return strings.Join(parts, "\n"), images
+	return strings.Join(text, "\n"), images
 }

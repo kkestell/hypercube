@@ -1,6 +1,5 @@
-// Command hypercube-harness-opencode runs OpenCode 2.x as a Hypercube agent.
-// `serve` keeps one `opencode acp` process alive across turns, speaks the Agent
-// Client Protocol to it, and translates its updates into protocol events.
+// Command hypercube-harness-opencode drives a private OpenCode 2.x server.
+// Native prompt admission supports steering without cancelling running tools.
 package main
 
 import (
@@ -9,11 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
-	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"sync"
 	"time"
 
@@ -21,12 +16,7 @@ import (
 	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
-const (
-	startTimeout = 60 * time.Second
-
-	// protocolVersion is the version of the Agent Client Protocol spoken here.
-	protocolVersion = 1
-)
+const startTimeout = 60 * time.Second
 
 func main() {
 	plugin.Plugin{Product: "OpenCode", Executable: "opencode", Serve: serve, Models: models}.Main()
@@ -39,40 +29,46 @@ func serve(in io.Reader, out io.Writer) error {
 			return plugin.Agent{}, err
 		}
 		started := plugin.Agent{
-			Process: ag.proc, Conversation: ag.session,
+			Process: ag.server.proc, Conversation: ag.session,
 			Configure: ag.configure, Input: ag.input, Interrupt: ag.interrupt, Answer: ag.answer, Stop: ag.stop,
 		}
-		if ag.started != (harness.Selection{Model: a.Model, Effort: a.Effort}) {
-			started.Selection = &ag.started
+		if ag.selected != (harness.Selection{Model: a.Model, Effort: a.Effort}) {
+			started.Selection = &ag.selected
 		}
 		return started, nil
 	})
 }
 
-// agent is a running `opencode acp` process and what its updates have told us.
 type agent struct {
-	proc   *plugin.Process
-	rpc    *plugin.RPC
-	emit   func(harness.Event)
-	ctx    context.Context
-	cancel context.CancelFunc
+	server         *server
+	ctx            context.Context
+	cancel         context.CancelFunc
+	emit           func(harness.Event)
+	streamDone     chan struct{}
+	catalogChanged chan struct{}
 
-	// mu guards the state below. Events are emitted with it held, so they keep
-	// the order of the updates and of answers.
+	// mu keeps native events and user answers in transcript order. HTTP calls
+	// never hold it: the stream can report execution before admission returns.
 	mu       sync.Mutex
 	session  string
-	busy     bool  // a prompt is in flight
-	queued   []any // prompt content that arrived during the prompt
-	turn     int
-	last     string                  // the main session's latest text message, unless a tool call has followed it
-	open     map[string]harness.Item // streamed items that the turn's end has not finished
-	tools    map[string]harness.Item // by tool call ID
+	pending  map[string]bool
+	open     map[string]harness.Item
+	tools    map[string]harness.Item
+	last     []string
+	finish   string
+	window   int
+	used     int
+	cost     float64
 	requests plugin.Requests[request]
-	forms    int
 	errors   plugin.Errors
 
-	options []configOption    // owned by start and the ordered configure commands
-	started harness.Selection // the settings begin selected
+	selected harness.Selection // start and ordered configure commands own this
+}
+
+func newAgent(emit func(harness.Event)) *agent {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &agent{ctx: ctx, cancel: cancel, emit: emit, catalogChanged: make(chan struct{}, 1),
+		pending: map[string]bool{}, open: map[string]harness.Item{}, tools: map[string]harness.Item{}}
 }
 
 func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
@@ -87,237 +83,88 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 		}
 		config["instructions"] = []string{file}
 	}
-	configJSON, err := json.Marshal(config)
+	// This server belongs to this launch, so its MCP environment cannot leak
+	// into another session or change the user's saved OpenCode configuration.
+	config["mcp"] = map[string]any{"servers": map[string]any{"hypercube": map[string]any{
+		"type": "local", "command": []string{a.Hypercube, "mcp"}, "environment": a.Env,
+	}}}
+	encoded, err := json.Marshal(config)
 	if err != nil {
 		return nil, err
 	}
-	ag, err := launch(a, emit, "OPENCODE_CONFIG_CONTENT="+string(configJSON))
-	if err != nil {
-		return nil, err
-	}
+	ag := newAgent(emit)
 	ctx, cancel := context.WithTimeout(ag.ctx, startTimeout)
 	defer cancel()
-	if err := ag.begin(ctx, a); err != nil {
+	ag.server, err = launch(ctx, a.Dir, "OPENCODE_CONFIG_CONTENT="+string(encoded))
+	if err == nil {
+		err = ag.begin(ctx, a)
+	}
+	if err != nil {
 		ag.stop()
 		return nil, err
 	}
 	return ag, nil
 }
 
-// launch starts `opencode acp` in the agent's directory.
-func launch(a harness.StartArgs, emit func(harness.Event), env ...string) (*agent, error) {
-	cmd := exec.Command("opencode", "acp")
-	cmd.Dir = a.Dir
-	cmd.Env = append(os.Environ(), env...)
-	p, err := plugin.StartProcess("OpenCode", cmd)
-	if err != nil {
-		return nil, err
-	}
-	ag := newAgent(a, emit)
-	ag.proc = p
-	ag.rpc = plugin.NewRPC(p.Stdin, ag.handle)
-	go func() { ag.rpc.End(p.Read(ag.rpc.Line)) }()
-	return ag, nil
+type sessionInfo struct {
+	ID       string   `json:"id"`
+	Model    modelRef `json:"model"`
+	Location struct {
+		Directory string `json:"directory"`
+	} `json:"location"`
 }
 
-func newAgent(a harness.StartArgs, emit func(harness.Event)) *agent {
-	ag := &agent{
-		emit: emit, session: a.Conversation,
-		open: map[string]harness.Item{}, tools: map[string]harness.Item{},
-	}
-	ag.ctx, ag.cancel = context.WithCancel(context.Background())
-	return ag
-}
+func sessionPath(id string) string { return "/api/session/" + id }
 
-// initializeResult is the part of OpenCode's answer to initialize that the
-// plugin checks.
-type initializeResult struct {
-	ProtocolVersion   int `json:"protocolVersion"`
-	AgentCapabilities struct {
-		SessionCapabilities struct {
-			Resume *struct{} `json:"resume"`
-			Fork   *struct{} `json:"fork"`
-			Delete *struct{} `json:"delete"`
-		} `json:"sessionCapabilities"`
-	} `json:"agentCapabilities"`
-}
-
-// sessionResult is OpenCode's answer to a request that opens a session or
-// changes its settings.
-type sessionResult struct {
-	SessionID     string         `json:"sessionId"`
-	ConfigOptions []configOption `json:"configOptions"`
-}
-
-// envVariable is an environment variable of an MCP server.
-type envVariable struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
-// initialize opens the connection.
-func (ag *agent) initialize(ctx context.Context) (initializeResult, error) {
-	var init initializeResult
-	err := ag.call(ctx, "initialize", map[string]any{
-		"protocolVersion": protocolVersion,
-		"clientInfo":      map[string]any{"name": "hypercube", "version": "1"},
-		// A form request is how OpenCode asks the user a question.
-		"clientCapabilities": map[string]any{"elicitation": map[string]any{"form": map[string]any{}}},
-	}, &init)
-	return init, err
-}
-
-// begin starts or resumes the session and selects the model and effort.
 func (ag *agent) begin(ctx context.Context, a harness.StartArgs) error {
-	init, err := ag.initialize(ctx)
-	if err != nil {
-		return err
-	}
-	if init.ProtocolVersion != protocolVersion || a.Conversation != "" && init.AgentCapabilities.SessionCapabilities.Resume == nil {
-		return errors.New("this OpenCode does not support ACP 1 with session resume: OpenCode 2.x is required")
-	}
-	if a.Fork != "" && init.AgentCapabilities.SessionCapabilities.Fork == nil {
-		return errors.New("this OpenCode does not support ACP session forks; update OpenCode")
-	}
-	env := []envVariable{}
-	for _, k := range slices.Sorted(maps.Keys(a.Env)) {
-		env = append(env, envVariable{Name: k, Value: a.Env[k]})
-	}
-	servers := []any{map[string]any{"name": "hypercube", "command": a.Hypercube, "args": []string{"mcp"}, "env": env}}
-	var opened sessionResult
-	if a.Conversation != "" || a.Fork != "" {
-		method, source := "session/resume", a.Conversation
-		if source == "" {
-			method, source = "session/fork", a.Fork
-		}
-		err := ag.call(ctx, method, map[string]any{"sessionId": source, "cwd": a.Dir, "mcpServers": servers}, &opened)
+	var opened sessionInfo
+	var err error
+	switch {
+	case a.Conversation != "":
+		err = ag.server.call(ctx, "GET", sessionPath(a.Conversation), nil, &opened)
 		if err != nil {
-			action := "resume"
-			if a.Fork != "" {
-				action = "fork"
-			}
-			return fmt.Errorf("OpenCode could not %s session %s: %w", action, source, err)
+			return fmt.Errorf("OpenCode could not resume session %s: %w", a.Conversation, err)
 		}
-	} else {
-		if err := ag.call(ctx, "session/new", map[string]any{"cwd": a.Dir, "mcpServers": servers}, &opened); err != nil {
-			return err
+	case a.Fork != "":
+		err = ag.server.call(ctx, "POST", sessionPath(a.Fork)+"/fork", map[string]any{}, &opened)
+		if err != nil {
+			return fmt.Errorf("OpenCode could not fork session %s: %w", a.Fork, err)
 		}
+		if opened.ID == a.Fork {
+			return errors.New("OpenCode returned no independent fork")
+		}
+	default:
+		err = ag.server.call(ctx, "POST", "/api/session", map[string]any{"location": map[string]string{"directory": a.Dir}}, &opened)
 	}
-	if a.Fork != "" && (opened.SessionID == "" || opened.SessionID == a.Fork) {
-		return errors.New("OpenCode returned no independent fork")
-	}
-	if opened.SessionID != "" {
-		ag.mu.Lock()
-		ag.session = opened.SessionID
-		ag.mu.Unlock()
-	}
-	ag.options = opened.ConfigOptions
-	selected, err := ag.selectSettings(ctx, harness.Selection{Model: a.Model, Effort: a.Effort})
 	if err != nil {
 		return err
 	}
-	ag.started = *selected
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	ag.emit(harness.Event{Conversation: ag.session})
+	if opened.ID == "" {
+		return errors.New("OpenCode returned no conversation ID")
+	}
+	if opened.Location.Directory != a.Dir {
+		return fmt.Errorf("OpenCode session is in %s, not %s", opened.Location.Directory, a.Dir)
+	}
+	ag.session = opened.ID
+	ag.selected = harness.Selection{Model: opened.Model.key(), Effort: opened.Model.Variant}
+	if err := ag.subscribe(ctx); err != nil {
+		return err
+	}
+	if err := ag.awaitCatalog(ctx); err != nil {
+		return err
+	}
+	if _, err := ag.selectSettings(ctx, harness.Selection{Model: a.Model, Effort: a.Effort}); err != nil {
+		return err
+	}
 	return nil
 }
 
-// call makes an ACP request and decodes its result into result, unless that
-// is nil.
-func (ag *agent) call(ctx context.Context, method string, params, result any) error {
-	raw, err := ag.rpc.Call(ctx, method, params)
-	if err != nil {
-		return fmt.Errorf("%s: %w", method, err)
-	}
-	if result == nil {
-		return nil
-	}
-	return json.Unmarshal(raw, result)
-}
-
-// stop gives up the prompt in flight and ends opencode.
 func (ag *agent) stop() {
 	ag.cancel()
-	ag.proc.Stop()
-}
-
-// input starts a turn. OpenCode refuses a prompt while one is running, so
-// input that arrives during a turn waits and starts the next turn when the
-// current one ends.
-func (ag *agent) input(text string, images []harness.Image) error {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	select {
-	case <-ag.rpc.Done():
-		return errors.New("opencode is not running")
-	default:
+	if ag.server != nil {
+		ag.server.stop()
 	}
-	if ag.busy {
-		ag.queued = append(ag.queued, blocks(text, images)...)
-		return nil
+	if ag.streamDone != nil {
+		<-ag.streamDone
 	}
-	ag.busy = true
-	ag.emit(harness.Event{State: harness.Working})
-	ag.prompt(blocks(text, images))
-	return nil
-}
-
-// textBlock and imageBlock are the content blocks of a prompt.
-type textBlock struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type imageBlock struct {
-	Type     string `json:"type"`
-	Data     string `json:"data"`
-	MIMEType string `json:"mimeType"`
-}
-
-// blocks is a message as prompt content: its text, then its images.
-func blocks(text string, images []harness.Image) []any {
-	var out []any
-	if text != "" || len(images) == 0 {
-		out = append(out, textBlock{Type: "text", Text: text})
-	}
-	for _, im := range images {
-		out = append(out, imageBlock{Type: "image", Data: im.Data, MIMEType: im.MIMEType})
-	}
-	return out
-}
-
-// prompt writes one turn before input or interrupt can run again. Only the
-// response waits in a goroutine. ag.mu is held.
-func (ag *agent) prompt(blocks []any) {
-	ag.turn++
-	ag.last = ""
-	wait, err := ag.rpc.StartCall("session/prompt", map[string]any{"sessionId": ag.session, "prompt": blocks})
-	go func() {
-		var res struct {
-			StopReason string `json:"stopReason"`
-		}
-		var raw json.RawMessage
-		if err == nil {
-			raw, err = wait(ag.ctx)
-		}
-		if err != nil {
-			err = fmt.Errorf("session/prompt: %w", err)
-		} else {
-			err = json.Unmarshal(raw, &res)
-		}
-		ag.ended(res.StopReason, err)
-	}()
-}
-
-func (ag *agent) interrupt() error {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	if !ag.busy {
-		return nil
-	}
-	if items := ag.closeRequests(); len(items) > 0 {
-		ag.emit(harness.Event{Items: items})
-	}
-	return ag.rpc.Notify("session/cancel", map[string]any{"sessionId": ag.session})
 }

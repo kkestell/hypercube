@@ -2,26 +2,72 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
 
-// configOption is a session setting. A setting with a list of values has the
-// type "select".
-type configOption struct {
-	CurrentValue string        `json:"currentValue"`
-	ID           string        `json:"id"`
-	Type         string        `json:"type"`
-	Options      []configValue `json:"options"`
+type modelRef struct {
+	ProviderID string `json:"providerID"`
+	ID         string `json:"id"`
+	Variant    string `json:"variant,omitempty"`
 }
 
-// configValue is one value of a setting, or a group of values.
-type configValue struct {
-	Value   string        `json:"value"`
-	Name    string        `json:"name"`
-	Options []configValue `json:"options"`
+func (m modelRef) key() string {
+	if m.ProviderID == "" {
+		return ""
+	}
+	return m.ProviderID + "/" + m.ID
+}
+
+type modelInfo struct {
+	ProviderID string `json:"providerID"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Enabled    bool   `json:"enabled"`
+	Variants   []struct {
+		ID string `json:"id"`
+	} `json:"variants"`
+	Limit struct {
+		Context int `json:"context"`
+	} `json:"limit"`
+}
+
+// Native catalog reads can precede initial plugin activation. Observe its
+// completion rather than polling with a startup delay, as the ACP client did.
+func (ag *agent) awaitCatalog(ctx context.Context) error {
+	for {
+		var plugins []json.RawMessage
+		if err := ag.server.call(ctx, "GET", "/api/plugin", nil, &plugins); err != nil {
+			return err
+		}
+		if len(plugins) > 0 {
+			return nil
+		}
+		select {
+		case <-ag.catalogChanged:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+func (m modelInfo) key() string { return m.ProviderID + "/" + m.ID }
+
+func (m modelInfo) efforts() []string {
+	if len(m.Variants) == 0 {
+		return nil
+	}
+	var out []string
+	for _, variant := range m.Variants {
+		out = append(out, variant.ID)
+	}
+	if !slices.Contains(out, "default") {
+		out = append(out, "default")
+	}
+	return out
 }
 
 func (ag *agent) configure(selection harness.Selection) (*harness.Selection, error) {
@@ -30,69 +76,38 @@ func (ag *agent) configure(selection harness.Selection) (*harness.Selection, err
 	return ag.selectSettings(ctx, selection)
 }
 
-// selectSettings uses the options returned after the model change: selecting
-// a model can change both the available efforts and the current effort. An
-// empty effort keeps the one OpenCode selects with the model.
 func (ag *agent) selectSettings(ctx context.Context, selection harness.Selection) (*harness.Selection, error) {
-	options, err := ag.choose(ctx, ag.options, "model", selection.Model)
-	if err != nil {
+	var models []modelInfo
+	if err := ag.server.call(ctx, "GET", "/api/model", nil, &models); err != nil {
 		return nil, err
 	}
-	ag.options = options
-	selected := &harness.Selection{Model: selection.Model}
-	effort := findOption(options, "effort")
-	if effort != nil {
-		selected.Effort = effort.CurrentValue
+	i := slices.IndexFunc(models, func(m modelInfo) bool { return m.Enabled && m.key() == selection.Model })
+	if i < 0 {
+		return nil, fmt.Errorf("OpenCode does not offer model %q; see list_models", selection.Model)
 	}
-	// Earlier versions saved "default" for a model without an effort setting.
-	if selection.Effort == "" || effort == nil && selection.Effort == "default" {
-		return selected, nil
-	}
-	options, err = ag.choose(ctx, options, "effort", selection.Effort)
-	if err != nil {
-		return selected, fmt.Errorf("model %s: %w", selection.Model, err)
-	}
-	ag.options = options
-	selected.Effort = selection.Effort
-	return selected, nil
-}
-
-// findOption returns the session setting with a list of values that has the
-// given ID.
-func findOption(options []configOption, id string) *configOption {
-	for i, o := range options {
-		if o.Type == "select" && o.ID == id {
-			return &options[i]
+	m := models[i]
+	efforts := m.efforts()
+	effort := selection.Effort
+	if effort == "" {
+		effort = "default"
+		if selection.Model == ag.selected.Model && slices.Contains(efforts, ag.selected.Effort) {
+			effort = ag.selected.Effort
 		}
 	}
-	return nil
-}
-
-// values lists a setting's values, whether listed directly or in groups.
-func values(o *configOption) []string {
-	var values []string
-	for _, v := range o.Options {
-		if v.Value != "" {
-			values = append(values, v.Value)
-		}
-		for _, grouped := range v.Options {
-			values = append(values, grouped.Value)
-		}
+	if len(efforts) == 0 && effort == "default" {
+		effort = ""
 	}
-	return values
-}
-
-// choose sets a session option to a value OpenCode offers and returns the
-// options that follow, which depend on the model.
-func (ag *agent) choose(ctx context.Context, options []configOption, id, value string) ([]configOption, error) {
-	o := findOption(options, id)
-	if o == nil {
-		return nil, fmt.Errorf("OpenCode offers no %s setting", id)
+	if effort != "" && !slices.Contains(efforts, effort) {
+		return nil, fmt.Errorf("model %s: OpenCode does not offer effort %q; see list_models", selection.Model, effort)
 	}
-	if !slices.Contains(values(o), value) {
-		return nil, fmt.Errorf("OpenCode does not offer %s %q; see list_models", id, value)
+	ref := modelRef{ProviderID: m.ProviderID, ID: m.ID, Variant: effort}
+	if err := ag.server.call(ctx, "POST", sessionPath(ag.session)+"/model", map[string]any{"model": ref}, nil); err != nil {
+		return nil, err
 	}
-	var result sessionResult
-	err := ag.call(ctx, "session/set_config_option", map[string]any{"sessionId": ag.session, "configId": id, "value": value}, &result)
-	return result.ConfigOptions, err
+	ag.selected = harness.Selection{Model: m.key(), Effort: effort}
+	ag.mu.Lock()
+	ag.window = m.Limit.Context
+	ag.mu.Unlock()
+	selected := ag.selected
+	return &selected, nil
 }
