@@ -111,6 +111,9 @@ func Log(t testing.TB, dir, agent, kind string) []Entry {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A reader can see the start of an entry the stand-in is still writing;
+	// only lines ended by a newline are complete.
+	b = b[:bytes.LastIndexByte(b, '\n')+1]
 	var entries []Entry
 	for _, line := range bytes.Split(b, []byte("\n")) {
 		if len(line) == 0 {

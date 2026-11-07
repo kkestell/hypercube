@@ -24,6 +24,7 @@ var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 // workspace.
 type fixture struct {
 	t         *testing.T
+	dir       string // removed after the runtimes quit
 	db        *store.DB
 	rt        *Runtime
 	logs      string
@@ -39,7 +40,7 @@ func newFixture(t *testing.T) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	f := &fixture{t: t, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo")}
+	f := &fixture{t: t, dir: dir, logs: filepath.Join(dir, "logs"), plugins: filepath.Join(dir, "plugins"), root: filepath.Join(dir, "repo")}
 	for _, d := range []string{f.logs, f.plugins, f.root, filepath.Join(dir, "config/hypercube")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
