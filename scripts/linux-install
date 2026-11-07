@@ -51,8 +51,12 @@ EXEC="Exec=\"$exec_path\"" awk '/^Exec=/ { print ENVIRON["EXEC"]; next } { print
 install -D -m 644 "$app/resources/$id.png" "$data/icons/hicolor/512x512/apps/$id.png"
 
 # The sandbox of the desktop app needs user namespaces, which Ubuntu restricts
-# to applications with a profile that allows them.
-if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+# to applications with a profile that allows them. A system without AppArmor's
+# loader, such as a container on an Ubuntu host, cannot load one.
+restricted=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || true)
+if [ "$restricted" = 1 ] && ! command -v apparmor_parser >/dev/null; then
+	echo "install: the kernel restricts user namespaces and apparmor_parser is missing; the desktop app's sandbox may not start" >&2
+elif [ "$restricted" = 1 ]; then
 	tmp=$(mktemp)
 	cat >"$tmp" <<PROFILE
 # Lets Hypercube's desktop app create the user namespaces its sandbox needs.

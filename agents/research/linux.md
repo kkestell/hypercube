@@ -114,5 +114,7 @@ Docker runs ARM64 Linux containers natively. Checked on 2026-11-06:
 
 Containers share Docker's kernel, so Ubuntu's AppArmor restriction on user
 namespaces and Chromium's sandbox are tested only on a real Ubuntu kernel,
-such as GitHub's `ubuntu-24.04` runner. Emulated AMD64 machines are too slow
+such as GitHub's `ubuntu-24.04` runner, whose kernel restricts them
+(`kernel.apparmor_restrict_unprivileged_userns` reads 1 there, also from
+inside a container). Emulated AMD64 machines are too slow
 for a desktop; AMD64 runs in CI.
