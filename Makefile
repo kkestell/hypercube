@@ -19,7 +19,7 @@ else
 include make/linux.mk
 endif
 
-.PHONY: binaries check release dev dev-app dev-stop dev-clean linux-check linux-test ui screenshots web-build web-serve
+.PHONY: binaries check release dev dev-app dev-stop dev-clean linux-check linux-test linux-test-all ui screenshots web-build web-serve
 
 # binaries builds hypercube and the harness plugins side by side in $(OUT).
 binaries:
@@ -67,14 +67,26 @@ dev-stop:
 dev-clean:
 	scripts/dev clean
 
+# LINUX_DISTRO chooses the Linux container's distribution: debian, ubuntu,
+# fedora, or arch.
+LINUX_DISTRO ?= debian
+export LINUX_DISTRO
+
 # linux-check runs make check in a fresh Linux container.
 linux-check:
 	scripts/linux/run
 
 # linux-test runs the Linux tests in a fresh Linux container and copies their
-# screenshots to bin/linux-test/.
+# screenshots to bin/linux-test/$(LINUX_DISTRO)/.
 linux-test:
 	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install && scripts/linux/test-desktop'
+
+# linux-test-all runs linux-test for each distribution that has an image for
+# this machine's architecture, stopping at the first failure. Arch has AMD64
+# images only.
+LINUX_DISTROS = debian ubuntu fedora $(if $(filter x86_64,$(shell uname -m)),arch)
+linux-test-all:
+	for d in $(LINUX_DISTROS); do $(MAKE) linux-test LINUX_DISTRO=$$d || exit 1; done
 
 # web-build builds the Hypercube website into web/public. web-serve runs its dev
 # server at http://localhost:1313. Both go through web/Makefile, which installs

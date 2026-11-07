@@ -32,16 +32,20 @@ jobs:
       - run: make check
 
   linux-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [debian, ubuntu, fedora, arch]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - run: make linux-test
+      - run: make linux-test LINUX_DISTRO=${{ matrix.distro }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: linux-test
+          name: linux-test-${{ matrix.distro }}
           path: bin/linux-test/
           if-no-files-found: ignore

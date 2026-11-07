@@ -1,0 +1,41 @@
+#!/bin/sh
+# Install the Linux test image's system packages with the distribution's
+# package manager. scripts/linux/Dockerfile runs it.
+set -eu
+
+. /etc/os-release
+
+case "$ID" in
+debian | ubuntu)
+	export DEBIAN_FRONTEND=noninteractive
+	apt-get update
+	apt-get install -y --no-install-recommends \
+		systemd systemd-sysv dbus-user-session ca-certificates curl git unzip xz-utils \
+		make gcc g++ libc6-dev xvfb xauth librsvg2-bin nodejs npm procps sqlite3 \
+		libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxss1 desktop-file-utils zsh fish iproute2 \
+		openbox dunst dbus-bin imagemagick wmctrl xdotool x11-utils python3-gi gir1.2-glib-2.0
+	rm -rf /var/lib/apt/lists/*
+	;;
+fedora)
+	# systemd-pam provides pam_systemd.so, which the test user's manager needs.
+	dnf install -y --setopt=install_weak_deps=False \
+		systemd systemd-pam dbus-daemon dbus-tools ca-certificates curl git unzip xz \
+		make gcc gcc-c++ glibc-devel binutils xorg-x11-server-Xvfb xorg-x11-xauth \
+		librsvg2-tools nodejs npm procps-ng sqlite gtk3 nss alsa-lib mesa-libgbm \
+		libXScrnSaver desktop-file-utils zsh fish iproute util-linux-core findutils \
+		openbox dunst ImageMagick wmctrl xdotool xprop python3-gobject-base shadow-utils
+	dnf clean all
+	;;
+arch)
+	pacman -Syu --noconfirm --needed \
+		systemd dbus ca-certificates curl git unzip xz make gcc binutils xorg-server-xvfb \
+		xorg-xauth librsvg nodejs npm procps-ng sqlite gtk3 nss alsa-lib mesa libxss \
+		desktop-file-utils zsh fish iproute2 openbox dunst imagemagick wmctrl xdotool \
+		xorg-xprop python-gobject
+	rm -rf /var/cache/pacman/pkg/*
+	;;
+*)
+	echo "packages: unsupported distribution '$ID'" >&2
+	exit 1
+	;;
+esac
