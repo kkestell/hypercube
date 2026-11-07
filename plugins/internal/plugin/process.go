@@ -33,6 +33,9 @@ func ReadLines(r io.Reader, handle func(line []byte)) error {
 // Process is a running harness CLI. It owns the CLI's pipes, reading its
 // output, the reason it ended, and stopping it.
 type Process struct {
+	// Stdin writes to the CLI's input. A failed write means the CLI has closed
+	// its input or exited, so Write waits for the CLI to end and returns the
+	// exit reason instead of the pipe's error.
 	Stdin io.WriteCloser
 
 	cmd    *exec.Cmd
@@ -61,7 +64,8 @@ func StartProcess(product string, cmd *exec.Cmd) (*Process, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Process{Stdin: stdin, cmd: cmd, stdout: stdout, exited: make(chan struct{}), done: make(chan struct{})}
+	p := &Process{cmd: cmd, stdout: stdout, exited: make(chan struct{}), done: make(chan struct{})}
+	p.Stdin = stdinPipe{WriteCloser: stdin, p: p}
 	cmd.Stdout = w
 	cmd.Stderr = io.MultiWriter(os.Stderr, &p.stderr)
 	// The CLI's children may keep its stderr open after it ends.
@@ -98,6 +102,21 @@ func (p *Process) Read(handle func(line []byte)) error {
 	p.stdout.Close()
 	close(p.done)
 	return p.err
+}
+
+// stdinPipe is the CLI's input.
+type stdinPipe struct {
+	io.WriteCloser
+	p *Process
+}
+
+func (s stdinPipe) Write(b []byte) (int, error) {
+	n, err := s.WriteCloser.Write(b)
+	if err != nil {
+		<-s.p.exited
+		return n, s.p.err
+	}
+	return n, nil
 }
 
 // Done is closed when the CLI has exited and Read has handled its output.

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -220,8 +221,9 @@ func setUp(root, dir string) error {
 }
 
 // copyIncluded copies the paths in root that match a pattern in root's
-// .worktreeinclude, in .gitignore syntax, and that Git ignores. The copies
-// are APFS clones, so even large directories copy quickly.
+// .worktreeinclude, in .gitignore syntax, and that Git ignores. Where the file
+// system supports it, the copies are copy-on-write clones, so even large
+// directories copy quickly.
 func copyIncluded(root, dir string) error {
 	if _, err := os.Stat(filepath.Join(root, ".worktreeinclude")); err != nil {
 		return nil
@@ -255,11 +257,20 @@ func copyIncluded(root, dir string) error {
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
 		}
-		if out, err := exec.Command("cp", "-c", "-R", filepath.Join(root, p), target).CombinedOutput(); err != nil {
+		if out, err := exec.Command("cp", "-R", cloneFlag(), filepath.Join(root, p), target).CombinedOutput(); err != nil {
 			return fmt.Errorf("copying %s: %s", p, strings.TrimSpace(string(out)))
 		}
 	}
 	return nil
+}
+
+// cloneFlag is the cp option that clones files where the file system can: APFS
+// on macOS, Btrfs and XFS on Linux. Elsewhere cp copies them.
+func cloneFlag() string {
+	if runtime.GOOS == "darwin" {
+		return "-c"
+	}
+	return "--reflink=auto"
 }
 
 // Removable returns an error if the worktree has uncommitted changes, or its

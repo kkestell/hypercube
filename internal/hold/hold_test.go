@@ -232,7 +232,7 @@ func TestStopKillsChildIgnoringEOF(t *testing.T) {
 	}
 }
 func TestTerminalResizeHangupAndRetention(t *testing.T) {
-	h := start(t, &Size{Cols: 80, Rows: 24}, "/bin/sh", "-c", "trap 'echo hungup; exit' HUP; stty size; read line; stty size; read line; head -c 700000 /dev/zero | tr '\\0' x; echo done; while :; do sleep 1; done")
+	h := start(t, &Size{Cols: 80, Rows: 24}, "/bin/sh", "-c", "trap 'echo hungup; exit 0' HUP; stty size; read line; stty size; read line; head -c 700000 /dev/zero | tr '\\0' x; echo done; while :; do sleep 1; done")
 	out := output(t, h, 0)
 	got := readN(t, out, 7)
 	if string(got) != "24 80\r\n" {

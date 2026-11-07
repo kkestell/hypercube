@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 )
 
 // nativeModel is one entry of Codex's model/list.
@@ -35,7 +37,12 @@ func (ag *agent) initialize(ctx context.Context) error {
 		"clientInfo":   map[string]any{"name": "hypercube", "version": "1"},
 		"capabilities": map[string]any{"experimentalApi": true},
 	}, nil); err != nil {
-		return fmt.Errorf("incompatible Codex app-server; update Codex: %w", err)
+		// Only an error answer to initialize means an incompatible app-server.
+		var rpcErr *plugin.RPCError
+		if errors.As(err, &rpcErr) {
+			return fmt.Errorf("incompatible Codex app-server; update Codex: %w", err)
+		}
+		return err
 	}
 	return ag.rpc.Notify("initialized", map[string]any{})
 }

@@ -122,9 +122,9 @@ func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error)
 
 // initialize asks claude to start and waits until read reports the answer.
 func (c *claude) initialize(ctx context.Context, ready <-chan error) error {
-	if err := c.send(map[string]any{"type": "control_request", "request_id": "initialize", "request": map[string]any{"subtype": "initialize"}}); err != nil {
-		return err
-	}
+	// A failed write means claude has exited. read reports why on ready, which
+	// can include a result line that a write error does not carry.
+	_ = c.send(map[string]any{"type": "control_request", "request_id": "initialize", "request": map[string]any{"subtype": "initialize"}})
 	select {
 	case err := <-ready:
 		return err

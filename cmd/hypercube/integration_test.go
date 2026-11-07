@@ -57,6 +57,8 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
+	// Panel shells run $SHELL, which a bare container leaves unset.
+	t.Setenv("SHELL", "/bin/sh")
 	// A config from before agent profiles were removed, which the app upgrades.
 	config := `{"profiles":[
 		{"name":"first","description":"First lead","harness":"test","model":"haiku","effort":"low"},

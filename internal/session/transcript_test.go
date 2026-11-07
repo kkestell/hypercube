@@ -22,8 +22,10 @@ func TestTranscriptKeepsOrderAndReplacesItems(t *testing.T) {
 		return f.summary(parent.ID) == "user:start|text:ack|user:!work|text:finished|user:!finish"
 	})
 	f.input(parent.ID, "!stream")
+	// The text item finishes in the same step that ends the turn.
 	f.until("the streamed turn", func() bool {
-		return f.storedSession(parent.ID).Activity == store.Idle && len(f.transcript(parent.ID)) == 8
+		items := f.transcript(parent.ID)
+		return len(items) == 8 && items[6].Done
 	})
 	items := f.transcript(parent.ID)
 	text, tool := items[6], items[7]

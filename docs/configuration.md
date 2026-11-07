@@ -56,7 +56,9 @@ node_modules/
 ```
 
 Hypercube copies matching paths only if Git also ignores them. The copies are
-independent APFS clones made when the worktree is created. Changes in either
+independent copies made when the worktree is created. Where the file system
+supports it (APFS on macOS, Btrfs and XFS on Linux), the copies are
+copy-on-write clones; elsewhere they are ordinary copies. Changes in either
 checkout do not update the other copy.
 
 ## Example configuration

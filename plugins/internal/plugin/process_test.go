@@ -49,6 +49,17 @@ func TestReadReturnsTheExitReason(t *testing.T) {
 	}
 }
 
+// A write to a CLI that has ended returns why it ended.
+func TestWriteAfterTheProcessEndsReturnsTheExitReason(t *testing.T) {
+	p := start(t, "sh", "-c", "echo why >&2; exit 3")
+	_ = p.Read(func([]byte) {})
+	// Wait has closed the pipe by now.
+	_, err := p.Stdin.Write([]byte("hello\n"))
+	if err == nil || !strings.Contains(err.Error(), "exit status 3") || !strings.Contains(err.Error(), "why") {
+		t.Fatal(err)
+	}
+}
+
 // The last line reaches the handler even without a newline, and Done waits
 // for the handler to return.
 func TestDoneFollowsTheLastLine(t *testing.T) {

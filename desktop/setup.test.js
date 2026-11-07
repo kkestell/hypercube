@@ -38,6 +38,10 @@ test('a failed installer reports its error', async () => {
   expect(await install(bundle, '/bin/zsh')).toBe('port 4280 is in use');
 });
 
+// The installer writes and validates a launchd plist with macOS's plutil, so the
+// tests that run it apply only on macOS.
+const macOnly = test.if(process.platform === 'darwin');
+
 // Redirect the installer's outputs and stub service commands. HOME stays intact,
 // and the script can never reach the user's launchctl or lsof.
 function isolatedInstaller() {
@@ -58,7 +62,7 @@ function isolatedInstaller() {
   return {installer, bin, env, plist, log, calls};
 }
 
-test('the login service preserves XML characters and runs the backend through the login shell', () => {
+macOnly('the login service preserves XML characters and runs the backend through the login shell', () => {
   const {installer, env, plist, log, calls} = isolatedInstaller();
   execFileSync(installer, {env});
   const read = key => execFileSync('plutil', ['-extract', key, 'raw', '-o', '-', plist]).toString().trim();
@@ -75,7 +79,7 @@ test('the login service preserves XML characters and runs the backend through th
   expect(fs.readFileSync(calls, 'utf8')).toContain(`launchctl bootstrap gui/${process.getuid()} ${plist}`);
 });
 
-test('a failed plist validation leaves the loaded service alone', () => {
+macOnly('a failed plist validation leaves the loaded service alone', () => {
   const {installer, bin, env, calls} = isolatedInstaller();
   fs.writeFileSync(path.join(bin, 'plutil'), '#!/bin/sh\nexit 1\n', {mode: 0o755});
   expect(() => execFileSync(installer, {env})).toThrow();
