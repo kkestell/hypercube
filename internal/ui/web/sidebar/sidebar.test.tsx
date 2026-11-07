@@ -56,6 +56,8 @@ const choose = (root: HTMLElement, selector: string, label: string) => {
   pick(label);
 };
 
+const menuLabels = () => findAll(document, '[role=menuitem]').map(item => item.textContent);
+
 const dialog = () => document.querySelector('[role=alertdialog]');
 const openDialog = () => find(document, '[role=alertdialog]');
 const dialogReference = (attribute: string) => document.getElementById(openDialog().getAttribute(attribute) ?? '')?.textContent;
@@ -90,31 +92,32 @@ test('Enter saves a changed title, Escape cancels, and leaving the field saves',
   expect(posted().length).toBe(2);
 });
 
-test('an active family folds its ended children, and menus offer Restart Agent only to sessions that can run', () => {
+test('an active family hides its ended children until its menu shows them, and menus offer Restart Agent only to sessions that can run', () => {
   const live = session('live', {parent: 'a'});
   const ended = session('ended', {parent: 'a', ended: true});
   const {root, posted} = setup([session('a', {activity: 'exited', children: [ended, live]}), session('b'), session('old', {ended: true})], 'live');
   expect(sessionRows(root)).toEqual(['a', 'live', 'b']);
-  const fold = find(root, '[data-row="ended:a"]');
-  expect(fold.textContent).toBe('1 ended');
-  click(fold);
-  expect(sessionRows(root)).toEqual(['a', 'live', 'ended', 'b']);
+  choose(root, '[data-session="a"]', 'Show Ended Sessions');
+  expect(sessionRows(root)).toEqual(['a', 'ended', 'live', 'b']);
   expect(row(root, 'ended').className).toContain('opacity-60');
   expect(row(root, 'a').className).not.toContain('opacity-60');
-  contextMenu(row(root, 'a'));
-  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).toEqual(
-    ['Rename', 'Restart Agent', 'Archive Session', 'Delete Session']);
-  pick('Archive Session');
   contextMenu(row(root, 'ended'));
-  expect(findAll(document, '[role=menuitem]').map(item => item.textContent)).not.toContain('Restart Agent');
+  expect(menuLabels()).not.toContain('Restart Agent');
   key(document.activeElement as HTMLElement, 'Escape');
+  contextMenu(row(root, 'a'));
+  expect(menuLabels()).toEqual(['Rename', 'Restart Agent', 'Hide Ended Sessions', 'Archive Session', 'Delete Session']);
+  pick('Hide Ended Sessions');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'b']);
+  contextMenu(row(root, 'b'));
+  expect(menuLabels()).toEqual(['Rename', 'Restart Agent', 'Archive Session', 'Delete Session']);
+  key(document.activeElement as HTMLElement, 'Escape');
+  choose(root, '[data-session="a"]', 'Archive Session');
   choose(root, '[data-session="live"]', 'Restart Agent');
   click(find(root, '[role=tab][data-state=inactive]'));
   choose(root, '[data-session="old"]', 'Unarchive');
   expect(posted()).toEqual([{action: 'archive', id: 'a'}, {action: 'restart', id: 'live'}, {action: 'unarchive', id: 'old'}]);
 });
 
-const menuLabels = () => findAll(document, '[role=menuitem]').map(item => item.textContent);
 
 test.each([
   ['darwin', ['Open in VS Code', 'Reveal in Finder', 'Open in Terminal']],
@@ -141,11 +144,10 @@ test('a refused open shows the desktop app\'s message', async () => {
   expect(store.get().errors.map(error => error.message)).toEqual(['VS Code was not found.']);
 });
 
-test.each([false, true])('session shortcuts skip an ended-children fold and wrap (running child: %s)', runningChild => {
+test.each([false, true])('session shortcuts skip hidden ended children and wrap (running child: %s)', runningChild => {
   const ended = session('ended', {parent: 'a', ended: true});
   const children = runningChild ? [session('live', {parent: 'a'}), ended] : [ended];
   const {root, store} = setup([session('a', {children}), session('b')], 'a');
-  expect(find(root, '[data-row="ended:a"]').getAttribute('aria-expanded')).toBe('false');
   expect(sessionRows(root)).toEqual(runningChild ? ['a', 'live', 'b'] : ['a', 'b']);
   const none = () => {};
   const actions: ShortcutActions = {focusComposer: none, showHelp: none, showSettings: none, openQuickOpen: none, openSessionSearch: none};
@@ -197,19 +199,17 @@ test('only one row is tabbable, and the arrow keys move and open rows', () => {
   expect(store.get().selected).toBe('b');
 });
 
-test('the ended fold opens and closes from the keyboard and keeps the shown session listed', () => {
+test('a hidden ended child stays listed while shown, and the keyboard moves between rows', () => {
   const ended = session('ended', {parent: 'a', ended: true});
   const {root} = setup([session('a', {children: [session('live', {parent: 'a'}), ended]})], 'ended');
   expect(sessionRows(root)).toEqual(['a', 'live', 'ended']);
-  const fold = find(root, '[data-row="ended:a"]');
-  act(() => fold.focus());
-  key(fold, 'Enter');
-  expect(fold.getAttribute('aria-expanded')).toBe('true');
-  expect(sessionRows(root)).toEqual(['a', 'live', 'ended']);
-  key(fold, 'ArrowRight');
-  expect(document.activeElement).toBe(row(root, 'ended'));
+  act(() => row(root, 'ended').focus());
   key(row(root, 'ended'), 'ArrowLeft');
   expect(document.activeElement).toBe(row(root, 'a'));
+  key(row(root, 'a'), 'ArrowLeft');
+  expect(sessionRows(root)).toEqual(['a']);
+  key(row(root, 'a'), 'ArrowRight');
+  expect(sessionRows(root)).toEqual(['a', 'live', 'ended']);
 });
 
 test.each([

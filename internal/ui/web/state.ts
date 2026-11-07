@@ -13,7 +13,8 @@ import type {Confirmation} from './shared/types.ts';
 
 // selected names the chosen session: null after the shown session stops, or
 // an ID that the next workspaces may move to a running session. pending names
-// a session chosen before the server listed it. loaded is set once the first
+// a session chosen before the server listed it. endedShown names the active
+// parents whose ended children the sidebar lists. loaded is set once the first
 // workspaces arrive. drafts are keyed by draft key, dismissed by card key,
 // and fileOpens by session ID. unsentDrafts holds parked new-session contexts
 // by draft key; unsent holds the one currently shown. titleBar is null outside
@@ -34,6 +35,7 @@ export interface State {
   requests: AttentionRequest[];
   selected: string | null;
   pending: string | null;
+  endedShown: Record<string, true>;
   unsent: Unsent | null;
   unsentDrafts: Record<string, Unsent>;
   visible: boolean;
@@ -67,6 +69,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   requests: [],
   selected,
   pending: null,
+  endedShown: {},
   unsent: null,
   unsentDrafts: {},
   visible,

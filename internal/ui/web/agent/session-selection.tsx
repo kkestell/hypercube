@@ -30,7 +30,7 @@ export function SessionSelection({session}: {session: Session}) {
 }
 
 // SettingsDiffer marks a child whose settings differ from its parent's.
-export function SettingsDiffer({child, parent, workspace}: {child: Settings; parent: Settings; workspace: string | null}) {
+function SettingsDiffer({child, parent, workspace}: {child: Settings; parent: Settings; workspace: string | null}) {
   const childModels = useModels(workspace, child.harness);
   const parentModels = useModels(workspace, parent.harness);
   if (sameSettings(child, parent)) return null;

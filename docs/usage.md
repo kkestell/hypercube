@@ -31,7 +31,7 @@ to work on the same project.
 A session keeps the harness it started with. The model and effort can change
 later through the selector, including during work. The selection survives
 restarts. A child whose settings differ from its parent's is marked in its
-composer and in the sidebar. [Harness timing](harness-support.md#messages-and-model-changes)
+composer. [Harness timing](harness-support.md#messages-and-model-changes)
 determines when a new selection takes effect.
 
 ## Send a correction or stop a turn
@@ -168,8 +168,9 @@ Terminal.
 Children appear under their parent. A dot before each title shows the
 session's state: a breathing dot indicates work, an amber dot means an answer
 is needed, a blue dot marks an unseen reply, a gray dot means the session is
-idle, and an outlined dot means it has ended. An active parent's ended children
-fold into one row, such as **12 ended**, that lists them dimmed when chosen.
+idle, and a dimmed outline means it has ended. A child's dot is hollow. An
+active parent hides its ended children until **Show Ended Sessions** in its
+menu lists them.
 
 ## Work with a team
 

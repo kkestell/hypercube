@@ -15,9 +15,24 @@ export const sessionItems = (store: Store, session: Session, rename: () => void)
   if (session.parent) return [session.ended ? [renameItem] : [renameItem, restartItem], openItems(store, session.dir), session.ended ? [deleteItem] : []];
   return [
     [renameItem, restartItem],
+    session.children.some(child => child.ended) ? [endedItem(store, session)] : [],
     openItems(store, session.dir),
     [{label: 'Archive Session', icon: 'archive', run: () => archiveSession(store, session.id)}, deleteItem],
   ];
+};
+
+// endedItem shows or hides an active parent's ended children in the sidebar.
+const endedItem = (store: Store, session: Session): ContextMenuItem => {
+  const shown = !!store.get().endedShown[session.id];
+  const run = () => store.update(state => {
+    const endedShown = {...state.endedShown};
+    if (shown) delete endedShown[session.id];
+    else endedShown[session.id] = true;
+    return {...state, endedShown};
+  });
+  return shown
+    ? {label: 'Hide Ended Sessions', icon: 'eye-off', run}
+    : {label: 'Show Ended Sessions', icon: 'eye', run};
 };
 
 export const workspaceItems = (store: Store, workspace: Workspace): ContextMenuItem[][] => [
