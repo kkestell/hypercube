@@ -78,6 +78,9 @@ sockets, and session recovery).
   or `chrome-sandbox` is owned by root with mode 4755. Both need root once;
   the profile survives upgrades because it names the path. Debian, Fedora,
   and Arch allow unprivileged user namespaces by default.
+- **Electron shows Linux notifications through libnotify**, which it loads
+  at run time; without `libnotify.so.4` notifications are silently dropped.
+  Debian's `dunst` and Fedora's packages pull it in; Arch's do not.
 - **Launcher integration keys on the desktop file.** Electron uses
   `desktopName` in `package.json` for the Wayland app ID and the Unity
   launcher API behind `app.setBadgeCount`; the `.desktop` file name and
