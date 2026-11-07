@@ -146,6 +146,10 @@ function repeatsQuestions(item: Item, index: number, {order, items}: Transcript)
 // which waits on the user.
 export const isPending = <T extends Item>(item: T): item is Extract<T, {kind: 'attention' | 'proposal'}> => (item.kind === 'attention' || item.kind === 'proposal') && !item.done;
 
+// Some models report their reasoning only as a bold title per step. A run of
+// such titles draws as one row showing the latest.
+const isHeading = (item: Item): boolean => item.kind === 'reasoning' && /^\*\*[^*\n]+\*\*$/.test(item.text?.trim() ?? '');
+
 // transcriptRows returns the rows of a transcript.
 export function transcriptRows(transcript: Transcript): Row[] {
   const {order, items} = transcript;
@@ -158,8 +162,9 @@ export function transcriptRows(transcript: Transcript): Row[] {
     const parent = item.parent === undefined ? undefined : items[item.parent];
     const container = parent?.kind === 'tool' && !isMessage(parent) ? parent.id : '';
     const siblings = containers.get(container);
-    if (siblings) siblings.push(item);
-    else containers.set(container, [item]);
+    if (!siblings) containers.set(container, [item]);
+    else if (isHeading(item) && isHeading(siblings[siblings.length - 1])) siblings[siblings.length - 1] = item;
+    else siblings.push(item);
   }
   const rowOf = (item: Exclude<Item, StateItem>): TurnRow => {
     switch (item.kind) {
