@@ -32,7 +32,7 @@ package_macos() {
 		echo "release: build on Apple Silicon (darwin/arm64)" >&2
 		exit 1
 	fi
-	make bundle APP=bin/release/Hypercube.app
+	make bundle APP=bin/release/Hypercube.app SIGN_IDENTITY=-
 	app=bin/release/Hypercube.app
 	check_identity "$app/Contents/MacOS/hypercube"
 	codesign --verify --deep --strict "$app"

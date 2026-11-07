@@ -4,12 +4,17 @@ DESKTOP_EXE := Hypercube Desktop
 SERVICE := com.github.kkestell.hypercube
 MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+# SIGN_IDENTITY signs the bundle: the keychain's "Hypercube Local Signing"
+# certificate when present, so macOS privacy permissions carry over between
+# builds, and ad hoc otherwise.
+LOCAL_IDENTITY := Hypercube Local Signing
+SIGN_IDENTITY ?= $(if $(shell security find-certificate -c "$(LOCAL_IDENTITY)" 2>/dev/null),$(LOCAL_IDENTITY),-)
 
 .PHONY: build bundle install place quit-desktop install-service
 
 # bundle builds $(APP): the Electron desktop app, Hypercube Desktop, with
-# hypercube and the harness plugins side by side in Contents/MacOS, signed ad
-# hoc. The icons are rendered from cmd/hypercube/AppIcon.svg and
+# hypercube and the harness plugins side by side in Contents/MacOS, signed with
+# SIGN_IDENTITY. The icons are rendered from cmd/hypercube/AppIcon.svg and
 # desktop/menubar.svg. build also links hypercube and the plugins into bin/.
 bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile
@@ -33,8 +38,8 @@ bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 		plutil -replace CFBundleShortVersionString -string "$$version" $(APP)/Contents/Info.plist && \
 		plutil -replace CFBundleVersion -string "$$version" $(APP)/Contents/Info.plist && \
 		plutil -replace CFBundleGetInfoString -string "$$info" $(APP)/Contents/Info.plist
-	for p in $(PLUGINS); do codesign --force --sign - $(MACOS)/hypercube-harness-$$p || exit 1; done
-	codesign --force --deep --sign - $(APP)
+	for p in $(PLUGINS); do codesign --force --sign "$(SIGN_IDENTITY)" $(MACOS)/hypercube-harness-$$p || exit 1; done
+	codesign --force --deep --sign "$(SIGN_IDENTITY)" $(APP)
 
 bin/AppIcon.icns: cmd/hypercube/AppIcon.svg
 	mkdir -p bin
