@@ -84,7 +84,7 @@ publishing a release.
   in Ubuntu, Fedora, and Arch images as well as Debian: ARM64 on the Mac, and
   AMD64 in CI, where Arch's images run. Fix differences in the owning task's
   code; claim the full matrix when every check passes.
-- [ ] **Release.** The beta workflow builds both Linux tarballs with
+- [x] **Release.** The beta workflow builds both Linux tarballs with
   `SHA256SUMS` beside the macOS ZIP; check a downloaded tarball's
   `hypercube version` in the Linux test environment. Update `README.md`, `AGENTS.md`'s target line,
   `docs/installation.md`, and `agents/development.md` with Linux commands and
