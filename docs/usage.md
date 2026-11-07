@@ -54,7 +54,10 @@ Expand that row for the reasoning, tool calls, and messages between sessions.
 Expand an individual tool call for its input and output. Failed or interrupted
 turns keep their activity visible.
 
-![An expanded turn showing reasoning, tool calls, and a native subagent](images/details-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/details-dark.png">
+  <img alt="An expanded turn showing reasoning, tool calls, and a native subagent" src="images/details-light.png">
+</picture>
 
 ### Files and diffs
 
@@ -128,7 +131,10 @@ until the harness reports again. See
 
 ## Answer a request
 
-![Notification cards with a question and a command approval from two other sessions](images/attention-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/attention-dark.png">
+  <img alt="Notification cards with a question and a command approval from two other sessions" src="images/attention-light.png">
+</picture>
 
 Questions and approvals stay above the message box while you scroll. A child's
 request also appears in its parent's chat, where you can answer without
@@ -186,7 +192,10 @@ notifications and waiting indicators, even while the parent is parked.
 Corrections and follow-ups need no question;
 follow-ups on a child's work go back to that child while its context helps.
 
-![An agent offers a new task, with a card asking whether it runs in a new session or the current one](images/offer-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/offer-dark.png">
+  <img alt="An agent offers a new task, with a card asking whether it runs in a new session or the current one" src="images/offer-light.png">
+</picture>
 
 Work the agent suggests on its own appears as cards above the message box,
 showing the brief, the harness, model, and effort it will use, context, and
@@ -196,7 +205,10 @@ conversation as a single line; expand one to read its brief again. Cards survive
 do not block the parent. An unsuccessful launch shows an error and leaves the
 card or accepted offer available to retry when its child was cleaned up.
 
-![A running team with a suggested task waiting for review](images/suggestion-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/suggestion-dark.png">
+  <img alt="A running team with a suggested task waiting for review" src="images/suggestion-light.png">
+</picture>
 
 ## Layout and shortcuts
 

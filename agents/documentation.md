@@ -57,9 +57,9 @@ previews it at http://localhost:1313/. Both use the pinned Hugo version in
 The guides in `docs/` and screenshots in `docs/images/` are shared by GitHub
 and the website. Hugo mounts them at `/docs/` and `/docs/images/`; screenshot
 scenes and fixtures in `docs/screenshots/` are not published. In the guides,
-link to other guides with relative `.md` paths and screenshots with
-`images/<scene>-light.png`. Hugo resolves the guide URLs and adds each
-screenshot's `-dark.png` variant for dark appearance.
+link to other guides with relative `.md` paths. Embed each screenshot as a
+`<picture>` with a `prefers-color-scheme: dark` source for `-dark.png` and an
+`<img>` for `-light.png`, as the README does.
 
 For Cloudflare Pages, use the repository root as the build root,
 `make web-build` as the build command, and `web/public` as the output directory.

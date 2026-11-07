@@ -29,7 +29,10 @@ absent from Git history. Its chat appears beneath the parent in the sidebar.
 
 ## Working on separate branches
 
-![Sessions on separate branches with uncommitted, unmerged, and merged work](images/worktrees-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/worktrees-dark.png">
+  <img alt="Sessions on separate branches with uncommitted, unmerged, and merged work" src="images/worktrees-light.png">
+</picture>
 
 For independent edits, a child can have its own Git worktree: another checkout
 on its own branch. The parent can keep working without sharing staged files
