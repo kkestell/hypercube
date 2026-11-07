@@ -79,7 +79,7 @@ publishing a release.
   keys in `xterm.ts` macOS-only. Rename `notifications.macos` to
   `notifications.desktop`, migrating the saved value at startup, and update
   Settings, `docs/configuration.md`, and the user's config together.
-- [ ] **Distribution checks.** Run the Linux test environment's install,
+- [x] **Distribution checks.** Run the Linux test environment's install,
   service, desktop app, session, panel shell, notification, and restart tests
   in Ubuntu, Fedora, and Arch images as well as Debian: ARM64 on the Mac, and
   AMD64 in CI, where Arch's images run. Fix differences in the owning task's
