@@ -30,9 +30,9 @@ Get the app and `SHA256SUMS` from
 2. Extract the ZIP. Move `Hypercube.app` to `~/Applications` **before opening
    it**. The background service needs the app to stay at that location.
 3. Open `Hypercube.app`. If macOS blocks it, use **System Settings → Privacy &
-   Security → Open Anyway**, then confirm. Betas are ad hoc signed, not
-   notarized by Apple; do not disable Gatekeeper globally. See
-   [Apple's instructions](https://support.apple.com/102445).
+   Security → Open Anyway**, then confirm. Betas are signed with Hypercube's
+   own certificate, not notarized by Apple; do not disable Gatekeeper globally.
+   See [Apple's instructions](https://support.apple.com/102445).
 4. In the waiting window, choose **Set Up Background Service**. When setup
    finishes, the workspace view replaces the waiting page.
 

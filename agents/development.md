@@ -229,16 +229,22 @@ See [scripts/dev](../scripts/dev) for cleanup details.
 
 GitHub Actions runs `make check` on main-branch pushes and pull requests, using
 the Go and Bun versions declared in the repository. Beta tags run those same
-checks before packaging an ad hoc signed Apple Silicon app and Linux tarballs.
+checks before packaging a signed Apple Silicon app and Linux tarballs.
 
 Once the intended changes are committed and checked, create and push an
 annotated tag such as `v0.1.0-beta.1`. The **Beta release** workflow packages
 the macOS ZIP on `macos-15` and the Linux tarballs on `ubuntu-24.04` and
 `ubuntu-24.04-arm`. A release job then creates one **draft prerelease** with
 all three, one `SHA256SUMS`, and generated notes. Inspect the notes, test the
-downloaded apps, and publish the draft when ready. No Apple account or signing
-secrets are required. GitHub Actions must be enabled and permitted to create
-releases in the repository.
+downloaded apps, and publish the draft when ready. GitHub Actions must be
+enabled and permitted to create releases in the repository.
+
+The macOS app is signed with the self-signed "Hypercube Local Signing"
+certificate, so installed updates keep their macOS privacy permissions. The
+workflow imports it from the repository secrets `MACOS_SIGNING_P12` (the
+base64-encoded `.p12`) and `MACOS_SIGNING_PASSWORD`. Local builds use the same
+certificate when it is in the login keychain and are signed ad hoc otherwise;
+`scripts/release` requires it.
 
 `gh workflow run release.yml` packages a branch under the tag `v0.0.0-beta.1`
 and keeps the archives as workflow artifacts without creating a release.

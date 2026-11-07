@@ -6,7 +6,7 @@ MACOS := $(APP)/Contents/MacOS
 LSREGISTER := /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
 # SIGN_IDENTITY signs the bundle: the keychain's "Hypercube Local Signing"
 # certificate when present, so macOS privacy permissions carry over between
-# builds, and ad hoc otherwise.
+# builds and releases, and ad hoc otherwise.
 LOCAL_IDENTITY := Hypercube Local Signing
 SIGN_IDENTITY ?= $(if $(shell security find-certificate -c "$(LOCAL_IDENTITY)" 2>/dev/null),$(LOCAL_IDENTITY),-)
 

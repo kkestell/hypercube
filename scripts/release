@@ -32,10 +32,14 @@ package_macos() {
 		echo "release: build on Apple Silicon (darwin/arm64)" >&2
 		exit 1
 	fi
-	make bundle APP=bin/release/Hypercube.app SIGN_IDENTITY=-
+	make bundle APP=bin/release/Hypercube.app
 	app=bin/release/Hypercube.app
 	check_identity "$app/Contents/MacOS/hypercube"
 	codesign --verify --deep --strict "$app"
+	if ! codesign -dvv "$app" 2>&1 | grep -qx 'Authority=Hypercube Local Signing'; then
+		echo "release: import the Hypercube Local Signing certificate before packaging" >&2
+		exit 1
+	fi
 	archive=Hypercube-$tag-macos-arm64.zip
 	ditto -c -k --sequesterRsrc --keepParent "$app" "bin/release/$archive"
 }

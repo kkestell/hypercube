@@ -32,6 +32,20 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: internal/ui/package.json
+      - name: Import the signing certificate
+        env:
+          SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          printf '%s' "$SIGNING_P12" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$SIGNING_PASSWORD" -T /usr/bin/codesign
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$keychain"
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
       - name: Package beta
         run: scripts/release "$RELEASE_TAG"
       - uses: actions/upload-artifact@v7
@@ -97,7 +111,7 @@ jobs:
         run: |
           sha256sum Hypercube-* > SHA256SUMS
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
-          macOS: an Apple Silicon ZIP. This app is ad hoc signed and is not notarized by Apple.
+          macOS: an Apple Silicon ZIP. This app is signed with Hypercube's own certificate and is not notarized by Apple.
           After opening it once, use System Settings → Privacy & Security → Open Anyway if macOS blocks it.
 
           Linux: AMD64 and ARM64 tarballs.
