@@ -24,7 +24,7 @@ export function restoreView(session: AttachedSession, view: SessionViewState): A
     panel: view.panel,
     expanded: view.expanded,
     scroll: view.scroll,
-    files: {listings: {}, expanded: view.folders, open: Object.fromEntries(Object.entries(view.files).map(([path, file]) => [path, {...unreadFile, ...file}]))},
+    files: {...session.files, expanded: view.folders, open: Object.fromEntries(Object.entries(view.files).map(([path, file]) => [path, {...unreadFile, ...file}]))},
     diffs: Object.fromEntries(diffPaths.map(path => [path, {text: null, message: null}])),
   };
 }

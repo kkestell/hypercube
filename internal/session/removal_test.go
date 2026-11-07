@@ -14,9 +14,15 @@ import (
 	"github.com/kkestell/hypercube/internal/store"
 )
 
-// pauseStatus holds the first completed Git status in dir. Both pipe ends
-// stay open in the test so cleanup can release the command even after failure.
+// pauseStatus holds the first completed Git status in dir.
 func pauseStatus(t *testing.T, dir string) (wait, release func()) {
+	t.Helper()
+	return pauseGit(t, dir, "status", "--porcelain")
+}
+
+// pauseGit holds the first completed Git command matching command and arg in
+// dir. Both pipe ends stay open so cleanup can release it even after failure.
+func pauseGit(t *testing.T, dir, command, arg string) (wait, release func()) {
 	t.Helper()
 	git, err := exec.LookPath("git")
 	if err != nil {
@@ -35,11 +41,11 @@ func pauseStatus(t *testing.T, dir string) (wait, release func()) {
 		}
 	}
 	script := `#!/bin/sh
-if [ "$1" = status ] && [ "$PWD" = "$HYPERCUBE_TEST_STATUS_DIR" ] && mkdir "$HYPERCUBE_TEST_STATUS_BARRIER/claimed" 2>/dev/null; then
+if [ "$1" = "$HYPERCUBE_TEST_GIT_COMMAND" ] && [ "$2" = "$HYPERCUBE_TEST_GIT_ARG" ] && [ "$PWD" = "$HYPERCUBE_TEST_GIT_DIR" ] && mkdir "$HYPERCUBE_TEST_GIT_BARRIER/claimed" 2>/dev/null; then
  "$HYPERCUBE_TEST_GIT" "$@"
  result=$?
- printf 'ready\n' > "$HYPERCUBE_TEST_STATUS_BARRIER/reached"
- read response < "$HYPERCUBE_TEST_STATUS_BARRIER/release"
+ printf 'ready\n' > "$HYPERCUBE_TEST_GIT_BARRIER/reached"
+ read response < "$HYPERCUBE_TEST_GIT_BARRIER/release"
  exit "$result"
 fi
 exec "$HYPERCUBE_TEST_GIT" "$@"
@@ -48,8 +54,10 @@ exec "$HYPERCUBE_TEST_GIT" "$@"
 		t.Fatal(err)
 	}
 	t.Setenv("HYPERCUBE_TEST_GIT", git)
-	t.Setenv("HYPERCUBE_TEST_STATUS_DIR", dir)
-	t.Setenv("HYPERCUBE_TEST_STATUS_BARRIER", barrier)
+	t.Setenv("HYPERCUBE_TEST_GIT_DIR", dir)
+	t.Setenv("HYPERCUBE_TEST_GIT_COMMAND", command)
+	t.Setenv("HYPERCUBE_TEST_GIT_ARG", arg)
+	t.Setenv("HYPERCUBE_TEST_GIT_BARRIER", barrier)
 	t.Setenv("PATH", barrier+":"+os.Getenv("PATH"))
 	reached := make(chan error, 1)
 	go func() {
@@ -73,7 +81,7 @@ exec "$HYPERCUBE_TEST_GIT" "$@"
 				t.Fatal(err)
 			}
 		case <-time.After(5 * time.Second):
-			t.Fatal("Git status did not reach the barrier")
+			t.Fatalf("Git %s %s did not reach the barrier", command, arg)
 		}
 	}, release
 }

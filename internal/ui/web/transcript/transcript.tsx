@@ -7,9 +7,10 @@
 // column's 16px plus the composer box's 21px to its icons. Expanding or
 // collapsing an item keeps its heading where it was on screen, and the list
 // follows its end again only if that leaves it there.
-import {useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode} from 'react';
+import {Fragment, useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode} from 'react';
 import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
+import {isUnsent} from '../agent/drafts.ts';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {Icon} from '../shared/icon.tsx';
@@ -18,11 +19,13 @@ import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
 import type {Session} from '../sessions/types.ts';
+import {dismissSubmission, retrySubmission} from '../sessions/session-actions.ts';
+import {submissionsOf} from '../sessions/submissions.ts';
 import {AttentionItem} from './attention-item.tsx';
 import {ProposalItem} from './proposal-item.tsx';
 import {TranscriptRow} from './transcript-item.tsx';
 import {isPending, transcriptRows} from './transcript-tree.ts';
-import {emptyTranscript, setExpanded} from './transcripts.ts';
+import {displayedTranscript, setExpanded} from './transcripts.ts';
 
 interface TranscriptProps {
   session: Pick<Session, 'id' | 'ended'>;
@@ -32,8 +35,9 @@ interface TranscriptProps {
 
 export function Transcript({session, active = true, footer}: TranscriptProps) {
   const [state, store] = useStore();
-  const transcript = state.session?.transcript ?? emptyTranscript;
-  const ready = state.session?.transcriptReady ?? false;
+  const transcript = useMemo(() => displayedTranscript(state, session.id), [state.session?.transcript, state.submissions, session.id]);
+  const submissions = submissionsOf(state, session.id);
+  const ready = isUnsent(session.id) || (state.session?.transcriptReady ?? false);
   const expanded = state.session?.expanded ?? {};
   const rows = useMemo(() => transcriptRows(transcript), [transcript]);
   const pending = transcript.order.map(id => transcript.items[id]).filter(isPending);
@@ -72,26 +76,43 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto">
         <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-[37px] py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
-          {rows.map(row => <TranscriptRow key={row.type === 'activity' ? row.key : row.item.id} row={row} session={session} expanded={expanded} setOpen={setOpen} />)}
+          {rows.map(row => {
+            const id = row.type === 'activity' ? row.key : row.item.id;
+            const submission = submissions.find(entry => entry.id === id);
+            return <Fragment key={id}>
+              <TranscriptRow row={row} session={session} expanded={expanded} setOpen={setOpen} />
+              {submission?.status === 'sending' && <div role="status" className="text-right text-xs text-muted-foreground">Sending…</div>}
+              {submission?.status === 'failed' && <div className="flex flex-col items-end gap-2">
+                <div role="alert" className="text-right text-xs text-destructive">Sending failed: {submission.error}</div>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" disabled={session.ended} onClick={() => retrySubmission(store, session.id, id)}>Retry</Button>
+                  <Button size="sm" variant="ghost" onClick={() => dismissSubmission(store, session.id, id)}>Dismiss</Button>
+                </div>
+              </div>}
+            </Fragment>;
+          })}
         </div>
       </div>
-      <div className={`transcript-footer relative shrink-0 ${tabBackground} ${pending.length ? '[&_.composer>[data-slot=card]]:shadow-lg dark:[&_.composer>[data-slot=card]]:shadow-black/40' : ''}`}>
+      <div className={`transcript-footer relative flex max-h-3/4 min-h-0 shrink-0 flex-col ${tabBackground}`}>
         {away && (
           <Button type="button" variant="secondary" size="icon" className="absolute -top-12 left-1/2 -translate-x-1/2 rounded-full" title="Scroll to newest output" aria-label="Scroll to newest output"
             onClick={() => { followEnd(true); focusComposerField(); }}><Icon name="arrow-down" /></Button>
         )}
-        {/* The card tucks 16px under the composer, which comes after it in tab
-            order, overlaps its padded bottom edge, and casts a shadow on it. */}
-        {pending.length > 0 && (
-          <section className={`transcript-pending -mb-8 ${column(state)}`} aria-label="Waiting on you">
-            <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
-              {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
-                ? <AttentionItem item={item} session={session} />
-                : <ProposalItem item={item} session={session} expanded={false} setOpen={setOpen} />}</CardContent>)}
-            </Card>
-          </section>
-        )}
-        {footer}
+        <div className="transcript-footer-content flex min-h-0 flex-col overflow-y-auto">
+          {/* Pending content scrolls above the composer. If even one control
+              and the composer cannot fit, their shared container also scrolls.
+              The padded card bottom tucks 16px under the composer. */}
+          {pending.length > 0 && (
+            <section className={`transcript-pending -mb-8 min-h-24 shrink overflow-y-auto ${column(state)}`} aria-label="Waiting on you">
+              <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
+                {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
+                  ? <AttentionItem item={item} session={session} />
+                  : <ProposalItem item={item} session={session} expanded={false} setOpen={setOpen} />}</CardContent>)}
+              </Card>
+            </section>
+          )}
+          <div className={`transcript-composer relative shrink-0 ${pending.length ? 'drop-shadow-lg dark:drop-shadow-black/40' : ''}`}>{footer}</div>
+        </div>
       </div>
     </div>
   );

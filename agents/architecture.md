@@ -34,10 +34,12 @@ describe the harness. `describe` reports whether the native executable is
 installed; the app runs it for every plugin at startup and when the browser or
 `list_models` lists harnesses, and gives the installed names to new sessions'
 instructions. `models` lists the models a harness offers in a directory and,
-for one model, its efforts; the browser's selector and `list_models` ask for
-it on demand, and nothing caches it. The plugin, not the core, checks a
-session's model and effort in its native start and configure, and its start
-and configure replies report the settings the harness accepted.
+for one model, its efforts. The runtime saves catalogs in SQLite by harness,
+directory, and model. The browser uses saved catalogs for labels and refreshes
+them when the selector opens; `list_models` asks the harness directly. The
+plugin, not the core, checks a session's model and effort in its native start
+and configure, and its start and configure replies report the settings the
+harness accepted.
 
 A session saves its harness, model, and effort. A child takes its parent's
 current settings, with any overrides its parent passes, resolved in

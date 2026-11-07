@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -69,8 +70,14 @@ func (w *alertWatch) read(notify func(Alert)) error {
 	if err != nil {
 		return err
 	}
+	return w.readStored(requests, notify)
+}
+
+// readStored enriches captured requests and reads replies in the current
+// database snapshot. A captured request's session may have since been deleted.
+func (w *alertWatch) readStored(requests []Request, notify func(Alert)) error {
 	var alerts []Alert
-	err = w.runtime.db.Read(func(tx *store.Tx) error {
+	err := w.runtime.db.Read(func(tx *store.Tx) error {
 		for _, req := range requests {
 			key := "request:" + req.Session + ":" + req.Item.ID
 			if w.requests[key] {
@@ -78,6 +85,9 @@ func (w *alertWatch) read(notify func(Alert)) error {
 			}
 			w.requests[key] = true
 			a, err := w.alert(tx, req.Session, key, req.Item.Text)
+			if errors.Is(err, store.ErrNotFound) {
+				continue
+			}
 			if err != nil {
 				return err
 			}

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -14,8 +13,9 @@ import (
 
 // The answers to an offer.
 const (
-	offerNew  = "New session"
-	offerHere = "Do it here"
+	offerNew     = "New session"
+	offerHere    = "Do it here"
+	offerDismiss = "Dismiss"
 )
 
 // OfferChild asks the user whether a new task gets its own child session, and
@@ -32,7 +32,7 @@ func (r *Runtime) OfferChild(parentID, title string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	item := harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindAttention, Text: title, Choices: []string{offerNew, offerHere}, Offer: true}
+	item := harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindAttention, Text: title, Choices: []string{offerNew, offerHere, offerDismiss}, Offer: true}
 	err = r.save(func(tx *write) error {
 		parent, err := tx.Session(parentID)
 		if err != nil {
@@ -67,18 +67,15 @@ func (r *Runtime) answerOffer(parentID, id, choice string) (bool, error) {
 		if item.Done {
 			return errors.New("the request is finished")
 		}
-		if !slices.Contains(item.Choices, choice) {
-			return fmt.Errorf("choose %s or %s", offerNew, offerHere)
+		// Offers saved before Dismiss was added still accept all three answers.
+		if choice != offerNew && choice != offerHere && choice != offerDismiss {
+			return fmt.Errorf("choose %s, %s, or %s", offerNew, offerHere, offerDismiss)
 		}
 		item.Done, item.Answer = true, choice
 		if err := tx.putItem(parentID, seq, item); err != nil {
 			return err
 		}
-		accepted := ""
-		if choice == offerNew {
-			accepted = item.ID
-		}
-		return tx.Queue(store.Message{To: parentID, Text: report.OfferAnswer(item.Text, accepted)})
+		return tx.Queue(store.Message{To: parentID, Text: report.OfferAnswer(item.Text, choice, item.ID)})
 	})
 	return isOffer, err
 }

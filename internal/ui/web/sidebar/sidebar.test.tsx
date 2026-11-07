@@ -238,3 +238,59 @@ test('a saved offer shows waiting while its session is parked', () => {
   act(() => store.update(state => ({...state, requests: []})));
   expect(row(root, 'a').querySelector('[aria-label="Waiting on you"]')).toBeNull();
 });
+
+test('the settings difference tooltip opens on hover and focus inside a child row', async () => {
+  stubFetch(url => Response.json({models: new URL(url, 'http://x/').searchParams.get('harness') === 'claude'
+    ? [{id: 'opus', label: 'Opus 5.5'}] : [{id: 'sol', label: 'Sol 6'}]}));
+  const child = session('child', {parent: 'a', harness: 'codex', model: 'sol', effort: 'high'});
+  const parent = session('a', {harness: 'claude', model: 'opus', effort: 'medium', children: [child]});
+  const store = createStore(testState({workspaces: [testWorkspace({id: 'w', sessions: [parent]})]}));
+  const root = mount(store, <Sidebar searchOpen={false} onSearchOpenChange={() => {}} onSettings={() => {}} />);
+  await act(async () => {});
+  const marker = find(row(root, 'child'), '[role=img][aria-label^="Settings differ"]');
+  const description = "Settings differ from the parent's: Codex Sol 6, effort high; parent Claude Opus 5.5, effort medium";
+  expect(marker.getAttribute('aria-label')).toBe(description);
+  expect(marker.tabIndex).toBe(0);
+  expect(marker.querySelector('[data-icon=differs]')).not.toBeNull();
+  expect(document.querySelector('[role=tooltip]')).toBeNull();
+  await act(async () => {
+    marker.dispatchEvent(new PointerEvent('pointermove', {bubbles: true, pointerType: 'mouse'}));
+    // Flush the stock tooltip's zero-delay hover timer.
+    await new Promise<void>(resolve => setTimeout(resolve));
+  });
+  expect(find(document, '[role=tooltip]').textContent).toBe(description);
+  expect(find(document, '[data-slot=tooltip-content]').textContent).toContain(description);
+  key(marker, 'Escape');
+  expect(document.querySelector('[role=tooltip]')).toBeNull();
+  act(() => marker.focus());
+  expect(find(document, '[role=tooltip]').textContent).toBe(description);
+  act(() => marker.blur());
+  expect(document.querySelector('[role=tooltip]')).toBeNull();
+  click(row(root, 'child'));
+  expect(store.get().selected).toBe('child');
+});
+
+test('the parent chevron overlays the title and toggles children without selecting the parent', () => {
+  const {root, store} = setup([session('a', {title: 'A long session title', children: [session('child', {parent: 'a'})]})], 'child');
+  const parent = row(root, 'a');
+  const title = find(parent, '.session-item-title');
+  const chevron = find(parent, '.session-item-twistie');
+  expect(chevron.parentElement).toBe(title.parentElement);
+  expect(title.parentElement?.classList.contains('relative')).toBe(true);
+  expect(chevron.classList.contains('absolute')).toBe(true);
+  expect(chevron.classList.contains('right-0')).toBe(true);
+  expect(chevron.className).toContain('group-hover/session:visible');
+  expect(chevron.className).toContain('group-focus-within/session:visible');
+  const columns = find(parent, '.session-item-decoration').children;
+  expect(columns).toHaveLength(3);
+  for (const column of columns) expect(column.classList.contains('size-4')).toBe(true);
+  click(chevron);
+  expect(sessionRows(root)).toEqual(['a']);
+  expect(store.get().selected).toBe('child');
+  click(chevron);
+  expect(sessionRows(root)).toEqual(['a', 'child']);
+  act(() => parent.dispatchEvent(new MouseEvent('dblclick', {bubbles: true})));
+  expect(sessionRows(root)).toEqual(['a']);
+  click(title);
+  expect(store.get().selected).toBe('a');
+});

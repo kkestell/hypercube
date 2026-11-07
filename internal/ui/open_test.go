@@ -28,19 +28,26 @@ func TestOpenInApp(t *testing.T) {
 	}
 	h := handler(t, db)
 	for _, tc := range []struct {
-		kind, id, app, want string
-		status              int
+		kind, id, app, path, want string
+		status                    int
 	}{
-		{"workspace", "w", "vscode", "-a\nVisual Studio Code\n/workspace with spaces\n", 200},
-		{"session", "s", "finder", "/worktree with spaces\n", 200},
-		{"session", "s", "terminal", "-a\nTerminal\n/worktree with spaces\n", 200},
-		{"session", "missing", "finder", "", 404},
-		{"workspace", "w", "other", "", 400},
-		{"path", "/tmp", "finder", "", 400},
+		{"workspace", "w", "vscode", "", "-a\nVisual Studio Code\n/workspace with spaces\n", 200},
+		{"session", "s", "finder", "", "/worktree with spaces\n", 200},
+		{"session", "s", "terminal", "", "-a\nTerminal\n/worktree with spaces\n", 200},
+		{"path", "s", "finder", "src/file with spaces.go", "-R\n/worktree with spaces/src/file with spaces.go\n", 200},
+		{"path", "s", "finder", "src/folder", "-R\n/worktree with spaces/src/folder\n", 200},
+		{"path", "s", "finder", "/elsewhere/file.go", "-R\n/elsewhere/file.go\n", 200},
+		{"path", "s", "finder", "-filename.go", "-R\n/worktree with spaces/-filename.go\n", 200},
+		{"path", "s", "finder", "", "", 400},
+		{"path", "s", "terminal", "src", "", 400},
+		{"path", "missing", "finder", "src", "", 404},
+		{"session", "missing", "finder", "", "", 404},
+		{"workspace", "w", "other", "", "", 400},
+		{"other", "/tmp", "finder", "", "", 400},
 	} {
 		t.Run(strings.Join([]string{tc.kind, tc.id, tc.app}, "_"), func(t *testing.T) {
 			os.Remove(output)
-			q := url.Values{"kind": {tc.kind}, "id": {tc.id}, "app": {tc.app}, "path": {"/client/path"}}
+			q := url.Values{"kind": {tc.kind}, "id": {tc.id}, "app": {tc.app}, "path": {tc.path}}
 			req := httptest.NewRequest("POST", "http://localhost:4280/open?"+q.Encode(), nil)
 			req.Header.Set("Origin", "http://localhost:4280")
 			res := httptest.NewRecorder()

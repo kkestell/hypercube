@@ -6,7 +6,7 @@ import {HttpError, listFileTree, readFile} from '../api.ts';
 import type {ChangeTree} from '../changes/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
-import type {FileEntry, FileRead, OpenFile, SessionFiles} from './types.ts';
+import type {FileEntry, FileRead, FolderListing, OpenFile, SessionFiles} from './types.ts';
 
 export const unreadFile: OpenFile = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
 
@@ -89,13 +89,25 @@ export async function loadTree(store: Store, dirs: string[]) {
   const attachment = store.get().sessionVersion;
   const request = store.get().treeVersion + 1;
   store.update(state => ({...state, treeVersion: request}));
-  const apply = (response: Record<string, FileEntry[] | null>) => {
+  const apply = (response: Record<string, FolderListing>) => {
     store.update(state => {
       if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.treeVersion !== request) return state;
       const files = state.session.files;
       const listings = {...files.listings};
+      const listingErrors = {...files.listingErrors};
       let changed = false;
       for (const [dir, entries] of Object.entries(response)) {
+        if (entries && 'error' in entries) {
+          if (listingErrors[dir] !== entries.error) {
+            listingErrors[dir] = entries.error;
+            changed = true;
+          }
+          continue;
+        }
+        if (dir in listingErrors) {
+          delete listingErrors[dir];
+          changed = true;
+        }
         const sorted = entries === null ? null : sortEntries(entries);
         if (JSON.stringify(sorted) !== JSON.stringify(listings[dir])) {
           listings[dir] = sorted;
@@ -103,7 +115,7 @@ export async function loadTree(store: Store, dirs: string[]) {
         }
       }
       const expanded = {...files.expanded};
-      const updated = {...files, listings};
+      const updated = {...files, listings, listingErrors};
       for (const [dir, entries] of Object.entries(response)) {
         // A deleted-only folder remains navigable through Git changes.
         if (dir && entries === null && expanded[dir] && listedFolder(updated, dir)) {
@@ -118,7 +130,10 @@ export async function loadTree(store: Store, dirs: string[]) {
     apply(await listFileTree(session.id, dirs));
   } catch (error) {
     if (error instanceof HttpError && error.status === 404) apply({'': null});
-    // Other failures leave the last complete tree available for the next poll.
+    else {
+      const message = error instanceof Error ? error.message : String(error);
+      apply(Object.fromEntries((dirs.includes('') ? [''] : dirs).map(dir => [dir, {error: message}])));
+    }
   }
 }
 
@@ -127,13 +142,17 @@ export async function readOpenFile(store: Store, path: string) {
   const session = store.get().session;
   const file = session?.files.open[path];
   if (!session || !file) return;
+  const attachment = store.get().sessionVersion;
+  const request = (store.get().fileReadVersions[path] ?? 0) + 1;
+  store.update(state => ({...state, fileReadVersions: {...state.fileReadVersions, [path]: request}}));
   let result: FileRead;
   try {
     result = await readFile(session.id, path, file.etag);
   } catch (error) {
     result = {error: error instanceof Error ? error.message : String(error)};
   }
-  store.update(state => fileRead(state, session.id, path, result));
+  store.update(state => state.sessionVersion === attachment && state.fileReadVersions[path] === request
+    ? fileRead(state, session.id, path, result) : state);
 }
 
 // setFolderOpen expands or collapses a folder, listing it when it first opens

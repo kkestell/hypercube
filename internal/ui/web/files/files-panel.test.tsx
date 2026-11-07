@@ -5,6 +5,8 @@ import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {FilesPanel} from './files-panel.tsx';
+import {createFilePoller} from './file-polling.ts';
+import {emptySession} from '../sessions/selection.ts';
 
 afterEach(() => { unmountAll(); mock.restore(); });
 
@@ -49,4 +51,24 @@ test('a visited session shows its cached tree before refresh completes', async (
   stubFetch(() => new Promise<Response>(() => {}));
   const root = mount(store, <FilesPanel />);
   expect(element(root, '[data-path="src/file.go"]', HTMLElement).textContent).toBe('file.go');
+});
+
+test('a denied root listing is visible, preserves cached entries, and clears on the next successful poll', async () => {
+  const session = emptySession('s');
+  session.files.listings = {'': [{name: 'cached.go', dir: false}]};
+  const store = createStore(testState({session}));
+  let denied = true;
+  stubFetch(url => {
+    if (new URL(url, 'http://x/').pathname !== '/files/tree') return Response.json(null);
+    return denied ? new Response('permission denied', {status: 403}) : Response.json({'': [{name: 'fresh.go', dir: false}]});
+  });
+  let root!: HTMLDivElement;
+  await act(async () => { root = mount(store, <FilesPanel />); });
+  expect(root.textContent).toContain('permission denied');
+  expect(root.textContent).toContain('cached.go');
+  expect(store.get().errors).toEqual([]);
+  denied = false;
+  await act(async () => { await createFilePoller(store)(); });
+  expect(root.textContent).not.toContain('permission denied');
+  expect(root.textContent).toContain('fresh.go');
 });

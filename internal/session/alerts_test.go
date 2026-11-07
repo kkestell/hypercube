@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/store"
 )
 
 // watch runs WatchAlerts until the test ends and returns the alerts it sends.
@@ -179,5 +181,62 @@ func TestOfferRequestAlerts(t *testing.T) {
 	}
 	if len(alerts) != 1 || alerts[0].Key != "request:"+s.ID+":"+id || alerts[0].Text != "New task" {
 		t.Fatalf("offer alerts = %+v", alerts)
+	}
+}
+
+func TestDeletedCapturedRequestDoesNotStopAlerts(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	w := newAlertWatch(f.rt)
+	if err := w.read(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.rt.OfferChild(s.ID, "Deleted task"); err != nil {
+		t.Fatal(err)
+	}
+	requests := f.requests()
+	if len(requests) != 1 {
+		t.Fatalf("captured requests = %+v", requests)
+	}
+	// Deletion falls between the watcher's request capture and metadata read.
+	if err := f.rt.Delete(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	var alerts []Alert
+	notify := func(a Alert) { alerts = append(alerts, a) }
+	if err := w.readStored(requests, notify); err != nil {
+		t.Fatalf("reading a deleted request: %v", err)
+	}
+	if len(alerts) != 0 {
+		t.Fatalf("alerts for the deleted session = %+v", alerts)
+	}
+	other := f.session()
+	if err := w.read(nil); err != nil {
+		t.Fatal(err)
+	}
+	id, err := f.rt.OfferChild(other.ID, "Another task")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := w.read(notify); err != nil {
+		t.Fatal(err)
+	}
+	if len(alerts) != 1 || alerts[0].Key != "request:"+other.ID+":"+id {
+		t.Fatalf("alerts after deleting another session = %+v", alerts)
+	}
+}
+
+func TestAlertReadReportsDatabaseErrors(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	db, err := store.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	w := newAlertWatch(New(db, ""))
+	if err := w.readStored([]Request{{Session: "deleted"}}, func(Alert) {}); err == nil {
+		t.Fatal("reading a closed database succeeded")
 	}
 }

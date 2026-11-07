@@ -87,6 +87,7 @@ export interface AttentionItem extends ItemBase {
   free?: boolean;
   answer?: string;
   grant?: string;
+  offer?: boolean;
 }
 
 export type Item = UserItem | StateItem | TextItem | ReasoningItem | ToolItem | ErrorItem | AttentionItem | ProposalItem;

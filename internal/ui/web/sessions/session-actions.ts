@@ -1,13 +1,14 @@
 // What the user does to sessions and workspaces, and the prompts they send.
 // The server applies each action, and the result arrives in the next state
 // message.
-import {post} from '../api.ts';
-import {canSend, cleared, draftOf, isUnsent, restored, unsentCreated, unsentOf} from '../agent/drafts.ts';
+import {post, submitPrompt} from '../api.ts';
+import {canSend, cleared, draftOf, isUnsent, unsentCreated, unsentOf} from '../agent/drafts.ts';
 import type {Image} from '../images.ts';
 import {askToConfirm} from '../shared/confirm.ts';
 import type {Store} from '../store.ts';
 import {inWorktree, openUnsent, selectSession, unsentSending} from './selection.ts';
 import type {Session, Workspace} from './types.ts';
+import {addedSubmission, movedSubmissions, submissionsOf, updatedSubmission, withSubmissions, type Submission} from './submissions.ts';
 
 export const archiveSession = (store: Store, id: string) => post(store, 'session', {action: 'archive', id});
 export const unarchiveSession = (store: Store, id: string) => post(store, 'session', {action: 'unarchive', id});
@@ -49,42 +50,70 @@ interface Prompt {
   images: Image[];
 }
 
-// createSession sends the unsent session's first prompt, which creates the
-// session, then shows it. A refusal restores the prompt only while that
-// unsent session is still open.
+// createSession is also used by settings flows that submit a first prompt.
 export async function createSession(store: Store, prompt: Prompt, key: string) {
-  const unsent = unsentOf(store.get(), key);
-  const settings = unsent?.settings;
-  if (!unsent?.workspace || !settings) return false;
-  store.update(state => unsentSending(state, true, key));
-  const {workspace} = unsent;
-  const params = {action: 'new', workspace, ...settings, ...(inWorktree(store.get(), unsent) && {worktree: '1'})};
-  const created = await post(store, 'session', params, JSON.stringify(prompt));
-  // A completion must not change another unsent session or restore into it.
-  if (unsentOf(store.get(), key)?.identity !== unsent.identity) return true;
-  store.update(state => unsentSending(state, false, key));
-  if (created === null) return false;
-  const ids: {session: string} = JSON.parse(created);
-  const shown = store.get().unsent?.identity === unsent.identity;
-  store.update(state => unsentCreated(state, ids.session, key));
-  if (shown) chooseSession(store, ids.session);
-  return true;
+  if (!unsentOf(store.get(), key)?.settings) return false;
+  const submission = newSubmission(prompt);
+  store.update(state => addedSubmission(cleared(state, key), key, submission));
+  return deliverSubmission(store, key, submission);
 }
+
+const newSubmission = (prompt: Prompt): Submission => ({
+  text: prompt.text, images: prompt.images, id: 'submission-' + crypto.randomUUID(), status: 'sending',
+});
+
+async function deliverSubmission(store: Store, key: string, submission: Submission): Promise<boolean> {
+  const unsent = isUnsent(key) ? unsentOf(store.get(), key) : undefined;
+  if (isUnsent(key) && (!unsent?.workspace || !unsent.settings)) return false;
+  if (unsent) store.update(state => unsentSending(state, true, key));
+  const params: Record<string, string> = unsent
+    ? {action: 'new', workspace: unsent.workspace!, ...unsent.settings!, ...(inWorktree(store.get(), unsent) && {worktree: '1'})}
+    : {action: 'input', id: key};
+  const result = await submitPrompt(params, JSON.stringify({text: submission.text, images: submission.images, submission: submission.id}));
+  store.update(state => {
+    // A removed workspace or replaced unfinished session no longer owns this reply.
+    if (unsent && unsentOf(state, key)?.identity !== unsent.identity) return state;
+    let next = unsent ? unsentSending(state, false, key) : state;
+    let target = key;
+    if (unsent && result.session) {
+      const shown = next.unsent?.identity === unsent.identity;
+      next = unsentCreated(movedSubmissions(next, key, result.session), result.session, key);
+      target = result.session;
+      if (shown) next = selectSession(next, result.session);
+    }
+    return updatedSubmission(next, target, submission.id, result.error
+      ? {status: 'failed', error: result.error}
+      : {status: 'sent', error: undefined});
+  });
+  return !result.error;
+}
+
+// Retry owns the retained message, leaving any newer composer draft alone.
+// A fresh ID distinguishes this attempt; the server does not promise deduplication.
+export async function retrySubmission(store: Store, key: string, id: string) {
+  const previous = submissionsOf(store.get(), key).find(entry => entry.id === id);
+  if (previous?.status !== 'failed') return;
+  if (isUnsent(key) && unsentOf(store.get(), key)?.sending) return;
+  const submission = newSubmission(previous);
+  store.update(state => withSubmissions(state, key, submissionsOf(state, key).map(entry => entry.id === id ? submission : entry)));
+  await deliverSubmission(store, key, submission);
+}
+
+export const dismissSubmission = (store: Store, key: string, id: string) => store.update(state =>
+  withSubmissions(state, key, submissionsOf(state, key).filter(entry => entry.id !== id)));
 
 // requestMerge asks a worktree session's agent to merge its branch into the
 // checkout's branch.
 export const requestMerge = (store: Store, session: Pick<Session, 'id'>, target: string, path: string) => post(store, 'session', {action: 'input', id: session.id},
   JSON.stringify({text: `Commit any remaining work, then merge your branch into ${target} in the checkout at ${path}, resolving any conflicts, and report the result.`, images: []}));
 
-// sendPrompt sends a session's draft. The unsent session's first prompt
-// creates the session. A refused prompt returns to its draft.
+// Clear the composer and show its complete prompt in the same update, before
+// waiting for HTTP or the agent. Each failure keeps its own retryable message.
 export async function sendPrompt(store: Store, session: Pick<Session, 'id' | 'ended' | 'activity'>) {
   const state = store.get();
   if (!canSend(state, session)) return;
   const {text, images} = draftOf(state, session.id);
-  store.update(next => cleared(next, session.id));
-  const accepted = isUnsent(session.id)
-    ? await createSession(store, {text, images}, session.id)
-    : await post(store, 'session', {action: 'input', id: session.id}, JSON.stringify({text, images})) !== null;
-  if (!accepted) store.update(next => restored(next, session.id, {text, images}));
+  const submission = newSubmission({text, images});
+  store.update(next => addedSubmission(cleared(next, session.id), session.id, submission));
+  await deliverSubmission(store, session.id, submission);
 }

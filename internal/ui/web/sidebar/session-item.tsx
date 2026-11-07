@@ -61,10 +61,12 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       <span className="flex min-w-0 flex-1 items-center gap-2">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
-          : <span className={`session-item-title min-w-0 truncate text-left ${level === 2 ? 'text-xs' : ''}`}>{session.title}</span>}
-        {session.id !== renaming && hasChildren && <span className="session-item-twistie invisible flex size-4 shrink-0 items-center group-hover/session:visible group-focus-within/session:visible" onClick={toggle}>
-          <Chevron open={expanded} />
-        </span>}
+          : <span className="relative min-w-0 max-w-full">
+            <span className={`session-item-title block truncate text-left ${level === 2 ? 'text-xs' : ''}`}>{session.title}</span>
+            {hasChildren && <span className="session-item-twistie invisible absolute right-0 top-1/2 flex size-4 -translate-y-1/2 items-center group-hover/session:visible group-focus-within/session:visible" onClick={toggle}>
+              <Chevron open={expanded} />
+            </span>}
+          </span>}
       </span>
       {session.id !== renaming && <span className="session-item-decoration flex shrink-0 items-center gap-1">
         <span className="inline-flex size-4 items-center justify-center">

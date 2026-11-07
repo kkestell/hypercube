@@ -241,6 +241,10 @@ func copyIncluded(root, dir string) error {
 	// With --directory, Git lists a directory and also the files in it.
 	var copied []string
 	for p := range strings.SplitSeq(strings.TrimSuffix(ignored, "\x00"), "\x00") {
+		// Managed worktrees belong to other sessions, even with a broad include.
+		if p == ".hypercube" || strings.HasPrefix(p, ".hypercube/") {
+			continue
+		}
 		if slices.ContainsFunc(copied, func(d string) bool { return strings.HasPrefix(p, d) }) {
 			continue
 		}

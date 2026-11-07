@@ -87,3 +87,71 @@ func (r *Runtime) Transcript(id string) ([]TranscriptItem, error) {
 	}
 	return items, nil
 }
+
+// CompactTranscript visits the compact view newest first, before the exclusive
+// cursor (or from the end when nonpositive). Returning false stops the read.
+func (r *Runtime) CompactTranscript(id string, cursor int64, visit func(store.CompactEntry) bool) error {
+	return r.db.Read(func(tx *store.Tx) error {
+		pending, replaced, err := r.compactPending(tx, id, cursor)
+		if err != nil {
+			return err
+		}
+		slices.SortFunc(pending, func(a, b store.CompactEntry) int { return cmp.Compare(b.Seq, a.Seq) })
+		const batchSize = 64
+		for {
+			entries, err := tx.CompactEntries(id, cursor, batchSize)
+			if err != nil {
+				return err
+			}
+			for _, e := range entries {
+				for len(pending) > 0 && pending[0].Seq >= e.Seq {
+					if !visit(pending[0]) {
+						return nil
+					}
+					pending = pending[1:]
+				}
+				if !replaced[e.ID] && !visit(e) {
+					return nil
+				}
+			}
+			if len(entries) < batchSize {
+				break
+			}
+			cursor = entries[len(entries)-1].Seq
+		}
+		for _, e := range pending {
+			if !visit(e) {
+				break
+			}
+		}
+		return nil
+	})
+}
+
+// compactPending pairs a copy of pending fields with the transaction's saved
+// snapshot. Completing an item cannot move it between these two views.
+func (r *Runtime) compactPending(tx *store.Tx, id string, cursor int64) ([]store.CompactEntry, map[string]bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var pending []store.CompactEntry
+	replaced := map[string]bool{}
+	if l := r.live[id]; l != nil {
+		for itemID, p := range l.pending {
+			replaced[itemID] = true
+			if cursor > 0 && p.seq >= cursor {
+				continue
+			}
+			it := p.item
+			pending = append(pending, store.CompactEntry{
+				Seq: p.seq, ID: it.ID, Parent: it.Parent, Kind: it.Kind,
+				Text: it.Text, From: it.From, Tool: it.Tool, Answer: it.Answer,
+				State: it.State, Automatic: it.Automatic, Failed: it.Failed,
+				HasFinal: len(it.Final) > 0,
+			})
+		}
+	}
+	// BeginTx alone does not establish a SQLite read snapshot; the first
+	// query must run before releasing the lock that guards pending items.
+	_, err := tx.LastSeq(id)
+	return pending, replaced, err
+}

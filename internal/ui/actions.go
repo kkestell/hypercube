@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -50,8 +51,9 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 
 // input is the JSON body of a prompt: its text and images.
 type input struct {
-	Text   string          `json:"text"`
-	Images []harness.Image `json:"images"`
+	Submission string          `json:"submission"`
+	Text       string          `json:"text"`
+	Images     []harness.Image `json:"images"`
 }
 
 // readInput reads and decodes a prompt's body, answering the request and
@@ -65,6 +67,10 @@ func readInput(w http.ResponseWriter, r *http.Request) (input, bool) {
 	}
 	if err := json.Unmarshal(body, &in); err != nil {
 		http.Error(w, "malformed input: "+err.Error(), http.StatusBadRequest)
+		return in, false
+	}
+	if err := session.CheckSubmissionID(in.Submission); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return in, false
 	}
 	return in, true
@@ -83,12 +89,14 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
-		created, err := s.rt.Create(q.Get("workspace"), settings, q.Get("worktree") == "1", in.Text, in.Images...)
-		if refused(w, err) {
-			return
-		}
+		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", in.Submission, in.Text, in.Images...)
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"session": created.ID})
+		result := map[string]string{"session": created.ID}
+		if err != nil {
+			result["error"] = err.Error()
+			w.WriteHeader(http.StatusConflict)
+		}
+		_ = json.NewEncoder(w).Encode(result)
 		return
 	case "delete":
 		err = s.rt.Delete(id)
@@ -105,7 +113,7 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		err = s.rt.Input(id, in.Text, in.Images...)
+		err = s.rt.InputSubmission(id, in.Submission, in.Text, in.Images...)
 	case "selection":
 		err = s.rt.Select(id, harness.Selection{Model: q.Get("model"), Effort: q.Get("effort")})
 	case "interrupt":

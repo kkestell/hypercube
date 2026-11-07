@@ -171,6 +171,24 @@ test('a new task offer stays above the composer, sends one choice, and records i
   expect(find(root, '.attention-item').textContent).toContain('New session');
 });
 
+test('current and saved two-choice offers can be dismissed and leave the pending area', () => {
+  const fetches = spyOn(globalThis, 'fetch').mockReturnValue(new Promise<Response>(() => {}));
+  for (const choices of [['New session', 'Do it here', 'Dismiss'], ['New session', 'Do it here']]) {
+    const offer = {id: 'o', kind: 'attention' as const, offer: true, text: 'Fix the parser', choices};
+    const {root, send} = setup([offer]);
+    const pending = find(root, '.transcript-pending');
+    expect(findAll(pending, '[role="radio"][data-choice]').map(r => r.getAttribute('data-choice'))).toEqual(['New session', 'Do it here', 'Dismiss']);
+    choose(root, 'Dismiss');
+    submit(root);
+    const call = fetches.mock.calls.at(-1)!;
+    expect(Object.fromEntries(new URL(String(call[0]), 'http://x/').searchParams)).toEqual({action: 'answer', id: 's', request: 'o', choice: 'Dismiss'});
+    send([{...offer, done: true, answer: 'Dismiss'}]);
+    expect(root.querySelector('.transcript-pending')).toBeNull();
+    expect(find(root, '.attention-item').textContent).toContain('Dismiss');
+  }
+  expect(fetches).toHaveBeenCalledTimes(2);
+});
+
 test('an offer in an archived transcript cannot be answered', () => {
   const {root} = setup([{id: 'o', kind: 'attention', text: 'Fix the parser', choices: ['New session', 'Do it here']}], testSession({id: 's', ended: true, activity: 'exited'}));
   expect(findAll(root, '[role="radio"]').every(row => row.hasAttribute('disabled'))).toBe(true);
@@ -270,4 +288,56 @@ test('a turn draws as it runs and folds its activity under Worked for once it fi
   expect(find(root, '.activity-item [data-slot=collapsible-trigger]').textContent).toBe('Worked for 1s');
   expect(root.querySelector('.transcript-list > .tool-items-call')).toBeNull();
   expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
+});
+
+// Happy DOM does not perform layout. These assertions protect the scrolling
+// boundary and tab order that keep long pending forms above the composer.
+test('pending forms have a shrinking scroll region before the composer', () => {
+  const items: Item[] = Array.from({length: 6}, (_, i) => ({id: `q${i}`, kind: 'attention', text: `Question ${i}`, choices: ['Yes', 'No'], free: true}));
+  items.push({id: 'p', kind: 'proposal', text: 'Long task', input: {name: 'child', title: 'Long task', settings: {harness: 'codex', model: 'm', effort: 'low'}, message: 'A long brief.\n'.repeat(40)}});
+  const store = createStore(testState({session: emptySession('s')}));
+  store.update(s => receivedTranscript(s, {type: 'transcript', session: 's', reset: true, items: items.map((item, seq) => ({...item, seq}))}));
+  const root = mount(store, <Transcript session={busy} footer={<textarea aria-label="Message" />} />);
+  const footer = find(root, '.transcript-footer');
+  const pending = find(footer, '.transcript-pending');
+  expect(footer.classList.contains('min-h-0')).toBe(true);
+  expect(footer.classList.contains('max-h-3/4')).toBe(true);
+  expect(find(footer, '.transcript-footer-content').classList.contains('overflow-y-auto')).toBe(true);
+  expect(pending.classList.contains('min-h-24')).toBe(true);
+  expect(pending.classList.contains('overflow-y-auto')).toBe(true);
+  expect(findAll(pending, '.attention-form-submit')).toHaveLength(6);
+  expect(findAll(pending, '[aria-label="Proposed child session"] button').map(button => button.textContent)).toEqual(['Start', 'Dismiss']);
+  const controls = findAll(footer, 'button, input, textarea').filter(control => !control.hasAttribute('tabindex') || control.tabIndex >= 0);
+  expect(controls.at(-1)?.getAttribute('aria-label')).toBe('Message');
+});
+
+test('incoming, outgoing, and automatic messages collapse to one line and can be reopened', () => {
+  const image = {mime_type: 'image/png', data: 'aGVsbG8='};
+  const {root} = setup([
+    {id: 'user', kind: 'user', text: 'A regular user prompt'},
+    {id: 'incoming', kind: 'user', from: 'child', text: 'First line\nSecond line', images: [image]},
+    {id: 'outgoing', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'child', text: 'A single line message'}, done: true},
+    {id: 'failed', kind: 'tool', server: 'hypercube', tool: 'send_message', input: {to: 'child', text: 'Try again'}, failed: true, done: true, output: 'Delivery failed', images: [image]},
+    {id: 'automatic', kind: 'user', automatic: true, text: 'A report\nFull details', images: [image]},
+  ]);
+  expect(find(root, '.message-item-user').textContent).toBe('A regular user prompt');
+  expect(root.querySelector('.message-item-user button[data-slot=collapsible-trigger]')).toBeNull();
+  const messages = findAll(root, '.message-item-agent');
+  expect(messages).toHaveLength(4);
+  for (const [i, message] of messages.entries()) {
+    const trigger = find(message, '[data-slot=collapsible-trigger]');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(find(message, '.disclosure-heading').contains(find(message, '.message-item-preview'))).toBe(true);
+    expect(message.querySelector('.message-item-body')).toBeNull();
+    expect(message.querySelector('img')).toBeNull();
+    act(() => trigger.click());
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(message.querySelector('.message-item-body')).not.toBeNull();
+    if (i === 0) expect(find(message, '.message-item-body').textContent).toContain('Second line');
+    if (i === 2) expect(find(message, '.message-item-body').textContent).toContain('Delivery failed');
+    if (i !== 1) expect(message.querySelector('img')).not.toBeNull();
+    act(() => trigger.click());
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(message.querySelector('.message-item-body')).toBeNull();
+  }
 });

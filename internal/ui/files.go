@@ -147,7 +147,7 @@ func (s *server) listFileTree(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid folder list", http.StatusBadRequest)
 		return
 	}
-	listings := make(map[string][]fileEntry, len(dirs))
+	listings := make(map[string]any, len(dirs))
 	for _, dir := range dirs {
 		if r.Context().Err() != nil {
 			return
@@ -166,8 +166,9 @@ func (s *server) listFileTree(w http.ResponseWriter, r *http.Request) {
 				fileError(w, err)
 				return
 			}
-			// A folder that cannot be listed keeps its previous rows;
-			// other folders still refresh.
+			listings[dir] = struct {
+				Error string `json:"error"`
+			}{err.Error()}
 			continue
 		}
 		listings[dir] = entries

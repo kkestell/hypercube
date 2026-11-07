@@ -7,7 +7,10 @@ import type {RightTab, Workbench} from '../app/types.ts';
 import type {AttachedSession} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
-import {testState, unread} from '../../test-state.ts';
+import {testSession, testState, testWorkspace, unread} from '../../test-state.ts';
+import {loadChanges, readOpenDiff} from '../changes/changes.ts';
+import {receivedWorkspaces, selectSession} from '../sessions/selection.ts';
+import {readOpenFile} from './files.ts';
 import {createFilePoller} from './file-polling.ts';
 
 afterEach(() => mock.restore());
@@ -35,7 +38,7 @@ function attached(id = 's'): AttachedSession {
   let tabs = [fileTabId('x.go'), fileTabId('y.go'), fileTabId('z.go')].reduce(openTab, session.tabs);
   tabs = moveTab(tabs, fileTabId('x.go'), panes(tabs.root)[0].id, 'right');
   const open = {'x.go': unread, 'y.go': unread, 'z.go': {...unread, text: 'z', etag: '"z"'}};
-  return {...session, tabs, files: {listings, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
+  return {...session, tabs, files: {listings, listingErrors: {}, expanded: {a: true, 'a/b': true, 'c/d': true}, open}};
 }
 
 const workbench = (rightPanel: boolean, rightTab: RightTab): Workbench => ({...testState().workbench, rightPanel, rightTab});
@@ -73,7 +76,7 @@ test('one poll restores nested expanded folders using freshly loaded parent list
 
 test('a folder shown only through its deleted files stays expanded', async () => {
   const {requests} = stubRoutes({'files/tree:null': () => Response.json({'': [], gone: null})});
-  const session = {...emptySession('s'), files: {listings: {'': []}, expanded: {gone: true as const}, open: {}}};
+  const session = {...emptySession('s'), files: {listings: {'': []}, listingErrors: {}, expanded: {gone: true as const}, open: {}}};
   const store = createStore(state({session}));
   await createFilePoller(store)();
   expect(requests).toEqual(['files/tree:null', 'changes:null']);
@@ -154,4 +157,69 @@ test('a diff title follows its status while the right panel shows Files', async 
   await createFilePoller(store)();
   expect(requests).toEqual(['files/tree:null', 'changes:null', 'diff:a.go']);
   expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Added)');
+});
+
+for (const kind of ['file', 'diff'] as const) {
+  test(`a newer polled ${kind} supersedes overlapping reads and an earlier A-B-A attachment`, async () => {
+    const store = createStore(receivedWorkspaces(testState({selected: 'a', workbench: workbench(false, 'search')}), [testWorkspace({
+      id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
+    })]));
+    store.update(state => {
+      const session = state.session!;
+      return {...state, session: {...session, tabs: openTab(session.tabs, `${kind}:a.go`),
+        files: {...session.files, open: {'a.go': unread}}, diffs: {'a.go': {text: null, message: null}}}};
+    });
+    const replies: Array<(response: Response) => void> = [];
+    let started = () => {};
+    const polled = new Promise<void>(resolve => { started = resolve; });
+    stubFetch(url => {
+      if (new URL(url, 'http://x/').pathname !== `/${kind}`) return Response.json({branch: 'main', files: []});
+      return new Promise<Response>(resolve => {
+        replies.push(resolve);
+        if (replies.length === 4) started();
+      });
+    });
+    const read = kind === 'file' ? readOpenFile : readOpenDiff;
+    const firstRead = read(store, 'a.go');
+    const oldAttachment = read(store, 'a.go');
+    store.update(state => selectSession(state, 'b'));
+    store.update(state => selectSession(state, 'a'));
+    const older = read(store, 'a.go');
+    const newer = createFilePoller(store)();
+    await polled;
+    replies[3](new Response('new text'));
+    await newer;
+    replies[2](new Response('old text'));
+    await older;
+    replies[0](new Response('first read'));
+    await firstRead;
+    // This read and the poll both have version 2 in their own attachments.
+    replies[1](new Response('old attachment'));
+    await oldAttachment;
+    const session = store.get().session!;
+    expect((kind === 'file' ? session.files.open['a.go'] : session.diffs['a.go']).text).toBe('new text');
+  });
+}
+
+test('a newer change poll supersedes an overlapping initial read', async () => {
+  const store = createStore(state({session: emptySession('s')}));
+  const replies: Array<(response: Response) => void> = [];
+  let started = () => {};
+  const polled = new Promise<void>(resolve => { started = resolve; });
+  stubFetch(url => {
+    if (new URL(url, 'http://x/').pathname !== '/changes') return Response.json({'': []});
+    return new Promise<Response>(resolve => {
+      replies.push(resolve);
+      if (replies.length === 2) started();
+    });
+  });
+  const initial = loadChanges(store);
+  const poll = createFilePoller(store)();
+  await polled;
+  const latest = {branch: 'main', files: [{path: 'a.go', status: 'modified' as const}]};
+  replies[1](Response.json(latest));
+  await poll;
+  replies[0](Response.json({branch: 'main', files: []}));
+  await initial;
+  expect(store.get().session?.changes).toEqual(latest);
 });

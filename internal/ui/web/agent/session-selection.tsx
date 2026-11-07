@@ -2,6 +2,7 @@
 // installed harness; a running session changes its model and effort within
 // its harness once it is ready, and shows its settings while it is not.
 import {selectModel} from '../api.ts';
+import {Tooltip, TooltipContent, TooltipProvider, TooltipTrigger} from '../components/ui/tooltip';
 import {sessionOf, unsentSettingsChosen} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
@@ -34,6 +35,13 @@ export function SettingsDiffer({child, parent, workspace}: {child: Settings; par
   const childModels = useModels(workspace, child.harness);
   const parentModels = useModels(workspace, parent.harness);
   if (sameSettings(child, parent)) return null;
-  return <Icon name="differs" role="img" className="text-muted-foreground"
-    title={`Settings differ from the parent's: ${settingsText(child, childModels)}; parent ${settingsText(parent, parentModels)}`} />;
+  const description = `Settings differ from the parent's: ${settingsText(child, childModels)}; parent ${settingsText(parent, parentModels)}`;
+  return <TooltipProvider><Tooltip>
+    <TooltipTrigger asChild>
+      <span role="img" tabIndex={0} aria-label={description} className="inline-flex text-muted-foreground">
+        <Icon name="differs" />
+      </span>
+    </TooltipTrigger>
+    <TooltipContent>{description}</TooltipContent>
+  </Tooltip></TooltipProvider>;
 }

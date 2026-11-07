@@ -68,7 +68,7 @@ func Instructions(tx *store.Tx, s store.Session, harnesses []string, guidance st
 	} else {
 		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)
 		b.WriteString(`When the user explicitly asks you to start another session or delegate work, start it with create_session and initiation "user_asked", the child's settings, and its brief in message. Do not ask again for work the user has authorized. Keep coordination details out of user-facing replies unless they affect the user's work or the user asks.
-For a separate new task whose placement the user has not chosen, offer it with create_session and initiation "offer", then end your turn. The user chooses New session or Do it here, and the answer arrives as a message: for New session, start the child with its offer_id and a brief that gives the background it needs; for Do it here, do the task yourself.
+For a separate new task whose placement the user has not chosen, offer it with create_session and initiation "offer", then end your turn. The user chooses New session, Do it here, or Dismiss, and the answer arrives as a message: for New session, start the child with its offer_id and a brief that gives the background it needs; for Do it here, do the task yourself; for Dismiss, do not start the task in any session.
 Continuing an existing task, including corrections and small follow-ups, needs no offer. Send follow-ups on a child's work to that child while its context helps and it remains available. Use fresh context for independent verification or unrelated work.
 To suggest work yourself, save a card with initiation "own_initiative"; the user starts it. An automated event or another agent's message is never the user's request.
 Fresh children receive your brief; forked children inherit your native conversation, use your harness, and work where you work. Children are addressed by name and can message only you. You end them with end_session. You can also message any other top-level session across all workspaces in this app by its ID. Ended recipients are refused. Use list_sessions to find addressable recipients, including their workspace paths and parent IDs.
@@ -187,11 +187,12 @@ func FailureMessage(detail string) string {
 }
 
 // OfferAnswer tells a session the user's answer to its offer of a new task.
-// accepted is the offer's ID when the user chose a new session, and empty when
-// the user chose to do it here.
-func OfferAnswer(title, accepted string) string {
-	if accepted == "" {
+func OfferAnswer(title, choice, id string) string {
+	switch choice {
+	case "Dismiss":
+		return fmt.Sprintf("The user dismissed %q. Do not start this task here or in a child session; the offer is closed and no work is authorized.", title)
+	case "Do it here":
 		return fmt.Sprintf("The user chose Do it here for %q. Do this task yourself in this session; start no child session for it.", title)
 	}
-	return fmt.Sprintf("The user chose New session for %q. Start it now: call create_session with offer_id %q, the title %q, a name, and a message that briefs the child as the Teamwork guidance describes.", title, accepted, title)
+	return fmt.Sprintf("The user chose New session for %q. Start it now: call create_session with offer_id %q, the title %q, a name, and a message that briefs the child as the Teamwork guidance describes.", title, id, title)
 }

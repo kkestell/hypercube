@@ -100,6 +100,61 @@ func TestOfferAnswers(t *testing.T) {
 	}
 }
 
+// Dismiss closes both new offers and two-choice offers saved by older builds.
+func TestDismissOffer(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		t.Run(map[bool]string{false: "current", true: "saved two-choice"}[legacy], func(t *testing.T) {
+			f := newFixture(t)
+			parent := f.session()
+			id, err := f.rt.OfferChild(parent.ID, "Task")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if legacy {
+				f.rt.mu.Lock()
+				err = f.rt.save(func(tx *write) error {
+					item, seq, _, err := offer(tx.Tx, parent.ID, id)
+					if err != nil {
+						return err
+					}
+					item.Choices = []string{offerNew, offerHere}
+					return tx.putItem(parent.ID, seq, item)
+				})
+				f.rt.mu.Unlock()
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if choices := f.offerItem(parent.ID, id).Choices; len(choices) != 3 || choices[2] != offerDismiss {
+				t.Fatalf("offer choices = %v", choices)
+			}
+			if err := f.rt.Answer(parent.ID, id, []string{"Not a choice"}, ""); err == nil {
+				t.Fatal("offer accepted an invalid choice")
+			}
+			if err := f.rt.Answer(parent.ID, id, []string{offerDismiss}, ""); err != nil {
+				t.Fatal(err)
+			}
+			item := f.offerItem(parent.ID, id)
+			if !item.Done || item.Answer != offerDismiss || len(f.requests()) != 0 {
+				t.Fatalf("dismissed offer = %+v; requests = %+v", item, f.requests())
+			}
+			if _, err := f.rt.StartOffer(parent.ID, id, ChildOptions{Name: "task", Title: "Task", Settings: lead, Message: "brief"}); err == nil {
+				t.Fatal("dismissed offer started a child")
+			}
+			if len(f.family(parent.ID)) != 1 {
+				t.Fatal("dismissing an offer created a session")
+			}
+			f.until("the dismissal message", func() bool { return len(f.inputs(parent.ID)) == 2 && f.idle(parent.ID) })
+			got := f.inputs(parent.ID)[1]
+			if !strings.Contains(got, "The user dismissed") || !strings.Contains(got, "no work is authorized") || strings.Contains(got, "Do it here") || strings.Contains(got, id) {
+				t.Fatal(got)
+			}
+			if err := f.rt.Answer(parent.ID, id, []string{offerNew}, ""); err == nil {
+				t.Fatal("dismissed offer was answered again")
+			}
+		})
+	}
+}
+
 // An unanswered offer stays open across interruption, parking, and backend
 // reattachment, and its answer wakes the parked parent.
 func TestOfferStaysOpen(t *testing.T) {

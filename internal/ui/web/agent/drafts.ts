@@ -5,6 +5,7 @@
 import {imageBytes, type Image, imageTypes, maxImageBytes, readImage} from '../images.ts';
 import {showError} from '../notifications/errors.ts';
 import type {Session, Unsent} from '../sessions/types.ts';
+import {withSubmissions} from '../sessions/submissions.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
 import type {Draft, Settings} from './types.ts';
@@ -71,13 +72,6 @@ export const selectedChoices = (state: State, key: string, choices: string[]): S
 
 export const removeImage = (state: State, key: string, image: Image): State => withDraft(state, key, draft => ({...draft, images: draft.images.filter(i => i !== image)}));
 
-// restored puts a refused prompt back, unless the user has started another.
-export const restored = (state: State, key: string, prompt: Pick<Draft, 'text' | 'images'>): State => withDraft(state, key, draft => ({
-  ...draft,
-  text: draft.text || prompt.text,
-  images: draft.images.length ? draft.images : prompt.images,
-}));
-
 // attachImages adds image files to a draft, refusing other types and images
 // beyond the size limit.
 export async function attachImages(store: Store, key: string, files: File[]): Promise<void> {
@@ -103,13 +97,13 @@ export async function attachImages(store: Store, key: string, files: File[]): Pr
   })));
 }
 
-// discardUnsent removes an unsent session and its draft. Its pending image
-// reads will be ignored.
+// discardUnsent removes an unsent session, its draft, and retained prompts.
+// Its pending image reads and submission responses will be ignored.
 export function discardUnsent(state: State, key: string): State {
   const unsentDrafts = {...state.unsentDrafts};
   delete unsentDrafts[key];
   const unsent = state.unsent && unsentKey(state.unsent.workspace) === key ? null : state.unsent;
-  return cleared({...state, unsent, unsentDrafts}, key);
+  return cleared(withSubmissions({...state, unsent, unsentDrafts}, key, []), key);
 }
 
 // unsentCreated gives the created session whatever the user typed in

@@ -7,9 +7,7 @@ A macOS app for running coding agents together.
 
 ## Install
 
-```sh
-curl -fsSL https://taikonaut.dev/install | bash
-```
+[Install Hypercube](/docs/installation/) from a beta download or a source build.
 
 ## About Hypercube
 

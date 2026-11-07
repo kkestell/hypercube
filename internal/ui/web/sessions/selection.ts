@@ -75,7 +75,7 @@ export const emptySession = (id: string): AttachedSession => ({
   scroll: {},
   changes: null,
   diffs: {},
-  files: {listings: {}, expanded: {}, open: {}},
+  files: {listings: {}, listingErrors: {}, expanded: {}, open: {}},
 });
 
 const omit = <T>(object: Record<string, T>, keys: string[]) => Object.fromEntries(Object.entries(object).filter(([key]) => !keys.includes(key)));
@@ -85,7 +85,7 @@ const omit = <T>(object: Record<string, T>, keys: string[]) => Object.fromEntrie
 function parkUnsent(state: State): State {
   if (!state.unsent) return state;
   const key = unsentKey(state.unsent.workspace);
-  if (!state.drafts[key] && !state.unsent.sending) return {...state, unsent: null};
+  if (!state.drafts[key] && !state.unsent.sending && !state.submissions[key]?.length) return {...state, unsent: null};
   return {...state, unsent: null, unsentDrafts: {...state.unsentDrafts, [key]: state.unsent}};
 }
 
@@ -108,7 +108,8 @@ function attach(state: State): State {
   let session = id ? emptySession(id) : null;
   if (session && saved) session = restoreView(session, saved);
   if (session && cached) session = {...session, changes: cached.changes, files: {...session.files, listings: cached.listings}};
-  return {...state, sessionViews, fileTrees, session, sessionVersion: state.sessionVersion + 1, treeVersion: state.treeVersion + 1};
+  return {...state, sessionViews, fileTrees, session, sessionVersion: state.sessionVersion + 1, treeVersion: state.treeVersion + 1,
+    fileReadVersions: {}, diffReadVersions: {}};
 }
 
 // receivedWorkspaces applies a state message's workspaces.
@@ -123,6 +124,8 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   if (discarded.length) next = {...next, drafts: omit(next.drafts, discarded), unsentDrafts: omit(next.unsentDrafts, discarded)};
   const sessions = allSessions(next);
   const ids = new Set(sessions.map(session => session.id));
+  const removedIDs = [...discarded, ...allSessions(state).filter(session => !ids.has(session.id)).map(session => session.id)];
+  next = {...next, submissions: omit(next.submissions, removedIDs)};
   const sessionViews = Object.fromEntries(Object.entries(next.sessionViews).filter(([id]) => ids.has(id)));
   const workspaceIds = new Set(workspaces.map(workspace => workspace.id));
   next = {...next, sessionViews, fileTrees: Object.fromEntries(Object.entries(next.fileTrees).filter(([id]) => ids.has(id))), workbench: {

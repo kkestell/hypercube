@@ -17,6 +17,12 @@ LOG=${XDG_STATE_HOME:-$HOME/.local/state}/hypercube/ui.log
 DOMAIN=gui/$(id -u)
 
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
+
+# Dynamic strings are XML text, including paths containing ampersands.
+xml() {
+	printf '%s' "$1" | sed -e 's/\&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+}
+
 # The shell is a login shell by its argv[0], which names it with a leading
 # dash; -i makes it interactive, so it reads the user's interactive
 # configuration. The command is the same in tcsh, bash, zsh, and fish.
@@ -26,12 +32,12 @@ cat >"$PLIST" <<XML
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>$SERVICE</string>
+	<string>$(xml "$SERVICE")</string>
 	<key>Program</key>
-	<string>$SHELL</string>
+	<string>$(xml "$SHELL")</string>
 	<key>ProgramArguments</key>
 	<array>
-		<string>-$(basename "$SHELL")</string>
+		<string>$(xml "-$(basename "$SHELL")")</string>
 		<string>-i</string>
 		<string>-c</string>
 		<string>exec "\$HYPERCUBE_APP_EXECUTABLE" ui "\$HYPERCUBE_PORT"</string>
@@ -39,9 +45,9 @@ cat >"$PLIST" <<XML
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>HYPERCUBE_APP_EXECUTABLE</key>
-		<string>$APP/Contents/MacOS/hypercube</string>
+		<string>$(xml "$APP/Contents/MacOS/hypercube")</string>
 		<key>HYPERCUBE_PORT</key>
-		<string>$PORT</string>
+		<string>$(xml "$PORT")</string>
 	</dict>
 	<key>RunAtLoad</key>
 	<true/>
@@ -51,12 +57,15 @@ cat >"$PLIST" <<XML
 		<false/>
 	</dict>
 	<key>StandardOutPath</key>
-	<string>$LOG</string>
+	<string>$(xml "$LOG")</string>
 	<key>StandardErrorPath</key>
-	<string>$LOG</string>
+	<string>$(xml "$LOG")</string>
 </dict>
 </plist>
 XML
+
+# Refuse an invalid replacement before unloading the working backend.
+plutil -lint "$PLIST" >/dev/null
 
 # A loaded copy holds the port, so unload it before checking the port.
 launchctl bootout "$DOMAIN/$SERVICE" 2>/dev/null || true

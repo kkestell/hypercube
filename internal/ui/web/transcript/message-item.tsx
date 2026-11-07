@@ -8,7 +8,7 @@ import {useStore} from '../store.ts';
 import {sessionOf} from '../sessions/selection.ts';
 import {CopyButton} from './copy-button.tsx';
 import {Disclosure} from './disclosure.tsx';
-import {Markdown} from './markdown.tsx';
+import {Markdown, MarkdownText} from './markdown.tsx';
 import {TranscriptImages} from './transcript-images.tsx';
 import type {ToolItem, UserItem} from './types.ts';
 
@@ -42,19 +42,20 @@ function UserBubble({item}: {item: UserItem}) {
 
 export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
   const [state] = useStore();
-  let heading: ReactNode, text: string, details: ReactNode;
+  let heading: string, text: string, details: ReactNode, status: ReactNode;
   if (item.kind === 'tool') {
     const sent = sentMessage(item.input);
-    heading = <>
-      {'To ' + sent.to}
+    heading = 'To ' + sent.to;
+    status = <>
       {!item.done && <BusyDot title="Running" />}
       {item.failed && <Icon name="error" className="message-item-failure text-destructive" role="img" title="Failed" />}
     </>;
     text = sent.text;
-    details = item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>;
+    details = <>{item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>}<TranscriptImages images={item.images} /></>;
   } else if (item.automatic) {
     heading = 'Child reports';
     text = item.text ?? '';
+    details = <TranscriptImages images={item.images} />;
   } else if (item.from) {
     heading = 'From ' + (sessionOf(state, item.from)?.session.title || item.from);
     text = item.text ?? '';
@@ -68,16 +69,12 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
       {details}
     </div>
   );
-  // A one-line message with nothing attached shows in full, with nothing to expand.
-  const foldable = /\r?\n/.test(text.trim()) || (item.kind === 'tool' ? item.failed : !!item.images?.length);
-  if (!foldable) {
-    return <div className="message-item message-item-agent py-1"><div className="flex items-center gap-2 text-sm leading-5">{heading}</div>{body}</div>;
-  }
   return (
-    <Disclosure className="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={heading} preview={text.split(/\r?\n/, 1)[0]}>
-      {/* The body takes the preview's place, which sits above the trigger's
-          bottom padding; pb-1 restores that padding below it. */}
-      {expanded && <div className="-mt-1 pb-1 pr-3">{body}</div>}
+    <Disclosure className="message-item message-item-agent" open={expanded} onToggle={open => setOpen(item.id, open)} summary={<>
+      <span className="flex min-w-0 max-w-1/2 shrink-0 items-center gap-2"><span className="truncate">{heading}</span>{status}</span>
+      {!expanded && <span className="message-item-preview min-w-0 flex-1 truncate text-muted-foreground"><MarkdownText text={text.split(/\r?\n/, 1)[0]} /></span>}
+    </>}>
+      {expanded && <div className="pb-1 pr-3">{body}</div>}
     </Disclosure>
   );
 }

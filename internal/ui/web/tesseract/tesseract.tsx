@@ -124,8 +124,8 @@ function animate(canvas: HTMLCanvasElement): () => void {
   };
 }
 
-export function Tesseract({fading = false}: {fading?: boolean}) {
+export function Tesseract() {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => ref.current ? animate(ref.current) : undefined, []);
-  return <canvas ref={ref} className={`tesseract block min-h-0 w-full flex-1 pointer-events-none ${fading ? 'opacity-0' : 'opacity-40'}`} aria-hidden="true" />;
+  return <canvas ref={ref} className="tesseract block min-h-0 w-full flex-1 pointer-events-none opacity-40" aria-hidden="true" />;
 }

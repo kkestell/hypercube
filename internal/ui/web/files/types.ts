@@ -7,6 +7,8 @@ export interface FileEntry {
   dir: boolean;
 }
 
+export type FolderListing = FileEntry[] | null | {error: string};
+
 // LineRange highlights inclusive, one-based source lines.
 export interface LineRange {
   start: number;
@@ -33,10 +35,11 @@ export interface FilePreview {
   url: string;
 }
 
-// SessionFiles holds each listed folder's entries, null for a missing folder,
-// the expanded folders, and the open files.
+// SessionFiles holds each folder's last entries and current read error, null
+// entries for a missing folder, the expanded folders, and the open files.
 export interface SessionFiles {
   listings: Record<string, FileEntry[] | null>;
+  listingErrors: Record<string, string>;
   expanded: Record<string, true>;
   open: Record<string, OpenFile>;
 }

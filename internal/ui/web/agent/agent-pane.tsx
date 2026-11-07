@@ -35,7 +35,9 @@ export function AgentPane({session, active}: {session: Session; active: boolean}
   const classes = `agent-pane @container/chat flex h-full min-h-0 flex-col ${dropping ? 'ring-2 ring-ring ring-inset' : ''}`;
   return (
     <article className={classes} onDragOver={over} onDragLeave={left} onDrop={dropped}>
-      {unsent ? <><Tesseract fading={state.unsent?.sending ?? false} /><Composer session={session} /></> : <Transcript session={session} active={active} footer={<Composer session={session} />} />}
+      {unsent && !state.submissions[session.id]?.length
+        ? <><Tesseract /><Composer session={session} /></>
+        : <Transcript session={session} active={active} footer={<Composer session={session} />} />}
     </article>
   );
 }

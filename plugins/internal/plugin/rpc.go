@@ -115,6 +115,17 @@ func (c *RPC) write(v any) error {
 // Call sends a request and waits for its response, which is the error of a
 // failed call. An error response is an *RPCError.
 func (c *RPC) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {
+	wait, err := c.StartCall(method, params)
+	if err != nil {
+		return nil, err
+	}
+	return wait(ctx)
+}
+
+// StartCall writes a request before returning. The caller must invoke the
+// returned function once to await its response or abandon it through context
+// cancellation. An error response is an *RPCError.
+func (c *RPC) StartCall(method string, params any) (func(context.Context) (json.RawMessage, error), error) {
 	select {
 	case <-c.done:
 		return nil, c.err
@@ -126,27 +137,31 @@ func (c *RPC) Call(ctx context.Context, method string, params any) (json.RawMess
 	id := c.next
 	c.calls[id] = ch
 	c.mu.Unlock()
-	defer func() {
+	forget := func() {
 		c.mu.Lock()
 		delete(c.calls, id)
 		c.mu.Unlock()
-	}()
+	}
 	if err := c.write(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params}); err != nil {
+		forget()
 		return nil, err
 	}
-	select {
-	case r := <-ch:
-		return r.unwrap()
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-c.done:
+	return func(ctx context.Context) (json.RawMessage, error) {
+		defer forget()
 		select {
 		case r := <-ch:
 			return r.unwrap()
-		default:
-			return nil, c.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-c.done:
+			select {
+			case r := <-ch:
+				return r.unwrap()
+			default:
+				return nil, c.err
+			}
 		}
-	}
+	}, nil
 }
 
 func (r response) unwrap() (json.RawMessage, error) {

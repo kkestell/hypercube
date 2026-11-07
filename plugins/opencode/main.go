@@ -287,16 +287,25 @@ func blocks(text string, images []harness.Image) []any {
 	return out
 }
 
-// prompt sends one turn made of content blocks. ag.mu is held.
+// prompt writes one turn before input or interrupt can run again. Only the
+// response waits in a goroutine. ag.mu is held.
 func (ag *agent) prompt(blocks []any) {
 	ag.turn++
 	ag.last = ""
-	params := map[string]any{"sessionId": ag.session, "prompt": blocks}
+	wait, err := ag.rpc.StartCall("session/prompt", map[string]any{"sessionId": ag.session, "prompt": blocks})
 	go func() {
 		var res struct {
 			StopReason string `json:"stopReason"`
 		}
-		err := ag.call(ag.ctx, "session/prompt", params, &res)
+		var raw json.RawMessage
+		if err == nil {
+			raw, err = wait(ag.ctx)
+		}
+		if err != nil {
+			err = fmt.Errorf("session/prompt: %w", err)
+		} else {
+			err = json.Unmarshal(raw, &res)
+		}
 		ag.ended(res.StopReason, err)
 	}()
 }

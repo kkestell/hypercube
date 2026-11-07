@@ -3,6 +3,7 @@ package ui
 import (
 	"net/http"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -31,6 +32,18 @@ func (s *server) openInApp(w http.ResponseWriter, r *http.Request) {
 			dir = workspace.Path
 			return err
 		})
+	case "path":
+		if q.Get("app") != "finder" || q.Get("path") == "" {
+			http.Error(w, "a path and Finder are required", http.StatusBadRequest)
+			return
+		}
+		dir, err = s.sessionDir(q.Get("id"))
+		name := q.Get("path")
+		if !filepath.IsAbs(name) {
+			name = filepath.Join(dir, name)
+		}
+		dir = name
+		args = []string{"-R"}
 	default:
 		http.Error(w, "unknown kind", http.StatusBadRequest)
 		return

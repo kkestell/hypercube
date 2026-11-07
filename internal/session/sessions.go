@@ -43,6 +43,19 @@ func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
 // With worktree, the session runs in its own worktree on a new branch from
 // the checkout's HEAD.
 func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree bool, text string, images ...harness.Image) (store.Session, error) {
+	return r.create(workspaceID, settings, worktree, "", text, images...)
+}
+
+// CreateSubmission retains the created session even if its first input fails,
+// and correlates that input with the browser's provisional prompt.
+func (r *Runtime) CreateSubmission(workspaceID string, settings harness.Settings, worktree bool, submission, text string, images ...harness.Image) (store.Session, error) {
+	if err := CheckSubmissionID(submission); err != nil {
+		return store.Session{}, err
+	}
+	return r.create(workspaceID, settings, worktree, submission, text, images...)
+}
+
+func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree bool, submission, text string, images ...harness.Image) (store.Session, error) {
 	if err := checkPrompt(text, images); err != nil {
 		return store.Session{}, err
 	}
@@ -52,6 +65,21 @@ func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree
 	if _, err := harness.Find(r.PluginDir, settings.Harness); err != nil {
 		return store.Session{}, err
 	}
+	r.mu.Lock()
+	if r.workspaceDeleting[workspaceID] {
+		r.mu.Unlock()
+		return store.Session{}, errWorkspaceDeleting
+	}
+	r.workspaceCreates[workspaceID]++
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		r.workspaceCreates[workspaceID]--
+		if r.workspaceCreates[workspaceID] == 0 {
+			delete(r.workspaceCreates, workspaceID)
+		}
+		r.mu.Unlock()
+	}()
 	var w store.Workspace
 	if err := r.db.Read(func(tx *store.Tx) error { var err error; w, err = tx.Workspace(workspaceID); return err }); err != nil {
 		return store.Session{}, err
@@ -75,23 +103,40 @@ func (r *Runtime) Create(workspaceID string, settings harness.Settings, worktree
 		if worktree {
 			err = errors.Join(err, workspace.RemoveWorktree(w.Path, s.Dir, s.Branch))
 		}
-		return s, err
+		return store.Session{}, err
 	}
 	if worktree {
 		r.refreshMerges(workspaceID)
 	}
-	return s, r.Input(s.ID, text, images...)
+	return s, r.input(s.ID, submission, text, images...)
 }
 
 // DeleteWorkspace deletes each of the workspace's sessions, then the
-// workspace.
+// workspace. It refuses while a top-level creation or another deletion is in
+// progress, blocking new top-level sessions after its membership snapshot.
 func (r *Runtime) DeleteWorkspace(id string) error {
 	var sessions []store.Session
+	r.mu.Lock()
+	if r.workspaceDeleting[id] {
+		r.mu.Unlock()
+		return errWorkspaceDeleting
+	}
+	if r.workspaceCreates[id] != 0 {
+		r.mu.Unlock()
+		return errWorkspaceCreating
+	}
+	r.workspaceDeleting[id] = true
 	err := r.db.Read(func(tx *store.Tx) error {
 		var err error
 		sessions, err = tx.Sessions(id)
 		return err
 	})
+	r.mu.Unlock()
+	defer func() {
+		r.mu.Lock()
+		delete(r.workspaceDeleting, id)
+		r.mu.Unlock()
+	}()
 	if err != nil {
 		return err
 	}

@@ -2,7 +2,7 @@
 import type {Catalog, Harness} from './agent/types.ts';
 import type {Config, Grant} from './app/types.ts';
 import type {ChangesResult, DiffRead} from './changes/types.ts';
-import type {FileEntry, FileRead, SearchFile} from './files/types.ts';
+import type {FileRead, FolderListing, SearchFile} from './files/types.ts';
 import {showError} from './notifications/errors.ts';
 import type {SessionSearchResult} from './sessions/types.ts';
 import type {Store} from './store.ts';
@@ -50,6 +50,20 @@ async function request<T>(store: Store, path: string, init: RequestInit | undefi
 export const post = (store: Store, path: string, params: Record<string, string>, body?: string) =>
   request(store, url(path, params), {method: 'POST', body}, response => response.text());
 
+// Prompt failures belong beside their retained message. Creation can fail
+// after persisting a session, in which case its ID still belongs to the page.
+export async function submitPrompt(params: Record<string, string>, body: string): Promise<{session?: string; error?: string}> {
+  const unconfirmed = ' Delivery was not confirmed; retrying may send this message again.';
+  try {
+    const response = await fetch(url('session', params), {method: 'POST', body});
+    if (response.headers.get('Content-Type')?.includes('application/json')) return await response.json();
+    const text = await response.text();
+    return response.ok ? {} : {error: text || 'Sending failed.'};
+  } catch (error) {
+    return {error: (error instanceof Error ? error.message : String(error)) + unconfirmed};
+  }
+}
+
 export const fetchConfig = (store: Store) =>
   request<Config>(store, 'config', {cache: 'no-store'}, response => response.json());
 
@@ -88,9 +102,8 @@ export async function alwaysAllow(store: Store, session: string, request: string
   return await post(store, 'session', {action: 'allow', id: session, request, scope: all ? 'all' : 'session'}) !== null;
 }
 
-// listFiles returns a folder's entries, relative to the session's working
-// directory.
-export async function listFileTree(session: string, dirs: string[]): Promise<Record<string, FileEntry[] | null>> {
+// listFileTree returns each requested folder's entries or read failure.
+export async function listFileTree(session: string, dirs: string[]): Promise<Record<string, FolderListing>> {
   const response = await fetch(url('files/tree', {session}), {method: 'POST', body: JSON.stringify(dirs), cache: 'no-store'});
   if (!response.ok) throw new HttpError(await response.text(), response.status);
   return response.json();

@@ -17,15 +17,15 @@ const statusColor: Record<ChangeStatus, string> = {
 
 export function FilesPanel() {
   const [state, store] = useStore();
-  const files = state.session?.files ?? {listings: {}, expanded: {}, open: {}};
-  const {listings, expanded} = files;
+  const files = state.session?.files ?? {listings: {}, listingErrors: {}, expanded: {}, open: {}};
+  const {listings, listingErrors, expanded} = files;
   const gitChanges = state.session?.changes;
   const changes = changeTree(gitChanges ?? null);
   const listing = (dir: string) => treeEntries(files, changes, dir);
   const menu = usePathMenu();
   const tree = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
-  const ready = listings[''] !== undefined && Object.keys(expanded).every(path => !listedFolder(files, path) || listings[path] !== undefined);
+  const ready = (listings[''] !== undefined || listingErrors[''] !== undefined) && shownFolders(files).every(path => !listedFolder(files, path) || listings[path] !== undefined || listingErrors[path] !== undefined);
   useScrollMemory(scroller, 'files-tree', ready && state.workbench.rightPanel && state.workbench.rightTab === 'files');
   const [focused, setFocused] = useState<string | null>(null);
   const visible: string[] = [];
@@ -87,7 +87,10 @@ export function FilesPanel() {
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm" {...props} data-dir="" aria-expanded={!!expanded[path]} className={`${props.className} w-full`}>
         {label}
       </Button></CollapsibleTrigger>
-      <CollapsibleContent role="group" className="pl-4">{expanded[path] ? entries(path, level + 1) : null}</CollapsibleContent>
+      <CollapsibleContent role="group" className="pl-4">{expanded[path] && <>
+        {listingErrors[path] && <p className="px-2 text-sm text-destructive">{listingErrors[path]}</p>}
+        {entries(path, level + 1)}
+      </>}</CollapsibleContent>
     </Collapsible>;
     const deleted = change?.status === 'deleted';
     return <div key={path} className="flex items-center rounded-md hover:bg-accent dark:hover:bg-accent/50">
@@ -103,6 +106,7 @@ export function FilesPanel() {
   return <div ref={scroller} className="h-full min-h-0 overflow-auto">
     {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}
     <div ref={tree} className="files-panel p-2 pt-1" role="tree" aria-label="Files" onKeyDown={keyDown}>
+    {listingErrors[''] && <p className="px-2 text-sm text-destructive">{listingErrors['']}</p>}
     {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
     </div>{menu.element}
   </div>;

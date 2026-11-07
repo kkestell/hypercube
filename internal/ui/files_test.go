@@ -138,15 +138,20 @@ func TestFiles(t *testing.T) {
 		strings.NewReader(`["","replaced","escape"]`))
 	r.Header.Set("Origin", "http://localhost:4280")
 	h.ServeHTTP(partial, r)
-	var refreshed map[string][]fileEntry
+	var refreshed map[string]json.RawMessage
 	decodeErr := json.Unmarshal(partial.Body.Bytes(), &refreshed)
 	replaced, recorded := refreshed["replaced"]
+	var rootEntries []fileEntry
+	rootErr := json.Unmarshal(refreshed[""], &rootEntries)
 	if partial.Code != 200 || decodeErr != nil ||
-		!recorded || replaced != nil || len(refreshed[""]) != 10 {
+		!recorded || string(replaced) != "null" || rootErr != nil || len(rootEntries) != 10 {
 		t.Fatalf("partial batch = %d %s", partial.Code, partial.Body)
 	}
-	if _, listed := refreshed["escape"]; listed {
-		t.Fatalf("unreadable folder changed: %s", partial.Body)
+	var failure struct {
+		Error string `json:"error"`
+	}
+	if err := json.Unmarshal(refreshed["escape"], &failure); err != nil || failure.Error == "" {
+		t.Fatalf("unreadable folder has no error: %s", partial.Body)
 	}
 	res := get("file", "s", "a.go", "")
 	etag := res.Header().Get("ETag")

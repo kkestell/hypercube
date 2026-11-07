@@ -64,8 +64,8 @@ type agent struct {
 	selection      harness.Selection
 	thread         string
 	turn           string                  // the main turn in progress
-	inputPending   bool                    // main-thread input is in flight, including steering and fallback
-	interruptInput bool                    // interrupt the main turn once input returns
+	pendingInputs  int                     // main-thread inputs in flight, including steering and fallback
+	interruptInput bool                    // interrupt the main turn once all inputs return
 	ended          string                  // the last main turn that completed
 	final          []string                // the main turn's final answer messages so far
 	finished       map[string]bool         // items that have completed
@@ -278,11 +278,14 @@ func (ag *agent) inputThread(thread, text string, images []harness.Image) (err e
 	main := thread == ag.thread
 	turn, selection := ag.turn, ag.selection
 	if main {
-		ag.inputPending = true
+		ag.pendingInputs++
 		defer func() {
 			ag.mu.Lock()
-			interrupted := ag.interruptInput
-			ag.inputPending, ag.interruptInput = false, false
+			ag.pendingInputs--
+			interrupted := ag.pendingInputs == 0 && ag.interruptInput
+			if ag.pendingInputs == 0 {
+				ag.interruptInput = false
+			}
 			ag.mu.Unlock()
 			if interrupted {
 				err = errors.Join(err, ag.interrupt())
@@ -379,7 +382,7 @@ func (ag *agent) interrupt() error {
 	// Codex waits for the answers of requests it has sent.
 	ev.Items = ag.closeRequests(blockingRequest, true)
 	ag.send(ev)
-	if ag.inputPending {
+	if ag.pendingInputs > 0 {
 		ag.interruptInput = true
 		ag.mu.Unlock()
 		return nil

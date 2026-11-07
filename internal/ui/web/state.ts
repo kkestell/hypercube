@@ -6,6 +6,7 @@ import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
 import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
+import type {Submission} from './sessions/submissions.ts';
 import type {Changes} from './changes/types.ts';
 import type {FileEntry} from './files/types.ts';
 import type {Confirmation} from './shared/types.ts';
@@ -21,6 +22,8 @@ import type {Confirmation} from './shared/types.ts';
 // whether the Mac's appearance is dark.
 // sessionViews retains inactive sessions' view choices without server data.
 // fileTrees keeps the last shown tree until its session is selected again.
+// Read versions discard superseded responses; per-path versions belong to the
+// current attachment and reset when it changes.
 export interface State {
   workspaces: Workspace[];
   catalogs: Record<string, CatalogEntry>;
@@ -35,6 +38,7 @@ export interface State {
   unsentDrafts: Record<string, Unsent>;
   visible: boolean;
   drafts: Record<string, Draft>;
+  submissions: Record<string, Submission[]>;
   dismissed: Record<string, true>;
   errors: PageError[];
   confirmation: Confirmation | null;
@@ -42,6 +46,9 @@ export interface State {
   session: AttachedSession | null;
   sessionVersion: number;
   treeVersion: number;
+  changesVersion: number;
+  fileReadVersions: Record<string, number>;
+  diffReadVersions: Record<string, number>;
   sessionViews: Record<string, SessionViewState>;
   fileTrees: Record<string, {listings: Record<string, FileEntry[] | null>; changes: Changes}>;
   fileOpens: Record<string, FileOpenRequest[]>;
@@ -64,6 +71,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   unsentDrafts: {},
   visible,
   drafts: {},
+  submissions: {},
   dismissed: {},
   errors: [],
   confirmation: null,
@@ -75,6 +83,9 @@ export const initialState = (selected: string, visible: boolean): State => ({
   session: null,
   sessionVersion: 0,
   treeVersion: 0,
+  changesVersion: 0,
+  fileReadVersions: {},
+  diffReadVersions: {},
   sessionViews: {},
   fileTrees: {},
   fileOpens: {},

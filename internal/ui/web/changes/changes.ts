@@ -36,7 +36,9 @@ export function changeTree(changes: Changes): ChangeTree {
 export async function loadChanges(store: Store) {
   const session = store.get().session;
   if (!session) return;
-  const version = store.get().sessionVersion;
+  const attachment = store.get().sessionVersion;
+  const request = store.get().changesVersion + 1;
+  store.update(state => ({...state, changesVersion: request}));
   let changes: Changes;
   try {
     const result = await fetchChanges(session.id);
@@ -47,7 +49,7 @@ export async function loadChanges(store: Store) {
       : {error: error instanceof Error ? error.message : String(error)};
   }
   store.update(state => {
-    if (state.session?.id !== session.id || state.sessionVersion !== version || JSON.stringify(state.session.changes) === JSON.stringify(changes)) return state;
+    if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.changesVersion !== request || JSON.stringify(state.session.changes) === JSON.stringify(changes)) return state;
     return {...state, session: {...state.session, changes}};
   });
 }
@@ -61,6 +63,9 @@ function openDiff(result: DiffRead): OpenDiff {
 export async function readOpenDiff(store: Store, path: string) {
   const session = store.get().session;
   if (!session?.diffs[path]) return;
+  const attachment = store.get().sessionVersion;
+  const request = (store.get().diffReadVersions[path] ?? 0) + 1;
+  store.update(state => ({...state, diffReadVersions: {...state.diffReadVersions, [path]: request}}));
   let result: DiffRead;
   try {
     result = await readDiff(session.id, path);
@@ -68,7 +73,7 @@ export async function readOpenDiff(store: Store, path: string) {
     result = {error: error instanceof Error ? error.message : String(error)};
   }
   store.update(state => {
-    if (state.session?.id !== session.id) return state;
+    if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.diffReadVersions[path] !== request) return state;
     const diff = state.session.diffs[path];
     if (!diff || ('error' in result && (diff.text !== null || diff.message !== null))) return state;
     const next = openDiff(result);

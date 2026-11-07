@@ -32,10 +32,12 @@ const (
 )
 
 var (
-	errStopped  = errors.New("the agent was stopped")
-	errClosing  = errors.New("hypercube is shutting down")
-	errDeleting = errors.New("the session is being deleted")
-	errEnded    = errors.New("the session has ended")
+	errStopped           = errors.New("the agent was stopped")
+	errClosing           = errors.New("hypercube is shutting down")
+	errDeleting          = errors.New("the session is being deleted")
+	errEnded             = errors.New("the session has ended")
+	errWorkspaceDeleting = errors.New("the workspace is being deleted")
+	errWorkspaceCreating = errors.New("a session is being created in the workspace; retry when creation finishes")
 )
 
 // Runtime is the app's service for running agents.
@@ -70,6 +72,10 @@ type Runtime struct {
 	// deleting claims family or child cleanup, blocking starts, children, and
 	// shell admission until the initial checks refuse or cleanup finishes.
 	deleting map[string]bool
+	// workspaceCreates counts admitted top-level creations through registration
+	// or failure cleanup. workspaceDeleting excludes them during deletion.
+	workspaceCreates  map[string]int
+	workspaceDeleting map[string]bool
 	// merges holds each worktree session's merge status, by session ID.
 	merges map[string]workspace.Merge
 	// viewers counts the pages viewing each session, by session ID.
@@ -87,6 +93,7 @@ type Runtime struct {
 func New(db *store.DB, url string) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
+		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}
 }
 

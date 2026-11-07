@@ -429,6 +429,49 @@ func (t *Tx) Transcript(session string) ([]Entry, error) {
 	})
 }
 
+// CompactEntry holds only the fields used by read_session's text view.
+type CompactEntry struct {
+	Seq                         int64
+	ID, Parent, Kind, Text      string
+	From, Tool, Answer, State   string
+	Automatic, Failed, HasFinal bool
+}
+
+// CompactEntries returns at most limit entries, newest first, before the
+// exclusive position. A nonpositive before starts at the end of the transcript.
+// Project in SQLite so tool output, images, and other unused data stay there.
+func (t *Tx) CompactEntries(session string, before int64, limit int) ([]CompactEntry, error) {
+	query := `SELECT seq, item,
+ COALESCE(json_extract(data, '$.parent'), ''),
+ COALESCE(json_extract(data, '$.kind'), ''),
+ COALESCE(json_extract(data, '$.text'), ''),
+ COALESCE(json_extract(data, '$.from'), ''),
+ COALESCE(json_extract(data, '$.tool'), ''),
+ COALESCE(json_extract(data, '$.answer'), ''),
+ COALESCE(json_extract(data, '$.state'), ''),
+ COALESCE(json_extract(data, '$.automatic'), 0),
+ COALESCE(json_extract(data, '$.failed'), 0),
+ COALESCE(json_array_length(data, '$.final'), 0) > 0
+ FROM transcript WHERE session = ?`
+	args := []any{session}
+	if before > 0 {
+		query += ` AND seq < ?`
+		args = append(args, before)
+	}
+	query += ` ORDER BY seq DESC LIMIT ?`
+	args = append(args, limit)
+	rows, err := t.tx.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	return collect(rows, func(r interface{ Scan(...any) error }) (CompactEntry, error) {
+		var e CompactEntry
+		err := r.Scan(&e.Seq, &e.ID, &e.Parent, &e.Kind, &e.Text, &e.From,
+			&e.Tool, &e.Answer, &e.State, &e.Automatic, &e.Failed, &e.HasFinal)
+		return e, err
+	})
+}
+
 // LastText returns the latest top-level text and its position, or "" and zero.
 func (t *Tx) LastText(session string) (string, int64, error) {
 	var text string

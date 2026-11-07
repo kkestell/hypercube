@@ -11,7 +11,7 @@ import {loadTree, readOpenFile, shownFolders} from './files.ts';
 export function createFilePoller(store: Store) {
   let running = false;
   return async function poll() {
-    const {visible, session, workbench} = store.get();
+    const {visible, session, sessionVersion, workbench} = store.get();
     if (running || !visible || !session) return;
     running = true;
     try {
@@ -20,7 +20,7 @@ export function createFilePoller(store: Store) {
         await loadTree(store, shownFolders(session.files));
       }
       const shownPanes = panes(session.tabs.root);
-      const left = () => store.get().session?.id !== session.id;
+      const left = () => store.get().session?.id !== session.id || store.get().sessionVersion !== sessionVersion;
       if (!left() && (tree || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
       for (const pane of shownPanes) {
         if (left()) break;

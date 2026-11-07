@@ -2,6 +2,7 @@ package session
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -28,6 +29,30 @@ func checkPrompt(text string, images []harness.Image) error {
 // Input sends the user's prompt, text and images, to the agent at once, even
 // while it works. A parked session wakes first.
 func (r *Runtime) Input(id, text string, images ...harness.Image) error {
+	return r.input(id, "", text, images...)
+}
+
+var submissionID = regexp.MustCompile(`^submission-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
+
+// CheckSubmissionID confines browser correlation IDs to their own namespace.
+// Empty IDs preserve input from clients that do not supply correlation.
+func CheckSubmissionID(id string) error {
+	if id != "" && !submissionID.MatchString(id) {
+		return errors.New("invalid submission ID")
+	}
+	return nil
+}
+
+// InputSubmission correlates an HTTP prompt with its provisional browser row.
+// It does not change when the plugin acknowledges input or make retries unique.
+func (r *Runtime) InputSubmission(id, submission, text string, images ...harness.Image) error {
+	if err := CheckSubmissionID(submission); err != nil {
+		return err
+	}
+	return r.input(id, submission, text, images...)
+}
+
+func (r *Runtime) input(id, submission, text string, images ...harness.Image) error {
 	if err := checkPrompt(text, images); err != nil {
 		return err
 	}
@@ -45,6 +70,9 @@ func (r *Runtime) Input(id, text string, images ...harness.Image) error {
 		return err
 	}
 	item := &harness.Item{ID: l.prefix + "host-" + store.NewID(), Kind: harness.KindUser, Text: text, Images: images, Done: true}
+	if submission != "" {
+		item.ID = submission
+	}
 	command, err := r.recordRequest(l, harness.Command{Command: harness.CmdInput, Text: text, Images: images}, item)
 	r.mu.Unlock()
 	if err != nil {

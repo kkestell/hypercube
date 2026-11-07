@@ -406,13 +406,14 @@ func elicitationRequest(params json.RawMessage) (*request, error) {
 // answer replies to an open request with a choice or text.
 func (ag *agent) answer(item string, choices []string, text string) error {
 	ag.mu.Lock()
-	defer ag.mu.Unlock()
 	open, ok := ag.requests.Get(item)
 	if !ok {
+		ag.mu.Unlock()
 		return fmt.Errorf("request %s is not open", item)
 	}
 	r, i := open.Request, open.Index
 	if err := harness.CheckAnswer(open.Item, choices, text); err != nil {
+		ag.mu.Unlock()
 		return err
 	}
 	answers := choices
@@ -421,8 +422,11 @@ func (ag *agent) answer(item string, choices []string, text string) error {
 	}
 	answer := strings.Join(answers, ", ")
 	if r.async {
+		ag.answering = r
+		ag.mu.Unlock()
 		return ag.answerAsync(open, answer)
 	}
+	defer ag.mu.Unlock()
 	// A form answer that cannot be converted is refused at once.
 	if r.form != nil {
 		if _, err := formValue(r.form[i].field, answers); err != nil {
@@ -443,12 +447,11 @@ func (ag *agent) answer(item string, choices []string, text string) error {
 	return nil
 }
 
-// answerAsync temporarily releases mu while input waits for Codex.
+// answerAsync sends the question marked as answering while input waits for Codex.
 func (ag *agent) answerAsync(open plugin.Open[request], answer string) error {
-	ag.answering = open.Request
-	ag.mu.Unlock()
 	err := ag.inputThread(open.Request.thread, open.Item.Text+"\n\n"+answer, nil)
 	ag.mu.Lock()
+	defer ag.mu.Unlock()
 	ag.answering = nil
 	if err != nil {
 		return err

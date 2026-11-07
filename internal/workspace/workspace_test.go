@@ -229,6 +229,33 @@ func TestWorktreeIncludesLiteralPaths(t *testing.T) {
 	}
 }
 
+func TestWorktreeIncludesExcludeManagedWorktrees(t *testing.T) {
+	root, run := gitRepo(t)
+	write(t, filepath.Join(root, ".gitignore"), ".env\n.hypercube-local\n")
+	write(t, filepath.Join(root, ".worktreeinclude"), "*\n")
+	write(t, filepath.Join(root, ".env"), "local environment")
+	write(t, filepath.Join(root, ".hypercube-local"), "ordinary ignored file")
+	run(root, "add", ".gitignore", ".worktreeinclude")
+	run(root, "commit", "-qm", "include ignored files")
+	existing := SessionDir(root, "existing")
+	if err := AddWorktree(root, existing, SessionBranch("existing")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(existing, "private-draft"), "another session's work")
+	dir := SessionDir(root, "new")
+	if err := AddWorktree(root, dir, SessionBranch("new")); err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range map[string]string{".env": "local environment", ".hypercube-local": "ordinary ignored file"} {
+		if data, err := os.ReadFile(filepath.Join(dir, name)); err != nil || string(data) != want {
+			t.Errorf("included %s = %q, %v", name, data, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".hypercube")); !os.IsNotExist(err) {
+		t.Fatalf("managed worktrees copied into the new worktree: %v", err)
+	}
+}
+
 func TestRemoveMissingWorktree(t *testing.T) {
 	root, run := gitRepo(t)
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
