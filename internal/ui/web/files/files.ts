@@ -10,6 +10,8 @@ import type {FileEntry, FileRead, FolderListing, OpenFile, SessionFiles} from '.
 
 export const unreadFile: OpenFile = {text: null, message: null, etag: null, deleted: false, source: false, lines: [], reveal: false};
 
+export const fileReady = (file: OpenFile | undefined) => !!file && (file.text !== null || file.message !== null || !!file.preview || file.deleted);
+
 const collator = new Intl.Collator(undefined, {numeric: true, sensitivity: 'base'});
 
 // sortEntries puts folders first, then orders by name as VS Code does.

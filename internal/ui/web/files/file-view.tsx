@@ -1,12 +1,12 @@
 // Source line selection uses the same theme tokens as the standard controls.
-import {Fragment, useLayoutEffect, useRef, type ReactNode} from 'react';
+import {Fragment, useEffect, useLayoutEffect, useRef, type ReactNode} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {openFileTab} from '../editor/editor.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
 import {Markdown, MarkdownLink} from '../transcript/markdown.tsx';
-import {revealed} from './files.ts';
+import {fileReady, readOpenFile, revealed} from './files.ts';
 import {BrowserPreview} from './browser-preview.tsx';
 import {language} from './language.ts';
 import {markdownImageURL} from './markdown-image.ts';
@@ -47,8 +47,12 @@ export function FileView({id, path, active = true}: FileViewProps) {
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
   const session = state.session;
   const file = session?.files.open[path];
-  useScrollMemory(view, id, !!file && (file.text !== null || file.message !== null || !!file.preview || file.deleted));
+  const ready = fileReady(file);
+  useScrollMemory(view, id, ready);
   const sessionId = session?.id;
+  useEffect(() => {
+    if (sessionId && file && !ready) readOpenFile(store, path);
+  }, [sessionId, path, !!file, ready]);
   useLayoutEffect(() => {
     if (!sessionId || !file?.reveal || file.text === null) return;
     const highlight = view.current?.querySelector('.file-view-highlight');

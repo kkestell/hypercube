@@ -3,7 +3,7 @@ import {testSession, testState, testWorkspace} from '../test-state.ts';
 import {startDataSocket, type ServerMessage, type StateMessage} from './data-socket.ts';
 import {findPane} from './editor/tab-layout.ts';
 import {selectSession} from './sessions/selection.ts';
-import {createStore, type Store} from './store.ts';
+import {createStore} from './store.ts';
 import type {TranscriptItem} from './transcript/types.ts';
 
 class FakeSocket {
@@ -112,16 +112,7 @@ test('a changed build reloads the page and the first one does not', () => {
   expect(reload).toHaveBeenCalledTimes(1);
 });
 
-const fileText = (store: Store, path: string) => new Promise<string>(resolve => {
-  const unsubscribe = store.subscribe(state => {
-    const text = state.session?.files.open[path]?.text;
-    if (text === null || text === undefined) return;
-    unsubscribe();
-    resolve(text);
-  });
-});
-
-test('an open message keeps and selects a file and reads its contents', async () => {
+test('an open message keeps and selects an unread file', () => {
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('hello'));
   const store = started();
   const [socket] = FakeSocket.all;
@@ -130,11 +121,11 @@ test('an open message keeps and selects a file and reads its contents', async ()
   socket.receive({type: 'open', session: 'a', path: 'a.go', lines: []});
   expect(store.get().session?.tabs.preview).toBeNull();
   expect(findPane(store.get().session?.tabs.root ?? null, 'file:a.go')?.active).toBe('file:a.go');
-  expect(await fileText(store, 'a.go')).toBe('hello');
-  expect(fetches).toHaveBeenCalledTimes(1);
+  expect(store.get().session?.files.open['a.go']?.text).toBeNull();
+  expect(fetches).not.toHaveBeenCalled();
 });
 
-test('an open received during a session switch waits until the page returns', async () => {
+test('an open received during a session switch waits until the page returns', () => {
   const fetches = spyOn(globalThis, 'fetch').mockResolvedValue(new Response('hello'));
   const store = started();
   const [socket] = FakeSocket.all;
@@ -150,10 +141,10 @@ test('an open received during a session switch waits until the page returns', as
   expect(findPane(store.get().session?.tabs.root ?? null, 'file:guide.md')?.active).toBe('file:guide.md');
   expect(store.get().session?.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 1, end: 1}]});
   expect(store.get().fileOpens).toEqual({});
-  expect(await fileText(store, 'guide.md')).toBe('hello');
-  expect(fetches).toHaveBeenCalledTimes(1);
+  expect(store.get().session?.files.open['guide.md']?.text).toBeNull();
+  expect(fetches).not.toHaveBeenCalled();
   store.update(state => selectSession(state, 'b'));
   store.update(state => selectSession(state, 'a'));
   expect(store.get().session?.files.open['guide.md']).toMatchObject({source: true, reveal: false, text: null});
-  expect(fetches).toHaveBeenCalledTimes(1);
+  expect(fetches).not.toHaveBeenCalled();
 });
