@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Package a tagged copy of the checkout with scripts/release, as the release
+# workflow does, then install from the extracted tarball and check the version,
+# the service, and removal. It changes the test user's home, so run it in the
+# Linux test container, where it is thrown away:
+#
+#   scripts/linux/run scripts/linux/test-release
+set -euo pipefail
+root=$(cd "$(dirname "$0")/../.." && pwd)
+
+tag=v0.0.0-beta.1
+app=$HOME/.local/share/hypercube
+unit=com.github.kkestell.hypercube
+url=http://127.0.0.1:4280
+log=$HOME/.local/state/hypercube/ui.log
+plugins=(claude opencode codex pi)
+
+fail() {
+	echo "test-release: $*" >&2
+	echo "--- $log" >&2
+	cat "$log" >&2 || true
+	exit 1
+}
+
+# wait_for describes a condition and polls the command that checks it for 30
+# seconds.
+wait_for() {
+	local what=$1 _
+	shift
+	for _ in $(seq 300); do
+		if "$@" >/dev/null 2>&1; then return; fi
+		sleep 0.1
+	done
+	fail "timed out waiting for $what"
+}
+
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# The container's checkout has no .git, so tag a copy that does.
+mkdir "$tmp/src" "$tmp/download"
+tar -C "$root" --exclude=./bin --exclude=node_modules -cf - . | tar -C "$tmp/src" -xf -
+git -C "$tmp/src" init -q -b main
+git -C "$tmp/src" add -A
+git -C "$tmp/src" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false commit -q -m release
+git -C "$tmp/src" tag "$tag"
+commit=$(git -C "$tmp/src" rev-parse HEAD)
+identity="Hypercube $tag ($commit)"
+
+# Package.
+(cd "$tmp/src" && scripts/release "$tag") || fail "scripts/release failed"
+case $(uname -m) in
+aarch64) goarch=arm64 ;;
+x86_64) goarch=amd64 ;;
+*) fail "unsupported architecture $(uname -m)" ;;
+esac
+archive=Hypercube-$tag-linux-$goarch.tar.gz
+(cd "$tmp/src/bin/release" && sha256sum -c SHA256SUMS >/dev/null) || fail "SHA256SUMS does not match $archive"
+
+# Install from the extracted download.
+tar -xzf "$tmp/src/bin/release/$archive" -C "$tmp/download"
+[ "$(ls "$tmp/download")" = Hypercube ] || fail "the tarball holds more than Hypercube/"
+"$tmp/download/Hypercube/resources/install"
+[ "$("$HOME/.local/bin/hypercube" version)" = "$identity" ] ||
+	fail "hypercube version is not '$identity'"
+for f in "${plugins[@]/#/hypercube-harness-}"; do
+	[ -x "$HOME/.local/bin/$f" ] || fail "$HOME/.local/bin/$f is missing"
+done
+
+# Service.
+APP=$app SERVICE=$unit PORT=4280 "$app/resources/install-service"
+wait_for "the backend to answer" curl -fsS "$url/version"
+[ "$(curl -fsS "$url/version")" = "$identity" ] || fail "the service does not report '$identity'"
+
+# Removal.
+"$app/resources/uninstall"
+systemctl --user is-active --quiet "$unit" && fail "the service is still active"
+for f in "$HOME/.config/systemd/user/$unit.service" "$app" "$HOME/.local/bin/hypercube" "$HOME/.local/bin"/hypercube-harness-*; do
+	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f remains after removal"
+done
+
+echo "test-release: passed"

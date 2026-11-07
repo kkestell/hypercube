@@ -5,18 +5,24 @@ weight: 1
 
 # Installation
 
-Hypercube runs on macOS. Install at least one authenticated coding harness:
-`claude`, `opencode`, `codex`, or `pi`. Check
+Hypercube runs on macOS on Apple Silicon and on Linux on AMD64 and ARM64:
+Debian 13, Ubuntu 26.04, Fedora 45, and Arch. Install at least one
+authenticated coding harness: `claude`, `opencode`, `codex`, or `pi`. Check
 [harness requirements](harness-support.md) before starting a session.
 
 ## Download a beta
 
-Download the ZIP and `SHA256SUMS` from a
-[beta release](https://github.com/kkestell/hypercube/releases). Initial downloads
-are Apple Silicon builds, checked on macOS 15. In the download folder, verify:
+Each [beta release](https://github.com/kkestell/hypercube/releases) has a macOS
+ZIP, a Linux tarball for each architecture, and one `SHA256SUMS` for all of
+them.
+
+### macOS
+
+Download the ZIP and `SHA256SUMS`. The ZIP is an Apple Silicon build, checked on
+macOS 15. In the download folder, verify:
 
 ```sh
-shasum -a 256 -c SHA256SUMS
+shasum -a 256 -c --ignore-missing SHA256SUMS
 ```
 
 Extract the ZIP and move `Hypercube.app` to `~/Applications` before opening it,
@@ -56,6 +62,54 @@ example:
 ~/Applications/Hypercube.app/Contents/MacOS/hypercube version
 ```
 
+### Linux
+
+The desktop app needs these runtime libraries. Install them first:
+
+```sh
+sudo apt install libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxss1 libnotify4   # Debian, Ubuntu
+sudo dnf install gtk3 nss alsa-lib mesa-libgbm libXScrnSaver libnotify            # Fedora
+sudo pacman -S --needed gtk3 nss alsa-lib mesa libxss libnotify                   # Arch
+```
+
+Download the tarball for your architecture (`amd64` or `arm64`) and
+`SHA256SUMS`. In the download folder, verify, extract, and install:
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS
+tar -xzf Hypercube-<tag>-linux-amd64.tar.gz
+Hypercube/resources/install
+```
+
+The installer puts the app in `~/.local/share/hypercube`, links `hypercube` and
+its plugins into `~/.local/bin` (put that directory on your PATH), and adds
+Hypercube to the application launcher. Delete the extracted `Hypercube`
+directory afterward. On Ubuntu, the installer asks for `sudo` once to add the
+AppArmor profile the desktop app's sandbox needs.
+
+Create [your configuration](configuration.md), open Hypercube from the
+application launcher, and choose **Set Up Background Service**, or run the
+installer by hand:
+
+```sh
+APP="$HOME/.local/share/hypercube" SERVICE=com.github.kkestell.hypercube PORT=4280 \
+  "$HOME/.local/share/hypercube/resources/install-service"
+```
+
+The service runs the backend at login through your interactive login shell.
+Closing the window quits the desktop app; the service keeps running.
+
+To upgrade, extract the new tarball, run its `resources/install`, and run the
+service command again. To remove Hypercube:
+
+```sh
+~/.local/share/hypercube/resources/uninstall
+```
+
+This ends agents and terminal shells and removes the service, the app, the
+links, the launcher entry, and the AppArmor profile (with `sudo`).
+Configuration and saved state stay.
+
 ## Build and install from a checkout
 
 Source builds need Git, the Go version in
@@ -73,6 +127,9 @@ This installs `~/Applications/Hypercube.app` and links `hypercube` and its
 plugins into `~/.local/bin`. Put that directory on your PATH. Use
 `APPDIR=<dir>` and `BINDIR=<dir>` to change the destinations.
 
+On Linux, `make install` installs to `~/.local/share/hypercube` and needs
+`rsvg-convert`; `make uninstall` removes it.
+
 Create [your configuration](configuration.md), then follow
 [Run at login](#run-at-login). For development and release packaging, see
 [the development reference](https://github.com/kkestell/hypercube/blob/main/agents/development.md).
@@ -83,18 +140,26 @@ Create [your configuration](configuration.md), then follow
 make install-service
 ```
 
-This installs the build, loads a launchd user agent that runs the backend at
-login through your interactive login shell, and opens the desktop app. The
-service gives agents your login environment.
+This installs the build, loads a launchd user agent (on Linux, a systemd user
+service) that runs the backend at login through your interactive login shell,
+and opens the desktop app. The service gives agents your login environment.
 
-Closing the window leaves Hypercube running, and **Quit Hypercube** quits only
-the desktop app. To start the backend again if it is stopped, run
-`launchctl kickstart gui/$(id -u)/com.github.kkestell.hypercube`.
+On macOS, closing the window leaves Hypercube running, and **Quit Hypercube**
+quits only the desktop app. On Linux, closing the window quits the desktop app.
+The service keeps running in both cases. To start the backend again if it is stopped, run
+`launchctl kickstart gui/$(id -u)/com.github.kkestell.hypercube`; on Linux, run
+`systemctl --user start com.github.kkestell.hypercube`.
 
 To end every agent and terminal shell, send the service SIGINT:
 
 ```sh
 launchctl kill SIGINT gui/$(id -u)/com.github.kkestell.hypercube
+```
+
+On Linux:
+
+```sh
+systemctl --user kill --kill-whom=main --signal=SIGINT com.github.kkestell.hypercube
 ```
 
 Saved conversations remain; [resume behavior](usage.md#resume-and-cleanup)
@@ -105,10 +170,20 @@ launchctl bootout gui/$(id -u)/com.github.kkestell.hypercube
 rm ~/Library/LaunchAgents/com.github.kkestell.hypercube.plist
 ```
 
+On Linux:
+
+```sh
+systemctl --user disable --now com.github.kkestell.hypercube
+rm ~/.config/systemd/user/com.github.kkestell.hypercube.service
+systemctl --user daemon-reload
+```
+
 To run without a login service, start `hypercube ui` in a terminal, then open
-`~/Applications/Hypercube.app`. The interface is also available at
-http://localhost:4280/. The desktop app provides macOS notifications; its first
-launch asks for notification permission.
+`~/Applications/Hypercube.app`, or on Linux open Hypercube from the application
+launcher. The interface is also available at http://localhost:4280/. The
+desktop app provides notifications: on macOS, its first launch asks for
+notification permission, and on Linux it uses the desktop's notification
+service.
 
 To use another port, pass it to both processes:
 
@@ -116,6 +191,9 @@ To use another port, pass it to both processes:
 hypercube ui 4282
 ~/Applications/Hypercube.app/Contents/MacOS/Hypercube\ Desktop --port=4282
 ```
+
+On Linux, open the app with
+`~/.local/share/hypercube/hypercube-desktop --port=4282`.
 
 ## Upgrade
 
@@ -170,7 +248,7 @@ or harness storage overrides before starting.
 
 ## Identify a build
 
-**Hypercube → About Hypercube** identifies the running app. `hypercube version` identifies
+**Hypercube → About Hypercube** (on Linux, **Help → About Hypercube**) identifies the running app. `hypercube version` identifies
 the executable on your PATH; these may differ before you reload the service.
 The running server also reports its identity at http://localhost:4280/version
 and writes it to the service log at startup.
@@ -187,6 +265,8 @@ uncommitted checkout changes. A build without Git metadata reports `devel`.
 | Database | `~/.local/state/hypercube/hypercube.db` |
 | Service log | `~/.local/state/hypercube/ui.log` |
 | Desktop app profile and window position | `~/.local/state/hypercube/chromium/` |
-| Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` |
+| Login service | `~/Library/LaunchAgents/com.github.kkestell.hypercube.plist` (macOS), `~/.config/systemd/user/com.github.kkestell.hypercube.service` (Linux) |
+| Installed app (Linux) | `~/.local/share/hypercube/` |
+| AppArmor profile (Ubuntu) | `/etc/apparmor.d/com.github.kkestell.hypercube` |
 
 Configuration follows `XDG_CONFIG_HOME`; saved state follows `XDG_STATE_HOME`.

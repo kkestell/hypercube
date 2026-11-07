@@ -164,14 +164,17 @@ its layout, its executables, and the backend started from it, and
 `scripts/linux/test-install` installs the bundle into the test user's home,
 runs the service under bash, zsh, and fish, keeps a scripted agent running
 across a service restart, and checks `make uninstall`.
-`scripts/linux/test-desktop` then drives the installed desktop app against the
+`scripts/linux/test-desktop` drives the installed desktop app against the
 installed service with Playwright: the window frame and menus, each waiting
 page, setting up the service, a notification and the launcher badge, the open
 actions, the shortcuts and Ctrl labels, the panel terminal's keys (pressed with
 `xdotool`), closing the window, and reinstalling and uninstalling while the app
 runs. It starts openbox, the dunst notification server, a stand-in file
-manager, and stand-ins for `code` and `xdg-open`. Screenshots and logs land in
-`bin/linux-test/<distro>/`, copied out of the container when the command ends.
+manager, and stand-ins for `code` and `xdg-open`. `scripts/linux/test-release`
+runs last: it packages a tagged copy of the checkout with `scripts/release`,
+installs from the extracted tarball, and checks the version, the service, and
+removal. Screenshots and logs land in `bin/linux-test/<distro>/`, copied out of
+the container when the command ends.
 `make linux-test-all` runs the Linux tests for every distribution that has an
 image for the host's architecture, and CI runs them for all four on AMD64. The
 container runs natively on Apple Silicon and needs Docker.
@@ -242,16 +245,22 @@ requiring a release tag or running the full checks.
 
 GitHub Actions runs `make check` on main-branch pushes and pull requests, using
 the Go and Bun versions declared in the repository. Beta tags run those same
-checks before packaging an ad hoc signed Apple Silicon app.
+checks before packaging an ad hoc signed Apple Silicon app and Linux tarballs.
 
 Once the intended changes are committed and checked, create and push an
-annotated tag such as `v0.1.0-beta.1`. The **Beta release** workflow builds the
-ZIP and `SHA256SUMS`, then creates a **draft prerelease** with generated notes.
-Inspect the notes, test the downloaded app, and publish the draft when ready.
-No Apple account or signing secrets are required. GitHub Actions must be enabled
-and permitted to create releases in the repository.
+annotated tag such as `v0.1.0-beta.1`. The **Beta release** workflow packages
+the macOS ZIP on `macos-15` and the Linux tarballs on `ubuntu-24.04` and
+`ubuntu-24.04-arm`. A release job then creates one **draft prerelease** with
+all three, one `SHA256SUMS`, and generated notes. Inspect the notes, test the
+downloaded apps, and publish the draft when ready. No Apple account or signing
+secrets are required. GitHub Actions must be enabled and permitted to create
+releases in the repository.
 
-To check and package locally on Apple Silicon:
+`gh workflow run release.yml` packages a branch under the tag `v0.0.0-beta.1`
+and keeps the archives as workflow artifacts without creating a release.
+
+To check and package locally on Apple Silicon or on Linux, for the host's
+architecture:
 
 ```sh
 make check

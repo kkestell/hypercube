@@ -3,6 +3,7 @@ name: Beta release
 on:
   push:
     tags: ['v*-beta.*']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,17 +12,20 @@ jobs:
   check:
     uses: ./.github/workflows/check.yml
 
-  release:
+  macos:
     needs: check
     runs-on: macos-15
     timeout-minutes: 20
-    permissions:
-      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || 'v0.0.0-beta.1' }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Tag the checkout
+        if: github.event_name == 'workflow_dispatch'
+        run: git tag "$RELEASE_TAG"
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -29,21 +33,78 @@ jobs:
         with:
           bun-version-file: internal/ui/package.json
       - name: Package beta
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
         run: scripts/release "$RELEASE_TAG"
-      - name: Prepare draft prerelease
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.ref_name }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: bin/release/*.zip
+          if-no-files-found: error
+
+  linux:
+    needs: check
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || 'v0.0.0-beta.1' }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tag the checkout
+        if: github.event_name == 'workflow_dispatch'
+        run: git tag "$RELEASE_TAG"
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: internal/ui/package.json
+      - name: Install the icon renderer
         run: |
+          sudo apt-get update
+          sudo apt-get install -y librsvg2-bin
+      - name: Package beta
+        run: scripts/release "$RELEASE_TAG"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-linux-${{ matrix.runner }}
+          path: bin/release/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [macos, linux]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: archives
+          merge-multiple: true
+      - name: Prepare draft prerelease
+        working-directory: archives
+        run: |
+          sha256sum Hypercube-* > SHA256SUMS
           cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
-          Apple Silicon beta. This app is ad hoc signed and is not notarized by Apple.
+          macOS: an Apple Silicon ZIP. This app is ad hoc signed and is not notarized by Apple.
           After opening it once, use System Settings → Privacy & Security → Open Anyway if macOS blocks it.
 
+          Linux: AMD64 and ARM64 tarballs.
+
           See the [installation guide](https://github.com/kkestell/hypercube/blob/main/docs/installation.md)
-          for configuration, the background service, and upgrade instructions. SHA256SUMS verifies the ZIP download.
+          for configuration, the background service, and upgrade instructions. SHA256SUMS verifies the downloads.
           NOTES
-          gh release create "$RELEASE_TAG" bin/release/*.zip bin/release/SHA256SUMS \
+          gh release create "$RELEASE_TAG" Hypercube-*.zip Hypercube-*.tar.gz SHA256SUMS \
             --verify-tag --draft --prerelease --title "Hypercube $RELEASE_TAG" \
             --generate-notes --notes-file "$RUNNER_TEMP/release-notes.md"

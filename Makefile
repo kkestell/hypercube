@@ -79,7 +79,7 @@ linux-check:
 # linux-test runs the Linux tests in a fresh Linux container and copies their
 # screenshots to bin/linux-test/$(LINUX_DISTRO)/.
 linux-test:
-	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install && scripts/linux/test-desktop'
+	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install && scripts/linux/test-desktop && scripts/linux/test-release'
 
 # linux-test-all runs linux-test for each distribution that has an image for
 # this machine's architecture, stopping at the first failure. Arch has AMD64

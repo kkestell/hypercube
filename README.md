@@ -1,6 +1,6 @@
 # Hypercube
 
-A macOS app for running Claude Code, OpenCode, Codex, and Pi sessions together.
+A macOS and Linux app for running Claude Code, OpenCode, Codex, and Pi sessions together.
 A session can ask another agent to review its changes, delegate implementation
 on a separate branch, or coordinate with an agent in another repository.
 Agents run locally with your existing credentials.
@@ -63,7 +63,7 @@ sessions.
 - **Branch and merge status.** Sessions show their branch, unmerged commits, and uncommitted changes.
 - **Agent-assisted merging.** Agents can commit work, merge branches, and resolve conflicts.
 - **Cleanup safeguards.** Uncommitted files and unmerged work are protected during worktree cleanup.
-- **External project tools.** Project directories can open in Visual Studio Code, Finder, or Terminal.
+- **External project tools.** Project directories can open in Visual Studio Code, Finder on macOS or Files on Linux, and Terminal on macOS.
 
 ### Prompts and conversations
 
@@ -124,11 +124,11 @@ sessions.
 
 - **Per-session terminals.** Each session has an integrated shell in its working directory, with recent output retained across reconnects.
 
-### macOS app
+### Desktop app
 
-- **Menu bar access.** Hypercube remains accessible from the menu bar and Dock when its main window is closed.
+- **Menu bar and Dock access.** On macOS, Hypercube remains accessible from the menu bar and Dock when its main window is closed.
 - **Native desktop controls.** The app includes native menus, fullscreen, zoom, and remembered window placement.
-- **Background startup at login.** Hypercube's background service can start when you log in.
+- **Background startup at login.** Hypercube's background service can start when you log in, through launchd on macOS or a systemd user service on Linux.
 
 ## Documentation
 

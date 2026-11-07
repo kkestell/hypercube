@@ -7,7 +7,7 @@ Hypercube runs teams of local coding agents. Each agent is a native harness
 executable plugin; agents message each other through an MCP server, and the
 browser shows each agent's transcript.
 
-- There is one user. Target macOS.
+- There is one user. Target macOS and Linux.
 - Agents are trusted local processes running with the user's credentials.
 - Configure harnesses only through per-launch arguments, environment, and
   overrides. Leave the user's global and project settings, credentials, and
