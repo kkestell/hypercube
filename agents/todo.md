@@ -48,7 +48,7 @@ publishing a release.
   Chromium's sandbox is off in containers. Document the command in
   `agents/development.md`. This task proves the environment with `make check`
   and `make dev`; the later tasks add their own tests to it.
-- [ ] **Linux bundle.** `make bundle` on Linux builds a directory with the
+- [x] **Linux bundle.** `make bundle` on Linux builds a directory with the
   Electron client (`hypercube-desktop`), `hypercube`, the four plugins, the UI
   pages, a PNG icon, the `.desktop` file, and the service installer, and
   `make release` packs one `tar.gz` per architecture. Render the icon with

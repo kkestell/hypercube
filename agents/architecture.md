@@ -123,7 +123,9 @@ graphical session: Add Workspace's folder chooser and opening folders and files
 in other applications. Quitting, restarting, or
 losing the desktop app leaves the backend, agents, messaging, and coordination
 running. Its signed application bundle, `Hypercube.app`, contains the desktop
-app, `hypercube`, and the plugins; macOS notifications require that bundle.
+app, `hypercube`, and the plugins; macOS notifications require that bundle. The
+Linux bundle is the directory `Hypercube` with the same executables, and the
+pages and launcher files in `resources/`.
 
 The desktop app connects to the backend's loopback `/desktop` WebSocket and
 dials again after a restart. The backend sends an alert for each new request or
