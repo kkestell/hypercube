@@ -27,7 +27,8 @@ RUN set -eu; \
 RUN npm install -g --prefix /usr/local "playwright@${PLAYWRIGHT_VERSION}"
 
 # scripts/linux/run uses /run/user/1000, so the test user is UID 1000; remove a
-# user the base image already has at that UID.
+# user the base image already has at that UID. A container loads no kernel
+# modules and needs no first-boot setup, so those units are masked.
 RUN set -eu; \
 	user=$(getent passwd 1000 | cut -d: -f1); \
 	if [ -n "$user" ]; then userdel -r "$user"; fi; \
@@ -35,7 +36,7 @@ RUN set -eu; \
 	&& mkdir -p /var/lib/systemd/linger /home/tester/.cache \
 	&& touch /var/lib/systemd/linger/tester \
 	&& chown tester:tester /home/tester/.cache \
-	&& systemctl mask systemd-modules-load.service
+	&& systemctl mask systemd-modules-load.service systemd-firstboot.service
 
 # Chromium's sandbox does not work in a container.
 ENV NODE_PATH=/usr/local/lib/node_modules \
