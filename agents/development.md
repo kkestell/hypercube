@@ -18,6 +18,10 @@ Documentation procedures are in [documentation](documentation.md).
 - `make/` — the macOS and Linux packaging rules the `Makefile` includes.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
+- `scripts/linux-install`, `scripts/linux-install-service`,
+  `scripts/linux-uninstall` — the Linux installer scripts, shipped in the
+  bundle's `resources/` as `install`, `install-service`, and `uninstall` and run
+  by `make install`, `make install-service`, and `make uninstall`.
 - `scripts/linux/` — the Linux test container (`scripts/linux/run`).
 - `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
   and `make web-serve`.
@@ -154,8 +158,11 @@ delivery. Do not delegate the commit or merge to the three agents.
 that boots systemd, then removes the container. The default command is `make
 check`; `make linux-check` runs it. `make linux-test` runs the Linux tests:
 `scripts/linux/test-bundle` builds the bundle and checks its layout, its
-executables, and the backend started from it. The container runs natively on
-Apple Silicon and needs Docker.
+executables, and the backend started from it, and `scripts/linux/test-install`
+installs the bundle into the test user's home, runs the service under bash,
+zsh, and fish, keeps a scripted agent running across a service restart, and
+checks `make uninstall`. The container runs natively on Apple Silicon and needs
+Docker.
 
 The command runs as the user `tester`, which has a systemd user manager, under
 Xvfb. The image has Go and Bun at the versions the repository declares,
@@ -169,6 +176,15 @@ checkout changes. The volume `hypercube-linux-cache` keeps Go and Bun
 downloads and builds across runs; `docker volume rm hypercube-linux-cache`
 resets it. The first run builds the image and downloads dependencies, and later
 runs take seconds. New Linux tests go in `scripts/linux/`.
+
+`scripts/linux/test-apparmor` checks the installer's AppArmor profile on a real
+Ubuntu 24.04 kernel, which restricts user namespaces; the container's kernel
+does not. It builds the bundle in the container, then boots the Lima VM
+`hypercube-apparmor` natively (`vmType: vz`) and checks that the desktop app's
+sandbox fails without the profile, works with it, and that uninstalling removes
+it. It needs an Apple Silicon Mac with Docker and Lima, downloads an Ubuntu image
+on its first run, and is not part of `make linux-test`. It deletes the VM when it
+ends.
 
 ## Backwards compatibility
 

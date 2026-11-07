@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Check the installer's AppArmor profile on a real Ubuntu 24.04 kernel, which
+# restricts unprivileged user namespaces; the Linux test container shares
+# Docker's kernel, which does not. It builds the Linux bundle in the test
+# container, boots the Lima VM hypercube-apparmor natively with the vz driver,
+# and checks that Electron's sandbox fails before the install, works after it,
+# and that the uninstall removes the profile. Run it on an Apple Silicon Mac with
+# Docker and Lima; the first run downloads an Ubuntu image. The VM is deleted
+# when the script ends.
+#
+#   scripts/linux/test-apparmor
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+
+name=hypercube-apparmor
+tmp=$(mktemp -d)
+cleanup() {
+	limactl delete -f "$name" >/dev/null 2>&1 || true
+	rm -rf "$tmp"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+[ "$(uname -sm)" = "Darwin arm64" ] || {
+	echo "test-apparmor: run it on an Apple Silicon Mac" >&2
+	exit 1
+}
+
+scripts/linux/run bash -c 'make bundle >&2 && tar -C bin -cf - Hypercube' </dev/null >"$tmp/bundle.tar"
+
+limactl start --name="$name" --vm-type=vz --arch=aarch64 --tty=false --mount-none template:ubuntu-24.04
+limactl copy "$tmp/bundle.tar" "$name:/tmp/bundle.tar"
+
+limactl shell --workdir /tmp "$name" bash -s <<'VM'
+set -euo pipefail
+fail() {
+	echo "test-apparmor: $*" >&2
+	exit 1
+}
+
+[ "$(sysctl -n kernel.apparmor_restrict_unprivileged_userns)" = 1 ] ||
+	fail "the kernel does not restrict unprivileged user namespaces"
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -qq
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+	xvfb xauth libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxss1 >/dev/null
+tar -C /tmp -xf /tmp/bundle.tar
+
+# sandbox_works starts the desktop app, which creates its sandbox before it runs
+# any of its own code, and succeeds when the sandboxed zygote process, the one
+# not started with --no-zygote-sandbox, has a user namespace of its own. The app keeps running when its
+# sandbox works, so it ends the app; an app that exits on its own failed.
+sandbox_works() {
+	local exe=$1 app main zygote result=timeout _
+	xvfb-run -a "$exe" >/tmp/desktop.log 2>&1 &
+	app=$!
+	for _ in $(seq 300); do
+		main=$(pgrep -fx -- "$exe" | head -n 1) || true
+		zygote=$(pgrep -f -- '--type=zygote$' | head -n 1) || true
+		if [ -n "$main" ] && [ -n "$zygote" ]; then
+			result=1
+			[ "$(readlink "/proc/$main/ns/user")" != "$(readlink "/proc/$zygote/ns/user")" ] && result=0
+			break
+		fi
+		kill -0 "$app" 2>/dev/null || { result=1; break; }
+		sleep 0.1
+	done
+	pkill -f -- "$exe" || true
+	wait "$app" || true
+	[ "$result" != timeout ] || fail "the desktop app neither started a sandbox nor exited"
+	return "$result"
+}
+
+profile=/etc/apparmor.d/com.github.kkestell.hypercube
+loaded() { sudo grep -q '^com.github.kkestell.hypercube ' /sys/kernel/security/apparmor/profiles; }
+
+! sandbox_works /tmp/Hypercube/hypercube-desktop || fail "the sandbox works without the profile"
+grep -qi sandbox /tmp/desktop.log || { cat /tmp/desktop.log >&2; fail "the app failed for another reason than its sandbox"; }
+
+/tmp/Hypercube/resources/install
+[ -f "$profile" ] || fail "$profile is missing"
+loaded || fail "the profile is not loaded"
+sandbox_works "$HOME/.local/share/hypercube/hypercube-desktop" || fail "the sandbox does not work with the profile"
+
+"$HOME/.local/share/hypercube/resources/uninstall"
+[ ! -e "$profile" ] || fail "$profile remains after removal"
+! loaded || fail "the profile is still loaded after removal"
+
+echo "test-apparmor: passed"
+VM

@@ -29,6 +29,9 @@ x86_64) machine=X86-64 ;;
 esac
 readelf -h "$app/hypercube-desktop" | grep -q "Machine:.*$machine" ||
 	fail "hypercube-desktop is not a $machine executable"
+for f in install install-service uninstall; do
+	[ -x "$app/resources/$f" ] && [ -f "$app/resources/$f" ] || fail "$app/resources/$f is not an executable file"
+done
 for f in resources/app/main.js resources/ui/index.html; do
 	[ -f "$app/$f" ] || fail "$app/$f is missing"
 done

@@ -1,0 +1,72 @@
+#!/bin/sh
+# Install the Linux bundle that contains this script: the bundle under
+# $XDG_DATA_HOME/hypercube, links to hypercube and the harness plugins in
+# BINDIR, and the launcher entry and icon. On Ubuntu 23.10 and later, which
+# restrict unprivileged user namespaces, it also adds an AppArmor profile for
+# the desktop app's sandbox with one sudo command. It ships in the bundle as
+# resources/install and is run by `make install`. BINDIR defaults to
+# ~/.local/bin.
+set -eu
+
+src=$(cd "$(dirname "$0")/.." && pwd -P)
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+app=$data/hypercube
+bin=${BINDIR:-$HOME/.local/bin}
+id=com.github.kkestell.hypercube
+profile=/etc/apparmor.d/$id
+
+# Replace the installed bundle by renaming a complete copy into place, so the
+# directory is never half copied. Running processes keep the files they started
+# from. The copy is staged beside the bundle, on the same file system.
+mkdir -p "$data"
+stage=
+tmp=
+trap '[ -z "$stage" ] || rm -rf "$stage"; [ -z "$tmp" ] || rm -f "$tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ "$src" != "$(cd "$app" 2>/dev/null && pwd -P)" ]; then
+	if [ -e "$app" ] && ! { [ -f "$app/hypercube-desktop" ] && [ -f "$app/resources/uninstall" ]; }; then
+		echo "install: $app is not a Hypercube bundle; move it away and run the install again" >&2
+		exit 1
+	fi
+	stage=$(mktemp -d "$data/.hypercube.XXXXXX")
+	cp -R "$src" "$stage/new"
+	if [ -e "$app" ]; then mv "$app" "$stage/old"; fi
+	mv "$stage/new" "$app"
+fi
+
+mkdir -p "$bin"
+ln -sf "$app/hypercube" "$bin/hypercube"
+for plugin in "$app"/hypercube-harness-*; do
+	ln -sf "$plugin" "$bin/$(basename "$plugin")"
+done
+
+# The launcher entry runs the installed desktop app. In the quoted Exec path,
+# \, ", `, and $ take a backslash; then, as in any desktop entry value, each \
+# doubles, and % doubles because it starts a field code.
+exec_path=$(printf '%s' "$app/hypercube-desktop" | sed -e 's/[\\"`$]/\\&/g' -e 's/\\/\\\\/g' -e 's/%/%%/g')
+mkdir -p "$data/applications"
+EXEC="Exec=\"$exec_path\"" awk '/^Exec=/ { print ENVIRON["EXEC"]; next } { print }' \
+	"$app/resources/$id.desktop" >"$data/applications/$id.desktop"
+install -D -m 644 "$app/resources/$id.png" "$data/icons/hicolor/512x512/apps/$id.png"
+
+# The sandbox of the desktop app needs user namespaces, which Ubuntu restricts
+# to applications with a profile that allows them.
+if [ "$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null)" = 1 ]; then
+	tmp=$(mktemp)
+	cat >"$tmp" <<PROFILE
+# Lets Hypercube's desktop app create the user namespaces its sandbox needs.
+abi <abi/4.0>,
+include <tunables/global>
+
+profile $id "$app/hypercube-desktop" flags=(unconfined) {
+  userns,
+}
+PROFILE
+	if ! cmp -s "$tmp" "$profile"; then
+		echo "The desktop app's sandbox needs an AppArmor profile; installing $profile with sudo."
+		sudo sh -c 'install -m 644 "$1" "$2" && apparmor_parser -r "$2"' sh "$tmp" "$profile"
+	fi
+fi
+
+echo "installed $app"

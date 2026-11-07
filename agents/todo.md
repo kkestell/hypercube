@@ -54,7 +54,7 @@ publishing a release.
   `make release` packs one `tar.gz` per architecture. Render the icon with
   `rsvg-convert`. Set `desktopName` in `desktop/package.json` to match the
   `.desktop` file. Keep the macOS `.app`.
-- [ ] **Install and service.** Install the bundle in a stable path under
+- [x] **Install and service.** Install the bundle in a stable path under
   `~/.local/share`, link the CLI and plugins into `~/.local/bin`, and add the
   `.desktop` file; provide `make install-service` and a removal command. The
   systemd user unit starts the backend through `$SHELL -l -i -c` and uses

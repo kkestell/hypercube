@@ -1,0 +1,146 @@
+#!/usr/bin/env bash
+# Install the bundle with make install-service and check the service: its login
+# environment from bash, zsh, and fish, a scripted agent that keeps running
+# across a service restart, and removal with make uninstall. It changes the test user's
+# home, so run it in the Linux test container, where it is thrown away:
+#
+#   scripts/linux/run scripts/linux/test-install
+set -euo pipefail
+cd "$(dirname "$0")/.."/..
+
+app=$HOME/.local/share/hypercube
+unit=com.github.kkestell.hypercube
+desktop_file=$unit.desktop
+log=$HOME/.local/state/hypercube/ui.log
+state=$HOME/.local/state/hypercube
+url=http://127.0.0.1:4280
+plugins=(claude opencode codex pi)
+scene=$HOME/scene.json
+repo=$HOME/project
+
+fail() {
+	echo "test-install: $*" >&2
+	echo "--- $log" >&2
+	cat "$log" >&2 || true
+	exit 1
+}
+
+# wait_for describes a condition and polls the command that checks it for 30
+# seconds.
+wait_for() {
+	local what=$1 _
+	shift
+	for _ in $(seq 300); do
+		if "$@" >/dev/null 2>&1; then return; fi
+		sleep 0.1
+	done
+	fail "timed out waiting for $what"
+}
+
+main_pid() { systemctl --user show -p MainPID --value "$unit"; }
+answers() { curl -fsS "$url/version"; }
+# new_backend succeeds once the service has a main process other than $1 that
+# answers.
+new_backend() { [ "$(main_pid)" != "$1" ] && [ "$(main_pid)" != 0 ] && answers; }
+env_has() { tr '\0' '\n' <"/proc/$1/environ" | grep -qx "$2"; }
+alive() { kill -0 "$1" 2>/dev/null; }
+dead() { ! alive "$1"; }
+# post sends an action, which the backend accepts only from its own origin.
+post() { curl -fsS -X POST -H "Origin: $url" "$@"; }
+# running_from_bundle succeeds when a process runs an executable of the
+# installed bundle, including one whose file was replaced.
+running_from_bundle() {
+	local exe
+	for exe in /proc/[0-9]*/exe; do
+		case $(readlink "$exe" 2>/dev/null) in "$app"/*) return 0 ;; esac
+	done
+	return 1
+}
+none_from_bundle() { ! running_from_bundle; }
+
+# Shell configuration: each login shell reads its own file, and the service
+# must start the backend through the user's shell to see it.
+cat >"$scene" <<JSON
+{"workspaces": [{"sessions": [{"settings": {"harness": "claude", "model": "scripted"}, "turns": [
+  {"prompt": "first", "end": "idle", "git": [{"file": "first.txt", "content": "1"}],
+   "items": [{"id": "a", "kind": "text", "text": "first done", "done": true}]},
+  {"prompt": "second", "end": "idle", "git": [{"file": "second.txt", "content": "2"}],
+   "items": [{"id": "b", "kind": "text", "text": "second done", "done": true}]}]}]}]}
+JSON
+for sh in bash zsh; do
+	printf 'export HYPERCUBE_TEST_SHELL=%s\nexport HYPERCUBE_SCENE=%s\n' "$sh" "$scene" >>"$HOME/.${sh}rc"
+done
+mkdir -p "$HOME/.config/fish"
+printf 'set -gx HYPERCUBE_TEST_SHELL fish\nset -gx HYPERCUBE_SCENE %s\n' "$scene" >>"$HOME/.config/fish/config.fish"
+
+# Install.
+SHELL=/bin/bash make install-service
+for f in hypercube-desktop hypercube "${plugins[@]/#/hypercube-harness-}"; do
+	[ -x "$app/$f" ] || fail "$app/$f is not executable"
+done
+for f in install install-service uninstall com.github.kkestell.hypercube.png com.github.kkestell.hypercube.desktop; do
+	[ -f "$app/resources/$f" ] || fail "$app/resources/$f is missing"
+done
+for f in hypercube "${plugins[@]/#/hypercube-harness-}"; do
+	[ "$(realpath "$HOME/.local/bin/$f")" = "$(realpath "$app/$f")" ] ||
+		fail "$HOME/.local/bin/$f does not resolve into $app"
+done
+installed=$HOME/.local/share/applications/$desktop_file
+desktop-file-validate "$installed" || fail "the installed launcher entry is invalid"
+grep -qxF "Exec=\"$app/hypercube-desktop\"" "$installed" || fail "the launcher entry does not run the installed hypercube-desktop"
+[ -f "$HOME/.local/share/icons/hicolor/512x512/apps/$unit.png" ] || fail "the icon is missing"
+
+# Service: it runs through the user's bash.
+wait_for "the backend to answer" answers
+pid=$(main_pid)
+env_has "$pid" HYPERCUBE_TEST_SHELL=bash || fail "the backend does not have the bash login environment"
+grep -q 'serving at' "$log" || fail "the log has no startup line"
+
+# Holder: a scripted agent that ran its first turn. The plugin is the scripted
+# one under the installed harness name.
+go build -o "$app/hypercube-harness-claude" ./plugins/scripted
+git init -q -b main "$repo"
+git -C "$repo" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false commit -q --allow-empty -m init
+workspace=$(post "$url/workspace?action=new&path=$repo")
+session=$(post "$url/session?action=new&workspace=$workspace&harness=claude&model=scripted" -d '{"text":"first"}' |
+	sed -n 's/.*"session":"\([^"]*\)".*/\1/p')
+[ -n "$session" ] || fail "no session was created"
+wait_for "the first turn" test -f "$repo/first.txt"
+launches=("$state"/run/*/pid)
+[ ${#launches[@]} -eq 1 ] || fail "expected one launch directory, found ${#launches[@]}"
+holder=$(<"${launches[0]}")
+alive "$holder" || fail "the holder is not running"
+
+# Restart: the new backend adopts the holder, and the same plugin answers.
+systemctl --user restart "$unit"
+wait_for "a new backend" new_backend "$pid"
+alive "$holder" || fail "the holder did not survive the restart"
+post "$url/session?action=input&id=$session" -d '{"text":"second"}'
+wait_for "the second turn" test -f "$repo/second.txt"
+
+# zsh: reinstalling over the running service replaces the files and the shell.
+pid=$(main_pid)
+SHELL=/bin/zsh make install-service
+wait_for "a new backend" new_backend "$pid"
+env_has "$(main_pid)" HYPERCUBE_TEST_SHELL=zsh || fail "the backend does not have the zsh login environment"
+alive "$holder" || fail "the holder did not survive the reinstall"
+
+# fish: the service's start command works in fish too.
+pid=$(main_pid)
+APP=$app SERVICE=$unit PORT=4280 SHELL=/usr/bin/fish "$app/resources/install-service"
+wait_for "a new backend" new_backend "$pid"
+env_has "$(main_pid)" HYPERCUBE_TEST_SHELL=fish || fail "the backend does not have the fish login environment"
+alive "$holder" || fail "the holder did not survive the fish service install"
+
+# Removal.
+make uninstall
+systemctl --user is-active --quiet "$unit" && fail "the service is still active"
+for f in "$HOME/.config/systemd/user/$unit.service" "$app" "$installed" \
+	"$HOME/.local/share/icons/hicolor/512x512/apps/$unit.png" \
+	"$HOME/.local/bin/hypercube" "$HOME/.local/bin"/hypercube-harness-*; do
+	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f remains after removal"
+done
+wait_for "the holder to exit" dead "$holder"
+wait_for "processes from the removed bundle to exit" none_from_bundle
+
+echo "test-install: passed"

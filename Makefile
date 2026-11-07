@@ -73,7 +73,7 @@ linux-check:
 
 # linux-test runs the Linux tests in a fresh Linux container.
 linux-test:
-	scripts/linux/run scripts/linux/test-bundle
+	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install'
 
 # web-build builds the Hypercube website into web/public. web-serve runs its dev
 # server at http://localhost:1313. Both go through web/Makefile, which installs

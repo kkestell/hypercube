@@ -1,0 +1,69 @@
+#!/bin/sh
+# Run the Hypercube backend as a systemd user service that starts at login. The
+# service starts the backend through the user's interactive login shell, so the
+# backend and the agents it launches get the user's login environment. Run by
+# `make install-service` and by the desktop app's Set Up Background Service
+# button. APP is the installed bundle directory, SERVICE the unit's name, PORT
+# the backend's port, and SHELL the user's login shell. The installer replaces a
+# running copy of the service with SIGTERM, so running agents keep running.
+set -eu
+
+: "${APP:?APP is required}"
+: "${SERVICE:?SERVICE is required}"
+: "${PORT:?PORT is required}"
+: "${SHELL:?SHELL is required}"
+UNIT=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$SERVICE.service
+LOG=${XDG_STATE_HOME:-$HOME/.local/state}/hypercube/ui.log
+
+mkdir -p "$(dirname "$UNIT")" "$(dirname "$LOG")"
+
+# Values in a unit replace % with %%, which systemd reads as a specifier;
+# values in quotes also escape \ and ".
+pct() {
+	printf '%s' "$1" | sed 's/%/%%/g'
+}
+quoted() {
+	printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/%/%%/g'
+}
+
+# @ sets the shell's argv[0] to its name with a leading dash, which makes it a
+# login shell; -i makes it interactive, so it reads the user's interactive
+# configuration. The command is the same in tcsh, bash, zsh, and fish. $$ is a
+# literal $ in a unit, left for the shell to expand. KillMode=process stops the
+# backend alone, leaving the agents for the next backend to adopt.
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+cat >"$tmp/$SERVICE.service" <<UNIT
+[Unit]
+Description=Hypercube
+
+[Service]
+Environment="HYPERCUBE_APP_EXECUTABLE=$(quoted "$APP/hypercube")" "HYPERCUBE_PORT=$(quoted "$PORT")"
+ExecStart=@$SHELL -$(basename "$SHELL") -i -c 'exec "\$\$HYPERCUBE_APP_EXECUTABLE" ui "\$\$HYPERCUBE_PORT"'
+KillMode=process
+Restart=on-failure
+StandardOutput=append:$(pct "$LOG")
+StandardError=append:$(pct "$LOG")
+
+[Install]
+WantedBy=default.target
+UNIT
+
+# Refuse an invalid replacement before touching the running service.
+systemd-analyze --user verify "$tmp/$SERVICE.service"
+mv "$tmp/$SERVICE.service" "$UNIT"
+
+systemctl --user daemon-reload
+systemctl --user enable "$SERVICE"
+
+# Stop returns after the old backend exits, so only another process can hold
+# the port.
+systemctl --user stop "$SERVICE"
+holder=$(ss -Hltnp "sport = :$PORT")
+if [ -n "$holder" ]; then
+	echo "install-service: port $PORT is in use: $holder" >&2
+	exit 1
+fi
+
+systemctl --user start "$SERVICE"
+echo "started $SERVICE; log: $LOG"

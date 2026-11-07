@@ -1,0 +1,45 @@
+#!/bin/sh
+# Remove what `make install` and `make install-service` add: the service, the
+# bundle, the links in BINDIR that point into it, the launcher entry, the icon,
+# and the AppArmor profile, which takes one sudo command. Running agents and
+# shells end with the backend. Configuration and saved state stay. It ships in
+# the bundle as resources/uninstall and is run by `make uninstall`. BINDIR
+# defaults to ~/.local/bin.
+set -eu
+
+data=${XDG_DATA_HOME:-$HOME/.local/share}
+app=$data/hypercube
+bin=${BINDIR:-$HOME/.local/bin}
+id=com.github.kkestell.hypercube
+unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$id.service
+profile=/etc/apparmor.d/$id
+
+# SIGINT makes the backend end its agents and shells, since no backend will
+# adopt them. stop then waits for the backend to exit; its SIGTERM arrives after
+# the SIGINT and does not change the shutdown.
+if [ -e "$unit" ]; then
+	if systemctl --user is-active --quiet "$id"; then
+		systemctl --user kill --kill-whom=main --signal=SIGINT "$id"
+	fi
+	systemctl --user stop "$id"
+	systemctl --user disable "$id"
+	rm -f "$unit"
+	systemctl --user daemon-reload
+fi
+
+for link in "$bin/hypercube" "$bin"/hypercube-harness-*; do
+	case $(readlink "$link" 2>/dev/null) in
+	"$app"/*) rm -f "$link" ;;
+	esac
+done
+rm -f "$data/applications/$id.desktop" "$data/icons/hicolor/512x512/apps/$id.png"
+if [ -f "$app/hypercube-desktop" ] && [ -f "$app/resources/uninstall" ]; then
+	rm -rf "$app"
+	echo "removed $app"
+elif [ -e "$app" ]; then
+	echo "uninstall: $app is not a Hypercube bundle; leaving it" >&2
+fi
+
+if [ -e "$profile" ]; then
+	sudo sh -c 'apparmor_parser -R "$1"; rm -f "$1"' sh "$profile"
+fi
