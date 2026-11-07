@@ -112,6 +112,24 @@ sockets, and session recovery).
   from the workspace go through Chromium's decoders and viewers. Chromium's
   process sandbox contains an exploit in those; `--no-sandbox` removes it.
 
+## Real harnesses on Linux
+
+Checked on 2026-11-07 in the Debian 13 test container, with each CLI installed
+by its vendor's Linux installer and the service started from the login shell:
+Claude Code 2.1.319 (`claude.ai/install.sh`), Codex 0.166.0
+(`chatgpt.com/codex/install.sh`), OpenCode 2 (`opencode.ai/v2/install`), and
+Pi 1.5.0 (`pi.dev/install.sh`). Hypercube found all four, listed their models,
+and ran a session on each that used the harness's shell tool and replied.
+
+- The installers add their directories to `~/.profile` or `~/.bashrc`. The
+  service's interactive login shell reads both, so its PATH has every CLI.
+- Claude Code on Linux reads its login from `~/.claude/.credentials.json`; on
+  macOS it uses the Keychain.
+- OpenCode 2 keeps logins in the `credential` table of
+  `~/.local/share/opencode/opencode.db`, not in `auth.json`.
+- Pi needs Node.js 22.19 or later; Debian 13 ships Node 20.
+- Codex warns when `bubblewrap` is not on PATH and uses its bundled copy.
+
 ## Test environments on this Mac
 
 Docker runs ARM64 Linux containers natively. Checked on 2026-11-06:
