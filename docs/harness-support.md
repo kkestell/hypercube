@@ -97,14 +97,15 @@ without the harness.
 
 ## Usage reports
 
-Context use is the latest request's token count. Other readings vary:
+Context use is an estimate from the latest model request or step. The tokens
+counted depend on the harness:
 
-| Harness | Cost | Subscription usage |
-| --- | --- | --- |
-| Claude Code | Reported with the turn result. | Five-hour and seven-day windows, after turns. |
-| OpenCode | Main conversation. | Not reported. |
-| Codex | Not reported. | Account limit windows, after turns. |
-| Pi | Session total, including before a resume. | Not reported. |
+| Harness | Context use | Cost | Subscription usage |
+| --- | --- | --- | --- |
+| Claude Code | Latest input, including cached tokens. | Reported with the turn result. | Five-hour and seven-day windows, after turns. |
+| OpenCode | Latest step's input, output, and cached tokens. | Main conversation. | Not reported. |
+| Codex | Latest input. | Not reported. | Account limit windows, after turns. |
+| Pi | Latest request's total tokens, including output. | Session total, including before a resume. | Not reported. |
 
 See [usage indicators](interface.md#usage-indicators) for how readings appear.
 

@@ -7,8 +7,8 @@ import {inWorktree, unsentWorktree} from '../sessions/selection.ts';
 import {useStore} from '../store.ts';
 
 const choices = [
-  {value: 'local', icon: 'laptop', label: 'Local'},
-  {value: 'worktree', icon: 'git-branch', label: 'Worktree'},
+  {value: 'local', icon: 'laptop', label: 'Existing checkout'},
+  {value: 'worktree', icon: 'git-branch', label: 'New worktree'},
 ] as const;
 
 export function WorktreeSelect() {

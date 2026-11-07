@@ -15,10 +15,10 @@ import (
 func (r *Runtime) Deliver(id string) {
 	r.mu.Lock()
 	l := r.live[id]
-	parked := l == nil || l.stopping
+	needsWake := l == nil || l.stopping
 	r.kickLocked(id)
 	r.mu.Unlock()
-	if !parked {
+	if !needsWake {
 		return
 	}
 	wanted := false

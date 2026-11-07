@@ -241,7 +241,7 @@ func checkWorktrees(trees []managedWorktree) error {
 		}
 	}
 	if len(problems) > 0 {
-		return fmt.Errorf("not deleting: problem worktrees:\n  %s", strings.Join(problems, "\n  "))
+		return fmt.Errorf("cannot remove worktrees:\n  %s", strings.Join(problems, "\n  "))
 	}
 	return nil
 }

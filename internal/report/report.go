@@ -63,7 +63,7 @@ func Instructions(tx *store.Tx, s store.Session, harnesses []string, guidance st
 		if err != nil {
 			return "", err
 		}
-		fmt.Fprintf(&b, "You are %s, a child session of Hypercube session %s, titled %q. Your parent created you and is the only session you can message: use send_message to %s.\n", s.Name, parent.ID, parent.Title, parent.ID)
+		fmt.Fprintf(&b, "You are the agent of child session %s, created by Hypercube session %s, titled %q. Your parent is the only session you can message: use send_message to %s.\n", s.Name, parent.ID, parent.Title, parent.ID)
 		b.WriteString("Your parent supplies your assignment; the user can also steer you here. Complete the assignment and report unrelated problems instead of fixing them.\n")
 	} else {
 		fmt.Fprintf(&b, "You are the agent of Hypercube session %s, titled %q. Hypercube runs one coding agent per session.\n", s.ID, s.Title)

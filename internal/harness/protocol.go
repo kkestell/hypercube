@@ -52,7 +52,9 @@ type Command struct {
 	Start   *StartArgs `json:"start,omitempty"`
 	Text    string     `json:"text,omitempty"`
 	Images  []Image    `json:"images,omitempty"`
-	Request string     `json:"request,omitempty"`
+	// Request is the attention item's ID within this plugin launch, which may
+	// differ from the native request ID when a request asks several questions.
+	Request string `json:"request,omitempty"`
 	// Choice is retained for replaying commands saved by older versions.
 	Choice    string     `json:"choice,omitempty"`
 	Choices   []string   `json:"choices,omitempty"`
@@ -133,8 +135,10 @@ type Event struct {
 	Limits []Limit `json:"limits,omitempty"`
 }
 
-// Usage is what the conversation has used: the tokens of its latest request,
-// its model's context window, and its cost in US dollars, when known.
+// Usage reports the conversation's estimated context use, model context
+// window, and cost in US dollars, when known. Context comes from the latest
+// model request or step; whether it includes output tokens depends on the
+// harness. See docs/harness-support.md for each harness's accounting.
 type Usage struct {
 	Context int     `json:"context,omitempty"`
 	Window  int     `json:"window,omitempty"`
@@ -156,8 +160,9 @@ type Limit struct {
 
 // Item is one entry of the transcript. A later item with the same ID replaces
 // the earlier one, or extends its Text when Append is set and the earlier item
-// is not Done. IDs are unique within one launch of the plugin. A native subagent's
-// items name the item that started it as their Parent.
+// is not Done. IDs are unique within one launch of the plugin. When the native
+// protocol identifies a subagent's starting tool item, its nested items name
+// that item as their Parent. Other output and questions depend on the harness.
 //
 // An attention item asks the user: Text is the prompt, Choices are the options,
 // Notes[i] optionally describes Choices[i], Multi allows several selections,

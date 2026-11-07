@@ -52,10 +52,10 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
       <DefaultSelection draft={draft} onChange={onChange} />
       <Field id="default-location" label="Default location">
         <Choice id="default-location" value={draft.default_worktree ? 'worktree' : 'local'} onChange={value => onChange({default_worktree: value === 'worktree'})}>
-          <SelectItem value="local"><Icon name="laptop" />Local</SelectItem>
-          <SelectItem value="worktree"><Icon name="git-branch" />Worktree</SelectItem>
+          <SelectItem value="local"><Icon name="laptop" />Existing checkout</SelectItem>
+          <SelectItem value="worktree"><Icon name="git-branch" />New worktree</SelectItem>
         </Choice>
-        <p className="text-sm text-muted-foreground">For Git workspaces. The composer can change it for each session.</p>
+        <p className="text-sm text-muted-foreground">For Git workspaces. Existing checkout includes uncommitted changes; a new worktree starts from the current commit. Change it for each session below the message box.</p>
       </Field>
     </Group>
   </div>;

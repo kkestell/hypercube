@@ -38,8 +38,9 @@ implementation details are in [architecture](architecture.md).
   its results.
 - **family**: A top-level session and its children, the group affected by
   archiving or deleting that top-level session.
-- **native subagent**: A worker created inside a harness whose output appears
-  under a tool item rather than as a separate Hypercube session.
+- **native subagent**: A worker created inside a harness, without a separate
+  Hypercube session; its output and questions appear as the harness integration
+  supports.
 - **native conversation**: The harness-owned history identified by a saved
   reference that Hypercube uses to resume an agent across launches.
 - **transcript**: Hypercube's ordered record of a session's prompts, agent
@@ -56,8 +57,9 @@ implementation details are in [architecture](architecture.md).
   local instructions, without inheriting the parent's conversation.
 - **fork**: A copy of a parent's saved native conversation used to start a
   child, whose Hypercube transcript begins with its own assignment.
-- **parked**: A session whose agent has ended after being idle and unviewed,
-  retaining its saved state so the agent can resume when next used.
+- **parked**: A non-ended session with no running agent, retaining its saved
+  state so the agent can resume when next used, whether after an idle timeout,
+  a lost launch, or a failed start.
 - **archived**: A top-level session's inactive state after stopping its family
   and cleaning up managed worktrees while keeping readable chats; unarchiving
   restores the top-level session, leaving its children ended.
