@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
-import {mount, render, unmountAll} from '../../test-render.tsx';
+import {mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testState, unread} from '../../test-state.ts';
 import {openTab} from '../editor/tab-layout.ts';
 import {emptySession} from '../sessions/selection.ts';
@@ -9,6 +9,48 @@ import {FileView} from './file-view.tsx';
 import {setSource} from './files.ts';
 
 afterEach(() => { unmountAll(); mock.restore(); });
+
+test.each([
+  ['docs/guide.md', 'usage.md', 'docs/usage.md'],
+  ['docs/guide.md', '../README.md', 'README.md'],
+  ['docs/guide.md', '/src/main.go', 'src/main.go'],
+  ['docs #1/guide.md', '../docs/a%20%23.md?view=1#next', 'docs/a #.md'],
+  ['docs/guide.md', 'a&amp;b.md', 'docs/a&b.md'],
+  ['/work/repo/docs/guide.md', '../README.md', '/work/repo/README.md'],
+])('Markdown link in %s opens %s in a file tab', async (path, href, target) => {
+  const session = emptySession('s & 1');
+  session.tabs = openTab(session.tabs, 'file:' + path);
+  session.files.open[path] = {...unread, text: `- [**Read more**](${href})`};
+  const fetch = stubFetch(() => new Response('Linked file'));
+  const store = createStore(testState({session}));
+  const root = mount(store, <FileView id={'file:' + path} path={path} />);
+  const link = root.querySelector('a')!;
+  expect(link.textContent).toBe('Read more');
+  const click = new MouseEvent('click', {bubbles: true, cancelable: true});
+  await act(async () => { link.dispatchEvent(click); });
+  expect(click.defaultPrevented).toBe(true);
+  expect(store.get().session?.tabs.preview).toBe('file:' + target);
+  expect(store.get().session?.files.open[target]?.text).toBe('Linked file');
+  const request = new URL(fetch.mock.calls[0][0], 'http://localhost');
+  expect(request.pathname).toBe('/file');
+  expect(request.searchParams.get('session')).toBe('s & 1');
+  expect(request.searchParams.get('path')).toBe(target);
+});
+
+test('Markdown file links retain safe external links and block unsafe addresses', () => {
+  const path = 'README.md';
+  const session = emptySession('s');
+  session.files.open[path] = {...unread, text: `
+[Web](https://example.com) [Mail](mailto:a@example.com)
+[Script](javascript:alert%281%29) [Encoded](jav&#x61;script:alert%281%29)
+[Data](data:text/html,hello) [File](file:///etc/passwd)
+[Encoded file](fi&#x09;le:///etc/passwd) [Network](//example.com/file.md)
+`};
+  const root = mount(createStore(testState({session})), <FileView id={'file:' + path} path={path} />);
+  expect([...root.querySelectorAll('a')].map(link => link.getAttribute('href'))).toEqual(['https://example.com/', 'mailto:a@example.com']);
+  expect([...root.querySelectorAll('a')].every(link => link.target === '_blank')).toBe(true);
+  expect(root.textContent).toContain('Encoded file');
+});
 
 test('Markdown file previews render images relative to the file and session', () => {
   const path = 'docs #1/guide.md';

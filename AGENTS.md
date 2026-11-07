@@ -23,7 +23,8 @@ screenshots, or the website, read
 [architecture](agents/architecture.md), and [README.md](README.md) indexes user
 guides.
 
-Commit and merge only when the user asks.
+Commit completed, validated work unless the user asks otherwise. Include only
+changes belonging to the task. Merge only when the user asks.
 
 ## Communication
 

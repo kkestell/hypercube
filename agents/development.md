@@ -118,9 +118,10 @@ task within the user's scope.
    parent checks the review and has the reviewer resolve any medium or high
    finding still open before committing.
 
-After the required checks and review are complete, the parent makes the final
-commit and merges the task branch into `main` when the user has authorized
-delivery. Do not delegate the commit or merge to the three agents.
+After the required checks and review are complete, the parent commits the
+task's changes unless the user asks otherwise. Merge the task branch into
+`main` only when the user asks. Do not delegate the commit or merge to the
+three agents.
 
 ## Validation
 

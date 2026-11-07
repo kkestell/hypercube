@@ -1,7 +1,7 @@
 // Markdown as React elements. Text from models reaches the page only as text
 // and as attributes of the elements built here, so it never becomes HTML: raw
-// HTML in Markdown shows as text, and links keep only http, https, and mailto
-// addresses. File previews also highlight their code blocks.
+// HTML in Markdown shows as text. Default links keep only http, https, and
+// mailto addresses; file previews supply their own links and highlight code.
 import {createElement, Fragment, type ReactNode} from 'react';
 import {lexer, type Token, type Tokens} from 'marked';
 import {decodeHTMLStrict} from 'entities/decode';
@@ -18,18 +18,20 @@ export function safeHref(href: string): string | null {
   }
 }
 
-function Link({href, children}: {href: string; children: ReactNode}) {
+export function MarkdownLink({href, children}: {href: string; children: ReactNode}) {
   const safe = safeHref(href);
   if (!safe) return <span>{children}</span>;
   return <a href={safe} target="_blank" rel="noopener noreferrer">{children}</a>;
 }
 
 // Options are how a token renders: flatten draws plain text, preview omits
-// the copy buttons, and imageSource gives the address an image may load from.
+// the copy buttons, imageSource gives the address an image may load from,
+// and renderLink lets file previews open local files.
 interface Options {
   flatten?: boolean;
   preview?: boolean;
   imageSource?: (href: string) => string | null | undefined;
+  renderLink?: (href: string, children: ReactNode) => ReactNode;
 }
 
 function tokens(list: Token[] = [], options: Options): ReactNode[] {
@@ -43,6 +45,7 @@ function joined(nodes: ReactNode[], separator: ReactNode): ReactNode[] {
 
 function element(t: Token, options: Options): ReactNode {
   const children = (inner: Token[] | undefined) => tokens(inner, options);
+  const link = (href: string, content: ReactNode) => options.renderLink ? options.renderLink(href, content) : <MarkdownLink href={href}>{content}</MarkdownLink>;
   switch (t.type) {
     case 'space':
     case 'def':
@@ -77,12 +80,12 @@ function element(t: Token, options: Options): ReactNode {
     case 'del': return <del>{children(t.tokens)}</del>;
     case 'codespan': return <code>{t.text}</code>;
     case 'br': return <br />;
-    case 'link': return <Link href={decodeHTMLStrict(t.href)}>{children(t.tokens)}</Link>;
+    case 'link': return link(decodeHTMLStrict(t.href), children(t.tokens));
     case 'image': {
       const text = decodeHTMLStrict(t.text), href = decodeHTMLStrict(t.href);
       if (options.flatten) return text || null;
       const src = options.imageSource?.(href);
-      return src ? <img src={src} alt={text} title={t.title ? decodeHTMLStrict(t.title) : undefined} /> : <Link href={href}>{text || href}</Link>;
+      return src ? <img src={src} alt={text} title={t.title ? decodeHTMLStrict(t.title) : undefined} /> : link(href, text || href);
     }
     // Decode only parsed text and attributes: code and raw HTML stay literal.
     case 'text': return t.tokens ? children(t.tokens) : decodeHTMLStrict(t.text);
@@ -99,16 +102,16 @@ function flatTokens(list: Token[] = []): ReactNode[] {
 // style is 'chat' or 'preview'. Text is content in the foreground color, or
 // supporting information, such as reasoning, in the muted color. Every text
 // element takes that color; list markers and captions are always muted.
-interface MarkdownProps extends Pick<Options, 'imageSource'> {
+interface MarkdownProps extends Pick<Options, 'imageSource' | 'renderLink'> {
   text: string;
   style: 'chat' | 'preview';
   muted?: boolean;
 }
 
-export function Markdown({text, style, muted, imageSource}: MarkdownProps) {
+export function Markdown({text, style, muted, imageSource, renderLink}: MarkdownProps) {
   return (
     <div className={`markdown markdown-${style} ${muted ? '[&.prose]:text-muted-foreground' : '[&.prose]:text-foreground'} prose-headings:text-inherit prose-lead:text-inherit prose-a:text-inherit prose-strong:text-inherit prose-blockquote:text-inherit prose-kbd:text-inherit prose-code:text-inherit prose-pre:text-inherit prose-pre:bg-muted prose-li:marker:text-muted-foreground prose-figcaption:text-muted-foreground prose prose-sm prose-neutral prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-h4:text-sm dark:prose-invert max-w-none break-words prose-code:before:content-none prose-code:after:content-none`}>
-      {tokens(lexer(text), {preview: style === 'preview', imageSource})}
+      {tokens(lexer(text), {preview: style === 'preview', imageSource, renderLink})}
     </div>
   );
 }

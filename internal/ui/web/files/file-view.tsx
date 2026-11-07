@@ -1,14 +1,16 @@
 // Source line selection uses the same theme tokens as the standard controls.
 import {Fragment, useLayoutEffect, useRef, type ReactNode} from 'react';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
+import {openFileTab} from '../editor/editor.ts';
 import {useStore} from '../store.ts';
 import {Find} from '../shared/find.tsx';
 import {tabBackground} from '../shared/tab-background.ts';
-import {Markdown} from '../transcript/markdown.tsx';
+import {Markdown, MarkdownLink} from '../transcript/markdown.tsx';
 import {revealed} from './files.ts';
 import {BrowserPreview} from './browser-preview.tsx';
 import {language} from './language.ts';
 import {markdownImageURL} from './markdown-image.ts';
+import {markdownFilePath} from './markdown-path.ts';
 import type {LineRange} from './types.ts';
 import {useHighlight} from './use-highlight.ts';
 
@@ -62,7 +64,13 @@ export function FileView({id, path, active = true}: FileViewProps) {
   else if (file?.text !== null && file?.text !== undefined) {
     content = language(path) === 'markdown' && !file.source
       ? <div className={`mx-auto p-6 ${state.workbench.fixedWidth ? 'max-w-[51.7rem]' : ''}`}>
-        <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} />
+        <Markdown text={file.text} style="preview" imageSource={href => markdownImageURL(href, sessionId, path)} renderLink={(href, children) => {
+          const target = markdownFilePath(href, path);
+          return target === null ? <MarkdownLink href={href}>{children}</MarkdownLink> : <a href={href} onClick={event => {
+            event.preventDefault();
+            openFileTab(store, target);
+          }}>{children}</a>;
+        }} />
       </div>
       : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} active={active} />;
   }
