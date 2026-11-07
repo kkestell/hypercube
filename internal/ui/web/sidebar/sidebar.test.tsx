@@ -67,6 +67,29 @@ const dialogButton = (label: string) => {
   return button;
 };
 
+test('workspace row background selects its dashboard without changing the action buttons', () => {
+  const {store, root} = setup([session('a')], 'a');
+  const header = find(root, '.workspace-section-header');
+  click(find(header, '[aria-label="Collapse repo"]'));
+  expect(store.get().selected).toBe('a');
+  expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
+
+  click(header);
+  expect(store.get().selected).toBe('workspace:w');
+  expect(store.get().workbench.collapsedWorkspaces.w).toBe(true);
+  act(() => chooseSession(store, 'a'));
+  click(header.firstElementChild as HTMLElement);
+  expect(store.get().selected).toBe('workspace:w');
+
+  act(() => chooseSession(store, 'a'));
+  click(find(header, '[aria-label="New Session"]'));
+  expect(store.get().selected).toBeNull();
+  expect(store.get().unsent?.workspace).toBe('w');
+  click(find(header, '[aria-label="More Actions"]'));
+  expect(store.get().selected).toBeNull();
+  expect(document.querySelector('[role=menu]')).not.toBeNull();
+});
+
 test('Enter saves a changed title, Escape cancels, and leaving the field saves', () => {
   const {root, posted} = setup([session('a')]);
   let field = rename(root, 'a');
