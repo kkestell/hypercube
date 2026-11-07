@@ -17,6 +17,7 @@ Documentation procedures are in [documentation](documentation.md).
   scenes and never ships.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
+- `scripts/linux/` — the Linux test container (`scripts/linux/run`).
 - `web/` — the Taikonaut website, a Hugo site built and served by `make web-build`
   and `make web-serve`.
 - `docs/` — user documentation, indexed by `README.md`.
@@ -135,6 +136,7 @@ delivery. Do not delegate the commit or merge to the three agents.
   desktop app behavior.
 - Check a change to the browser view with tests and the build, without
   screenshots. The user judges how it looks.
+- Test Linux behavior with `scripts/linux/run`.
 - `make install-service` loads a merged change into the installed app. Run it
   from the original checkout. Offer to run it after finishing a change, and run
   it whenever the user asks.
@@ -144,6 +146,26 @@ delivery. Do not delegate the commit or merge to the three agents.
   an active session only after that session restarts. When a requested change
   needs that, warn the user clearly before starting the work and again when
   offering to install it.
+
+## Test on Linux
+
+`scripts/linux/run [command]` runs the command in a new Debian 13 container
+that boots systemd, then removes the container. The default command is `make
+check`; `make linux-check` runs it. The container runs natively on Apple
+Silicon and needs Docker.
+
+The command runs as the user `tester`, which has a systemd user manager, under
+Xvfb. The image has Go and Bun at the versions the repository declares,
+a C compiler, `rsvg-convert`, SQLite, the Electron runtime libraries,
+Node, and Playwright. It has no harness CLIs, so tests that start sessions use
+the scripted plugin as `make screenshots` does.
+
+The container gets a copy of the tracked and untracked files that Git does not
+ignore, without `.git`, so builds report version `devel` and nothing in the
+checkout changes. The volume `hypercube-linux-cache` keeps Go and Bun
+downloads and builds across runs; `docker volume rm hypercube-linux-cache`
+resets it. The first run builds the image and downloads dependencies, and later
+runs take seconds. New Linux tests go in `scripts/linux/`.
 
 ## Backwards compatibility
 

@@ -38,7 +38,7 @@ publishing a release.
   takes the chosen path. Use the platform's labels ("Show in Files" on
   Linux). Linux has no standard terminal application, so Open in Terminal is
   macOS-only. Its Linux items are tested with the desktop app task.
-- [ ] **Linux test environment.** A Debian 13 container image that boots
+- [x] **Linux test environment.** A Debian 13 container image that boots
   systemd, with a user manager for a test user, Xvfb, Electron's runtime
   libraries, Git, Go, Bun, `rsvg-convert`, and Playwright. It runs natively on
   ARM64 in Docker on the Mac and on AMD64 in CI. One command builds the

@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Run a command on this checkout in a fresh Linux container, as the test user
+# on a virtual display, then remove the container.
+#
+#   scripts/linux/run [command...]   default: make check
+#
+# The container boots systemd and has no copy of .git or of ignored files, so
+# builds start from the tracked and untracked sources. The cache volume
+# hypercube-linux-cache holds Go and Bun downloads and builds across runs;
+# `docker volume rm hypercube-linux-cache` resets it.
+set -euo pipefail
+
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+cd "$ROOT"
+[ $# -gt 0 ] || set -- make check
+
+go_version=$(awk '$1 == "go" { print $2 }' go.mod)
+bun_version=$(sed -n 's/.*"packageManager": "bun@\(.*\)".*/\1/p' internal/ui/package.json)
+image=$(docker build -q -t hypercube-linux \
+	--build-arg "GO_VERSION=$go_version" --build-arg "BUN_VERSION=$bun_version" \
+	scripts/linux)
+
+container=$(docker run -d --rm --privileged -v hypercube-linux-cache:/home/tester/.cache "$image")
+trap 'docker rm -f "$container" >/dev/null 2>&1' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# systemctl needs systemd's private socket, which appears just after the
+# container starts. --wait then returns once the boot jobs, including the test
+# user's manager, finish.
+if ! state=$(docker exec "$container" sh -c \
+	'until [ -S /run/systemd/private ]; do sleep 0.1; done; systemctl is-system-running --wait'); then
+	echo "The container booted to state '$state', not running:" >&2
+	docker exec "$container" systemctl --failed --no-pager >&2
+	exit 1
+fi
+
+# Tracked and untracked files that are not ignored; the loop skips tracked
+# files deleted from the working tree. COPYFILE_DISABLE and --no-xattrs keep
+# macOS metadata out of the archive.
+git ls-files -z -co --exclude-standard |
+	while IFS= read -r -d '' f; do
+		if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi
+	done |
+	COPYFILE_DISABLE=1 tar --no-xattrs --no-recursion --null -T - -cf - |
+	docker exec -i -u tester "$container" sh -c 'mkdir ~/hypercube && tar -xf - -C ~/hypercube'
+
+tty=-i
+[ -t 0 ] && tty=-it
+docker exec $tty -u tester -w /home/tester/hypercube \
+	-e SHELL=/bin/bash -e XDG_RUNTIME_DIR=/run/user/1000 \
+	-e DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+	"$container" bash -lc 'exec xvfb-run -a -s "-screen 0 1920x1080x24" "$@"' bash "$@"
