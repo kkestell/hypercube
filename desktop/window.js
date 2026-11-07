@@ -1,19 +1,20 @@
 // The main window: the Hypercube page, or the waiting page until the backend
-// answers. The page draws the title bar's row, its tab bars, beside the
-// window's buttons, and the window reports that row's size.
-const {app, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} = require('electron');
+// answers. On macOS the page draws the title bar's row, its tab bars, beside
+// the window's buttons, and the window reports that row's size; on Linux the
+// window manager draws the frame and the page's top row has its normal spacing.
+// Closing the window hides it on macOS, where the Dock icon stays, and quits
+// the app on Linux.
+const {app, BaseWindow, BrowserWindow, dialog, ipcMain, nativeTheme, screen, shell} = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 const {createActions} = require('./actions.js');
-const dock = require('./dock.js');
 
 // The buttons' position and the title bar row they sit in, in points. The row
 // is as tall as a toolbar and centers the buttons; inset is the width the
 // buttons take from the left, with the same margin on the right as the left.
 const trafficLightPosition = {x: 19, y: 19};
-const titleBar = {height: 52, inset: 98};
-
-const act = createActions({dialog, shell, platform: process.platform});
+const macTitleBar = {height: 52, inset: 98};
+const noTitleBar = {height: 0, inset: 0};
 
 const external = url => ['http:', 'https:', 'mailto:'].includes(new URL(url).protocol) && shell.openExternal(url);
 
@@ -31,11 +32,15 @@ function savedBounds(file) {
   return {width: 1280, height: 800};
 }
 
-// createMainWindow makes the window, hidden until its first page is ready. The
-// backend page is at origin; the waiting page and its sibling pages are in
-// pagesDir. The window answers the page's title bar and theme messages and
-// passes the page's other messages to onMessage.
-function createMainWindow({origin, pagesDir, userData, onMessage}) {
+// createMainWindow makes the window for platform, 'darwin' or 'linux', hidden
+// until its first page is ready. The backend page is at origin; the waiting
+// page and its sibling pages are in pagesDir. The window answers the page's
+// title bar and theme messages and passes the page's other messages to
+// onMessage.
+function createMainWindow({platform, origin, pagesDir, userData, onMessage}) {
+  const mac = platform === 'darwin';
+  const titleBar = mac ? macTitleBar : noTitleBar;
+  const act = createActions({dialog, shell, platform});
   const boundsFile = path.join(userData, 'window.json');
   const save = () => fs.writeFileSync(boundsFile, JSON.stringify(win.getNormalBounds()));
   const win = new BrowserWindow({
@@ -44,21 +49,23 @@ function createMainWindow({origin, pagesDir, userData, onMessage}) {
     minHeight: 400,
     show: false,
     title: 'Hypercube',
-    titleBarStyle: 'hidden',
-    trafficLightPosition,
+    ...(mac
+      ? {titleBarStyle: 'hidden', trafficLightPosition}
+      : {icon: path.join(process.resourcesPath, 'com.github.kkestell.hypercube.png')}),
     webPreferences: {preload: path.join(__dirname, 'preload.js')},
   });
   const contents = win.webContents;
 
   let quitting = false;
   app.on('before-quit', () => { quitting = true; });
-  // Closing the window hides it, so the service's window comes back as it was.
+  // On macOS, closing the window hides it, so the service's window comes back
+  // as it was.
   win.on('close', e => {
     save();
-    if (quitting) return;
+    if (!mac || quitting) return;
     e.preventDefault();
     win.hide();
-    dock.hideIfNoWindows();
+    if (!BaseWindow.getAllWindows().some(w => w.isVisible() || w.isMinimized())) app.dock.hide();
   });
   win.on('resized', save);
   win.on('moved', save);
@@ -69,7 +76,7 @@ function createMainWindow({origin, pagesDir, userData, onMessage}) {
   // full screen window has no title bar.
   const reportTitleBar = () => {
     const factor = contents.getZoomFactor();
-    send('hypercube-title-bar', win.isFullScreen() ? {height: 0, inset: 0} : {height: titleBar.height / factor, inset: titleBar.inset / factor});
+    send('hypercube-title-bar', win.isFullScreen() ? noTitleBar : {height: titleBar.height / factor, inset: titleBar.inset / factor});
   };
   win.on('enter-full-screen', reportTitleBar);
   win.on('leave-full-screen', reportTitleBar);
@@ -118,7 +125,7 @@ function createMainWindow({origin, pagesDir, userData, onMessage}) {
   contents.on('render-process-gone', () => contents.reload());
 
   const show = () => {
-    dock.show();
+    if (mac) app.dock.show();
     if (win.isMinimized()) win.restore();
     win.show();
     app.focus({steal: true});

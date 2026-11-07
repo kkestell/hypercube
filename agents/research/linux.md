@@ -84,6 +84,13 @@ sockets, and session recovery).
   `StartupWMClass` must match it for window grouping and badges. Notification
   click-through depends on the notification server supporting the default
   action, which GNOME and KDE do.
+- **Linux notifications drop `subtitle`.** Electron sends the title and body
+  and a `default` action; the notification server shows nothing else.
+- **`shell.showItemInFolder` needs a file manager service.** Where a file
+  manager owns `org.freedesktop.FileManager1` (Nautilus, Dolphin, Nemo, and
+  Thunar do), Electron calls `ShowItems` with the file's URI. Without one it
+  runs `xdg-open` on the file's grandparent folder. `shell.openPath` runs
+  `xdg-open`.
 - **Electron menu accelerators on Linux use Ctrl.** With ⌘ mapped to Ctrl,
   menu keys such as Ctrl+B, Ctrl+J, Ctrl+N, Ctrl+L, Ctrl+K, and the Edit menu's
   Ctrl+C and Ctrl+V collide with shell and readline keys in the panel terminal.

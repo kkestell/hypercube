@@ -97,7 +97,7 @@ async function shoot(file) {
   let window;
   try {
     const ids = await play(scene, base, backend);
-    window = createMainWindow({origin: backend.origin, pagesDir: path.join(root, 'internal/ui/dist'), userData: base});
+    window = createMainWindow({platform: process.platform, origin: backend.origin, pagesDir: path.join(root, 'internal/ui/dist'), userData: base});
     await capture(scene, ids, backend, window, name);
   } finally {
     if (window) BrowserWindow.fromWebContents(window.contents).destroy();

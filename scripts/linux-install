@@ -3,7 +3,8 @@
 # $XDG_DATA_HOME/hypercube, links to hypercube and the harness plugins in
 # BINDIR, and the launcher entry and icon. On Ubuntu 23.10 and later, which
 # restrict unprivileged user namespaces, it also adds an AppArmor profile for
-# the desktop app's sandbox with one sudo command. It ships in the bundle as
+# the desktop app's sandbox with one sudo command. A running desktop app quits
+# when the install replaces the bundle. It ships in the bundle as
 # resources/install and is run by `make install`. BINDIR defaults to
 # ~/.local/bin.
 set -eu
@@ -15,9 +16,31 @@ bin=${BINDIR:-$HOME/.local/bin}
 id=com.github.kkestell.hypercube
 profile=/etc/apparmor.d/$id
 
+# quit_desktop quits the desktop app running from the installed bundle with
+# SIGTERM, Electron's normal quit, which saves the window's position. It skips
+# Chromium's child processes, which have a --type argument, and fails if the app
+# is still running after ten seconds.
+quit_desktop() {
+	dir=$(cd "$app" 2>/dev/null && pwd -P) || return 0
+	for proc in /proc/[0-9]*; do
+		[ "$(readlink "$proc/exe" 2>/dev/null)" = "$dir/hypercube-desktop" ] || continue
+		if grep -qa -e '--type=' "$proc/cmdline" 2>/dev/null; then continue; fi
+		pid=${proc#/proc/}
+		kill "$pid" 2>/dev/null || continue
+		for _ in $(seq 100); do
+			kill -0 "$pid" 2>/dev/null || continue 2
+			sleep 0.1
+		done
+		echo "install: the desktop app (process $pid) did not quit" >&2
+		exit 1
+	done
+}
+
 # Replace the installed bundle by renaming a complete copy into place, so the
-# directory is never half copied. Running processes keep the files they started
-# from. The copy is staged beside the bundle, on the same file system.
+# directory is never half copied. A running desktop app quits first, since it
+# reads files from the bundle after it starts; other running processes keep the
+# files they started from. The copy is staged beside the bundle, on the same
+# file system.
 mkdir -p "$data"
 stage=
 tmp=
@@ -31,7 +54,10 @@ if [ "$src" != "$(cd "$app" 2>/dev/null && pwd -P)" ]; then
 	fi
 	stage=$(mktemp -d "$data/.hypercube.XXXXXX")
 	cp -R "$src" "$stage/new"
-	if [ -e "$app" ]; then mv "$app" "$stage/old"; fi
+	if [ -e "$app" ]; then
+		quit_desktop
+		mv "$app" "$stage/old"
+	fi
 	mv "$stage/new" "$app"
 fi
 

@@ -5,9 +5,11 @@
 #   scripts/linux/run [command...]   default: make check
 #
 # The container boots systemd and has no copy of .git or of ignored files, so
-# builds start from the tracked and untracked sources. The cache volume
-# hypercube-linux-cache holds Go and Bun downloads and builds across runs;
-# `docker volume rm hypercube-linux-cache` resets it.
+# builds start from the tracked and untracked sources. Screenshots and logs the
+# command leaves in ~/hypercube/bin/linux-test/ are copied to bin/linux-test/
+# when it ends. The cache volume hypercube-linux-cache holds Go and Bun
+# downloads and builds across runs; `docker volume rm hypercube-linux-cache`
+# resets it.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -47,7 +49,17 @@ git ls-files -z -co --exclude-standard |
 
 tty=-i
 [ -t 0 ] && tty=-it
+status=0
 docker exec $tty -u tester -w /home/tester/hypercube \
 	-e SHELL=/bin/bash -e XDG_RUNTIME_DIR=/run/user/1000 \
 	-e DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-	"$container" bash -lc 'exec xvfb-run -a -s "-screen 0 1920x1080x24" "$@"' bash "$@"
+	"$container" bash -lc 'exec xvfb-run -a -s "-screen 0 1920x1080x24" "$@"' bash "$@" || status=$?
+
+# Replace the previous copy of the command's screenshots and logs, when it made
+# them.
+if docker exec "$container" test -d /home/tester/hypercube/bin/linux-test; then
+	rm -rf bin/linux-test
+	mkdir -p bin/linux-test
+	docker exec -u tester -w /home/tester/hypercube/bin/linux-test "$container" tar -cf - . | tar -xf - -C bin/linux-test
+fi
+exit "$status"

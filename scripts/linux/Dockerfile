@@ -1,5 +1,6 @@
-# The Linux test container: systemd with a user manager for `tester`, Xvfb, the
-# Electron runtime libraries, and the Go and Bun toolchains. scripts/linux/run
+# The Linux test container: systemd with a user manager for `tester`, Xvfb and
+# the desktop services the desktop test observes, the Electron runtime
+# libraries, and the Go and Bun toolchains. scripts/linux/run
 # builds and starts it.
 FROM debian:trixie
 
@@ -11,6 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 		systemd systemd-sysv dbus-user-session ca-certificates curl git unzip xz-utils \
 		make gcc g++ libc6-dev xvfb xauth librsvg2-bin nodejs npm procps sqlite3 \
 		libgtk-3-0t64 libnss3 libasound2t64 libgbm1 libxss1 desktop-file-utils zsh fish iproute2 \
+		openbox dunst dbus-bin imagemagick wmctrl x11-utils python3-gi gir1.2-glib-2.0 \
 	&& rm -rf /var/lib/apt/lists/*
 
 RUN set -eu; \

@@ -65,7 +65,7 @@ publishing a release.
   across `systemctl --user restart`. Test install, service start, and adoption
   across a restart in the Linux test environment. Check the AppArmor step on
   a real Ubuntu kernel, such as GitHub's `ubuntu-24.04` runner.
-- [ ] **Desktop app on Linux.** Use a standard window frame with Electron's
+- [x] **Desktop app on Linux.** Use a standard window frame with Electron's
   menu bar (File, Edit, View, Session, Help; About in Help, Quit in File).
   Closing the window quits the client; the tray stays macOS-only. Badge with
   `app.setBadgeCount`. Keep notifications and click-through. Use Dock calls

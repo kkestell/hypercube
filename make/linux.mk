@@ -36,12 +36,15 @@ build: bundle
 install: build
 	BINDIR="$(BINDIR)" $(APP)/resources/install
 
-# install-service installs the bundle, then runs the backend as a systemd user
-# service that starts at login, replacing a running copy while agents keep
-# running.
+# install-service installs the bundle, which quits a running desktop app, then
+# runs the backend as a systemd user service that starts at login, replacing a
+# running copy while agents keep running, and opens the app when there is a
+# graphical session.
 install-service: install
 	APP="$(INSTALLED)" SERVICE="$(SERVICE)" PORT="$(PORT)" "$(INSTALLED)/resources/install-service"
+	if [ -n "$$DISPLAY$$WAYLAND_DISPLAY" ]; then setsid -f "$(INSTALLED)/hypercube-desktop" >/dev/null 2>&1 </dev/null; fi
 
-# uninstall removes the service and everything install adds. Running agents end.
+# uninstall removes the service and everything install adds. Running agents end
+# and a running desktop app quits.
 uninstall:
 	BINDIR="$(BINDIR)" scripts/linux-uninstall

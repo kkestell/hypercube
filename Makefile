@@ -71,9 +71,10 @@ dev-clean:
 linux-check:
 	scripts/linux/run
 
-# linux-test runs the Linux tests in a fresh Linux container.
+# linux-test runs the Linux tests in a fresh Linux container and copies their
+# screenshots to bin/linux-test/.
 linux-test:
-	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install'
+	scripts/linux/run bash -c 'scripts/linux/test-bundle && scripts/linux/test-install && scripts/linux/test-desktop'
 
 # web-build builds the Hypercube website into web/public. web-serve runs its dev
 # server at http://localhost:1313. Both go through web/Makefile, which installs

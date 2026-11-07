@@ -1,7 +1,7 @@
 // Hypercube Desktop, the Electron app that shows the Hypercube backend: the
-// window, menus, menu bar icon, and notifications. It
-// connects to a backend running on its own, as a login service or in a
-// terminal, and quitting it leaves that backend and its agents running.
+// window, menus, menu bar icon (macOS), and notifications. It connects to a
+// backend running on its own, as a background service or in a terminal, and
+// quitting it leaves that backend and its agents running.
 const {app, ipcMain} = require('electron');
 const os = require('node:os');
 const path = require('node:path');
@@ -9,8 +9,11 @@ const {pathToFileURL} = require('node:url');
 const {createAttention} = require('./attention.js');
 const {connect} = require('./connection.js');
 const {setMenu} = require('./menu.js');
-const setup = require('./setup.js');
+const {createSetup} = require('./setup.js');
 const {createMainWindow} = require('./window.js');
+
+const platform = process.platform;
+const setup = createSetup(platform);
 
 const portFlag = process.argv.find(arg => arg.startsWith('--port='));
 const port = portFlag ? Number(portFlag.slice('--port='.length)) : setup.defaultPort;
@@ -33,8 +36,9 @@ if (app.requestSingleInstanceLock()) {
 function start() {
   const origin = `http://localhost:${port}`;
   const pagesDir = path.join(process.resourcesPath, 'ui');
-  const win = createMainWindow({origin, pagesDir, userData: app.getPath('userData'), onMessage});
+  const win = createMainWindow({platform, origin, pagesDir, userData: app.getPath('userData'), onMessage});
   const attention = createAttention({
+    platform,
     resourcesDir: process.resourcesPath,
     show: win.show,
     clicked: session => {
@@ -47,12 +51,12 @@ function start() {
   // app's.
   const zooms = {zoomIn: 1, zoomOut: -1, zoomReset: 0};
   const run = id => {
-    if (id === 'about') return showAbout(origin);
+    if (id === 'about') return showAbout(origin, platform);
     if (id in zooms) return win.zoom(zooms[id]);
     win.show();
     win.send('hypercube-shortcut', {id});
   };
-  setMenu([], run);
+  setMenu([], run, platform);
 
   // The page's messages that are not the window's own.
   function onMessage(message) {
@@ -61,7 +65,7 @@ function start() {
         if (Number.isInteger(message.count)) attention.setBadge(message.count);
         break;
       case 'shortcuts':
-        if (Array.isArray(message.items)) setMenu(message.items, run);
+        if (Array.isArray(message.items)) setMenu(message.items, run, platform);
         break;
     }
   }
@@ -71,24 +75,15 @@ function start() {
   const fromWaitingPage = event => {
     if (event.senderFrame !== win.contents.mainFrame || event.senderFrame.url !== waitingURL) throw new Error('refused');
   };
-  const bundle = path.resolve(process.execPath, '../../..');
-  // action is what the waiting page offers. A port other than the default is
-  // not the login service's, and the service is never replaced once loaded.
-  // A downloaded app runs from a temporary location until it is moved, and the
-  // login service must not name that.
-  const action = async () => {
-    if (port !== setup.defaultPort) return 'headless';
-    if (await setup.loaded(process.getuid())) return 'kickstart';
-    return bundle.includes('/AppTranslocation/') ? 'move' : 'setup';
-  };
+  // action is what the waiting page offers; only setup runs the installer.
   ipcMain.handle('setup-status', async event => {
     fromWaitingPage(event);
-    return {address: origin + '/', port, log: path.join(stateDir, 'ui.log'), bundle, service: setup.service, uid: process.getuid(), action: await action()};
+    return {address: origin + '/', log: path.join(stateDir, 'ui.log'), bundle: setup.bundle, ...await setup.status(port)};
   });
   ipcMain.handle('setup-install', async event => {
     fromWaitingPage(event);
-    if (await action() !== 'setup') return 'The login service cannot be set up from here.';
-    return setup.install(bundle, os.userInfo().shell);
+    if ((await setup.status(port)).action !== 'setup') return 'The background service cannot be set up from here.';
+    return setup.install(os.userInfo().shell);
   });
 
   win.showWaiting();
@@ -112,10 +107,15 @@ function start() {
 
 // showAbout shows the standard About panel with the running backend's build,
 // which can be newer than this app until the app restarts after a reinstall.
-async function showAbout(origin) {
+async function showAbout(origin, platform) {
   const identity = await fetch(`${origin}/version`).then(response => response.text(), () => 'Hypercube unavailable');
-  // "Hypercube v0.1.0 (commit)" shows as "Version 0.1.0 (commit)".
+  // "Hypercube v0.1.0 (commit)" shows as "Version 0.1.0 (commit)". The Linux
+  // panel has no field for the commit, so it joins the version.
   const [, version, commit] = identity.trim().split(' ');
-  app.setAboutPanelOptions({applicationVersion: version.replace(/^v/, ''), ...(commit && {version: commit.slice(1, -1)})});
+  const number = version.replace(/^v/, '');
+  const hash = commit?.slice(1, -1);
+  app.setAboutPanelOptions(platform === 'darwin'
+    ? {applicationVersion: number, ...(hash && {version: hash})}
+    : {applicationVersion: hash ? `${number} (${hash})` : number, iconPath: path.join(process.resourcesPath, 'com.github.kkestell.hypercube.png')});
   app.showAboutPanel();
 }

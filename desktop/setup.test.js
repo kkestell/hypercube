@@ -3,7 +3,7 @@ const {execFileSync} = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const {install} = require('./setup.js');
+const {createSetup} = require('./setup.js');
 
 const dirs = [];
 afterEach(() => dirs.splice(0).forEach(dir => fs.rmSync(dir, {recursive: true, force: true})));
@@ -13,30 +13,44 @@ const temp = () => {
   return dir;
 };
 
-// bundleWith is an app bundle whose installer is script.
-function bundleWith(script) {
-  const bundle = path.join(temp(), 'Hypercube.app');
-  const installer = path.join(bundle, 'Contents/Resources/install-service');
-  fs.mkdirSync(path.dirname(installer), {recursive: true});
-  fs.writeFileSync(installer, script, {mode: 0o755});
-  return bundle;
+// layouts is each platform's bundle: the installer's path from the bundle's
+// directory, and the executable's path from it.
+const layouts = {
+  darwin: {installer: 'Contents/Resources/install-service', executable: 'Contents/MacOS/hypercube-desktop'},
+  linux: {installer: 'resources/install-service', executable: 'hypercube-desktop'},
+};
+
+// setupWith is the setup of a bundle on platform whose installer is script.
+function setupWith(platform, script) {
+  const bundle = path.join(temp(), 'Hypercube');
+  const {installer, executable} = layouts[platform];
+  fs.mkdirSync(path.dirname(path.join(bundle, installer)), {recursive: true});
+  fs.writeFileSync(path.join(bundle, installer), script, {mode: 0o755});
+  return createSetup(platform, path.join(bundle, executable));
 }
 
-test('the installer runs for the bundle, default port, and login shell', async () => {
-  const out = path.join(temp(), 'env');
-  const bundle = bundleWith(`#!/bin/sh\nenv >${out}\n`);
-  expect(await install(bundle, '/bin/tcsh')).toBe('');
-  const env = fs.readFileSync(out, 'utf8').split('\n');
-  expect(env).toContain(`APP=${bundle}`);
-  expect(env).toContain('SERVICE=com.github.kkestell.hypercube');
-  expect(env).toContain('PORT=4280');
-  expect(env).toContain('SHELL=/bin/tcsh');
-});
+for (const platform of Object.keys(layouts)) {
+  test(`${platform}: the installer runs for the bundle, default port, and login shell`, async () => {
+    const out = path.join(temp(), 'env');
+    const setup = setupWith(platform, `#!/bin/sh\nenv >${out}\n`);
+    expect(await setup.install('/bin/tcsh')).toBe('');
+    const env = fs.readFileSync(out, 'utf8').split('\n');
+    expect(env).toContain(`APP=${setup.bundle}`);
+    expect(env).toContain('SERVICE=com.github.kkestell.hypercube');
+    expect(env).toContain('PORT=4280');
+    expect(env).toContain('SHELL=/bin/tcsh');
+  });
 
-test('a failed installer reports its error', async () => {
-  const bundle = bundleWith('#!/bin/sh\necho "port 4280 is in use" >&2\nexit 1\n');
-  expect(await install(bundle, '/bin/zsh')).toBe('port 4280 is in use');
-});
+  test(`${platform}: a failed installer reports its error`, async () => {
+    const setup = setupWith(platform, '#!/bin/sh\necho "port 4280 is in use" >&2\nexit 1\n');
+    expect(await setup.install('/bin/zsh')).toBe('port 4280 is in use');
+  });
+
+  test(`${platform}: another port is headless`, async () => {
+    const setup = setupWith(platform, '');
+    expect(await setup.status(4290)).toEqual({action: 'headless', command: 'hypercube ui 4290'});
+  });
+}
 
 // The installer writes and validates a launchd plist with macOS's plutil, so the
 // tests that run it apply only on macOS.

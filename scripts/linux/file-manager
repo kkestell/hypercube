@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""A stand-in file manager for the Linux desktop test: it owns
+org.freedesktop.FileManager1 on the session bus, as Nautilus and Dolphin do,
+and prints each ShowItems call, so the test sees what "Show in Files" asks for."""
+import gi
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+XML = """<node><interface name="org.freedesktop.FileManager1">
+  <method name="ShowItems"><arg type="as" name="uris" direction="in"/><arg type="s" name="startup_id" direction="in"/></method>
+</interface></node>"""
+
+
+def on_call(connection, sender, path, interface, method, params, invocation):
+    print("ShowItems", list(params[0]), flush=True)
+    invocation.return_value(None)
+
+
+def on_bus(connection, name):
+    node = Gio.DBusNodeInfo.new_for_xml(XML)
+    connection.register_object("/org/freedesktop/FileManager1", node.interfaces[0], on_call, None, None)
+
+
+Gio.bus_own_name(Gio.BusType.SESSION, "org.freedesktop.FileManager1", Gio.BusNameOwnerFlags.NONE, on_bus, None, None)
+GLib.MainLoop().run()

@@ -117,8 +117,10 @@ See [transcripts](../internal/session/transcript.go) and
 `hypercube ui` is the backend: a background process that serves the interface
 and runs the agents, with no window of its own. It runs as a login service or
 in a terminal. The Electron app, `Hypercube Desktop`, is a client of the
-backend. It shows the interface in a window, with the menus, menu bar icon,
-Dock badge, and notifications. It also runs the actions that need the user's
+backend. It shows the interface in a window, with the menus, notifications,
+and the count of waiting sessions: on macOS a menu bar icon and the Dock badge,
+on Linux the launcher badge. Closing the window hides it on macOS and quits the
+app on Linux. It also runs the actions that need the user's
 graphical session: Add Workspace's folder chooser and opening folders and files
 in other applications. Quitting, restarting, or
 losing the desktop app leaves the backend, agents, messaging, and coordination

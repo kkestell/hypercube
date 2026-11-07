@@ -1,0 +1,291 @@
+#!/usr/bin/env node
+// Drive the installed desktop app against the installed service on a Linux
+// desktop in the Linux test container: the window frame and menu bar, each
+// waiting page, setting up the service, a notification and the launcher badge,
+// the open actions, closing the window, and reinstalling and uninstalling while
+// the app runs. It starts openbox, the dunst notification server, a stand-in
+// file manager, and stand-ins for `code` and `xdg-open`, and records the
+// notification and badge traffic on the session bus. Screenshots and logs go
+// to bin/linux-test/. It changes the test user's home, so run it in the
+// container, after test-install if you like:
+//
+//   scripts/linux/run scripts/linux/test-desktop
+const {execFileSync, spawn, spawnSync} = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {_electron} = require('playwright');
+
+const root = path.resolve(__dirname, '../..');
+process.chdir(root);
+const home = os.homedir();
+const bundle = path.join(root, 'bin/Hypercube');
+const app = path.join(home, '.local/share/hypercube');
+const unit = 'com.github.kkestell.hypercube';
+const url = 'http://127.0.0.1:4280';
+const out = path.join(root, 'bin/linux-test');
+const stubs = path.join(home, 'desktop-stubs');
+const calls = path.join(stubs, 'calls');
+const busLog = path.join(out, 'bus.log');
+const fileManagerLog = path.join(out, 'file-manager.log');
+const state = path.join(home, '.local/state/hypercube');
+const log = path.join(state, 'ui.log');
+const repo = path.join(home, 'desktop-project');
+const scene = path.join(home, 'scene.json');
+
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+const read = file => { try { return fs.readFileSync(file, 'utf8'); } catch { return ''; } };
+const tryRun = (file, args, options) => spawnSync(file, args, {encoding: 'utf8', ...options});
+const run = (file, args, options) => (execFileSync(file, args, {encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], ...options}) ?? '').trim();
+
+// fail prints what the failing step left behind and exits.
+function fail(message) {
+  console.error(`test-desktop: ${message}`);
+  for (const file of [log, busLog, fileManagerLog]) console.error(`--- ${file}\n${read(file)}`);
+  process.exit(1);
+}
+
+// waitFor polls check, which returns a truthy value or throws while the
+// condition is false, for thirty seconds.
+async function waitFor(what, check, seconds = 30) {
+  for (let deadline = Date.now() + seconds * 1000; Date.now() < deadline; await sleep(100)) {
+    try {
+      const value = await check();
+      if (value) return value;
+    } catch {}
+  }
+  fail(`timed out waiting for ${what}`);
+}
+
+const check = (condition, message) => condition || fail(message);
+
+// post sends an action, which the backend accepts only from its own origin.
+const post = (target, ...args) => run('curl', ['-fsS', '-X', 'POST', '-H', `Origin: ${url}`, ...args, `${url}${target}`]);
+const answers = () => tryRun('curl', ['-fsS', `${url}/version`]).status === 0;
+const mainPid = () => Number(run('systemctl', ['--user', 'show', '-p', 'MainPID', '--value', unit]));
+const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
+// owned says a client owns name on the session bus.
+const owned = name => run('dbus-send', ['--session', '--print-reply=literal', '--dest=org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.NameHasOwner', `string:${name}`]) === 'boolean true';
+
+// runWithApp runs a command while the app, a child of this script, can exit:
+// the app's exit is reaped only when this script's event loop runs.
+const runWithApp = (file, args) => new Promise(resolve => spawn(file, args, {stdio: 'inherit'}).on('exit', code => {
+  if (code !== 0) fail(`${file} ${args.join(' ')} failed`);
+  resolve();
+}));
+
+// desktopProcesses are the main processes of the desktop app running from dir:
+// its Chromium child processes have a --type argument.
+function desktopProcesses(dir) {
+  const target = path.join(fs.realpathSync(dir), 'hypercube-desktop');
+  return fs.readdirSync('/proc').filter(name => /^\d+$/.test(name)).filter(pid => {
+    try {
+      return fs.readlinkSync(`/proc/${pid}/exe`) === target && !read(`/proc/${pid}/cmdline`).includes('--type=');
+    } catch {
+      return false;
+    }
+  }).map(Number);
+}
+
+function screenshot(name) {
+  run('import', ['-window', 'root', path.join(out, `${name}.png`)]);
+}
+
+// The desktop's services: a window manager, the notification server, the
+// stand-in file manager, and the bus monitor.
+const services = [];
+function start(file, args, options) {
+  const child = spawn(file, args, {stdio: ['ignore', 'ignore', 'inherit'], ...options});
+  services.push(child);
+  return child;
+}
+process.on('exit', () => services.forEach(child => child.kill()));
+
+// launch starts the desktop app from executable with the stand-ins first on
+// its PATH.
+function launch(executable, ...args) {
+  return _electron.launch({executablePath: executable, args, env: {...process.env, PATH: `${stubs}:${process.env.PATH}`}});
+}
+
+// closeApp closes the window as the window manager's close button does and
+// waits for the app's main process to exit.
+async function closeApp(electronApp) {
+  const pid = electronApp.process().pid;
+  run('wmctrl', ['-c', 'Hypercube']);
+  await waitFor('the app to exit', () => !alive(pid));
+  await electronApp.close().catch(() => {});
+}
+
+// badgeCounts are the counts of the launcher badge's updates on the bus.
+const badgeCounts = () => [...read(busLog).matchAll(/member=Update\s+string "application:\/\/com\.github\.kkestell\.hypercube\.desktop"\s+array \[\s+dict entry\(\s+string "count"\s+variant\s+int64 (\d+)/g)].map(m => Number(m[1]));
+const menuOf = electronApp => electronApp.evaluate(({Menu}) =>
+  Menu.getApplicationMenu().items.map(item => ({label: item.label, items: item.submenu.items.filter(i => i.visible).map(i => i.label || i.type)})));
+const text = page => page.locator('body').innerText();
+
+async function main() {
+  check(tryRun('systemctl', ['--user', 'is-active', '--quiet', unit]).status !== 0, 'the service is already running; start from a clean home');
+  fs.rmSync(state, {recursive: true, force: true});
+  fs.rmSync(repo, {recursive: true, force: true});
+  fs.rmSync(out, {recursive: true, force: true});
+  fs.mkdirSync(out, {recursive: true});
+  fs.mkdirSync(stubs, {recursive: true});
+  for (const name of ['code', 'xdg-open']) {
+    fs.writeFileSync(path.join(stubs, name), `#!/bin/sh\necho ${name} "$@" >>${calls}\n`, {mode: 0o755});
+  }
+  fs.writeFileSync(calls, '');
+
+  // The scripted scene: one session whose first two turns each write a file and
+  // whose third waits on a question.
+  fs.writeFileSync(scene, JSON.stringify({workspaces: [{sessions: [{settings: {harness: 'claude', model: 'scripted'}, turns: [
+    {prompt: 'first', end: 'idle', git: [{file: 'first.txt', content: '1'}], items: [{id: 'a', kind: 'text', text: 'first done', done: true}]},
+    {prompt: 'second', end: 'idle', git: [{file: 'second.txt', content: '2'}], items: [{id: 'b', kind: 'text', text: 'second done', done: true}]},
+    {prompt: 'third', end: 'ask', items: [{id: 'c', kind: 'attention', text: 'Proceed?', choices: ['Yes', 'No']}]},
+  ]}]}]}));
+  const bashrc = path.join(home, '.bashrc');
+  if (!read(bashrc).includes(`HYPERCUBE_SCENE=${scene}`)) fs.appendFileSync(bashrc, `export HYPERCUBE_SCENE=${scene}\n`);
+
+  // 1. Install without the service, and start the desktop.
+  run('make', ['install'], {stdio: 'inherit'});
+  run('go', ['build', '-o', path.join(app, 'hypercube-harness-claude'), './plugins/scripted']);
+  start('openbox', []);
+  start('dunst', []);
+  start('dbus-monitor', ['--session', 'interface=org.freedesktop.Notifications', 'interface=com.canonical.Unity.LauncherEntry'], {stdio: ['ignore', fs.openSync(busLog, 'w'), 'inherit']});
+  start('python3', [path.join(root, 'scripts/linux/file-manager')], {stdio: ['ignore', fs.openSync(fileManagerLog, 'w'), 'inherit']});
+  await waitFor('the window manager', () => run('wmctrl', ['-m']).includes('Openbox'));
+  await waitFor('the notification server', () => owned('org.freedesktop.Notifications'));
+  await waitFor('the file manager', () => owned('org.freedesktop.FileManager1'));
+  await waitFor('the bus monitor', () => read(busLog).includes('member=NameLost'));
+
+  // 2. The bundle that is not the installed one.
+  let electronApp = await launch(path.join(bundle, 'hypercube-desktop'));
+  let page = await electronApp.firstWindow();
+  await page.getByText('Waiting for Hypercube').waitFor();
+  check((await text(page)).includes(path.join(bundle, 'resources/install')), 'the page does not show the bundle installer');
+  screenshot('waiting-install');
+  await closeApp(electronApp);
+
+  // 3. Another port.
+  electronApp = await launch(path.join(app, 'hypercube-desktop'), '--port=4290');
+  page = await electronApp.firstWindow();
+  await page.getByText('Waiting for Hypercube').waitFor();
+  check((await text(page)).includes('hypercube ui 4290'), 'the page does not show the headless command');
+  screenshot('waiting-headless');
+  await closeApp(electronApp);
+
+  // 4. The installed app, with the service not installed.
+  electronApp = await launch(path.join(app, 'hypercube-desktop'));
+  page = await electronApp.firstWindow();
+  await page.getByRole('button', {name: 'Set Up Background Service'}).waitFor();
+  check((await text(page)).includes(log), 'the page does not show the log path');
+  const windowId = await waitFor('the window', () => run('wmctrl', ['-lx']).split('\n').find(line => /Hypercube/.test(line))?.split(/\s+/)[0]);
+  const properties = run('xprop', ['-id', windowId, 'WM_CLASS', '_NET_FRAME_EXTENTS']);
+  check(properties.includes(`"${unit}"`), `WM_CLASS is not ${unit}: ${properties}`);
+  check(/_NET_FRAME_EXTENTS\(CARDINAL\) = \d+, \d+, [1-9]\d*, \d+/.test(properties), `the window has no title bar: ${properties}`);
+  check(await electronApp.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMenuBarVisible()), 'the menu bar is hidden');
+  let menu = await menuOf(electronApp);
+  check(menu.map(m => m.label).join() === 'File,Edit,View,Session,Help', `the menus are ${menu.map(m => m.label)}`);
+  check(menu[0].items.at(-1) === 'Quit', 'Quit is not last in File');
+  check(menu[4].items.at(-1) === 'About Hypercube', 'About is not last in Help');
+  screenshot('waiting-setup');
+
+  // 5. Set up the service.
+  await page.getByRole('button', {name: 'Set Up Background Service'}).click();
+  await page.waitForURL(`http://localhost:4280/`, {timeout: 30000});
+  check(tryRun('systemctl', ['--user', 'is-active', '--quiet', unit]).status === 0, 'the service is not active');
+  check(answers(), 'the backend does not answer');
+  menu = await waitFor('the page\'s menu items', async () => {
+    const items = await menuOf(electronApp);
+    return items[0].items.length > 1 && items;
+  });
+  check(menu[0].items[0] === 'Settings…' && menu[0].items.at(-1) === 'Quit', `File is ${menu[0].items}`);
+  await page.locator('.sidebar').waitFor();
+  screenshot('window');
+
+  // 6. A notification and the launcher badge.
+  fs.mkdirSync(repo, {recursive: true});
+  run('git', ['init', '-q', '-b', 'main', repo]);
+  run('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'init']);
+  const workspace = post(`/workspace?action=new&path=${repo}`);
+  const created = post(`/session?action=new&workspace=${workspace}&harness=claude&model=scripted`, '-d', '{"text":"first"}');
+  const session = /"session":"([^"]*)"/.exec(created)?.[1];
+  check(session, `no session was created: ${created}`);
+  await waitFor('the first turn', () => fs.existsSync(path.join(repo, 'first.txt')));
+  await electronApp.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].minimize());
+  await waitFor('the window to minimize', () => electronApp.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].isMinimized()));
+  post(`/session?action=input&id=${session}`, '-d', '{"text":"second"}');
+  await waitFor('the second turn', () => fs.existsSync(path.join(repo, 'second.txt')));
+  const notify = await waitFor('a notification', () => /member=Notify[\s\S]*second done/.test(read(busLog)) && read(busLog));
+  check(notify.includes('string "com.github.kkestell.hypercube"'), 'the notification does not name the desktop entry');
+  // The summary is the session's title; the body is the workspace, then the reply.
+  check(notify.includes('string "first"\n   string "desktop-project\nsecond done"'), 'the notification is not the session, workspace, and reply');
+  run('dunstctl', ['action', '0']);
+  await waitFor('the window to show', () => electronApp.evaluate(({BrowserWindow}) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    return win.isVisible() && !win.isMinimized();
+  }));
+  await waitFor('the session to open', async () => (await page.title()).startsWith('first — desktop-project'));
+  await sleep(1000);
+  screenshot('notification');
+  run('dunstctl', ['close-all']);
+
+  // A question the session waits on is the launcher badge's count.
+  post(`/session?action=input&id=${session}`, '-d', '{"text":"third"}');
+  await waitFor('the launcher badge', () => badgeCounts().at(-1) >= 1);
+
+  // 7. The open actions.
+  const workspaceRow = page.locator('.sidebar').getByText('desktop-project', {exact: true});
+  await workspaceRow.click({button: 'right'});
+  const workspaceMenu = page.getByRole('menu');
+  await workspaceMenu.getByRole('menuitem', {name: 'Delete Workspace'}).waitFor();
+  const items = await workspaceMenu.getByRole('menuitem').allInnerTexts();
+  check(items.includes('Open in VS Code') && items.includes('Show in Files') && !items.includes('Open in Terminal'), `the workspace menu has ${items}`);
+  await workspaceMenu.evaluate(menu => Promise.all(menu.getAnimations({subtree: true}).map(animation => animation.finished)));
+  screenshot('workspace-menu');
+  await page.getByRole('menuitem', {name: 'Open in VS Code'}).click();
+  await waitFor('the code call', () => read(calls).includes(`code ${repo}`));
+  await workspaceRow.click({button: 'right'});
+  await page.getByRole('menuitem', {name: 'Show in Files'}).click();
+  await waitFor('the xdg-open call', () => read(calls).includes(`xdg-open ${repo}`));
+  await page.locator('[data-path="first.txt"]').click({button: 'right'});
+  await page.getByRole('menuitem', {name: 'Show in Files'}).click();
+  await waitFor('the ShowItems call', () => read(fileManagerLog).includes(`ShowItems ['file://${repo}/first.txt']`));
+
+  // 8. Closing the window quits the app, and the service and agents stay.
+  const service = mainPid();
+  const [holder] = fs.readdirSync(path.join(state, 'run')).map(d => Number(read(path.join(state, 'run', d, 'pid')))).filter(alive);
+  check(holder, 'the holder is not running');
+  await closeApp(electronApp);
+  check(mainPid() === service && answers(), 'closing the window disturbed the service');
+  check(alive(holder), 'closing the window ended the agent');
+
+  // 9. The service installed but not answering.
+  run('systemctl', ['--user', 'stop', unit]);
+  electronApp = await launch(path.join(app, 'hypercube-desktop'));
+  page = await electronApp.firstWindow();
+  await page.getByText('Waiting for Hypercube').waitFor();
+  check((await text(page)).includes(`systemctl --user restart ${unit}`) && (await text(page)).includes(log), 'the page does not show the restart command');
+  screenshot('waiting-restart');
+  run('systemctl', ['--user', 'restart', unit]);
+  await page.waitForURL('http://localhost:4280/', {timeout: 30000});
+  check(alive(holder), 'the agent did not survive the service restart');
+
+  // 10. Reinstalling quits the running app and opens the new one.
+  const before = desktopProcesses(app);
+  check(before.length === 1, `expected one desktop app, found ${before.map(pid => pid + ' ' + JSON.stringify(read(`/proc/${pid}/cmdline`)))}`);
+  await runWithApp('make', ['install-service']);
+  await waitFor('the old app to exit', () => !alive(before[0]));
+  const after = await waitFor('the new app', () => desktopProcesses(app).length === 1 && desktopProcesses(app));
+  check(after[0] !== before[0], 'the old app is still running');
+  // The backend page titles the window with the open session's workspace.
+  await waitFor('the new app to load the backend', () => run('wmctrl', ['-l']).includes('desktop-project'));
+  check(alive(holder), 'the agent did not survive the reinstall');
+  screenshot('reinstall');
+
+  // 11. Uninstalling quits the app.
+  run('make', ['uninstall'], {stdio: 'inherit'});
+  check(!fs.existsSync(app), `${app} remains after removal`);
+  await waitFor('the app to exit', () => !alive(after[0]));
+  console.log('test-desktop: passed');
+}
+
+main().then(() => process.exit(0), error => fail(error.stack ?? error));

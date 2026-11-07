@@ -161,7 +161,14 @@ check`; `make linux-check` runs it. `make linux-test` runs the Linux tests:
 executables, and the backend started from it, and `scripts/linux/test-install`
 installs the bundle into the test user's home, runs the service under bash,
 zsh, and fish, keeps a scripted agent running across a service restart, and
-checks `make uninstall`. The container runs natively on Apple Silicon and needs
+checks `make uninstall`. `scripts/linux/test-desktop` then drives the installed
+desktop app against the installed service with Playwright: the window frame and
+menus, each waiting page, setting up the service, a notification and the
+launcher badge, the open actions, closing the window, and reinstalling and
+uninstalling while the app runs. It starts openbox, the dunst notification
+server, a stand-in file manager, and stand-ins for `code` and `xdg-open`.
+Screenshots and logs land in `bin/linux-test/`, copied out of the container
+when the command ends. The container runs natively on Apple Silicon and needs
 Docker.
 
 The command runs as the user `tester`, which has a systemd user manager, under

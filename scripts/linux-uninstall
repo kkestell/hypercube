@@ -2,9 +2,9 @@
 # Remove what `make install` and `make install-service` add: the service, the
 # bundle, the links in BINDIR that point into it, the launcher entry, the icon,
 # and the AppArmor profile, which takes one sudo command. Running agents and
-# shells end with the backend. Configuration and saved state stay. It ships in
-# the bundle as resources/uninstall and is run by `make uninstall`. BINDIR
-# defaults to ~/.local/bin.
+# shells end with the backend, and a running desktop app quits. Configuration
+# and saved state stay. It ships in the bundle as resources/uninstall and is run
+# by `make uninstall`. BINDIR defaults to ~/.local/bin.
 set -eu
 
 data=${XDG_DATA_HOME:-$HOME/.local/share}
@@ -13,6 +13,26 @@ bin=${BINDIR:-$HOME/.local/bin}
 id=com.github.kkestell.hypercube
 unit=${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/$id.service
 profile=/etc/apparmor.d/$id
+
+# quit_desktop quits the desktop app running from the installed bundle with
+# SIGTERM, Electron's normal quit, which saves the window's position. It skips
+# Chromium's child processes, which have a --type argument, and fails if the app
+# is still running after ten seconds.
+quit_desktop() {
+	dir=$(cd "$app" 2>/dev/null && pwd -P) || return 0
+	for proc in /proc/[0-9]*; do
+		[ "$(readlink "$proc/exe" 2>/dev/null)" = "$dir/hypercube-desktop" ] || continue
+		if grep -qa -e '--type=' "$proc/cmdline" 2>/dev/null; then continue; fi
+		pid=${proc#/proc/}
+		kill "$pid" 2>/dev/null || continue
+		for _ in $(seq 100); do
+			kill -0 "$pid" 2>/dev/null || continue 2
+			sleep 0.1
+		done
+		echo "uninstall: the desktop app (process $pid) did not quit" >&2
+		exit 1
+	done
+}
 
 # SIGINT makes the backend end its agents and shells, since no backend will
 # adopt them. stop then waits for the backend to exit; its SIGTERM arrives after
@@ -34,6 +54,7 @@ for link in "$bin/hypercube" "$bin"/hypercube-harness-*; do
 done
 rm -f "$data/applications/$id.desktop" "$data/icons/hicolor/512x512/apps/$id.png"
 if [ -f "$app/hypercube-desktop" ] && [ -f "$app/resources/uninstall" ]; then
+	quit_desktop
 	rm -rf "$app"
 	echo "removed $app"
 elif [ -e "$app" ]; then

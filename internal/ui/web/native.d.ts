@@ -34,18 +34,19 @@ declare global {
 
   interface SetupStatus {
     address: string;
-    port: number;
     log: string;
-    // bundle is the app that would run at login.
+    // bundle is the app that would run the service.
     bundle: string;
-    service: string;
-    uid: number;
     // action is how the user gets a backend on this address: 'headless' runs
-    // it in a terminal, for a port the login service does not use; 'kickstart'
-    // starts the loaded login service; 'move' asks to move a downloaded app
-    // out of its temporary location before setup; 'setup' offers to install
-    // the login service.
-    action: 'headless' | 'kickstart' | 'move' | 'setup';
+    // it in a terminal, for a port the service does not use; 'restart' starts
+    // the installed service; 'move' asks to move a downloaded macOS app out of
+    // its temporary location before setup; 'install' asks to install a Linux
+    // bundle that is not the installed one; 'setup' offers to install the
+    // service.
+    action: 'headless' | 'restart' | 'move' | 'install' | 'setup';
+    // command is what the user runs for 'headless', 'restart', and 'install';
+    // empty otherwise.
+    command: string;
   }
 
   interface WindowEventMap {

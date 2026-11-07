@@ -39,3 +39,9 @@ jobs:
         with:
           persist-credentials: false
       - run: make linux-test
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: linux-test
+          path: bin/linux-test/
+          if-no-files-found: ignore
