@@ -1,9 +1,9 @@
 // A session's tree row. A parent shows a chevron after its title on hover or
-// keyboard focus. The row's right edge shows the worktree branch icon and,
-// only when there is something to say, the session's own state. A click
-// chooses the session; a click on a parent's chevron, or a double-click on the
-// parent, collapses or expands its children. EndedFold is the child row that
-// hides or lists a parent's ended children.
+// keyboard focus. Before the title, a fixed slot shows the session's state.
+// The row's right edge shows the worktree branch icon and, for a child, how its
+// settings differ. A click chooses the session; a click on a parent's chevron,
+// or a double-click on the parent, collapses or expands its children.
+// EndedFold is the child row that hides or lists a parent's ended children.
 import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import {sessionOf, shownId} from '../sessions/selection.ts';
@@ -18,11 +18,11 @@ import {BusyDot} from '../shared/busy-dot.tsx';
 import {Chevron} from '../shared/icon.tsx';
 
 const statusOf = (session: Session, selected: boolean, waiting: boolean) => {
-  if (session.ended) return null;
+  if (session.ended) return <StatusDot kind="ended" title="Ended" />;
   if (waiting) return <StatusDot kind="waiting" title="Waiting on you" />;
   if (session.unseen && !selected) return <StatusDot kind="unseen" title="New reply" />;
   if (session.activity === 'busy') return <BusyDot title="Working" />;
-  return null;
+  return <StatusDot kind="idle" title="Idle" />;
 };
 
 
@@ -45,7 +45,7 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const parent = level === 2 ? sessionOf(state, session.id)?.parent : null;
   const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id));
-  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${level === 2 ? 'ml-5' : ''} ${session.ended ? 'opacity-60' : ''}`;
+  const classes = `session-item group/session relative h-7 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''} ${session.ended ? 'opacity-60' : ''}`;
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();
@@ -59,15 +59,15 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
       onClick={() => chooseSession(store, session.id)} onDoubleClick={hasChildren ? toggle : undefined}
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
+      <span className="session-item-status inline-flex size-4 shrink-0 items-center justify-center">{status}</span>
       <span className="flex min-w-0 flex-1 items-center">
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
           : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} onToggle={toggle} />}
       </span>
-      {session.id !== renaming && (session.worktree || status || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
+      {session.id !== renaming && (session.worktree || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
         {parent && <SettingsDiffer child={session} parent={parent} workspace={sessionOf(state, session.id)?.workspace.id ?? null} />}
         {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
-        {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
       </span>}
     </div></Button>
   );
@@ -115,9 +115,14 @@ function Title({title, small, chevron, onToggle}: TitleProps) {
   );
 }
 
-// Branch draws a child row's stretch of the line down from its parent.
+// Branch indents a child row and draws its stretch of the line down from the
+// center of the parent's status dot.
 function Branch({position, siblings}: {position: number; siblings: number}) {
-  return <span aria-hidden="true" className={`pointer-events-none absolute -left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-1 rounded-bl-sm border-b' : 'bottom-0'}`} />;
+  return (
+    <span aria-hidden="true" className="pointer-events-none relative w-3 shrink-0 self-stretch">
+      <span className={`absolute left-2 border-l border-border ${position === 1 ? 'top-1' : 'top-0'} ${position === siblings ? 'bottom-1/2 w-1 rounded-bl-sm border-b' : 'bottom-0'}`} />
+    </span>
+  );
 }
 
 interface EndedFoldProps {
@@ -133,12 +138,12 @@ interface EndedFoldProps {
 
 export function EndedFold({id, count, position, siblings, expanded, tabbable, onToggle, onFocus}: EndedFoldProps) {
   return (
-    <Button asChild variant="ghost" size="sm" className="session-fold relative ml-5 h-7 cursor-default justify-start px-2 text-xs font-normal text-muted-foreground"><div
+    <Button asChild variant="ghost" size="sm" className="session-fold h-7 cursor-default justify-start px-2 text-xs font-normal text-muted-foreground"><div
       role="treeitem" data-row={id} aria-level={2} aria-posinset={position} aria-setsize={siblings} aria-expanded={expanded} aria-selected={false}
       tabIndex={tabbable ? 0 : -1} onFocus={onFocus} onClick={onToggle}
     >
       <Branch position={position} siblings={siblings} />
-      <span className="flex items-center gap-1">{count} ended<Chevron open={expanded} /></span>
+      <span className="ml-1 flex items-center gap-1">{count} ended<Chevron open={expanded} /></span>
     </div></Button>
   );
 }

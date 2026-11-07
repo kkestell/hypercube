@@ -165,10 +165,11 @@ session's menu changes its title. Right-click a row for its menu; workspace
 and session menus can also open their directories in VS Code, Finder, or
 Terminal.
 
-Children appear under their parent. A breathing dot indicates work, an amber
-dot means an answer is needed, and a blue dot marks an unseen reply. An active
-parent's ended children fold into one row, such as **12 ended**, that lists
-them when chosen; there they are dimmed and carry no dots.
+Children appear under their parent. A dot before each title shows the
+session's state: a breathing dot indicates work, an amber dot means an answer
+is needed, a blue dot marks an unseen reply, a gray dot means the session is
+idle, and an outlined dot means it has ended. An active parent's ended children
+fold into one row, such as **12 ended**, that lists them dimmed when chosen.
 
 ## Work with a team
 
