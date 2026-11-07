@@ -127,7 +127,7 @@ three agents.
 
 ## Validation
 
-- `make check` runs every check. Run it after changing code.
+- `make check` runs every check. Run it before committing code.
 - App packaging is separate from checks. When a missing or changed icon needs
   `sips` SVG conversion, request execution outside the Codex sandbox directly:
   that conversion fails inside it with error 13. Do not retry it there.
