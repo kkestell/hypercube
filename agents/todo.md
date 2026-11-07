@@ -9,8 +9,11 @@ systemd user service.
 [Linux findings](research/linux.md) records what fails today and the platform
 facts behind these tasks. Take each task through its own `kplan`, `kwork`,
 and `kreview` cycle as described in [development](development.md), planning
-from the code current at that time. This list does not authorize installing
-the app or publishing a release.
+from the code current at that time. From the Debian VM task on, each task
+verifies its Linux behavior in that VM: agents work over SSH, and the user
+checks what has to be seen, such as windows, menus, dialogs, and
+notifications. This list does not authorize installing the app on the Mac or
+publishing a release.
 
 - [x] **Linux checks in CI and a passing test suite.** Add `make check` jobs
   on `ubuntu-24.04` and `ubuntu-24.04-arm`, keeping the macOS job. Make the
@@ -35,7 +38,12 @@ the app or publishing a release.
   backend's `osascript` and `open` calls and `POST /open`; `POST /workspace`
   takes the chosen path. Use the platform's labels ("Show in Files" on
   Linux). Linux has no standard terminal application, so Open in Terminal is
-  macOS-only.
+  macOS-only. Its Linux items are checked in the VM with the desktop app task.
+- [ ] **Debian test VM.** Create a Debian ARM64 VM with GNOME in UTM, with
+  SSH access, Git, Go, Bun, `rsvg-convert`, and the Linux harnesses' CLIs,
+  and record how to recreate it in `agents/development.md`. The user does any
+  installer step that needs the screen. Run `make check` and `make dev` in
+  it.
 - [ ] **Linux bundle.** `make bundle` on Linux builds a directory with the
   Electron client (`hypercube-desktop`), `hypercube`, the four plugins, the UI
   pages, a PNG icon, the `.desktop` file, and the service installer, and
@@ -67,7 +75,7 @@ the app or publishing a release.
   Settings, `docs/configuration.md`, and the user's config together.
 - [ ] **Distribution checks.** In graphical VMs, install the tarball and run
   the service, desktop app, a session, a panel shell, a notification, and a
-  service restart on Debian (AMD64 and ARM64), Ubuntu, Fedora, and Arch.
+  service restart on Debian AMD64, Ubuntu, Fedora, and Arch.
   Fix differences in the owning task's code; claim the full matrix when every
   check passes.
 - [ ] **Release.** The beta workflow builds both Linux tarballs with
