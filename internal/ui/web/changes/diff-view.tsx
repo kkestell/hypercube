@@ -1,10 +1,11 @@
 // A unified whole-file diff with separately highlighted old and new text.
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useMemo, useRef} from 'react';
 import {matches} from '../app/shortcuts.ts';
 import {Button} from '../components/ui/button';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import type {TabId} from '../editor/types.ts';
 import {language} from '../files/language.ts';
+import {useHighlight} from '../files/use-highlight.ts';
 import {Find} from '../shared/find.tsx';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
@@ -13,31 +14,16 @@ import type {DiffRow} from './types.ts';
 
 const background: Record<DiffRow['kind'], string> = {context: '', added: 'bg-green-500/15', removed: 'bg-red-500/15'};
 
-interface Highlighted {
-  text: string;
-  old: string[];
-  next: string[];
-}
-
-function DiffLines({text, path, wrap}: {text: string; path: string; wrap: boolean}) {
+function DiffLines({text, path, wrap, active}: {text: string; path: string; wrap: boolean; active: boolean}) {
   const rows = useMemo(() => diffRows(text), [text]);
-  const [highlighted, setHighlighted] = useState<Highlighted | null>(null);
-  useEffect(() => {
-    if (!rows.length) return;
-    let current = true;
-    import('../files/highlight.ts').then(({highlight}) => {
-      if (!current) return;
-      const lang = language(path.slice(path.lastIndexOf('/') + 1));
-      const old = highlight(rows.filter(row => row.kind !== 'added').map(row => row.text).join('\n'), lang);
-      const next = highlight(rows.filter(row => row.kind !== 'removed').map(row => row.text).join('\n'), lang);
-      setHighlighted({text, old, next});
-    });
-    return () => { current = false; };
-  }, [rows, path]);
+  const [old, next] = useMemo(() => [
+    rows.filter(row => row.kind !== 'added').map(row => row.text).join('\n'),
+    rows.filter(row => row.kind !== 'removed').map(row => row.text).join('\n'),
+  ], [rows]);
+  const html = useHighlight([old, next], language(path.slice(path.lastIndexOf('/') + 1)), active && rows.length > 0);
   if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
-  const html = highlighted?.text === text ? highlighted : null;
   return <table className={`diff-view-lines w-full border-collapse font-mono text-sm leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
-    const line = row.kind === 'removed' ? html?.old[row.old - 1] : html?.next[row.new - 1];
+    const line = row.kind === 'removed' ? html?.[0]?.[row.old - 1] : html?.[1]?.[row.new - 1];
     return (
       <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={`diff-view-line diff-view-${row.kind} ${background[row.kind]}`}>
         <td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.old}</td><td data-find-ignore className="w-12 px-2 py-0 text-right align-top text-muted-foreground">{row.new}</td><td data-find-ignore className="w-6 px-1 py-0 text-center align-top text-muted-foreground">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</td>
@@ -81,7 +67,7 @@ export function DiffView({id, path, active = true}: {id: TabId; path: string; ac
       <Find list={list} view={view} active={active} label="Find in diff" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />
       <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">
         <div ref={list}>{diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
-          : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench.wrap} /> : null)}</div>
+          : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench.wrap} active={active} /> : null)}</div>
       </div>
     </div>
   );

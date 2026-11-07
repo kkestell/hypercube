@@ -48,7 +48,7 @@ func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.H
 	mux.HandleFunc("POST /session", s.sessionAction)
 	mux.HandleFunc("POST /open", s.openInApp)
 	mux.HandleFunc("GET /terminal", s.terminal)
-	mux.HandleFunc("GET /files", s.listFiles)
+	mux.HandleFunc("POST /files/tree", s.listFileTree)
 	mux.HandleFunc("GET /mention-files", s.mentionFiles)
 	mux.HandleFunc("GET /search-files", s.searchFiles)
 	mux.HandleFunc("GET /file", s.readFile)

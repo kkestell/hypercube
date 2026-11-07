@@ -79,3 +79,29 @@ func TestSearchFilesLimitsPreviewAndSkipsLargeFiles(t *testing.T) {
 		t.Fatalf("preview: %#v", parts)
 	}
 }
+
+func TestSearchFilesKeepsPathOrderAndLineLimit(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a", "b", "c", "d", "e"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(strings.Repeat("needle\n", 300)), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: dir}); err != nil {
+			return err
+		}
+		return tx.AddSession(store.Session{ID: "s", Workspace: "w", Dir: dir})
+	})
+	res := httptest.NewRecorder()
+	handler(t, db).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/search-files?session=s&q=needle", nil))
+	var got []searchFile
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &got) != nil {
+		t.Fatalf("%d %s", res.Code, res.Body)
+	}
+	if len(got) != 4 || got[0].Path != "a" || got[1].Path != "b" || got[2].Path != "c" || got[3].Path != "d" ||
+		len(got[0].Lines) != 300 || len(got[1].Lines) != 300 || len(got[2].Lines) != 300 || len(got[3].Lines) != 100 {
+		t.Fatalf("results: %#v", got)
+	}
+}

@@ -28,7 +28,7 @@ mkdirSync(outdir, {recursive: true});
 // names its inputs relative to it.
 process.chdir(root);
 const result = await Bun.build({
-  entrypoints: ['web/main.tsx', 'web/desktop/waiting.tsx', 'web/desktop/toolbar.tsx'],
+  entrypoints: ['web/main.tsx', 'web/desktop/waiting.tsx', 'web/desktop/toolbar.tsx', 'web/files/highlight-worker.ts'],
   outdir,
   target: 'browser',
   minify: true,

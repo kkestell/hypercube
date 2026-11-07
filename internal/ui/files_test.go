@@ -70,19 +70,26 @@ func TestFiles(t *testing.T) {
 	}
 	listing := func(path string) map[string]bool {
 		t.Helper()
-		res := get("files", "s", path, "")
+		body, err := json.Marshal([]string{path})
+		if err != nil {
+			t.Fatal(err)
+		}
+		res := httptest.NewRecorder()
+		r := httptest.NewRequest("POST", "http://localhost:4280/files/tree?session=s", strings.NewReader(string(body)))
+		r.Header.Set("Origin", "http://localhost:4280")
+		h.ServeHTTP(res, r)
 		if res.Code != 200 {
 			t.Fatalf("listing %q = %d %s", path, res.Code, res.Body)
 		}
-		var entries []struct {
+		var tree map[string][]struct {
 			Name string `json:"name"`
 			Dir  bool   `json:"dir"`
 		}
-		if err := json.Unmarshal(res.Body.Bytes(), &entries); err != nil {
+		if err := json.Unmarshal(res.Body.Bytes(), &tree); err != nil {
 			t.Fatal(err)
 		}
 		got := map[string]bool{}
-		for _, entry := range entries {
+		for _, entry := range tree[path] {
 			got[entry.Name] = entry.Dir
 		}
 		return got
@@ -101,6 +108,45 @@ func TestFiles(t *testing.T) {
 		if isDir, ok := got["b.md"]; !ok || isDir || len(got) != 1 {
 			t.Fatalf("listing %q = %v", path, got)
 		}
+	}
+	batch := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "http://localhost:4280/files/tree?session=s", strings.NewReader(`["","sub","missing"]`))
+	r.Header.Set("Origin", "http://localhost:4280")
+	h.ServeHTTP(batch, r)
+	var tree map[string][]struct {
+		Name string `json:"name"`
+		Dir  bool   `json:"dir"`
+	}
+	if batch.Code != 200 || json.Unmarshal(batch.Body.Bytes(), &tree) != nil || len(tree[""]) != 9 ||
+		len(tree["sub"]) != 1 || tree["missing"] != nil {
+		t.Fatalf("batch listing = %d %s", batch.Code, batch.Body)
+	}
+	invalid := httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "http://localhost:4280/files/tree?session=s", strings.NewReader(`[".."]`))
+	r.Header.Set("Origin", "http://localhost:4280")
+	h.ServeHTTP(invalid, r)
+	if invalid.Code != 400 {
+		t.Fatalf("invalid batch path = %d %s", invalid.Code, invalid.Body)
+	}
+	write("replaced/child", "before")
+	if err := os.RemoveAll(filepath.Join(dir, "replaced")); err != nil {
+		t.Fatal(err)
+	}
+	write("replaced", "now a file")
+	partial := httptest.NewRecorder()
+	r = httptest.NewRequest("POST", "http://localhost:4280/files/tree?session=s",
+		strings.NewReader(`["","replaced","escape"]`))
+	r.Header.Set("Origin", "http://localhost:4280")
+	h.ServeHTTP(partial, r)
+	var refreshed map[string][]fileEntry
+	decodeErr := json.Unmarshal(partial.Body.Bytes(), &refreshed)
+	replaced, recorded := refreshed["replaced"]
+	if partial.Code != 200 || decodeErr != nil ||
+		!recorded || replaced != nil || len(refreshed[""]) != 10 {
+		t.Fatalf("partial batch = %d %s", partial.Code, partial.Body)
+	}
+	if _, listed := refreshed["escape"]; listed {
+		t.Fatalf("unreadable folder changed: %s", partial.Body)
 	}
 	res := get("file", "s", "a.go", "")
 	etag := res.Header().Get("ETag")
@@ -139,13 +185,13 @@ func TestFiles(t *testing.T) {
 		route, session, path string
 		status               int
 	}{
-		{"file", "s", "..", 409}, {"files", "s", "..", 409},
-		{"file", "s", outside, 200}, {"file", "s", filepath.Join(dir, "a.go"), 200}, {"files", "s", "/etc", 409},
-		{"file", "s", "escape", 409}, {"files", "s", "escape", 409},
-		{"file", "s", "missing", 404}, {"files", "s", "missing", 404},
+		{"file", "s", "..", 409},
+		{"file", "s", outside, 200}, {"file", "s", filepath.Join(dir, "a.go"), 200},
+		{"file", "s", "escape", 409},
+		{"file", "s", "missing", 404},
 		{"file", "s", "binary", 415}, {"file", "s", "large", 413},
 		{"file", "s", "over-limit", 413}, {"file", "s", "sub", 400},
-		{"file", "unknown", "a.go", 404}, {"files", "unknown", "", 404},
+		{"file", "unknown", "a.go", 404},
 		{"file", "s", "limit", 200}, {"file", "s", ".git/config", 200},
 		{"image", "s", "../outside.png", 409}, {"image", "s", filepath.Join(dir, "sub", "drawing.svg"), 200}, {"image", "s", outside, 415},
 		{"image", "s", "escape", 409}, {"image", "s", "missing.png", 404},

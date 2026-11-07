@@ -1,6 +1,6 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {testConfig, testState} from '../test-state.ts';
-import {fetchConfig, listFiles, post, readFile} from './api.ts';
+import {fetchConfig, listFileTree, post, readFile} from './api.ts';
 import type {FileRead} from './files/types.ts';
 import {createStore, type Store} from './store.ts';
 
@@ -14,19 +14,21 @@ function requested(fetchMock: {mock: {calls: Parameters<typeof fetch>[]}}) {
   return {url: new URL(String(input), 'http://localhost/'), init};
 }
 
-test('listFiles sends the session and relative directory', async () => {
-  const entries = [{name: 'a.go', dir: false}];
+test('listFileTree sends all visible folders together', async () => {
+  const entries = {'': [{name: 'a.go', dir: false}], sub: null};
   const fetchMock = spyOn(globalThis, 'fetch').mockResolvedValue(Response.json(entries));
-  expect(await listFiles('session one', 'sub/folder')).toEqual(entries);
+  expect(await listFileTree('session one', ['', 'sub'])).toEqual(entries);
   const {url, init} = requested(fetchMock);
   expect(url.searchParams.get('session')).toBe('session one');
-  expect(url.searchParams.get('path')).toBe('sub/folder');
+  expect(url.pathname).toBe('/files/tree');
+  expect(init?.method).toBe('POST');
+  expect(JSON.parse(init?.body as string)).toEqual(['', 'sub']);
   expect(init?.cache).toBe('no-store');
 });
 
-test('listFiles keeps the status of a failed listing', async () => {
+test('listFileTree keeps the status of a failed listing', async () => {
   spyOn(globalThis, 'fetch').mockResolvedValue(new Response('missing', {status: 404}));
-  await expect(listFiles('s', 'missing')).rejects.toMatchObject({message: 'missing', status: 404});
+  await expect(listFileTree('s', ['missing'])).rejects.toMatchObject({message: 'missing', status: 404});
 });
 
 test('readFile returns text and ETag and sends the previous ETag', async () => {

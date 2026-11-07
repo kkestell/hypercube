@@ -36,6 +36,7 @@ export function changeTree(changes: Changes): ChangeTree {
 export async function loadChanges(store: Store) {
   const session = store.get().session;
   if (!session) return;
+  const version = store.get().sessionVersion;
   let changes: Changes;
   try {
     const result = await fetchChanges(session.id);
@@ -46,7 +47,7 @@ export async function loadChanges(store: Store) {
       : {error: error instanceof Error ? error.message : String(error)};
   }
   store.update(state => {
-    if (state.session?.id !== session.id || JSON.stringify(state.session.changes) === JSON.stringify(changes)) return state;
+    if (state.session?.id !== session.id || state.sessionVersion !== version || JSON.stringify(state.session.changes) === JSON.stringify(changes)) return state;
     return {...state, session: {...state.session, changes}};
   });
 }

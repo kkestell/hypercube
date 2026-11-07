@@ -14,9 +14,9 @@ func (s *server) searchSessions(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	results := []store.SearchResult{}
 	if query != "" {
-		err := s.db.Read(func(tx *store.Tx) error {
+		err := s.db.ReadContext(r.Context(), func(tx *store.Tx) error {
 			var err error
-			results, err = tx.SearchSessions(query)
+			results, err = tx.SearchSessions(r.Context(), query)
 			return err
 		})
 		if err != nil {

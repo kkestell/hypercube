@@ -178,17 +178,22 @@ func (d *DB) Close() error { return d.sql.Close() }
 
 // Tx runs fn in a write transaction and commits it when fn returns nil.
 func (d *DB) Tx(fn func(*Tx) error) error {
-	return d.run(false, fn)
+	return d.run(context.Background(), false, fn)
 }
 
 // Read runs fn in a read transaction, which sees one consistent state and
 // takes no write lock.
 func (d *DB) Read(fn func(*Tx) error) error {
-	return d.run(true, fn)
+	return d.run(context.Background(), true, fn)
 }
 
-func (d *DB) run(readOnly bool, fn func(*Tx) error) error {
-	tx, err := d.sql.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: readOnly})
+// ReadContext lets a request stop a long read when its client leaves.
+func (d *DB) ReadContext(ctx context.Context, fn func(*Tx) error) error {
+	return d.run(ctx, true, fn)
+}
+
+func (d *DB) run(ctx context.Context, readOnly bool, fn func(*Tx) error) error {
+	tx, err := d.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: readOnly})
 	if err != nil {
 		return err
 	}

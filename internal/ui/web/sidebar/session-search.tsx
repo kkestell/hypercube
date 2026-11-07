@@ -16,19 +16,25 @@ export function SessionSearch({open, onOpenChange, onSelect}: SessionSearchProps
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SessionSearchResult[]>([]);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open || !query.trim()) {
       setResults([]);
       setError('');
+      setLoading(false);
       return;
     }
     const controller = new AbortController();
     setResults([]);
     setError('');
+    setLoading(true);
     searchSessions(query, controller.signal)
-      .then(data => { if (!controller.signal.aborted) setResults(data); })
-      .catch((err: unknown) => { if (!controller.signal.aborted) setError('Could not search sessions: ' + (err instanceof Error ? err.message : String(err))); });
+      .then(data => { if (!controller.signal.aborted) { setResults(data); setLoading(false); } })
+      .catch((err: unknown) => { if (!controller.signal.aborted) {
+        setError('Could not search sessions: ' + (err instanceof Error ? err.message : String(err)));
+        setLoading(false);
+      } });
     return () => controller.abort();
   }, [open, query]);
 
@@ -41,7 +47,7 @@ export function SessionSearch({open, onOpenChange, onSelect}: SessionSearchProps
     <CommandDialog open={open} onOpenChange={changeOpen} title="Search sessions" description="Search session titles and conversations" commandProps={{shouldFilter: false}}>
       <CommandInput placeholder="Search sessions..." value={query} onValueChange={setQuery} />
       <CommandList>
-        {query.trim() && <CommandEmpty>{error || 'No sessions found.'}</CommandEmpty>}
+        {query.trim() && <CommandEmpty>{error || (loading ? 'Searching…' : 'No sessions found.')}</CommandEmpty>}
         {results.map(result => <CommandItem key={result.id} value={`${result.id} ${result.title} ${result.text ?? ''}`} onSelect={() => { changeOpen(false); onSelect(result.id); }}>
           <div className="flex min-w-0 flex-col gap-1">
             <span className="truncate">{result.title}</span>

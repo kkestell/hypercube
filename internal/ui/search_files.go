@@ -1,14 +1,18 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode/utf8"
 )
 
 const maxSearchLines = 1000
+const searchBatchSize = 4
 
 type searchLine struct {
 	Line  int      `json:"line"`
@@ -40,46 +44,70 @@ func (s *server) searchFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	count := 0
-	for _, path := range files {
+	for start := 0; start < len(files) && count < maxSearchLines; start += searchBatchSize {
 		if r.Context().Err() != nil {
 			return
 		}
-		f, err := root.Open(path)
-		if err != nil {
-			continue
+		end := min(start+searchBatchSize, len(files))
+		batch := make([][]searchLine, end-start)
+		var workers sync.WaitGroup
+		for i, path := range files[start:end] {
+			workers.Add(1)
+			go func() {
+				defer workers.Done()
+				batch[i] = searchFileLines(r.Context(), root, path, pattern)
+			}()
 		}
-		info, err := f.Stat()
-		if err != nil {
-			f.Close()
-			continue
-		}
-		content, err := readText(f, info.Size())
-		f.Close()
-		if err != nil {
-			continue
-		}
-		var lines []searchLine
-		for n, text := range strings.Split(string(content), "\n") {
-			text = strings.TrimSuffix(text, "\r")
-			match := pattern.FindStringIndex(text)
-			if match == nil {
+		workers.Wait()
+		for i, lines := range batch {
+			if len(lines) == 0 {
 				continue
 			}
-			lines = append(lines, searchLine{Line: n + 1, Parts: searchPreview(text, pattern, match)})
-			count++
+			lines = lines[:min(len(lines), maxSearchLines-count)]
+			results = append(results, searchFile{Path: files[start+i], Lines: lines})
+			count += len(lines)
 			if count == maxSearchLines {
 				break
 			}
 		}
-		if len(lines) > 0 {
-			results = append(results, searchFile{Path: path, Lines: lines})
-		}
-		if count >= maxSearchLines {
-			break
-		}
+	}
+	if r.Context().Err() != nil {
+		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
+}
+
+func searchFileLines(ctx context.Context, root *os.Root, path string, pattern *regexp.Regexp) []searchLine {
+	f, err := root.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil
+	}
+	content, err := readText(f, info.Size())
+	if err != nil {
+		return nil
+	}
+	var lines []searchLine
+	for n, text := range strings.Split(string(content), "\n") {
+		if ctx.Err() != nil {
+			return nil
+		}
+		text = strings.TrimSuffix(text, "\r")
+		match := pattern.FindStringIndex(text)
+		if match == nil {
+			continue
+		}
+		lines = append(lines, searchLine{Line: n + 1, Parts: searchPreview(text, pattern, match)})
+		if len(lines) == maxSearchLines {
+			break
+		}
+	}
+	return lines
 }
 
 // searchPreview limits both the displayed text and the number of marked matches.

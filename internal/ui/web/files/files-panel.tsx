@@ -8,7 +8,7 @@ import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {Chevron} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {FileIcon} from './file-icon.tsx';
-import {listedFolder, loadFolder, setFolderOpen, treeEntries} from './files.ts';
+import {listedFolder, loadTree, setFolderOpen, shownFolders, treeEntries} from './files.ts';
 import {usePathMenu} from './path-menu.tsx';
 
 const statusColor: Record<ChangeStatus, string> = {
@@ -19,7 +19,6 @@ export function FilesPanel() {
   const [state, store] = useStore();
   const files = state.session?.files ?? {listings: {}, expanded: {}, open: {}};
   const {listings, expanded} = files;
-  const [loading, setLoading] = useState(true);
   const gitChanges = state.session?.changes;
   const changes = changeTree(gitChanges ?? null);
   const listing = (dir: string) => treeEntries(files, changes, dir);
@@ -27,7 +26,7 @@ export function FilesPanel() {
   const tree = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const ready = listings[''] !== undefined && Object.keys(expanded).every(path => !listedFolder(files, path) || listings[path] !== undefined);
-  useScrollMemory(scroller, 'files-tree', ready && !loading && state.workbench.rightPanel && state.workbench.rightTab === 'files');
+  useScrollMemory(scroller, 'files-tree', ready && state.workbench.rightPanel && state.workbench.rightTab === 'files');
   const [focused, setFocused] = useState<string | null>(null);
   const visible: string[] = [];
   const collect = (dir: string) => {
@@ -46,17 +45,10 @@ export function FilesPanel() {
     if (hadFocus.current && root && !root.contains(document.activeElement)) root.querySelector<HTMLElement>('[tabindex="0"]')?.focus();
   });
   useEffect(() => {
-    if (!state.session) return;
-    let mounted = true;
-    const id = state.session.id;
-    // Restore the visible tree together; otherwise expanded folders wait for
-    // the next poll after the root appears.
-    Promise.all(['', ...Object.keys(expanded)].map(dir => loadFolder(store, id, dir))).then(() => {
-      if (mounted) setLoading(false);
-    });
+    if (!state.session || !state.workbench.rightPanel || state.workbench.rightTab !== 'files') return;
+    loadTree(store, shownFolders(state.session.files));
     loadChanges(store);
-    return () => { mounted = false; };
-  }, []);
+  }, [state.session?.id, state.workbench.rightPanel, state.workbench.rightTab]);
   const keyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!(e.target instanceof Element)) return;
     const row = e.target.closest<HTMLElement>('[role="treeitem"]');
@@ -95,7 +87,7 @@ export function FilesPanel() {
       <CollapsibleTrigger asChild><Button variant="ghost" size="sm" {...props} data-dir="" aria-expanded={!!expanded[path]} className={`${props.className} w-full`}>
         {label}
       </Button></CollapsibleTrigger>
-      <CollapsibleContent role="group" className="pl-4">{entries(path, level + 1)}</CollapsibleContent>
+      <CollapsibleContent role="group" className="pl-4">{expanded[path] ? entries(path, level + 1) : null}</CollapsibleContent>
     </Collapsible>;
     const deleted = change?.status === 'deleted';
     return <div key={path} className="flex items-center rounded-md hover:bg-accent dark:hover:bg-accent/50">
@@ -111,7 +103,7 @@ export function FilesPanel() {
   return <div ref={scroller} className="h-full min-h-0 overflow-auto">
     {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}
     <div ref={tree} className="files-panel p-2 pt-1" role="tree" aria-label="Files" onKeyDown={keyDown}>
-    {!loading && (listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1))}
+    {listings[''] === null ? <p>This session's folder no longer exists.</p> : entries('', 1)}
     </div>{menu.element}
   </div>;
 }

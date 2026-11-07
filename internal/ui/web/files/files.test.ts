@@ -1,9 +1,9 @@
 import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
-import {emptySession} from '../sessions/selection.ts';
+import {emptySession, receivedWorkspaces, selectSession} from '../sessions/selection.ts';
 import {createStore, type Store} from '../store.ts';
-import {testState, unread} from '../../test-state.ts';
-import {readOpenFile} from './files.ts';
+import {testSession, testState, testWorkspace, unread} from '../../test-state.ts';
+import {loadTree, readOpenFile} from './files.ts';
 import type {OpenFile} from './types.ts';
 
 afterEach(() => mock.restore());
@@ -98,4 +98,24 @@ test('browser previews refresh, survive deletion and failed reads, and yield to 
   await read(s, new Response(null, {status: 415}));
   expect(opened(s)?.preview).toBeUndefined();
   expect(opened(s)?.message).toContain('binary');
+});
+
+test('a late tree read cannot overwrite a newer read or a new attachment', async () => {
+  const s = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
+    id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
+  })]));
+  const replies: Array<(response: Response) => void> = [];
+  stubFetch(() => new Promise<Response>(resolve => { replies.push(resolve); }));
+  const oldAttachment = loadTree(s, ['']);
+  s.update(state => selectSession(state, 'b'));
+  s.update(state => selectSession(state, 'a'));
+  const older = loadTree(s, ['']);
+  const newer = loadTree(s, ['']);
+  replies[2](Response.json({'': [{name: 'new', dir: false}]}));
+  await newer;
+  replies[1](Response.json({'': [{name: 'older', dir: false}]}));
+  await older;
+  replies[0](Response.json({'': [{name: 'old attachment', dir: false}]}));
+  await oldAttachment;
+  expect(s.get().session?.files.listings['']).toEqual([{name: 'new', dir: false}]);
 });

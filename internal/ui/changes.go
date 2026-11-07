@@ -14,20 +14,20 @@ import (
 
 // gitDir returns the session's folder and whether it is inside a Git
 // repository.
-func (s *server) gitDir(id string) (dir string, ok bool, err error) {
+func (s *server) gitDir(id string) (dir, top string, ok bool, err error) {
 	dir, err = s.sessionDir(id)
 	if err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
 	if _, err := os.Stat(dir); err != nil {
-		return "", false, err
+		return "", "", false, err
 	}
-	_, err = workspace.Root(dir)
-	return dir, err == nil, nil
+	top, err = workspace.Root(dir)
+	return dir, top, err == nil, nil
 }
 
 func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
-	dir, ok, err := s.gitDir(r.URL.Query().Get("session"))
+	dir, top, ok, err := s.gitDir(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}
@@ -37,7 +37,7 @@ func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(nil)
 		return
 	}
-	changes, err := workspace.Changes(dir)
+	changes, err := workspace.Changes(dir, top)
 	if fileError(w, err) {
 		return
 	}
@@ -95,7 +95,7 @@ func untrackedLines(root *os.Root, path string) (*int, *int, error) {
 }
 
 func (s *server) readDiff(w http.ResponseWriter, r *http.Request) {
-	dir, ok, err := s.gitDir(r.URL.Query().Get("session"))
+	dir, _, ok, err := s.gitDir(r.URL.Query().Get("session"))
 	if fileError(w, err) {
 		return
 	}

@@ -163,3 +163,36 @@ test('reveal waits for a rendered source highlight, including an empty file', ()
     expect(root.querySelectorAll('.file-view-highlight')).toHaveLength(0);
   } finally { scroll.mockRestore(); }
 });
+
+test('partial worker highlights keep the remaining source text visible', () => {
+  class FakeWorker {
+    onmessage: ((event: MessageEvent) => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() { workers.push(this); }
+    postMessage() {}
+    terminate() {}
+  }
+  const workers: FakeWorker[] = [];
+  const frames: FrameRequestCallback[] = [];
+  const originalWorker = globalThis.Worker;
+  const originalFrame = globalThis.requestAnimationFrame;
+  Object.defineProperty(globalThis, 'Worker', {configurable: true, value: FakeWorker});
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {configurable: true, value: (frame: FrameRequestCallback) => {
+    frames.push(frame);
+    return frames.length;
+  }});
+  try {
+    const session = emptySession('s');
+    session.files.open['a.go'] = {...unread, text: 'one\ntwo\nthree'};
+    const root = mount(createStore(testState({session})), <FileView id="file:a.go" path="a.go" />);
+    const source = () => [...root.querySelectorAll('.file-view-code code')].map(line => line.textContent);
+    expect(source()).toEqual(['one', 'two', 'three']);
+    act(() => workers[0].onmessage?.({data: {kind: 'chunk', document: 0, start: 0, lines: ['<span>one</span>']}} as MessageEvent));
+    act(() => frames.shift()?.(0));
+    expect(source()).toEqual(['one', 'two', 'three']);
+  } finally {
+    unmountAll();
+    Object.defineProperty(globalThis, 'Worker', {configurable: true, value: originalWorker});
+    Object.defineProperty(globalThis, 'requestAnimationFrame', {configurable: true, value: originalFrame});
+  }
+});

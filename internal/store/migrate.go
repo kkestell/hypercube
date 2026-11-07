@@ -72,6 +72,21 @@ PRAGMA user_version = 2;`); err != nil {
 				return err
 			}
 		}
+		if version < 3 {
+			if err := tx.exec(`
+CREATE INDEX IF NOT EXISTS transcript_root_text_search ON transcript (
+  session, seq, lower(json_extract(data, '$.text')))
+WHERE json_extract(data, '$.kind') IN ('user', 'text')
+  AND json_extract(data, '$.parent') IS NULL;
+CREATE INDEX IF NOT EXISTS transcript_message_text_search ON transcript (
+  session, seq, lower(json_extract(data, '$.input.text')))
+WHERE json_extract(data, '$.kind') = 'tool'
+  AND json_extract(data, '$.server') = 'hypercube'
+  AND json_extract(data, '$.tool') = 'send_message';
+PRAGMA user_version = 3;`); err != nil {
+				return err
+			}
+		}
 		// A session without an agent waits on nobody.
 		return tx.exec(`UPDATE sessions SET attention = 0 WHERE attention = 1 AND (ended = 1 OR launch = '')`)
 	})

@@ -28,14 +28,14 @@ func TestChanges(t *testing.T) {
 	run(root, "add", "added")
 	write(t, filepath.Join(root, "folder/untracked"), "new")
 	write(t, filepath.Join(root, "folder/nested/untracked"), "new")
-	changes, err := Changes(filepath.Join(root, "folder"))
+	changes, err := Changes(filepath.Join(root, "folder"), root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(changes.Files) != 2 || changes.Files[0].Path != "nested/untracked" || changes.Files[1].Path != "untracked" {
 		t.Fatalf("folder changes = %+v", changes)
 	}
-	changes, err = Changes(root)
+	changes, err = Changes(root, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,12 +65,12 @@ func TestChanges(t *testing.T) {
 	}
 	run(root, "add", ".")
 	run(root, "commit", "-qm", "changes")
-	changes, err = Changes(root)
+	changes, err = Changes(root, root)
 	if err != nil || len(changes.Files) != 0 {
 		t.Fatalf("clean = %+v, %v", changes, err)
 	}
 	run(root, "checkout", "--detach", "-q")
-	changes, err = Changes(root)
+	changes, err = Changes(root, root)
 	if err != nil || changes.Branch != "" {
 		t.Fatalf("detached = %+v, %v", changes, err)
 	}
@@ -83,7 +83,7 @@ func TestChangesUnborn(t *testing.T) {
 	write(t, filepath.Join(root, "staged"), "one\n")
 	run(root, "add", "staged")
 	write(t, filepath.Join(root, "untracked"), "two\n")
-	changes, err := Changes(root)
+	changes, err := Changes(root, root)
 	if err != nil || changes.Branch != "main" || len(changes.Files) != 2 {
 		t.Fatalf("unborn = %+v, %v", changes, err)
 	}
@@ -164,7 +164,7 @@ func TestChangesAndDiffLeaveIndexUnchanged(t *testing.T) {
 			t.Setenv("GIT_OPTIONAL_LOCKS", "1")
 			if operation == "changes" {
 				var changes ChangesResult
-				changes, err = Changes(root)
+				changes, err = Changes(root, root)
 				if err == nil && (len(changes.Files) != 1 || changes.Files[0].Path != "changed") {
 					t.Fatalf("content changes = %+v; want only changed", changes.Files)
 				}
