@@ -22,7 +22,7 @@ interface SourceProps {
 
 function Source({text, lines, lang, wrap, active}: SourceProps) {
   const html = useHighlight([text], lang, active)?.[0];
-  return <div className={`file-view-code grid min-w-full grid-cols-[auto_minmax(0,1fr)] font-mono text-sm leading-5 ${wrap ? 'w-full' : 'w-max'}`}>
+  return <div className={`file-view-code grid min-w-full grid-cols-[auto_minmax(0,1fr)] font-mono text-xs leading-5 ${wrap ? 'w-full' : 'w-max'}`}>
     {text.split('\n').map((line, i) => {
       const selected = lines.some(({start, end = start}) => i + 1 >= start && i + 1 <= end);
       return <Fragment key={i}>

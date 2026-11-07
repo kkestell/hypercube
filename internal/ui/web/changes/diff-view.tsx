@@ -22,7 +22,7 @@ function DiffLines({text, path, wrap, active}: {text: string; path: string; wrap
   ], [rows]);
   const html = useHighlight([old, next], language(path.slice(path.lastIndexOf('/') + 1)), active && rows.length > 0);
   if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
-  return <table className={`diff-view-lines w-full border-collapse font-mono text-sm leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
+  return <table className={`diff-view-lines w-full border-collapse font-mono text-xs leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.[0]?.[row.old - 1] : html?.[1]?.[row.new - 1];
     return (
       <tr key={i} data-change={row.kind !== 'context' && (i === 0 || rows[i - 1].kind === 'context') ? '' : undefined} className={`diff-view-line diff-view-${row.kind} ${background[row.kind]}`}>
