@@ -1,6 +1,6 @@
 // A session's tree row. A parent shows a chevron after its title on hover or
-// focus. The row's right edge shows the worktree branch icon and, only when
-// there is something to say, the session's own state. A click chooses the
+// focus. The row's right edge reserves columns for settings differences,
+// worktree branch state, and session status. A click chooses the
 // session; a click on a parent's chevron, or a double-click on the parent,
 // collapses or expands its children. EndedFold is the child row that hides or
 // lists a parent's ended children.
@@ -66,10 +66,14 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
           <Chevron open={expanded} />
         </span>}
       </span>
-      {session.id !== renaming && (session.worktree || status || parent) && <span className="session-item-decoration flex shrink-0 items-center gap-1">
-        {parent && <SettingsDiffer child={session} parent={parent} workspace={sessionOf(state, session.id)?.workspace.id ?? null} />}
-        {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
-        {status && <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>}
+      {session.id !== renaming && <span className="session-item-decoration flex shrink-0 items-center gap-1">
+        <span className="inline-flex size-4 items-center justify-center">
+          {parent && <SettingsDiffer child={session} parent={parent} workspace={sessionOf(state, session.id)?.workspace.id ?? null} />}
+        </span>
+        <span className="inline-flex size-4 items-center justify-center">
+          {session.worktree && <BranchIcon className="session-item-branch" merge={session.merge} />}
+        </span>
+        <span className="session-item-status inline-flex size-4 items-center justify-center">{status}</span>
       </span>}
     </div></Button>
   );
