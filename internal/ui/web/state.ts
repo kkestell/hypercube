@@ -6,6 +6,8 @@ import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
 import type {FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
 import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
+import type {Changes} from './changes/types.ts';
+import type {FileEntry} from './files/types.ts';
 import type {Confirmation} from './shared/types.ts';
 
 // selected names the chosen session: null after the shown session stops, or
@@ -18,6 +20,7 @@ import type {Confirmation} from './shared/types.ts';
 // config is the most recently fetched or saved configuration. systemDark is
 // whether the Mac's appearance is dark.
 // sessionViews retains inactive sessions' view choices without server data.
+// fileTrees keeps the last shown tree until its session is selected again.
 export interface State {
   workspaces: Workspace[];
   catalogs: Record<string, CatalogEntry>;
@@ -37,7 +40,10 @@ export interface State {
   confirmation: Confirmation | null;
   workbench: Workbench;
   session: AttachedSession | null;
+  sessionVersion: number;
+  treeVersion: number;
   sessionViews: Record<string, SessionViewState>;
+  fileTrees: Record<string, {listings: Record<string, FileEntry[] | null>; changes: Changes}>;
   fileOpens: Record<string, FileOpenRequest[]>;
   titleBar: TitleBar | null;
 }
@@ -67,7 +73,10 @@ export const initialState = (selected: string, visible: boolean): State => ({
     collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
   },
   session: null,
+  sessionVersion: 0,
+  treeVersion: 0,
   sessionViews: {},
+  fileTrees: {},
   fileOpens: {},
   titleBar: null,
 });

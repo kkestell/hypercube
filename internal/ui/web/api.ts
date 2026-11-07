@@ -90,7 +90,11 @@ export async function alwaysAllow(store: Store, session: string, request: string
 
 // listFiles returns a folder's entries, relative to the session's working
 // directory.
-export const listFiles = (session: string, dir: string) => get<FileEntry[]>('files', {session, path: dir});
+export async function listFileTree(session: string, dirs: string[]): Promise<Record<string, FileEntry[] | null>> {
+  const response = await fetch(url('files/tree', {session}), {method: 'POST', body: JSON.stringify(dirs), cache: 'no-store'});
+  if (!response.ok) throw new HttpError(await response.text(), response.status);
+  return response.json();
+}
 
 // mentionFiles lists paths in the selected session or unsent workspace.
 export const mentionFiles = (params: {session: string} | {workspace: string}, signal: AbortSignal) =>

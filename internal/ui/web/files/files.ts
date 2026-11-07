@@ -2,7 +2,7 @@
 // Files tree, and the contents of each file open in a tab, by path relative to
 // the session's working directory ('' is the directory itself). Results that
 // arrive after the page attached to another session are dropped.
-import {HttpError, listFiles, readFile} from '../api.ts';
+import {HttpError, listFileTree, readFile} from '../api.ts';
 import type {ChangeTree} from '../changes/types.ts';
 import type {State} from '../state.ts';
 import type {Store} from '../store.ts';
@@ -44,23 +44,10 @@ function withFiles(state: State, sessionId: string, change: (files: SessionFiles
   return files === state.session.files ? state : {...state, session: {...state.session, files}};
 }
 
-function listed(state: State, sessionId: string, dir: string, entries: FileEntry[]): State {
-  return withFiles(state, sessionId, files => {
-    const sorted = sortEntries(entries);
-    if (JSON.stringify(sorted) === JSON.stringify(files.listings[dir])) return files;
-    return {...files, listings: {...files.listings, [dir]: sorted}};
-  });
-}
-
-// listingMissing records a missing folder and forgets its expansion.
-function listingMissing(state: State, sessionId: string, dir: string): State {
-  return withFiles(state, sessionId, files => {
-    if (files.listings[dir] === null && !files.expanded[dir]) return files;
-    const listings = {...files.listings}, expanded = {...files.expanded};
-    listings[dir] = null;
-    delete expanded[dir];
-    return {...files, listings, expanded};
-  });
+// shownFolders includes the root and expanded folders with expanded ancestors.
+export function shownFolders(files: SessionFiles): string[] {
+  const shown = (dir: string): boolean => dir === '' || (dir in files.expanded && shown(dir.slice(0, Math.max(0, dir.lastIndexOf('/')))));
+  return ['', ...Object.keys(files.expanded).filter(shown).sort((a, b) => a.length - b.length)];
 }
 
 // fileRead applies a read of an open file. A deleted file keeps its contents,
@@ -94,13 +81,44 @@ export const revealed = (state: State, sessionId: string, path: string): State =
   ...files, open: {...files.open, [path]: {...files.open[path], reveal: false}},
 }));
 
-// loadFolder lists a folder. An unreadable folder shows no children.
-export async function loadFolder(store: Store, sessionId: string, dir: string) {
+// loadTree applies one coherent refresh. A newer read or attachment supersedes
+// an older response, including a late response after A → B → A.
+export async function loadTree(store: Store, dirs: string[]) {
+  const session = store.get().session;
+  if (!session) return;
+  const attachment = store.get().sessionVersion;
+  const request = store.get().treeVersion + 1;
+  store.update(state => ({...state, treeVersion: request}));
+  const apply = (response: Record<string, FileEntry[] | null>) => {
+    store.update(state => {
+      if (state.session?.id !== session.id || state.sessionVersion !== attachment || state.treeVersion !== request) return state;
+      const files = state.session.files;
+      const listings = {...files.listings};
+      let changed = false;
+      for (const [dir, entries] of Object.entries(response)) {
+        const sorted = entries === null ? null : sortEntries(entries);
+        if (JSON.stringify(sorted) !== JSON.stringify(listings[dir])) {
+          listings[dir] = sorted;
+          changed = true;
+        }
+      }
+      const expanded = {...files.expanded};
+      const updated = {...files, listings};
+      for (const [dir, entries] of Object.entries(response)) {
+        // A deleted-only folder remains navigable through Git changes.
+        if (dir && entries === null && expanded[dir] && listedFolder(updated, dir)) {
+          delete expanded[dir];
+          changed = true;
+        }
+      }
+      return changed ? {...state, session: {...state.session, files: {...updated, expanded}}} : state;
+    });
+  };
   try {
-    const entries = await listFiles(sessionId, dir);
-    store.update(state => listed(state, sessionId, dir, entries));
+    apply(await listFileTree(session.id, dirs));
   } catch (error) {
-    if (error instanceof HttpError && error.status === 404) store.update(state => listingMissing(state, sessionId, dir));
+    if (error instanceof HttpError && error.status === 404) apply({'': null});
+    // Other failures leave the last complete tree available for the next poll.
   }
 }
 
@@ -129,5 +147,5 @@ export function setFolderOpen(store: Store, path: string, open: boolean) {
     else delete expanded[path];
     return {...files, expanded};
   }));
-  if (open && !(path in session.files.listings) && listedFolder(session.files, path)) loadFolder(store, session.id, path);
+  if (open && !(path in session.files.listings) && listedFolder(session.files, path)) loadTree(store, [path]);
 }

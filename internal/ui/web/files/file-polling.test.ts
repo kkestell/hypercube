@@ -23,8 +23,7 @@ function stubRoutes(routes: Record<string, () => Response | Promise<Response>>) 
     const name = pathname.slice(1) + ':' + searchParams.get('path');
     requests.push(name);
     if (routes[name]) return routes[name]();
-    const entries = pathname === '/files' ? listings[searchParams.get('path') as keyof typeof listings] : [];
-    return Response.json(entries ?? []);
+    return Response.json(pathname === '/files/tree' ? listings : []);
   });
   return {requests, fetches};
 }
@@ -53,8 +52,9 @@ test('nothing is polled while the page is hidden or unattached', async () => {
 test('only shown folders, their changes, and the active file tab of each pane are polled', async () => {
   const {requests, fetches} = stubRoutes({});
   await createFilePoller(createStore(state()))();
-  expect(requests).toEqual(['files:', 'files:a', 'files:a/b', 'changes:null', 'file:z.go', 'file:x.go']);
-  expect(fetches.mock.calls[4]?.[1]?.headers).toEqual({'If-None-Match': '"z"'});
+  expect(requests).toEqual(['files/tree:null', 'changes:null', 'file:z.go', 'file:x.go']);
+  expect(JSON.parse(fetches.mock.calls[0]?.[1]?.body as string)).toEqual(['', 'a', 'a/b']);
+  expect(fetches.mock.calls[2]?.[1]?.headers).toEqual({'If-None-Match': '"z"'});
 
   mock.restore();
   const hidden = stubRoutes({}).requests;
@@ -67,44 +67,53 @@ test('one poll restores nested expanded folders using freshly loaded parent list
   const {requests} = stubRoutes({});
   const store = createStore(state({session}));
   await createFilePoller(store)();
-  expect(requests.slice(0, 3)).toEqual(['files:', 'files:a', 'files:a/b']);
+  expect(requests[0]).toBe('files/tree:null');
   expect(store.get().session?.files.listings.a).toEqual([{name: 'b', dir: true}]);
 });
 
-test('a folder shown only through its deleted files is not listed', async () => {
-  const {requests} = stubRoutes({});
+test('a folder shown only through its deleted files stays expanded', async () => {
+  const {requests} = stubRoutes({'files/tree:null': () => Response.json({'': [], gone: null})});
   const session = {...emptySession('s'), files: {listings: {'': []}, expanded: {gone: true as const}, open: {}}};
-  await createFilePoller(createStore(state({session})))();
-  expect(requests).toEqual(['files:', 'changes:null']);
+  const store = createStore(state({session}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['files/tree:null', 'changes:null']);
+  expect(store.get().session?.files.expanded.gone).toBe(true);
 });
 
 
 
 test('requests go one at a time and a poll is skipped while one runs', async () => {
   let release = () => {};
-  const {requests} = stubRoutes({'files:': () => new Promise(resolve => { release = () => resolve(Response.json(listings[''])); })});
+  const {requests} = stubRoutes({'files/tree:null': () => new Promise(resolve => { release = () => resolve(Response.json(listings)); })});
   const poll = createFilePoller(createStore(state()));
   const first = poll();
   await poll();
   await Promise.resolve();
-  expect(requests).toEqual(['files:']);
+  expect(requests).toEqual(['files/tree:null']);
   release();
   await first;
-  expect(requests.length).toBe(6);
+  expect(requests.length).toBe(4);
 });
 
 test('a missing folder collapses', async () => {
-  stubRoutes({'files:a/b': () => new Response('gone', {status: 404})});
+  stubRoutes({'files/tree:null': () => Response.json({...listings, 'a/b': null})});
   const store = createStore(state());
   await createFilePoller(store)();
   expect(store.get().session?.files.expanded).toEqual({a: true, 'c/d': true});
 });
 
+test('a missing session folder replaces a cached tree with the missing message', async () => {
+  stubRoutes({'files/tree:null': () => new Response('gone', {status: 404})});
+  const store = createStore(state());
+  await createFilePoller(store)();
+  expect(store.get().session?.files.listings['']).toBeNull();
+});
+
 test('results for a session the page left are dropped', async () => {
   const store = createStore(state());
-  stubRoutes({'files:': () => {
+  stubRoutes({'files/tree:null': () => {
     store.update(s => ({...s, session: emptySession('other')}));
-    return Response.json([{name: 'a', dir: true}]);
+    return Response.json(listings);
   }});
   await createFilePoller(store)();
   expect(store.get().session).toEqual(emptySession('other'));
@@ -136,13 +145,13 @@ test('a diff title follows its status while the right panel shows Files', async 
   session.tabs = openTab(session.tabs, 'diff:a.go');
   session.changes = {branch: 'main', files: [{path: 'a.go', status: 'untracked'}]};
   const {requests} = stubRoutes({
-    'files:': () => Response.json([]),
+    'files/tree:null': () => Response.json({'': []}),
     'changes:null': () => Response.json({branch: 'main', files: [{path: 'a.go', status: 'added'}]}),
     'diff:a.go': () => new Response('patch'),
   });
   const store = createStore(state({session}));
   expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Untracked)');
   await createFilePoller(store)();
-  expect(requests).toEqual(['files:', 'changes:null', 'diff:a.go']);
+  expect(requests).toEqual(['files/tree:null', 'changes:null', 'diff:a.go']);
   expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Added)');
 });

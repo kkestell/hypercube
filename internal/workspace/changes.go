@@ -2,7 +2,9 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -21,27 +23,59 @@ type ChangesResult struct {
 	Files  []Change `json:"files"`
 }
 
-// Changes lists the staged, unstaged, and untracked files within dir, by path
-// relative to dir, and the branch checked out there.
-func Changes(dir string) (ChangesResult, error) {
+// Changes lists staged, unstaged, and untracked files within dir, relative
+// to dir. top is the containing Git checkout root.
+func Changes(dir, top string) (ChangesResult, error) {
 	result := ChangesResult{Files: []Change{}}
-	branch, err := Branch(dir)
+	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
 		return result, err
 	}
-	result.Branch = branch
-	untracked, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "ls-files", "--others", "--exclude-standard", "-z")
+	root, err := filepath.EvalSymlinks(top)
 	if err != nil {
 		return result, err
 	}
-	for _, path := range strings.Split(untracked, "\x00") {
-		if path != "" {
-			result.Files = append(result.Files, Change{Path: path, Status: "untracked"})
+	prefix, err := filepath.Rel(root, resolved)
+	if err != nil {
+		return result, err
+	}
+	if prefix != "." {
+		prefix += string(filepath.Separator)
+	} else {
+		prefix = ""
+	}
+	status, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0,
+		"-c", "status.relativePaths=false", "status", "--porcelain=v2", "--branch", "-z", "--untracked-files=all", "--no-renames", "--", ".")
+	if err != nil {
+		return result, err
+	}
+	var unborn, branchFound bool
+	for _, record := range strings.Split(status, "\x00") {
+		switch {
+		case strings.HasPrefix(record, "# branch.oid "):
+			unborn = strings.TrimPrefix(record, "# branch.oid ") == "(initial)"
+		case strings.HasPrefix(record, "# branch.head "):
+			branchFound = true
+			result.Branch = strings.TrimPrefix(record, "# branch.head ")
+			if result.Branch == "(detached)" {
+				result.Branch = ""
+			}
+		case strings.HasPrefix(record, "? "):
+			path := strings.TrimPrefix(record, "? ")
+			if strings.HasPrefix(path, prefix) {
+				result.Files = append(result.Files, Change{Path: strings.TrimPrefix(path, prefix), Status: "untracked"})
+			}
 		}
 	}
-	base, err := diffBase(dir)
-	if err != nil {
-		return result, err
+	if !branchFound {
+		return result, fmt.Errorf("git status did not report a branch")
+	}
+	base := "HEAD"
+	if unborn {
+		base, err = emptyTree(dir)
+		if err != nil {
+			return result, err
+		}
 	}
 	// Diff can explicitly refresh the index even with optional locks disabled.
 	out, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, "-c", "diff.autoRefreshIndex=false", "diff", base, "--raw", "--numstat", "--no-renames", "--relative", "-z")

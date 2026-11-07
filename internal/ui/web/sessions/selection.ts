@@ -95,14 +95,20 @@ function attach(state: State): State {
   const id = shown?.id ?? null;
   if (id === (state.session?.id ?? null)) return state;
   const sessionViews = {...state.sessionViews};
+  const fileTrees = {...state.fileTrees};
   const previous = state.session;
   if (previous && allSessions(state).some(session => session.id === previous.id)) {
     sessionViews[previous.id] = sessionView(previous);
+    fileTrees[previous.id] = {listings: previous.files.listings, changes: previous.changes};
   }
   const saved = id ? sessionViews[id] : undefined;
   if (id) delete sessionViews[id];
-  const session = id ? emptySession(id) : null;
-  return {...state, sessionViews, session: session && saved ? restoreView(session, saved) : session};
+  const cached = id ? fileTrees[id] : undefined;
+  if (id) delete fileTrees[id];
+  let session = id ? emptySession(id) : null;
+  if (session && saved) session = restoreView(session, saved);
+  if (session && cached) session = {...session, changes: cached.changes, files: {...session.files, listings: cached.listings}};
+  return {...state, sessionViews, fileTrees, session, sessionVersion: state.sessionVersion + 1, treeVersion: state.treeVersion + 1};
 }
 
 // receivedWorkspaces applies a state message's workspaces.
@@ -119,7 +125,7 @@ export function receivedWorkspaces(state: State, workspaces: Workspace[]): State
   const ids = new Set(sessions.map(session => session.id));
   const sessionViews = Object.fromEntries(Object.entries(next.sessionViews).filter(([id]) => ids.has(id)));
   const workspaceIds = new Set(workspaces.map(workspace => workspace.id));
-  next = {...next, sessionViews, workbench: {
+  next = {...next, sessionViews, fileTrees: Object.fromEntries(Object.entries(next.fileTrees).filter(([id]) => ids.has(id))), workbench: {
     ...next.workbench,
     collapsedWorkspaces: Object.fromEntries(Object.entries(next.workbench.collapsedWorkspaces).filter(([id]) => workspaceIds.has(id))),
     collapsedSessions: Object.fromEntries(Object.entries(next.workbench.collapsedSessions).filter(([id]) => ids.has(id))),

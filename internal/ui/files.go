@@ -10,12 +10,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"syscall"
 
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
-// maxFile keeps a warm syntax highlight near 100 ms.
+// maxFile bounds text reads and syntax-highlighting work.
 const maxFile = 256 << 10
 
 func hidden(name string) bool {
@@ -93,37 +94,32 @@ func fileError(w http.ResponseWriter, err error) bool {
 		http.Error(w, err.Error(), http.StatusUnsupportedMediaType)
 		return true
 	}
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, store.ErrNotFound) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, store.ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return true
 	}
 	return refused(w, err)
 }
 
-func (s *server) listFiles(w http.ResponseWriter, r *http.Request) {
-	root, err := s.sessionRoot(r.URL.Query().Get("session"))
-	if fileError(w, err) {
-		return
-	}
-	defer root.Close()
-	dir := r.URL.Query().Get("path")
+type fileEntry struct {
+	Name string `json:"name"`
+	Dir  bool   `json:"dir"`
+}
+
+func folderEntries(root *os.Root, dir string) ([]fileEntry, error) {
 	if dir == "" {
 		dir = "."
 	}
 	folder, err := root.Open(dir)
-	if fileError(w, err) {
-		return
+	if err != nil {
+		return nil, err
 	}
 	defer folder.Close()
 	entries, err := folder.ReadDir(-1)
-	if fileError(w, err) {
-		return
+	if err != nil {
+		return nil, err
 	}
-	type entry struct {
-		Name string `json:"name"`
-		Dir  bool   `json:"dir"`
-	}
-	list := []entry{}
+	list := []fileEntry{}
 	for _, e := range entries {
 		if hidden(e.Name()) {
 			continue
@@ -133,10 +129,51 @@ func (s *server) listFiles(w http.ResponseWriter, r *http.Request) {
 			info, err := root.Stat(path.Join(dir, e.Name()))
 			isDir = err == nil && info.IsDir()
 		}
-		list = append(list, entry{e.Name(), isDir})
+		list = append(list, fileEntry{e.Name(), isDir})
+	}
+	return list, nil
+}
+
+// listFileTree reads the visible folder listings in one request and one
+// response, so a large expanded tree is applied to the page once.
+func (s *server) listFileTree(w http.ResponseWriter, r *http.Request) {
+	root, err := s.sessionRoot(r.URL.Query().Get("session"))
+	if fileError(w, err) {
+		return
+	}
+	defer root.Close()
+	var dirs []string
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&dirs); err != nil || len(dirs) > 10000 {
+		http.Error(w, "invalid folder list", http.StatusBadRequest)
+		return
+	}
+	listings := make(map[string][]fileEntry, len(dirs))
+	for _, dir := range dirs {
+		if r.Context().Err() != nil {
+			return
+		}
+		if dir != "" && !filepath.IsLocal(dir) {
+			http.Error(w, "invalid folder path", http.StatusBadRequest)
+			return
+		}
+		entries, err := folderEntries(root, dir)
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+			listings[dir] = nil
+			continue
+		}
+		if err != nil {
+			if dir == "" {
+				fileError(w, err)
+				return
+			}
+			// A folder that cannot be listed keeps its previous rows;
+			// other folders still refresh.
+			continue
+		}
+		listings[dir] = entries
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	json.NewEncoder(w).Encode(listings)
 }
 
 func (s *server) readFile(w http.ResponseWriter, r *http.Request) {

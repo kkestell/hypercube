@@ -6,15 +6,7 @@ import {loadChanges, readOpenDiff} from '../changes/changes.ts';
 import {isDiffTab, tabPath} from '../editor/editor.ts';
 import {panes} from '../editor/tab-layout.ts';
 import type {Store} from '../store.ts';
-import {listedFolder, loadFolder, readOpenFile} from './files.ts';
-import type {SessionFiles} from './types.ts';
-
-// shownFolders are the root and each expanded folder whose ancestors
-// are all expanded.
-function shownFolders(files: SessionFiles): string[] {
-  const shown = (dir: string): boolean => dir === '' || (dir in files.expanded && shown(dir.slice(0, Math.max(0, dir.lastIndexOf('/')))));
-  return ['', ...Object.keys(files.expanded).filter(shown).sort((a, b) => a.length - b.length)];
-}
+import {loadTree, readOpenFile, shownFolders} from './files.ts';
 
 export function createFilePoller(store: Store) {
   let running = false;
@@ -25,12 +17,7 @@ export function createFilePoller(store: Store) {
     try {
       const tree = workbench.rightPanel && workbench.rightTab === 'files';
       if (tree) {
-        for (const dir of shownFolders(session.files)) {
-          const current = store.get().session;
-          if (current?.id !== session.id) break;
-          // Each refreshed parent determines whether its child still exists.
-          if (dir === '' || listedFolder(current.files, dir)) await loadFolder(store, session.id, dir);
-        }
+        await loadTree(store, shownFolders(session.files));
       }
       const shownPanes = panes(session.tabs.root);
       const left = () => store.get().session?.id !== session.id;

@@ -8,7 +8,7 @@ import {FilesPanel} from './files-panel.tsx';
 
 afterEach(() => { unmountAll(); mock.restore(); });
 
-test('a restored tree requests expanded folders immediately and first displays them together', async () => {
+test('a restored tree shows expanded folders from one response', async () => {
   const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
     id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
   })]));
@@ -17,21 +17,36 @@ test('a restored tree requests expanded folders immediately and first displays t
   }}}));
   store.update(state => selectSession(state, 'b'));
   store.update(state => selectSession(state, 'a'));
-  const pending = new Map<string, (response: Response) => void>();
-  stubFetch(url => {
-    const {pathname, searchParams} = new URL(url, 'http://x/');
-    if (pathname !== '/files') return Response.json([]);
-    return new Promise<Response>(resolve => pending.set(searchParams.get('path')!, resolve));
+  let release = (_response: Response) => {};
+  const fetches = stubFetch(url => {
+    const {pathname} = new URL(url, 'http://x/');
+    if (pathname !== '/files/tree') return Response.json([]);
+    return new Promise<Response>(resolve => { release = resolve; });
   });
   const root = mount(store, <FilesPanel />);
-  expect([...pending.keys()]).toEqual(['', 'src', 'src/nested']);
+  expect(JSON.parse(fetches.mock.calls[0]?.[1]?.body as string)).toEqual(['', 'src', 'src/nested']);
   expect(root.querySelector('[role=treeitem]')).toBeNull();
-  await act(async () => pending.get('')!(Response.json([{name: 'src', dir: true}])));
-  expect(root.querySelector('[role=treeitem]')).toBeNull();
-  await act(async () => pending.get('src')!(Response.json([{name: 'nested', dir: true}])));
-  expect(root.querySelector('[role=treeitem]')).toBeNull();
-  await act(async () => pending.get('src/nested')!(Response.json([{name: 'file.go', dir: false}])));
+  await act(async () => release(Response.json({
+    '': [{name: 'src', dir: true}],
+    src: [{name: 'nested', dir: true}],
+    'src/nested': [{name: 'file.go', dir: false}],
+  })));
   expect(element(root, '[data-path="src"]', HTMLElement).getAttribute('aria-expanded')).toBe('true');
   expect(element(root, '[data-path="src/nested"]', HTMLElement).getAttribute('aria-expanded')).toBe('true');
   expect(element(root, '[data-path="src/nested/file.go"]', HTMLElement).textContent).toBe('file.go');
+});
+
+test('a visited session shows its cached tree before refresh completes', async () => {
+  const store = createStore(receivedWorkspaces(testState({selected: 'a'}), [testWorkspace({
+    id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})],
+  })]));
+  store.update(state => ({...state, session: {...state.session!, files: {
+    ...state.session!.files, listings: {'': [{name: 'src', dir: true}], src: [{name: 'file.go', dir: false}]},
+    expanded: {src: true},
+  }}}));
+  store.update(state => selectSession(state, 'b'));
+  store.update(state => selectSession(state, 'a'));
+  stubFetch(() => new Promise<Response>(() => {}));
+  const root = mount(store, <FilesPanel />);
+  expect(element(root, '[data-path="src/file.go"]', HTMLElement).textContent).toBe('file.go');
 });

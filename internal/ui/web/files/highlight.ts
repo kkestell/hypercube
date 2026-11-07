@@ -44,12 +44,12 @@ const highlighter = createHighlighterCoreSync({
 // Shiki names two of VS Code's languages differently.
 const names: Record<string, string> = {javascriptreact: 'jsx', typescriptreact: 'tsx'};
 
-const tokenClasses = [
-  '[color:var(--shiki-light)] dark:[color:var(--shiki-dark)]',
-  '[font-style:var(--shiki-light-font-style,normal)] dark:[font-style:var(--shiki-dark-font-style,normal)]',
-  '[font-weight:var(--shiki-light-font-weight,normal)] dark:[font-weight:var(--shiki-dark-font-weight,normal)]',
-  '[text-decoration:var(--shiki-light-text-decoration,none)] dark:[text-decoration:var(--shiki-dark-text-decoration,none)]',
-].join(' ');
+const tokenClasses = {
+  color: '[color:var(--shiki-light)] dark:[color:var(--shiki-dark)]',
+  fontStyle: '[font-style:var(--shiki-light-font-style,normal)] dark:[font-style:var(--shiki-dark-font-style,normal)]',
+  fontWeight: '[font-weight:var(--shiki-light-font-weight,normal)] dark:[font-weight:var(--shiki-dark-font-weight,normal)]',
+  textDecoration: '[text-decoration:var(--shiki-light-text-decoration,none)] dark:[text-decoration:var(--shiki-dark-text-decoration,none)]',
+};
 
 const escape = (text: string) => text.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
@@ -62,7 +62,16 @@ export function highlight(text: string, lang: string): string[] {
     lang: highlighter.getLoadedLanguages().includes(named) ? named : 'text', themes: {light: githubLight.name, dark: githubDark.name}, defaultColor: false,
   });
   return tokens.map(line => line.map(t => {
-    const style = Object.entries(t.htmlStyle || {}).map(([key, value]) => `${key}:${value}`).join(';');
-    return style ? `<span class="${tokenClasses}" style="${style}">${escape(t.content)}</span>` : escape(t.content);
+    const values = t.htmlStyle || {};
+    const style = Object.entries(values).map(([key, value]) => `${key}:${value}`).join(';');
+    if (!style) return escape(t.content);
+    const has = (name: string) => `--shiki-light${name}` in values || `--shiki-dark${name}` in values;
+    const classes = [
+      has('') && tokenClasses.color,
+      has('-font-style') && tokenClasses.fontStyle,
+      has('-font-weight') && tokenClasses.fontWeight,
+      has('-text-decoration') && tokenClasses.textDecoration,
+    ].filter(Boolean).join(' ');
+    return `<span class="${classes}" style="${style}">${escape(t.content)}</span>`;
   }).join(''));
 }
