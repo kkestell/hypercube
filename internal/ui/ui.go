@@ -54,6 +54,7 @@ func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.H
 	mux.HandleFunc("GET /changes", s.listChanges)
 	mux.HandleFunc("GET /diff", s.readDiff)
 	mux.HandleFunc("GET /image", s.readImage)
+	mux.HandleFunc("GET /transcript-image", s.readTranscriptImage)
 	return localOnly(mux)
 }
 

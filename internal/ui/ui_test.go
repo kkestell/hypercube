@@ -325,8 +325,8 @@ func (a *app) post(path, body string, want int) {
 type page struct {
 	t        *testing.T
 	conn     *websocket.Conn
-	items    map[string][]session.TranscriptItem // without state markers
-	last     map[string]int64                    // the newest position received, markers included
+	items    map[string][]shownItem // without state markers
+	last     map[string]int64       // the newest position received, markers included
 	state    stateMessage
 	messages []transcriptMessage
 	opens    []openMessage
@@ -340,7 +340,7 @@ func (a *app) page() *page {
 		a.t.Fatal(err)
 	}
 	a.t.Cleanup(func() { conn.CloseNow() })
-	return &page{t: a.t, conn: conn, items: map[string][]session.TranscriptItem{}, last: map[string]int64{}}
+	return &page{t: a.t, conn: conn, items: map[string][]shownItem{}, last: map[string]int64{}}
 }
 
 func (p *page) send(msg string) {
@@ -404,14 +404,14 @@ func (p *page) until(what string, check func() bool) {
 			if it.Kind == harness.KindState {
 				continue
 			}
-			i := slices.IndexFunc(p.items[msg.Session], func(have session.TranscriptItem) bool { return have.ID == it.ID })
+			i := slices.IndexFunc(p.items[msg.Session], func(have shownItem) bool { return have.ID == it.ID })
 			if i < 0 {
 				p.items[msg.Session] = append(p.items[msg.Session], it)
 			} else {
 				p.items[msg.Session][i] = it
 			}
 		}
-		slices.SortFunc(p.items[msg.Session], func(a, b session.TranscriptItem) int { return cmp.Compare(a.Seq, b.Seq) })
+		slices.SortFunc(p.items[msg.Session], func(a, b shownItem) int { return cmp.Compare(a.Seq, b.Seq) })
 	}
 }
 

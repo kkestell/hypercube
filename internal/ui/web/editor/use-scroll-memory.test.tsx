@@ -133,7 +133,7 @@ test.each([false, true])('transcript preserves image restoration and follow inte
   const view = find(root, '.transcript');
   const height = scrollArea(view);
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [
-    {id: 'image', seq: 1, kind: 'text', images: [{mime_type: 'image/png', data: 'AAAA'}]},
+    {id: 'image', seq: 1, kind: 'text', images: ['/transcript-image?index=0']},
   ]})));
   const image = root.querySelector('img')!;
   expect(image.complete).toBe(false);

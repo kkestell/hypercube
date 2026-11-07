@@ -3,6 +3,7 @@
 // the page selects a session, then each new or changed item.
 import type {TranscriptMessage} from '../data-socket.ts';
 import type {State} from '../state.ts';
+import {imageSrc} from '../images.ts';
 import {reconciledSubmissions, submissionsOf} from '../sessions/submissions.ts';
 import type {Transcript} from './types.ts';
 
@@ -16,7 +17,7 @@ export function displayedTranscript(state: State, key: string): Transcript {
   if (!provisional.length) return transcript;
   const items = {...transcript.items};
   let seq = transcript.order.length ? items[transcript.order.at(-1)!].seq : 0;
-  for (const entry of provisional) items[entry.id] = {id: entry.id, kind: 'user', text: entry.text, images: entry.images, done: true, seq: ++seq};
+  for (const entry of provisional) items[entry.id] = {id: entry.id, kind: 'user', text: entry.text, images: entry.images.map(imageSrc).filter(src => src !== null), done: true, seq: ++seq};
   return {order: [...transcript.order, ...provisional.map(entry => entry.id)], items};
 }
 

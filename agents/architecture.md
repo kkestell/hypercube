@@ -106,7 +106,9 @@ in place.
 
 The browser receives state snapshots over a WebSocket, plus the selected
 session's whole transcript on connection or selection. Subsequent transcript
-updates contain only new or changed items. A reconnect takes fresh snapshots.
+updates contain only new or changed items. Items carry links to their images
+rather than the image data, and the page loads an image when it shows it. A
+reconnect takes fresh snapshots.
 Requests to open a file wait until a page views that session.
 
 See [transcripts](../internal/session/transcript.go) and

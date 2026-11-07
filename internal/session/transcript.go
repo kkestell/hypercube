@@ -88,6 +88,28 @@ func (r *Runtime) Transcript(id string) ([]TranscriptItem, error) {
 	return items, nil
 }
 
+// TranscriptImage returns an image of the session's item, streaming or saved.
+func (r *Runtime) TranscriptImage(id, item string, index int) (harness.Image, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var found harness.Item
+	if l := r.live[id]; l != nil && l.pending[item] != nil {
+		found = l.pending[item].item
+	} else if err := r.db.Read(func(tx *store.Tx) error {
+		e, ok, err := tx.Entry(id, item)
+		if err != nil || !ok {
+			return cmp.Or(err, store.ErrNotFound)
+		}
+		return json.Unmarshal(e.Data, &found)
+	}); err != nil {
+		return harness.Image{}, err
+	}
+	if index < 0 || index >= len(found.Images) {
+		return harness.Image{}, store.ErrNotFound
+	}
+	return found.Images[index], nil
+}
+
 // CompactTranscript visits the compact view newest first, before the exclusive
 // cursor (or from the end when nonpositive). Returning false stops the read.
 func (r *Runtime) CompactTranscript(id string, cursor int64, visit func(store.CompactEntry) bool) error {

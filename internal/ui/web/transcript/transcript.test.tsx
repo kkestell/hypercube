@@ -312,7 +312,7 @@ test('pending forms have a shrinking scroll region before the composer', () => {
 });
 
 test('incoming, outgoing, and automatic messages collapse to one line and can be reopened', () => {
-  const image = {mime_type: 'image/png', data: 'aGVsbG8='};
+  const image = '/transcript-image?index=0';
   const {root} = setup([
     {id: 'user', kind: 'user', text: 'A regular user prompt'},
     {id: 'incoming', kind: 'user', from: 'child', text: 'First line\nSecond line', images: [image]},
