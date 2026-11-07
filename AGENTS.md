@@ -21,7 +21,7 @@ style, workflow, compatibility, and release rules. Before changing guides,
 screenshots, or the website, read
 [documentation](agents/documentation.md). The system design is in
 [architecture](agents/architecture.md), and [README.md](README.md) indexes user
-guides.
+guides. Use the [glossary](agents/glossary.md) for project terms.
 
 Commit completed, validated work unless the user asks otherwise. Include only
 changes belonging to the task. Merge only when the user asks.

@@ -14,14 +14,15 @@ first use, follow [Your first session](getting-started.md).
    existing workspace.
 2. Below the message box, choose the harness, model, and effort.
 3. In a Git workspace, choose where edits will go:
-   - **Local** uses the existing checkout, including uncommitted changes.
-   - **Worktree** creates a separate folder and branch from the current commit.
-     It does **not** include uncommitted changes.
+   - **Existing checkout** uses the project folder, including uncommitted
+     changes.
+   - **New worktree** creates a separate folder and branch from the current
+     commit. It does **not** include uncommitted changes.
 4. Send the first prompt to create the session.
 
 New sessions initially use the workspace's newest session settings, or your
 [configured default](configuration.md#session-defaults) if there are no sessions.
-The initial Local/Worktree choice comes from Settings.
+The initial location choice comes from Settings.
 
 Unsent sessions remain as **New Session** rows once you type or attach
 something. Their text, settings, and location choice survive switching

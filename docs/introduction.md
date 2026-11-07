@@ -80,10 +80,12 @@ launch, or an ended child does not hold up those reports.
 
 Each completion report contains the first 400 characters of the child's final
 response, not its progress text. Longer replies include their full length;
-the parent can read the full child conversation or any top-level session's
-conversation when it needs more context.
+the parent can read a compact transcript of a child or any top-level session
+when it needs more context. This includes messages and tool names, but omits
+reasoning, tool inputs and outputs, and nested native subagent items.
 
 Native subagents created inside a harness are different from Hypercube
-children. They appear within a tool call, not as sessions in the sidebar.
+children. Their [display depends on the harness](harness-support.md#native-subagent-display);
+they do not appear as sessions in the sidebar.
 
 For practical prompts and merge steps, see [Work with a team](teamwork.md).

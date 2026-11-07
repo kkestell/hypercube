@@ -50,7 +50,7 @@ plugin, keeping the saved conversation. It interrupts any current turn.
 **Archive** finishes a family's active use while preserving readable chats.
 **End child** permanently ends that child. These actions can also remove
 managed worktrees, so commit and merge work first. **Unarchive** makes an
-archived session usable again, but recreates its worktree rather than
-preserving its former working directory.
+archived session usable again. If it had a managed worktree, that worktree is
+recreated; existing project folders and assigned directories are kept.
 
 See [cleanup behavior](storage.md#session-cleanup) for what each action keeps.

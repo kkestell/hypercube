@@ -16,11 +16,13 @@ export interface Workspace {
   sessions: Session[];
 }
 
-// Activity is a session agent's process state.
+// Activity is the agent's work state; exited also covers startup before the
+// plugin accepts the start command and does not establish process existence.
 export type Activity = 'busy' | 'idle' | 'exited';
 
-// Usage is what a session's conversation has used: the tokens of its latest
-// request, its model's context window, and its cost in US dollars, when known.
+// Usage reports estimated context use, model context window, and cost in US
+// dollars, when known. Whether context includes output depends on the harness;
+// see docs/harness-support.md for each harness's accounting.
 export interface Usage {
   context?: number;
   window?: number;
@@ -39,9 +41,9 @@ export interface Merge {
   error?: string;
 }
 
-// Session is one agent. A top-level session lists its children; a child names
-// its parent. An unseen idle session carries its last reply and that reply's
-// seq. A worktree session carries its merge status when it has been measured.
+// Session saves one agent's state. A top-level session lists its children;
+// a child names its parent. An unseen idle session carries its last reply and
+// that reply's seq. A worktree session carries its measured merge status.
 export interface Session {
   id: string;
   parent: string;

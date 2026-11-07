@@ -52,7 +52,7 @@ test('preferences save with the config and apply to the page', async () => {
   await settle();
   select('theme', 'Dark');
   select('terminal-font-size', '16 px');
-  select('default-location', 'Worktree');
+  select('default-location', 'New worktree');
   await click('Notifications');
   await act(async () => element(document, '#notify-desktop', HTMLButtonElement).click());
   expect(element(document, '#notify-sound', HTMLButtonElement).disabled).toBe(true);
@@ -63,7 +63,7 @@ test('preferences save with the config and apply to the page', async () => {
   expect(posts).toEqual([saved]);
   expect(store.get().config).toEqual(saved);
   // An untouched new session follows the saved default location.
-  expect(element(root, '[aria-label=Location]', HTMLButtonElement).textContent).toBe('Worktree');
+  expect(element(root, '[aria-label=Location]', HTMLButtonElement).textContent).toBe('New worktree');
 });
 
 test('guidance saves with the config', async () => {

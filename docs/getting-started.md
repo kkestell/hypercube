@@ -24,8 +24,8 @@ Below the message box, select an installed harness and one of its models.
 Leave the effort at its default. Effort controls the model's reasoning level;
 the available choices depend on the harness and model.
 
-If the folder is a Git repository, choose **Local** for this walkthrough.
-The session will read the files already in that folder.
+If the folder is a Git repository, choose **Existing checkout** for this
+walkthrough. The session will read the files already in that folder.
 
 ## 3. Ask about the project
 

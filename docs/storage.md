@@ -48,7 +48,7 @@ new work.
 | Archive | Kept read-only and searchable; family leaves the active list. | Removed after Git checks. |
 | Delete | Family's chats deleted. | Removed after Git checks. |
 | End child | Kept read-only; child cannot resume. | Removed after Git checks. |
-| Unarchive | Returns to active use. | A worktree is recreated on its branch from the original checkout's HEAD. |
+| Unarchive | Returns to active use. | If the session had a managed worktree, it is recreated on its branch from the original checkout's HEAD. |
 
 Before removing a managed worktree, Hypercube checks for uncommitted files and
 unmerged commits. A child's commits must be merged into its parent; a top-level

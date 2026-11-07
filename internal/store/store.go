@@ -24,8 +24,10 @@ import (
 var ErrNotFound = errors.New("not found")
 
 const (
-	Busy   = "busy"
-	Idle   = "idle"
+	Busy = "busy"
+	Idle = "idle"
+	// Exited also covers startup before the plugin accepts the start command;
+	// it does not establish whether a process exists.
 	Exited = "exited"
 )
 
@@ -54,7 +56,8 @@ type Session struct {
 	Branch       string
 	Conversation string
 	// Fork is the native source to copy until Conversation names the child's copy.
-	Fork      string
+	Fork string
+	// Activity is Busy, Idle, or Exited, separate from the saved Ended flag.
 	Activity  string
 	Attention bool
 	// InputPending is recorded input that has not yet begun work.

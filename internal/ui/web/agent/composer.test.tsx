@@ -151,19 +151,19 @@ test('pending creation keeps Send disabled and cannot interrupt a placeholder', 
   await settle();
 });
 
-test('the unsent composer offers Local or Worktree, Local first, only in a Git workspace', async () => {
+test('the unsent composer offers Existing checkout or New worktree, Existing checkout first, only in a Git workspace', async () => {
   fetches = stubFetch(() => Response.json([]));
   let root = mount(worktreeStore(false), <Composer session={unsentSession} />);
   await act(async () => {});
   const toggle = element(root, '[aria-label="Location"]', HTMLButtonElement);
-  expect(toggle.textContent).toBe('Local');
+  expect(toggle.textContent).toBe('Existing checkout');
   expect(toggle.disabled).toBe(false);
   unmountAll();
   await act(async () => { root = mount(worktreeStore(true), <Composer session={unsentSession} />); });
   expect(worktreeToggle(root)).toBeNull();
 });
 
-test('choosing Worktree creates the session in a worktree and locks while sending', async () => {
+test('choosing New worktree creates the session in a worktree and locks while sending', async () => {
   fetches = stubFetch(() => Response.json([]));
   const s = worktreeStore(false);
   const root = mount(s, <Composer session={unsentSession} />);
@@ -172,10 +172,10 @@ test('choosing Worktree creates the session in a worktree and locks while sendin
   clickControl(toggle);
   await settle();
   const options = [...document.querySelectorAll('[role=menuitemradio]')];
-  expect(options.map(o => o.textContent)).toEqual(['Local', 'Worktree']);
+  expect(options.map(o => o.textContent)).toEqual(['Existing checkout', 'New worktree']);
   act(() => options[1].dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})));
   expect(s.get().unsent?.worktree).toBe(true);
-  expect(toggle.textContent).toBe('Worktree');
+  expect(toggle.textContent).toBe('New worktree');
   const releases: (() => void)[] = [];
   fetches.mockImplementation(() => new Promise<Response>(resolve => { releases.push(() => resolve(Response.json({session: 'n'}))); }));
   const field = textarea(root);

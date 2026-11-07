@@ -41,7 +41,7 @@ export const deleteSession = (store: Store, session: Session) => confirmDelete(s
   () => post(store, 'session', {action: 'delete', id: session.id}));
 
 export const deleteWorkspace = (store: Store, workspace: Workspace) => confirmDelete(store, workspace.name,
-  "Its sessions are deleted with their chats and their children's worktrees and branches.",
+  "Its sessions and children are deleted with their chats and all their managed worktrees and branches, after Git checks.",
   () => post(store, 'workspace', {action: 'delete', id: workspace.id}));
 
 // chooseSession shows a session. Showing it starts its agent.

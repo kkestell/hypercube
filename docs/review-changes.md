@@ -37,11 +37,13 @@ on the right for opening another file.
 
 1. Open **Changes**.
 2. Select a staged, unstaged, or untracked file to read its unified diff.
-3. Review commits not merged into the original checkout's branch.
+3. To review committed changes, use Git or ask the agent to inspect the
+   relevant commits and their diffs.
 
 Changes covers the whole Git repository containing the session directory.
-Hover over the session's branch icon for merge status; it refreshes when a
-session in that workspace finishes a turn.
+For a top-level worktree session, hover over its branch icon for merge status
+and the number of commits not merged into the original checkout's branch.
+This status refreshes when a session in that workspace finishes a turn.
 
 ![A build.go diff beside the agent's conversation, with added and removed lines highlighted](images/overview-light.png)
 

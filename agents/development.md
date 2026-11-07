@@ -82,6 +82,34 @@ Documentation procedures are in [documentation](documentation.md).
 - Keep generated files apart from their source, never edit them by hand, and
   have `make check` fail when they are stale.
 
+## Naming
+
+Use the [glossary](glossary.md) for project terms in code, comments,
+documentation, and plans. Add a naming rule when a term is ambiguous, gains a
+competing synonym, or collides with a library or protocol term; keep its
+definition in the glossary.
+
+- Use **session** for the saved Hypercube object and **agent** for the worker
+  it runs. A session can exist without a running agent.
+- Use **child session** for a Hypercube child and **native subagent** for one
+  created inside a harness. Do not use them interchangeably.
+- Use **harness** for the native coding-agent runtime and **plugin** for
+  Hypercube's executable adapter to it.
+- Use **native conversation** for the harness-owned history and **transcript**
+  for Hypercube's displayed record. A harness may call its conversation a
+  session or thread; keep those names when discussing its API types or fields.
+- Distinguish **workspace**, **checkout**, and **managed worktree**. Use
+  **working directory** for the directory in which an agent runs; it need not
+  be a workspace root or a separate worktree.
+- Say **backend**, **desktop app**, or **browser interface** when an
+  unqualified **app** would obscure process ownership or lifetime.
+- In the plugin protocol, use **command**, **reply**, **event**, and **item**
+  for their defined roles. Qualify **reply** as a plugin reply or agent reply
+  when the surrounding text does not identify which one it means.
+- Use **offer** for the task placement question and **proposal** for saved
+  agent-suggested work. User guides call a proposal a **suggestion**; retain
+  `proposal` in code and protocol references.
+
 ## Edge cases
 
 - Handle required behavior, normal use, and evidenced failures. Additional
