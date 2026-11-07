@@ -70,7 +70,7 @@ file or result is missing.
 ## Arrange the view
 
 Drag tabs between panes, or onto a pane edge to split the view. Drag dividers
-to resize panes and panels. Footer buttons toggle the sidebar, terminal, and
+to resize panes and panels. Toolbar buttons toggle the sidebar, terminal, and
 right panel. Each session remembers its tabs, splits, and scroll positions.
 
 Use **View → Zoom In**, **Zoom Out**, or **Actual Size** in the desktop app
