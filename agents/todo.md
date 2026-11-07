@@ -39,11 +39,12 @@ publishing a release.
   takes the chosen path. Use the platform's labels ("Show in Files" on
   Linux). Linux has no standard terminal application, so Open in Terminal is
   macOS-only. Its Linux items are checked in the VM with the desktop app task.
-- [ ] **Debian test VM.** Create a Debian ARM64 VM with GNOME in UTM, with
-  SSH access, Git, Go, Bun, `rsvg-convert`, and the Linux harnesses' CLIs,
-  and record how to recreate it in `agents/development.md`. The user does any
-  installer step that needs the screen. Run `make check` and `make dev` in
-  it.
+- [ ] **Debian test VM.** Create a Debian 13 ARM64 VM with Lima from
+  Debian's cloud image: `vmType: vz`, so it runs natively, and
+  `video.display: default` for a GNOME desktop window. Provision Git, Go, Bun,
+  and `rsvg-convert`, and record the Lima configuration and how to recreate
+  the VM in `agents/development.md`. Smoke tests use the scripted harness
+  plugin, which needs no credentials. Run `make check` and `make dev` in it.
 - [ ] **Linux bundle.** `make bundle` on Linux builds a directory with the
   Electron client (`hypercube-desktop`), `hypercube`, the four plugins, the UI
   pages, a PNG icon, the `.desktop` file, and the service installer, and
@@ -58,7 +59,8 @@ publishing a release.
   shells running for the new backend to adopt. On Ubuntu 23.10 and later,
   install an AppArmor profile for the bundle's Electron executable with one
   `sudo` step. Verify login-shell environment with bash and zsh, and adoption
-  across `systemctl --user restart`.
+  across `systemctl --user restart`. Check the AppArmor step in an Ubuntu
+  ARM64 VM.
 - [ ] **Desktop app on Linux.** Use a standard window frame with Electron's
   menu bar (File, Edit, View, Session, Help; About in Help, Quit in File).
   Closing the window quits the client; the tray stays macOS-only. Badge with
@@ -73,10 +75,13 @@ publishing a release.
   keys in `xterm.ts` macOS-only. Rename `notifications.macos` to
   `notifications.desktop`, migrating the saved value at startup, and update
   Settings, `docs/configuration.md`, and the user's config together.
-- [ ] **Distribution checks.** In graphical VMs, install the tarball and run
-  the service, desktop app, a session, a panel shell, a notification, and a
-  service restart on Debian AMD64, Ubuntu, Fedora, and Arch.
-  Fix differences in the owning task's code; claim the full matrix when every
+- [ ] **Distribution checks.** Install the tarball and run the service,
+  desktop app, a session, a panel shell, a notification, and a service
+  restart in native ARM64 VMs for Ubuntu and Fedora. For AMD64, a CI job on
+  `ubuntu-24.04` installs the tarball and starts the service and the desktop
+  app on a virtual display. Arch supports only AMD64, so check its install,
+  service, and a session in an emulated AMD64 VM without a desktop. Fix
+  differences in the owning task's code; claim the full matrix when every
   check passes.
 - [ ] **Release.** The beta workflow builds both Linux tarballs with
   `SHA256SUMS` beside the macOS ZIP; check a downloaded tarball's
