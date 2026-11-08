@@ -3,7 +3,6 @@
 import {diffReady, diffTitle, readOpenDiff} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
 import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
-import {shownSession} from '../sessions/selection.ts';
 import type {EditorView} from './types.ts';
 import {selectedWorkspace, selectionTarget} from './target.ts';
 import type {State} from '../state.ts';
@@ -12,13 +11,10 @@ import {ownsScroll} from './view-state.ts';
 import * as layout from './tab-layout.ts';
 import type {Edge, FileOpenRequest, ScrollMemory, TabEntry, TabId, TabLayout} from './types.ts';
 
-export const agentTabId = 'agent';
-
-// agentTabs is the layout a session starts with: its agent alone.
-export const agentTabs: TabLayout = {root: {id: 1, tabs: [agentTabId], active: agentTabId}, preview: null, dragging: null, nextId: 2};
+export const emptyTabs: TabLayout = {root: null, preview: null, dragging: null, nextId: 1};
 
 export const dashboardTabId = 'dashboard';
-export const dashboardTabs: TabLayout = {...agentTabs, root: {id: 1, tabs: [dashboardTabId], active: dashboardTabId}};
+export const dashboardTabs: TabLayout = {...emptyTabs, root: {id: 1, tabs: [dashboardTabId], active: dashboardTabId}, nextId: 2};
 
 export const fileTabId = (path: string): TabId => 'file:' + path;
 
@@ -37,10 +33,6 @@ const withTabs = (state: State, change: (tabs: TabLayout) => TabLayout) =>
   withEditor(state, editor => ({...editor, tabs: change(editor.tabs)}));
 
 export function tabEntry(state: State, id: TabId): TabEntry {
-  if (id === agentTabId) {
-    const title = shownSession(state)?.title ?? 'New Session';
-    return {kind: 'agent', id, label: title, title, preview: false};
-  }
   if (id === dashboardTabId) {
     const title = selectedWorkspace(state)?.name ?? 'Workspace';
     return {kind: 'dashboard', id, label: title, title, preview: false};

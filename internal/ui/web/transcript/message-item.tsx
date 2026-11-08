@@ -53,7 +53,7 @@ export function MessageItem({item, expanded, setOpen}: MessageItemProps) {
     text = sent.text;
     details = <>{item.failed && <div className="message-item-failure text-destructive">{item.output ?? ''}</div>}<TranscriptImages images={item.images} /></>;
   } else if (item.automatic) {
-    heading = 'Child reports';
+    heading = 'Automatic message';
     text = item.text ?? '';
     details = <TranscriptImages images={item.images} />;
   } else if (item.from) {

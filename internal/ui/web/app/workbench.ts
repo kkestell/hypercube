@@ -19,13 +19,7 @@ export const toggleWrap = (state: State): State => ({...state, workbench: {...st
 
 export const toggleFixedWidth = (state: State): State => ({...state, workbench: {...state.workbench, fixedWidth: !state.workbench.fixedWidth}});
 
-// column is the class that lines the composer and pending questions up with the
-// transcript's messages: the panels' inset on both sides, and the fixed reading
-// width when it is on.
-export const column = (state: State): string =>
-  `px-4 ${state.workbench.fixedWidth ? 'mx-auto w-full max-w-[50.6rem]' : ''}`;
-
-export const resizeRegion = (state: State, region: Region, size: number): State => state.workbench.sizes[region] === size
+export const resizeRegion = (state: State, region: Region | 'editor', size: number): State => state.workbench.sizes[region] === size
   ? state : {...state, workbench: {...state.workbench, sizes: {...state.workbench.sizes, [region]: size}}};
 
 export const selectSidebarTab = (state: State, sidebarTab: SidebarTab): State => state.workbench.sidebarTab === sidebarTab

@@ -143,6 +143,9 @@ export function transcriptRows(transcript: Transcript): Row[] {
   const containers = new Map<string, Item[]>();
   for (let i = 0; i < order.length; i++) {
     const item = items[order[i]];
+    // Harnesses may record reasoning without exposing its text, or empty text
+    // placeholders. Neither should create an empty activity disclosure.
+    if ((item.kind === 'reasoning' || item.kind === 'text') && !item.text?.trim() && !(item.kind === 'text' && item.images?.length)) continue;
     if (repeatsQuestions(item, i, transcript)) continue;
     // Open requests and proposals are pinned below the scrolling history.
     if (isPending(item)) continue;

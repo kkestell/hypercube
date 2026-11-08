@@ -1,10 +1,10 @@
-// The tabbed area: the shown session's pane tree, drawn as nested splits
-// around panes. An unsent session has only its agent's tab. Only this area
-// accepts tab moves and splits.
-import {useEffect, useRef, useState} from 'react';
+// File tabs and workspace dashboards, drawn as nested splits around panes.
+// Chat stays outside this area; only editor tabs accept tab moves and splits.
+import {useRef} from 'react';
 import {Split} from '../shared/split.tsx';
+import {usePaneFocus} from '../shared/use-pane-focus.ts';
 import {useStore} from '../store.ts';
-import {agentTabs, resizeSplit} from './editor.ts';
+import {emptyTabs, resizeSplit} from './editor.ts';
 import {EditorPane} from './editor-pane.tsx';
 import {EditorTabs} from './editor-tabs.tsx';
 import type {LayoutNode, Placement} from './types.ts';
@@ -29,25 +29,13 @@ function PaneTree({node, focused, placement}: {node: LayoutNode; focused: boolea
   );
 }
 
-export function EditorArea() {
+export function EditorArea({besideChat = false}: {besideChat?: boolean}) {
   const [state] = useStore();
-  const [focused, setFocused] = useState(true);
   const area = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const focusIn = (event: FocusEvent) => {
-      const target = event.target;
-      setFocused(target === document.body || (target instanceof Node && !!area.current?.contains(target)));
-    };
-    const focusOut = (event: FocusEvent) => { if (!event.relatedTarget) setFocused(true); };
-    document.addEventListener('focusin', focusIn);
-    document.addEventListener('focusout', focusOut);
-    return () => {
-      document.removeEventListener('focusin', focusIn);
-      document.removeEventListener('focusout', focusOut);
-    };
-  }, []);
-  const {root} = state.editor?.tabs ?? agentTabs;
+  const focused = usePaneFocus(area, !besideChat);
+  const {root} = state.editor?.tabs ?? emptyTabs;
+  const placement = {...whole, left: !besideChat, right: !besideChat};
   return <div ref={area} className="editor-area h-full min-h-0 min-w-0">
-    {root ? <PaneTree node={root} focused={focused} placement={whole} /> : <EditorTabs pane={null} entries={[]} placement={whole} />}
+    {root ? <PaneTree node={root} focused={focused} placement={placement} /> : <EditorTabs pane={null} entries={[]} placement={placement} />}
   </div>;
 }

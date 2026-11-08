@@ -28,7 +28,7 @@ export function ViewOptions({active}: {active: TabEntry | undefined}) {
   if ((file && !browserPreview) || active?.kind === 'diff') {
     options.push({title: 'Word Wrap', icon: 'wrap', keys: firstKeys('wrap'), on: state.workbench.wrap, toggle: toggleWrap});
   }
-  if (active?.kind === 'agent' || (file?.source === false && !browserPreview)) {
+  if (file?.source === false && !browserPreview) {
     options.push({title: 'Fixed Width', icon: 'fold-horizontal', on: state.workbench.fixedWidth, toggle: toggleFixedWidth});
   }
   const mode = file && file.source !== null && <Button className="size-7" variant="ghost" size="icon"

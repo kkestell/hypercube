@@ -122,6 +122,25 @@ test('tool, error, Thinking, and prompt text is shown as text', () => {
   for (const text of ['<b>tool</b>', '<img src=x onerror=1>', '<u>bad</u>', '<i>thinking</i>', '<a href=x>me</a>']) expect(root.textContent).toContain(text);
 });
 
+test('an expanded running tool explains missing details and updates as they arrive', () => {
+  const {root, send} = setup([{id: 'c', kind: 'tool', tool: 'bash', seq: 1}]);
+  act(() => find(root, '.tool-items-call > [data-slot=collapsible-trigger]').click());
+  expect(find(root, '.tool-items-body').textContent).toBe('Waiting for tool details…');
+
+  send([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'pwd'}, seq: 1}]);
+  expect(find(root, '.tool-items-input').textContent).toContain('pwd');
+  expect(root.textContent).not.toContain('Waiting for tool details…');
+
+  send([{id: 'c', kind: 'tool', tool: 'bash', input: {command: 'pwd'}, output: '/workspace', done: true, seq: 1}]);
+  expect(find(root, '.tool-items-body').textContent).toContain('/workspace');
+});
+
+test('an expanded completed tool with no details says so', () => {
+  const {root} = setup([{id: 'c', kind: 'tool', tool: 'bash', done: true}]);
+  act(() => find(root, '.tool-items-call > [data-slot=collapsible-trigger]').click());
+  expect(find(root, '.tool-items-body').textContent).toBe('No details recorded.');
+});
+
 test('an attention request offers its choices, waits while sending, and opens again when refused', async () => {
   const refusal = Promise.withResolvers<Response>();
   const fetches = spyOn(globalThis, 'fetch').mockReturnValue(refusal.promise);
@@ -290,6 +309,36 @@ test('a turn draws as it runs and folds its activity under Worked for once it fi
   expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
 });
 
+test('empty reasoning and text do not create an empty activity disclosure', () => {
+  const {root, send} = setup([
+    {id: 'u', kind: 'user', text: 'Go', at: 1000},
+    marker('w', 'working', 1100),
+    {id: 'r', kind: 'reasoning', at: 1200},
+    {id: 'blank', kind: 'text', text: '  \n', at: 1300},
+    {id: 't', kind: 'text', text: 'Done', at: 1400},
+    marker('i', 'idle', 5000, ['t']),
+  ]);
+  expect(root.querySelector('.activity-item')).toBeNull();
+  expect(find(root, '.transcript-list > .transcript-text').textContent).toBe('Done');
+
+  send([{id: 'r', kind: 'reasoning', text: 'Checking the answer', at: 1200, seq: 3}]);
+  const activity = find(root, '.activity-item');
+  act(() => find(activity, '[data-slot=collapsible-trigger]').click());
+  expect(find(activity, '.reasoning-item').textContent).toBe('Checking the answer');
+});
+
+test('image-only activity remains available to expand', () => {
+  const {root} = setup([
+    marker('w', 'working', 1000),
+    {id: 'image', kind: 'text', images: ['/transcript-image?index=0'], at: 1200},
+    {id: 't', kind: 'text', text: 'Done', at: 1400},
+    marker('i', 'idle', 5000, ['t']),
+  ]);
+  const activity = find(root, '.activity-item');
+  act(() => find(activity, '[data-slot=collapsible-trigger]').click());
+  expect(find(activity, 'img').getAttribute('src')).toBe('/transcript-image?index=0');
+});
+
 // Happy DOM does not perform layout. These assertions protect the scrolling
 // boundary and tab order that keep long pending forms above the composer.
 test('pending forms have a shrinking scroll region before the composer', () => {
@@ -324,6 +373,8 @@ test('incoming, outgoing, and automatic messages collapse to one line and can be
   expect(root.querySelector('.message-item-user button[data-slot=collapsible-trigger]')).toBeNull();
   const messages = findAll(root, '.message-item-agent');
   expect(messages).toHaveLength(4);
+  expect(find(messages[3], '.disclosure-heading').textContent).toContain('Automatic message');
+  expect(root.textContent).not.toContain('Child reports');
   for (const [i, message] of messages.entries()) {
     const trigger = find(message, '[data-slot=collapsible-trigger]');
     expect(trigger.getAttribute('aria-expanded')).toBe('false');

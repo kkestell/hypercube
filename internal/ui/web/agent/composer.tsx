@@ -1,4 +1,3 @@
-import {column} from '../app/workbench.ts';
 import {firstKeys, shortcuts} from '../app/shortcuts.ts';
 // The box below a transcript for the user's next message: its text, attached
 // images, and attach and send buttons, and below them its settings and usage.
@@ -88,7 +87,7 @@ export function Composer({session}: {session: Session}) {
   const suggesting = mentions.choices.length > 0 || !!mentions.error;
 
   return (
-    <form className={`composer @container/composer relative my-4 shrink-0 ${column(state)}`} data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
+    <form className="composer @container/composer relative my-4 shrink-0 px-4" data-session={session.id} onSubmit={e => { e.preventDefault(); send(); }}>
       {isUnsent(session.id) && <WorktreeSelect />}
       {/* One line of text makes the box 50px tall: its border, padding, and the
           text's line; half that rounds its ends into half circles. */}

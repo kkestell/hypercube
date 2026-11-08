@@ -1,5 +1,6 @@
 // Browser storage is an external boundary; runtime state uses these shapes directly.
 import type {EditorViewState, LayoutNode} from '../editor/types.ts';
+import {closeTab, panes} from '../editor/tab-layout.ts';
 import type {SessionViewState} from '../sessions/types.ts';
 import type {Workbench} from './types.ts';
 
@@ -43,6 +44,7 @@ function workbench(value: unknown) {
   const sizes = value.sizes;
   return (value.rightTab === 'files' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
     && record(sizes) && ['sidebar', 'rightPanel', 'panel'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
+    && (sizes.editor === undefined || (nonnegative(sizes.editor) && sizes.editor > 0))
     && flags(value.collapsedWorkspaces) && flags(value.collapsedSessions)
     && record(value.sidebarScroll) && nonnegative(value.sidebarScroll.sessions) && nonnegative(value.sidebarScroll.archived);
 }
@@ -62,5 +64,13 @@ export function readSavedViews(text: string): SavedViews {
   if (record(value) && value.workspaceViews === undefined) value = {...value, workspaceViews: {}};
   if (!record(value) || !(value.selected === null || typeof value.selected === 'string')
     || !workbench(value.workbench) || !entries(value.sessionViews, sessionView) || !entries(value.workspaceViews, editorView)) throw new Error('Invalid saved view state.');
-  return value as unknown as SavedViews;
+  const saved = value as unknown as SavedViews;
+  // Chat no longer occupies a tab. Removing it also prunes its empty panes,
+  // leaving the user's file splits and scroll positions intact.
+  const sessionViews = Object.fromEntries(Object.entries(saved.sessionViews).map(([id, view]) => {
+    const tabs = closeTab(view.tabs, 'agent');
+    const activePane = panes(tabs.root).some(pane => pane.id === view.activePane) ? view.activePane : null;
+    return [id, {...view, tabs, activePane}];
+  }));
+  return {...saved, sessionViews, workbench: {...saved.workbench, sizes: {...saved.workbench.sizes, editor: saved.workbench.sizes.editor ?? 560}}};
 }

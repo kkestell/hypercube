@@ -9,7 +9,7 @@ import {openUnsent, receivedWorkspaces, selectSession, selectWorkspace} from '..
 import {createStore} from '../store.ts';
 import {receivedTranscript, setExpanded} from '../transcript/transcripts.ts';
 import {startViewStorage} from './view-storage.ts';
-import {toggle, toggleWrap} from './workbench.ts';
+import {resizeRegion, toggle, toggleWrap} from './workbench.ts';
 
 const workspaces = [testWorkspace({id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})]})];
 const fresh = (selected = '') => createStore(testState({selected}));
@@ -22,6 +22,7 @@ test('session switches and reloads preserve independent view choices without cac
   const store = fresh('a');
   startViewStorage(store);
   store.update(state => receivedWorkspaces(state, workspaces));
+  store.update(state => resizeRegion(state, 'editor', 640));
   store.update(state => typed(state, 'a', 'unfinished prompt'));
   openRequestedFile(store, {session: 'a', path: 'guide.md', lines: [{start: 2}]});
   openDiffTab(store, 'changed.go');
@@ -41,7 +42,7 @@ test('session switches and reloads preserve independent view choices without cac
   store.update(state => selectSession(state, 'b'));
   expect(store.get().sessionViews.a).toBeDefined();
   expect(store.get().sessionViews.b).toBeUndefined();
-  expect(store.get().editor!.tabs.root).toMatchObject({tabs: ['agent']});
+  expect(store.get().editor!.tabs.root).toBeNull();
   store.update(state => rememberScroll(state, 'a', 'a', {top: 345, left: 0, following: false}));
   store.update(state => selectSession(state, 'a'));
   expect(store.get().sessionViews.a).toBeUndefined();
@@ -59,6 +60,7 @@ test('session switches and reloads preserve independent view choices without cac
   const restored = reloaded.get().editor!;
   expect(reloaded.get().selected).toBe('a');
   expect(restored.tabs).toEqual(layout);
+  expect(reloaded.get().workbench.sizes.editor).toBe(640);
   expect(restored.activePane).toBe(activePane);
   expect(restored.files.expanded).toEqual({src: true});
   expect(reloaded.get().session!.expanded.activity).toBe(true);
@@ -177,6 +179,39 @@ test('invalid saved layouts report their failure and retain defaults', () => {
   expect(store.get().sessionViews).toEqual({});
   expect(store.get().workbench.sizes.sidebar).toBe(290);
   expect(store.get().errors[0].message).toContain('Could not restore view state');
+});
+
+test('saved agent tabs migrate away without losing files, splits, or transcript scroll', () => {
+  const store = fresh('a');
+  startViewStorage(store);
+  store.update(state => receivedWorkspaces(state, workspaces));
+  openFileAt(store, 'guide.md', [{start: 2}]);
+  openFileAt(store, 'other.py', []);
+  store.update(state => moveTab(state, 'file:other.py', 1, 'right'));
+  const saved = JSON.parse(localStorage.getItem('hypercube.views')!);
+  const filePane = saved.sessionViews.a.tabs.root;
+  saved.sessionViews.a.tabs = {...saved.sessionViews.a.tabs, nextId: 12, root: {
+    id: 11, axis: 'x', ratio: 37, children: [{id: 10, tabs: ['agent'], active: 'agent'}, filePane],
+  }};
+  saved.sessionViews.a.activePane = 10;
+  saved.sessionViews.a.scroll.a = {top: 350, left: 0, following: false};
+  saved.sessionViews.b = {...saved.sessionViews.a, files: {}, tabs: {
+    root: {id: 1, tabs: ['agent'], active: 'agent'}, preview: null, dragging: null, nextId: 2,
+  }};
+  delete saved.workbench.sizes.editor;
+  localStorage.setItem('hypercube.views', JSON.stringify(saved));
+
+  const restored = fresh();
+  startViewStorage(restored);
+  restored.update(state => receivedWorkspaces(state, workspaces));
+  expect(restored.get().errors).toEqual([]);
+  expect(restored.get().editor?.tabs.root).toEqual(filePane);
+  expect(restored.get().editor?.activePane).toBeNull();
+  expect(restored.get().editor?.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 2}]});
+  expect(restored.get().editor?.scroll.a).toEqual({top: 350, left: 0, following: false});
+  expect(restored.get().workbench.sizes.editor).toBe(560);
+  restored.update(state => selectSession(state, 'b'));
+  expect(restored.get().editor?.tabs.root).toBeNull();
 });
 
 

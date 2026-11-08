@@ -5,11 +5,9 @@
 // would land outside their targets: a tab outside the tabbed area could type
 // its ID into a text box, and a file outside an agent pane would open in the
 // browser.
-import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useState} from 'react';
 import {post} from '../api.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
-import {agentTabId, selectTab} from '../editor/editor.ts';
-import {findPane} from '../editor/tab-layout.ts';
 import {QuickOpen} from '../files/quick-open.tsx';
 import {NotificationStack} from '../notifications/notification-stack.tsx';
 import {currentSession, pageTitle} from '../sessions/selection.ts';
@@ -52,20 +50,7 @@ export function App({store}: {store: Store}) {
   const [sessionSearch, setSessionSearch] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const focusPending = useRef(false);
-  useLayoutEffect(() => {
-    if (!focusPending.current) return;
-    focusPending.current = false;
-    focusComposerField();
-  }, [state]);
-  const focusComposer = () => {
-    if (focusComposerField()) return;
-    const editor = store.get().editor;
-    const pane = editor && findPane(editor.tabs.root, agentTabId);
-    if (!pane) return;
-    focusPending.current = true;
-    store.update(s => selectTab(s, pane.id, agentTabId));
-  };
+  const focusComposer = () => { focusComposerField(); };
   useLayoutEffect(() => {
     const unsubscribe = store.subscribe(setState);
     setState(store.get());

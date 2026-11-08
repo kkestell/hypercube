@@ -8,7 +8,6 @@
 // collapsing an item keeps its heading where it was on screen, and the list
 // follows its end again only if that leaves it there.
 import {Fragment, useCallback, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode} from 'react';
-import {column} from '../app/workbench.ts';
 import {focusComposerField} from '../agent/focus-composer.ts';
 import {isUnsent} from '../agent/drafts.ts';
 import {Button} from '../components/ui/button';
@@ -75,7 +74,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
     <div className="transcript-container relative flex min-h-0 flex-1 flex-col text-sm">
       <Find list={list} view={view} active={active} label="Find in transcript" className="transcript-find flex shrink-0 items-center gap-2 border-b p-2" />
       <div ref={view} className="transcript flex min-h-0 flex-1 flex-col overflow-auto">
-        <div ref={list} onClickCapture={holdTrigger} className={`transcript-list mx-auto flex w-full flex-1 flex-col gap-3 px-[37px] py-4 ${state.workbench.fixedWidth ? 'max-w-[50.6rem]' : ''}`}>
+        <div ref={list} onClickCapture={holdTrigger} className="transcript-list flex w-full flex-1 flex-col gap-3 px-[37px] py-4">
           {rows.map(row => {
             const id = row.type === 'activity' ? row.key : row.item.id;
             const submission = submissions.find(entry => entry.id === id);
@@ -103,7 +102,7 @@ export function Transcript({session, active = true, footer}: TranscriptProps) {
               and the composer cannot fit, their shared container also scrolls.
               The padded card bottom tucks 16px under the composer. */}
           {pending.length > 0 && (
-            <section className={`transcript-pending -mb-8 min-h-24 shrink overflow-y-auto ${column(state)}`} aria-label="Waiting on you">
+            <section className="transcript-pending -mb-8 min-h-24 shrink overflow-y-auto px-4" aria-label="Waiting on you">
               <Card className="mx-3 gap-4 rounded-b-none rounded-t-[16px] border-b-0 pb-8 pt-4 shadow-none">
                 {pending.map(item => <CardContent key={item.id} className="px-4">{item.kind === 'attention'
                   ? <AttentionItem item={item} session={session} />

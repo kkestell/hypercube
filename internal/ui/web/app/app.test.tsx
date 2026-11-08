@@ -4,6 +4,9 @@ import {clickControl, element, find, findAll, mount, setValue, stubFetch, testBr
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {openUnsent, receivedWorkspaces, selectWorkspace} from '../sessions/selection.ts';
 import {typed, unsentKey} from '../agent/drafts.ts';
+import {closeTab, keepOpen, moveTab, openDiffTab, openFileTab, openRequestedFile, rememberScroll} from '../editor/editor.ts';
+import {panes} from '../editor/tab-layout.ts';
+import {receivedTranscript} from '../transcript/transcripts.ts';
 import type {Session} from '../sessions/types.ts';
 import type {State} from '../state.ts';
 import {createStore} from '../store.ts';
@@ -102,6 +105,69 @@ test('app shortcuts work with focus on the transcript background', async () => {
   keydown(document.activeElement ?? document.body, 'Escape');
   await act(async () => { keydown(document.body, 'Escape'); });
   expect(requests.some(request => request.params.action === 'interrupt')).toBe(true);
+});
+
+test('chat stays mounted outside file tabs while files open, split, and close', async () => {
+  answer(url => new URL(url, 'http://x/').pathname === '/file' ? new Response('import math') : Response.json([]));
+  const store = appStore({selected: 'a', workbench: workbench({rightPanel: false, fixedWidth: true})}, testSession({id: 'a', title: 'Visible chat'}));
+  store.update(state => typed(receivedTranscript(state, {type: 'transcript', session: 'a', reset: true, items: [
+    {id: 'reply', seq: 1, kind: 'text', text: 'Always-visible reply'},
+  ]}), 'a', 'unfinished prompt'));
+  store.update(state => rememberScroll(state, 'a', 'a', {top: 120, left: 0, following: false}));
+  const root = mount(store, <App store={store} />);
+  const chat = find(root, '.chat-pane');
+  const transcript = find(root, '.transcript');
+  const composer = element(root, '.composer textarea', HTMLTextAreaElement);
+  expect(chat.closest('.editor-area')).toBeNull();
+  expect(chat.textContent).toContain('Always-visible reply');
+  expect(chat.querySelector('[role=tab]')).toBeNull();
+  expect(chat.querySelector('[aria-label="Fixed Width"]')).toBeNull();
+  expect(find(chat, '.transcript-list').className).not.toContain('max-w-');
+  expect(find(chat, '.composer').className).not.toContain('max-w-');
+  expect(root.querySelector('.editor-area')).toBeNull();
+  const unchanged = () => {
+    expect(find(root, '.chat-pane')).toBe(chat);
+    expect(find(root, '.transcript')).toBe(transcript);
+    expect(element(root, '.composer textarea', HTMLTextAreaElement)).toBe(composer);
+    expect(composer.value).toBe('unfinished prompt');
+    expect(transcript.scrollTop).toBe(120);
+  };
+  await act(async () => { openFileTab(store, 'a.py'); });
+  unchanged();
+  expect(find(root, '.editor-area').textContent).toContain('import math');
+  expect(panes(store.get().editor!.tabs.root).flatMap(pane => pane.tabs)).toEqual(['file:a.py']);
+  await act(async () => { openFileTab(store, 'b.py'); });
+  unchanged();
+  await act(async () => {
+    store.update(state => keepOpen(state, 'file:b.py'));
+    openRequestedFile(store, {session: 'a', path: 'c.py', lines: []});
+    store.update(state => moveTab(state, 'file:c.py', panes(state.editor!.tabs.root)[0].id, 'right'));
+  });
+  unchanged();
+  expect(root.querySelectorAll('.editor-pane')).toHaveLength(2);
+  await act(async () => { openDiffTab(store, 'c.py'); });
+  unchanged();
+  for (const id of ['file:b.py', 'file:c.py', 'diff:c.py']) act(() => store.update(state => closeTab(state, id)));
+  unchanged();
+  expect(root.querySelector('.editor-area')).toBeNull();
+});
+
+test('Find follows focus between chat and files, and focusing the composer leaves files open', async () => {
+  answer(url => new URL(url, 'http://x/').pathname === '/file' ? new Response('import math') : Response.json([]));
+  const store = appStore({selected: 'a', workbench: workbench({rightPanel: false})}, testSession({id: 'a'}));
+  const root = mount(store, <App store={store} />);
+  await act(async () => { openFileTab(store, 'a.py'); });
+  act(() => find(root, '.file-view').focus());
+  keydown(document.activeElement!, 'f', {metaKey: true});
+  expect(root.querySelector('[role=search][aria-label="Find in file"]')).not.toBeNull();
+  expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).toBeNull();
+  keydown(document.activeElement!, 'Escape');
+  keydown(document.activeElement!, 'l', {metaKey: true});
+  expect(document.activeElement).toBe(find(root, '.composer textarea'));
+  expect(find(root, '.file-view').textContent).toContain('import math');
+  keydown(document.activeElement!, 'f', {metaKey: true});
+  expect(root.querySelector('[role=search][aria-label="Find in transcript"]')).not.toBeNull();
+  expect(root.querySelector('[role=search][aria-label="Find in file"]')).toBeNull();
 });
 
 test('a new session draft is a sidebar row that reopens its prompt and can be discarded', async () => {

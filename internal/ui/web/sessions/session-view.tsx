@@ -1,13 +1,16 @@
-// The center: the shown session's tabbed area of its agent and open files, or
+// The center: permanent chat beside file tabs, a workspace's editor area, or
 // a workspace invitation when none exists. While the page is visible, a
 // shown session's unseen reply is seen.
 import {useEffect} from 'react';
 import {hypercube} from '../app/window.ts';
 import {Button} from '../components/ui/button';
+import {ChatPane} from '../agent/chat-pane.tsx';
+import {resizeRegion} from '../app/workbench.ts';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {EditorTabs} from '../editor/editor-tabs.tsx';
 import {useStore} from '../store.ts';
 import {Icon} from '../shared/icon.tsx';
+import {Split} from '../shared/split.tsx';
 import {addWorkspace, markSeen} from './session-actions.ts';
 import {currentSession, shownSession} from './selection.ts';
 
@@ -19,7 +22,16 @@ export function SessionView() {
     if (session?.unseen && state.visible) markSeen(store, session.id);
   }, [session?.id, session?.unseen, state.visible]);
 
-  if (shownSession(state) || state.editor) return <EditorArea />;
+  const shown = shownSession(state);
+  if (shown) {
+    const hasFiles = !!state.editor?.tabs.root;
+    return <Split fixed="end" size={state.workbench.sizes.editor} minStart="20%" minEnd="20%"
+      collapsed={hasFiles ? null : 'end'} onResize={size => store.update(s => resizeRegion(s, 'editor', size))}>
+      <ChatPane key={shown.id} session={shown} />
+      {hasFiles ? <EditorArea besideChat /> : null}
+    </Split>;
+  }
+  if (state.editor) return <EditorArea />;
   return <>
     <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
     {state.workspaces.length === 0 && <section aria-label="No workspaces" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">

@@ -56,7 +56,7 @@ test('sidebar choices, independent scroll positions, and panel sizes survive a b
   root = sidebar(restored);
   expect(tab(root, 'Archived').getAttribute('aria-selected')).toBe('true');
   expect(body(root, 'archived').scrollTop).toBe(250);
-  expect(restored.get().workbench.sizes).toEqual({sidebar: 290, rightPanel: 390, panel: 210});
+  expect(restored.get().workbench.sizes).toEqual({sidebar: 290, rightPanel: 390, panel: 210, editor: 560});
   expect(find(root, '[aria-label="Expand repo"]').getAttribute('aria-expanded')).toBe('false');
   click(find(root, '[aria-label="Expand repo"]'));
   expect(root.querySelector('[data-session=archived]')).not.toBeNull();

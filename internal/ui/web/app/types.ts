@@ -30,14 +30,14 @@ export type RightTab = 'files' | 'search';
 export type SidebarTab = 'sessions' | 'archived';
 
 // Workbench holds panel sizes, sidebar and right-panel visibility and choices, and
-// whether file views wrap and chats use a fixed reading width.
+// whether source views wrap and Markdown file previews use a fixed reading width.
 export interface Workbench {
   sidebar: boolean;
   rightPanel: boolean;
   rightTab: RightTab;
   wrap: boolean;
   fixedWidth: boolean;
-  sizes: Record<Region, number>;
+  sizes: Record<Region | 'editor', number>;
   sidebarTab: SidebarTab;
   collapsedWorkspaces: Record<string, true>;
   collapsedSessions: Record<string, true>;

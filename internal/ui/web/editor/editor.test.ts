@@ -5,7 +5,7 @@ import {emptySession, emptyEditor} from '../sessions/selection.ts';
 import type {EditorView} from '../editor/types.ts';
 import type {State} from '../state.ts';
 import {createStore, type Store} from '../store.ts';
-import {agentTabId, closeTab, diffTabId, fileTabId, keepOpen, openDiffTab, openFileTab, openRequestedFile, rememberScroll, resizeSplit, tabEntry} from './editor.ts';
+import {closeTab, diffTabId, fileTabId, keepOpen, openDiffTab, openFileTab, openRequestedFile, rememberScroll, resizeSplit, tabEntry} from './editor.ts';
 import {moveTab, openTab, panes} from './tab-layout.ts';
 import type {LineRange} from '../files/types.ts';
 import type {ScrollMemory, TabId} from './types.ts';
@@ -19,18 +19,18 @@ const session = (s: Store) => attached(s.get());
 const tabsOf = (s: Store) => panes(session(s).tabs.root).map(pane => pane.tabs);
 const activeTab = (s: Store) => panes(session(s).tabs.root)[0].active;
 
-test('a clicked file opens as a tab beside the agent\'s tab and replaces the preview tab until it is kept open', () => {
+test('a clicked file opens in the file tabs and replaces the preview tab until it is kept open', () => {
   stubFetch(() => new Response('text'));
   const s = store();
-  expect(tabsOf(s)).toEqual([[agentTabId]]);
+  expect(tabsOf(s)).toEqual([]);
   openFileTab(s, 'a.go');
   openFileTab(s, 'b.go');
-  expect(tabsOf(s)).toEqual([[agentTabId, fileTabId('b.go')]]);
+  expect(tabsOf(s)).toEqual([[fileTabId('b.go')]]);
   expect(session(s).tabs.preview).toBe(fileTabId('b.go'));
   expect(Object.keys(session(s).files.open)).toEqual(['b.go']);
   s.update(state => keepOpen(state, fileTabId('b.go')));
   openFileTab(s, 'c.go');
-  expect(tabsOf(s)).toEqual([[agentTabId, fileTabId('b.go'), fileTabId('c.go')]]);
+  expect(tabsOf(s)).toEqual([[fileTabId('b.go'), fileTabId('c.go')]]);
   openFileTab(s, 'b.go');
   expect(activeTab(s)).toBe(fileTabId('b.go'));
   expect(session(s).tabs.preview).toBe(fileTabId('c.go'));
@@ -86,7 +86,7 @@ test('an agent opens a kept, selected file as a tab beside the chat and updates 
   const request = (lines: LineRange[]) => openRequestedFile(s, {session: 's', path: 'guide.md', lines});
   const file = () => session(s).files.open['guide.md'];
   request([]);
-  expect(tabsOf(s)).toEqual([[agentTabId, fileTabId('guide.md')]]);
+  expect(tabsOf(s)).toEqual([[fileTabId('guide.md')]]);
   expect(activeTab(s)).toBe(fileTabId('guide.md'));
   expect(session(s).tabs.preview).toBeNull();
   expect(file().source).toBe(false);
@@ -106,7 +106,7 @@ test('an agent keeps an existing preview tab without replacing another preview',
   expect(session(s).tabs.preview).toBeNull();
   openFileTab(s, 'b.go');
   openRequestedFile(s, {session: 's', path: 'a.go', lines: []});
-  expect(tabsOf(s)).toEqual([[agentTabId, fileTabId('a.go'), fileTabId('b.go')]]);
+  expect(tabsOf(s)).toEqual([[fileTabId('a.go'), fileTabId('b.go')]]);
   expect(session(s).tabs.preview).toBe(fileTabId('b.go'));
 });
 
@@ -115,7 +115,7 @@ test('diff tabs share preview replacement and forget their data and scroll', () 
   const s = store();
   const id = diffTabId('foo.py');
   openDiffTab(s, 'foo.py');
-  expect(tabsOf(s)).toEqual([[agentTabId, id]]);
+  expect(tabsOf(s)).toEqual([[id]]);
   expect(session(s).tabs.preview).toBe(id);
   expect(tabEntry(s.get(), id)).toMatchObject({kind: 'diff', name: 'foo.py', label: 'foo.py (Working Tree)'});
   s.update(state => ({...state, editor: {...attached(state), changes: {branch: 'main', files: [{path: 'foo.py', status: 'added'}]}}}));
