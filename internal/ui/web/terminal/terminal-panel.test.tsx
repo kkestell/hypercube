@@ -45,8 +45,10 @@ class FakeTerminal {
 }
 
 let terminals: FakeTerminal[];
+let boxes: HTMLElement[];
 mock.module('./xterm.ts', () => ({
-  createTerminal(_box: HTMLElement, style: TerminalStyle) {
+  createTerminal(box: HTMLElement, style: TerminalStyle) {
+    boxes.push(box);
     const term = new FakeTerminal();
     term.styles.push(style);
     terminals.push(term);
@@ -59,6 +61,7 @@ const realSocket = globalThis.WebSocket;
 const useSocket = (socket: typeof WebSocket | typeof FakeSocket) => Object.defineProperty(globalThis, 'WebSocket', {value: socket, configurable: true, writable: true});
 beforeEach(() => {
   terminals = [];
+  boxes = [];
   FakeSocket.all = [];
   useSocket(FakeSocket);
   jest.useFakeTimers();
@@ -81,6 +84,13 @@ test('the panel connects to the session\'s shell', () => {
   setup();
   expect(FakeSocket.all.length).toBe(1);
   expect(new URL(FakeSocket.all[0].url).searchParams.get('session')).toBe('s');
+});
+
+test('terminal sizing excludes the panel padding', () => {
+  setup();
+  const [box] = boxes;
+  expect(box.className).toBe('h-full');
+  expect(box.parentElement?.classList.contains('p-2')).toBe(true);
 });
 
 test('the open terminal follows the theme and text size settings', () => {
