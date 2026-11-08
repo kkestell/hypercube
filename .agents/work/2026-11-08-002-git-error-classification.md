@@ -1,7 +1,7 @@
 # Git error classification: implementation
 
 - Task ID: `2026-11-08-002-git-error-classification`
-- Status: implemented; awaiting independent work review.
+- Status: complete; independent review finding repaired locally as directed by user.
 - Plan (repository-relative):
   `.agents/plans/2026-11-08-002-git-error-classification.md`
 - Accepted plan blob: `6424f2dd339946ca4f58338405f208bc0c7f3861`.
@@ -15,13 +15,15 @@
 - Checkout: `/Users/kyle/src/hypercube/.hypercube/03a23830`;
   branch: `hypercube/session-03a23830`. Starting checkout was clean and exclusive.
 - Fixed Code base: `5ac099bae76ca484d3a0996d32811f7c82b13706`.
-- Code head: `28cbbe71fe7c0c855990a86868c5ec62d1463fb4`.
+- Final Code head: `63825069cbca83d9d8aa87c09c968330e71ec784`.
+- Independently reviewed Code head: `28cbbe71fe7c0c855990a86868c5ec62d1463fb4`.
 - Implementation commits: `28cbbe71fe7c0c855990a86868c5ec62d1463fb4`
-  (`X-Stage: work`). No hook changes or unrelated files.
+  (`X-Stage: work`), `63825069cbca83d9d8aa87c09c968330e71ec784`
+  (`X-Stage: fix`, coordinator-owned). No hook changes or unrelated files.
 - Author: implementation worker `git-errors-work`; native conversation
   `ses_e429faa09ffeXJi763YZQboz9a`; OpenCode / `openai/gpt-6.1-sol` /
   default effort.
-- Work-review path (pending, repository-relative):
+- Work-review path (repository-relative):
   `.agents/reviews/work/2026-11-08-002-git-error-classification.md`.
 
 ## Changes
@@ -51,9 +53,9 @@ push or delegation occurred.
 
 ## Verification and evidence
 
-All checks below were **run** on macOS/arm64 in the task checkout. `make check`
-tested the final implementation tree subsequently committed unchanged as Code
-head above. No implementation edits occurred after validation.
+The initial checks below were **run** on macOS/arm64 in the task checkout against
+the tree committed unchanged as `28cbbe71fe7c0c855990a86868c5ec62d1463fb4`.
+Final repair verification is recorded below.
 
 | Command | Result | Evidence |
 | --- | --- | --- |
@@ -82,6 +84,34 @@ absolute checkout (no directory change).
 | Plan | `03a23830` / `git-errors-plan` (child hex unavailable) | `ses_e42a503a4ffezrsVNqdzqGJDuM` |
 | Plan review | `03a23830` / `git-errors-plan-review` (child hex unavailable) | `ses_e42a1a009ffegDdoyRUt3YjfK4` |
 | Implementation | `03a23830` / `git-errors-work` (child hex unavailable) | `ses_e429faa09ffeXJi763YZQboz9a` |
+| Work review | `03a23830` / `git-errors-work-review` (child hex unavailable) | `ses_e429a0a6bffe7d28QZnWLRQd3i` |
 
-No implementation blockers. Independent work review remains pending; this log
-does not claim completion or self-review acceptance.
+## Coordinator repair and completion
+
+Independent review found R1: a symlink to a checkout subdirectory could hide the
+physical `.git` ancestor on Git failure. The original finding remains intact in
+the linked review. The user stopped further delegation; the coordinator repaired
+this small correction directly rather than initiating more handoff rounds.
+
+Repair `63825069cbca83d9d8aa87c09c968330e71ec784` resolves the physical directory
+only for `Root`'s failed-command metadata inspection. Successful discovery, saved
+input paths and the mention helper are unchanged. Existing workspace and session
+regression tables now cover symlinked subfolders and failure without insertion.
+
+**Run by coordinator:**
+- Before the fix, `go test ./internal/workspace ./internal/session -run
+  '^(TestRootFailures|TestAddWorkspaceFailureDoesNotSave)$' -count=1` reproduced
+  the false non-Git classification and unintended saved workspace insertion.
+- After the fix, `make check` passed against the unchanged final code tree:
+  393 browser tests, 28 desktop tests, builds/TypeScript/vet/gofmt and all Go race
+  tests, including both expanded regression tables. Existing React `act(...)`
+  warnings remained non-fatal. `git diff --check` passed.
+- Evidence: coordinator native conversation `ses_e42fd27dfffekQ56hXQYkGJZrg`,
+  foreground shell results for those exact commands after the user's stop on
+  further delegation. The repair was inspected and committed without code changes
+  after validation.
+
+R1 is resolved by the locally checked repair. The final repair was **not**
+independently re-reviewed; the original review is not relabeled as accepting it.
+This is a user-directed departure from xauto's mandatory re-review gate. No other
+findings or blockers remain. No merge, push, installation or GitHub issue closure.
