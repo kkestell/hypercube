@@ -1,6 +1,6 @@
 # OpenCode native steering
 
-Implemented `agents/plans/2026-11-07-012-opencode-native-steering.md`.
+Implemented `agents/plans/2026-11-07-005-opencode-native-steering.md`.
 
 - Replaced the ACP client and its busy-input queue with one owned native
   `opencode serve --stdio --port 0` process, authenticated HTTP requests, and

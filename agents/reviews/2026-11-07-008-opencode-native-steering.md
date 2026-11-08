@@ -9,7 +9,7 @@ the result; no findings remain open.
 ## Scope and assessment
 
 Reviewed the resulting OpenCode adapter and tests against
-`agents/plans/2026-11-07-012-opencode-native-steering.md`: input admission,
+`agents/plans/2026-11-07-005-opencode-native-steering.md`: input admission,
 native event decoding, execution state, questions and permissions, process
 ownership, configuration, transcript output, and preservation of normal behavior.
 
