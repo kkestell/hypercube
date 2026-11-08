@@ -1,124 +1,233 @@
-# Launch a separate holder through explicit paths
+# Holder executable
 
-## Goal and prerequisites
+## Goal
 
-Make `hold.Start` launch a supplied `hypercube-hold` executable, removing the
-requirement that its caller implement Hypercube's `hold` command. Agent and
-panel-shell launch use that path explicitly. Process tests run the real helper
-instead of making their own binaries act as the holder.
+`hold.Start` launches a holder by running `os.Executable()` with the argument
+`hold`. Any program that calls it must therefore also implement Hypercube's
+`hold` command. Five test packages meet that requirement by making their test
+binary act as the holder (`holdtest.Main`), and `internal/hold`'s own tests
+repeat the same dispatch.
+
+When this task is done:
+
+- `cmd/hypercube-hold` runs `hold.Main`.
+- `hold.Start` takes the holder executable as its first argument and runs it.
+- The backend command finds `hypercube-hold` beside its real executable and
+  passes it through `session.Programs` to agent launches and panel shells.
+- Tests build the real `hypercube-hold` once per test binary and pass its
+  path; no test binary acts as a holder.
+- `hypercube hold` still calls `hold.Main`, for backends of earlier versions
+  that launch holders while their bundle is being replaced.
 
 Prerequisite: [MCP bridge executable](2026-11-07-008-mcp-bridge-executable.md),
-which introduces canonical sibling resolution and `session.Programs` after
-the configuration/protocol extractions. This plan completes review findings
-F1 and F6. Normal build recipes and bundles remain incomplete until
-[runtime integration](2026-11-07-011-runtime-integration.md); this source task
-builds the helper directly for tests and does not add shipping fallbacks.
+which added `session.Programs` and `cmd/hypercube/programs.go`. Addresses
+review findings F1 and F6. Bundles and development builds gain
+`hypercube-hold` in [runtime integration](2026-11-07-011-runtime-integration.md).
 
 ## Related code
 
-- `internal/hold/hold.go:Start` creates/locks holder files, creates the Unix
-  listener, and invokes its caller's executable with `hold` and descriptors
-  3/4. `holder.go:Main` owns the child; `output.go` owns retained-output reads.
-- `internal/harnessclient` launches plugins under holders and attaches to
-  existing ones. `internal/session/launch.go` calls that client.
-- `internal/terminal/terminal.go:Set.Open` adopts a live shell or starts a
-  terminal holder. `Set.Adopt` only attaches.
-- `internal/hold/holdtest/holdtest.go` dispatches the test binary as holder.
-  Command, session, terminal, backend MCP, and browser suites call it from
-  `TestMain`. Hold's own `TestMain` duplicates that dispatch and also has an
-  intentional launcher-parent survival mode.
-- `cmd/hypercube/main.go` still dispatches `hold.Main`; the MCP plan's command
-  location code already resolves canonical sibling programs.
+- `internal/hold/hold.go:54` — `Start(dir, argv, env, cwd, size)`: checks the
+  socket path length, creates and locks `lock`, listens on `in`, then runs
+  `os.Executable()` with `hold [-terminal -cols N -rows N] <dir> <argv...>`,
+  passing the lock and listener as files 3 and 4, with `Setsid`. On a start
+  failure it removes `in`.
+- `internal/hold/holder.go:24` — `Main(args)`: flag set named `hold`, usage
+  `usage: hypercube hold [-terminal -cols N -rows N] <dir> <command>
+  [args...]`.
+- `internal/hold/holdtest/holdtest.go` — `Main(m)`: runs `hold.Main` when the
+  test binary is started as `hold`; otherwise sets
+  `GORACE=atexit_sleep_ms=0` (so race-enabled holders exit at once) and runs
+  the tests. Called from the `TestMain` of `cmd/hypercube`, `internal/mcp`,
+  `internal/session`, `internal/terminal`, and `internal/ui`.
+- `internal/hold/testmain_test.go` — a `parent` mode that calls `Start` and
+  sleeps (for `TestSurvivesKilledParent`), its own `hold` dispatch, and the
+  same `GORACE` setting.
+- `internal/hold/hold_test.go` — `start` helper (line 28), `TestLongSocketPathRefused`,
+  `TestSurvivesKilledParent` (line 262, runs the test binary as `parent`).
+- `internal/harnessclient/client.go` — `Launch(dir, plugin)` calls
+  `hold.Start(dir, []string{plugin, "serve"}, os.Environ(), "", nil)`;
+  `Attach(dir)` calls `hold.Open`.
+- `internal/session/launch.go:138` — `harnessclient.Launch(dir, path)`.
+- `internal/session/runtime.go` — `New` builds `Terminals:
+  terminal.Set{Dir: filepath.Join(store.Dir(), "run")}`.
+- `internal/terminal/terminal.go` — `Set{Command, Dir}`; `Open` adopts a live
+  shell or calls `hold.Start` (line 68) for a new one; `Adopt` only attaches.
+- `internal/session/restart_test.go:230` — starts an orphan holder directly
+  with `hold.Start`.
+- `internal/terminal/terminal_test.go:22,82` — build `Set{Dir, Command}`.
+- `cmd/hypercube/main.go` — `case ... "hold": err = hold.Main(os.Args[2:])`.
+- `cmd/hypercube/programs.go` — `programs()` from the MCP plan.
+- `cmd/hypercube/integration_test.go` `TestAppProcess` — builds `hypercube`
+  and `hypercube-mcp` into the plugin directory.
 
 ## Decisions
 
-Add `cmd/hypercube-hold` as a narrow caller of `hold.Main`, passing its
-arguments and reporting errors under its own program name. Keep holder
-client and implementation in the same package: their shared on-disk protocol
-is small and coherent. Preserve the existing file split by concern instead
-of adding client/server/wire packages.
+### The command and `Start`
 
-Change `hold.Start` to take a helper executable path first, followed by its
-holder state directory, child argv, environment, working directory, and
-optional terminal size. Execute the helper directly without prepending `hold`.
-Add `Holder` to `session.Programs`, set it from the canonical sibling directory,
-pass it through `harnessclient.Launch`, and configure `terminal.Set.Holder`
-from the same value. Update every constructor and fixture that can start a holder.
-No library finds Hypercube-owned helpers through its executable or `PATH`.
-A missing helper produces a contextual launch error without fallback.
+`cmd/hypercube-hold/main.go`:
 
-`hold.Open`, `harnessclient.Attach`, and `terminal.Set.Adopt` need no helper
-path. `Set.Open` does need it when no live holder can be adopted. Keep those
-responsibilities clear rather than making attachment depend on executable
-availability.
+```go
+// Command hypercube-hold runs one child process independently of the
+// Hypercube backend. It owns the child's input socket, retained output, and
+// exit record in a holder directory; internal/hold's Start runs it.
+package main
 
-Keep `hypercube hold` calling `hold.Main` as it does today. Old backends can
-invoke that command during binary replacement before they restart. Direct
-dispatch preserves their arguments and inherited files without another helper
-lookup or descriptor-forwarding path. The backend already depends on `hold`
-to launch and reattach holders; retaining this call adds no new package
-dependency. New launches use the separate helper through `hold.Start`.
-Keep installer ordering, existing replacement gaps, and the extracted MCP
-command unchanged.
+func main() {
+	if err := hold.Main(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "hypercube-hold:", err)
+		os.Exit(1)
+	}
+}
+```
 
-Do not alter holder layout, socket length limit, process groups, environment,
-working directory, terminals, output offsets/retention, exit-record ordering,
-or stop semantics. Existing holders and shells remain adoptable without
-migration or forced restart. Preserve SIGTERM detachment, SIGINT deliberate
-termination, and desktop disconnection behavior. No new supervision,
-durability, version negotiation, or delivery guarantees belong here.
+`hold.Main`'s flag set is named `hypercube-hold` and its usage error reads
+`usage: hypercube-hold [-terminal -cols N -rows N] <dir> <command> [args...]`.
+
+```go
+// Start runs holder, the hypercube-hold executable, detached, to start argv
+// with the environment and working directory in the holder directory dir.
+// size starts it on a terminal of that size.
+func Start(holder, dir string, argv []string, env []string, cwd string, size *Size) (*Holder, error)
+```
+
+The arguments become `[-terminal -cols N -rows N] <dir> <argv...>`, without
+`hold`. Nothing else in `Start` changes: the socket length check, lock,
+listener, inherited files 3 and 4, `Setsid`, environment, and removal of `in`
+when the holder cannot start. A missing executable fails with the
+`exec` error, which reaches the session's transcript as "Could not start the
+agent: ..." as other start failures do.
+
+`hypercube hold` keeps calling `hold.Main`. During `make install-service`
+on macOS and during `scripts/dev` rebuilds, the new executable replaces the
+old one before the old backend stops, and an agent or shell launched in that
+window runs the new `hypercube` with `hold`. The usage string in
+`cmd/hypercube/main.go` is unchanged; the package comment says `hypercube
+hold` serves backends of earlier versions.
+
+### Passing the holder
+
+```go
+// Programs are the executables a runtime starts. Plugins is the directory of
+// harness plugins. MCP is the MCP bridge that each agent's harness runs.
+// Holder is hypercube-hold, which runs agents' plugins and panel shells.
+type Programs struct {
+	Plugins string
+	MCP     string
+	Holder  string
+}
+```
+
+- `programs()` sets `Holder: filepath.Join(dir, "hypercube-hold")`.
+- `session.New` builds `Terminals: terminal.Set{Dir: ..., Holder:
+  programs.Holder}`.
+- `harnessclient.Launch(holder, dir, plugin string)`; `run` in
+  `launch.go` passes `r.programs.Holder`.
+- `terminal.Set` gains `Holder string` ("the hypercube-hold executable that
+  runs new shells"); `Open` passes it to `hold.Start`.
+- `hold.Open`, `harnessclient.Attach`, and `Set.Adopt` attach to running
+  holders and take no executable.
+
+### Test holder
+
+`internal/hold/holdtest` builds the real command. It imports no Hypercube
+package, so `internal/hold`'s own tests can use it.
+
+```go
+// Package holdtest builds hypercube-hold for tests that start holders.
+package holdtest
+
+// Path is the hypercube-hold executable that Main built.
+var Path string
+
+// Main builds hypercube-hold into a temporary directory, runs the tests, and
+// removes the directory. A race-enabled test binary gets a race-enabled
+// holder. Call it from TestMain.
+func Main(m *testing.M)
+```
+
+`Main` runs `go build -o <tmp>/hypercube-hold [-race]
+github.com/kkestell/hypercube/cmd/hypercube-hold`, printing the build output
+and exiting 1 on failure. `-race` comes from a constant in two files:
+
+```go
+// race_on.go
+//go:build race
+
+package holdtest
+
+const race = true
+```
+
+```go
+// race_off.go
+//go:build !race
+
+package holdtest
+
+const race = false
+```
+
+`Main` keeps setting `GORACE=atexit_sleep_ms=0` before `m.Run()`, with its
+existing comment, so each race-enabled holder exits at once.
+
+`internal/hold/testmain_test.go` keeps the `parent` mode, which now receives
+the holder path as an argument (`<test binary> parent <holder> <dir>`), drops
+its own `hold` dispatch and `GORACE` line, and ends with `holdtest.Main(m)`.
+
+`cmd/hypercube/testmain_test.go` is deleted: `TestAppProcess`'s backend
+starts holders from its own sibling executable, and nothing else in the
+package starts one.
+
+## Test plan
+
+- `internal/hold`: every test runs against `holdtest.Path` — line output and
+  reattachment, segments and discard, exit status and stderr, output write
+  failure, closed and lost holders, partial input lines, the long socket
+  path, stop, terminal resize, hangup, and retention.
+  `TestSurvivesKilledParent` passes the path to the `parent` process.
+- New `TestStartWithoutHolder`: `Start` with a holder path that does not
+  exist returns an error and leaves no `in` socket.
+- `internal/terminal` tests pass with `Set.Holder` set; adopting an existing
+  shell after a restart still works.
+- `internal/session` (including the orphan in `restart_test.go`),
+  `internal/mcp`, and `internal/ui` tests pass with `Holder: holdtest.Path`.
+- `TestAppProcess` builds the three executables with
+  `go build -o <plugins>/ . ../hypercube-mcp ../hypercube-hold` and passes
+  unchanged: agents and the panel shell keep their PIDs and transcript over
+  SIGTERM and SIGKILL restarts and end on SIGINT. Before the first restart,
+  add one check that the holders are `hypercube-hold`: for each `pid` file
+  under `<dir>/state/hypercube/run/*/`, `ps -p <pid> -o command=` starts with
+  `<plugins>/hypercube-hold`.
+- `go test -race ./internal/hold/...` passes and its holders exit without the
+  one-second race-detector delay (the suite takes about as long as before).
+- `go list -deps ./cmd/hypercube-hold | grep kkestell/hypercube` lists only
+  `cmd/hypercube-hold` and `internal/hold`.
+- `grep -rn 'os.Executable' --include='*.go' internal plugins` finds only
+  tests.
 
 ## Implementation plan
 
-1. Add the narrow command and change `hold.Start` to explicit helper launch.
-   Update helper usage text and errors to the actual executable. Reuse the
-   command's sibling discovery for production `Programs.Holder`. Retain the
-   existing backend `hold.Main` dispatch for legacy callers.
-2. Wire `Holder` through session launch, `harnessclient`, and terminal setup.
-   Update all direct `hold.Start`, `terminal.Set`, runtime, and backend
-   constructor callers. Preserve existing adoption paths and lifecycle code.
-3. Replace `holdtest`'s dispatcher with test-only construction of the real
-   helper once per test process. The builder must not import `hold`, allowing
-   hold's own tests to use it without a cycle. Return/provide its explicit path
-   to fixtures and remove its temporary executable directory when the suite
-   ends. Avoid per-test compilation and production environment overrides.
-4. Use two small files selected by `//go:build race` and `//go:build !race` to
-   choose whether the test helper's `go build` passes `-race`. Ordinary focused
-   tests should not gain an extra C-toolchain requirement. Preserve inherited
-   `GORACE=atexit_sleep_ms=0` before launching race-enabled test holders so
-   every subprocess exit does not add a second.
-5. Wire real-helper setup into every affected suite in this task and delete
-   their fake holder dispatch. Retain hold's intentional `parent` test mode,
-   passing the already built helper path to that launcher subprocess rather
-   than recompiling or redispatching holder behavior. Keep the native plugin
-   stand-in protocol; it is a distinct, useful test seam.
-6. Update existing command process integration to build the holder beside its
-   backend/MCP executables directly. Remove replaced test dispatch machinery,
-   stale self-exec comments, and unused imports as part of this source task
-   rather than deferring them as general cleanup.
+1. Add `cmd/hypercube-hold/main.go`. Change `hold.Start` to take `holder`
+   and drop the `hold` argument; update `Main`'s flag set name and usage.
+2. Rewrite `internal/hold/holdtest` as above with `race_on.go` and
+   `race_off.go`. Update `internal/hold/testmain_test.go` and `hold_test.go`
+   (`start`, `TestLongSocketPathRefused`, `TestSurvivesKilledParent`) and add
+   `TestStartWithoutHolder`.
+3. Add `Programs.Holder` and set it in `programs()`. Pass it to
+   `terminal.Set` in `session.New` and to `harnessclient.Launch` in `run`.
+4. Add `terminal.Set.Holder` and use it in `Open`. Update
+   `terminal_test.go`.
+5. Update the runtime fixtures to pass `Holder: holdtest.Path`:
+   `internal/session/fixture_test.go` `newRuntime`, `restart_test.go:230`,
+   `internal/mcp/mcp_test.go` `family`, `internal/ui/ui_test.go` `handler`
+   and line 277, and `internal/ui/terminal_test.go:39`.
+6. Delete `cmd/hypercube/testmain_test.go`, update `TestAppProcess`, and
+   update `cmd/hypercube/main.go`'s package comment.
+7. Update the documentation and run `make check`.
 
-## Acceptance and verification
+## Documentation updates
 
-- Existing holder tests run the real helper and preserve observable pipe and
-  terminal I/O, positions, reattachment, retention/discard, final output/exit,
-  process groups, stop/lost-holder behavior, and launcher-parent survival.
-  A nonexistent helper path fails clearly instead of starting the caller.
-- Terminal and session tests cover new helper launch and existing-holder
-  adoption. Adoption itself must not invoke a helper. Backend process tests
-  retain agent and panel-shell PIDs, transcript, and continued input over
-  SIGTERM/restart and terminate them on SIGINT.
-- Inspect dependencies: `cmd/hypercube-hold` has no local package except
-  `internal/hold`. Both holder command entry points call `hold.Main`;
-  only new launch paths need the separate executable.
-  Remaining `os.Executable()` uses for Hypercube program paths belong to
-  command composition or intentional test orchestration, not libraries.
-- Run focused holder, terminal, session, and command process tests, including
-  a race-enabled run that uses the matching helper. Run `make check` before
-  a code commit. Record results/omissions in the work log and stage for fresh
-  code review. Packaging, signing, development cleanup, Linux installs, and
-  screenshot runtime construction are verified once in the final integration
-  plan; they are not source-test prerequisites here.
-
-Current operational documentation is updated with the final integration task.
-
-Next plan: [Backend composition](2026-11-07-010-backend-composition.md).
+- `agents/development.md`, Code: list `cmd/hypercube-hold/` — the holder that
+  runs agents' plugins and panel shells.
+- The architecture, glossary, and restart guidance that name `hypercube hold`
+  are updated in [runtime integration](2026-11-07-011-runtime-integration.md).

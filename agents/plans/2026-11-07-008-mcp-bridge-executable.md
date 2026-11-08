@@ -1,158 +1,366 @@
-# Extract the MCP bridge and its executable contract
+# MCP bridge executable
 
-## Goal and prerequisites
+## Goal
 
-Give stdio-to-HTTP MCP forwarding its own package and `hypercube-mcp`
-executable. Backend tool registration stays in `internal/mcp`. New plugin
-starts receive the actual MCP executable path, while old recorded starts and
-already running native harnesses keep working through narrow compatibility
-paths.
+Each agent's harness runs `hypercube mcp`, a stdio MCP server that forwards
+requests to the backend's `/mcp` route. Two problems follow from how that is
+built today:
+
+- The forwarding code lives in `internal/mcp` beside the backend's tool
+  handlers, so the bridge imports `session` and `store` and, through them,
+  SQLite, workspaces, terminals, and holders.
+- The backend sends plugins its own executable path (`StartArgs.Hypercube`),
+  found with `os.Executable()` inside `session`, and every plugin appends
+  `mcp`. Plugins depend on the backend's command line, and a library finds a
+  program by asking which program it is running in.
+
+When this task is done:
+
+- `internal/mcpbridge` forwards stdio to HTTP and imports no Hypercube
+  package. `cmd/hypercube-mcp` runs it.
+- `internal/mcp` holds the tools and the `/mcp` handler.
+- The backend command finds its plugins and `hypercube-mcp` beside its real
+  executable and passes them to `session.New` as `session.Programs`.
+- New start commands carry `StartArgs.MCP`, the bridge's path. Plugins build
+  the harness's MCP configuration through one shared function that also
+  accepts starts saved by earlier versions.
+- `hypercube mcp` still works, calling the same bridge code, for native
+  harnesses that were configured with it before an upgrade.
 
 Prerequisites: [application configuration](2026-11-07-006-application-config.md)
 and [harness protocol boundary](2026-11-07-007-harness-protocol-boundary.md).
-This source change addresses review findings F2 and F3 and supplies explicit
-program configuration for the holder change. Packaging and development
-recipes are owned by [runtime integration](2026-11-07-011-runtime-integration.md);
-intermediate bundles do not yet contain the helper. Build needed executables
-directly in test fixtures without adding a production fallback.
+Addresses review findings F2 and F3. Building `hypercube-mcp` into bundles
+and development builds is part of
+[runtime integration](2026-11-07-011-runtime-integration.md); until then,
+tests build it themselves.
 
 ## Related code
 
-- `internal/mcp/mcp.go` mixes `Bridge`, identity-header transport/retry, and
-  environment lookup with database-backed tool registration and `Handler`.
-  `mcp_test.go` mixes bridge coverage and tool clients using that transport.
-- `cmd/hypercube/main.go` dispatches `mcp` and starts the backend.
-- `internal/harness/protocol.go:StartArgs` sends `Hypercube` and `Env`.
-  `internal/session/launch.go:startArgs` derives that path from its caller's
-  executable. `commands.go` persists and replays complete command lines.
-- `internal/session/runtime.go` exposes mutable `PluginDir`; discovery in
-  `internal/harnessclient` still derives a default directory.
-- All four native plugins build MCP settings in their launch/configuration
-  code. `plugins/scripted/main.go:createSessions` independently executes
-  `start.Hypercube` with `mcp`; it must use the same command selection.
-- `cmd/hypercube/integration_test.go`, session fixtures, backend MCP tests,
-  and UI fixtures construct runtimes and plugin directories.
+- `internal/mcp/mcp.go`:
+  - `newServer`, `Handler`, `listSessions`, `sendMessage` — tools; stay.
+  - `SessionHeader` — the `X-Hypercube-Session` header `Handler` reads; stays.
+  - `Bridge(stdin, stdout)` — reads `HYPERCUBE_SESSION_ID` and
+    `HYPERCUBE_URL`, connects an `mcp.StreamableClientTransport` to
+    `<url>/mcp` and an `mcp.IOTransport` to stdio, and forwards one request
+    at a time; a failed write of a call answers that call with a JSON-RPC
+    internal error.
+  - `identity` — a `RoundTripper` that sets `SessionHeader` and retries a
+    refused connection every 250 ms for 30 s, so a bridge survives a backend
+    restart.
+  - `nopCloser`.
+- `internal/mcp/mcp_test.go`:
+  - `connect` (line 92) uses `identity(id)` as the test client's transport.
+  - `TestBridge` (213) and `TestBridgeWaitsForRestartingApp` (580) run
+    `Bridge` against the real tools.
+  - `family` (30) returns `session.New(db, "")`; `started` (284) sets
+    `rt.PluginDir` to a directory with stand-ins `one` and `two`.
+- `cmd/hypercube/main.go` — `case ... "mcp": err = mcp.Bridge(os.Stdin,
+  os.Stdout)`; `startApp(listener, plugins string, desktop)` sets
+  `rt.PluginDir = plugins`; `serveUI` passes `""`.
+- `internal/session/runtime.go` — exported `PluginDir` ("Empty means beside
+  the running executable"), `New(db, url)`.
+- `internal/session/launch.go:209,217-231` — `pluginPath` and `startArgs`,
+  which calls `os.Executable()` and sets `StartArgs.Hypercube`.
+- `internal/session/sessions.go:64`, `selection.go:16,41` — pass
+  `r.PluginDir` to `harnessclient`.
+- `internal/harnessclient/discovery.go` — `pluginDir` falls back to
+  `os.Executable()` when the directory is empty.
+- `internal/harness/protocol.go:73-76` — `StartArgs.Hypercube` (`json:"hypercube"`)
+  and `Env`.
+- `internal/session/commands.go` — saves each command's complete JSON line and
+  resends unanswered lines when it reattaches. Starts saved before this
+  change contain `"hypercube"`.
+- Plugins that build the MCP command:
+  - `plugins/claude/main.go:71` — `--mcp-config` JSON:
+    `{"command": a.Hypercube, "args": ["mcp"], "env": a.Env}`.
+  - `plugins/codex/main.go:158` — `mcp_servers.hypercube` in thread config,
+    same shape plus `default_tools_approval_mode`.
+  - `plugins/opencode/main.go:89` — `"command": [a.Hypercube, "mcp"]`,
+    `"environment": a.Env`.
+  - `plugins/pi/main.go:112` — `HYPERCUBE_MCP` JSON, same shape as Claude
+    plus `"exposure": "direct"`.
+  - `plugins/scripted/main.go:276` — `exec.Command(start.Hypercube, "mcp")`
+    in `createSessions`.
+- Plugin tests with `Hypercube:` start arguments and expected configuration:
+  `plugins/claude/main_test.go:616`, `plugins/codex/main_test.go:1166,1179`,
+  `plugins/pi/main_test.go:691,742`, `plugins/opencode/native_test.go:135`.
+- `internal/harness/harnesstest/harnesstest.go:80,282` — the stand-in logs
+  each start as an `Entry`.
+- Runtime fixtures: `internal/session/fixture_test.go:72`
+  (`newRuntime`), `internal/ui/ui_test.go:56,277`,
+  `internal/ui/terminal_test.go:39`, `internal/mcp/mcp_test.go:56,290`,
+  `cmd/hypercube/integration_test.go:244`.
+- `cmd/hypercube/integration_test.go` `TestAppProcess` — builds the backend
+  into the plugin directory with `go build -o <plugins>/hypercube .`, starts
+  it directly, and calls tools through `hypercube mcp`.
 
 ## Decisions
 
-`internal/mcpbridge.Run(ctx, baseURL, sessionID, stdin, stdout)` owns forwarding
-and the existing connection-refused retry policy. It imports the MCP SDK and
-standard library, with no local backend-package dependencies. Add
-`mcpbridge.Main(stdin, stdout)` to read `HYPERCUBE_URL` and
-`HYPERCUBE_SESSION_ID`, reject missing values, and call `Run` with a background
-context. Both `cmd/hypercube-mcp` and the existing `hypercube mcp` command call
-this shared entry function and report errors under their own program names.
-Environment handling has one implementation. No bridge entry opens SQLite or
-discovers backend state.
+### `internal/mcpbridge`
 
-Keep `internal/mcp` as the backend tools and HTTP adapter. Use the stable
-`X-Hypercube-Session` header literal at both ends and document that wire
-contract. Do not create a shared package for one constant. Backend tool test
-clients add the header themselves and do not import the bridge for its
-retrying transport.
+`internal/mcpbridge/bridge.go`:
 
-Introduce `session.Programs{PluginDir, MCP string}` as concrete construction
-data. Pass it to `session.New`, store it privately, remove mutable
-`Runtime.PluginDir`, and adapt the existing private `startApp` constructor.
-At the backend command boundary, get `os.Executable()`, resolve symlinks with
-`filepath.EvalSymlinks`, and use its real parent directory for plugins and
-`hypercube-mcp`. Keep this small location code in a focused command file;
-do not introduce `internal/backend` or a helper registry. Discovery now
-requires its explicit directory and loses its executable fallback. The
-native harness CLIs still use the user's `PATH` as before.
+```go
+// Package mcpbridge is the stdio MCP server each agent's harness runs. It
+// forwards every message to the Hypercube backend's /mcp route with the
+// agent's session ID and writes the backend's answers back. The SDK has no
+// stdio-to-HTTP forwarder, so Run moves messages between the SDK's stdio and
+// streamable HTTP transports itself, one request at a time.
+package mcpbridge
 
-The next plan covers the holder path and launch signatures. Holder launch
-still uses `os.Executable()` plus `hold`, production still dispatches
-`hold.Main`, and existing test-binary holder dispatch remains necessary until
-the next plan. This plan does not claim to remove those dependencies.
+// sessionHeader names the session a request comes from. The backend's /mcp
+// handler (internal/mcp.SessionHeader) reads the same header.
+const sessionHeader = "X-Hypercube-Session"
 
-## Persisted and live-process compatibility
+// Main runs the bridge for the session in HYPERCUBE_SESSION_ID against the
+// backend at HYPERCUBE_URL until stdin closes.
+func Main(stdin io.Reader, stdout io.Writer) error
 
-Add plain `StartArgs.MCP string` with JSON name `mcp`. New commands contain the
-absolute helper path and current MCP environment; they omit `Hypercube`.
-Retain `StartArgs.Hypercube` with `omitempty` solely for old saved starts.
-Do not change recorded command bytes, IDs, replay order, or acceptance/deletion.
-A new plugin can receive an old saved start when a missing launch directory
-forces current plugin code to run; an old surviving plugin must still receive
-its original line.
+// Run forwards MCP messages from stdin to the backend at url for session
+// until stdin closes or ctx ends.
+func Run(ctx context.Context, url, session string, stdin io.Reader, stdout io.Writer) error
+```
 
-Add one shared `plugins/internal/plugin.MCPCommand` adapter. Prefer nonempty
-`MCP`, returning that executable with no arguments; otherwise return the old
-`Hypercube` plus `mcp` command. Return a clear error when neither is usable.
-Keep this argv construction inside plugin helpers rather than broadening the
-new wire contract into a command vector. Each native integration renders the
-result into its existing configuration format and preserves `Env`.
+`Main` returns the existing error, `HYPERCUBE_SESSION_ID and HYPERCUBE_URL
+must be set`, when either is empty, and otherwise calls
+`Run(context.Background(), ...)`. `Run` is the body of today's `Bridge` after
+the environment lookup. `identity` and `nopCloser` move unchanged, with
+`identity` setting `sessionHeader`. The package imports the standard library
+and `github.com/modelcontextprotocol/go-sdk`.
 
-Have `hypercube mcp` call the shared bridge entry function directly. Already
-running native harnesses can start their saved command after binary
-replacement without another executable lookup. The backend already includes
-the MCP SDK through its tool handler; importing the small bridge package is
-appropriate for this compatibility path. New launches use the separate helper.
-No exec forwarding or duplicate transport implementation is needed.
+`internal/mcp` keeps `SessionHeader`, `Handler`, and the tools. Its package
+comment becomes:
 
-No database or native-settings migration is needed: native launch/resume
-already supplies MCP configuration every time. Keep global and project
-settings, credentials, and `HOME` unchanged.
+```go
+// Package mcp serves the Hypercube tools to agents at the backend's /mcp
+// route. Each agent's harness runs hypercube-mcp (internal/mcpbridge), which
+// forwards requests here with the session ID in SessionHeader. The tools run
+// in the backend, beside the browser's actions.
+```
+
+### The two commands
+
+`cmd/hypercube-mcp/main.go`:
+
+```go
+// Command hypercube-mcp is the stdio MCP server each agent's harness runs. It
+// forwards requests to the Hypercube backend at HYPERCUBE_URL for the session
+// in HYPERCUBE_SESSION_ID.
+package main
+
+func main() {
+	err := errors.New("usage: hypercube-mcp")
+	if len(os.Args) == 1 {
+		err = mcpbridge.Main(os.Stdin, os.Stdout)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "hypercube-mcp:", err)
+		os.Exit(1)
+	}
+}
+```
+
+`cmd/hypercube/main.go` keeps `hypercube mcp`, now calling
+`mcpbridge.Main(os.Stdin, os.Stdout)`. Native harnesses started before an
+upgrade have `<hypercube> mcp` in their configuration and may start it again
+after the bundle is replaced, so the command stays, with the same code as
+the new executable. The usage line is unchanged.
+
+### Programs
+
+`internal/session/runtime.go`:
+
+```go
+// Programs are the executables a runtime starts. Plugins is the directory of
+// harness plugins. MCP is the MCP bridge that each agent's harness runs.
+type Programs struct {
+	Plugins string
+	MCP     string
+}
+
+// New returns a runtime for the database. url is where agents reach the
+// backend.
+func New(db *store.DB, url string, programs Programs) *Runtime
+```
+
+`Runtime` stores it in a private `programs` field and the exported
+`PluginDir` field is removed. `pluginPath`, `sessions.go`, and
+`selection.go` pass `r.programs.Plugins`. `harnessclient.Plugins` and
+`harnessclient.Find` use the directory they are given; `pluginDir` and its
+`os.Executable()` fallback are deleted, along with "or beside the running
+executable when dir is empty" in their comments.
+
+The backend command finds the programs once, in a new file
+`cmd/hypercube/programs.go`:
+
+```go
+// programs returns the plugins and helpers beside the real hypercube
+// executable. bin/hypercube and installed CLI links are symlinks into the
+// bundle, so the path is resolved first.
+func programs() (session.Programs, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return session.Programs{}, err
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return session.Programs{}, err
+	}
+	dir := filepath.Dir(exe)
+	return session.Programs{Plugins: dir, MCP: filepath.Join(dir, "hypercube-mcp")}, nil
+}
+```
+
+`startApp(listener net.Listener, programs session.Programs, desktop
+*desktop.Desktop)` passes them to `session.New`; its comment drops "or
+beside the executable when it is empty". `serveUI` calls `programs()` and
+returns its error.
+
+Today plugins are found through `os.Stat`, which follows the plugin links
+`make build` puts in `bin/`. After this change the backend reads the bundle
+directory itself, where the plugins are regular files. Native harness CLIs
+are still found on the user's `PATH` by the plugins.
+
+### Start arguments
+
+`internal/harness/protocol.go`:
+
+```go
+type StartArgs struct {
+	// MCP is the MCP bridge executable the harness runs, with Env, to give
+	// the agent its Hypercube tools.
+	MCP string `json:"mcp,omitempty"`
+	// Hypercube is set instead of MCP in starts saved by earlier versions:
+	// the backend executable, which the harness ran with the argument mcp.
+	Hypercube string `json:"hypercube,omitempty"`
+	// Env is the environment for the MCP bridge.
+	Env map[string]string `json:"env"`
+	...
+}
+```
+
+`startArgs` sets `MCP: r.programs.MCP` and no longer calls `os.Executable()`.
+Saved command lines are resent byte for byte, so a start saved before the
+upgrade still names `hypercube`. A plugin reads such a start when the backend
+relaunches a session whose launch directory is gone.
+
+`plugins/internal/plugin/plugin.go`:
+
+```go
+// MCPCommand returns the executable and arguments a harness runs for the
+// Hypercube MCP server: the bridge, or for a start saved by an earlier
+// version, the backend's mcp command.
+func MCPCommand(a harness.StartArgs) (string, []string, error) {
+	switch {
+	case a.MCP != "":
+		return a.MCP, []string{}, nil
+	case a.Hypercube != "":
+		return a.Hypercube, []string{"mcp"}, nil
+	}
+	return "", nil, errors.New("the start names no MCP server")
+}
+```
+
+The arguments are an empty slice, not nil, so the JSON configurations write
+`"args": []`. Each plugin calls `MCPCommand` at the place listed in Related
+code and returns its error from the start:
+
+- Claude, Codex, Pi: `"command": command, "args": args`.
+- OpenCode: `"command": append([]string{command}, args...)`.
+- Scripted: `exec.Command(command, args...)`.
+
+`Env` is used exactly as today.
+
+## Test plan
+
+- `internal/mcpbridge/bridge_test.go` runs against its own MCP backend, an
+  `httptest.Server` with `mcp.NewStreamableHTTPHandler` (stateless, JSON
+  responses) serving one tool, `whoami`, which answers with the request's
+  `X-Hypercube-Session` header, and answering 403 for any session other than
+  `s`:
+  - `TestRun` — the existing script (initialize, `notifications/initialized`,
+    a `tools/call` of `whoami`, `no/such`) through `Run` for session `s`
+    produces three answers with IDs 1, 2, and 3; the call answers `s`; the
+    unknown method answers an error.
+  - `TestRunAnswersEachRequestWhenRefused` — session `nobody` and the URL
+    `:invalid` each produce an error answer for every call, with the call's
+    ID, as `TestBridge` checks today.
+  - `TestRunWaitsForRestartingBackend` — moved from
+    `TestBridgeWaitsForRestartingApp`: the backend's port opens 300 ms after
+    `Run` starts and the call is answered.
+  - `TestMainNeedsEnvironment` — `Main` with `HYPERCUBE_URL` empty fails.
+- `internal/mcp` tool tests pass with `connect` using a test-local transport
+  that sets `SessionHeader`, with `TestBridge` and
+  `TestBridgeWaitsForRestartingApp` removed.
+- `plugins/internal/plugin` `TestMCPCommand` — `MCP` set returns it with `[]`
+  even when `Hypercube` is also set; only `Hypercube` returns it with
+  `["mcp"]`; neither returns an error.
+- Plugin start tests use `MCP: "/bin/hc-mcp"` and expect
+  `"args":[],"command":"/bin/hc-mcp"` (Codex, Pi), the same values in
+  Claude's `--mcp-config`, and the wrapper script as OpenCode's `MCP`. One
+  Claude case keeps `Hypercube: "/bin/hc"` and expects `"args":["mcp"]`.
+- The stand-in logs `MCP` with each start (`Entry.MCP`, `json:"mcp,omitempty"`).
+  A session test checks that a start from a runtime built with
+  `Programs{MCP: "/x/hypercube-mcp"}` logs that path.
+- `TestAppProcess`:
+  - Builds both executables into the plugin directory:
+    `go build -o <plugins>/ . ../hypercube-mcp`.
+  - Starts the backend through a symlink in another directory,
+    `<dir>/bin/hypercube -> <plugins>/hypercube`. Creating the parent session
+    shows the backend found the `test` plugin beside its real executable.
+  - Checks that the parent's logged start has `MCP` equal to
+    `<plugins>/hypercube-mcp`.
+  - Calls `create_session` through `hypercube-mcp` (as it does today through
+    `hypercube mcp`) and `list_sessions` through `hypercube mcp`, which lists
+    `w1`.
+- `go list -deps ./cmd/hypercube-mcp | grep kkestell/hypercube` lists only
+  `cmd/hypercube-mcp` and `internal/mcpbridge`.
+- `grep -rn 'os.Executable' --include='*.go' internal plugins` finds only
+  `internal/hold/hold.go` (removed by the holder plan) and tests.
 
 ## Implementation plan
 
-1. Move forwarding/retry into `internal/mcpbridge` and move bridge tests to an
-   independent HTTP MCP fixture without backend, store, or session imports.
-   Keep tool schemas, scopes, and handlers in `mcp`; remove the old bridge
-   implementation and adjust tool test clients.
-2. Add `cmd/hypercube-mcp`, canonical sibling discovery in `cmd/hypercube`,
-   and the shared environment-reading entry function. Route both MCP command
-   entry points through it. Direct test builds provide helpers until the final
-   build-integration task.
-3. Add explicit `Programs` construction and update every runtime/`startApp`
-   caller and fixture. Remove library executable discovery for plugin paths
-   and MCP starts. Tests that invoke callbacks build the real helper in their
-   existing process-fixture setup; tests whose stand-ins never execute MCP
-   still supply an explicit fixture path rather than relying on production
-   discovery or overrides.
-4. Add the `MCP` field and shared command adapter. Update Claude Code, Codex,
-   OpenCode, and Pi native configuration builders and their stand-in tests.
-   Update scripted `createSessions` to use the shared adapter and existing
-   environment, despite its separate serve loop. Inspect all fixtures that
-   construct `StartArgs`; retain deliberate legacy inputs.
-5. Add narrow compatibility and callback regressions at the existing source
-   test boundaries. Remove obsolete imports/comments and old forwarding
-   aliases. Keep the runtime's transactions and restart behavior unchanged.
+1. Create `internal/mcpbridge/bridge.go` with `Main`, `Run`, `identity`,
+   `nopCloser`, and `sessionHeader` from `internal/mcp/mcp.go`, and
+   `bridge_test.go` as in the test plan. Delete `Bridge`, `identity`, and
+   `nopCloser` from `internal/mcp`, update its package comment, and remove
+   the imports it no longer uses (`errors`, `io`, `os`, `syscall`, `time`,
+   and the SDK's `jsonrpc`).
+2. In `internal/mcp/mcp_test.go`, replace `identity(id)` in `connect` with a
+   test-local `withSession` transport and delete `TestBridge` and
+   `TestBridgeWaitsForRestartingApp`.
+3. Add `cmd/hypercube-mcp/main.go`. Change `hypercube mcp` in
+   `cmd/hypercube/main.go` to call `mcpbridge.Main`, and update the package
+   comment to say `hypercube mcp` serves harnesses configured by earlier
+   versions.
+4. Add `session.Programs`, the `programs` field, and the `New` parameter;
+   remove `PluginDir`. Replace `r.PluginDir` in `launch.go`, `sessions.go`,
+   and `selection.go`. Delete `pluginDir` from `harnessclient/discovery.go`.
+5. Add `cmd/hypercube/programs.go`, change `startApp`'s parameter, and call
+   `programs()` from `serveUI`.
+6. Update the runtime fixtures:
+   - `internal/session/fixture_test.go` `newRuntime`:
+     `New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins})`.
+   - `internal/mcp/mcp_test.go` `family`: create `<dir>/plugins`, install the
+     `one` and `two` stand-ins there, and pass `Programs{Plugins: ...}`;
+     `started` stops setting `PluginDir`. Check that the refusal tests still
+     fail for the reasons they assert.
+   - `internal/ui/ui_test.go:277`: `session.Programs{Plugins: plugins}`.
+   - `internal/ui/ui_test.go:56`, `internal/ui/terminal_test.go:39`,
+     `cmd/hypercube/integration_test.go:244`: `session.Programs{}`; these
+     runtimes start no agents.
+7. Add `StartArgs.MCP`, make `Hypercube` `omitempty`, and set `MCP` in
+   `startArgs`. Add `Entry.MCP` to the stand-in and log it.
+8. Add `plugin.MCPCommand` and its test, and use it in the Claude, Codex,
+   OpenCode, Pi, and scripted plugins. Update the plugin tests listed in
+   Related code.
+9. Update `TestAppProcess` as described in the test plan.
+10. Update the documentation and run `make check`.
 
-## Acceptance and verification
+## Documentation updates
 
-- Bridge tests cover a request and matching response, initialization and
-  notifications, session header, EOF, backend errors, and delayed-backend
-  retry. Preserve current retry limits and message ordering. Command tests
-  cover missing environment. Backend MCP schema/scope/tool coverage stays at
-  its current owner.
-- Shared adapter tests cover new path precedence, legacy field fallback, and
-  missing command. Native stand-ins observe the direct path without arguments
-  and unchanged environment in each integration's own format. No model calls
-  or user-settings edits are needed.
-- Extend the existing backend process test to build its sibling MCP helper
-  directly and exercise both `hypercube-mcp` and `hypercube mcp` against a
-  known session. Preserve the same backend address across restart so a
-  surviving process's configured callback remains valid; exercise the legacy
-  command after replacement as well. Keep existing agent/shell continuity
-  assertions. Bundle layout and symlink discovery are checked by the final
-  integration plan.
-- A narrow old-start regression preserves serialized bytes and ID during
-  replay to an old-compatible stand-in. The shared adapter separately accepts
-  that legacy start when new plugin code consumes it. No old application
-  binary or version matrix is required.
-- Inspect `go list -deps ./cmd/hypercube-mcp`: the only local package must be
-  `internal/mcpbridge`. The backend's compatibility command may import that
-  package, but transport/environment handling must not be copied into either
-  command. Search for legacy field uses and library `os.Executable()` to
-  distinguish retained holder behavior from removed path discovery.
-- Run focused bridge, command, plugin, and affected session/MCP/UI fixture
-  tests while working. Run `make check` before a code commit, following the
-  development rules. Record results and any omitted checks in the work log;
-  stage this source task for fresh code review. Do not run packaging or
-  installation checks here merely to make the intermediate bundle releasable.
-
-Current architecture, build-layout, and operational documentation changes are
-consolidated with the final integration plan.
-
-Next plan: [Holder executable](2026-11-07-009-holder-executable.md).
+- `agents/development.md`, Code: add `mcpbridge` to the `internal/` package
+  list, and list `cmd/hypercube-mcp/` — the MCP bridge each agent's harness
+  runs.
+- The architecture, glossary, and restart guidance that name `hypercube mcp`
+  are updated in [runtime integration](2026-11-07-011-runtime-integration.md),
+  when bundles contain the new executable.

@@ -1,91 +1,156 @@
-# Give application configuration its own package
+# Application configuration package
 
 ## Goal
 
-Move `config.json` preferences, validation, defaults, atomic replacement, and
-upgrades from `internal/harness` to `internal/config`. Backend startup,
-notifications, session guidance, and browser settings use the configuration
-package directly. Preserve the file format and all existing behavior.
+`config.json` holds the user's preferences: default selection, child-model
+guidance, default worktree, theme, terminal font size, and notifications. Its
+code lives in `internal/harness/config.go`, so the package that defines the
+plugin protocol also owns the app's preferences. This task moves that code to
+a new package, `internal/config`, and points every caller at it.
 
-This is the first implementation plan in the
-[runtime cleanup sequence](2026-11-07-005-runtime-boundaries.md). It has no
-implementation prerequisite. The
-[architecture review](../reviews/2026-11-07-007-runtime-boundaries.md#f4-shared-protocol-data-and-backend-operations-have-the-same-owner)
-explains the ownership problem.
+When the work is done, `internal/config` owns the document, its defaults,
+validation, atomic writes, and upgrades of earlier versions' files, and
+`internal/harness` holds no configuration code. The file's location, format,
+defaults, and upgrade behavior are unchanged.
+
+This is the first of six plans from the
+[runtime boundaries review](../reviews/2026-11-07-007-runtime-boundaries.md)
+(finding F4, configuration part). It has no prerequisite.
 
 ## Related code
 
-- `internal/harness/config.go` and `config_test.go` own the complete current
-  document, notification defaults, XDG path, validation, writing, and upgrades.
-- `cmd/hypercube/main.go` upgrades before opening the backend and reads
-  notification preferences; `integration_test.go` checks the upgraded result.
-- `internal/session/launch.go` reads child-model guidance;
-  `selection_test.go` saves preferences used by that behavior.
-- `internal/ui/config.go`, `config_test.go`, and `ui_test.go` expose and test
-  browser configuration reads and writes.
+- `internal/harness/config.go` — `Config`, `Notifications`,
+  `DefaultNotifications`, `themes`, `terminalFontSizes`, `configPath`,
+  `LoadConfig`, `Config.Validate`, `SaveConfig`, `writeConfig`,
+  `legacyProfile`, the `upgrade` type, `UpgradeConfig`, `upgradeProfiles`,
+  and `upgradeNotifications`.
+- `internal/harness/config_test.go` — defaults, missing and malformed files,
+  validation, complete writes, profile and notification upgrades, and leaving
+  an unchanged file alone. It constructs `Settings` unqualified.
+- `internal/harness/discovery.go` — `Settings` and `Settings.Check`, which
+  `Config.DefaultSelection` and `legacyProfile` use. `Settings` stays in
+  `harness`; it is part of the plugin protocol's discovery data.
+- Callers:
+  - `cmd/hypercube/main.go:85` — `harness.UpgradeConfig()` in `startApp`.
+  - `cmd/hypercube/main.go:127-128` — `harness.DefaultNotifications` and
+    `harness.LoadConfig()` in `sendAlert`.
+  - `cmd/hypercube/integration_test.go:287` — decodes `/config` into
+    `harness.Config`.
+  - `internal/session/launch.go:217` — `harness.LoadConfig()` in `startArgs`
+    for `ChildGuidance`.
+  - `internal/session/selection_test.go:192` — `harness.SaveConfig`.
+  - `internal/ui/config.go:12,23,38` — `GET /config` and `POST /config`.
+  - `internal/ui/config_test.go:21-42`, `internal/ui/ui_test.go:88` — build
+    and read `harness.Config` values.
 
 ## Decisions
 
-Application preferences include theme, terminal font size, notifications, and
-worktree defaults as well as the default harness selection. They belong in
-`config`; harness selection itself remains `harness.Settings`. Import that
-shared type instead of copying it or adding conversion functions.
+### Names
 
-Use `config.Config`, `config.Notifications`, `config.DefaultNotifications`, and
-the package functions `config.Load`, `config.Save`, and `config.Upgrade`.
-Move existing private path and upgrade functions with the implementation.
-Delete the old declarations; do not leave aliases or forwarding functions in
-`harness`.
+The package name says what the functions act on, so they drop the `Config`
+suffix:
 
-This task changes source ownership only. Keep JSON names, default values,
-validation, error context, config location, upgrade order, no-change upgrade
-behavior, and atomic document replacement identical. No migration is added.
-Do not change protocol fields, helper commands, discovery, process launch,
-HTTP routes, or notification delivery lifetime.
+| Old (`harness`) | New (`config`) |
+| --- | --- |
+| `Config` | `Config` |
+| `Notifications` | `Notifications` |
+| `DefaultNotifications` | `DefaultNotifications` |
+| `LoadConfig()` | `Load()` |
+| `SaveConfig(c)` | `Save(c)` |
+| `UpgradeConfig()` | `Upgrade()` |
+| `(*Config).Validate` | `(*Config).Validate` |
+| `configPath` | `path` |
+| `writeConfig` | `write` |
 
-The new package still imports `harness` for `Settings`; that package remains
-mixed until the next plan. Do not claim complete transitive isolation yet or
-fold the process-client extraction into this task to obtain it sooner.
+`legacyProfile`, `upgrade`, `upgradeProfiles`, `upgradeNotifications`,
+`themes`, and `terminalFontSizes` keep their names. The old declarations are
+deleted; `harness` keeps no aliases.
+
+`Load` and `Upgrade` both build the default document inline:
+`Config{Theme: "system", TerminalFontSize: 13, Notifications:
+DefaultNotifications}`. The move replaces both with one private function:
+
+```go
+// defaults is the configuration with every preference at its default. A file
+// written before a preference existed takes that default.
+func defaults() Config {
+	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+}
+```
+
+### The package
+
+`internal/config/config.go`:
+
+```go
+// Package config reads and writes config.json, the user's preferences, in
+// $XDG_CONFIG_HOME/hypercube or ~/.config/hypercube. Upgrade converts files
+// written by earlier versions before anything reads them.
+package config
+
+import "github.com/kkestell/hypercube/internal/harness"
+
+type Config struct {
+	DefaultSelection *harness.Settings `json:"default_selection,omitempty"`
+	ChildGuidance    string            `json:"child_model_guidance"`
+	DefaultWorktree  bool              `json:"default_worktree"`
+	Theme            string            `json:"theme"`
+	TerminalFontSize int               `json:"terminal_font_size"`
+	Notifications    Notifications     `json:"notifications"`
+}
+
+type legacyProfile struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	harness.Settings
+}
+```
+
+The doc comments, JSON names, error wrapping (`"%s: %w"` with the path,
+`"saving config: %w"`, and so on), and upgrade order (`upgradeProfiles`, then
+`upgradeNotifications`) carry over unchanged.
+
+`config` imports `harness` for `Settings`. `harness` still imports `hold`
+until the next plan moves the plugin client out, so `config` reaches `hold`
+transitively until then.
+
+## Test plan
+
+- `internal/harness/config_test.go` moves to `internal/config/config_test.go`
+  as `package config`, with `Settings` written `harness.Settings` and the
+  renamed functions. Every existing case keeps its assertions: default
+  values without a file, malformed JSON, invalid theme and font size, invalid
+  default selection, `Save` writing the complete document, profile upgrades
+  (default profile, first profile when none is named, existing guidance
+  kept), `macos` renamed to `desktop`, and an unchanged file left byte for
+  byte.
+- `internal/ui` `TestConfig` and the config tests in `config_test.go` pass
+  with `config.Config`.
+- `internal/session` selection tests pass with `config.Save`.
+- `cmd/hypercube` `TestAppProcess` still reads an upgraded document from
+  `/config` (`DefaultSelection` set, guidance containing `model p/m, effort
+  high: test`).
+- `go list -deps ./internal/harness` no longer lists anything for config;
+  `grep -rn 'harness\.\(Config\|LoadConfig\|SaveConfig\|UpgradeConfig\|Notifications\|DefaultNotifications\)' --include='*.go' .`
+  finds nothing.
 
 ## Implementation plan
 
-1. Move configuration implementation and its tests into `internal/config`.
-   Qualify `Settings` and the embedded legacy-profile settings with `harness`.
-   Update test fixtures to use the same shared type. Retain private helpers
-   and tests at their new owner rather than exposing them for old callers.
-2. Update startup upgrade, notification preferences, session guidance, and
-   browser configuration callers. Update integration and fixture type
-   references. Search all Go sources for the old configuration symbols to
-   find callers beyond the inventory above.
-3. Remove `internal/harness/config.go` and its old test file. Inspect whole
-   touched files for obsolete imports, comments, and unrelated responsibilities
-   exposed by the move. Keep the settings and notification behavior readable
-   without introducing wrappers in session or UI.
-4. Update the package list in `agents/development.md` and current architecture
-   references that actually point to configuration's former owner. Read
-   `agents/documentation.md` before changing current guides. No user-facing
-   preference documentation or screenshots need changing because behavior and
-   the persisted document are unchanged.
+1. Create `internal/config/config.go` from `internal/harness/config.go` with
+   the package comment, renames, `defaults()`, and `harness.Settings`
+   qualifications above. Delete `internal/harness/config.go`.
+2. Move `internal/harness/config_test.go` to `internal/config/config_test.go`
+   and update it as described in the test plan.
+3. Update the callers listed in Related code to import
+   `github.com/kkestell/hypercube/internal/config` and use `config.Load`,
+   `config.Save`, `config.Upgrade`, `config.Config`, `config.Notifications`,
+   and `config.DefaultNotifications`. Remove `harness` imports that become
+   unused (for example in `internal/ui/config.go`). In
+   `internal/session/launch.go` the local variable `cfg` stays; the call
+   becomes `config.Load()`.
+4. Run `go build ./...` and the grep above to catch callers outside the list.
+5. Update the documentation and run `make check`.
 
-## Acceptance and verification
+## Documentation updates
 
-- Existing config tests run at the new owner and retain coverage for defaults,
-  missing and malformed files, value validation, complete writes, legacy
-  profiles, notification renaming, and preserving unchanged upgrade files.
-  Move that coverage; do not duplicate it in `harness`.
-- Existing browser configuration and session-guidance tests continue to
-  observe the same settings. The backend integration still upgrades an old
-  document before creating its first session.
-- `internal/harness` contains no application preference document, path lookup,
-  config writes, or config upgrades. No old API aliases remain.
-- Use focused tests for `internal/config`, the affected session/UI behavior,
-  and the backend integration while working. Run `make check` before this
-  task's code commit, as required by `agents/development.md`. No bundle,
-  installation, Linux container, native harness, or screenshot smoke test is
-  needed for an unchanged file format and source-package move.
-- Inspect the diff and current links. Record check results or omissions in the
-  work log and stage this task's code, tests, documentation, and work log for
-  the required fresh code review. Stop when the configuration owner and all
-  callers are coherent; the protocol boundary is a separate plan.
-
-Next plan: [Harness protocol boundary](2026-11-07-007-harness-protocol-boundary.md).
+- `agents/development.md`, Code: add `config` to the `internal/` package list.

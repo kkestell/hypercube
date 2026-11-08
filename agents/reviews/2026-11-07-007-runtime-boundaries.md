@@ -13,7 +13,7 @@ command roles, backend startup and shutdown, plugin launch and discovery,
 MCP forwarding and tools, session persistence and reattachment, panel shells,
 native MCP configuration in all four plugins, testing seams, development,
 screenshots, and macOS/Linux packaging and installation. It supports the
-[implementation sequence](../plans/2026-11-07-005-runtime-boundaries.md).
+[implementation plans](#implementation-boundaries).
 
 The review is comprehensive for these boundaries. It is not a fresh
 correctness audit of every native event translation or browser component.
@@ -292,7 +292,7 @@ the interim bundle and development recipes can remain incomplete until that
 integration. Do not inflate source plans or add temporary production paths to
 make each one independently deployable. Source changes retain their focused
 fixtures and necessary code checks. Each plan receives its own work and review
-cycle; the sequence overview is not a `/kwork` input.
+cycle.
 
 ## Sequence assessment
 
