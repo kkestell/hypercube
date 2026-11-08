@@ -3,6 +3,8 @@ package session
 import (
 	"errors"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
@@ -254,6 +256,40 @@ func TestUnarchive(t *testing.T) {
 	f.input(s.ID, "continue")
 	if starts := f.log(s.ID, "start"); len(starts) != 2 || starts[1].Conversation != conversation || starts[1].Dir != s.Dir {
 		t.Fatalf("starts = %v", starts)
+	}
+}
+
+func TestFailedUnarchiveCanBeRetried(t *testing.T) {
+	f := newFixture(t)
+	f.idleAfter(time.Hour)
+	s := f.worktreeSession()
+	if err := f.rt.Archive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	// Only the first HEAD lookup fails, so cleanup can still check the worktree.
+	script := "#!/bin/sh\nif [ \"$1\" = rev-parse ] && [ \"$PWD\" = \"" + s.Dir + "\" ] && mkdir \"" + bin + "/failed\" 2>/dev/null; then exit 1; fi\nexec \"" + git + "\" \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := os.Getenv("PATH")
+	t.Setenv("PATH", bin+":"+path)
+	if err := f.rt.Unarchive(s.ID); err == nil {
+		t.Fatal("unarchived without reading the worktree's HEAD")
+	}
+	if _, err := os.Stat(s.Dir); !os.IsNotExist(err) {
+		t.Fatalf("the failed unarchive left its worktree: %v", err)
+	}
+	t.Setenv("PATH", path)
+	if err := f.rt.Unarchive(s.ID); err != nil {
+		t.Fatal("retry:", err)
+	}
+	if got := f.storedSession(s.ID); got.Ended || got.Base == "" {
+		t.Fatalf("unarchived session = %+v", got)
 	}
 }
 

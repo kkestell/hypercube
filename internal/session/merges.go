@@ -51,6 +51,18 @@ func (r *Runtime) refreshMerges(workspaceID string) {
 	r.feed.publish(Change{})
 }
 
+// forgetMerge drops the merge status of a session whose worktree and branch are
+// gone. Taking refreshMu lets a refresh that read the session before its
+// removal publish first.
+func (r *Runtime) forgetMerge(id string) {
+	r.refreshMu.Lock()
+	defer r.refreshMu.Unlock()
+	r.mu.Lock()
+	delete(r.merges, id)
+	r.mu.Unlock()
+	r.feed.publish(Change{})
+}
+
 // Merges returns each worktree session's last measured merge status, by
 // session ID.
 func (r *Runtime) Merges() map[string]workspace.Merge {

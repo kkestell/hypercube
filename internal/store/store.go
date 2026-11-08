@@ -203,8 +203,10 @@ func (d *DB) run(ctx context.Context, readOnly bool, fn func(*Tx) error) error {
 	if err != nil {
 		return err
 	}
+	// Rollback after Commit does nothing; deferring it also ends the
+	// transaction when fn panics.
+	defer tx.Rollback()
 	if err := fn(&Tx{tx}); err != nil {
-		tx.Rollback()
 		return err
 	}
 	return tx.Commit()

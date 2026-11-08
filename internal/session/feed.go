@@ -58,8 +58,7 @@ func (f *feed) publish(change Change) {
 
 type write struct {
 	*store.Tx
-	items   []Change
-	runtime *Runtime
+	items []Change
 }
 
 // save runs fn in one transaction and, once it commits, publishes the write and
@@ -70,7 +69,6 @@ func (r *Runtime) save(fn func(*write) error) error {
 	var w write
 	err := r.db.Tx(func(tx *store.Tx) error {
 		w.Tx = tx
-		w.runtime = r
 		return fn(&w)
 	})
 	if err != nil {

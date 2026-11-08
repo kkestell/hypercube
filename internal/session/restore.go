@@ -71,11 +71,21 @@ func (r *Runtime) Restore(serve func()) error {
 			}
 		}
 	}
-	// Workspace deletion can be served immediately, so its holders must already
-	// belong to the terminal set before requests can remove their owners.
+	// Deletion can be served immediately, so shell holders must already belong
+	// to the terminal set before requests can remove their owners.
 	for _, workspace := range workspaceRecords {
 		if err := r.Terminals.Adopt(workspaceShellOwner(workspace.ID)); err != nil {
 			logf("adopting workspace shell %s: %v", workspace.ID, err)
+		}
+	}
+	for _, family := range families {
+		for _, s := range family {
+			if s.Ended {
+				continue
+			}
+			if err := r.Terminals.Adopt(s.ID); err != nil {
+				logf("adopting the shell of %s: %v", s.ID, err)
+			}
 		}
 	}
 	if serve != nil {
@@ -96,13 +106,9 @@ func (r *Runtime) Restore(serve func()) error {
 	workspaces := map[string]bool{}
 	for _, family := range families {
 		for _, s := range family {
-			if s.Ended {
-				continue
+			if !s.Ended {
+				r.Deliver(s.ID)
 			}
-			if err := r.Terminals.Adopt(s.ID); err != nil {
-				logf("adopting the shell of %s: %v", s.ID, err)
-			}
-			r.Deliver(s.ID)
 		}
 		workspaces[family[0].Workspace] = true
 	}

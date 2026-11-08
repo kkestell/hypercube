@@ -424,3 +424,24 @@ func TestCommandsReservePositionsAndIncreaseIDs(t *testing.T) {
 		return nil
 	})
 }
+
+func TestPanickingTransactionReleasesTheWriteLock(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	func() {
+		defer func() { _ = recover() }()
+		_ = db.Tx(func(tx *Tx) error {
+			if err := tx.Queue(Message{From: "a", To: "s", Text: "lost"}); err != nil {
+				return err
+			}
+			panic("callback failed")
+		})
+	}()
+	tx(t, db, func(tx *Tx) error { return tx.Queue(Message{From: "a", To: "s", Text: "kept"}) })
+	tx(t, db, func(tx *Tx) error {
+		if m, _ := tx.Queued("s"); len(m) != 1 || m[0].Text != "kept" {
+			t.Errorf("queued = %v", m)
+		}
+		return nil
+	})
+}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 func TestArchivedWorktreesAreNotMeasured(t *testing.T) {
@@ -27,5 +28,17 @@ func TestArchivedWorktreesAreNotMeasured(t *testing.T) {
 	}
 	if _, ok := merges[s.ID]; !ok {
 		t.Fatal("the active worktree was not measured")
+	}
+}
+
+func TestArchivingForgetsMergeStatus(t *testing.T) {
+	f := newFixture(t)
+	s := f.worktreeSession()
+	f.merge(s.ID, "the worktree's merge status", func(workspace.Merge) bool { return true })
+	if err := f.rt.Archive(s.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := f.rt.Merges()[s.ID]; ok {
+		t.Fatal("the archived session kept the merge status of its removed branch")
 	}
 }

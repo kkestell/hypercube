@@ -80,3 +80,26 @@ func TestWorkspaceShellIsAdoptedBeforeServingDeletion(t *testing.T) {
 		t.Fatal("restoration orphaned the deleted workspace's shell")
 	}
 }
+
+func TestSessionShellIsAdoptedBeforeServingDeletion(t *testing.T) {
+	f := newFixture(t)
+	s := f.session()
+	f.park(s.ID)
+	f.rt.Terminals.Command = []string{"/bin/sleep", "300"}
+	if _, err := f.rt.Shell(s.ID, 80, 24); err != nil {
+		t.Fatal(err)
+	}
+	f.rt.Detach()
+	f.rt = f.newRuntime()
+	err := f.rt.Restore(func() {
+		if err := f.rt.Delete(s.ID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.shellEnded(s.ID) {
+		t.Fatal("restoration orphaned the deleted session's shell")
+	}
+}

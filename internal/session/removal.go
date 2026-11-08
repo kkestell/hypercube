@@ -63,7 +63,7 @@ func (r *Runtime) Unarchive(id string) error {
 			return err
 		}
 		if base, err = workspace.Head(s.Dir); err != nil {
-			return err
+			return errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch))
 		}
 	}
 	err = r.save(func(tx *write) error {
@@ -74,10 +74,16 @@ func (r *Runtime) Unarchive(id string) error {
 		s.Ended, s.Base = false, base
 		return tx.SaveSession(s)
 	})
-	if err == nil && base != "" {
+	if err != nil {
+		if s.Base != "" {
+			err = errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch))
+		}
+		return err
+	}
+	if base != "" {
 		r.refreshMerges(s.Workspace)
 	}
-	return err
+	return nil
 }
 
 // claimRemoval reads the family under the same lock as child creation and
@@ -179,7 +185,13 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 			return err
 		}
 	}
-	return r.recordRemovedFamily(id, children, archive)
+	if err := r.recordRemovedFamily(id, children, archive); err != nil {
+		return err
+	}
+	if s.Base != "" {
+		r.forgetMerge(id)
+	}
+	return nil
 }
 
 // recordRemovedFamily finishes persistence after all managed worktrees are gone.
@@ -189,7 +201,7 @@ func (r *Runtime) recordRemovedFamily(id string, children []store.Session, archi
 		if archive {
 			for _, child := range children {
 				if child.Branch == "" && !child.Ended {
-					if err := endArchived(tx, child.ID); err != nil {
+					if err := recordEnded(tx, child.ID); err != nil {
 						return err
 					}
 				}
@@ -201,7 +213,7 @@ func (r *Runtime) recordRemovedFamily(id string, children []store.Session, archi
 
 func recordRemoved(tx *write, id string, archive bool) error {
 	if archive {
-		return endArchived(tx, id)
+		return recordEnded(tx, id)
 	}
 	return tx.DeleteSession(id)
 }
@@ -246,7 +258,9 @@ func checkWorktrees(trees []managedWorktree) error {
 	return nil
 }
 
-func endArchived(tx *write, id string) error {
+// recordEnded ends a session whose agent and worktree are gone, keeping its
+// chat and dropping its undelivered messages.
+func recordEnded(tx *write, id string) error {
 	s, err := tx.Session(id)
 	if err != nil {
 		return err
@@ -357,16 +371,12 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 		}
 	}
 	err = r.save(func(tx *write) error {
+		if err := recordEnded(tx, child.ID); err != nil {
+			return err
+		}
 		var err error
 		child, err = tx.Session(child.ID)
-		if err != nil {
-			return err
-		}
-		child.Ended, child.Attention = true, false
-		if err := tx.SaveSession(child); err != nil {
-			return err
-		}
-		return tx.DropQueued(child.ID)
+		return err
 	})
 	r.Deliver(parentID)
 	return child, err
