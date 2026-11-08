@@ -2,6 +2,7 @@
 import {panes, findPane} from './tab-layout.ts';
 import type {EditorView, EditorViewState} from './types.ts';
 import {unreadFile} from '../files/files.ts';
+import {isDiffTab} from '../changes/changes.ts';
 
 export function editorView(view: EditorView): EditorViewState {
   return {
@@ -11,10 +12,10 @@ export function editorView(view: EditorView): EditorViewState {
   };
 }
 export function restoreView(editor: EditorView, view: EditorViewState): EditorView {
-  const diffPaths = panes(view.tabs.root).flatMap(pane => pane.tabs.filter(id => id.startsWith('diff:')).map(id => id.slice(5)));
+  const diffIds = panes(view.tabs.root).flatMap(pane => pane.tabs.filter(isDiffTab));
   return {...editor, tabs: view.tabs, activePane: view.activePane, panel: view.panel, scroll: view.scroll,
     files: {...editor.files, expanded: view.folders, open: Object.fromEntries(Object.entries(view.files).map(([path, file]) => [path, {...unreadFile, ...file}]))},
-    diffs: Object.fromEntries(diffPaths.map(path => [path, {text: null, message: null}])),
+    diffs: Object.fromEntries(diffIds.map(id => [id, {text: null, message: null}])),
   };
 }
 // Late unmounts may save a departing view, but closed tabs stay forgotten.

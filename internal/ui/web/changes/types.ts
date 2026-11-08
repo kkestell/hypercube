@@ -1,8 +1,9 @@
 // The attached session's Git changes and open diffs.
 
 export type ChangeStatus = 'modified' | 'added' | 'deleted' | 'untracked';
+export type ChangeComparison = 'uncommitted' | 'branch';
 
-// Change is an uncommitted file, by path relative to the session's working
+// Change is a changed file, by path relative to the session's working
 // directory. Added and removed line counts are absent for
 // a binary file.
 export interface Change {
@@ -12,9 +13,10 @@ export interface Change {
   removed?: number;
 }
 
-// ChangesResult is the checkout's branch and its uncommitted files.
+// ChangesResult names the current branch, changed files, and optional comparison target.
 export interface ChangesResult {
   branch: string;
+  target?: string;
   files: Change[];
 }
 

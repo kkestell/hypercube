@@ -17,7 +17,7 @@ test.each(['file', 'diff'] as const)('a restored unread %s loads when shown, wit
   const id = kind === 'file' ? fileTabId('a.md') : diffTabId('a.md');
   session.tabs = openTab(session.tabs, id);
   if (kind === 'file') session.files.open['a.md'] = {...unread};
-  else session.diffs['a.md'] = {text: null, message: null};
+  else session.diffs['diff:a.md'] = {text: null, message: null};
   const fetch = stubFetch(() => new Response(kind === 'file' ? '# Loaded file' : patch));
   const root = mount(createStore(testState({session: emptySession('s'), editor: session})), <EditorArea />);
   await act(async () => {});
@@ -33,7 +33,7 @@ test.each(['file', 'diff'] as const)('an inactive restored %s loads on selection
   session.tabs = openTab(session.tabs, fileTabId('shown.md'));
   session.files.open['shown.md'] = {...unread, text: 'Already shown'};
   if (kind === 'file') session.files.open['a.md'] = {...unread};
-  else session.diffs['a.md'] = {text: null, message: null};
+  else session.diffs['diff:a.md'] = {text: null, message: null};
   const fetch = stubFetch(() => new Response(kind === 'file' ? 'Selected file' : patch));
   const store = createStore(testState({session: emptySession('s'), editor: session}));
   const root = mount(store, <EditorArea />);
@@ -91,7 +91,7 @@ test.each([
 test.each([{text: '', message: null}, {text: null, message: 'Read failed'}])('a loaded diff waits for an explicit refresh', async diff => {
   const session = emptyEditor({session: 's'});
   session.tabs = openTab(session.tabs, diffTabId('a.md'));
-  session.diffs['a.md'] = diff;
+  session.diffs['diff:a.md'] = diff;
   const fetch = stubFetch(() => new Response(patch));
   const store = createStore(testState({session: emptySession('s'), editor: session}));
   mount(store, <EditorArea />);

@@ -62,9 +62,9 @@ test('Git activation and target changes refresh immediately while retaining cach
   act(() => store.update(state => ({...state, editor: emptyEditor({workspace: 'w'})})));
   expect(fetches).toHaveBeenCalledTimes(2);
   expect(new URL(fetches.mock.calls[1][0], 'http://x/').searchParams.get('workspace')).toBe('w');
-  expect(root.textContent).toBe('No Git changes available.');
+  expect(root.textContent).toContain('No Git changes available.');
   await act(async () => replies[1](new Response('gone', {status: 404})));
-  expect(root.textContent).toBe('This folder no longer exists.');
+  expect(root.textContent).toContain('This folder no longer exists.');
   act(() => store.update(state => ({...state, workbench: {...state.workbench, rightPanel: false}})));
   expect(fetches).toHaveBeenCalledTimes(2);
   act(() => store.update(state => ({...state, workbench: {...state.workbench, rightPanel: true}})));
@@ -94,14 +94,31 @@ test('Git without a selection prompts for a session or workspace and does not re
   expect(fetches).not.toHaveBeenCalled();
 });
 
-test('worktree comparison is explicitly a preview rather than uncommitted rows', () => {
+test('branch selection loads independent rows and the response target, then opens a matching diff', async () => {
+  const fetches = stubFetch(() => Response.json({branch: 'feature', target: 'release', files: [{path: 'committed.go', status: 'added', added: 1, removed: 0}]}));
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 1, committed: true, uncommitted: 4}});
-  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes}}));
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}}, workbench: {...testState().workbench, rightTab: 'git'}}));
   const root = mount(store, <GitPanel />);
+  await act(async () => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  expect(fetches.mock.calls.some(([url]) => new URL(url, 'http://x/').searchParams.get('comparison') === 'branch')).toBe(true);
+  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with release');
+  expect(root.textContent).not.toContain('preview');
+  await act(async () => find(root, 'li button').click());
+  expect(store.get().editor?.tabs.preview).toBe('branch-diff:committed.go');
+});
+
+test.each([
+  [{branch: 'feature', target: 'main', files: []}, 'No branch changes.'],
+  [{error: 'no common ancestor'}, 'no common ancestor'],
+] satisfies Array<[Changes, string]>)('branch result stays visible independently of an uncommitted error: %p', (branchChanges, message) => {
+  const session = testSession({id: 's', worktree: true});
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})],
+    editor: {...emptyEditor({session: 's'}), changes: {error: 'uncommitted failed'}, branchChanges}}));
+  const root = mount(store, <GitPanel />);
+  expect(root.textContent).toContain('uncommitted failed');
   act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
-  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with main');
-  expect(root.textContent).toContain('UI preview');
-  expect(root.querySelector('li')).toBeNull();
+  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain(message);
+  expect(root.textContent).not.toContain('uncommitted failed');
 });
 
 test('merge belongs to branch changes and asks the agent to merge into the checkout', async () => {

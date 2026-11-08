@@ -51,6 +51,7 @@ export interface State {
   editorVersion: number;
   treeVersion: number;
   changesVersion: number;
+  branchChangesVersion: number;
   fileReadVersions: Record<string, number>;
   diffReadVersions: Record<string, number>;
   sessionViews: Record<string, SessionViewState>;
@@ -92,6 +93,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   editorVersion: 0,
   treeVersion: 0,
   changesVersion: 0,
+  branchChangesVersion: 0,
   fileReadVersions: {},
   diffReadVersions: {},
   sessionViews: {},

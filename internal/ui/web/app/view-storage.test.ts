@@ -46,6 +46,8 @@ test('session switches and reloads preserve independent view choices without cac
   openRequestedFile(store, {session: 'a', path: 'guide.md', lines: [{start: 2}]});
   openDiffTab(store, 'changed.go');
   store.update(state => keepOpen(state, 'diff:changed.go'));
+  openDiffTab(store, 'changed.go', 'branch');
+  store.update(state => keepOpen(state, 'branch-diff:changed.go'));
   store.update(state => moveTab(state, 'file:guide.md', 1, 'right'));
   const split = store.get().editor!.tabs.root!.id;
   store.update(state => resizeSplit(state, split, 37));
@@ -85,7 +87,10 @@ test('session switches and reloads preserve independent view choices without cac
   expect(reloaded.get().session!.expanded.activity).toBe(true);
   expect(restored.scroll['file:guide.md']).toEqual({top: 120, left: 8, following: false});
   expect(restored.files.open['guide.md']).toMatchObject({text: null, etag: null, source: true, lines: [{start: 2}], reveal: false});
-  expect(restored.diffs['changed.go']).toEqual({text: null, message: null});
+  expect(restored.diffs['diff:changed.go']).toEqual({text: null, message: null});
+  expect(restored.diffs['branch-diff:changed.go']).toEqual({text: null, message: null});
+  expect(restored.gitComparison).toBe('uncommitted');
+  expect(restored.branchChanges).toBeNull();
   expect(reloaded.get().session!.transcript.order).toEqual([]);
   expect(reloaded.get().session!.transcriptReady).toBe(false);
 });

@@ -117,9 +117,9 @@ test('diff tabs share preview replacement and forget their data and scroll', () 
   openDiffTab(s, 'foo.py');
   expect(tabsOf(s)).toEqual([[id]]);
   expect(session(s).tabs.preview).toBe(id);
-  expect(tabEntry(s.get(), id)).toMatchObject({kind: 'diff', name: 'foo.py', label: 'foo.py (Working Tree)'});
+  expect(tabEntry(s.get(), id)).toMatchObject({kind: 'diff', name: 'foo.py', label: 'foo.py (Uncommitted)'});
   s.update(state => ({...state, editor: {...attached(state), changes: {branch: 'main', files: [{path: 'foo.py', status: 'added'}]}}}));
-  expect(tabEntry(s.get(), id).label).toBe('foo.py (Added)');
+  expect(tabEntry(s.get(), id).label).toBe('foo.py (Uncommitted) (Added)');
   s.update(state => keepOpen(state, id));
   openDiffTab(s, 'other.py');
   openDiffTab(s, 'foo.py');
@@ -128,10 +128,10 @@ test('diff tabs share preview replacement and forget their data and scroll', () 
   const scroll: ScrollMemory = {top: 5, left: 3, following: false};
   s.update(state => rememberScroll(state, 's', diffTabId('other.py'), scroll));
   openFileTab(s, 'source.py');
-  expect(session(s).diffs['other.py']).toBeUndefined();
+  expect(session(s).diffs['diff:other.py']).toBeUndefined();
   expect(session(s).scroll[diffTabId('other.py')]).toBeUndefined();
   s.update(state => closeTab(state, id));
-  expect(session(s).diffs['foo.py']).toBeUndefined();
+  expect(session(s).diffs['diff:foo.py']).toBeUndefined();
   expect(session(s).scroll[id]).toBeUndefined();
   openDiffTab(s, 'next.py');
   expect(session(s).files.open['source.py']).toBeUndefined();

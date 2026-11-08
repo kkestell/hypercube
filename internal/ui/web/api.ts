@@ -2,7 +2,7 @@
 import type {EditorTarget} from './editor/target.ts';
 import type {ModelEntry, Harness} from './agent/types.ts';
 import type {Config, Grant} from './app/types.ts';
-import type {ChangesResult, DiffRead} from './changes/types.ts';
+import type {ChangeComparison, ChangesResult, DiffRead} from './changes/types.ts';
 import type {FileRead, FolderListing, SearchFile} from './files/types.ts';
 import {showError} from './notifications/errors.ts';
 import type {SessionSearchResult} from './sessions/types.ts';
@@ -135,7 +135,7 @@ export const searchSessions = (query: string, signal: AbortSignal): Promise<Sess
 
 // fetchChanges lists the changes within the session's folder, or
 // returns null for a folder outside a repository.
-export const fetchChanges = (target: EditorTarget) => get<ChangesResult | null>('changes', target);
+export const fetchChanges = (target: EditorTarget, comparison: ChangeComparison = 'uncommitted') => get<ChangesResult | null>('changes', comparison === 'branch' ? {...target, comparison} : target);
 
 // readFile reads text or browser preview metadata, or reports an unchanged,
 // deleted, or unsupported file.
@@ -152,8 +152,8 @@ export async function readFile(target: EditorTarget, path: string, etag?: string
 }
 
 // readDiff reads a whole-file patch, with the text viewer's size and binary messages.
-export async function readDiff(target: EditorTarget, path: string): Promise<DiffRead> {
-  const response = await fetch(url('diff', {...target, path}), {cache: 'no-store'});
+export async function readDiff(target: EditorTarget, path: string, comparison: ChangeComparison = 'uncommitted'): Promise<DiffRead> {
+  const response = await fetch(url('diff', {...target, path, ...(comparison === 'branch' ? {comparison} : {})}), {cache: 'no-store'});
   if (response.status === 413) return {message: tooLarge};
   if (response.status === 415) return {message: unsupported};
   if (!response.ok) return {error: await response.text()};

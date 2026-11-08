@@ -9,7 +9,7 @@ import {useHighlight} from '../files/use-highlight.ts';
 import {Find} from '../shared/find.tsx';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
-import {diffReady, readOpenDiff} from './changes.ts';
+import {diffComparison, diffReady, readOpenDiff} from './changes.ts';
 import {diffNote, diffRows} from './diff.ts';
 import type {DiffRow} from './types.ts';
 
@@ -37,13 +37,13 @@ function DiffLines({text, path, wrap}: {text: string; path: string; wrap: boolea
 export function DiffView({id, path, active = true}: {id: TabId; path: string; active?: boolean}) {
   const [state, store] = useStore();
   const view = useRef<HTMLDivElement>(null), list = useRef<HTMLDivElement>(null);
-  const diff = state.editor?.diffs[path];
+  const diff = state.editor?.diffs[id];
   const viewKey = state.editor?.id;
   const ready = diffReady(diff);
   useScrollMemory(view, id, ready);
   useEffect(() => {
-    if (viewKey && diff && !ready) readOpenDiff(store, path);
-  }, [viewKey, path, !!diff, ready]);
+    if (viewKey && diff && !ready) readOpenDiff(store, path, diffComparison(id));
+  }, [viewKey, id, path, !!diff, ready]);
   const move = (direction: number) => {
     if (!list.current || !view.current) return;
     const changes = [...list.current.querySelectorAll('[data-change]')];

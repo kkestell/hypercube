@@ -1,6 +1,6 @@
 // Shared editor tabs: a tree of panes and two-way splits, and the
 // remembered scroll of each tab's view.
-import type {Changes, OpenDiff} from '../changes/types.ts';
+import type {ChangeComparison, Changes, OpenDiff} from '../changes/types.ts';
 import type {EditorTarget} from './target.ts';
 import type {LineRange, SessionFiles} from '../files/types.ts';
 
@@ -13,6 +13,8 @@ export interface EditorView {
   tabs: TabLayout;
   scroll: Record<string, ScrollMemory>;
   changes: Changes;
+  branchChanges: Changes;
+  gitComparison: ChangeComparison;
   diffs: Record<string, OpenDiff>;
   files: SessionFiles;
 }
@@ -26,7 +28,7 @@ export interface EditorViewState {
   files: Record<string, {source: boolean; lines: LineRange[]}>;
 }
 
-// A tab ID is 'dashboard', 'file:<path>', or 'diff:<path>'.
+// A tab ID is 'dashboard', 'file:<path>', 'diff:<path>', or 'branch-diff:<path>'.
 export type TabId = string;
 
 // Pane is a group of tabs with one active tab.

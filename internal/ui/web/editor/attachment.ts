@@ -11,7 +11,7 @@ export const emptySession = (id: string): AttachedSession => ({id, transcript: {
 
 export const emptyEditor = (target: EditorTarget): EditorView => ({
   id: targetKey(target), target, activePane: null, panel: false,
-  tabs: 'workspace' in target ? dashboardTabs : emptyTabs, scroll: {}, changes: null, diffs: {},
+  tabs: 'workspace' in target ? dashboardTabs : emptyTabs, scroll: {}, changes: null, branchChanges: null, gitComparison: 'uncommitted', diffs: {},
   files: {listings: {}, listingErrors: {}, expanded: {}, open: {}},
 });
 

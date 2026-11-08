@@ -2,7 +2,7 @@ import {afterEach, expect, mock, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
 import {fileTabId, tabEntry} from '../editor/editor.ts';
 import {moveTab, openTab, panes} from '../editor/tab-layout.ts';
-import {emptyEditor} from '../sessions/selection.ts';
+import {emptyEditor, emptySession} from '../sessions/selection.ts';
 import type {RightTab, Workbench} from '../app/types.ts';
 import type {EditorView} from '../editor/types.ts';
 import type {State} from '../state.ts';
@@ -58,6 +58,28 @@ test('chat branch refreshes even with the right panel closed and no file tabs', 
   await createFilePoller(store)();
   expect(requests).toEqual(['changes:null']);
   expect(store.get().editor?.changes).toEqual({branch: 'feature', files: []});
+});
+
+test('polls each needed comparison once and matches both active same-path diffs', async () => {
+  const session = emptyEditor({session: 's'});
+  session.gitComparison = 'branch';
+  session.diffs = {'diff:a:b': {text: null, message: null}, 'branch-diff:a:b': {text: null, message: null}};
+  session.tabs = openTab(openTab(session.tabs, 'diff:a:b'), 'branch-diff:a:b');
+  session.tabs = moveTab(session.tabs, 'branch-diff:a:b', 1, 'right');
+  const requests: string[] = [];
+  stubFetch(url => {
+    const {pathname, searchParams} = new URL(url, 'http://x/');
+    requests.push(`${pathname}:${searchParams.get('comparison') ?? 'uncommitted'}:${searchParams.get('path') ?? ''}`);
+    return pathname === '/changes' ? Response.json({branch: 'feature', files: []}) : new Response('patch');
+  });
+  const store = createStore(state({editor: session, session: emptySession('s'), workbench: workbench(true, 'git')}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['/changes:uncommitted:', '/changes:branch:', '/diff:uncommitted:a:b', '/diff:branch:a:b']);
+  requests.length = 0;
+  // An inactive branch diff does not request branch data, even in a chat.
+  store.update(state => ({...state, workbench: workbench(false, 'git'), editor: {...state.editor!, tabs: {...state.editor!.tabs, root: {id: 1, tabs: ['diff:a:b', 'branch-diff:a:b'], active: 'diff:a:b'}}}}));
+  await createFilePoller(store)();
+  expect(requests).toEqual(['/changes:uncommitted:', '/diff:uncommitted:a:b']);
 });
 
 test('only shown folders, their changes, and the active file tab of each pane are polled', async () => {
@@ -149,7 +171,7 @@ test('results for a session the page left are dropped', async () => {
 
 test('Changes refreshes with an active diff even while hidden', async () => {
   const session = emptyEditor({session: 's'});
-  session.diffs = {'a.go': {text: null, message: null}};
+  session.diffs = {'diff:a.go': {text: null, message: null}};
   session.tabs = openTab(session.tabs, 'diff:a.go');
   const {requests} = stubRoutes({
     'changes:null': () => Response.json({branch: 'main', files: []}),
@@ -158,7 +180,7 @@ test('Changes refreshes with an active diff even while hidden', async () => {
   const store = createStore(state({editor: session, workbench: workbench(true, 'search')}));
   await createFilePoller(store)();
   expect(requests).toEqual(['changes:null', 'diff:a.go']);
-  expect(store.get().editor?.diffs['a.go']).toEqual({text: 'patch', message: null});
+  expect(store.get().editor?.diffs['diff:a.go']).toEqual({text: 'patch', message: null});
   requests.length = 0;
   store.update(s => ({...s, workbench: workbench(false, 'search')}));
   await createFilePoller(store)();
@@ -168,7 +190,7 @@ test('Changes refreshes with an active diff even while hidden', async () => {
 
 test('a diff title follows its status while the right panel shows Files', async () => {
   const session = emptyEditor({session: 's'});
-  session.diffs = {'a.go': {text: '', message: null}};
+  session.diffs = {'diff:a.go': {text: '', message: null}};
   session.tabs = openTab(session.tabs, 'diff:a.go');
   session.changes = {branch: 'main', files: [{path: 'a.go', status: 'untracked'}]};
   const {requests} = stubRoutes({
@@ -177,10 +199,10 @@ test('a diff title follows its status while the right panel shows Files', async 
     'diff:a.go': () => new Response('patch'),
   });
   const store = createStore(state({editor: session}));
-  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Untracked)');
+  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Uncommitted) (Untracked)');
   await createFilePoller(store)();
   expect(requests).toEqual(['files/tree:null', 'changes:null', 'diff:a.go']);
-  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Added)');
+  expect(tabEntry(store.get(), 'diff:a.go').label).toBe('a.go (Uncommitted) (Added)');
 });
 
 for (const kind of ['file', 'diff'] as const) for (const dashboard of [false, true]) {
@@ -193,7 +215,7 @@ for (const kind of ['file', 'diff'] as const) for (const dashboard of [false, tr
     store.update(state => {
       const session = state.editor!;
       return {...state, editor: {...session, tabs: openTab(session.tabs, `${kind}:a.go`),
-        files: {...session.files, open: {'a.go': unread}}, diffs: {'a.go': {text: null, message: null}}}};
+        files: {...session.files, open: {'a.go': unread}}, diffs: {'diff:a.go': {text: null, message: null}}}};
     });
     const replies: Array<(response: Response) => void> = [];
     let started = () => {};
@@ -223,7 +245,7 @@ for (const kind of ['file', 'diff'] as const) for (const dashboard of [false, tr
     replies[1](new Response('old attachment'));
     await oldAttachment;
     const session = store.get().editor!;
-    expect((kind === 'file' ? session.files.open['a.go'] : session.diffs['a.go']).text).toBe('new text');
+    expect((kind === 'file' ? session.files.open['a.go'] : session.diffs['diff:a.go']).text).toBe('new text');
   });
 }
 

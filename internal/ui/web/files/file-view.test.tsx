@@ -229,7 +229,7 @@ test.each(['file', 'diff'])('%s highlights without focus and keeps unprocessed t
   try {
     const session = emptyEditor({session: 's'});
     session.files.open['a.go'] = {...unread, text: 'one\ntwo\nthree'};
-    session.diffs['a.go'] = {text: '@@ -1,3 +1,3 @@\n one\n two\n three', message: null};
+    session.diffs['diff:a.go'] = {text: '@@ -1,3 +1,3 @@\n one\n two\n three', message: null};
     const store = createStore(testState({editor: session}));
     const view = (active: boolean) => kind === 'file'
       ? <FileView id="file:a.go" path="a.go" active={active} />

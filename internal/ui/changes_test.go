@@ -14,6 +14,116 @@ import (
 	"github.com/kkestell/hypercube/internal/workspace"
 )
 
+func TestBranchChangesRoutes(t *testing.T) {
+	checkout := t.TempDir()
+	run := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	write := func(dir, path, text string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, path), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run(checkout, "init", "-qb", "main")
+	write(checkout, "file", "base\n")
+	run(checkout, "add", ".")
+	run(checkout, "commit", "-qm", "base")
+	base, err := workspace.Head(checkout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(t.TempDir(), "parent")
+	child := filepath.Join(t.TempDir(), "child")
+	run(checkout, "worktree", "add", "-qb", "parent", parent)
+	write(parent, "file", "parent\n")
+	run(parent, "commit", "-qam", "parent")
+	run(parent, "worktree", "add", "-qb", "child", child)
+	write(child, "file", "child\n")
+	run(child, "commit", "-qam", "child")
+	write(child, "new", "one\ntwo")
+	write(child, "binary", "a\x00b")
+	write(child, "large", strings.Repeat("x", maxFile+1))
+	missing := filepath.Join(t.TempDir(), "gone")
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		if err := tx.AddWorkspace(store.Workspace{ID: "w", Path: checkout}); err != nil {
+			return err
+		}
+		for _, session := range []store.Session{
+			{ID: "parent", Workspace: "w", Dir: parent, Base: base},
+			{ID: "child", Workspace: "w", Parent: "parent", Dir: child, Base: base},
+			{ID: "shared", Workspace: "w", Dir: checkout},
+			{ID: "missing", Workspace: "w", Dir: missing, Base: base},
+		} {
+			if err := tx.AddSession(session); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	h := handler(t, db)
+	get := func(route string, params url.Values) *httptest.ResponseRecorder {
+		t.Helper()
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/"+route+"?"+params.Encode(), nil))
+		return res
+	}
+	params := url.Values{"session": {"child"}, "comparison": {"branch"}, "base": {"HEAD"}, "checkout": {parent}}
+	res := get("changes", params)
+	var changes workspace.ChangesResult
+	if res.Code != 200 || json.Unmarshal(res.Body.Bytes(), &changes) != nil {
+		t.Fatalf("changes = %d %s", res.Code, res.Body)
+	}
+	if changes.Branch != "child" || changes.Target != "main" || len(changes.Files) != 4 {
+		t.Fatalf("changes = %+v", changes)
+	}
+	for _, file := range changes.Files {
+		if file.Path == "new" && (file.Added == nil || *file.Added != 2) {
+			t.Errorf("new counts = %+v", file)
+		}
+	}
+	params.Set("path", "file")
+	res = get("diff", params)
+	if res.Code != 200 || !strings.Contains(res.Body.String(), "-base\n+child\n") {
+		t.Fatalf("child diff used wrong owner: %d %s", res.Code, res.Body)
+	}
+	for _, tc := range []struct {
+		route, query string
+		status       int
+	}{
+		{"changes", "session=child", 200},
+		{"changes", "session=child&comparison=unknown", 400},
+		{"diff", "session=child&comparison=unknown&path=file", 400},
+		{"changes", "workspace=w&comparison=branch", 409},
+		{"diff", "session=shared&comparison=branch&path=file", 409},
+		{"changes", "session=missing&comparison=branch", 404},
+		{"diff", "session=child&comparison=branch&path=../file", 400},
+		{"diff", "session=child&comparison=branch&path=binary", 415},
+		{"diff", "session=child&comparison=branch&path=large", 413},
+	} {
+		query, _ := url.ParseQuery(tc.query)
+		res := get(tc.route, query)
+		if res.Code != tc.status {
+			t.Errorf("%s %s = %d %s", tc.route, tc.query, res.Code, res.Body)
+		}
+	}
+	// An unrelated checkout history must fail visibly, not compare with HEAD.
+	run(checkout, "checkout", "--orphan", "unrelated")
+	run(checkout, "commit", "-qm", "unrelated")
+	for _, route := range []string{"changes", "diff"} {
+		res := get(route, params)
+		if res.Code < 400 {
+			t.Errorf("unrelated %s = %d %s", route, res.Code, res.Body)
+		}
+	}
+}
+
 func TestChangesRoutes(t *testing.T) {
 	dir := t.TempDir()
 	run := func(args ...string) {

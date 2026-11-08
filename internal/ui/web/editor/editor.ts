@@ -1,6 +1,8 @@
 // The current editor's tabs, preview, and remembered scroll. File and diff
 // tabs share one preview tab, replaced on the next click until kept open.
-import {diffReady, diffTitle, readOpenDiff} from '../changes/changes.ts';
+import {comparisonLabel, diffComparison, diffReady, diffTabId, diffTitle, isDiffTab, readOpenDiff} from '../changes/changes.ts';
+import type {ChangeComparison} from '../changes/types.ts';
+export {diffTabId, isDiffTab} from '../changes/changes.ts';
 import {hasPreview} from '../files/language.ts';
 import {fileReady, readOpenFile, unreadFile} from '../files/files.ts';
 import type {EditorView} from './types.ts';
@@ -17,10 +19,6 @@ export const dashboardTabId = 'dashboard';
 export const dashboardTabs: TabLayout = {...emptyTabs, root: {id: 1, tabs: [dashboardTabId], active: dashboardTabId}, nextId: 2};
 
 export const fileTabId = (path: string): TabId => 'file:' + path;
-
-export const diffTabId = (path: string): TabId => 'diff:' + path;
-
-export const isDiffTab = (id: TabId) => id.startsWith('diff:');
 
 // tabPath is a file or diff tab's path.
 export const tabPath = (id: TabId) => id.slice(id.indexOf(':') + 1);
@@ -43,10 +41,11 @@ export function tabEntry(state: State, id: TabId): TabEntry {
   const name = path.slice(path.lastIndexOf('/') + 1);
   const preview = editor.tabs.preview === id;
   if (isDiffTab(id)) {
-    const changes = editor.changes;
+    const comparison = diffComparison(id);
+    const changes = comparison === 'branch' ? editor.branchChanges : editor.changes;
     const status = changes && 'files' in changes ? changes.files.find(file => file.path === path)?.status : undefined;
-    const label = diffTitle(path, status);
-    return {kind: 'diff', id, path, name, label, title: label, preview};
+    const label = diffTitle(path, status, comparison);
+    return {kind: 'diff', id, path, name, label, title: `${path} (${comparisonLabel(comparison)})`, preview};
   }
   const open = editor.files.open[path];
   const deleted = !!open?.deleted;
@@ -66,7 +65,7 @@ function forgetTab(editor: EditorView, id: TabId): EditorView {
   delete scroll[id];
   if (isDiffTab(id)) {
     const diffs = {...editor.diffs};
-    delete diffs[path];
+    delete diffs[id];
     return {...editor, diffs, scroll};
   }
   const open = {...editor.files.open};
@@ -103,13 +102,14 @@ export function openFileTab(store: Store, path: string) {
   if (ready) readOpenFile(store, path);
 }
 
-export function openDiffTab(store: Store, path: string) {
+export function openDiffTab(store: Store, path: string, comparison: ChangeComparison = 'uncommitted') {
   if (!store.get().editor) return;
-  const ready = diffReady(store.get().editor?.diffs[path]);
-  store.update(state => tabOpened(state, diffTabId(path), editor => ({
-    ...editor, diffs: {...editor.diffs, [path]: {text: null, message: null}},
+  const id = diffTabId(path, comparison);
+  const ready = diffReady(store.get().editor?.diffs[id]);
+  store.update(state => tabOpened(state, id, editor => ({
+    ...editor, diffs: {...editor.diffs, [id]: {text: null, message: null}},
   })));
-  if (ready) readOpenDiff(store, path);
+  if (ready) readOpenDiff(store, path, comparison);
 }
 
 // openRequestedFile keeps and selects an agent's file. A late socket message
