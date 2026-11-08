@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="1216" viewBox="0 0 720 1216" role="img" aria-labelledby="title description">
   <title id="title">Hypercube architecture</title>
-  <desc id="description">The desktop app displays the browser interface. Both connect to the backend, which owns sessions and SQLite state. A separate process holder keeps each agent's plugin, native harness, and MCP tools alive across backend restarts. MCP tools call back into the backend.</desc>
+  <desc id="description">The Electron desktop app contains the browser interface and provides menus, notifications, and desktop actions. It connects to the backend, which owns sessions and SQLite state. A separate process holder keeps each agent's plugin, native harness, and MCP tools alive across backend restarts. MCP tools call back into the backend.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
       <path d="M 0 0 L 8 4 L 0 8 Z" fill="#64748b"/>
@@ -22,20 +22,17 @@
 
   <!-- The desktop hosts the browser interface and receives notifications. -->
   <rect x="32" y="92" width="656" height="174" rx="20" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
-  <text x="56" y="126" class="label">User interface</text>
-  <rect x="64" y="146" width="240" height="88" rx="14" class="node"/>
-  <text x="184" y="182" text-anchor="middle" class="heading">Desktop app</text>
-  <text x="184" y="212" text-anchor="middle" class="body">Electron</text>
-  <rect x="416" y="146" width="240" height="88" rx="14" class="node"/>
-  <text x="536" y="183" text-anchor="middle" class="heading">Browser</text>
-  <text x="536" y="213" text-anchor="middle" class="body">interface</text>
-  <path d="M 304 198 H 416" class="edge"/>
-  <text x="360" y="181" text-anchor="middle" class="label">hosts</text>
+  <text x="56" y="130" class="heading">Desktop app · Electron</text>
+  <text x="64" y="182" class="label">Menus, notifications,</text>
+  <text x="64" y="212" class="label">and desktop actions</text>
+  <rect x="336" y="146" width="320" height="88" rx="14" class="node"/>
+  <text x="496" y="182" text-anchor="middle" class="heading">Browser interface</text>
+  <text x="496" y="212" text-anchor="middle" class="label">Rendered in the window</text>
 
-  <path d="M 160 354 V 234" class="edge"/>
+  <path d="M 160 354 V 266" class="edge"/>
   <text x="180" y="299" class="label">Notifications</text>
-  <path d="M 536 234 V 310 H 360 V 354" class="edge both"/>
-  <text x="348" y="291" class="label">Actions and live updates</text>
+  <path d="M 536 234 V 320 H 360 V 354" class="edge both"/>
+  <text x="332" y="292" class="label">Actions and updates</text>
 
   <!-- The backend is the sole writer of application state. -->
   <rect x="64" y="354" width="384" height="156" rx="18" fill="#eaf2ff" stroke="#4977c6" stroke-width="2"/>

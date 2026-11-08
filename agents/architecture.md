@@ -4,10 +4,10 @@
 harnesses execute the agents' work. Plugins connect the two, translating each
 harness's protocol into Hypercube commands and transcript events.
 
-![Hypercube's browser interface and desktop app connect to the backend, which
-owns SQLite state. Each agent runs under a separate process holder, with a
-harness plugin, native harness, and MCP tools that call back into the
-backend.](images/architecture.png)
+![The Electron desktop app contains the browser interface and connects to the
+backend, which owns SQLite state. Each agent runs under a separate process
+holder, with a harness plugin, native harness, and MCP tools that call back
+into the backend.](images/architecture.png)
 
 The holder keeps the agent processes alive across backend restarts. Agent tools
 return to the same backend that handles user actions; only the backend writes
