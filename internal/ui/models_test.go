@@ -1,18 +1,14 @@
 package ui
 
 import (
-	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
-	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
-	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -33,66 +29,38 @@ func (a *app) get(path string) (int, []byte) {
 func TestHarnessesAndModels(t *testing.T) {
 	a := newApp(t)
 	code, body := a.get("/harnesses")
-	var list []harness.Harness
-	if err := json.Unmarshal(body, &list); code != http.StatusOK || err != nil || len(list) != 1 || list[0].ID != "test" || !list[0].Installed {
+	var harnesses []harness.Harness
+	if err := json.Unmarshal(body, &harnesses); code != 200 || err != nil || len(harnesses) != 1 || harnesses[0].ID != "test" || !harnesses[0].Installed {
 		t.Fatalf("harnesses = %d %s", code, body)
 	}
-	for _, query := range []url.Values{
-		{"harness": {"test"}, "workspace": {a.session.Workspace}, "model": {"m"}},
-	} {
-		code, body := a.get("/models?" + query.Encode())
-		want, _ := harnesstest.Catalog(harness.ModelsRequest{Model: "m"})
-		var got harness.Catalog
-		if err := json.Unmarshal(body, &got); code != http.StatusOK || err != nil || !reflect.DeepEqual(got, want) {
-			t.Fatalf("models(%v) = %d %s", query, code, body)
-		}
+	code, body = a.get("/models")
+	if code != 200 || strings.TrimSpace(string(body)) != "[]" {
+		t.Fatalf("models = %d %s", code, body)
 	}
-	for _, query := range []url.Values{
-		{"harness": {"test"}},
-		{"harness": {"missing"}, "workspace": {a.session.Workspace}},
-		{"harness": {"test"}, "workspace": {a.session.Workspace}, "model": {"gone"}},
-	} {
-		if code, body := a.get("/models?" + query.Encode()); code == http.StatusOK {
-			t.Fatalf("models(%v) = %s", query, body)
-		}
+	a.post("/models", `{"harness":"uninstalled","model":"native/id","efforts":["low","high"],"default_effort":"high"}`, 200)
+	_, body = a.get("/models")
+	var list []store.ModelEntry
+	if err := json.Unmarshal(body, &list); err != nil || len(list) != 1 || list[0].ID == "" {
+		t.Fatalf("models = %s, %v", body, err)
 	}
-}
-
-func TestModelsCacheAndRefresh(t *testing.T) {
-	a := newApp(t)
-	log := filepath.Join(t.TempDir(), "models.log")
-	t.Setenv("HYPERCUBE_TEST_MODELS_LOG", log)
-	query := url.Values{"harness": {"test"}, "workspace": {a.session.Workspace}}
-	get := func(wantCalls int) []byte {
-		t.Helper()
-		code, body := a.get("/models?" + query.Encode())
-		if code != http.StatusOK {
-			t.Fatalf("models = %d %s", code, body)
-		}
-		requests, err := os.ReadFile(log)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got := bytes.Count(requests, []byte("\n")); got != wantCalls {
-			t.Fatalf("plugin calls = %d, want %d", got, wantCalls)
-		}
-		return body
+	entry := list[0]
+	entry.Model = "edited"
+	data, _ := json.Marshal(entry)
+	a.post("/models", string(data), 200)
+	for _, body := range []string{`{`, `{"harness":"x","model":"m","unknown":true}`, `{"harness":"x"}`, `{"harness":"x","model":"m","efforts":["low","high"]}`} {
+		a.post("/models", body, 400)
 	}
-	fresh := get(1)
-	get(1)
-	// Seed a visibly older catalog to show that refresh replaces the saved value.
-	stale := `{"models":[{"id":"old"}]}`
-	change(t, a.db, func(tx *store.Tx) error { return tx.SaveCatalog("test", a.session.Dir, "", stale) })
-	if got := get(1); string(bytes.TrimSpace(got)) != stale {
-		t.Fatalf("cached catalog = %s", got)
+	a.post("/models", `{"id":"missing","harness":"x","model":"m"}`, 404)
+	a.post("/models", `{"harness":"uninstalled","model":"edited"}`, 409)
+	req, _ := http.NewRequest(http.MethodDelete, a.server.URL+"/models/"+entry.ID, nil)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	query.Set("refresh", "1")
-	if got := get(2); !bytes.Equal(got, fresh) {
-		t.Fatalf("refreshed catalog = %s, want %s", got, fresh)
-	}
-	query.Del("refresh")
-	if got := get(2); !bytes.Equal(got, fresh) {
-		t.Fatalf("saved refresh = %s, want %s", got, fresh)
+	defer res.Body.Close()
+	data, _ = io.ReadAll(res.Body)
+	if res.StatusCode != 200 || strings.TrimSpace(string(data)) != "[]" {
+		t.Fatalf("delete = %d %s", res.StatusCode, data)
 	}
 }
 

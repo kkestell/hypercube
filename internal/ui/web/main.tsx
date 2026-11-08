@@ -2,7 +2,7 @@
 // badge, title bar, and App.
 import {createRoot} from 'react-dom/client';
 import {App} from './app/app.tsx';
-import {fetchConfig} from './api.ts';
+import {fetchConfig, fetchModelEntries} from './api.ts';
 import {startAppearance} from './app/appearance.ts';
 import {receivedConfig} from './app/config.ts';
 import {startBadge} from './app/badge.ts';
@@ -29,6 +29,7 @@ document.addEventListener('visibilitychange', () => store.update(state => setVis
 startWindowEvents();
 startDataSocket(store);
 fetchConfig(store).then(config => { if (config) store.update(state => receivedConfig(state, config)); });
+fetchModelEntries(store).then(modelEntries => { if (modelEntries) store.update(state => ({...state, modelEntries})); });
 startFilePolling(store);
 startNativeNotifications(store);
 startBadge(store);

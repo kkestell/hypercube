@@ -1,8 +1,7 @@
 // The page's state, which the store holds: the server's workspaces, requests,
 // and limits, and what the page itself keeps.
-import type {CatalogEntry} from './agent/catalogs.ts';
-import type {Draft} from './agent/types.ts';
-import type {Config, Limit, TitleBar, Workbench} from './app/types.ts';
+import type {Draft, ModelEntry} from './agent/types.ts';
+import type {Config, Limit, SettingsSection, TitleBar, Workbench} from './app/types.ts';
 import type {EditorView, EditorViewState, FileOpenRequest} from './editor/types.ts';
 import type {AttentionRequest, PageError} from './notifications/types.ts';
 import type {AttachedSession, SessionViewState, Unsent, Workspace} from './sessions/types.ts';
@@ -28,7 +27,8 @@ import type {Confirmation} from './shared/types.ts';
 // current attachment and reset when it changes.
 export interface State {
   workspaces: Workspace[];
-  catalogs: Record<string, CatalogEntry>;
+  modelEntries: ModelEntry[] | null;
+  settings: SettingsSection | null;
   loaded: boolean;
   config: Config | null;
   systemDark: boolean;
@@ -64,7 +64,8 @@ export interface State {
 // session the page's URL names selected.
 export const initialState = (selected: string, visible: boolean): State => ({
   workspaces: [],
-  catalogs: {},
+  modelEntries: null,
+  settings: null,
   loaded: false,
   config: null,
   systemDark: false,

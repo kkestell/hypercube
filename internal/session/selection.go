@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 
@@ -39,30 +38,7 @@ func (r *Runtime) installedLocked() []string {
 // Models asks the harness for the models it offers in dir and, with model,
 // that model's efforts.
 func (r *Runtime) Models(ctx context.Context, harnessID, dir, model string) (harness.Catalog, error) {
-	catalog, err := harnessclient.Models(ctx, r.programs.Plugins, harnessID, harness.ModelsRequest{Dir: dir, Model: model})
-	if err != nil {
-		return catalog, err
-	}
-	data, err := json.Marshal(catalog)
-	if err != nil {
-		return catalog, err
-	}
-	err = r.db.Tx(func(tx *store.Tx) error { return tx.SaveCatalog(harnessID, dir, model, string(data)) })
-	return catalog, err
-}
-
-// CachedModels returns the saved catalog, asking the harness only when none is saved.
-func (r *Runtime) CachedModels(ctx context.Context, harnessID, dir, model string) (harness.Catalog, error) {
-	var data string
-	err := r.db.Read(func(tx *store.Tx) (err error) { data, err = tx.Catalog(harnessID, dir, model); return })
-	if errors.Is(err, store.ErrNotFound) {
-		return r.Models(ctx, harnessID, dir, model)
-	}
-	var catalog harness.Catalog
-	if err == nil {
-		err = json.Unmarshal([]byte(data), &catalog)
-	}
-	return catalog, err
+	return harnessclient.Models(ctx, r.programs.Plugins, harnessID, harness.ModelsRequest{Dir: dir, Model: model})
 }
 
 // Select changes a ready session's model and effort within its harness. The

@@ -22,9 +22,23 @@ replaces the file. Stop Hypercube before editing by hand.
 | `default_worktree` | Start new Git sessions in a worktree. The composer can override this for each session. | `false` |
 | `child_model_guidance` | Instructions to agents about when children should use a different harness, model, or effort. It does not restrict available choices. | Empty text |
 
-An empty `effort` uses the harness's default. Valid model and effort values
-come from the installed harness in the session's folder, not from a fixed
-Hypercube list. See [harness requirements](harness-support.md#requirements).
+An empty `effort` uses the harness's default. Model and effort values are the
+harness's native IDs; the plugin rejects invalid ones at start or model change.
+See [harness requirements](harness-support.md#requirements).
+
+## Models
+
+Edit the model picker list in **Settings › Agents › Models**. Each entry names
+a harness, its exact model ID, effort levels ordered from lowest to highest,
+and a default effort. Leave levels empty for a model without an effort control.
+One level is its own default; several levels require a default from the list.
+
+Entries are saved globally in Hypercube's database, not `config.json`. Adding,
+editing, and deleting apply immediately, without **Save changes**. Entries are
+checked against the harness only when a session starts or changes model.
+Editing or deleting an entry does not change existing session settings or saved
+defaults. Agents can still discover and choose models that are not in this
+list.
 
 ## Appearance
 

@@ -87,6 +87,12 @@ PRAGMA user_version = 3;`); err != nil {
 				return err
 			}
 		}
+		if version < 4 {
+			// Discovered catalogs are not user-configured model entries.
+			if err := tx.exec(`DROP TABLE IF EXISTS catalogs; PRAGMA user_version = 4;`); err != nil {
+				return err
+			}
+		}
 		// A session without an agent waits on nobody.
 		return tx.exec(`UPDATE sessions SET attention = 0 WHERE attention = 1 AND (ended = 1 OR launch = '')`)
 	})
