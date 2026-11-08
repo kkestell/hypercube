@@ -243,6 +243,7 @@ func TestChangesRoutes(t *testing.T) {
 		status               int
 	}{
 		{"changes", "outside", "", 200}, {"changes", "removed", "", 404},
+		{"diff", "outside", "file", 409},
 		{"diff", "root", "tracked", 200}, {"diff", "root", "binary", 415},
 		{"diff", "root", "large", 413}, {"file", "sub", "new.bin", 415},
 		{"diff", "sub", "new.txt", 200}, {"diff", "removed", "tracked", 404},
@@ -257,6 +258,30 @@ func TestChangesRoutes(t *testing.T) {
 		}
 		if tc.route == "diff" && tc.session == "root" && tc.path == "tracked" && (!strings.Contains(res.Body.String(), "-before\n+after\n") || res.Header().Get("Cache-Control") != "no-cache") {
 			t.Errorf("patch = %s", res.Body)
+		}
+	}
+}
+
+func TestChangesRoutesReportRootFailure(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v %s", err, out)
+	}
+	db := open(t)
+	change(t, db, func(tx *store.Tx) error {
+		return tx.AddWorkspace(store.Workspace{ID: "w", Path: dir})
+	})
+	h := handler(t, db)
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho test-git-refusal >&2\nexit 128\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	for _, route := range []string{"changes", "diff"} {
+		res := httptest.NewRecorder()
+		h.ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/"+route+"?workspace=w&path=file", nil))
+		if res.Code != 409 || !strings.Contains(res.Body.String(), "test-git-refusal") {
+			t.Errorf("%s = %d %s, want refusal diagnostic", route, res.Code, res.Body)
 		}
 	}
 }

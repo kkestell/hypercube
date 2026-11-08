@@ -250,6 +250,10 @@ func (t *Tx) Workspaces() ([]Workspace, error) {
 	return collect(rows, scanWorkspace)
 }
 
+func (t *Tx) SetWorkspaceNoGit(id string, noGit bool) error {
+	return t.exec(`UPDATE workspaces SET no_git = ? WHERE id = ?`, noGit, id)
+}
+
 func (t *Tx) DeleteWorkspace(id string) error {
 	return t.exec(`DELETE FROM workspaces WHERE id = ?`, id)
 }

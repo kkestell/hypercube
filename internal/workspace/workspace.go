@@ -102,6 +102,32 @@ func Resolve(base, dir string) (string, error) {
 	return dir, nil
 }
 
+// ErrNotGit means an existing directory has no Git metadata in its ancestors.
+var ErrNotGit = errors.New("folder is outside Git")
+
+// HasGitMetadata reports whether dir or an ancestor has a .git entry, including
+// a worktree marker file. Its presence does not establish that Git works.
+func HasGitMetadata(dir string) (bool, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return false, err
+	}
+	for {
+		_, err := os.Lstat(filepath.Join(dir, ".git"))
+		if err == nil {
+			return true, nil
+		}
+		if !os.IsNotExist(err) {
+			return false, err
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return false, nil
+		}
+		dir = parent
+	}
+}
+
 // At returns the workspace root for dir: the top level of its checkout, or
 // dir itself outside Git. A relative dir is relative to /.
 func At(dir string) (string, error) {
@@ -109,15 +135,32 @@ func At(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if top, err := Root(root); err == nil {
-		root = top
+	top, err := Root(root)
+	if errors.Is(err, ErrNotGit) {
+		return root, nil
 	}
-	return root, nil
+	return top, err
 }
 
-// Root returns the top level of the checkout containing dir.
+// Root returns the top level of the checkout containing dir, or ErrNotGit for
+// an existing directory without Git metadata. Other Git failures are preserved.
 func Root(dir string) (string, error) {
-	return git(dir, "rev-parse", "--show-toplevel")
+	top, gitErr := git(dir, "rev-parse", "--show-toplevel")
+	if gitErr == nil {
+		return top, nil
+	}
+	dir, err := Resolve("/", dir)
+	if err != nil {
+		return "", err
+	}
+	inGit, err := HasGitMetadata(dir)
+	if err != nil {
+		return "", err
+	}
+	if inGit {
+		return "", gitErr
+	}
+	return "", ErrNotGit
 }
 
 // Branch returns the branch checked out in dir.

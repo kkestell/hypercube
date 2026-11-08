@@ -1,16 +1,21 @@
 package workspace
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestRoot(t *testing.T) {
 	dir := t.TempDir()
-	if _, err := Root(dir); err == nil {
-		t.Errorf("Root(%s) succeeded before git init", dir)
+	if _, err := Root(dir); !errors.Is(err, ErrNotGit) {
+		t.Errorf("Root(%s) = %v, want ErrNotGit", dir, err)
+	}
+	if got, err := At(dir); err != nil || got != dir {
+		t.Errorf("At(%s) = %q, %v", dir, got, err)
 	}
 	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
@@ -19,10 +24,80 @@ func TestRoot(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, d := range []string{dir, sub} {
-		if _, err := Root(d); err != nil {
-			t.Errorf("Root(%s) failed after git init: %v", d, err)
+		for _, discover := range []func(string) (string, error){Root, At} {
+			if got, err := discover(d); err != nil || got != want {
+				t.Errorf("discovery(%s) = %q, %v; want %q", d, got, err, want)
+			}
 		}
+	}
+}
+
+func TestRootWorktree(t *testing.T) {
+	root, run := gitRepo(t)
+	dir := filepath.Join(t.TempDir(), "worktree")
+	run(root, "worktree", "add", "-qb", "linked", dir)
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Root(dir); err != nil || got != want {
+		t.Fatalf("Root(worktree) = %q, %v; want %q", got, err, want)
+	}
+}
+
+func TestRootFailures(t *testing.T) {
+	root, _ := gitRepo(t)
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	invalid := t.TempDir()
+	write(t, filepath.Join(invalid, ".git"), "gitdir: missing\n")
+	for _, dir := range []string{sub, invalid} {
+		t.Run(filepath.Base(dir), func(t *testing.T) {
+			bin := t.TempDir()
+			if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho test-git-refusal >&2\nexit 128\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("PATH", bin)
+			for _, discover := range []func(string) (string, error){Root, At} {
+				if _, err := discover(dir); err == nil || errors.Is(err, ErrNotGit) || !strings.Contains(err.Error(), "test-git-refusal") {
+					t.Errorf("discovery(%s) = %v, want Git refusal", dir, err)
+				}
+			}
+		})
+	}
+	if _, err := Root(invalid); err == nil || errors.Is(err, ErrNotGit) {
+		t.Errorf("invalid marker = %v, want Git error", err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, discover := range []func(string) (string, error){Root, At} {
+		if _, err := discover(missing); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("missing directory = %v, want not-exist error", err)
+		}
+	}
+}
+
+func TestRootWithoutGitExecutable(t *testing.T) {
+	root, _ := gitRepo(t)
+	plain := t.TempDir()
+	t.Setenv("PATH", t.TempDir())
+	for _, discover := range []func(string) (string, error){Root, At} {
+		var startErr *exec.Error
+		if _, err := discover(root); !errors.As(err, &startErr) || errors.Is(err, ErrNotGit) {
+			t.Errorf("checkout without executable = %v, want command-start error", err)
+		}
+	}
+	if _, err := Root(plain); !errors.Is(err, ErrNotGit) {
+		t.Errorf("plain directory without executable = %v, want ErrNotGit", err)
+	}
+	if got, err := At(plain); err != nil || got != plain {
+		t.Errorf("At(plain) without executable = %q, %v", got, err)
 	}
 }
 

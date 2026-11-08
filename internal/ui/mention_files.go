@@ -9,32 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 const maxMentionFiles = 50000
-
-// gitWorktree detects a repository without treating a failed Git command as a
-// non-Git workspace. Worktrees have a .git file in place of a directory.
-func gitWorktree(dir string) (bool, error) {
-	dir, err := filepath.Abs(dir)
-	if err != nil {
-		return false, err
-	}
-	for {
-		_, err := os.Lstat(filepath.Join(dir, ".git"))
-		if err == nil {
-			return true, nil
-		}
-		if !os.IsNotExist(err) {
-			return false, err
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return false, nil
-		}
-		dir = parent
-	}
-}
 
 func regularFile(root *os.Root, name string) bool {
 	info, err := root.Stat(name)
@@ -124,7 +103,7 @@ func (s *server) mentionFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func mentionFileList(ctx context.Context, root *os.Root) ([]string, error) {
-	inGit, err := gitWorktree(root.Name())
+	inGit, err := workspace.HasGitMetadata(root.Name())
 	if err != nil {
 		return nil, err
 	}
