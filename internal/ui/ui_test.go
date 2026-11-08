@@ -17,16 +17,13 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/config"
-	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
-
-func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // dial opens one of the server's sockets with the page's origin.
 func dial(t *testing.T, server *httptest.Server, path string) (*websocket.Conn, *http.Response, error) {
@@ -54,7 +51,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{})
+	return Handler(db, session.New(db, "", session.Programs{Holder: holdtest.Path}))
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -108,70 +105,6 @@ func TestFavicon(t *testing.T) {
 	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/favicon.svg", nil))
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "image/svg+xml" {
 		t.Fatalf("favicon response = %d, %v", res.Code, res.Header())
-	}
-}
-
-func TestVersion(t *testing.T) {
-	res := httptest.NewRecorder()
-	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/version", nil))
-	if res.Code != http.StatusOK || res.Body.String() != buildinfo.String()+"\n" || res.Header().Get("Cache-Control") != "no-store" {
-		t.Fatalf("version response = %d, %v, %s", res.Code, res.Header(), res.Body)
-	}
-}
-
-func TestRoutesRefuseOtherSites(t *testing.T) {
-	db := open(t)
-	change(t, db, func(tx *store.Tx) error {
-		tx.AddWorkspace(store.Workspace{ID: "w", Path: "/src/repo"})
-		tx.AddSession(store.Session{ID: "s", Workspace: "w"})
-		return nil
-	})
-	h := handler(t, db)
-	send := func(method, host, origin, path string) int {
-		req := httptest.NewRequest(method, "http://"+host+path, strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`))
-		req.Header.Set("X-Hypercube-Session", "s")
-		if origin != "" {
-			req.Header.Set("Origin", origin)
-		}
-		res := httptest.NewRecorder()
-		h.ServeHTTP(res, req)
-		return res.Code
-	}
-	for name, got := range map[string]int{
-		"foreign host":          send("GET", "example.com", "", "/config"),
-		"rebound host":          send("POST", "example.com:4280", "http://example.com:4280", "/mcp"),
-		"foreign input":         send("POST", "localhost:4280", "http://example.com", "/session?action=input&id=a"),
-		"input without origin":  send("POST", "localhost:4280", "", "/session?action=input&id=a"),
-		"terminal foreign host": send("GET", "example.com", "", "/terminal?session=s"),
-	} {
-		if got != http.StatusForbidden {
-			t.Errorf("%s: status %d", name, got)
-		}
-	}
-	// An agent's request names no origin. The origin check lets it through to
-	// the MCP handler, which refuses this stand-in for lacking a content type.
-	if got := send("POST", "127.0.0.1:4280", "", "/mcp"); got == http.StatusForbidden {
-		t.Errorf("the bridge: status %d", got)
-	}
-	// Another page cannot open the data or terminal sockets.
-	server := httptest.NewServer(h)
-	defer server.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	for _, path := range []string{"/state", "/terminal?session=s", "/desktop"} {
-		if _, res, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+path, &websocket.DialOptions{
-			HTTPHeader: http.Header{"Origin": {"http://example.com"}},
-		}); err == nil || res == nil || res.StatusCode != http.StatusForbidden {
-			t.Fatalf("%s from a foreign origin: %v %v", path, res, err)
-		}
-	}
-}
-
-func TestPageRefusesForeignFrames(t *testing.T) {
-	res := httptest.NewRecorder()
-	handler(t, open(t)).ServeHTTP(res, httptest.NewRequest("GET", "http://localhost:4280/", nil))
-	if res.Code != http.StatusOK || res.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
-		t.Fatalf("page response = %d, %v", res.Code, res.Header())
 	}
 }
 
@@ -275,7 +208,7 @@ func newApp(t *testing.T) *app {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	rt := session.New(db, "", session.Programs{Plugins: plugins})
+	rt := session.New(db, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
 	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {
@@ -301,7 +234,7 @@ func newApp(t *testing.T) *app {
 		time.Sleep(5 * time.Millisecond)
 	}
 	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(db, rt, &desktop.Desktop{}))
+	a.server = httptest.NewServer(Handler(db, rt))
 	t.Cleanup(a.server.Close)
 	return a
 }

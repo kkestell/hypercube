@@ -52,7 +52,7 @@ the plugin code defines the current integration.
 
 ## Why agents outlive the window
 
-An agent plugin runs under a `hypercube hold` process that owns its input and
+An agent plugin runs under a `hypercube-hold` process that owns its input and
 output independently of the app. Panel shells use holders too. A service
 restart, development rebuild, SIGTERM, or app crash therefore leaves those
 processes alive. On startup, the app attaches to surviving launches and
@@ -73,7 +73,7 @@ See [hold](../internal/hold/hold.go) and
 
 ## One owner for user actions and agent tools
 
-Each harness starts `hypercube mcp` as a stdio MCP server. It forwards tool
+Each harness starts `hypercube-mcp` as a stdio MCP server. It forwards tool
 requests to the app with the session ID. Browser actions reach the same session
 runtime, so both use one owner of lifecycle and saved state. The runtime
 serializes its operations, releasing its lock before waiting on a plugin:
@@ -115,18 +115,22 @@ See [transcripts](../internal/session/transcript.go) and
 
 `hypercube ui` is the backend: a background process that serves the interface
 and runs the agents, with no window of its own. It runs as a login service or
-in a terminal. The Electron app, `Hypercube Desktop`, is a client of the
-backend. It shows the interface in a window, with the menus, notifications,
-and the count of waiting sessions: on macOS a menu bar icon and the Dock badge,
-on Linux the launcher badge. Closing the window hides it on macOS and quits the
+in a terminal. It finds its plugins, `hypercube-mcp`, and `hypercube-hold`
+beside its real executable. The `hypercube mcp` and `hypercube hold` commands
+run the same code for processes started by earlier versions.
+
+The Electron app, `Hypercube Desktop`, is a client of the backend. It shows the
+interface in a window, with the menus, notifications, and the count of waiting
+sessions: on macOS a menu bar icon and the Dock badge, on Linux the launcher
+badge. Closing the window hides it on macOS and quits the
 app on Linux. It also runs the actions that need the user's
 graphical session: Add Workspace's folder chooser and opening folders and files
 in other applications. Quitting, restarting, or
 losing the desktop app leaves the backend, agents, messaging, and coordination
 running. Its signed application bundle, `Hypercube.app`, contains the desktop
-app, `hypercube`, and the plugins; macOS notifications require that bundle. The
-Linux bundle is the directory `Hypercube` with the same executables, and the
-pages and launcher files in `resources/`.
+app, `hypercube`, its MCP bridge and holder, and the plugins; macOS notifications
+require that bundle. The Linux bundle is the directory `Hypercube` with the same
+executables, and the pages and launcher files in `resources/`.
 
 The desktop app connects to the backend's loopback `/desktop` WebSocket and
 dials again after a restart. The backend sends an alert for each new request or

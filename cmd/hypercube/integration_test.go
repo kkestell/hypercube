@@ -232,7 +232,7 @@ func (w *world) ready(id string) bool {
 func TestAppProcess(t *testing.T) {
 	w := newWorld(t)
 	binary := filepath.Join(w.plugins, "hypercube")
-	if out, err := exec.Command("go", "build", "-o", w.plugins+string(os.PathSeparator), ".", "../hypercube-mcp").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", w.plugins+string(os.PathSeparator), ".", "../hypercube-mcp", "../hypercube-hold").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
 	}
 	bridgeBinary, err := filepath.EvalSymlinks(filepath.Join(w.plugins, "hypercube-mcp"))
@@ -404,6 +404,25 @@ func TestAppProcess(t *testing.T) {
 		}
 	}
 	readPanel("shell-before")
+	// Agent plugins and the panel shell run under the separate holder command.
+	holders, err := filepath.Glob(filepath.Join(w.dir, "state", "hypercube", "run", "*", "pid"))
+	if err != nil || len(holders) == 0 {
+		t.Fatalf("holder PID files: %v, %v", holders, err)
+	}
+	holderBinary, err := filepath.EvalSymlinks(filepath.Join(w.plugins, "hypercube-hold"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range holders {
+		pid, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		command, err := exec.Command("ps", "-p", strings.TrimSpace(string(pid)), "-o", "command=").CombinedOutput()
+		if err != nil || !strings.HasPrefix(strings.TrimSpace(string(command)), holderBinary+" ") {
+			t.Fatalf("holder %s command = %q: %v", pid, command, err)
+		}
+	}
 	// SIGTERM and a crash preserve process identity and transcript continuity.
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGKILL} {
 		if err := app.Process.Signal(sig); err != nil {

@@ -49,7 +49,7 @@ implementation details are in [architecture](architecture.md).
 - **launch**: One attempt to start a session's plugin and agent, with its own
   ID and output position; restarting the agent creates a new launch while a
   backend restart can reattach to a surviving one.
-- **holder**: A detached `hypercube hold` process that owns a plugin's or panel
+- **holder**: A detached `hypercube-hold` process that owns a plugin's or panel
   shell's input and output so it can survive a backend restart.
 - **turn**: One period of agent work on input, ending when the harness reports
   idle, is interrupted, or fails; it can include tool calls and user questions.

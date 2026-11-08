@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kkestell/hypercube/internal/hold"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 )
 
 func newSet(t *testing.T, command ...string) *Set {
@@ -19,7 +20,7 @@ func newSet(t *testing.T, command ...string) *Set {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	s := &Set{Dir: dir, Command: command}
+	s := &Set{Dir: dir, Command: command, Holder: holdtest.Path}
 	t.Cleanup(s.Close)
 	return s
 }
@@ -79,7 +80,7 @@ func gone(s *Set, session string) bool {
 func TestInputOutputAndAdopt(t *testing.T) {
 	next := newSet(t, "/bin/cat")
 	// The first set belongs to an app that exits without ending its shells.
-	set := &Set{Dir: next.Dir, Command: next.Command}
+	set := &Set{Dir: next.Dir, Command: next.Command, Holder: holdtest.Path}
 	sh, err := set.Open("s", t.TempDir(), 80, 24)
 	if err != nil {
 		t.Fatal(err)

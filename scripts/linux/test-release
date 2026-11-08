@@ -70,6 +70,10 @@ for f in "$app/hypercube-harness-codex" "$HOME/.local/bin/hypercube-harness-code
 	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f is included after Codex support was removed"
 done
 
+for f in hypercube-mcp hypercube-hold; do
+	[ -x "$app/$f" ] || fail "$app/$f is not executable"
+done
+
 # Service.
 APP=$app SERVICE=$unit PORT=4280 "$app/resources/install-service"
 wait_for "the backend to answer" curl -fsS "$url/version"

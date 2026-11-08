@@ -50,8 +50,10 @@ type Holder struct {
 	closed bool
 }
 
-// Start starts a detached holder with the child's environment and directory.
-func Start(dir string, argv []string, env []string, cwd string, size *Size) (*Holder, error) {
+// Start runs holder, the hypercube-hold executable, detached, to start argv
+// with the environment and working directory in the holder directory dir.
+// size starts it on a terminal of that size.
+func Start(holder, dir string, argv []string, env []string, cwd string, size *Size) (*Holder, error) {
 	if len(filepath.Join(dir, "in")) > 103 {
 		return nil, fmt.Errorf("holder socket path is longer than 103 bytes: %s", dir)
 	}
@@ -80,17 +82,13 @@ func Start(dir string, argv []string, env []string, cwd string, size *Size) (*Ho
 		return nil, err
 	}
 	defer socket.Close()
-	exe, err := os.Executable()
-	if err != nil {
-		return nil, err
-	}
-	args := []string{"hold"}
+	var args []string
 	if size != nil {
 		args = append(args, "-terminal", "-cols", strconv.Itoa(size.Cols), "-rows", strconv.Itoa(size.Rows))
 	}
 	args = append(args, dir)
 	args = append(args, argv...)
-	cmd := exec.Command(exe, args...)
+	cmd := exec.Command(holder, args...)
 	cmd.Env, cmd.Dir, cmd.Stderr = env, cwd, os.Stderr
 	cmd.ExtraFiles = []*os.File{lock, socket}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

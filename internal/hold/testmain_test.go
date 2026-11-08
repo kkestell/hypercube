@@ -5,11 +5,13 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 )
 
 func TestMain(m *testing.M) {
 	if len(os.Args) > 1 && os.Args[1] == "parent" {
-		_, err := Start(os.Args[2], []string{"/bin/cat"}, os.Environ(), "", nil)
+		_, err := Start(os.Args[2], os.Args[3], []string{"/bin/cat"}, os.Environ(), "", nil)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
@@ -18,15 +20,5 @@ func TestMain(m *testing.M) {
 		time.Sleep(time.Hour)
 		os.Exit(0)
 	}
-	if len(os.Args) > 1 && os.Args[1] == "hold" {
-		if err := Main(os.Args[2:]); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(1)
-		}
-		os.Exit(0)
-	}
-	// Holders inherit this, so a race-enabled holder exits at once instead of
-	// sleeping a second to report races.
-	_ = os.Setenv("GORACE", "atexit_sleep_ms=0")
-	os.Exit(m.Run())
+	holdtest.Main(m)
 }

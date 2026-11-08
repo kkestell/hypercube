@@ -76,7 +76,7 @@ stop_holders() {
 		[ -f "$file" ] || continue
 		pid=$(cat "$file")
 		case "$(ps -p "$pid" -o command=)" in
-			*"hypercube hold "*) kill -TERM "$pid" 2>/dev/null || true; pids+=("$pid");;
+			*"hypercube-hold "*|*"hypercube hold "*) kill -TERM "$pid" 2>/dev/null || true; pids+=("$pid");;
 		esac
 	done
 	[ "${#pids[@]}" -gt 0 ] || return 0

@@ -75,7 +75,7 @@ printf 'set -gx HYPERCUBE_TEST_SHELL fish\nset -gx HYPERCUBE_SCENE %s\n' "$scene
 
 # Install.
 SHELL=/bin/bash make install-service
-for f in hypercube-desktop hypercube "${plugins[@]/#/hypercube-harness-}"; do
+for f in hypercube-desktop hypercube hypercube-mcp hypercube-hold "${plugins[@]/#/hypercube-harness-}"; do
 	[ -x "$app/$f" ] || fail "$app/$f is not executable"
 done
 for f in install install-service uninstall com.github.kkestell.hypercube.png com.github.kkestell.hypercube.desktop; do
@@ -110,6 +110,10 @@ launches=("$state"/run/*/pid)
 [ ${#launches[@]} -eq 1 ] || fail "expected one launch directory, found ${#launches[@]}"
 holder=$(<"${launches[0]}")
 alive "$holder" || fail "the holder is not running"
+case $(ps -o command= -p "$holder") in
+"$app/hypercube-hold "*) ;;
+*) fail "the holder is not running the installed hypercube-hold" ;;
+esac
 
 # Restart: the new backend adopts the holder, and the same plugin answers.
 systemctl --user restart "$unit"

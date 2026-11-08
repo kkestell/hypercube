@@ -5,10 +5,10 @@ SERVICE := $(APP_ID)
 .PHONY: build bundle install install-service uninstall
 
 # bundle builds $(APP): the Electron desktop app, hypercube-desktop, with
-# hypercube and the harness plugins side by side at the top, and the pages,
-# icon, and launcher file the app reads in resources/, beside the installer
-# scripts. The icon is rendered from cmd/hypercube/AppIcon.svg. build also
-# links hypercube and the plugins into bin/.
+# hypercube, its MCP bridge and holder, and the harness plugins side by side
+# at the top, and the pages, icon, and launcher file the app reads in
+# resources/, beside the installer scripts. The icon is rendered from
+# cmd/hypercube/AppIcon.svg. build also links hypercube and the plugins into bin/.
 bundle: ui bin/$(APP_ID).png
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile
 	rm -rf $(APP)

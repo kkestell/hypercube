@@ -14,6 +14,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 )
 
 func temp(t *testing.T) string {
@@ -28,7 +30,7 @@ func temp(t *testing.T) string {
 func start(t *testing.T, size *Size, argv ...string) *Holder {
 	t.Helper()
 	dir := temp(t)
-	h, err := Start(filepath.Join(dir, "run"), argv, os.Environ(), dir, size)
+	h, err := Start(holdtest.Path, filepath.Join(dir, "run"), argv, os.Environ(), dir, size)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestOutputWriteFailureStopsChild(t *testing.T) {
 	if err := syscall.Mkfifo(segment, 0600); err != nil {
 		t.Fatal(err)
 	}
-	h, err := Start(dir, []string{"/usr/bin/yes"}, os.Environ(), "", nil)
+	h, err := Start(holdtest.Path, dir, []string{"/usr/bin/yes"}, os.Environ(), "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,9 +203,19 @@ func TestInputDropsPartialLinesAndSerializesWriters(t *testing.T) {
 }
 func TestLongSocketPathRefused(t *testing.T) {
 	dir := filepath.Join(temp(t), strings.Repeat("x", 104))
-	_, err := Start(dir, []string{"cat"}, os.Environ(), "", nil)
+	_, err := Start(holdtest.Path, dir, []string{"cat"}, os.Environ(), "", nil)
 	if err == nil || !strings.Contains(err.Error(), dir) {
 		t.Fatal(err)
+	}
+}
+func TestStartWithoutHolder(t *testing.T) {
+	dir := temp(t)
+	_, err := Start(filepath.Join(dir, "missing"), filepath.Join(dir, "run"), []string{"/bin/cat"}, os.Environ(), "", nil)
+	if !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing holder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "run", "in")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("input socket remains: %v", err)
 	}
 }
 func TestStopClosesInput(t *testing.T) {
@@ -262,7 +274,7 @@ func TestTerminalResizeHangupAndRetention(t *testing.T) {
 func TestSurvivesKilledParent(t *testing.T) {
 	dir := filepath.Join(temp(t), "run")
 	exe, _ := os.Executable()
-	cmd := exec.Command(exe, "parent", dir)
+	cmd := exec.Command(exe, "parent", holdtest.Path, dir)
 	cmd.Stderr = os.Stderr
 	ready, err := cmd.StdoutPipe()
 	if err != nil {

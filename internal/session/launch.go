@@ -137,7 +137,7 @@ func (r *Runtime) run(l *live) {
 			var path string
 			path, err = r.pluginPath(l.id)
 			if err == nil {
-				client, err = harnessclient.Launch(dir, path)
+				client, err = harnessclient.Launch(r.programs.Holder, dir, path)
 			}
 		}
 	} else {
