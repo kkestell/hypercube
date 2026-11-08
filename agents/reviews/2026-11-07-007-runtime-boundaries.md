@@ -13,7 +13,7 @@ command roles, backend startup and shutdown, plugin launch and discovery,
 MCP forwarding and tools, session persistence and reattachment, panel shells,
 native MCP configuration in all four plugins, testing seams, development,
 screenshots, and macOS/Linux packaging and installation. It supports the
-[implementation plan](../plans/2026-11-07-005-runtime-boundaries.md).
+[implementation sequence](../plans/2026-11-07-005-runtime-boundaries.md).
 
 The review is comprehensive for these boundaries. It is not a fresh
 correctness audit of every native event translation or browser component.
@@ -270,62 +270,76 @@ durability guarantees are unnecessary. Protocol and application preference
 package moves, explicit launch dependencies, and backend composition address
 the evidenced problems directly.
 
-## Plan assessment
+## Implementation boundaries
 
-The parent assessed the fresh planning agent's draft independently against
-the source and the package-only baseline, then revised it following the
-user-requested Claude review. The plan incorporates these corrections:
+The architecture review described the complete problem, but the original
+document incorrectly treated that problem as one implementation unit. The
+changes have distinct responsibilities and can be implemented and reviewed
+separately. A plan boundary is not a release boundary:
 
-1. **Include the scripted plugin's actual MCP call.** Its `createSessions`
-   function executes the old backend command, and its independent serve loop
-   does not receive the shared native adapter. The plan now names that code
-   change and a non-rendering scene regression. An offer can exercise the
-   callback without changing the existing Linux test's agent PID count.
-2. **Release desktop writes before joining the watcher.** The draft proposed
-   waiting for alert-watch completion before closing the desktop connection.
-   `Desktop.Alert` uses `context.Background()` for its WebSocket write, so
-   cancelling the watch cannot release a blocked write. The revised shutdown
-   closes the connection before joining the watcher and closes SQLite after
-   the watcher finishes. This uses the current connection shutdown mechanism.
-3. **Make intermediate steps usable.** Real helper construction in fixtures
-   must accompany removal of test-binary holder dispatch. The existing MCP
-   command temporarily calls the extracted bridge until it is replaced by
-   the compatibility exec. Neither step leaves a missing dependency hidden
-   until the final verification phase.
-4. **Verify the environment that really exists.** Normal `scripts/dev` strips
-   external scene variables, so the plan no longer assumes that exporting
-   `HYPERCUBE_SCENE` supplies a scripted development agent. Isolated dev
-   startup/rebuild and the existing stand-in process tests cover their proper
-   boundaries. Callback/restart tests retain the same backend address that
-   surviving processes were configured to use.
-5. **Preserve old-backend launches during replacement.** Keep the small
-   `hypercube hold` forwarding command as well as the MCP forwarding command.
-   This chooses the review's behavior-preserving alternative to accepting a
-   temporary launch regression. New launch paths still use the helper directly.
-6. **Preserve test setup and clarify attachment.** Create the real-holder test
-   helper, race instrumentation, and inherited `GORACE` setting in step 3;
-   step 7 is cleanup only. `terminal.Set.Open` needs the holder path whenever
-   it starts a new shell, while holder/plugin attachment and `Set.Adopt` do not.
-7. **Keep contracts and verification proportionate.** Retain backend
-   composition in focused command files, use a plain MCP executable path in
-   new starts with argv confined to the shared plugin adapter, and remove the
-   extra connected-desktop shutdown test obligation. Inspect shutdown ordering
-   directly and keep the existing desktop coverage.
+| Plan | Result and findings addressed |
+| --- | --- |
+| [Application configuration](../plans/2026-11-07-006-application-config.md) | Preferences and their existing migrations have an appropriate owner. Addresses the configuration part of F4 without changing process or wire behavior. |
+| [Shared harness data](../plans/2026-11-07-007-harness-protocol-boundary.md) | Protocol data and validation no longer import the backend plugin client or discovery execution. Completes F4 after configuration moves. |
+| [MCP bridge executable](../plans/2026-11-07-008-mcp-bridge-executable.md) | Independent bridge transport/executable and an explicit MCP path in new starts, with legacy saved commands preserved. Addresses F2 and F3, including native/scripted source integration. |
+| [Holder executable](../plans/2026-11-07-009-holder-executable.md) | Explicit holder launch dependency and a real holder in tests. Addresses F1 and F6, including descriptor-preserving compatibility. |
+| [Backend composition](../plans/2026-11-07-010-backend-composition.md) | Backend routes, protections, startup/shutdown, and alerts have focused command files. Addresses F5 without another package or unrelated executable work. |
+| [Runtime integration](../plans/2026-11-07-011-runtime-integration.md) | Build and ship the complete layout, update development/screenshot paths and current references, and verify the final platform integration. |
 
-The final design addresses F1 through explicit program paths; F2 through an
-independent bridge package; F3 through an MCP executable path and narrow
-legacy handling; F4 through shared data, client, and preferences ownership;
-F5 through backend composition; and F6 through actual helper executables in
-tests. Its inventory
-includes native and scripted integrations, private helper packaging/signing,
-symlink invocation, development cleanup, archive contents, current references,
-and deletion of replaced dispatch and forwarding code.
+Packaging, signing, installation, and full operational verification belong to
+the final integration plan. No release is planned between source changes;
+the interim bundle and development recipes can remain incomplete until that
+integration. Do not inflate source plans or add temporary production paths to
+make each one independently deployable. Source changes retain their focused
+fixtures and necessary code checks. Each plan receives its own work and review
+cycle; the sequence overview is not a `/kwork` input.
 
-No material design question remains unresolved. This verdict approves the
-plan's coherence and scope, not an implementation. The implementation must
-still receive the fresh work and code-review agents and the validation required
-by `agents/development.md`. Architecture findings above remain planned until
-that work is complete.
+## Sequence assessment
+
+The source establishes the following transition constraints for the focused
+plans. Check their implementation boundaries against these constraints:
+
+- Configuration can move first with the same path, document, defaults, and
+  migrations. Its shared settings type still reaches the existing mixed
+  harness package until the next plan; this first change must not claim
+  complete transitive isolation.
+- Moving the plugin client and discovery execution can preserve existing
+  launch APIs and self-execution temporarily. It does not need a helper or
+  new program-path configuration before those are actually used.
+- The MCP source plan introduces only its own helper and actual program paths.
+  Holder self-execution and test-binary dispatch remain functional at this
+  point. Original command JSON/IDs and surviving native MCP commands retain
+  their compatibility paths. The scripted plugin's independent MCP call must
+  use the same adapter; final integration exercises its actual callback without
+  screenshot rendering.
+- The holder plan adds the holder path, helper executable, descriptor-preserving
+  old-command forwarding, and real test helper together. Preserve matching
+  race instrumentation and `GORACE=atexit_sleep_ms=0`; no later plan should
+  supply a prerequisite for these tests. Attachment and adoption remain
+  distinct from `terminal.Set.Open`, which may start a new shell.
+- Backend composition follows the executable splits. Keep the host/origin/frame
+  protection around all routes. Cancel the alert watcher and close the
+  desktop connection before joining it, then close the database; the existing
+  `Desktop.Alert` write ignores watch cancellation. Review that ordering
+  directly and retain existing desktop tests, without another connected-peer
+  or backpressure test obligation.
+
+Normal `scripts/dev` strips external scene variables, so a normal development
+smoke cannot assume that exporting `HYPERCUBE_SCENE` supplies a scripted agent.
+Use the existing stand-in process tests for source behavior, retaining the same
+backend address across callbacks and restart. Run private-bundle, symlink,
+signing, archive, and development smoke verification against the complete
+layout in the integration plan. Do not repeat those platform checks for each
+source extraction without a new reason.
+
+The accepted design remains a plain MCP executable field, backend composition
+inside the existing command, unchanged runtime state ownership, and small MCP
+and holder forwarding commands for supported old callers. The parent assessed
+the focused plans against these source boundaries and the final integration
+scope. Their dependencies and ownership are coherent without treating each
+source change as a release. Architecture findings remain planned until the
+corresponding work is implemented and validated. No implementation is approved
+by this documentation review.
 
 ## Verification of this review and plan
 
