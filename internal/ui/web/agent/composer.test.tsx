@@ -206,7 +206,6 @@ const existing = (extra: Partial<Session> = {}) => {
   const top = testSession({...session, worktree: true, merge: merge(), children: [testSession({id: 'c', parent: 'a'})], ...extra});
   return {top, store: worktreeStore(false, [top])};
 };
-const mergeButton = (root: HTMLElement) => root.querySelector('.composer-merge');
 
 test('started sessions have no location choice', () => {
   const {top, store: s} = existing();
@@ -214,31 +213,6 @@ test('started sessions have no location choice', () => {
     expect(worktreeToggle(mount(s, <Composer session={shown} />))).toBeNull();
     unmountAll();
   }
-});
-
-test('Merge shows only with unmerged commits and no error', () => {
-  for (const m of [merge(), merge({committed: true}), merge({uncommitted: 1}), merge({unmerged: 1, error: 'x'})]) {
-    const {top, store: s} = existing({merge: m});
-    expect(mergeButton(mount(s, <Composer session={top} />))).toBeNull();
-    unmountAll();
-  }
-});
-
-test('Merge asks the agent to merge into the target in the checkout', async () => {
-  fetches = stubFetch(() => new Response(''));
-  const {top, store: s} = existing({merge: merge({unmerged: 2, committed: true})});
-  const root = mount(s, <Composer session={top} />);
-  const button = element(root, '.composer-merge', HTMLButtonElement);
-  expect(button.disabled).toBe(false);
-  await act(async () => button.click());
-  const requests = fetches.mock.calls.filter(([url]) => url.startsWith('session?'));
-  expect(requests).toHaveLength(1);
-  const [[url, init]] = requests;
-  expect(queryOf(url)).toEqual({action: 'input', id: 'a'});
-  expect(sentBody(init)).toEqual({
-    text: 'Commit any remaining work, then merge your branch into main in the checkout at /repo, resolving any conflicts, and report the result.',
-    images: [],
-  });
 });
 
 test('prompt history returns to the unsent draft', () => {

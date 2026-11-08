@@ -4,9 +4,9 @@ import {Tabs, TabsContent, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {openDiffTab} from '../editor/editor.ts';
 import {FileIcon} from '../files/file-icon.tsx';
 import {currentSession} from '../sessions/selection.ts';
-import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {loadChanges, statusColor, statusLabel} from './changes.ts';
+import {MergeButton} from './merge-button.tsx';
 
 export function GitPanel() {
   const [state, store] = useStore();
@@ -25,10 +25,6 @@ export function GitPanel() {
 
   return <div className="git-panel h-full min-h-0 overflow-auto p-2 pt-1">
     {state.editor && changes && 'files' in changes ? <Tabs defaultValue="uncommitted">
-      <div className="flex min-w-0 items-center gap-1.5 px-2 py-2 text-sm" title={changes.branch || 'Detached HEAD'}>
-        <Icon name="git-branch" className="size-3.5 shrink-0" />
-        <span className="truncate">{changes.branch || 'Detached HEAD'}</span>
-      </div>
       <TabsList className="w-full" aria-label="Change comparison">
         <TabsTrigger value="uncommitted">Uncommitted</TabsTrigger>
         <TabsTrigger value="base" disabled={!session?.worktree}>Branch changes</TabsTrigger>
@@ -56,6 +52,7 @@ export function GitPanel() {
       <TabsContent value="base">
         <div className="space-y-3 px-2 py-1 text-sm">
           <p className="text-xs text-muted-foreground">Compared with <span className="font-medium text-foreground">{session?.merge?.target || 'base branch'}</span></p>
+          {session && <MergeButton session={session} />}
           <p>All changes since branching, including uncommitted edits.</p>
           <p className="text-muted-foreground">UI preview — base comparison is not connected yet.</p>
         </div>

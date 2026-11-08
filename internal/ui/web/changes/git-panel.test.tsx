@@ -6,6 +6,7 @@ import {emptyEditor} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {statusColor} from './changes.ts';
 import {GitPanel} from './git-panel.tsx';
+import {MergeButton} from './merge-button.tsx';
 import type {Changes} from './types.ts';
 
 afterEach(() => { unmountAll(); mock.restore(); });
@@ -101,4 +102,38 @@ test('worktree comparison is explicitly a preview rather than uncommitted rows',
   expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with main');
   expect(root.textContent).toContain('UI preview');
   expect(root.querySelector('li')).toBeNull();
+});
+
+test('merge belongs to branch changes and asks the agent to merge into the checkout', async () => {
+  const fetches = stubFetch(() => new Response(''));
+  const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 2, committed: true, uncommitted: 0}});
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', path: '/repo', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes}}));
+  const root = mount(store, <GitPanel />);
+  const selector = 'button[title="Ask the agent to merge this branch into main"]';
+  expect(root.querySelector(selector)).toBeNull();
+  act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  const button = find(root, selector);
+  expect(button.textContent).toBe('Merge into main');
+  expect(button.querySelector('svg')).not.toBeNull();
+  await act(async () => button.click());
+  expect(fetches).toHaveBeenCalledTimes(1);
+  const [url, init] = fetches.mock.calls[0];
+  const params = new URL(url, 'http://x/').searchParams;
+  expect(params.get('action')).toBe('input');
+  expect(params.get('id')).toBe('s');
+  expect(JSON.parse(init!.body as string)).toEqual({
+    text: 'Commit any remaining work, then merge your branch into main in the checkout at /repo, resolving any conflicts, and report the result.',
+    images: [],
+  });
+});
+
+test.each([
+  {unmerged: 0, committed: false, uncommitted: 0},
+  {unmerged: 0, committed: true, uncommitted: 0},
+  {unmerged: 0, committed: false, uncommitted: 1},
+  {unmerged: 1, committed: true, uncommitted: 0, error: 'x'},
+])('merge is absent without unmerged commits or on error: %p', merge => {
+  const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', ...merge}});
+  const store = createStore(testState({workspaces: [testWorkspace({id: 'w', sessions: [session]})]}));
+  expect(mount(store, <MergeButton session={session} />).querySelector('button')).toBeNull();
 });

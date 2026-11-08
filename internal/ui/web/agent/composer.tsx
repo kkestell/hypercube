@@ -16,7 +16,6 @@ import {MentionList, useMentions} from './use-mentions.tsx';
 import {SessionSelection} from './session-selection.tsx';
 import {Usage} from './usage.tsx';
 import {Limits} from './limits.tsx';
-import {MergeButton} from './merge-button.tsx';
 import {WorktreeSelect} from './worktree-select.tsx';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
@@ -129,7 +128,6 @@ export function Composer({session}: {session: Session}) {
       <div className="composer-bar mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pl-[11px] pr-[22px]">
         <div className="composer-details flex min-w-32 flex-1 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <SessionSelection session={session} />
-          <MergeButton session={session} />
         </div>
         <div className="flex items-center gap-4">
           <Limits harness={session.harness} />

@@ -4,6 +4,7 @@ import {requestMerge} from '../sessions/session-actions.ts';
 import type {Session} from '../sessions/types.ts';
 import {Button} from '../components/ui/button';
 import {useStore} from '../store.ts';
+import {Icon} from '../shared/icon.tsx';
 
 export function MergeButton({session}: {session: Session}) {
   const [state, store] = useStore();
@@ -12,9 +13,11 @@ export function MergeButton({session}: {session: Session}) {
   if (!merge || !found || merge.unmerged <= 0 || merge.error) return null;
 
   return (
-    <Button type="button" variant="secondary" size="xs" className="composer-merge"
+    <Button type="button" variant="secondary" size="sm"
+      title={`Ask the agent to merge this branch into ${merge.target}`}
       onClick={() => requestMerge(store, session, merge.target, found.workspace.path)}>
-      Merge
+      <Icon name="git-merge" />
+      Merge into {merge.target}
     </Button>
   );
 }
