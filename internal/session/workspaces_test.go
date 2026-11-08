@@ -113,6 +113,14 @@ func TestAddWorkspaceFailureDoesNotSave(t *testing.T) {
 	f := newFixture(t)
 	newDir := t.TempDir()
 	f.git(newDir, "init", "-q")
+	sub := filepath.Join(newDir, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(t.TempDir(), "linked-sub")
+	if err := os.Symlink(sub, alias); err != nil {
+		t.Fatal(err)
+	}
 	if err := f.db.Tx(func(tx *store.Tx) error { return tx.SetWorkspaceNoGit(f.workspace.ID, true) }); err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +135,7 @@ func TestAddWorkspaceFailureDoesNotSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	for _, dir := range []string{newDir, f.root} {
+	for _, dir := range []string{newDir, f.root, alias} {
 		if _, err := f.rt.AddWorkspace(dir); err == nil || !strings.Contains(err.Error(), "test-git-refusal") {
 			t.Errorf("AddWorkspace(%s) = %v, want refusal", dir, err)
 		}

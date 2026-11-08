@@ -58,7 +58,11 @@ func TestRootFailures(t *testing.T) {
 	}
 	invalid := t.TempDir()
 	write(t, filepath.Join(invalid, ".git"), "gitdir: missing\n")
-	for _, dir := range []string{sub, invalid} {
+	alias := filepath.Join(t.TempDir(), "linked-sub")
+	if err := os.Symlink(sub, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{sub, invalid, alias} {
 		t.Run(filepath.Base(dir), func(t *testing.T) {
 			bin := t.TempDir()
 			if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\necho test-git-refusal >&2\nexit 128\n"), 0o755); err != nil {

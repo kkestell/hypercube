@@ -153,6 +153,11 @@ func Root(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// Git discovers repositories through physical parents, not symlink aliases.
+	dir, err = filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", err
+	}
 	inGit, err := HasGitMetadata(dir)
 	if err != nil {
 		return "", err
