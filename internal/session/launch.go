@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/harnessclient"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
@@ -24,7 +25,7 @@ type live struct {
 	id, root  string
 	workspace string
 	prefix    string // the launch ID and ":", which namespaces item IDs
-	client    *harness.Client
+	client    *harnessclient.Client
 	ready     int64 // Unix milliseconds of the start reply; zero while starting
 	position  int64 // the output offset applied so far
 	quick     int   // consecutive launches that exited soon after starting
@@ -126,7 +127,7 @@ func (r *Runtime) run(l *live) {
 		r.mu.Unlock()
 		return
 	}
-	var client *harness.Client
+	var client *harnessclient.Client
 	var err error
 	dir := r.launchDir(l)
 	if _, statErr := os.Stat(dir); errors.Is(statErr, os.ErrNotExist) {
@@ -136,11 +137,11 @@ func (r *Runtime) run(l *live) {
 			var path string
 			path, err = r.pluginPath(l.id)
 			if err == nil {
-				client, err = harness.Launch(dir, path)
+				client, err = harnessclient.Launch(dir, path)
 			}
 		}
 	} else {
-		client, err = harness.Attach(dir)
+		client, err = harnessclient.Attach(dir)
 	}
 	stop := err == nil && l.stopping
 	if err == nil {
@@ -207,7 +208,7 @@ func (r *Runtime) pluginPath(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return harness.Find(r.PluginDir, s.Harness)
+	return harnessclient.Find(r.PluginDir, s.Harness)
 }
 
 // startArgs builds the arguments recorded with the launch's start command.

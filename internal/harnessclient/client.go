@@ -1,10 +1,7 @@
-// Package harness runs agents through harness plugins. A plugin is an
-// executable named hypercube-harness-<name> beside hypercube. Its `serve`
-// command keeps a native harness alive across turns and translates between the
-// harness and the protocol in protocol.go. A plugin builds the harness's
-// command line from per-launch arguments, environment, and overrides, without
-// changing the user's settings, credentials, or HOME.
-package harness
+// Package harnessclient runs harness plugins for the backend: it finds them
+// in the plugin directory, runs their discovery commands, and starts and
+// attaches to their serve command under a holder.
+package harnessclient
 
 import (
 	"bufio"
@@ -15,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
 )
 
@@ -50,7 +48,7 @@ func (c *Client) Send(line []byte) error {
 
 // Read applies complete records in output order, passing their end position.
 // A handler error is a protocol error and stops the plugin.
-func (c *Client) Read(from int64, handle func(Record, int64) error) error {
+func (c *Client) Read(from int64, handle func(harness.Record, int64) error) error {
 	output, err := c.holder.Output(from)
 	if err != nil {
 		return err
@@ -71,7 +69,7 @@ func (c *Client) Read(from int64, handle func(Record, int64) error) error {
 			}
 			from += int64(len(line))
 			if len(bytes.TrimSpace(line)) > 0 {
-				rec, decodeErr := decode(line)
+				rec, decodeErr := harness.DecodeRecord(line)
 				if decodeErr == nil {
 					decodeErr = handle(rec, from)
 				}

@@ -1,3 +1,10 @@
+// Package harness defines the protocol between Hypercube and its harness
+// plugins. A plugin is an executable named hypercube-harness-<name>. Its
+// `serve` command keeps a native harness alive across turns and translates
+// between the harness and the commands and records in this file; its
+// `describe` and `models` commands are described in discovery.go. A plugin
+// builds the harness's command line from per-launch arguments, environment,
+// and overrides, without changing the user's settings, credentials, or HOME.
 package harness
 
 import (
@@ -251,8 +258,9 @@ func (c Command) Line() ([]byte, error) {
 	return append(b, '\n'), err
 }
 
-// decode parses one plugin line and checks that it is well formed.
-func decode(line []byte) (Record, error) {
+// DecodeRecord parses one line of a plugin's output and checks that it is a
+// well-formed reply or event.
+func DecodeRecord(line []byte) (Record, error) {
 	var r Record
 	if err := json.Unmarshal(line, &r); err != nil {
 		return r, fmt.Errorf("malformed record: %w", err)

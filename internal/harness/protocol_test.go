@@ -23,7 +23,7 @@ func TestDecodeChecksEvents(t *testing.T) {
 		"limit without a time":    {line: `{"event":{"limits":[{"minutes":300,"used":42}]}}`, want: "limit"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := decode([]byte(tc.line))
+			_, err := DecodeRecord([]byte(tc.line))
 			if tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
 				t.Fatalf("error %v, want %q", err, tc.want)
 			}

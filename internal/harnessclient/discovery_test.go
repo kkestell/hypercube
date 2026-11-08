@@ -1,4 +1,4 @@
-package harness
+package harnessclient
 
 import (
 	"context"
@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/kkestell/hypercube/internal/harness"
 )
 
 // plugin writes a plugin script into dir.
@@ -31,10 +33,10 @@ func TestDescribe(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Describe(context.Background(), dir)
-	want := []Harness{
+	want := []harness.Harness{
 		{ID: "broken", Error: "harness broken: no luck"},
-		{ID: "one", Description: Description{Name: "One", Installed: true}},
-		{ID: "two", Description: Description{Name: "Two"}},
+		{ID: "one", Description: harness.Description{Name: "One", Installed: true}},
+		{ID: "two", Description: harness.Description{Name: "Two"}},
 	}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("Describe = %+v, %v", got, err)
@@ -49,7 +51,7 @@ func TestDescribe(t *testing.T) {
 
 func TestModels(t *testing.T) {
 	dir := t.TempDir()
-	req := ModelsRequest{Dir: t.TempDir(), Model: "a/b"}
+	req := harness.ModelsRequest{Dir: t.TempDir(), Model: "a/b"}
 	for name, tc := range map[string]struct {
 		output string
 		want   string // the error, or empty when the catalog is valid
@@ -71,7 +73,7 @@ func TestModels(t *testing.T) {
 			}
 		})
 	}
-	if _, err := Models(context.Background(), dir, "fake", ModelsRequest{Dir: "relative"}); err == nil {
+	if _, err := Models(context.Background(), dir, "fake", harness.ModelsRequest{Dir: "relative"}); err == nil {
 		t.Fatal("accepted a relative directory")
 	}
 	if _, err := Models(context.Background(), dir, "missing", req); err == nil {
@@ -96,7 +98,7 @@ func TestModelsCancel(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan error, 1)
 			go func() {
-				_, err := Models(ctx, dir, "slow", ModelsRequest{Dir: t.TempDir()})
+				_, err := Models(ctx, dir, "slow", harness.ModelsRequest{Dir: t.TempDir()})
 				done <- err
 			}()
 			var pid string

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/harnessclient"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
@@ -61,7 +62,7 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 	if err := settings.Check(); err != nil {
 		return store.Session{}, err
 	}
-	if _, err := harness.Find(r.PluginDir, settings.Harness); err != nil {
+	if _, err := harnessclient.Find(r.PluginDir, settings.Harness); err != nil {
 		return store.Session{}, err
 	}
 	r.mu.Lock()
