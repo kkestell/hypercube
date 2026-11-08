@@ -22,7 +22,7 @@ import (
 // Main runs one child. Files 3 and 4 are the lock and input listener inherited
 // from Start, so neither ownership nor readiness depends on the app staying up.
 func Main(args []string) error {
-	flags := flag.NewFlagSet("hold", flag.ContinueOnError)
+	flags := flag.NewFlagSet("hypercube-hold", flag.ContinueOnError)
 	terminal := flags.Bool("terminal", false, "")
 	cols := flags.Int("cols", 80, "")
 	rows := flags.Int("rows", 24, "")
@@ -31,7 +31,7 @@ func Main(args []string) error {
 	}
 	args = flags.Args()
 	if len(args) < 2 {
-		return fmt.Errorf("usage: hypercube hold [-terminal -cols N -rows N] <dir> <command> [args...]")
+		return fmt.Errorf("usage: hypercube-hold [-terminal -cols N -rows N] <dir> <command> [args...]")
 	}
 	h := &Holder{dir: args[0]}
 	lock := os.NewFile(3, "lock")

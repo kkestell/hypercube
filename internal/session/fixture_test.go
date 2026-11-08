@@ -11,11 +11,10 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/terminal"
 )
-
-func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // lead is the settings of the fixture's top-level sessions.
 var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
@@ -69,7 +68,7 @@ func newFixture(t *testing.T) *fixture {
 // newRuntime returns a runtime over the fixture's database, ended when the test
 // ends. The test can end it sooner.
 func (f *fixture) newRuntime() *Runtime {
-	rt := New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp"})
+	rt := New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp", Holder: holdtest.Path})
 	f.t.Cleanup(rt.Quit)
 	return rt
 }

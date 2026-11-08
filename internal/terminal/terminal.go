@@ -16,7 +16,9 @@ import (
 type Set struct {
 	Command []string
 	// Dir is the holders' parent directory.
-	Dir    string
+	Dir string
+	// Holder is the hypercube-hold executable that runs new shells.
+	Holder string
 	mu     sync.Mutex
 	shells map[string]*Shell
 	closed bool
@@ -65,7 +67,7 @@ func (s *Set) Open(session, dir string, cols, rows int) (*Shell, error) {
 	if err := os.RemoveAll(s.dir(session)); err != nil {
 		return nil, err
 	}
-	h, err := hold.Start(s.dir(session), s.command(), append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor"), dir, &hold.Size{Cols: cols, Rows: rows})
+	h, err := hold.Start(s.Holder, s.dir(session), s.command(), append(os.Environ(), "TERM=xterm-256color", "COLORTERM=truecolor"), dir, &hold.Size{Cols: cols, Rows: rows})
 	if err != nil {
 		return nil, err
 	}

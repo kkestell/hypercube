@@ -14,12 +14,11 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // family returns a database holding a workspace, outside Git if noGit is set,
 // with top-level session session-1 working in parentDir and, if childDir is
@@ -56,7 +55,7 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 	}
 	harnesstest.Install(t, plugins, "one")
 	harnesstest.Install(t, plugins, "two")
-	return db, session.New(db, "", session.Programs{Plugins: plugins})
+	return db, session.New(db, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {

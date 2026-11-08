@@ -174,6 +174,11 @@ existing comment, so each race-enabled holder exits at once.
 the holder path as an argument (`<test binary> parent <holder> <dir>`), drops
 its own `hold` dispatch and `GORACE` line, and ends with `holdtest.Main(m)`.
 
+The session, MCP, and UI test binaries also serve as harness stand-ins.
+Their `TestMain` calls `harnesstest.Run` before `holdtest.Main`, replacing
+`TestStandIn`, so stand-in processes do not build another holder. Normal test
+processes each build the holder once.
+
 `cmd/hypercube/testmain_test.go` is deleted: `TestAppProcess`'s backend
 starts holders from its own sibling executable, and nothing else in the
 package starts one.

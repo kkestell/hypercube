@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/store"
 )
 
@@ -227,7 +228,7 @@ func TestRestoreStartsDecidedLaunchAndRemovesOrphans(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := strings.TrimSuffix(l.prefix, ":")
-	orphan, err := hold.Start(filepath.Join(store.Dir(), "run", "orphan"), []string{"/bin/cat"}, os.Environ(), f.root, nil)
+	orphan, err := hold.Start(holdtest.Path, filepath.Join(store.Dir(), "run", "orphan"), []string{"/bin/cat"}, os.Environ(), f.root, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -42,9 +42,11 @@ var (
 
 // Programs are the executables a runtime starts. Plugins is the directory of
 // harness plugins. MCP is the MCP bridge that each agent's harness runs.
+// Holder is hypercube-hold, which runs agents' plugins and panel shells.
 type Programs struct {
 	Plugins string
 	MCP     string
+	Holder  string
 }
 
 // Runtime is the app's service for running agents.
@@ -97,7 +99,7 @@ type Runtime struct {
 // New returns a runtime for the database. url is where agents reach the
 // backend.
 func New(db *store.DB, url string, programs Programs) *Runtime {
-	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, programs: programs, live: map[string]*live{},
+	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run"), Holder: programs.Holder}, db: db, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
 		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}

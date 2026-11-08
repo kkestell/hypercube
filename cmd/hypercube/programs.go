@@ -19,5 +19,9 @@ func programs() (session.Programs, error) {
 		return session.Programs{}, err
 	}
 	dir := filepath.Dir(exe)
-	return session.Programs{Plugins: dir, MCP: filepath.Join(dir, "hypercube-mcp")}, nil
+	return session.Programs{
+		Plugins: dir,
+		MCP:     filepath.Join(dir, "hypercube-mcp"),
+		Holder:  filepath.Join(dir, "hypercube-hold"),
+	}, nil
 }

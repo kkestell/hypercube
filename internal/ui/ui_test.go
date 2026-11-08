@@ -22,11 +22,10 @@ import (
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
+	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
-
-func TestStandIn(t *testing.T) { harnesstest.Run() }
 
 // dial opens one of the server's sockets with the page's origin.
 func dial(t *testing.T, server *httptest.Server, path string) (*websocket.Conn, *http.Response, error) {
@@ -54,7 +53,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{})
+	return Handler(db, session.New(db, "", session.Programs{Holder: holdtest.Path}), &desktop.Desktop{})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -275,7 +274,7 @@ func newApp(t *testing.T) *app {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	rt := session.New(db, "", session.Programs{Plugins: plugins})
+	rt := session.New(db, "", session.Programs{Plugins: plugins, Holder: holdtest.Path})
 	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {

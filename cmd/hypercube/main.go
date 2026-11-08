@@ -1,6 +1,7 @@
 // Command hypercube runs teams of coding agents. `hypercube ui` is the app
 // process: it manages sessions and attaches to their holders. `hypercube mcp`
 // serves harnesses configured by earlier versions, forwarding to the backend.
+// `hypercube hold` serves backends of earlier versions during replacement.
 package main
 
 import (

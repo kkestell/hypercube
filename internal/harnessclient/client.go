@@ -25,8 +25,8 @@ type Client struct {
 }
 
 // Launch starts the plugin's serve command under a detached holder.
-func Launch(dir, plugin string) (*Client, error) {
-	h, err := hold.Start(dir, []string{plugin, "serve"}, os.Environ(), "", nil)
+func Launch(holder, dir, plugin string) (*Client, error) {
+	h, err := hold.Start(holder, dir, []string{plugin, "serve"}, os.Environ(), "", nil)
 	if err != nil {
 		return nil, err
 	}

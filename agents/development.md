@@ -11,6 +11,7 @@ Documentation procedures are in [documentation](documentation.md).
 
 - `cmd/hypercube/` — the command line and the backend process.
 - `cmd/hypercube-mcp/` — the MCP bridge each agent's harness runs.
+- `cmd/hypercube-hold/` — the holder that runs agents' plugins and panel shells.
 - `desktop/` — the Electron desktop app, a client of the backend.
 - `internal/` — one package per concern: `config`, `desktop`, `harness`,
   `harnessclient`, `hold`, `mcp`, `mcpbridge`, `report`, `session`, `store`,
