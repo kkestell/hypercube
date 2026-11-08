@@ -62,7 +62,14 @@ func TestInstructions(t *testing.T) {
 		if strings.Contains(parentText, "q (Fix)") {
 			t.Error("instructions include a stale peer snapshot:", parentText)
 		}
-		if !strings.Contains(parentText, "share your checkout") || !strings.Contains(childText, "the only session you can message") || strings.Contains(childText, "list_sessions") {
+		for _, text := range []string{parentText, childText} {
+			for _, want := range []string{"Use list_sessions to check whether a recipient is parked", "Messaging a parked session wakes its agent", "Do not message parked sessions unless you have a serious reason or the user explicitly requests it"} {
+				if !strings.Contains(text, want) {
+					t.Errorf("instructions missing %q: %s", want, text)
+				}
+			}
+		}
+		if !strings.Contains(parentText, "share your checkout") || !strings.Contains(childText, "the only session you can message") {
 			t.Error("instructions changed workspace sharing or child scope")
 		}
 		child.Branch = ""

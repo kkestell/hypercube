@@ -470,6 +470,11 @@ func TestSessionBoundaries(t *testing.T) {
 	if !strings.Contains(parentTools["send_message"].Description, "across all workspaces") || !strings.Contains(childTools["send_message"].Description, "only session you can message") {
 		t.Error("tool descriptions do not describe messaging scope")
 	}
+	for _, tools := range []map[string]*mcp.Tool{parentTools, childTools} {
+		if !strings.Contains(tools["send_message"].Description, "Do not message parked sessions unless you have a serious reason or the user explicitly requests it") || !strings.Contains(tools["list_sessions"].Description, "exited also covers startup and does not imply parked") {
+			t.Error("tool descriptions do not explain parked sessions")
+		}
+	}
 	checkList := func(client *mcp.ClientSession, want map[string][2]string) {
 		t.Helper()
 		listed, failed := callTool(t, client, "list_sessions", nil)
@@ -485,7 +490,7 @@ func TestSessionBoundaries(t *testing.T) {
 			if !ok || e["workspace"] != identity[0] || e["parent"] != identity[1] {
 				t.Errorf("unexpected recipient: %v", e)
 			}
-			for _, field := range []string{"to", "title", "harness", "activity", "directory", "branch", "workspace", "parent"} {
+			for _, field := range []string{"to", "title", "harness", "activity", "parked", "directory", "branch", "workspace", "parent"} {
 				if _, ok := e[field]; !ok {
 					t.Errorf("missing %s: %v", field, e)
 				}
@@ -537,6 +542,53 @@ func TestSessionBoundaries(t *testing.T) {
 		return tx.SaveSession(s)
 	})
 	checkList(child, map[string][2]string{})
+}
+
+func TestListSessionsParked(t *testing.T) {
+	db, rt := family(t, true, t.TempDir(), "")
+	change(t, db, func(tx *store.Tx) error {
+		return tx.AddSession(store.Session{ID: "peer", Workspace: "w"})
+	})
+	url := serve(t, db, rt).URL
+	client := connect(t, url, "session-1")
+	for _, tc := range []struct {
+		name     string
+		activity string
+		launch   string
+		ended    bool
+		parked   bool
+	}{
+		{name: "parked", activity: store.Exited, parked: true},
+		{name: "starting", activity: store.Exited, launch: "launch"},
+		{name: "idle", activity: store.Idle, launch: "launch"},
+		{name: "busy", activity: store.Busy, launch: "launch"},
+		{name: "ended", activity: store.Exited, ended: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			change(t, db, func(tx *store.Tx) error {
+				s, err := tx.Session("peer")
+				if err != nil {
+					return err
+				}
+				s.Activity, s.Launch, s.Ended = tc.activity, tc.launch, tc.ended
+				return tx.SaveSession(s)
+			})
+			text, failed := callTool(t, client, "list_sessions", nil)
+			var entries []map[string]any
+			if err := json.Unmarshal([]byte(text), &entries); failed || err != nil {
+				t.Fatalf("list_sessions: %s %v", text, err)
+			}
+			if tc.ended {
+				if len(entries) != 0 {
+					t.Fatalf("ended recipient listed: %s", text)
+				}
+				return
+			}
+			if len(entries) != 1 || entries[0]["to"] != "peer" || entries[0]["parked"] != tc.parked || entries[0]["activity"] != tc.activity {
+				t.Fatalf("list_sessions: %s, want activity %s, parked %v", text, tc.activity, tc.parked)
+			}
+		})
+	}
 }
 
 // list_models reports the harnesses and their choices without starting a
