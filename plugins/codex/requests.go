@@ -463,7 +463,12 @@ func (ag *agent) answerAsync(open plugin.Open[request], answer string) error {
 func blockingRequest(r *request) bool { return !r.async }
 
 func (ag *agent) closeAsyncQuestions(thread string) []harness.Item {
-	return ag.closeRequests(func(r *request) bool { return r.async && r.thread == thread && r != ag.answering }, false)
+	// An answer is also input, but settles only its own question. Ordinary
+	// input replaces all open questions in the thread.
+	if ag.answering != nil && ag.answering.thread == thread {
+		return nil
+	}
+	return ag.closeRequests(func(r *request) bool { return r.async && r.thread == thread }, false)
 }
 
 // closeRequests finishes the items of the requests that match, which nobody

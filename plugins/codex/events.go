@@ -166,7 +166,6 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 	switch m.Method {
 	case "turn/started":
 		if n.Turn != nil {
-			ev.Items = append(ev.Items, ag.closeAsyncQuestions(n.ThreadID)...)
 			if main {
 				ag.startTurn(ev, n.Turn.ID)
 			} else if n.Turn.ID != child.ended {
@@ -195,9 +194,6 @@ func (ag *agent) notification(ev *harness.Event, m plugin.Message) {
 		}
 	case "item/completed":
 		if n.Item != nil {
-			if n.Item.Type == "userMessage" {
-				ev.Items = append(ev.Items, ag.closeAsyncQuestions(n.ThreadID)...)
-			}
 			ag.item(ev, n.ThreadID, parent, *n.Item, true)
 			ag.answered(main, n.TurnID, *n.Item)
 		}

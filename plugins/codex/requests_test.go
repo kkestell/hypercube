@@ -55,8 +55,18 @@ func TestAsyncChildAnswersStayOnTheirThread(t *testing.T) {
 			if got := h.item(t, "question:child-question/0"); !got.Done || got.Answer != "src" {
 				t.Fatalf("answered question = %+v", got)
 			}
-			if !h.item(t, "question:child-question/1").Done || h.item(t, "question:main-question/0").Done {
+			// Native notifications may arrive after the answer call returns.
+			h.feed(t,
+				`{"method":"turn/started","params":{"threadId":"child","turn":{"id":"child-next"}}}`,
+				`{"method":"item/completed","params":{"threadId":"child","item":{"type":"userMessage","id":"answer"}}}`)
+			if h.item(t, "question:child-question/1").Done || h.item(t, "question:main-question/0").Done {
 				t.Fatalf("question closures = %+v", h.transcript())
+			}
+			if err := h.answer("question:child-question/1", nil, "Second answer"); err != nil {
+				t.Fatal(err)
+			}
+			if got := h.item(t, "question:child-question/1"); !got.Done || got.Answer != "Second answer" {
+				t.Fatalf("second answer = %+v", got)
 			}
 			if got := h.states(); len(got) != 1 || got[0] != harness.Working || h.turn != "main-turn" {
 				t.Fatalf("main state = %v, turn = %q", got, h.turn)
