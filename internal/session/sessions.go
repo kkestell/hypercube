@@ -14,26 +14,37 @@ import (
 
 // AddWorkspace adds the workspace at dir: the top of its Git checkout, or dir
 // itself outside Git. It returns the existing workspace when the folder is
-// already added.
+// already added, refreshing only its Git classification without moving it.
 func (r *Runtime) AddWorkspace(dir string) (store.Workspace, error) {
-	root, err := workspace.At(dir)
+	dir, err := workspace.Resolve("/", dir)
 	if err != nil {
 		return store.Workspace{}, err
 	}
-	_, gitErr := workspace.Root(root)
+	root, err := workspace.Root(dir)
+	noGit := errors.Is(err, workspace.ErrNotGit)
+	if noGit {
+		root = dir
+	} else if err != nil {
+		return store.Workspace{}, err
+	}
 	var w store.Workspace
 	err = r.save(func(tx *write) error {
 		list, err := tx.Workspaces()
 		if err != nil {
 			return err
 		}
-		for _, existing := range list {
-			if existing.Path == root {
-				w = existing
-				return nil
+		// Prefer a saved input folder over its checkout root: old records may
+		// name subfolders, and their sessions must keep that identity and path.
+		for _, path := range []string{dir, root} {
+			for _, existing := range list {
+				if existing.Path == path {
+					w = existing
+					w.NoGit = noGit
+					return tx.SetWorkspaceNoGit(w.ID, noGit)
+				}
 			}
 		}
-		w = store.Workspace{ID: store.NewID(), Path: root, NoGit: gitErr != nil}
+		w = store.Workspace{ID: store.NewID(), Path: root, NoGit: noGit}
 		return tx.AddWorkspace(w)
 	})
 	return w, err

@@ -62,7 +62,10 @@ func (s *server) gitDir(target fileTarget) (dir, top string, ok bool, err error)
 		return "", "", false, err
 	}
 	top, err = workspace.Root(dir)
-	return dir, top, err == nil, nil
+	if errors.Is(err, workspace.ErrNotGit) {
+		return dir, "", false, nil
+	}
+	return dir, top, err == nil, err
 }
 
 func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
