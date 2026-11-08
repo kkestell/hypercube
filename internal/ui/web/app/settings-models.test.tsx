@@ -41,11 +41,11 @@ test('adding immediately saves ordered effort levels and the chosen default', as
   write('model-efforts', 'low');
   expect(document.querySelector('#model-default-effort')).toBeNull();
   write('model-efforts', 'low, medium, high');
-  // A surviving default is kept; removing it chooses the last remaining level.
-  expect(element(document, '#model-default-effort', HTMLButtonElement).textContent).toBe('low');
-  write('model-efforts', 'medium, high');
+  // Until a default is chosen, it follows the last level typed.
   expect(element(document, '#model-default-effort', HTMLButtonElement).textContent).toBe('high');
   await select('model-default-effort', 'medium');
+  write('model-efforts', 'medium, high');
+  expect(element(document, '#model-default-effort', HTMLButtonElement).textContent).toBe('medium');
   await click('Save');
   expect(posts).toEqual([{id: '', harness: 'claude', model: 'native/id', efforts: ['medium', 'high'], default_effort: 'medium'}]);
   expect(store.get().modelEntries?.[0]?.id).toBe('new');

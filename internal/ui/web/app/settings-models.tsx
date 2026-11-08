@@ -49,10 +49,12 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
   const [harness, setHarness] = useState(entry.harness);
   const [model, setModel] = useState(entry.model);
   const [levels, setLevels] = useState(entry.efforts.join(', '));
-  const [defaultEffort, setDefaultEffort] = useState(entry.default_effort);
+  const [chosenDefault, setChosenDefault] = useState(entry.default_effort);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const efforts = levels.trim() ? levels.split(',').map(level => level.trim()) : [];
+  // The default follows the last level until the user chooses one still listed.
+  const defaultEffort = efforts.includes(chosenDefault) ? chosenDefault : efforts.at(-1) ?? '';
   useEffect(() => {
     const controller = new AbortController();
     fetchHarnesses(controller.signal).then(setHarnesses, error => {
@@ -61,15 +63,10 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
     return () => controller.abort();
   }, []);
   const choices = entry.harness && !harnesses.some(h => h.id === entry.harness) ? [...harnesses, {id: entry.harness}] : harnesses;
-  const changeLevels = (text: string) => {
-    setLevels(text);
-    const next = text.trim() ? text.split(',').map(level => level.trim()) : [];
-    if (!next.includes(defaultEffort)) setDefaultEffort(next.at(-1) ?? '');
-  };
   const save = async () => {
     setError(''); setSaving(true);
     try {
-      const modelEntries = await saveModelEntry({...entry, harness, model, efforts, default_effort: efforts.length === 1 ? efforts[0]! : efforts.length ? defaultEffort : ''});
+      const modelEntries = await saveModelEntry({...entry, harness, model, efforts, default_effort: defaultEffort});
       store.update(s => ({...s, modelEntries}));
       close();
     } catch (error) { setError(reason(error)); setSaving(false); }
@@ -83,10 +80,10 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
             <Select value={harness} onValueChange={setHarness}><SelectTrigger id="model-harness" className="w-full"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
               <SelectContent>{choices.map(h => <SelectItem key={h.id} value={h.id}>{harnessIcon(h.id)}{h.name || displayName(h.id)}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-2"><Label htmlFor="model-id">Model ID</Label><Input id="model-id" required value={model} onChange={e => setModel(e.target.value)} /></div>
-          <div className="grid gap-2"><Label htmlFor="model-efforts">Effort levels</Label><Input id="model-efforts" placeholder="low, medium, high" value={levels} onChange={e => changeLevels(e.target.value)} />
+          <div className="grid gap-2"><Label htmlFor="model-efforts">Effort levels</Label><Input id="model-efforts" placeholder="low, medium, high" value={levels} onChange={e => setLevels(e.target.value)} />
             <p className="text-xs text-muted-foreground">Separate levels with commas, lowest first.</p></div>
           {efforts.length > 1 && <div className="grid gap-2"><Label htmlFor="model-default-effort">Default effort</Label>
-            <Select value={defaultEffort} onValueChange={setDefaultEffort}><SelectTrigger id="model-default-effort" className="w-full"><SelectValue /></SelectTrigger>
+            <Select value={defaultEffort} onValueChange={setChosenDefault}><SelectTrigger id="model-default-effort" className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>{[...new Set(efforts)].filter(Boolean).map(level => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div>}
         </fieldset>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
