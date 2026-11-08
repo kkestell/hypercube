@@ -4,17 +4,35 @@
 harnesses execute the agents' work. Plugins connect the two, translating each
 harness's protocol into Hypercube commands and transcript events.
 
-```text
-Desktop app or browser ←→ hypercube ui ←→ SQLite
-                          ↕
-                    hypercube hold
-                          ↕
-                    Harness plugin
-                          ↕
-                    Native harness
-                          ↕
-                    hypercube mcp ←→ hypercube ui
+```mermaid
+flowchart TB
+    subgraph clients["User interface"]
+        desktop["Desktop app<br/>Electron"]
+        browser["Browser interface"]
+        desktop -->|Displays| browser
+    end
+
+    backend["Backend · hypercube ui<br/>Sessions, messages, and transcripts"]
+    database[("SQLite<br/>Saved application state")]
+
+    subgraph holder["Process holder · hypercube hold · one per running agent"]
+        plugin["Harness plugin"]
+        harness["Native harness<br/>Claude Code, OpenCode, Codex, or Pi"]
+        mcp["Agent tools<br/>hypercube mcp"]
+        plugin <-->|Native protocol| harness
+        harness <-->|MCP over stdio| mcp
+    end
+
+    browser <-->|Actions and live updates| backend
+    backend -->|Notifications and desktop actions| desktop
+    backend <-->|Read and write| database
+    backend <-->|Commands and events| plugin
+    mcp <-->|Tool requests and results| backend
 ```
+
+The holder keeps the agent processes alive across backend restarts. Agent tools
+return to the same backend that handles user actions; only the backend writes
+to SQLite.
 
 ## Plugin protocol
 
