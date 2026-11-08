@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
+	"github.com/kkestell/hypercube/internal/workspace"
 )
 
 // pauseStatus holds the first completed Git status in dir.
@@ -128,6 +130,134 @@ func TestFamilyRemovalClaimsMembershipBeforeCheckingWorktrees(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
+	for _, archive := range []bool{false, true} {
+		for _, outcome := range []string{"success", "missing-plugin", "setup-failure"} {
+			t.Run(map[bool]string{false: "delete", true: "archive"}[archive]+"/"+outcome, func(t *testing.T) {
+				f := newFixture(t)
+				parent := f.worktreeSession()
+				options := ChildOptions{Name: "worker", Title: "Worker"}
+				if outcome == "missing-plugin" {
+					options.Settings = harness.Settings{Harness: "missing", Model: "m"}
+				}
+				if outcome == "setup-failure" {
+					dir := workspace.WorktreeDir(parent.Dir, parent.ID, options.Name)
+					if err := os.MkdirAll(dir, 0o755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(dir, "occupied"), []byte("fixture"), 0o644); err != nil {
+						t.Fatal(err)
+					}
+				}
+				wait, release := f.pauseGit(parent.Dir, "worktree", "add")
+				type creation struct {
+					child store.Session
+					err   error
+				}
+				created := make(chan creation, 1)
+				go func() {
+					child, err := f.rt.CreateChild(parent.ID, options)
+					created <- creation{child, err}
+				}()
+				wait()
+				var child store.Session
+				f.read(func(tx *store.Tx) error {
+					children, err := tx.Children(parent.ID)
+					if err == nil && len(children) == 1 {
+						child = children[0]
+					}
+					return err
+				})
+				f.rt.mu.Lock()
+				launch := f.rt.live[child.ID]
+				f.rt.mu.Unlock()
+				if launch == nil {
+					t.Fatal("the admitted child has no launch")
+				}
+				removed := make(chan error, 1)
+				go func() {
+					if archive {
+						removed <- f.rt.Archive(parent.ID)
+					} else {
+						removed <- f.rt.Delete(parent.ID)
+					}
+				}()
+				f.until("the parent removal claim", func() bool {
+					f.rt.mu.Lock()
+					defer f.rt.mu.Unlock()
+					return f.rt.deleting[parent.ID]
+				})
+				release()
+				select {
+				case result := <-created:
+					if outcome == "success" {
+						if result.err != nil || result.child.ID != child.ID {
+							t.Fatalf("creation = %+v, %v", result.child, result.err)
+						}
+					} else if result.err == nil {
+						t.Fatal("creation unexpectedly succeeded")
+					} else if outcome == "missing-plugin" && !strings.Contains(result.err.Error(), `harness "missing" has no plugin`) {
+						t.Fatalf("creation failed for the wrong reason: %v", result.err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("child creation did not finish")
+				}
+				select {
+				case err := <-removed:
+					if err != nil {
+						t.Fatal("first removal request failed:", err)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("family removal did not finish")
+				}
+				select {
+				case <-launch.done:
+				default:
+					t.Error("the child's launch completion was not closed")
+				}
+				f.rt.mu.Lock()
+				for _, l := range f.rt.live {
+					if l.root == parent.ID {
+						t.Errorf("family launch %s survived", l.id)
+					}
+				}
+				if f.rt.childCreates[child.ID] != nil {
+					t.Error("child creation is still registered")
+				}
+				f.rt.mu.Unlock()
+				for _, member := range []store.Session{parent, child} {
+					if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
+						t.Errorf("worktree %s survived: %v", member.Dir, err)
+					}
+					out, err := exec.Command("git", "-C", f.root, "branch", "--list", member.Branch).CombinedOutput()
+					if err != nil || len(out) != 0 {
+						t.Errorf("branch %s survived: %s, %v", member.Branch, out, err)
+					}
+				}
+				family := f.family(parent.ID)
+				want := 0
+				if archive {
+					want = 1
+					if outcome == "success" {
+						want++
+					}
+					if got := f.summary(parent.ID); got != "user:start|text:ack" {
+						t.Errorf("archive changed the parent chat: %q", got)
+					}
+				}
+				if len(family) != want {
+					t.Fatalf("remaining family = %+v, want %d members", family, want)
+				}
+				for _, member := range family {
+					if !member.Ended {
+						t.Errorf("archived member %s is not ended", member.ID)
+					}
+				}
+			})
+		}
 	}
 }
 

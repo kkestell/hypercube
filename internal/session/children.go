@@ -81,11 +81,18 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 	})
 	if err == nil {
 		r.live[child.ID] = l
+		r.childCreates[child.ID] = make(chan struct{})
 	}
 	r.mu.Unlock()
 	if err != nil {
 		return store.Session{}, err
 	}
+	defer func(id string) {
+		r.mu.Lock()
+		close(r.childCreates[id])
+		delete(r.childCreates, id)
+		r.mu.Unlock()
+	}(child.ID)
 	discard := func(err error) error {
 		r.mu.Lock()
 		cleanup := r.save(func(tx *write) error {

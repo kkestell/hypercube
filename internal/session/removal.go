@@ -149,6 +149,17 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 		}
 		return r.save(func(tx *write) error { return tx.DeleteSession(id) })
 	}
+	// Creation owns setup and failed-start rollback, even after its launch
+	// ends. Let it finish before checking or removing any family resources.
+	r.waitChildCreations(children)
+	err = r.db.Read(func(tx *store.Tx) error {
+		var err error
+		children, err = tx.Children(id)
+		return err
+	})
+	if err != nil {
+		return err
+	}
 	trees := familyWorktrees(root, s, children)
 	// A checkout that moved or disappeared took its worktrees with it.
 	_, statErr := os.Stat(root)
@@ -192,6 +203,20 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 		r.forgetMerge(id)
 	}
 	return nil
+}
+
+func (r *Runtime) waitChildCreations(children []store.Session) {
+	var pending []chan struct{}
+	r.mu.Lock()
+	for _, child := range children {
+		if done := r.childCreates[child.ID]; done != nil {
+			pending = append(pending, done)
+		}
+	}
+	r.mu.Unlock()
+	for _, done := range pending {
+		<-done
+	}
 }
 
 // recordRemovedFamily finishes persistence after all managed worktrees are gone.

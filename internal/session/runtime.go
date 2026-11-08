@@ -79,6 +79,9 @@ type Runtime struct {
 	// deleting claims family or child cleanup, blocking starts, children, and
 	// shell admission until the initial checks refuse or cleanup finishes.
 	deleting map[string]bool
+	// childCreates tracks admitted creations through their return or rollback,
+	// independently of launch completion. Family removal waits for these.
+	childCreates map[string]chan struct{}
 	// workspaceCreates counts admitted top-level creations through registration
 	// or failure cleanup. workspaceDeleting excludes them during deletion.
 	workspaceCreates  map[string]int
@@ -101,7 +104,7 @@ type Runtime struct {
 func New(db *store.DB, url string, programs Programs) *Runtime {
 	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run"), Holder: programs.Holder}, db: db, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
-		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{},
+		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{}, childCreates: map[string]chan struct{}{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}
 }
 
