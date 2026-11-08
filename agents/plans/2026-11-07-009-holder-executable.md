@@ -28,7 +28,7 @@ builds the helper directly for tests and does not add shipping fallbacks.
   `TestMain`. Hold's own `TestMain` duplicates that dispatch and also has an
   intentional launcher-parent survival mode.
 - `cmd/hypercube/main.go` still dispatches `hold.Main`; the MCP plan's command
-  location/exec code already resolves canonical sibling programs.
+  location code already resolves canonical sibling programs.
 
 ## Decisions
 
@@ -39,11 +39,11 @@ is small and coherent. Preserve the existing file split by concern instead
 of adding client/server/wire packages.
 
 Change `hold.Start` to take a helper executable path first, followed by its
-current directory, argv, environment, working directory, and optional terminal
-size. Execute the helper directly without prepending `hold`. Add `Holder`
-to `session.Programs`, set it from the canonical sibling directory, pass it
-through `harnessclient.Launch`, and configure `terminal.Set.Holder` from the
-same value. Update every constructor and fixture that can start a holder.
+holder state directory, child argv, environment, working directory, and
+optional terminal size. Execute the helper directly without prepending `hold`.
+Add `Holder` to `session.Programs`, set it from the canonical sibling directory,
+pass it through `harnessclient.Launch`, and configure `terminal.Set.Holder`
+from the same value. Update every constructor and fixture that can start a holder.
 No library finds Hypercube-owned helpers through its executable or `PATH`.
 A missing helper produces a contextual launch error without fallback.
 
@@ -52,14 +52,14 @@ path. `Set.Open` does need it when no live holder can be adopted. Keep those
 responsibilities clear rather than making attachment depend on executable
 availability.
 
-Replace production `hypercube hold` with a tiny `syscall.Exec` into the
-sibling helper. Preserve original arguments, environment, stdio, and inherited
-lock/listener descriptors 3 and 4. Old backends still use that command and can
-launch during macOS bundle replacement or a development rebuild before the
-backend restarts. Retaining exec compatibility avoids a new command mismatch;
-it does not guarantee launches through existing replacement gaps or change
-Linux's behavior when the running executable's directory is moved. Keep the
-already extracted MCP command unchanged.
+Keep `hypercube hold` calling `hold.Main` as it does today. Old backends can
+invoke that command during binary replacement before they restart. Direct
+dispatch preserves their arguments and inherited files without another helper
+lookup or descriptor-forwarding path. The backend already depends on `hold`
+to launch and reattach holders; retaining this call adds no new package
+dependency. New launches use the separate helper through `hold.Start`.
+Keep installer ordering, existing replacement gaps, and the extracted MCP
+command unchanged.
 
 Do not alter holder layout, socket length limit, process groups, environment,
 working directory, terminals, output offsets/retention, exit-record ordering,
@@ -72,8 +72,8 @@ durability, version negotiation, or delivery guarantees belong here.
 
 1. Add the narrow command and change `hold.Start` to explicit helper launch.
    Update helper usage text and errors to the actual executable. Reuse the
-   command's sibling discovery for production `Programs.Holder` and the
-   legacy exec; remove `hold.Main` dispatch from the backend command.
+   command's sibling discovery for production `Programs.Holder`. Retain the
+   existing backend `hold.Main` dispatch for legacy callers.
 2. Wire `Holder` through session launch, `harnessclient`, and terminal setup.
    Update all direct `hold.Start`, `terminal.Set`, runtime, and backend
    constructor callers. Preserve existing adoption paths and lifecycle code.
@@ -92,11 +92,10 @@ durability, version negotiation, or delivery guarantees belong here.
    passing the already built helper path to that launcher subprocess rather
    than recompiling or redispatching holder behavior. Keep the native plugin
    stand-in protocol; it is a distinct, useful test seam.
-6. Add one backend-command compatibility test with actual inherited lock and
-   listener files. Existing command process integration builds the holder
-   beside its backend/MCP executables directly. Remove replaced dispatch
-   machinery, stale self-exec comments, and unused imports as part of this
-   source task rather than deferring them as general cleanup.
+6. Update existing command process integration to build the holder beside its
+   backend/MCP executables directly. Remove replaced test dispatch machinery,
+   stale self-exec comments, and unused imports as part of this source task
+   rather than deferring them as general cleanup.
 
 ## Acceptance and verification
 
@@ -108,12 +107,9 @@ durability, version negotiation, or delivery guarantees belong here.
   adoption. Adoption itself must not invoke a helper. Backend process tests
   retain agent and panel-shell PIDs, transcript, and continued input over
   SIGTERM/restart and terminate them on SIGINT.
-- One `hypercube hold` forwarding test passes descriptors 3 and 4 through the
-  command and verifies child input and retained output. This protects the
-  old-backend call shape without an old application binary or install-race
-  simulator. Main holder tests launch the helper directly.
 - Inspect dependencies: `cmd/hypercube-hold` has no local package except
-  `internal/hold`; backend production code does not call `hold.Main`.
+  `internal/hold`. Both holder command entry points call `hold.Main`;
+  only new launch paths need the separate executable.
   Remaining `os.Executable()` uses for Hypercube program paths belong to
   command composition or intentional test orchestration, not libraries.
 - Run focused holder, terminal, session, and command process tests, including
@@ -123,9 +119,6 @@ durability, version negotiation, or delivery guarantees belong here.
   screenshot runtime construction are verified once in the final integration
   plan; they are not source-test prerequisites here.
 
-Before implementation, explain that surviving agents and shells keep their
-existing holder/plugin code; affected sessions or shells restart to use new
-launch behavior. Current operational documentation is updated with the final
-integration task.
+Current operational documentation is updated with the final integration task.
 
 Next plan: [Backend composition](2026-11-07-010-backend-composition.md).

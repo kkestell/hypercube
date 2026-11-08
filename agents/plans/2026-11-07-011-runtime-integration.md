@@ -30,8 +30,8 @@ or unresolved source-review findings for a final cleanup pass.
   service replacement, surviving scripted agents, archive installation, and
   removal. `scripts/release` packages the normal bundle.
 - Command integration already builds helpers directly and tests restart and
-  compatibility. `plugins/scripted/main.go:createSessions` now uses the
-  shared MCP command adapter; its actual callback needs an integration scene.
+  compatibility. The MCP plan's shared command-adapter tests cover command
+  selection used by native and scripted plugins.
 
 ## Decisions
 
@@ -51,8 +51,8 @@ bundle check cannot establish it.
 
 Keep services, ports, `hypercube ui`, build identity, backend logs, login-shell
 environment, replacement ordering, and public install/uninstall behavior.
-Existing holders and native processes survive replacement. Exec compatibility
-handles released callers, not an invented release between these plans.
+Existing holders and native processes survive replacement. Direct legacy
+command dispatch supports released callers without an extra helper lookup.
 Do not add update transactions, version negotiation, public helper links, or
 new recovery guarantees.
 
@@ -74,16 +74,14 @@ new recovery guarantees.
    Normal dev builds now obtain helpers from their existing binaries/bundle
    targets.
 4. Extend the existing command process fixture to launch the backend through
-   an external symlink into a sibling executable directory containing spaces.
-   Reuse its built helpers and restart/compatibility coverage instead of
-   creating a second process framework. Exercise direct and legacy MCP after
-   restart at the same address and retain agent/panel-shell continuity.
+   an external symlink into the sibling executable directory. Verify that it
+   finds plugins and private helpers there. Reuse the fixture's built helpers
+   and the source plans' restart and compatibility coverage.
 5. Extend Linux bundle/install/release checks for private helper presence and
    executable layout, symlink-backed backend discovery, and removal. Keep
    the installed scripted agent alive over service restart/reinstall.
-   Exercise scripted `createSessions` with an offer in the existing install
-   scene and assert backend state, without rendering screenshots or adding
-   another child process to its one-agent PID assertions.
+   Retain the existing install scene; this layout change does not require a
+   new scripted-plugin tool-call scenario.
 6. Update `agents/architecture.md` process descriptions, launch/protocol
    links, and backend route ownership; `agents/development.md` code layout
    and restart guidance; the glossary's holder definition; and contributor
@@ -98,14 +96,12 @@ new recovery guarantees.
 - Normal binaries, macOS and Linux bundles, screenshot temporary layouts, and
   extracted releases contain both executable helpers beside the backend.
   Existing public links and service commands work; no helper link is added.
-- A backend invoked through a symlink into a path containing spaces finds
-  native plugins and helpers. Direct/legacy MCP and legacy holder exec paths
-  preserve environment, streams, arguments, and required inherited files.
-  Existing source tests own detailed transport and holder behavior; this
-  task verifies layout and integration rather than duplicating them.
-- The scripted scene's actual callback succeeds, and backend replacement
-  preserves the existing agent/holder and continued work. Dev cleanup remains
-  limited to its disposable state. SIGTERM/SIGINT behavior remains unchanged.
+- A backend invoked through a symlink finds native plugins and private helpers
+  beside its resolved executable. Source plans already cover transport,
+  restart, and legacy command behavior; this task adds layout verification.
+- Existing install checks preserve the agent/holder and continued work over
+  backend replacement. Dev cleanup remains limited to its disposable state.
+  SIGTERM/SIGINT behavior remains unchanged.
 - Inspect final `go list -deps` for both helpers and the four native plugins:
   MCP helper has only `mcpbridge` as a local dependency; holder helper has
   only `hold`; native plugins use shared harness data rather than backend
@@ -131,10 +127,9 @@ new recovery guarantees.
   cause and the unverified behavior in the work log/review instead of claiming
   source inspection established it.
 
-Before this integration work and when offering installation, explain that
-surviving agents/shells retain their current code; loading the new launch code
-requires restarting affected sessions or shells. No such restart is needed
-merely to review these plans.
+When offering installation, explain that surviving agents/shells retain their
+current code; loading the new launch code requires restarting affected
+sessions or shells. No such restart is needed merely to review these plans.
 
 Stage implementation, tests, documentation, and work log for the required
 fresh review. Stop when the complete layout and operational behavior pass the

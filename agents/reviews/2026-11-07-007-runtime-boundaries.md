@@ -202,15 +202,16 @@ No edit to a user's global or project native configuration is needed.
 
 Surviving old plugins and native harnesses retain `<hypercube> mcp`, however,
 and may spawn that command again after a bundle replacement. Keep that
-backend command as a tiny process replacement into the sibling bridge helper.
-It should preserve streams, environment, signals, and exit status without
-importing the bridge implementation into the backend command.
+backend command calling the separated bridge implementation directly. Both
+MCP entry points share one environment-reading entry function. The backend
+already includes the MCP SDK through its tool handler; importing the small
+bridge package for compatibility does not add another dependency system.
 
 Saved start commands are also real compatibility input:
 [record](../../internal/session/commands.go) stores complete command JSON,
 and reattachment resends unanswered lines. Preserve those lines and IDs.
 The narrow legacy start adapter handles new plugins reading old starts;
-the forwarding command handles old processes launching their existing MCP
+the existing command handles old processes launching their existing MCP
 configuration. This avoids a database migration or rewriting in-flight
 commands.
 
@@ -221,13 +222,12 @@ However, an old backend still launches new holders through its executable's
 restarts, and development rebuilds likewise precede backend restart. An old
 backend can therefore execute the new binary with `hold` during replacement.
 
-Retain a tiny `hypercube hold` exec into the separate helper, preserving its
-arguments, environment, stdio, and inherited file descriptors 3 and 4. This
-avoids a new command-mismatch failure while leaving installer ordering and
-existing file-replacement gaps alone. The Linux old-executable path behavior
-has not been reproduced; the plan claims no additional guarantee there.
-Remove this compatibility path only when supported old-backend callers no
-longer need it, rather than assigning an arbitrary release deadline.
+Keep `hypercube hold` calling `hold.Main` as it already does. That preserves
+the existing argument, environment, stream, and inherited-file behavior
+without a sibling lookup or descriptor-forwarding test. The backend already
+uses `hold` for launch and adoption. New launches still use the separate
+holder executable through explicit paths. Installer ordering and existing
+replacement gaps remain unchanged; no extra recovery guarantee is added.
 
 ### Every build path must supply the helpers
 
@@ -240,7 +240,7 @@ backend's existing privacy identity.
 Keep helpers private to the bundle. Resolve the real backend executable once
 so `bin/hypercube` and installed CLI symlinks find helpers in the bundle;
 otherwise private helpers would accidentally require additional public
-symlinks. Cover a symlink launch and a path containing spaces.
+symlinks. Cover helper discovery from a symlink launch.
 
 Service names, the `hypercube ui` command, the desktop executable, and service
 shutdown behavior can stay stable. Existing Linux `KillMode=process` and
@@ -260,8 +260,8 @@ every bridge and holder. That is a viable smaller alternative.
 
 The chosen three-executable design also removes the host-dispatch requirement
 and expresses the already separate process roles in the distributed programs.
-The extra cost is two packaged and signed binaries, explicit paths, real
-helper setup in tests, and the narrow legacy MCP/holder forwarding paths. The
+The extra cost is two packaged and signed binaries, explicit paths, and real
+helper setup in tests. Legacy commands reuse the same implementations. The
 existing multi-executable plugin bundle makes that cost proportionate.
 
 Separate modules, plugin loading frameworks, dependency-injection containers,
@@ -282,7 +282,7 @@ separately. A plan boundary is not a release boundary:
 | [Application configuration](../plans/2026-11-07-006-application-config.md) | Preferences and their existing migrations have an appropriate owner. Addresses the configuration part of F4 without changing process or wire behavior. |
 | [Shared harness data](../plans/2026-11-07-007-harness-protocol-boundary.md) | Protocol data and validation no longer import the backend plugin client or discovery execution. Completes F4 after configuration moves. |
 | [MCP bridge executable](../plans/2026-11-07-008-mcp-bridge-executable.md) | Independent bridge transport/executable and an explicit MCP path in new starts, with legacy saved commands preserved. Addresses F2 and F3, including native/scripted source integration. |
-| [Holder executable](../plans/2026-11-07-009-holder-executable.md) | Explicit holder launch dependency and a real holder in tests. Addresses F1 and F6, including descriptor-preserving compatibility. |
+| [Holder executable](../plans/2026-11-07-009-holder-executable.md) | Explicit holder launch dependency and a real holder in tests. Addresses F1 and F6 while preserving the existing legacy dispatch. |
 | [Backend composition](../plans/2026-11-07-010-backend-composition.md) | Backend routes, protections, startup/shutdown, and alerts have focused command files. Addresses F5 without another package or unrelated executable work. |
 | [Runtime integration](../plans/2026-11-07-011-runtime-integration.md) | Build and ship the complete layout, update development/screenshot paths and current references, and verify the final platform integration. |
 
@@ -310,19 +310,19 @@ plans. Check their implementation boundaries against these constraints:
   Holder self-execution and test-binary dispatch remain functional at this
   point. Original command JSON/IDs and surviving native MCP commands retain
   their compatibility paths. The scripted plugin's independent MCP call must
-  use the same adapter; final integration exercises its actual callback without
-  screenshot rendering.
-- The holder plan adds the holder path, helper executable, descriptor-preserving
-  old-command forwarding, and real test helper together. Preserve matching
-  race instrumentation and `GORACE=atexit_sleep_ms=0`; no later plan should
-  supply a prerequisite for these tests. Attachment and adoption remain
+  use the same tested command adapter; it does not need a new Linux install
+  scene solely to exercise that selection again.
+- The holder plan adds the holder path, helper executable, and real test helper
+  together, retaining the existing `hold.Main` command dispatch. Preserve
+  matching race instrumentation and `GORACE=atexit_sleep_ms=0`; no later plan
+  should supply a prerequisite for these tests. Attachment and adoption remain
   distinct from `terminal.Set.Open`, which may start a new shell.
 - Backend composition follows the executable splits. Keep the host/origin/frame
-  protection around all routes. Cancel the alert watcher and close the
-  desktop connection before joining it, then close the database; the existing
-  `Desktop.Alert` write ignores watch cancellation. Review that ordering
-  directly and retain existing desktop tests, without another connected-peer
-  or backpressure test obligation.
+  protection around all routes and move shutdown without changing its order:
+  runtime quit/detach, desktop shutdown, server close, alert cancellation,
+  database close. Do not add watcher completion/waiting or new shutdown
+  guarantees. Retain existing desktop tests without another connected-peer or
+  backpressure test obligation.
 
 Normal `scripts/dev` strips external scene variables, so a normal development
 smoke cannot assume that exporting `HYPERCUBE_SCENE` supplies a scripted agent.
@@ -333,8 +333,8 @@ layout in the integration plan. Do not repeat those platform checks for each
 source extraction without a new reason.
 
 The accepted design remains a plain MCP executable field, backend composition
-inside the existing command, unchanged runtime state ownership, and small MCP
-and holder forwarding commands for supported old callers. The parent assessed
+inside the existing command, unchanged runtime state ownership, and direct
+legacy MCP/holder dispatch for supported old callers. The parent assessed
 the focused plans against these source boundaries and the final integration
 scope. Their dependencies and ownership are coherent without treating each
 source change as a release. Architecture findings remain planned until the

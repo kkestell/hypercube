@@ -11,7 +11,7 @@ records the findings and the comparison with a package-only cleanup.
 | --- | --- | --- |
 | 1 | [Application configuration](2026-11-07-006-application-config.md) | Preferences and upgrades have their own package; callers and tests use it. |
 | 2 | [Harness protocol boundary](2026-11-07-007-harness-protocol-boundary.md) | Shared harness data is independent of backend discovery and process clients. |
-| 3 | [MCP bridge executable](2026-11-07-008-mcp-bridge-executable.md) | Bridge transport, plugin configuration, and legacy MCP compatibility use an explicit helper. |
+| 3 | [MCP bridge executable](2026-11-07-008-mcp-bridge-executable.md) | Bridge transport has its own package; new plugin launches use the helper and the old command shares its implementation. |
 | 4 | [Holder executable](2026-11-07-009-holder-executable.md) | Agents, shells, and tests launch a real holder helper through explicit paths. |
 | 5 | [Backend composition](2026-11-07-010-backend-composition.md) | Focused backend files own HTTP assembly and resource lifetime; UI owns browser routes. |
 | 6 | [Runtime integration](2026-11-07-011-runtime-integration.md) | Build, development, bundles, signing, installation, and current documentation support the complete executable layout. |
@@ -35,17 +35,13 @@ result. Existing required checks before code commits still apply.
 - Keep native harness configuration per launch. Leave user settings,
   credentials, and `HOME` alone.
 - New launches ultimately use private sibling `hypercube-mcp` and
-  `hypercube-hold` executables. Keep tiny exec-only `hypercube mcp` and
-  `hypercube hold` compatibility commands. The latter preserves inherited
-  lock/listener descriptors 3 and 4 for old backends launching during binary
-  replacement. Keep installer ordering and existing replacement gaps unchanged.
+  `hypercube-hold` executables. Keep `hypercube mcp` and `hypercube hold`
+  calling the shared implementations directly for existing callers. The
+  backend already uses their dependencies; compatibility needs no helper
+  lookup or forwarding process. Keep installer ordering and existing
+  replacement gaps unchanged.
 - Keep backend assembly in focused `cmd/hypercube` files. Do not introduce
   `internal/backend`, generic program registries, new IPC, version negotiation,
   or stronger recovery, supervision, or delivery guarantees.
-- Existing agents and shells survive backend replacement with the code they
-  started from. Before either executable change is implemented, explain that
-  affected sessions or shells must restart to use new launch code. Repeat this
-  consequence when offering installation. Writing plans authorizes no install
-  or restart.
 
 Start with `/kwork agents/plans/2026-11-07-006-application-config.md`.

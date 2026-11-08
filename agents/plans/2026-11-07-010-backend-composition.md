@@ -17,23 +17,22 @@ It does not own build or distribution integration.
 ## Related code
 
 - `cmd/hypercube/main.go` currently contains CLI dispatch, `app`, `startApp`,
-  `sendAlert`, resource close, and `serveUI`. Earlier source plans replace
-  role dispatch and inject explicit programs but leave backend assembly here.
+  `sendAlert`, resource close, and `serveUI`. Earlier source plans add helper
+  entry points and inject explicit programs but leave backend assembly here.
 - `internal/ui/ui.go:Handler` registers browser routes, `/version`, `/mcp`,
   and `/desktop`, and applies `localOnly` around the complete mux.
 - `internal/ui/ui_test.go` tests version and cross-client request protection
   alongside browser behavior. Other UI fixtures construct this broad handler.
-- `internal/desktop/desktop.go` owns the connection and shutdown. Its alert
-  writes use `context.Background()`, so cancelling the alert watcher alone
-  cannot release a blocked write.
+- `internal/desktop/desktop.go` owns the connection and shutdown. Backend
+  close already shuts that connection before closing the server and database.
 - `cmd/hypercube/integration_test.go` exercises the real backend, agents,
   panel shells, desktop disconnection, and signal/restart behavior.
 
 ## Decisions
 
 Keep command dispatch, argument parsing, program location, and compatibility
-execs in focused command files. Move the existing private backend construction
-and resource owner to `backend.go`, HTTP assembly/protection to `http.go`, and
+commands in focused command files. Move existing backend construction and
+resource ownership to `backend.go`, HTTP assembly/protection to `http.go`, and
 notification preference/delivery code to `alerts.go`. Keep the private
 `startApp` test seam introduced by existing tests, now receiving explicit
 programs. Do not add `internal/backend`, an exported serve API, service
@@ -52,13 +51,11 @@ plugins; register saved launches; start HTTP service; then adopt readers and
 deliver queued work. Restoring plugins may call MCP before restoration ends.
 Keep session transaction/lifecycle ownership together.
 
-Give the alert watcher an explicit completion signal owned by the backend.
-On close, retain the runtime's `Quit` versus `Detach` decision, cancel the
-watch, close the desktop connection and HTTP server, wait for the watcher,
-and then close SQLite. Desktop shutdown must precede the wait to release
-pending writes; cancellation alone is insufficient. Use the current
-connection shutdown mechanism rather than adding notification timeouts,
-draining, or delivery guarantees. Keep signal subscription and its cleanup
+Move shutdown without changing its behavior or order: the runtime quits or
+detaches, the desktop connection shuts down, the HTTP server closes, the
+alert context is cancelled, and SQLite closes. Do not add a watcher completion
+channel, a wait for it, or a new shutdown guarantee. The current connection
+shutdown already releases blocked desktop writes. Keep signal subscription
 visibly owned by `serveUI`.
 
 ## Implementation plan
@@ -75,10 +72,10 @@ visibly owned by `serveUI`.
    the real composition. Keep browser route/socket/content tests in UI and
    backend tool semantics in `internal/mcp`. Avoid replacing production
    composition with a copied mux in a UI test merely to preserve old setup.
-4. Add watcher completion ownership and correct close ordering locally in
-   the backend. Ensure startup failures release resources they acquired and
-   signal handling is unsubscribed on return. Do not redesign restoration,
-   runtime shutdown, desktop transport, or alert delivery.
+4. Compare the moved startup, error paths, notification watch, and close
+   sequence with their current implementation. Preserve their behavior;
+   do not redesign restoration, runtime shutdown, desktop transport, or alert
+   delivery during this responsibility move.
 
 ## Acceptance and verification
 
@@ -91,10 +88,9 @@ visibly owned by `serveUI`.
   desktop-disconnect independence, agent/shell survival over SIGTERM, and
   deliberate termination over SIGINT. UI tests keep browser behavior without
   importing unrelated backend endpoints.
-- Review shutdown ordering directly: cancellation and desktop/server close
-  precede joining the alert watcher; joining precedes database close. Retain
-  existing desktop shutdown coverage. Do not add a connected-desktop or
-  backpressure test solely for moving startup code.
+- Review the moved shutdown sequence directly against the existing order and
+  retain current desktop shutdown coverage. No watcher wait or new
+  connected-desktop/backpressure test belongs to this code movement.
 - Inspect final imports and command files: UI does not compose MCP/desktop;
   one outside protection covers every route; backend resources have visible
   owners. No new backend package or generic abstraction is introduced.
