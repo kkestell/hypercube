@@ -1,4 +1,4 @@
-// While visible, refresh the shown Files tree and its Git changes, and each
+// While visible, refresh the shown Files tree or Git changes, and each
 // pane's active file or diff, once a second. An active diff also refreshes the
 // changes so its tab title follows the current status. Requests run one at a
 // time; overlapping polls are skipped.
@@ -16,12 +16,13 @@ export function createFilePoller(store: Store) {
     running = true;
     try {
       const tree = workbench.rightPanel && workbench.rightTab === 'files';
+      const git = workbench.rightPanel && workbench.rightTab === 'git';
       if (tree) {
         await loadTree(store, shownFolders(editor.files));
       }
       const shownPanes = panes(editor.tabs.root);
       const left = () => store.get().editor?.id !== editor.id || store.get().editorVersion !== editorVersion;
-      if (!left() && (tree || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
+      if (!left() && (tree || git || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
       for (const pane of shownPanes) {
         if (left()) break;
         if (isDiffTab(pane.active)) await readOpenDiff(store, tabPath(pane.active));

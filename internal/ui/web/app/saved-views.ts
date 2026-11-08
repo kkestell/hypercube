@@ -42,7 +42,7 @@ const sessionView = (value: unknown) => editorView(value) && record(value) && fl
 function workbench(value: unknown) {
   if (!record(value) || !['sidebar', 'rightPanel', 'wrap', 'fixedWidth'].every(key => typeof value[key] === 'boolean')) return false;
   const sizes = value.sizes;
-  return (value.rightTab === 'files' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
+  return (value.rightTab === 'files' || value.rightTab === 'git' || value.rightTab === 'search') && (value.sidebarTab === 'sessions' || value.sidebarTab === 'archived')
     && record(sizes) && ['sidebar', 'rightPanel', 'panel'].every(key => nonnegative(sizes[key]) && sizes[key] > 0)
     && (sizes.editor === undefined || (nonnegative(sizes.editor) && sizes.editor > 0))
     && flags(value.collapsedWorkspaces) && flags(value.collapsedSessions)

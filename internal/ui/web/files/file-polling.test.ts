@@ -74,6 +74,22 @@ test('one poll restores nested expanded folders using freshly loaded parent list
   expect(store.get().editor?.files.listings.a).toEqual([{name: 'b', dir: true}]);
 });
 
+test('Git polls changes without folder listings only when visible', async () => {
+  const {requests} = stubRoutes({});
+  const store = createStore(state({workbench: workbench(true, 'git')}));
+  const poll = createFilePoller(store);
+  await poll();
+  expect(requests).toEqual(['changes:null', 'file:z.go', 'file:x.go']);
+  requests.length = 0;
+  store.update(s => ({...s, workbench: workbench(false, 'git')}));
+  await poll();
+  expect(requests).toEqual(['file:z.go', 'file:x.go']);
+  requests.length = 0;
+  store.update(s => ({...s, visible: false, workbench: workbench(true, 'git')}));
+  await poll();
+  expect(requests).toEqual([]);
+});
+
 test('a folder shown only through its deleted files stays expanded', async () => {
   const {requests} = stubRoutes({'files/tree:null': () => Response.json({'': [], gone: null})});
   const session = {...emptyEditor({session: 's'}), files: {listings: {'': []}, listingErrors: {}, expanded: {gone: true as const}, open: {}}};

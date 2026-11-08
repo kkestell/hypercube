@@ -275,7 +275,11 @@ test('workspace heading opens recent sessions and shared tools; its chevron coll
   expect(find(root, '[aria-label="Expand repo"]')).toBeDefined();
   await act(async () => clickControl(find(root, '[data-file="main.go"]')));
   expect(store.get().editor?.tabs.preview).toBe('file:main.go');
-  await act(async () => clickControl(find(root, '[aria-label="Open changes: 1 added, 1 removed"]')));
+  await act(async () => clickControl(find(root, '.right-panel [role=tab][aria-label="Git"]')));
+  expect(store.get().workbench.rightTab).toBe('git');
+  const git = find(root, '.git-panel');
+  expect(git.closest('[role=tabpanel]')?.hasAttribute('hidden')).toBe(false);
+  await act(async () => clickControl(find(git, '[aria-label="main.go, Modified, 1 added, 1 removed"] [aria-hidden="true"] span')));
   expect(store.get().editor?.tabs.preview).toBe('diff:main.go');
   const toolRequests = calls.filter(url => ['/files/tree', '/file', '/changes', '/diff'].includes(url.pathname) && url.searchParams.has('workspace'));
   expect(toolRequests.map(url => url.pathname)).toEqual(expect.arrayContaining(['/files/tree', '/file', '/changes', '/diff']));
@@ -292,6 +296,10 @@ test('workspace heading opens recent sessions and shared tools; its chevron coll
   await act(async () => clickControl(buttonNamed(find(root, '[aria-label="Workspace dashboard"]'), 'Session 1')));
   expect(store.get().selected).toBe('s1');
   expect(store.get().session?.id).toBe('s1');
+  await act(async () => clickControl(find(root, '.right-panel [role=tab][aria-label="Git"]')));
+  await act(async () => clickControl(find(root, '.git-panel [aria-label="main.go, Modified, 1 added, 1 removed"]')));
+  expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.get('session')).toBe('s1');
+  expect(calls.filter(url => url.pathname === '/diff').at(-1)?.searchParams.has('workspace')).toBe(false);
 });
 
 

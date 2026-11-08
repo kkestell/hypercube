@@ -9,13 +9,32 @@ import {openUnsent, receivedWorkspaces, selectSession, selectWorkspace} from '..
 import {createStore} from '../store.ts';
 import {receivedTranscript, setExpanded} from '../transcript/transcripts.ts';
 import {startViewStorage} from './view-storage.ts';
-import {resizeRegion, toggle, toggleWrap} from './workbench.ts';
+import {resizeRegion, selectRightTab, toggle, toggleWrap} from './workbench.ts';
 
 const workspaces = [testWorkspace({id: 'w', sessions: [testSession({id: 'a'}), testSession({id: 'b'})]})];
 const fresh = (selected = '') => createStore(testState({selected}));
 
 beforeEach(() => localStorage.clear());
 afterEach(() => { mock.restore(); localStorage.clear(); });
+
+test.each(['files', 'git', 'search'] as const)('the %s panel choice survives reload without dropping session or workspace views', rightTab => {
+  const store = fresh('a');
+  startViewStorage(store);
+  store.update(state => receivedWorkspaces(state, workspaces));
+  openFileAt(store, 'session.md', []);
+  store.update(state => selectWorkspace(state, 'w'));
+  openFileAt(store, 'workspace.md', []);
+  store.update(state => selectRightTab(state, rightTab));
+
+  const reloaded = fresh();
+  startViewStorage(reloaded);
+  reloaded.update(state => receivedWorkspaces(state, workspaces));
+  expect(reloaded.get().errors).toEqual([]);
+  expect(reloaded.get().workbench.rightTab).toBe(rightTab);
+  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toContain('file:workspace.md');
+  reloaded.update(state => selectSession(state, 'a'));
+  expect(panes(reloaded.get().editor!.tabs.root)[0].tabs).toEqual(['file:session.md']);
+});
 
 test('session switches and reloads preserve independent view choices without caching server data', async () => {
   stubFetch(() => new Response('file contents must not be saved'));

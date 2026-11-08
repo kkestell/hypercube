@@ -5,8 +5,9 @@ weight: 13
 
 # Review files and changes
 
-The right panel follows the selected session's working directory. Select the
-session whose output you want to inspect before opening its files.
+The right panel follows the selected session's working directory, or the
+workspace's main checkout when its dashboard is selected. Select the view
+whose output you want to inspect before opening its files.
 
 ## Inspect the agent's actions
 
@@ -35,12 +36,17 @@ on the right for opening another file.
 
 ## Inspect a diff
 
-1. Open **Changes**.
-2. Select a staged, unstaged, or untracked file to read its unified diff.
+1. Open **Git** in the right panel.
+2. Select a changed file or its right-aligned added and removed line counts
+   to read its unified diff.
 3. To review committed changes, use Git or ask the agent to inspect the
    relevant commits and their diffs.
 
-Changes covers the whole Git repository containing the session directory.
+Git lists uncommitted changes within the current view's directory, not the
+whole containing repository. Paths are relative to that directory. Status
+colors also remain visible in **Files**; line counts appear only in **Git**
+and are omitted when unavailable, such as for binary files.
+
 For a top-level worktree session, hover over its branch icon for merge status
 and the number of commits not merged into the original checkout's branch.
 This status refreshes when a session in that workspace finishes a turn.

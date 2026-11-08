@@ -24,9 +24,9 @@ export interface ChangeTree {
   folders: Map<string, ChangeStatus>;
 }
 
-// Changes is the Git state the Files tree shows: the changes, a folder that no
-// longer exists, or why the changes could not be read. It is null before the
-// first read and for a folder outside a repository.
+// Changes is the Git state the Files and Git panels show: the changes, a folder
+// that no longer exists, or why the changes could not be read. It is null before
+// the first read and for a folder outside a repository.
 export type Changes = ChangesResult | {missing: true} | {error: string} | null;
 
 // OpenDiff is a diff open in a tab: its patch, or the message shown in its place.

@@ -49,6 +49,10 @@ Integration research for the supported harnesses is in
 [Pi](research/harnesses/pi.md). These are version-specific research notes;
 the plugin code defines the current integration.
 
+For the removed harness, see [why Codex support was dropped](codex-retirement.md):
+the storage and session-list tradeoff, adapter size, and recurring control-flow
+bugs are documented there as historical context, not current support.
+
 ## Why agents outlive the window
 
 An agent plugin runs under a `hypercube-hold` process that owns its input and

@@ -12,6 +12,10 @@ const statusLabels: Record<ChangeStatus, string> = {modified: 'Modified', added:
 
 export const statusLabel = (status: ChangeStatus) => statusLabels[status];
 
+export const statusColor: Record<ChangeStatus, string> = {
+  modified: 'text-amber-700 dark:text-amber-500/70', added: 'text-green-700 dark:text-green-500/70', untracked: 'text-green-700 dark:text-green-500/70', deleted: 'text-muted-foreground',
+};
+
 export const diffTitle = (path: string, status?: ChangeStatus) =>
   `${path.slice(path.lastIndexOf('/') + 1)} (${status && status !== 'modified' ? statusLabel(status) : 'Working Tree'})`;
 

@@ -1,8 +1,7 @@
 import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent} from 'react';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
-import {changeTree, loadChanges, statusLabel} from '../changes/changes.ts';
-import type {ChangeStatus} from '../changes/types.ts';
+import {changeTree, loadChanges, statusColor, statusLabel} from '../changes/changes.ts';
 import {fileTabId, keepOpen, openDiffTab, openFileTab} from '../editor/editor.ts';
 import {useScrollMemory} from '../editor/use-scroll-memory.ts';
 import {Chevron} from '../shared/icon.tsx';
@@ -10,10 +9,6 @@ import {useStore} from '../store.ts';
 import {FileIcon} from './file-icon.tsx';
 import {listedFolder, loadTree, setFolderOpen, shownFolders, treeEntries} from './files.ts';
 import {usePathMenu} from './path-menu.tsx';
-
-const statusColor: Record<ChangeStatus, string> = {
-  modified: 'text-amber-700 dark:text-amber-500/70', added: 'text-green-700 dark:text-green-500/70', untracked: 'text-green-700 dark:text-green-500/70', deleted: 'text-muted-foreground',
-};
 
 export function FilesPanel() {
   const [state, store] = useStore();
@@ -77,7 +72,7 @@ export function FilesPanel() {
     const color = status ? statusColor[status] : '';
     const props = {role: 'treeitem', 'data-path': path, 'aria-level': level, tabIndex: active === path ? 0 : -1,
       ...menu.handlers(path), onFocus: () => setFocused(path), title: status && `${path} • ${statusLabel(status)}`,
-      className: 'h-7 min-w-0 flex-1 justify-start px-2 font-normal'};
+      className: 'h-7 min-w-0 justify-start px-2 font-normal'};
     const label = <span className={`flex min-w-0 items-center gap-1.5 ${color}`}>
       {entry.dir ? <Chevron open={expanded[path]} /> : <FileIcon name={entry.name} />}
       <span className={`truncate ${status === 'deleted' ? 'line-through' : ''}`}>{entry.name}</span>
@@ -93,15 +88,8 @@ export function FilesPanel() {
       </>}</CollapsibleContent>
     </Collapsible>;
     const deleted = change?.status === 'deleted';
-    return <div key={path} className="flex items-center rounded-md hover:bg-accent dark:hover:bg-accent/50">
-      <Button variant="ghost" size="sm" {...props} className={`${props.className} hover:bg-transparent dark:hover:bg-transparent`} data-file={path} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
-        onDoubleClick={() => { if (!deleted) store.update(s => keepOpen(s, fileTabId(path))); }}>{label}</Button>
-      {change?.added !== undefined && change.removed !== undefined && <Button variant="ghost" size="sm" tabIndex={-1}
-        className="files-panel-stat h-7 shrink-0 px-2 text-xs font-normal tabular-nums hover:bg-transparent dark:hover:bg-transparent"
-        title="Open Changes" aria-label={`Open changes: ${change.added} added, ${change.removed} removed`} onClick={() => openDiffTab(store, path)}>
-        <span className="flex gap-1 text-muted-foreground"><span>+{change.added}</span><span>−{change.removed}</span></span>
-      </Button>}
-    </div>;
+    return <Button key={path} variant="ghost" size="sm" {...props} className={`${props.className} w-full`} data-file={path} onClick={() => deleted ? openDiffTab(store, path) : openFileTab(store, path)}
+      onDoubleClick={() => { if (!deleted) store.update(s => keepOpen(s, fileTabId(path))); }}>{label}</Button>;
   });
   return <div ref={scroller} className="h-full min-h-0 overflow-auto">
     {gitChanges && 'error' in gitChanges && <p className="px-4 pt-1 text-sm text-muted-foreground">{gitChanges.error}</p>}

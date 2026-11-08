@@ -100,7 +100,7 @@ within the window. After reset, the last reading is dimmed and marked
 | HTML preview | Relative resources load; scripts are disabled. |
 | HTML/SVG source | Available for supported text encodings within the text limit. |
 | Media | Images, audio, video, and PDFs open in the app, without the text limit. Some formats and codecs may not play. |
-| Changes | Whole Git repository containing the current view’s directory. |
+| Git panel | Uncommitted files within the current view’s directory, with status colors and right-aligned added/removed line counts when available. Select a row or its counts to open its diff. Files retains status colors without counts. |
 | Quick Open and project search | In Git: tracked and untracked files, excluding ignored and hidden paths. |
 | Project text search | Case-insensitive plain text; skips files over 256 KiB; stops at 1,000 matching lines. |
 

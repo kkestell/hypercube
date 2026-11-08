@@ -26,7 +26,7 @@ export interface Notifications {
   sound: boolean;
 }
 
-export type RightTab = 'files' | 'search';
+export type RightTab = 'files' | 'git' | 'search';
 export type SidebarTab = 'sessions' | 'archived';
 
 // Workbench holds panel sizes, sidebar and right-panel visibility and choices, and
