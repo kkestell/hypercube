@@ -2,6 +2,7 @@ import {afterEach, expect, mock, spyOn, test} from 'bun:test';
 import {act} from 'react';
 import {mount, render, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testState, unread} from '../../test-state.ts';
+import {DiffView} from '../changes/diff-view.tsx';
 import {openTab} from '../editor/tab-layout.ts';
 import {EditorArea} from '../editor/editor-area.tsx';
 import {emptyEditor} from '../sessions/selection.ts';
@@ -208,7 +209,7 @@ test('reveal waits for a rendered source highlight, including an empty file', ()
   } finally { scroll.mockRestore(); }
 });
 
-test('partial worker highlights keep the remaining source text visible', () => {
+test.each(['file', 'diff'])('%s highlights without focus and keeps unprocessed text visible', kind => {
   class FakeWorker {
     onmessage: ((event: MessageEvent) => void) | null = null;
     onerror: (() => void) | null = null;
@@ -228,12 +229,26 @@ test('partial worker highlights keep the remaining source text visible', () => {
   try {
     const session = emptyEditor({session: 's'});
     session.files.open['a.go'] = {...unread, text: 'one\ntwo\nthree'};
-    const root = mount(createStore(testState({editor: session})), <FileView id="file:a.go" path="a.go" />);
-    const source = () => [...root.querySelectorAll('.file-view-code code')].map(line => line.textContent);
+    session.diffs['a.go'] = {text: '@@ -1,3 +1,3 @@\n one\n two\n three', message: null};
+    const store = createStore(testState({editor: session}));
+    const view = (active: boolean) => kind === 'file'
+      ? <FileView id="file:a.go" path="a.go" active={active} />
+      : <DiffView id="diff:a.go" path="a.go" active={active} />;
+    const root = document.createElement('div');
+    document.body.append(root);
+    render(<StoreContext.Provider value={[store.get(), store]}>{view(false)}</StoreContext.Provider>, root);
+    const source = () => [...root.querySelectorAll('code')].map(line => line.textContent);
     expect(source()).toEqual(['one', 'two', 'three']);
-    act(() => workers[0].onmessage?.({data: {kind: 'chunk', document: 0, start: 0, lines: ['<span>one</span>']}} as MessageEvent));
+    expect(workers).toHaveLength(1);
+    act(() => workers[0].onmessage?.({data: {kind: 'chunk', document: kind === 'file' ? 0 : 1, start: 0, lines: ['<span style="color:red">one</span>']}} as MessageEvent));
     act(() => frames.shift()?.(0));
     expect(source()).toEqual(['one', 'two', 'three']);
+    expect(root.querySelector('code span')?.getAttribute('style')).toBe('color:red');
+    for (const active of [true, false]) {
+      render(<StoreContext.Provider value={[store.get(), store]}>{view(active)}</StoreContext.Provider>, root);
+      expect(workers).toHaveLength(1);
+      expect(root.querySelector('code span')?.textContent).toBe('one');
+    }
   } finally {
     unmountAll();
     Object.defineProperty(globalThis, 'Worker', {configurable: true, value: originalWorker});

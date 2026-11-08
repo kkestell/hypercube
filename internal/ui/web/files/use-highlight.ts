@@ -5,11 +5,11 @@ import {useEffect, useState} from 'react';
 
 type Chunk = {kind: 'chunk'; document: number; start: number; lines: string[]};
 
-export function useHighlight(texts: string[], lang: string, active: boolean): string[][] | null {
+export function useHighlight(texts: string[], lang: string, enabled = true): string[][] | null {
   const first = texts[0], second = texts[1];
   const [result, setResult] = useState<{first: string; second?: string; lang: string; lines: string[][]} | null>(null);
   useEffect(() => {
-    if (!active) return;
+    if (!enabled) return;
     let worker: Worker;
     try {
       worker = new Worker(new URL('./highlight-worker.js', import.meta.url), {type: 'module'});
@@ -46,6 +46,6 @@ export function useHighlight(texts: string[], lang: string, active: boolean): st
       cancelAnimationFrame(frame);
       pending.length = 0;
     };
-  }, [first, second, lang, active]);
+  }, [first, second, lang, enabled]);
   return result?.first === first && result.second === second && result.lang === lang ? result.lines : null;
 }

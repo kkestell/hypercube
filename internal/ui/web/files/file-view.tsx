@@ -19,11 +19,10 @@ interface SourceProps {
   lines: LineRange[];
   lang: string;
   wrap: boolean;
-  active: boolean;
 }
 
-function Source({text, lines, lang, wrap, active}: SourceProps) {
-  const html = useHighlight([text], lang, active)?.[0];
+function Source({text, lines, lang, wrap}: SourceProps) {
+  const html = useHighlight([text], lang)?.[0];
   return <div className={`file-view-code grid min-w-full grid-cols-[auto_minmax(0,1fr)] font-mono text-xs leading-5 ${wrap ? 'w-full' : 'w-max'}`}>
     {text.split('\n').map((line, i) => {
       const selected = lines.some(({start, end = start}) => i + 1 >= start && i + 1 <= end);
@@ -76,7 +75,7 @@ export function FileView({id, path, active = true}: FileViewProps) {
           }}>{children}</a>;
         }} />
       </div>
-      : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} active={active} />;
+      : <Source text={file.text} lines={file.lines} lang={language(path.slice(path.lastIndexOf('/') + 1))} wrap={state.workbench.wrap} />;
   }
   return <div className="relative flex min-h-0 flex-1 flex-col">
     {!preview && <Find list={list} view={view} active={active} label="Find in file" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />}

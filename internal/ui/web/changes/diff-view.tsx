@@ -15,13 +15,13 @@ import type {DiffRow} from './types.ts';
 
 const background: Record<DiffRow['kind'], string> = {context: '', added: 'bg-green-500/15', removed: 'bg-red-500/15'};
 
-function DiffLines({text, path, wrap, active}: {text: string; path: string; wrap: boolean; active: boolean}) {
+function DiffLines({text, path, wrap}: {text: string; path: string; wrap: boolean}) {
   const rows = useMemo(() => diffRows(text), [text]);
   const [old, next] = useMemo(() => [
     rows.filter(row => row.kind !== 'added').map(row => row.text).join('\n'),
     rows.filter(row => row.kind !== 'removed').map(row => row.text).join('\n'),
   ], [rows]);
-  const html = useHighlight([old, next], language(path.slice(path.lastIndexOf('/') + 1)), active && rows.length > 0);
+  const html = useHighlight([old, next], language(path.slice(path.lastIndexOf('/') + 1)), rows.length > 0);
   if (!rows.length) return <div className="diff-view-message p-6 text-center text-muted-foreground">{diffNote(text)}</div>;
   return <table className={`diff-view-lines w-full border-collapse font-mono text-xs leading-5 ${wrap ? "table-fixed" : ""}`}><tbody>{rows.map((row, i) => {
     const line = row.kind === 'removed' ? html?.[0]?.[row.old - 1] : html?.[1]?.[row.new - 1];
@@ -73,7 +73,7 @@ export function DiffView({id, path, active = true}: {id: TabId; path: string; ac
       <Find list={list} view={view} active={active} label="Find in diff" className="absolute right-2 top-2 z-10 flex items-center gap-2 rounded-md border bg-background p-2 shadow-md" />
       <div ref={view} tabIndex={0} className="diff-view min-h-0 flex-1 overflow-auto">
         <div ref={list}>{diff && (diff.message !== null ? <div className="diff-view-message p-6 text-center text-muted-foreground">{diff.message}</div>
-          : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench.wrap} active={active} /> : null)}</div>
+          : diff.text !== null ? <DiffLines text={diff.text} path={path} wrap={state.workbench.wrap} /> : null)}</div>
       </div>
     </div>
   );
