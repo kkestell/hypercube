@@ -18,8 +18,8 @@ covers the complete staged change, including the binary diagram.
 
 Material gaps: no full macOS bundle was built, existing raster screenshots
 were not regenerated (as the plan directs), and no live harness CLI was
-available. I relied on the recorded `make check` and Linux packaging results
-for those paths.
+exercised during this review. I relied on the recorded `make check` and Linux
+packaging results for those paths.
 
 ## Summary
 
