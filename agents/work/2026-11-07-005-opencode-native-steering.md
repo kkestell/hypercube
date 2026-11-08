@@ -1,6 +1,6 @@
 # OpenCode native steering
 
-Implemented `agents/plans/opencode-native-steering.md`.
+Implemented `agents/plans/2026-11-07-012-opencode-native-steering.md`.
 
 - Replaced the ACP client and its busy-input queue with one owned native
   `opencode serve --stdio --port 0` process, authenticated HTTP requests, and
@@ -22,7 +22,8 @@ an unrelated instructions event. The decoder now selects consumed event types
 before decoding their payloads; a regression test covers that case.
 
 Full `make check` and the real-OpenCode race tests passed. Independent review
-found no confirmed issues; see `agents/reviews/opencode-native-steering.md`.
+found no confirmed issues; see
+`agents/reviews/2026-11-07-008-opencode-native-steering.md`.
 User guide changes belong to the separate documentation task. Nothing was
 installed or restarted; existing sessions need a restart after installation
 to load the new plugin.

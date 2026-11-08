@@ -9,9 +9,9 @@ the result; no findings remain open.
 ## Scope and assessment
 
 Reviewed the resulting OpenCode adapter and tests against
-`agents/plans/opencode-native-steering.md`: input admission, native event
-decoding, execution state, questions and permissions, process ownership,
-configuration, transcript output, and preservation of normal behavior.
+`agents/plans/2026-11-07-012-opencode-native-steering.md`: input admission,
+native event decoding, execution state, questions and permissions, process
+ownership, configuration, transcript output, and preservation of normal behavior.
 
 The single native connection removes ACP's overlapping-prompt restriction and
 the adapter's turn queue. Input and transcript completion now follow the same
