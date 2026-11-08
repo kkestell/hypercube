@@ -22,8 +22,8 @@ individual harnesses.
 
 The [protocol types](../internal/harness/protocol.go) define commands, replies,
 transcript items, and usage fields. Native mappings live in the
-[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode),
-[Codex](../plugins/codex), and [Pi](../plugins/pi) plugins. Restart a session to
+[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode), and
+[Pi](../plugins/pi) plugins. Restart a session to
 load a newly installed plugin.
 
 Two one-shot commands, defined in [discovery](../internal/harness/discovery.go),
@@ -46,8 +46,8 @@ once the transaction that saves its start reply commits.
 
 Integration research for the supported harnesses is in
 [Claude Code](research/harnesses/claude-code.md),
-[OpenCode](research/harnesses/opencode.md), [Codex](research/harnesses/codex.md),
-and [Pi](research/harnesses/pi.md). These are version-specific research notes;
+[OpenCode](research/harnesses/opencode.md), and
+[Pi](research/harnesses/pi.md). These are version-specific research notes;
 the plugin code defines the current integration.
 
 ## Why agents outlive the window

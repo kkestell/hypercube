@@ -54,16 +54,6 @@ func (q *Requests[R]) Done(id, answer string) harness.Item {
 	return s.item
 }
 
-// Find returns a request that matches, or nil.
-func (q *Requests[R]) Find(match func(*R) bool) *R {
-	for r := range q.left {
-		if match(r) {
-			return r
-		}
-	}
-	return nil
-}
-
 // Close stops tracking the requests that match, which nobody will answer. It
 // returns their unanswered items, finished, and the requests.
 func (q *Requests[R]) Close(match func(*R) bool) ([]harness.Item, []*R) {
@@ -83,4 +73,14 @@ func (q *Requests[R]) Close(match func(*R) bool) ([]harness.Item, []*R) {
 		}
 	}
 	return items, closed
+}
+
+// Notes returns notes for an item's Notes field: nil when no option has one.
+func Notes(notes []string) []string {
+	for _, note := range notes {
+		if note != "" {
+			return notes
+		}
+	}
+	return nil
 }

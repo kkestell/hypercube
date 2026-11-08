@@ -15,7 +15,7 @@ Documentation procedures are in [documentation](documentation.md).
 - `internal/` — one package per concern: `config`, `desktop`, `harness`,
   `harnessclient`, `hold`, `mcp`, `mcpbridge`, `report`, `session`, `store`,
   `terminal`, `ui`, `workspace`.
-- `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
+- `plugins/` — the Claude Code, OpenCode, and Pi harness plugins. The
   core names no harness. `plugins/scripted` plays documentation screenshot
   scenes and never ships.
 - `make/` — the macOS and Linux packaging rules the `Makefile` includes.

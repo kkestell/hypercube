@@ -126,7 +126,7 @@ test('the default model is chosen from the workspace and initializes a draft tha
       const model = new URL(url, 'http://x/').searchParams.get('model');
       return Response.json(model ? {models: [], model, efforts: ['low'], default_effort: 'low'} : {models: [{id: 'sol', label: 'Sol'}, {id: 'opus', label: 'Opus 5.5'}], default: 'sol'});
     }
-    if (url === 'harnesses?') return Response.json([{id: 'claude', name: 'Claude Code', installed: true}, {id: 'codex', name: 'Codex', installed: true}]);
+    if (url === 'harnesses?') return Response.json([{id: 'claude', name: 'Claude Code', installed: true}, {id: 'opencode', name: 'OpenCode', installed: true}]);
     if (url.startsWith('session?')) {
       created.push(Object.fromEntries(new URL(url, 'http://x/').searchParams));
       return Response.json({session: 'created'});
@@ -143,14 +143,14 @@ test('the default model is chosen from the workspace and initializes a draft tha
   await settle(); await settle();
   const key = (target: Element) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); });
   key(element(document, '[aria-label=Harness]', HTMLButtonElement));
-  key([...document.querySelectorAll('[role=option]')].find(o => o.textContent === 'Codex')!);
+  key([...document.querySelectorAll('[role=option]')].find(o => o.textContent === 'OpenCode')!);
   await settle(); await settle();
   clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent?.startsWith('Sol'))!);
   await settle(); await settle();
   await click('Save changes');
-  const chosen = {harness: 'codex', model: 'sol', effort: 'low'};
+  const chosen = {harness: 'opencode', model: 'sol', effort: 'low'};
   expect(posts[0].default_selection).toEqual(chosen);
-  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('Codex Sol, effort low');
+  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode Sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created[0]).toMatchObject({action: 'new', ...chosen});
 });

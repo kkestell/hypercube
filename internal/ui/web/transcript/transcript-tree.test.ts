@@ -60,16 +60,6 @@ test('toolTitle says what Hypercube tools do and names other servers', () => {
   expect(toolTitle(tool({tool: 'bash', input: {command: 'ls'}}))).toEqual(['Run command', 'ls']);
 });
 
-test('native tool summaries unwrap Codex shell commands and preserve quoted text', () => {
-  const command = String.raw`/bin/zsh -lc 'printf '\''%s\n'\'' '\''hello world'\'''`;
-  const input = {command, cwd: '/repo'};
-  expect(toolTitle(tool({tool: 'shell', input}))).toEqual(['Run command', String.raw`printf '%s\n' 'hello world'`]);
-  expect(input.command).toBe(command);
-  expect(toolTitle(tool({tool: 'shell', input: {command: `/bin/bash -c 'echo "hello"\npwd'`}}))).toEqual(['Run command', 'echo "hello" pwd']);
-  expect(toolTitle(tool({tool: 'shell', input: {command: 'git status --short'}}))).toEqual(['Run command', 'git status --short']);
-  expect(toolTitle(tool({tool: 'exec_command', input: {cmd: 'bun test'}}))).toEqual(['Run command', 'bun test']);
-});
-
 test('native tools without explicit labels have readable names', () => {
   expect(toolTitle(tool({tool: 'functions__some_tool', input: {path: 'a.ts'}}))).toEqual(['Functions some tool', 'a.ts']);
   expect(toolTitle(tool({tool: 'someTool'}))).toEqual(['Some Tool', '']);

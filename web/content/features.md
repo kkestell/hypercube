@@ -7,7 +7,7 @@ Hypercube is a macOS and Linux app for coordinating local coding agents.
 
 | What you can do | Learn more |
 | --- | --- |
-| Run Claude Code, OpenCode, Codex, and Pi with their own models and credentials. | [Harness differences](/docs/harness-support/) |
+| Run Claude Code, OpenCode, and Pi with their own models and credentials. | [Harness differences](/docs/harness-support/) |
 | Send prompts, images, corrections, and answers to questions or approvals. | [Manage sessions](/docs/usage/) |
 | Delegate a bounded task or request an independent review. | [Work with a team](/docs/teamwork/) |
 | Share a checkout or isolate edits in separate Git worktrees. | [Sessions and working copies](/docs/introduction/) |

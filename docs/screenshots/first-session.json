@@ -28,7 +28,7 @@
           }]
         },
         {
-          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
           "turns": [{
             "prompt": "Explain what this project does. Identify its main entry point and how to run its tests, based on the files you find. Do not edit files, install anything, or run the tests.",
             "end": "idle",

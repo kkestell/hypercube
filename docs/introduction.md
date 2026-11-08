@@ -63,7 +63,7 @@ Context and files are separate choices, but forks have directory constraints:
 | Original checkout | Same folder, including uncommitted changes. |
 | Managed worktree | New worktree from the parent's last commit. |
 
-Claude Code, Codex, and Pi support the second arrangement. OpenCode requires
+Claude Code and Pi support the second arrangement. OpenCode requires
 the parent's folder, so it can fork only from an original-checkout session,
 with a version that supports native forks.
 

@@ -13,7 +13,7 @@ app=$HOME/.local/share/hypercube
 unit=com.github.kkestell.hypercube
 url=http://127.0.0.1:4280
 log=$HOME/.local/state/hypercube/ui.log
-plugins=(claude opencode codex pi)
+plugins=(claude opencode pi)
 
 fail() {
 	echo "test-release: $*" >&2
@@ -65,6 +65,9 @@ tar -xzf "$tmp/src/bin/release/$archive" -C "$tmp/download"
 	fail "hypercube version is not '$identity'"
 for f in "${plugins[@]/#/hypercube-harness-}"; do
 	[ -x "$HOME/.local/bin/$f" ] || fail "$HOME/.local/bin/$f is missing"
+done
+for f in "$app/hypercube-harness-codex" "$HOME/.local/bin/hypercube-harness-codex"; do
+	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f is included after Codex support was removed"
 done
 
 # Service.

@@ -61,7 +61,7 @@
   <rect x="112" y="870" width="496" height="118" rx="14" class="node"/>
   <text x="360" y="908" text-anchor="middle" class="heading">Native harness</text>
   <text x="360" y="941" text-anchor="middle" class="body">Claude Code, OpenCode,</text>
-  <text x="360" y="971" text-anchor="middle" class="body">Codex, or Pi</text>
+  <text x="360" y="971" text-anchor="middle" class="body">or Pi</text>
   <path d="M 360 988 V 1054" class="edge both"/>
   <text x="382" y="1029" class="label">MCP over stdio</text>
 

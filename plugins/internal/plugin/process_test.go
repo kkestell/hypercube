@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	"context"
 	"os/exec"
 	"strings"
 	"testing"
@@ -118,15 +117,4 @@ func TestStop(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-}
-
-// A pending call fails with the reason the CLI ended.
-func TestRPCCallFailsWithTheExitReason(t *testing.T) {
-	p := start(t, "sh", "-c", "read line; echo gone >&2; exit 4")
-	rpc := NewRPC(p.Stdin, func(Message) {})
-	go func() { rpc.End(p.Read(rpc.Line)) }()
-	_, err := rpc.Call(context.Background(), "hello", nil)
-	if err == nil || err.Error() != "sh exited: exit status 4: gone" {
-		t.Fatal(err)
-	}
 }

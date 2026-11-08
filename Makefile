@@ -3,7 +3,7 @@ APP_ID := com.github.kkestell.hypercube
 APP_NAME := Hypercube
 ARCH := $(shell go env GOARCH | sed s/amd64/x64/)
 PORT := 4280
-PLUGINS := claude opencode codex pi
+PLUGINS := claude opencode pi
 
 # The packager options both platforms share; each bundle rule adds the
 # platform, output directory, and executable name.
@@ -23,6 +23,7 @@ endif
 
 # binaries builds hypercube and the harness plugins side by side in $(OUT).
 binaries:
+	rm -f $(OUT)/hypercube-harness-codex
 	go build -o $(OUT)/hypercube ./cmd/hypercube
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 

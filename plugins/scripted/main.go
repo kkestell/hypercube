@@ -89,7 +89,7 @@ func main() {
 }
 
 // names are the display names of the harnesses the scenes use.
-var names = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "Pi"}
+var names = map[string]string{"claude": "Claude Code", "opencode": "OpenCode", "pi": "Pi"}
 
 // harnessID is the harness the plugin is installed as.
 func harnessID() string {

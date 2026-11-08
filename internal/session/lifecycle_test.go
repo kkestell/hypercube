@@ -130,7 +130,7 @@ func TestAnsweredQuestionStartsTheIdleTimeout(t *testing.T) {
 	f := newFixture(t)
 	f.idleAfter(time.Hour)
 	s := f.session()
-	f.input(s.ID, "!asyncask")
+	f.input(s.ID, "!ask")
 	f.until("the question", func() bool { return len(f.requests()) == 1 })
 	f.input(s.ID, "!finish")
 	f.until("the finished turn", func() bool { return f.idle(s.ID) })

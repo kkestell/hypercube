@@ -66,12 +66,12 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
 
 test('open and answered proposals show model display names from the session workspace', async () => {
   const fetches = stubFetch(() => Response.json({models: [{id: 'm', label: 'Model M'}]}));
-  const {root, store, send} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}]);
+  const {root, store, send} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'opencode', model: 'm', effort: 'low'}}}]);
   await act(async () => store.update(state => ({...state, workspaces: [testWorkspace({id: 'w', sessions: [busy]})]})));
-  expect(fetches.mock.calls[0][0]).toBe('models?workspace=w&harness=codex');
-  expect(find(root, '[title="Codex Model M, effort low"]').textContent).toContain('Model M');
-  send([{id: 'p', kind: 'proposal', text: 'Task', done: true, answer: 'child', input: {name: 'child', title: 'Task', settings: {harness: 'codex', model: 'm', effort: 'low'}}}]);
-  expect(find(root, '[title="Codex Model M, effort low"]').textContent).toContain('Model M');
+  expect(fetches.mock.calls[0][0]).toBe('models?workspace=w&harness=opencode');
+  expect(find(root, '[title="OpenCode Model M, effort low"]').textContent).toContain('Model M');
+  send([{id: 'p', kind: 'proposal', text: 'Task', done: true, answer: 'child', input: {name: 'child', title: 'Task', settings: {harness: 'opencode', model: 'm', effort: 'low'}}}]);
+  expect(find(root, '[title="OpenCode Model M, effort low"]').textContent).toContain('Model M');
   expect(fetches).toHaveBeenCalledTimes(1);
 });
 

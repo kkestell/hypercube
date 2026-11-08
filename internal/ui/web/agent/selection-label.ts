@@ -5,7 +5,6 @@ import type {Model, Settings} from './types.ts';
 
 const properNames: Record<string, string | undefined> = {
   claude: 'Claude',
-  codex: 'Codex',
   opencode: 'OpenCode',
   pi: 'Pi',
 };

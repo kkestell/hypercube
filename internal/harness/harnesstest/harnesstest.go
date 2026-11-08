@@ -20,8 +20,6 @@
 //	!stream    text and tool items that replace and extend each other
 //	!ask       an attention request with the choices yes and no
 //	!multiask  a question that permits several choices
-//	!asyncask  another request, asked asynchronously while the turn goes on;
-//	           its answer closes it without changing the work state
 //	!question  the !ask request alone, without a work state
 //	!approve   a tool call and an approval for the tool "Tool", choices Allow and Deny
 //	!usage     a usage and limits event
@@ -347,9 +345,6 @@ func (p *standIn) input(cmd harness.Command) {
 	case has("stream"):
 		p.reply(cmd.ID, "")
 		p.stream()
-	case has("asyncask"):
-		p.reply(cmd.ID, "")
-		p.state(harness.Working, harness.Item{ID: "aq", Kind: harness.KindAttention, Text: "Continue?", Choices: []string{"yes", "no"}, Async: true})
 	case has("question"):
 		p.reply(cmd.ID, "")
 		p.state("", harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Choices: []string{"yes", "no"}})
@@ -437,11 +432,6 @@ func (p *standIn) answer(cmd harness.Command) {
 	if turn, ok := strings.CutPrefix(cmd.Request, "approval-"); ok {
 		p.reply(cmd.ID, "")
 		p.state(harness.Idle, approval(turn, true, cmd.Choice), harness.Item{ID: "tool-" + turn, Kind: harness.KindTool, Tool: "Tool", Output: cmd.Choice, Done: true})
-		return
-	}
-	if cmd.Request == "aq" {
-		p.reply(cmd.ID, "")
-		p.state("", harness.Item{ID: "aq", Kind: harness.KindAttention, Text: "Continue?", Async: true, Done: true, Answer: cmd.Choice + cmd.Text})
 		return
 	}
 	if cmd.Request != "q" {

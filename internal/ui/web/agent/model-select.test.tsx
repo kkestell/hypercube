@@ -17,17 +17,17 @@ const settle = () => act(() => new Promise<void>(resolve => setTimeout(resolve))
 
 const harnesses: Harness[] = [
   {id: 'claude', name: 'Claude Code', installed: true},
-  {id: 'codex', name: 'Codex', installed: true},
+  {id: 'opencode', name: 'OpenCode', installed: true},
   {id: 'pi', name: 'Pi', installed: false},
 ];
 // The stand-in catalogs: Claude's opus has efforts, and its plain model has
-// none; Codex offers sol.
+// none; OpenCode offers sol.
 const catalogs: Record<string, Catalog> = {
   claude: {models: [{id: 'opus', label: 'Opus'}, {id: 'plain', label: 'Plain', provider: 'Anthropic'}], default: 'opus'},
   'claude/opus': {models: [], model: 'opus', efforts: ['low', 'high', 'max'], default_effort: 'high'},
   'claude/plain': {models: [], model: 'plain'},
-  codex: {models: [{id: 'sol', label: 'Sol', provider: 'OpenAI'}], default: 'sol'},
-  'codex/sol': {models: [], model: 'sol', efforts: ['low', 'medium'], default_effort: 'medium'},
+  opencode: {models: [{id: 'sol', label: 'Sol', provider: 'OpenAI'}], default: 'sol'},
+  'opencode/sol': {models: [], model: 'sol', efforts: ['low', 'medium'], default_effort: 'medium'},
 };
 
 // serve answers the picker's requests from the stand-in catalogs and records
@@ -77,10 +77,10 @@ test('a closed selector loads display names, using the newest session then the d
   await settle();
   expect(trigger(root).title).toBe('Claude Opus, effort high');
   unmountAll();
-  const used = unsentStore([testSession({id: 'n', harness: 'codex', model: 'sol', effort: ''})]);
+  const used = unsentStore([testSession({id: 'n', harness: 'opencode', model: 'sol', effort: ''})]);
   const second = mount(used, <SessionSelection session={testSession({id: unsentKey})} />);
   await settle();
-  expect(trigger(second).title).toBe('Codex Sol, default effort');
+  expect(trigger(second).title).toBe('OpenCode Sol, default effort');
 });
 
 test('choosing a harness, a searched model, and an effort sets the draft without losing its text', async () => {
@@ -91,21 +91,21 @@ test('choosing a harness, a searched model, and an effort sets the draft without
   expect(fetches.mock.calls.map(([url]) => queryOf(url))).toEqual([{workspace: 'w', harness: 'claude'}]);
   await open(root);
   // Only installed harnesses are offered.
-  await chooseOption('Harness', 'Codex');
+  await chooseOption('Harness', 'OpenCode');
   expect(item('Sol').textContent).toContain('OpenAI · sol');
   await choose('Sol');
-  expect(s.get().unsent?.settings).toEqual({harness: 'codex', model: 'sol', effort: 'medium'});
+  expect(s.get().unsent?.settings).toEqual({harness: 'opencode', model: 'sol', effort: 'medium'});
   await chooseOption('Effort', 'low');
-  expect(s.get().unsent?.settings).toEqual({harness: 'codex', model: 'sol', effort: 'low'});
+  expect(s.get().unsent?.settings).toEqual({harness: 'opencode', model: 'sol', effort: 'low'});
   await chooseOption('Effort', 'Harness default');
-  expect(s.get().unsent?.settings).toEqual({harness: 'codex', model: 'sol', effort: ''});
+  expect(s.get().unsent?.settings).toEqual({harness: 'opencode', model: 'sol', effort: ''});
   expect(s.get().drafts[unsentKey].text).toBe('keep this');
   const asked = fetches.mock.calls.map(([url]) => url).filter(url => url.startsWith('models?')).map(queryOf);
-  expect(asked).toContainEqual({workspace: 'w', harness: 'codex', refresh: '1'});
-  expect(asked).toContainEqual({workspace: 'w', harness: 'codex', model: 'sol'});
+  expect(asked).toContainEqual({workspace: 'w', harness: 'opencode', refresh: '1'});
+  expect(asked).toContainEqual({workspace: 'w', harness: 'opencode', model: 'sol'});
   await act(async () => { await createSession(s, {text: 'keep this', images: []}, unsentKey); });
   const created = fetches.mock.calls.map(([url]) => url).find(url => url.startsWith('session?'))!;
-  expect(queryOf(created)).toMatchObject({action: 'new', workspace: 'w', harness: 'codex', model: 'sol', effort: ''});
+  expect(queryOf(created)).toMatchObject({action: 'new', workspace: 'w', harness: 'opencode', model: 'sol', effort: ''});
 });
 
 test('search narrows the models, and a model without efforts has no effort control', async () => {

@@ -62,6 +62,12 @@ if [ "$src" != "$(cd "$app" 2>/dev/null && pwd -P)" ]; then
 fi
 
 mkdir -p "$bin"
+# Remove links to harness executables the replaced bundle no longer contains.
+for link in "$bin"/hypercube-harness-*; do
+	case $(readlink "$link" 2>/dev/null) in
+	"$app"/*) [ -e "$link" ] || rm -f "$link" ;;
+	esac
+done
 ln -sf "$app/hypercube" "$bin/hypercube"
 for plugin in "$app"/hypercube-harness-*; do
 	ln -sf "$plugin" "$bin/$(basename "$plugin")"

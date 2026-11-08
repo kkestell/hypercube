@@ -30,16 +30,11 @@ follows `XDG_DATA_HOME`.
 ## Native conversations
 
 Claude Code, OpenCode, and Pi retain histories in their own storage.
-Codex uses `CODEX_HOME` from Hypercube's launch environment, or Codex's default
-home. Its conversations appear in normal Codex history. Hypercube does not
-choose a Codex account itself.
 
-Older Hypercube versions stored Codex conversations in `codex/` inside the
-saved-state directory, including `codex/homes/` for additional accounts.
-Those files and Hypercube transcripts are preserved. Codex has no supported
-cross-home import, so these older private conversations cannot resume through
-the native integration. Their chats remain readable; start a new session for
-new work.
+Hypercube no longer includes Codex support. Existing Codex sessions,
+transcripts, and native Codex history are preserved, but Hypercube does not
+resume or convert those conversations; start new work with a supported
+harness.
 
 ## Session cleanup
 

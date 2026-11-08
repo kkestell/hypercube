@@ -3,7 +3,7 @@ Keep this document accurate and short.
 ## Purpose and scope
 
 Hypercube runs teams of local coding agents. Each agent is a native harness
-(Claude Code, OpenCode, Codex, or Pi) that the app drives through an
+(Claude Code, OpenCode, or Pi) that the app drives through an
 executable plugin; agents message each other through an MCP server, and the
 browser shows each agent's transcript.
 

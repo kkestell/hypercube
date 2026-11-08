@@ -62,19 +62,6 @@ const nativeTools = new Map([
   ['agent_close_agent', 'Close agent'],
 ]);
 
-function nativeSummary(tool: string, input: unknown): string {
-  if (['shell', 'bash', 'exec_command'].includes(tool) && typeof input === 'object' && input !== null) {
-    const command = Reflect.get(input, 'command') ?? Reflect.get(input, 'cmd');
-    if (typeof command === 'string') {
-      // Codex reports a shell invocation with a single-quoted command. Show
-      // the command itself; the expanded input retains the exact invocation.
-      const wrapped = command.match(/^(?:\/[\w/.-]+\/)?(?:bash|zsh|sh) -l?c '([\s\S]*)'$/);
-      return toolSummary(wrapped ? wrapped[1].replace(/'\\''|'"'"'/g, "'") : command);
-    }
-  }
-  return toolSummary(input);
-}
-
 // toolTitle is a tool call's name and summary.
 export function toolTitle({server, tool, input}: ToolItem): [name: string, summary: string] {
   const named = server === 'hypercube' && tool !== undefined ? hypercubeTools.get(tool) : undefined;
@@ -86,7 +73,7 @@ export function toolTitle({server, tool, input}: ToolItem): [name: string, summa
   if (server) return [server + ' - ' + tool, toolSummary(input)];
   const words = (tool ?? 'tool').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]+/g, ' ');
   const name = nativeTools.get(tool ?? '') ?? words.charAt(0).toUpperCase() + words.slice(1);
-  return [name, nativeSummary(tool ?? '', input)];
+  return [name, toolSummary(input)];
 }
 
 // A tool's input and output show this many characters.

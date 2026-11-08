@@ -119,7 +119,7 @@ up)
 		cat >"$CONFIG" <<'JSON'
 {
   "default_selection": {"harness": "claude", "model": "haiku", "effort": "low"},
-  "child_model_guidance": "Smoke tests use cheap models: Claude Code haiku at low effort, Codex gpt-6-luna at low effort, and openrouter/~deepseek/deepseek-flash-latest in OpenCode or Pi."
+  "child_model_guidance": "Smoke tests use cheap models: Claude Code haiku at low effort and openrouter/~deepseek/deepseek-flash-latest in OpenCode or Pi."
 }
 JSON
 	fi

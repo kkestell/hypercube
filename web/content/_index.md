@@ -5,7 +5,7 @@ toc = false
 
 Run local coding agents together on macOS and Linux.
 
-Hypercube brings Claude Code, OpenCode, Codex, and Pi into one app. Use your
+Hypercube brings Claude Code, OpenCode, and Pi into one app. Use your
 installed tools and existing credentials. Give each session its own model,
 follow its work, and ask agents to help one another.
 

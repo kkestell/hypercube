@@ -13,7 +13,7 @@ You do not need Go, Bun, or a source checkout.
 - **macOS:** Apple Silicon; beta builds are checked on macOS 15.
 - **Linux:** AMD64 or ARM64 on Debian 13, Ubuntu 26.04, Fedora 45, or Arch.
 - Install and sign in to at least one [supported harness](harness-support.md#requirements):
-  Claude Code, OpenCode, Codex, or Pi. A harness is the coding tool that runs
+  Claude Code, OpenCode, or Pi. A harness is the coding tool that runs
   an agent's work.
 
 Get the app and `SHA256SUMS` from

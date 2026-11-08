@@ -1,6 +1,6 @@
 # Hypercube
 
-Run Claude Code, OpenCode, Codex, and Pi together in a macOS or Linux app.
+Run Claude Code, OpenCode, and Pi together in a macOS or Linux app.
 Ask an agent to delegate a task, get a second opinion, or review another
 agent's work. Each session has its own conversation; you choose whether agents
 share working files or use separate Git branches.

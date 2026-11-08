@@ -16,7 +16,7 @@ implementation details are in [architecture](architecture.md).
 - **browser interface**: The web interface served by the backend and displayed
   inside the desktop app or in a development browser view.
 - **harness**: A native coding-agent runtime, such as Claude Code, OpenCode,
-  Codex, or Pi, that executes an agent's work and owns its native conversation.
+  or Pi, that executes an agent's work and owns its native conversation.
 - **plugin**: A `hypercube-harness-<name>` executable that translates between
   Hypercube's plugin protocol and one harness's native protocol.
 - **workspace**: A project folder registered with Hypercube that groups
@@ -74,7 +74,7 @@ implementation details are in [architecture](architecture.md).
 - **item**: One identified transcript entry that can be updated in place,
   including text, reasoning, a tool call, an error, or a user question.
 - **attention item**: An item asking the user for an answer or approval,
-  which can leave the agent working when marked asynchronous.
+  which the agent waits for.
 - **offer**: A saved question asking the user to choose **New session**,
   **Do it here**, or **Dismiss** for a new task, whose answer reaches the parent
   as a message.

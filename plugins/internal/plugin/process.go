@@ -15,21 +15,6 @@ import (
 
 const stopTimeout = 3 * time.Second
 
-// ReadLines calls handle for each non-empty line of r, including a last line
-// without a newline, and returns the error that ended r.
-func ReadLines(r io.Reader, handle func(line []byte)) error {
-	reader := bufio.NewReaderSize(r, 1<<20)
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(bytes.TrimSpace(line)) > 0 {
-			handle(line)
-		}
-		if err != nil {
-			return err
-		}
-	}
-}
-
 // Process is a running harness CLI. It owns the CLI's pipes, reading its
 // output, the reason it ended, and stopping it.
 type Process struct {
@@ -97,7 +82,17 @@ func StartProcess(product string, cmd *exec.Cmd) (*Process, error) {
 // returns the exit reason. Done closes after the last handle call returns.
 // Call it once.
 func (p *Process) Read(handle func(line []byte)) error {
-	_ = ReadLines(p.stdout, handle)
+	// Read every non-empty line, including a last one without a newline.
+	reader := bufio.NewReaderSize(p.stdout, 1<<20)
+	for {
+		line, err := reader.ReadBytes('\n')
+		if len(bytes.TrimSpace(line)) > 0 {
+			handle(line)
+		}
+		if err != nil {
+			break
+		}
+	}
 	<-p.exited
 	p.stdout.Close()
 	close(p.done)

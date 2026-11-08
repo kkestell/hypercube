@@ -178,8 +178,7 @@ type Limit struct {
 // An attention item asks the user: Text is the prompt, Choices are the options,
 // Notes[i] optionally describes Choices[i], Multi allows several selections,
 // and Free allows typed text. It stays open until an event sets Done, with the
-// Answer when there is one. The agent waits for the answer unless Async is
-// set: an asynchronous question leaves the agent working.
+// Answer when there is one. The agent waits for the answer.
 //
 // An approval attention item names the tool it asks to use in Grant, the
 // harness's own name for the tool, and its first choice allows the request
@@ -226,7 +225,6 @@ type Item struct {
 	State   string          `json:"state,omitempty"`
 	Final   []string        `json:"final,omitempty"`
 	Grant   string          `json:"grant,omitempty"`
-	Async   bool            `json:"async,omitempty"`
 	Offer   bool            `json:"offer,omitempty"`
 	// Automatic distinguishes host-generated input from the user's prompts.
 	Automatic bool `json:"automatic,omitempty"`

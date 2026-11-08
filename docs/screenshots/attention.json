@@ -6,7 +6,7 @@
       "repo": "harbor",
       "sessions": [
         {
-          "settings": {"harness": "codex", "model": "gpt-6.1-terra", "effort": "high"},
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
           "turns": [
             {
               "prompt": "Upgrade goldmark to the latest release and fix whatever breaks",

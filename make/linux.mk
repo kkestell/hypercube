@@ -29,6 +29,7 @@ bin/$(APP_ID).png: cmd/hypercube/AppIcon.svg
 
 build: bundle
 	ln -sf Hypercube/hypercube bin/hypercube
+	rm -f bin/hypercube-harness-codex
 	for p in $(PLUGINS); do ln -sf Hypercube/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 
 # install puts the bundle in ~/.local/share/hypercube, links hypercube and the

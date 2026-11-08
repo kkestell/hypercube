@@ -93,10 +93,10 @@ func (r *Runtime) reportsReady(tx *store.Tx, parent store.Session) (bool, []stri
 }
 
 // waitsForUser reports whether the agent's main conversation waits on an open
-// question. An asynchronous question leaves it working. The caller holds mu.
+// question. The caller holds mu.
 func (l *live) waitsForUser() bool {
 	for _, p := range l.pending {
-		if p.item.Kind == harness.KindAttention && !p.item.Async && p.item.Parent == "" {
+		if p.item.Kind == harness.KindAttention && p.item.Parent == "" {
 			return true
 		}
 	}

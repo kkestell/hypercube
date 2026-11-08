@@ -15,15 +15,14 @@ not rewrite your global or project settings or change `HOME`.
 | --- | --- | --- |
 | Claude Code | `claude`; works with a Claude Team login | A model and effort listed by its initialization. |
 | OpenCode | `opencode`, version 2.x | A `provider/model` and one of its offered variants. |
-| Codex | `codex` | A model and reasoning effort from its model list. |
 | Pi | `pi`, version 1.4 or later | A full `provider/id` and an offered thinking level. |
 
 Hypercube discovers installed harnesses at startup and when the selector opens.
 Models and efforts are discovered in the session's folder. Invalid selections
 are rejected at start or model change, before the first prompt.
 
-An empty effort uses the harness default. Codex, OpenCode, and Pi report the
-chosen effort back to the selector. Listing models does not create a
+An empty effort uses the harness default. OpenCode and Pi report the chosen
+effort back to the selector. Listing models does not create a
 conversation; OpenCode reads its native model catalog directly.
 
 ## Messages and model changes
@@ -32,14 +31,13 @@ conversation; OpenCode reads its native model catalog directly.
 | --- | --- | --- |
 | Claude Code | Read before its next step. | May affect its next model call. |
 | OpenCode | Read at the next step boundary, after running tools finish. | Native controls applied when selected. |
-| Codex | Steers the current turn before its next step. | Used at the next turn start; steering keeps current settings. |
 | Pi | Read after the current step's tool calls, before the next model request. | Native controls applied when selected. |
 
 A partially failed change can leave the model changed but the effort unchanged.
 The selector shows accepted settings; the error stays visible in chat.
 
-Interrupting leaves output in the conversation. OpenCode, Codex, and Pi also
-give up pending questions or dialogs when interrupted.
+Interrupting leaves output in the conversation. OpenCode and Pi also give up
+pending questions or dialogs when interrupted.
 
 ## Permissions
 
@@ -60,18 +58,6 @@ depends on the harness:
 - Allows permissions it asks about once, as with `opencode --auto`.
 - A permission denied by OpenCode's own configuration stays denied.
 
-### Codex
-
-- Runs in a workspace-write sandbox with network access and an automatic
-  approval reviewer. Git directories are writable so children can commit.
-- Hypercube's MCP tools need no approval. Requests the reviewer does not
-  settle appear in chat with Allow, Deny, and session permission where supported.
-- If cancellation is offered without decline, choosing Deny cancels the turn.
-- Command and file-change approvals can be saved. Network-host, write-root,
-  and permission requests have no persistent Hypercube grant.
-- MCP approvals have no Always allow option because Codex does not identify
-  the tool in that request.
-
 ### Pi
 
 - Extension dialogs appear as choices, Yes/No, or a text field.
@@ -85,12 +71,7 @@ Saved choices can be reviewed and removed in **Settings**.
 | --- | --- |
 | Claude Code | A group of questions is submitted after all are answered. |
 | OpenCode | A group is submitted after all are answered. Withdrawn questions close. |
-| Codex | Blocking questions wait for all answers. Async answers become individual messages; new input closes unanswered async questions. |
 | Pi | Answers follow the extension dialog's controls. |
-
-Codex keeps working during async questions, so those questions hold up a
-parent's automatic child reports until the turn ends. Other questions mean
-the agent is waiting for you.
 
 Hypercube handles its own **New session** / **Do it here** questions directly,
 without the harness.
@@ -104,7 +85,6 @@ counted depend on the harness:
 | --- | --- | --- | --- |
 | Claude Code | Latest input, including cached tokens. | Reported with the turn result. | Five-hour and seven-day windows, after turns. |
 | OpenCode | Latest step's input, output, and cached tokens. | Main conversation. | Not reported. |
-| Codex | Latest input. | Not reported. | Account limit windows, after turns. |
 | Pi | Latest request's total tokens, including output. | Session total, including before a resume. | Not reported. |
 
 See [usage indicators](interface.md#usage-indicators) for how readings appear.
@@ -117,7 +97,7 @@ with the first message; a Pi session with no saved conversation cannot resume.
 
 Forking also uses native history and fails explicitly if it cannot copy that
 history. See [fork context and directory rules](introduction.md#fresh-and-forked-context)
-and [storage locations and legacy Codex history](storage.md#native-conversations).
+and [storage locations and native conversations](storage.md#native-conversations).
 
 ## Native subagent display
 

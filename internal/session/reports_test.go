@@ -98,42 +98,6 @@ func TestParentWorkDelaysReports(t *testing.T) {
 	f.until("parent receives the report after finishing", func() bool { return len(f.inputs(parent.ID)) == 4 && len(f.queued(parent.ID)) == 0 })
 }
 
-// A working child with only an asynchronous question holds back reports
-// until its work ends.
-func TestAsyncQuestionDoesNotReleaseReports(t *testing.T) {
-	f := newFixture(t)
-	parent := f.session()
-	one, two := f.child(parent, "one", ""), f.child(parent, "two", "")
-	f.input(two.ID, "!asyncask")
-	f.until("two's question", func() bool { return len(f.requests()) == 1 })
-	f.input(one.ID, "!answer")
-	f.until("report queued", func() bool { return len(f.queued(parent.ID)) == 1 })
-	if len(f.inputs(parent.ID)) != 1 {
-		t.Fatal("a working child's asynchronous question released the report")
-	}
-	f.input(two.ID, "!finish")
-	f.until("reports delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
-	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: two.") {
-		t.Fatal(got)
-	}
-}
-
-// A question that opens while another is open can still release reports.
-func TestSecondQuestionReleasesReports(t *testing.T) {
-	f := newFixture(t)
-	parent := f.session()
-	alice, bob := f.child(parent, "alice", ""), f.child(parent, "bob", "")
-	f.input(bob.ID, "!asyncask")
-	f.until("bob's asynchronous question", func() bool { return len(f.requests()) == 1 })
-	f.input(alice.ID, "!answer")
-	f.until("alice's report queued", func() bool { return len(f.queued(parent.ID)) == 1 && f.idle(alice.ID) })
-	f.input(bob.ID, "!question")
-	f.until("alice's report delivered", func() bool { return len(f.inputs(parent.ID)) == 2 && len(f.queued(parent.ID)) == 0 })
-	if got := f.inputs(parent.ID)[1]; !strings.Contains(got, "Waiting for the user: bob.") {
-		t.Fatal(got)
-	}
-}
-
 func TestDeletingAChildKeepsItsPendingReportDeliverable(t *testing.T) {
 	f := newFixture(t)
 	parent := f.session()
