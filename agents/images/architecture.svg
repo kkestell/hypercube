@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="1216" viewBox="0 0 720 1216" role="img" aria-labelledby="title description">
+  <title id="title">Hypercube architecture</title>
+  <desc id="description">The desktop app displays the browser interface. Both connect to the backend, which owns sessions and SQLite state. A separate process holder keeps each agent's plugin, native harness, and MCP tools alive across backend restarts. MCP tools call back into the backend.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <path d="M 0 0 L 8 4 L 0 8 Z" fill="#64748b"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172b44; }
+      .heading { font-size: 26px; font-weight: 600; }
+      .body { font-size: 22px; fill: #475569; }
+      .label { font-size: 20px; fill: #475569; }
+      .command { font-family: "SFMono-Regular", Consolas, monospace; font-size: 22px; fill: #475569; }
+      .node { fill: #fff; stroke: #cbd5e1; stroke-width: 2; }
+      .edge { fill: none; stroke: #64748b; stroke-width: 2; stroke-linejoin: round; marker-end: url(#arrow); }
+      .both { marker-start: url(#arrow); }
+    </style>
+  </defs>
+
+  <rect width="720" height="1216" fill="#fff"/>
+  <text x="40" y="48" font-size="32" font-weight="700">Hypercube architecture</text>
+
+  <!-- The desktop hosts the browser interface and receives notifications. -->
+  <rect x="32" y="92" width="656" height="174" rx="20" fill="#f8fafc" stroke="#e2e8f0" stroke-width="2"/>
+  <text x="56" y="126" class="label">User interface</text>
+  <rect x="64" y="146" width="240" height="88" rx="14" class="node"/>
+  <text x="184" y="182" text-anchor="middle" class="heading">Desktop app</text>
+  <text x="184" y="212" text-anchor="middle" class="body">Electron</text>
+  <rect x="416" y="146" width="240" height="88" rx="14" class="node"/>
+  <text x="536" y="183" text-anchor="middle" class="heading">Browser</text>
+  <text x="536" y="213" text-anchor="middle" class="body">interface</text>
+  <path d="M 304 198 H 416" class="edge"/>
+  <text x="360" y="181" text-anchor="middle" class="label">hosts</text>
+
+  <path d="M 160 354 V 234" class="edge"/>
+  <text x="180" y="299" class="label">Notifications</text>
+  <path d="M 536 234 V 310 H 360 V 354" class="edge both"/>
+  <text x="348" y="291" class="label">Actions and live updates</text>
+
+  <!-- The backend is the sole writer of application state. -->
+  <rect x="64" y="354" width="384" height="156" rx="18" fill="#eaf2ff" stroke="#4977c6" stroke-width="2"/>
+  <text x="256" y="393" text-anchor="middle" class="heading">Backend</text>
+  <text x="256" y="427" text-anchor="middle" class="command">hypercube ui</text>
+  <text x="256" y="468" text-anchor="middle" class="body">Sessions, messages, transcripts</text>
+  <path d="M 512 388 V 468 C 512 494 656 494 656 468 V 388 Z" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <ellipse cx="584" cy="388" rx="72" ry="18" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2"/>
+  <text x="584" y="438" text-anchor="middle" class="heading">SQLite</text>
+  <text x="584" y="469" text-anchor="middle" class="label">Saved state</text>
+  <path d="M 448 437 H 512" class="edge both"/>
+
+  <!-- The holder owns the agent processes independently of the backend. -->
+  <rect x="32" y="616" width="656" height="576" rx="20" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="300" y="651" class="heading">Process holder</text>
+  <text x="300" y="684" class="command">hypercube hold</text>
+  <path d="M 208 510 V 712" class="edge both"/>
+  <text x="232" y="556" class="label">Commands</text>
+  <text x="232" y="583" class="label">and events</text>
+
+  <rect x="112" y="712" width="496" height="92" rx="14" class="node"/>
+  <text x="360" y="766" text-anchor="middle" class="heading">Harness plugin</text>
+  <path d="M 360 804 V 870" class="edge both"/>
+  <text x="382" y="845" class="label">Native protocol</text>
+
+  <rect x="112" y="870" width="496" height="118" rx="14" class="node"/>
+  <text x="360" y="908" text-anchor="middle" class="heading">Native harness</text>
+  <text x="360" y="941" text-anchor="middle" class="body">Claude Code, OpenCode,</text>
+  <text x="360" y="971" text-anchor="middle" class="body">Codex, or Pi</text>
+  <path d="M 360 988 V 1054" class="edge both"/>
+  <text x="382" y="1029" class="label">MCP over stdio</text>
+
+  <rect x="112" y="1054" width="496" height="92" rx="14" class="node"/>
+  <text x="360" y="1092" text-anchor="middle" class="heading">Agent tools</text>
+  <text x="360" y="1125" text-anchor="middle" class="command">hypercube mcp</text>
+
+  <!-- Tool calls return to the same backend as user actions. -->
+  <path d="M 608 1100 H 656 V 550 H 416 V 510" class="edge both"/>
+  <text x="562" y="579" text-anchor="middle" class="label">Tool requests</text>
+  <text x="562" y="606" text-anchor="middle" class="label">and results</text>
+</svg>
