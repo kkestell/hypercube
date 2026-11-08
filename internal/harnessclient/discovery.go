@@ -18,25 +18,8 @@ import (
 
 const pluginPrefix = "hypercube-harness-"
 
-// pluginDir is dir, or the running executable's directory when dir is empty.
-func pluginDir(dir string) (string, error) {
-	if dir != "" {
-		return dir, nil
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Dir(exe), nil
-}
-
-// Plugins returns the IDs of the executable plugins in dir, or beside the
-// running executable when dir is empty, in order.
+// Plugins returns the IDs of the executable plugins in dir, in order.
 func Plugins(dir string) ([]string, error) {
-	dir, err := pluginDir(dir)
-	if err != nil {
-		return nil, err
-	}
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
@@ -56,8 +39,8 @@ func Plugins(dir string) ([]string, error) {
 	return ids, nil
 }
 
-// Find returns the path of the harness's plugin in dir, or beside the running
-// executable when dir is empty. The harness must name an installed plugin.
+// Find returns the path of the harness's plugin in dir. The harness must name
+// an installed plugin.
 func Find(dir, name string) (string, error) {
 	ids, err := Plugins(dir)
 	if err != nil {
@@ -66,8 +49,7 @@ func Find(dir, name string) (string, error) {
 	if !slices.Contains(ids, name) {
 		return "", fmt.Errorf("harness %q has no plugin", name)
 	}
-	dir, err = pluginDir(dir)
-	return filepath.Join(dir, pluginPrefix+name), err
+	return filepath.Join(dir, pluginPrefix+name), nil
 }
 
 // describeTimeout bounds `describe`, which only looks for an executable.

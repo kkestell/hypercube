@@ -13,7 +13,7 @@ func TestSessionStartsAndDeliversInOrder(t *testing.T) {
 	s := f.session()
 	// The plugin starts in the parent's directory with its instructions.
 	start := f.log(s.ID, "start")
-	if len(start) != 1 || start[0].Dir != f.root ||
+	if len(start) != 1 || start[0].Dir != f.root || start[0].MCP != "/x/hypercube-mcp" ||
 		!strings.Contains(start[0].Instructions, "Hypercube session "+s.ID) ||
 		start[0].Env["HYPERCUBE_SESSION_ID"] != s.ID {
 		t.Fatalf("start = %v", start)

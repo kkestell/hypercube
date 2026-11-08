@@ -36,7 +36,7 @@ func TestTerminalStartsOnlyAfterWebSocketHandshake(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { os.RemoveAll(dir) })
-			rt := session.New(db, "")
+			rt := session.New(db, "", session.Programs{})
 			rt.Terminals.Dir = dir
 			rt.Terminals.Command = []string{"/bin/sh", "-c", "printf 'terminal-ready\\n'; exec /bin/cat"}
 			t.Cleanup(rt.Quit)

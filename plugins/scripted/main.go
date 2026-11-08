@@ -26,6 +26,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
+	"github.com/kkestell/hypercube/plugins/internal/plugin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -273,7 +274,11 @@ func childCall(c session, initiation string) map[string]any {
 // session's own Hypercube tools.
 func createSessions(start harness.StartArgs, t turn) error {
 	ctx := context.Background()
-	cmd := exec.Command(start.Hypercube, "mcp")
+	command, args, err := plugin.MCPCommand(start)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(command, args...)
 	cmd.Env = os.Environ()
 	for k, v := range start.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)

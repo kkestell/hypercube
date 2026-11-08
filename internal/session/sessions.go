@@ -62,7 +62,7 @@ func (r *Runtime) create(workspaceID string, settings harness.Settings, worktree
 	if err := settings.Check(); err != nil {
 		return store.Session{}, err
 	}
-	if _, err := harnessclient.Find(r.PluginDir, settings.Harness); err != nil {
+	if _, err := harnessclient.Find(r.programs.Plugins, settings.Harness); err != nil {
 		return store.Session{}, err
 	}
 	r.mu.Lock()

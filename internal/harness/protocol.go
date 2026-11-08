@@ -78,9 +78,13 @@ type Image struct {
 // StartArgs tells the plugin which harness to start. The plugin replies once
 // the harness is ready for input.
 type StartArgs struct {
-	// Hypercube is the executable the harness runs for `mcp`.
-	Hypercube string `json:"hypercube"`
-	// Env is the environment for Hypercube processes the harness starts.
+	// MCP is the MCP bridge executable the harness runs, with Env, to give
+	// the agent its Hypercube tools.
+	MCP string `json:"mcp,omitempty"`
+	// Hypercube is set instead of MCP in starts saved by earlier versions:
+	// the backend executable, which the harness ran with the argument mcp.
+	Hypercube string `json:"hypercube,omitempty"`
+	// Env is the environment for the MCP bridge.
 	Env     map[string]string `json:"env"`
 	Session string            `json:"session"`
 	Model   string            `json:"model"`

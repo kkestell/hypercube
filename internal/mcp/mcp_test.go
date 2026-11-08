@@ -1,11 +1,9 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"maps"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +11,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
@@ -53,7 +50,13 @@ func family(t *testing.T, noGit bool, parentDir, childDir string) (*store.DB, *s
 		}
 		return nil
 	})
-	return db, session.New(db, "")
+	plugins := filepath.Join(dir, "plugins")
+	if err := os.Mkdir(plugins, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	harnesstest.Install(t, plugins, "one")
+	harnesstest.Install(t, plugins, "two")
+	return db, session.New(db, "", session.Programs{Plugins: plugins})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -94,7 +97,7 @@ func connect(t *testing.T, url, id string) *mcp.ClientSession {
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
 	s, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{
 		Endpoint:             url,
-		HTTPClient:           &http.Client{Transport: identity(id)},
+		HTTPClient:           &http.Client{Transport: withSession(id)},
 		DisableStandaloneSSE: true,
 	}, nil)
 	if err != nil {
@@ -102,6 +105,14 @@ func connect(t *testing.T, url, id string) *mcp.ClientSession {
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+type withSession string
+
+func (s withSession) RoundTrip(r *http.Request) (*http.Response, error) {
+	r = r.Clone(r.Context())
+	r.Header.Set(SessionHeader, string(s))
+	return http.DefaultTransport.RoundTrip(r)
 }
 
 // callTool runs a tool and returns its text and whether it failed.
@@ -208,50 +219,6 @@ func TestHandlerChecksTheSession(t *testing.T) {
 	}
 }
 
-// The bridge forwards each request to the app with the session ID and
-// answers in the app's words.
-func TestBridge(t *testing.T) {
-	db, rt := family(t, false, t.TempDir(), t.TempDir())
-	server := serve(t, db, rt)
-	run := func(id, url string) []map[string]any {
-		t.Helper()
-		t.Setenv("HYPERCUBE_SESSION_ID", id)
-		t.Setenv("HYPERCUBE_URL", url)
-		in := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"c","version":"1"}}}
-{"jsonrpc":"2.0","method":"notifications/initialized"}
-{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_sessions","arguments":{}}}
-{"jsonrpc":"2.0","id":3,"method":"no/such"}
-`
-		var out bytes.Buffer
-		if err := Bridge(strings.NewReader(in), &out); err != nil {
-			t.Fatal(err)
-		}
-		var answers []map[string]any
-		for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
-			var answer map[string]any
-			if err := json.Unmarshal([]byte(line), &answer); err != nil {
-				t.Fatalf("bridge wrote %q", line)
-			}
-			answers = append(answers, answer)
-		}
-		return answers
-	}
-	answers := run("b", server.URL)
-	if len(answers) != 3 || answers[0]["id"] != 1.0 || answers[1]["id"] != 2.0 || answers[1]["result"].(map[string]any)["isError"] == true || answers[2]["id"] != 3.0 || answers[2]["error"] == nil {
-		t.Fatalf("answers = %v", answers)
-	}
-	// A refused or unreachable app answers each request with an error.
-	for name, got := range map[string][]map[string]any{"unknown agent": run("nobody", server.URL), "bad app URL": run("b", ":invalid")} {
-		if len(got) != 3 || got[0]["error"] == nil || got[0]["id"] != 1.0 || got[1]["error"] == nil {
-			t.Errorf("%s: answers = %v", name, got)
-		}
-	}
-	t.Setenv("HYPERCUBE_URL", "")
-	if err := Bridge(strings.NewReader(""), &bytes.Buffer{}); err == nil {
-		t.Error("the bridge ran without the app's address")
-	}
-}
-
 // create_session refuses bad arguments and a parked session,
 // adding no agent.
 func TestCreateSessionRefusals(t *testing.T) {
@@ -283,11 +250,7 @@ func TestCreateSessionRefusals(t *testing.T) {
 // started runs session-1 with the stand-in plugin and connects to its tools.
 func started(t *testing.T, db *store.DB, rt *session.Runtime) *mcp.ClientSession {
 	t.Helper()
-	plugins := t.TempDir()
-	harnesstest.Install(t, plugins, "one")
-	harnesstest.Install(t, plugins, "two")
 	t.Setenv("HYPERCUBE_TEST_LOGS", t.TempDir())
-	rt.PluginDir = plugins
 	t.Cleanup(rt.Quit)
 	change(t, db, func(tx *store.Tx) error {
 		parent, err := tx.Session("session-1")
@@ -575,47 +538,6 @@ func TestSessionBoundaries(t *testing.T) {
 		return tx.SaveSession(s)
 	})
 	checkList(child, map[string][2]string{})
-}
-
-func TestBridgeWaitsForRestartingApp(t *testing.T) {
-	db, rt := family(t, false, t.TempDir(), t.TempDir())
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	addr := listener.Addr().String()
-	listener.Close()
-	t.Setenv("HYPERCUBE_SESSION_ID", "b")
-	t.Setenv("HYPERCUBE_URL", "http://"+addr)
-	var out bytes.Buffer
-	done := make(chan error, 1)
-	go func() {
-		done <- Bridge(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_sessions","arguments":{}}}`+"\n"), &out)
-	}()
-	// The first refused attempt has to wait for the replacement app.
-	select {
-	case err := <-done:
-		t.Fatalf("bridge gave up before app started: %v", err)
-	case <-time.After(300 * time.Millisecond):
-	}
-	listener, err = net.Listen("tcp", addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := &http.Server{Handler: Handler(db, rt)}
-	go server.Serve(listener)
-	defer server.Close()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("bridge did not resume")
-	}
-	if !strings.Contains(out.String(), "session-1") {
-		t.Fatal(out.String())
-	}
 }
 
 // list_models reports the harnesses and their choices without starting a

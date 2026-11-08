@@ -1,23 +1,17 @@
-// Package mcp gives agents the Hypercube tools. Each agent's harness runs
-// `hypercube mcp`, a stdio MCP server that forwards every request, with the
-// session ID, to the app's /mcp route. The tools run in the app, beside
-// the browser's actions.
+// Package mcp serves the Hypercube tools to agents at the backend's /mcp
+// route. Each agent's harness runs hypercube-mcp (internal/mcpbridge), which
+// forwards requests here with the session ID in SessionHeader. The tools run
+// in the backend, beside the browser's actions.
 package mcp
 
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"os"
-	"syscall"
-	"time"
 
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -87,98 +81,6 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 
 // SessionHeader names the session a request comes from.
 const SessionHeader = "X-Hypercube-Session"
-
-// Bridge answers MCP requests on stdin until it closes, by forwarding each to
-// the app. HYPERCUBE_URL is the app's address and HYPERCUBE_SESSION_ID its session.
-// The SDK has no stdio-to-HTTP forwarder, so Bridge moves messages between the
-// SDK's stdio and streamable HTTP transports itself, one request at a time.
-func Bridge(stdin io.Reader, stdout io.Writer) error {
-	id, base := os.Getenv("HYPERCUBE_SESSION_ID"), os.Getenv("HYPERCUBE_URL")
-	if id == "" || base == "" {
-		return errors.New("HYPERCUBE_SESSION_ID and HYPERCUBE_URL must be set")
-	}
-	ctx := context.Background()
-	agent, err := (&mcp.StreamableClientTransport{
-		Endpoint:             base + "/mcp",
-		HTTPClient:           &http.Client{Transport: identity(id)},
-		DisableStandaloneSSE: true,
-	}).Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer agent.Close()
-	stdio, err := (&mcp.IOTransport{Reader: io.NopCloser(stdin), Writer: nopCloser{stdout}}).Connect(ctx)
-	if err != nil {
-		return err
-	}
-	defer stdio.Close()
-	for {
-		msg, err := stdio.Read(ctx)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
-		}
-		req, isRequest := msg.(*jsonrpc.Request)
-		if err := agent.Write(ctx, msg); err != nil {
-			if !isRequest || !req.IsCall() {
-				continue
-			}
-			failure := &jsonrpc.Response{ID: req.ID, Error: &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: err.Error()}}
-			if err := stdio.Write(ctx, failure); err != nil {
-				return err
-			}
-			continue
-		}
-		if !isRequest || !req.IsCall() {
-			continue
-		}
-		for {
-			answer, err := agent.Read(ctx)
-			if err != nil {
-				return err
-			}
-			if err := stdio.Write(ctx, answer); err != nil {
-				return err
-			}
-			if r, ok := answer.(*jsonrpc.Response); ok && r.ID == req.ID {
-				break
-			}
-		}
-	}
-}
-
-// identity adds the session ID that the app's /mcp route requires.
-type identity string
-
-func (i identity) RoundTrip(r *http.Request) (*http.Response, error) {
-	r = r.Clone(r.Context())
-	r.Header.Set(SessionHeader, string(i))
-	deadline := time.Now().Add(30 * time.Second)
-	for {
-		response, err := http.DefaultTransport.RoundTrip(r)
-		if !errors.Is(err, syscall.ECONNREFUSED) || time.Now().After(deadline) {
-			return response, err
-		}
-		select {
-		case <-r.Context().Done():
-			return nil, r.Context().Err()
-		case <-time.After(250 * time.Millisecond):
-		}
-		// A refused connection sent no bytes, but the transport closed its body.
-		if r.GetBody != nil {
-			r.Body, err = r.GetBody()
-			if err != nil {
-				return nil, err
-			}
-		}
-	}
-}
-
-type nopCloser struct{ io.Writer }
-
-func (nopCloser) Close() error { return nil }
 
 // Handler is the app's /mcp route: it serves the tools to the session named in
 // SessionHeader. Each request is answered on its own, so the tools follow the

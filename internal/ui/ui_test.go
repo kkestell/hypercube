@@ -54,7 +54,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, ""), &desktop.Desktop{})
+	return Handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -275,8 +275,7 @@ func newApp(t *testing.T) *app {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	rt := session.New(db, "")
-	rt.PluginDir = plugins
+	rt := session.New(db, "", session.Programs{Plugins: plugins})
 	t.Cleanup(rt.Quit)
 	w, err := rt.AddWorkspace(workspace)
 	if err != nil {

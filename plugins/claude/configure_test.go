@@ -43,7 +43,7 @@ done
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("FAKE_INITIALIZED", initializedLine)
 	c := harnesstest.Serve(t, serve)
-	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{Model: "opus", Effort: "high", Dir: t.TempDir()}})
+	c.Send(harness.Command{ID: 1, Command: harness.CmdStart, Start: &harness.StartArgs{MCP: "/bin/hc-mcp", Model: "opus", Effort: "high", Dir: t.TempDir()}})
 	if r := c.Reply(1); r.Error != "" {
 		t.Fatal(r)
 	}

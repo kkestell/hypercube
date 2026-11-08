@@ -132,7 +132,7 @@ func TestNativeSteering(t *testing.T) {
 		t.Fatal(err)
 	}
 	h := &testHarness{changed: make(chan struct{}, 1)}
-	ag, err := startAgent(harness.StartArgs{Hypercube: mcp, Session: "probe", Dir: dir, StateDir: dir, Model: "steer-probe/probe"}, func(e harness.Event) {
+	ag, err := startAgent(harness.StartArgs{MCP: mcp, Session: "probe", Dir: dir, StateDir: dir, Model: "steer-probe/probe"}, func(e harness.Event) {
 		h.mu.Lock()
 		h.events = append(h.events, e)
 		h.mu.Unlock()

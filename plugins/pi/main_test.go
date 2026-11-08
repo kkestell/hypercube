@@ -688,7 +688,7 @@ func startFails(t *testing.T, a harness.StartArgs) error {
 
 func startArgs(t *testing.T) harness.StartArgs {
 	return harness.StartArgs{
-		Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
+		MCP: "/bin/hc-mcp", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
 		Model: "openrouter/x/m", Effort: "high", Dir: t.TempDir(), Instructions: "You work in a team.", StateDir: t.TempDir(),
 	}
 }
@@ -739,7 +739,7 @@ func TestStart(t *testing.T) {
 		t.Error(string(data))
 	}
 	mcp, _ := os.ReadFile(argsFile + ".mcp")
-	if strings.TrimSpace(string(mcp)) != `{"args":["mcp"],"command":"/bin/hc","env":{"HYPERCUBE_SESSION_ID":"a1"},"exposure":"direct"}` {
+	if strings.TrimSpace(string(mcp)) != `{"args":[],"command":"/bin/hc-mcp","env":{"HYPERCUBE_SESSION_ID":"a1"},"exposure":"direct"}` {
 		t.Errorf("MCP description %s", mcp)
 	}
 	if text, err := os.ReadFile(extension); err != nil || !strings.Contains(string(text), `registerMcpServer("hypercube"`) {

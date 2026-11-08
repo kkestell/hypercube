@@ -82,6 +82,7 @@ type Entry struct {
 	Model  string `json:"model,omitempty"`
 	Effort string `json:"effort,omitempty"`
 	// start
+	MCP          string            `json:"mcp,omitempty"`
 	Conversation string            `json:"conversation,omitempty"`
 	Fork         string            `json:"fork,omitempty"`
 	Dir          string            `json:"dir,omitempty"`
@@ -279,7 +280,7 @@ func text(id, body string, done bool) harness.Item {
 func (p *standIn) start(cmd harness.Command) {
 	s := cmd.Start
 	p.agent = s.Session
-	p.log(Entry{Kind: "start", Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: s.Instructions,
+	p.log(Entry{Kind: "start", MCP: s.MCP, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: s.Instructions,
 		Model: s.Model, Effort: s.Effort, Env: s.Env, Pid: os.Getpid(), Pgid: syscall.Getpgrp()})
 	if s.Conversation == "unresumable" {
 		p.reply(cmd.ID, "cannot resume conversation unresumable")

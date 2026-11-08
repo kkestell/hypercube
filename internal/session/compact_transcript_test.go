@@ -27,7 +27,7 @@ func compactRuntime(t *testing.T) (*store.DB, *Runtime) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	return db, New(db, "")
+	return db, New(db, "", Programs{})
 }
 
 func putCompactItem(tx *store.Tx, seq int64, it harness.Item) error {

@@ -308,7 +308,9 @@ code and returns its error from the start:
     `<dir>/bin/hypercube -> <plugins>/hypercube`. Creating the parent session
     shows the backend found the `test` plugin beside its real executable.
   - Checks that the parent's logged start has `MCP` equal to
-    `<plugins>/hypercube-mcp`.
+    `<plugins>/hypercube-mcp`, resolving symlinks in that expected path
+    (macOS exposes temporary directories through `/var`, a symlink to
+    `/private/var`).
   - Calls `create_session` through `hypercube-mcp` (as it does today through
     `hypercube mcp`) and `list_sessions` through `hypercube mcp`, which lists
     `w1`.
@@ -347,12 +349,15 @@ code and returns its error from the start:
    - `internal/ui/ui_test.go:277`: `session.Programs{Plugins: plugins}`.
    - `internal/ui/ui_test.go:56`, `internal/ui/terminal_test.go:39`,
      `cmd/hypercube/integration_test.go:244`: `session.Programs{}`; these
-     runtimes start no agents.
+     runtimes start no agents. The same applies to the alert and compact
+     transcript fixtures in `internal/session/alerts_test.go` and
+     `internal/session/compact_transcript_test.go`.
 7. Add `StartArgs.MCP`, make `Hypercube` `omitempty`, and set `MCP` in
    `startArgs`. Add `Entry.MCP` to the stand-in and log it.
 8. Add `plugin.MCPCommand` and its test, and use it in the Claude, Codex,
    OpenCode, Pi, and scripted plugins. Update the plugin tests listed in
-   Related code.
+   Related code. Configure tests for Claude, Codex, and Pi and Codex's
+   connect/discovery tests also need explicit MCP paths for valid starts.
 9. Update `TestAppProcess` as described in the test plan.
 10. Update the documentation and run `make check`.
 

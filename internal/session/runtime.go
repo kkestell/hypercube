@@ -40,6 +40,13 @@ var (
 	errWorkspaceCreating = errors.New("a session is being created in the workspace; retry when creation finishes")
 )
 
+// Programs are the executables a runtime starts. Plugins is the directory of
+// harness plugins. MCP is the MCP bridge that each agent's harness runs.
+type Programs struct {
+	Plugins string
+	MCP     string
+}
+
 // Runtime is the app's service for running agents.
 //
 // mu guards the launches in live, their fields other than send and sent, and
@@ -47,15 +54,13 @@ var (
 // native request can call back into the MCP tools, which need it. A function that takes mu releases it
 // before it returns; helpers that need it held say so.
 type Runtime struct {
-	// PluginDir holds the harness plugins. Empty means beside the running
-	// executable.
-	PluginDir string
 	// Terminals holds each session's shell. Archive, Delete, EndChild, and
 	// Quit end them.
 	Terminals terminal.Set
 
-	db  *store.DB
-	url string
+	db       *store.DB
+	url      string
+	programs Programs
 	// startTimeout and requestTimeout bound replies, and idleTimeout parks
 	// sessions; tests shorten them.
 	startTimeout, requestTimeout, idleTimeout time.Duration
@@ -89,9 +94,10 @@ type Runtime struct {
 	feed      feed
 }
 
-// New returns a runtime for the database. url is where agents reach the app.
-func New(db *store.DB, url string) *Runtime {
-	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, live: map[string]*live{},
+// New returns a runtime for the database. url is where agents reach the
+// backend.
+func New(db *store.DB, url string, programs Programs) *Runtime {
+	return &Runtime{Terminals: terminal.Set{Dir: filepath.Join(store.Dir(), "run")}, db: db, url: url, programs: programs, live: map[string]*live{},
 		deleting: map[string]bool{}, merges: map[string]workspace.Merge{}, opens: map[string][]FileOpen{}, seqs: map[string]int64{},
 		workspaceCreates: map[string]int{}, workspaceDeleting: map[string]bool{},
 		viewers: map[string]int{}, idle: map[string]*idleTimer{}, startTimeout: startTimeout, requestTimeout: requestTimeout, idleTimeout: idleTimeout}

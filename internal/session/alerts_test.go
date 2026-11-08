@@ -235,7 +235,7 @@ func TestAlertReadReportsDatabaseErrors(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	w := newAlertWatch(New(db, ""))
+	w := newAlertWatch(New(db, "", Programs{}))
 	if err := w.readStored([]Request{{Session: "deleted"}}, func(Alert) {}); err == nil {
 		t.Fatal("reading a closed database succeeded")
 	}

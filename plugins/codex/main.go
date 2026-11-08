@@ -148,6 +148,10 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 	if roots := gitDirs(a.Dir); len(roots) > 0 {
 		sandbox["writable_roots"] = roots
 	}
+	command, args, err := plugin.MCPCommand(a)
+	if err != nil {
+		return err
+	}
 	params := map[string]any{
 		"cwd": a.Dir, "model": selection.Model, "approvalPolicy": "on-request", "approvalsReviewer": "auto_review", "sandbox": "workspace-write",
 		"developerInstructions": a.Instructions,
@@ -155,7 +159,7 @@ func (ag *agent) connect(ctx context.Context, a harness.StartArgs) error {
 			"sandbox_workspace_write": sandbox,
 			"projects":                map[string]any{wd: map[string]any{"trust_level": "trusted"}},
 			"mcp_servers": map[string]any{"hypercube": map[string]any{
-				"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "default_tools_approval_mode": "approve",
+				"command": command, "args": args, "env": a.Env, "default_tools_approval_mode": "approve",
 			}},
 		},
 	}

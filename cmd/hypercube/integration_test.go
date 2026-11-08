@@ -232,8 +232,23 @@ func (w *world) ready(id string) bool {
 func TestAppProcess(t *testing.T) {
 	w := newWorld(t)
 	binary := filepath.Join(w.plugins, "hypercube")
-	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
+	if out, err := exec.Command("go", "build", "-o", w.plugins+string(os.PathSeparator), ".", "../hypercube-mcp").CombinedOutput(); err != nil {
 		t.Fatalf("build: %v\n%s", err, out)
+	}
+	bridgeBinary, err := filepath.EvalSymlinks(filepath.Join(w.plugins, "hypercube-mcp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(w.dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linked := filepath.Join(bin, "hypercube")
+	if err := os.Symlink(binary, linked); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(bridgeBinary, "unknown").CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube-mcp") {
+		t.Fatalf("unknown bridge arguments should print the usage: %v %s", err, out)
 	}
 	if out, err := exec.Command(binary, "unknown").CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
 		t.Fatalf("unknown commands should print the usage: %v %s", err, out)
@@ -242,7 +257,7 @@ func TestAppProcess(t *testing.T) {
 	if err != nil || !strings.HasPrefix(string(version), "Hypercube v") && strings.TrimSpace(string(version)) != "Hypercube devel" {
 		t.Fatalf("version: %v %s", err, version)
 	}
-	ws, err := session.New(w.db, "").AddWorkspace(w.root)
+	ws, err := session.New(w.db, "", session.Programs{}).AddWorkspace(w.root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +266,7 @@ func TestAppProcess(t *testing.T) {
 	start := func() {
 		t.Helper()
 		port := freePort(t)
-		app = exec.Command(binary, "ui", fmt.Sprint(port))
+		app = exec.Command(linked, "ui", fmt.Sprint(port))
 		app.Stderr = os.Stderr
 		if err := app.Start(); err != nil {
 			t.Fatal(err)
@@ -296,15 +311,21 @@ func TestAppProcess(t *testing.T) {
 		t.Fatalf("parent %+v", parent)
 	}
 	w.until("the parent", func() bool { return w.starts(parent.ID) == 1 && w.session(parent.ID).Activity == store.Idle })
-	// The agent's harness runs `hypercube mcp`, which reaches the app.
-	bridge := func(tool string, args map[string]string) *exec.Cmd {
+	if got := w.log(parent.ID, "start")[0].MCP; got != bridgeBinary {
+		t.Fatalf("parent MCP executable = %q, want %q", got, bridgeBinary)
+	}
+	// Both the bridge executable and the legacy command reach the backend.
+	bridge := func(legacy bool, tool string, args map[string]string) *exec.Cmd {
 		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
-		cmd := exec.Command(binary, "mcp")
+		cmd := exec.Command(bridgeBinary)
+		if legacy {
+			cmd = exec.Command(binary, "mcp")
+		}
 		cmd.Env = append(os.Environ(), "HYPERCUBE_SESSION_ID="+parent.ID, "HYPERCUBE_URL="+c.base)
 		cmd.Stdin = bytes.NewReader(append(body, '\n'))
 		return cmd
 	}
-	out, err := bridge("create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "model": "p/m", "effort": "high", "message": "brief"}).CombinedOutput()
+	out, err := bridge(false, "create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "model": "p/m", "effort": "high", "message": "brief"}).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "Proposed w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
@@ -335,6 +356,10 @@ func TestAppProcess(t *testing.T) {
 	w.until("the child's brief", func() bool {
 		return w.got(child.ID, "brief") && w.session(child.ID).Activity == store.Idle
 	})
+	out, err = bridge(true, "list_sessions", nil).CombinedOutput()
+	if err != nil || !strings.Contains(string(out), `w1`) {
+		t.Fatalf("legacy mcp command: %v %s", err, out)
+	}
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
 
 	// The desktop app connects and disconnects without affecting the backend or

@@ -1,6 +1,6 @@
 // Command hypercube runs teams of coding agents. `hypercube ui` is the app
-// process: it manages sessions and attaches to their holders. `hypercube mcp` is the stdio server each
-// agent's harness runs, which forwards to the app.
+// process: it manages sessions and attaches to their holders. `hypercube mcp`
+// serves harnesses configured by earlier versions, forwarding to the backend.
 package main
 
 import (
@@ -20,7 +20,7 @@ import (
 	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/hold"
-	"github.com/kkestell/hypercube/internal/mcp"
+	"github.com/kkestell/hypercube/internal/mcpbridge"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/ui"
@@ -38,7 +38,7 @@ func main() {
 	case len(os.Args) > 1 && os.Args[1] == "ui":
 		err = serveUI(os.Args[2:])
 	case len(os.Args) == 2 && os.Args[1] == "mcp":
-		err = mcp.Bridge(os.Stdin, os.Stdout)
+		err = mcpbridge.Main(os.Stdin, os.Stdout)
 	default:
 		err = errors.New(usage)
 	}
@@ -77,10 +77,9 @@ type app struct {
 
 // startApp upgrades the config, finds the installed harnesses, and registers
 // saved launches, then serves HTTP while adopting the
-// sessions the user left running. Harness plugins are in plugins, or beside
-// the executable when it is empty. The desktop app's connection, when it has
-// one, shows their alerts.
-func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
+// sessions the user left running. programs names the plugins and helpers.
+// The desktop app's connection, when it has one, shows their alerts.
+func startApp(listener net.Listener, programs session.Programs, desktop *desktop.Desktop) (*app, error) {
 	// An earlier version's config is converted before anything reads it.
 	if err := config.Upgrade(); err != nil {
 		return nil, fmt.Errorf("upgrading the config: %w", err)
@@ -89,8 +88,7 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 	if err != nil {
 		return nil, err
 	}
-	rt := session.New(db, "http://"+listener.Addr().String())
-	rt.PluginDir = plugins
+	rt := session.New(db, "http://"+listener.Addr().String(), programs)
 	ctx, cancel := context.WithCancel(context.Background())
 	// Sessions that start know the installed harnesses. A plugin that cannot
 	// describe its harness is listed with its error.
@@ -174,7 +172,11 @@ func serveUI(args []string) error {
 	// Signals received during restore are handled after its attachments exist.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	a, err := startApp(listener, "", &desktop.Desktop{})
+	p, err := programs()
+	if err != nil {
+		return err
+	}
+	a, err := startApp(listener, p, &desktop.Desktop{})
 	if err != nil {
 		return err
 	}

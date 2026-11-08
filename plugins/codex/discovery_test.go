@@ -22,7 +22,7 @@ func TestConnectChecksSelection(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newAgent(t)
 			h.server.handle("initialize", func(map[string]any) (any, *plugin.RPCError) { return map[string]any{}, nil })
-			err := h.connect(context.Background(), harness.StartArgs{Model: tc.model, Effort: tc.effort, Dir: t.TempDir()})
+			err := h.connect(context.Background(), harness.StartArgs{MCP: "/bin/hc-mcp", Model: tc.model, Effort: tc.effort, Dir: t.TempDir()})
 			if err == nil || !strings.Contains(err.Error(), tc.want) || len(h.server.sent("thread/start")) != 0 {
 				t.Fatalf("connect = %v, want %q", err, tc.want)
 			}
@@ -35,7 +35,7 @@ func TestConnectChecksSelection(t *testing.T) {
 	h.server.handle("thread/start", func(map[string]any) (any, *plugin.RPCError) {
 		return map[string]any{"thread": map[string]any{"id": "thread-1"}}, nil
 	})
-	if err := h.connect(context.Background(), harness.StartArgs{Model: "m", Dir: t.TempDir()}); err != nil {
+	if err := h.connect(context.Background(), harness.StartArgs{MCP: "/bin/hc-mcp", Model: "m", Dir: t.TempDir()}); err != nil {
 		t.Fatal(err)
 	}
 	config := h.server.sent("thread/start")[0]["config"].(map[string]any)

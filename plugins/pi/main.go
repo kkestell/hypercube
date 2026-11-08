@@ -109,7 +109,11 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	} else if a.Fork != "" {
 		argv = append(argv, "--fork", a.Fork, "--session-id", a.Session)
 	}
-	mcp := map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env, "exposure": "direct"}
+	command, args, err := plugin.MCPCommand(a)
+	if err != nil {
+		return nil, err
+	}
+	mcp := map[string]any{"command": command, "args": args, "env": a.Env, "exposure": "direct"}
 	mcpJSON, err := json.Marshal(mcp)
 	if err != nil {
 		return nil, err

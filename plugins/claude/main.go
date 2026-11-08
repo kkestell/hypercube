@@ -68,7 +68,11 @@ type claude struct {
 }
 
 func startClaude(a harness.StartArgs, emit func(harness.Event)) (*claude, error) {
-	mcp := map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": a.Hypercube, "args": []string{"mcp"}, "env": a.Env}}}
+	command, args, err := plugin.MCPCommand(a)
+	if err != nil {
+		return nil, err
+	}
+	mcp := map[string]any{"mcpServers": map[string]any{"hypercube": map[string]any{"command": command, "args": args, "env": a.Env}}}
 	mcpJSON, err := json.Marshal(mcp)
 	if err != nil {
 		return nil, err

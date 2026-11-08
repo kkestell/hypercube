@@ -14,7 +14,7 @@ import (
 // ScanHarnesses asks each plugin about its native harness and keeps the
 // answer for the instructions of sessions that start later.
 func (r *Runtime) ScanHarnesses(ctx context.Context) ([]harness.Harness, error) {
-	list, err := harnessclient.Describe(ctx, r.PluginDir)
+	list, err := harnessclient.Describe(ctx, r.programs.Plugins)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (r *Runtime) installedLocked() []string {
 // Models asks the harness for the models it offers in dir and, with model,
 // that model's efforts.
 func (r *Runtime) Models(ctx context.Context, harnessID, dir, model string) (harness.Catalog, error) {
-	catalog, err := harnessclient.Models(ctx, r.PluginDir, harnessID, harness.ModelsRequest{Dir: dir, Model: model})
+	catalog, err := harnessclient.Models(ctx, r.programs.Plugins, harnessID, harness.ModelsRequest{Dir: dir, Model: model})
 	if err != nil {
 		return catalog, err
 	}

@@ -10,10 +10,11 @@ Documentation procedures are in [documentation](documentation.md).
 ## Code
 
 - `cmd/hypercube/` — the command line and the backend process.
+- `cmd/hypercube-mcp/` — the MCP bridge each agent's harness runs.
 - `desktop/` — the Electron desktop app, a client of the backend.
 - `internal/` — one package per concern: `config`, `desktop`, `harness`,
-  `harnessclient`, `hold`, `mcp`, `report`, `session`, `store`, `terminal`, `ui`,
-  `workspace`.
+  `harnessclient`, `hold`, `mcp`, `mcpbridge`, `report`, `session`, `store`,
+  `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, Codex, and Pi harness plugins. The
   core names no harness. `plugins/scripted` plays documentation screenshot
   scenes and never ships.

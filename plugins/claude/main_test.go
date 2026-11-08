@@ -613,7 +613,7 @@ func (e *emitted) all() []harness.Event {
 }
 
 var startArgs = harness.StartArgs{
-	Hypercube: "/bin/hc", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
+	MCP: "/bin/hc-mcp", Env: map[string]string{"HYPERCUBE_SESSION_ID": "a1"}, Session: "a1",
 	Model: "opus", Effort: "high", Dir: ".", Instructions: "Fix the parser.",
 }
 
@@ -638,7 +638,7 @@ func TestStart(t *testing.T) {
 	args := string(data)
 	for _, want := range []string{"-p", "--input-format stream-json", "--output-format stream-json", "--include-partial-messages",
 		"--permission-prompt-tool stdio", "--permission-mode auto", "--model opus", "--effort high", "--append-system-prompt Fix the parser.",
-		`"command":"/bin/hc","env":{"HYPERCUBE_SESSION_ID":"a1"}`} {
+		`"args":[],"command":"/bin/hc-mcp","env":{"HYPERCUBE_SESSION_ID":"a1"}`} {
 		if !strings.Contains(args, want) {
 			t.Errorf("arguments lack %s: %s", want, args)
 		}
@@ -670,6 +670,20 @@ func TestStart(t *testing.T) {
 	}
 	if err := c.answer("nothing", nil, ""); err == nil {
 		t.Error("an answer to no request succeeded")
+	}
+}
+
+func TestStartWithLegacyMCPCommand(t *testing.T) {
+	argsFile := fakeClaude(t, nil)
+	a := startArgs
+	a.MCP, a.Hypercube = "", "/bin/hc"
+	start(t, a)
+	data, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"args":["mcp"],"command":"/bin/hc"`) {
+		t.Fatal(string(data))
 	}
 }
 

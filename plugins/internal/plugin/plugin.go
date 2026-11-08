@@ -4,6 +4,7 @@ package plugin
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,19 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
+
+// MCPCommand returns the executable and arguments a harness runs for the
+// Hypercube MCP server: the bridge, or for a start saved by an earlier
+// version, the backend's mcp command.
+func MCPCommand(a harness.StartArgs) (string, []string, error) {
+	switch {
+	case a.MCP != "":
+		return a.MCP, []string{}, nil
+	case a.Hypercube != "":
+		return a.Hypercube, []string{"mcp"}, nil
+	}
+	return "", nil, errors.New("the start names no MCP server")
+}
 
 // MCPTool splits a tool name of the form mcp__<server>__<tool>, which Claude
 // Code and Pi give the tools of MCP servers. Any other name is the tool's own.

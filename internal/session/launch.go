@@ -208,7 +208,7 @@ func (r *Runtime) pluginPath(id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return harnessclient.Find(r.PluginDir, s.Harness)
+	return harnessclient.Find(r.programs.Plugins, s.Harness)
 }
 
 // startArgs builds the arguments recorded with the launch's start command.
@@ -226,11 +226,7 @@ func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartAr
 	if err != nil {
 		return args, err
 	}
-	exe, err := os.Executable()
-	if err != nil {
-		return args, err
-	}
-	args = harness.StartArgs{Hypercube: exe, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
+	args = harness.StartArgs{MCP: r.programs.MCP, Env: map[string]string{"HYPERCUBE_SESSION_ID": s.ID, "HYPERCUBE_URL": r.url}, Session: s.ID, Model: s.Model, Effort: s.Effort, Conversation: s.Conversation, Fork: s.Fork, Dir: s.Dir, Instructions: instructions, StateDir: store.Dir()}
 	if s.Fork != "" {
 		parent, err := tx.Session(s.Parent)
 		if err != nil {

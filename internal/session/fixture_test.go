@@ -69,8 +69,7 @@ func newFixture(t *testing.T) *fixture {
 // newRuntime returns a runtime over the fixture's database, ended when the test
 // ends. The test can end it sooner.
 func (f *fixture) newRuntime() *Runtime {
-	rt := New(f.db, "http://127.0.0.1:1")
-	rt.PluginDir = f.plugins
+	rt := New(f.db, "http://127.0.0.1:1", Programs{Plugins: f.plugins, MCP: "/x/hypercube-mcp"})
 	f.t.Cleanup(rt.Quit)
 	return rt
 }
