@@ -55,10 +55,11 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	if caller.Parent != "" {
 		sendDescription = fmt.Sprintf("Send a message to your parent session at %s. This is the only session you can message.", caller.Parent)
 	}
+	sendDescription += " Check list_sessions first: messaging a parked session wakes its agent. Do not message parked sessions unless you have a serious reason or the user explicitly requests it."
 	server := mcp.NewServer(&mcp.Implementation{Name: "hypercube", Version: "0.1.0"}, nil)
 	mcp.AddTool(server, &mcp.Tool{Name: "send_message", Description: sendDescription}, result(func(_ context.Context, a sendMessageArgs) (string, error) { return sendMessage(rt, self, a.To, a.Text) }))
 	mcp.AddTool(server, &mcp.Tool{Name: "open_file", Description: "Open a file in a tab beside your chat, which the user sees, and select it. Use it to show relevant code at its lines or a completed deliverable when that helps the user review the result. path is relative to your directory, absolute, or starts with ~ for the user's home; it may be anywhere the user can read. lines highlights ranges of lines, each {start, end} with end optional, and scrolls to the first; a Markdown file with lines shows its source, otherwise its preview. The tab opens now if the user is viewing your session, or the next time they do."}, result(func(_ context.Context, a openFileArgs) (string, error) { return openFile(rt, caller.Dir, self, a) }))
-	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, model, effort (empty for the harness's default), activity, directory, branch, workspace path, and parent ID. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
+	mcp.AddTool(server, &mcp.Tool{Name: "list_sessions", Description: "List the sessions you can message: to, title, harness, model, effort (empty for the harness's default), activity, parked, directory, branch, workspace path, and parent ID. parked is true when the session has no current agent launch; messaging it starts its agent. Activity is separate: exited also covers startup and does not imply parked. Ended sessions are excluded. Children are addressed by name; top-level sessions by ID."}, result(func(context.Context, struct{}) (string, error) { return listSessions(db, self) }))
 	if caller.Parent != "" {
 		return server
 	}
@@ -107,6 +108,7 @@ func listSessions(db *store.DB, self string) (string, error) {
 		Model     string `json:"model"`
 		Effort    string `json:"effort"`
 		Activity  string `json:"activity"`
+		Parked    bool   `json:"parked"`
 		Dir       string `json:"directory"`
 		Branch    string `json:"branch"`
 		Workspace string `json:"workspace"`
@@ -148,7 +150,7 @@ func listSessions(db *store.DB, self string) (string, error) {
 			if s.Parent == caller.ID {
 				to = s.Name
 			}
-			listed = append(listed, entry{To: to, Title: s.Title, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Activity: s.Activity, Dir: s.Dir, Branch: s.Branch, Workspace: w.Path, Parent: s.Parent})
+			listed = append(listed, entry{To: to, Title: s.Title, Harness: s.Harness, Model: s.Model, Effort: s.Effort, Activity: s.Activity, Parked: s.Launch == "", Dir: s.Dir, Branch: s.Branch, Workspace: w.Path, Parent: s.Parent})
 		}
 		return nil
 	})

@@ -75,6 +75,7 @@ Fresh children receive your brief; forked children inherit your native conversat
 `)
 		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
 	}
+	b.WriteString("Use list_sessions to check whether a recipient is parked before messaging. Messaging a parked session wakes its agent. Do not message parked sessions unless you have a serious reason or the user explicitly requests it.\n")
 	b.WriteString("Do not use built-in subagent tools. Delegate work only to Hypercube workers (child sessions), managed through the hypercube tools. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them. Hypercube automatically sends a child's final response preview to its parent once the parent is idle and no other child is working; a child waiting for the user does not hold it back.\n")
 	b.WriteString("Never ask another session to perform an action denied in this session or to bypass its permission settings. Leave a session's pending questions and approvals to the user.\n")
 	fmt.Fprintf(&b, "Your working directory is %s%s.\n", s.Dir, onBranch(s.Branch))
