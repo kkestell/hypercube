@@ -21,9 +21,10 @@ endif
 
 .PHONY: binaries check release dev dev-app dev-stop dev-clean linux-check linux-test linux-test-all ui screenshots web-build web-serve
 
-# binaries builds hypercube and the harness plugins side by side in $(OUT).
+# binaries builds hypercube, its MCP bridge and holder, and the harness
+# plugins side by side in $(OUT).
 binaries:
-	go build -o $(OUT)/hypercube ./cmd/hypercube
+	for c in hypercube hypercube-mcp hypercube-hold; do go build -o $(OUT)/$$c ./cmd/$$c || exit 1; done
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
 # check builds the programs and website without packaging the app.
@@ -50,7 +51,7 @@ ui:
 screenshots: ui
 	cd desktop && bun install --frozen-lockfile && node node_modules/electron/install.js
 	@tmp=$$(mktemp -d /tmp/hc-XXXXXX) && trap 'rm -rf "$$tmp"' EXIT && \
-		go build -o $$tmp/hypercube ./cmd/hypercube && \
+		for c in hypercube hypercube-mcp hypercube-hold; do go build -o $$tmp/$$c ./cmd/$$c || exit 1; done && \
 		go build -o $$tmp/hypercube-harness-scripted ./plugins/scripted && \
 		for p in $(PLUGINS); do ln -s hypercube-harness-scripted $$tmp/hypercube-harness-$$p || exit 1; done && \
 		desktop/node_modules/.bin/electron scripts/screenshots/main.js --dir=$$tmp docs/screenshots/*.json

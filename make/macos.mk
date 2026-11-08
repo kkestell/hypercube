@@ -13,9 +13,10 @@ SIGN_IDENTITY ?= $(if $(shell security find-certificate -c "$(LOCAL_IDENTITY)" 2
 .PHONY: build bundle install place quit-desktop install-service
 
 # bundle builds $(APP): the Electron desktop app, Hypercube Desktop, with
-# hypercube and the harness plugins side by side in Contents/MacOS, signed with
-# SIGN_IDENTITY. The icons are rendered from cmd/hypercube/AppIcon.svg and
-# desktop/menubar.svg. build also links hypercube and the plugins into bin/.
+# hypercube, its MCP bridge and holder, and the harness plugins side by side in
+# Contents/MacOS, signed with SIGN_IDENTITY. The icons are rendered from
+# cmd/hypercube/AppIcon.svg and desktop/menubar.svg. build also links hypercube
+# and the plugins into bin/.
 bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile
 	rm -rf $(APP)
@@ -38,11 +39,13 @@ bundle: ui bin/AppIcon.icns bin/trayTemplate.png bin/trayTemplate@2x.png
 		plutil -replace CFBundleShortVersionString -string "$$version" $(APP)/Contents/Info.plist && \
 		plutil -replace CFBundleVersion -string "$$version" $(APP)/Contents/Info.plist && \
 		plutil -replace CFBundleGetInfoString -string "$$info" $(APP)/Contents/Info.plist
-	for p in $(PLUGINS); do codesign --force --sign "$(SIGN_IDENTITY)" $(MACOS)/hypercube-harness-$$p || exit 1; done
+	for f in hypercube-mcp $(PLUGINS:%=hypercube-harness-%); do codesign --force --sign "$(SIGN_IDENTITY)" $(MACOS)/$$f || exit 1; done
 	codesign --force --deep --sign "$(SIGN_IDENTITY)" $(APP)
 	# The service is the process macOS asks for privacy permissions, which it
-	# grants to the app's identifier.
+	# grants to the app's identifier. Holders run the agents and shells, so
+	# they carry the same identifier.
 	codesign --force --sign "$(SIGN_IDENTITY)" --identifier $(APP_ID) $(MACOS)/hypercube
+	codesign --force --sign "$(SIGN_IDENTITY)" --identifier $(APP_ID) $(MACOS)/hypercube-hold
 	codesign --force --sign "$(SIGN_IDENTITY)" $(APP)
 
 bin/AppIcon.icns: cmd/hypercube/AppIcon.svg

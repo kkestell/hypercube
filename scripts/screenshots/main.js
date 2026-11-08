@@ -3,11 +3,12 @@
 //
 //   electron scripts/screenshots/main.js --dir=<folder> <scene files>
 //
-// The folder holds hypercube and the scripted harness plugin, linked under
-// each harness name, and receives the run's Electron profile and each scene's
-// state, configuration, and repositories; `make screenshots` creates and
-// deletes it. A scene's sessions play through the backend's own actions: the
-// plugin answers each prompt with the turn the scene assigns to it.
+// The folder holds hypercube, its MCP bridge and holder, and the scripted
+// harness plugin linked under each harness name. It receives the run's
+// Electron profile and each scene's state, configuration, and repositories;
+// `make screenshots` creates and deletes it. A scene's sessions play through
+// the backend's own actions: the plugin answers each prompt with the turn
+// the scene assigns to it.
 const {app, BrowserWindow, nativeImage, nativeTheme, screen, session} = require('electron');
 const {execFile, spawn} = require('node:child_process');
 const fs = require('node:fs');

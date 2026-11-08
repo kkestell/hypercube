@@ -67,6 +67,10 @@ for f in "${plugins[@]/#/hypercube-harness-}"; do
 	[ -x "$HOME/.local/bin/$f" ] || fail "$HOME/.local/bin/$f is missing"
 done
 
+for f in hypercube-mcp hypercube-hold; do
+	[ -x "$app/$f" ] || fail "$app/$f is not executable"
+done
+
 # Service.
 APP=$app SERVICE=$unit PORT=4280 "$app/resources/install-service"
 wait_for "the backend to answer" curl -fsS "$url/version"

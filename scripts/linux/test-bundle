@@ -19,7 +19,7 @@ fail() {
 make build
 
 # Layout.
-for f in hypercube-desktop hypercube "${plugins[@]/#/hypercube-harness-}"; do
+for f in hypercube-desktop hypercube hypercube-mcp hypercube-hold "${plugins[@]/#/hypercube-harness-}"; do
 	[ -x "$app/$f" ] && [ -f "$app/$f" ] || fail "$app/$f is not an executable file"
 done
 case $(uname -m) in
@@ -52,8 +52,8 @@ for p in "${plugins[@]}"; do
 		fail "hypercube-harness-$p describe did not name ${product[$p]}"
 done
 
-# Backend. It runs with its own configuration and state, and finds the plugins
-# beside it.
+# Backend. Through the bin link, it finds the plugins beside its real executable.
+# It runs with its own configuration and state.
 tmp=$(mktemp -d)
 backend=
 cleanup() {
@@ -66,7 +66,7 @@ cleanup() {
 trap cleanup EXIT
 port=$((20000 + RANDOM % 20000))
 XDG_CONFIG_HOME=$tmp/config XDG_STATE_HOME=$tmp/state \
-	"$app/hypercube" ui "$port" >"$tmp/backend.log" 2>&1 &
+	bin/hypercube ui "$port" >"$tmp/backend.log" 2>&1 &
 backend=$!
 until curl -fsS "http://127.0.0.1:$port/version" >/dev/null 2>&1; do
 	kill -0 "$backend" 2>/dev/null || {

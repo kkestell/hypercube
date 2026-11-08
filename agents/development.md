@@ -180,8 +180,8 @@ three agents.
   from the original checkout. Offer to run it after finishing a change, and run
   it whenever the user asks.
 - Agents and panel shells keep running across `make install-service` with the
-  code they started with. A change to the harness plugins, `hypercube hold`,
-  `hypercube mcp`, the plugin protocol, or how agents and shells launch reaches
+  code they started with. A change to the harness plugins, `hypercube-hold`,
+  `hypercube-mcp`, the plugin protocol, or how agents and shells launch reaches
   an active session only after that session restarts. When a requested change
   needs that, warn the user clearly before starting the work and again when
   offering to install it.

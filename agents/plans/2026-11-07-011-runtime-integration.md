@@ -128,9 +128,14 @@ when they next start.
     bin/Hypercube.app` passes.
   - `make dev` starts the dev backend from `bin/dev`. Opening a workspace's
     panel shell in the dev page starts a holder whose command starts with
-    `<repo>/bin/dev/hypercube-hold`. Touching a Go file rebuilds and
-    restarts the backend, and the shell keeps its PID and scrollback.
-    `scripts/dev stop` ends both.
+    `<repo>/bin/dev/hypercube-hold`. Changing a Go file's contents rebuilds
+    and restarts the backend, and the shell keeps its PID and scrollback.
+    `scripts/dev stop` ends both. If an existing dev server has unknown
+    ownership, use a disposable source copy, state directory, and port so
+    its watcher and workspaces are untouched. The watcher hashes contents,
+    so touching a file alone does not trigger a rebuild.
+  - With temporary dev state and HOME, `scripts/dev clean` stops actual
+    holders launched under both `hypercube hold` and `hypercube-hold`.
 - Linux, in the container:
   - `scripts/linux/test-bundle` checks `hypercube-mcp` and `hypercube-hold`
     in the bundle's executable list (line 22) and starts the backend through
