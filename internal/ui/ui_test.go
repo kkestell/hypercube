@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
@@ -70,8 +71,8 @@ func TestConfig(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := `{"default_selection":{"harness":"claude","model":"opus","effort":"high"},"child_model_guidance":"Use sol for reviews."}`
-	if err := os.WriteFile(path, []byte(config), 0o644); err != nil {
+	document := `{"default_selection":{"harness":"claude","model":"opus","effort":"high"},"child_model_guidance":"Use sol for reviews."}`
+	if err := os.WriteFile(path, []byte(document), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	handler := handler(t, open(t))
@@ -85,7 +86,7 @@ func TestConfig(t *testing.T) {
 	if res.Code != http.StatusOK || res.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("config response = %d %s", res.Code, res.Body)
 	}
-	var got harness.Config
+	var got config.Config
 	if err := json.Unmarshal(res.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}

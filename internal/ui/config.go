@@ -5,11 +5,11 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/config"
 )
 
-func config(w http.ResponseWriter, r *http.Request) {
-	cfg, err := harness.LoadConfig()
+func getConfig(w http.ResponseWriter, r *http.Request) {
+	cfg, err := config.Load()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -20,7 +20,7 @@ func config(w http.ResponseWriter, r *http.Request) {
 }
 
 func saveConfig(w http.ResponseWriter, r *http.Request) {
-	var cfg harness.Config
+	var cfg config.Config
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
@@ -35,7 +35,7 @@ func saveConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if err := harness.SaveConfig(cfg); err != nil {
+	if err := config.Save(cfg); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

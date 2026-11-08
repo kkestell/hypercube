@@ -21,6 +21,7 @@ import (
 
 	"github.com/coder/websocket"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/session"
@@ -284,7 +285,7 @@ func TestAppProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var cfg harness.Config
+	var cfg config.Config
 	err = json.NewDecoder(res.Body).Decode(&cfg)
 	res.Body.Close()
 	if err != nil || cfg.DefaultSelection == nil || !strings.Contains(cfg.ChildGuidance, "model p/m, effort high: test") {

@@ -1,4 +1,4 @@
-package harness
+package config
 
 import (
 	"os"
@@ -6,17 +6,19 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/kkestell/hypercube/internal/harness"
 )
 
-func TestSaveConfig(t *testing.T) {
+func TestSave(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
-	cfg := Config{DefaultSelection: &Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
+	cfg := Config{DefaultSelection: &harness.Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
 		DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}
-	if err := SaveConfig(cfg); err != nil {
+	if err := Save(cfg); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadConfig()
+	got, err := Load()
 	if err != nil || !reflect.DeepEqual(got, cfg) {
 		t.Fatalf("saved config = %+v, %v", got, err)
 	}
@@ -29,9 +31,9 @@ func TestSaveConfig(t *testing.T) {
 		{},
 		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize},
 		{Theme: cfg.Theme, TerminalFontSize: 15},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, DefaultSelection: &Settings{Harness: "codex"}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, DefaultSelection: &harness.Settings{Harness: "codex"}},
 	} {
-		if err := SaveConfig(invalid); err == nil {
+		if err := Save(invalid); err == nil {
 			t.Fatalf("saved invalid config: %+v", invalid)
 		}
 		after, err := os.ReadFile(path)
@@ -45,12 +47,12 @@ func TestSaveConfig(t *testing.T) {
 	}
 }
 
-func TestLoadConfigDefaults(t *testing.T) {
+func TestLoadDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	defaults := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
 	// A fresh installation has no file.
-	got, err := LoadConfig()
+	got, err := Load()
 	if err != nil || !reflect.DeepEqual(got, defaults) {
 		t.Fatalf("missing config = %+v, %v", got, err)
 	}
@@ -60,29 +62,29 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err = LoadConfig()
+	got, err = Load()
 	if err != nil || !reflect.DeepEqual(got, defaults) {
 		t.Fatalf("empty config = %+v, %v", got, err)
 	}
 }
 
-func TestSaveConfigWriteFailure(t *testing.T) {
+func TestSaveWriteFailure(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	// A regular file where the config directory belongs makes saving fail.
 	if err := os.WriteFile(filepath.Join(dir, "hypercube"), []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := SaveConfig(Config{Theme: "system", TerminalFontSize: 13}); err == nil {
+	if err := Save(Config{Theme: "system", TerminalFontSize: 13}); err == nil {
 		t.Fatal("save succeeded without a config directory")
 	}
 }
 
-func TestUpgradeConfig(t *testing.T) {
+func TestUpgrade(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	path := filepath.Join(dir, "config.json")
-	if err := UpgradeConfig(); err != nil {
+	if err := Upgrade(); err != nil {
 		t.Fatalf("upgrading without a file: %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -99,21 +101,21 @@ func TestUpgradeConfig(t *testing.T) {
 		want   Config
 	}{
 		"implicit default": {`{"theme":"dark","profiles":[` + lead + `,` + worker + `]}`,
-			Config{DefaultSelection: &Settings{Harness: "claude", Model: "opus", Effort: "high"}, ChildGuidance: guidance, Theme: "dark", TerminalFontSize: 13, Notifications: DefaultNotifications}},
+			Config{DefaultSelection: &harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}, ChildGuidance: guidance, Theme: "dark", TerminalFontSize: 13, Notifications: DefaultNotifications}},
 		"explicit default": {`{"default_profile":"worker","default_worktree":true,"terminal_font_size":16,"notifications":{"requests":false,"replies":true,"macos":false,"sound":false},"profiles":[` + lead + `,` + worker + `]}`,
-			Config{DefaultSelection: &Settings{Harness: "opencode", Model: "p/m/x", Effort: "low"}, ChildGuidance: guidance, DefaultWorktree: true, Theme: "system", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}},
+			Config{DefaultSelection: &harness.Settings{Harness: "opencode", Model: "p/m/x", Effort: "low"}, ChildGuidance: guidance, DefaultWorktree: true, Theme: "system", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}},
 		"explicit guidance": {`{"child_model_guidance":"","profiles":[` + lead + `]}`,
-			Config{DefaultSelection: &Settings{Harness: "claude", Model: "opus", Effort: "high"}, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}},
+			Config{DefaultSelection: &harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			for range 2 {
-				if err := UpgradeConfig(); err != nil {
+				if err := Upgrade(); err != nil {
 					t.Fatal(err)
 				}
-				got, err := LoadConfig()
+				got, err := Load()
 				if err != nil || !reflect.DeepEqual(got, tc.want) {
 					t.Fatalf("upgraded config = %+v, %v", got, err)
 				}
@@ -128,7 +130,7 @@ func TestUpgradeConfig(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"profiles":`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := UpgradeConfig(); err == nil {
+	if err := Upgrade(); err == nil {
 		t.Fatal("upgraded a malformed config")
 	}
 	if data, err := os.ReadFile(path); err != nil || string(data) != `{"profiles":` {
@@ -136,7 +138,7 @@ func TestUpgradeConfig(t *testing.T) {
 	}
 }
 
-func TestUpgradeConfigNotifications(t *testing.T) {
+func TestUpgradeNotifications(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	if err := os.Mkdir(dir, 0o755); err != nil {
@@ -161,7 +163,7 @@ func TestUpgradeConfigNotifications(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if err := UpgradeConfig(); err != nil {
+			if err := Upgrade(); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(path)
@@ -177,7 +179,7 @@ func TestUpgradeConfigNotifications(t *testing.T) {
 			if strings.Contains(string(data), "macos") || !strings.Contains(string(data), `"desktop"`) {
 				t.Fatalf("upgraded file = %s", data)
 			}
-			got, err := LoadConfig()
+			got, err := Load()
 			if err != nil || got.Notifications != tc.want {
 				t.Fatalf("notifications = %+v, %v", got.Notifications, err)
 			}

@@ -17,8 +17,8 @@ import (
 	"syscall"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
-	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
@@ -82,7 +82,7 @@ type app struct {
 // one, shows their alerts.
 func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (*app, error) {
 	// An earlier version's config is converted before anything reads it.
-	if err := harness.UpgradeConfig(); err != nil {
+	if err := config.Upgrade(); err != nil {
 		return nil, fmt.Errorf("upgrading the config: %w", err)
 	}
 	db, err := store.Open()
@@ -124,8 +124,8 @@ func startApp(listener net.Listener, plugins string, desktop *desktop.Desktop) (
 // preferences allow. An unreadable config is reported and sends the alert as
 // the defaults do.
 func sendAlert(d *desktop.Desktop, alert session.Alert) error {
-	n := harness.DefaultNotifications
-	cfg, err := harness.LoadConfig()
+	n := config.DefaultNotifications
+	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "hypercube: reading notification preferences:", err)
 	} else {

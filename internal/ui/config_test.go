@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 )
 
@@ -18,14 +19,14 @@ var lead = harness.Settings{Harness: "test", Model: "m", Effort: "low"}
 
 func TestSaveConfig(t *testing.T) {
 	a := newApp(t)
-	cfg := harness.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
-		Theme: "light", TerminalFontSize: 14, Notifications: harness.Notifications{Requests: true}}
+	cfg := config.Config{DefaultSelection: &harness.Settings{Harness: "test", Model: "next"}, ChildGuidance: "Use next for reviews.",
+		Theme: "light", TerminalFontSize: 14, Notifications: config.Notifications{Requests: true}}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	a.post("/config", string(body), http.StatusNoContent)
-	got, err := harness.LoadConfig()
+	got, err := config.Load()
 	if err != nil || !reflect.DeepEqual(got, cfg) {
 		t.Fatalf("saved config = %+v, %v", got, err)
 	}
@@ -39,7 +40,7 @@ func TestSaveConfig(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			a.post("/config", body, http.StatusBadRequest)
-			got, err := harness.LoadConfig()
+			got, err := config.Load()
 			if err != nil || !reflect.DeepEqual(got, cfg) {
 				t.Fatalf("invalid save changed config: %+v, %v", got, err)
 			}

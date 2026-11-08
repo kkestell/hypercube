@@ -1,4 +1,7 @@
-package harness
+// Package config reads and writes config.json, the user's preferences, in
+// $XDG_CONFIG_HOME/hypercube or ~/.config/hypercube. Upgrade converts files
+// written by earlier versions before anything reads them.
+package config
 
 import (
 	"encoding/json"
@@ -9,6 +12,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/kkestell/hypercube/internal/harness"
 )
 
 // Config is config.json: the user's preferences. DefaultSelection, when set,
@@ -16,12 +21,12 @@ import (
 // tells agents when a child session should use other settings than theirs.
 // DefaultWorktree starts new sessions in Git workspaces in a worktree.
 type Config struct {
-	DefaultSelection *Settings     `json:"default_selection,omitempty"`
-	ChildGuidance    string        `json:"child_model_guidance"`
-	DefaultWorktree  bool          `json:"default_worktree"`
-	Theme            string        `json:"theme"`
-	TerminalFontSize int           `json:"terminal_font_size"`
-	Notifications    Notifications `json:"notifications"`
+	DefaultSelection *harness.Settings `json:"default_selection,omitempty"`
+	ChildGuidance    string            `json:"child_model_guidance"`
+	DefaultWorktree  bool              `json:"default_worktree"`
+	Theme            string            `json:"theme"`
+	TerminalFontSize int               `json:"terminal_font_size"`
+	Notifications    Notifications     `json:"notifications"`
 }
 
 // Notifications chooses which alerts reach the user and how. Requests and
@@ -44,7 +49,13 @@ var (
 	terminalFontSizes = []int{12, 13, 14, 16, 18}
 )
 
-func configPath() string {
+// defaults is the configuration with every preference at its default. A file
+// written before a preference existed takes that default.
+func defaults() Config {
+	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+}
+
+func path() string {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, _ := os.UserHomeDir()
@@ -53,12 +64,11 @@ func configPath() string {
 	return filepath.Join(base, "hypercube", "config.json")
 }
 
-// LoadConfig reads config.json. Without a file, every preference takes its
+// Load reads config.json. Without a file, every preference takes its
 // default.
-func LoadConfig() (Config, error) {
-	// A file written before a preference existed takes its default.
-	c := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
-	path := configPath()
+func Load() (Config, error) {
+	c := defaults()
+	path := path()
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return c, nil
@@ -91,9 +101,9 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// SaveConfig validates and replaces the config as a complete document. Readers
-// keep using LoadConfig; direct file edits while the app runs are unsupported.
-func SaveConfig(c Config) error {
+// Save validates and replaces the config as a complete document. Readers
+// keep using Load; direct file edits while the app runs are unsupported.
+func Save(c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
@@ -101,11 +111,11 @@ func SaveConfig(c Config) error {
 	if err != nil {
 		return err
 	}
-	return writeConfig(data)
+	return write(data)
 }
 
-func writeConfig(data []byte) error {
-	path := configPath()
+func write(data []byte) error {
+	path := path()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
@@ -133,19 +143,19 @@ func writeConfig(data []byte) error {
 type legacyProfile struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	Settings
+	harness.Settings
 }
 
 // upgrade changes the decoded config.json of an earlier version and reports
 // whether it changed anything.
 type upgrade func(doc map[string]json.RawMessage) (bool, error)
 
-// UpgradeConfig converts a config.json written by earlier versions before
+// Upgrade converts a config.json written by earlier versions before
 // anything reads it. A file that no upgrade changes is left as it is; otherwise
-// it is decoded and validated as LoadConfig will, and the typed value is
+// it is decoded and validated as Load will, and the typed value is
 // written, which keeps the file's field order.
-func UpgradeConfig() error {
-	path := configPath()
+func Upgrade() error {
+	path := path()
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -172,7 +182,7 @@ func UpgradeConfig() error {
 	if err != nil {
 		return err
 	}
-	c := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
+	c := defaults()
 	if err := json.Unmarshal(converted, &c); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
@@ -183,7 +193,7 @@ func UpgradeConfig() error {
 	if err != nil {
 		return err
 	}
-	return writeConfig(out)
+	return write(out)
 }
 
 // upgradeProfiles converts the agent profiles of earlier versions. The default

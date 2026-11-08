@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/hold"
 	"github.com/kkestell/hypercube/internal/report"
@@ -214,7 +215,7 @@ func (r *Runtime) pluginPath(id string) (string, error) {
 func (r *Runtime) startArgs(tx *store.Tx, s store.Session) (args harness.StartArgs, err error) {
 	var guidance string
 	if s.Parent == "" {
-		cfg, err := harness.LoadConfig()
+		cfg, err := config.Load()
 		if err != nil {
 			return args, err
 		}

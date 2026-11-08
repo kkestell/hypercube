@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -189,7 +190,7 @@ func TestProposalKeepsItsSettings(t *testing.T) {
 
 func TestInstructionsIncludeGuidance(t *testing.T) {
 	f := newFixture(t)
-	if err := harness.SaveConfig(harness.Config{Theme: "system", TerminalFontSize: 13, ChildGuidance: "Use next for reviews."}); err != nil {
+	if err := config.Save(config.Config{Theme: "system", TerminalFontSize: 13, ChildGuidance: "Use next for reviews."}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.rt.ScanHarnesses(context.Background()); err != nil {

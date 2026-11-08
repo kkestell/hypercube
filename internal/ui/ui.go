@@ -34,7 +34,7 @@ func Handler(db *store.DB, rt *session.Runtime, desktop *desktop.Desktop) http.H
 		fmt.Fprintln(w, buildinfo.String())
 	})
 	mux.HandleFunc("GET /state", s.state)
-	mux.HandleFunc("GET /config", config)
+	mux.HandleFunc("GET /config", getConfig)
 	mux.HandleFunc("POST /config", saveConfig)
 	mux.HandleFunc("GET /harnesses", s.harnesses)
 	mux.HandleFunc("GET /models", s.models)
