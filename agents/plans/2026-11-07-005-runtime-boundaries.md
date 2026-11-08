@@ -15,10 +15,12 @@ The completed implementation has three production entry points:
 | `hypercube-mcp` | Forward stdio MCP messages to the backend with the calling session's identity. |
 | `hypercube-hold` | Own one child process and its input, output, terminal when present, and exit record independently of the backend. |
 
-Keep `hypercube mcp` only as a small compatibility command that replaces
-itself with `hypercube-mcp`. New launches use the helper directly. Remove
-`hypercube hold`; nothing saved or running needs to invoke that command again
-after its holder starts.
+Keep `hypercube mcp` and `hypercube hold` as small compatibility commands that
+replace themselves with their respective helpers. New launches use the
+helpers directly. Old native processes still invoke the former; an old
+backend can invoke the latter while its executable is being replaced before
+the backend restarts. Neither forwarding command contains the helper's
+implementation.
 
 This plan covers the connected source, test, build, installation, development,
 and documentation changes. It does not implement them. The parent records its
@@ -115,10 +117,9 @@ CLI surface or adding more symlink/uninstall responsibilities.
 
 | Package | Final ownership and dependency direction |
 | --- | --- |
-| `cmd/hypercube` | CLI parsing, build identity, canonical executable-directory discovery, and the compatibility `mcp` exec. Calls `backend`; never imports `mcpbridge` or calls `hold.Main`. |
+| `cmd/hypercube` | CLI parsing, build identity, canonical executable-directory discovery, compatibility execs, and backend composition/lifetime. Keep startup/shutdown, HTTP composition, and alerts in focused files. Never imports `mcpbridge` or calls `hold.Main` in the final implementation. |
 | `cmd/hypercube-mcp` | Read `HYPERCUBE_URL` and `HYPERCUBE_SESSION_ID`, report missing inputs, and call `mcpbridge.Run` with explicit values and stdio. |
 | `cmd/hypercube-hold` | Call `hold.Main` with its arguments and report errors under its own program name. |
-| `internal/backend` | Backend composition and lifetime: configuration upgrade, database, session runtime, HTTP server, desktop connection, notification watch, and signal-directed shutdown. Composes `ui`, backend `mcp` tools, and `desktop`. |
 | `internal/mcpbridge` | MCP transport forwarding and the existing connection-refused retry policy. Imports the MCP SDK and standard library, with no local backend, store, session, harness, hold, terminal, desktop, or UI dependencies. |
 | `internal/mcp` | Backend MCP tool schemas, permissions/scopes, registration, HTTP handler, and adapters to `session` and `store`. No stdio transport or environment discovery. |
 | `internal/harness` | Shared harness/plugin data and validation: commands, replies, events, transcript items, selections, settings, descriptions, catalogs, image validation, and record decoding. No executable discovery, process management, holder, configuration-file, session, or store dependency. |
@@ -153,9 +154,10 @@ concrete launch configuration, not a provider interface or helper registry.
 
 At `cmd/hypercube`'s composition boundary, obtain `os.Executable()`, resolve
 symlinks with `filepath.EvalSymlinks`, and take its real parent directory.
-`backend.Serve(port, dir)` derives the three known sibling paths from that
-directory and constructs `session.Programs`. Backend startup's internal
-constructor accepts explicit programs for focused tests. Neither session,
+Construct `session.Programs` from the known siblings in that directory and
+pass it to backend startup in `cmd/hypercube`. Keep the existing private
+startup function, adapted to accept explicit programs for focused tests;
+there is no separate backend package or exported startup API. Neither session,
 terminal, harness client, nor holder libraries call `os.Executable()` or search
 `PATH` for Hypercube-owned programs. Native harness CLI discovery continues to
 use the user's existing `PATH` as it does now.
@@ -165,21 +167,22 @@ the current holder directory, child argv, environment, working directory, and
 optional terminal size. Execute that helper directly, without a `hold`
 subcommand. Change `harnessclient.Launch` to receive/pass the holder path.
 Give `terminal.Set` a `Holder` path and populate it from the same runtime
-programs. `Open`/`Attach`/`Adopt` paths need no executable because surviving
-holders already exist. A missing helper must yield a contextual launch error;
-do not fall back to the current executable, another installation, or `PATH`.
+programs. `hold.Open`, `harnessclient.Attach`, and `terminal.Set.Adopt` attach
+to existing holders without an executable. `terminal.Set.Open` uses the
+configured `Holder` path whenever it needs to start a shell. A missing helper
+must yield a contextual launch error; do not fall back to the current
+executable, another installation, or `PATH`.
 
-Introduce `StartArgs.MCPCommand []string` with JSON name `mcp_command`. Its
-first element is the executable and its remaining elements are arguments; it
-is an argv vector, never shell text. Keep the existing `env` wire field and
-document it as the MCP command's environment. New starts contain only the
-absolute `hypercube-mcp` path in `MCPCommand`, with the current session-ID and
-backend-URL environment. The native plugins use this command directly in
-their existing native configuration formats.
+Introduce `StartArgs.MCP string` with JSON name `mcp`, containing the absolute
+`hypercube-mcp` executable path. New starts need no arguments for this helper.
+Keep the existing `env` wire field and document it as the MCP process's
+environment, including the current session ID and backend URL.
 
-An argv vector is warranted by the two actual transition forms: direct helper
-and recorded `{hypercube, "mcp"}`. Do not add an arbitrary executable options
-system, helper-selection environment variables, or a general remote command
+Keep argument construction inside the plugin adapters. One shared plugin
+helper returns the direct executable or the legacy `{Hypercube, "mcp"}` argv
+when reading an old recorded start, as described below. The wire contract
+needs only the executable path; do not add a general argv field, executable
+options system, helper-selection environment variables, or remote command
 description.
 
 Expose `harness.DecodeRecord` when moving the backend client out of its
@@ -189,10 +192,12 @@ across the new boundary.
 
 ### HTTP composition and backend lifetime
 
-Move backend setup and lifetime out of `cmd/hypercube/main.go` into
-`internal/backend`. Keep focused files for startup/shutdown, HTTP composition,
-and alert delivery where their concerns warrant it; avoid a catch-all file
-that merely relocates the original command.
+Keep the backend in `cmd/hypercube`, with focused `backend.go`, `http.go`, and
+`alerts.go` files for startup/shutdown, HTTP composition, and alert delivery.
+`main.go` retains command dispatch, argument parsing, and executable location.
+Once the other process implementations leave this command, a separate
+`internal/backend` package would add an exported entry point and a test
+constructor for a single caller without establishing another needed boundary.
 
 The backend's top-level mux mounts `POST /mcp`, `GET /desktop`, and
 `GET /version`, then delegates browser routes to `ui.Handler(db, rt)`. Move
@@ -218,7 +223,9 @@ blocked notification write. Retain the existing connection shutdown mechanism;
 do not introduce a new notification timeout or delivery guarantee. This is
 local lifetime ownership, not a new draining or recovery scheme. Leave the
 runtime's transaction/locking model together. Keep signal registration/cleanup
-visibly owned by `backend.Serve`.
+visibly owned by `serveUI`. Review the cancellation and close-before-join
+ordering directly; retain existing desktop shutdown coverage without adding
+a connected-peer test merely for the moved startup code.
 
 ### State and live-process transition
 
@@ -231,30 +238,41 @@ migration is needed. Preserve the recorded JSON command bytes and command IDs.
 | An old plugin/native harness is running | It continues with its original protocol and native conversation. If it starts or restarts its MCP server, its saved `hypercube mcp` command still works through the small compatibility exec. |
 | An old start command is pending in SQLite for an old plugin | Resend the original command line unchanged. The old plugin still sees `hypercube`; do not rewrite it to a field that old code cannot read. |
 | An old saved start is used when a new plugin must be launched | The new plugin understands the old field through one shared start adapter, then supplies the recorded backend-plus-`mcp` command. |
-| A new launch is recorded | Write `mcp_command` and the current environment. Do not write the legacy backend field. Launch the separate holder directly. |
+| An old backend starts an agent or shell after its executable is replaced | Its `hypercube hold` call forwards to the sibling helper with the original arguments and inherited lock/listener files. New backends launch the helper directly. |
+| A new launch is recorded | Write the helper path in `mcp` and the current environment. Do not write the legacy backend field. Launch the separate holder directly. |
 | A saved native conversation is resumed or forked | The current plugin supplies its normal per-launch MCP config using the new command. Keep the native ID, fork behavior, instructions, and working directory. |
 
 Retain `StartArgs.Hypercube` with `omitempty` and a comment limiting it to old
-recorded start commands. In the shared plugin serve code, normalize a start
-before handing it to a native plugin: prefer nonempty `MCPCommand`; otherwise
-derive `{Hypercube, "mcp"}` from the legacy field; fail clearly if neither is
-usable. Put this compatibility choice in one place, not four native plugins.
-Native-specific MCP configuration mapping stays in each actual integration.
+recorded start commands. Add a shared `plugin.MCPCommand` helper that accepts
+`StartArgs` and returns the native adapter's executable/arguments, or a clear
+error if neither executable field is usable. Prefer nonempty `MCP`, returning
+that path without arguments; otherwise return `{Hypercube, "mcp"}`. Each
+native config builder calls this one helper and retains its native format and
+the existing environment. The fallback is local compatibility code, not
+another field in the shared wire contract.
 
-The scripted plugin has its own serve loop, so it does not pass through the
-shared native start adapter. Update its `createSessions` command transport to
-consume `MCPCommand` directly, including its arguments and existing environment.
-Its disposable screenshot scenes need no legacy saved-state adapter. Verify
-the actual tool call in a scene with an offer, child, or suggestion; merely
-building the helper files would not exercise this path.
+The scripted plugin has its own serve loop. Update `createSessions` to obtain
+its command through the same helper and retain its existing environment.
+Verify the actual tool call in a scene with an offer, child, or suggestion;
+merely building the helper files would not exercise this path.
 
-`hypercube mcp` resolves its sibling helper using the same canonical executable
-directory and calls `syscall.Exec` with unchanged environment and stdio. It
-does not import the bridge implementation, start backend services, open state,
-or add another process that needs supervision. Keep it for live and recorded
-legacy starts; removal requires separate evidence that those callers no
-longer exist. Remove `hypercube hold` dispatch and usage because a running
-holder never re-executes it and no saved command uses it.
+Both compatibility commands resolve their sibling helper using the canonical
+executable directory and call `syscall.Exec` with unchanged environment and
+stdio. The `hold` command also preserves its argument vector and inherited
+lock/listener file descriptors 3 and 4. Neither imports the role's
+implementation, starts backend services, opens state, or adds a process that
+needs supervision.
+
+The holder itself never re-executes `hypercube hold`, but that does not make
+the old command unused: macOS installation replaces the bundle before
+stopping the old backend, and development rebuilds replace executables before
+restarting it. An old backend can launch a new agent or shell in that interval.
+Retain the small `hold` forwarding command to prevent the new command mismatch.
+This does not promise launches through an existing file-replacement gap or
+change Linux's existing behavior when the running executable's directory is
+moved. Keep installer ordering unchanged. Remove compatibility commands only
+when supported callers no longer need them, not after an arbitrary release
+count.
 
 Keep the holder's inherited lock/listener file descriptors, Unix socket path
 limit, process groups, environment, working directory, terminal handling,
@@ -296,17 +314,16 @@ and user-facing browser behavior stay the same.
 
 | Files | Expected work |
 | --- | --- |
-| `cmd/hypercube/main.go`, `main_test.go`, `integration_test.go`, `testmain_test.go` | Reduce CLI responsibilities; canonical sibling discovery and compatibility exec; adapt process integration construction and assertions. Keep the real process test at the CLI boundary. Remove holder dispatch from test entry points. |
+| `cmd/hypercube/main.go`, new `backend.go`, `http.go`, `alerts.go`, and associated tests | Separate dispatch, startup/shutdown, HTTP composition, and alerts within the existing backend command. Add canonical sibling discovery and compatibility execs; move HTTP protection/version tests here and retain the real process integration. Remove holder implementation dispatch from test entry points. |
 | New `cmd/hypercube-mcp/main.go`, `cmd/hypercube-hold/main.go` | Narrow executable entry points. |
-| New `internal/backend/{backend,http,alerts}.go` and focused tests | Own backend startup/shutdown/composition; move HTTP protection and version tests here. Exact file splitting follows named concerns. |
 | `internal/mcp/mcp.go`, `mcp_test.go`, `testmain_test.go`; new `internal/mcpbridge/` | Move stdio forwarding/retry and bridge tests out; keep schemas/backend tools and their current tool-specific files in `mcp`. |
 | `internal/harness/{harness,discovery,protocol,image,config}.go` and tests; new `internal/harnessclient/`, `internal/config/` | Extract client/executable discovery and application prefs; keep pure shared data/validation; expose record decoding. Move tests with ownership and delete obsolete source files. |
 | `internal/session/{runtime,launch,selection,sessions,children}.go`, fixtures and constructor callers | Receive explicit programs, call harness client/config owners, and record the direct MCP command. Preserve runtime state transitions. Search remaining callers rather than assuming this list exhausts them. |
 | `internal/terminal/terminal.go` and tests | Explicit holder executable for new shells; existing adoption unchanged. |
 | `internal/hold/{hold,holder,output}.go`, tests, and `holdtest/` | Explicit launch path and new command usage; replace test-binary holder dispatch with a real helper build. Preserve client/holder protocol and behavior. |
-| `plugins/{claude,codex,opencode,pi}/main.go`, plugin tests, `plugins/internal/plugin/{serve,serve_test}.go` | Consume command argv; normalize legacy starts once; retain native configuration ownership. Check other fixtures constructing `StartArgs`. |
+| `plugins/{claude,codex,opencode,pi}/main.go`, plugin tests; new `plugins/internal/plugin/mcp.go` and focused tests | Consume the executable path through one shared command adapter with legacy fallback; retain native configuration ownership. Check other fixtures constructing `StartArgs`. |
 | `internal/ui/{ui,config}.go` and Go tests | Return only browser routes; import prefs from config; relocate composition/protection tests. Update runtime construction. No React redesign. |
-| `plugins/scripted/main.go`, relevant integration scene | Update `createSessions` to execute the supplied MCP argv and environment. Exercise a scene tool call without rendering screenshots. Its separate serve loop does not receive the shared native start normalization. |
+| `plugins/scripted/main.go`, relevant integration scene | Update `createSessions` to obtain the MCP command from the shared adapter and retain its environment. Exercise a scene tool call without rendering screenshots. |
 | `internal/store`, `internal/report`, `internal/desktop`, `internal/harness/harnesstest` | Inspect their final dependencies and update only constructor/type/comment/fixture references required by the extraction. Avoid unrelated behavioral changes. |
 | `Makefile`, `make/{macos,linux}.mk`, `scripts/dev`, `scripts/screenshots/main.js` comments | Build/package/sign helpers; construct complete screenshot runtime; recognize both development holder process names. |
 | `scripts/linux/test-{bundle,install,release}` | Verify helper layout and execution, symlink-backed startup, reinstall/restart survival, and bundle removal. Existing desktop tests continue to cover the unchanged UI/service flow. |
@@ -344,44 +361,55 @@ the extraction; it does not authorize rewriting those unrelated concerns.
    backend construction through runtime fixtures. Remove all self-execution
    defaults from those libraries. Add both helpers to `make binaries` and the
    screenshot construction path in this step so the intermediate tree can
-   still start sessions and shells. Build the real holder for test fixtures
-   using the test-only helper described in step 7 before removing their old
-   dispatch. Remove production and test `hold` dispatch; adjust helper error
-   messages/usage. The main command can still call separated bridge code until
-   the next step switches it to exec.
+   still start sessions and shells. Replace production `hypercube hold`
+   implementation dispatch with the sibling-helper exec, preserving its
+   arguments, environment, stdio, and inherited descriptors 3 and 4.
+
+   Create the test-only helper here: build the real holder once per test
+   process, without importing `hold` so hold's own tests can use it without a
+   cycle. Give fixtures its explicit path and remove its executable directory
+   when the test process ends. Two small files selected by `//go:build race`
+   and `//go:build !race` choose whether its `go build` passes `-race`; ordinary
+   focused tests gain no additional C-toolchain requirement. Preserve the
+   current test-only `GORACE=atexit_sleep_ms=0` environment before launching
+   holders so race-enabled subprocess exits do not each wait a second.
+
+   Wire these fixtures and remove their fake production `hold` dispatch in
+   this same step; retain intentional test orchestration for the
+   parent-survival case. Adjust helper error messages/usage. The main command
+   can still call separated bridge code until the next step switches it to
+   exec. Step 7 only removes any replaced machinery left after this change.
 4. **Switch plugin starts to the actual MCP command with the required
-   transition.** Add the argv field and legacy start adapter, update all four
-   native config builders and the scripted plugin's `createSessions`, and
-   write new starts using only the helper argv. Replace `hypercube mcp`
-   implementation with the sibling-helper exec. Keep recorded command lines
-   untouched. Test both wire forms before removing the old
+   transition.** Add the plain `MCP` executable field and shared plugin command
+   adapter, update all four native config builders and the scripted plugin's
+   `createSessions`, and write new starts using only the helper path and
+   existing environment. Replace `hypercube mcp` implementation with the
+   sibling-helper exec. Keep recorded command lines untouched. Test both wire
+   forms before removing the old
    application-executable field from any newly created fixture/command. Do not
    remove its compatibility decoding.
-5. **Move backend composition out of command and browser packages.** Extract
-   startup/lifetime/notifications into `internal/backend`, using the explicit
-   programs already introduced. Move `/mcp`, `/desktop`, `/version`, and the
-   single outer host/origin/frame wrapper there. Leave browser routes and
+5. **Separate backend concerns within the existing command.** Move startup,
+   shutdown, and notifications out of `main.go` into focused files in
+   `cmd/hypercube`, using the explicit programs already introduced. Move
+   `/mcp`, `/desktop`, `/version`, and the single outer host/origin/frame
+   wrapper from UI to the command's `http.go`. Leave browser routes and
    assets in UI. Move version/protection tests with their real owner and keep
-   CLI process integration at `cmd/hypercube`. Make alert cancellation and
-   completion ownership visible without changing runtime restart behavior.
+   CLI process integration in the same package. Make alert cancellation and
+   completion ownership visible; review the shutdown ordering without adding
+   a connected-peer test or changing runtime restart behavior.
 6. **Complete operational integration.** Sign/package the helpers on macOS,
    verify Linux bundle/install/release expectations, and update development
    cleanup for old and new holder names. Keep helpers out of public symlink
    lists. Confirm the real-executable-directory resolution supports normal
    installed and `bin/` symlinks. Inspect the release scripts and desktop
    setup flows; change only assumptions invalidated by helper packaging.
-7. **Finish tests and delete replaced machinery.** Build the real holder once
-   per test process in a test-only helper that has no import of `hold` (so
-   hold's own tests can use it without a cycle). Give fixtures its explicit
-   path and clean up the test executable directory when that test process
-   ends. Two small test-helper files selected by `//go:build race` and
-   `//go:build !race` report whether to pass `-race` to its `go build` command:
-   race-enabled suites exercise a race-enabled holder, while ordinary focused
-   tests gain no additional C-toolchain requirement. Replace the
-   self-exec `holdtest.Main` behavior and duplicated hold dispatcher; retain
-   hold's intentional parent-process survival test and harnesstest's native
-   stand-in protocol. Avoid per-test compiler invocations, production helper
-   env overrides, or a new test framework.
+7. **Delete remaining replaced machinery.** Remove unused dispatch helpers,
+   duplicate test setup, stale comments, and old fixture defaults left after
+   step 3. The real-holder builder, race flag, environment, cleanup, and fixture
+   wiring already exist; this step introduces no prerequisite for an earlier
+   step. Retain hold's intentional parent-process survival test and
+   harnesstest's native stand-in protocol. Avoid per-test compiler invocations,
+   production helper environment overrides, or a new test framework.
 8. **Update current references, validate, and prepare review.** Inspect whole
    touched files for remaining mixed concerns and remove dead imports,
    obsolete forwarding functions, old discovery defaults, and old self-exec
@@ -407,7 +435,7 @@ unchanged internals are not.
 - Inspect `go list -deps` for each production helper and native plugin.
   `hypercube-mcp` has no local application dependencies except `mcpbridge`;
   `hypercube-hold` has no local dependency except `hold`; native plugins and
-  shared harness data do not acquire hold, harnessclient, config, backend,
+  shared harness data do not acquire hold, harnessclient, config,
   session, store, terminal, or UI through protocol imports.
 - The backend command does not import `mcpbridge` or invoke `hold.Main`.
   UI does not import `mcp` or desktop; backend composes them. No library
@@ -429,11 +457,11 @@ unchanged internals are not.
 - Keep backend MCP scope/schema/tool assertions in `internal/mcp` and their
   tool-specific tests. Neither helper opens the application database. The
   holder continues to write its existing run files.
-- Plugin serve tests cover new argv preference, old recorded-field fallback,
-  an unusable command's clear error, and an argv element with spaces remaining
-  an individual argument. Existing native stand-ins assert each integration
-  supplies the actual helper command and environment without editing user
-  settings or `HOME`.
+- Shared plugin command-adapter tests cover the new executable path taking
+  precedence, old recorded-field fallback, and an unusable command's clear
+  error. Existing native stand-ins assert each integration supplies the actual
+  helper executable without arguments and retains the existing environment,
+  without editing user settings or `HOME`.
 - Exercise the scripted plugin's separate command transport in an existing
   backend/bundle integration scene containing an offer, child, or suggestion.
   Assert the resulting backend state. Prefer extending the Linux install
@@ -445,14 +473,21 @@ unchanged internals are not.
   Run the actual `hypercube-hold`; a test program never acts as that helper.
   An invalid helper path fails rather than starting the test/backend binary.
 - Extend the existing CLI process integration to build a complete sibling
-  layout and start the backend through an external symlink. Exercise direct
-  `hypercube-mcp` and the legacy `hypercube mcp` path against it; both reach the
-  same backend/session. SIGTERM and a replacement backend preserve the agent
-  and panel-shell PIDs, state, transcript, and continued input. SIGINT ends
-  them. Use the same backend address across this callback/restart check,
+  layout and start the backend through an external symlink to a bundle path
+  containing spaces. Exercise direct `hypercube-mcp` and the legacy
+  `hypercube mcp` path against it; both reach the same backend/session.
+  SIGTERM and a replacement backend preserve the agent and panel-shell PIDs,
+  state, transcript, and continued input. SIGINT ends them. Use the same
+  backend address across this callback/restart check,
   because surviving native processes retain that address. Exercise the old
   configured `hypercube mcp` command after replacement as well as the direct
   helper. Keep existing native-conversation and queued-message assertions.
+- Exercise `hypercube hold` forwarding in one process integration case with
+  the real inherited lock/listener files, verifying the child can receive input
+  and its retained output can be read. This covers the old backend's launch
+  command after executable replacement without an old application binary or
+  an install-race simulator. The main holder suite continues to run the helper
+  directly.
 - Add a narrow restart regression for an old serialized start command,
   preserving its original bytes/ID. Cover replay to an old-compatible
   stand-in and consumption by the new plugin start adapter. The existing
@@ -462,10 +497,9 @@ unchanged internals are not.
   origin exception with known session checks, browser/terminal/desktop socket
   protection, frame protection, route methods, and `/version` behavior.
   Backend shutdown cancels the alert watch and closes the desktop connection
-  before joining it, then closes the database. Extend backend lifecycle
-  coverage to shutdown with a connected desktop peer and confirm its handler
-  and watch end. Review the close-before-join ordering directly; do not add a
-  backpressure simulator or timing guesses merely to retest that sequence.
+  before joining it, then closes the database. Review this ordering directly
+  and retain the existing desktop shutdown tests; add no connected-peer or
+  backpressure test solely for this code movement.
 
 ### Required commands and smoke tests
 

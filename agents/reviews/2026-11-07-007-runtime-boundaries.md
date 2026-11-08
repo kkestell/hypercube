@@ -84,9 +84,9 @@ scripted plugin then append `mcp` themselves.
 
 This makes every integration depend on the backend's command dispatch. It
 also makes a launch dependency implicit in the process constructing the
-command. Supply the MCP command explicitly in the start data. An argument
-vector is justified by the two actual command forms: a direct helper for new
-launches and `hypercube mcp` in saved starts from the previous version.
+command. Supply the MCP executable path explicitly in new start data. A
+shared plugin adapter supplies the legacy backend-plus-`mcp` arguments when
+reading an old start; the new wire field needs no general argument vector.
 
 Preserve the session environment and each plugin's native configuration
 format. A shared plugin-side adapter can read an old recorded start; native
@@ -129,10 +129,13 @@ origin check knows that `/mcp` has different callers. Meanwhile,
 upgrades, database opening, harness scanning, runtime restoration, HTTP
 startup, notification preferences, and shutdown.
 
-Move backend-wide construction, route composition, and access protections to
-`internal/backend`. Browser routes can remain in `internal/ui`. A thin
-command entry point should own command arguments and executable location;
-`backend.Serve` should own its signal subscription and the resources it starts.
+Move route composition and access protections from UI into focused files in
+`cmd/hypercube`, alongside the backend whose resources they compose. Keep
+startup/shutdown, HTTP composition, alerts, and CLI dispatch in separate
+files. Browser routes remain in `internal/ui`. A separate backend package
+would add an exported entry point and test constructor for one caller;
+separating the command's files establishes the needed ownership without it.
+`serveUI` owns its signal subscription and the resources it starts.
 
 Keep host, origin, and framing protection outside the composed routes. The
 existing MCP exception must remain specific to that endpoint. This is a
@@ -149,8 +152,11 @@ contain their own holder dispatcher.
 These tests exercise useful process behavior, but their setup hides the
 production executable dependency. Use the real narrow holder command through
 an explicit path, built once per test process by a test-only helper. Preserve
-race instrumentation for the subprocess checks. Delete the fake production
-dispatchers rather than leaving two setup mechanisms.
+race instrumentation and the existing test-only
+`GORACE=atexit_sleep_ms=0` environment, so each race-enabled holder does not
+add a second to test execution when it exits. Build and wire this helper in
+the same step that removes fake production dispatch, without a prerequisite
+deferred to later cleanup.
 
 The native harness stand-in is different: it intentionally implements the
 plugin protocol to exercise session behavior without real model calls. Keep
@@ -195,7 +201,7 @@ through its private server environment, and Pi through `HYPERCUBE_MCP`.
 No edit to a user's global or project native configuration is needed.
 
 Surviving old plugins and native harnesses retain `<hypercube> mcp`, however,
-and may spawn that command again after a bundle replacement. Keep this one
+and may spawn that command again after a bundle replacement. Keep that
 backend command as a tiny process replacement into the sibling bridge helper.
 It should preserve streams, environment, signals, and exit status without
 importing the bridge implementation into the backend command.
@@ -210,7 +216,18 @@ commands.
 
 An already running holder does not invoke the holder command again. Its
 lock, PID, terminal, socket, segments, and exit record provide adoption.
-There is no equivalent persistence reason to retain `hypercube hold`.
+However, an old backend still launches new holders through its executable's
+`hold` command. macOS `place` replaces that executable before the service
+restarts, and development rebuilds likewise precede backend restart. An old
+backend can therefore execute the new binary with `hold` during replacement.
+
+Retain a tiny `hypercube hold` exec into the separate helper, preserving its
+arguments, environment, stdio, and inherited file descriptors 3 and 4. This
+avoids a new command-mismatch failure while leaving installer ordering and
+existing file-replacement gaps alone. The Linux old-executable path behavior
+has not been reproduced; the plan claims no additional guarantee there.
+Remove this compatibility path only when supported old-backend callers no
+longer need it, rather than assigning an arbitrary release deadline.
 
 ### Every build path must supply the helpers
 
@@ -244,7 +261,7 @@ every bridge and holder. That is a viable smaller alternative.
 The chosen three-executable design also removes the host-dispatch requirement
 and expresses the already separate process roles in the distributed programs.
 The extra cost is two packaged and signed binaries, explicit paths, real
-helper setup in tests, and the narrow legacy MCP forwarding path. The
+helper setup in tests, and the narrow legacy MCP/holder forwarding paths. The
 existing multi-executable plugin bundle makes that cost proportionate.
 
 Separate modules, plugin loading frameworks, dependency-injection containers,
@@ -256,8 +273,8 @@ the evidenced problems directly.
 ## Plan assessment
 
 The parent assessed the fresh planning agent's draft independently against
-the source and the package-only baseline. The plan is ready for implementation
-after the following corrections, now incorporated into it:
+the source and the package-only baseline, then revised it following the
+user-requested Claude review. The plan incorporates these corrections:
 
 1. **Include the scripted plugin's actual MCP call.** Its `createSessions`
    function executes the old backend command, and its independent serve loop
@@ -281,11 +298,25 @@ after the following corrections, now incorporated into it:
    startup/rebuild and the existing stand-in process tests cover their proper
    boundaries. Callback/restart tests retain the same backend address that
    surviving processes were configured to use.
+5. **Preserve old-backend launches during replacement.** Keep the small
+   `hypercube hold` forwarding command as well as the MCP forwarding command.
+   This chooses the review's behavior-preserving alternative to accepting a
+   temporary launch regression. New launch paths still use the helper directly.
+6. **Preserve test setup and clarify attachment.** Create the real-holder test
+   helper, race instrumentation, and inherited `GORACE` setting in step 3;
+   step 7 is cleanup only. `terminal.Set.Open` needs the holder path whenever
+   it starts a new shell, while holder/plugin attachment and `Set.Adopt` do not.
+7. **Keep contracts and verification proportionate.** Retain backend
+   composition in focused command files, use a plain MCP executable path in
+   new starts with argv confined to the shared plugin adapter, and remove the
+   extra connected-desktop shutdown test obligation. Inspect shutdown ordering
+   directly and keep the existing desktop coverage.
 
 The final design addresses F1 through explicit program paths; F2 through an
-independent bridge package; F3 through MCP argv and narrow legacy handling;
-F4 through shared data, client, and preferences ownership; F5 through backend
-composition; and F6 through actual helper executables in tests. Its inventory
+independent bridge package; F3 through an MCP executable path and narrow
+legacy handling; F4 through shared data, client, and preferences ownership;
+F5 through backend composition; and F6 through actual helper executables in
+tests. Its inventory
 includes native and scripted integrations, private helper packaging/signing,
 symlink invocation, development cleanup, archive contents, current references,
 and deletion of replaced dispatch and forwarding code.
@@ -299,7 +330,10 @@ that work is complete.
 ## Verification of this review and plan
 
 Inspected the source and command/configuration call sites described above,
-the completed plan, its revisions, and the final document diff and local
-links. No builds, tests, model-backed sessions, installs, service changes,
-or screenshot captures were run. The artifacts are planning documents;
-implementation checks are specified in the plan.
+the plan, Claude's review, the revisions, and the document diff and local
+links. No builds, tests, Hypercube agent sessions, installs, service changes,
+or screenshot captures were run. Claude's review did not verify macOS privacy
+attribution for a separately signed holder; preserving the backend identity
+and checking signatures do not establish that behavior. Report that limit
+honestly if implementation verification cannot establish it. The artifacts
+remain planning documents; implementation checks are specified in the plan.
