@@ -33,9 +33,9 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
   const selected = session.id === shownId(state);
   const status = statusOf(session, selected, session.attention || state.requests.some(request => request.session === session.id), level === 2);
   const classes = `session-item group/session relative h-8 cursor-default justify-start px-2 font-normal ${selected ? 'hover:bg-secondary' : ''}`;
-  // An ended session dims its contents but not its guide line, which stays
+  // A parked or ended session dims its contents but not its guide line, which stays
   // even along the tree.
-  const dim = session.ended ? 'opacity-60' : '';
+  const dim = session.ended || session.activity === 'exited' ? 'opacity-60' : '';
   const toggle = (e: MouseEvent) => {
     e.stopPropagation();
     onToggle();

@@ -123,7 +123,7 @@ test('an active family hides its ended children until its menu shows them, and m
   choose(root, '[data-session="a"]', 'Show Ended Sessions');
   expect(sessionRows(root)).toEqual(['a', 'ended', 'live', 'b']);
   expect(row(root, 'ended').querySelector('.opacity-60')).not.toBeNull();
-  expect(row(root, 'a').querySelector('.opacity-60')).toBeNull();
+  expect(row(root, 'a').querySelector('.opacity-60')).not.toBeNull();
   contextMenu(row(root, 'ended'));
   expect(menuLabels()).not.toContain('Restart Agent');
   key(document.activeElement as HTMLElement, 'Escape');
@@ -281,6 +281,19 @@ test('an initially selected archived child opens its family in Archived', () => 
   expect(find(root, '[role=tablist][aria-label="Sidebar"] [data-state=active]').getAttribute('aria-label')).toBe('Archived');
 });
 
+
+test.each([null, 'parked'])('parked sessions dim without dimming running sessions (selected: %s)', selected => {
+  const {root} = setup([
+    session('busy', {activity: 'busy', children: [session('child', {parent: 'busy', activity: 'exited'})]}),
+    session('idle', {activity: 'idle'}),
+    session('parked', {activity: 'exited'}),
+  ], selected);
+  for (const id of ['parked', 'child']) {
+    expect(find(row(root, id), '.session-item-status').classList.contains('opacity-60')).toBe(true);
+    expect(find(row(root, id), '.session-item-title').closest('.opacity-60')).not.toBeNull();
+  }
+  for (const id of ['busy', 'idle']) expect(row(root, id).querySelector('.opacity-60')).toBeNull();
+});
 
 test('a saved offer shows waiting while its session is parked', () => {
   const {root, store} = setup([session('a', {activity: 'exited'})]);
