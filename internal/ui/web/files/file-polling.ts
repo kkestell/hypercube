@@ -1,6 +1,6 @@
 // While visible, refresh the shown Files tree or Git changes, and each
-// pane's active file or diff, once a second. An active diff also refreshes the
-// changes so its tab title follows the current status. Requests run one at a
+// pane's active file or diff, once a second. The chat's branch bar and active
+// diffs also refresh changes. Requests run one at a
 // time; overlapping polls are skipped.
 import {loadChanges, readOpenDiff} from '../changes/changes.ts';
 import {isDiffTab, tabPath} from '../editor/editor.ts';
@@ -17,12 +17,13 @@ export function createFilePoller(store: Store) {
     try {
       const tree = workbench.rightPanel && workbench.rightTab === 'files';
       const git = workbench.rightPanel && workbench.rightTab === 'git';
+      const chat = !!store.get().session && !store.get().unsent;
       if (tree) {
         await loadTree(store, shownFolders(editor.files));
       }
       const shownPanes = panes(editor.tabs.root);
       const left = () => store.get().editor?.id !== editor.id || store.get().editorVersion !== editorVersion;
-      if (!left() && (tree || git || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
+      if (!left() && (chat || tree || git || shownPanes.some(pane => isDiffTab(pane.active)))) await loadChanges(store);
       for (const pane of shownPanes) {
         if (left()) break;
         if (isDiffTab(pane.active)) await readOpenDiff(store, tabPath(pane.active));

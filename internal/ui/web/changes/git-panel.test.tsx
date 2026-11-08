@@ -1,7 +1,7 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {act} from 'react';
 import {find, mount, stubFetch, unmountAll} from '../../test-render.tsx';
-import {testState} from '../../test-state.ts';
+import {testSession, testState, testWorkspace} from '../../test-state.ts';
 import {emptyEditor} from '../sessions/selection.ts';
 import {createStore} from '../store.ts';
 import {statusColor} from './changes.ts';
@@ -56,7 +56,7 @@ test('Git activation and target changes refresh immediately while retaining cach
   expect(fetches).toHaveBeenCalledTimes(1);
   expect(root.querySelectorAll('li')).toHaveLength(4);
   await act(async () => replies[0](Response.json({branch: 'main', files: []})));
-  expect(root.textContent).toBe('No uncommitted changes.');
+  expect(find(root, '[role="tabpanel"]').textContent).toContain('No uncommitted changes.');
   expect(root.querySelector('li')).toBeNull();
   act(() => store.update(state => ({...state, editor: emptyEditor({workspace: 'w'})})));
   expect(fetches).toHaveBeenCalledTimes(2);
@@ -69,7 +69,7 @@ test('Git activation and target changes refresh immediately while retaining cach
   act(() => store.update(state => ({...state, workbench: {...state.workbench, rightPanel: true}})));
   expect(fetches).toHaveBeenCalledTimes(3);
   await act(async () => replies[2](Response.json(changes)));
-  expect([...root.querySelectorAll('button')].map(button => button.title)).toEqual(['added.go', 'gone.go', 'new.png', 'src/modified.go']);
+  expect([...root.querySelectorAll<HTMLButtonElement>('li button')].map(button => button.title)).toEqual(['added.go', 'gone.go', 'new.png', 'src/modified.go']);
 });
 
 test.each([
@@ -82,7 +82,7 @@ test.each([
   const root = mount(store, <GitPanel />);
   expect(root.querySelectorAll('li')).toHaveLength(4);
   act(() => store.update(state => ({...state, editor: {...state.editor!, changes: result}})));
-  expect(root.textContent).toBe(message);
+  expect(root.querySelector('[role="tabpanel"]')?.textContent ?? root.textContent).toContain(message);
   expect(root.querySelector('li')).toBeNull();
 });
 
@@ -91,4 +91,14 @@ test('Git without a selection prompts for a session or workspace and does not re
   const root = mount(createStore(testState()), <GitPanel />);
   expect(root.textContent).toBe('Select a session or workspace to see its changes.');
   expect(fetches).not.toHaveBeenCalled();
+});
+
+test('worktree comparison is explicitly a preview rather than uncommitted rows', () => {
+  const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 1, committed: true, uncommitted: 4}});
+  const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes}}));
+  const root = mount(store, <GitPanel />);
+  act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
+  expect(find(root, '[role="tabpanel"][data-state="active"]').textContent).toContain('Compared with main');
+  expect(root.textContent).toContain('UI preview');
+  expect(root.querySelector('li')).toBeNull();
 });

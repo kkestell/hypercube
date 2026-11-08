@@ -52,6 +52,14 @@ test('nothing is polled while the page is hidden or unattached', async () => {
   expect(requests).toEqual([]);
 });
 
+test('chat branch refreshes even with the right panel closed and no file tabs', async () => {
+  const store = createStore(receivedWorkspaces(testState({selected: 's', workbench: workbench(false, 'search')}), [testWorkspace({id: 'w', sessions: [testSession({id: 's'})]})]));
+  const {requests} = stubRoutes({'changes:null': () => Response.json({branch: 'feature', files: []})});
+  await createFilePoller(store)();
+  expect(requests).toEqual(['changes:null']);
+  expect(store.get().editor?.changes).toEqual({branch: 'feature', files: []});
+});
+
 test('only shown folders, their changes, and the active file tab of each pane are polled', async () => {
   const {requests, fetches} = stubRoutes({});
   await createFilePoller(createStore(state()))();

@@ -8,6 +8,7 @@ import {tabBackground} from '../shared/tab-background.ts';
 import {usePaneFocus} from '../shared/use-pane-focus.ts';
 import {useStore} from '../store.ts';
 import {AgentPane} from './agent-pane.tsx';
+import {WorkingContext} from './working-context.tsx';
 
 export function ChatPane({session}: {session: Session}) {
   const [state] = useStore();
@@ -19,6 +20,7 @@ export function ChatPane({session}: {session: Session}) {
       <span className="min-w-0 flex-1 truncate text-sm font-medium" title={session.title}>{session.title}</span>
       <LayoutToggles />
     </div>
+    <WorkingContext />
     <AgentPane session={session} active={focused} />
   </div>;
 }
