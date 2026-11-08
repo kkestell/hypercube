@@ -1,23 +1,19 @@
-// Chooses a harness, model, and effort from what the harnesses offer in a
-// workspace. Saved choices show immediately and refresh when opened. Choosing
-// a model loads its efforts before committing; a running session's harness is fixed.
-import {useEffect, useEffectEvent, useState} from 'react';
-import {fetchHarnesses} from '../api.ts';
+// Chooses only from the user's saved model entries, without plugin discovery.
+import {useRef, useState} from 'react';
 import {Button} from '../components/ui/button';
 import {Command, CommandEmpty, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import {Popover, PopoverContent, PopoverTrigger} from '../components/ui/popover';
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../components/ui/select';
+import {Slider} from '../components/ui/slider';
+import {Tabs, TabsList, TabsTrigger} from '../components/ui/tabs';
 import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
-import {catalogOf, loadCatalog, useModels} from './catalogs.ts';
+import {harnessIcon} from './harness-icon.tsx';
 import {displayName, settingsText} from './selection-label.ts';
 import {SelectionName} from './selection-name.tsx';
-import type {Harness, Settings} from './types.ts';
+import type {ModelEntry, Settings} from './types.ts';
 
 interface ModelSelectProps {
   value: Settings | null;
-  // Where the choices are offered; without one there is nothing to choose.
-  workspace: string | null;
   onChange: (settings: Settings) => void;
   fixedHarness?: boolean;
   disabled?: boolean;
@@ -25,147 +21,61 @@ interface ModelSelectProps {
   className?: string;
 }
 
-// The select item that stands for an empty effort.
-const harnessDefault = 'harness-default';
-
-const reason = (error: unknown) => error instanceof Error ? error.message : String(error);
-const aborted = (error: unknown) => error instanceof DOMException && error.name === 'AbortError';
-
-export function ModelSelect({value, workspace, onChange, fixedHarness = false, disabled = false, label = 'Model', className = ''}: ModelSelectProps) {
+export function ModelSelect({value, onChange, fixedHarness = false, disabled = false, label = 'Model', className = ''}: ModelSelectProps) {
   const [state, store] = useStore();
-  const shownModels = useModels(workspace, value?.harness);
   const [open, setOpen] = useState(false);
   const [browsed, setBrowsed] = useState<string | null>(null);
-  // The model chosen while its efforts load, and why the last choice failed.
-  const [pending, setPending] = useState<string | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  const [harnesses, setHarnesses] = useState<{value?: Harness[]; error?: string} | null>(null);
-  useEffect(() => {
-    if (!open || fixedHarness) return;
-    const controller = new AbortController();
-    fetchHarnesses(controller.signal).then(value => setHarnesses({value}),
-      error => { if (!aborted(error)) setHarnesses({error: reason(error)}); });
-    return () => controller.abort();
-  }, [open, fixedHarness]);
-  const installed = harnesses?.value?.filter(h => h.installed) ?? [];
-  const harness = browsed ?? value?.harness ?? installed[0]?.id ?? '';
-  const catalog = workspace && harness ? catalogOf(state, {workspace, harness, model: ''}) : undefined;
-  const loadingCached = catalog?.loading === 'cached';
-  const currentModel = value?.harness === harness ? value.model : null;
-  const effortModel = pending ?? currentModel;
-  const efforts = workspace && harness && effortModel ? catalogOf(state, {workspace, harness, model: effortModel}) : undefined;
+  const input = useRef<HTMLInputElement>(null);
+  const entries = state.modelEntries ?? [];
+  const harnesses = [...new Set(entries.map(e => e.harness))];
+  const harness = fixedHarness ? value?.harness : browsed && harnesses.includes(browsed) ? browsed
+    : harnesses.includes(value?.harness ?? '') ? value?.harness : harnesses[0];
+  const models = entries.filter(e => e.harness === harness);
+  const current = models.find(e => e.model === value?.model && e.harness === value.harness);
+  const empty = !entries.length ? 'No models configured.' : fixedHarness && !models.length ? `No ${displayName(harness)} models configured.` : null;
+  return <Popover open={open} onOpenChange={next => { setOpen(next); if (!next) setBrowsed(null); }}>
+    <PopoverTrigger asChild>
+      <Button type="button" variant="ghost" size="sm" disabled={disabled}
+        className={`h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground ${className}`}
+        aria-label={value ? `${label}: ${settingsText(value)}` : label} title={value ? settingsText(value) : undefined}>
+        {value ? <SelectionName settings={value} /> : 'Choose a model'}<Icon name="chevron-down" />
+      </Button>
+    </PopoverTrigger>
+    <PopoverContent side="top" align="start" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2"
+      onOpenAutoFocus={event => { event.preventDefault(); input.current?.focus(); }}>
+      {!fixedHarness && harnesses.length > 0 && <Tabs value={harness} onValueChange={setBrowsed}>
+        <TabsList aria-label="Harness">{harnesses.map(id => <TabsTrigger key={id} value={id} aria-label={displayName(id)} title={displayName(id)}>
+          {harnessIcon(id) ?? displayName(id)}
+        </TabsTrigger>)}</TabsList>
+      </Tabs>}
+      {state.modelEntries === null ? <p className="p-2 text-sm">Loading models…</p> : empty ? <div className="p-2 text-sm">
+        <p>{empty}</p><Button variant="link" className="px-0" onClick={() => { setOpen(false); store.update(s => ({...s, settings: 'Agents'})); }}>Open Settings</Button>
+      </div> : <>
+        <Command key={harness} loop>
+          <CommandInput ref={input} placeholder="Search models" aria-label="Search models" />
+          <CommandList className="max-h-64">
+            <CommandEmpty>No models match.</CommandEmpty>
+            {models.map(entry => <CommandItem key={entry.id} value={entry.model} aria-selected={current?.id === entry.id}
+              onSelect={() => { if (current?.id !== entry.id) onChange({harness: entry.harness, model: entry.model, effort: entry.default_effort}); }}>
+              <span className="min-w-0 flex-1 truncate">{entry.model}</span><Icon name="check" className={current?.id === entry.id ? '' : 'invisible'} />
+            </CommandItem>)}
+          </CommandList>
+        </Command>
+        {current && value && current.efforts.length > 0 && <Effort key={`${current.id}:${current.efforts.join(',')}:${value.effort}`} entry={current} value={value} onChange={onChange} />}
+      </>}
+    </PopoverContent>
+  </Popover>;
+}
 
-  // Refresh the selection at opening or when browsing another harness; choosing
-  // a model below uses its saved efforts instead.
-  const refreshEfforts = useEffectEvent(() => {
-    if (workspace && harness && currentModel) void loadCatalog(store, {workspace, harness, model: currentModel}, true);
-  });
-  useEffect(() => {
-    if (open) refreshEfforts();
-  }, [store, open, workspace, harness]);
-  // Wait for a saved read, then refresh once. A refresh's own loading changes
-  // do not trigger this effect, and concurrent refreshes share the same request.
-  useEffect(() => {
-    if (!open || !workspace || !harness || loadingCached) return;
-    void loadCatalog(store, {workspace, harness, model: ''}, true);
-  }, [store, open, workspace, harness, loadingCached]);
-
-  // A chosen model is committed with its default effort once its efforts load,
-  // or with the current effort when it is the current model.
-  useEffect(() => {
-    if (!pending || !efforts || (!efforts.value && !efforts.error)) return;
-    setPending(null);
-    if (!efforts.value && efforts.error) {
-      setFailure(`Could not choose ${pending}: ${efforts.error}`);
-      return;
-    }
-    const same = value?.harness === harness && value.model === pending;
-    const effort = same && (value.effort === '' || efforts.value?.efforts?.includes(value.effort)) ? value.effort : efforts.value?.default_effort ?? '';
-    onChange({harness, model: pending, effort});
-  }, [efforts, pending, harness, value, onChange]);
-
-  const choose = (model: string) => {
-    if (!workspace || !harness) return;
-    setFailure(null);
-    const key = {workspace, harness, model};
-    const entry = catalogOf(state, key);
-    void loadCatalog(store, key, !!entry?.error && !entry.value);
-    setPending(model);
-  };
-  const chooseEffort = (effort: string) => {
-    if (!value) return;
-    onChange({...value, effort: effort === harnessDefault ? '' : effort});
-  };
-  const toggle = (next: boolean) => {
-    setOpen(next);
-    if (!next) {
-      setBrowsed(null);
-      setPending(null);
-      setFailure(null);
-    }
-  };
-
-  const models = catalog?.value?.models ?? [];
-  const effortChoices = !pending && value?.harness === harness ? efforts?.value?.efforts ?? [] : [];
-  const browsedHarness = harnesses?.value?.find(h => h.id === harness);
-  const status = !workspace ? 'Add a workspace to choose a model.'
-    : harnesses?.error ?? (harnesses?.value && !installed.length ? 'No harness is installed.' : null)
-    ?? (browsedHarness?.error || (browsedHarness && !browsedHarness.installed ? `${browsedHarness.name || displayName(harness)} is not installed.` : null))
-    ?? catalog?.error ?? failure ?? (!pending && efforts?.error ? `Could not list the efforts of ${effortModel}: ${efforts.error}` : null) ?? null;
-
-  return (
-    <Popover open={open} onOpenChange={toggle}>
-      <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size="sm" disabled={disabled}
-          className={`h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground ${className}`}
-          aria-label={value ? `${label}: ${settingsText(value, shownModels)}` : label} title={value ? settingsText(value, shownModels) : undefined}>
-          {value ? <SelectionName settings={value} models={shownModels} /> : 'Choose a model'}<Icon name="chevron-down" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-2 p-2">
-        {!fixedHarness && installed.length > 0 && (
-          <Select value={harness} onValueChange={id => { setBrowsed(id); setPending(null); setFailure(null); }}>
-            <SelectTrigger aria-label="Harness" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {installed.map(h => <SelectItem key={h.id} value={h.id}>{h.name || displayName(h.id)}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-        {status && <p role="alert" className="px-1 text-xs text-destructive">{status}</p>}
-        {workspace && harness && (catalog?.value || !catalog?.error) && (
-          <Command loop>
-            <CommandInput placeholder="Search models" aria-label="Search models" />
-            <CommandList className="max-h-64">
-              {!catalog?.value ? <p className="py-6 text-center text-sm text-muted-foreground">Loading models…</p>
-                : <CommandEmpty>No models match.</CommandEmpty>}
-              {models.map(m => {
-                const current = value?.harness === harness && value.model === m.id;
-                return (
-                  <CommandItem key={m.id} value={m.id} keywords={[m.label ?? '', m.provider ?? '', m.resolved ?? '']} onSelect={() => choose(m.id)}
-                    aria-selected={current} disabled={pending !== null}>
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{m.label || m.id}{m.id === catalog?.value?.default && <span className="text-muted-foreground"> (default)</span>}</span>
-                      <span className="truncate text-xs text-muted-foreground">{[m.provider, m.id].filter(Boolean).join(' · ')}</span>
-                    </span>
-                    {pending === m.id ? <span className="text-xs text-muted-foreground">Loading…</span>
-                      : <Icon name="check" className={current ? '' : 'invisible'} />}
-                  </CommandItem>
-                );
-              })}
-            </CommandList>
-          </Command>
-        )}
-        {value && effortChoices.length > 0 && (
-          <Select value={value.effort || harnessDefault} onValueChange={chooseEffort}>
-            <SelectTrigger aria-label="Effort" className="w-full"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={harnessDefault}>Harness default</SelectItem>
-              {value.effort && !effortChoices.includes(value.effort) && <SelectItem value={value.effort}>{value.effort}</SelectItem>}
-              {effortChoices.map(e => <SelectItem key={e} value={e}>{e}{e === efforts?.value?.default_effort ? ' (default)' : ''}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
+function Effort({entry, value, onChange}: {entry: ModelEntry; value: Settings; onChange: (settings: Settings) => void}) {
+  const [dragged, setDragged] = useState<number | null>(null);
+  const index = entry.efforts.indexOf(value.effort);
+  const position = dragged ?? (index < 0 ? entry.efforts.indexOf(entry.default_effort) : index);
+  const name = dragged === null ? value.effort || 'Default' : entry.efforts[position];
+  return <div className="grid gap-3 p-2">
+    <div className="flex justify-between text-sm"><span>Effort</span><span>{entry.efforts.length === 1 ? entry.efforts[0] : name}</span></div>
+    {entry.efforts.length > 1 && <Slider min={0} max={entry.efforts.length - 1} step={1} value={[position]}
+      thumbProps={{'aria-label': 'Effort', 'aria-valuetext': name}}
+      onValueChange={([next]) => setDragged(next!)} onValueCommit={([next]) => { setDragged(null); onChange({...value, effort: entry.efforts[next!]!}); }} />}
+  </div>;
 }

@@ -7,8 +7,7 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../
 import {Switch} from '../components/ui/switch';
 import {Textarea} from '../components/ui/textarea';
 import {Icon} from '../shared/icon.tsx';
-import {sessionOf} from '../sessions/selection.ts';
-import {useStore} from '../store.ts';
+import {SettingsModels} from './settings-models.tsx';
 import type {Config, Notifications, Theme} from './types.ts';
 
 interface SectionProps {
@@ -61,24 +60,21 @@ export function SettingsGeneral({draft, onChange}: SectionProps) {
   </div>;
 }
 
-// DefaultSelection chooses the default settings from what the harnesses offer
-// in the shown workspace, or the first.
+// DefaultSelection chooses from the globally configured model entries.
 function DefaultSelection({draft, onChange}: SectionProps) {
-  const [state] = useStore();
-  const workspace = (state.unsent?.workspace ?? sessionOf(state, state.selected)?.workspace.id) || state.workspaces[0]?.id;
   return <div className="grid gap-3">
     <span className="text-sm font-medium leading-none">Default model</span>
-    <ModelSelect value={draft.default_selection ?? null} workspace={workspace ?? null} label="Default model"
+    <ModelSelect value={draft.default_selection ?? null} label="Default model"
       className="self-start" onChange={default_selection => onChange({default_selection})} />
     <p className="text-sm text-muted-foreground">
-      {workspace ? 'New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.'
-        : 'Add a workspace to choose a default model.'}
+      New sessions start with it until a workspace has sessions; then they start with the settings of its newest session. Existing sessions keep their current model and effort.
     </p>
   </div>;
 }
 
 export function SettingsAgents({draft, onChange}: SectionProps) {
   return <div className="grid gap-10">
+    <SettingsModels />
     <Group title="Child sessions">
       <Field id="child-model-guidance" label="Guidance for choosing child models">
         <Textarea id="child-model-guidance" rows={8} value={draft.child_model_guidance}

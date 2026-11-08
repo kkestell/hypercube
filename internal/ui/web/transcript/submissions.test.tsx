@@ -23,7 +23,6 @@ for (const fresh of [false, true]) {
     const retry = Promise.withResolvers<Response>();
     const requests: {text: string; images: unknown[]; submission: string}[] = [];
     stubFetch((url, init) => {
-      if (url.startsWith('models?')) return Response.json({models: []});
       requests.push(JSON.parse(String(init?.body)));
       return requests.length === 1 ? first.promise : retry.promise;
     });
@@ -119,7 +118,7 @@ test('a failed unsent message survives parking and retry uses its retained promp
 
 test('the first prompt follows its end and lets the user scroll back before a transcript exists', async () => {
   const response = Promise.withResolvers<Response>();
-  stubFetch(url => url.startsWith('models?') ? Response.json({models: []}) : response.promise);
+  stubFetch(() => response.promise);
   const store = createStore(openUnsent(testState({config: testConfig(), workspaces: [workspace]}), 'w'));
   const shown = shownSession(store.get())!;
   store.update(state => typed(state, shown.id, 'A long first prompt.\n'.repeat(100)));

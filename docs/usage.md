@@ -12,7 +12,8 @@ first use, follow [Your first session](getting-started.md).
 
 1. Choose **Add Workspace** for a new project folder, or **New Session** in an
    existing workspace.
-2. Below the message box, choose the harness, model, and effort.
+2. Below the message box, choose a harness tab, a model, and an effort level
+   with the slider. Models come from **Settings › Agents › Models**.
 3. In a Git workspace, choose where edits will go:
    - **Existing checkout** uses the project folder, including uncommitted
      changes.
@@ -45,8 +46,10 @@ continue or reverse work.
 
 ## Change the model or effort
 
-Use the selector below the message box. A session keeps its original harness,
-but its model and effort can change, including during work. The selection
+Use the selector below the message box to choose a model and adjust its effort
+with the slider. Models come from **Settings › Agents › Models**. A session
+keeps its original harness, but its model and effort can change, including
+during work. The selection
 survives agent restarts. A child with different settings from its parent is
 marked in its composer.
 

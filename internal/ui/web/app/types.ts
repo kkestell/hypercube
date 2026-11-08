@@ -72,3 +72,5 @@ export interface Grant {
   harness: string;
   tool: string;
 }
+export const sections = ['General', 'Agents', 'Notifications', 'Permissions'] as const;
+export type SettingsSection = typeof sections[number];

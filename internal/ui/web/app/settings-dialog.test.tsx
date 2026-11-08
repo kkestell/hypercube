@@ -1,5 +1,5 @@
 import {afterEach, expect, mock, test} from 'bun:test';
-import {act, useState} from 'react';
+import {act} from 'react';
 import {clickControl, element, find, mount, setValue, stubFetch, unmountAll} from '../../test-render.tsx';
 import {testConfig, testSession, testState, testWorkspace} from '../../test-state.ts';
 import {SessionSelection} from '../agent/session-selection.tsx';
@@ -7,7 +7,7 @@ import {WorktreeSelect} from '../agent/worktree-select.tsx';
 import {unsentKey as workspaceDraftKey} from '../agent/drafts.ts';
 import {openUnsent} from '../sessions/selection.ts';
 import {createSession} from '../sessions/session-actions.ts';
-import {createStore} from '../store.ts';
+import {createStore, useStore} from '../store.ts';
 import {SettingsDialog} from './settings-dialog.tsx';
 import type {Config} from './types.ts';
 
@@ -36,10 +36,10 @@ const select = (id: string, option: string) => {
 };
 const shown = (id: string) => element(document, '#' + id, HTMLButtonElement).textContent;
 function View() {
-  const [open, setOpen] = useState(true);
-  return <><button onClick={() => setOpen(true)}>Open settings</button><SettingsDialog open={open} onOpenChange={setOpen} /></>;
+  const [, store] = useStore();
+  return <><button onClick={() => store.update(s => ({...s, settings: 'General'}))}>Open settings</button><SettingsDialog /></>;
 }
-const open = async () => { mount(createStore(testState()), <View />); await settle(); };
+const open = async () => { mount(createStore(testState({settings: 'General', modelEntries: []})), <View />); await settle(); };
 
 test('preferences save with the config and apply to the page', async () => {
   const posts: Config[] = [];
@@ -47,7 +47,7 @@ test('preferences save with the config and apply to the page', async () => {
     if (init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
     return url === 'version' ? new Response('build') : Response.json(config);
   });
-  const store = createStore(openUnsent(testState({workspaces: [testWorkspace({id: 'w'})]}), 'w'));
+  const store = createStore(openUnsent(testState({settings: 'General', workspaces: [testWorkspace({id: 'w'})]}), 'w'));
   const root = mount(store, <><WorktreeSelect /><View /></>);
   await settle();
   select('theme', 'Dark');
@@ -117,46 +117,41 @@ test('saving holds the modal open until the write completes', async () => {
   expect(Boolean(document.querySelector('[role=dialog][data-state=open]'))).toBe(false);
 });
 
-test('the default model is chosen from the workspace and initializes a draft that has no settings yet', async () => {
+test('the default model is chosen without a workspace and initializes a draft that has no settings yet', async () => {
   const posts: Config[] = [];
   const created: Record<string, string>[] = [];
   stubFetch((url, init) => {
     if (url === 'config' && init?.method === 'POST') { posts.push(JSON.parse(String(init.body))); return new Response(null, {status: 204}); }
-    if (url.startsWith('models?')) {
-      const model = new URL(url, 'http://x/').searchParams.get('model');
-      return Response.json(model ? {models: [], model, efforts: ['low'], default_effort: 'low'} : {models: [{id: 'sol', label: 'Sol'}, {id: 'opus', label: 'Opus 5.5'}], default: 'sol'});
-    }
-    if (url === 'harnesses?') return Response.json([{id: 'claude', name: 'Claude Code', installed: true}, {id: 'opencode', name: 'OpenCode', installed: true}]);
     if (url.startsWith('session?')) {
       created.push(Object.fromEntries(new URL(url, 'http://x/').searchParams));
       return Response.json({session: 'created'});
     }
     return url === 'version' ? new Response('build') : Response.json(config);
   });
-  const store = createStore(openUnsent(testState({config: testConfig({default_selection: undefined}), workspaces: [testWorkspace({id: 'w'})]}), 'w'));
-  expect(store.get().unsent?.settings).toBeNull();
+  const store = createStore(testState({settings: 'General', modelEntries: [{id: 'sol', harness: 'opencode', model: 'sol', efforts: ['low'], default_effort: 'low'}], config: testConfig({default_selection: undefined})}));
   const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);
-  expect(picker.title).toBe('Claude Opus 5.5, effort high');
+  expect(picker.title).toBe('Claude opus, effort high');
   clickControl(picker);
   await settle(); await settle();
-  const key = (target: Element) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true})); });
-  key(element(document, '[aria-label=Harness]', HTMLButtonElement));
-  key([...document.querySelectorAll('[role=option]')].find(o => o.textContent === 'OpenCode')!);
-  await settle(); await settle();
-  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent?.startsWith('Sol'))!);
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'sol')!);
   await settle(); await settle();
   await click('Save changes');
   const chosen = {harness: 'opencode', model: 'sol', effort: 'low'};
   expect(posts[0].default_selection).toEqual(chosen);
-  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode Sol, effort low');
+  act(() => store.update(s => openUnsent({...s, workspaces: [testWorkspace({id: 'w'})]}, 'w')));
+  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created[0]).toMatchObject({action: 'new', ...chosen});
 });
 
-test('the default model needs a workspace', async () => {
+test('the default picker opens Agents settings in the same dialog', async () => {
   stubFetch(url => url === 'version' ? new Response('build') : Response.json(config));
   await open();
-  expect(document.body.textContent).toContain('Add a workspace to choose a default model.');
+  clickControl(element(document, 'button[aria-label^="Default model"]', HTMLButtonElement));
+  await settle();
+  await click('Open Settings');
+  expect(document.querySelector('[aria-current=page]')?.textContent).toBe('Agents');
+  expect(document.body.textContent).toContain('Add Model');
 });

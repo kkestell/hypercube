@@ -19,31 +19,62 @@ func (s *server) harnesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, list)
 }
 
-// models returns a workspace's saved catalog, refreshing it when requested.
-func (s *server) models(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	var dir string
-	err := s.db.Read(func(tx *store.Tx) error {
-		if q.Get("workspace") == "" {
-			return errors.New("a workspace is required")
-		}
-		workspace, err := tx.Workspace(q.Get("workspace"))
-		dir = workspace.Path
-		return err
-	})
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	models := s.rt.CachedModels
-	if q.Get("refresh") == "1" {
-		models = s.rt.Models
-	}
-	catalog, err := models(r.Context(), q.Get("harness"), dir, q.Get("model"))
+func (s *server) listModelEntries(w http.ResponseWriter, r *http.Request) {
+	var list []store.ModelEntry
+	err := s.db.Tx(func(tx *store.Tx) (err error) { list, err = tx.ModelEntries(); return })
 	if refused(w, err) {
 		return
 	}
-	writeJSON(w, catalog)
+	writeJSON(w, list)
+}
+
+func (s *server) saveModelEntry(w http.ResponseWriter, r *http.Request) {
+	var entry store.ModelEntry
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&entry); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := entry.Check(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var list []store.ModelEntry
+	err := s.db.Tx(func(tx *store.Tx) (err error) {
+		if err = tx.SaveModelEntry(entry); err != nil {
+			return
+		}
+		list, err = tx.ModelEntries()
+		return
+	})
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, store.ErrDuplicateModel) {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+	if refused(w, err) {
+		return
+	}
+	writeJSON(w, list)
+}
+
+func (s *server) deleteModelEntry(w http.ResponseWriter, r *http.Request) {
+	var list []store.ModelEntry
+	err := s.db.Tx(func(tx *store.Tx) (err error) {
+		if err = tx.DeleteModelEntry(r.PathValue("id")); err != nil {
+			return
+		}
+		list, err = tx.ModelEntries()
+		return
+	})
+	if refused(w, err) {
+		return
+	}
+	writeJSON(w, list)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

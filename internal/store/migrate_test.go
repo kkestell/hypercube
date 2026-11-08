@@ -2,6 +2,50 @@ package store
 
 import "testing"
 
+func TestOpenDropsCatalogs(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s", "child")
+	tx(t, db, func(tx *Tx) error {
+		return tx.exec(`CREATE TABLE catalogs (harness TEXT, dir TEXT, model TEXT, catalog TEXT);
+INSERT INTO catalogs VALUES ('h', '/repo', 'm', '{}');
+UPDATE sessions SET harness = 'h', model = 'native/id', effort = 'high' WHERE id = 's';
+PRAGMA user_version = 3;`)
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopen(t).Read(func(tx *Tx) error {
+		has, err := tx.exists(`SELECT 1 FROM sqlite_master WHERE name = 'catalogs'`)
+		if err != nil {
+			return err
+		}
+		if has {
+			t.Fatal("catalogs retained")
+		}
+		var version int
+		if err := tx.tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
+			return err
+		}
+		if version != 4 {
+			t.Fatalf("version = %d", version)
+		}
+		list, err := tx.ModelEntries()
+		if err != nil {
+			return err
+		}
+		if len(list) != 0 {
+			t.Fatalf("entries = %+v", list)
+		}
+		s, err := tx.Session("s")
+		if err == nil && (s.Workspace != "w" || s.Harness != "h" || s.Model != "native/id" || s.Effort != "high") {
+			t.Fatalf("session changed: %+v", s)
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenDeletesLegacyStatusItems(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s", "child")

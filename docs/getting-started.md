@@ -20,7 +20,9 @@ A workspace groups the sessions for that project in the sidebar.
 
 ## 2. Choose your coding tool
 
-Below the message box, select an installed harness and one of its models.
+First add a model in **Settings › Agents › Models**: choose its harness, enter
+the model ID exactly as the harness names it, and list its effort levels from
+lowest to highest. Then choose its harness tab and model below the message box.
 Leave the effort at its default. Effort controls the model's reasoning level;
 the available choices depend on the harness and model.
 

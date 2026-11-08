@@ -3,8 +3,6 @@ import {post} from '../api.ts';
 import {Button} from '../components/ui/button';
 import {Card, CardContent} from '../components/ui/card';
 import {focusComposerField} from '../agent/focus-composer.ts';
-import {useModels} from '../agent/catalogs.ts';
-import {sessionOf} from '../sessions/selection.ts';
 import {SelectionName} from '../agent/selection-name.tsx';
 import {settingsText} from '../agent/selection-label.ts';
 import {Icon} from '../shared/icon.tsx';
@@ -26,10 +24,9 @@ interface ProposalItemProps {
 // card and returns the focus to the composer.
 // A fork works where this session works, so its card names no folder.
 export function ProposalItem({item, session, expanded, setOpen}: ProposalItemProps) {
-  const [state, store] = useStore();
+  const [, store] = useStore();
   const [sending, setSending] = useState(false);
   const options = item.input;
-  const models = useModels(sessionOf(state, session.id)?.workspace.id, options.settings.harness);
   const outcome = item.answer === 'Dismissed' ? 'Dismissed' : `Child session: ${options.name}`;
   const act = async (action: 'start-proposal' | 'dismiss-proposal') => {
     if (sending || session.ended) return;
@@ -43,7 +40,7 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
       <CardContent className="px-4">
         <Disclosure className="proposal-item" open={expanded} onToggle={open => setOpen(item.id, open)}
           summary={<><span className="truncate font-medium">{item.text}</span>
-            <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, models)}><SelectionName settings={options.settings} models={models} /></span></Detail><span className="truncate">{outcome}</span></span></>}>
+            <span className="flex min-w-0 items-center gap-4 text-xs text-muted-foreground"><Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings)}><SelectionName settings={options.settings} /></span></Detail><span className="truncate">{outcome}</span></span></>}>
           {options.message && <Markdown text={options.message} style="chat" />}
         </Disclosure>
       </CardContent>
@@ -53,7 +50,7 @@ export function ProposalItem({item, session, expanded, setOpen}: ProposalItemPro
     <div className="space-y-3" role="group" aria-label="Proposed child session">
       <div className="font-medium">{item.text}</div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-        <Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings, models)}><SelectionName settings={options.settings} models={models} /></span></Detail>
+        <Detail><span className="flex min-w-0 items-center gap-1.5" title={settingsText(options.settings)}><SelectionName settings={options.settings} /></span></Detail>
         <Detail><Icon name="comment-discussion" />{options.fork ? 'Forked context' : 'Fresh context'}</Detail>
         {!options.fork && (options.dir
           ? <Detail><Icon name="folder-open" /><span className="truncate">{options.dir}</span></Detail>

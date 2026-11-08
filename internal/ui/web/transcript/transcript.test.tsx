@@ -64,15 +64,14 @@ test('an open proposal is pinned below the history, sends only its saved ID, and
   expect([...done.querySelectorAll('button')].some(button => button.textContent === 'Start' || button.textContent === 'Dismiss')).toBe(false);
 });
 
-test('open and answered proposals show model display names from the session workspace', async () => {
-  const fetches = stubFetch(() => Response.json({models: [{id: 'm', label: 'Model M'}]}));
+test('open and answered proposals show native model IDs without discovery', async () => {
+  const fetches = stubFetch(() => Response.json([]));
   const {root, store, send} = setup([{id: 'p', kind: 'proposal', text: 'Task', input: {name: 'child', title: 'Task', settings: {harness: 'opencode', model: 'm', effort: 'low'}}}]);
   await act(async () => store.update(state => ({...state, workspaces: [testWorkspace({id: 'w', sessions: [busy]})]})));
-  expect(fetches.mock.calls[0][0]).toBe('models?workspace=w&harness=opencode');
-  expect(find(root, '[title="OpenCode Model M, effort low"]').textContent).toContain('Model M');
+  expect(find(root, '[title="OpenCode m, effort low"]').textContent).toContain('m');
   send([{id: 'p', kind: 'proposal', text: 'Task', done: true, answer: 'child', input: {name: 'child', title: 'Task', settings: {harness: 'opencode', model: 'm', effort: 'low'}}}]);
-  expect(find(root, '[title="OpenCode Model M, effort low"]').textContent).toContain('Model M');
-  expect(fetches).toHaveBeenCalledTimes(1);
+  expect(find(root, '[title="OpenCode m, effort low"]').textContent).toContain('m');
+  expect(fetches).not.toHaveBeenCalled();
 });
 
 test('a refused proposal action can be retried or dismissed', async () => {

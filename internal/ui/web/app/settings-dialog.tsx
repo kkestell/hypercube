@@ -7,24 +7,24 @@ import {useStore} from '../store.ts';
 import {receivedConfig} from './config.ts';
 import {SettingsPermissions} from './settings-permissions.tsx';
 import {SettingsAgents, SettingsGeneral, SettingsNotifications} from './settings-preferences.tsx';
-import type {Config} from './types.ts';
+import {sections, type Config} from './types.ts';
 
-const sections = ['General', 'Agents', 'Notifications', 'Permissions'] as const;
-type Section = typeof sections[number];
-
-export function SettingsDialog({open, onOpenChange}: {open: boolean; onOpenChange: (open: boolean) => void}) {
+export function SettingsDialog() {
+  const [state, store] = useStore();
+  const open = state.settings !== null;
+  const close = () => store.update(s => ({...s, settings: null}));
   const focus = useDialogFocus(open);
   const [saving, setSaving] = useState(false);
-  return <Dialog open={open} onOpenChange={next => { if (!saving) onOpenChange(next); }}>
+  return <Dialog open={open} onOpenChange={next => { if (!saving && !next) close(); }}>
     <DialogContent {...focus} aria-describedby={undefined} showCloseButton={!saving} className="flex h-[min(790px,90dvh)] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl">
-      {open && <SettingsContent close={() => onOpenChange(false)} saving={saving} setSaving={setSaving} />}
+      {open && <SettingsContent close={close} saving={saving} setSaving={setSaving} />}
     </DialogContent>
   </Dialog>;
 }
 
 function SettingsContent({close, saving, setSaving}: {close: () => void; saving: boolean; setSaving: (saving: boolean) => void}) {
-  const [, store] = useStore();
-  const [section, setSection] = useState<Section>('General');
+  const [state, store] = useStore();
+  const section = state.settings;
   const [draft, setDraft] = useState<Config | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState('');
@@ -59,7 +59,7 @@ function SettingsContent({close, saving, setSaving}: {close: () => void; saving:
     <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
       <nav aria-label="Settings sections" className="flex shrink-0 gap-1 overflow-x-auto border-b p-3 sm:w-44 sm:flex-col sm:border-r sm:border-b-0">
         {sections.map(name => <Button key={name} type="button" className="justify-start" variant={section === name ? 'secondary' : 'ghost'}
-          aria-current={section === name ? 'page' : undefined} onClick={() => setSection(name)}>{name}</Button>)}
+          aria-current={section === name ? 'page' : undefined} onClick={() => store.update(s => ({...s, settings: name}))}>{name}</Button>)}
       </nav>
       <div className="min-w-0 flex-1 overflow-y-auto p-6">
         <h2 className="mb-2 text-xl font-semibold">{section}</h2>

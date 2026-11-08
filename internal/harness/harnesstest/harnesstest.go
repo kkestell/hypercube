@@ -35,7 +35,6 @@
 //
 // Its `describe` and `models` commands answer with Catalog's fixed models.
 // With HYPERCUBE_TEST_MODELS_HOLD set, `models` waits until it is killed.
-// HYPERCUBE_TEST_MODELS_LOG records each models request as a JSON line.
 package harnesstest
 
 import (
@@ -160,17 +159,6 @@ func Run() {
 		}
 		if os.Getenv("HYPERCUBE_TEST_MODELS_HOLD") != "" {
 			select {}
-		}
-		if path := os.Getenv("HYPERCUBE_TEST_MODELS_LOG"); path != "" {
-			f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-			if err != nil {
-				os.Exit(exitLogFailed)
-			}
-			err = json.NewEncoder(f).Encode(req)
-			closeErr := f.Close()
-			if err != nil || closeErr != nil {
-				os.Exit(exitLogFailed)
-			}
 		}
 		c, err := Catalog(req)
 		if err != nil {

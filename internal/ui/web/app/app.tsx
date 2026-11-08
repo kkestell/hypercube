@@ -48,7 +48,6 @@ export function App({store}: {store: Store}) {
   const [state, setState] = useState(store.get());
   const [quickOpen, setQuickOpen] = useState(false);
   const [sessionSearch, setSessionSearch] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const focusComposer = () => { focusComposerField(); };
   useLayoutEffect(() => {
@@ -61,7 +60,7 @@ export function App({store}: {store: Store}) {
   useEffect(() => {
     hypercube()?.postMessage({type: 'shortcuts', items: shortcuts.filter(s => s.menu).map(s => ({id: s.id, section: s.section, title: s.title, bindings: keysOf(s).map(binding)}))});
   }, []);
-  const shortcutActions: ShortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), showSettings: () => setSettingsOpen(true), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
+  const shortcutActions: ShortcutActions = {focusComposer, showHelp: () => setShortcutsOpen(true), showSettings: () => store.update(s => ({...s, settings: 'General'})), openQuickOpen: () => setQuickOpen(true), openSessionSearch: () => setSessionSearch(true)};
   useEffect(() => {
     const run = (e: CustomEvent<{id: string}>) => nativeShortcut(e.detail.id, store, shortcutActions);
     window.addEventListener('hypercube-shortcut', run);
@@ -105,7 +104,7 @@ export function App({store}: {store: Store}) {
       <div className="app flex h-full flex-col" style={titleBarVars(state.titleBar)}>
         <div className="app-body min-h-0 flex-1">
           <Split fixed="start" size={sizes.sidebar} onResize={size => store.update(s => resizeRegion(s, 'sidebar', size))} minStart="160px" minEnd="50%" collapsed={sidebar ? null : 'start'}>
-            <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => setSettingsOpen(true)} />
+            <Sidebar searchOpen={sessionSearch} onSearchOpenChange={setSessionSearch} onSettings={() => store.update(s => ({...s, settings: 'General'}))} />
             <Split fixed="end" size={sizes.rightPanel} onResize={size => store.update(s => resizeRegion(s, 'rightPanel', size))} minStart="60%" collapsed={rightPanel ? null : 'end'}>
               <Split split="horizontal" fixed="end" size={sizes.panel} onResize={size => store.update(s => resizeRegion(s, 'panel', size))} minStart="20%" minEnd="40px" collapsed={panel ? null : 'end'}>
                 <main className={`app-center flex h-full min-w-0 flex-col ${tabBackground}`}><SessionView key={state.editor?.id ?? (state.unsent ? 'unsent' : '')} /></main>
@@ -118,7 +117,7 @@ export function App({store}: {store: Store}) {
         <NotificationStack />
         <ConfirmDialog />
         <QuickOpen key={state.editor?.id} open={quickOpen && !state.unsent} onOpenChange={setQuickOpen} />
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <SettingsDialog />
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
     </StoreContext.Provider>

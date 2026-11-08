@@ -1,6 +1,6 @@
 // Every HTTP call the page makes to the server.
 import type {EditorTarget} from './editor/target.ts';
-import type {Catalog, Harness} from './agent/types.ts';
+import type {ModelEntry, Harness} from './agent/types.ts';
 import type {Config, Grant} from './app/types.ts';
 import type {ChangesResult, DiffRead} from './changes/types.ts';
 import type {FileRead, FolderListing, SearchFile} from './files/types.ts';
@@ -84,9 +84,20 @@ export const selectModel = (store: Store, session: string, model: string, effort
 // fetchHarnesses lists the installed harnesses, scanning for new ones.
 export const fetchHarnesses = (signal: AbortSignal) => get<Harness[]>('harnesses', {}, signal);
 
-// fetchModels returns saved choices, or asks the harness again with refresh.
-export const fetchModels = (workspace: string, harness: string, model: string, refresh: boolean, signal?: AbortSignal) =>
-  get<Catalog>('models', {workspace, harness, ...(model && {model}), ...(refresh && {refresh: '1'})}, signal);
+export const fetchModelEntries = (store: Store) =>
+  request<ModelEntry[]>(store, 'models', {cache: 'no-store'}, response => response.json());
+
+export async function saveModelEntry(entry: ModelEntry): Promise<ModelEntry[]> {
+  const response = await fetch('models', {method: 'POST', body: JSON.stringify(entry)});
+  if (!response.ok) throw new HttpError(await response.text(), response.status);
+  return response.json();
+}
+
+export async function deleteModelEntry(id: string): Promise<ModelEntry[]> {
+  const response = await fetch(`models/${encodeURIComponent(id)}`, {method: 'DELETE'});
+  if (!response.ok) throw new HttpError(await response.text(), response.status);
+  return response.json();
+}
 
 // answerRequest answers a session's attention request and reports whether the
 // server accepted the answer.
