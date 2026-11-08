@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/hold/holdtest"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -41,7 +40,7 @@ func TestTerminalStartsOnlyAfterWebSocketHandshake(t *testing.T) {
 			rt.Terminals.Dir = dir
 			rt.Terminals.Command = []string{"/bin/sh", "-c", "printf 'terminal-ready\\n'; exec /bin/cat"}
 			t.Cleanup(rt.Quit)
-			server := httptest.NewServer(Handler(db, rt, &desktop.Desktop{}))
+			server := httptest.NewServer(Handler(db, rt))
 			t.Cleanup(server.Close)
 			response, err := server.Client().Get(server.URL + "/terminal?" + owner.query)
 			if err != nil {

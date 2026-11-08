@@ -105,6 +105,12 @@ func version(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
+Implementation evidence: the nested mux needs an exact `/mcp` fallback in
+addition to `POST /mcp`. GET and HEAD still go to the browser handler;
+unsupported methods answer 405 with `Allow: GET, HEAD, POST`, as the original
+single mux did. Without this fallback the browser mux omits POST from that
+header. Keep this handling local to `handler`.
+
 `localOnly` moves from `internal/ui/ui.go` unchanged, with its comment: it
 refuses other host names, refuses requests from other origins except to
 `/mcp` (which requires a known session in `X-Hypercube-Session`), requires
@@ -175,7 +181,9 @@ before `startApp`.
     `X-Frame-Options: SAMEORIGIN`.
   - `TestRouteFallthrough` — new: `GET /mcp` answers 404, `POST /version`
     answers 405, and `POST /mcp` with an unknown session answers 403 from
-    the MCP handler.
+    the MCP handler; HEAD `/mcp` also answers 404, and unsupported OPTIONS
+    and PUT on `/mcp`, with matching Origin, answer 405 with
+    `Allow: GET, HEAD, POST`.
 - `internal/ui` tests pass with `Handler(db, rt)`; `TestFavicon`,
   `TestConfig`, `TestActions`, the terminal and transcript tests are
   unchanged apart from the call.
