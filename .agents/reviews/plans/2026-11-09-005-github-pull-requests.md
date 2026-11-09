@@ -73,3 +73,12 @@ Interfaces agree: 002's `Watcher` (`Env`, `Statuses`, `Changed`, `Refresh`) and
 are what 004 consumes; 004's `github/` types, `pullRequestFacts`, and
 `PullRequestIcon` are what 005 consumes. The one cross-unit gap is the token
 failure state (003 finding 2, 005 finding 1).
+
+## Execution decision
+
+- Author: parent coordinator (Hypercube session 1771c79b, Claude Code, native conversation 2fb9801a-4985-41f3-bd41-371c1ae39e8e, claude-opus-5-5)
+- Revision checked: 63165bad85f0b12c1fd122d2c4d70545141755e5
+- Final plan blob: `.agents/plans/2026-11-09-005-github-pull-requests.md` 735790eef7d8c8123f3e1b190d5096ad4abab8e7
+- Guidance blobs: `.agents/designs/2026-11-09-001-github-integration.md` 1be166e4fffb44898b53d6c18ad9f4fb89bd4152
+- Dispositions: Finding 1 resolved: `updated` 0 with an error shows "Could not load pull requests.", and a test covers it. Finding 2 is advisory and needs no change.
+- Decision: proceed

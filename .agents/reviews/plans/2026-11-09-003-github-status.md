@@ -73,3 +73,12 @@ references. No split or trim warranted.
 
 Correct findings 1 and 2 in the plan; the parent can verify both without a new
 independent round. Finding 3 needs only the parent's acknowledgment.
+
+## Execution decision
+
+- Author: parent coordinator (Hypercube session 1771c79b, Claude Code, native conversation 2fb9801a-4985-41f3-bd41-371c1ae39e8e, claude-opus-5-5)
+- Revision checked: 63165bad85f0b12c1fd122d2c4d70545141755e5
+- Final plan blob: `.agents/plans/2026-11-09-003-github-status.md` 6a839caf26b790cc2707c6398aed2e6529358e27
+- Guidance blobs: `.agents/designs/2026-11-09-001-github-integration.md` 1be166e4fffb44898b53d6c18ad9f4fb89bd4152
+- Dispositions: Finding 1 resolved: the session branch now comes from `s.Dir`. In the checkout outside `.hypercube/`, it is the status branch and `s.Branch` is ignored. Inside `.hypercube/`, it is `s.Branch`. Anywhere else, none. The Current system bullet is corrected, and the fixture has a stale saved Branch. Finding 2 resolved: a token read failure sets Error, a pending choice leaves Error empty, and a watcher test covers both. Finding 3 is advisory and needs no change.
+- Decision: proceed
