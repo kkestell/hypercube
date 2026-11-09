@@ -91,8 +91,12 @@ async function shoot(file) {
   validate(scene);
   const base = path.join(dir, name);
   fs.mkdirSync(path.join(base, 'config/hypercube'), {recursive: true});
+  // The published example configuration supplies the model titles; Pi has no
+  // entry there, so the scene config adds one for the Pi sessions.
+  const example = JSON.parse(fs.readFileSync(path.join(root, 'docs/examples/config.json'), 'utf8'));
+  example.models.push({harness: 'pi', model: 'openai/gpt-5.2', title: 'GPT-5.2', efforts: ['low', 'medium', 'high'], default_effort: 'high'});
   fs.writeFileSync(path.join(base, 'config/hypercube/config.json'),
-    JSON.stringify({theme: 'light'}, null, 2));
+    JSON.stringify({...example, theme: 'light'}, null, 2));
   console.log(`${name}: playing`);
   const backend = await startBackend(base, path.resolve(file));
   let window;
