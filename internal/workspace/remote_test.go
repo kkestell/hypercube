@@ -113,6 +113,33 @@ func TestFetchAndTracking(t *testing.T) {
 	}
 }
 
+func TestFetchPullRequest(t *testing.T) {
+	isolateGit(t)
+	bare := t.TempDir()
+	root, run := gitRepo(t)
+	run(bare, "init", "-q", "--bare", "-b", "main")
+	run(root, "remote", "add", "origin", bare)
+	// The pull request's commit exists only in the remote.
+	fork, _ := gitRepo(t)
+	run(fork, "commit", "-q", "--allow-empty", "-m", "pull request")
+	want, err := Head(fork)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(fork, "push", "-q", bare, "HEAD:refs/pull/7/head")
+
+	got, err := FetchPullRequest(context.Background(), root, "origin", 7, nil)
+	if err != nil || got != want {
+		t.Fatalf("FetchPullRequest = %q, %v; want %q", got, err, want)
+	}
+	if _, err := FetchPullRequest(context.Background(), root, "origin", 8, nil); err == nil {
+		t.Fatal("fetching a missing pull request succeeded")
+	}
+	if refs, err := git(root, "for-each-ref", "refs/hypercube/"); err != nil || refs != "" {
+		t.Fatalf("refs left behind: %q, %v", refs, err)
+	}
+}
+
 func TestCloneRecordsConfigBeforeFetching(t *testing.T) {
 	isolateGit(t)
 	bare := t.TempDir()

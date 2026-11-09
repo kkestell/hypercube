@@ -189,11 +189,15 @@ dashboard. The dialog shows Git's error if the clone fails, and closing it
 cancels the clone. In the desktop app, **Choose…** picks the parent folder.
 
 A pull request whose review was requested from the account shows **Review**.
-It opens a list of the workspace's sessions that have not ended, with the
-sessions on that pull request first. Choose a session to send it an instruction
-to review the pull request with `gh` and report what it finds; choose **New
-Session** to open a new session with the instruction ready to send. On the Pull
-Requests view, **Review** is disabled until a workspace holds the repository.
+It fetches the pull request's head commit, starts a new worktree session at that
+commit, and opens the session. The session uses the `default_selection` from
+[configuration](configuration.md), or else the first listed model at its default
+effort; with no models listed, **Review** shows an error instead. The agent is
+asked to review the pull request with `gh`, report what it finds, and post
+nothing to GitHub. The pull request's own commits do not count as the session's
+unmerged work, so **Merge into …** appears only after the agent commits. On the
+Pull Requests view, **Review** is disabled until a
+workspace holds the repository.
 
 A session whose branch has an open pull request involving the account shows a pull request icon at the
 right edge of its row. Hover over the icon for the pull request's number, title,

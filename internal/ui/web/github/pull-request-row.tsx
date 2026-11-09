@@ -3,7 +3,7 @@
 // requested, and a trailing control.
 import type {ReactNode} from 'react';
 import {Button} from '../components/ui/button';
-import {canReview} from './instructions.ts';
+import {canReview} from './review.ts';
 import {PullRequestIcon} from './pull-request-icon.tsx';
 import type {Turn} from './turns.ts';
 import type {PullRequest} from './types.ts';
@@ -13,7 +13,7 @@ interface RowProps {
   turn: Turn;
   account: string;
   // onReview starts the review; without it the Review button is disabled
-  // because no workspace holds the repository.
+  // because no workspace holds the repository or the review is starting.
   onReview?: () => void;
   // hideReason leaves the reason to a heading that already says it.
   hideReason?: boolean;

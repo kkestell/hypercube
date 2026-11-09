@@ -1,12 +1,12 @@
 // A GitHub workspace's open pull requests that need the account, then the ones
-// it waits on, with a Review button that sends a requested review to a
-// session.
-import {useState} from 'react';
+// it waits on, with a Review button that starts a review session for a
+// requested review.
 import type {Workspace} from '../sessions/types.ts';
+import {useStore} from '../store.ts';
 import {PullRequestRow} from './pull-request-row.tsx';
-import {SendDialog} from './send-dialog.tsx';
+import {useReview} from './review.ts';
 import {sortTurns} from './turns.ts';
-import type {GitHubStatus, PullRequest} from './types.ts';
+import type {GitHubStatus} from './types.ts';
 
 function emptyText({account, updated, error}: GitHubStatus): string {
   if (!account) return 'Choose an account to see pull requests.';
@@ -15,13 +15,14 @@ function emptyText({account, updated, error}: GitHubStatus): string {
 }
 
 export function PullRequests({workspace}: {workspace: Workspace}) {
-  const [sending, setSending] = useState<PullRequest | null>(null);
+  const [, store] = useStore();
+  const review = useReview(store);
   const status = workspace.github;
   if (!status) return null;
   const empty = emptyText(status);
   const {mine, waiting} = sortTurns(status.pullRequests, status.account);
   const rows = (label: string, turns: typeof mine) => <ul aria-label={label} className="space-y-2">
-    {turns.map(({pr, turn}) => <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} onReview={() => setSending(pr)} />)}
+    {turns.map(({pr, turn}) => <PullRequestRow key={pr.url} pr={pr} turn={turn} account={status.account} onReview={review(workspace.id, pr)} />)}
   </ul>;
   return <section className="mb-6">
     <h2 className="mb-2 text-sm font-medium">Pull Requests</h2>
@@ -36,6 +37,5 @@ export function PullRequests({workspace}: {workspace: Workspace}) {
         <a href={`${status.url}/pulls`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">All open pull requests</a>
       </p>
     </>}
-    {sending && <SendDialog workspace={workspace} pr={sending} onClose={() => setSending(null)} />}
   </section>;
 }

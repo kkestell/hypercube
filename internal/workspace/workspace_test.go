@@ -513,3 +513,26 @@ func TestMergeStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestMergeStatusCountsOnlyCommitsAfterStart(t *testing.T) {
+	root, run := gitRepo(t)
+	run(root, "checkout", "-q", "-b", "pr")
+	run(root, "commit", "-q", "--allow-empty", "-m", "pull request")
+	start, err := Head(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(root, "checkout", "-q", "main")
+	run(root, "branch", "-q", "-D", "pr")
+	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
+	if err := AddWorktree(root, dir, branch, start); err != nil {
+		t.Fatal(err)
+	}
+	if m, err := MergeStatus(root, dir, branch, start); err != nil || m.Unmerged != 0 {
+		t.Fatalf("at its start: Unmerged = %d, %v", m.Unmerged, err)
+	}
+	run(dir, "commit", "-q", "--allow-empty", "-m", "work")
+	if m, err := MergeStatus(root, dir, branch, start); err != nil || m.Unmerged != 1 {
+		t.Fatalf("after a commit: Unmerged = %d, %v", m.Unmerged, err)
+	}
+}

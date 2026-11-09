@@ -9,8 +9,10 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
@@ -122,6 +124,9 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = json.NewEncoder(w).Encode(result)
 		return
+	case "review":
+		s.startReview(w, r)
+		return
 	case "delete":
 		err = s.rt.Delete(id)
 	case "archive":
@@ -172,6 +177,60 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refused(w, err)
+}
+
+// startReview fetches a pull request's head commit, starts a worktree session
+// at it with the default model and the review prompt, and returns the session
+// ID.
+func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	number, err := strconv.Atoi(q.Get("number"))
+	if err != nil || number <= 0 {
+		http.Error(w, "a pull request number is required", http.StatusBadRequest)
+		return
+	}
+	workspaceID := q.Get("workspace")
+	var dir string
+	err = s.db.Read(func(tx *store.Tx) error {
+		ws, err := tx.Workspace(workspaceID)
+		dir = ws.Path
+		return err
+	})
+	if refused(w, err) {
+		return
+	}
+	cfg, err := config.Load()
+	if refused(w, err) {
+		return
+	}
+	settings, err := reviewSettings(cfg)
+	if refused(w, err) {
+		return
+	}
+	commit, url, err := s.gh.FetchPullRequest(r.Context(), workspaceID, dir, number)
+	if refused(w, err) {
+		return
+	}
+	prompt := fmt.Sprintf("Review pull request #%d (%s). Its head commit is checked out in your working directory. "+
+		"Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.", number, url)
+	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", prompt)
+	if refused(w, err) {
+		return
+	}
+	fmt.Fprint(w, created.ID)
+}
+
+// reviewSettings is the model a review starts with: the default selection, or
+// else the first listed model at its default effort.
+func reviewSettings(cfg config.Config) (harness.Settings, error) {
+	if cfg.DefaultSelection != nil {
+		return *cfg.DefaultSelection, nil
+	}
+	if len(cfg.Models) == 0 {
+		return harness.Settings{}, errors.New("Choose a model in Settings to start a review")
+	}
+	m := cfg.Models[0]
+	return harness.Settings{Harness: m.Harness, Model: m.Model, Effort: m.DefaultEffort}, nil
 }
 
 // grants returns saved always-allow choices.

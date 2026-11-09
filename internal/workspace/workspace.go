@@ -438,7 +438,7 @@ func uncommitted(dir string) (int, error) {
 type Merge struct {
 	Branch      string `json:"branch"`
 	Target      string `json:"target"`      // the checkout's branch
-	Unmerged    int    `json:"unmerged"`    // branch commits not in the target
+	Unmerged    int    `json:"unmerged"`    // commits made after base that are not in the target
 	Committed   bool   `json:"committed"`   // the branch has moved past its base
 	Uncommitted int    `json:"uncommitted"` // changed and untracked files in the worktree
 	// Error is why the status could not be read; the other fields but Branch
@@ -454,7 +454,13 @@ func MergeStatus(root, dir, branch, base string) (Merge, error) {
 	if m.Target, err = Branch(root); err != nil {
 		return Merge{}, err
 	}
-	count, err := git(root, "rev-list", "--count", "HEAD.."+branch)
+	// Commits on the way to base are not the session's work, so a session
+	// started at a pull request's head counts only the commits it made.
+	args := []string{"rev-list", "--count", branch, "--not", "HEAD"}
+	if base != "" {
+		args = append(args, base)
+	}
+	count, err := git(root, args...)
 	if err != nil {
 		return Merge{}, err
 	}

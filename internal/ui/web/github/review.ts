@@ -1,0 +1,34 @@
+// Reviewing a pull request: the server starts a worktree session at its head
+// commit and sends it the review prompt; the page then shows that session.
+import {useState} from 'react';
+import {post} from '../api.ts';
+import {chooseSession} from '../sessions/session-actions.ts';
+import type {Store} from '../store.ts';
+import type {PullRequest} from './types.ts';
+
+// canReview is whether someone asked the account itself to review the pull
+// request.
+export const canReview = (pr: PullRequest) => pr.requested === 'user';
+
+// startReview starts the review session in the workspace and shows it. A
+// refusal is shown as an error and leaves the selection alone.
+export async function startReview(store: Store, workspaceId: string, number: number) {
+  const id = await post(store, 'session', {action: 'review', workspace: workspaceId, number: String(number)});
+  if (id) chooseSession(store, id);
+}
+
+// useReview gives each row's onReview: a handler that starts the pull request's
+// review, or undefined while that review is starting, which disables its
+// button.
+export function useReview(store: Store) {
+  const [starting, setStarting] = useState<string[]>([]);
+  return (workspaceId: string, pr: PullRequest) => {
+    const key = `${workspaceId}\n${pr.number}`;
+    if (starting.includes(key)) return undefined;
+    return async () => {
+      setStarting(keys => [...keys, key]);
+      await startReview(store, workspaceId, pr.number);
+      setStarting(keys => keys.filter(other => other !== key));
+    };
+  };
+}

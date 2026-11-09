@@ -1,18 +1,17 @@
 // The home view: every signed-in account's pull requests across all
 // repositories, in collapsible groups by the kind of work, with a warning
-// for each account that could not be read. A requested review goes to a
+// for each account that could not be read. A requested review starts a
 // session in the workspace that holds the repository.
 import {useState} from 'react';
 import {Button} from '../components/ui/button';
 import {Collapsible, CollapsibleContent, CollapsibleTrigger} from '../components/ui/collapsible';
 import {Chevron, Icon} from '../shared/icon.tsx';
 import {expandPullRequestGroup} from '../app/workbench.ts';
-import type {Workspace} from '../sessions/types.ts';
 import {useStore} from '../store.ts';
 import {CloneDialog} from './clone-dialog.tsx';
 import {tracking} from './clone.ts';
 import {PullRequestRow} from './pull-request-row.tsx';
-import {SendDialog} from './send-dialog.tsx';
+import {useReview} from './review.ts';
 import {othersMoves, turnGroups, yourMoves} from './turns.ts';
 import {failureText} from './wording.ts';
 import type {PullRequest} from './types.ts';
@@ -20,7 +19,7 @@ import type {PullRequest} from './types.ts';
 export function AllPullRequests() {
   const [{accounts, workspaces, workbench}, store] = useStore();
   const [cloning, setCloning] = useState<{pr: PullRequest; account: string} | null>(null);
-  const [reviewing, setReviewing] = useState<{pr: PullRequest; workspace: Workspace} | null>(null);
+  const review = useReview(store);
   const all = [...yourMoves(accounts), ...othersMoves(accounts)];
   const failed = accounts.filter(account => account.error);
   const checking = !failed.length && accounts.every(account => !account.updated);
@@ -31,7 +30,6 @@ export function AllPullRequests() {
       <Icon name="warning" className="text-destructive" />
       <span>{failureText(`Could not read pull requests for ${login}`, error!, updated)}</span>
     </p>)}
-    {reviewing && <SendDialog {...reviewing} onClose={() => setReviewing(null)} />}
     {cloning && <CloneDialog pr={cloning.pr} account={cloning.account} onClose={() => setCloning(null)} />}
     {checking ? <p className="text-sm text-muted-foreground">Checking GitHub.</p> : <>
       {!groups.some(group => group.id !== 'waiting') && <p className="mb-4 text-sm text-muted-foreground">Nothing needs you.</p>}
@@ -51,7 +49,7 @@ export function AllPullRequests() {
                 const workspace = tracking(workspaces, pr.repo);
                 return <PullRequestRow key={`${account}\n${pr.url}`} pr={pr} turn={turn} account={account} hideReason={turn.reason === group.implied} place={<>
                   In <a href={`https://github.com/${pr.repo}`} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">{pr.repo}</a> for {account}.
-                </>} onReview={workspace && (() => setReviewing({pr, workspace}))} trailing={workspace ? null
+                </>} onReview={workspace && review(workspace.id, pr)} trailing={workspace ? null
                   : <Button variant="secondary" size="sm" aria-label={`Clone ${pr.repo}`} onClick={() => setCloning({pr, account})}>Clone</Button>} />;
               })}
             </ul>
