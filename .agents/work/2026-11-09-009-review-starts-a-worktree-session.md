@@ -3,7 +3,7 @@
 - Task ID: 2026-11-09-009-review-starts-a-worktree-session
 - Plan (repository-relative): `.agents/plans/2026-11-09-009-review-starts-a-worktree-session.md`, blob `4840e94fedae422d8f4b8537074ec28b67b1f21c`; no guidance blobs. Dependency read: `.agents/work/2026-11-09-008-worktree-start-and-safe-removal.md`.
 - Author: xwork worker p2-work (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5
-- Status: implemented
+- Status: complete
 - Code base: 72ccc1dcd099890f4aa759210ff2f39f99a5a34e
 - Code head: 78e76b8e7fa485d1c091e63d011c657b18731866
 - Implementation commits: cbe99753bc5cc2e10a0dcbd815f68b745eaba512 (work), 78e76b8e7fa485d1c091e63d011c657b18731866 (fix)
@@ -37,6 +37,7 @@ Responsibilities as in the plan.
 | --- | --- | --- | --- | --- |
 | parent | 777ef702 (Hypercube session) | Claude Code | 209b0949-92b0-42bc-8596-4341a4bf0785 | Opus 5.5 |
 | work | p2-work (child of 777ef702) | Claude Code | ae939d1a-7dfa-45f6-ac1e-8496ca8a03e8 (`CLAUDE_CODE_SESSION_ID`) | claude-opus-5-5 |
+| review | p2-review (child of 777ef702) | Claude Code | 6fe12acf-189c-4b15-87d7-0d6d3985a211 | claude-opus-5-5 |
 
 ## Limitations
 
@@ -53,3 +54,10 @@ Verification at Code head 78e76b8e…, macOS, git 2.56.0:
 
 - `bunx tsc -p .` and `bun test web/github` in `internal/ui`: pass.
 - `make check` from the repository root on the tree that was then committed unchanged: exit 0, output in `/tmp/p2-work-make-check-fix.log`.
+
+## Completion
+
+- Reviews: `.agents/reviews/2026-11-09-009-review-starts-a-worktree-session.md`, round 1 `changes-required`, round 2 `accept` at Code head 78e76b8e7fa485d1c091e63d011c657b18731866.
+- Final reviewed range: 72ccc1dcd099890f4aa759210ff2f39f99a5a34e..78e76b8e7fa485d1c091e63d011c657b18731866; later commits change workflow records only.
+- Checks: `make check` exit 0 at the final Code head (reused, `/tmp/p2-work-make-check-fix.log`).
+- Open: the manual `make dev` check with a real requested review, left for the user.
