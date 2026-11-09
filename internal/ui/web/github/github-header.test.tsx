@@ -55,14 +55,14 @@ test('choosing an account posts the workspace and account', async () => {
 test('an update error shows its first line and the age of the data', () => {
   const updated = Date.UTC(2026, 10, 9, 12, 30);
   const {root} = dashboard(github({error: 'fetch failed\nmore detail', updated}));
-  expect(root.textContent).toContain('Could not update from GitHub: fetch failed');
+  const age = new Date(updated).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+  expect(root.textContent).toContain(`Could not update from GitHub: fetch failed. Showing data from ${age}.`);
   expect(root.textContent).not.toContain('more detail');
-  expect(root.textContent).toContain('Showing data from ' + new Date(updated).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}));
 });
 
 test('an update error before any update shows no age', () => {
   const {root} = dashboard(github({error: 'no network'}));
-  expect(root.textContent).toContain('Could not update from GitHub: no network');
+  expect(root.textContent).toContain('Could not update from GitHub: no network.');
   expect(root.textContent).not.toContain('Showing data from');
 });
 

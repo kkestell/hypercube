@@ -31,7 +31,7 @@ export function GitHubHeader({workspace}: {workspace: Workspace}) {
     <p>{trackingText(status)}</p>
     {status.error && <p className="flex items-center gap-1.5">
       <Icon name="warning" className="text-destructive" />
-      <span>Could not update from GitHub: {status.error.split('\n')[0]}{status.updated > 0 && ` Showing data from ${time(status.updated)}.`}</span>
+      <span>Could not update from GitHub: {status.error.split('\n')[0]}.{status.updated > 0 && ` Showing data from ${time(status.updated)}.`}</span>
     </p>}
   </div>;
 }
