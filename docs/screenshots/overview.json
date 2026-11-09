@@ -13,8 +13,8 @@
               "end": "idle",
               "usage": {"context": 21840, "window": 272000},
               "items": [
-                {"id": "c1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "grep -rn '](.*\\.md)' content"}, "output": "content/guide/getting-started.md:8:3. Turn on [sync](sync.md) to see your notes on every device.", "done": true},
-                {"id": "c2", "kind": "tool", "tool": "apply_patch", "input": {"path": "content/guide/getting-started.md"}, "output": "Success. Updated content/guide/getting-started.md", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -rn '](.*\\.md)' content"}, "output": "content/guide/getting-started.md:8:3. Turn on [sync](sync.md) to see your notes on every device.", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "content/guide/getting-started.md"}, "output": "Success. Updated content/guide/getting-started.md", "done": true},
                 {"id": "t1", "kind": "text", "text": "The sync link pointed at `sync.md`, which harbor renders as `sync.html`. I changed it to `sync.html`; the download link already resolves.", "done": true}
               ]
             }
@@ -75,10 +75,10 @@
                       "prompt": "Add table tests for the build cache to build_test.go: an unchanged page is skipped, an edited page is rebuilt, a template change rebuilds every page, and Force ignores the cache. Run go test ./... before you finish.",
                       "end": "working",
                       "items": [
-                        {"id": "c1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "sed -n '1,80p' build.go cache.go"}, "output": "package main\n...", "done": true},
+                        {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "sed -n '1,80p' build.go cache.go"}, "output": "package main\n...", "done": true},
                         {"id": "r1", "kind": "reasoning", "text": "Each case builds once, changes one input, builds again, and compares the page count.", "done": true},
-                        {"id": "c2", "kind": "tool", "tool": "apply_patch", "input": {"path": "build_test.go"}, "output": "Success. Updated build_test.go", "done": true},
-                        {"id": "c3", "kind": "tool", "tool": "exec_command", "input": {"cmd": "go test ./..."}}
+                        {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "build_test.go"}, "output": "Success. Updated build_test.go", "done": true},
+                        {"id": "c3", "kind": "tool", "tool": "shell", "input": {"command": "go test ./..."}}
                       ]
                     }
                   ]

@@ -133,9 +133,9 @@
                         {
                           "id": "c1",
                           "kind": "tool",
-                          "tool": "exec_command",
+                          "tool": "shell",
                           "input": {
-                            "cmd": "rg \"\\]\\(\" content"
+                            "command": "rg \"\\]\\(\" content"
                           },
                           "output": "content/guide/getting-started.md:8: [sync](sync.md)",
                           "done": true

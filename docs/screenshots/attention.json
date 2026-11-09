@@ -13,7 +13,7 @@
               "end": "ask",
               "usage": {"context": 27650, "window": 272000},
               "items": [
-                {"id": "c1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "go list -m -u github.com/yuin/goldmark"}, "output": "github.com/yuin/goldmark v1.7.8 [v1.7.13]", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "go list -m -u github.com/yuin/goldmark"}, "output": "github.com/yuin/goldmark v1.7.8 [v1.7.13]", "done": true},
                 {"id": "t1", "kind": "text", "text": "goldmark v1.7.13 is available. Updating the module needs network access to fetch it.", "done": true},
                 {"id": "q1", "kind": "attention", "text": "Run `go get github.com/yuin/goldmark@v1.7.13 && go mod tidy`?", "choices": ["Allow", "Allow for this session", "Deny"], "grant": "commandExecution"}
               ]

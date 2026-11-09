@@ -34,7 +34,7 @@
               "prompt": "Explain what harbor does and identify its entry point. Do not edit files or run commands other than reading files.",
               "end": "idle",
               "items": [
-                {"id": "read1", "kind": "tool", "tool": "exec_command", "input": {"cmd": "cat README.md main.go"}, "output": "harbor renders Markdown into HTML. main.go handles the build and serve commands.", "done": true},
+                {"id": "read1", "kind": "tool", "tool": "shell", "input": {"command": "cat README.md main.go"}, "output": "harbor renders Markdown into HTML. main.go handles the build and serve commands.", "done": true},
                 {"id": "answer1", "kind": "text", "text": "**harbor** turns Markdown pages in `content/` into HTML using Go templates from `templates/`. The generated files go into `public/`.\n\nThe entry point is `main.go`. Its `main()` function chooses between building the site and serving the generated output. I only read files; nothing changed.", "done": true}
               ]
             },
@@ -43,7 +43,7 @@
               "end": "idle",
               "usage": {"context": 16840, "window": 272000},
               "items": [
-                {"id": "read2", "kind": "tool", "tool": "exec_command", "input": {"cmd": "cat main.go"}, "output": "main() switches on os.Args[1]. build calls Site.Build(); serve uses http.FileServer for public/.", "done": true},
+                {"id": "read2", "kind": "tool", "tool": "shell", "input": {"command": "cat main.go"}, "output": "main() switches on os.Args[1]. build calls Site.Build(); serve uses http.FileServer for public/.", "done": true},
                 {"id": "answer2", "kind": "text", "text": "`main()` dispatches on the first command-line argument:\n\n- **`build`** creates a `Site` with the content, template, and output directories, then calls `Build()`. It prints how many pages were built.\n- **`serve`** parses the preview address and serves `public/`.\n- A missing or unknown command prints a usage message or error and exits.\n\nThe rendering work lives in `build.go`, not in this command dispatcher. Notice the call to `site.Build()` in the file beside this conversation.\n\n**No files changed and no tests were run.**", "done": true}
               ]
             }

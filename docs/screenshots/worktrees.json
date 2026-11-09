@@ -93,9 +93,9 @@
                 {
                   "id": "read1",
                   "kind": "tool",
-                  "tool": "exec_command",
+                  "tool": "shell",
                   "input": {
-                    "cmd": "cat README.md main.go"
+                    "command": "cat README.md main.go"
                   },
                   "output": "harbor build renders pages; harbor serve starts a preview.",
                   "done": true
@@ -115,9 +115,9 @@
                 {
                   "id": "c1",
                   "kind": "tool",
-                  "tool": "exec_command",
+                  "tool": "shell",
                   "input": {
-                    "cmd": "cat README.md"
+                    "command": "cat README.md"
                   },
                   "output": "The README lists build and serve but does not explain the output.",
                   "done": true
@@ -125,9 +125,9 @@
                 {
                   "id": "c2",
                   "kind": "tool",
-                  "tool": "exec_command",
+                  "tool": "shell",
                   "input": {
-                    "cmd": "go run . build"
+                    "command": "go run . build"
                   },
                   "output": "built 3 pages",
                   "done": true
@@ -141,9 +141,9 @@
                 {
                   "id": "c3",
                   "kind": "tool",
-                  "tool": "apply_patch",
+                  "tool": "edit",
                   "input": {
-                    "cmd": "Update README.md"
+                    "path": "README.md"
                   },
                   "output": "Updated README.md",
                   "done": true
@@ -151,9 +151,9 @@
                 {
                   "id": "c4",
                   "kind": "tool",
-                  "tool": "exec_command",
+                  "tool": "shell",
                   "input": {
-                    "cmd": "git add README.md && git commit -m \"Document build and preview\""
+                    "command": "git add README.md && git commit -m \"Document build and preview\""
                   },
                   "output": "[branch] Document build and preview",
                   "done": true

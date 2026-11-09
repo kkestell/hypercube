@@ -34,7 +34,7 @@
             "end": "idle",
             "usage": {"context": 12480, "window": 272000},
             "items": [
-              {"id": "read", "kind": "tool", "tool": "exec_command", "input": {"cmd": "cat README.md main.go build_test.go"}, "output": "README.md describes a static site generator. main.go handles the build and serve commands. build_test.go contains TestBuildRendersPages.", "done": true},
+              {"id": "read", "kind": "tool", "tool": "shell", "input": {"command": "cat README.md main.go build_test.go"}, "output": "README.md describes a static site generator. main.go handles the build and serve commands. build_test.go contains TestBuildRendersPages.", "done": true},
               {"id": "answer", "kind": "text", "text": "## What this project does\n\n**harbor** is a small static site generator. It turns Markdown pages into HTML using Go templates.\n\n| Folder | Purpose |\n| --- | --- |\n| `content/` | Markdown pages and their front matter |\n| `templates/` | Go templates used to render pages |\n| `public/` | Generated output, replaced by each build |\n\n## Main entry point\n\n`main.go` contains `main()`. It dispatches the `build` command to `Site.Build()` in `build.go`, or the `serve` command to a local preview of the generated output.\n\nStart with `main.go` for command handling and `build.go` for page rendering.\n\n## Tests\n\n`build_test.go` contains `TestBuildRendersPages`. It creates a temporary page and template, builds the site, and checks the generated HTML.\n\nThe test command, from the repository root, is:\n\n```sh\ngo test ./...\n```\n\nI only read the files. **No tests were run, no dependencies were installed, and no files were changed.**", "done": true}
             ]
           }]
