@@ -42,6 +42,7 @@ export interface Workbench {
   sidebarTab: SidebarTab;
   collapsedWorkspaces: Record<string, true>;
   collapsedSessions: Record<string, true>;
+  collapsedPullRequestGroups: Record<string, true>;
   sidebarScroll: Record<SidebarTab, number>;
 }
 

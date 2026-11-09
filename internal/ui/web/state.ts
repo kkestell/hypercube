@@ -87,7 +87,7 @@ export const initialState = (selected: string, visible: boolean): State => ({
   workbench: {
     sidebar: true, rightPanel: true, rightTab: 'files', wrap: false, fixedWidth: true,
     sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}, sidebarTab: 'sessions',
-    collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
+    collapsedWorkspaces: {}, collapsedSessions: {}, collapsedPullRequestGroups: {}, sidebarScroll: {sessions: 0, archived: 0},
   },
   session: null,
   editor: null,

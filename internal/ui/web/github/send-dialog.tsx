@@ -1,11 +1,11 @@
-// The session picker for a pull request action: a new session, or an existing
-// one, receives the action's instruction.
+// The session picker for reviewing a pull request: a new session, or an
+// existing one, receives the review instruction.
 import {CommandGroup, CommandInput, CommandItem, CommandList} from '../components/ui/command';
 import type {Session, Workspace} from '../sessions/types.ts';
 import {statusOf} from '../sessions/session-status.tsx';
 import {CommandDialog} from '../shared/command-dialog.tsx';
 import {useStore} from '../store.ts';
-import {actionLabels, instruction, sendInstruction, startInstruction, type PullRequestAction} from './instructions.ts';
+import {reviewInstruction, sendInstruction, startInstruction} from './instructions.ts';
 import type {PullRequest} from './types.ts';
 
 // candidates are the workspace's sessions that have not ended, with those on
@@ -19,14 +19,13 @@ function candidates(workspace: Workspace, pr: PullRequest): Session[] {
 interface SendDialogProps {
   workspace: Workspace;
   pr: PullRequest;
-  action: PullRequestAction;
   onClose: () => void;
 }
 
-export function SendDialog({workspace, pr, action, onClose}: SendDialogProps) {
+export function SendDialog({workspace, pr, onClose}: SendDialogProps) {
   const [state, store] = useStore();
-  const text = instruction(action, pr);
-  const title = `${actionLabels[action]} for #${pr.number}`;
+  const text = reviewInstruction(pr);
+  const title = `Review #${pr.number}`;
   const choose = (send: () => unknown) => { onClose(); send(); };
   return <CommandDialog open onOpenChange={open => { if (!open) onClose(); }} title={title} description="Choose the session that receives the instruction">
     <CommandInput placeholder="Choose a session..." />

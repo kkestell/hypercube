@@ -10,11 +10,11 @@ const view = (accounts: {login: string; pullRequests: []; updated: number}[]) =>
   mount(createStore(testState({selected: null, workspaces: [testWorkspace({id: 'w'})], accounts})), <SessionView />);
 
 test('with nothing selected, the center lists pull requests once an account exists', () => {
-  expect(find(view([{login: 'me', pullRequests: [], updated: 1}]), '[aria-label="Your move across accounts"]')).toBeTruthy();
+  expect(find(view([{login: 'me', pullRequests: [], updated: 1}]), '[aria-label="Pull requests across accounts"]')).toBeTruthy();
 });
 
 test('with nothing selected and no account, the center stays empty', () => {
   const root = view([]);
-  expect(root.querySelector('[aria-label="Your move across accounts"]')).toBeNull();
+  expect(root.querySelector('[aria-label="Pull requests across accounts"]')).toBeNull();
   expect(root.textContent).not.toContain('Checking GitHub.');
 });

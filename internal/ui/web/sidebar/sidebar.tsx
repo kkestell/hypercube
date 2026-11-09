@@ -82,11 +82,13 @@ export function Sidebar({searchOpen, onSearchOpenChange, onSettings}: SidebarPro
 
   const needYou = yourMoves(state.accounts).length;
   const tree = <>
-    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <Button variant="ghost" size="sm" className="mb-1 h-7 w-full justify-start gap-2 px-2 font-normal" aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
-      <Icon name="git-pull-request" className="size-4 text-muted-foreground" />
-      <span className="flex-1 text-left">Pull Requests</span>
-      {needYou > 0 && <span className="text-[11px] text-muted-foreground">{needYou}</span>}
-    </Button>}
+    {view === 'sessions' && workspaces.length > 0 && state.accounts.length > 0 && <div className="sticky top-0 z-10 -mt-1 bg-sidebar pt-1 pb-1">
+      <Button variant="ghost" size="sm" className="h-7 w-full justify-start gap-2 px-2 font-normal" aria-pressed={homeShown(state)} onClick={() => { setRenaming(null); store.update(showHome); }}>
+        <Icon name="git-pull-request" className="size-4 text-muted-foreground" />
+        <span className="flex-1 text-left">Pull Requests</span>
+        {needYou > 0 && <span className="text-[11px] text-muted-foreground">{needYou}</span>}
+      </Button>
+    </div>}
     {workspaces.map(workspace => (
       <WorkspaceSection
         key={workspace.id} workspace={workspace}

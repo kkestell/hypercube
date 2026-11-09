@@ -28,7 +28,7 @@ export const selectSidebarTab = (state: State, sidebarTab: SidebarTab): State =>
 export const scrollSidebar = (state: State, tab: SidebarTab, top: number): State => state.workbench.sidebarScroll[tab] === top
   ? state : {...state, workbench: {...state.workbench, sidebarScroll: {...state.workbench.sidebarScroll, [tab]: top}}};
 
-function expansion(state: State, field: 'collapsedWorkspaces' | 'collapsedSessions', id: string, open: boolean): State {
+function expansion(state: State, field: 'collapsedWorkspaces' | 'collapsedSessions' | 'collapsedPullRequestGroups', id: string, open: boolean): State {
   if (!state.workbench[field][id] === open) return state;
   const collapsed = {...state.workbench[field]};
   if (open) delete collapsed[id];
@@ -38,3 +38,4 @@ function expansion(state: State, field: 'collapsedWorkspaces' | 'collapsedSessio
 
 export const expandWorkspace = (state: State, id: string, open: boolean): State => expansion(state, 'collapsedWorkspaces', id, open);
 export const expandSession = (state: State, id: string, open: boolean): State => expansion(state, 'collapsedSessions', id, open);
+export const expandPullRequestGroup = (state: State, id: string, open: boolean): State => expansion(state, 'collapsedPullRequestGroups', id, open);

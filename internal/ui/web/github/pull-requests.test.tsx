@@ -6,7 +6,7 @@ import {draftOf, unsentKey} from '../agent/drafts.ts';
 import {selectWorkspace} from '../sessions/selection.ts';
 import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {createStore} from '../store.ts';
-import {instruction} from './instructions.ts';
+import {reviewInstruction} from './instructions.ts';
 import type {GitHubStatus, PullRequest} from './types.ts';
 
 afterEach(() => {
@@ -39,9 +39,9 @@ test('rows say why they are the account’s move or a wait, and link GitHub', ()
   expect(link.textContent).toBe('#8 Theirs');
   expect(link.getAttribute('href')).toBe('https://github.com/o/r/pull/8');
   expect(link.getAttribute('target')).toBe('_blank');
-  expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.#7 Add itReady to merge.Merge');
+  expect(list(root, 'Your move').textContent).toBe('#8 TheirsReview requested.From bob.Review#7 Add itReady to merge.');
   expect(list(root, 'Waiting on others').textContent).toBe('#9 MineWaiting for review.');
-  expect(buttons(root).map(b => b.textContent)).toEqual(['Merge']);
+  expect(buttons(root).map(b => b.textContent)).toEqual(['Review']);
 });
 
 test('empty states say what is happening', () => {
@@ -69,35 +69,37 @@ test('an empty list says nothing needs the account', () => {
   expect(find(root, 'section section').textContent).toContain('Nothing needs you.');
 });
 
-test('Fix checks lists new session and live sessions, matching ones first', () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root} = dashboard(github({pullRequests: [failing]}), [
+const requested = () => pr({author: 'bob', requested: 'user'});
+
+test('Review lists new session and live sessions, matching ones first', () => {
+  const review = requested();
+  const {root} = dashboard(github({pullRequests: [review]}), [
     testSession({id: 'a', title: 'Other'}),
     testSession({id: 'b', title: 'Done', ended: true}),
-    testSession({id: 'c', title: 'On it', pullRequest: failing}),
+    testSession({id: 'c', title: 'On it', pullRequest: review}),
   ]);
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
+  clickControl(buttons(root).find(b => b.textContent === 'Review')!);
   const items = findAll(document.body, '[cmdk-item]').map(item => item.textContent);
   expect(items).toEqual(['New Session', 'On it', 'Other']);
 });
 
-test('choosing a session sends the instruction and shows it', async () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
+test('choosing a session sends the review instruction and shows it', async () => {
+  const review = requested();
   const stub = stubFetch(() => new Response(''));
-  const {root, store} = dashboard(github({pullRequests: [failing]}), [testSession({id: 'a', title: 'Other'})]);
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
+  const {root, store} = dashboard(github({pullRequests: [review]}), [testSession({id: 'a', title: 'Other'})]);
+  clickControl(buttons(root).find(b => b.textContent === 'Review')!);
   await act(async () => clickControl(findAll(document.body, '[cmdk-item]').find(item => item.textContent === 'Other')!));
   const request = new URL(stub.mock.calls[0][0], 'http://x/');
   expect(Object.fromEntries(request.searchParams)).toEqual({action: 'input', id: 'a'});
-  expect(JSON.parse(String(stub.mock.calls[0][1]?.body)).text).toBe(instruction('checks', failing));
+  expect(JSON.parse(String(stub.mock.calls[0][1]?.body)).text).toBe(reviewInstruction(review));
   expect(store.get().selected).toBe('a');
 });
 
-test('choosing New Session opens the unsent session with the instruction', async () => {
-  const failing = pr({checks: 'FAILURE', requiredFailed: true});
-  const {root, store} = dashboard(github({pullRequests: [failing]}));
-  clickControl(buttons(root).find(b => b.textContent === 'Fix checks')!);
+test('choosing New Session opens the unsent session with the review instruction', async () => {
+  const review = requested();
+  const {root, store} = dashboard(github({pullRequests: [review]}));
+  clickControl(buttons(root).find(b => b.textContent === 'Review')!);
   await act(async () => clickControl(find(document.body, '[cmdk-item]')));
   expect(store.get().unsent?.workspace).toBe('w');
-  expect(draftOf(store.get(), unsentKey('w')).text).toBe(instruction('checks', failing));
+  expect(draftOf(store.get(), unsentKey('w')).text).toBe(reviewInstruction(review));
 });
