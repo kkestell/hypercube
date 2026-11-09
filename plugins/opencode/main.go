@@ -75,10 +75,6 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	if a.Fork != "" && a.Dir != a.ForkDir {
 		return nil, errors.New("OpenCode forks require the parent's folder, and a fork of a session in its own worktree gets a new worktree; choose fresh context")
 	}
-	command, args, err := plugin.MCPCommand(a)
-	if err != nil {
-		return nil, err
-	}
 	config := map[string]any{}
 	if a.Instructions != "" {
 		file, err := plugin.WriteFile(filepath.Join(a.StateDir, "opencode-instructions"), a.Session+".md", []byte(a.Instructions))
@@ -90,7 +86,7 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 	// This server belongs to this launch, so its MCP environment cannot leak
 	// into another session or change the user's saved OpenCode configuration.
 	config["mcp"] = map[string]any{"servers": map[string]any{"hypercube": map[string]any{
-		"type": "local", "command": append([]string{command}, args...), "environment": a.Env,
+		"type": "local", "command": []string{a.MCP}, "environment": a.Env,
 	}}}
 	encoded, err := json.Marshal(config)
 	if err != nil {

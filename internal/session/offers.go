@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -67,8 +68,7 @@ func (r *Runtime) answerOffer(parentID, id, choice string) (bool, error) {
 		if item.Done {
 			return errors.New("the request is finished")
 		}
-		// Offers saved before Dismiss was added still accept all three answers.
-		if choice != offerNew && choice != offerHere && choice != offerDismiss {
+		if !slices.Contains(item.Choices, choice) {
 			return fmt.Errorf("choose %s, %s, or %s", offerNew, offerHere, offerDismiss)
 		}
 		item.Done, item.Answer = true, choice

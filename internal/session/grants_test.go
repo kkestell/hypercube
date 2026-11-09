@@ -1,6 +1,7 @@
 package session
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -50,11 +51,15 @@ func TestAlwaysAllowInSession(t *testing.T) {
 	// One grant answers every open request for the tool in the session, and
 	// leaves the other session asking.
 	f.until("both requests answered", func() bool { return f.finishedTools(a.ID) == 2 })
-	for _, e := range f.log(a.ID, "answer") {
-		if e.Choice != "Allow" {
-			t.Errorf("answer %+v", e)
+	allowed := func() {
+		t.Helper()
+		for _, e := range f.log(a.ID, "answer") {
+			if !slices.Equal(e.Choices, []string{"Allow"}) {
+				t.Errorf("answer %+v, want the choices [Allow]", e)
+			}
 		}
 	}
+	allowed()
 	if len(f.openApprovals(b.ID)) != 1 || f.answersOf(b.ID) != 0 {
 		t.Fatalf("the other session was answered: %v", f.log(b.ID, "answer"))
 	}
@@ -65,6 +70,7 @@ func TestAlwaysAllowInSession(t *testing.T) {
 	f.input(a.ID, "!approve")
 	f.until("the request answered", func() bool { return f.answersOf(a.ID) == 3 })
 	f.until("the tool finished", func() bool { return f.finishedTools(a.ID) == 3 })
+	allowed()
 	if f.storedSession(a.ID).Attention || len(f.openApprovals(a.ID)) != 0 {
 		t.Fatal("the automatic request asked for attention")
 	}

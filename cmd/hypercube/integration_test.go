@@ -249,8 +249,10 @@ func TestAppProcess(t *testing.T) {
 	if out, err := exec.Command(bridgeBinary, "unknown").CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube-mcp") {
 		t.Fatalf("unknown bridge arguments should print the usage: %v %s", err, out)
 	}
-	if out, err := exec.Command(binary, "unknown").CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
-		t.Fatalf("unknown commands should print the usage: %v %s", err, out)
+	for _, command := range []string{"unknown", "mcp", "hold"} {
+		if out, err := exec.Command(binary, command).CombinedOutput(); err == nil || !strings.Contains(string(out), "usage: hypercube") {
+			t.Fatalf("hypercube %s should print the usage: %v %s", command, err, out)
+		}
 	}
 	version, err := exec.Command(binary, "version").CombinedOutput()
 	if err != nil || !strings.HasPrefix(string(version), "Hypercube v") && strings.TrimSpace(string(version)) != "Hypercube devel" {
@@ -315,18 +317,15 @@ func TestAppProcess(t *testing.T) {
 	if got := w.log(parent.ID, "start")[0].MCP; got != bridgeBinary {
 		t.Fatalf("parent MCP executable = %q, want %q", got, bridgeBinary)
 	}
-	// Both the bridge executable and the legacy command reach the backend.
-	bridge := func(legacy bool, tool string, args map[string]string) *exec.Cmd {
+	// The bridge executable reaches the backend.
+	bridge := func(tool string, args map[string]string) *exec.Cmd {
 		body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": args}})
 		cmd := exec.Command(bridgeBinary)
-		if legacy {
-			cmd = exec.Command(binary, "mcp")
-		}
 		cmd.Env = append(os.Environ(), "HYPERCUBE_SESSION_ID="+parent.ID, "HYPERCUBE_URL="+c.base)
 		cmd.Stdin = bytes.NewReader(append(body, '\n'))
 		return cmd
 	}
-	out, err := bridge(false, "create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "model": "p/m", "effort": "high", "message": "brief"}).CombinedOutput()
+	out, err := bridge("create_session", map[string]string{"initiation": "own_initiative", "name": "w1", "title": "Title", "model": "p/m", "effort": "high", "message": "brief"}).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "Proposed w1") {
 		t.Fatalf("mcp bridge: %v %s", err, out)
 	}
@@ -357,9 +356,9 @@ func TestAppProcess(t *testing.T) {
 	w.until("the child's brief", func() bool {
 		return w.got(child.ID, "brief") && w.session(child.ID).Activity == store.Idle
 	})
-	out, err = bridge(true, "list_sessions", nil).CombinedOutput()
+	out, err = bridge("list_sessions", nil).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), `w1`) {
-		t.Fatalf("legacy mcp command: %v %s", err, out)
+		t.Fatalf("mcp bridge list_sessions: %v %s", err, out)
 	}
 	pids := []int{w.lastPid(parent.ID), w.lastPid(child.ID)}
 

@@ -61,9 +61,7 @@ type Command struct {
 	Images  []Image    `json:"images,omitempty"`
 	// Request is the attention item's ID within this plugin launch, which may
 	// differ from the native request ID when a request asks several questions.
-	Request string `json:"request,omitempty"`
-	// Choice is retained for replaying commands saved by older versions.
-	Choice    string     `json:"choice,omitempty"`
+	Request   string     `json:"request,omitempty"`
 	Choices   []string   `json:"choices,omitempty"`
 	Selection *Selection `json:"selection,omitempty"`
 }
@@ -81,9 +79,6 @@ type StartArgs struct {
 	// MCP is the MCP bridge executable the harness runs, with Env, to give
 	// the agent its Hypercube tools.
 	MCP string `json:"mcp,omitempty"`
-	// Hypercube is set instead of MCP in starts saved by earlier versions:
-	// the backend executable, which the harness ran with the argument mcp.
-	Hypercube string `json:"hypercube,omitempty"`
 	// Env is the environment for the MCP bridge.
 	Env     map[string]string `json:"env"`
 	Session string            `json:"session"`

@@ -27,7 +27,7 @@ func (r *Runtime) granted(l *live, tool string) (bool, error) {
 // allows it once. Only a caller that waits keeps the command's waiter. The
 // caller holds mu.
 func (r *Runtime) recordAllow(tx *write, l *live, item harness.Item, wait bool) (int64, error) {
-	id, err := r.record(tx, l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(item.ID, l.prefix), Choice: item.Choices[0]}, 0, 0, nil)
+	id, err := r.record(tx, l, harness.Command{Command: harness.CmdAnswer, Request: strings.TrimPrefix(item.ID, l.prefix), Choices: []string{item.Choices[0]}}, 0, 0, nil)
 	if !wait {
 		delete(l.waiters, id)
 	}

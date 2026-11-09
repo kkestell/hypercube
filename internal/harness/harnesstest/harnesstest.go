@@ -413,13 +413,11 @@ func approval(turn string, done bool, answer string) harness.Item {
 }
 
 func (p *standIn) answer(cmd harness.Command) {
-	if len(cmd.Choices) > 0 {
-		cmd.Choice = strings.Join(cmd.Choices, ", ")
-	}
-	p.log(Entry{Kind: "answer", Request: cmd.Request, Choice: cmd.Choice, Choices: cmd.Choices, Text: cmd.Text})
+	choice := strings.Join(cmd.Choices, ", ")
+	p.log(Entry{Kind: "answer", Request: cmd.Request, Choice: choice, Choices: cmd.Choices, Text: cmd.Text})
 	if turn, ok := strings.CutPrefix(cmd.Request, "approval-"); ok {
 		p.reply(cmd.ID, "")
-		p.state(harness.Idle, approval(turn, true, cmd.Choice), harness.Item{ID: "tool-" + turn, Kind: harness.KindTool, Tool: "Tool", Output: cmd.Choice, Done: true})
+		p.state(harness.Idle, approval(turn, true, choice), harness.Item{ID: "tool-" + turn, Kind: harness.KindTool, Tool: "Tool", Output: choice, Done: true})
 		return
 	}
 	if cmd.Request != "q" {
@@ -427,7 +425,7 @@ func (p *standIn) answer(cmd harness.Command) {
 		return
 	}
 	p.reply(cmd.ID, "")
-	p.state(harness.Idle, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Done: true, Answer: cmd.Choice + cmd.Text})
+	p.state(harness.Idle, harness.Item{ID: "q", Kind: harness.KindAttention, Text: "Proceed?", Done: true, Answer: choice + cmd.Text})
 }
 
 // configure accepts a selection, or simulates a native refusal or partial change.

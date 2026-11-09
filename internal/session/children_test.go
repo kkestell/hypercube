@@ -161,11 +161,13 @@ func TestForkPlacement(t *testing.T) {
 	if err != nil || shared.Dir != f.root || shared.Branch != "" {
 		t.Fatalf("fork of the original checkout = %+v, %v", shared, err)
 	}
-	if _, err := fork(checkout, "saved", "."); err != nil {
-		t.Fatalf("a saved directory naming the parent's folder: %v", err)
+	for _, dir := range []string{".", t.TempDir()} {
+		if _, err := fork(checkout, "elsewhere", dir); err == nil {
+			t.Fatalf("a fork took the directory %s", dir)
+		}
 	}
-	if _, err := fork(checkout, "elsewhere", t.TempDir()); err == nil {
-		t.Fatal("a fork took another folder")
+	if family := f.family(checkout.ID); len(family) != 2 {
+		t.Fatalf("rejected forks created children: %+v", family)
 	}
 	if _, err := f.rt.CreateChild(checkout.ID, ChildOptions{Name: "other", Title: "Fork", Settings: harness.Settings{Harness: "other", Model: "m"}, Fork: true}); err == nil {
 		t.Fatal("a fork took another harness")

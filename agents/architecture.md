@@ -119,8 +119,7 @@ See [transcripts](../internal/session/transcript.go) and
 `hypercube ui` is the backend: a background process that serves the interface
 and runs the agents, with no window of its own. It runs as a login service or
 in a terminal. It finds its plugins, `hypercube-mcp`, and `hypercube-hold`
-beside its real executable. The `hypercube mcp` and `hypercube hold` commands
-run the same code for processes started by earlier versions.
+beside its real executable.
 
 The Electron app, `Hypercube Desktop`, is a client of the backend. It shows the
 interface in a window, with the menus, notifications, and the count of waiting

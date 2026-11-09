@@ -150,6 +150,9 @@ func (s *server) handle(cmd harness.Command, start Start) (*harness.Selection, e
 		if cmd.Start == nil {
 			return nil, errors.New("start without arguments")
 		}
+		if cmd.Start.MCP == "" {
+			return nil, errors.New("the start names no MCP server")
+		}
 		a, err := start(*cmd.Start, func(ev harness.Event) { s.write(harness.Record{Event: &ev}) })
 		if err != nil {
 			return nil, err
@@ -171,11 +174,7 @@ func (s *server) handle(cmd harness.Command, start Start) (*harness.Selection, e
 	case harness.CmdInterrupt:
 		return nil, s.agent.Interrupt()
 	case harness.CmdAnswer:
-		choices := cmd.Choices
-		if len(choices) == 0 && cmd.Choice != "" {
-			choices = []string{cmd.Choice}
-		}
-		return nil, s.agent.Answer(cmd.Request, choices, cmd.Text)
+		return nil, s.agent.Answer(cmd.Request, cmd.Choices, cmd.Text)
 	}
 	return nil, fmt.Errorf("unknown command %q", cmd.Command)
 }

@@ -150,7 +150,7 @@ func (c *serving) wait() error {
 	return nil
 }
 
-var startArgs = harness.StartArgs{Session: "a1"}
+var startArgs = harness.StartArgs{MCP: "/bin/hc-mcp", Session: "a1"}
 
 func (c *serving) start() {
 	c.t.Helper()
@@ -179,7 +179,8 @@ func TestServeDrivesTheAgent(t *testing.T) {
 	for _, cmd := range []harness.Command{
 		{ID: 5, Command: harness.CmdInput, Text: "hello"},
 		{ID: 6, Command: harness.CmdInterrupt},
-		{ID: 7, Command: harness.CmdAnswer, Request: "r1", Choice: "Yes", Text: "why"},
+		{ID: 7, Command: harness.CmdAnswer, Request: "r1", Choices: []string{"Yes"}, Text: "why"},
+		{ID: 8, Command: harness.CmdAnswer, Request: "r2", Text: "my own answer"},
 	} {
 		if err := c.reply(cmd); err != "" {
 			t.Error(err)
@@ -189,7 +190,7 @@ func TestServeDrivesTheAgent(t *testing.T) {
 	if err := c.wait(); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"input hello", "interrupt", "answer r1 Yes why", "stop"}
+	want := []string{"input hello", "interrupt", "answer r1 Yes why", "answer r2  my own answer", "stop"}
 	if got := s.recorded(); !slices.Equal(got, want) {
 		t.Fatal(got)
 	}
@@ -201,6 +202,9 @@ func TestServeBeforeStart(t *testing.T) {
 		t.Error(err)
 	}
 	if err := c.reply(harness.Command{ID: 3, Command: harness.CmdStart}); err != "start without arguments" {
+		t.Error(err)
+	}
+	if err := c.reply(harness.Command{ID: 4, Command: harness.CmdStart, Start: &harness.StartArgs{Session: "a1"}}); err != "the start names no MCP server" {
 		t.Error(err)
 	}
 }

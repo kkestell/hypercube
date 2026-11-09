@@ -673,20 +673,6 @@ func TestStart(t *testing.T) {
 	}
 }
 
-func TestStartWithLegacyMCPCommand(t *testing.T) {
-	argsFile := fakeClaude(t, nil)
-	a := startArgs
-	a.MCP, a.Hypercube = "", "/bin/hc"
-	start(t, a)
-	data, err := os.ReadFile(argsFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(data), `"args":["mcp"],"command":"/bin/hc"`) {
-		t.Fatal(string(data))
-	}
-}
-
 func TestStartResumes(t *testing.T) {
 	argsFile := fakeClaude(t, nil)
 	a := startArgs

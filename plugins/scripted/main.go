@@ -16,6 +16,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
-	"github.com/kkestell/hypercube/plugins/internal/plugin"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -274,11 +274,10 @@ func childCall(c session, initiation string) map[string]any {
 // session's own Hypercube tools.
 func createSessions(start harness.StartArgs, t turn) error {
 	ctx := context.Background()
-	command, args, err := plugin.MCPCommand(start)
-	if err != nil {
-		return err
+	if start.MCP == "" {
+		return errors.New("the start names no MCP server")
 	}
-	cmd := exec.Command(command, args...)
+	cmd := exec.Command(start.MCP)
 	cmd.Env = os.Environ()
 	for k, v := range start.Env {
 		cmd.Env = append(cmd.Env, k+"="+v)

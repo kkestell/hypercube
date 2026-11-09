@@ -61,6 +61,9 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 		if parent.Conversation == "" {
 			return store.Session{}, store.Session{}, errors.New("the parent has no saved conversation to fork yet")
 		}
+		if dir != "" {
+			return store.Session{}, store.Session{}, errors.New("a fork works where its parent works and takes no directory")
+		}
 	}
 	child := store.Session{ID: store.NewID(), Workspace: parent.Workspace, Parent: parent.ID, Name: name, Title: title,
 		Harness: settings.Harness, Model: settings.Model, Effort: settings.Effort, Activity: store.Exited}
@@ -82,7 +85,7 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	}
 	switch {
 	case options.Fork:
-		child.Dir, child.Branch, err = forkDir(parent, name, dir)
+		child.Dir, child.Branch = forkDir(parent, name)
 	case dir != "":
 		child.Dir, err = workspace.Resolve(parent.Dir, dir)
 	case w.NoGit:
@@ -95,23 +98,10 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 
 // forkDir places a fork as its parent works: a parent in the original
 // checkout shares its folder, uncommitted files included, and a parent in its
-// own worktree gives the fork another worktree from the parent's HEAD. A dir
-// saved with an older proposal must name that same placement.
-func forkDir(parent store.Session, name, dir string) (string, string, error) {
+// own worktree gives the fork another worktree from the parent's HEAD.
+func forkDir(parent store.Session, name string) (string, string) {
 	if parent.Base != "" {
-		if dir != "" {
-			return "", "", errors.New("a fork of a session in its own worktree gets a new worktree; remove the directory and propose it again")
-		}
-		return workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name), nil
+		return workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name)
 	}
-	if dir != "" {
-		resolved, err := workspace.Resolve(parent.Dir, dir)
-		if err != nil {
-			return "", "", err
-		}
-		if resolved != parent.Dir {
-			return "", "", fmt.Errorf("a fork works in its parent's folder %s; remove the directory and propose it again", parent.Dir)
-		}
-	}
-	return parent.Dir, "", nil
+	return parent.Dir, ""
 }
