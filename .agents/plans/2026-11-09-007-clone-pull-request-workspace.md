@@ -184,12 +184,14 @@ Browser (`bun test` in `internal/ui`):
 Commands: `go test -race ./internal/workspace ./internal/github ./internal/ui`,
 `bunx tsc -p .` and `bun test` in `internal/ui`, then `make check`.
 
-Live, on the running `make dev` at port 4281 (do not restart it): with no
-workspace for `kkestell/hypercube-pr-lab`, its rows show Clone; clone it to a
-folder under `/tmp`, confirm the dashboard opens and lists its pull requests,
-`git -C <folder> config --local credential.githubAccount` names the row's
-account, and `remote.origin.url` has no token. Then delete that workspace in the
-app and remove the folder.
+Live, on the running `make dev` at port 4281 (do not restart it): clone an
+untracked private repository through its row in the home view, such as one only
+`kkestell-livefront` can see, into a folder under `/tmp`. Confirm the dashboard
+opens, `git -C <folder> config --local credential.githubAccount` names the
+row's account, and neither `remote.origin.url` nor `<folder>/.git/config`
+contains a token (`grep -E 'gh[opsu]_' <folder>/.git/config` finds nothing).
+Then delete that workspace in the app and remove the folder.
+`kkestell/hypercube-pr-lab` is already a workspace, so its rows show no Clone.
 
 ## Handoff
 
