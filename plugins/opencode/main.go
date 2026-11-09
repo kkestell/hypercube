@@ -83,6 +83,12 @@ func startAgent(a harness.StartArgs, emit func(harness.Event)) (*agent, error) {
 		}
 		config["instructions"] = []string{file}
 	}
+	// Hypercube creates the session's worktrees. OpenCode would neither tell
+	// Hypercube about a worktree its own tool created nor remove it.
+	config["permission"] = map[string]string{
+		"opencode_worktree_create": "deny",
+		"opencode_session_move":    "deny",
+	}
 	// This server belongs to this launch, so its MCP environment cannot leak
 	// into another session or change the user's saved OpenCode configuration.
 	config["mcp"] = map[string]any{"servers": map[string]any{"hypercube": map[string]any{

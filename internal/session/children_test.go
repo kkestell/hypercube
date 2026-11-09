@@ -274,3 +274,22 @@ func TestDeleteRefusesAnActiveChild(t *testing.T) {
 		t.Fatalf("a refusal changed the child: %v", err)
 	}
 }
+
+// A child cannot work in a worktree of the checkout that Hypercube did not
+// create, because Hypercube would neither track nor remove it.
+func TestChildRefusesForeignWorktree(t *testing.T) {
+	f := newFixture(t)
+	parent := f.session()
+	foreign := filepath.Join(t.TempDir(), "foreign")
+	f.git(f.root, "worktree", "add", "-q", "-b", "foreign", foreign, "HEAD")
+	if _, err := f.rt.CreateChild(parent.ID, ChildOptions{Name: "w1", Title: "Title", Dir: foreign}); err == nil || !strings.Contains(err.Error(), "Hypercube does not manage") {
+		t.Fatalf("child in a foreign worktree: %v", err)
+	}
+	f.read(func(tx *store.Tx) error {
+		children, err := tx.Children(parent.ID)
+		if err == nil && len(children) != 0 {
+			t.Errorf("children = %+v", children)
+		}
+		return err
+	})
+}

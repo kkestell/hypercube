@@ -144,7 +144,7 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 					options.Settings = harness.Settings{Harness: "missing", Model: "m"}
 				}
 				if outcome == "setup-failure" {
-					dir := workspace.WorktreeDir(parent.Dir, parent.ID, options.Name)
+					dir := workspace.WorktreeDir(f.root, parent.ID, options.Name)
 					if err := os.MkdirAll(dir, 0o755); err != nil {
 						t.Fatal(err)
 					}
@@ -229,7 +229,12 @@ func TestFamilyRemovalWaitsForAdmittedChildCreation(t *testing.T) {
 				}
 				f.rt.mu.Unlock()
 				for _, member := range []store.Session{parent, child} {
-					if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
+					if member.ID == child.ID && outcome == "setup-failure" {
+						// The occupied directory was never the child's worktree.
+						if _, err := os.Stat(filepath.Join(member.Dir, "occupied")); err != nil {
+							t.Errorf("the occupying directory was removed: %v", err)
+						}
+					} else if _, err := os.Stat(member.Dir); !errors.Is(err, os.ErrNotExist) {
 						t.Errorf("worktree %s survived: %v", member.Dir, err)
 					}
 					out, err := exec.Command("git", "-C", f.root, "branch", "--list", member.Branch).CombinedOutput()

@@ -168,6 +168,42 @@ func Root(dir string) (string, error) {
 	return "", ErrNotGit
 }
 
+// CheckChildDir refuses a dir in a worktree of the workspace's repository
+// other than the workspace's checkout and the worktrees in the workspace's
+// .hypercube directory. Hypercube neither tracks nor removes such a worktree.
+// Directories outside Git and in other repositories pass.
+func CheckChildDir(workspace, dir string) error {
+	top, err := Root(dir)
+	if errors.Is(err, ErrNotGit) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	common, err := git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	own, err := git(workspace, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return err
+	}
+	checkout, err := Root(workspace)
+	if err != nil {
+		return err
+	}
+	// Git reports physical paths.
+	physical, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		return err
+	}
+	managed := filepath.Join(physical, ".hypercube") + string(filepath.Separator)
+	if common != own || top == checkout || strings.HasPrefix(top, managed) {
+		return nil
+	}
+	return fmt.Errorf("%s is a Git worktree that Hypercube does not manage; omit dir to give the child its own worktree", top)
+}
+
 // Branch returns the branch checked out in dir.
 func Branch(dir string) (string, error) {
 	return git(dir, "branch", "--show-current")
@@ -185,9 +221,11 @@ func SessionBranch(id string) string {
 	return "hypercube/session-" + id
 }
 
-// SessionDir is where a top-level worktree session's worktree lives.
+// SessionDir is where a top-level worktree session's worktree lives. Like its
+// branch, it differs from the .hypercube/<id>/ directory that holds the
+// session's children's worktrees, so no worktree contains another.
 func SessionDir(root, id string) string {
-	return filepath.Join(root, ".hypercube", id)
+	return filepath.Join(root, ".hypercube", "session-"+id)
 }
 
 // ChildBranch names a child session's branch.
@@ -195,8 +233,10 @@ func ChildBranch(parent, name string) string {
 	return "hypercube/" + parent + "/" + name
 }
 
-// WorktreeDir is where a child session's worktree lives. Worktrees sit inside the
-// checkout so that harnesses extend the checkout's folder trust to them.
+// WorktreeDir is where a child session's worktree lives. root is the
+// workspace's checkout, also for a parent in its own worktree. Worktrees sit
+// inside the checkout so that harnesses extend the checkout's folder trust to
+// them.
 func WorktreeDir(root, parent, name string) string {
 	return filepath.Join(root, ".hypercube", parent, name)
 }
@@ -418,19 +458,33 @@ func RemoveWorktree(root, dir, branch string) error {
 	if _, err := git(root, "worktree", "prune"); err != nil {
 		return err
 	}
-	base := filepath.Join(root, ".hypercube")
-	for parent := filepath.Dir(dir); parent == base || strings.HasPrefix(parent, base+string(filepath.Separator)); parent = filepath.Dir(parent) {
-		if err := os.Remove(parent); errors.Is(err, syscall.ENOTEMPTY) {
-			break
-		} else if err != nil && !os.IsNotExist(err) {
-			return err
-		}
+	if err := removeEmptyParents(dir); err != nil {
+		return err
 	}
 	if !exists(root, branch) {
 		return nil
 	}
 	_, err := git(root, "branch", "-D", branch)
 	return err
+}
+
+// removeEmptyParents removes the directories between the worktree dir and its
+// .hypercube directory, and that directory too, while they are empty.
+func removeEmptyParents(dir string) error {
+	sep := string(filepath.Separator)
+	i := strings.LastIndex(dir, sep+".hypercube"+sep)
+	if i < 0 {
+		return nil
+	}
+	base := dir[:i+len(sep+".hypercube")]
+	for parent := filepath.Dir(dir); len(parent) >= len(base); parent = filepath.Dir(parent) {
+		if err := os.Remove(parent); errors.Is(err, syscall.ENOTEMPTY) {
+			return nil
+		} else if err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // exists reports whether the branch exists.

@@ -67,7 +67,19 @@ func TestNativeSteering(t *testing.T) {
 				} `json:"function"`
 			} `json:"tools"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Error(err)
+			w.WriteHeader(400)
+			return
+		}
+		// Hypercube denies OpenCode's own worktree tools.
+		for _, denied := range []string{"tools.opencode.worktree_create(", "tools.opencode.session_move("} {
+			if strings.Contains(string(raw), denied) {
+				t.Errorf("OpenCode offered %s", denied)
+			}
+		}
+		if err := json.Unmarshal(raw, &body); err != nil {
 			t.Error(err)
 			w.WriteHeader(400)
 			return

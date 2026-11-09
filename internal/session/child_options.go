@@ -85,13 +85,15 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	}
 	switch {
 	case options.Fork:
-		child.Dir, child.Branch = forkDir(parent, name)
+		child.Dir, child.Branch = forkDir(w.Path, parent, name)
 	case dir != "":
-		child.Dir, err = workspace.Resolve(parent.Dir, dir)
+		if child.Dir, err = workspace.Resolve(parent.Dir, dir); err == nil && !w.NoGit {
+			err = workspace.CheckChildDir(w.Path, child.Dir)
+		}
 	case w.NoGit:
 		err = errors.New("dir is required: this workspace is not a Git checkout, so child sessions cannot have worktrees")
 	default:
-		child.Dir, child.Branch = workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name)
+		child.Dir, child.Branch = workspace.WorktreeDir(w.Path, parent.ID, name), workspace.ChildBranch(parent.ID, name)
 	}
 	return parent, child, err
 }
@@ -99,9 +101,9 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 // forkDir places a fork as its parent works: a parent in the original
 // checkout shares its folder, uncommitted files included, and a parent in its
 // own worktree gives the fork another worktree from the parent's HEAD.
-func forkDir(parent store.Session, name string) (string, string) {
+func forkDir(checkout string, parent store.Session, name string) (string, string) {
 	if parent.Base != "" {
-		return workspace.WorktreeDir(parent.Dir, parent.ID, name), workspace.ChildBranch(parent.ID, name)
+		return workspace.WorktreeDir(checkout, parent.ID, name), workspace.ChildBranch(parent.ID, name)
 	}
 	return parent.Dir, ""
 }

@@ -457,7 +457,8 @@ func TestMergeStatusFailureStaysWithItsSession(t *testing.T) {
 	})
 }
 
-// A worktree session's child branches from the session's worktree, and both
+// A worktree session's child branches from the session's worktree and sits beside
+// it in the checkout's .hypercube directory, and both
 // worktrees go once their work is merged.
 func TestWorktreeSessionChild(t *testing.T) {
 	f := newFixture(t)
@@ -468,7 +469,7 @@ func TestWorktreeSessionChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	child := f.child(s, "w1", "")
-	if want := workspace.WorktreeDir(s.Dir, s.ID, "w1"); child.Dir != want {
+	if want := workspace.WorktreeDir(f.root, s.ID, "w1"); child.Dir != want {
 		t.Fatalf("child dir = %s, want %s", child.Dir, want)
 	}
 	if got, err := workspace.Head(child.Dir); err != nil || got != head {
@@ -480,7 +481,7 @@ func TestWorktreeSessionChild(t *testing.T) {
 	if err := f.rt.Delete(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	for _, dir := range []string{child.Dir, s.Dir} {
+	for _, dir := range []string{child.Dir, s.Dir, filepath.Join(f.root, ".hypercube")} {
 		if _, err := os.Stat(dir); !os.IsNotExist(err) {
 			t.Errorf("%s remains: %v", dir, err)
 		}

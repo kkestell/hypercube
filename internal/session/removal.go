@@ -248,7 +248,8 @@ type managedWorktree struct {
 	session store.Session
 }
 
-// familyWorktrees orders children before the worktree that contains them.
+// familyWorktrees orders children before the worktree whose branch they merge
+// into.
 func familyWorktrees(root string, s store.Session, children []store.Session) []managedWorktree {
 	childRoot := s.Dir
 	if _, err := os.Stat(s.Dir); errors.Is(err, os.ErrNotExist) {

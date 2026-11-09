@@ -180,6 +180,40 @@ func TestWorktreeRemoval(t *testing.T) {
 }
 
 // write creates a file and the directories above it.
+// A child may work in the checkout, a Hypercube worktree, or another folder,
+// but not in a worktree of the same repository that Hypercube did not create.
+func TestCheckChildDir(t *testing.T) {
+	root, run := gitRepo(t)
+	managed := WorktreeDir(root, "parent", "w1")
+	if err := AddWorktree(root, managed, ChildBranch("parent", "w1")); err != nil {
+		t.Fatal(err)
+	}
+	foreign := filepath.Join(t.TempDir(), "foreign")
+	run(root, "worktree", "add", "-q", "-b", "foreign", foreign, "HEAD")
+	other, _ := gitRepo(t)
+	write(t, filepath.Join(root, "sub", "file"), "")
+	write(t, filepath.Join(foreign, "sub", "file"), "")
+	for _, dir := range []string{root, filepath.Join(root, "sub"), managed, other, t.TempDir()} {
+		if err := CheckChildDir(root, dir); err != nil {
+			t.Errorf("CheckChildDir(%s) = %v", dir, err)
+		}
+	}
+	for _, dir := range []string{foreign, filepath.Join(foreign, "sub")} {
+		if err := CheckChildDir(root, dir); err == nil || !strings.Contains(err.Error(), "Hypercube does not manage") {
+			t.Errorf("CheckChildDir(%s) = %v, want a refusal", dir, err)
+		}
+	}
+	// A workspace in a subfolder of its checkout keeps its worktrees there.
+	sub := filepath.Join(root, "sub")
+	nested := WorktreeDir(sub, "parent", "w2")
+	if err := AddWorktree(sub, nested, ChildBranch("parent", "w2")); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckChildDir(sub, nested); err != nil {
+		t.Errorf("CheckChildDir(%s) = %v", nested, err)
+	}
+}
+
 func write(t *testing.T, path, data string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
