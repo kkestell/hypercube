@@ -51,5 +51,6 @@
       ]
     }
   ],
-  "select": [0, 1]
+  "select": [0, 1],
+  "workbench": {"rightPanel": false}
 }

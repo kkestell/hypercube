@@ -63,8 +63,10 @@ Each scene declares:
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
   to expand in a saved turn. `select` chooses the session; `size` sets window
   dimensions in points.
-- `workbench.rightTab` chooses Files or Git (`files` or `git`);
-  `comparison: "branch"` selects Git's Committed view for a worktree.
+- `workbench.rightPanel: false` hides the right panel; `workbench.rightTab`
+  chooses Files or Git (`files` or `git`); `comparison: "branch"` selects Git's
+  Committed view for a worktree. The driver sizes the editor panes so the
+  conversation takes one third of the width beside the sidebar and right panel.
 
 ### Capture requirements
 
@@ -79,7 +81,8 @@ Open every generated image and check theme, content, toolbar layout, and native
 window buttons.
 Use the app's default panel sizes. Keep toolbars fully visible and session
 labels readable. Use several sessions across workspaces, a
-transcript filling its column, and the Files panel open. Commit new captures
+transcript filling its column, and the right panel open only where the
+screenshot shows the file tree or Git changes. Commit new captures
 with their scene changes.
 
 ## Website
