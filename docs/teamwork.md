@@ -69,9 +69,9 @@ saved discussion. A fork uses the same harness, and its directory choices
 are constrained by that harness; see [fork behavior](introduction.md#fresh-and-forked-context).
 
 Unless you request different settings, a child inherits the parent's harness,
-model, and effort. To set a standing preference, open **Settings**, edit the
-child-model guidance, and choose **Save changes**. Guidance is an instruction
-to agents, not a restriction on the models agents can choose.
+model, and effort. To set a standing preference, edit the guidance in
+**Settings › Agents › Child sessions** and choose **Save changes**. Guidance is
+an instruction to agents, not a restriction on the models agents can choose.
 
 ## Follow progress and receive results
 

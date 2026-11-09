@@ -73,7 +73,7 @@ are hidden until **Show Ended Sessions** is chosen in its menu.
 - Alerts that arrive while the app is closed are not replayed later. The badge
   and interface show current requests when it opens.
 
-**Settings → Notifications** controls request alerts, reply alerts, desktop
+**Settings › Notifications** controls request alerts, reply alerts, desktop
 delivery, and sound. See [configuration fields](configuration.md#notifications).
 
 ## Usage indicators

@@ -96,9 +96,10 @@ to resize panes and panels. Toolbar buttons toggle the sidebar, terminal, and
 right panel. Each session remembers its tabs, splits, and scroll positions.
 
 Use **View → Zoom In**, **Zoom Out**, or **Actual Size** in the desktop app
-to change the page size. Open **Settings** to change theme or terminal text
-size. [Keyboard Shortcuts](interface.md#keyboard-shortcuts) lists navigation
-and panel commands.
+to change the page size. Use **Settings › General › Appearance** to change
+theme or terminal text size.
+[Keyboard Shortcuts](interface.md#keyboard-shortcuts) lists navigation and
+panel commands.
 
 ## Use a shell beside the conversation
 

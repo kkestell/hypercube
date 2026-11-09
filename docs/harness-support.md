@@ -59,7 +59,8 @@ depends on the harness:
 - Extension dialogs appear as choices, Yes/No, or a text field.
 - A timed-out dialog closes; extension errors appear in chat.
 
-Saved choices can be reviewed and removed in **Settings**.
+Saved choices can be reviewed and removed in **Settings › Permissions ›
+Always Allowed Tools**.
 
 ## Questions
 

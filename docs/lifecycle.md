@@ -43,7 +43,8 @@ retries it.
 **Restart Agent** replaces a session's agent process and loads its installed
 plugin, keeping the saved conversation. It interrupts any current turn.
 
-**Archive** finishes a family's active use while preserving readable chats.
+**Archive Session** finishes a family's active use while preserving readable
+chats.
 **End child** permanently ends that child. These actions can also remove
 managed worktrees, so commit and merge work first. **Unarchive** makes an
 archived session usable again. If it had a managed worktree, that worktree is
