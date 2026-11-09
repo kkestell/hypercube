@@ -12,9 +12,9 @@
 - Branch: `hypercube/2f4c7990/compat-impl`; clean tree at
   `bc0f339b5e96e1a8508b70be55560e73a80916e3` (004 review Round 2) before edits.
 - Fixed Code base: `bc0f339b5e96e1a8508b70be55560e73a80916e3`.
-- Code head: `f7eea26203070ea9f7570ef22e9f06928ff1b05d`.
-- Implementation commits: `f7eea26203070ea9f7570ef22e9f06928ff1b05d`
-  (`X-Stage: work`). Verified tree `0d708e9a3f04976976cfd5e719270536fae8e3ef`
+- Code head: `0d708e9a3f04976976cfd5e719270536fae8e3ef`.
+- Implementation commits: `0d708e9a3f04976976cfd5e719270536fae8e3ef`
+  (`X-Stage: work`). Verified tree `f7eea26203070ea9f7570ef22e9f06928ff1b05d`
   was written before the commit and is the committed tree.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
@@ -91,7 +91,7 @@ None from the plan's decisions. Notes:
 ## Verification
 
 Run in this checkout on macOS/arm64, Go `go1.27.3 darwin/arm64`, Bun `1.4.2`,
-against tree `0d708e9a3f04976976cfd5e719270536fae8e3ef` (Code head).
+against tree `f7eea26203070ea9f7570ef22e9f06928ff1b05d` (Code head).
 
 | Command / inspection | Result |
 | --- | --- |
