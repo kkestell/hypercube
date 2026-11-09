@@ -1,0 +1,21 @@
+{
+  "size": {"width": 1440, "height": 900},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [{
+            "prompt": "Summarize how harbor renders a page",
+            "end": "idle",
+            "items": [{"id": "answer", "kind": "text", "text": "`Site.Build()` parses the templates, renders each Markdown page in `content/` through them, and writes the HTML to `public/`. I only read files; nothing changed.", "done": true}]
+          }]
+        }
+      ]
+    }
+  ],
+  "select": [0, 0],
+  "openModelPicker": true
+}

@@ -58,6 +58,7 @@ Each scene declares:
 - Turn prompts, transcript items in plugin-protocol JSON, and ending state
   (`idle`, `working`, or `ask`).
 - Children, task offers, and agent-initiated suggestions.
+- `openModelPicker: true` opens the composer's model picker before capture.
 - Optional fixture-file writes and Git steps; `worktree` gives a top-level
   session its own branch.
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs

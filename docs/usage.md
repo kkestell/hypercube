@@ -42,7 +42,14 @@ continue or reverse work.
 ## Change the model or effort
 
 Use the selector below the message box to choose a model and adjust its effort
-with the slider. Models come from **Settings › Agents › Models**. A session
+with the slider. Models come from **Settings › Agents › Models**.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/model-picker-dark.png">
+  <img alt="The model picker open above the message box, listing three Claude models with the effort slider below" src="images/model-picker-light.png">
+</picture>
+
+The picker lists the models for the session's harness. A session
 keeps its original harness, but its model and effort can change, including
 during work. The selection
 survives agent restarts. A child with different settings from its parent is

@@ -341,6 +341,10 @@ async function capture(scene, ids, backend, window, name) {
       await contents.executeJavaScript(`[...document.querySelectorAll('[role="tab"]')].find(tab => tab.textContent === 'Committed').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0}))`);
       await pageCondition(contents, `document.querySelector('.git-panel')?.textContent.match(/ ahead of |Compared with/)`);
     }
+    if (scene.openModelPicker) {
+      await contents.executeJavaScript(`document.querySelector('button[aria-label^="Model:"]').click()`);
+      await pageCondition(contents, `document.querySelector('[data-slot=popover-content] [role=option]')`);
+    }
     await until(() => nativeTheme.themeSource === theme && tabs.every(tab => requests.completed.includes(tab)) && requests.inflight.size === 0);
     await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     // File and diff highlighters run in workers after their text loads. Network
