@@ -6,8 +6,8 @@
 - Author: xwork child session `work-global-prs` (parent 04ef1b14), Claude Code, claude-sonnet-5-5
 - Status: implemented
 - Code base: 1dd840307885152d1716294456dab2f5b8f5557f
-- Code head: ab9673b1cddc3cd9782c08b92503382fae031e8c
-- Implementation commits: ab9673b1cddc3cd9782c08b92503382fae031e8c
+- Code head: 05df169b635b51c2087968785dd42e2c01cb34c4
+- Implementation commits: ab9673b1cddc3cd9782c08b92503382fae031e8c, 05df169b635b51c2087968785dd42e2c01cb34c4
 
 ## What changed
 
@@ -42,3 +42,20 @@
 | Stage | Session | Harness | Native conversation ID | Model |
 | --- | --- | --- | --- | --- |
 | work | `work-global-prs` (child of 04ef1b14) | Claude Code | unavailable (not exposed to the session) | claude-sonnet-5-5 |
+
+## Repair 1 (review `.agents/reviews/work/2026-11-09-006-global-pull-requests.md`, round 1)
+
+Code base unchanged: 1dd840307885152d1716294456dab2f5b8f5557f. Fix commit and new Code head: 05df169b635b51c2087968785dd42e2c01cb34c4 (stage `fix`).
+
+Findings addressed:
+1. `TestPendingChoiceDoesNotFetchOrQuery` started two Run loops; it now sets the stand-in's pull requests, then calls `s.run()` once.
+2. `SessionView` shows the home view only when workspaces and `state.accounts` both exist; new `sessions/session-view.test.tsx` covers the home view with an account and the empty center without one.
+3. `sentence`, `time` and the failure sentence moved to `failureText` in `github/wording.ts`, used by `github-header.tsx` and `all-pull-requests.tsx`.
+4. The account's error is appended to `problems` before `measure` when the workspace's own token read succeeded; the `slices.DeleteFunc` merge is gone.
+
+Verification at the new Code head (macOS, run):
+- `go test -race -count=20 -run TestPendingChoiceDoesNotFetchOrQuery ./internal/github`: ok.
+- `go test -race ./internal/github ./internal/ui`: ok.
+- `bunx tsc -p .` in `internal/ui`: no errors.
+- `bun test` in `internal/ui`: 442 pass, 0 fail.
+- `make check`: exit 0.
