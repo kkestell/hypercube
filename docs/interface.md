@@ -135,3 +135,22 @@ shell keeps the account it started with until it restarts.
 
 About once a minute, Hypercube fetches each GitHub workspace's tracked remote
 and reads its open pull requests, using the workspace's account.
+
+A GitHub workspace's dashboard shows, under its name, a link to the repository,
+the account in use, and whether the checked-out branch is ahead of or behind its
+upstream branch. When several accounts can push, or none can, the dashboard shows
+a chooser for the account instead; the choice applies to agents and panel shells
+started afterward. When an update fails, the dashboard says why and shows the
+time of the data it still has.
+
+A session whose branch has an open pull request shows a pull request icon at the
+right edge of its row. Hover over the icon for the pull request's number, title,
+review, and checks.
+
+| Icon | Pull request |
+| --- | --- |
+| Draft pull request, gray | A draft |
+| Pull request, red | Its checks are failing |
+| Pull request, amber | Changes were requested |
+| Pull request, green | Approved, and its checks passed or it has none |
+| Pull request, gray | Any other open pull request |

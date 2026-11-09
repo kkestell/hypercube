@@ -1,6 +1,6 @@
 // Lucide icons shared by the application actions.
 import {ArrowDown, ArrowLeft, ArrowLeftRight, ArrowRight, ArrowUp, Check, ChevronDown, ChevronRight, CircleAlert,
-  Clock, Copy, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequestArrow,
+  Clock, Copy, Eye, EyeOff, FileCode, Files, FolderPlus, GitBranch, GitCompare, GitMerge, GitPullRequest, GitPullRequestArrow, GitPullRequestDraft,
   Globe, Info, Laptop, MessageSquare, Paperclip, MoreHorizontal, PanelBottom, PanelLeft, PanelRight,
   Archive, Code, FoldHorizontal, FolderOpen, Pencil, Play, Plus, SquareTerminal, Trash2, RefreshCw, Search, Send, Settings, Square, SquareArrowOutUpRight, TriangleAlert, WrapText, X, type LucideProps} from 'lucide-react';
 
@@ -8,7 +8,7 @@ const icons = {
   'arrow-down': ArrowDown, 'arrow-left': ArrowLeft, 'arrow-right': ArrowRight, 'arrow-up': ArrowUp,
   wrap: WrapText, 'fold-horizontal': FoldHorizontal, check: Check, 'chevron-down': ChevronDown, 'chevron-right': ChevronRight, close: X, copy: Copy,
   error: CircleAlert, warning: TriangleAlert, info: Info, history: Clock,
-  eye: Eye, 'eye-off': EyeOff, files: Files, 'source-control': GitCompare, 'git-branch': GitBranch, 'git-merge': GitMerge, 'git-pull-request-arrow': GitPullRequestArrow, globe: Globe, laptop: Laptop,
+  eye: Eye, 'eye-off': EyeOff, files: Files, 'source-control': GitCompare, 'git-branch': GitBranch, 'git-merge': GitMerge, 'git-pull-request': GitPullRequest, 'git-pull-request-arrow': GitPullRequestArrow, 'git-pull-request-draft': GitPullRequestDraft, globe: Globe, laptop: Laptop,
   'comment-discussion': MessageSquare, 'new-folder': FolderPlus, add: Plus, attach: Paperclip, ellipsis: MoreHorizontal,
   search: Search, settings: Settings, send: Send, stop: Square, refresh: RefreshCw, 'link-external': SquareArrowOutUpRight,
   'layout-sidebar-left': PanelLeft, 'layout-sidebar-right': PanelRight, 'layout-panel': PanelBottom,

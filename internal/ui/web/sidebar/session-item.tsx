@@ -1,12 +1,14 @@
 // A session's tree row. A parent shows a chevron after its title on hover or
 // keyboard focus. Before the title, a fixed slot shows the session's state as a
-// dot, hollow for a child. The row's right edge shows the worktree branch icon.
+// dot, hollow for a child. The row's right edge shows the open pull request icon
+// and the worktree branch icon.
 // A click chooses the session; a click on a parent's chevron, or a double-click
 // on the parent, collapses or expands its children.
 import {useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode} from 'react';
 import {chooseSession, renameSession} from '../sessions/session-actions.ts';
 import {shownId} from '../sessions/selection.ts';
 import type {Session} from '../sessions/types.ts';
+import {PullRequestIcon} from '../github/pull-request-icon.tsx';
 import {BranchIcon} from '../shared/branch-icon.tsx';
 import {statusOf} from '../sessions/session-status.tsx';
 import {useStore} from '../store.ts';
@@ -50,11 +52,12 @@ export function SessionItem({session, level, position, siblings, hasChildren, ex
     >
       {level === 2 && <Branch position={position} siblings={siblings} />}
       <span className={`session-item-status inline-flex size-4 shrink-0 items-center justify-center ${dim}`}>{status}</span>
-      <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree ? '' : `${toEdge} ${hasChildren ? chevronInset : ''}`}`}>
+      <span className={`flex min-w-0 flex-1 items-center ${dim} ${session.worktree || session.pullRequest ? '' : `${toEdge} ${hasChildren ? chevronInset : ''}`}`}>
         {session.id === renaming
           ? <RenameField session={session} onDone={() => onRenaming(null)} />
           : <Title title={session.title} small={level === 2} chevron={hasChildren ? <Chevron open={expanded} /> : null} onToggle={toggle} />}
       </span>
+      {session.id !== renaming && session.pullRequest && <PullRequestIcon pr={session.pullRequest} className={`session-item-pull-request shrink-0 ${dim}`} />}
       {session.id !== renaming && session.worktree && <BranchIcon className={`session-item-branch shrink-0 ${dim}`} merge={session.merge} />}
     </div></Button>
   );

@@ -2,15 +2,17 @@
 // sessions: the unsent one and the attached one.
 import type {EditorViewState} from '../editor/types.ts';
 import type {Settings} from '../agent/types.ts';
+import type {GitHubStatus, PullRequest} from '../github/types.ts';
 import type {Transcript} from '../transcript/types.ts';
 
 // Workspace is a folder that holds sessions, newest first. noGit marks a
-// folder that is not a Git checkout.
+// folder that is not a Git checkout. github is set for a workspace on GitHub.
 export interface Workspace {
   id: string;
   path: string;
   name: string;
   noGit: boolean;
+  github?: GitHubStatus;
   sessions: Session[];
 }
 
@@ -60,6 +62,7 @@ export interface Session {
   usage: Usage;
   worktree: boolean;
   merge?: Merge;
+  pullRequest?: PullRequest;
   children: Session[];
 }
 
