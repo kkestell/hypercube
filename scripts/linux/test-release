@@ -66,9 +66,6 @@ tar -xzf "$tmp/src/bin/release/$archive" -C "$tmp/download"
 for f in "${plugins[@]/#/hypercube-harness-}"; do
 	[ -x "$HOME/.local/bin/$f" ] || fail "$HOME/.local/bin/$f is missing"
 done
-for f in "$app/hypercube-harness-codex" "$HOME/.local/bin/hypercube-harness-codex"; do
-	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f is included after Codex support was removed"
-done
 
 for f in hypercube-mcp hypercube-hold; do
 	[ -x "$app/$f" ] || fail "$app/$f is not executable"

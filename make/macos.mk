@@ -68,7 +68,6 @@ bin/trayTemplate@2x.png: desktop/menubar.svg
 
 build: bundle
 	ln -sf Hypercube.app/Contents/MacOS/hypercube bin/hypercube
-	rm -f bin/hypercube-harness-codex
 	for p in $(PLUGINS); do ln -sf Hypercube.app/Contents/MacOS/hypercube-harness-$$p bin/hypercube-harness-$$p; done
 
 # install puts the bundle in APPDIR and links hypercube and the plugins into
@@ -81,15 +80,12 @@ place:
 	cp -R $(APP) "$(APPDIR)/Hypercube.app"
 	$(LSREGISTER) -f "$(APPDIR)/Hypercube.app"
 	ln -sf "$(APPDIR)/Hypercube.app/Contents/MacOS/hypercube" "$(BINDIR)/hypercube"
-	@if [ "$$(readlink "$(BINDIR)/hypercube-harness-codex" 2>/dev/null)" = "$(APPDIR)/Hypercube.app/Contents/MacOS/hypercube-harness-codex" ]; then rm -f "$(BINDIR)/hypercube-harness-codex"; fi
 	for p in $(PLUGINS); do ln -sf "$(APPDIR)/Hypercube.app/Contents/MacOS/hypercube-harness-$$p" "$(BINDIR)/hypercube-harness-$$p"; done
 
 # quit-desktop quits the installed desktop app when it is running. The backend
-# and its agents keep running. An app with this ID running another executable
-# is an earlier build's backend, whose quit ends its agents; install-service
-# stops it with SIGTERM instead.
+# and its agents keep running.
 quit-desktop:
-	@if lsappinfo info -only executablepath -app $(APP_ID) | grep -q '/$(DESKTOP_EXE)"$$'; then \
+	@if [ -n "$$(lsappinfo find bundleid=$(APP_ID))" ]; then \
 		osascript -e 'tell application id "$(APP_ID)" to quit'; \
 	fi
 

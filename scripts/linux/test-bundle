@@ -44,9 +44,6 @@ for f in bin/hypercube "${plugins[@]/#/bin/hypercube-harness-}"; do
 	[ "$(realpath "$f")" = "$(realpath "$app")/$(basename "$f")" ] ||
 		fail "$f does not resolve into $app"
 done
-for f in "$app/hypercube-harness-codex" bin/hypercube-harness-codex; do
-	[ ! -e "$f" ] && [ ! -L "$f" ] || fail "$f remains after Codex support was removed"
-done
 
 # Executables.
 "$app/hypercube" version | grep -q '^Hypercube ' || fail "hypercube version printed no identity"
@@ -79,9 +76,8 @@ until curl -fsS "http://127.0.0.1:$port/version" >/dev/null 2>&1; do
 	sleep 0.2
 done
 harnesses=$(curl -fsS "http://127.0.0.1:$port/harnesses")
-for p in "${plugins[@]}"; do
-	grep -q "\"id\":\"$p\"" <<<"$harnesses" || fail "the backend did not find the $p plugin: $harnesses"
-done
-grep -q '"id":"codex"' <<<"$harnesses" && fail "the backend found a retired codex plugin: $harnesses"
+found=$(grep -o '"id":"[^"]*"' <<<"$harnesses" | sort | tr '\n' ' ')
+want=$(printf '"id":"%s"\n' "${plugins[@]}" | sort | tr '\n' ' ')
+[ "$found" = "$want" ] || fail "the backend did not find exactly the bundle's plugins: $harnesses"
 
 echo "test-bundle: passed"

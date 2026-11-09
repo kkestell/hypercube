@@ -123,16 +123,18 @@ post "$url/session?action=input&id=$session" -d '{"text":"second"}'
 wait_for "the second turn" test -f "$repo/second.txt"
 
 # zsh: reinstalling over the running service replaces the files and the shell.
-# A link to the retired Codex plugin, left by an earlier install, no longer
-# resolves after the bundle is replaced.
-ln -s "$app/hypercube-harness-codex" "$HOME/.local/bin/hypercube-harness-codex"
+# A custom bundle's extra plugin is gone from the stock bundle, so its link,
+# which no longer resolves, is removed.
+cp "$app/hypercube-harness-pi" "$app/hypercube-harness-extra"
+ln -s "$app/hypercube-harness-extra" "$HOME/.local/bin/hypercube-harness-extra"
+[ -x "$HOME/.local/bin/hypercube-harness-extra" ] || fail "the extra plugin link does not resolve"
 pid=$(main_pid)
 SHELL=/bin/zsh make install-service
 wait_for "a new backend" new_backend "$pid"
 env_has "$(main_pid)" HYPERCUBE_TEST_SHELL=zsh || fail "the backend does not have the zsh login environment"
 alive "$holder" || fail "the holder did not survive the reinstall"
-[ ! -e "$HOME/.local/bin/hypercube-harness-codex" ] && [ ! -L "$HOME/.local/bin/hypercube-harness-codex" ] ||
-	fail "the reinstall kept the retired Codex link"
+[ ! -e "$HOME/.local/bin/hypercube-harness-extra" ] && [ ! -L "$HOME/.local/bin/hypercube-harness-extra" ] ||
+	fail "the reinstall kept the extra plugin's link"
 
 # fish: the service's start command works in fish too.
 pid=$(main_pid)

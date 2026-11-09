@@ -24,7 +24,6 @@ endif
 # binaries builds hypercube, its MCP bridge and holder, and the harness
 # plugins side by side in $(OUT).
 binaries:
-	rm -f $(OUT)/hypercube-harness-codex
 	for c in hypercube hypercube-mcp hypercube-hold; do go build -o $(OUT)/$$c ./cmd/$$c || exit 1; done
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
