@@ -56,8 +56,8 @@ test('same literal path has separate patches, titles, scroll, restoration, and c
   expect(store.get().editor?.diffs[branchId]?.text).toBe('branch patch');
   expect(tabPath(branchId)).toBe(path);
   expect(tabEntry(store.get(), workingId).label).toBe('a:diff:b.go (Uncommitted)');
-  expect(tabEntry(store.get(), branchId).label).toBe('a:diff:b.go (Branch changes) (Added)');
-  expect(tabEntry(store.get(), branchId).title).toBe(`${path} (Branch changes)`);
+  expect(tabEntry(store.get(), branchId).label).toBe('a:diff:b.go (Committed) (Added)');
+  expect(tabEntry(store.get(), branchId).title).toBe(`${path} (Committed)`);
   for (const [id, top] of [[workingId, 10], [branchId, 50]] as const) store.update(state => rememberScroll(state, 's', id, {top, left: 0, following: false}));
   const restored = restoreView(emptyEditor({session: 's'}), editorView(store.get().editor!));
   expect(restored.diffs).toEqual({[workingId]: {text: null, message: null}, [branchId]: {text: null, message: null}});

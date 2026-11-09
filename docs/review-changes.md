@@ -40,11 +40,10 @@ on the right for opening another file.
 2. Choose the comparison:
    - **Uncommitted** shows staged, unstaged, and untracked changes against
      the current commit.
-   - **Branch changes**, available for managed worktree sessions, shows net
-     changes since the common ancestor of the session's branch and the
-     original checkout's current branch. It includes committed work and
-     uncommitted edits, not just the latest commit. The target branch is
-     named above the file list.
+   - **Committed**, available for managed worktree sessions, shows the
+     branch's committed changes since the common ancestor of the session's
+     branch and the original checkout's current branch. Above the file list,
+     it names that branch and counts the commits ahead of it.
 3. Select a changed file or its right-aligned added and removed line counts
    to read its unified diff.
 
@@ -66,8 +65,8 @@ and conversation occupy separate panes while the file tree shows other edits.
 
 The bar above chat shows the working directory and current Git branch.
 Click the branch name to open the Git panel. For top-level worktree sessions
-with unmerged commits, **Git → Branch changes → Merge into …** asks the agent
-to integrate the work; it does not run a merge automatically.
+with unmerged commits, **Merge into …** at the bottom of the Git panel asks
+the agent to integrate the work; it does not run a merge automatically.
 
 Use **Command+F** on macOS or **Ctrl+F** on Linux to find text in an open
 file or diff. Move between diff changes with **Option+F5** /

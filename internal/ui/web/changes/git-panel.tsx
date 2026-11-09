@@ -15,7 +15,7 @@ function ChangeRows({changes, comparison}: {changes: Changes; comparison: Change
   if (!changes) message = 'No Git changes available.';
   else if ('missing' in changes) message = 'This folder no longer exists.';
   else if ('error' in changes) message = changes.error;
-  else if (!changes.files.length) message = comparison === 'branch' ? 'No branch changes.' : 'No uncommitted changes.';
+  else if (!changes.files.length) message = comparison === 'branch' ? 'No committed changes.' : 'No uncommitted changes.';
   if (message) return <p className="px-2 text-sm text-muted-foreground">{message}</p>;
   if (!changes || !('files' in changes)) return null;
   return <ul aria-label="Git changes">{changes.files.map(change => {
@@ -56,7 +56,7 @@ export function GitPanel() {
         : <Tabs value={comparison} onValueChange={selectComparison}>
         <TabsList className="w-full" aria-label="Change comparison">
           <TabsTrigger value="uncommitted">Uncommitted</TabsTrigger>
-          <TabsTrigger value="branch">Branch changes</TabsTrigger>
+          <TabsTrigger value="branch">Committed</TabsTrigger>
         </TabsList>
         <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
         <TabsContent value="branch">

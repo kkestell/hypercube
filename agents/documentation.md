@@ -64,7 +64,7 @@ Each scene declares:
   to expand in a saved turn. `select` chooses the session; `size` sets window
   dimensions in points.
 - `workbench.rightTab` chooses Files or Git (`files` or `git`);
-  `comparison: "branch"` selects Git's Branch changes view for a worktree.
+  `comparison: "branch"` selects Git's Committed view for a worktree.
 
 ### Capture requirements
 

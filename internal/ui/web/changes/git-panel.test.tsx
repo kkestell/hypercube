@@ -119,7 +119,7 @@ test('branch selection loads independent rows and the response target, then open
 });
 
 test.each([
-  [{branch: 'feature', target: 'main', files: []}, 'No branch changes.'],
+  [{branch: 'feature', target: 'main', files: []}, 'No committed changes.'],
   [{error: 'no common ancestor'}, 'no common ancestor'],
 ] satisfies Array<[Changes, string]>)('branch result stays visible independently of an uncommitted error: %p', (branchChanges, message) => {
   const session = testSession({id: 's', worktree: true});

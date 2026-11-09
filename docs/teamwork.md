@@ -39,11 +39,11 @@ Outside Git, assign an existing directory instead; Hypercube cannot create
 worktrees there. Worktrees are not sandboxes: agents retain access to your
 local filesystem.
 
-![Worktree sessions showing branch status in the sidebar and a Merge into main button in Git's Branch changes view](images/worktrees-light.png)
+![Worktree sessions showing branch status in the sidebar and a Merge into main button in the Git panel](images/worktrees-light.png)
 
 The branch icons show which sessions have separate working copies. The
 selected top-level session has committed work ready for **Merge into main**
-in **Git → Branch changes**.
+at the bottom of the **Git** panel.
 
 ### Supply ignored local files
 
@@ -122,7 +122,8 @@ child cannot resume. Hypercube removes its managed worktree and branch only
 after the Git checks pass. An existing directory assigned to a child is left
 alone.
 
-For a **top-level** session in its own worktree, open **Git → Branch changes**
-and choose **Merge into …**. It appears when there are unmerged commits and
-asks the agent to commit remaining work and merge into the original checkout.
+For a **top-level** session in its own worktree, open **Git** and choose
+**Merge into …** at the bottom of the panel. It appears when there are
+unmerged commits and asks the agent to commit remaining work and merge into
+the original checkout.
 It is an instruction to the agent, not an automatic Git merge.

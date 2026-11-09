@@ -102,7 +102,8 @@ within the window. After reset, the last reading is dimmed and marked
 | HTML/SVG source | Available for supported text encodings within the text limit. |
 | Media | Images, audio, video, and PDFs open in the app, without the text limit. Some formats and codecs may not play. |
 | Git → Uncommitted | Staged, unstaged, and untracked changes within the current view’s directory, compared with the current commit. |
-| Git → Branch changes | Managed worktree sessions only: net changes since the merge base with the original checkout's current branch, including uncommitted edits. Top-level worktree sessions with unmerged commits offer **Merge into …**. |
+| Git → Committed | Managed worktree sessions only: the branch's committed changes since the merge base with the original checkout's current branch. |
+| Git → Merge into … | Top-level worktree sessions with unmerged commits, at the bottom of the Git panel. |
 | Quick Open and project search | In Git: tracked and untracked files, excluding ignored and hidden paths. |
 | Project text search | Case-insensitive plain text; skips files over 256 KiB; stops at 1,000 matching lines. |
 

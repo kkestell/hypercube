@@ -7,7 +7,7 @@ import type {ChangeComparison, ChangeStatus, ChangeTree, Changes, DiffRead, Open
 export const diffTabId = (path: string, comparison: ChangeComparison = 'uncommitted') => (comparison === 'branch' ? 'branch-diff:' : 'diff:') + path;
 export const isDiffTab = (id: string) => id.startsWith('diff:') || id.startsWith('branch-diff:');
 export const diffComparison = (id: string): ChangeComparison => id.startsWith('branch-diff:') ? 'branch' : 'uncommitted';
-export const comparisonLabel = (comparison: ChangeComparison) => comparison === 'branch' ? 'Branch changes' : 'Uncommitted';
+export const comparisonLabel = (comparison: ChangeComparison) => comparison === 'branch' ? 'Committed' : 'Uncommitted';
 
 export const diffReady = (diff: OpenDiff | undefined) => !!diff && (diff.text !== null || diff.message !== null);
 
