@@ -121,3 +121,37 @@ table. Apart from F1 and F2, nothing remains to remove:
 Limitations: `make quit-desktop` was not executed and the installed app was not
 quit or changed. `test-desktop`, `test-release` and host packaging were not run,
 as the plan excludes them.
+
+## Round 2 — 2026-11-08
+
+**Verdict: accept.** F1 and F2 are resolved and the fix adds no new problems.
+Same independent reviewer as Round 1.
+
+- Author: `compat-review`; native conversation
+  `c805986c-9023-4e3e-a660-11912f975ea2`; Claude Code / `claude-opus-5-5`.
+- Fixed Code base: `ae546fee7dbb8a09a6edf4770011e23813193bb5`.
+- Reviewed Code head: `672bfaaae8158bbd40d7a66325a96442abd54295`, tree
+  `1c8bd54b22dc202e5eaaad997c66968378c8497e` (base is an ancestor, verified).
+  New in the range since Round 1: fix commit `672bfaa` only.
+- Checkout HEAD at review: `c2c581cdc8174ed975cf4a2693f9596e71c98653`; Code
+  head to HEAD changes only the work log (Repair 1). Working tree clean.
+
+### Resolution
+
+| Finding | Status | Evidence at `672bfaa` |
+| --- | --- | --- |
+| F1 | resolved | `internal/ui/config_test.go`: the `"legacy profiles"` case is deleted; `"unknown setting"` still checks unknown-field rejection. The remaining map keys keep their alignment, so gofmt is unaffected. |
+| F2 | resolved | `agents/development.md` "Backwards compatibility" and `docs/upgrades.md` now state current behavior only: startup creates missing tables and indexes, saved-state changes include a migration, and release notes cover saved-state changes. A search for "historical" and "has been retired" in `docs/`, `web/` and `agents/development.md` finds nothing. |
+
+No new findings.
+
+### Verification
+
+| Check | Status | Source |
+| --- | --- | --- |
+| `go test ./internal/ui -run TestSaveConfig -count=1 -v` pass; gofmt clean | reused | work log Repair 1, run on the fix tree |
+| `make check`, Linux bundle/install run | reused | Round 1; the fix changes only one test case and prose |
+| Fix diff, ancestry, tree, Code head→HEAD diff, wording search | run | `git diff`, `git merge-base --is-ancestor`, `git rev-parse`, `git grep` |
+
+No new test run: the one code change removes a test case, which the reused
+focused run covers.
