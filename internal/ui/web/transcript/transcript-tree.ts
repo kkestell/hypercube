@@ -16,7 +16,7 @@
 import type {AttentionItem, ProposalItem, ErrorItem, Item, ReasoningItem, StateItem, TextItem, ToolItem, Transcript, UserItem} from './types.ts';
 
 // Tool input fields, in the order that best says what a call does.
-const summaryKeys = ['command', 'cmd', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
+const summaryKeys = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'description', 'prompt'];
 
 // toolSummary is the one line that tells a tool call apart: the input's most
 // telling text, shortened.

@@ -66,7 +66,7 @@
                   "kind": "tool",
                   "tool": "Read",
                   "input": {
-                    "cmd": "build.go"
+                    "file_path": "build.go"
                   },
                   "output": "Build walks content and renders each Markdown page.",
                   "done": true

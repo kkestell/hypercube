@@ -60,7 +60,7 @@
                   "kind": "tool",
                   "tool": "read",
                   "input": {
-                    "cmd": "cat content/guide/getting-started.md"
+                    "path": "content/guide/getting-started.md"
                   },
                   "output": "The guide covers installation, notebooks, and sync.",
                   "done": true
@@ -88,7 +88,7 @@
                   "kind": "tool",
                   "tool": "read",
                   "input": {
-                    "cmd": "cat content/guide/sync.md"
+                    "path": "content/guide/sync.md"
                   },
                   "output": "Sign in with the same account on each device.",
                   "done": true
@@ -104,7 +104,7 @@
                   "kind": "tool",
                   "tool": "edit",
                   "input": {
-                    "cmd": "content/guide/getting-started.md"
+                    "path": "content/guide/getting-started.md"
                   },
                   "output": "Updated the first-run checklist.",
                   "done": true
