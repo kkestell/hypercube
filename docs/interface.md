@@ -121,8 +121,9 @@ last selected session or workspace are saved too.
 
 ## GitHub
 
-Hypercube uses the GitHub CLI, signed in to github.com, for a workspace whose
-current branch tracks a github.com remote, or whose `origin` is one.
+Hypercube uses the GitHub CLI, signed in to github.com, for a workspace when its
+current branch tracks a github.com remote, or tracks no remote and has a
+github.com `origin`.
 
 Each workspace uses one gh account, chosen in this order: the checkout's
 `credential.githubAccount` Git setting; the one signed-in account that can push

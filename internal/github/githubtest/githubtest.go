@@ -50,6 +50,7 @@ type API struct {
 	mu          sync.Mutex
 	permissions map[string]string
 	failing     bool
+	revoked     map[string]bool
 	requests    int
 }
 
@@ -57,7 +58,7 @@ type API struct {
 // starts without access to any repository.
 func NewAPI(t testing.TB) *API {
 	t.Helper()
-	a := &API{permissions: map[string]string{}}
+	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}}
 	server := httptest.NewServer(a)
 	t.Cleanup(server.Close)
 	a.URL = server.URL
@@ -70,6 +71,13 @@ func (a *API) SetPermission(token, permission string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.permissions[token] = permission
+}
+
+// Revoke makes the server answer 401 for the token.
+func (a *API) Revoke(token string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.revoked[token] = true
 }
 
 // Fail makes the server answer 500 while failing is true.
@@ -94,7 +102,12 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusInternalServerError)
 		return
 	}
-	permission := a.permissions[strings.TrimPrefix(r.Header.Get("Authorization"), "bearer ")]
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "bearer ")
+	if a.revoked[token] {
+		http.Error(w, "bad credentials", http.StatusUnauthorized)
+		return
+	}
+	permission := a.permissions[token]
 	if permission == "" {
 		_, _ = w.Write([]byte(`{"data":{"repository":null},"errors":[{"type":"NOT_FOUND","message":"not found"}]}`))
 		return

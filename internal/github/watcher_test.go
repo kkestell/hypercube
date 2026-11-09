@@ -140,6 +140,18 @@ func TestSeveralAccountsThatCanPush(t *testing.T) {
 	}
 }
 
+func TestRevokedAccountDoesNotBlockDetection(t *testing.T) {
+	s := newStand(t, "alice", "bob")
+	s.api.Revoke("token-alice")
+	s.api.SetPermission("token-bob", "WRITE")
+	id := s.workspace("w", remote)
+	s.run()
+	s.until("bob chosen", s.resolved(id))
+	if got := s.w.Statuses()[id]; got.Account != "bob" || got.Choices != nil {
+		t.Fatalf("status = %+v", got)
+	}
+}
+
 func TestNoAccountCanPush(t *testing.T) {
 	t.Run("one login", func(t *testing.T) {
 		s := newStand(t, "alice")

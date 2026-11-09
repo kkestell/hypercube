@@ -16,6 +16,9 @@ const defaultAPI = "https://api.github.com/graphql"
 // errNotFound means the account cannot see the repository.
 var errNotFound = errors.New("repository not found")
 
+// errUnauthorized means GitHub rejected the token, such as a revoked login.
+var errUnauthorized = errors.New("token rejected")
+
 const permissionQuery = `query($owner:String!,$name:String!){repository(owner:$owner,name:$name){viewerPermission}}`
 
 // query posts a GraphQL query with the token and decodes its data.
@@ -41,6 +44,9 @@ func (w *Watcher) query(ctx context.Context, token, query string, variables map[
 		return err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusUnauthorized {
+		return errUnauthorized
+	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("GitHub answered %s", resp.Status)
 	}
@@ -63,7 +69,8 @@ func (w *Watcher) query(ctx context.Context, token, query string, variables map[
 	return json.Unmarshal(answer.Data, data)
 }
 
-// canPush reports whether the token's account has write access to the repository.
+// canPush reports whether the token's account has write access to the
+// repository. An account whose token GitHub rejects cannot.
 func (w *Watcher) canPush(ctx context.Context, token, owner, name string) (bool, error) {
 	var data struct {
 		Repository struct {
@@ -71,7 +78,7 @@ func (w *Watcher) canPush(ctx context.Context, token, owner, name string) (bool,
 		} `json:"repository"`
 	}
 	err := w.query(ctx, token, permissionQuery, map[string]any{"owner": owner, "name": name}, &data)
-	if errors.Is(err, errNotFound) {
+	if errors.Is(err, errNotFound) || errors.Is(err, errUnauthorized) {
 		return false, nil
 	}
 	if err != nil {

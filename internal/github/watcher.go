@@ -232,9 +232,11 @@ func (w *Watcher) pass(ctx context.Context) {
 func (w *Watcher) pushers(ctx context.Context, logins []string, owner, name string, token func(string) (string, error)) ([]string, error) {
 	var pushers []string
 	for _, login := range logins {
+		// A login whose token gh cannot give is skipped; the others still decide.
 		t, err := token(login)
 		if err != nil {
-			return nil, err
+			fmt.Fprintf(os.Stderr, "hypercube: reading the GitHub token for %s: %v\n", login, err)
+			continue
 		}
 		ok, err := w.canPush(ctx, t, owner, name)
 		if err != nil {
