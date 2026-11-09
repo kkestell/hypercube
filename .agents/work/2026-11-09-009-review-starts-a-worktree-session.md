@@ -45,7 +45,7 @@ Responsibilities as in the plan.
 
 ## Repair 1
 
-Review: `.agents/reviews/2026-11-09-009-review-starts-a-worktree-session.md`, round 1 (`changes-required`, commit d701c71).
+Review: `.agents/reviews/2026-11-09-009-review-starts-a-worktree-session.md`, round 1 (`changes-required`, commit d701c71fe06617951132c56ea007f8132441d89a).
 
 - F1: plan step 5 is replaced, at the parent's direction: once the session exists, the review action answers like `"new"`, with JSON `{"session": id}`, or 409 JSON `{"session": id, "error": msg}` when its first input fails. Failures before creation stay plain-text 400 or 409. `writeCreated` in `internal/ui/actions.go` writes that answer for both actions. `review.ts` reads it with `submitPrompt`, selects any returned session, and shows any error. New `pull-requests.test.tsx` case: a 409 carrying a session selects it and shows the error. The refused-review test still covers a 409 without one.
 
