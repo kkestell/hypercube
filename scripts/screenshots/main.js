@@ -383,6 +383,7 @@ async function capture(scene, ids, backend, window, name) {
     if (difference(image, await contents.capturePage()) > 8) {
       throw new Error(`${name}-${theme}.png does not show the page; keep the window in front while it is captured`);
     }
+    await addShadow(contents, file);
   };
 
   requests.completed = [];
@@ -397,6 +398,30 @@ async function capture(scene, ids, backend, window, name) {
   contents.reload();
   await reloaded;
   await shot('dark');
+}
+
+// addShadow rewrites a capture on a transparent canvas with a drop shadow
+// that follows the window's rounded corners.
+async function addShadow(contents, file) {
+  const png = fs.readFileSync(file).toString('base64');
+  const shadowed = await contents.executeJavaScript(`new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const pad = 96, drop = 24;
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width + 2 * pad;
+      canvas.height = image.height + 2 * pad;
+      const context = canvas.getContext('2d');
+      context.shadowColor = 'rgba(0, 0, 0, 0.35)';
+      context.shadowBlur = 64;
+      context.shadowOffsetY = drop;
+      context.drawImage(image, pad, pad);
+      resolve(canvas.toDataURL('image/png').split(',')[1]);
+    };
+    image.onerror = () => reject(new Error('could not load the capture'));
+    image.src = 'data:image/png;base64,${png}';
+  })`);
+  fs.writeFileSync(file, Buffer.from(shadowed, 'base64'));
 }
 
 // difference is the mean difference of two images' color channels, from 0 to

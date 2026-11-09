@@ -45,7 +45,8 @@ Run `make screenshots` only when captures need changing. It regenerates
 
 The [capture driver](../scripts/screenshots/main.js) runs a real backend with
 the [scripted plugin](../plugins/scripted/main.go), opens the desktop app,
-and captures that window, including its native buttons and rounded corners.
+and captures that window, including its native buttons and rounded corners,
+then adds a transparent margin with a drop shadow.
 Temporary resources are deleted afterward.
 
 ### Scene contents
