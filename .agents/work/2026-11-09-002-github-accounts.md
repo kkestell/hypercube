@@ -5,7 +5,7 @@
 - Guidance: `.agents/designs/2026-11-09-001-github-integration.md`, blob `1be166e4fffb44898b53d6c18ad9f4fb89bd4152`
 - Plan review: `.agents/reviews/plans/2026-11-09-002-github-accounts.md` (accepted, no findings)
 - Author: impl-accounts, Claude Code, native conversation `6b90ac08-5b58-495c-bfc7-dd46b87ac0db`, `claude-sonnet-5-5`
-- Status: implemented
+- Status: complete
 - Code base: `fbcd38a9c459b2f0cd915ee6a72e26f176ed9674`
 - Code head: `c0176eb8956e012fca70f5bf0d382df2c1982675`
 - Implementation commits: `c0176eb8956e012fca70f5bf0d382df2c1982675`
@@ -55,3 +55,16 @@ Findings addressed:
 Verification at the new Code head:
 - `go test ./internal/github -race -count=3`: pass.
 - `make check`: exit 0, no failures (output in `/tmp/check002.out`).
+
+## Completion
+
+- Accepted work review: `.agents/reviews/work/2026-11-09-002-github-accounts.md` (round 1 changes-required, round 2 accept)
+- Final reviewed Code head: `6a2b40db49e2945e02cd450091df78fd887be1ed`
+- Implementation commits: `c0176eb8956e012fca70f5bf0d382df2c1982675`, `6a2b40db49e2945e02cd450091df78fd887be1ed`
+- Changes after the reviewed head on `hypercube/session-1771c79b` are workflow records under `.agents/` only and the code reviewed in later units' accepted ranges.
+
+| Role | Coordinator | Harness | Native conversation | Model |
+| --- | --- | --- | --- | --- |
+| parent | Hypercube session 1771c79b | Claude Code | `2fb9801a-4985-41f3-bd41-371c1ae39e8e` | `claude-opus-5-5` |
+| planner | planner | Claude Code | `1e20740e-b018-49eb-9ae2-27fe8948db63` | `claude-opus-5-5` |
+| plan and work reviewer | plan-reviewer | Claude Code | `7989b8d0-1436-4b4f-8ad3-10b45e003508` | `claude-opus-5-5` |

@@ -5,7 +5,7 @@
 - Guidance: `.agents/designs/2026-11-09-001-github-integration.md`, blob `1be166e4fffb44898b53d6c18ad9f4fb89bd4152`
 - Plan review: `.agents/reviews/plans/2026-11-09-004-github-workspace-header.md` (accepted)
 - Author: impl-header, Claude Code, native conversation `81a3d88d-7eb7-40c7-84c3-9135cbf43834`, `claude-sonnet-5-5`
-- Status: implemented
+- Status: complete
 - Code base: `444646518183624627d89d802a4f9819a1db4aab`
 - Code head: `d18dd2ce0f2c981596d8ce91844a7e0d80d077c0`
 - Implementation commits: `d18dd2ce0f2c981596d8ce91844a7e0d80d077c0`
@@ -46,3 +46,16 @@ No screenshots or live browser check; the user judges the look.
 - Finding 1: the error line now ends the error with a period before "Showing data from"; the test asserts the full sentence.
 - Finding 2: `docs/interface.md` now says the chooser shows when several signed-in accounts can push, or none can push and several are signed in, matching `watcher.go` (candidates are the pushers, else all signed-in accounts; a chooser when more than one).
 - Verification (target: new Code head): `bun test web/github` 10 pass; `bunx tsc -p .` no errors; `make check` exit 0 (`/tmp/check004b.out`).
+
+## Completion
+
+- Accepted work review: `.agents/reviews/work/2026-11-09-004-github-workspace-header.md` (round 1 changes-required, round 2 accept)
+- Final reviewed Code head: `634cca583e13c8a59af17eb6a84e5d8d77d676bf`
+- Implementation commits: `d18dd2ce0f2c981596d8ce91844a7e0d80d077c0`, `634cca583e13c8a59af17eb6a84e5d8d77d676bf`
+- Changes after the reviewed head on `hypercube/session-1771c79b` are workflow records under `.agents/` only and the code reviewed in later units' accepted ranges.
+
+| Role | Coordinator | Harness | Native conversation | Model |
+| --- | --- | --- | --- | --- |
+| parent | Hypercube session 1771c79b | Claude Code | `2fb9801a-4985-41f3-bd41-371c1ae39e8e` | `claude-opus-5-5` |
+| planner | planner | Claude Code | `1e20740e-b018-49eb-9ae2-27fe8948db63` | `claude-opus-5-5` |
+| plan and work reviewer | plan-reviewer | Claude Code | `7989b8d0-1436-4b4f-8ad3-10b45e003508` | `claude-opus-5-5` |

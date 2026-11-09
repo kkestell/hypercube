@@ -5,7 +5,7 @@
 - Guidance: `.agents/designs/2026-11-09-001-github-integration.md`, blob `1be166e4fffb44898b53d6c18ad9f4fb89bd4152`
 - Plan review: `.agents/reviews/plans/2026-11-09-003-github-status.md` (findings 1 and 2 resolved in the plan text)
 - Author: impl-status, Claude Code, native conversation `59409197-d670-4900-b15a-31e269b91831`, `claude-sonnet-5-5`
-- Status: implemented
+- Status: complete
 - Code base: `bfa7c7b5c20f19da12c3ab707ab90afaa531ae07`
 - Code head: `8717353c8035eb4154039c703c05c7801d873634`
 - Implementation commits: `8717353c8035eb4154039c703c05c7801d873634`
@@ -43,3 +43,16 @@
 ## Limitations
 
 Stand-ins only; no live gh or GitHub API. Nothing in the browser reads the new fields yet (units 004 and 005).
+
+## Completion
+
+- Accepted work review: `.agents/reviews/work/2026-11-09-003-github-status.md` (round 1 accept)
+- Final reviewed Code head: `8717353c8035eb4154039c703c05c7801d873634`
+- Implementation commits: `8717353c8035eb4154039c703c05c7801d873634`
+- Changes after the reviewed head on `hypercube/session-1771c79b` are workflow records under `.agents/` only and the code reviewed in later units' accepted ranges.
+
+| Role | Coordinator | Harness | Native conversation | Model |
+| --- | --- | --- | --- | --- |
+| parent | Hypercube session 1771c79b | Claude Code | `2fb9801a-4985-41f3-bd41-371c1ae39e8e` | `claude-opus-5-5` |
+| planner | planner | Claude Code | `1e20740e-b018-49eb-9ae2-27fe8948db63` | `claude-opus-5-5` |
+| plan and work reviewer | plan-reviewer | Claude Code | `7989b8d0-1436-4b4f-8ad3-10b45e003508` | `claude-opus-5-5` |
