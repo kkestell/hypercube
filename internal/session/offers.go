@@ -22,9 +22,9 @@ const (
 // returns the offer's ID. The question stays open until the user answers it;
 // the answer reaches the parent as a message.
 func (r *Runtime) OfferChild(parentID, title string) (string, error) {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return "", errors.New("a session needs a title")
+	var err error
+	if title, err = report.CheckTitle(title); err != nil {
+		return "", err
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

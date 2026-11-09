@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
+	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
 	"github.com/kkestell/hypercube/internal/workspace"
 )
@@ -34,9 +34,9 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	if !childName.MatchString(name) {
 		return store.Session{}, store.Session{}, errors.New("name must be lowercase letters, digits, and hyphens")
 	}
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return store.Session{}, store.Session{}, errors.New("a session needs a title")
+	var err error
+	if title, err = report.CheckTitle(title); err != nil {
+		return store.Session{}, store.Session{}, err
 	}
 	parent, err := tx.Session(parentID)
 	if err != nil {

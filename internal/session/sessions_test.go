@@ -233,6 +233,9 @@ func TestWorkspaceAndSessionEdits(t *testing.T) {
 	if err := f.rt.Rename(s.ID, " \n"); err == nil {
 		t.Fatal("blank title accepted")
 	}
+	if err := f.rt.Rename(s.ID, strings.Repeat("a", 49)); err == nil {
+		t.Fatal("overlong title accepted")
+	}
 	if err := f.rt.Seen(s.ID); err != nil || f.storedSession(s.ID).Unseen {
 		t.Fatalf("seen: %v", err)
 	}

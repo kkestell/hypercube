@@ -141,14 +141,35 @@ func TestTitle(t *testing.T) {
 	for _, c := range []struct{ name, text, want string }{
 		{"first line", "Fix the parser\nand the lexer", "Fix the parser"},
 		{"blank lines and spacing", "\n  \n  Fix \t the   parser  \nmore", "Fix the parser"},
-		{"long line", long, strings.Repeat("a", 199) + "…"},
-		{"exactly 200", long[:200], long[:200]},
-		{"non-ASCII", strings.Repeat("é", 250), strings.Repeat("é", 199) + "…"},
+		{"long line", long, strings.Repeat("a", 47) + "…"},
+		{"exactly 48", long[:48], long[:48]},
+		{"non-ASCII", strings.Repeat("é", 250), strings.Repeat("é", 47) + "…"},
 		{"only whitespace", " \n\t ", "Image"},
 		{"no text", "", "Image"},
 	} {
 		if got := Title(c.text); got != c.want {
 			t.Errorf("%s: title = %q, want %q", c.name, got, c.want)
 		}
+	}
+}
+
+func TestCheckTitle(t *testing.T) {
+	if got, err := CheckTitle("  Fix the parser "); err != nil || got != "Fix the parser" {
+		t.Errorf("CheckTitle = %q, %v", got, err)
+	}
+	for _, title := range []string{"", "  \n "} {
+		if _, err := CheckTitle(title); err == nil {
+			t.Errorf("CheckTitle(%q) accepted a blank title", title)
+		}
+	}
+	long := strings.Repeat("a", 49)
+	if _, err := CheckTitle(long); err == nil {
+		t.Errorf("CheckTitle accepted a %d-character title", len(long))
+	}
+	if _, err := CheckTitle(strings.Repeat("é", 49)); err == nil {
+		t.Error("CheckTitle accepted a 49-rune title")
+	}
+	if got, err := CheckTitle(strings.Repeat("a", 48)); err != nil || got != strings.Repeat("a", 48) {
+		t.Errorf("CheckTitle(48) = %q, %v", got, err)
 	}
 }

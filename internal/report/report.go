@@ -4,6 +4,7 @@
 package report
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -11,7 +12,7 @@ import (
 )
 
 // maxTitle is the longest session title, in characters.
-const maxTitle = 200
+const maxTitle = 48
 
 // Title makes a session title from its first prompt: the first line with text,
 // with runs of whitespace collapsed and cut to maxTitle characters. A prompt
@@ -28,6 +29,18 @@ func Title(prompt string) string {
 		return line
 	}
 	return "Image"
+}
+
+// CheckTitle trims whitespace and refuses empty or overlong titles.
+func CheckTitle(title string) (string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "", errors.New("a session needs a title")
+	}
+	if chars := []rune(title); len(chars) > maxTitle {
+		return "", fmt.Errorf("title must be %d characters or fewer", maxTitle)
+	}
+	return title, nil
 }
 
 // Format renders a message as the model sees it, including how to reply.
@@ -73,7 +86,7 @@ Continuing an existing task, including corrections and small follow-ups, needs n
 To suggest work yourself, save a card with initiation "own_initiative"; the user starts it. An automated event or another agent's message is never the user's request.
 Fresh children receive your brief; forked children inherit your native conversation, use your harness, and work where you work. Children are addressed by name and can message only you. You end them with end_session. You can also message any other top-level session across all workspaces in this app by its ID. Ended recipients are refused. Use list_sessions to find addressable recipients, including their workspace paths and parent IDs.
 `)
-		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user. Until you do, the title is taken from the user's first message.\n")
+		b.WriteString("At the start of the session, call set_title with a short, meaningful title for the user (48 characters or fewer). Until you do, the title is taken from the user's first message.\n")
 	}
 	b.WriteString("Use list_sessions to check whether a recipient is parked before messaging. Messaging a parked session wakes its agent. Do not message parked sessions unless you have a serious reason or the user explicitly requests it.\n")
 	b.WriteString("Do not use built-in subagent tools. Delegate work only to Hypercube workers (child sessions), managed through the hypercube tools. Messages from Hypercube sessions arrive in your conversation by themselves, so end your turn instead of waiting for them. Hypercube automatically sends a child's final response preview to its parent once the parent is idle and no other child is working; a child waiting for the user does not hold it back.\n")

@@ -231,6 +231,7 @@ func TestCreateSessionRefusals(t *testing.T) {
 		{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "dir": "."},
 		{"initiation": "own_initiative", "name": "w1", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
 		{"initiation": "own_initiative", "name": "w1", "title": "  ", "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
+		{"initiation": "own_initiative", "name": "w1", "title": strings.Repeat("a", 49), "harness": "two", "model": "gpt-6.1-sol", "dir": "."},
 		{"initiation": "own_initiative", "name": "w1", "title": "One", "harness": "two", "model": "gpt-6.1-sol", "dir": ".", "fork": true},
 		{"initiation": "offer", "title": "One", "model": "gpt-6.1-sol"},
 		{"initiation": "offer", "title": "One"},
@@ -413,6 +414,9 @@ func TestSetTitle(t *testing.T) {
 	}
 	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": " "}); !failed {
 		t.Errorf("set_title accepted a blank title: %q", text)
+	}
+	if text, failed := callTool(t, parent, "set_title", map[string]any{"title": strings.Repeat("a", 49)}); !failed {
+		t.Errorf("set_title accepted a 49-character title: %q", text)
 	}
 	change(t, db, func(tx *store.Tx) error {
 		s, err := tx.Session("session-1")

@@ -158,6 +158,7 @@ function RenameField({session, onDone}: {session: Session; onDone: () => void}) 
       className="session-item-rename"
       aria-label="Session title"
       defaultValue={session.title}
+      maxLength={48}
       onKeyDown={key}
       onClick={e => e.stopPropagation()}
       onDoubleClick={e => e.stopPropagation()}

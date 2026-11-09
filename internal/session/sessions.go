@@ -2,7 +2,6 @@ package session
 
 import (
 	"errors"
-	"strings"
 	"sync"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -162,9 +161,9 @@ func (r *Runtime) DeleteWorkspace(id string) error {
 
 // Rename changes a session's title. Its ID stays the same.
 func (r *Runtime) Rename(id, title string) error {
-	title = strings.TrimSpace(title)
-	if title == "" {
-		return errors.New("a session needs a title")
+	title, err := report.CheckTitle(title)
+	if err != nil {
+		return err
 	}
 	return r.update(id, func(s *store.Session) { s.Title = title })
 }

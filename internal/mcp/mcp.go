@@ -66,7 +66,7 @@ func newServer(db *store.DB, rt *session.Runtime, self string) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{Name: "read_session", Description: readSessionDescription}, result(func(_ context.Context, a readSessionArgs) (string, error) { return readSession(db, rt, self, a) }))
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_title",
-		Description: "Set your session's title: a short display title for the user. It does not change how sessions are addressed.",
+		Description: "Set your session's title: a short display title for the user, 48 characters or fewer. It does not change how sessions are addressed.",
 	}, result(func(_ context.Context, a setTitleArgs) (string, error) {
 		if err := rt.Rename(self, a.Title); err != nil {
 			return "", err
