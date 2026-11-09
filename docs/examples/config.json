@@ -57,7 +57,7 @@
     {
       "harness": "opencode",
       "model": "openai/gpt-6-luna",
-      "title": "openai/gpt-6-luna",
+      "title": "GPT-6 Luna",
       "efforts": [
         "none",
         "low",
@@ -72,7 +72,7 @@
     {
       "harness": "opencode",
       "model": "openai/gpt-6.1-sol",
-      "title": "openai/gpt-6.1-sol",
+      "title": "GPT-6.1 Sol",
       "efforts": [
         "low",
         "medium",
@@ -85,7 +85,7 @@
     {
       "harness": "opencode",
       "model": "openai/gpt-6.1-terra",
-      "title": "openai/gpt-6.1-terra",
+      "title": "GPT-6.1 Terra",
       "efforts": [
         "none",
         "minimal",
@@ -99,7 +99,7 @@
     {
       "harness": "opencode",
       "model": "opencode-go/deepseek-v4.1-flash",
-      "title": "opencode-go/deepseek-v4.1-flash",
+      "title": "DeepSeek V4.1 Flash",
       "efforts": [
         "low",
         "high",
@@ -110,7 +110,7 @@
     {
       "harness": "opencode",
       "model": "opencode-go/muse-spark-1.3-contributor",
-      "title": "opencode-go/muse-spark-1.3-contributor",
+      "title": "Muse Spark 1.3 Contributor",
       "efforts": [
         "minimal",
         "low",
