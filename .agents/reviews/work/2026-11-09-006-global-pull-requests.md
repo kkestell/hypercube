@@ -114,3 +114,52 @@ signed in.
 
 I did not exercise the home view in the browser or check the sidebar
 layout visually.
+
+## Round 2
+
+- Task ID: `2026-11-09-006-global-pull-requests`
+- Mode: `work`
+- Author: reviewer `review-global-prs`, Hypercube child of `04ef1b14`, Claude
+  Code, native conversation `e3fb53e6-b1a8-4613-be42-9098ff5686c0`, model
+  `claude-opus-5-5`. Independent of the implementer (`work-global-prs`).
+- Work log: `.agents/work/2026-11-09-006-global-pull-requests.md` (repair entry
+  in commit `a547db2`)
+- Code base: `1dd840307885152d1716294456dab2f5b8f5557f`
+- Code head: `05df169b635b51c2087968785dd42e2c01cb34c4` (base is an ancestor)
+- Reviewed: the full range `1dd8403..05df169`. Round 1 covered the range up to
+  `ab9673b`. This round inspected the repair `ab9673b..05df169`, which is all
+  the code in `636e3c6..05df169` (`636e3c6` is the round 1 review record
+  only). The checkout is HEAD `a547db2`, with code identical to the Code head
+  and a clean tree.
+
+### Verdict
+
+`accept`. All four round 1 findings are resolved and the repair adds no new
+defect.
+
+### Resolution
+
+| Finding | Status | Evidence at `05df169` |
+| --- | --- | --- |
+| 1. Two `Run` loops race | Resolved | `watcher_test.go`: the first `s.run()` is removed; `SetPullRequests` comes before the single `s.run()`. |
+| 2. Home view stuck without accounts | Resolved | `session-view.tsx:37` adds `state.accounts.length > 0`. New `sessions/session-view.test.tsx` covers both cases: with no account, the view is absent and "Checking GitHub." is not shown. |
+| 3. Duplicated warning helpers | Resolved | `wording.ts` gains `failureText(what, error, updated)`, with `sentence` and `time` private to it. `github-header.tsx` and `all-pull-requests.tsx` both use it; the header's output is unchanged. |
+| 4. Roundabout error merge | Resolved | `watcher.go:323-326` appends the account's error to `problems` before `measure`, only when the token read succeeded. The `slices.DeleteFunc` join is gone, and `TestTokenFailureIsReported` still covers the single report. |
+
+No new findings. The account error now comes before fetch and tracking errors
+in the joined message. The header shows only the first line, so this is
+harmless.
+
+### Verification
+
+- Reused (work log repair entry, at `05df169`):
+  - `go test -race -count=20 -run TestPendingChoiceDoesNotFetchOrQuery ./internal/github`: ok.
+  - `go test -race ./internal/github ./internal/ui`: ok.
+  - `bunx tsc -p .`: clean.
+  - `bun test`: 442 pass.
+  - `make check`: exit 0.
+- These results cover the round 1 race directly. No new runs were needed.
+
+### Limitations
+
+I did not exercise the home view in the browser.
