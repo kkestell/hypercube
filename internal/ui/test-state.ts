@@ -26,7 +26,7 @@ export const testPullRequest = (overrides: Partial<PullRequest> = {}): PullReque
 
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({
   default_selection: {harness: 'claude', model: 'opus', effort: 'high'}, child_model_guidance: '',
-  default_worktree: false, theme: 'system', terminal_font_size: 13,
+  default_worktree: false, review_prompt: 'Review pull request #{number} ({url}).', theme: 'system', terminal_font_size: 13,
   notifications: {requests: true, replies: true, desktop: true, sound: true}, models: [],
   ...overrides,
 });

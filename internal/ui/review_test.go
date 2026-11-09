@@ -15,11 +15,13 @@ func TestReviewSettings(t *testing.T) {
 		{Harness: "codex", Model: "sol"},
 	}
 	chosen := harness.Settings{Harness: "codex", Model: "sol", Effort: "low"}
+	review := harness.Settings{Harness: "claude", Model: "opus", Effort: "low"}
 	for _, test := range []struct {
 		name string
 		cfg  config.Config
 		want harness.Settings
 	}{
+		{"review selection", config.Config{ReviewSelection: &review, DefaultSelection: &chosen, Models: models}, review},
 		{"default selection", config.Config{DefaultSelection: &chosen, Models: models}, chosen},
 		{"first model", config.Config{Models: models}, harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}},
 	} {
@@ -29,6 +31,14 @@ func TestReviewSettings(t *testing.T) {
 	}
 	if _, err := reviewSettings(config.Config{}); err == nil {
 		t.Error("no models: reviewSettings succeeded")
+	}
+}
+
+func TestReviewPrompt(t *testing.T) {
+	got := reviewPrompt("Review #{number} ({url}); #{number} is at {url}. {other}", 7, "https://github.com/o/r/pull/7")
+	want := "Review #7 (https://github.com/o/r/pull/7); #7 is at https://github.com/o/r/pull/7. {other}"
+	if got != want {
+		t.Errorf("reviewPrompt = %q; want %q", got, want)
 	}
 }
 

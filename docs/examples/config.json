@@ -6,6 +6,12 @@
   },
   "child_model_guidance": "",
   "default_worktree": false,
+  "review_selection": {
+    "harness": "claude",
+    "model": "opus",
+    "effort": "high"
+  },
+  "review_prompt": "Review pull request #{number} ({url}). Its head commit is checked out in your working directory. Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.",
   "theme": "system",
   "terminal_font_size": 13,
   "notifications": {

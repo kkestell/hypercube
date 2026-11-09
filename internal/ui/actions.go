@@ -174,8 +174,8 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 }
 
 // startReview fetches a pull request's head commit, starts a worktree session
-// at it with the default model and the review prompt, and answers like a new
-// session. Failures before creation are plain text.
+// at it with the review model and prompt, and answers like a new session.
+// Failures before creation are plain text.
 func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	number, err := strconv.Atoi(q.Get("number"))
@@ -205,9 +205,7 @@ func (s *server) startReview(w http.ResponseWriter, r *http.Request) {
 	if refused(w, err) {
 		return
 	}
-	prompt := fmt.Sprintf("Review pull request #%d (%s). Its head commit is checked out in your working directory. "+
-		"Read its description, discussion, and diff with gh, and report what you find. Post nothing to GitHub.", number, url)
-	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", prompt)
+	created, err := s.rt.CreateSubmission(workspaceID, settings, true, commit, "", reviewPrompt(cfg.ReviewPrompt, number, url))
 	writeCreated(w, created.ID, err)
 }
 
@@ -224,9 +222,12 @@ func writeCreated(w http.ResponseWriter, id string, err error) {
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-// reviewSettings is the model a review starts with: the default selection, or
-// else the first listed model at its default effort.
+// reviewSettings is the model a review starts with: the review selection, the
+// default selection, or else the first listed model at its default effort.
 func reviewSettings(cfg config.Config) (harness.Settings, error) {
+	if cfg.ReviewSelection != nil {
+		return *cfg.ReviewSelection, nil
+	}
 	if cfg.DefaultSelection != nil {
 		return *cfg.DefaultSelection, nil
 	}
@@ -235,6 +236,12 @@ func reviewSettings(cfg config.Config) (harness.Settings, error) {
 	}
 	m := cfg.Models[0]
 	return harness.Settings{Harness: m.Harness, Model: m.Model, Effort: m.DefaultEffort}, nil
+}
+
+// reviewPrompt fills a review prompt's {number} and {url} with the pull
+// request's number and link.
+func reviewPrompt(prompt string, number int, url string) string {
+	return strings.NewReplacer("{number}", strconv.Itoa(number), "{url}", url).Replace(prompt)
 }
 
 // grants returns saved always-allow choices.

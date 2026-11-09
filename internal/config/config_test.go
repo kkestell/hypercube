@@ -15,7 +15,8 @@ func TestSave(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	cfg := Config{DefaultSelection: &harness.Settings{Harness: "codex", Model: "sol"}, ChildGuidance: "Use sol for reviews.",
-		DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true},
+		DefaultWorktree: true, ReviewSelection: &harness.Settings{Harness: "opencode", Model: "provider/model"},
+		ReviewPrompt: "Review #{number} at {url}.", Theme: "dark", TerminalFontSize: 16, Notifications: Notifications{Replies: true},
 		Models: []ModelEntry{
 			{Harness: "codex", Model: "sol", Title: "Sol", Efforts: []string{"low", "high"}, DefaultEffort: "high"},
 			{Harness: "opencode", Model: "provider/model", Title: "Model", Efforts: []string{}},
@@ -32,13 +33,16 @@ func TestSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	prompt := cfg.ReviewPrompt
 	for _, invalid := range []Config{
 		{},
-		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize},
-		{Theme: cfg.Theme, TerminalFontSize: 15},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, DefaultSelection: &harness.Settings{Harness: "codex"}},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Models: []ModelEntry{cfg.Models[1], cfg.Models[1]}},
-		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, Models: []ModelEntry{{Harness: "codex", Model: "sol"}}},
+		{Theme: "blue", TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt},
+		{Theme: cfg.Theme, TerminalFontSize: 15, ReviewPrompt: prompt},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, DefaultSelection: &harness.Settings{Harness: "codex"}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, ReviewSelection: &harness.Settings{Harness: "codex"}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: " \n "},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{cfg.Models[1], cfg.Models[1]}},
+		{Theme: cfg.Theme, TerminalFontSize: cfg.TerminalFontSize, ReviewPrompt: prompt, Models: []ModelEntry{{Harness: "codex", Model: "sol"}}},
 	} {
 		if err := Save(invalid); err == nil {
 			t.Fatalf("saved invalid config: %+v", invalid)
@@ -57,7 +61,7 @@ func TestSave(t *testing.T) {
 func TestLoadDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
-	defaults := Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
+	defaults := Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications, Models: []ModelEntry{}}
 	// A fresh installation has no file.
 	got, err := Load()
 	if err != nil || !reflect.DeepEqual(got, defaults) {
@@ -142,7 +146,7 @@ func TestSaveWriteFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hypercube"), []byte("blocked"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := Save(Config{Theme: "system", TerminalFontSize: 13}); err == nil {
+	if err := Save(Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13}); err == nil {
 		t.Fatal("save succeeded without a config directory")
 	}
 }
@@ -168,12 +172,13 @@ func TestLoadPreservesConfig(t *testing.T) {
   "custom": {"keep":"untouched"}
 }`,
 			want: Config{DefaultSelection: &harness.Settings{Harness: "opencode", Model: "provider/model", Effort: "high"},
-				ChildGuidance: "Use the small model for simple tasks.", DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16,
+				ChildGuidance: "Use the small model for simple tasks.", DefaultWorktree: true, ReviewPrompt: DefaultReviewPrompt,
+				Theme: "dark", TerminalFontSize: 16,
 				Notifications: Notifications{Replies: true}, Models: []ModelEntry{}},
 		},
 		"partial": {
 			source: `{"notifications":{"desktop":false}}`,
-			want: Config{Theme: "system", TerminalFontSize: 13,
+			want: Config{ReviewPrompt: DefaultReviewPrompt, Theme: "system", TerminalFontSize: 13,
 				Notifications: Notifications{Requests: true, Replies: true, Sound: true}, Models: []ModelEntry{}},
 		},
 		"malformed": {source: `{"theme":`, bad: true},

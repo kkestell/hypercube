@@ -190,14 +190,11 @@ cancels the clone. In the desktop app, **Choose…** picks the parent folder.
 
 A pull request whose review was requested from the account shows **Review**.
 It fetches the pull request's head commit, starts a new worktree session at that
-commit, and opens the session. The session uses the `default_selection` from
-[configuration](configuration.md), or else the first listed model at its default
-effort; with no models listed, **Review** shows an error instead. The agent is
-asked to review the pull request with `gh`, report what it finds, and post
-nothing to GitHub. The pull request's own commits do not count as the session's
-unmerged work, so **Merge into …** appears only after the agent commits. On the
-Pull Requests view, **Review** is disabled until a
-workspace holds the repository.
+commit, and opens the session. The session's model and first prompt come from
+[**Settings › Review**](configuration.md#pull-request-reviews). The pull
+request's own commits do not count as the session's unmerged work, so
+**Merge into …** appears only after the agent commits. On the Pull Requests
+view, **Review** is disabled until a workspace holds the repository.
 
 A session whose branch has an open pull request involving the account shows a pull request icon at the
 right edge of its row. Hover over the icon for the pull request's number, title,
