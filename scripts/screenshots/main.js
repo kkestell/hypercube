@@ -334,6 +334,11 @@ async function capture(scene, ids, backend, window, name) {
     }
     await until(() => nativeTheme.themeSource === theme && tabs.every(tab => requests.completed.includes(tab)) && requests.inflight.size === 0);
     await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
+    // File and diff highlighters run in workers after their text loads. Network
+    // completion alone can leave the plain-text fallback in the capture.
+    await pageCondition(contents, `[...document.querySelectorAll('.file-view-code, .diff-view-lines')]
+      .every(view => view.querySelector('code span[style*="--shiki"]'))`);
+    await contents.executeJavaScript('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))');
     await checkError();
   };
   const shot = async theme => {
