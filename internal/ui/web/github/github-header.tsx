@@ -11,7 +11,9 @@ import {trackingText} from './wording.ts';
 export const chooseAccount = (store: Store, workspace: string, account: string) =>
   post(store, 'workspace', {action: 'github-account', id: workspace, account});
 
-const time = (ms: number) => new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+const sentence = (text: string) => text.endsWith('.') ? text : text + '.';
+
+const time =(ms: number) => new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 
 export function GitHubHeader({workspace}: {workspace: Workspace}) {
   const [, store] = useStore();
@@ -31,7 +33,7 @@ export function GitHubHeader({workspace}: {workspace: Workspace}) {
     <p>{trackingText(status)}</p>
     {status.error && <p className="flex items-center gap-1.5">
       <Icon name="warning" className="text-destructive" />
-      <span>Could not update from GitHub: {status.error.split('\n')[0]}.{status.updated > 0 && ` Showing data from ${time(status.updated)}.`}</span>
+      <span>Could not update from GitHub: {sentence(status.error.split('\n')[0])}{status.updated > 0 && ` Showing data from ${time(status.updated)}.`}</span>
     </p>}
   </div>;
 }

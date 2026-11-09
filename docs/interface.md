@@ -143,6 +143,18 @@ several are signed in, the dashboard shows a chooser for the account instead; th
 started afterward. When an update fails, the dashboard says why and shows the
 time of the data it still has.
 
+Below that, the dashboard lists the workspace's open pull requests, up to 50,
+most recently updated first. Each row shows the pull request's icon, its number
+and title as a link to GitHub, its author, its review and checks, and the
+actions that apply: **Merge** for any pull request that is not a draft,
+**Address review** when changes were requested, and **Fix checks** when its
+checks are failing. An action opens a list of the workspace's sessions that
+have not ended, with the sessions on that pull request first. Choose a session
+to send it the instruction; its agent does the work with `gh` and the
+workspace's account. Choose **New Session** to open a new session with the
+instruction ready to send. When more pull requests are open than the list
+shows, a link opens the rest on GitHub.
+
 A session whose branch has an open pull request shows a pull request icon at the
 right edge of its row. Hover over the icon for the pull request's number, title,
 review, and checks.

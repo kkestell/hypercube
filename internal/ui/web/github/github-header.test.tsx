@@ -66,6 +66,12 @@ test('an update error before any update shows no age', () => {
   expect(root.textContent).not.toContain('Showing data from');
 });
 
+test('an update error that ends in a period gets no second one', () => {
+  const {root} = dashboard(github({error: 'Permission denied (publickey).'}));
+  expect(root.textContent).toContain('Could not update from GitHub: Permission denied (publickey).');
+  expect(root.textContent).not.toContain('..');
+});
+
 test('a session row shows its open pull request', () => {
   stubFetch(() => new Response(''));
   const pullRequest: PullRequest = {number: 12, title: 'Add it', url: '', author: 'a', branch: 'b', fork: false, draft: true, review: '', checks: ''};

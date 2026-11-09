@@ -267,7 +267,7 @@ test('workspace heading opens recent sessions and shared tools; its chevron coll
   const dashboard = find(root, '[aria-label="Workspace dashboard"]');
   expect(dashboard.className).not.toContain('max-w-');
   expect(dashboard.querySelector('[class*="max-w-"]')).toBeNull();
-  expect([...dashboard.querySelectorAll('li')].map(li => li.textContent)).toEqual(sessions.slice(0, 10).map(s => s.title));
+  expect([...dashboard.querySelectorAll('[aria-label="Recent sessions"] li')].map(li => li.textContent)).toEqual(sessions.slice(0, 10).map(s => s.title));
   expect(store.get().session).toBeNull();
   expect(document.title).toBe('repo — Hypercube');
   expect(decodeURIComponent(location.hash.slice(1))).toBe('workspace:w');
