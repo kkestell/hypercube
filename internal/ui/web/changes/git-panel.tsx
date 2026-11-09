@@ -49,10 +49,12 @@ export function GitPanel() {
     store.update(state => state.editor ? {...state, editor: {...state.editor, gitComparison: value}} : state);
   };
   return <div className="git-panel h-full min-h-0 overflow-auto p-2 pt-1">
-    {editor ? <Tabs value={comparison} onValueChange={selectComparison}>
+    {!editor ? <p className="px-2 text-sm text-muted-foreground">Select a session or workspace to see its changes.</p>
+      : !session?.worktree ? <ChangeRows changes={editor.changes} comparison="uncommitted" />
+      : <Tabs value={comparison} onValueChange={selectComparison}>
       <TabsList className="w-full" aria-label="Change comparison">
         <TabsTrigger value="uncommitted">Uncommitted</TabsTrigger>
-        <TabsTrigger value="branch" disabled={!session?.worktree}>Branch changes</TabsTrigger>
+        <TabsTrigger value="branch">Branch changes</TabsTrigger>
       </TabsList>
       <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
       <TabsContent value="branch">
@@ -62,6 +64,6 @@ export function GitPanel() {
         </div>
         <ChangeRows changes={editor.branchChanges} comparison="branch" />
       </TabsContent>
-    </Tabs> : <p className="px-2 text-sm text-muted-foreground">Select a session or workspace to see its changes.</p>}
+    </Tabs>}
   </div>;
 }

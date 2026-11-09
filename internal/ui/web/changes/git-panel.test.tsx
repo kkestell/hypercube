@@ -57,7 +57,7 @@ test('Git activation and target changes refresh immediately while retaining cach
   expect(fetches).toHaveBeenCalledTimes(1);
   expect(root.querySelectorAll('li')).toHaveLength(4);
   await act(async () => replies[0](Response.json({branch: 'main', files: []})));
-  expect(find(root, '[role="tabpanel"]').textContent).toContain('No uncommitted changes.');
+  expect(root.textContent).toContain('No uncommitted changes.');
   expect(root.querySelector('li')).toBeNull();
   act(() => store.update(state => ({...state, editor: emptyEditor({workspace: 'w'})})));
   expect(fetches).toHaveBeenCalledTimes(2);
@@ -92,6 +92,17 @@ test('Git without a selection prompts for a session or workspace and does not re
   const root = mount(createStore(testState()), <GitPanel />);
   expect(root.textContent).toBe('Select a session or workspace to see its changes.');
   expect(fetches).not.toHaveBeenCalled();
+});
+
+test('the comparison tabs appear only for a session with a worktree', () => {
+  stubFetch(() => Response.json(null));
+  const show = (worktree: boolean) => {
+    const session = testSession({id: 's', worktree});
+    return mount(createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes}, workbench: {...testState().workbench, rightTab: 'git'}})), <GitPanel />);
+  };
+  expect(show(false).querySelector('[role="tablist"]')).toBeNull();
+  expect(show(false).querySelectorAll('li')).toHaveLength(4);
+  expect(show(true).querySelectorAll('[role="tab"]')).toHaveLength(2);
 });
 
 test('branch selection loads independent rows and the response target, then opens a matching diff', async () => {
