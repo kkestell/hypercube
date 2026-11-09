@@ -49,3 +49,26 @@ Smallest correction: treat the restored tip as the kept commit for this rollback
 ### Limitations
 
 - F1 has no automated reproduction. It rests on code reading.
+
+## Round 2
+
+- Author: xreview worker p1-review (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5, native conversation ID `a58716f7-b64e-461b-a3e3-37cb246f7a4c`
+- Code base: 1273b36947232e3b9a436111a7f9d08cb35c6c2a
+- Reviewed Code head: 1f8799f470635cb964e43b9499ad9b808b842cd9 (fix commit on top of 8bb30c9; between them only the work-log commit 85ba580 and the round 1 review commit 0706039)
+- Checkout: at 618ef30, which adds only the work log's repair entry to 1f8799f. Status clean.
+- Verdict: **accept**. F1 and the child-wording note are resolved, and the fix introduces no new issue.
+- Independence: I did not write or plan this change. I reviewed the full range `1273b36..1f8799f`: the round 1 code plus the fix.
+
+### Resolution
+
+| Item | Status | Evidence at 1f8799f |
+| --- | --- | --- |
+| F1: unarchive rollback refuses a restored tip that no kept ref reaches | Resolved | `internal/session/removal.go:63-93`: `start` is declared beside `base` and holds `s.Tip` only when the tip is restored. The save-failure rollback passes `cmp.Or(start, base)`. With a restored tip, every commit on the branch and in the worktree's `HEAD` is reachable from that tip, so only the uncommitted-file check can refuse. The archived row still records the tip, so nothing becomes less reachable than it was before the unarchive. The fallback path is unchanged: `start` is `""`, and the new `HEAD` is used. |
+| Note: child refusals name a starting commit they lack | Resolved | `internal/workspace/workspace.go:404-410`: `keptRefs(base)` omits the starting commit when `base` is empty. `TestWorktreeSession`'s match ("not on the checkout's branch") still holds for both wordings. |
+
+No new findings. No test covers the save-failure rollback; I accept that, as in round 1, because the fixture has no seam for a failed save and the change is a one-argument substitution.
+
+### Verification
+
+- Reused: `make check` at 1f8799f, macOS, git 2.56.0, exit 0 (`/tmp/p1-work-make-check-fix.log`, written 16:04 after the 16:02 fix commit, no `FAIL` lines). Round 1's `make check` evidence still covers the unchanged code.
+- Run: none. The fix is small enough to verify by reading, and the reused run covers the tree.
