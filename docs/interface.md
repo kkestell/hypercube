@@ -161,12 +161,14 @@ to GitHub, why it is listed, and its author when someone else wrote it.
   last, or when it is the latest comment in the conversation and is newer than
   both the account's last reply and the last commit.
 - The account's own pull requests that are ready to merge.
-- Pull requests whose review was requested from one of the account's teams.
+- Pull requests whose review was requested from one of the account's teams,
+  until the account reviews them.
 
 **Waiting on others** lists the account's other pull requests, such as drafts
 and ones waiting for review or checks, and pull requests where the account
-requested changes and the author has not responded. A link below the lists opens
-the remaining open pull requests on GitHub.
+requested changes and the author has not responded. Below the lists, a link
+counts the other open pull requests and opens the repository's pull requests on
+GitHub.
 
 The account's own pull requests show the actions that apply: **Merge** when
 GitHub allows merging, **Address review** when changes were requested or

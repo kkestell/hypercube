@@ -95,19 +95,21 @@ func (a *API) Fail(failing bool) {
 	a.failing = failing
 }
 
-// SetPullRequests sets the open pull requests every token reads: the total
-// open count, the pull requests whose review was requested from the token's
-// account or its team, and the nodes of the pull requests that involve it,
-// each shaped like GitHub's pull request fields.
-func (a *API) SetPullRequests(total int, requested []int, nodes ...map[string]any) {
+// SetPullRequests sets what every token reads: the total open count, the
+// nodes of the pull requests that involve the token's account and of the ones
+// whose review was requested from it or its team, each shaped like GitHub's
+// pull request fields, and the numbers of the ones requested from the account
+// itself.
+func (a *API) SetPullRequests(total int, involved, requested []map[string]any, direct ...int) {
 	var numbers []map[string]int
-	for _, n := range requested {
+	for _, n := range direct {
 		numbers = append(numbers, map[string]int{"number": n})
 	}
 	data, err := json.Marshal(map[string]any{"data": map[string]any{
 		"repository": map[string]any{"pullRequests": map[string]any{"totalCount": total}},
-		"involved":   map[string]any{"nodes": nodes},
-		"requested":  map[string]any{"nodes": numbers}}})
+		"involved":   map[string]any{"nodes": involved},
+		"requested":  map[string]any{"nodes": requested},
+		"direct":     map[string]any{"nodes": numbers}}})
 	if err != nil {
 		panic(err)
 	}
@@ -133,7 +135,7 @@ func (a *API) SetRequiredFailures(numbers ...int) {
 }
 
 func pullsAnswer(total int) string {
-	return fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"totalCount":%d}},"involved":{"nodes":[]},"requested":{"nodes":[]}}}`, total)
+	return fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"totalCount":%d}},"involved":{"nodes":[]},"requested":{"nodes":[]},"direct":{"nodes":[]}}}`, total)
 }
 
 // Requests is the number of permission queries the server has received.

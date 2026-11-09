@@ -25,7 +25,7 @@ function reviewTurn(pr: PullRequest): Turn | null {
   if (pr.requested === 'user') return yours(0, 'Review requested.');
   if (pr.reviewed === 'CHANGES_REQUESTED' && pr.responded) return yours(1, 'Updated since you requested changes.');
   if (pr.unanswered) return yours(2, `${plural(pr.unanswered, 'reply', 'replies')} to your comments.`);
-  if (pr.requested === 'team') return yours(5, 'Review requested from your team.');
+  if (pr.requested === 'team' && !pr.reviewed) return yours(5, 'Review requested from your team.');
   if (pr.reviewed === 'CHANGES_REQUESTED') return theirs('You requested changes.');
   return null;
 }
@@ -37,6 +37,9 @@ function ownTurn(pr: PullRequest): Turn {
   if (pr.merge === 'BEHIND') return yours(3, 'Behind the base branch.');
   if (pr.review === 'CHANGES_REQUESTED') return pr.responded ? theirs('Waiting for another review.') : yours(3, 'Changes requested.');
   if (pr.unanswered) return yours(3, `${plural(pr.unanswered, 'unanswered comment', 'unanswered comments')}.`);
+  // Without branch protection GitHub calls a pull request mergeable while
+  // requested reviewers have yet to answer.
+  if (pr.pendingReviews && pr.review !== 'APPROVED') return theirs('Waiting for review.');
   if (['CLEAN', 'HAS_HOOKS', 'UNSTABLE'].includes(pr.merge)) return yours(4, 'Ready to merge.');
   if (running(pr)) return theirs('Checks running.');
   if (pr.review === 'REVIEW_REQUIRED') return theirs('Waiting for review.');

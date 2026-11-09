@@ -21,7 +21,7 @@ export const testSession = (overrides: Partial<Session> & {id: string}): Session
 // testConfig has a default selection and the default preferences.
 export const testPullRequest = (overrides: Partial<PullRequest> = {}): PullRequest => ({
   number: 7, title: 'Add it', url: 'https://github.com/o/r/pull/7', author: 'a', branch: 'feature', fork: false, draft: false,
-  review: '', checks: '', merge: '', requiredFailed: false, requested: '', reviewed: '', responded: false, unanswered: 0, ...overrides,
+  review: '', checks: '', merge: '', requiredFailed: false, requested: '', reviewed: '', pendingReviews: 0, responded: false, unanswered: 0, ...overrides,
 });
 
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({

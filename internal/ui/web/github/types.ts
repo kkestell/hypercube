@@ -6,7 +6,8 @@
 // merge is GitHub's merge state, such as CLEAN, BEHIND, DIRTY, or BLOCKED.
 // requiredFailed is known only for the account's own pull requests. requested
 // says the account ('user') or its team ('team') was asked to review.
-// reviewed is the account's standing review. responded says the author pushed
+// reviewed is the account's standing review, APPROVED or CHANGES_REQUESTED.
+// pendingReviews counts review requests not yet answered. responded says the author pushed
 // or commented since the account's last review, or on the account's own pull
 // request with changes requested, that it pushed since. unanswered counts
 // conversations waiting on the account.
@@ -24,6 +25,7 @@ export interface PullRequest {
   requiredFailed: boolean;
   requested: '' | 'user' | 'team';
   reviewed: string;
+  pendingReviews: number;
   responded: boolean;
   unanswered: number;
 }

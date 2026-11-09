@@ -10,23 +10,26 @@ import (
 
 // pullRequestsQuery reads the open pull request count and the open pull
 // requests that involve the account: ones it wrote, was asked to review,
-// reviewed, commented on, or was mentioned in. requested lists the pull
-// requests whose review was requested from the account or one of its teams.
+// reviewed, commented on, or was mentioned in. requested reads the ones whose
+// review was requested from the account or one of its teams, which involved
+// can crowd out, and direct numbers the ones requested from the account
+// itself.
 const pullRequestsQuery = `fragment pr on PullRequest{
   number title url isDraft isCrossRepository headRefName headRefOid
   author{login} reviewDecision mergeStateStatus statusCheckRollup{state}
-  reviewRequests(first:10){nodes{requestedReviewer{...on User{login}}}}
+  reviewRequests{totalCount}
   latestOpinionatedReviews(first:10){nodes{author{login} state commit{oid}}}
-  reviews(last:1,author:$login,states:[APPROVED,CHANGES_REQUESTED,COMMENTED,DISMISSED]){nodes{state submittedAt commit{oid}}}
+  reviews(last:1,author:$login,states:[APPROVED,CHANGES_REQUESTED,COMMENTED,DISMISSED]){nodes{submittedAt commit{oid}}}
   reviewThreads(first:20){nodes{isResolved
     first:comments(first:1){nodes{author{__typename login} createdAt}}
     last:comments(last:1){nodes{author{__typename login} createdAt}}}}
-  comments(last:5){nodes{author{__typename login} createdAt}}
+  comments(last:20){nodes{author{__typename login} createdAt}}
   commits(last:1){nodes{commit{committedDate}}}}
-query($owner:String!,$name:String!,$login:String!,$involved:String!,$requested:String!){
+query($owner:String!,$name:String!,$login:String!,$involved:String!,$requested:String!,$direct:String!){
   repository(owner:$owner,name:$name){pullRequests(states:OPEN){totalCount}}
   involved:search(query:$involved,type:ISSUE_ADVANCED,first:20){nodes{...pr}}
-  requested:search(query:$requested,type:ISSUE,first:50){nodes{...on PullRequest{number}}}}`
+  requested:search(query:$requested,type:ISSUE,first:20){nodes{...pr}}
+  direct:search(query:$direct,type:ISSUE,first:20){nodes{...on PullRequest{number}}}}`
 
 // comment is a comment or review comment and who wrote it.
 type comment struct {
@@ -63,13 +66,6 @@ func (c comments) last() (comment, bool) {
 	return c.Nodes[len(c.Nodes)-1], true
 }
 
-// reviewRequest names the person asked for a review; it is empty for a team.
-type reviewRequest struct {
-	RequestedReviewer struct {
-		Login string `json:"login"`
-	} `json:"requestedReviewer"`
-}
-
 // opinion is a reviewer's latest approval or change request and the commit it
 // reviewed.
 type opinion struct {
@@ -100,14 +96,13 @@ type pullRequestNode struct {
 		State string `json:"state"`
 	} `json:"statusCheckRollup"`
 	ReviewRequests struct {
-		Nodes []reviewRequest `json:"nodes"`
+		TotalCount int `json:"totalCount"`
 	} `json:"reviewRequests"`
 	LatestOpinionatedReviews struct {
 		Nodes []opinion `json:"nodes"`
 	} `json:"latestOpinionatedReviews"`
 	Reviews struct {
 		Nodes []struct {
-			State       string    `json:"state"`
 			SubmittedAt time.Time `json:"submittedAt"`
 			Commit      *struct {
 				Oid string `json:"oid"`
@@ -131,8 +126,9 @@ type pullRequestNode struct {
 	} `json:"commits"`
 }
 
-// pullRequests lists the open pull requests that involve the account, most
-// recently updated first and never nil, and counts all open pull requests.
+// pullRequests lists the open pull requests that involve the account, never
+// nil, most recently updated first with any further review requests after
+// them, and counts all open pull requests.
 func (w *Watcher) pullRequests(ctx context.Context, token, login, owner, name string) ([]PullRequest, int, error) {
 	var data struct {
 		Repository struct {
@@ -144,29 +140,37 @@ func (w *Watcher) pullRequests(ctx context.Context, token, login, owner, name st
 			Nodes []pullRequestNode `json:"nodes"`
 		} `json:"involved"`
 		Requested struct {
+			Nodes []pullRequestNode `json:"nodes"`
+		} `json:"requested"`
+		Direct struct {
 			Nodes []struct {
 				Number int `json:"number"`
 			} `json:"nodes"`
-		} `json:"requested"`
+		} `json:"direct"`
 	}
 	repo := fmt.Sprintf("repo:%s/%s is:pr is:open", owner, name)
 	variables := map[string]any{"owner": owner, "name": name, "login": login,
 		"involved":  repo + " sort:updated-desc (involves:@me OR review-requested:@me OR reviewed-by:@me)",
-		"requested": repo + " review-requested:@me"}
+		"requested": repo + " review-requested:@me",
+		"direct":    repo + " user-review-requested:@me"}
 	if err := w.query(ctx, token, pullRequestsQuery, variables, &data); err != nil {
 		return nil, 0, err
 	}
-	requested := map[int]bool{}
+	requested, direct, seen := map[int]bool{}, map[int]bool{}, map[int]bool{}
 	for _, n := range data.Requested.Nodes {
 		requested[n.Number] = true
 	}
+	for _, n := range data.Direct.Nodes {
+		direct[n.Number] = true
+	}
 	prs := []PullRequest{}
 	var failing []int // the account's pull requests with failing checks
-	for _, n := range data.Involved.Nodes {
-		if n.Number == 0 { // a search result that is not a pull request
+	for _, n := range append(data.Involved.Nodes, data.Requested.Nodes...) {
+		if n.Number == 0 || seen[n.Number] { // not a pull request, or listed already
 			continue
 		}
-		pr := fromNode(n, login, requested[n.Number])
+		seen[n.Number] = true
+		pr := fromNode(n, login, requested[n.Number], direct[n.Number])
 		if pr.Author == login && (pr.Checks == "FAILURE" || pr.Checks == "ERROR") {
 			failing = append(failing, pr.Number)
 		}
@@ -185,21 +189,23 @@ func (w *Watcher) pullRequests(ctx context.Context, token, login, owner, name st
 }
 
 // fromNode describes the pull request as the account sees it. requested says
-// whether its review was requested from the account or one of its teams.
-func fromNode(n pullRequestNode, login string, requested bool) PullRequest {
+// its review was requested from the account or one of its teams, and direct
+// from the account itself.
+func fromNode(n pullRequestNode, login string, requested, direct bool) PullRequest {
 	pr := PullRequest{Number: n.Number, Title: n.Title, URL: n.URL, Branch: n.HeadRefName,
-		Fork: n.IsCrossRepository, Draft: n.IsDraft, Review: n.ReviewDecision, Merge: n.MergeStateStatus}
+		Fork: n.IsCrossRepository, Draft: n.IsDraft, Review: n.ReviewDecision, Merge: n.MergeStateStatus,
+		PendingReviews: n.ReviewRequests.TotalCount}
 	if n.Author != nil {
 		pr.Author = n.Author.Login
 	}
 	if n.StatusCheckRollup != nil {
 		pr.Checks = n.StatusCheckRollup.State
 	}
-	if requested {
+	switch {
+	case direct:
+		pr.Requested = "user"
+	case requested:
 		pr.Requested = "team"
-		if slices.ContainsFunc(n.ReviewRequests.Nodes, func(r reviewRequest) bool { return r.RequestedReviewer.Login == login }) {
-			pr.Requested = "user"
-		}
 	}
 	for _, r := range n.LatestOpinionatedReviews.Nodes {
 		if r.Author != nil && r.Author.Login == login {
@@ -208,10 +214,9 @@ func fromNode(n pullRequestNode, login string, requested bool) PullRequest {
 	}
 	if len(n.Reviews.Nodes) > 0 {
 		last := n.Reviews.Nodes[0]
-		if pr.Reviewed == "" {
-			pr.Reviewed = last.State
+		after := func(c comment) bool {
+			return pr.Author != "" && c.person() == pr.Author && c.CreatedAt.After(last.SubmittedAt)
 		}
-		after := func(c comment) bool { return c.person() == pr.Author && c.CreatedAt.After(last.SubmittedAt) }
 		pr.Responded = last.Commit == nil || last.Commit.Oid != n.HeadRefOid || slices.ContainsFunc(n.Comments.Nodes, after)
 		for _, t := range n.ReviewThreads.Nodes {
 			if c, ok := t.Last.last(); ok && after(c) {
@@ -242,7 +247,9 @@ func fromNode(n pullRequestNode, login string, requested bool) PullRequest {
 
 // unansweredConversation is 1 when the last comment a person left on the pull
 // request's conversation is someone else's and came after its last commit, so
-// neither a reply nor a push has answered it, and 0 otherwise.
+// neither a reply nor a push has answered it, and 0 otherwise. GitHub gives a
+// commit's time, not its push's, so a commit made before the comment and
+// pushed after it does not answer it.
 func unansweredConversation(n pullRequestNode, login string) int {
 	for i := len(n.Comments.Nodes) - 1; i >= 0; i-- {
 		c := n.Comments.Nodes[i]

@@ -53,8 +53,9 @@ type PullRequest struct {
 	// RequiredFailed says a required check failed. It is known only for the
 	// account's own pull requests.
 	RequiredFailed bool   `json:"requiredFailed"`
-	Requested      string `json:"requested"` // review requested from the account ("user") or its team ("team"), or empty
-	Reviewed       string `json:"reviewed"`  // the account's standing review: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, or empty
+	Requested      string `json:"requested"`      // review requested from the account ("user") or its team ("team"), or empty
+	Reviewed       string `json:"reviewed"`       // the account's standing review: APPROVED, CHANGES_REQUESTED, or empty
+	PendingReviews int    `json:"pendingReviews"` // review requests not yet answered
 	// Responded says the author pushed or commented since the account's last
 	// review. On the account's own pull request with changes requested, it
 	// says the account pushed since every change request.
