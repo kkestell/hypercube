@@ -9,8 +9,8 @@ Agents run locally with your installed coding tools and existing credentials.
 They can keep working after you close the app.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/overview-dark.png">
-  <img alt="A parent session and two children, with a file and diff beside the conversation" src="docs/images/overview-light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/hero-dark.png">
+  <img alt="Sessions across four workspaces, some working with children, some parked, some in merged or unmerged worktrees, beside a conversation, a diff, and two notifications" src="docs/images/hero-light.png">
 </picture>
 
 ## Start here

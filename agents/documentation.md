@@ -62,6 +62,9 @@ Each scene declares:
 - `openModelPicker: true` opens the composer's model picker before capture.
 - Optional fixture-file writes and Git steps; `worktree` gives a top-level
   session its own branch.
+- `parked: true` parks a top-level session and its children: they play first,
+  then the backend quits and restarts before the other sessions play.
+  `unseen: true` leaves a session's reply unread, which shows a notification.
 - Saved tabs and splits in `view`; `view.expanded` names `activity` or item IDs
   to expand in a saved turn. `select` chooses the session; `size` sets window
   dimensions in points.

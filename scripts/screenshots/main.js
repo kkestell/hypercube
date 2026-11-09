@@ -98,10 +98,20 @@ async function shoot(file) {
   fs.writeFileSync(path.join(base, 'config/hypercube/config.json'),
     JSON.stringify({...example, theme: 'light'}, null, 2));
   console.log(`${name}: playing`);
-  const backend = await startBackend(base, path.resolve(file));
+  let backend = await startBackend(base, path.resolve(file));
   let window;
   try {
-    const ids = await play(scene, base, backend);
+    // Parked sessions play first; quitting the backend then ends their
+    // agents, and the rest play on a new backend.
+    const ids = new Map();
+    const workspaces = await addWorkspaces(scene, base, backend);
+    await play(scene, workspaces, backend, ids, s => s.parked);
+    if (ids.size > 0) {
+      await backend.stop();
+      backend = await startBackend(base, path.resolve(file));
+    }
+    await play(scene, workspaces, backend, ids, s => !s.parked);
+    for (const [s, id] of ids) if (!s.unseen) await backend.post('session', {action: 'seen', id});
     window = createMainWindow({platform: process.platform, origin: backend.origin, pagesDir: path.join(root, 'internal/ui/dist'), userData: base});
     await capture(scene, ids, backend, window, name);
   } finally {
@@ -112,8 +122,9 @@ async function shoot(file) {
 
 // validate checks what the plugin and this driver rely on: every turn has
 // items and an end, children have no children, item IDs are unique within a
-// session, and no prompt contains another, since the plugin finds a turn by
-// the prompt its input contains.
+// session, no prompt contains another, since the plugin finds a turn by
+// the prompt its input contains, and a parked session ends idle, has no view,
+// and is not selected.
 function validate(scene) {
   const prompts = [];
   const check = (s, child) => {
@@ -129,7 +140,12 @@ function validate(scene) {
       for (const c of t.children ?? []) check(c, true);
     }
   };
-  for (const w of scene.workspaces) for (const s of w.sessions) check(s, false);
+  for (const w of scene.workspaces) for (const s of w.sessions) {
+    check(s, false);
+    if (s.parked && (s.view || s.turns.at(-1).end !== 'idle')) throw new Error(`parked session "${s.turns[0].prompt}" needs an idle end and no view`);
+  }
+  const [w, s] = scene.select;
+  if (scene.workspaces[w].sessions[s].parked) throw new Error('the selected session cannot be parked');
   for (const [i, a] of prompts.entries()) {
     if (prompts.some((b, j) => i !== j && b.includes(a))) throw new Error(`prompt "${a}" is part of another prompt`);
   }
@@ -203,11 +219,28 @@ async function startBackend(base, sceneFile) {
 const allSessions = state => state.workspaces.flatMap(w => w.sessions.flatMap(s => [s, ...s.children]));
 const hasItem = (items, id) => items.some(item => item.id.endsWith(':' + id));
 
-// play adds the scene's workspaces and plays every session's turns in order,
-// a turn's children after it. It returns each scene session's ID.
-async function play(scene, base, backend) {
+// addWorkspaces adds the scene's workspaces and returns their IDs in scene
+// order.
+async function addWorkspaces(scene, base, backend) {
+  const workspaces = [];
+  for (const w of scene.workspaces) {
+    const repo = path.join(base, w.name);
+    fs.cpSync(path.join(fixtures, w.repo), repo, {recursive: true});
+    const git = (...args) => run('git', ['-c', 'user.name=Hypercube', '-c', 'user.email=hypercube@example.com', '-c', 'commit.gpgsign=false', ...args], {cwd: repo});
+    await git('init', '-q', '-b', 'main');
+    await git('add', '-A');
+    await git('commit', '-q', '-m', 'Initial commit');
+    if (w.changes) await git('apply', path.join(fixtures, w.changes));
+    workspaces.push(await (await backend.post('workspace', {action: 'new', path: repo})).text());
+  }
+  return workspaces;
+}
+
+// play plays the turns of the top-level sessions that chosen selects, in
+// scene order, a turn's children after it. It adds each scene session's ID to
+// ids.
+async function play(scene, workspaces, backend, ids, chosen) {
   const {live, post} = backend;
-  const ids = new Map();
 
   // turnPlayed reports whether the selected session has received the turn's
   // last item and reached the turn's end.
@@ -236,22 +269,12 @@ async function play(scene, base, backend) {
     }
   };
 
-  for (const w of scene.workspaces) {
-    const repo = path.join(base, w.name);
-    fs.cpSync(path.join(fixtures, w.repo), repo, {recursive: true});
-    const git = (...args) => run('git', ['-c', 'user.name=Hypercube', '-c', 'user.email=hypercube@example.com', '-c', 'commit.gpgsign=false', ...args], {cwd: repo});
-    await git('init', '-q', '-b', 'main');
-    await git('add', '-A');
-    await git('commit', '-q', '-m', 'Initial commit');
-    if (w.changes) await git('apply', path.join(fixtures, w.changes));
-    const workspace = await (await post('workspace', {action: 'new', path: repo})).text();
-    for (const s of w.sessions) {
-      const created = await (await post('session', {action: 'new', workspace, ...s.settings, ...(s.worktree ? {worktree: '1'} : {})}, {text: s.turns[0].prompt})).json();
+  for (const [i, w] of scene.workspaces.entries()) {
+    for (const s of w.sessions.filter(chosen)) {
+      const created = await (await post('session', {action: 'new', workspace: workspaces[i], ...s.settings, ...(s.worktree ? {worktree: '1'} : {})}, {text: s.turns[0].prompt})).json();
       await playTurns(created.session, s);
     }
   }
-  for (const [s, id] of ids) if (!s.unseen) await post('session', {action: 'seen', id});
-  return ids;
 }
 
 // Requests the page has in flight, and the paths of those it completed since

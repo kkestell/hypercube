@@ -1,0 +1,377 @@
+{
+  "size": {"width": 1680, "height": 1020},
+  "workspaces": [
+    {
+      "name": "harbor",
+      "repo": "harbor",
+      "changes": "harbor.patch",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "worktree": true,
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Add a contributing guide",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "CONTRIBUTING.md"}, "output": "File created successfully at: CONTRIBUTING.md", "done": true},
+                {"id": "t1", "kind": "text", "text": "Added **CONTRIBUTING.md** with the test command and commit style, and merged it into `main`.", "done": true}
+              ],
+              "git": [
+                {"file": "CONTRIBUTING.md", "content": "# Contributing\n\nRun `go test ./...` before you send a change. Keep commit subjects short and in the imperative.\n"},
+                {"args": ["add", "CONTRIBUTING.md"]},
+                {"args": ["commit", "-q", "-m", "Add a contributing guide"]},
+                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Add a contributing guide"]}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Explain how harbor picks a template for each page",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -n template build.go"}, "output": "build.go:31:\ttmpl, err := template.ParseGlob(filepath.Join(s.Templates, \"*.html\"))", "done": true},
+                {"id": "t1", "kind": "text", "text": "Every page renders with `page.html` unless its front matter sets `template:`.", "done": true}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Highlight code blocks in rendered pages",
+              "end": "working",
+              "usage": {"context": 22310, "window": 272000},
+              "items": [
+                {"id": "r1", "kind": "reasoning", "text": "goldmark-highlighting plugs into goldmark as an extension.", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "build.go"}, "output": "Success. Updated build.go", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "shell", "input": {"command": "go test ./..."}}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Make harbor build skip pages whose source hasn't changed since the last build",
+              "end": "idle",
+              "usage": {"context": 48210, "window": 200000, "cost": 0.84},
+              "items": [
+                {"id": "r1", "kind": "reasoning", "text": "Build deletes public/ and renders everything. To skip unchanged pages it needs a record of what each output was built from: the page source and the templates.", "done": true},
+                {"id": "c1", "kind": "tool", "tool": "Read", "input": {"file_path": "build.go"}, "output": "     1\tpackage main\n...", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "Write", "input": {"file_path": "cache.go"}, "output": "File created successfully at: cache.go", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+                {"id": "c4", "kind": "tool", "tool": "Edit", "input": {"file_path": "main.go"}, "output": "The file main.go has been updated.", "done": true},
+                {"id": "c5", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./... && go run . build && go run . build", "description": "Run the tests and build twice"}, "output": "ok  \tgithub.com/harbor-ssg/harbor\t0.412s\nbuilt 3 pages\nbuilt 0 pages", "done": true},
+                {"id": "t1", "kind": "text", "text": "`harbor build` now skips pages that haven't changed: on the sample site a second build reports `built 0 pages`.\n\n- **`cache.go`** stores a SHA-256 of each page's source and the templates in `public/.harbor-cache.json`.\n- **`build.go`** renders a page only when its hash changed. Editing any template rebuilds every page.\n- **`main.go`** adds `harbor build -force`, which ignores the cache.\n\nDeleting a source page still leaves its old HTML in `public/`. Want me to remove those outputs?", "done": true}
+              ]
+            },
+            {
+              "prompt": "Yes, remove them. Meanwhile, have one agent write tests for the cache and one document -force here, and benchmark the cache on a large site in a worktree.",
+              "end": "working",
+              "usage": {"context": 61930, "window": 200000, "cost": 1.12},
+              "children": [
+                {
+                  "title": "Write build cache tests",
+                  "name": "cache-tests",
+                  "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+                  "dir": ".",
+                  "turns": [
+                    {
+                      "prompt": "Add table tests for the build cache to build_test.go: an unchanged page is skipped, an edited page is rebuilt, a template change rebuilds every page, and Force ignores the cache. Run go test ./... before you finish.",
+                      "end": "working",
+                      "items": [
+                        {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "sed -n '1,80p' build.go cache.go"}, "output": "package main\n...", "done": true},
+                        {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "build_test.go"}, "output": "Success. Updated build_test.go", "done": true},
+                        {"id": "c3", "kind": "tool", "tool": "shell", "input": {"command": "go test ./..."}}
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "title": "Benchmark the build cache",
+                  "name": "cache-bench",
+                  "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+                  "turns": [
+                    {
+                      "prompt": "Write a benchmark that builds a generated 5,000-page site twice, once cold and once warm, and commit it. Report both timings.",
+                      "end": "idle",
+                      "usage": {"context": 15200, "window": 400000},
+                      "items": [
+                        {"id": "c1", "kind": "tool", "tool": "write", "input": {"path": "bench_test.go"}, "output": "Wrote bench_test.go", "done": true},
+                        {"id": "c2", "kind": "tool", "tool": "bash", "input": {"command": "go test -run '^$' -bench Build"}, "output": "BenchmarkBuildCold-12    1    2814ms/op\nBenchmarkBuildWarm-12   38      31ms/op", "done": true},
+                        {"id": "t1", "kind": "text", "text": "Committed `bench_test.go`. A cold build of 5,000 pages takes 2.8 s; a warm one takes 31 ms.", "done": true}
+                      ],
+                      "git": [
+                        {"file": "bench_test.go", "content": "package main\n\nimport \"testing\"\n\nfunc BenchmarkBuildCold(b *testing.B) {}\n\nfunc BenchmarkBuildWarm(b *testing.B) {}\n"},
+                        {"args": ["add", "bench_test.go"]},
+                        {"args": ["commit", "-q", "-m", "Benchmark cold and warm builds"]}
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "title": "Document build -force",
+                  "name": "readme-force",
+                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+                  "dir": ".",
+                  "turns": [
+                    {
+                      "prompt": "Document harbor build -force and the build cache in README.md, in the README's style: short sentences and no new sections.",
+                      "end": "idle",
+                      "usage": {"context": 18400, "window": 200000, "cost": 0.06},
+                      "items": [
+                        {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "README.md"}, "output": "The file README.md has been updated.", "done": true},
+                        {"id": "t1", "kind": "text", "text": "Added `harbor build -force` to the usage block and noted under Layout that `public/.harbor-cache.json` lets builds skip unchanged pages.", "done": true}
+                      ],
+                      "git": [
+                        {"file": "README.md", "content": "# harbor\n\nA small static site generator. harbor turns a folder of Markdown pages into\nHTML using Go templates.\n\n```sh\nharbor build            # render changed pages in content/ into public/\nharbor build -force     # render every page\nharbor serve -addr :8080\n```\n\n## Layout\n\n- `content/` holds Markdown pages. A page's front matter sets its title and\n  template.\n- `templates/` holds the Go templates pages render with.\n- `public/` is the output. `public/.harbor-cache.json` records what each page\n  was built from, so builds skip unchanged pages.\n"}
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "items": [
+                {"id": "c7", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Write build cache tests", "name": "cache-tests", "harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created cache-tests in harbor.", "done": true},
+                {"id": "c8", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Benchmark the build cache", "name": "cache-bench", "harness": "pi", "model": "openai/gpt-5.2", "effort": "high", "initiation": "user_asked"}, "output": "Created cache-bench in harbor, in its own worktree.", "done": true},
+                {"id": "c9", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Document build -force", "name": "readme-force", "harness": "claude", "model": "sonnet", "effort": "high", "dir": ".", "initiation": "user_asked"}, "output": "Created readme-force in harbor.", "done": true},
+                {"id": "t2", "kind": "text", "text": "**cache-tests** and **readme-force** are working in this checkout, and **cache-bench** has its own worktree so the generated site stays out of yours. Meanwhile I'll remove stale outputs: a page listed in the cache but missing from `content/` was deleted.", "done": true},
+                {"id": "c10", "kind": "tool", "tool": "Edit", "input": {"file_path": "build.go"}, "output": "The file build.go has been updated.", "done": true},
+                {"id": "c11", "kind": "tool", "tool": "Bash", "input": {"command": "rm content/posts/templates.md && go run . build && ls public/posts", "description": "Check that a deleted page's output is removed"}}
+              ]
+            }
+          ],
+          "view": {
+            "tabs": {
+              "root": {"id": 3, "tabs": ["file:cache.go", "diff:build.go"], "active": "diff:build.go"},
+              "preview": null, "dragging": null, "nextId": 4
+            },
+            "activePane": 3, "expanded": {}, "scroll": {}, "folders": {},
+            "files": {"cache.go": {"source": false, "lines": []}}
+          }
+        }
+      ]
+    },
+    {
+      "name": "field-sync",
+      "repo": "field-sync",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "worktree": true,
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Add request logging middleware",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "logging.go"}, "output": "File created successfully at: logging.go", "done": true},
+                {"id": "t1", "kind": "text", "text": "Requests are now logged with their method, path, status, and duration. Merged into `main`.", "done": true}
+              ],
+              "git": [
+                {"file": "logging.go", "content": "package main\n\n// logRequests logs each request's method, path, status, and duration.\n"},
+                {"args": ["add", "logging.go"]},
+                {"args": ["commit", "-q", "-m", "Log each request"]},
+                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Log each request"]}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Why do conflict retries spike after midnight UTC?",
+              "end": "idle",
+              "items": [
+                {"id": "t1", "kind": "text", "text": "Every device's daily backup starts at midnight UTC and pushes at once, so their changes collide.", "done": true}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "worktree": true,
+          "unseen": true,
+          "turns": [
+            {
+              "prompt": "Paginate the /changes endpoint",
+              "end": "idle",
+              "usage": {"context": 19800, "window": 400000},
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "store.go"}, "output": "Updated store.go", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "bash", "input": {"command": "go test ./..."}, "output": "ok  \tgithub.com/field-notes/field-sync\t0.208s", "done": true},
+                {"id": "t1", "kind": "text", "text": "`GET /changes` now returns at most 500 changes and a `next` cursor. Committed on this branch; ready to merge.", "done": true}
+              ],
+              "git": [
+                {"file": "pagination.go", "content": "package main\n\n// pageSize is the most changes one GET /changes returns.\nconst pageSize = 500\n"},
+                {"args": ["add", "pagination.go"]},
+                {"args": ["commit", "-q", "-m", "Paginate GET /changes"]}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "turns": [
+            {
+              "prompt": "Rotate sync tokens without signing devices out",
+              "end": "working",
+              "usage": {"context": 41270, "window": 200000, "cost": 0.63},
+              "children": [
+                {
+                  "title": "Audit token expiry paths",
+                  "name": "token-audit",
+                  "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+                  "dir": ".",
+                  "turns": [
+                    {
+                      "prompt": "List every place that reads or expires a device token, without changing files.",
+                      "end": "idle",
+                      "items": [
+                        {"id": "c1", "kind": "tool", "tool": "shell", "input": {"command": "grep -rn -i token --include=*.go ."}, "output": "./tokens.go:11:const tokenLifetime = 30 * 24 * time.Hour\n./store.go:29:func (s *Store) Device(token string) (Device, error) {", "done": true},
+                        {"id": "t1", "kind": "text", "text": "Tokens are read only in `requireToken` and `Store.Device`; nothing revokes them.", "done": true}
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "title": "Add the previous-token migration",
+                  "name": "token-migration",
+                  "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+                  "turns": [
+                    {
+                      "prompt": "Write migration 0007, which adds a previous_token column to devices, and test it against a copy of the staging database.",
+                      "end": "ask",
+                      "items": [
+                        {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "migrations/0007_previous_token.sql"}, "output": "File created successfully at: migrations/0007_previous_token.sql", "done": true},
+                        {"id": "q1", "kind": "attention", "text": "The staging copy is 4 GB. Which database should I test migration 0007 against?", "choices": ["Staging copy", "Local fixture"], "notes": ["Takes about 10 minutes.", "Finishes in seconds, with 200 devices."]}
+                      ]
+                    }
+                  ]
+                }
+              ],
+              "items": [
+                {"id": "r1", "kind": "reasoning", "text": "A device that misses the rotation would be signed out. Accepting the previous token for a grace period avoids that.", "done": true},
+                {"id": "c1", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Audit token expiry paths", "name": "token-audit", "dir": ".", "initiation": "user_asked"}, "output": "Created token-audit in field-sync.", "done": true},
+                {"id": "c2", "kind": "tool", "server": "hypercube", "tool": "create_session", "input": {"title": "Add the previous-token migration", "name": "token-migration", "initiation": "user_asked"}, "output": "Created token-migration in field-sync, in its own worktree.", "done": true},
+                {"id": "c3", "kind": "tool", "tool": "Edit", "input": {"file_path": "tokens.go"}, "output": "The file tokens.go has been updated.", "done": true},
+                {"id": "c4", "kind": "tool", "tool": "Bash", "input": {"command": "go test ./...", "description": "Run the tests"}}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "field-notes",
+      "repo": "field-notes",
+      "sessions": [
+        {
+          "settings": {"harness": "opencode", "model": "openai/gpt-6.1-terra", "effort": "high"},
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Fix the broken links in the getting-started guide",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "edit", "input": {"path": "content/guide/getting-started.md"}, "output": "Success. Updated content/guide/getting-started.md", "done": true},
+                {"id": "t1", "kind": "text", "text": "The sync link now points at `sync.html`.", "done": true}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "pi", "model": "openai/gpt-5.2", "effort": "high"},
+          "worktree": true,
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Explain sync conflicts in the sync guide",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "write", "input": {"path": "content/guide/conflicts.md"}, "output": "Wrote content/guide/conflicts.md", "done": true},
+                {"id": "t1", "kind": "text", "text": "Added a page on sync conflicts and merged it into `main`.", "done": true}
+              ],
+              "git": [
+                {"file": "content/guide/conflicts.md", "content": "# Sync conflicts\n\nWhen two devices change the same note, Field Notes keeps both versions.\n"},
+                {"args": ["add", "content/guide/conflicts.md"]},
+                {"args": ["commit", "-q", "-m", "Explain sync conflicts"]},
+                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Explain sync conflicts"]}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "claude", "model": "sonnet", "effort": "high"},
+          "worktree": true,
+          "turns": [
+            {
+              "prompt": "Write a guide to sharing notebooks",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Write", "input": {"file_path": "content/guide/sharing.md"}, "output": "File created successfully at: content/guide/sharing.md", "done": true},
+                {"id": "t1", "kind": "text", "text": "Drafted **content/guide/sharing.md**. It's uncommitted so you can review it first.", "done": true}
+              ],
+              "git": [
+                {"file": "content/guide/sharing.md", "content": "# Sharing notebooks\n\nShare a notebook from its menu, then choose who can edit it.\n"}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "harbor-themes",
+      "repo": "harbor-themes",
+      "sessions": [
+        {
+          "settings": {"harness": "claude", "model": "opus", "effort": "high"},
+          "worktree": true,
+          "parked": true,
+          "turns": [
+            {
+              "prompt": "Move the plain theme's colors into CSS custom properties",
+              "end": "idle",
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "Edit", "input": {"file_path": "themes/plain/page.html"}, "output": "The file themes/plain/page.html has been updated.", "done": true},
+                {"id": "t1", "kind": "text", "text": "The plain theme's colors are custom properties now. Merged into `main`.", "done": true}
+              ],
+              "git": [
+                {"file": "themes/plain/page.html", "content": "<!doctype html>\n<html lang=\"en\">\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>{{.Title}}</title>\n  <style>\n    :root { --text: #222; }\n    body { max-width: 40rem; margin: 2rem auto; font-family: system-ui, sans-serif; color: var(--text); }\n  </style>\n</head>\n<body>\n  <h1>{{.Title}}</h1>\n  {{.Body}}\n</body>\n</html>\n"},
+                {"args": ["add", "themes/plain/page.html"]},
+                {"args": ["commit", "-q", "-m", "Use custom properties for plain colors"]},
+                {"args": ["-C", "../..", "merge", "--ff-only", "-q", ":/Use custom properties for plain colors"]}
+              ]
+            }
+          ]
+        },
+        {
+          "settings": {"harness": "opencode", "model": "opencode-go/deepseek-v4.1-flash", "effort": "max"},
+          "turns": [
+            {
+              "prompt": "Add a dark variant of the journal theme",
+              "end": "working",
+              "usage": {"context": 12900, "window": 128000},
+              "items": [
+                {"id": "c1", "kind": "tool", "tool": "read", "input": {"path": "themes/journal/style.css"}, "output": "body { margin: 0; background: #fdfaf4; ... }", "done": true},
+                {"id": "c2", "kind": "tool", "tool": "edit", "input": {"path": "themes/journal/style.css"}}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "select": [0, 3],
+  "workbench": {"rightPanel": false}
+}
