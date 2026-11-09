@@ -47,9 +47,6 @@ func models(ctx context.Context, req harness.ModelsRequest) (harness.Catalog, er
 			return harness.Catalog{}, fmt.Errorf("OpenCode does not offer model %q; see list_models", req.Model)
 		}
 		c.Efforts = available[i].efforts()
-		if len(c.Efforts) > 0 {
-			c.DefaultEffort = "default"
-		}
 	}
 	return c, nil
 }

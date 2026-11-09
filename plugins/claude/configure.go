@@ -17,7 +17,7 @@ type configuration struct {
 
 // configure waits for the response to this flag override, while the stream
 // reader continues translating the conversation.
-// An empty effort clears the effort override, so the model's default applies.
+// A model without efforts has no effort override, so the effort is cleared.
 func (c *claude) configure(selection harness.Selection) (*harness.Selection, error) {
 	// Claude accepts any model name here and fails only on the next prompt.
 	if _, err := check(c.models, selection); err != nil {

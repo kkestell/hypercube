@@ -69,7 +69,7 @@ func TestCatalogWaitsForPluginActivation(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(h.ctx, 5*time.Second)
 	defer cancel()
-	if err := h.begin(ctx, harness.StartArgs{Dir: "/work", Model: "p/m"}); err != nil {
+	if err := h.begin(ctx, harness.StartArgs{Dir: "/work", Model: "p/m", Effort: "high"}); err != nil {
 		t.Fatal(err)
 	}
 	if len(h.sent("/api/plugin")) != 2 {

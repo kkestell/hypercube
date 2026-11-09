@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/report"
 	"github.com/kkestell/hypercube/internal/store"
@@ -47,7 +48,11 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	}
 	settings := options.Settings
 	if !exact {
-		if settings, err = childSettings(parent, settings); err != nil {
+		cfg, err := config.Load()
+		if err != nil {
+			return store.Session{}, store.Session{}, err
+		}
+		if settings, err = childSettings(parent, settings, cfg.Models); err != nil {
 			return store.Session{}, store.Session{}, err
 		}
 	}

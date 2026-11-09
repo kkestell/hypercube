@@ -64,10 +64,9 @@
         "medium",
         "high",
         "xhigh",
-        "max",
-        "default"
+        "max"
       ],
-      "default_effort": "default"
+      "default_effort": "high"
     },
     {
       "harness": "opencode",
@@ -88,11 +87,11 @@
       "title": "GPT-6.1 Terra",
       "efforts": [
         "none",
-        "minimal",
         "low",
         "medium",
         "high",
-        "xhigh"
+        "xhigh",
+        "max"
       ],
       "default_effort": "high"
     },

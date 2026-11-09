@@ -46,7 +46,7 @@ func TestInstructions(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test m, default effort", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", ChildSettings, "Installed harnesses: test, other.", "guidance for choosing child models:\nUse m for design.", "create_session", "end_session"} {
+		for _, want := range []string{"Hypercube session p", "Children:", "builder (Build it): test m,", "set_title", "ended", "across all workspaces in this app", "list_sessions", "workspace paths and parent IDs", ChildSettings, "Installed harnesses: test, other.", "guidance for choosing child models:\nUse m for design.", "create_session", "end_session"} {
 			if !strings.Contains(parentText, want) {
 				t.Errorf("parent missing %q: %s", want, parentText)
 			}

@@ -607,7 +607,7 @@ func TestListModels(t *testing.T) {
 		{map[string]any{}, []string{`"id": "one"`, `"id": "two"`, `"installed": true`}},
 		{map[string]any{"harness": "one"}, []string{`"id": "m"`, `"id": "plain"`, `"default": "m"`}},
 		{map[string]any{"harness": "one", "query": "PLAIN"}, []string{`"id": "plain"`}},
-		{map[string]any{"harness": "one", "model": "m"}, []string{`"efforts": [`, `"default_effort": "low"`}},
+		{map[string]any{"harness": "one", "model": "m"}, []string{`"efforts": [`}},
 	} {
 		text, failed := callTool(t, parent, "list_models", tc.args)
 		for _, want := range tc.want {

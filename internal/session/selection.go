@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harnessclient"
 	"github.com/kkestell/hypercube/internal/store"
@@ -62,20 +63,29 @@ func (r *Runtime) Select(id string, selection harness.Selection) error {
 
 // childSettings resolves a child's settings from its parent's current ones
 // and the requested overrides. Another harness needs its own model, and
-// another model starts with its harness's default effort unless one is given.
-func childSettings(parent store.Session, o harness.Settings) (harness.Settings, error) {
+// another model starts with the default effort of its entry in the model list
+// unless one is given.
+func childSettings(parent store.Session, o harness.Settings, entries []config.ModelEntry) (harness.Settings, error) {
 	s := harness.Settings{Harness: parent.Harness, Model: parent.Model, Effort: parent.Effort}
 	if o.Harness != "" && o.Harness != parent.Harness {
 		if o.Model == "" {
 			return s, errors.New("a child with another harness needs a model; see list_models")
 		}
-		return o, nil
+		s = o
+	} else {
+		if o.Model != "" && o.Model != parent.Model {
+			s.Model, s.Effort = o.Model, ""
+		}
+		if o.Effort != "" {
+			s.Effort = o.Effort
+		}
 	}
-	if o.Model != "" && o.Model != parent.Model {
-		s.Model, s.Effort = o.Model, ""
-	}
-	if o.Effort != "" {
-		s.Effort = o.Effort
+	if s.Effort == "" {
+		for _, e := range entries {
+			if e.Harness == s.Harness && e.Model == s.Model {
+				s.Effort = e.DefaultEffort
+			}
+		}
 	}
 	return s, nil
 }

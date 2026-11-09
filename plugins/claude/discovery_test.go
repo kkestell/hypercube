@@ -17,6 +17,7 @@ func TestStartChecksSelection(t *testing.T) {
 		"unknown model":      {"sonnet", "high", `does not offer model "sonnet"`},
 		"unsupported effort": {"haiku", "high", `does not accept effort "high"`},
 		"effort without one": {"claude-plain", "low", `does not accept effort "low"`},
+		"no effort":          {"opus", "", `needs an effort`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fakeClaude(t, nil)
@@ -32,13 +33,13 @@ func TestStartChecksSelection(t *testing.T) {
 			}
 		})
 	}
-	// A resolved model name and an empty effort start, without --effort.
+	// A resolved model name starts with its effort.
 	args := fakeClaude(t, nil)
 	a := startArgs
-	a.Model, a.Effort = "claude-haiku-resolved", ""
+	a.Model, a.Effort = "claude-haiku-resolved", "low"
 	start(t, a)
 	data, err := os.ReadFile(args)
-	if err != nil || strings.Contains(string(data), "--effort") || !strings.Contains(string(data), "--model claude-haiku-resolved") {
+	if err != nil || !strings.Contains(string(data), "--effort low") || !strings.Contains(string(data), "--model claude-haiku-resolved") {
 		t.Fatalf("arguments %s, %v", data, err)
 	}
 }
@@ -62,7 +63,7 @@ func TestModels(t *testing.T) {
 	}
 	for model, efforts := range map[string][]string{"haiku": {"low", "max"}, "claude-plain": nil} {
 		got, err := models(context.Background(), harness.ModelsRequest{Dir: dir, Model: model})
-		if err != nil || !reflect.DeepEqual(got.Efforts, efforts) || got.DefaultEffort != "" {
+		if err != nil || !reflect.DeepEqual(got.Efforts, efforts) {
 			t.Fatalf("models for %s = %+v, %v", model, got, err)
 		}
 	}

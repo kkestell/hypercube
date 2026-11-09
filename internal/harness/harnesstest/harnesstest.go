@@ -179,7 +179,7 @@ func Catalog(req harness.ModelsRequest) (harness.Catalog, error) {
 	switch req.Model {
 	case "", "plain":
 	case "m":
-		c.Efforts, c.DefaultEffort = []string{"low", "high"}, "low"
+		c.Efforts = []string{"low", "high"}
 	default:
 		return c, fmt.Errorf("model %q is not offered", req.Model)
 	}

@@ -59,8 +59,5 @@ func models(ctx context.Context, req harness.ModelsRequest) (harness.Catalog, er
 	if c.Efforts, err = ag.levels(ctx); err != nil {
 		return harness.Catalog{}, err
 	}
-	if slices.Contains(c.Efforts, state.ThinkingLevel) {
-		c.DefaultEffort = state.ThinkingLevel
-	}
 	return c, nil
 }

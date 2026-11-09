@@ -56,13 +56,12 @@ func TestModels(t *testing.T) {
 		output string
 		want   string // the error, or empty when the catalog is valid
 	}{
-		"valid":            {`{"models":[{"id":"a/b","label":"B","provider":"A"},{"id":"c"}],"default":"c","model":"a/b","efforts":["low","high"],"default_effort":"high"}`, ""},
+		"valid":            {`{"models":[{"id":"a/b","label":"B","provider":"A"},{"id":"c"}],"default":"c","model":"a/b","efforts":["low","high"]}`, ""},
 		"no efforts":       {`{"models":[{"id":"a/b"}],"model":"a/b"}`, ""},
 		"empty ID":         {`{"models":[{"id":""}],"model":"a/b"}`, "a model has no ID"},
 		"duplicate ID":     {`{"models":[{"id":"c"},{"id":"c"}],"model":"a/b"}`, `model "c" is listed twice`},
 		"unlisted default": {`{"models":[{"id":"c"}],"default":"d","model":"a/b"}`, `default model "d" is not listed`},
 		"other model":      {`{"models":[{"id":"c"}],"model":"c"}`, `the catalog is for model "c"`},
-		"bad effort":       {`{"models":[{"id":"a/b"}],"model":"a/b","efforts":["low"],"default_effort":"max"}`, `default effort "max" is not listed`},
 		"malformed":        {`{`, "malformed models output"},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -140,15 +140,13 @@ Your working directory is not a Git checkout. Each child session works directly 
 	return b.String(), nil
 }
 
-// Selection names a harness, model, and effort. An empty effort is the
-// harness's default.
+// Selection names a harness, model, and effort. A model without efforts has
+// an empty effort.
 func Selection(harness, model, effort string) string {
 	if effort == "" {
-		effort = "default effort"
-	} else {
-		effort = "effort " + effort
+		return fmt.Sprintf("%s %s", harness, model)
 	}
-	return fmt.Sprintf("%s %s, %s", harness, model, effort)
+	return fmt.Sprintf("%s %s, effort %s", harness, model, effort)
 }
 
 func onBranch(branch string) string {

@@ -105,25 +105,27 @@ func TestSelectUnansweredAcrossReattachment(t *testing.T) {
 
 func TestChildSettings(t *testing.T) {
 	parent := store.Session{Harness: "test", Model: "m", Effort: "high"}
+	entries := []config.ModelEntry{{Harness: "test", Model: "next", Efforts: []string{"low", "mid"}, DefaultEffort: "mid"}, {Harness: "other", Model: "x", Efforts: []string{"max"}, DefaultEffort: "max"}}
 	for name, tc := range map[string]struct {
 		overrides harness.Settings
 		want      harness.Settings
 	}{
 		"inherited":                {harness.Settings{}, harness.Settings{Harness: "test", Model: "m", Effort: "high"}},
 		"effort":                   {harness.Settings{Effort: "low"}, harness.Settings{Harness: "test", Model: "m", Effort: "low"}},
-		"another model":            {harness.Settings{Model: "next"}, harness.Settings{Harness: "test", Model: "next"}},
+		"another model":            {harness.Settings{Model: "next"}, harness.Settings{Harness: "test", Model: "next", Effort: "mid"}},
+		"unlisted model":           {harness.Settings{Model: "unlisted"}, harness.Settings{Harness: "test", Model: "unlisted"}},
 		"another model and effort": {harness.Settings{Model: "next", Effort: "low"}, harness.Settings{Harness: "test", Model: "next", Effort: "low"}},
 		"the same model":           {harness.Settings{Harness: "test", Model: "m"}, harness.Settings{Harness: "test", Model: "m", Effort: "high"}},
-		"another harness":          {harness.Settings{Harness: "other", Model: "x"}, harness.Settings{Harness: "other", Model: "x"}},
+		"another harness":          {harness.Settings{Harness: "other", Model: "x"}, harness.Settings{Harness: "other", Model: "x", Effort: "max"}},
 		"another harness, effort":  {harness.Settings{Harness: "other", Model: "x", Effort: "max"}, harness.Settings{Harness: "other", Model: "x", Effort: "max"}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if got, err := childSettings(parent, tc.overrides); err != nil || got != tc.want {
+			if got, err := childSettings(parent, tc.overrides, entries); err != nil || got != tc.want {
 				t.Fatalf("childSettings = %+v, %v", got, err)
 			}
 		})
 	}
-	if _, err := childSettings(parent, harness.Settings{Harness: "other"}); err == nil {
+	if _, err := childSettings(parent, harness.Settings{Harness: "other"}, nil); err == nil {
 		t.Fatal("another harness took the parent's model")
 	}
 }

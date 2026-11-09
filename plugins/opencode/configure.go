@@ -64,9 +64,6 @@ func (m modelInfo) efforts() []string {
 	for _, variant := range m.Variants {
 		out = append(out, variant.ID)
 	}
-	if !slices.Contains(out, "default") {
-		out = append(out, "default")
-	}
 	return out
 }
 
@@ -88,16 +85,10 @@ func (ag *agent) selectSettings(ctx context.Context, selection harness.Selection
 	m := models[i]
 	efforts := m.efforts()
 	effort := selection.Effort
-	if effort == "" {
-		effort = "default"
-		if selection.Model == ag.selected.Model && slices.Contains(efforts, ag.selected.Effort) {
-			effort = ag.selected.Effort
-		}
-	}
-	if len(efforts) == 0 && effort == "default" {
-		effort = ""
-	}
-	if effort != "" && !slices.Contains(efforts, effort) {
+	switch {
+	case effort == "" && len(efforts) > 0:
+		return nil, fmt.Errorf("model %s needs an effort; see list_models", selection.Model)
+	case effort != "" && !slices.Contains(efforts, effort):
 		return nil, fmt.Errorf("model %s: OpenCode does not offer effort %q; see list_models", selection.Model, effort)
 	}
 	ref := modelRef{ProviderID: m.ProviderID, ID: m.ID, Variant: effort}

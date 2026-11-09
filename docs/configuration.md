@@ -24,15 +24,17 @@ shows every field.
 | `default_worktree` | Start new Git sessions in a worktree. The composer can override this for each session. | `false` |
 | `child_model_guidance` | Instructions to agents about when children should use a different harness, model, or effort. It does not restrict available choices. | Empty text |
 
-An empty `effort` uses the harness's default. Model and effort values are the
-harness's native IDs; the plugin rejects invalid ones at start or model change.
+A model with effort levels needs an `effort`; a model without them takes none.
+Model and effort values are the harness's native IDs; the plugin rejects
+invalid ones at start or model change.
 See [harness requirements](harness-support.md#requirements).
 
 ## Models
 
 Edit the model picker list in **Settings › Agents › Models**. Each entry names
 a harness, its exact model ID, effort levels ordered from lowest to highest,
-and a default effort. Leave levels empty for a model without an effort control.
+and the effort a session starts with. Leave levels empty for a model without an
+effort control.
 One level is its own default; several levels require a default from the list.
 
 The `models` field holds the list, empty by default. Each entry is an object

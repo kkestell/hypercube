@@ -23,7 +23,7 @@ while IFS= read -r line; do
   *'"effortLevel":"max","model":"haiku"'*)
    echo '{"type":"control_response","response":{"subtype":"error","request_id":"other","error":"unrelated"}}'
    printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
-  *'"effortLevel":null,"model":"opus"'*) printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
+  *'"effortLevel":null,"model":"claude-plain"'*) printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id";;
   *) exit 4;;
   esac;;
  *'"content":"work"'*)
@@ -78,8 +78,8 @@ done
 	if r := c.Reply(6); !strings.Contains(r.Error, `does not accept effort "high"`) || r.Selection != nil {
 		t.Fatal(r)
 	}
-	// An empty effort clears the override instead of keeping max.
-	cleared := harness.Selection{Model: "opus"}
+	// A model without efforts clears the override instead of keeping max.
+	cleared := harness.Selection{Model: "claude-plain"}
 	c.Send(harness.Command{ID: 7, Command: harness.CmdConfigure, Selection: &cleared})
 	if r := c.Reply(7); r.Error != "" || r.Selection == nil || *r.Selection != cleared {
 		t.Fatal(r)

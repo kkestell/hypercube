@@ -289,7 +289,7 @@ func TestBeginResumeForkAndSelection(t *testing.T) {
 			h := connected(t)
 			a := tc.args
 			a.Dir = "/work"
-			a.Model = "p/m"
+			a.Model, a.Effort = "p/m", "high"
 			if err := h.begin(h.ctx, a); err != nil {
 				t.Fatal(err)
 			}
@@ -327,8 +327,8 @@ func TestConfigurationAndCatalog(t *testing.T) {
 		model, effort, want string
 		fail                bool
 	}{
-		{"p/m", "high", "high", false}, {"p/m", "", "high", false}, {"q/b/c", "default", "", false},
-		{"p/m", "", "default", false}, {"p/m", "unknown", "", true}, {"q/b/c", "high", "", true}, {"p/disabled", "", "", true},
+		{"p/m", "high", "high", false}, {"q/b/c", "", "", false},
+		{"p/m", "", "", true}, {"p/m", "default", "", true}, {"p/m", "unknown", "", true}, {"q/b/c", "high", "", true}, {"p/disabled", "", "", true},
 	} {
 		got, err := h.configure(harness.Selection{Model: tc.model, Effort: tc.effort})
 		if tc.fail {
@@ -385,7 +385,7 @@ func TestOwnedServerDiscoveryAndLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Models) != 2 || c.Default != "p/m" || !reflect.DeepEqual(c.Efforts, []string{"low", "high", "default"}) || c.DefaultEffort != "default" {
+	if len(c.Models) != 2 || c.Default != "p/m" || !reflect.DeepEqual(c.Efforts, []string{"low", "high"}) {
 		t.Fatalf("catalog: %+v", c)
 	}
 	if len(h.sent("/api/session")) != 0 {

@@ -22,9 +22,9 @@ configured in **Settings › Agents › Models**. The table above gives the form
 of each harness's model ID and effort. Invalid selections are rejected at start
 or model change, before the first prompt.
 
-An empty effort uses the harness default. OpenCode and Pi report the chosen
-effort back to the selector. Listing models does not create a
-conversation; OpenCode reads its native model catalog directly.
+A model with efforts needs one; a model without efforts takes none. OpenCode and
+Pi report the chosen effort back to the selector. Listing models does not
+create a conversation; OpenCode reads its native model catalog directly.
 
 ## Messages and model changes
 

@@ -43,23 +43,22 @@ func (ag *agent) levels(ctx context.Context) ([]string, error) {
 }
 
 // checkLevel rejects a thinking level the current model lacks, which Pi
-// would otherwise lower silently. An empty level keeps Pi's choice.
+// would otherwise lower silently. A model with levels needs one.
 func (ag *agent) checkLevel(ctx context.Context, model, level string) error {
-	if level == "" {
-		return nil
-	}
 	levels, err := ag.levels(ctx)
 	if err != nil {
 		return err
 	}
-	if !slices.Contains(levels, level) {
+	switch {
+	case level == "" && len(levels) > 0:
+		return fmt.Errorf("Pi model %s needs a thinking level; see list_models", model)
+	case level != "" && !slices.Contains(levels, level):
 		return fmt.Errorf("Pi model %s does not accept thinking level %q; see list_models", model, level)
 	}
 	return nil
 }
 
-// configure selects the model, then the thinking level. An empty level keeps
-// the one Pi chooses for the model.
+// configure selects the model, then the thinking level.
 func (ag *agent) configure(selection harness.Selection) (*harness.Selection, error) {
 	provider, model, ok := strings.Cut(selection.Model, "/")
 	if !ok {

@@ -64,15 +64,12 @@ type Model struct {
 
 // Catalog is a plugin's answer to `models`. Default is the harness's default
 // model when it reports one. For a requested Model, Efforts lists its efforts
-// in native order, empty when the model has no effort setting, and
-// DefaultEffort is the effort the harness uses when none is chosen, when it
-// reports one.
+// in native order, empty when the model has no effort setting.
 type Catalog struct {
-	Models        []Model  `json:"models"`
-	Default       string   `json:"default,omitempty"`
-	Model         string   `json:"model,omitempty"`
-	Efforts       []string `json:"efforts,omitempty"`
-	DefaultEffort string   `json:"default_effort,omitempty"`
+	Models  []Model  `json:"models"`
+	Default string   `json:"default,omitempty"`
+	Model   string   `json:"model,omitempty"`
+	Efforts []string `json:"efforts,omitempty"`
 }
 
 // Check validates a catalog received from a plugin for the request.
@@ -93,16 +90,13 @@ func (c Catalog) Check(req ModelsRequest) error {
 	if c.Model != req.Model {
 		return fmt.Errorf("the catalog is for model %q, not %q", c.Model, req.Model)
 	}
-	if req.Model == "" && (len(c.Efforts) > 0 || c.DefaultEffort != "") {
+	if req.Model == "" && (len(c.Efforts) > 0) {
 		return errors.New("efforts without a requested model")
 	}
 	for i, e := range c.Efforts {
 		if strings.TrimSpace(e) == "" || slices.Contains(c.Efforts[:i], e) {
 			return fmt.Errorf("model %q has an empty or repeated effort", req.Model)
 		}
-	}
-	if c.DefaultEffort != "" && !slices.Contains(c.Efforts, c.DefaultEffort) {
-		return fmt.Errorf("default effort %q is not listed", c.DefaultEffort)
 	}
 	return nil
 }

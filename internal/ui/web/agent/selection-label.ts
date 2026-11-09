@@ -12,7 +12,7 @@ export const displayName = (harness = '') => properNames[harness] ?? harness;
 
 // settingsText describes settings in words, for hover text and screen readers.
 export const settingsText = (s: Settings, entries: ModelEntry[] | null) =>
-  `${displayName(s.harness)} ${modelTitle(s, entries)}, ${s.effort ? `effort ${s.effort}` : 'default effort'}`;
+  `${displayName(s.harness)} ${modelTitle(s, entries)}${s.effort ? `, effort ${s.effort}` : ''}`;
 
 // Unlisted models retain their native ID, including after an entry is deleted.
 export const modelTitle = (s: Settings, entries: ModelEntry[] | null) =>

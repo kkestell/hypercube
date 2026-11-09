@@ -50,15 +50,26 @@ func (m nativeModel) efforts() []string {
 	return m.SupportedEffortLevels
 }
 
-// check finds the selected model, by its value or the model it resolves to,
-// and checks the effort against it. An empty effort leaves Claude's default.
-func check(models []nativeModel, s harness.Selection) (nativeModel, error) {
-	i := slices.IndexFunc(models, func(m nativeModel) bool { return m.Value == s.Model || m.ResolvedModel == s.Model })
+// find returns the model with the given value or resolved model.
+func find(models []nativeModel, name string) (nativeModel, error) {
+	i := slices.IndexFunc(models, func(m nativeModel) bool { return m.Value == name || m.ResolvedModel == name })
 	if i < 0 {
-		return nativeModel{}, fmt.Errorf("Claude Code does not offer model %q; see list_models", s.Model)
+		return nativeModel{}, fmt.Errorf("Claude Code does not offer model %q; see list_models", name)
 	}
-	m := models[i]
-	if s.Effort != "" && !slices.Contains(m.efforts(), s.Effort) {
+	return models[i], nil
+}
+
+// check finds the selected model and checks the effort against it. A model
+// with efforts needs one.
+func check(models []nativeModel, s harness.Selection) (nativeModel, error) {
+	m, err := find(models, s.Model)
+	if err != nil {
+		return m, err
+	}
+	switch efforts := m.efforts(); {
+	case s.Effort == "" && len(efforts) > 0:
+		return m, fmt.Errorf("Claude Code model %s needs an effort; see list_models", s.Model)
+	case s.Effort != "" && !slices.Contains(efforts, s.Effort):
 		return m, fmt.Errorf("Claude Code model %s does not accept effort %q; see list_models", s.Model, s.Effort)
 	}
 	return m, nil
@@ -93,7 +104,7 @@ func models(ctx context.Context, req harness.ModelsRequest) (harness.Catalog, er
 		}
 	}
 	if req.Model != "" {
-		m, err := check(c.models, harness.Selection{Model: req.Model})
+		m, err := find(c.models, req.Model)
 		if err != nil {
 			return harness.Catalog{}, err
 		}

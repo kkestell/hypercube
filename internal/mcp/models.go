@@ -15,7 +15,7 @@ type listModelsArgs struct {
 	Query   string `json:"query,omitempty"`
 }
 
-const listModelsDescription = `List the choices for a child session's harness, model, and effort, as your directory offers them. Without harness, list the installed harnesses. With harness, list its models and its default model; query keeps the models whose ID, label, or provider contains it. With model, also list that model's efforts and default effort; a model without efforts takes no effort. This starts no session and changes nothing.`
+const listModelsDescription = `List the choices for a child session's harness, model, and effort, as your directory offers them. Without harness, list the installed harnesses. With harness, list its models and its default model; query keeps the models whose ID, label, or provider contains it. With model, also list that model's efforts; a model with efforts needs one, and a model without efforts takes none. This starts no session and changes nothing.`
 
 // listModels asks the harness's plugin for its models in dir.
 func listModels(ctx context.Context, rt *session.Runtime, dir string, a listModelsArgs) (string, error) {
