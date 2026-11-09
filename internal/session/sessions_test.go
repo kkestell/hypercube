@@ -252,7 +252,7 @@ func TestWorkspaceAndSessionEdits(t *testing.T) {
 func TestDelete(t *testing.T) {
 	f := newFixture(t)
 	dir, branch := workspace.WorktreeDir(f.root, "s", "w1"), workspace.ChildBranch("s", "w1")
-	if err := workspace.AddWorktree(f.root, dir, branch); err != nil {
+	if err := workspace.AddWorktree(f.root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	other := t.TempDir()
@@ -385,7 +385,7 @@ func TestWorktreeSession(t *testing.T) {
 	f.git(dir, "commit", "-q", "--allow-empty", "-m", "work")
 	f.input(s.ID, "continue")
 	f.merge(s.ID, "one unmerged commit", func(m workspace.Merge) bool { return m.Unmerged == 1 && m.Committed })
-	if err := f.rt.Delete(s.ID); err == nil || !strings.Contains(err.Error(), "not merged") {
+	if err := f.rt.Delete(s.ID); err == nil || !strings.Contains(err.Error(), "not on the checkout's branch") {
 		t.Fatalf("delete of an unmerged worktree session: %v", err)
 	}
 	if _, err := os.Stat(dir); err != nil || len(f.family(s.ID)) != 1 {
@@ -421,6 +421,29 @@ func TestWorktreeSession(t *testing.T) {
 	}
 	if exec.Command("git", "-C", f.root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil {
 		t.Error("branch remains")
+	}
+}
+
+func TestWorktreeSessionAtStart(t *testing.T) {
+	f := newFixture(t)
+	first, err := workspace.Head(f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.git(f.root, "commit", "-q", "--allow-empty", "-m", "later")
+	if _, err := f.rt.CreateSubmission(f.workspace.ID, lead, false, first, "", "start"); err == nil || !strings.Contains(err.Error(), "worktree") {
+		t.Fatalf("a starting point without a worktree: %v", err)
+	}
+	s, err := f.rt.CreateSubmission(f.workspace.ID, lead, true, first, "", "start")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.until("the worktree session idle", func() bool { return f.idle(s.ID) })
+	if got := f.storedSession(s.ID); got.Base != first {
+		t.Fatalf("base = %s, want %s", got.Base, first)
+	}
+	if head, err := workspace.Head(s.Dir); err != nil || head != first {
+		t.Fatalf("worktree HEAD = %s, %v; want %s", head, err, first)
 	}
 }
 

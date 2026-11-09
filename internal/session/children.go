@@ -111,7 +111,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 		return err
 	}
 	if child.Branch != "" {
-		if err := workspace.AddWorktree(parent.Dir, child.Dir, child.Branch); err != nil {
+		if err := workspace.AddWorktree(parent.Dir, child.Dir, child.Branch, ""); err != nil {
 			// run never starts, so end the launch here and release anything
 			// already stopping it.
 			r.end(l, err)
@@ -121,7 +121,7 @@ func (r *Runtime) createChild(parentID string, options ChildOptions, approved ap
 	}
 	if err := r.launch(l); err != nil {
 		if child.Branch != "" {
-			if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); cleanup != nil {
+			if cleanup := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch, ""); cleanup != nil {
 				return store.Session{}, fmt.Errorf("%w; worktree cleanup failed: %v; child session %s was kept for cleanup", err, cleanup, child.Name)
 			}
 		}

@@ -94,7 +94,8 @@ See [session lifecycle](lifecycle.md) if you need to know what restarts.
 
 ## Archive or delete completed work
 
-1. Commit and merge any work you want to keep from managed worktrees.
+1. Commit any work you want to keep from managed worktrees, and merge or push
+   it.
 2. Choose **Archive** in the session's menu to keep searchable, read-only
    conversations while removing the family from the active list.
 3. Find it later through Search or the sidebar's **Archived** tab. Choose
@@ -102,6 +103,6 @@ See [session lifecycle](lifecycle.md) if you need to know what restarts.
 
 **Delete** removes the family's saved conversations. It is not a substitute
 for Archive. Managed worktrees and branches are removed only after Git checks
-for uncommitted files and unmerged commits; the original project directory is
-not deleted. See the [cleanup reference](storage.md#session-cleanup) before
-removing a team.
+for uncommitted files and for commits that are neither merged nor pushed; the
+original project directory is not deleted. See the
+[cleanup reference](storage.md#session-cleanup) before removing a team.

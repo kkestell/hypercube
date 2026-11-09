@@ -113,7 +113,7 @@ func (s *server) sessionAction(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		settings := harness.Settings{Harness: q.Get("harness"), Model: q.Get("model"), Effort: q.Get("effort")}
-		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", in.Submission, in.Text, in.Images...)
+		created, err := s.rt.CreateSubmission(q.Get("workspace"), settings, q.Get("worktree") == "1", q.Get("start"), in.Submission, in.Text, in.Images...)
 		w.Header().Set("Content-Type", "application/json")
 		result := map[string]string{"session": created.ID}
 		if err != nil {

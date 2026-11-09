@@ -138,7 +138,7 @@ func TestWorktreeRemoval(t *testing.T) {
 	exclude := filepath.Join(root, ".git/info/exclude")
 	write(t, exclude, "local-only")
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
-	if err := AddWorktree(root, dir, branch); err != nil {
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(exclude); string(data) != "local-only\n/.hypercube/\n" {
@@ -149,12 +149,12 @@ func TestWorktreeRemoval(t *testing.T) {
 	}
 
 	run(dir, "commit", "-q", "--allow-empty", "-m", "work")
-	if err := RemoveWorktree(root, dir, branch); err == nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil {
 		t.Error("removed an unmerged branch")
 	}
 	run(root, "merge", "-q", branch)
 	write(t, filepath.Join(dir, "scratch"), "")
-	if err := RemoveWorktree(root, dir, branch); err == nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil {
 		t.Error("removed a dirty worktree")
 	}
 	if err := os.Remove(filepath.Join(dir, "scratch")); err != nil {
@@ -162,13 +162,13 @@ func TestWorktreeRemoval(t *testing.T) {
 	}
 	run(dir, "checkout", "-q", "--detach")
 	run(dir, "commit", "-q", "--allow-empty", "-m", "detached")
-	if err := RemoveWorktree(root, dir, branch); err == nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil {
 		t.Error("removed a worktree with an unmerged detached commit")
 	}
 	run(dir, "checkout", "-q", branch)
 	// The branch is merged into HEAD but not into its upstream.
 	run(dir, "branch", "-q", "--set-upstream-to=other")
-	if err := RemoveWorktree(root, dir, branch); err != nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); err == nil {
@@ -184,7 +184,7 @@ func TestWorktreeRemoval(t *testing.T) {
 func TestCheckChildDir(t *testing.T) {
 	root, run := gitRepo(t)
 	managed := WorktreeDir(root, "parent", "w1")
-	if err := AddWorktree(root, managed, ChildBranch("parent", "w1")); err != nil {
+	if err := AddWorktree(root, managed, ChildBranch("parent", "w1"), ""); err != nil {
 		t.Fatal(err)
 	}
 	foreign := filepath.Join(t.TempDir(), "foreign")
@@ -205,7 +205,7 @@ func TestCheckChildDir(t *testing.T) {
 	// A workspace in a subfolder of its checkout keeps its worktrees there.
 	sub := filepath.Join(root, "sub")
 	nested := WorktreeDir(sub, "parent", "w2")
-	if err := AddWorktree(sub, nested, ChildBranch("parent", "w2")); err != nil {
+	if err := AddWorktree(sub, nested, ChildBranch("parent", "w2"), ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := CheckChildDir(sub, nested); err != nil {
@@ -285,7 +285,7 @@ func TestWorktreeSetUp(t *testing.T) {
 	run(root, "commit", "-q", "-m", "setup")
 
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
-	if err := AddWorktree(root, dir, branch); err != nil {
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{".toolchain/bin/zig", ".env", "cache/keep", "vendor/sub/lib"} {
@@ -305,15 +305,77 @@ func TestWorktreeSetUp(t *testing.T) {
 	}
 
 	write(t, filepath.Join(dir, "vendor/sub/lib"), "changed")
-	if err := RemoveWorktree(root, dir, branch); err == nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil {
 		t.Error("removed a worktree with a changed submodule")
 	}
 	run(filepath.Join(dir, "vendor/sub"), "checkout", "-q", "lib")
-	if err := RemoveWorktree(root, dir, branch); err != nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(dir); err == nil {
 		t.Error("worktree directory remains")
+	}
+}
+
+func TestAddWorktreeAtStart(t *testing.T) {
+	root, run := gitRepo(t)
+	first, err := Head(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(root, "commit", "-q", "--allow-empty", "-m", "later")
+	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
+	if err := AddWorktree(root, dir, branch, "HEAD~1"); err != nil {
+		t.Fatal(err)
+	}
+	if head, err := Head(dir); err != nil || head != first {
+		t.Errorf("worktree HEAD = %s, %v; want %s", head, err, first)
+	}
+	dir, branch = SessionDir(root, "s2"), SessionBranch("s2")
+	if err := AddWorktree(root, dir, branch, "missing"); err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Errorf("AddWorktree at an unresolvable start = %v", err)
+	}
+	if exists(root, branch) {
+		t.Error("an unresolvable start created a branch")
+	}
+}
+
+// A worktree is removable when its session's starting commit or a remote
+// branch holds its commits, even when the checkout's HEAD does not.
+func TestRemovableKeepsStartAndRemoteCommits(t *testing.T) {
+	root, run := gitRepo(t)
+	run(root, "checkout", "-q", "-b", "side")
+	run(root, "commit", "-q", "--allow-empty", "-m", "side")
+	start, err := Head(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	run(root, "checkout", "-q", "main")
+	run(root, "branch", "-q", "-D", "side")
+	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
+	if err := AddWorktree(root, dir, branch, start); err != nil {
+		t.Fatal(err)
+	}
+	if err := Removable(root, dir, branch, ""); err == nil {
+		t.Error("removable without its starting commit, which no ref holds")
+	}
+	if err := Removable(root, dir, branch, start); err != nil {
+		t.Errorf("no commits past the starting commit: %v", err)
+	}
+
+	remote := t.TempDir()
+	run(remote, "init", "-q", "--bare")
+	run(root, "remote", "add", "origin", remote)
+	run(dir, "commit", "-q", "--allow-empty", "-m", "work")
+	if err := Removable(root, dir, branch, start); err == nil {
+		t.Error("removable with a commit only on its branch")
+	}
+	run(dir, "push", "-q", "origin", branch)
+	if err := RemoveWorktree(root, dir, branch, start); err != nil {
+		t.Fatalf("commits on a remote branch: %v", err)
+	}
+	if exists(root, branch) {
+		t.Error("branch remains")
 	}
 }
 
@@ -331,7 +393,7 @@ func TestWorktreeIncludesLiteralPaths(t *testing.T) {
 			run(root, "add", ".gitignore", ".worktreeinclude")
 			run(root, "commit", "-qm", "include local files")
 			dir := SessionDir(root, "literal")
-			if err := AddWorktree(root, dir, SessionBranch("literal")); err != nil {
+			if err := AddWorktree(root, dir, SessionBranch("literal"), ""); err != nil {
 				t.Fatal(err)
 			}
 			data, err := os.ReadFile(filepath.Join(dir, name))
@@ -351,12 +413,12 @@ func TestWorktreeIncludesExcludeManagedWorktrees(t *testing.T) {
 	run(root, "add", ".gitignore", ".worktreeinclude")
 	run(root, "commit", "-qm", "include ignored files")
 	existing := SessionDir(root, "existing")
-	if err := AddWorktree(root, existing, SessionBranch("existing")); err != nil {
+	if err := AddWorktree(root, existing, SessionBranch("existing"), ""); err != nil {
 		t.Fatal(err)
 	}
 	write(t, filepath.Join(existing, "private-draft"), "another session's work")
 	dir := SessionDir(root, "new")
-	if err := AddWorktree(root, dir, SessionBranch("new")); err != nil {
+	if err := AddWorktree(root, dir, SessionBranch("new"), ""); err != nil {
 		t.Fatal(err)
 	}
 	for name, want := range map[string]string{".env": "local environment", ".hypercube-local": "ordinary ignored file"} {
@@ -372,25 +434,25 @@ func TestWorktreeIncludesExcludeManagedWorktrees(t *testing.T) {
 func TestRemoveMissingWorktree(t *testing.T) {
 	root, run := gitRepo(t)
 	dir, branch := WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")
-	if err := AddWorktree(root, dir, branch); err != nil {
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := RemoveWorktree(root, dir, branch); err != nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err != nil {
 		t.Fatalf("worktree directory deleted: %v", err)
 	}
 	if _, err := git(root, "rev-parse", "--verify", branch); err == nil {
 		t.Error("branch remains")
 	}
 
-	if err := AddWorktree(root, dir, branch); err != nil {
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	run(root, "worktree", "remove", dir)
 	run(root, "branch", "-D", branch)
-	if err := RemoveWorktree(root, dir, branch); err != nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err != nil {
 		t.Errorf("worktree and branch gone: %v", err)
 	}
 
@@ -398,7 +460,7 @@ func TestRemoveMissingWorktree(t *testing.T) {
 	run(root, "checkout", "-q", branch)
 	run(root, "commit", "-q", "--allow-empty", "-m", "unmerged")
 	run(root, "checkout", "-q", "main")
-	if err := RemoveWorktree(root, dir, branch); err == nil {
+	if err := RemoveWorktree(root, dir, branch, ""); err == nil {
 		t.Error("removed an unmerged branch without a worktree")
 	}
 }
@@ -410,7 +472,7 @@ func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
 	if err := os.Chmod(exclude, 0); err != nil {
 		t.Fatal(err)
 	}
-	if err := AddWorktree(root, WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1")); err == nil {
+	if err := AddWorktree(root, WorktreeDir(root, "parent", "w1"), ChildBranch("parent", "w1"), ""); err == nil {
 		t.Error("AddWorktree ignored an unreadable exclude file")
 	}
 }
@@ -418,7 +480,7 @@ func TestAddWorktreeReportsUnreadableExclude(t *testing.T) {
 func TestMergeStatus(t *testing.T) {
 	root, run := gitRepo(t)
 	dir, branch := SessionDir(root, "s1"), SessionBranch("s1")
-	if err := AddWorktree(root, dir, branch); err != nil {
+	if err := AddWorktree(root, dir, branch, ""); err != nil {
 		t.Fatal(err)
 	}
 	base, err := Head(root)

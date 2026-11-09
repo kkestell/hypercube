@@ -13,8 +13,9 @@ import (
 
 // Delete deletes a session. An ended child loses only its row and chat. A
 // top-level session stops and is deleted with its children and their managed
-// worktrees and branches. Ordinary dirty or unmerged worktree refusals leave
-// the family running; work written while stopping is checked again and kept.
+// worktrees and branches. Ordinary refusals of worktrees whose work removal
+// would lose leave the family running; work written while stopping is checked
+// again and kept.
 func (r *Runtime) Delete(id string) error {
 	return r.removeFamily(id, false)
 }
@@ -25,8 +26,9 @@ func (r *Runtime) Archive(id string) error {
 }
 
 // Unarchive returns an archived top-level session to the session list. A
-// worktree session gets its worktree back, on its branch created again from
-// the checkout's HEAD. Its children stay ended, and it wakes when next used.
+// worktree session gets its worktree back, on its branch created again at the
+// tip recorded when it was archived, keeping its starting commit. Its children
+// stay ended, and it wakes when next used.
 func (r *Runtime) Unarchive(id string) error {
 	var s store.Session
 	var checkout string
@@ -57,13 +59,23 @@ func (r *Runtime) Unarchive(id string) error {
 		return err
 	}
 	defer r.releaseRemoval(id)
-	base := ""
-	if s.Base != "" {
-		if err := workspace.AddWorktree(checkout, s.Dir, s.Branch); err != nil {
+	base := s.Base
+	if base != "" {
+		// Without its recorded tip, the branch starts again from HEAD. Archiving
+		// removed the branch only after finding its commits on HEAD, its starting
+		// commit, or a remote branch, so none are lost.
+		restore := s.Tip != "" && workspace.HasCommit(checkout, s.Tip)
+		start := ""
+		if restore {
+			start = s.Tip
+		}
+		if err := workspace.AddWorktree(checkout, s.Dir, s.Branch, start); err != nil {
 			return err
 		}
-		if base, err = workspace.Head(s.Dir); err != nil {
-			return errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch))
+		if !restore {
+			if base, err = workspace.Head(s.Dir); err != nil {
+				return errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch, ""))
+			}
 		}
 	}
 	err = r.save(func(tx *write) error {
@@ -71,12 +83,12 @@ func (r *Runtime) Unarchive(id string) error {
 		if err != nil {
 			return err
 		}
-		s.Ended, s.Base = false, base
+		s.Ended, s.Base, s.Tip = false, base, ""
 		return tx.SaveSession(s)
 	})
 	if err != nil {
-		if s.Base != "" {
-			err = errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch))
+		if base != "" {
+			err = errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch, base))
 		}
 		return err
 	}
@@ -176,14 +188,20 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 	r.stopShells(id)
 	// All writers have stopped. Check the whole family before removing any
 	// worktree, including files written after the initial checks.
+	tip := ""
 	if present {
 		if err := checkWorktrees(trees); err != nil {
 			return err
 		}
+		if archive && s.Base != "" {
+			if tip, err = workspace.BranchTip(root, s.Branch); err != nil {
+				return err
+			}
+		}
 	}
 	for _, tree := range trees {
 		if present {
-			if err := workspace.RemoveWorktree(tree.root, tree.session.Dir, tree.session.Branch); err != nil {
+			if err := workspace.RemoveWorktree(tree.root, tree.session.Dir, tree.session.Branch, tree.session.Base); err != nil {
 				return err
 			}
 		}
@@ -196,7 +214,7 @@ func (r *Runtime) removeFamily(id string, archive bool) error {
 			return err
 		}
 	}
-	if err := r.recordRemovedFamily(id, children, archive); err != nil {
+	if err := r.recordRemovedFamily(id, children, archive, tip); err != nil {
 		return err
 	}
 	if s.Base != "" {
@@ -221,18 +239,28 @@ func (r *Runtime) waitChildCreations(children []store.Session) {
 
 // recordRemovedFamily finishes persistence after all managed worktrees are gone.
 // Worktree children were recorded individually so partial cleanup is retained.
-func (r *Runtime) recordRemovedFamily(id string, children []store.Session, archive bool) error {
+// An archived session keeps its branch's tip for unarchiving.
+func (r *Runtime) recordRemovedFamily(id string, children []store.Session, archive bool, tip string) error {
 	return r.save(func(tx *write) error {
-		if archive {
-			for _, child := range children {
-				if child.Branch == "" && !child.Ended {
-					if err := recordEnded(tx, child.ID); err != nil {
-						return err
-					}
+		if !archive {
+			return tx.DeleteSession(id)
+		}
+		for _, child := range children {
+			if child.Branch == "" && !child.Ended {
+				if err := recordEnded(tx, child.ID); err != nil {
+					return err
 				}
 			}
 		}
-		return recordRemoved(tx, id, archive)
+		s, err := tx.Session(id)
+		if err != nil {
+			return err
+		}
+		s.Tip = tip
+		if err := tx.SaveSession(s); err != nil {
+			return err
+		}
+		return recordEnded(tx, id)
 	})
 }
 
@@ -270,7 +298,7 @@ func familyWorktrees(root string, s store.Session, children []store.Session) []m
 func checkWorktrees(trees []managedWorktree) error {
 	var problems []string
 	for _, tree := range trees {
-		if err := workspace.Removable(tree.root, tree.session.Dir, tree.session.Branch); err != nil {
+		if err := workspace.Removable(tree.root, tree.session.Dir, tree.session.Branch, tree.session.Base); err != nil {
 			name := tree.session.Title
 			if tree.session.Parent != "" {
 				name = tree.session.Name
@@ -382,7 +410,7 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 	}
 	defer r.releaseRemoval(child.ID)
 	if child.Branch != "" {
-		if err := workspace.Removable(parent.Dir, child.Dir, child.Branch); err != nil {
+		if err := workspace.Removable(parent.Dir, child.Dir, child.Branch, ""); err != nil {
 			return child, err
 		}
 	}
@@ -392,7 +420,7 @@ func (r *Runtime) EndChild(parentID, name string) (store.Session, error) {
 	r.stopLaunches(lives)
 	r.Terminals.Stop(child.ID)
 	if child.Branch != "" {
-		if err := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch); err != nil {
+		if err := workspace.RemoveWorktree(parent.Dir, child.Dir, child.Branch, ""); err != nil {
 			return child, err
 		}
 	}
