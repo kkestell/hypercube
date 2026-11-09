@@ -4,10 +4,10 @@
 - Plan (repository-relative): `.agents/plans/2026-11-09-006-global-pull-requests.md`, blob `e13158b1d647d7805d17a3d5460d6e210e6c3860`
 - Plan review and execution decision (`proceed`): `.agents/reviews/plans/2026-11-09-006-global-pull-requests.md`; no guidance blobs
 - Author: xwork child session `work-global-prs` (parent 04ef1b14), Claude Code, claude-sonnet-5-5
-- Status: implemented
+- Status: complete
 - Code base: 1dd840307885152d1716294456dab2f5b8f5557f
 - Code head: 05df169b635b51c2087968785dd42e2c01cb34c4
-- Implementation commits: ab9673b1cddc3cd9782c08b92503382fae031e8c, 05df169b635b51c2087968785dd42e2c01cb34c4
+- Implementation commits: ab9673b1cddc3cd9782c08b92503382fae031e8c (work), 05df169b635b51c2087968785dd42e2c01cb34c4 (fix), 05df169b635b51c2087968785dd42e2c01cb34c4
 
 ## What changed
 
@@ -41,7 +41,10 @@
 
 | Stage | Session | Harness | Native conversation ID | Model |
 | --- | --- | --- | --- | --- |
-| work | `work-global-prs` (child of 04ef1b14) | Claude Code | unavailable (not exposed to the session) | claude-sonnet-5-5 |
+| parent | `04ef1b14` (Hypercube session) | Claude Code | 90b40c9b-b89d-4bd1-af98-13494c3d11de | claude-opus-5-5 |
+| plan | `plan-global-prs` (child of 04ef1b14) | Claude Code | unavailable (not exposed to the session; the planner could not confirm it) | claude-opus-5-5 |
+| plan review, work review | `review-global-prs` (child of 04ef1b14) | Claude Code | e3fb53e6-b1a8-4613-be42-9098ff5686c0 | claude-opus-5-5 |
+| work, fix | `work-global-prs` (child of 04ef1b14) | Claude Code | unavailable (not exposed to the session) | claude-sonnet-5-5 |
 
 ## Repair 1 (review `.agents/reviews/work/2026-11-09-006-global-pull-requests.md`, round 1)
 
@@ -59,3 +62,10 @@ Verification at the new Code head (macOS, run):
 - `bunx tsc -p .` in `internal/ui`: no errors.
 - `bun test` in `internal/ui`: 442 pass, 0 fail.
 - `make check`: exit 0.
+
+## Completion
+
+- Plan review: `.agents/reviews/plans/2026-11-09-006-global-pull-requests.md` (round 1 `resolve-decisions`; execution decision `proceed` at plan blob `e13158b1d647d7805d17a3d5460d6e210e6c3860`).
+- Work review: `.agents/reviews/work/2026-11-09-006-global-pull-requests.md` (round 1 `changes-required`; round 2 `accept` for `1dd840307885152d1716294456dab2f5b8f5557f..05df169b635b51c2087968785dd42e2c01cb34c4`).
+- After the reviewed Code head, only this log and the work review changed.
+- Limitation: the home view and sidebar count were not inspected in a browser.
