@@ -26,8 +26,10 @@ display any of it yet (units 004–005). No pull request writes.
   `d.stale` and flushes after `coalesce`; `sendState` skips bytes equal to the
   last state sent.
 - `internal/ui/snapshot.go:showSession`/`show` build `shownSession` from
-  `store.Session`; `Branch` is set for sessions in managed worktrees and empty
-  for sessions sharing the registered checkout.
+  `store.Session`. `Branch` names a managed worktree's branch; for a top-level
+  session in the registered checkout, `internal/session/lifecycle.go` records
+  the checkout's branch at each launch, so it goes stale when the checkout
+  switches branches while the session runs or is parked.
 - `internal/ui/actions.go:workspaceAction` handles `new` and `delete`.
 - `internal/ui/ui.go:Handler(db, rt)` is called by `cmd/hypercube/http.go:handler`
   and by tests in `internal/ui` and `cmd/hypercube/http_test.go`.
@@ -62,8 +64,10 @@ After step 4 of 002's account resolution, per workspace:
    `errors.Join` into `Error`. When the query fails, keep the previous status's
    `PullRequests`, `Open`, and `Updated` if its `Repo` is the same.
 
-A workspace without a token (choice pending) skips 2 and 4: `PullRequests` is
-`[]`, `Updated` 0. `Updated` changes every successful pass, so the watcher
+A workspace without a token (choice pending, or 002's step 3 failed to read
+it) skips 2 and 4: `PullRequests` is `[]`, `Updated` 0. When the token read
+failed, `Error` is that error's message, so the header explains the missing
+data; a pending choice leaves `Error` empty. `Updated` changes every successful pass, so the watcher
 publishes every pass; the socket sends at most one state per pass per page.
 
 ```graphql
@@ -88,9 +92,11 @@ empty strings. `isCrossRepository` → `Fork`, `headRefName` → `Branch`,
   gains `GitHub *github.Status \`json:"github,omitempty"\`` from `statuses`.
 - `shownSession` gains `PullRequest *github.PullRequest
   \`json:"pullRequest,omitempty"\``, set for every non-ended session, top-level
-  or child, in a GitHub workspace. The session's branch is `s.Branch` when set;
-  otherwise, when `s.Dir` is the workspace path or inside it but not inside
-  `<path>/.hypercube/`, it is the status's `Branch`; otherwise it has none. The
+  or child, in a GitHub workspace. The session's branch is, by `s.Dir`: when it
+  is the workspace path or inside it but not inside `<path>/.hypercube/`, the
+  status's `Branch` (the checkout's current branch, ignoring `s.Branch`); when
+  it is inside `<path>/.hypercube/`, `s.Branch` (the managed worktree's
+  branch, which may be empty); otherwise none. The
   pull request is the first with `!Fork` and `Branch` equal to that non-empty
   branch.
 - `socket.go:state`: before the first `sendState`, take `changed :=
@@ -135,7 +141,9 @@ minute, using the workspace's account.
   `Behind` 1 after a pass; two pull requests, one with null author, rollup and
   review, map as specified with `Open` from `totalCount`; switching the server
   to 500 keeps the previous pull requests and `Updated` and sets `Error`;
-  a pending choice gives `PullRequests` `[]` and no fetch; with two pushers,
+  a pending choice gives `PullRequests` `[]`, empty `Error`, and no fetch; a
+  fake gh whose `auth token` fails gives the account, `Updated` 0, and `Error`
+  naming the token failure; with two pushers,
   after `SetGitHubAccount` and `Refresh` the saved one is `Account`, `Choices`
   still lists both, and `Env` returns its token; a saved choice that is no
   longer a candidate is ignored.
@@ -143,7 +151,8 @@ minute, using the workspace's account.
   goes away with its workspace.
 - `internal/ui` `snapshot` table test with fixed statuses: workspace `github`
   present and absent; worktree session matched by `Branch`; checkout session
-  matched by status branch; fork pull request with the same branch not matched;
+  whose saved `Branch` is a stale other branch matched by the status branch,
+  not the stale one; fork pull request with the same branch not matched;
   ended session not matched; session in another managed worktree without a
   branch not matched.
 - `internal/ui` socket test with a running watcher on the stand-ins: a state

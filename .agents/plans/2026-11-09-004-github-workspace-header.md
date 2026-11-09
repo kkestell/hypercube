@@ -106,7 +106,8 @@ Browser tests with bun in `internal/ui` (`bun test`, `bunx tsc -p .`), using
   dashboard test still passes); with `github`, the repository link has the URL
   and `target="_blank"`, `Using kkestell.` shows, the tracking sentence shows;
   with `choices`, selecting an account posts `action=github-account` with the
-  workspace ID and account; with `error` and `updated`, the error line and
+  workspace ID and account (if happy-dom cannot open the Radix `Select`, call
+  the component's choose handler directly and assert the request); with `error` and `updated`, the error line and
   "Showing data from" show.
 - Sidebar: a session with `pullRequest` has an image named `Pull request #12:
   …`; a session without has none.

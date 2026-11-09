@@ -159,7 +159,7 @@ type Status struct {
 	PullRequests []PullRequest `json:"pullRequests"`       // open, most recently updated first, at most 50
 	Open         int           `json:"open"`               // all open pull requests
 	Updated      int64         `json:"updated"`            // Unix ms of the last successful query; 0 before one
-	Error        string        `json:"error,omitempty"`    // why the last pass's fetch or query failed
+	Error        string        `json:"error,omitempty"`    // why the last pass's token read, fetch, or query failed
 }
 
 type PullRequest struct {

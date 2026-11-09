@@ -54,8 +54,9 @@ merges or writes to GitHub itself. Browser-only, plus docs.
    by `WorkspaceDashboard` after the header when `workspace.github` is set, as
    a section headed `Pull Requests` (`h2`, same style as Recent Sessions) with
    its own labeled `ul`. Empty states, in order: no `account` → `Choose an
-   account to see pull requests.`; `updated` 0 and no error → `Checking
-   GitHub.`; no pull requests → `No open pull requests.` Each row:
+   account to see pull requests.`; `updated` 0 with an error → `Could not load
+   pull requests.` (the header shows the error); `updated` 0 and no error →
+   `Checking GitHub.`; no pull requests → `No open pull requests.` Each row:
    `PullRequestIcon`; `#{n} {title}` as an external link to `url`; a muted
    line `{author}` followed by `pullRequestFacts(pr)`; one small secondary
    button per `actionsFor(pr)`. When `open` exceeds the list's length, end with
@@ -88,7 +89,8 @@ Browser tests with bun in `internal/ui` (`bun test`, `bunx tsc -p .`):
   checks gives all three but merge only when not draft; approved and passing
   gives merge only); `instruction` texts match the strings above.
 - Dashboard: rows show link, author, and facts; empty states for no account,
-  first check pending, and none open; the overflow link appears only when
+  first check pending, never loaded with an error (`Could not load pull
+  requests.`, not `No open pull requests.`), and none open; the overflow link appears only when
   `open` exceeds the rows.
 - Picker: opening **Fix checks** lists `New Session`, the matching session
   before others, and no ended sessions; choosing a session posts
