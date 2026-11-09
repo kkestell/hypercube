@@ -37,3 +37,12 @@
 ## Limitations
 
 No screenshots or live browser check; the user judges the look.
+
+## Repair 1 (work review round 1)
+
+- Code base (unchanged): `444646518183624627d89d802a4f9819a1db4aab`
+- Code head: `634cca583e13c8a59af17eb6a84e5d8d77d676bf`
+- Fix commit: `634cca583e13c8a59af17eb6a84e5d8d77d676bf`
+- Finding 1: the error line now ends the error with a period before "Showing data from"; the test asserts the full sentence.
+- Finding 2: `docs/interface.md` now says the chooser shows when several signed-in accounts can push, or none can push and several are signed in, matching `watcher.go` (candidates are the pushers, else all signed-in accounts; a chooser when more than one).
+- Verification (target: new Code head): `bun test web/github` 10 pass; `bunx tsc -p .` no errors; `make check` exit 0 (`/tmp/check004b.out`).
