@@ -96,3 +96,62 @@ commits. No actual command queue, live holder, installation or harness was touch
 Handoff: correct recordAllow's specified encoding and its shared baseline, fix
 the linked installer disposition, then obtain renewed exact-blob reviews. No code
 or plan fixes, staging or commits were made by this reviewer.
+
+## Round 2 — 2026-11-08
+
+- Task ID: `2026-11-08-005-remove-protocol-compatibility`; mode: `plan`.
+- Author/provenance: same independent `compat-plan-review` as Round 1;
+  OpenCode / `openai/gpt-6.1-sol` / `xhigh`, native
+  `ses_e4195b6fcffe3Mncn7jH9SS1YY`; own coordinator ID remains unavailable.
+- Checkout and branch: unchanged from Round 1; clean at review start.
+- Reviewed HEAD: `5c75b1859744f1d8667507b42ddc0e0db8aa1caa`.
+- Plan source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`.
+- Plan path (repository-relative):
+  `.agents/plans/2026-11-08-005-remove-protocol-compatibility.md`
+- Plan blob: `cbb2b2eaf2c1cbba7b7d0dfa0fc60e79d400bf89`.
+
+### Guidance blobs
+
+Repository-relative paths; complete linked design/peer-plan guidance set:
+
+| Path | Blob |
+| --- | --- |
+| `.agents/designs/2026-11-08-003-remove-backwards-compatibility.md` | `2ddcbac1570b7ef08da4015f76cb05ac06cfd42a` |
+| `.agents/plans/2026-11-08-003-remove-backwards-compatibility.md` | `16ff0e39fb7c3c940d23526e1bb97aab5b156840` |
+| `.agents/plans/2026-11-08-004-remove-browser-compatibility.md` | `781e49e77ac7d71b9ab3217e70fdefad60c2acf3` |
+| `.agents/plans/2026-11-08-006-remove-install-compatibility.md` | `f6bf8eca928d621d7eb122d1f19a7bd86053896e` |
+
+### Verdict and finding dispositions
+
+**Accept.** Work size: **right-sized**; detail: **appropriate**; readiness:
+**ready**; action: **accept** only. No unresolved findings.
+
+- Round 1 finding 1 **resolved** in plan lines 19–48, 85–96 and 118–127 plus
+  shared design lines 75–85/104. The current recordAllow producer changes to a
+  one-element Choices array in the same code change as field/decoder removal.
+  Per/all-session grants, pending/automatic approvals, revocation and restart
+  coverage remain, with an observable emitted-array assertion.
+- Round 1 finding 2 **resolved** by the corrected shared installer disposition
+  and revised 006; normal generic owned-link pruning is preserved.
+
+Fresh inspection of `grants.go:29–34,77–82`, `event.go:202–205`,
+`serve.go:173–178` and the saved-byte send path supports the correction: both
+grant callers share the changed producer; current surviving plugins already
+accept arrays and still understand saved scalar lines. The backend does not
+decode/re-encode them. No command migration, holder change or new mixed-version
+system is needed. The other protocol/CLI/fork/offer decisions and preservation
+boundaries assessed in Round 1 remain unchanged and sound.
+
+The bundled helper now measures **1,205 words**, zero fenced-code words, within
+the **600–1,500 experimental-default** band; no curated references. The added
+producer and existing-grant coverage belong to the same current protocol boundary,
+not an independent mechanism requiring another assignment. Round 1's normal
+cross-layer operator-family comparison still applies; guidance is decision-level
+and proportionate, without a plan implementation dump or excess test machinery.
+
+Evidence: read the full revised plan/design/peer guidance and their actual diffs,
+rechecked the relevant live producer/decoder contracts, refreshed exact anchors
+and metrics; reused unchanged code/test inspection from Round 1 elsewhere. No
+builds/tests/installed-session actions run. Acceptance is plan-only: `make check`
+and planned behavior verification remain implementation responsibilities. Only
+review rounds appended; no staging/commits or code/plan fixes.

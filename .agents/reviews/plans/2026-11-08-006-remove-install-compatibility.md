@@ -102,3 +102,64 @@ Handoff: retain generic current link reconciliation and update its scope/test
 guidance; correct the shared grant baseline in 005. Renew all linked plan reviews
 against the changed guidance before execution. Reviewer wrote only the four
 review records, without staging, committing or fixing code/plans.
+
+## Round 2 — 2026-11-08
+
+- Task ID: `2026-11-08-006-remove-install-compatibility`; mode: `plan`.
+- Author/provenance: same independent `compat-plan-review` as Round 1;
+  OpenCode / `openai/gpt-6.1-sol` / `xhigh`, native
+  `ses_e4195b6fcffe3Mncn7jH9SS1YY`; own coordinator ID remains unavailable.
+- Checkout and branch: unchanged from Round 1; clean at review start.
+- Reviewed HEAD: `5c75b1859744f1d8667507b42ddc0e0db8aa1caa`.
+- Plan source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`.
+- Plan path (repository-relative):
+  `.agents/plans/2026-11-08-006-remove-install-compatibility.md`
+- Plan blob: `f6bf8eca928d621d7eb122d1f19a7bd86053896e`.
+
+### Guidance blobs
+
+Repository-relative paths; complete linked design/peer-plan guidance set:
+
+| Path | Blob |
+| --- | --- |
+| `.agents/designs/2026-11-08-003-remove-backwards-compatibility.md` | `2ddcbac1570b7ef08da4015f76cb05ac06cfd42a` |
+| `.agents/plans/2026-11-08-003-remove-backwards-compatibility.md` | `16ff0e39fb7c3c940d23526e1bb97aab5b156840` |
+| `.agents/plans/2026-11-08-004-remove-browser-compatibility.md` | `781e49e77ac7d71b9ab3217e70fdefad60c2acf3` |
+| `.agents/plans/2026-11-08-005-remove-protocol-compatibility.md` | `cbb2b2eaf2c1cbba7b7d0dfa0fc60e79d400bf89` |
+
+### Verdict and finding dispositions
+
+**Accept.** Work size: **right-sized**; detail: **appropriate**; readiness:
+**ready**; action: **accept** only. No unresolved findings.
+
+- Round 1 finding 1 **resolved**: revised shared design and 005 account for the
+  current grant producer, its simultaneous array conversion and saved-byte replay
+  to surviving latest plugins; existing approval/restart behavior stays covered.
+- Round 1 finding 2 **resolved** in plan lines 40–47/67–78 and shared design
+  line 111. Generic owned-link pruning remains unchanged. The replacement fixture
+  now starts with an actual executable extra-plugin target and resolving owned
+  link; the normal stock reinstall removes that target and prunes its link.
+  Named historical Codex cleanup and old command/executable distinctions still
+  retire; no runtime allowlist or broader cleanup system is introduced.
+
+Rechecking `scripts/linux-install:50–74` confirms the neutral fixture exercises
+the existing complete-bundle replacement plus ownership-restricted broken-link
+loop, rather than merely asserting a preexisting dangling historical name.
+Retaining the existing zsh reinstall and holder checks makes that adjustment
+proportionate. The macOS running-app guard, unchanged generic installer, disposable
+container boundary and final serial CLI/plugin verification remain coherent.
+
+The bundled metrics helper measures **1,095 words**, six fenced-code words,
+within the **600–1,500 experimental-default** band; no curated references. This
+remains a normal platform/lifecycle integration assignment by the Round 1
+reference comparison. The correction preserves one existing mechanism and
+reuses one existing test; it does not create a separate substantial work unit or
+justify padding/trimming.
+
+Evidence: full revised plan/shared-guidance/diff inspection, current installer
+contract recheck and refreshed Git/blob/metric anchors. Reused Round 1 inspection
+of the unchanged runner/test lifecycle and the planner's Docker availability
+claim, not any Linux-test success claim. No builds, installers, tests, app quits or
+service restarts run. Acceptance is plan-only: required `make check`, changed-shell
+syntax checks, macOS dry run and disposable Linux bundle/install tests remain due
+during execution. Only review rounds appended; no staging/commits or code changes.

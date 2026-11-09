@@ -87,3 +87,56 @@ review records; no staging or commits.
 Handoff: planner fixes the two shared-guidance findings in their owning units;
 003 needs no additional mechanism or local plan expansion. Renew this review
 against the corrected guidance blobs before execution.
+
+## Round 2 — 2026-11-08
+
+- Task ID: `2026-11-08-003-remove-backwards-compatibility`; mode: `plan`.
+- Author/provenance: same independent `compat-plan-review` as Round 1;
+  OpenCode / `openai/gpt-6.1-sol` / `xhigh`, native
+  `ses_e4195b6fcffe3Mncn7jH9SS1YY`; own coordinator ID remains unavailable.
+- Checkout and branch: unchanged from Round 1; clean at review start.
+- Reviewed HEAD: `5c75b1859744f1d8667507b42ddc0e0db8aa1caa`.
+- Plan source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`.
+- Plan path (repository-relative):
+  `.agents/plans/2026-11-08-003-remove-backwards-compatibility.md`
+- Plan blob: `16ff0e39fb7c3c940d23526e1bb97aab5b156840` (unchanged).
+
+### Guidance blobs
+
+Repository-relative paths; complete linked design/peer-plan guidance set:
+
+| Path | Blob |
+| --- | --- |
+| `.agents/designs/2026-11-08-003-remove-backwards-compatibility.md` | `2ddcbac1570b7ef08da4015f76cb05ac06cfd42a` |
+| `.agents/plans/2026-11-08-004-remove-browser-compatibility.md` | `781e49e77ac7d71b9ab3217e70fdefad60c2acf3` |
+| `.agents/plans/2026-11-08-005-remove-protocol-compatibility.md` | `cbb2b2eaf2c1cbba7b7d0dfa0fc60e79d400bf89` |
+| `.agents/plans/2026-11-08-006-remove-install-compatibility.md` | `f6bf8eca928d621d7eb122d1f19a7bd86053896e` |
+
+### Verdict and finding dispositions
+
+**Accept.** Work size: **right-sized**; detail: **appropriate**; readiness:
+**ready**; action: **accept** only. No unresolved findings.
+
+- Round 1 finding 1 **resolved**: shared design lines 75–85 now names the live
+  grant producer, its array conversion and unchanged raw saved-line replay;
+  revised 005 includes the producer and grant/restart coverage.
+- Round 1 finding 2 **resolved**: shared design line 111 and revised 006 retain
+  generic owned-link reconciliation and cover a current extra-plugin replacement
+  without retaining Codex-specific setup.
+
+The unchanged persistence plan still preserves the actual no-default last_active
+constraint, current indexes, current config defaults and meaningful installed-
+schema/reopen coverage without adding migrations or recovery. The shared edits
+do not change its schema, ownership or serial integration boundaries.
+
+Normalization remains **1,042 words**, zero fenced-code words, measured by the
+bundled helper against the **600–1,500 experimental-default** band. No curated
+references; Round 1's normal existing-lifecycle assignment comparison still holds.
+No split, expansion or trimming is justified.
+
+Evidence: inspected all guidance changes and refreshed exact Git/blob/metric
+anchors. Reused Round 1 source/test analysis: source-HEAD-to-reviewed-HEAD diff
+contains only the named design, four plans and four review records, no code.
+No builds/tests or real-state actions run. This acceptance is of these exact
+inputs, not implementation verification; retain planned `make check` and serial
+003 → 004 → 005 → 006 execution. Only review rounds appended; no staging/commits.
