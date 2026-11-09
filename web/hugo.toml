@@ -3,6 +3,7 @@ locale = 'en-us'
 title = 'Hypercube'
 
 disableKinds = ['taxonomy', 'term', 'rss', 'sitemap']
+uglyURLs = true
 
 [[module.mounts]]
 source = 'content'
@@ -20,6 +21,9 @@ target = 'static'
 [[module.mounts]]
 source = '../docs/images'
 target = 'static/docs/images'
+
+[markup.goldmark.renderer]
+unsafe = true
 
 [markup.goldmark.renderHooks.link]
 useEmbedded = 'always'
@@ -61,3 +65,65 @@ displayLogo = false
 
 [params.footer]
 displayPoweredBy = false
+
+# Guide titles and order. The shared guides carry no frontmatter.
+[[cascade]]
+  title = 'Your first session'
+  weight = 1
+  [cascade._target]
+    path = '/docs/getting-started'
+[[cascade]]
+  title = 'Install Hypercube'
+  weight = 10
+  [cascade._target]
+    path = '/docs/installation'
+[[cascade]]
+  title = 'Manage sessions'
+  weight = 11
+  [cascade._target]
+    path = '/docs/usage'
+[[cascade]]
+  title = 'Work with a team'
+  weight = 12
+  [cascade._target]
+    path = '/docs/teamwork'
+[[cascade]]
+  title = 'Review files and changes'
+  weight = 13
+  [cascade._target]
+    path = '/docs/review-changes'
+[[cascade]]
+  title = 'Upgrade Hypercube'
+  weight = 15
+  [cascade._target]
+    path = '/docs/upgrades'
+[[cascade]]
+  title = 'Configuration reference'
+  weight = 30
+  [cascade._target]
+    path = '/docs/configuration'
+[[cascade]]
+  title = 'Harness differences'
+  weight = 31
+  [cascade._target]
+    path = '/docs/harness-support'
+[[cascade]]
+  title = 'Interface reference'
+  weight = 32
+  [cascade._target]
+    path = '/docs/interface'
+[[cascade]]
+  title = 'Files and storage'
+  weight = 33
+  [cascade._target]
+    path = '/docs/storage'
+[[cascade]]
+  title = 'Sessions, context, and working copies'
+  weight = 40
+  [cascade._target]
+    path = '/docs/introduction'
+[[cascade]]
+  title = 'What keeps running when you leave'
+  weight = 41
+  [cascade._target]
+    path = '/docs/lifecycle'

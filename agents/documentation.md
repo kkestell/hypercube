@@ -92,14 +92,15 @@ with their scene changes.
 Hugo publishes `docs/*.md` at `/docs/` and `docs/images/` at `/docs/images/`.
 Screenshot scenes and fixtures are not published. Guides use relative `.md`
 links to one another; links outside the published guides use GitHub URLs.
-Keep shared Markdown H1s and YAML frontmatter (`title`, `weight`); the website
-suppresses duplicate H1s.
+Guides have no frontmatter. Keep each Markdown H1; the website suppresses
+duplicate H1s. Page titles and menu order live in `[[cascade]]` entries in
+`web/hugo.toml`; add an entry when adding a guide.
 
-In shared guides, use Markdown images pointing to `images/<scene>-light.png`.
-The website's image renderer resolves the path and supplies the dark variant;
-GitHub displays the light image. Raw `<picture>` markup is omitted by Hugo.
-The README is not published through Hugo and can use `<picture>` for both
-themes. Do not regenerate screenshots just for prose changes.
+In guides, show each screenshot with `<picture>`: a `<source
+media="(prefers-color-scheme: dark)">` pointing to `images/<scene>-dark.png`
+and an `<img>` pointing to `images/<scene>-light.png`. The site publishes pages
+as `/docs/<name>.html`, so the same relative paths work on GitHub and the
+website. Do not regenerate screenshots just for prose changes.
 
 For Cloudflare Pages, use the repository root, build command `make web-build`,
 and output directory `web/public`. That build does not capture screenshots.

@@ -1,8 +1,3 @@
----
-title: Files and storage
-weight: 33
----
-
 # Files and storage
 
 Hypercube saves its own transcripts and session state. Harnesses also keep

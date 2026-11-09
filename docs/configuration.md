@@ -1,8 +1,3 @@
----
-title: Configuration reference
-weight: 30
----
-
 # Configuration reference
 
 Open **Settings** with **Command+,** on macOS or **Ctrl+,** on Linux.

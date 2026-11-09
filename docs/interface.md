@@ -1,8 +1,3 @@
----
-title: Interface reference
-weight: 32
----
-
 # Interface reference
 
 Look up controls, indicators, and limits here. For procedures, use

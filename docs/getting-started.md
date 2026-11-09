@@ -1,8 +1,3 @@
----
-title: Your first session
-weight: 1
----
-
 # Your first session
 
 Use an agent to explore a project, inspect its work, and return to the
@@ -43,7 +38,10 @@ activity appear in the conversation, followed by its answer. If it asks a
 question or requests permission, the request appears above the message box.
 Read the request before answering; you can deny an action you do not want.
 
-![A read-only first session explaining the harbor project, with its model below the message box and project files on the right](images/first-session-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/first-session-dark.png">
+  <img alt="A read-only first session explaining the harbor project, with its model below the message box and project files on the right" src="images/first-session-light.png">
+</picture>
 
 The selected conversation is in the middle, its model is below the message
 box, and the project files are on the right. Your answer will depend on your
@@ -64,7 +62,10 @@ Ask a follow-up:
 The follow-up stays in the same conversation. You do not need a new session
 for each question about the task.
 
-![The agent's entry-point explanation beside a read-only preview of main.go](images/file-preview-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/file-preview-dark.png">
+  <img alt="The agent's entry-point explanation beside a read-only preview of main.go" src="images/file-preview-light.png">
+</picture>
 
 Here, `main.go` is open beside the answer so you can check the explanation
 against the code without leaving the conversation.

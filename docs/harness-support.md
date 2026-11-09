@@ -1,8 +1,3 @@
----
-title: Harness differences
-weight: 31
----
-
 # Harness differences
 
 A harness is the native coding tool behind a session. Install and authenticate

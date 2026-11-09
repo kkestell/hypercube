@@ -1,8 +1,3 @@
----
-title: What keeps running when you leave
-weight: 41
----
-
 # What keeps running when you leave
 
 Closing Hypercube's window is not a stop command for agents. Work continues

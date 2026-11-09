@@ -1,8 +1,3 @@
----
-title: Work with a team
-weight: 12
----
-
 # Work with a team
 
 Ask your session's agent to create a child session for a bounded task. The
@@ -39,7 +34,10 @@ Outside Git, assign an existing directory instead; Hypercube cannot create
 worktrees there. Worktrees are not sandboxes: agents retain access to your
 local filesystem.
 
-![Worktree sessions showing branch status in the sidebar and a Merge into main button in the Git panel](images/worktrees-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/worktrees-dark.png">
+  <img alt="Worktree sessions showing branch status in the sidebar and a Merge into main button in the Git panel" src="images/worktrees-light.png">
+</picture>
 
 The branch icons show which sessions have separate working copies. The
 selected top-level session has committed work ready for **Merge into main**
@@ -96,7 +94,10 @@ or use the **X** in the card's top-right corner to dismiss it. Each button
 acts immediately; there is no separate Submit step. Corrections to the current
 task need no placement question.
 
-![A task-placement question offering a new session or the current session](images/offer-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/offer-dark.png">
+  <img alt="A task-placement question offering a new session or the current session" src="images/offer-light.png">
+</picture>
 
 Work an agent proposes on its own appears as a separate suggestion card.
 Review its brief, model, and directory before choosing **Start** or
@@ -104,7 +105,10 @@ Review its brief, model, and directory before choosing **Start** or
 Handled cards remain expandable in the conversation. A failed launch shows
 an error; an available card or accepted offer can be retried after cleanup.
 
-![An optional suggested task showing its assignment, model, and Start and Dismiss buttons](images/suggestion-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/suggestion-dark.png">
+  <img alt="An optional suggested task showing its assignment, model, and Start and Dismiss buttons" src="images/suggestion-light.png">
+</picture>
 
 Unlike a task-placement question, this suggestion does not start until you
 choose **Start**. Its card shows the proposed assignment and model first.

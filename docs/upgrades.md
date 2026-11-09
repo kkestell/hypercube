@@ -1,8 +1,3 @@
----
-title: Upgrade Hypercube
-weight: 15
----
-
 # Upgrade Hypercube
 
 Use this guide for an app installed from a beta download. For a source

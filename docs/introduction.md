@@ -1,8 +1,3 @@
----
-title: Sessions, context, and working copies
-weight: 40
----
-
 # Sessions, context, and working copies
 
 **A separate conversation does not mean separate files.** Each session has
@@ -35,7 +30,10 @@ working files. A task that depends on uncommitted changes therefore needs
 either the shared checkout or a commit to start from. Ignored local files can
 be supplied through [`.worktreeinclude`](configuration.md#worktreeinclude).
 
-![Sessions on separate branches showing uncommitted, unmerged, and merged work](images/worktrees-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/worktrees-dark.png">
+  <img alt="Sessions on separate branches showing uncommitted, unmerged, and merged work" src="images/worktrees-light.png">
+</picture>
 
 A child's branch merges into its parent's branch. A top-level worktree's
 branch merges into the workspace's original checkout. This makes the parent

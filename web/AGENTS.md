@@ -12,13 +12,15 @@ URL until deployment. Follow the root `AGENTS.md`.
   live only in `../docs/*.md`, mounted at `content/docs`; screenshots live only
   in `../docs/images/`, mounted at `static/docs/images`. Never publish the
   capture fixtures in `../docs/screenshots/`.
-- Shared guides keep their Markdown H1 and use GitHub-compatible YAML
-  frontmatter (`title`, `weight`). Hextra renders the page title; the heading
-  render hook suppresses the duplicate guide H1. Website-specific pages use TOML frontmatter.
+- Shared guides keep their Markdown H1 and have no frontmatter; each guide's
+  title and weight come from a `[[cascade]]` entry in `hugo.toml`. Hextra
+  renders the page title; the heading render hook suppresses the duplicate guide
+  H1. Website-specific pages use TOML frontmatter.
 - Keep guide links relative with `.md` filenames; Hugo's embedded link render
   hook resolves them. Links to repository files outside the guides use GitHub
-  URLs. Markdown images use `images/<scene>-light.png`; the image render hook
-  resolves the URL and supplies the corresponding `-dark.png` variant.
+  URLs. Screenshots use raw `<picture>` markup (`unsafe` Goldmark) with paths
+  relative to the guide; `uglyURLs` makes `images/...` resolve to
+  `/docs/images/`.
 - `public/`, `resources/`, `.hugo_build.lock`, and `bin/` are generated and
   gitignored. Never edit them. `make check` includes the website build.
 

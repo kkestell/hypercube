@@ -1,8 +1,3 @@
----
-title: Review files and changes
-weight: 13
----
-
 # Review files and changes
 
 The right panel follows the selected session's working directory, or the
@@ -15,7 +10,10 @@ Expand **Worked for …** in a completed turn to see reasoning, tool calls, and
 messages between sessions. Expand a tool call for its input and output.
 Failed and interrupted turns leave activity visible.
 
-![An expanded turn with reasoning, tool calls, and native subagent activity](images/details-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/details-dark.png">
+  <img alt="An expanded turn with reasoning, tool calls, and native subagent activity" src="images/details-light.png">
+</picture>
 
 ## Read a file beside the conversation
 
@@ -29,7 +27,10 @@ absolute or relative path. An agent can also open a file and highlight lines
 for you; those tabs appear when you view its session, even for files outside
 its working directory.
 
-![A source file open in a separate pane beside the conversation, with the Files tree on the right](images/file-preview-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/file-preview-dark.png">
+  <img alt="A source file open in a separate pane beside the conversation, with the Files tree on the right" src="images/file-preview-light.png">
+</picture>
 
 The file tab stays beside the conversation; the Files tree remains available
 on the right for opening another file.
@@ -58,7 +59,10 @@ For a top-level worktree session, hover over its branch icon for merge status
 and the number of commits not merged into the original checkout's branch.
 This status refreshes when a session in that workspace finishes a turn.
 
-![A build.go diff beside the agent's conversation, with added and removed lines highlighted](images/overview-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/overview-dark.png">
+  <img alt="A build.go diff beside the agent's conversation, with added and removed lines highlighted" src="images/overview-light.png">
+</picture>
 
 Added lines are green and removed lines are red. In this example, the diff
 and conversation occupy separate panes while the file tree shows other edits.

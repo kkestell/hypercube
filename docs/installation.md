@@ -1,8 +1,3 @@
----
-title: Install Hypercube
-weight: 10
----
-
 # Install Hypercube
 
 Install a beta release, then connect it to an authenticated coding tool.

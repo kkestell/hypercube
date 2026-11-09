@@ -1,8 +1,3 @@
----
-title: Manage sessions
-weight: 11
----
-
 # Manage sessions
 
 A session is one agent's conversation and working directory. For a guided
@@ -71,7 +66,10 @@ session** or **Always allow in all sessions**. Review or remove saved choices
 in **Settings**. [Permission behavior](harness-support.md#permissions) varies
 by harness.
 
-![A question and command approval from other sessions, shown as notification cards](images/attention-light.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/attention-dark.png">
+  <img alt="A question and command approval from other sessions, shown as notification cards" src="images/attention-light.png">
+</picture>
 
 ## Find and resume earlier work
 
