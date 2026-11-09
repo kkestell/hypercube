@@ -2,6 +2,7 @@
 
 - Task ID: `2026-11-08-005-remove-protocol-compatibility`
 - Status: ready; awaiting independent plan review
+- Revision: 2; resolves Round 1's omitted live grant-answer producer
 - Source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`
 - Author: `compat-plan`, Hypercube `d36e9339`, native
   `ses_e41a1172bffeqvkaFBnCzmGxvc`; OpenCode / `openai/gpt-6.1-sol` / `xhigh`
@@ -15,26 +16,36 @@
 
 ## Outcome and supported contract
 
-There is one start encoding (`mcp` bridge executable), one answer encoding
-(`choices` array plus optional free text), and dedicated `hypercube-mcp` /
+After this unit there is one start encoding (`mcp` bridge executable), one answer
+encoding (`choices` array plus optional free text), and dedicated `hypercube-mcp` /
 `hypercube-hold` executables. The main executable supports version/ui only.
 Delete historical aliases rather than converting saved command rows or inventing
-protocol versions. Current producers already emit this contract; no holder,
-recorded command, MCP transport or native harness protocol changes are needed.
+protocol versions. Ordinary answers already use arrays, but the live grant-answer
+producer must switch from scalar `choice` to a one-element `choices` array.
+Holder formats, MCP transports and native harness protocols do not change.
 
 Do not stop/restart installed agents. Existing latest holders/plugins remain
-usable: commands and helper locations do not change. Current replay IDs/order,
-acceptance transactions, duplicate suppression, pending questions, grants,
-multiselect/free text, holder adoption and SIGTERM detachment must remain intact.
+usable: helper locations and saved command lines do not change. `commands.go:send`
+replays exact stored bytes; surviving latest plugins run today's Serve, which
+accepts both the already-saved scalar grant answers and new array answers. Do
+not decode/re-encode command rows or add migration/recovery machinery. Remove
+scalar decoding from rebuilt plugins; surviving plugins need no change. Current
+replay IDs/order, acceptance transactions, duplicate suppression, pending questions, per/all-session grants,
+automatic approval, multiselect/free text, adoption and SIGTERM detachment remain.
 No browser changes, installation, state reset, push or merge.
 
 ## Existing paths and chosen simplification
 
-`internal/harness/protocol.go` retains Command.Choice and StartArgs.Hypercube
-solely for old saved lines. `plugins/internal/plugin/serve.go:handle` converts
-Choice into Choices. `plugin.go:MCPCommand` chooses bridge versus backend `mcp`,
-and Claude/OpenCode/Pi/scripted callers carry its executable/argument tuple.
-Remove both fields, the conversion, the helper and obsolete tuple wiring.
+`internal/harness/protocol.go` retains StartArgs.Hypercube for old saved lines;
+Command.Choice still has a current producer in `internal/session/grants.go:recordAllow`.
+Both AlwaysAllow's pending approvals and `event.go`'s automatic granted approvals
+use it. Change its command literal to `Choices: []string{item.Choices[0]}`, keeping
+request IDs, first-choice semantics, transaction/waiter handling and grant scope
+unchanged. `plugins/internal/plugin/serve.go:handle` converts Choice into Choices.
+`plugin.go:MCPCommand` chooses bridge versus backend `mcp`, and Claude/OpenCode/
+Pi/scripted callers carry its executable/argument tuple. Remove both fields,
+the conversion, the helper and obsolete tuple wiring in the same unit as the
+live grant producer change.
 
 Native plugin starts are invoked through shared Serve. Preserve the existing
 missing-MCP failure at that external boundary: after checking nonnil Start,
@@ -71,14 +82,18 @@ from unavailable effort controls; there is no old-version branch to delete.
 
 ## Execution sequence
 
-1. Remove the protocol fields, shared scalar conversion, helper and four callers'
-   tuple wiring. Centralize only the already-existing required bridge validation
-   in shared Serve as described, with scripted validation at its actual call.
+1. Change `internal/session/grants.go:recordAllow` to the one-element Choices
+   array above, and remove the protocol fields, shared scalar conversion, helper
+   and four callers' tuple wiring in the same code change. Preserve saved command
+   bytes and `commands.go:send`. Centralize only the already-existing required
+   bridge validation in shared Serve as described, with scripted validation at
+   its actual call.
 2. Adjust `internal/harness/harnesstest/harnesstest.go:answer` to compute a local
    display string from Choices instead of mutating the deleted Command.Choice.
    Its log Entry.Choice may remain as a derived test observation; it is not a
    protocol input. Preserve current scalar assertions or use Choices where
-   clearer, without a test-log format redesign.
+   clearer, without a test-log format redesign. Retain grant tests and assert
+   their emitted Choices array contains exactly the first Allow choice.
 3. Delete `TestMCPCommand` and Claude's legacy-MCP-start test. Convert shared
    Serve's answer fixture to Choices and retain current multi/free-answer coverage.
    Add the missing-MCP boundary case. Existing native argument/config tests must
@@ -102,7 +117,11 @@ a specific uncertainty; do not mandate duplicate broad runs.
 
 Inspect coverage of one/multiple selected answers, free-text-only answers,
 missing Start/MCP, unchanged input/configure ordering, and current start JSON
-containing only the direct bridge path. Keep existing `internal/session/restart_test.go`
+containing only the direct bridge path. Keep `grants_test.go`'s per-session and
+all-session AlwaysAllow cases, pending approvals, automatic approval without
+attention, revocation behavior, and automatic approval after restart. Verify the
+grant producer's one-element Choices array through the stand-in log; derived
+Entry.Choice can remain. Keep existing `internal/session/restart_test.go`
 replay/adoption scenarios and the app process test: latest current commands and
 in-flight holder state must survive detach/reconnect without another start or
 lost accepted input. No new mixed-version test harness is appropriate.

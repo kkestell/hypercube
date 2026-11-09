@@ -2,6 +2,7 @@
 
 - Task ID: `2026-11-08-006-remove-install-compatibility`
 - Status: ready; awaiting independent plan review
+- Revision: 2; resolves Round 1's current owned-link reconciliation scope
 - Source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`
 - Author: `compat-plan`, Hypercube `d36e9339`, native
   `ses_e41a1172bffeqvkaFBnCzmGxvc`; OpenCode / `openai/gpt-6.1-sol` / `xhigh`
@@ -15,9 +16,10 @@
 
 ## Outcome and boundaries
 
-Build/install rules create and link only the current executable set. They do not
-delete retired Codex artifacts or identify older combined desktop/backend
-executables. Development cleanup recognizes current dedicated holders only.
+Build/install rules create and link the current executable set. They contain no
+cleanup targeting retired Codex names or identification of older combined
+desktop/backend executables. Development cleanup recognizes current dedicated
+holders only.
 Current desktop quit, complete-bundle replacement, service SIGTERM replacement,
 plugin/helper discovery, signing, AppArmor and supported shell environments remain.
 
@@ -35,12 +37,14 @@ the current `PLUGINS := claude opencode pi` build/link loops. `binaries` can reu
 an output directory, but this retirement adds no replacement stale-output scan.
 Bundle packaging already recreates its own output as normal build behavior.
 
-`scripts/linux-install` separately scans links into the replaced bundle and
-deletes ones that no longer resolve. Delete that historical cleanup loop. Keep
-complete staging/rename replacement, refusal to overwrite nonbundles, current
-CLI/plugin link creation, desktop process shutdown, launcher/icon handling, and
-AppArmor. `scripts/linux-uninstall` removes everything this installer owns;
-its current link removal is ordinary uninstall behavior and must remain.
+`scripts/linux-install` scans links into the replaced bundle and deletes ones
+that no longer resolve. Retain this generic owned-link pruning unchanged: a
+current custom bundle can contain additional plugins whose targets disappear
+when the stock bundle replaces it. This has no historical-version condition.
+Keep the ownership restriction to links into this app, complete staging/rename
+replacement, refusal to overwrite nonbundles, current CLI/plugin link creation,
+desktop process shutdown, launcher/icon handling, and AppArmor.
+`scripts/linux-uninstall`'s owned-link removal likewise remains normal behavior.
 
 `make/macos.mk:quit-desktop` checks executablepath to distinguish the earlier
 combined backend from today's desktop app. Replace that distinction with a
@@ -60,13 +64,18 @@ normal cleanup behavior. Do not execute clean against the user's dev folder.
 1. Remove explicit retired-Codex artifact cleanup from Makefile and both platform
    make fragments. Keep the currently supported binary/plugin/link names and
    dedicated MCP/holder placement unchanged.
-2. Remove the installer's stale-link scan and the dev old-holder match. Simplify
-   only the macOS old-executable distinction as above; keep complete normal
-   platform behavior and current process checks elsewhere.
-3. Update `scripts/linux/test-install`: delete creation/assertions of a retired
-   Codex symlink, but retain the zsh reinstall itself and all shell-environment,
-   holder-survival, restart and uninstall assertions. Do not let removal of the
-   legacy test erase current reinstall coverage.
+2. Retain `scripts/linux-install`'s generic owned broken-link loop unchanged.
+   Remove the dev old-holder match and simplify only the macOS old-executable
+   distinction as above; keep complete normal platform behavior elsewhere.
+3. Reword `scripts/linux/test-install`'s Codex-named reconciliation case as a
+   neutral additional plugin, such as `hypercube-harness-extra`. Before the zsh
+   reinstall, copy a current plugin executable into that path in the installed
+   test bundle and create its owned link in the test user's bin directory;
+   confirm it resolves. Reinstalling the stock bundle removes the extra target;
+   assert the now-broken owned link is pruned. Keep the zsh reinstall and all
+   shell-environment, holder-survival, restart and uninstall assertions. Do not
+   delete present-day reconciliation coverage with the historical name, broaden
+   cleanup to unowned links, or add a runtime allowlist.
 4. In `scripts/linux/test-bundle` / `test-release`, remove old-cleanup-specific
    Codex checks. Keep positive current bundle/executable/layout/discovery checks.
    Prefer asserting the current discovered set in test-bundle over a negative
@@ -81,10 +90,10 @@ normal cleanup behavior. Do not execute clean against the user's dev folder.
 
 Run `make check` before committing code. Also syntax-check changed shell scripts
 with their declared shells (`bash -n scripts/dev scripts/linux/test-bundle
-scripts/linux/test-install scripts/linux/test-release`; `sh -n
-scripts/linux-install`). Inspect the macOS make rule with `make -n quit-desktop`;
-do not execute the recipe on the installed app. The chosen AppleScript must
-preserve the running guard, application ID and quit action; a compiler-only
+scripts/linux/test-install scripts/linux/test-release`). The unchanged installer
+loop is exercised by the Linux test below. Inspect the macOS make rule with
+`make -n quit-desktop`; do not execute the recipe on the installed app. The chosen
+AppleScript must preserve the running guard, application ID and quit action; a compiler-only
 check may use a temporary output without executing the script. No host
 packaging/install or actual desktop quit is required for this narrow change.
 
@@ -99,10 +108,11 @@ container and executes as disposable `tester`. test-bundle invokes make build;
 test-install invokes make install-service/uninstall inside that container.
 Its modifications to HOME, shell configuration, app links, service and isolated
 scripted sessions therefore do not affect the user's installation. This selected
-pair verifies changed Linux build/link/install paths and normal replacement/
-holder behavior; desktop screenshot and tagged release packaging tests add no
-necessary evidence for deleting these historical paths. Still syntax-check the
-edited release test. Do not run test-install directly on macOS or outside runner.
+pair verifies changed Linux build/link/install paths, removal of the neutral
+owned extra-plugin link, and normal replacement/holder behavior; desktop
+screenshot and tagged release packaging tests add no necessary evidence for
+deleting these historical paths. Still syntax-check the edited release test.
+Do not run test-install directly on macOS or outside runner.
 
 Planning confirmed `docker info --format '{{.OSType}}/{{.Architecture}}'` returns
 `linux/aarch64`; Go/Bun/Docker executables are present. If runtime availability

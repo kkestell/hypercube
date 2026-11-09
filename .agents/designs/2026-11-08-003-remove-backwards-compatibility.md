@@ -2,6 +2,7 @@
 
 - Root task: `2026-11-08-003-remove-backwards-compatibility`
 - Status: ready; shared execution guidance for the four plans below
+- Revision: 2; corrects Round 1's live grant producer and current owned-link scope
 - Source HEAD: `ae022eeebf9dc90c75a61527267db0682b194057`
 - Checkout: `/Users/kyle/.local/share/opencode/worktree/803f5f/remove-backwards-compatibility`
 - Branch: `task/remove-backwards-compatibility`; clean index/worktree confirmed before planning
@@ -32,14 +33,15 @@ Leave historical research, plans, reviews, and Codex-retirement records intact.
 | --- | --- | --- |
 | [003](../plans/2026-11-08-003-remove-backwards-compatibility.md) | Store/config current baseline, startup and related current documentation | None |
 | [004](../plans/2026-11-08-004-remove-browser-compatibility.md) | Browser saved-state conversions and obsolete transcript aliases | None; current writer formats stay unchanged |
-| [005](../plans/2026-11-08-005-remove-protocol-compatibility.md) | Plugin command/start aliases, old CLI commands and runtime exceptions | None; keep latest command producers unchanged |
+| [005](../plans/2026-11-08-005-remove-protocol-compatibility.md) | Plugin aliases, live grant-answer encoding, old CLI commands and runtime exceptions | None; surviving latest plugins already accept array answers |
 | [006](../plans/2026-11-08-006-remove-install-compatibility.md) | Build/install/dev historical cleanup and integrated Linux verification | Execute after 005 so Linux verifies the final CLI/protocol |
 
 The parent schedules 003 → 004 → 005 → 006 in the same exclusive checkout.
 That is mostly administrative ordering, not a dependency between independent
 formats. Each intermediate commit must work with its current peers: no schema,
-writer format, current command encoding, holder format, or executable location
-changes. Units 003 and 005 both edit different portions of
+writer format, holder format, or executable location changes. Unit 005 changes
+new grant answers to the already-supported array form, without rewriting saved
+command lines. Units 003 and 005 both edit different portions of
 `cmd/hypercube/integration_test.go`; preserve the preceding unit's changes.
 Each unit owns its same-basename `.agents/work/` and plan/work-review records.
 
@@ -70,11 +72,18 @@ do not eagerly clear it, scan real profiles, or add a versioned storage system.
 Null draft settings/worktree remain valid current values while defaults arrive.
 Partial hand-written config remains supported through ordinary config defaults.
 
-**Live agents:** current start lines contain `mcp`; answer lines contain `choices`.
-Deleting older aliases does not change those lines or latest surviving holders.
-Keep replay order, duplicate suppression, durable commands, launch adoption,
-SIGTERM detachment, queued inputs, permission grants, and holder-owned shells.
-No session restart is part of implementation or validation against user state.
+**Live agents:** current starts contain `mcp`, and ordinary answers use `choices`,
+but `internal/session/grants.go:recordAllow` still produces scalar `choice` for
+AlwaysAllow and automatic granted approvals. Unit 005 must change that producer
+to `Choices: []string{item.Choices[0]}` in the same change that removes the scalar
+field/decoder. Already-recorded command lines stay byte-for-byte unchanged:
+`commands.go:send` sends their saved bytes to the holder, and surviving latest
+plugins run the existing Serve that understands both scalar and array answers.
+Those plugins also accept newly produced arrays. Do not decode/re-encode queued
+commands or add migration/recovery machinery. Keep replay order, duplicate
+suppression, durable commands, launch adoption, SIGTERM detachment, queued inputs,
+per/all-session grants, automatic approval, and holder-owned shells. No session
+restart is part of implementation or validation against user state.
 
 ## Complete candidate disposition
 
@@ -92,13 +101,14 @@ No session restart is part of implementation or validation against user state.
 | `transcript/transcript-tree.ts` native labels | Remove retired Codex-only aliases (`exec_command`, `write_stdin`, `apply_patch`, `web_search`, `view_image`, `agent_*`); keep current `shell`, `bash`, `subagent` and generic tool titles; 004 |
 | Same file: missing state/final, unknown kind | Keep ungrouped current startup/in-progress/failed/interrupted rows and optional Final handling; remove explicit future-kind-as-text fallback in favor of the current exhaustive kind mapping; 004 |
 | Raw harness/model display, optional submission IDs, changes comparison defaults | Keep: deleted model entries and custom harness IDs still exist; current nonbrowser callers lack provisional IDs; uncommitted changes are a current default. No old-shape conversion exists here. |
-| `internal/harness/protocol.go` Choice/StartArgs.Hypercube, `plugins/internal/plugin/serve.go` scalar answer, `plugin.go` MCPCommand and four callers | Delete aliases/helper; direct bridge command and array answers, with required MCP validation at shared Serve boundary; 005 |
+| `internal/harness/protocol.go` Choice/StartArgs.Hypercube, `plugins/internal/plugin/serve.go` scalar answer, `plugin.go` MCPCommand and four callers; `internal/session/grants.go:recordAllow` | Change live grant producer to a one-element Choices array in the same unit as deleting aliases/helper; direct bridge command and array answers, with required MCP validation at shared Serve boundary. Keep saved-line replay unchanged; 005 |
 | `cmd/hypercube/main.go` mcp/hold commands; old integration bridge tests | Delete compatibility dispatch, keep dedicated executable tests and latest lifecycle/replay coverage; 005 |
 | `internal/session/offers.go` two-choice Dismiss exception | Validate against saved current item choices; delete legacy two-choice test variant, retain current Dismiss behavior; 005 |
 | `internal/session/child_options.go` explicit saved fork dirs | A fork takes no dir: reject nonempty dir, retain checkout/non-Git sharing and worktree-parent placement; 005 |
 | `internal/session/sessions.go` exact-input workspace identity | Keep: a current plain subfolder can become part of a newly initialized parent Git checkout. Existing identity/reclassification tests protect current behavior, not solely old-version repair. |
 | `plugins/opencode/configure.go` default effort with no controls | Keep: current models can have zero variants. Provider default adds no variant; this is current selection normalization, not version detection. Existing configure tests cover it. |
-| Makefile/make platform Codex executable/link deletion; `scripts/linux-install` stale plugin links | Delete historical cleanup only; keep current bundle replacement/link creation/uninstallation; 006 |
+| Makefile/make platform named Codex executable/link deletion | Delete named historical cleanup; keep current bundle replacement/link creation/uninstallation; 006 |
+| `scripts/linux-install` generic owned broken-plugin-link pruning | Retain unchanged: current custom bundle plugins can disappear on stock-bundle reinstall. Keep its ownership restriction; replace the Codex-named test fixture with a neutral additional plugin and retain replacement reconciliation coverage; 006 |
 | `make/macos.mk` earlier-backend executable distinction | Replace with current desktop-running check before quit; do not remove normal desktop quit or touch service SIGTERM behavior; 006 |
 | `scripts/dev` old `hypercube hold` match | Delete that alternative, retain current holder cleanup scoped to dev state; 006 |
 | Generic JSON tolerance, external-input validation, MCP SDK negotiation, signing and AppArmor | Keep current supported boundaries/security/platform integration; no historical-version machinery to remove. |
@@ -111,9 +121,11 @@ instructions require. Prefer one code commit per unit; use focused tests during
 iteration only for a concrete uncertainty, not routine duplicate package suites.
 Reviewers reuse matching recorded evidence instead of automatically rerunning it.
 Unit 006 additionally runs Linux bundle/install behavior in a disposable container;
-the selected scripts cover current helper layout, replacement, service restart,
-shell environment and holder survival, without requiring desktop screenshots or
-release packaging. Each work log records exact commands/results and code anchors.
+the selected scripts cover current helper layout, replacement/owned custom-link
+reconciliation, service restart, shell environment and holder survival, without
+requiring desktop screenshots or release packaging. Unit 005 keeps grant scope,
+automatic approval and restart coverage alongside byte-for-byte command replay.
+Each work log records exact commands/results and code anchors.
 
 Planning ran no build/test suite. `docker info --format
 '{{.OSType}}/{{.Architecture}}'` returned `linux/aarch64`; Go, Bun and Docker are
