@@ -1,7 +1,7 @@
 # Current database and configuration: implementation
 
 - Task ID: `2026-11-08-003-remove-backwards-compatibility`
-- Status: implemented; awaiting fresh independent work review.
+- Status: complete.
 - Plan (repository-relative):
   `.agents/plans/2026-11-08-003-remove-backwards-compatibility.md`
 - Accepted plan blob: `16ff0e39fb7c3c940d23526e1bb97aab5b156840`.
@@ -10,6 +10,13 @@
 - Checkout: `/Users/kyle/.local/share/opencode/worktree/803f5f/remove-backwards-compatibility`.
 - Branch: `task/remove-backwards-compatibility`; clean, exclusive checkout and
   empty index confirmed before edits.
+- Checkout note: planning and 003 ran in the checkout and branch above. Those
+  commits were fast-forwarded unchanged (tip
+  `c4c466adccc8cb0129dd2295560d0d07b1000c47`) into
+  `/Users/kyle/src/hypercube/.hypercube/2f4c7990/compat-impl`, branch
+  `hypercube/2f4c7990/compat-impl`. The 003 work review was committed there
+  byte-identical in `3294d5aadfb3f7ae5285933f68928971183f0fa0`, so all anchors are
+  unchanged.
 - Fixed Code base: `71b91a2ffc41736ae95069889013bef3887b37e0`.
 - Code head: `fcb65417c26e4b61776f16bab725516df55d1317`.
 - Implementation commits: `fcb65417c26e4b61776f16bab725516df55d1317`
@@ -21,8 +28,10 @@
   `ses_e4187f711ffeBZjK6i4CmNJItF`; OpenCode / `openai/gpt-6.1-sol` / `xhigh`
   (parent creation metadata). Own Hypercube numeric ID is unavailable: current
   context identifies the worker name, while `list_sessions` exposes only parent.
-- Work review (repository-relative, not yet written):
-  `.agents/reviews/work/2026-11-08-003-remove-backwards-compatibility.md`.
+- Work review (repository-relative):
+  `.agents/reviews/work/2026-11-08-003-remove-backwards-compatibility.md`; final verdict accept;
+  reviewed range `71b91a2ffc41736ae95069889013bef3887b37e0..fcb65417c26e4b61776f16bab725516df55d1317`;
+  review committed in `3294d5aadfb3f7ae5285933f68928971183f0fa0`.
 
 ## Accepted guidance
 
@@ -124,19 +133,16 @@ print(f'PASS: static fixture matches tables and indexes from {base}; inert user_
 PY
 ```
 
-## Session provenance and handoff
+## Session provenance
 
-All stages use OpenCode / `openai/gpt-6.1-sol` / `xhigh`. Parent supplied prior
-stage metadata; own native ID came only from `OPENCODE_SESSION_ID`.
-`list_sessions` confirmed the parent's model/effort and exposed no own numeric ID.
+| Stage / name | Hypercube ID | Harness | Native conversation | Model / effort |
+| --- | --- | --- | --- | --- |
+| Original coordinator (planning, 003; stopped by the user) | `a58ee257` | OpenCode | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | `openai/gpt-6.1-sol` / `xhigh` |
+| Planner / `compat-plan` | `d36e9339` | OpenCode | `ses_e41a1172bffeqvkaFBnCzmGxvc` | `openai/gpt-6.1-sol` / `xhigh` |
+| Plan review / `compat-plan-review` | `3fdeced3` | OpenCode | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | `openai/gpt-6.1-sol` / `xhigh` |
+| Implementation / `compat-store-work` | `54200be3` | OpenCode | `ses_e4187f711ffeBZjK6i4CmNJItF` | `openai/gpt-6.1-sol` / `xhigh` |
+| Work review / `compat-store-review` | `23f0a26e` | OpenCode | `ses_e417f13cbffe2MwDFb9ngV6lby` | `openai/gpt-6.1-sol` / `xhigh` |
+| Resuming coordinator (004–006, finalization) | `2f4c7990` | Claude Code | `bfa5e290-5355-47b7-b8a3-d81a92eca8cd` | `claude-opus-5-5` / not exposed |
+| Salvaged review commit / `compat-impl` | child of `2f4c7990` | Claude Code | `1a622741-22c7-4c26-9705-f8832685efee` | `claude-opus-5-5` / `high` |
 
-| Stage / name | Hypercube ID | Native conversation |
-| --- | --- | --- |
-| Coordinator | `a58ee257` | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` |
-| Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` |
-| Plan review / `compat-plan-review` | unavailable; interface limitation | `ses_e4195b6fcffe3Mncn7jH9SS1YY` |
-| Implementation / `compat-store-work` | unavailable; context/list interface exposes no own ID | `ses_e4187f711ffeBZjK6i4CmNJItF` |
-
-No blockers or unresolved implementation decisions. Status remains implemented,
-not complete, pending independent `xreview work` of this fixed-base Code-head
-range. Units 004–006 and their verification remain the parent's separate work.
+No blockers.

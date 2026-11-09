@@ -1,7 +1,7 @@
 # Retired build and installation cleanup: implementation
 
 - Task ID: `2026-11-08-006-remove-install-compatibility`
-- Status: implemented; awaiting independent work review.
+- Status: complete.
 - Plan (repository-relative):
   `.agents/plans/2026-11-08-006-remove-install-compatibility.md`
 - Accepted plan blob: `f6bf8eca928d621d7eb122d1f19a7bd86053896e`.
@@ -21,9 +21,11 @@
   between the checks below and the commit.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
-  Claude Code / `claude-opus-5-5` / effort not exposed to the session.
-- Work review (repository-relative, not yet written):
-  `.agents/reviews/work/2026-11-08-006-remove-install-compatibility.md`.
+  Claude Code / `claude-opus-5-5` / `high`.
+- Work review (repository-relative):
+  `.agents/reviews/work/2026-11-08-006-remove-install-compatibility.md`, Round 2; final verdict accept;
+  reviewed range `ae546fee7dbb8a09a6edf4770011e23813193bb5..672bfaaae8158bbd40d7a66325a96442abd54295`;
+  review committed in `5658cfcfa161b836fecd99e351e69dd1b9a78f58`.
 
 ## Accepted guidance
 
@@ -118,13 +120,14 @@ Remaining matches, classified against the shared design:
 
 ## Session provenance
 
-| Stage / name | Hypercube ID | Native conversation | Harness / model / effort |
-| --- | --- | --- | --- |
-| Coordinator (this phase) | `2f4c7990` | not supplied | not supplied |
-| Earlier coordinator | `a58ee257` | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Plan review / `compat-plan-review` | unavailable | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Implementation / `compat-impl` | child of `2f4c7990`; own ID not exposed | `1a622741-22c7-4c26-9705-f8832685efee` | Claude Code / `claude-opus-5-5` / not exposed |
+| Stage / name | Hypercube ID | Harness | Native conversation | Model / effort |
+| --- | --- | --- | --- | --- |
+| Original coordinator (planning, 003; stopped by the user) | `a58ee257` | OpenCode | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | `openai/gpt-6.1-sol` / `xhigh` |
+| Planner / `compat-plan` | `d36e9339` | OpenCode | `ses_e41a1172bffeqvkaFBnCzmGxvc` | `openai/gpt-6.1-sol` / `xhigh` |
+| Plan review / `compat-plan-review` | `3fdeced3` | OpenCode | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | `openai/gpt-6.1-sol` / `xhigh` |
+| Resuming coordinator (004–006, finalization) | `2f4c7990` | Claude Code | `bfa5e290-5355-47b7-b8a3-d81a92eca8cd` | `claude-opus-5-5` / not exposed |
+| Implementation / `compat-impl` | child of `2f4c7990` | Claude Code | `1a622741-22c7-4c26-9705-f8832685efee` | `claude-opus-5-5` / `high` |
+| Work review / `compat-review` | child of `2f4c7990` | Claude Code | `c805986c-9023-4e3e-a660-11912f975ea2` | `claude-opus-5-5` / `high` |
 
 ## Repair 1: task-level review findings
 
@@ -160,4 +163,4 @@ Verification on the fix commit's tree:
 focused package test covers, and edits prose. The earlier `make check` and
 Linux results on `fa4111e…` cover the rest of the tree.
 
-No blockers. Status stays implemented until independent `xreview work`.
+No blockers.

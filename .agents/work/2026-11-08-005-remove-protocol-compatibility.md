@@ -1,7 +1,7 @@
 # Obsolete plugin and runtime protocol paths: implementation
 
 - Task ID: `2026-11-08-005-remove-protocol-compatibility`
-- Status: implemented; awaiting independent work review.
+- Status: complete.
 - Plan (repository-relative):
   `.agents/plans/2026-11-08-005-remove-protocol-compatibility.md`
 - Accepted plan blob: `cbb2b2eaf2c1cbba7b7d0dfa0fc60e79d400bf89`.
@@ -18,9 +18,11 @@
   was written before the commit and is the committed tree.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
-  Claude Code / `claude-opus-5-5` / effort not exposed to the session.
-- Work review (repository-relative, not yet written):
-  `.agents/reviews/work/2026-11-08-005-remove-protocol-compatibility.md`.
+  Claude Code / `claude-opus-5-5` / `high`.
+- Work review (repository-relative):
+  `.agents/reviews/work/2026-11-08-005-remove-protocol-compatibility.md`; final verdict accept;
+  reviewed range `bc0f339b5e96e1a8508b70be55560e73a80916e3..0d708e9a3f04976976cfd5e719270536fae8e3ef`;
+  review committed in `ae546fee7dbb8a09a6edf4770011e23813193bb5`.
 
 ## Accepted guidance
 
@@ -107,12 +109,13 @@ were restarted, nothing was installed, and no user state was touched.
 
 ## Session provenance
 
-| Stage / name | Hypercube ID | Native conversation | Harness / model / effort |
-| --- | --- | --- | --- |
-| Coordinator (this phase) | `2f4c7990` | not supplied | not supplied |
-| Earlier coordinator | `a58ee257` | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Plan review / `compat-plan-review` | unavailable | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Implementation / `compat-impl` | child of `2f4c7990`; own ID not exposed | `1a622741-22c7-4c26-9705-f8832685efee` | Claude Code / `claude-opus-5-5` / not exposed |
+| Stage / name | Hypercube ID | Harness | Native conversation | Model / effort |
+| --- | --- | --- | --- | --- |
+| Original coordinator (planning, 003; stopped by the user) | `a58ee257` | OpenCode | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | `openai/gpt-6.1-sol` / `xhigh` |
+| Planner / `compat-plan` | `d36e9339` | OpenCode | `ses_e41a1172bffeqvkaFBnCzmGxvc` | `openai/gpt-6.1-sol` / `xhigh` |
+| Plan review / `compat-plan-review` | `3fdeced3` | OpenCode | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | `openai/gpt-6.1-sol` / `xhigh` |
+| Resuming coordinator (004–006, finalization) | `2f4c7990` | Claude Code | `bfa5e290-5355-47b7-b8a3-d81a92eca8cd` | `claude-opus-5-5` / not exposed |
+| Implementation / `compat-impl` | child of `2f4c7990` | Claude Code | `1a622741-22c7-4c26-9705-f8832685efee` | `claude-opus-5-5` / `high` |
+| Work review / `compat-review` | child of `2f4c7990` | Claude Code | `c805986c-9023-4e3e-a660-11912f975ea2` | `claude-opus-5-5` / `high` |
 
-No blockers. Status stays implemented until independent `xreview work`.
+No blockers.

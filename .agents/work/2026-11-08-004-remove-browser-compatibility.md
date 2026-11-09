@@ -1,7 +1,7 @@
 # Current browser-state formats: implementation
 
 - Task ID: `2026-11-08-004-remove-browser-compatibility`
-- Status: implemented; awaiting independent work review.
+- Status: complete.
 - Plan (repository-relative):
   `.agents/plans/2026-11-08-004-remove-browser-compatibility.md`
 - Accepted plan blob: `781e49e77ac7d71b9ab3217e70fdefad60c2acf3`.
@@ -24,9 +24,11 @@
   was written before the commit and is the committed tree; no hooks changed it.
 - Author: `compat-impl`, Hypercube child of `2f4c7990`; native conversation
   `1a622741-22c7-4c26-9705-f8832685efee` (`CLAUDE_CODE_SESSION_ID`);
-  Claude Code / `claude-opus-5-5` / effort not exposed to the session.
-- Work review (repository-relative, not yet written):
-  `.agents/reviews/work/2026-11-08-004-remove-browser-compatibility.md`.
+  Claude Code / `claude-opus-5-5` / `high`.
+- Work review (repository-relative):
+  `.agents/reviews/work/2026-11-08-004-remove-browser-compatibility.md`, Round 2; final verdict accept;
+  reviewed range `3294d5aadfb3f7ae5285933f68928971183f0fa0..d8f1a39dd44a2e02e92506061e3f0f0773bd221e`;
+  review committed in `bc0f339b5e96e1a8508b70be55560e73a80916e3`.
 
 ## Accepted guidance
 
@@ -104,13 +106,14 @@ service restarts, pushes or merges.
 
 ## Session provenance
 
-| Stage / name | Hypercube ID | Native conversation | Harness / model / effort |
-| --- | --- | --- | --- |
-| Coordinator (this phase) | `2f4c7990` | not supplied | not supplied |
-| Earlier coordinator | `a58ee257` | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Planner / `compat-plan` | `d36e9339` | `ses_e41a1172bffeqvkaFBnCzmGxvc` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Plan review / `compat-plan-review` | unavailable | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | OpenCode / `openai/gpt-6.1-sol` / `xhigh` |
-| Implementation / `compat-impl` | child of `2f4c7990`; own ID not exposed | `1a622741-22c7-4c26-9705-f8832685efee` | Claude Code / `claude-opus-5-5` / not exposed |
+| Stage / name | Hypercube ID | Harness | Native conversation | Model / effort |
+| --- | --- | --- | --- | --- |
+| Original coordinator (planning, 003; stopped by the user) | `a58ee257` | OpenCode | `ses_e41aa9914ffeXSrMrW4OhBDxsQ` | `openai/gpt-6.1-sol` / `xhigh` |
+| Planner / `compat-plan` | `d36e9339` | OpenCode | `ses_e41a1172bffeqvkaFBnCzmGxvc` | `openai/gpt-6.1-sol` / `xhigh` |
+| Plan review / `compat-plan-review` | `3fdeced3` | OpenCode | `ses_e4195b6fcffe3Mncn7jH9SS1YY` | `openai/gpt-6.1-sol` / `xhigh` |
+| Resuming coordinator (004–006, finalization) | `2f4c7990` | Claude Code | `bfa5e290-5355-47b7-b8a3-d81a92eca8cd` | `claude-opus-5-5` / not exposed |
+| Implementation / `compat-impl` | child of `2f4c7990` | Claude Code | `1a622741-22c7-4c26-9705-f8832685efee` | `claude-opus-5-5` / `high` |
+| Work review / `compat-review` | child of `2f4c7990` | Claude Code | `c805986c-9023-4e3e-a660-11912f975ea2` | `claude-opus-5-5` / `high` |
 
 ## Repair 1: current tool names in screenshot scenes
 
@@ -172,4 +175,4 @@ Verification, run against the fix commit's tree (macOS/arm64, Bun `1.4.2`):
 JSON that no check reads. The earlier `make check` pass on `013219a…` covers
 the rest of the tree.
 
-No blockers. Status stays implemented until independent `xreview work`.
+No blockers.
