@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
@@ -14,8 +15,8 @@ import (
 // maxInput is the largest input body: 10 MiB of images in base64, and text.
 const maxInput = 16 << 20
 
-// workspaceAction adds a workspace in the given folder and returns its ID, or
-// deletes a workspace.
+// workspaceAction adds a workspace in the given folder and returns its ID,
+// deletes a workspace, or saves the GitHub account a workspace uses.
 func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
@@ -29,7 +30,18 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 		if refused(w, err) {
 			return
 		}
+		s.gh.Refresh()
 		fmt.Fprint(w, added.ID)
+	case "github-account":
+		id, account := q.Get("id"), q.Get("account")
+		if !slices.Contains(s.gh.Statuses()[id].Choices, account) {
+			http.Error(w, "not an account to choose", http.StatusBadRequest)
+			return
+		}
+		if refused(w, s.db.Tx(func(tx *store.Tx) error { return tx.SetGitHubAccount(id, account) })) {
+			return
+		}
+		s.gh.Refresh()
 	case "delete":
 		refused(w, s.rt.DeleteWorkspace(q.Get("id")))
 	default:

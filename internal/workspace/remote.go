@@ -1,8 +1,14 @@
 package workspace
 
 import (
+	"bytes"
+	"context"
 	"errors"
+	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 )
 
 // Config returns the value of a Git setting in dir, or "" when it is unset.
@@ -45,4 +51,44 @@ func Remote(dir string) (name, url string, err error) {
 		}
 	}
 	return "", "", nil
+}
+
+// Fetch fetches the remote into dir's remote-tracking branches, with extra
+// environment variables such as a token, until ctx ends. It leaves FETCH_HEAD
+// alone so that it cannot disturb a fetch and merge an agent is running.
+func Fetch(ctx context.Context, dir, remote string, env []string) error {
+	cmd := exec.CommandContext(ctx, "git", "fetch", "--quiet", "--no-write-fetch-head", remote)
+	cmd.Dir = dir
+	cmd.Env = append(append(os.Environ(), env...), "GIT_TERMINAL_PROMPT=0")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return &gitError{[]string{"fetch", remote}, strings.TrimSpace(stderr.String()), err}
+	}
+	return nil
+}
+
+// Tracking returns the branch the current branch tracks, such as origin/main,
+// and how many commits the current branch is ahead of and behind it. A branch
+// without an upstream gives "" and zeros.
+func Tracking(dir string) (upstream string, ahead, behind int, err error) {
+	upstream, err = git(dir, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
+	if err != nil {
+		return "", 0, 0, nil
+	}
+	out, err := git(dir, "rev-list", "--left-right", "--count", "HEAD...@{upstream}")
+	if err != nil {
+		return "", 0, 0, err
+	}
+	counts := strings.Fields(out)
+	if len(counts) != 2 {
+		return "", 0, 0, fmt.Errorf("unexpected rev-list output %q", out)
+	}
+	if ahead, err = strconv.Atoi(counts[0]); err != nil {
+		return "", 0, 0, err
+	}
+	if behind, err = strconv.Atoi(counts[1]); err != nil {
+		return "", 0, 0, err
+	}
+	return upstream, ahead, behind, nil
 }

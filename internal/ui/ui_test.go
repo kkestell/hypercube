@@ -18,6 +18,7 @@ import (
 	"github.com/coder/websocket"
 
 	"github.com/kkestell/hypercube/internal/config"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/harness/harnesstest"
 	"github.com/kkestell/hypercube/internal/hold/holdtest"
@@ -51,7 +52,7 @@ func open(t *testing.T) *store.DB {
 // started.
 func handler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return Handler(db, session.New(db, "", session.Programs{Holder: holdtest.Path}))
+	return Handler(db, session.New(db, "", session.Programs{Holder: holdtest.Path}), &github.Watcher{})
 }
 
 func change(t *testing.T, db *store.DB, fn func(*store.Tx) error) {
@@ -234,7 +235,7 @@ func newApp(t *testing.T) *app {
 		time.Sleep(5 * time.Millisecond)
 	}
 	a := &app{t: t, db: db, rt: rt, session: s}
-	a.server = httptest.NewServer(Handler(db, rt))
+	a.server = httptest.NewServer(Handler(db, rt, &github.Watcher{}))
 	t.Cleanup(a.server.Close)
 	return a
 }
@@ -485,7 +486,7 @@ func TestSnapshotOrder(t *testing.T) {
 		}
 		return nil
 	})
-	list, _, err := snapshot(db, nil)
+	list, _, err := snapshot(db, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

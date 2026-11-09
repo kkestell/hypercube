@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/desktop"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
 )
@@ -31,7 +32,7 @@ func openHTTPStore(t *testing.T) *store.DB {
 // testHandler serves a runtime whose agents are never started.
 func testHandler(t *testing.T, db *store.DB) http.Handler {
 	t.Helper()
-	return handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{})
+	return handler(db, session.New(db, "", session.Programs{}), &desktop.Desktop{}, &github.Watcher{})
 }
 
 func TestVersion(t *testing.T) {

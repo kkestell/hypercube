@@ -132,3 +132,6 @@ to the repository; or the account you choose for the workspace.
 New agents and panel shells in the workspace get `GH_TOKEN` for that account, so
 `gh` and Git pushes through `gh auth git-credential` use it. A running agent or
 shell keeps the account it started with until it restarts.
+
+About once a minute, Hypercube fetches each GitHub workspace's tracked remote
+and reads its open pull requests, using the workspace's account.

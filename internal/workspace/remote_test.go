@@ -1,6 +1,12 @@
 package workspace
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func isolateGit(t *testing.T) {
 	t.Helper()
@@ -62,5 +68,46 @@ func TestRemote(t *testing.T) {
 				t.Fatalf("Remote = %q, %q, %v; want %q", name, url, err, tc.want)
 			}
 		})
+	}
+}
+
+func TestFetchAndTracking(t *testing.T) {
+	isolateGit(t)
+	bare := t.TempDir()
+	root, run := gitRepo(t)
+	run(bare, "init", "-q", "--bare", "-b", "main")
+	run(root, "remote", "add", "origin", bare)
+	run(root, "push", "-q", "-u", "origin", "main")
+	if up, ahead, behind, err := Tracking(root); err != nil || up != "origin/main" || ahead != 0 || behind != 0 {
+		t.Fatalf("Tracking = %q, %d, %d, %v", up, ahead, behind, err)
+	}
+
+	// Another clone pushes two commits; this one commits one.
+	other := t.TempDir()
+	run(other, "clone", "-q", bare, "clone")
+	clone := other + "/clone"
+	run(clone, "commit", "-q", "--allow-empty", "-m", "one")
+	run(clone, "commit", "-q", "--allow-empty", "-m", "two")
+	run(clone, "push", "-q", "origin", "main")
+	run(root, "commit", "-q", "--allow-empty", "-m", "local")
+	if _, ahead, behind, _ := Tracking(root); ahead != 1 || behind != 0 {
+		t.Fatalf("before the fetch: ahead %d, behind %d", ahead, behind)
+	}
+	if err := Fetch(context.Background(), root, "origin", nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, ahead, behind, err := Tracking(root); err != nil || ahead != 1 || behind != 2 {
+		t.Fatalf("after the fetch: ahead %d, behind %d, %v", ahead, behind, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "FETCH_HEAD")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("FETCH_HEAD: %v", err)
+	}
+
+	run(root, "checkout", "-q", "-b", "local-only")
+	if up, ahead, behind, err := Tracking(root); err != nil || up != "" || ahead != 0 || behind != 0 {
+		t.Fatalf("Tracking without upstream = %q, %d, %d, %v", up, ahead, behind, err)
+	}
+	if err := Fetch(context.Background(), root, "missing", nil); err == nil {
+		t.Fatal("fetching a missing remote succeeded")
 	}
 }

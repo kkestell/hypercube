@@ -110,6 +110,9 @@ const schema = `
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY, path TEXT NOT NULL UNIQUE, no_git INTEGER NOT NULL,
   created INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS github_accounts (
+  workspace TEXT PRIMARY KEY REFERENCES workspaces(id) ON DELETE CASCADE,
+  account TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   workspace TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
@@ -266,6 +269,31 @@ func (t *Tx) SetWorkspaceNoGit(id string, noGit bool) error {
 
 func (t *Tx) DeleteWorkspace(id string) error {
 	return t.exec(`DELETE FROM workspaces WHERE id = ?`, id)
+}
+
+// GitHubAccounts returns the GitHub account the user chose for each workspace,
+// by workspace ID.
+func (t *Tx) GitHubAccounts() (map[string]string, error) {
+	rows, err := t.tx.Query(`SELECT workspace, account FROM github_accounts`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	accounts := map[string]string{}
+	for rows.Next() {
+		var workspace, account string
+		if err := rows.Scan(&workspace, &account); err != nil {
+			return nil, err
+		}
+		accounts[workspace] = account
+	}
+	return accounts, rows.Err()
+}
+
+// SetGitHubAccount saves the user's choice of GitHub account for a workspace.
+func (t *Tx) SetGitHubAccount(workspace, account string) error {
+	return t.exec(`INSERT INTO github_accounts (workspace, account) VALUES (?, ?)
+ ON CONFLICT (workspace) DO UPDATE SET account = excluded.account`, workspace, account)
 }
 
 func (t *Tx) AddSession(s Session) error {

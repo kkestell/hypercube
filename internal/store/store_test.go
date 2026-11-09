@@ -445,3 +445,25 @@ func TestPanickingTransactionReleasesTheWriteLock(t *testing.T) {
 		return nil
 	})
 }
+
+func TestGitHubAccountChoice(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/src/w", "s")
+	tx(t, db, func(tx *Tx) error { return tx.SetGitHubAccount("w", "alice") })
+	tx(t, db, func(tx *Tx) error { return tx.SetGitHubAccount("w", "bob") })
+	read := func() map[string]string {
+		t.Helper()
+		var got map[string]string
+		if err := db.Read(func(tx *Tx) (err error) { got, err = tx.GitHubAccounts(); return }); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := read(); len(got) != 1 || got["w"] != "bob" {
+		t.Fatalf("accounts = %v", got)
+	}
+	tx(t, db, func(tx *Tx) error { return tx.DeleteWorkspace("w") })
+	if got := read(); len(got) != 0 {
+		t.Fatalf("accounts after delete = %v", got)
+	}
+}

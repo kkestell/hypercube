@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -62,9 +63,10 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 	selections := make(chan string)
 	go readSelections(ctx, cancel, conn, selections)
 
-	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt,
+	d := &dataSocket{ctx: ctx, conn: conn, db: s.db, rt: s.rt, gh: s.gh,
 		batch: map[string]session.TranscriptItem{}}
 	defer d.endView()
+	githubChanged := s.gh.Changed()
 	if d.sendState() != nil {
 		return
 	}
@@ -87,6 +89,13 @@ func (s *server) state(w http.ResponseWriter, r *http.Request) {
 				timer.Reset(coalesce)
 				tick = timer.C
 			}
+		case <-githubChanged:
+			githubChanged = s.gh.Changed()
+			d.stale = true
+			if tick == nil {
+				timer.Reset(coalesce)
+				tick = timer.C
+			}
 		case <-tick:
 			tick = nil
 			if d.flush() != nil {
@@ -105,6 +114,7 @@ type dataSocket struct {
 	conn *websocket.Conn
 	db   *store.DB
 	rt   *session.Runtime
+	gh   *github.Watcher
 
 	// stale marks the state as possibly changed since it was last sent.
 	stale bool
@@ -121,7 +131,7 @@ type dataSocket struct {
 // from the last state sent.
 func (d *dataSocket) sendState() error {
 	d.stale = false
-	workspaces, limits, err := snapshot(d.db, d.rt.Merges())
+	workspaces, limits, err := snapshot(d.db, d.rt.Merges(), d.gh.Statuses())
 	if err != nil {
 		return err
 	}

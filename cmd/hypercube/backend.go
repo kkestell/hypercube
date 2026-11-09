@@ -54,7 +54,7 @@ func startApp(listener net.Listener, programs session.Programs, desktop *desktop
 	rt.Env = watcher.Env
 	a := &app{db: db, rt: rt, desktop: desktop, cancel: cancel, done: make(chan error, 1),
 		github: watcher, githubDone: make(chan struct{})}
-	a.server = &http.Server{Handler: handler(db, rt, desktop)}
+	a.server = &http.Server{Handler: handler(db, rt, desktop, watcher)}
 	if err := rt.Restore(func() {
 		go func() { a.done <- a.server.Serve(listener) }()
 	}); err != nil {

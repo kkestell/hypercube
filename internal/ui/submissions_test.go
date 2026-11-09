@@ -8,13 +8,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 )
 
 func TestHTTPSubmissionCorrelation(t *testing.T) {
 	a := newApp(t)
-	h := Handler(a.db, a.rt)
+	h := Handler(a.db, a.rt, &github.Watcher{})
 	post := func(path, body string) *httptest.ResponseRecorder {
 		t.Helper()
 		r := httptest.NewRequest(http.MethodPost, "http://localhost:4280"+path, strings.NewReader(body))

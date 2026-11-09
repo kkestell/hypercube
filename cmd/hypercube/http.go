@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
 	"github.com/kkestell/hypercube/internal/desktop"
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/mcp"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -16,8 +17,8 @@ import (
 // handler serves the backend: the browser view, the agents' tools at /mcp,
 // the desktop app's connection at /desktop, and the build identity at
 // /version. localOnly guards every route.
-func handler(db *store.DB, rt *session.Runtime, d *desktop.Desktop) http.Handler {
-	browser := ui.Handler(db, rt)
+func handler(db *store.DB, rt *session.Runtime, d *desktop.Desktop, gh *github.Watcher) http.Handler {
+	browser := ui.Handler(db, rt, gh)
 	mux := http.NewServeMux()
 	mux.Handle("POST /mcp", mcp.Handler(db, rt))
 	// The browser fallback has a GET / route. Preserve the single mux's Allow
