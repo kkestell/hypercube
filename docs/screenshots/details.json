@@ -109,18 +109,12 @@
           ],
           "view": {
             "tabs": {
-              "root": {
-                "id": 1,
-                "tabs": [
-                  "agent"
-                ],
-                "active": "agent"
-              },
+              "root": null,
               "preview": null,
               "dragging": null,
               "nextId": 2
             },
-            "activePane": 1,
+            "activePane": null,
             "expanded": {
               "activity": true,
               "a1": true

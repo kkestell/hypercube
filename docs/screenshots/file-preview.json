@@ -50,16 +50,10 @@
           ],
           "view": {
             "tabs": {
-              "root": {
-                "id": 1, "axis": "x", "ratio": 50,
-                "children": [
-                  {"id": 2, "tabs": ["agent"], "active": "agent"},
-                  {"id": 3, "tabs": ["file:main.go"], "active": "file:main.go"}
-                ]
-              },
+              "root": {"id": 3, "tabs": ["file:main.go"], "active": "file:main.go"},
               "preview": null, "dragging": null, "nextId": 4
             },
-            "activePane": 2, "expanded": {}, "scroll": {}, "folders": {},
+            "activePane": 3, "expanded": {}, "scroll": {}, "folders": {},
             "files": {"main.go": {"source": false, "lines": []}}
           }
         }

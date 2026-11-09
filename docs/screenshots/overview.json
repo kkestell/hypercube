@@ -113,16 +113,10 @@
           ],
           "view": {
             "tabs": {
-              "root": {
-                "id": 1, "axis": "x", "ratio": 52,
-                "children": [
-                  {"id": 2, "tabs": ["agent"], "active": "agent"},
-                  {"id": 3, "tabs": ["file:cache.go", "diff:build.go"], "active": "diff:build.go"}
-                ]
-              },
+              "root": {"id": 3, "tabs": ["file:cache.go", "diff:build.go"], "active": "diff:build.go"},
               "preview": null, "dragging": null, "nextId": 4
             },
-            "activePane": 2, "expanded": {}, "scroll": {}, "folders": {},
+            "activePane": 3, "expanded": {}, "scroll": {}, "folders": {},
             "files": {"cache.go": {"source": false, "lines": []}}
           }
         }
