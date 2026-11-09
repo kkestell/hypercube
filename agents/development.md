@@ -240,12 +240,11 @@ ends.
 
 ## Backwards compatibility
 
-The current database and configuration are the supported baseline. Historical
-conversion code has been retired now that both installations use that baseline;
-startup initializes missing tables and indexes without upgrading saved rows or
-configuration files. Future changes must preserve the user's saved state and
-include a migration when needed. Delete obsolete files when you find them,
-including leftovers from earlier builds and installs.
+The current database and configuration are the supported baseline. Startup
+creates missing tables and indexes. A change to the database schema or other
+saved state includes a migration that preserves the user's state. Delete
+obsolete files when you find them, including leftovers from earlier builds and
+installs.
 
 ## Develop without replacing the installed app
 

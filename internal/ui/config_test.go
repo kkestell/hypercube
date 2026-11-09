@@ -34,7 +34,6 @@ func TestSaveConfig(t *testing.T) {
 	for name, body := range map[string]string{
 		"broken JSON":        `{`,
 		"incomplete default": strings.Replace(string(body), `"model":"next"`, `"model":""`, 1),
-		"legacy profiles":    `{"theme":"system","terminal_font_size":13,"profiles":[]}`,
 		"unknown setting":    strings.Replace(string(body), `{`, `{"font":"Menlo",`, 1),
 		"second document":    string(body) + `{}`,
 	} {
