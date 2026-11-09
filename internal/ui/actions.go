@@ -2,11 +2,16 @@ package ui
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 
+	"github.com/kkestell/hypercube/internal/github"
 	"github.com/kkestell/hypercube/internal/harness"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -16,7 +21,8 @@ import (
 const maxInput = 16 << 20
 
 // workspaceAction adds a workspace in the given folder and returns its ID,
-// deletes a workspace, or saves the GitHub account a workspace uses.
+// clones a pull request's repository into a folder and adds it, deletes a
+// workspace, or saves the GitHub account a workspace uses.
 func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	switch q.Get("action") {
@@ -24,6 +30,24 @@ func (s *server) workspaceAction(w http.ResponseWriter, r *http.Request) {
 		dir := q.Get("path")
 		if dir == "" {
 			http.Error(w, "a path is required", http.StatusBadRequest)
+			return
+		}
+		added, err := s.rt.AddWorkspace(dir)
+		if refused(w, err) {
+			return
+		}
+		s.gh.Refresh()
+		fmt.Fprint(w, added.ID)
+	case "clone":
+		dir, ok := absolutePath(q.Get("path"))
+		if !ok {
+			http.Error(w, "the folder must be an absolute path", http.StatusBadRequest)
+			return
+		}
+		if err := s.gh.Clone(r.Context(), q.Get("repo"), q.Get("account"), dir); errors.Is(err, github.ErrNotPullRequestRepo) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		} else if refused(w, err) {
 			return
 		}
 		added, err := s.rt.AddWorkspace(dir)
@@ -172,4 +196,20 @@ func (s *server) deleteGrant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	refused(w, s.db.Tx(func(tx *store.Tx) error { return tx.DeleteGrant(q.Get("session"), q.Get("harness"), q.Get("tool")) }))
+}
+
+// absolutePath cleans an absolute path or one that starts with ~/, which
+// stands for the home folder.
+func absolutePath(path string) (string, bool) {
+	if rest, ok := strings.CutPrefix(path, "~/"); ok {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", false
+		}
+		path = filepath.Join(home, rest)
+	}
+	if !filepath.IsAbs(path) {
+		return "", false
+	}
+	return filepath.Clean(path), true
 }

@@ -65,6 +65,19 @@ export async function submitPrompt(params: Record<string, string>, body: string)
   }
 }
 
+// cloneWorkspace asks the server to clone a pull request's repository into a
+// folder and add it. Aborting signal cancels the clone. A refusal comes back as
+// its message, not a toast, so the clone dialog can show it.
+export async function cloneWorkspace(params: {repo: string; account: string; path: string}, signal: AbortSignal): Promise<{workspace: string} | {error: string}> {
+  try {
+    const response = await fetch(url('workspace', {action: 'clone', ...params}), {method: 'POST', signal});
+    const text = await response.text();
+    return response.ok ? {workspace: text} : {error: text || 'Cloning failed.'};
+  } catch (error) {
+    return {error: error instanceof Error ? error.message : String(error)};
+  }
+}
+
 export const fetchConfig = (store: Store) =>
   request<Config>(store, 'config', {cache: 'no-store'}, response => response.json());
 

@@ -1,5 +1,6 @@
 // A pull request's row: its icon, title link, whose move it is and why, and
-// optionally where it lives and the actions that send work on it to a session.
+// optionally where it lives, the actions that send work on it to a session, and
+// a trailing control.
 import type {ReactNode} from 'react';
 import {Button} from '../components/ui/button';
 import {actionLabels, actionsFor, type PullRequestAction} from './instructions.ts';
@@ -15,9 +16,10 @@ interface RowProps {
   account: string;
   send?: Send;
   place?: ReactNode;
+  trailing?: ReactNode;
 }
 
-export function PullRequestRow({pr, turn, account, send, place}: RowProps) {
+export function PullRequestRow({pr, turn, account, send, place, trailing}: RowProps) {
   const own = pr.author === account;
   return <li className={`flex items-center gap-2 px-3 text-sm ${turn.yours ? '' : 'opacity-60'}`}>
     <PullRequestIcon pr={pr} />
@@ -30,5 +32,6 @@ export function PullRequestRow({pr, turn, account, send, place}: RowProps) {
       {place && <p className="text-muted-foreground">{place}</p>}
     </div>
     {send && own && actionsFor(pr).map(action => <Button key={action} variant="secondary" size="sm" onClick={() => send(pr, action)}>{actionLabels[action]}</Button>)}
+    {trailing}
   </li>;
 }

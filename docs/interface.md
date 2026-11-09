@@ -179,6 +179,13 @@ that could not be read. The view also shows when nothing is selected. The button
 shows how many pull requests need you across accounts. Each workspace's row in
 the sidebar shows the number of pull requests that need its account.
 
+A row whose repository has no workspace shows **Clone**. It asks for a folder,
+suggesting one beside a workspace of the same GitHub owner, and clones the
+repository over HTTPS with the row's account. The clone records that account in
+its own `credential.githubAccount` setting, becomes a workspace, and opens its
+dashboard. The dialog shows Git's error if the clone fails, and closing it
+cancels the clone. In the desktop app, **Choose…** picks the parent folder.
+
 The account's own pull requests show the actions that apply: **Merge** when
 GitHub allows merging, **Address review** when changes were requested or
 comments are unanswered, and **Fix checks** when its checks are failing. An

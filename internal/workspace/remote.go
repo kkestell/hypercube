@@ -68,6 +68,27 @@ func Fetch(ctx context.Context, dir, remote string, env []string) error {
 	return nil
 }
 
+// Clone clones url into dir with each config entry (such as
+// credential.githubAccount=alice) written into the new repository before Git
+// fetches, and with extra environment variables such as a token. Cancelling
+// ctx interrupts Git, which then removes the folder it created.
+func Clone(ctx context.Context, url, dir string, config, env []string) error {
+	args := []string{"clone", "--quiet"}
+	for _, entry := range config {
+		args = append(args, "--config", entry)
+	}
+	args = append(args, url, dir)
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.Env = append(append(os.Environ(), env...), "GIT_TERMINAL_PROMPT=0")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return &gitError{args, strings.TrimSpace(stderr.String()), err}
+	}
+	return nil
+}
+
 // Tracking returns the branch the current branch tracks, such as origin/main,
 // and how many commits the current branch is ahead of and behind it. A branch
 // without an upstream gives "" and zeros.

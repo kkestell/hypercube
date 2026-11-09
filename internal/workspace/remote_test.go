@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -109,5 +110,31 @@ func TestFetchAndTracking(t *testing.T) {
 	}
 	if err := Fetch(context.Background(), root, "missing", nil); err == nil {
 		t.Fatal("fetching a missing remote succeeded")
+	}
+}
+
+func TestCloneRecordsConfigBeforeFetching(t *testing.T) {
+	isolateGit(t)
+	bare := t.TempDir()
+	root, run := gitRepo(t)
+	run(bare, "init", "-q", "--bare", "-b", "main")
+	run(root, "push", "-q", bare, "main")
+
+	dir := filepath.Join(t.TempDir(), "new", "clone")
+	if err := Clone(context.Background(), bare, dir, []string{"credential.githubAccount=alice"}, []string{"GH_TOKEN=secret"}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Config(dir, "credential.githubAccount"); err != nil || got != "alice" {
+		t.Fatalf("credential.githubAccount = %q, %v", got, err)
+	}
+	if got, err := Config(dir, "remote.origin.url"); err != nil || got != bare {
+		t.Fatalf("remote.origin.url = %q, %v", got, err)
+	}
+	config, err := os.ReadFile(filepath.Join(dir, ".git", "config"))
+	if err != nil || strings.Contains(string(config), "secret") {
+		t.Fatalf("config holds the token: %v\n%s", err, config)
+	}
+	if err := Clone(context.Background(), bare, dir, nil, nil); err == nil || !strings.Contains(err.Error(), "already exists") {
+		t.Fatalf("cloning into a non-empty folder = %v", err)
 	}
 }
