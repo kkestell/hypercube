@@ -15,9 +15,8 @@ Hypercube opens a new session in the workspace, ready for its first prompt.
 For a folder inside a Git checkout, the workspace is the checkout's top-level
 folder. Choosing a folder that is already a workspace opens that workspace.
 
-To see a workspace's recent sessions, including archived ones, click its name
-to open its dashboard. Use the chevron beside the name to collapse or expand
-its sessions in the sidebar. See [sidebar states](interface.md#sidebar-states).
+Click a workspace's name to open its dashboard, or use its chevron to collapse
+it; see [sidebar states](interface.md#sidebar-states).
 
 Hover over a workspace's name for **New Session** and **More Actions**. More
 Actions, or right-clicking the name, opens the workspace's menu, including

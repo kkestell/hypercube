@@ -4,15 +4,8 @@ Open **Settings** with **Command+,** on macOS or **Ctrl+,** on Linux, or with
 the gear button at the top of the sidebar. It opens to **General**.
 **Save changes** validates and writes preferences; closing without saving
 discards edits. No configuration file is needed to use the defaults.
-
-| Settings section | Holds | Reference |
-| --- | --- | --- |
-| **General › Appearance** | Theme and terminal text size. | [Appearance](#appearance) |
-| **General › New sessions** | Default model and default location. | [Session defaults](#session-defaults) |
-| **Agents › Models** | The model picker list. | [Models](#models) |
-| **Agents › Child sessions** | Guidance for choosing child models. | [Child sessions](#child-sessions) |
-| **Notifications** | Which alerts appear and how they are delivered. | [Notifications](#notifications) |
-| **Permissions › Always Allowed Tools** | Saved tool approvals. | [Permissions](#permissions) |
+Settings has four sections: **General**, **Agents**, **Notifications**, and
+**Permissions**. Each part below names where its settings are.
 
 The file is `~/.config/hypercube/config.json`, or
 `$XDG_CONFIG_HOME/hypercube/config.json` when that variable is set.

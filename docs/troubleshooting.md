@@ -42,12 +42,16 @@ see [Port 4280 is already in use](#port-4280-is-already-in-use).
 
 ## Port 4280 is already in use
 
-**Symptom:** setup fails with one of these errors:
+**Symptom:** setup fails with an error below the button.
+
+**macOS:**
 
 ```text
 install-service: port 4280 is in use by <command>
 install-service: stop it with: kill <process ID>
 ```
+
+**Linux:**
 
 ```text
 install-service: port 4280 is in use: <process details>
@@ -61,7 +65,7 @@ hypercube: listen tcp 127.0.0.1:4280: bind: address already in use
 ```
 
 **Cause:** another program listens on port 4280, which the background service
-needs. It can be a Hypercube backend started by hand in a terminal.
+needs.
 
 **Fix:**
 
@@ -69,10 +73,9 @@ needs. It can be a Hypercube backend started by hand in a terminal.
    it:
    - **macOS:** `lsof -nP -iTCP:4280 -sTCP:LISTEN`
    - **Linux:** `ss -ltnp 'sport = :4280'`
-2. Stop that program. If it is a Hypercube backend running in a terminal,
-   stopping it with **Ctrl+C** also ends its agents.
-3. Choose **Set Up Background Service** again, or run the start command the
-   waiting page shows.
+2. Stop that program.
+3. **macOS:** choose **Set Up Background Service** again. **Linux:** run the
+   start command the waiting page shows.
 
 ## A harness is missing
 
@@ -124,8 +127,7 @@ the harness's exact model ID and offered effort levels.
 
 1. Correct the entry in **Settings › Agents › Models**; see the
    [model ID forms](harness-support.md#requirements) for each harness. Choose
-   **Save changes**. Editing an entry does not change sessions that already
-   use it.
+   **Save changes**.
 2. For a rejected model change, choose the corrected model below the message
    box. The selector shows the settings the harness accepted.
 3. For a session that could not start, the selector stays unavailable because
@@ -138,9 +140,9 @@ the harness's exact model ID and offered effort levels.
 followed by a reason, and the session stays dimmed.
 
 **Cause:** the reason names it. Common causes are a missing harness, a rejected
-model, or a native conversation the harness can no longer resume. After an
-agent exits three times within 10 seconds of starting, Hypercube stops
-relaunching it automatically.
+model, or a native conversation the harness can no longer resume. An agent
+that fails to start is not relaunched automatically, and one that exits three
+times in a row within 10 seconds of starting stays stopped.
 
 **Fix:**
 
@@ -175,28 +177,21 @@ cannot remove worktrees:
 Other reasons are `has commits not merged into HEAD` and
 `branch <name> is not merged into HEAD`.
 
-**Cause:** before removing a managed worktree, Hypercube checks it for
-uncommitted files and unmerged commits. When any check fails, that session's
-family is left unchanged. See [session cleanup](storage.md#session-cleanup).
+**Cause:** a managed worktree fails the Git checks in
+[session cleanup](storage.md#session-cleanup).
 
 **Fix:**
 
 1. Open the named session and inspect its changes in the Git panel.
 2. Commit the files you want to keep, or discard them.
-3. Merge the commits you want to keep: a child's into its parent, a top-level
-   worktree's into the original checkout. See
+3. Merge the commits you want to keep as that section describes; see
    [Merge and finish a child's work](teamwork.md#merge-and-finish-a-childs-work).
-4. Choose the action again.
-
-**Delete Workspace** removes sessions one at a time and stops at the first
-refusal; sessions removed before it stay deleted.
+4. Choose the action again. For how a refusal affects **Delete Workspace**,
+   see [Delete a workspace](usage.md#delete-a-workspace).
 
 ## macOS blocks Hypercube from opening
 
 **Symptom:** macOS refuses to open `Hypercube.app` the first time.
-
-**Cause:** beta builds are signed with Hypercube's own certificate and are not
-notarized by Apple.
 
 **Fix:** allow the app as described in step 3 of
 [Install on macOS](installation.md#install-on-macos).
