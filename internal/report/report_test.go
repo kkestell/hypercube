@@ -87,7 +87,7 @@ func TestInstructions(t *testing.T) {
 }
 
 func TestWorktreeSessionInstructions(t *testing.T) {
-	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo/.hypercube/session-p", Branch: "hypercube/session-p", Base: "abc"})
+	db := open(t, store.Session{ID: "p", Title: "Build", Dir: "/repo/.hypercube/p", Branch: "hypercube/session-p", Base: "abc"})
 	if err := db.Read(func(tx *store.Tx) error {
 		p, _ := tx.Session("p")
 		text, err := Instructions(tx, p, nil, "")

@@ -179,7 +179,6 @@ func TestWorktreeRemoval(t *testing.T) {
 	}
 }
 
-// write creates a file and the directories above it.
 // A child may work in the checkout, a Hypercube worktree, or another folder,
 // but not in a worktree of the same repository that Hypercube did not create.
 func TestCheckChildDir(t *testing.T) {
@@ -214,6 +213,7 @@ func TestCheckChildDir(t *testing.T) {
 	}
 }
 
+// write creates a file and the directories above it.
 func write(t *testing.T, path, data string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

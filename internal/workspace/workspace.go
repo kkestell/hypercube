@@ -221,11 +221,9 @@ func SessionBranch(id string) string {
 	return "hypercube/session-" + id
 }
 
-// SessionDir is where a top-level worktree session's worktree lives. Like its
-// branch, it differs from the .hypercube/<id>/ directory that holds the
-// session's children's worktrees, so no worktree contains another.
+// SessionDir is where a top-level worktree session's worktree lives.
 func SessionDir(root, id string) string {
-	return filepath.Join(root, ".hypercube", "session-"+id)
+	return filepath.Join(root, ".hypercube", id)
 }
 
 // ChildBranch names a child session's branch.
@@ -233,12 +231,13 @@ func ChildBranch(parent, name string) string {
 	return "hypercube/" + parent + "/" + name
 }
 
-// WorktreeDir is where a child session's worktree lives. root is the
-// workspace's checkout, also for a parent in its own worktree. Worktrees sit
+// WorktreeDir is where a child session's worktree lives: beside its parent's
+// worktree in the workspace's .hypercube directory, never inside it. root is
+// the workspace's path, also for a parent in its own worktree. Worktrees sit
 // inside the checkout so that harnesses extend the checkout's folder trust to
 // them.
 func WorktreeDir(root, parent, name string) string {
-	return filepath.Join(root, ".hypercube", parent, name)
+	return filepath.Join(root, ".hypercube", parent+"-"+name)
 }
 
 // AddWorktree creates a session's branch from HEAD and checks it out in dir.

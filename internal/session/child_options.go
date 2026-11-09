@@ -87,15 +87,40 @@ func prepareChild(tx *store.Tx, parentID string, options ChildOptions, exact boo
 	case options.Fork:
 		child.Dir, child.Branch = forkDir(w.Path, parent, name)
 	case dir != "":
-		if child.Dir, err = workspace.Resolve(parent.Dir, dir); err == nil && !w.NoGit {
-			err = workspace.CheckChildDir(w.Path, child.Dir)
-		}
+		child.Dir, err = workspace.Resolve(parent.Dir, dir)
 	case w.NoGit:
 		err = errors.New("dir is required: this workspace is not a Git checkout, so child sessions cannot have worktrees")
 	default:
 		child.Dir, child.Branch = workspace.WorktreeDir(w.Path, parent.ID, name), workspace.ChildBranch(parent.ID, name)
 	}
 	return parent, child, err
+}
+
+// checkChildDir refuses an explicit dir in a worktree that Hypercube does not
+// manage. It runs Git, so callers run it before taking the runtime lock and
+// the write transaction that prepareChild needs.
+func (r *Runtime) checkChildDir(parentID string, options ChildOptions) error {
+	if options.Dir == "" || options.Fork {
+		return nil
+	}
+	var parent store.Session
+	var w store.Workspace
+	err := r.db.Read(func(tx *store.Tx) error {
+		var err error
+		if parent, err = tx.Session(parentID); err != nil {
+			return err
+		}
+		w, err = tx.Workspace(parent.Workspace)
+		return err
+	})
+	if err != nil || w.NoGit {
+		return err
+	}
+	dir, err := workspace.Resolve(parent.Dir, options.Dir)
+	if err != nil {
+		return err
+	}
+	return workspace.CheckChildDir(w.Path, dir)
 }
 
 // forkDir places a fork as its parent works: a parent in the original

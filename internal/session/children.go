@@ -48,6 +48,9 @@ func (a approval) restore(tx *write, parentID string) error {
 }
 
 func (r *Runtime) createChild(parentID string, options ChildOptions, approved approval) (store.Session, error) {
+	if err := r.checkChildDir(parentID, options); err != nil {
+		return store.Session{}, err
+	}
 	var parent, child store.Session
 	r.mu.Lock()
 	if r.deleting[parentID] {

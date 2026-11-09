@@ -66,7 +66,7 @@ func TestChildLifecycle(t *testing.T) {
 	if len(f.family(parent.ID)) != 2 {
 		t.Fatal("the failed child remains")
 	}
-	if _, err := os.Stat(filepath.Join(f.root, ".hypercube", parent.ID, "w2")); !os.IsNotExist(err) {
+	if _, err := os.Stat(workspace.WorktreeDir(f.root, parent.ID, "w2")); !os.IsNotExist(err) {
 		t.Fatal("the failed child's worktree remains")
 	}
 	f.park(parent.ID)

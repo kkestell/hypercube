@@ -11,6 +11,9 @@ import (
 // ProposeChild records a task without launching an agent or blocking this
 // turn, and returns the child's resolved settings, which the proposal saves.
 func (r *Runtime) ProposeChild(parentID string, options ChildOptions) (harness.Settings, error) {
+	if err := r.checkChildDir(parentID, options); err != nil {
+		return harness.Settings{}, err
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	l, err := r.running(parentID)
