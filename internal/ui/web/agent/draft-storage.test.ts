@@ -71,20 +71,16 @@ test('parked new-session drafts restore across workspaces without replacing the 
   expect(draftOf(restored.get(), unsentKey('b')).text).toBe('second workspace');
 });
 
-test('the previous new-session storage format restores into its workspace draft', () => {
-  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {new: 'existing prompt', s: 'session draft'}, unsent: {workspace: 'w', profile: 'worker', worktree: true}}));
+test('a new-session draft saved before its defaults arrived takes them once', () => {
+  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'existing prompt', s: 'session draft'}, unsent: {workspace: 'w', settings: null, worktree: null}, unsentDrafts: {}}));
   const restored = reload();
-  // A saved profile name no longer names settings: the draft takes the
-  // default once it arrives, and keeps it from then on.
-  expect(restored.get().unsent).toMatchObject({workspace: 'w', settings: null, worktree: true});
+  expect(restored.get().unsent).toMatchObject({workspace: 'w', settings: null, worktree: null});
   const opus = {harness: 'claude', model: 'opus', effort: 'high'};
   restored.update(state => receivedConfig(state, testConfig({default_selection: opus})));
-  restored.update(state => receivedConfig(state, testConfig({default_selection: {harness: 'codex', model: 'sol', effort: 'low'}})));
-  expect(reload().get().unsent).toMatchObject({workspace: 'w', settings: opus, worktree: true});
+  restored.update(state => receivedConfig(state, testConfig({default_selection: {harness: 'pi', model: 'sol', effort: 'low'}})));
+  expect(reload().get().unsent).toMatchObject({workspace: 'w', settings: opus, worktree: null});
   expect(draftOf(restored.get(), unsentKey('w')).text).toBe('existing prompt');
-  expect(restored.get().drafts.new).toBeUndefined();
-  restored.update(state => typed(state, unsentKey('w'), 'updated'));
-  expect(draftOf(reload().get(), unsentKey('w')).text).toBe('updated');
+  expect(draftOf(restored.get(), 's').text).toBe('session draft');
 });
 
 test('storage failure keeps typing available, reports once, and retries on the next edit', () => {
@@ -106,7 +102,12 @@ test('storage failure keeps typing available, reports once, and retries on the n
   expect(draftOf(reload().get(), 's').text).toBe('three');
 });
 
-test.each(['{', '{"drafts":{"s":42}}'])('invalid saved data reports an error without preventing startup: %s', value => {
+test.each([
+  '{',
+  '{"drafts":{"s":42},"unsent":null,"unsentDrafts":{}}',
+  '{"drafts":{"s":"text"},"unsent":null}',
+  '{"drafts":{"new/w":"text"},"unsent":{"workspace":"w","worktree":true},"unsentDrafts":{}}',
+])('invalid saved data reports an error without preventing startup: %s', value => {
   localStorage.setItem('hypercube.drafts', value);
   const store = reload();
   expect(store.get().drafts).toEqual({});

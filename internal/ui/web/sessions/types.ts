@@ -83,7 +83,7 @@ export interface AttachedSession {
   expanded: Record<string, true>;
 }
 
-// SessionViewState retains the historical saved format.
+// SessionViewState is a session's editor view and its expanded transcript rows.
 export interface SessionViewState extends EditorViewState {
   expanded: Record<string, true>;
 }

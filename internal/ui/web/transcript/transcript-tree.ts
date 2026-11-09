@@ -44,22 +44,12 @@ const hypercubeTools = new Map<string, [name: string, field?: string]>([
   ['open_file', ['Open file', 'path']],
 ]);
 
-// Native calls have no MCP server. Keep tool identities in the transcript;
-// these labels also apply when displaying calls saved before this UI build.
+// Native calls have no MCP server. Other native tools are titled from their
+// names.
 const nativeTools = new Map([
   ['shell', 'Run command'],
   ['bash', 'Run command'],
-  ['exec_command', 'Run command'],
-  ['write_stdin', 'Continue command'],
-  ['apply_patch', 'Edit files'],
-  ['web_search', 'Search web'],
-  ['view_image', 'View image'],
   ['subagent', 'Run agent'],
-  ['agent_spawn_agent', 'Start agent'],
-  ['agent_send_input', 'Send agent input'],
-  ['agent_wait', 'Wait for agents'],
-  ['agent_resume_agent', 'Resume agent'],
-  ['agent_close_agent', 'Close agent'],
 ]);
 
 // toolTitle is a tool call's name and summary.
@@ -168,7 +158,7 @@ export function transcriptRows(transcript: Transcript): Row[] {
       case 'error': return {type: 'error', item};
       case 'attention': return {type: 'attention', item};
       case 'proposal': return {type: 'proposal', item};
-      default: return {type: 'text', item}; // a kind added later draws as text
+      case 'text': return {type: 'text', item};
     }
   };
   return turns(containers.get('') ?? [], rowOf);

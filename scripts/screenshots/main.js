@@ -28,7 +28,7 @@ const sceneFiles = process.argv.slice(2).filter(arg => arg.endsWith('.json'));
 
 // The page's own default workbench, which a scene's workbench overrides.
 const defaultWorkbench = {
-  sidebar: true, rightPanel: true, panel: false, rightTab: 'files', wrap: false, fixedWidth: true,
+  sidebar: true, rightPanel: true, rightTab: 'files', wrap: false, fixedWidth: true,
   sizes: {sidebar: 290, rightPanel: 320, panel: 240, editor: 560}, sidebarTab: 'sessions',
   collapsedWorkspaces: {}, collapsedSessions: {}, sidebarScroll: {sessions: 0, archived: 0},
 };
@@ -299,9 +299,9 @@ async function capture(scene, ids, backend, window, name) {
       if (!item) throw new Error(`cannot expand ${key}`);
       expanded[key === 'activity' ? 'activity:' + item.id : item.id] = true;
     }
-    sessionViews[id] = {...scened.view, expanded};
+    sessionViews[id] = {panel: false, ...scened.view, expanded};
   }
-  const views = {selected: null, workbench: {...defaultWorkbench, ...scene.workbench}, sessionViews};
+  const views = {selected: null, workbench: {...defaultWorkbench, ...scene.workbench}, sessionViews, workspaceViews: {}};
   await contents.loadURL(backend.origin + '/version');
   await contents.executeJavaScript(`localStorage.setItem('hypercube.views', ${JSON.stringify(JSON.stringify(views))})`);
 

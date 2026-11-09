@@ -121,32 +121,11 @@ test('terminal visibility belongs to each session, survives reload, and stays cl
   expect(reloaded.get().editor?.panel).toBe(false);
 });
 
-test.each([false, true])('legacy terminal visibility migrates to the selected session only (open %p)', panel => {
-  const previous = fresh('a');
-  startViewStorage(previous);
-  previous.update(state => receivedWorkspaces(state, workspaces));
-  previous.update(state => selectSession(state, 'b'));
-  previous.update(state => selectSession(state, 'a'));
-  const saved = JSON.parse(localStorage.getItem('hypercube.views')!);
-  delete saved.workspaceViews;
-  saved.workbench.panel = panel;
-  for (const view of Object.values(saved.sessionViews)) delete (view as {panel?: boolean}).panel;
-  localStorage.setItem('hypercube.views', JSON.stringify(saved));
-
-  const reloaded = fresh();
-  startViewStorage(reloaded);
-  reloaded.update(state => receivedWorkspaces(state, workspaces));
-  expect(reloaded.get().errors).toEqual([]);
-  expect(reloaded.get().editor?.panel).toBe(panel);
-  expect(reloaded.get().sessionViews.b.panel).toBe(false);
-  expect(JSON.parse(localStorage.getItem('hypercube.views')!).workbench.panel).toBeUndefined();
-});
-
 test('an explicit session URL wins over saved selection and a restored new-session draft', () => {
   const previous = fresh('a');
   startViewStorage(previous);
   previous.update(state => receivedWorkspaces(state, workspaces));
-  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'keep this draft'}, unsent: {workspace: 'w', settings: null, worktree: true}}));
+  localStorage.setItem('hypercube.drafts', JSON.stringify({drafts: {[unsentKey('w')]: 'keep this draft'}, unsent: {workspace: 'w', settings: null, worktree: true}, unsentDrafts: {}}));
   const explicit = fresh('b');
   startViewStorage(explicit);
   startDraftStorage(explicit);
@@ -173,27 +152,24 @@ test('removed sessions are pruned and late cleanup cannot recreate their view', 
   expect(JSON.parse(localStorage.getItem('hypercube.views')!).sessionViews.a).toBeUndefined();
 });
 
-test('legacy wrap settings migrate and unavailable storage keeps in-memory changes usable', () => {
-  localStorage.setItem('hypercube.wrap', 'true');
-  localStorage.setItem('hypercube.fixedWidth', 'false');
+test('unavailable storage keeps in-memory changes usable', () => {
   const store = fresh();
   startViewStorage(store);
-  expect(store.get().workbench).toMatchObject({wrap: true, fixedWidth: false});
-  expect(localStorage.getItem('hypercube.wrap')).toBeNull();
-  expect(localStorage.getItem('hypercube.fixedWidth')).toBeNull();
+  const wrap = store.get().workbench.wrap;
   const storage = localStorage;
   Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {setItem() { throw new Error('quota exceeded'); }}});
   try {
     store.update(toggleWrap);
     store.update(toggleWrap);
-    expect(store.get().workbench.wrap).toBe(true);
+    store.update(toggleWrap);
+    expect(store.get().workbench.wrap).toBe(!wrap);
     expect(store.get().errors).toHaveLength(1);
     expect(store.get().errors[0].message).toContain('View state could not be saved');
   } finally {
     Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: storage});
   }
   store.update(toggleWrap);
-  expect(JSON.parse(localStorage.getItem('hypercube.views')!).workbench.wrap).toBe(false);
+  expect(JSON.parse(localStorage.getItem('hypercube.views')!).workbench.wrap).toBe(wrap);
 });
 
 test('invalid saved layouts report their failure and retain defaults', () => {
@@ -205,39 +181,24 @@ test('invalid saved layouts report their failure and retain defaults', () => {
   expect(store.get().errors[0].message).toContain('Could not restore view state');
 });
 
-test('saved agent tabs migrate away without losing files, splits, or transcript scroll', () => {
-  const store = fresh('a');
-  startViewStorage(store);
-  store.update(state => receivedWorkspaces(state, workspaces));
-  openFileAt(store, 'guide.md', [{start: 2}]);
-  openFileAt(store, 'other.py', []);
-  store.update(state => moveTab(state, 'file:other.py', 1, 'right'));
+test.each([
+  ['workspace views', (saved: {workspaceViews?: unknown}) => { delete saved.workspaceViews; }],
+  ['editor size', (saved: {workbench: {sizes: {editor?: number}}}) => { delete saved.workbench.sizes.editor; }],
+] as const)('saved views missing %s report their failure and retain defaults', (_, remove) => {
+  const previous = fresh('a');
+  startViewStorage(previous);
+  previous.update(state => receivedWorkspaces(state, workspaces));
+  previous.update(state => resizeRegion(state, 'editor', 640));
   const saved = JSON.parse(localStorage.getItem('hypercube.views')!);
-  const filePane = saved.sessionViews.a.tabs.root;
-  saved.sessionViews.a.tabs = {...saved.sessionViews.a.tabs, nextId: 12, root: {
-    id: 11, axis: 'x', ratio: 37, children: [{id: 10, tabs: ['agent'], active: 'agent'}, filePane],
-  }};
-  saved.sessionViews.a.activePane = 10;
-  saved.sessionViews.a.scroll.a = {top: 350, left: 0, following: false};
-  saved.sessionViews.b = {...saved.sessionViews.a, files: {}, tabs: {
-    root: {id: 1, tabs: ['agent'], active: 'agent'}, preview: null, dragging: null, nextId: 2,
-  }};
-  delete saved.workbench.sizes.editor;
+  remove(saved);
   localStorage.setItem('hypercube.views', JSON.stringify(saved));
 
-  const restored = fresh();
-  startViewStorage(restored);
-  restored.update(state => receivedWorkspaces(state, workspaces));
-  expect(restored.get().errors).toEqual([]);
-  expect(restored.get().editor?.tabs.root).toEqual(filePane);
-  expect(restored.get().editor?.activePane).toBeNull();
-  expect(restored.get().editor?.files.open['guide.md']).toMatchObject({source: true, lines: [{start: 2}]});
-  expect(restored.get().editor?.scroll.a).toEqual({top: 350, left: 0, following: false});
-  expect(restored.get().workbench.sizes.editor).toBe(560);
-  restored.update(state => selectSession(state, 'b'));
-  expect(restored.get().editor?.tabs.root).toBeNull();
+  const store = fresh();
+  startViewStorage(store);
+  expect(store.get().sessionViews).toEqual({});
+  expect(store.get().workbench.sizes.editor).not.toBe(640);
+  expect(store.get().errors[0].message).toContain('Could not restore view state');
 });
-
 
 test('workspace views persist independently and are removed with their workspace', () => {
   const store = fresh('a');

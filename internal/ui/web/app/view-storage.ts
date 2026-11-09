@@ -29,17 +29,11 @@ function viewChanged(before: State, after: State) {
 
 export function startViewStorage(store: Store): () => void {
   let written: string | null = null;
-  let legacy = false;
   try {
     written = localStorage.getItem(storageKey);
     if (written !== null) {
       const saved = readSavedViews(written);
       store.update(state => ({...state, workbench: saved.workbench, sessionViews: saved.sessionViews, workspaceViews: saved.workspaceViews, selected: state.selected || saved.selected}));
-    } else {
-      const wrap = localStorage.getItem('hypercube.wrap');
-      const fixedWidth = localStorage.getItem('hypercube.fixedWidth');
-      legacy = wrap !== null || fixedWidth !== null;
-      store.update(state => ({...state, workbench: {...state.workbench, wrap: wrap === 'true', fixedWidth: fixedWidth !== 'false'}}));
     }
   } catch (error) {
     showError(store, 'Could not restore view state: ' + reason(error));
@@ -49,15 +43,10 @@ export function startViewStorage(store: Store): () => void {
   let failed = false;
   const save = (state: State) => {
     const text = JSON.stringify(snapshot(state));
-    if (text === written && !legacy) return;
+    if (text === written) return;
     try {
       localStorage.setItem(storageKey, text);
       written = text;
-      if (legacy) {
-        localStorage.removeItem('hypercube.wrap');
-        localStorage.removeItem('hypercube.fixedWidth');
-        legacy = false;
-      }
       failed = false;
     } catch (error) {
       if (failed) return;
@@ -65,7 +54,6 @@ export function startViewStorage(store: Store): () => void {
       showError(store, 'View state could not be saved: ' + reason(error));
     }
   };
-  if (legacy) save(previous);
   return store.subscribe(state => {
     const changed = viewChanged(previous, state);
     previous = state;

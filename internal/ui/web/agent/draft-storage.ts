@@ -17,44 +17,31 @@ const isNullableString = (value: unknown): value is string | null => value === n
 const isSettings = (value: unknown): value is Settings => isRecord(value) &&
   typeof value.harness === 'string' && typeof value.model === 'string' && typeof value.effort === 'string';
 
-// Earlier versions saved a profile name, which no longer names settings: such
-// a draft keeps its text and place and takes the defaults once, like a new one.
+// Settings and worktree are null until the defaults arrive or the user chooses.
 function readContext(value: unknown): Unsent {
   if (!isRecord(value) || !isNullableString(value.workspace) || (value.worktree !== null && typeof value.worktree !== 'boolean') ||
-    (value.settings !== undefined && value.settings !== null && !isSettings(value.settings))) {
+    (value.settings !== null && !isSettings(value.settings))) {
     throw new Error('Invalid new-session draft.');
   }
-  const settings = isSettings(value.settings) ? value.settings : null;
-  return {workspace: value.workspace, settings, worktree: value.worktree, identity: {}, sending: false};
+  return {workspace: value.workspace, settings: value.settings, worktree: value.worktree, identity: {}, sending: false};
 }
 
 function readSaved(text: string): Pick<State, 'drafts' | 'unsent' | 'unsentDrafts'> {
   const saved: unknown = JSON.parse(text);
   if (!isRecord(saved) || !isRecord(saved.drafts)) throw new Error('Invalid saved drafts.');
+  if (!isRecord(saved.unsentDrafts)) throw new Error('Invalid new-session drafts.');
   const drafts: Record<string, Draft> = {};
   for (const [key, text] of Object.entries(saved.drafts)) {
     if (typeof text !== 'string') throw new Error('Invalid saved draft text.');
     drafts[key] = {text, images: [], reading: 0};
   }
-  let unsent: Unsent | null = null;
+  let unsent = saved.unsent === null ? null : readContext(saved.unsent);
+  if (unsent && !drafts[unsentKey(unsent.workspace)]) unsent = null;
   const unsentDrafts: Record<string, Unsent> = {};
-  if (drafts.new && !saved.unsent) throw new Error('Invalid new-session draft.');
-  if (saved.unsent) {
-    unsent = readContext(saved.unsent);
-    // Previous versions stored the one new-session draft under "new".
-    if (drafts.new) {
-      drafts[unsentKey(unsent.workspace)] = drafts.new;
-      delete drafts.new;
-    }
-    if (!drafts[unsentKey(unsent.workspace)]) unsent = null;
-  }
-  if (saved.unsentDrafts !== undefined) {
-    if (!isRecord(saved.unsentDrafts)) throw new Error('Invalid new-session drafts.');
-    for (const [key, value] of Object.entries(saved.unsentDrafts)) {
-      const context = readContext(value);
-      if (key !== unsentKey(context.workspace)) throw new Error('Invalid new-session draft key.');
-      if (drafts[key]) unsentDrafts[key] = context;
-    }
+  for (const [key, value] of Object.entries(saved.unsentDrafts)) {
+    const context = readContext(value);
+    if (key !== unsentKey(context.workspace)) throw new Error('Invalid new-session draft key.');
+    if (drafts[key]) unsentDrafts[key] = context;
   }
   return {drafts, unsent, unsentDrafts};
 }
