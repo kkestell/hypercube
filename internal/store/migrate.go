@@ -45,6 +45,9 @@ ALTER TABLE transcript RENAME TO old_transcript;`); err != nil {
 				return err
 			}
 		}
+		if err := tx.addModelTitle(); err != nil {
+			return err
+		}
 		var version int
 		if err := tx.tx.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil {
 			return err
@@ -96,6 +99,20 @@ PRAGMA user_version = 3;`); err != nil {
 		// A session without an agent waits on nobody.
 		return tx.exec(`UPDATE sessions SET attention = 0 WHERE attention = 1 AND (ended = 1 OR launch = '')`)
 	})
+}
+
+// addModelTitle preserves configured models and gives Claude aliases readable titles.
+func (t *Tx) addModelTitle() error {
+	has, err := t.exists(`SELECT 1 FROM pragma_table_info('model_entries') WHERE name = 'title'`)
+	if err != nil || has {
+		return err
+	}
+	return t.exec(`
+ALTER TABLE model_entries ADD COLUMN title TEXT NOT NULL DEFAULT '';
+UPDATE model_entries SET title = CASE
+  WHEN harness = 'claude' AND model IN ('opus', 'sonnet', 'haiku')
+    THEN upper(substr(model, 1, 1)) || substr(model, 2)
+  ELSE model END;`)
 }
 
 // addLaunchColumns upgrades databases from before durable launches.

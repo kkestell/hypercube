@@ -24,6 +24,7 @@ export interface ModelEntry {
   id: string;
   harness: string;
   model: string;
+  title: string;
   efforts: string[];
   default_effort: string;
 }

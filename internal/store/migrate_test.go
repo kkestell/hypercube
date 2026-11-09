@@ -2,6 +2,67 @@ package store
 
 import "testing"
 
+func TestOpenAddsModelTitles(t *testing.T) {
+	db := open(t)
+	seed(t, db, "w", "/repo", "s")
+	tx(t, db, func(tx *Tx) error {
+		return tx.exec(`ALTER TABLE model_entries DROP COLUMN title;
+INSERT INTO model_entries (id, harness, model, efforts, default_effort) VALUES
+  ('a', 'claude', 'opus', '["low","high"]', 'high'),
+  ('b', 'claude', 'sonnet', '[]', ''),
+  ('c', 'claude', 'haiku', '[]', ''),
+  ('d', 'opencode', 'provider/native-id', '[]', '');
+UPDATE sessions SET harness = 'claude', model = 'opus', effort = 'high' WHERE id = 's';`)
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db = reopen(t)
+	tx(t, db, func(tx *Tx) error {
+		entries, err := tx.ModelEntries()
+		if err != nil {
+			return err
+		}
+		want := map[string]string{"a": "Opus", "b": "Sonnet", "c": "Haiku", "d": "provider/native-id"}
+		if len(entries) != len(want) {
+			t.Fatalf("entries = %+v", entries)
+		}
+		for _, e := range entries {
+			if e.Title != want[e.ID] {
+				t.Errorf("%s title = %q, want %q", e.ID, e.Title, want[e.ID])
+			}
+			if e.ID == "a" {
+				if e.Model != "opus" || len(e.Efforts) != 2 || e.DefaultEffort != "high" {
+					t.Fatalf("model changed: %+v", e)
+				}
+				e.Title = "My Opus"
+				if err := tx.SaveModelEntry(e); err != nil {
+					return err
+				}
+			}
+		}
+		s, err := tx.Session("s")
+		if err == nil && (s.Model != "opus" || s.Harness != "claude" || s.Effort != "high") {
+			t.Fatalf("session changed: %+v", s)
+		}
+		return err
+	})
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := reopen(t).Read(func(tx *Tx) error {
+		entries, err := tx.ModelEntries()
+		for _, e := range entries {
+			if e.ID == "a" && e.Title != "My Opus" {
+				t.Fatalf("reopen replaced title: %+v", e)
+			}
+		}
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOpenDropsCatalogs(t *testing.T) {
 	db := open(t)
 	seed(t, db, "w", "/repo", "s", "child")

@@ -11,9 +11,9 @@ import type {ModelEntry} from './types.ts';
 afterEach(() => { mock.restore(); unmountAll(); });
 const settle = () => act(() => new Promise<void>(resolve => setImmediate(resolve)));
 export const entries: ModelEntry[] = [
-  {id: 'a', harness: 'claude', model: 'opus', efforts: ['low', 'medium', 'high'], default_effort: 'medium'},
-  {id: 'b', harness: 'claude', model: 'plain', efforts: [], default_effort: ''},
-  {id: 'c', harness: 'opencode', model: 'sol', efforts: ['high'], default_effort: 'high'},
+  {id: 'a', harness: 'claude', model: 'opus', title: 'Opus', efforts: ['low', 'medium', 'high'], default_effort: 'medium'},
+  {id: 'b', harness: 'claude', model: 'plain', title: 'Plain Model', efforts: [], default_effort: ''},
+  {id: 'c', harness: 'opencode', model: 'sol', title: 'Sol', efforts: ['high'], default_effort: 'high'},
 ];
 const draft = () => createStore(openUnsent(testState({modelEntries: entries,
   config: testConfig({default_selection: {harness: 'claude', model: 'opus', effort: 'medium'}}),
@@ -28,6 +28,24 @@ const choose = async (model: string) => {
 };
 const key = (target: Element, key: string) => act(() => { target.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true, cancelable: true})); });
 
+test('model labels follow title edits for the matching harness without changing session settings', () => {
+  const s = draft();
+  const settings = s.get().unsent?.settings;
+  const root = mount(s, <SessionSelection session={testSession({id: unsentKey('w')})} />);
+  expect(trigger(root).textContent).toContain('Opus');
+  expect(trigger(root).title).toBe('Claude Opus, effort medium');
+  act(() => s.update(state => ({...state, modelEntries: [
+    {id: 'other', harness: 'opencode', model: 'opus', title: 'Other Opus', efforts: [], default_effort: ''},
+    ...entries.map(e => e.id === 'a' ? {...e, title: 'Claude Opus'} : e),
+  ]})));
+  expect(trigger(root).textContent).toContain('Claude Opus');
+  expect(trigger(root).getAttribute('aria-label')).toBe('Model: Claude Claude Opus, effort medium');
+  expect(s.get().unsent?.settings).toBe(settings);
+  act(() => s.update(state => ({...state, modelEntries: []})));
+  expect(trigger(root).textContent).toContain('opus');
+  expect(trigger(root).title).toBe('Claude opus, effort medium');
+});
+
 test('opening focuses search, shows harness tabs, and searches only the selected harness without requests', async () => {
   const fetches = stubFetch(() => Response.json([]));
   const s = draft();
@@ -39,7 +57,10 @@ test('opening focuses search, shows harness tabs, and searches only the selected
   expect(document.activeElement).toBe(search);
   act(() => { setValue(search, 'plain'); search.dispatchEvent(new Event('input', {bubbles: true})); });
   await settle();
-  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['plain']);
+  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Plain Model']);
+  act(() => { setValue(search, 'Model'); search.dispatchEvent(new Event('input', {bubbles: true})); });
+  await settle();
+  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Plain Model']);
   expect(fetches).not.toHaveBeenCalled();
 });
 
@@ -48,15 +69,15 @@ test('model choices reset effort, preserve draft text, and never fetch', async (
   const s = draft(); s.update(state => typed(state, unsentKey('w'), 'keep this'));
   const root = mount(s, <SessionSelection session={testSession({id: unsentKey('w')})} />);
   await open(root);
-  await choose('plain');
+  await choose('Plain Model');
   expect(s.get().unsent?.settings).toEqual({harness: 'claude', model: 'plain', effort: ''});
   expect(document.querySelector('[role=slider]')).toBeNull();
-  await choose('opus');
+  await choose('Opus');
   expect(s.get().unsent?.settings?.effort).toBe('medium');
   key(element(document, '[role=slider]', HTMLElement), 'ArrowRight'); await settle();
   expect(s.get().unsent?.settings?.effort).toBe('high');
   key(element(document, '[role=tab][aria-label=OpenCode]', HTMLButtonElement), 'Enter'); await settle();
-  await choose('sol');
+  await choose('Sol');
   expect(s.get().unsent?.settings).toEqual({harness: 'opencode', model: 'sol', effort: 'high'});
   expect(document.querySelector('[role=slider]')).toBeNull();
   expect(document.body.textContent).toContain('Efforthigh');
@@ -71,7 +92,7 @@ test('a running session has no tabs and sends one selection per slider commit, w
   const root = mount(s, <SessionSelection session={session} />);
   await open(root);
   expect(document.querySelector('[role=tab]')).toBeNull();
-  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['opus', 'plain']);
+  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Opus', 'Plain Model']);
   expect(fetches).not.toHaveBeenCalled();
   key(element(document, '[role=slider]', HTMLElement), 'ArrowRight'); await settle();
   expect(fetches.mock.calls).toHaveLength(1);
@@ -107,7 +128,7 @@ test('an edited effort remains visible until the user moves the slider', async (
   const slider = element(document, '[role=slider]', HTMLElement);
   expect(slider.getAttribute('aria-valuenow')).toBe('1');
   expect(slider.getAttribute('aria-valuetext')).toBe('removed');
-  await choose('opus');
+  await choose('Opus');
   expect(s.get().unsent?.settings?.effort).toBe('removed');
   key(slider, 'ArrowRight'); await settle();
   expect(s.get().unsent?.settings?.effort).toBe('high');

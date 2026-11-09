@@ -37,21 +37,21 @@ func TestHarnessesAndModels(t *testing.T) {
 	if code != 200 || strings.TrimSpace(string(body)) != "[]" {
 		t.Fatalf("models = %d %s", code, body)
 	}
-	a.post("/models", `{"harness":"uninstalled","model":"native/id","efforts":["low","high"],"default_effort":"high"}`, 200)
+	a.post("/models", `{"harness":"uninstalled","model":"native/id","title":"Friendly title","efforts":["low","high"],"default_effort":"high"}`, 200)
 	_, body = a.get("/models")
 	var list []store.ModelEntry
-	if err := json.Unmarshal(body, &list); err != nil || len(list) != 1 || list[0].ID == "" {
+	if err := json.Unmarshal(body, &list); err != nil || len(list) != 1 || list[0].ID == "" || list[0].Title != "Friendly title" {
 		t.Fatalf("models = %s, %v", body, err)
 	}
 	entry := list[0]
 	entry.Model = "edited"
 	data, _ := json.Marshal(entry)
 	a.post("/models", string(data), 200)
-	for _, body := range []string{`{`, `{"harness":"x","model":"m","unknown":true}`, `{"harness":"x"}`, `{"harness":"x","model":"m","efforts":["low","high"]}`} {
+	for _, body := range []string{`{`, `{"harness":"x","model":"m","title":"M","unknown":true}`, `{"harness":"x"}`, `{"harness":"x","model":"m","title":"M","efforts":["low","high"]}`, `{"harness":"x","model":"m"}`, `{"harness":"x","model":"m","title":" "}`} {
 		a.post("/models", body, 400)
 	}
-	a.post("/models", `{"id":"missing","harness":"x","model":"m"}`, 404)
-	a.post("/models", `{"harness":"uninstalled","model":"edited"}`, 409)
+	a.post("/models", `{"id":"missing","harness":"x","model":"m","title":"M"}`, 404)
+	a.post("/models", `{"harness":"uninstalled","model":"edited","title":"Different title"}`, 409)
 	req, _ := http.NewRequest(http.MethodDelete, a.server.URL+"/models/"+entry.ID, nil)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {

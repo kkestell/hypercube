@@ -37,6 +37,7 @@ test('adding immediately saves ordered effort levels and the chosen default', as
   await click('Add Model');
   await select('model-harness', 'Claude');
   write('model-id', 'native/id');
+  write('model-title', 'Friendly title');
   expect(document.querySelector('#model-default-effort')).toBeNull();
   write('model-efforts', 'low');
   expect(document.querySelector('#model-default-effort')).toBeNull();
@@ -47,8 +48,9 @@ test('adding immediately saves ordered effort levels and the chosen default', as
   write('model-efforts', 'medium, high');
   expect(element(document, '#model-default-effort', HTMLButtonElement).textContent).toBe('medium');
   await click('Save');
-  expect(posts).toEqual([{id: '', harness: 'claude', model: 'native/id', efforts: ['medium', 'high'], default_effort: 'medium'}]);
+  expect(posts).toEqual([{id: '', harness: 'claude', model: 'native/id', title: 'Friendly title', efforts: ['medium', 'high'], default_effort: 'medium'}]);
   expect(store.get().modelEntries?.[0]?.id).toBe('new');
+  expect(document.body.textContent).toContain('Friendly title');
   expect(document.body.textContent).toContain('medium (default) · high');
   expect(document.querySelector('[role=dialog]')).toBeNull();
 });
@@ -58,7 +60,7 @@ test('new levels default to the last typed level and a refused save keeps the fo
   mount(createStore(testState({modelEntries: []})), <SettingsModels />);
   await click('Add Model');
   await select('model-harness', 'Claude');
-  write('model-id', 'opus'); write('model-efforts', 'low, medium, high');
+  write('model-id', 'opus'); write('model-title', 'Opus'); write('model-efforts', 'low, medium, high');
   expect(element(document, '#model-default-effort', HTMLButtonElement).textContent).toBe('high');
   await click('Save');
   expect(document.querySelector('[role=alert]')?.textContent).toContain('already lists');
@@ -66,7 +68,7 @@ test('new levels default to the last typed level and a refused save keeps the fo
 });
 
 test('editing preserves an unavailable harness and deleting leaves sessions unchanged', async () => {
-  const entry: ModelEntry = {id: 'e', harness: 'uninstalled', model: 'native', efforts: [], default_effort: ''};
+  const entry: ModelEntry = {id: 'e', harness: 'uninstalled', model: 'native', title: 'Native Model', efforts: [], default_effort: ''};
   const fetches = stubFetch((url, init) => {
     if (url === 'harnesses?') return Response.json([{id: 'claude'}]);
     return Response.json(init?.method === 'DELETE' ? [] : [JSON.parse(String(init?.body))]);
@@ -76,8 +78,10 @@ test('editing preserves an unavailable harness and deleting leaves sessions unch
   mount(store, <SettingsModels />);
   await click('Edit');
   expect(element(document, '#model-harness', HTMLButtonElement).textContent).toBe('uninstalled');
+  expect(element(document, '#model-title', HTMLInputElement).value).toBe('Native Model');
+  write('model-title', 'Renamed Model');
   await click('Save');
-  expect(store.get().modelEntries).toEqual([entry]);
+  expect(store.get().modelEntries).toEqual([{...entry, title: 'Renamed Model'}]);
   await click('Delete');
   expect(store.get().modelEntries).toEqual([]);
   expect(store.get().workspaces).toBe(workspaces);

@@ -26,16 +26,17 @@ export function SettingsModels() {
   };
   return <section className="grid gap-4">
     <div className="flex items-center justify-between gap-4"><h3 className="text-base font-medium">Models</h3>
-      <Button variant="outline" onClick={() => setEditing({id: '', harness: '', model: '', efforts: [], default_effort: ''})}>Add Model</Button></div>
+      <Button variant="outline" onClick={() => setEditing({id: '', harness: '', model: '', title: '', efforts: [], default_effort: ''})}>Add Model</Button></div>
     <p className="text-sm text-muted-foreground">Model changes apply immediately, without Save changes.</p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <div className="divide-y rounded-md border">
       {state.modelEntries?.map(entry => <div key={entry.id} className="flex items-center gap-3 p-3">
         <span title={displayName(entry.harness)}>{harnessIcon(entry.harness) ?? displayName(entry.harness)}</span>
-        <div className="min-w-0 flex-1"><p className="truncate text-sm">{entry.model}</p>
+        <div className="min-w-0 flex-1"><p className="truncate text-sm">{entry.title}</p>
+          <p className="truncate text-xs text-muted-foreground">{entry.model}</p>
           <p className="text-xs text-muted-foreground">{entry.efforts.map(level => level + (entry.efforts.length > 1 && level === entry.default_effort ? ' (default)' : '')).join(' · ')}</p></div>
-        <Button variant="outline" size="sm" aria-label={`Edit ${displayName(entry.harness)} ${entry.model}`} onClick={() => setEditing(entry)}>Edit</Button>
-        <Button variant="outline" size="sm" aria-label={`Delete ${displayName(entry.harness)} ${entry.model}`} onClick={() => remove(entry.id)}>Delete</Button>
+        <Button variant="outline" size="sm" aria-label={`Edit ${displayName(entry.harness)} ${entry.title}`} onClick={() => setEditing(entry)}>Edit</Button>
+        <Button variant="outline" size="sm" aria-label={`Delete ${displayName(entry.harness)} ${entry.title}`} onClick={() => remove(entry.id)}>Delete</Button>
       </div>)}
       {!state.modelEntries?.length && <p className="p-3 text-sm text-muted-foreground">{state.modelEntries === null ? 'Loading models…' : 'No models.'}</p>}
     </div>
@@ -48,6 +49,7 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
   const [harnesses, setHarnesses] = useState<Harness[]>([]);
   const [harness, setHarness] = useState(entry.harness);
   const [model, setModel] = useState(entry.model);
+  const [title, setTitle] = useState(entry.title);
   const [levels, setLevels] = useState(entry.efforts.join(', '));
   const [chosenDefault, setChosenDefault] = useState(entry.default_effort);
   const [error, setError] = useState('');
@@ -66,7 +68,7 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
   const save = async () => {
     setError(''); setSaving(true);
     try {
-      const modelEntries = await saveModelEntry({...entry, harness, model, efforts, default_effort: defaultEffort});
+      const modelEntries = await saveModelEntry({...entry, harness, model, title, efforts, default_effort: defaultEffort});
       store.update(s => ({...s, modelEntries}));
       close();
     } catch (error) { setError(reason(error)); setSaving(false); }
@@ -80,6 +82,7 @@ function EntryDialog({entry, close}: {entry: ModelEntry; close: () => void}) {
             <Select value={harness} onValueChange={setHarness}><SelectTrigger id="model-harness" className="w-full"><SelectValue placeholder="Choose a harness" /></SelectTrigger>
               <SelectContent>{choices.map(h => <SelectItem key={h.id} value={h.id}>{harnessIcon(h.id)}{h.name || displayName(h.id)}</SelectItem>)}</SelectContent></Select></div>
           <div className="grid gap-2"><Label htmlFor="model-id">Model ID</Label><Input id="model-id" required value={model} onChange={e => setModel(e.target.value)} /></div>
+          <div className="grid gap-2"><Label htmlFor="model-title">Title</Label><Input id="model-title" required placeholder="Claude Opus" value={title} onChange={e => setTitle(e.target.value)} /></div>
           <div className="grid gap-2"><Label htmlFor="model-efforts">Effort levels</Label><Input id="model-efforts" placeholder="low, medium, high" value={levels} onChange={e => setLevels(e.target.value)} />
             <p className="text-xs text-muted-foreground">Separate levels with commas, lowest first.</p></div>
           {efforts.length > 1 && <div className="grid gap-2"><Label htmlFor="model-default-effort">Default effort</Label>

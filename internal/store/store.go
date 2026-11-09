@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS grants (
   harness TEXT NOT NULL, tool TEXT NOT NULL);
 CREATE UNIQUE INDEX IF NOT EXISTS grants_unique ON grants (COALESCE(session, ''), harness, tool);
 CREATE TABLE IF NOT EXISTS model_entries (
-  id TEXT PRIMARY KEY, harness TEXT NOT NULL, model TEXT NOT NULL,
+  id TEXT PRIMARY KEY, harness TEXT NOT NULL, model TEXT NOT NULL, title TEXT NOT NULL,
   efforts TEXT NOT NULL, default_effort TEXT NOT NULL,
   UNIQUE (harness, model));
 CREATE TABLE IF NOT EXISTS limits (

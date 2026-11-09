@@ -37,7 +37,7 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
     <PopoverTrigger asChild>
       <Button type="button" variant="ghost" size="sm" disabled={disabled}
         className={`h-6 min-w-0 max-w-full text-xs font-normal text-muted-foreground ${className}`}
-        aria-label={value ? `${label}: ${settingsText(value)}` : label} title={value ? settingsText(value) : undefined}>
+        aria-label={value ? `${label}: ${settingsText(value, entries)}` : label} title={value ? settingsText(value, entries) : undefined}>
         {value ? <SelectionName settings={value} /> : 'Choose a model'}<Icon name="chevron-down" />
       </Button>
     </PopoverTrigger>
@@ -55,9 +55,9 @@ export function ModelSelect({value, onChange, fixedHarness = false, disabled = f
           <CommandInput ref={input} placeholder="Search models" aria-label="Search models" />
           <CommandList className="max-h-64">
             <CommandEmpty>No models match.</CommandEmpty>
-            {models.map(entry => <CommandItem key={entry.id} value={entry.model} aria-selected={current?.id === entry.id}
+            {models.map(entry => <CommandItem key={entry.id} value={entry.model} keywords={[entry.title]} aria-selected={current?.id === entry.id}
               onSelect={() => { if (current?.id !== entry.id) onChange({harness: entry.harness, model: entry.model, effort: entry.default_effort}); }}>
-              <span className="min-w-0 flex-1 truncate">{entry.model}</span><Icon name="check" className={current?.id === entry.id ? '' : 'invisible'} />
+              <span className="min-w-0 flex-1 truncate">{entry.title}</span><Icon name="check" className={current?.id === entry.id ? '' : 'invisible'} />
             </CommandItem>)}
           </CommandList>
         </Command>

@@ -29,7 +29,8 @@ export function SessionSelection({session}: {session: Session}) {
 
 // SettingsDiffer marks a child whose settings differ from its parent's.
 function SettingsDiffer({child, parent}: {child: Settings; parent: Settings}) {
+  const [state] = useStore();
   if (sameSettings(child, parent)) return null;
   return <Icon name="differs" role="img" className="text-muted-foreground"
-    title={`Settings differ from the parent's: ${settingsText(child)}; parent ${settingsText(parent)}`} />;
+    title={`Settings differ from the parent's: ${settingsText(child, state.modelEntries)}; parent ${settingsText(parent, state.modelEntries)}`} />;
 }

@@ -7,12 +7,13 @@ import (
 	"strings"
 )
 
-// ModelEntry lists a harness's native model ID and ordered effort levels.
+// ModelEntry gives a harness's native model ID a title and ordered effort levels.
 // Sessions keep their own settings, not a reference to this entry.
 type ModelEntry struct {
 	ID            string   `json:"id"`
 	Harness       string   `json:"harness"`
 	Model         string   `json:"model"`
+	Title         string   `json:"title"`
 	Efforts       []string `json:"efforts"`
 	DefaultEffort string   `json:"default_effort"`
 }
@@ -25,9 +26,10 @@ func (e *ModelEntry) Check() error {
 	e.ID = strings.TrimSpace(e.ID)
 	e.Harness = strings.TrimSpace(e.Harness)
 	e.Model = strings.TrimSpace(e.Model)
+	e.Title = strings.TrimSpace(e.Title)
 	e.DefaultEffort = strings.TrimSpace(e.DefaultEffort)
-	if e.Harness == "" || e.Model == "" {
-		return errors.New("harness and model are required")
+	if e.Harness == "" || e.Model == "" || e.Title == "" {
+		return errors.New("harness, model, and title are required")
 	}
 	seen := make(map[string]bool)
 	if e.Efforts == nil {
@@ -58,14 +60,14 @@ func (e *ModelEntry) Check() error {
 
 // ModelEntries lists entries by harness, then model.
 func (t *Tx) ModelEntries() ([]ModelEntry, error) {
-	rows, err := t.tx.Query(`SELECT id, harness, model, efforts, default_effort FROM model_entries ORDER BY harness, model`)
+	rows, err := t.tx.Query(`SELECT id, harness, model, title, efforts, default_effort FROM model_entries ORDER BY harness, model`)
 	if err != nil {
 		return nil, err
 	}
 	list, err := collect(rows, func(row interface{ Scan(...any) error }) (ModelEntry, error) {
 		var e ModelEntry
 		var levels string
-		if err := row.Scan(&e.ID, &e.Harness, &e.Model, &levels, &e.DefaultEffort); err != nil {
+		if err := row.Scan(&e.ID, &e.Harness, &e.Model, &e.Title, &levels, &e.DefaultEffort); err != nil {
 			return e, err
 		}
 		err := json.Unmarshal([]byte(levels), &e.Efforts)
@@ -105,7 +107,7 @@ func (t *Tx) SaveModelEntry(e ModelEntry) error {
 	if err != nil {
 		return err
 	}
-	return t.exec(`INSERT INTO model_entries (id, harness, model, efforts, default_effort) VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, model = excluded.model, efforts = excluded.efforts, default_effort = excluded.default_effort`, e.ID, e.Harness, e.Model, string(levels), e.DefaultEffort)
+	return t.exec(`INSERT INTO model_entries (id, harness, model, title, efforts, default_effort) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET harness = excluded.harness, model = excluded.model, title = excluded.title, efforts = excluded.efforts, default_effort = excluded.default_effort`, e.ID, e.Harness, e.Model, e.Title, string(levels), e.DefaultEffort)
 }
 
 // DeleteModelEntry removes an entry without changing session settings.

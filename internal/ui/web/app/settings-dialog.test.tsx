@@ -128,20 +128,20 @@ test('the default model is chosen without a workspace and initializes a draft th
     }
     return url === 'version' ? new Response('build') : Response.json(config);
   });
-  const store = createStore(testState({settings: 'General', modelEntries: [{id: 'sol', harness: 'opencode', model: 'sol', efforts: ['low'], default_effort: 'low'}], config: testConfig({default_selection: undefined})}));
+  const store = createStore(testState({settings: 'General', modelEntries: [{id: 'sol', harness: 'opencode', model: 'sol', title: 'Sol', efforts: ['low'], default_effort: 'low'}], config: testConfig({default_selection: undefined})}));
   const root = mount(store, <><SessionSelection session={testSession({id: unsentKey})} /><View /></>);
   await settle();
   const picker = element(document, 'button[aria-label^="Default model"]', HTMLButtonElement);
   expect(picker.title).toBe('Claude opus, effort high');
   clickControl(picker);
   await settle(); await settle();
-  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'sol')!);
+  clickControl([...document.querySelectorAll<HTMLElement>('[cmdk-item]')].find(i => i.textContent === 'Sol')!);
   await settle(); await settle();
   await click('Save changes');
   const chosen = {harness: 'opencode', model: 'sol', effort: 'low'};
   expect(posts[0].default_selection).toEqual(chosen);
   act(() => store.update(s => openUnsent({...s, workspaces: [testWorkspace({id: 'w'})]}, 'w')));
-  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode sol, effort low');
+  expect(element(root, 'button[aria-label^="Model"]', HTMLButtonElement).title).toBe('OpenCode Sol, effort low');
   await act(async () => { await createSession(store, {text: 'Start the draft', images: []}, unsentKey); });
   expect(created[0]).toMatchObject({action: 'new', ...chosen});
 });

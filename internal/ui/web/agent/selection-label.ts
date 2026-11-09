@@ -1,5 +1,5 @@
-// Display forms of settings, using native model IDs.
-import type {Settings} from './types.ts';
+// Display forms of settings, using configured titles when available.
+import type {ModelEntry, Settings} from './types.ts';
 
 const properNames: Record<string, string | undefined> = {
   claude: 'Claude',
@@ -11,8 +11,12 @@ const properNames: Record<string, string | undefined> = {
 export const displayName = (harness = '') => properNames[harness] ?? harness;
 
 // settingsText describes settings in words, for hover text and screen readers.
-export const settingsText = (s: Settings) =>
-  `${displayName(s.harness)} ${s.model}, ${s.effort ? `effort ${s.effort}` : 'default effort'}`;
+export const settingsText = (s: Settings, entries: ModelEntry[] | null) =>
+  `${displayName(s.harness)} ${modelTitle(s, entries)}, ${s.effort ? `effort ${s.effort}` : 'default effort'}`;
+
+// Unlisted models retain their native ID, including after an entry is deleted.
+export const modelTitle = (s: Settings, entries: ModelEntry[] | null) =>
+  entries?.find(e => e.harness === s.harness && e.model === s.model)?.title ?? s.model;
 
 // sameSettings compares two sessions' settings.
 export const sameSettings = (a: Settings, b: Settings) => a.harness === b.harness && a.model === b.model && a.effort === b.effort;
