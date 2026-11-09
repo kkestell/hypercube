@@ -43,3 +43,30 @@ With the requested counting rule, a review session that commits once shows "1 co
 ### Limitations
 
 - No end-to-end run against GitHub; the fetch against a real `refs/pull/<n>/head` (including forks) is covered only by the bare-remote test; the plan's claim that GitHub serves that ref for fork pull requests was not checked here.
+
+## Round 2
+
+- Author: xreview worker p2-review (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5, native conversation ID `6fe12acf-189c-4b15-87d7-0d6d3985a211`
+- Code base: 72ccc1dcd099890f4aa759210ff2f39f99a5a34e
+- Reviewed Code head: 78e76b8e7fa485d1c091e63d011c657b18731866 (implementation cbe99753…, fix 78e76b8…)
+- Checkout: `/Users/kyle/projects/hypercube/.hypercube/777ef702` at 7587b9232f3b934b701709b84479869acde587e0. The commits after the Code head (41d9eb7, 7587b92) touch only the work log; round 1's commit d701c71 touches only this file. Status clean, no untracked files.
+- Verdict: **accept**. F1 is resolved, and the fix introduces no new findings. The round 1 assessment of the rest of the range still holds, because the fix changes only the response path of the two creation actions and the browser's `startReview`.
+- Independence: as in round 1.
+
+### Resolution
+
+| Finding | Status | Evidence at 78e76b8 |
+| --- | --- | --- |
+| F1 | resolved | `writeCreated` (`internal/ui/actions.go`) answers both `"new"` and `"review"` with JSON `{session}`, or 409 `{session, error}` when `CreateSubmission` returns an error. `create` returns the saved session together with the `input` error, so the ID reaches the page; failures before saving give an empty ID. `"new"`'s response is byte-for-byte what it was. Review failures before creation stay plain-text 409 through `refused`. In the browser, `startReview` (`review.ts`) uses `submitPrompt`, which reads either shape, then selects any returned session and shows any error. The new test `a review session whose prompt failed is still shown, with the error` covers a 409 that carries a session; `a refused review shows why and keeps the selection` still covers a plain-text 409. |
+
+The deviation, a JSON success response for `"review"`, has one consumer, `startReview`, and is consistent with `"new"`. If the fetch itself fails, `submitPrompt` adds "Delivery was not confirmed; retrying may send this message again." For a review, that correctly warns that a retry may start a second session.
+
+### Verification
+
+- Reused: `make check` from the repository root on the committed fix 78e76b8…, exit 0, `/tmp/p2-work-make-check-fix.log` (Go tests pass; both bun suites report 0 failures).
+- Run: none; nothing in the fix left a question that a check would answer.
+- Not run (left for the user): manual `make dev` with a real requested review.
+
+### Limitations
+
+Unchanged from round 1.
