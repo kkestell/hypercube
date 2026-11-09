@@ -102,3 +102,37 @@ questions were answered by reading code and Git history.
 
 Limitations: the OpenCode `edit` tool's input shape was not verified against a
 running OpenCode. Screenshots were not regenerated, as the plan excludes them.
+
+## Round 2 — 2026-11-08
+
+**Verdict: accept.** F1 is resolved and the fix adds no new problems. This is
+the same independent reviewer as Round 1.
+
+- Author: `compat-review`; native conversation
+  `c805986c-9023-4e3e-a660-11912f975ea2`; Claude Code / `claude-opus-5-5`.
+- Fixed Code base: `3294d5aadfb3f7ae5285933f68928971183f0fa0`.
+- Reviewed Code head: `d8f1a39dd44a2e02e92506061e3f0f0773bd221e`, tree
+  `240c94bc10e94148e9397d7b6cabf140ace0b419` (base is an ancestor, verified).
+  New in the range since Round 1: fix commit `d8f1a39` only.
+- Checkout HEAD at review: `4b44a597db705a760c256ca21be31c70c3831855`; Code
+  head to HEAD changes only the work log (Repair 2). Working tree clean.
+
+### Resolution
+
+| Finding | Status | Evidence at `d8f1a39` |
+| --- | --- | --- |
+| F1 | resolved | `transcript-tree.ts:19` `summaryKeys` no longer lists `'cmd'`. `details.json` `c1` uses `file_path`; `suggestion.json` `c1`, `c3`, `c4` use `path` with a bare file path. `git grep "'cmd'\|\"cmd\""` outside workflow records finds nothing, so no test or fixture depended on the key. |
+
+No new findings. The fix is a one-element removal from a constant array plus
+scene data; the summary order of the remaining keys is unchanged.
+
+### Verification
+
+| Check | Status | Source |
+| --- | --- | --- |
+| `bun test web/transcript/transcript-tree.test.ts` (27 pass), `bunx tsc -p .` (clean), scene loader and title checks | reused | log Repair 2, run on tree `240c94bc…` |
+| `make check` on `013219a` | reused | Round 1; still covers the rest of the code, since `d8f1a39` changes only `summaryKeys` in code and nothing else reads `cmd` |
+| Fix diff, ancestry, trees, Code head→HEAD diff, `cmd` search | run | `git diff`, `git merge-base --is-ancestor`, `git rev-parse`, `git grep` |
+
+No new test run: the focused test and typecheck cover the only code change.
+Round 1 limitations still apply.
