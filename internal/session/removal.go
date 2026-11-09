@@ -1,6 +1,7 @@
 package session
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -59,20 +60,18 @@ func (r *Runtime) Unarchive(id string) error {
 		return err
 	}
 	defer r.releaseRemoval(id)
-	base := s.Base
+	base, start := s.Base, ""
 	if base != "" {
 		// Without its recorded tip, the branch starts again from HEAD. Archiving
 		// removed the branch only after finding its commits on HEAD, its starting
 		// commit, or a remote branch, so none are lost.
-		restore := s.Tip != "" && workspace.HasCommit(checkout, s.Tip)
-		start := ""
-		if restore {
+		if s.Tip != "" && workspace.HasCommit(checkout, s.Tip) {
 			start = s.Tip
 		}
 		if err := workspace.AddWorktree(checkout, s.Dir, s.Branch, start); err != nil {
 			return err
 		}
-		if !restore {
+		if start == "" {
 			if base, err = workspace.Head(s.Dir); err != nil {
 				return errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch, ""))
 			}
@@ -88,7 +87,9 @@ func (r *Runtime) Unarchive(id string) error {
 	})
 	if err != nil {
 		if base != "" {
-			err = errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch, base))
+			// The archived row still records the restored tip, so the rollback
+			// keeps it and removes only a worktree without uncommitted files.
+			err = errors.Join(err, workspace.RemoveWorktree(checkout, s.Dir, s.Branch, cmp.Or(start, base)))
 		}
 		return err
 	}

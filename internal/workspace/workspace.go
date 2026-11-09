@@ -376,7 +376,7 @@ func Removable(root, dir, branch, base string) error {
 		if n, err := unkept(root, "refs/heads/"+branch, base); err != nil {
 			return err
 		} else if n > 0 {
-			return fmt.Errorf("branch %s has %s", branch, unkeptCommits)
+			return fmt.Errorf("branch %s has commits that are not on %s", branch, keptRefs(base))
 		}
 	}
 	if !isWorktree(dir) {
@@ -389,7 +389,7 @@ func Removable(root, dir, branch, base string) error {
 	if n, err := unkept(root, head, base); err != nil {
 		return err
 	} else if n > 0 {
-		return fmt.Errorf("worktree %s has %s", dir, unkeptCommits)
+		return fmt.Errorf("worktree %s has commits that are not on %s", dir, keptRefs(base))
 	}
 	n, err := uncommitted(dir)
 	if err != nil {
@@ -401,7 +401,13 @@ func Removable(root, dir, branch, base string) error {
 	return nil
 }
 
-const unkeptCommits = "commits that are not on the checkout's branch, the session's starting commit, or a remote branch"
+// keptRefs names the refs whose commits Removable keeps for base.
+func keptRefs(base string) string {
+	if base == "" {
+		return "the checkout's branch or a remote branch"
+	}
+	return "the checkout's branch, the session's starting commit, or a remote branch"
+}
 
 // unkept counts the commits reachable from tip that no kept ref reaches.
 func unkept(root, tip, base string) (int, error) {
