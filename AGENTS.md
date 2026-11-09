@@ -16,12 +16,12 @@ browser shows each agent's transcript.
 ## References
 
 For code changes, plans, reviews, and validation, read
-[development and releases](agents/development.md) for the code layout, code
-style, workflow, compatibility, and release rules. Before changing guides,
-screenshots, or the website, read
-[documentation](agents/documentation.md). The system design is in
-[architecture](agents/architecture.md), and [README.md](README.md) indexes user
-guides. Use the [glossary](agents/glossary.md) for project terms.
+[development and releases](docs/dev/development.md) for the code layout, code
+style, workflow, compatibility, and release rules. Before changing guides or
+screenshots, read
+[documentation](docs/dev/documentation.md). The system design is in
+[architecture](docs/dev/architecture.md), and [README.md](README.md) indexes user
+guides. Use the [glossary](docs/dev/glossary.md) for project terms.
 
 Commit completed, validated work unless the user asks otherwise. Include only
 changes belonging to the task. Merge only when the user asks.

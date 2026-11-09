@@ -4,7 +4,7 @@ Keep the log short. Record what the plan and the diff do not show. Delete unused
 
 ## Plan
 
-`agents/plans/YYYY-MM-DD-NNN-slug.md`
+`.agents/plans/YYYY-MM-DD-NNN-slug.md`
 
 ## Summary
 

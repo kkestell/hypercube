@@ -8,7 +8,7 @@ chosen outside Hypercube. Values and uses can change with dependencies.
 
 ## Theme colors
 
-[base.css](../internal/ui/web/base.css) defines these light and dark values in
+[base.css](../../internal/ui/web/base.css) defines these light and dark values in
 OKLCH. Opacity modifiers on utilities produce additional translucent colors.
 
 | Token | Light | Dark | Observed use |
@@ -48,12 +48,12 @@ and `HighlightText` system colors; search results also use native `mark` styling
 ## Status and data colors
 
 Tailwind names below identify the actual palette utilities, including their
-opacity where specified. See [session status](../internal/ui/web/sidebar/session-item.tsx),
-[status dots](../internal/ui/web/shared/status-dot.tsx),
-[branch icons](../internal/ui/web/shared/branch-icon.tsx),
-[files](../internal/ui/web/files/files-panel.tsx),
-[diffs](../internal/ui/web/changes/diff-view.tsx), and
-[limits](../internal/ui/web/agent/limits.tsx).
+opacity where specified. See [session status](../../internal/ui/web/sidebar/session-item.tsx),
+[status dots](../../internal/ui/web/shared/status-dot.tsx),
+[branch icons](../../internal/ui/web/shared/branch-icon.tsx),
+[files](../../internal/ui/web/files/files-panel.tsx),
+[diffs](../../internal/ui/web/changes/diff-view.tsx), and
+[limits](../../internal/ui/web/agent/limits.tsx).
 
 | Color | Observed use |
 | --- | --- |
@@ -81,7 +81,7 @@ the shared busy-dot component.
 - The Claude harness icon uses `#D97757`; the other harness icons inherit
   their text color. The menubar SVG uses black as a template; the favicon is
   black by default and white under the dark color-scheme media query.
-- [Terminal](../internal/ui/web/terminal/xterm.ts) light mode sets background
+- [Terminal](../../internal/ui/web/terminal/xterm.ts) light mode sets background
   `#ffffff`, foreground and cursor `#252525`, cursor accent `#ffffff`, and
   selection `#b5d5ff`. Its ANSI palette is black `#000000`, red `#cd3131`,
   green `#00a000`, yellow `#795e00`, blue `#0451a5`, magenta `#bc05bc`, cyan
@@ -91,7 +91,7 @@ the shared busy-dot component.
   Dark mode specifies only background `#0a0a0a` and leaves the rest to xterm's
   defaults. ANSI colors represent terminal output selected by programs, not
   fixed Hypercube status meanings.
-- [Syntax highlighting](../internal/ui/web/files/highlight.ts) uses Shiki's
+- [Syntax highlighting](../../internal/ui/web/files/highlight.ts) uses Shiki's
   GitHub light and dark default themes. Token colors represent language syntax
   according to those external themes; the palettes are supplied by Shiki rather
   than defined here. Rendered HTML and images can contain arbitrary colors.

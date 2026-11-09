@@ -5,7 +5,7 @@
 Remove the measured backend delay first, then use interaction measurements to
 choose any frontend changes. Preserve requests, live output, session lifecycle,
 draft and view restoration, scroll following and disclosure anchors, find, and
-file rendering. Follow [architecture](../architecture.md) and the repository's
+file rendering. Follow [architecture](../../docs/dev/architecture.md) and the repository's
 instructions; no saved-state or harness changes are needed.
 
 ## Evidence

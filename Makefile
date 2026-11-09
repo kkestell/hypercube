@@ -19,7 +19,7 @@ else
 include make/linux.mk
 endif
 
-.PHONY: binaries check release dev dev-app dev-stop dev-clean linux-check linux-test linux-test-all ui screenshots web-build web-serve
+.PHONY: binaries check release dev dev-app dev-stop dev-clean linux-check linux-test linux-test-all ui screenshots
 
 # binaries builds hypercube, its MCP bridge and holder, and the harness
 # plugins side by side in $(OUT).
@@ -27,8 +27,8 @@ binaries:
 	for c in hypercube hypercube-mcp hypercube-hold; do go build -o $(OUT)/$$c ./cmd/$$c || exit 1; done
 	for p in $(PLUGINS); do go build -o $(OUT)/hypercube-harness-$$p ./plugins/$$p || exit 1; done
 
-# check builds the programs and website without packaging the app.
-check: ui web-build
+# check builds the programs without packaging the app.
+check: ui
 	go build ./cmd/... ./plugins/...
 	cd internal/ui && bunx tsc -p . && bun test
 	cd desktop && ELECTRON_SKIP_BINARY_DOWNLOAD=1 bun install --frozen-lockfile && bun test
@@ -88,12 +88,3 @@ linux-test:
 LINUX_DISTROS = debian ubuntu fedora $(if $(filter x86_64,$(shell uname -m)),arch)
 linux-test-all:
 	for d in $(LINUX_DISTROS); do $(MAKE) linux-test LINUX_DISTRO=$$d || exit 1; done
-
-# web-build builds the Hypercube website into web/public. web-serve runs its dev
-# server at http://localhost:1313. Both go through web/Makefile, which installs
-# the pinned Hugo into web/bin on first use.
-web-build:
-	$(MAKE) -C web build
-
-web-serve:
-	$(MAKE) -C web serve

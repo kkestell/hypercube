@@ -17,15 +17,19 @@ needs `rsvg-convert` and the
    cd hypercube
    ```
 
-2. Start the development app:
+2. Start the development copy. On macOS, open the desktop app:
 
    ```sh
    make dev-app
    ```
 
-3. The desktop window opens with separate configuration and state, using a
-   sample repository at `~/projects/hypercube-dev/repo`. This copy does not
-   replace your installed app.
+   On Linux, use `make dev` and open `http://localhost:4281/` in a browser.
+   The `dev-app` script uses the macOS bundle layout; for Linux desktop
+   validation, use the [Linux test environment](docs/dev/development.md#test-on-linux).
+
+3. The development copy has separate configuration and state, using a sample
+   repository at `~/projects/hypercube-dev/repo`. It does not replace your
+   installed app.
 4. Change a source file. Successful rebuilds reload the interface while
    preserving agents and terminal shells. A failed build leaves the last
    successful build running.
@@ -34,22 +38,22 @@ needs `rsvg-convert` and the
 
 Reuse an existing development process for this checkout rather than starting
 a second one. Internal development controls are in the
-[development reference](agents/development.md#develop-without-replacing-the-installed-app).
+[development reference](docs/dev/development.md#develop-without-replacing-the-installed-app).
 
 ## Choose the right instructions
 
 | Goal | Read |
 | --- | --- |
-| Find the relevant package or follow project conventions | [Development reference](agents/development.md) |
-| Understand backend, plugins, and process ownership | [Architecture](agents/architecture.md) |
-| Change guides, screenshots, or website content | [Documentation maintenance](agents/documentation.md) |
-| Test packaging and desktop behavior on Linux | [Linux testing](agents/development.md#test-on-linux) |
-| Package an official beta | [Release procedure](agents/development.md#prepare-an-official-beta) |
+| Find the relevant package or follow project conventions | [Development reference](docs/dev/development.md) |
+| Understand backend, plugins, and process ownership | [Architecture](docs/dev/architecture.md) |
+| Change guides or screenshots | [Documentation maintenance](docs/dev/documentation.md) |
+| Test packaging and desktop behavior on Linux | [Linux testing](docs/dev/development.md#test-on-linux) |
+| Package an official beta | [Release procedure](docs/dev/development.md#prepare-an-official-beta) |
 | Work as a coding agent | [AGENTS.md](AGENTS.md) |
 
 ## Validate a change
 
-- **Code:** run `make check`. This builds the interface and website, checks
+- **Code:** run `make check`. This builds the interface, checks
   types and formatting, and runs the test suites, including Go's race detector.
 - **Documentation only:** inspect the diff, links, and described behavior.
   Do not run code checks for prose changes.
@@ -57,7 +61,7 @@ a second one. Internal development controls are in the
   Go embeds the generated browser interface.
 
 For focused checks and platform-specific requirements, use the
-[validation reference](agents/development.md#validation).
+[validation reference](docs/dev/development.md#validation).
 
 ## Install your checkout
 
@@ -72,7 +76,7 @@ This builds and installs the app, reloads its login service, and opens the
 desktop app. It does not require a release tag or run the full checks. Existing
 agents and shells keep running, so use **Restart Agent** to load changed
 plugins. Process restart requirements are in the
-[validation reference](agents/development.md#validation).
+[validation reference](docs/dev/development.md#validation).
 
 `make install` installs without setting up the service. On macOS the default
 destination is `~/Applications/Hypercube.app`; on Linux it is

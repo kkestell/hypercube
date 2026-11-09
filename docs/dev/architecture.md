@@ -4,29 +4,57 @@
 harnesses execute the agents' work. Plugins connect the two, translating each
 harness's protocol into Hypercube commands and transcript events.
 
-![The Electron desktop app contains the browser interface and connects to the
-backend, which owns SQLite state. Each agent runs under a separate process
-holder, with a harness plugin, native harness, and MCP tools that call back
-into the backend.](images/architecture.png)
+![The Electron desktop app connects to hypercube ui, the only SQLite writer.
+Each agent's hypercube-hold runs a harness plugin and native harness.
+The harness's hypercube-mcp bridge calls back into the backend over HTTP.
+Panel shells use separate holders, not shown.](images/architecture.png)
 
 The holder keeps the agent processes alive across backend restarts. Agent tools
 return to the same backend that handles user actions; only the backend writes
 to SQLite.
 
+## Executables and process boundaries
+
+These are separate programs, shipped together in the application bundle:
+
+| Program | Responsibility | Started by |
+| --- | --- | --- |
+| `hypercube ui [port]` | Backend, session runtime, HTTP server, and SQLite state. The default port is `4280`. | Login service or a terminal. |
+| `Hypercube Desktop` (macOS), `hypercube-desktop` (Linux) | Electron window, menus, notifications, and desktop actions. | The user; connects to an independently running backend. |
+| `hypercube-hold` | Detached holder for one plugin or panel shell; owns its input, retained output, and exit record. | Backend, once per agent launch or panel shell. |
+| `hypercube-harness-<name> serve` | Adapter for Claude Code, OpenCode, or Pi. | An agent's holder; the plugin starts the native harness. |
+| `hypercube-mcp` | Stdio MCP bridge to the backend's `/mcp` HTTP route. | Native harness, configured by the plugin. |
+
+`hypercube` also provides `version`; the holder and MCP bridge are not
+subcommands of it. The backend resolves its executable's symlinks and finds
+the helpers and plugins beside the real executable, not on `PATH`. Native
+harness executables are installed separately and found on `PATH`.
+
+Browser actions use HTTP and state updates use a WebSocket. The desktop app
+has its own `/desktop` WebSocket for alerts. Plugin JSON Lines pass through
+the holder's Unix input socket and retained output files, allowing a new
+backend to attach without replacing the plugin. MCP requests go directly
+from the bridge to the backend over loopback HTTP, with the session ID in a
+header; neither helpers nor plugins write Hypercube's database.
+
+See [program discovery](../../cmd/hypercube/programs.go),
+[the plugin client](../../internal/harnessclient/client.go), and
+[the MCP bridge](../../internal/mcpbridge/bridge.go).
+
 ## Plugin protocol
 
-Each `hypercube-harness-<name>` executable runs beside `hypercube`. The app
-starts it with `serve` and exchanges commands and events as JSON Lines. The
-plugin owns the native protocol; the core and browser interface do not name
-individual harnesses.
+Each `hypercube-harness-<name>` executable runs beside `hypercube`. The backend
+starts it with `serve` under a holder and exchanges commands and events as
+JSON Lines. The plugin owns the native protocol; the core and browser interface
+do not name individual harnesses.
 
-The [protocol types](../internal/harness/protocol.go) define commands, replies,
+The [protocol types](../../internal/harness/protocol.go) define commands, replies,
 transcript items, and usage fields. Native mappings live in the
-[Claude Code](../plugins/claude), [OpenCode](../plugins/opencode), and
-[Pi](../plugins/pi) plugins. Restart a session to
+[Claude Code](../../plugins/claude), [OpenCode](../../plugins/opencode), and
+[Pi](../../plugins/pi) plugins. Use Restart Agent to
 load a newly installed plugin.
 
-Two one-shot commands, defined in [discovery](../internal/harness/discovery.go),
+Two one-shot commands, defined in [discovery](../../internal/harness/discovery.go),
 describe the harness. `describe` reports whether the native executable is
 installed; the app runs it for every plugin at startup, for the Settings model
 entry form, and for `list_models`, and gives the installed names to new sessions'
@@ -39,14 +67,14 @@ report the settings the harness accepted.
 
 A session saves its harness, model, and effort. A child takes its parent's
 current settings, with any overrides its parent passes, resolved in
-[selection](../internal/session/selection.go) when the child is created or
+[selection](../../internal/session/selection.go) when the child is created or
 proposed; a proposal saves the resolved settings. A launch counts as started
 once the transaction that saves its start reply commits.
 
 Integration research for the supported harnesses is in
-[Claude Code](research/harnesses/claude-code.md),
-[OpenCode](research/harnesses/opencode.md), and
-[Pi](research/harnesses/pi.md). These are version-specific research notes;
+[Claude Code](../../.agents/research/harnesses/claude-code.md),
+[OpenCode](../../.agents/research/harnesses/opencode.md), and
+[Pi](../../.agents/research/harnesses/pi.md). These are version-specific research notes;
 the plugin code defines the current integration.
 
 For the removed harness, see [why Codex support was dropped](codex-retirement.md):
@@ -56,10 +84,10 @@ bugs are documented there as historical context, not current support.
 ## Why agents outlive the window
 
 An agent plugin runs under a `hypercube-hold` process that owns its input and
-output independently of the app. Panel shells use holders too. A service
-restart, development rebuild, SIGTERM, or app crash therefore leaves those
-processes alive. On startup, the app attaches to surviving launches and
-finishes those that exited or were lost.
+output independently of the backend. Panel shells use separate holders too.
+A service restart, development rebuild, SIGTERM, or backend crash therefore
+leaves those processes alive. On startup, the backend attaches to surviving
+launches and finishes those that exited or were lost.
 
 Each session's agent starts when the session is opened, prompted, or sent a
 message, and ends after the session has been idle and unviewed for 15 minutes.
@@ -71,26 +99,26 @@ conversation. Three quick exits—within ten seconds of starting—stop automati
 relaunches. A failed start stays exited with an error in its transcript. The
 app never substitutes a new conversation for one it cannot resume.
 
-See [hold](../internal/hold/hold.go) and
-[session launch](../internal/session/launch.go).
+See [hold](../../internal/hold/hold.go) and
+[session launch](../../internal/session/launch.go).
 
 ## One owner for user actions and agent tools
 
 Each harness starts `hypercube-mcp` as a stdio MCP server. It forwards tool
-requests to the app with the session ID. Browser actions reach the same session
-runtime, so both use one owner of lifecycle and saved state. The runtime
+requests to the backend with the session ID. Browser actions reach the same
+session runtime, so both use one owner of lifecycle and saved state. The runtime
 serializes its operations, releasing its lock before waiting on a plugin:
-a harness can call back into an app tool while a command is in flight.
+a harness can call back into a Hypercube tool while a command is in flight.
 
-The app records commands before sending them. A reply is applied in the same
-transaction that removes its command. After reconnection, unanswered commands
-are resent in ID order. Queued messages are delivered one at a time and removed
-when the plugin accepts them. Acceptance means the harness took the input,
+The backend records commands before sending them. A reply is applied in the
+same transaction that removes its command. After reconnection, unanswered
+commands are resent in ID order. Queued messages are delivered one at a time
+and removed when the plugin accepts them. Acceptance means the harness took the input,
 including into a native queue; it does not mean the model processed it.
 
-The [session runtime](../internal/session/runtime.go),
-[delivery code](../internal/session/deliver.go), and
-[store](../internal/store/store.go) define these transitions.
+The [session runtime](../../internal/session/runtime.go),
+[delivery code](../../internal/session/deliver.go), and
+[store](../../internal/store/store.go) define these transitions.
 
 ## Saved state and the interface
 
@@ -111,8 +139,8 @@ rather than the image data, and the page loads an image when it shows it. A
 reconnect takes fresh snapshots.
 Requests to open a file wait until a page views that session.
 
-See [transcripts](../internal/session/transcript.go) and
-[the browser interface](../internal/ui/ui.go).
+See [transcripts](../../internal/session/transcript.go) and
+[the browser interface](../../internal/ui/ui.go).
 
 ## Backend, desktop app, and terminals
 
@@ -139,17 +167,17 @@ dials again after a restart. The backend sends an alert for each new request or
 reply that the notification preferences in `config.json` allow. Without a
 desktop app, alerts are dropped. The page shows current requests when the app
 opens. The backend's side is in
-[internal/desktop](../internal/desktop/desktop.go) and the app in
-[desktop](../desktop/main.js).
+[internal/desktop](../../internal/desktop/desktop.go) and the app in
+[desktop](../../desktop/main.js).
 
-[Panel terminals](../internal/terminal/terminal.go) start on demand for each
+[Panel terminals](../../internal/terminal/terminal.go) start on demand for each
 session or workspace. Session shells use their working directories; workspace
 shells use the registered checkout. Their holders own the pseudo-terminals and
 bounded scrollback, which browser connections read directly. A shell ends on
 exit, deletion of its owner, or the backend’s SIGINT. Archiving a session also
 ends its shell.
 
-The [GitHub watcher](../internal/github/watcher.go) resolves each workspace's gh
+The [GitHub watcher](../../internal/github/watcher.go) resolves each workspace's gh
 account. New agents and panel shells get that account's `GH_TOKEN` through
 their holder's environment, which the runtime's `Env` hook supplies; a running
 agent or shell keeps the token it started with. Each pass also fetches the
@@ -160,4 +188,4 @@ watcher's `Changed` channel makes open sockets resend it.
 Managed worktrees live inside the checkout so harnesses inherit folder trust.
 Paths and branches include session IDs. This separates working copies without
 restricting an agent's access to the local filesystem. Git resource handling
-lives in [workspace](../internal/workspace/workspace.go).
+lives in [workspace](../../internal/workspace/workspace.go).
