@@ -302,10 +302,10 @@ async function capture(scene, ids, backend, window, name) {
     sessionViews[id] = {panel: false, ...scened.view, expanded};
   }
   const merged = {...defaultWorkbench, ...scene.workbench};
-  // The conversation takes a third of the space beside the sidebar and right
+  // The conversation takes two fifths of the space beside the sidebar and right
   // panel; editor panes take the rest.
   const available = scene.size.width - (merged.sidebar ? merged.sizes.sidebar : 0) - (merged.rightPanel ? merged.sizes.rightPanel : 0);
-  merged.sizes = {...defaultWorkbench.sizes, editor: Math.round(available * 2 / 3), ...scene.workbench?.sizes};
+  merged.sizes = {...defaultWorkbench.sizes, editor: Math.round(available * 3 / 5), ...scene.workbench?.sizes};
   const views = {selected: null, workbench: merged, sessionViews, workspaceViews: {}};
   await contents.loadURL(backend.origin + '/version');
   await contents.executeJavaScript(`localStorage.setItem('hypercube.views', ${JSON.stringify(JSON.stringify(views))})`);

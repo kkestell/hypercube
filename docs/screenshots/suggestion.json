@@ -207,6 +207,5 @@
   "select": [
     1,
     0
-  ],
-  "workbench": {"rightPanel": false}
+  ]
 }
