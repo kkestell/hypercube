@@ -5,8 +5,8 @@
 - Author: xwork worker p1-work (Hypercube child session of 777ef702), Claude Code, claude-opus-5-5
 - Status: implemented
 - Code base: 1273b36947232e3b9a436111a7f9d08cb35c6c2a
-- Code head: 8bb30c99d1d440ed3c1c8f5347bb8b96ff1e84c6
-- Implementation commits: 8bb30c99d1d440ed3c1c8f5347bb8b96ff1e84c6
+- Code head: 1f8799f470635cb964e43b9499ad9b808b842cd9
+- Implementation commits: 8bb30c99d1d440ed3c1c8f5347bb8b96ff1e84c6 (work), 1f8799f470635cb964e43b9499ad9b808b842cd9 (fix)
 
 ## Changes
 
@@ -40,6 +40,17 @@ Responsibilities as in the plan.
 
 ## Limitations
 
-- If saving an unarchived session fails after its branch was restored at a tip that no `HEAD`, starting commit, or remote branch reaches any longer, the rollback refuses to remove the branch. The work is kept, but a retry fails until the branch is removed.
 - The agent instructions in `internal/report/report.go` still say a child's worktree ends once its branch is merged into `HEAD`; that remains true but omits pushed branches. Outside the plan's scope.
-- Awaiting independent review.
+- Awaiting independent review of the repair.
+
+## Repair 1
+
+Review: `.agents/reviews/2026-11-09-008-worktree-start-and-safe-removal.md`, round 1 (`changes-required`, commit 0706039a0b74f323fc5c1809aa14f4fd0e056f28).
+
+- F1: `Unarchive`'s rollback after a failed save passes `cmp.Or(start, base)` to `RemoveWorktree`, so a branch restored at the recorded tip is removed with that tip as its kept commit; the uncommitted-file check still applies (`internal/session/removal.go`). No regression test: a failed save has no clean test seam.
+- Note: refusals name the session's starting commit only when a base is given (`keptRefs` in `internal/workspace/workspace.go`).
+
+Verification at Code head 1f8799f…, macOS, git 2.56.0:
+
+- `go test ./internal/workspace/` and `go test ./internal/session/ -run 'Unarchive|Archive|WorktreeSession'`: pass.
+- `make check` from the repository root on the committed tree with a clean status: exit 0 (output in `/tmp/p1-work-make-check-fix.log`).
