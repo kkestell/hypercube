@@ -89,3 +89,44 @@ patterns.
 I can't judge the rendered layout or spacing from the code and happy-dom
 tests. I haven't seen the header, the chooser's open menu, or the row icons
 in a browser. The user judges the look; no screenshots exist.
+
+## Round 2
+
+- Author: reviewer `plan-reviewer`, Hypercube child of `1771c79b`, Claude Code,
+  native conversation `7989b8d0-1436-4b4f-8ad3-10b45e003508`, model
+  `claude-opus-5-5`. Independent of the implementer.
+- Code base: `444646518183624627d89d802a4f9819a1db4aab` (unchanged)
+- Code head: `634cca583e13c8a59af17eb6a84e5d8d77d676bf`; reviewed the full
+  base..head range, with the fix diff `d18dd2c..634cca5` read in full.
+- Work log repair entry: `07cd6ec`. The checkout's HEAD is that commit; the
+  only change after Code head is the work log.
+
+### Verdict
+
+`accept`. Both findings are resolved.
+
+### Resolution
+
+| Finding | Status | Evidence at `634cca5` |
+| --- | --- | --- |
+| 1. The error runs into the age | resolved | `github-header.tsx` ends the error sentence with a period before `Showing data from`. Both error tests assert the full sentences. |
+| 2. The docs overstate the chooser | resolved | `docs/interface.md`: "When several signed-in accounts can push, or none can push and several are signed in". This matches the watcher. |
+
+Note, not a finding: an error whose first line already ends in a period gets
+two. An SSH failure's first line is
+`git fetch origin: git@github.com: Permission denied (publickey).`, so the
+page would show `(publickey)..`. Removing one trailing period before adding
+the period would fix it. The rewritten docs sentence is also left on one long
+line, unwrapped. Neither changes behavior.
+
+### Verification
+
+- `reused`: `make check` at `634cca5`; output in `/tmp/check004b.out`, written
+  the same minute as the fix. No `FAIL`; browser bun tests 415 pass, 0 fail;
+  desktop 28 pass. `bun test web/github` (10) and `bunx tsc -p .` are clean,
+  per the repair entry.
+- No new runs.
+
+### Limitations
+
+As in round 1, I can't judge the rendered layout from the code and tests.
