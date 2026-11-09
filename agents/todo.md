@@ -1,4 +1,9 @@
-# Linux support
+# Linux support rollout (completed)
+
+This is the completed rollout checklist, retained as history. Harness counts
+and task descriptions below reflect the rollout, not current support. Use
+[development](development.md#test-on-linux) for current Linux tooling and
+[architecture](architecture.md) for the current executable layout.
 
 Run the same Hypercube backend, four harness plugins, browser view, and
 Electron desktop app on Linux AMD64 and ARM64 across Debian, Ubuntu, Fedora,

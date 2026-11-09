@@ -9,8 +9,8 @@ Hypercube brings Claude Code, OpenCode, and Pi into one app. Use your
 installed tools and existing credentials. Give each session its own model,
 follow its work, and ask agents to help one another.
 
-[Install Hypercube](/docs/installation/) ·
-[Try your first session](/docs/getting-started/)
+[Install Hypercube](docs/installation.md) ·
+[Try your first session](docs/getting-started.md)
 
 ## One task or a team
 
@@ -29,4 +29,4 @@ Browse files, read diffs, search the project, and open a terminal without leavin
 the session. Answer questions and approvals as they arrive. Close the app
 without ending active agents, then return to their saved conversations.
 
-[Read the documentation](/docs/) · [See features](/features/)
+[Read the documentation](/docs/) · [See features](features.md)

@@ -4,26 +4,54 @@
 harnesses execute the agents' work. Plugins connect the two, translating each
 harness's protocol into Hypercube commands and transcript events.
 
-![The Electron desktop app contains the browser interface and connects to the
-backend, which owns SQLite state. Each agent runs under a separate process
-holder, with a harness plugin, native harness, and MCP tools that call back
-into the backend.](images/architecture.png)
+![The Electron desktop app connects to hypercube ui, the only SQLite writer.
+Each agent's hypercube-hold runs a harness plugin and native harness.
+The harness's hypercube-mcp bridge calls back into the backend over HTTP.
+Panel shells use separate holders, not shown.](images/architecture.png)
 
 The holder keeps the agent processes alive across backend restarts. Agent tools
 return to the same backend that handles user actions; only the backend writes
 to SQLite.
 
+## Executables and process boundaries
+
+These are separate programs, shipped together in the application bundle:
+
+| Program | Responsibility | Started by |
+| --- | --- | --- |
+| `hypercube ui [port]` | Backend, session runtime, HTTP server, and SQLite state. The default port is `4280`. | Login service or a terminal. |
+| `Hypercube Desktop` (macOS), `hypercube-desktop` (Linux) | Electron window, menus, notifications, and desktop actions. | The user; connects to an independently running backend. |
+| `hypercube-hold` | Detached holder for one plugin or panel shell; owns its input, retained output, and exit record. | Backend, once per agent launch or panel shell. |
+| `hypercube-harness-<name> serve` | Adapter for Claude Code, OpenCode, or Pi. | An agent's holder; the plugin starts the native harness. |
+| `hypercube-mcp` | Stdio MCP bridge to the backend's `/mcp` HTTP route. | Native harness, configured by the plugin. |
+
+`hypercube` also provides `version`; the holder and MCP bridge are not
+subcommands of it. The backend resolves its executable's symlinks and finds
+the helpers and plugins beside the real executable, not on `PATH`. Native
+harness executables are installed separately and found on `PATH`.
+
+Browser actions use HTTP and state updates use a WebSocket. The desktop app
+has its own `/desktop` WebSocket for alerts. Plugin JSON Lines pass through
+the holder's Unix input socket and retained output files, allowing a new
+backend to attach without replacing the plugin. MCP requests go directly
+from the bridge to the backend over loopback HTTP, with the session ID in a
+header; neither helpers nor plugins write Hypercube's database.
+
+See [program discovery](../cmd/hypercube/programs.go),
+[the plugin client](../internal/harnessclient/client.go), and
+[the MCP bridge](../internal/mcpbridge/bridge.go).
+
 ## Plugin protocol
 
-Each `hypercube-harness-<name>` executable runs beside `hypercube`. The app
-starts it with `serve` and exchanges commands and events as JSON Lines. The
-plugin owns the native protocol; the core and browser interface do not name
-individual harnesses.
+Each `hypercube-harness-<name>` executable runs beside `hypercube`. The backend
+starts it with `serve` under a holder and exchanges commands and events as
+JSON Lines. The plugin owns the native protocol; the core and browser interface
+do not name individual harnesses.
 
 The [protocol types](../internal/harness/protocol.go) define commands, replies,
 transcript items, and usage fields. Native mappings live in the
 [Claude Code](../plugins/claude), [OpenCode](../plugins/opencode), and
-[Pi](../plugins/pi) plugins. Restart a session to
+[Pi](../plugins/pi) plugins. Use Restart Agent to
 load a newly installed plugin.
 
 Two one-shot commands, defined in [discovery](../internal/harness/discovery.go),
@@ -56,10 +84,10 @@ bugs are documented there as historical context, not current support.
 ## Why agents outlive the window
 
 An agent plugin runs under a `hypercube-hold` process that owns its input and
-output independently of the app. Panel shells use holders too. A service
-restart, development rebuild, SIGTERM, or app crash therefore leaves those
-processes alive. On startup, the app attaches to surviving launches and
-finishes those that exited or were lost.
+output independently of the backend. Panel shells use separate holders too.
+A service restart, development rebuild, SIGTERM, or backend crash therefore
+leaves those processes alive. On startup, the backend attaches to surviving
+launches and finishes those that exited or were lost.
 
 Each session's agent starts when the session is opened, prompted, or sent a
 message, and ends after the session has been idle and unviewed for 15 minutes.
@@ -77,15 +105,15 @@ See [hold](../internal/hold/hold.go) and
 ## One owner for user actions and agent tools
 
 Each harness starts `hypercube-mcp` as a stdio MCP server. It forwards tool
-requests to the app with the session ID. Browser actions reach the same session
-runtime, so both use one owner of lifecycle and saved state. The runtime
+requests to the backend with the session ID. Browser actions reach the same
+session runtime, so both use one owner of lifecycle and saved state. The runtime
 serializes its operations, releasing its lock before waiting on a plugin:
-a harness can call back into an app tool while a command is in flight.
+a harness can call back into a Hypercube tool while a command is in flight.
 
-The app records commands before sending them. A reply is applied in the same
-transaction that removes its command. After reconnection, unanswered commands
-are resent in ID order. Queued messages are delivered one at a time and removed
-when the plugin accepts them. Acceptance means the harness took the input,
+The backend records commands before sending them. A reply is applied in the
+same transaction that removes its command. After reconnection, unanswered
+commands are resent in ID order. Queued messages are delivered one at a time
+and removed when the plugin accepts them. Acceptance means the harness took the input,
 including into a native queue; it does not mean the model processed it.
 
 The [session runtime](../internal/session/runtime.go),

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="720" height="1216" viewBox="0 0 720 1216" role="img" aria-labelledby="title description">
   <title id="title">Hypercube architecture</title>
-  <desc id="description">The Electron desktop app contains the browser interface and provides menus, notifications, and desktop actions. It connects to the backend, which owns sessions and SQLite state. A separate process holder keeps each agent's plugin, native harness, and MCP tools alive across backend restarts. MCP tools call back into the backend.</desc>
+  <desc id="description">The Electron desktop app connects to hypercube ui, the backend and only SQLite writer. Each agent has a separate hypercube-hold process running a hypercube-harness plugin, which starts the native harness. The harness runs hypercube-mcp to bridge stdio MCP to the backend over HTTP. These are separate executables, not hypercube subcommands. Panel shells have their own holders, not shown here.</desc>
   <defs>
     <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
       <path d="M 0 0 L 8 4 L 0 8 Z" fill="#64748b"/>
@@ -30,9 +30,9 @@
   <text x="496" y="212" text-anchor="middle" class="label">Rendered in the window</text>
 
   <path d="M 160 354 V 266" class="edge"/>
-  <text x="180" y="299" class="label">Notifications</text>
+  <text x="180" y="299" class="label">Alerts via /desktop</text>
   <path d="M 536 234 V 320 H 360 V 354" class="edge both"/>
-  <text x="332" y="292" class="label">Actions and updates</text>
+  <text x="420" y="344" class="label">HTTP and WebSocket</text>
 
   <!-- The backend is the sole writer of application state. -->
   <rect x="64" y="354" width="384" height="156" rx="18" fill="#eaf2ff" stroke="#4977c6" stroke-width="2"/>
@@ -48,13 +48,15 @@
   <!-- The holder owns the agent processes independently of the backend. -->
   <rect x="32" y="616" width="656" height="576" rx="20" fill="#f8fafc" stroke="#94a3b8" stroke-width="2" stroke-dasharray="8 6"/>
   <text x="300" y="651" class="heading">Process holder</text>
-  <text x="300" y="684" class="command">hypercube hold</text>
+  <text x="300" y="684" class="command">hypercube-hold</text>
   <path d="M 208 510 V 712" class="edge both"/>
-  <text x="232" y="556" class="label">Commands</text>
-  <text x="232" y="583" class="label">and events</text>
+  <text x="232" y="548" class="label">JSON Lines via</text>
+  <text x="232" y="575" class="label">input socket and</text>
+  <text x="232" y="602" class="label">retained output</text>
 
   <rect x="112" y="712" width="496" height="92" rx="14" class="node"/>
-  <text x="360" y="766" text-anchor="middle" class="heading">Harness plugin</text>
+  <text x="360" y="749" text-anchor="middle" class="heading">Harness plugin</text>
+  <text x="360" y="782" text-anchor="middle" class="command">hypercube-harness-&lt;name&gt; serve</text>
   <path d="M 360 804 V 870" class="edge both"/>
   <text x="382" y="845" class="label">Native protocol</text>
 
@@ -67,10 +69,10 @@
 
   <rect x="112" y="1054" width="496" height="92" rx="14" class="node"/>
   <text x="360" y="1092" text-anchor="middle" class="heading">Agent tools</text>
-  <text x="360" y="1125" text-anchor="middle" class="command">hypercube mcp</text>
+  <text x="360" y="1125" text-anchor="middle" class="command">hypercube-mcp</text>
 
   <!-- Tool calls return to the same backend as user actions. -->
   <path d="M 608 1100 H 656 V 550 H 416 V 510" class="edge both"/>
-  <text x="562" y="579" text-anchor="middle" class="label">Tool requests</text>
-  <text x="562" y="606" text-anchor="middle" class="label">and results</text>
+  <text x="562" y="579" text-anchor="middle" class="label">HTTP /mcp</text>
+  <text x="562" y="606" text-anchor="middle" class="label">with session ID</text>
 </svg>

@@ -37,6 +37,19 @@ Use [Diátaxis](https://diataxis.fr/) to choose a page's purpose:
 
 For prose-only changes, inspect the diff and links; do not run code checks.
 
+## Architecture diagram
+
+The diagram in `agents/architecture.md` uses `agents/images/architecture.png`,
+rendered from the editable `agents/images/architecture.svg`. Update the SVG
+against the current executable names, process ownership, and transports, then
+regenerate the PNG from the repository root with librsvg:
+
+```sh
+rsvg-convert --zoom 2 -o agents/images/architecture.png agents/images/architecture.svg
+```
+
+Open the PNG to check labels and arrows. Commit both source and rendered image.
+
 ## Screenshots
 
 Run `make screenshots` only when captures need changing. It regenerates

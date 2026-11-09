@@ -44,9 +44,11 @@ not convert saved state back to that version's format.
 
 ## Load new plugins into existing sessions
 
-An agent that survived the upgrade still uses the plugin it started with.
-Choose **Restart Agent** in that session's context menu to load the installed
-plugin and resume its conversation. A turn in progress is interrupted.
+An agent that survived the upgrade still uses the plugin, holder, and MCP
+bridge it started with. Choose **Restart Agent** in that session's context
+menu to load the installed versions and resume its conversation. A turn in
+progress is interrupted. Restart Agent does not replace a panel shell's
+holder; exit that shell and reopen the terminal to load an updated holder.
 
 ## Check the running version
 

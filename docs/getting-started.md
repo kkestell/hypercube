@@ -16,11 +16,12 @@ A workspace groups the sessions for that project in the sidebar.
 ## 2. Choose your coding tool
 
 First add a model in **Settings › Agents › Models**: choose its harness, enter
-the model ID exactly as the harness names it, and list its effort levels from
-lowest to highest. Choose **Save changes**, then choose the model below
-the message box. Leave the effort at its default. Effort controls
-the model's reasoning level; the available choices depend on the harness and
-model.
+the model ID exactly as the harness names it, give it a display title, and list
+its effort levels from lowest to highest. If there are several levels, select
+the default; leave the list empty for a model without effort levels.
+Choose **Save**, then **Save changes**. Choose the model below the message box
+and leave the effort at its default. Effort controls the model's reasoning
+level; the available choices depend on the harness and model.
 
 If the folder is a Git repository, choose **Existing checkout** for this
 walkthrough. The session will read the files already in that folder.

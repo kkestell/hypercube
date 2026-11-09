@@ -13,12 +13,12 @@ Documentation procedures are in [documentation](documentation.md).
 - `cmd/hypercube-mcp/` — the MCP bridge each agent's harness runs.
 - `cmd/hypercube-hold/` — the holder that runs agents' plugins and panel shells.
 - `desktop/` — the Electron desktop app, a client of the backend.
-- `internal/` — one package per concern: `config`, `desktop`, `harness`,
+- `internal/` — one package per concern: `buildinfo`, `config`, `desktop`, `harness`,
   `harnessclient`, `hold`, `mcp`, `mcpbridge`, `report`, `session`, `store`,
   `terminal`, `ui`, `workspace`.
 - `plugins/` — the Claude Code, OpenCode, and Pi harness plugins. The
   core names no harness. `plugins/scripted` plays documentation screenshot
-  scenes and never ships.
+  scenes and never ships; `plugins/internal/plugin` holds shared plugin code.
 - `make/` — the macOS and Linux packaging rules the `Makefile` includes.
 - `scripts/dev` — the isolated development session (`make dev`).
 - `scripts/screenshots` — the documentation screenshots (`make screenshots`).
@@ -253,8 +253,8 @@ installs.
 Follow [Run a development copy](../CONTRIBUTING.md#run-a-development-copy).
 Additional controls:
 
-- `make dev-clean` also removes disposable resources and native development
-  conversations, including holders left by a crash.
+- `make dev-clean` also removes disposable state, holders left by a crash, and
+  Claude Code and OpenCode development conversations.
 - `HYPERCUBE_DEV_DIR` and `HYPERCUBE_DEV_PORT` change the directory and port.
 
 See [scripts/dev](../scripts/dev) for cleanup details.

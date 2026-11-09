@@ -17,15 +17,19 @@ needs `rsvg-convert` and the
    cd hypercube
    ```
 
-2. Start the development app:
+2. Start the development copy. On macOS, open the desktop app:
 
    ```sh
    make dev-app
    ```
 
-3. The desktop window opens with separate configuration and state, using a
-   sample repository at `~/projects/hypercube-dev/repo`. This copy does not
-   replace your installed app.
+   On Linux, use `make dev` and open `http://localhost:4281/` in a browser.
+   The `dev-app` script uses the macOS bundle layout; for Linux desktop
+   validation, use the [Linux test environment](agents/development.md#test-on-linux).
+
+3. The development copy has separate configuration and state, using a sample
+   repository at `~/projects/hypercube-dev/repo`. It does not replace your
+   installed app.
 4. Change a source file. Successful rebuilds reload the interface while
    preserving agents and terminal shells. A failed build leaves the last
    successful build running.

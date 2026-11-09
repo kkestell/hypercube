@@ -26,10 +26,10 @@ See [harness requirements](harness-support.md#requirements).
 
 ## Models
 
-Edit the model picker list in **Settings › Agents › Models**. Each entry names
-a harness, its exact model ID, effort levels ordered from lowest to highest,
-and the effort a session starts with. Leave levels empty for a model without an
-effort control.
+Edit the model picker list in **Settings › Agents › Models**. Each entry needs
+a harness, its exact model ID, and a display title. Add effort levels ordered
+from lowest to highest and the effort a session starts with. Leave levels
+empty for a model without an effort control.
 One level is its own default; several levels require a default from the list.
 
 The `models` field holds the list, empty by default. Each entry is an object
