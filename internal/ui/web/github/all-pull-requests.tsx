@@ -5,10 +5,7 @@ import {Icon} from '../shared/icon.tsx';
 import {useStore} from '../store.ts';
 import {PullRequestRow} from './pull-request-row.tsx';
 import {yourMoves} from './turns.ts';
-
-const sentence = (text: string) => text.endsWith('.') ? text : text + '.';
-
-const time = (ms: number) => new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+import {failureText} from './wording.ts';
 
 export function AllPullRequests() {
   const [{accounts}] = useStore();
@@ -19,7 +16,7 @@ export function AllPullRequests() {
     <h1 className="mb-4 text-lg font-medium">Pull Requests</h1>
     {failed.map(({login, error, updated}) => <p key={login} className="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
       <Icon name="warning" className="text-destructive" />
-      <span>Could not read pull requests for {login}: {sentence(error!.split('\n')[0])}{updated > 0 && ` Showing data from ${time(updated)}.`}</span>
+      <span>{failureText(`Could not read pull requests for ${login}`, error!, updated)}</span>
     </p>)}
     {checking ? <p className="text-sm text-muted-foreground">Checking GitHub.</p>
       : moves.length ? <ul aria-label="Your move" className="space-y-2">

@@ -320,18 +320,18 @@ func (w *Watcher) pass(ctx context.Context) {
 				tokens[ws.ID] = t
 			}
 		}
+		account, ok := accounts[status.Account]
+		if ok && account.Error != "" && t != "" { // a failed token read is already in the problems
+			problems = append(problems, errors.New(account.Error))
+		}
 		w.measure(ctx, &status, ws.Path, remoteName, t, problems)
-		if account, ok := accounts[status.Account]; ok {
+		if ok {
 			for _, pr := range account.PullRequests {
 				if strings.EqualFold(pr.Repo, repo) {
 					status.PullRequests = append(status.PullRequests, pr)
 				}
 			}
 			status.Updated = account.Updated
-			// A failed token read is already in the problems.
-			if account.Error != "" && t != "" {
-				status.Error = strings.Join(slices.DeleteFunc([]string{status.Error, account.Error}, func(e string) bool { return e == "" }), "\n")
-			}
 		}
 		statuses[ws.ID] = status
 	}

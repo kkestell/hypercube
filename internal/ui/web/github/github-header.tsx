@@ -5,15 +5,11 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from '../
 import type {Workspace} from '../sessions/types.ts';
 import {Icon} from '../shared/icon.tsx';
 import {useStore, type Store} from '../store.ts';
-import {trackingText} from './wording.ts';
+import {failureText, trackingText} from './wording.ts';
 
 // chooseAccount saves the account a workspace's new agents and terminals use.
 export const chooseAccount = (store: Store, workspace: string, account: string) =>
   post(store, 'workspace', {action: 'github-account', id: workspace, account});
-
-const sentence = (text: string) => text.endsWith('.') ? text : text + '.';
-
-const time =(ms: number) => new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
 
 export function GitHubHeader({workspace}: {workspace: Workspace}) {
   const [, store] = useStore();
@@ -33,7 +29,7 @@ export function GitHubHeader({workspace}: {workspace: Workspace}) {
     <p>{trackingText(status)}</p>
     {status.error && <p className="flex items-center gap-1.5">
       <Icon name="warning" className="text-destructive" />
-      <span>Could not update from GitHub: {sentence(status.error.split('\n')[0])}{status.updated > 0 && ` Showing data from ${time(status.updated)}.`}</span>
+      <span>{failureText('Could not update from GitHub', status.error, status.updated)}</span>
     </p>}
   </div>;
 }

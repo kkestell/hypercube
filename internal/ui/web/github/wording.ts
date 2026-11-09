@@ -15,6 +15,15 @@ export function trackingText({branch, upstream, ahead, behind}: GitHubStatus): s
   return `${branch} is ${position} ${upstream}.`;
 }
 
+const sentence = (text: string) => text.endsWith('.') ? text : text + '.';
+
+const time = (ms: number) => new Date(ms).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+
+// failureText says what failed, why in the error's first line, and when the
+// data still shown was read.
+export const failureText = (what: string, error: string, updated: number) =>
+  `${what}: ${sentence(error.split('\n')[0])}${updated > 0 ? ` Showing data from ${time(updated)}.` : ''}`;
+
 const failing = (pr: PullRequest) => pr.checks === 'FAILURE' || pr.checks === 'ERROR';
 const running = (pr: PullRequest) => pr.checks === 'PENDING' || pr.checks === 'EXPECTED';
 

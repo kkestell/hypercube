@@ -34,7 +34,7 @@ export function SessionView() {
     </Split>;
   }
   if (state.editor) return <EditorArea />;
-  if (state.workspaces.length > 0 && homeShown(state)) return <>
+  if (state.workspaces.length > 0 && state.accounts.length > 0 && homeShown(state)) return <>
     <EditorTabs pane={null} entries={[]} placement={{top: true, left: true, right: true}} />
     <AllPullRequests />
   </>;

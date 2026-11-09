@@ -573,7 +573,6 @@ func TestPendingChoiceDoesNotFetchOrQuery(t *testing.T) {
 	s.git(other, "clone", "-q", bare, "clone")
 	s.git(other+"/clone", "commit", "-q", "--allow-empty", "-m", "elsewhere")
 	s.git(other+"/clone", "push", "-q", "origin", "main")
-	s.run()
 	s.api.SetPullRequests([]map[string]any{repoNode("o/r", 1)}, nil)
 	s.run()
 	s.until("a choice", s.resolved(id))
