@@ -1,4 +1,5 @@
 import {expect, test} from 'bun:test';
+import {testPullRequest} from '../../test-state.ts';
 import type {IconName} from '../shared/icon.tsx';
 import type {GitHubStatus, PullRequest} from './types.ts';
 import {pullRequestFacts, pullRequestLook, trackingText} from './wording.ts';
@@ -7,9 +8,7 @@ const status = (overrides: Partial<GitHubStatus> = {}): GitHubStatus => ({
   repo: 'o/r', url: 'https://github.com/o/r', account: 'a', branch: 'main', upstream: 'origin/main',
   ahead: 0, behind: 0, pullRequests: [], open: 0, updated: 0, ...overrides,
 });
-const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
-  number: 1, title: 't', url: '', author: 'a', branch: 'b', fork: false, draft: false, review: '', checks: '', ...overrides,
-});
+const pr = testPullRequest;
 
 test('trackingText says where the branch stands', () => {
   const cases: [Partial<GitHubStatus>, string][] = [

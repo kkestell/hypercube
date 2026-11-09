@@ -297,19 +297,20 @@ func TestAheadBehindAfterFetch(t *testing.T) {
 
 func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	s := newStand(t, "alice")
-	s.api.SetPullRequests(3,
+	s.api.SetPullRequests(3, nil,
 		map[string]any{"number": 7, "title": "Add it", "url": "https://github.com/o/r/pull/7", "isDraft": false,
 			"isCrossRepository": false, "headRefName": "feature", "author": map[string]string{"login": "dana"},
-			"reviewDecision": "APPROVED", "statusCheckRollup": map[string]string{"state": "SUCCESS"}},
+			"reviewDecision": "APPROVED", "mergeStateStatus": "CLEAN", "statusCheckRollup": map[string]string{"state": "SUCCESS"}},
 		map[string]any{"number": 5, "title": "Ghost", "url": "https://github.com/o/r/pull/5", "isDraft": true,
 			"isCrossRepository": true, "headRefName": "fork-branch", "author": nil,
-			"reviewDecision": nil, "statusCheckRollup": nil})
+			"reviewDecision": nil, "statusCheckRollup": nil},
+		map[string]any{}) // a search result that is not a pull request
 	id := s.workspace("w", remote)
 	s.run()
 	s.until("the pull requests", s.queried(id))
 	got := s.w.Statuses()[id]
 	want := []PullRequest{
-		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS"},
+		{Number: 7, Title: "Add it", URL: "https://github.com/o/r/pull/7", Author: "dana", Branch: "feature", Review: "APPROVED", Checks: "SUCCESS", Merge: "CLEAN"},
 		{Number: 5, Title: "Ghost", URL: "https://github.com/o/r/pull/5", Branch: "fork-branch", Fork: true, Draft: true},
 	}
 	if !reflect.DeepEqual(got.PullRequests, want) || got.Open != 3 || got.Error != "" {
@@ -322,6 +323,108 @@ func TestPullRequestsMapAndKeepOnFailure(t *testing.T) {
 	failed := s.w.Statuses()[id]
 	if !reflect.DeepEqual(failed.PullRequests, want) || failed.Open != 3 || failed.Updated != got.Updated {
 		t.Fatalf("status after failure = %+v", failed)
+	}
+}
+
+// person and bot are comment authors; at is a time on the test's clock.
+func person(login string) map[string]string {
+	return map[string]string{"__typename": "User", "login": login}
+}
+func bot(login string) map[string]string {
+	return map[string]string{"__typename": "Bot", "login": login}
+}
+func at(minute int) string {
+	return time.Date(2026, 1, 1, 0, minute, 0, 0, time.UTC).Format(time.RFC3339)
+}
+
+func said(author map[string]string, minute int) map[string]any {
+	return map[string]any{"author": author, "createdAt": at(minute)}
+}
+
+func thread(resolved bool, first, last map[string]any) map[string]any {
+	return map[string]any{"isResolved": resolved, "first": map[string]any{"nodes": []any{first}}, "last": map[string]any{"nodes": []any{last}}}
+}
+
+func TestPullRequestsDescribeTheAccountsPart(t *testing.T) {
+	type pr = map[string]any
+	node := func(number int, author string, fields pr) pr {
+		n := pr{"number": number, "author": map[string]string{"login": author}, "headRefOid": "head",
+			"commits": pr{"nodes": []pr{{"commit": pr{"committedDate": at(10)}}}}}
+		for k, v := range fields {
+			n[k] = v
+		}
+		return n
+	}
+	review := func(state string, minute int, commit string) pr {
+		return pr{"nodes": []pr{{"state": state, "submittedAt": at(minute), "commit": pr{"oid": commit}}}}
+	}
+	opinion := func(login, state string) pr {
+		return pr{"nodes": []pr{{"author": map[string]string{"login": login}, "state": state}}}
+	}
+	threads := func(ts ...map[string]any) pr { return pr{"nodes": ts} }
+	conversation := func(cs ...map[string]any) pr { return pr{"nodes": cs} }
+	cases := []struct {
+		name string
+		node pr
+		want PullRequest
+	}{
+		{"own with a failed required check, a reply, and a newer comment", node(1, "alice", pr{
+			"statusCheckRollup": pr{"state": "FAILURE"}, "mergeStateStatus": "DIRTY",
+			"reviewThreads": threads(thread(false, said(person("bob"), 1), said(person("bob"), 2)),
+				thread(true, said(person("bob"), 1), said(person("bob"), 2)),
+				thread(false, said(bot("copilot"), 1), said(bot("copilot"), 1))),
+			"comments": conversation(said(person("carol"), 11), said(bot("codecov"), 12))}),
+			PullRequest{Checks: "FAILURE", Merge: "DIRTY", RequiredFailed: true, Unanswered: 2}},
+		{"own with comments answered by a reply or a push", node(2, "alice", pr{
+			"reviewThreads": threads(thread(false, said(person("bob"), 1), said(person("alice"), 2))),
+			"comments":      conversation(said(person("bob"), 3))}),
+			PullRequest{}},
+		{"own with a comment answered by a reply", node(3, "alice", pr{
+			"comments": conversation(said(person("bob"), 11), said(person("alice"), 12))}),
+			PullRequest{}},
+		{"own with changes requested, then a push", node(9, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
+			"latestOpinionatedReviews": pr{"nodes": []pr{{"author": map[string]string{"login": "bob"}, "state": "CHANGES_REQUESTED", "commit": pr{"oid": "old"}}}}}),
+			PullRequest{Review: "CHANGES_REQUESTED", Responded: true}},
+		{"own with changes requested at its head", node(10, "alice", pr{"reviewDecision": "CHANGES_REQUESTED",
+			"latestOpinionatedReviews": pr{"nodes": []pr{{"author": map[string]string{"login": "bob"}, "state": "CHANGES_REQUESTED", "commit": pr{"oid": "head"}}}}}),
+			PullRequest{Review: "CHANGES_REQUESTED"}},
+		{"review requested from the account", node(4, "bob", pr{
+			"reviewRequests": pr{"nodes": []pr{{"requestedReviewer": pr{"login": "alice"}}}}}),
+			PullRequest{Requested: "user"}},
+		{"review requested from the account's team", node(5, "bob", nil),
+			PullRequest{Requested: "team"}},
+		{"changes requested, then a push", node(6, "bob", pr{
+			"latestOpinionatedReviews": opinion("alice", "CHANGES_REQUESTED"), "reviews": review("CHANGES_REQUESTED", 20, "old")}),
+			PullRequest{Reviewed: "CHANGES_REQUESTED", Responded: true}},
+		{"changes requested, then nothing", node(7, "bob", pr{
+			"latestOpinionatedReviews": opinion("alice", "CHANGES_REQUESTED"), "reviews": review("CHANGES_REQUESTED", 20, "head"),
+			"comments": conversation(said(person("carol"), 21))}),
+			PullRequest{Reviewed: "CHANGES_REQUESTED"}},
+		{"commented, then the author replied in the account's thread", node(8, "bob", pr{
+			"reviews":       review("COMMENTED", 20, "head"),
+			"reviewThreads": threads(thread(false, said(person("alice"), 20), said(person("bob"), 21)), thread(false, said(person("carol"), 1), said(person("carol"), 2)))}),
+			PullRequest{Reviewed: "COMMENTED", Responded: true, Unanswered: 1}},
+	}
+	s := newStand(t, "alice")
+	var nodes []map[string]any
+	for _, c := range cases {
+		nodes = append(nodes, c.node)
+	}
+	s.api.SetPullRequests(len(nodes), []int{4, 5}, nodes...)
+	s.api.SetRequiredFailures(1)
+	id := s.workspace("w", remote)
+	s.run()
+	s.until("the pull requests", s.queried(id))
+	got := s.w.Statuses()[id].PullRequests
+	if len(got) != len(cases) {
+		t.Fatalf("pull requests = %+v", got)
+	}
+	for i, c := range cases {
+		g := got[i]
+		g.Number, g.Author = 0, ""
+		if !reflect.DeepEqual(g, c.want) {
+			t.Errorf("%s: got %+v, want %+v", c.name, g, c.want)
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 // Complete states, workspaces, and sessions for tests, which override only
 // what a test is about.
 import type {Config} from './web/app/types.ts';
+import type {PullRequest} from './web/github/types.ts';
 import type {OpenFile} from './web/files/types.ts';
 import type {Session, Workspace} from './web/sessions/types.ts';
 import {initialState, type State} from './web/state.ts';
@@ -18,6 +19,11 @@ export const testSession = (overrides: Partial<Session> & {id: string}): Session
 });
 
 // testConfig has a default selection and the default preferences.
+export const testPullRequest = (overrides: Partial<PullRequest> = {}): PullRequest => ({
+  number: 7, title: 'Add it', url: 'https://github.com/o/r/pull/7', author: 'a', branch: 'feature', fork: false, draft: false,
+  review: '', checks: '', merge: '', requiredFailed: false, requested: '', reviewed: '', responded: false, unanswered: 0, ...overrides,
+});
+
 export const testConfig = (overrides: Partial<Config> = {}): Config => ({
   default_selection: {harness: 'claude', model: 'opus', effort: 'high'}, child_model_guidance: '',
   default_worktree: false, theme: 'system', terminal_font_size: 13,

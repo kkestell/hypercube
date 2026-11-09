@@ -49,7 +49,7 @@ esac
 }
 
 // API is a GraphQL server. A test sets the permission each bearer token sees
-// and the pull requests every token reads.
+// and the pull requests and required check failures every token reads.
 type API struct {
 	URL string
 
@@ -59,13 +59,14 @@ type API struct {
 	revoked     map[string]bool
 	requests    int
 	pulls       string
+	required    string
 }
 
 // NewAPI starts the server and stops it when the test ends. Every account
 // starts without access to any repository.
 func NewAPI(t testing.TB) *API {
 	t.Helper()
-	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer(0)}
+	a := &API{permissions: map[string]string{}, revoked: map[string]bool{}, pulls: pullsAnswer(0), required: `{"data":{"repository":{}}}`}
 	server := httptest.NewServer(a)
 	t.Cleanup(server.Close)
 	a.URL = server.URL
@@ -94,12 +95,19 @@ func (a *API) Fail(failing bool) {
 	a.failing = failing
 }
 
-// SetPullRequests sets the open pull requests that every token reads: their
-// total count and the nodes of the first page, each shaped like GitHub's
-// pull request fields.
-func (a *API) SetPullRequests(total int, nodes ...map[string]any) {
-	data, err := json.Marshal(map[string]any{"data": map[string]any{"repository": map[string]any{
-		"pullRequests": map[string]any{"totalCount": total, "nodes": nodes}}}})
+// SetPullRequests sets the open pull requests every token reads: the total
+// open count, the pull requests whose review was requested from the token's
+// account or its team, and the nodes of the pull requests that involve it,
+// each shaped like GitHub's pull request fields.
+func (a *API) SetPullRequests(total int, requested []int, nodes ...map[string]any) {
+	var numbers []map[string]int
+	for _, n := range requested {
+		numbers = append(numbers, map[string]int{"number": n})
+	}
+	data, err := json.Marshal(map[string]any{"data": map[string]any{
+		"repository": map[string]any{"pullRequests": map[string]any{"totalCount": total}},
+		"involved":   map[string]any{"nodes": nodes},
+		"requested":  map[string]any{"nodes": numbers}}})
 	if err != nil {
 		panic(err)
 	}
@@ -108,8 +116,24 @@ func (a *API) SetPullRequests(total int, nodes ...map[string]any) {
 	a.pulls = string(data)
 }
 
+// SetRequiredFailures sets the pull requests that have a failed required check.
+func (a *API) SetRequiredFailures(numbers ...int) {
+	repository := map[string]any{}
+	for _, n := range numbers {
+		repository[fmt.Sprintf("p%d", n)] = map[string]any{"statusCheckRollup": map[string]any{"contexts": map[string]any{
+			"nodes": []map[string]any{{"conclusion": "FAILURE", "isRequired": true}}}}}
+	}
+	data, err := json.Marshal(map[string]any{"data": map[string]any{"repository": repository}})
+	if err != nil {
+		panic(err)
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.required = string(data)
+}
+
 func pullsAnswer(total int) string {
-	return fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"totalCount":%d,"nodes":[]}}}}`, total)
+	return fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"totalCount":%d}},"involved":{"nodes":[]},"requested":{"nodes":[]}}}`, total)
 }
 
 // Requests is the number of permission queries the server has received.
@@ -123,8 +147,9 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	body, _ := io.ReadAll(r.Body)
+	required := strings.Contains(string(body), "isRequired")
 	pulls := strings.Contains(string(body), "pullRequests")
-	if !pulls {
+	if !pulls && !required {
 		a.requests++
 	}
 	if a.failing {
@@ -134,6 +159,10 @@ func (a *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "bearer ")
 	if a.revoked[token] {
 		http.Error(w, "bad credentials", http.StatusUnauthorized)
+		return
+	}
+	if required {
+		_, _ = w.Write([]byte(a.required))
 		return
 	}
 	if pulls {

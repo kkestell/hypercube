@@ -11,11 +11,12 @@ export type PullRequestAction = 'merge' | 'review' | 'checks';
 
 export const actionLabels: Record<PullRequestAction, string> = {merge: 'Merge', review: 'Address review', checks: 'Fix checks'};
 
-// actionsFor lists the actions that apply to a pull request.
+// actionsFor lists the actions that apply to one of the account's pull
+// requests.
 export function actionsFor(pr: PullRequest): PullRequestAction[] {
   return [
-    !pr.draft && 'merge',
-    pr.review === 'CHANGES_REQUESTED' && 'review',
+    !pr.draft && ['CLEAN', 'HAS_HOOKS', 'UNSTABLE'].includes(pr.merge) && 'merge',
+    ((pr.review === 'CHANGES_REQUESTED' && !pr.responded) || pr.unanswered > 0) && 'review',
     (pr.checks === 'FAILURE' || pr.checks === 'ERROR') && 'checks',
   ].filter((action): action is PullRequestAction => !!action);
 }

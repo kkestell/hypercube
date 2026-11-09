@@ -1,22 +1,20 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {stubFetch} from '../../test-render.tsx';
-import {testState, testWorkspace} from '../../test-state.ts';
+import {testState, testWorkspace, testPullRequest} from '../../test-state.ts';
 import {draftOf, unsentKey} from '../agent/drafts.ts';
 import {createStore} from '../store.ts';
 import {actionsFor, instruction, sendInstruction, startInstruction} from './instructions.ts';
-import type {PullRequest} from './types.ts';
 
 afterEach(() => mock.restore());
 
-const pr = (overrides: Partial<PullRequest> = {}): PullRequest => ({
-  number: 7, title: 'Add it', url: 'https://github.com/o/r/pull/7', author: 'a', branch: 'feature', fork: false, draft: false, review: '', checks: '', ...overrides,
-});
+const pr = testPullRequest;
 
 test('actions follow the pull request state', () => {
   expect(actionsFor(pr({draft: true}))).toEqual([]);
   expect(actionsFor(pr({draft: true, review: 'CHANGES_REQUESTED', checks: 'FAILURE'}))).toEqual(['review', 'checks']);
-  expect(actionsFor(pr({review: 'CHANGES_REQUESTED', checks: 'ERROR'}))).toEqual(['merge', 'review', 'checks']);
-  expect(actionsFor(pr({review: 'APPROVED', checks: 'SUCCESS'}))).toEqual(['merge']);
+  expect(actionsFor(pr({review: 'CHANGES_REQUESTED', responded: true, checks: 'ERROR', merge: 'UNSTABLE'}))).toEqual(['merge', 'checks']);
+  expect(actionsFor(pr({unanswered: 1, merge: 'BLOCKED'}))).toEqual(['review']);
+  expect(actionsFor(pr({review: 'APPROVED', checks: 'SUCCESS', merge: 'CLEAN'}))).toEqual(['merge']);
 });
 
 test('instructions name the pull request, its link, and its branch', () => {

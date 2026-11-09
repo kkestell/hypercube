@@ -31,13 +31,13 @@ type Status struct {
 	Upstream     string        `json:"upstream,omitempty"` // such as origin/main
 	Ahead        int           `json:"ahead"`
 	Behind       int           `json:"behind"`
-	PullRequests []PullRequest `json:"pullRequests"`    // open, most recently updated first, at most 50
+	PullRequests []PullRequest `json:"pullRequests"`    // open ones involving the account, most recently updated first, at most 20
 	Open         int           `json:"open"`            // all open pull requests
 	Updated      int64         `json:"updated"`         // Unix ms of the last successful query; 0 before one
 	Error        string        `json:"error,omitempty"` // why the last pass's token read, fetch, or query failed
 }
 
-// PullRequest is an open pull request.
+// PullRequest is an open pull request as the workspace's account sees it.
 type PullRequest struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
@@ -48,6 +48,22 @@ type PullRequest struct {
 	Draft  bool   `json:"draft"`
 	Review string `json:"review"` // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, or empty
 	Checks string `json:"checks"` // SUCCESS, PENDING, EXPECTED, FAILURE, ERROR, or empty with no checks
+	Merge  string `json:"merge"`  // GitHub's merge state: BEHIND, BLOCKED, CLEAN, DIRTY, DRAFT, HAS_HOOKS, UNKNOWN, or UNSTABLE
+
+	// RequiredFailed says a required check failed. It is known only for the
+	// account's own pull requests.
+	RequiredFailed bool   `json:"requiredFailed"`
+	Requested      string `json:"requested"` // review requested from the account ("user") or its team ("team"), or empty
+	Reviewed       string `json:"reviewed"`  // the account's standing review: APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, or empty
+	// Responded says the author pushed or commented since the account's last
+	// review. On the account's own pull request with changes requested, it
+	// says the account pushed since every change request.
+	Responded bool `json:"responded"`
+	// Unanswered counts unresolved review threads where someone else spoke
+	// last, in threads the account started or on its own pull request, plus
+	// its own pull request's conversation when someone else's comment there
+	// has had neither a reply nor a push.
+	Unanswered int `json:"unanswered"`
 }
 
 // Watcher keeps each GitHub workspace's status and account token current. The
@@ -311,7 +327,7 @@ func (w *Watcher) measure(ctx context.Context, status *Status, dir, remote, owne
 		problems = append(problems, err)
 	}
 	if token != "" {
-		prs, open, err := w.pullRequests(ctx, token, owner, name)
+		prs, open, err := w.pullRequests(ctx, token, status.Account, owner, name)
 		if err == nil {
 			status.PullRequests, status.Open, status.Updated = prs, open, time.Now().UnixMilli()
 		} else {

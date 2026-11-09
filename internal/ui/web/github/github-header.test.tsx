@@ -1,12 +1,12 @@
 import {afterEach, expect, mock, test} from 'bun:test';
 import {find, findAll, mount, stubFetch, unmountAll} from '../../test-render.tsx';
-import {testSession, testState, testWorkspace} from '../../test-state.ts';
+import {testSession, testState, testWorkspace, testPullRequest} from '../../test-state.ts';
 import {selectWorkspace} from '../sessions/selection.ts';
 import {WorkspaceDashboard} from '../sessions/workspace-dashboard.tsx';
 import {Sidebar} from '../sidebar/sidebar.tsx';
 import {createStore} from '../store.ts';
 import {chooseAccount} from './github-header.tsx';
-import type {GitHubStatus, PullRequest} from './types.ts';
+import type {GitHubStatus} from './types.ts';
 
 afterEach(() => {
   mock.restore();
@@ -74,7 +74,7 @@ test('an update error that ends in a period gets no second one', () => {
 
 test('a session row shows its open pull request', () => {
   stubFetch(() => new Response(''));
-  const pullRequest: PullRequest = {number: 12, title: 'Add it', url: '', author: 'a', branch: 'b', fork: false, draft: true, review: '', checks: ''};
+  const pullRequest = testPullRequest({number: 12, draft: true});
   const store = createStore(testState({workspaces: [testWorkspace({id: 'w', name: 'repo', sessions: [
     testSession({id: 'a', pullRequest}), testSession({id: 'b'}),
   ]})]}));
