@@ -41,3 +41,17 @@
 ## Limitations
 
 Launch changes reach a running session only after it restarts. No live gh or GitHub API was used; stand-ins only.
+
+## Repair 1 (work review `.agents/reviews/work/2026-11-09-002-github-accounts.md`, changes-required)
+
+- Code base (unchanged): `fbcd38a9c459b2f0cd915ee6a72e26f176ed9674`
+- Code head: `6a2b40db49e2945e02cd450091df78fd887be1ed` (fix commit; earlier work commit `c0176eb8956e012fca70f5bf0d382df2c1982675`)
+- Author: impl-accounts, native conversation `6b90ac08-5b58-495c-bfc7-dd46b87ac0db`, `claude-sonnet-5-5`
+
+Findings addressed:
+1. One revoked or expired login broke detection for every workspace without `credential.githubAccount`. `query` now returns `errUnauthorized` for HTTP 401 and `canPush` treats it like NOT_FOUND (cannot push). `pushers` logs and skips a login whose token gh cannot give. 5xx and network errors still fail the pass and stay uncached. `githubtest.API.Revoke(token)` answers 401; new `TestRevokedAccountDoesNotBlockDetection` (alice revoked, bob can push, resolves to bob).
+2. `docs/interface.md` GitHub section reworded: applies when the current branch tracks a github.com remote, or tracks no remote and has a github.com `origin`.
+
+Verification at the new Code head:
+- `go test ./internal/github -race -count=3`: pass.
+- `make check`: exit 0, no failures (output in `/tmp/check002.out`).
