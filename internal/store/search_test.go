@@ -98,19 +98,28 @@ func TestSearchSessions(t *testing.T) {
 	}
 }
 
-func TestSearchIndexesMigrateSavedEntries(t *testing.T) {
+func TestSearchSurvivesReopen(t *testing.T) {
 	db := open(t)
+	rows, err := db.sql.Query(`SELECT name FROM pragma_index_list('transcript') WHERE partial = 1 ORDER BY name`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexes, err := collect(rows, func(row interface{ Scan(...any) error }) (string, error) {
+		var name string
+		err := row.Scan(&name)
+		return name, err
+	})
+	if err != nil || !reflect.DeepEqual(indexes, []string{"transcript_message_text_search", "transcript_root_text_search"}) {
+		t.Fatalf("fresh search indexes = %v, %v", indexes, err)
+	}
 	seed(t, db, "w", "/one", "s")
 	tx(t, db, func(tx *Tx) error {
 		_, err := tx.PutEntry("s", Entry{Seq: 1, Item: "one", Data: []byte(`{"kind":"user","text":"savedword"}`)})
 		return err
 	})
-	if _, err := db.sql.Exec(`DROP INDEX transcript_root_text_search;
-DROP INDEX transcript_message_text_search;
-PRAGMA user_version = 2;`); err != nil {
+	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db.Close()
 	again := reopen(t)
 	var got []SearchResult
 	if err := again.Read(func(tx *Tx) error {
@@ -121,7 +130,8 @@ PRAGMA user_version = 2;`); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(got, []SearchResult{{ID: "s", Workspace: "/one", Text: "savedword"}}) {
-		t.Fatalf("migrated search: %+v", got)
+		t.Fatalf("reopened search: %+v", got)
 	}
 }
+
 func mustJSON(s string) []byte { b, _ := json.Marshal(s); return b }

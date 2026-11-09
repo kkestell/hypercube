@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/kkestell/hypercube/internal/harness"
@@ -80,111 +79,52 @@ func TestSaveWriteFailure(t *testing.T) {
 	}
 }
 
-func TestUpgrade(t *testing.T) {
+func TestLoadPreservesConfig(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "hypercube")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
 	path := filepath.Join(dir, "config.json")
-	if err := Upgrade(); err != nil {
-		t.Fatalf("upgrading without a file: %v", err)
-	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("upgrade created a config: %v", err)
-	}
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	lead := `{"name":"lead","description":" Hard work. ","harness":"claude","model":"opus","effort":"high"}`
-	worker := `{"name":"worker","description":"Small jobs.","harness":"opencode","model":"p/m/x","effort":"low"}`
-	guidance := "- Harness claude, model opus, effort high: Hard work.\n- Harness opencode, model p/m/x, effort low: Small jobs."
 	for name, tc := range map[string]struct {
 		source string
 		want   Config
+		bad    bool
 	}{
-		"implicit default": {`{"theme":"dark","profiles":[` + lead + `,` + worker + `]}`,
-			Config{DefaultSelection: &harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}, ChildGuidance: guidance, Theme: "dark", TerminalFontSize: 13, Notifications: DefaultNotifications}},
-		"explicit default": {`{"default_profile":"worker","default_worktree":true,"terminal_font_size":16,"notifications":{"requests":false,"replies":true,"macos":false,"sound":false},"profiles":[` + lead + `,` + worker + `]}`,
-			Config{DefaultSelection: &harness.Settings{Harness: "opencode", Model: "p/m/x", Effort: "low"}, ChildGuidance: guidance, DefaultWorktree: true, Theme: "system", TerminalFontSize: 16, Notifications: Notifications{Replies: true}}},
-		"explicit guidance": {`{"child_model_guidance":"","profiles":[` + lead + `]}`,
-			Config{DefaultSelection: &harness.Settings{Harness: "claude", Model: "opus", Effort: "high"}, Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}},
+		"current": {
+			source: `{
+  "default_selection": {"harness":"opencode","model":"provider/model","effort":"high"},
+  "child_model_guidance": "Use the small model for simple tasks.",
+  "default_worktree": true, "theme": "dark", "terminal_font_size": 16,
+  "notifications": {"requests":false,"replies":true,"desktop":false,"sound":false},
+  "custom": {"keep":"untouched"}
+}`,
+			want: Config{DefaultSelection: &harness.Settings{Harness: "opencode", Model: "provider/model", Effort: "high"},
+				ChildGuidance: "Use the small model for simple tasks.", DefaultWorktree: true, Theme: "dark", TerminalFontSize: 16,
+				Notifications: Notifications{Replies: true}},
+		},
+		"partial": {
+			source: `{"notifications":{"desktop":false}}`,
+			want: Config{Theme: "system", TerminalFontSize: 13,
+				Notifications: Notifications{Requests: true, Replies: true, Sound: true}},
+		},
+		"malformed": {source: `{"theme":`, bad: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
 				t.Fatal(err)
-			}
-			for range 2 {
-				if err := Upgrade(); err != nil {
-					t.Fatal(err)
-				}
-				got, err := Load()
-				if err != nil || !reflect.DeepEqual(got, tc.want) {
-					t.Fatalf("upgraded config = %+v, %v", got, err)
-				}
-			}
-			data, err := os.ReadFile(path)
-			if err != nil || strings.Contains(string(data), "profile") {
-				t.Fatalf("upgraded file = %s, %v", data, err)
-			}
-		})
-	}
-	// A malformed file stays as it is.
-	if err := os.WriteFile(path, []byte(`{"profiles":`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := Upgrade(); err == nil {
-		t.Fatal("upgraded a malformed config")
-	}
-	if data, err := os.ReadFile(path); err != nil || string(data) != `{"profiles":` {
-		t.Fatalf("malformed config changed: %s, %v", data, err)
-	}
-}
-
-func TestUpgradeNotifications(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "hypercube")
-	t.Setenv("XDG_CONFIG_HOME", filepath.Dir(dir))
-	if err := os.Mkdir(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, "config.json")
-	lead := `{"name":"lead","harness":"claude","model":"opus","effort":"high"}`
-	for name, tc := range map[string]struct {
-		source string
-		want   Notifications // after the upgrade
-		kept   bool          // the file stays byte for byte
-	}{
-		"renamed": {source: `{"notifications":{"requests":true,"replies":false,"macos":false,"sound":true}}`,
-			want: Notifications{Requests: true, Sound: true}},
-		"both names": {source: `{"theme":"dark","notifications":{"macos":false,"desktop":true}}`, kept: true},
-		"new name":   {source: `{"theme":"dark","notifications":{"desktop":false}}`, kept: true},
-		"none":       {source: `{"theme":"dark"}`, kept: true},
-		"with profiles": {source: `{"notifications":{"requests":false,"replies":true,"macos":false,"sound":true},"profiles":[` + lead + `]}`,
-			want: Notifications{Replies: true, Sound: true}},
-	} {
-		t.Run(name, func(t *testing.T) {
-			if err := os.WriteFile(path, []byte(tc.source), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			if err := Upgrade(); err != nil {
-				t.Fatal(err)
-			}
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.kept {
-				if string(data) != tc.source {
-					t.Fatalf("config changed: %s", data)
-				}
-				return
-			}
-			if strings.Contains(string(data), "macos") || !strings.Contains(string(data), `"desktop"`) {
-				t.Fatalf("upgraded file = %s", data)
 			}
 			got, err := Load()
-			if err != nil || got.Notifications != tc.want {
-				t.Fatalf("notifications = %+v, %v", got.Notifications, err)
+			if tc.bad {
+				if err == nil {
+					t.Error("loaded malformed config")
+				}
+			} else if err != nil || !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("loaded config = %+v, %v; want %+v", got, err, tc.want)
 			}
-			if name == "with profiles" && (got.DefaultSelection == nil || strings.Contains(string(data), "profiles")) {
-				t.Fatalf("profiles not upgraded in the same write: %s", data)
+			data, err := os.ReadFile(path)
+			if err != nil || string(data) != tc.source {
+				t.Fatalf("loading changed config: %s, %v", data, err)
 			}
 		})
 	}

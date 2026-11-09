@@ -125,7 +125,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   launch TEXT NOT NULL DEFAULT '', position INTEGER NOT NULL DEFAULT 0,
   ready INTEGER NOT NULL DEFAULT 0, quick INTEGER NOT NULL DEFAULT 0,
   base TEXT NOT NULL DEFAULT '',
-  -- Unused since idle stopping was removed; retained for existing databases.
+  -- Required inert field in the current schema; initialized to created.
   last_active INTEGER NOT NULL, UNIQUE (parent, name));
 CREATE TABLE IF NOT EXISTS commands (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,6 +140,15 @@ CREATE TABLE IF NOT EXISTS transcript (
   session TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
   seq INTEGER NOT NULL, item TEXT NOT NULL, data TEXT NOT NULL,
   PRIMARY KEY (session, seq), UNIQUE (session, item));
+CREATE INDEX IF NOT EXISTS transcript_root_text_search ON transcript (
+  session, seq, lower(json_extract(data, '$.text')))
+WHERE json_extract(data, '$.kind') IN ('user', 'text')
+  AND json_extract(data, '$.parent') IS NULL;
+CREATE INDEX IF NOT EXISTS transcript_message_text_search ON transcript (
+  session, seq, lower(json_extract(data, '$.input.text')))
+WHERE json_extract(data, '$.kind') = 'tool'
+  AND json_extract(data, '$.server') = 'hypercube'
+  AND json_extract(data, '$.tool') = 'send_message';
 -- A grant with no session covers every session of its harness.
 CREATE TABLE IF NOT EXISTS grants (
   session TEXT REFERENCES sessions(id) ON DELETE CASCADE,
@@ -174,7 +183,7 @@ func Open() (*DB, error) {
 		return nil, err
 	}
 	d := &DB{db}
-	if err := d.migrate(); err != nil {
+	if err := d.Tx(func(tx *Tx) error { return tx.exec(schema) }); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("%s: %w", dbPath(), err)
 	}

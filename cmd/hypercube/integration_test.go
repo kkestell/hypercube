@@ -60,11 +60,10 @@ func newWorld(t *testing.T) *world {
 	t.Setenv("HYPERCUBE_TEST_LOGS", w.logs)
 	// Panel shells run $SHELL, which a bare container leaves unset.
 	t.Setenv("SHELL", "/bin/sh")
-	// A config from before agent profiles were removed, which the app upgrades.
-	config := `{"profiles":[
-		{"name":"first","description":"First lead","harness":"test","model":"haiku","effort":"low"},
-		{"name":"worker","description":"test","harness":"test","model":"p/m","effort":"high"}
-	]}`
+	config := `{
+		"default_selection":{"harness":"test","model":"haiku","effort":"low"},
+		"child_model_guidance":"Use harness test, model p/m, effort high for child sessions."
+	}`
 	if err := os.WriteFile(filepath.Join(dir, "config/hypercube/config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -303,8 +302,10 @@ func TestAppProcess(t *testing.T) {
 	var cfg config.Config
 	err = json.NewDecoder(res.Body).Decode(&cfg)
 	res.Body.Close()
-	if err != nil || cfg.DefaultSelection == nil || !strings.Contains(cfg.ChildGuidance, "model p/m, effort high: test") {
-		t.Fatalf("upgraded config = %+v, %v", cfg, err)
+	selection := harness.Settings{Harness: "test", Model: "haiku", Effort: "low"}
+	if err != nil || cfg.DefaultSelection == nil || *cfg.DefaultSelection != selection ||
+		cfg.ChildGuidance != "Use harness test, model p/m, effort high for child sessions." {
+		t.Fatalf("startup config = %+v, %v", cfg, err)
 	}
 	parent := w.session(c.newSession(ws.ID, *cfg.DefaultSelection))
 	if parent.Model != "haiku" {

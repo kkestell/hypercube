@@ -15,9 +15,11 @@ installation, use the
 2. Download and verify the new release using the
    [installation instructions](installation.md).
 
-Normal upgrades preserve running agents and terminal shells. Saved state is
-upgraded when the new app starts; replacing only the app with an older version
-does not undo those changes.
+Normal upgrades preserve running agents and terminal shells. This release uses
+the current saved-state format directly; conversion from historical database and
+configuration formats has been retired. Follow the release notes for any future
+saved-state changes. Replacing the app with an older version does not convert
+saved state back to that version's format.
 
 ## Replace the app
 

@@ -11,7 +11,6 @@ import (
 	"syscall"
 
 	"github.com/kkestell/hypercube/internal/buildinfo"
-	"github.com/kkestell/hypercube/internal/config"
 	"github.com/kkestell/hypercube/internal/desktop"
 	"github.com/kkestell/hypercube/internal/session"
 	"github.com/kkestell/hypercube/internal/store"
@@ -30,15 +29,11 @@ type app struct {
 	once sync.Once
 }
 
-// startApp upgrades the config, finds the installed harnesses, and registers
-// saved launches, then serves HTTP while adopting the
-// sessions the user left running. programs names the plugins and helpers.
+// startApp finds the installed harnesses and registers saved launches, then
+// serves HTTP while adopting the sessions the user left running. programs names
+// the plugins and helpers.
 // The desktop app's connection, when it has one, shows their alerts.
 func startApp(listener net.Listener, programs session.Programs, desktop *desktop.Desktop) (*app, error) {
-	// An earlier version's config is converted before anything reads it.
-	if err := config.Upgrade(); err != nil {
-		return nil, fmt.Errorf("upgrading the config: %w", err)
-	}
 	db, err := store.Open()
 	if err != nil {
 		return nil, err

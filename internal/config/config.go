@@ -1,6 +1,5 @@
 // Package config reads and writes config.json, the user's preferences, in
-// $XDG_CONFIG_HOME/hypercube or ~/.config/hypercube. Upgrade converts files
-// written by earlier versions before anything reads them.
+// $XDG_CONFIG_HOME/hypercube or ~/.config/hypercube.
 package config
 
 import (
@@ -11,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 
 	"github.com/kkestell/hypercube/internal/harness"
 )
@@ -40,8 +38,7 @@ type Notifications struct {
 	Sound    bool `json:"sound"`
 }
 
-// DefaultNotifications sends every alert, as Hypercube did before the
-// preferences existed.
+// DefaultNotifications enables every alert.
 var DefaultNotifications = Notifications{Requests: true, Replies: true, Desktop: true, Sound: true}
 
 var (
@@ -49,8 +46,7 @@ var (
 	terminalFontSizes = []int{12, 13, 14, 16, 18}
 )
 
-// defaults is the configuration with every preference at its default. A file
-// written before a preference existed takes that default.
+// defaults supplies preferences omitted from config.json.
 func defaults() Config {
 	return Config{Theme: "system", TerminalFontSize: 13, Notifications: DefaultNotifications}
 }
@@ -136,134 +132,4 @@ func write(data []byte) error {
 		return fmt.Errorf("replacing config: %w", err)
 	}
 	return nil
-}
-
-// legacyProfile is an agent profile of earlier versions: named settings and
-// when to use them.
-type legacyProfile struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	harness.Settings
-}
-
-// upgrade changes the decoded config.json of an earlier version and reports
-// whether it changed anything.
-type upgrade func(doc map[string]json.RawMessage) (bool, error)
-
-// Upgrade converts a config.json written by earlier versions before
-// anything reads it. A file that no upgrade changes is left as it is; otherwise
-// it is decoded and validated as Load will, and the typed value is
-// written, which keeps the file's field order.
-func Upgrade() error {
-	path := path()
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(data, &doc); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	changed := false
-	for _, up := range []upgrade{upgradeProfiles, upgradeNotifications} {
-		did, err := up(doc)
-		if err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		changed = changed || did
-	}
-	if !changed {
-		return nil
-	}
-	converted, err := json.Marshal(doc)
-	if err != nil {
-		return err
-	}
-	c := defaults()
-	if err := json.Unmarshal(converted, &c); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	if err := c.Validate(); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
-	}
-	out, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return err
-	}
-	return write(out)
-}
-
-// upgradeProfiles converts the agent profiles of earlier versions. The default
-// profile becomes the default selection, and the profiles' descriptions become
-// the child guidance, unless the file already has guidance.
-func upgradeProfiles(doc map[string]json.RawMessage) (bool, error) {
-	_, hasProfiles := doc["profiles"]
-	_, hasDefault := doc["default_profile"]
-	if !hasProfiles && !hasDefault {
-		return false, nil
-	}
-	var legacy struct {
-		DefaultProfile string          `json:"default_profile"`
-		Profiles       []legacyProfile `json:"profiles"`
-	}
-	if hasDefault {
-		if err := json.Unmarshal(doc["default_profile"], &legacy.DefaultProfile); err != nil {
-			return false, err
-		}
-	}
-	if hasProfiles {
-		if err := json.Unmarshal(doc["profiles"], &legacy.Profiles); err != nil {
-			return false, err
-		}
-	}
-	delete(doc, "profiles")
-	delete(doc, "default_profile")
-	// Earlier versions used the first profile when no default was named.
-	name := legacy.DefaultProfile
-	if name == "" && len(legacy.Profiles) > 0 {
-		name = legacy.Profiles[0].Name
-	}
-	for _, p := range legacy.Profiles {
-		if p.Name == name {
-			var err error
-			if doc["default_selection"], err = json.Marshal(p.Settings); err != nil {
-				return false, err
-			}
-		}
-	}
-	if _, ok := doc["child_model_guidance"]; !ok {
-		var b strings.Builder
-		for _, p := range legacy.Profiles {
-			fmt.Fprintf(&b, "- Harness %s, model %s, effort %s: %s\n", p.Harness, p.Model, p.Effort, strings.TrimSpace(p.Description))
-		}
-		var err error
-		if doc["child_model_guidance"], err = json.Marshal(strings.TrimSuffix(b.String(), "\n")); err != nil {
-			return false, err
-		}
-	}
-	return true, nil
-}
-
-// upgradeNotifications renames notifications.macos to notifications.desktop,
-// keeping the user's choice, when the file has only the old name.
-func upgradeNotifications(doc map[string]json.RawMessage) (bool, error) {
-	if doc["notifications"] == nil {
-		return false, nil
-	}
-	var notifications map[string]json.RawMessage
-	if err := json.Unmarshal(doc["notifications"], &notifications); err != nil {
-		return false, err
-	}
-	old, hasOld := notifications["macos"]
-	if _, hasNew := notifications["desktop"]; !hasOld || hasNew {
-		return false, nil
-	}
-	notifications["desktop"] = old
-	delete(notifications, "macos")
-	var err error
-	doc["notifications"], err = json.Marshal(notifications)
-	return err == nil, err
 }
