@@ -89,7 +89,7 @@ func (s *server) listChanges(w http.ResponseWriter, r *http.Request) {
 	}
 	var changes workspace.ChangesResult
 	if checkout != "" {
-		changes, err = workspace.BranchChanges(dir, top, checkout)
+		changes, err = workspace.BranchChanges(dir, checkout)
 	} else {
 		changes, err = workspace.Changes(dir, top)
 	}

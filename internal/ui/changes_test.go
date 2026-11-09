@@ -49,6 +49,9 @@ func TestBranchChangesRoutes(t *testing.T) {
 	write(child, "new", "one\ntwo")
 	write(child, "binary", "a\x00b")
 	write(child, "large", strings.Repeat("x", maxFile+1))
+	run(child, "add", ".")
+	run(child, "commit", "-qm", "more")
+	write(child, "uncommitted", "x\n")
 	missing := filepath.Join(t.TempDir(), "gone")
 	db := open(t)
 	change(t, db, func(tx *store.Tx) error {

@@ -132,13 +132,13 @@ test.each([
   expect(root.textContent).not.toContain('uncommitted failed');
 });
 
-test('merge belongs to branch changes and asks the agent to merge into the checkout', async () => {
+test('merge sits below both comparisons and asks the agent to merge into the checkout', async () => {
   const fetches = stubFetch(() => new Response(''));
   const session = testSession({id: 's', worktree: true, merge: {branch: 'feature', target: 'main', unmerged: 2, committed: true, uncommitted: 0}});
   const store = createStore(testState({selected: 's', workspaces: [testWorkspace({id: 'w', path: '/repo', sessions: [session]})], editor: {...emptyEditor({session: 's'}), changes}}));
   const root = mount(store, <GitPanel />);
   const selector = 'button[title="Ask the agent to merge this branch into main"]';
-  expect(root.querySelector(selector)).toBeNull();
+  find(root, selector);
   act(() => find(root, '[role="tab"][data-state="inactive"]').dispatchEvent(new MouseEvent('mousedown', {bubbles: true, button: 0, ctrlKey: false})));
   const button = find(root, selector);
   expect(button.textContent).toBe('Merge into main');

@@ -3,7 +3,6 @@ package workspace
 import (
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -28,10 +27,6 @@ type ChangesResult struct {
 // Changes lists staged, unstaged, and untracked files within dir, relative
 // to dir. top is the containing Git checkout root.
 func Changes(dir, top string) (ChangesResult, error) {
-	return changes(dir, top, "")
-}
-
-func changes(dir, top, base string) (ChangesResult, error) {
 	result := ChangesResult{Files: []Change{}}
 	resolved, err := filepath.EvalSymlinks(dir)
 	if err != nil {
@@ -76,24 +71,24 @@ func changes(dir, top, base string) (ChangesResult, error) {
 	if !branchFound {
 		return result, fmt.Errorf("git status did not report a branch")
 	}
-	if base == "" {
-		base = "HEAD"
-		if unborn {
-			base, err = emptyTree(dir)
-			if err != nil {
-				return result, err
-			}
+	base := "HEAD"
+	if unborn {
+		base, err = emptyTree(dir)
+		if err != nil {
+			return result, err
 		}
 	}
-	tracked, err := changedFiles(dir, base, nil, ".")
+	tracked, err := changedFiles(dir, []string{base})
 	result.Files = append(result.Files, tracked...)
 	return result, err
 }
 
-func changedFiles(dir, base string, env []string, paths ...string) ([]Change, error) {
+// changedFiles lists tracked changes within dir between revs, or between one
+// rev and the working files.
+func changedFiles(dir string, revs []string) ([]Change, error) {
 	// Diff can explicitly refresh the index even with optional locks disabled.
-	args := []string{"--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff", base, "--raw", "--numstat", "--no-renames", "--relative", "-z", "--"}
-	out, err := run(dir, append([]string{"GIT_OPTIONAL_LOCKS=0"}, env...), "", 0, append(args, paths...)...)
+	args := append([]string{"--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff"}, revs...)
+	out, err := run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", 0, append(args, "--raw", "--numstat", "--no-renames", "--relative", "-z", "--", ".")...)
 	if err != nil {
 		return nil, err
 	}
@@ -147,68 +142,24 @@ func branchBase(dir, checkout string) (base, target string, err error) {
 	return
 }
 
-// baseIndex compares recreated untracked files with their old tree entries,
-// without refreshing the real index or writing objects.
-func baseIndex(dir, base string) (env []string, cleanup func(), err error) {
-	folder, err := os.MkdirTemp("", "hypercube-branch-index-")
-	if err != nil {
-		return nil, nil, err
-	}
-	cleanup = func() { os.RemoveAll(folder) }
-	env = []string{"GIT_OPTIONAL_LOCKS=0", "GIT_INDEX_FILE=" + filepath.Join(folder, "index")}
-	_, err = run(dir, env, "", 0, "read-tree", base)
-	if err != nil {
-		cleanup()
-		return nil, nil, err
-	}
-	return
-}
-
-// BranchChanges lists net working-file changes since the live merge-base.
-func BranchChanges(dir, top, checkout string) (ChangesResult, error) {
+// BranchChanges lists what merging the branch's commits would bring: changes
+// within dir from the live merge-base to HEAD.
+func BranchChanges(dir, checkout string) (ChangesResult, error) {
+	result := ChangesResult{Files: []Change{}}
 	base, target, err := branchBase(dir, checkout)
-	if err != nil {
-		return ChangesResult{}, err
-	}
-	result, err := changes(dir, top, base)
 	if err != nil {
 		return result, err
 	}
 	result.Target = target
-	untracked, tracked := map[string]bool{}, map[string]bool{}
-	for _, file := range result.Files {
-		if file.Status == "untracked" {
-			untracked[file.Path] = true
-		} else {
-			tracked[file.Path] = true
-		}
-	}
-	var overlaps []string
-	for path := range untracked {
-		if tracked[path] {
-			overlaps = append(overlaps, path)
-		}
-	}
-	if len(overlaps) == 0 {
-		return result, nil
-	}
-	env, cleanup, err := baseIndex(dir, base)
+	result.Branch, err = git(dir, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return result, err
 	}
-	defer cleanup()
-	replacements, err := changedFiles(dir, base, env, overlaps...)
-	if err != nil {
-		return result, err
+	if result.Branch == "HEAD" {
+		result.Branch = ""
 	}
-	files := result.Files[:0]
-	for _, file := range result.Files {
-		if !(untracked[file.Path] && tracked[file.Path]) {
-			files = append(files, file)
-		}
-	}
-	result.Files = append(files, replacements...)
-	return result, nil
+	result.Files, err = changedFiles(dir, []string{base, "HEAD"})
+	return result, err
 }
 
 func emptyTree(root string) (string, error) {
@@ -231,41 +182,22 @@ func Diff(dir, path string, limit int) (string, error) {
 	return diff(dir, base, path, limit)
 }
 
-// BranchDiff uses the same live base and recreated-file treatment as BranchChanges.
+// BranchDiff returns one path's patch from the live merge-base to HEAD.
 func BranchDiff(dir, checkout, path string, limit int) (string, error) {
 	base, _, err := branchBase(dir, checkout)
 	if err != nil {
 		return "", err
 	}
-	untracked, err := gitWith(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", "--literal-pathspecs", "ls-files", "--others", "--exclude-standard", "--", path)
-	if err != nil {
-		return "", err
-	}
-	if untracked != "" {
-		files, err := changedFiles(dir, base, nil, path)
-		if err != nil {
-			return "", err
-		}
-		if len(files) > 0 {
-			env, cleanup, err := baseIndex(dir, base)
-			if err != nil {
-				return "", err
-			}
-			defer cleanup()
-			// The alternate index already represents this file's base entry;
-			// an empty patch means identical recreation, not a new file.
-			return trackedDiff(dir, base, path, limit, env)
-		}
-	}
-	return diff(dir, base, path, limit)
+	return trackedDiff(dir, []string{base, "HEAD"}, path, limit)
 }
 
-func trackedDiff(dir, base, path string, limit int, env []string) (string, error) {
-	return run(dir, append([]string{"GIT_OPTIONAL_LOCKS=0"}, env...), "", limit, "--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff", base, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)
+func trackedDiff(dir string, revs []string, path string, limit int) (string, error) {
+	args := append([]string{"--literal-pathspecs", "-c", "diff.autoRefreshIndex=false", "diff"}, revs...)
+	return run(dir, []string{"GIT_OPTIONAL_LOCKS=0"}, "", limit, append(args, "--no-color", "--no-ext-diff", "--no-renames", "-U1000000", "--", path)...)
 }
 
 func diff(dir, base, path string, limit int) (string, error) {
-	out, err := trackedDiff(dir, base, path, limit, nil)
+	out, err := trackedDiff(dir, []string{base}, path, limit)
 	if err != nil || out != "" {
 		return out, err
 	}

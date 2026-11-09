@@ -209,8 +209,7 @@ func TestDiffMetadataOnly(t *testing.T) {
 func TestBranchChanges(t *testing.T) {
 	checkout, run := gitRepo(t)
 	for path, text := range map[string]string{
-		"modified": "base\n", "reverted": "base\n", "deleted": "old\n", "recreated": "old\n",
-		"identical": "old\n", "binary": "a\x00b", "sub/a:[1]": "old\n", "mode": "same\n", "renamed": "rename\n",
+		"modified": "base\n", "deleted": "old\n", "binary": "a\x00b", "sub/a:[1]": "old\n", "renamed": "rename\n",
 	} {
 		write(t, filepath.Join(checkout, path), text)
 	}
@@ -222,88 +221,49 @@ func TestBranchChanges(t *testing.T) {
 	run(checkout, "add", ".")
 	run(checkout, "commit", "-qm", "checkout advances independently")
 	write(t, filepath.Join(feature, "modified"), "committed\n")
-	write(t, filepath.Join(feature, "reverted"), "committed\n")
 	write(t, filepath.Join(feature, "added"), "committed\n")
-	write(t, filepath.Join(feature, "vanished"), "committed\n")
-	run(feature, "rm", "deleted", "recreated", "identical")
+	write(t, filepath.Join(feature, "binary"), "c\x00d")
+	write(t, filepath.Join(feature, "sub/a:[1]"), "literal\n")
+	run(feature, "rm", "-q", "deleted")
 	run(feature, "mv", "renamed", "new-name")
 	run(feature, "add", ".")
 	run(feature, "commit", "-qm", "feature changes")
-	write(t, filepath.Join(feature, "modified"), "staged\n")
-	run(feature, "add", "modified")
-	write(t, filepath.Join(feature, "modified"), "working\nmore\n")
-	write(t, filepath.Join(feature, "added"), "edited addition\n")
-	write(t, filepath.Join(feature, "reverted"), "base\n")
-	write(t, filepath.Join(feature, "recreated"), "new\n")
-	write(t, filepath.Join(feature, "identical"), "old\n")
-	write(t, filepath.Join(feature, "binary"), "c\x00d")
-	write(t, filepath.Join(feature, "sub/a:[1]"), "literal\n")
-	write(t, filepath.Join(feature, "empty"), "")
-	if err := os.Remove(filepath.Join(feature, "vanished")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("missing", filepath.Join(feature, "link")); err != nil {
-		t.Fatal(err)
-	}
-	run(feature, "config", "core.filemode", "true")
-	if err := os.Chmod(filepath.Join(feature, "mode"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	indexName, err := git(feature, "rev-parse", "--git-path", "index")
+	// Working files the branch has not committed stay out of the comparison.
+	write(t, filepath.Join(feature, "modified"), "working\n")
+	write(t, filepath.Join(feature, "untracked"), "new\n")
+	changes, err := BranchChanges(feature, checkout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	before, err := os.ReadFile(indexName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	changes, err := BranchChanges(feature, feature, checkout)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"modified": "modified", "added": "added", "deleted": "deleted", "recreated": "modified", "binary": "modified", "sub/a:[1]": "modified", "empty": "untracked", "link": "untracked", "mode": "modified", "renamed": "deleted", "new-name": "added"}
+	want := map[string]string{"modified": "modified", "added": "added", "deleted": "deleted", "binary": "modified", "sub/a:[1]": "modified", "renamed": "deleted", "new-name": "added"}
 	if changes.Branch != "feature" || changes.Target != "main" || len(changes.Files) != len(want) {
 		t.Fatalf("changes = %+v", changes)
 	}
-	seen := map[string]bool{}
 	for _, file := range changes.Files {
-		if seen[file.Path] || want[file.Path] != file.Status {
-			t.Errorf("unexpected/duplicate file: %+v", file)
+		if want[file.Path] != file.Status {
+			t.Errorf("unexpected file: %+v", file)
 		}
-		seen[file.Path] = true
-		if file.Path == "recreated" && (file.Added == nil || *file.Added != 1 || file.Removed == nil || *file.Removed != 1) {
-			t.Errorf("recreated counts = %+v", file)
+		if file.Path == "modified" && (file.Added == nil || *file.Added != 1 || file.Removed == nil || *file.Removed != 1) {
+			t.Errorf("modified counts = %+v", file)
 		}
 		if file.Path == "binary" && file.Added != nil {
 			t.Errorf("binary counts = %+v", file)
 		}
 	}
-	for path, fragment := range map[string]string{"modified": "-base\n+working\n+more\n", "added": "+edited addition\n", "recreated": "-old\n+new\n", "identical": "", "empty": "new file mode", "link": "+missing", "sub/a:[1]": "-old\n+literal\n", "mode": "old mode"} {
+	for path, fragment := range map[string]string{"modified": "-base\n+committed\n", "added": "+committed\n", "sub/a:[1]": "-old\n+literal\n", "untracked": ""} {
 		patch, err := BranchDiff(feature, checkout, path, 4096)
 		if err != nil || (fragment == "" && patch != "") || (fragment != "" && !strings.Contains(patch, fragment)) {
 			t.Errorf("%s patch = %q, %v", path, patch, err)
 		}
 	}
-	after, err := os.ReadFile(indexName)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(before, after) {
-		t.Fatal("branch reads rewrote real index")
-	}
-	sub, err := BranchChanges(filepath.Join(feature, "sub"), feature, checkout)
+	sub, err := BranchChanges(filepath.Join(feature, "sub"), checkout)
 	if err != nil || len(sub.Files) != 1 || sub.Files[0].Path != "a:[1]" {
 		t.Fatalf("sub = %+v, %v", sub, err)
 	}
 	// Moving the checkout to the feature commit changes the live base immediately.
 	run(checkout, "checkout", "--detach", "-q", "feature")
-	changes, err = BranchChanges(feature, feature, checkout)
-	if err != nil || changes.Target != "detached HEAD" {
+	changes, err = BranchChanges(feature, checkout)
+	if err != nil || changes.Target != "detached HEAD" || len(changes.Files) != 0 {
 		t.Fatalf("moved target = %+v, %v", changes, err)
-	}
-	for _, file := range changes.Files {
-		if file.Path == "new-name" || file.Path == "deleted" {
-			t.Errorf("committed path remained after base moved: %+v", file)
-		}
 	}
 }

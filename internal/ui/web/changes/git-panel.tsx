@@ -48,22 +48,22 @@ export function GitPanel() {
     if (value !== 'uncommitted' && value !== 'branch') return;
     store.update(state => state.editor ? {...state, editor: {...state.editor, gitComparison: value}} : state);
   };
-  return <div className="git-panel h-full min-h-0 overflow-auto p-2 pt-1">
-    {!editor ? <p className="px-2 text-sm text-muted-foreground">Select a session or workspace to see its changes.</p>
-      : !session?.worktree ? <ChangeRows changes={editor.changes} comparison="uncommitted" />
-      : <Tabs value={comparison} onValueChange={selectComparison}>
-      <TabsList className="w-full" aria-label="Change comparison">
-        <TabsTrigger value="uncommitted">Uncommitted</TabsTrigger>
-        <TabsTrigger value="branch">Branch changes</TabsTrigger>
-      </TabsList>
-      <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
-      <TabsContent value="branch">
-        <div className="space-y-3 px-2 py-1 text-sm">
-          {editor.branchChanges && 'files' in editor.branchChanges && <p className="text-xs text-muted-foreground">Compared with <span className="font-medium text-foreground">{editor.branchChanges.target}</span></p>}
-          {session && <MergeButton session={session} />}
-        </div>
-        <ChangeRows changes={editor.branchChanges} comparison="branch" />
-      </TabsContent>
-    </Tabs>}
+  return <div className="git-panel flex h-full min-h-0 flex-col">
+    <div className="min-h-0 flex-1 overflow-auto p-2 pt-1">
+      {!editor ? <p className="px-2 text-sm text-muted-foreground">Select a session or workspace to see its changes.</p>
+        : !session?.worktree ? <ChangeRows changes={editor.changes} comparison="uncommitted" />
+        : <Tabs value={comparison} onValueChange={selectComparison}>
+        <TabsList className="w-full" aria-label="Change comparison">
+          <TabsTrigger value="uncommitted">Uncommitted</TabsTrigger>
+          <TabsTrigger value="branch">Branch changes</TabsTrigger>
+        </TabsList>
+        <TabsContent value="uncommitted"><ChangeRows changes={editor.changes} comparison="uncommitted" /></TabsContent>
+        <TabsContent value="branch">
+          {editor.branchChanges && 'files' in editor.branchChanges && <p className="px-2 py-1 text-xs text-muted-foreground">Compared with <span className="font-medium text-foreground">{editor.branchChanges.target}</span></p>}
+          <ChangeRows changes={editor.branchChanges} comparison="branch" />
+        </TabsContent>
+      </Tabs>}
+    </div>
+    {editor && session?.worktree && <MergeButton session={session} />}
   </div>;
 }
