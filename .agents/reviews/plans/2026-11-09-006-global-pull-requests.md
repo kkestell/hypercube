@@ -134,3 +134,13 @@ corrections without another independent round.
 
 Did not inspect `sidebar/workspace-section.tsx` markup or `data-socket.ts`
 beyond confirming the fields named exist; those are routine.
+
+## Execution decision
+
+- Author: parent coordinator, Hypercube session `04ef1b14`, Claude Code, native conversation `90b40c9b-b89d-4bd1-af98-13494c3d11de`, model `claude-opus-5-5`
+- Finding 1 (required): resolved. Step 3 and Verification now give fixture nodes a unique `url` and `repository.nameWithOwner`, pass node 1's URL to `SetRequiredFailures`, and set the read-loop guard to `n.URL == ""` with no number-keyed maps. Checked in the plan diff.
+- Finding 2: resolved by rewording. The stand-in stays shared across tokens, and the two-logins test asserts that both logins are read and the same URL appears under both.
+- Finding 3: resolved. With no workspaces the home case shows the invitation alone and the sidebar button is hidden, and the sidebar test covers the hidden button.
+- Query cost: accepted at `first:50` for the involved search, as the user asked for about 50.
+- Final plan blob: `e13158b1d647d7805d17a3d5460d6e210e6c3860`. Guidance blobs: none.
+- Decision: `proceed`
