@@ -2,7 +2,7 @@
 // dimmed so it reads apart from the model.
 import {harnessIcon} from './harness-icon.tsx';
 import {useStore} from '../store.ts';
-import {displayName, modelTitle} from './selection-label.ts';
+import {displayName, effortLabel, modelTitle} from './selection-label.ts';
 import type {ModelEntry, Settings} from './types.ts';
 
 // entries supplies the titles; the saved list when omitted.
@@ -11,6 +11,6 @@ export function SelectionName({settings, entries}: {settings: Settings; entries?
   return <>
     {harnessIcon(settings.harness) ?? displayName(settings.harness)}
     <span className="min-w-0 truncate">{modelTitle(settings, entries ?? state.config?.models ?? null)}</span>
-    {settings.effort && <span className="ml-auto shrink-0 opacity-60">{settings.effort}</span>}
+    {settings.effort && <span className="ml-auto shrink-0 opacity-60">{effortLabel(settings.effort)}</span>}
   </>;
 }

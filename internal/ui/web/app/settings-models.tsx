@@ -2,7 +2,7 @@
 import {useEffect, useState} from 'react';
 import {fetchHarnesses} from '../api.ts';
 import {harnessIcon} from '../agent/harness-icon.tsx';
-import {displayName} from '../agent/selection-label.ts';
+import {displayName, effortLabel} from '../agent/selection-label.ts';
 import type {Harness, ModelEntry} from '../agent/types.ts';
 import {Button} from '../components/ui/button';
 import {Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle} from '../components/ui/dialog';
@@ -23,7 +23,7 @@ export function SettingsModels({models, onChange}: {models: ModelEntry[]; onChan
         <span title={displayName(entry.harness)}>{harnessIcon(entry.harness) ?? displayName(entry.harness)}</span>
         <div className="min-w-0 flex-1"><p className="truncate text-sm">{entry.title}</p>
           <p className="truncate text-xs text-muted-foreground">{entry.model}</p>
-          <p className="text-xs text-muted-foreground">{entry.efforts.map(level => level + (entry.efforts.length > 1 && level === entry.default_effort ? ' (default)' : '')).join(' · ')}</p></div>
+          <p className="text-xs text-muted-foreground">{entry.efforts.map(level => effortLabel(level) + (entry.efforts.length > 1 && level === entry.default_effort ? ' (default)' : '')).join(' · ')}</p></div>
         <Button variant="outline" size="sm" aria-label={`Edit ${displayName(entry.harness)} ${entry.title}`} onClick={() => setEditing({index, entry})}>Edit</Button>
         <Button variant="outline" size="sm" aria-label={`Delete ${displayName(entry.harness)} ${entry.title}`} onClick={() => onChange(models.filter((_, i) => i !== index))}>Delete</Button>
       </div>)}

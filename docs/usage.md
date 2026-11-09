@@ -12,7 +12,7 @@ first use, follow [Your first session](getting-started.md).
 
 1. Choose **Add Workspace** for a new project folder, or **New Session** in an
    existing workspace.
-2. Below the message box, choose a harness tab, a model, and an effort level
+2. Below the message box, choose a model and an effort level
    with the slider. Models come from **Settings › Agents › Models**.
 3. In a Git workspace, choose where edits will go:
    - **Existing checkout** uses the project folder, including uncommitted

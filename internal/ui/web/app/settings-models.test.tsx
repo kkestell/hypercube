@@ -60,7 +60,7 @@ test('added entries apply with Save changes', async () => {
   await select('model-default-effort', 'medium');
   await click('Save');
   expect(document.body.textContent).toContain('Friendly title');
-  expect(document.body.textContent).toContain('low · medium (default) · high');
+  expect(document.body.textContent).toContain('Low · Medium (default) · High');
   expect(fetches.mock.calls.map(([url, init]) => `${init?.method ?? 'GET'} ${url}`).filter(call => call !== 'GET config')).toEqual(['GET harnesses?']);
   expect(store.get().config?.models).toEqual([saved]);
   await click('Save changes');

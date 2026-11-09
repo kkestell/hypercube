@@ -23,7 +23,7 @@ test.each(['Started', 'Dismissed'])('a %s child proposal collapses and keeps its
   act(() => store.update(state => receivedTranscript(state, {type: 'transcript', session: 's', reset: false, items: [{...item, done: true, answer}]})));
   const trigger = find(root, '.proposal-item [data-slot=collapsible-trigger]');
   expect(trigger.textContent).toContain(answer === 'Dismissed' ? 'Dismissed' : 'Child session: parser');
-  expect(trigger.textContent).toContain('opushigh');
+  expect(trigger.textContent).toContain('opusHigh');
   expect(find(trigger, '[title]').title).toBe('Claude opus, effort high');
   expect(root.textContent).not.toContain(brief);
   act(() => trigger.click());

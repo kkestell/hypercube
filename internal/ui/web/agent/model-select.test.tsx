@@ -48,21 +48,23 @@ test('model labels follow title edits for the matching harness without changing 
   expect(trigger(root).title).toBe('Claude opus, effort medium');
 });
 
-test('opening focuses search, shows harness tabs, and searches only the selected harness without requests', async () => {
+test('opening focuses search and lists every harness\'s models with icons, without requests', async () => {
   const fetches = stubFetch(() => Response.json([]));
   const s = draft();
   const root = mount(s, <SessionSelection session={testSession({id: unsentKey('w')})} />);
   await open(root);
-  expect(findAll(document, '[role=tab]').map(t => t.getAttribute('aria-label'))).toEqual(['Claude', 'OpenCode']);
-  expect(document.querySelector('[role=tab][data-state=active]')?.getAttribute('aria-label')).toBe('Claude');
+  expect(document.querySelector('[role=tab]')).toBeNull();
+  const items = findAll(document, '[cmdk-item]');
+  expect(items.map(i => i.textContent)).toEqual(['Opus', 'Plain Model', 'Sol']);
+  expect(items.map(i => i.querySelector('svg')?.getAttribute('aria-label'))).toEqual(['Claude', 'Claude', 'OpenCode']);
   const search = element(document, 'input[aria-label="Search models"]', HTMLInputElement);
   expect(document.activeElement).toBe(search);
   act(() => { setValue(search, 'plain'); search.dispatchEvent(new Event('input', {bubbles: true})); });
   await settle();
   expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Plain Model']);
-  act(() => { setValue(search, 'Model'); search.dispatchEvent(new Event('input', {bubbles: true})); });
+  act(() => { setValue(search, 'opencode'); search.dispatchEvent(new Event('input', {bubbles: true})); });
   await settle();
-  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Plain Model']);
+  expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Sol']);
   expect(fetches).not.toHaveBeenCalled();
 });
 
@@ -71,29 +73,28 @@ test('model choices reset effort, preserve draft text, and never fetch', async (
   const s = draft(); s.update(state => typed(state, unsentKey('w'), 'keep this'));
   const root = mount(s, <SessionSelection session={testSession({id: unsentKey('w')})} />);
   await open(root);
+  const slider = () => element(document, '[role=slider]', HTMLElement);
+  expect(findAll(document, '[aria-hidden=true] > span').map(t => t.textContent)).toEqual(['Low', 'Medium', 'High']);
   await choose('Plain Model');
   expect(s.get().unsent?.settings).toEqual({harness: 'claude', model: 'plain', effort: ''});
-  expect(document.querySelector('[role=slider]')).toBeNull();
+  expect(slider().closest('[data-slot=slider]')?.hasAttribute('data-disabled')).toBe(true);
   await choose('Opus');
   expect(s.get().unsent?.settings?.effort).toBe('medium');
-  key(element(document, '[role=slider]', HTMLElement), 'ArrowRight'); await settle();
+  key(slider(), 'ArrowRight'); await settle();
   expect(s.get().unsent?.settings?.effort).toBe('high');
-  key(element(document, '[role=tab][aria-label=OpenCode]', HTMLButtonElement), 'Enter'); await settle();
   await choose('Sol');
   expect(s.get().unsent?.settings).toEqual({harness: 'opencode', model: 'sol', effort: 'high'});
-  expect(document.querySelector('[role=slider]')).toBeNull();
-  expect(document.body.textContent).toContain('Efforthigh');
+  expect(slider().closest('[data-slot=slider]')?.hasAttribute('data-disabled')).toBe(true);
   expect(s.get().drafts[unsentKey('w')].text).toBe('keep this');
   expect(fetches).not.toHaveBeenCalled();
 });
 
-test('a running session has no tabs and sends one selection per slider commit, without discovery', async () => {
+test('a running session lists only its harness and sends one selection per slider commit, without discovery', async () => {
   const fetches = stubFetch(() => new Response(''));
   const session = testSession({id: 's', harness: 'claude', model: 'opus', effort: 'medium', ready: true});
   const s = createStore(testState({config: testConfig({models: entries}), workspaces: [testWorkspace({id: 'w', sessions: [session]})]}));
   const root = mount(s, <SessionSelection session={session} />);
   await open(root);
-  expect(document.querySelector('[role=tab]')).toBeNull();
   expect(findAll(document, '[cmdk-item]').map(i => i.textContent)).toEqual(['Opus', 'Plain Model']);
   expect(fetches).not.toHaveBeenCalled();
   key(element(document, '[role=slider]', HTMLElement), 'ArrowRight'); await settle();

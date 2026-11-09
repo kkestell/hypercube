@@ -10,6 +10,9 @@ const properNames: Record<string, string | undefined> = {
 // displayName names a harness by its ID.
 export const displayName = (harness = '') => properNames[harness] ?? harness;
 
+// effortLabel capitalizes an effort name for display, keeping "xhigh" as "XHigh".
+export const effortLabel = (effort: string) => effort === 'xhigh' ? 'XHigh' : effort.charAt(0).toUpperCase() + effort.slice(1);
+
 // settingsText describes settings in words, for hover text and screen readers.
 export const settingsText = (s: Settings, entries: ModelEntry[] | null) =>
   `${displayName(s.harness)} ${modelTitle(s, entries)}${s.effort ? `, effort ${s.effort}` : ''}`;
